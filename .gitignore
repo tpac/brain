@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Brain databases (contain personal data — never commit)
+*.db
+*.db-wal
+*.db-shm
+*.db.backup*
+
+# Test artifacts
+tests/results/
+tests/baselines/
+tests/relearned_*.db
+
+# Build output
+*.plugin
+
+# Environment
+.env
+.venv/
+venv/
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Embedder model cache
+servers/models/

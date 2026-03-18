@@ -1,0 +1,585 @@
+[
+  {
+    "id": "kw_dec_rqjn",
+    "query": "budget screen layout regressed",
+    "category": "keyword",
+    "expected_relevant": {
+      "dec_rqjns07z": 2,
+      "rul_8xgct2hg": 1,
+      "rul_9oosw82x": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [decision]: Correction: Budget screen layout regressed \u2014 tiers went vert"
+  },
+  {
+    "id": "kw_rul_8xgc",
+    "query": "budget_order",
+    "category": "keyword",
+    "expected_relevant": {
+      "rul_8xgct2hg": 2,
+      "dec_rqjns07z": 1,
+      "pro_i1pc8fs7": 1,
+      "rul_17qtllqm": 1,
+      "rul_57bp94y5": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [rule]: [o_glo] Rule: budget_order"
+  },
+  {
+    "id": "kw_rul_9oos",
+    "query": "every screen component must have a ui contract comment at top",
+    "category": "keyword",
+    "expected_relevant": {
+      "rul_9oosw82x": 2,
+      "dec_rqjns07z": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [rule]: Rule: every screen component must have a UI CONTRACT comment"
+  },
+  {
+    "id": "kw_dec_u129",
+    "query": "tmemory v7: automatic hooks",
+    "category": "keyword",
+    "expected_relevant": {
+      "dec_u1291joh": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [decision]: tmemory v7: automatic hooks \u2014 PreToolUse, PreCompact, improv"
+  },
+  {
+    "id": "kw_dec_sn3n",
+    "query": "glo component map: 13 components defined with boundaries and dependencies",
+    "category": "keyword",
+    "expected_relevant": {
+      "dec_sn3nayjg": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [decision]: Glo component map: 13 components defined with boundaries and"
+  },
+  {
+    "id": "kw_rul_ovwv",
+    "query": "never manipulate data to pass your own tests",
+    "category": "keyword",
+    "expected_relevant": {
+      "rul_ovwvt4ch": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [rule]: Rule: never manipulate data to pass your own tests"
+  },
+  {
+    "id": "kw_rul_17qt",
+    "query": "media mockup must show creative on publisher media with logo",
+    "category": "keyword",
+    "expected_relevant": {
+      "rul_17qtllqm": 2,
+      "rul_8xgct2hg": 1,
+      "rul_jd8ib8c2": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [rule]: Rule: media mockup must show creative ON publisher media wit"
+  },
+  {
+    "id": "kw_pro_6e9w",
+    "query": "budget screen pre-edit audit",
+    "category": "keyword",
+    "expected_relevant": {
+      "pro_6e9wbfrj": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [procedure]: Budget screen pre-edit audit"
+  },
+  {
+    "id": "kw_rul_jd8i",
+    "query": "glo disruptive concept",
+    "category": "keyword",
+    "expected_relevant": {
+      "rul_jd8ib8c2": 2,
+      "rul_17qtllqm": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [rule]: Rule: Glo disruptive concept \u2014 anyone can upload to any medi"
+  },
+  {
+    "id": "kw_dec_ske5",
+    "query": "glo lifecycle: draft\u2192pending review\u2192active\u2192completed",
+    "category": "keyword",
+    "expected_relevant": {
+      "dec_ske5osc2": 2,
+      "con_b4g2ux5s": 1,
+      "pro_i1pc8fs7": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [decision]: Glo lifecycle: Draft\u2192Pending Review\u2192Active\u2192Completed. Reject"
+  },
+  {
+    "id": "kw_rul_uz02",
+    "query": "screen-scoped edits",
+    "category": "keyword",
+    "expected_relevant": {
+      "rul_uz02526a": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [rule]: Screen-scoped edits"
+  },
+  {
+    "id": "kw_rul_9bsa",
+    "query": "tmemory design principle: brain is a cue system, not a search engine",
+    "category": "keyword",
+    "expected_relevant": {
+      "rul_9bsawi7g": 2,
+      "con_indnhlfx": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [rule]: tmemory design principle: brain is a cue system, not a searc"
+  },
+  {
+    "id": "kw_dec_qz2r",
+    "query": "payment: glo credits 1:1 usd, stripe customer balance",
+    "category": "keyword",
+    "expected_relevant": {
+      "dec_qz2r5qnm": 2,
+      "con_esyy9xi1": 1,
+      "pro_i1pc8fs7": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [decision]: Payment: Glo Credits 1:1 USD, Stripe customer balance. SSO\u2192p"
+  },
+  {
+    "id": "kw_dec_10c3",
+    "query": "tmemory: separate user brain from plugin (fresh vs personal)",
+    "category": "keyword",
+    "expected_relevant": {
+      "dec_10c3j7ft": 2,
+      "con_indnhlfx": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [decision]: tmemory: separate user brain from plugin (fresh vs personal)"
+  },
+  {
+    "id": "kw_fil_zdnf",
+    "query": "test crud file",
+    "category": "keyword",
+    "expected_relevant": {
+      "fil_zdnfovz2": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [file]: [ctx:test-crud-file] Test CRUD File"
+  },
+  {
+    "id": "kw_dec_zn7c",
+    "query": "full refund + duplicate option to start new glo from same creative",
+    "category": "keyword",
+    "expected_relevant": {
+      "dec_zn7co4dn": 2,
+      "con_b4g2ux5s": 1,
+      "con_esyy9xi1": 1,
+      "pro_i1pc8fs7": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [decision]: Rejected: full refund + duplicate option to start new Glo fr"
+  },
+  {
+    "id": "kw_dec_cww0",
+    "query": "ai video gen is not the moat",
+    "category": "keyword",
+    "expected_relevant": {
+      "dec_cww0oo7d": 2,
+      "con_hlytgmqx": 1,
+      "con_qapunc9e": 1,
+      "con_rd9bmn59": 1,
+      "pro_i1pc8fs7": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [decision]: AI video gen is NOT the moat. Buy/integrate: Creatify MVP $9"
+  },
+  {
+    "id": "kw_dec_y78l",
+    "query": "creative strategy: ai video gen is not the moat",
+    "category": "keyword",
+    "expected_relevant": {
+      "dec_y78ln1w0": 2,
+      "con_hlytgmqx": 1,
+      "con_qapunc9e": 1,
+      "con_rd9bmn59": 1,
+      "pro_i1pc8fs7": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [decision]: Creative strategy: AI video gen is NOT the moat. Buy/integra"
+  },
+  {
+    "id": "kw_fil_e2wc",
+    "query": "tmemory",
+    "category": "keyword",
+    "expected_relevant": {
+      "fil_e2wcepf4": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [file]: [ctx:tmemory-architecture] tmemory \u2014 Brain Plugin Architectu"
+  },
+  {
+    "id": "kw_dec_c0h3",
+    "query": "tier pricing: 1",
+    "category": "keyword",
+    "expected_relevant": {
+      "dec_c0h38kix": 2,
+      "dec_bzdb0leg": 1,
+      "dec_xdcei6i9": 1,
+      "pro_0gaibwq7": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [decision]: Tier pricing: 1.4x markup multiplier on publisher CPM"
+  },
+  {
+    "id": "kw_dec_j3vp",
+    "query": "payment: glo credits 1:1 usd",
+    "category": "keyword",
+    "expected_relevant": {
+      "dec_j3vp1rdc": 2,
+      "con_esyy9xi1": 1,
+      "pro_i1pc8fs7": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [decision]: Payment: Glo Credits 1:1 USD. Wallet via Stripe customer bal"
+  },
+  {
+    "id": "kw_fil_ap5c",
+    "query": "large content test",
+    "category": "keyword",
+    "expected_relevant": {
+      "fil_ap5c1iju": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [file]: [ctx:big-test-file] Large Content Test"
+  },
+  {
+    "id": "kw_rul_eo65",
+    "query": "goal_placement",
+    "category": "keyword",
+    "expected_relevant": {
+      "rul_eo65j1tn": 2,
+      "pro_i1pc8fs7": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword recall for [rule]: [o_glo] Rule: goal_placement"
+  },
+  {
+    "id": "intent_dec_dec_rqjn",
+    "query": "what did we decide about budget screen layout regressed",
+    "category": "intent_decision",
+    "expected_relevant": {
+      "dec_rqjns07z": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Decision lookup intent: Correction: Budget screen layout regressed \u2014 tiers went vert"
+  },
+  {
+    "id": "intent_dec_dec_u129",
+    "query": "what did we decide about tmemory v7",
+    "category": "intent_decision",
+    "expected_relevant": {
+      "dec_u1291joh": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Decision lookup intent: tmemory v7: automatic hooks \u2014 PreToolUse, PreCompact, improv"
+  },
+  {
+    "id": "intent_dec_dec_sn3n",
+    "query": "what did we decide about glo component map",
+    "category": "intent_decision",
+    "expected_relevant": {
+      "dec_sn3nayjg": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Decision lookup intent: Glo component map: 13 components defined with boundaries and"
+  },
+  {
+    "id": "intent_dec_dec_ske5",
+    "query": "what did we decide about glo lifecycle",
+    "category": "intent_decision",
+    "expected_relevant": {
+      "dec_ske5osc2": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Decision lookup intent: Glo lifecycle: Draft\u2192Pending Review\u2192Active\u2192Completed. Reject"
+  },
+  {
+    "id": "intent_dec_dec_qz2r",
+    "query": "what did we decide about payment",
+    "category": "intent_decision",
+    "expected_relevant": {
+      "dec_qz2r5qnm": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Decision lookup intent: Payment: Glo Credits 1:1 USD, Stripe customer balance. SSO\u2192p"
+  },
+  {
+    "id": "intent_howto_rul_8xgc",
+    "query": "how should we handle budget_order",
+    "category": "intent_howto",
+    "expected_relevant": {
+      "rul_8xgct2hg": 2
+    },
+    "min_hit_rate_at_10": 0.8,
+    "description": "How-to intent for rule: [o_glo] Rule: budget_order"
+  },
+  {
+    "id": "intent_howto_rul_9oos",
+    "query": "how should we handle every screen component must have a",
+    "category": "intent_howto",
+    "expected_relevant": {
+      "rul_9oosw82x": 2
+    },
+    "min_hit_rate_at_10": 0.8,
+    "description": "How-to intent for rule: Rule: every screen component must have a UI CONTRACT comment"
+  },
+  {
+    "id": "intent_howto_rul_ovwv",
+    "query": "how should we handle never manipulate data to pass your own tests",
+    "category": "intent_howto",
+    "expected_relevant": {
+      "rul_ovwvt4ch": 2
+    },
+    "min_hit_rate_at_10": 0.8,
+    "description": "How-to intent for rule: Rule: never manipulate data to pass your own tests"
+  },
+  {
+    "id": "intent_howto_rul_17qt",
+    "query": "how should we handle media mockup must show creative on",
+    "category": "intent_howto",
+    "expected_relevant": {
+      "rul_17qtllqm": 2
+    },
+    "min_hit_rate_at_10": 0.8,
+    "description": "How-to intent for rule: Rule: media mockup must show creative ON publisher media wit"
+  },
+  {
+    "id": "intent_howto_rul_jd8i",
+    "query": "how should we handle glo disruptive concept",
+    "category": "intent_howto",
+    "expected_relevant": {
+      "rul_jd8ib8c2": 2
+    },
+    "min_hit_rate_at_10": 0.8,
+    "description": "How-to intent for rule: Rule: Glo disruptive concept \u2014 anyone can upload to any medi"
+  },
+  {
+    "id": "type_rule",
+    "query": "budget_order",
+    "category": "type_filter",
+    "type_filter": [
+      "rule"
+    ],
+    "expected_relevant": {
+      "rul_8xgct2hg": 2,
+      "rul_9oosw82x": 2,
+      "rul_ovwvt4ch": 2
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Type-filtered recall for rule nodes"
+  },
+  {
+    "id": "type_decision",
+    "query": "budget screen layout regressed",
+    "category": "type_filter",
+    "type_filter": [
+      "decision"
+    ],
+    "expected_relevant": {
+      "dec_rqjns07z": 2,
+      "dec_u1291joh": 2,
+      "dec_sn3nayjg": 2
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Type-filtered recall for decision nodes"
+  },
+  {
+    "id": "type_procedure",
+    "query": "budget screen pre-edit audit",
+    "category": "type_filter",
+    "type_filter": [
+      "procedure"
+    ],
+    "expected_relevant": {
+      "pro_6e9wbfrj": 2,
+      "pro_rg69dev3": 2,
+      "pro_p2k92uai": 2
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Type-filtered recall for procedure nodes"
+  },
+  {
+    "id": "hub_pro_i1pc",
+    "query": "glo",
+    "category": "hub",
+    "expected_relevant": {
+      "pro_i1pc8fs7": 2,
+      "513a4e6232704122bb2aa731188c24c7": 1,
+      "con_0qfhpayv": 1,
+      "con_140i0soc": 1,
+      "con_1b4au6hz": 1,
+      "con_2jl3lv9n": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Hub recall: [project] Glo.io \u2014 Self-serve ad platform on EX.CO ad server. Anyone b (326 edges)"
+  },
+  {
+    "id": "hub_pro_mb9m",
+    "query": "ex",
+    "category": "hub",
+    "expected_relevant": {
+      "pro_mb9mas11": 2,
+      "con_140i0soc": 1,
+      "con_5ej15u5g": 1,
+      "con_7far6rky": 1,
+      "con_7sp3ziq7": 1,
+      "con_9wgrg928": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Hub recall: [project] EX.CO \u2014 End-to-end video platform for publishers: CMS, ad se (64 edges)"
+  },
+  {
+    "id": "hub_pro_0gai",
+    "query": "glo",
+    "category": "hub",
+    "expected_relevant": {
+      "pro_0gaibwq7": 2,
+      "con_aofbtzix": 1,
+      "con_l4vb6dd0": 1,
+      "dec_3nu4rgj4": 1,
+      "dec_7zjb9wgv": 1,
+      "dec_bdhgxfx7": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Hub recall: [project] Glo.io \u2014 Self-serve advertising platform (26 edges)"
+  },
+  {
+    "id": "hub_dec_y78l",
+    "query": "creative strategy",
+    "category": "hub",
+    "expected_relevant": {
+      "dec_y78ln1w0": 2,
+      "513a4e6232704122bb2aa731188c24c7": 1,
+      "con_aatt62me": 1,
+      "con_hlytgmqx": 1,
+      "con_qapunc9e": 1,
+      "con_rd9bmn59": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Hub recall: [decision] Creative strategy: AI video gen is NOT the moat. Buy/integra (18 edges)"
+  },
+  {
+    "id": "hub_per_nzqi",
+    "query": "tom",
+    "category": "hub",
+    "expected_relevant": {
+      "per_nzqi8kyf": 2,
+      "con_8z2mozek": 1,
+      "con_q6pydb49": 1,
+      "pro_mb9mas11": 1,
+      "rul_1dp9w358": 1,
+      "rul_5ixyibjl": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Hub recall: [person] Tom \u2014 CEO of EX.CO (18 edges)"
+  },
+  {
+    "id": "edge_empty",
+    "query": "",
+    "category": "edge_case",
+    "expected_relevant": {},
+    "min_hit_rate_at_10": 0.0,
+    "description": "Empty query should not crash",
+    "expect_no_crash": true
+  },
+  {
+    "id": "edge_garbage",
+    "query": "xyzzy frobnicator quantum banana",
+    "category": "edge_case",
+    "expected_relevant": {},
+    "min_hit_rate_at_10": 0.0,
+    "description": "Garbage query should return gracefully (recent nodes)",
+    "expect_no_crash": true
+  },
+  {
+    "id": "edge_long_query",
+    "query": "What is the current state of the budget screen layout and how does it relate to the tier pricing and spend mode toggle and what decisions were made about the horizontal scrollable design",
+    "category": "edge_case",
+    "expected_relevant": {
+      "dec_bzdb0leg": 1,
+      "dec_xdcei6i9": 1,
+      "rul_8xgct2hg": 1,
+      "dec_nnyhd99u": 1,
+      "dec_7ld3306a": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Long verbose query should still work",
+    "expect_no_crash": true
+  },
+  {
+    "id": "edge_single_word",
+    "query": "budget",
+    "category": "edge_case",
+    "expected_relevant": {
+      "dec_bzdb0leg": 1,
+      "dec_xdcei6i9": 1,
+      "rul_8xgct2hg": 1,
+      "dec_nnyhd99u": 1,
+      "dec_7ld3306a": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Single-word query should recall relevant nodes"
+  },
+  {
+    "id": "project_pro_0gai",
+    "query": "everything about glo",
+    "category": "cross_domain",
+    "expected_relevant": {
+      "pro_0gaibwq7": 2,
+      "dec_bdhgxfx7": 1,
+      "dec_iweemnjn": 1,
+      "dec_dp93qu36": 1,
+      "dec_7zjb9wgv": 1,
+      "dec_3nu4rgj4": 1,
+      "dec_m9fq8akb": 1,
+      "dec_dumnu9n7": 1,
+      "fil_mi74f6rq": 1,
+      "con_l4vb6dd0": 1,
+      "dec_c0h38kix": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Cross-domain project recall: Glo.io \u2014 Self-serve advertising platform"
+  },
+  {
+    "id": "project_pro_mb9m",
+    "query": "everything about ex",
+    "category": "cross_domain",
+    "expected_relevant": {
+      "pro_mb9mas11": 2,
+      "dec_0a4u7zrv": 1,
+      "dec_qgpataos": 1,
+      "dec_00i02v1y": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Cross-domain project recall: EX.CO \u2014 End-to-end video platform for publishers: CMS, ad se"
+  },
+  {
+    "id": "project_pro_i1pc",
+    "query": "everything about glo",
+    "category": "cross_domain",
+    "expected_relevant": {
+      "pro_i1pc8fs7": 2,
+      "dec_o8fqg5v9": 1,
+      "dec_94kstp68": 1,
+      "dec_cww0oo7d": 1,
+      "dec_0sv57szx": 1,
+      "dec_6z006j7r": 1,
+      "dec_qz2r5qnm": 1,
+      "dec_6rruh9bf": 1,
+      "dec_89qq5rfh": 1,
+      "dec_8vvy8az3": 1,
+      "dec_dp9gw843": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Cross-domain project recall: Glo.io \u2014 Self-serve ad platform on EX.CO ad server. Anyone b"
+  }
+]

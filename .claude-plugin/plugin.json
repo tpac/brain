@@ -1,0 +1,25 @@
+{
+  "name": "tmemory",
+  "version": "3.2.0",
+  "description": "Persistent brain for Claude sessions — serverless architecture. v3.2: Singleton pattern (Brain.get_instance), brain.absorb() for merging knowledge from relearned brains, Hebbian edge creation fix (co_accessed auto-discovery), LLM-based relearning simulation, pre-filter + batch + parallel optimization, temporal lambda fix. Features: Python-native brain module (direct SQLite), FastEmbed embeddings, density-based gap detection, graph-based knowledge with semantic + TF-IDF recall, emergent bridging, time-dilated decay, auto-suggest, pre-response recall (Layer C).",
+  "author": {
+    "name": "Tom Pachys"
+  },
+  "keywords": [
+    "memory",
+    "brain",
+    "persistent",
+    "knowledge-graph",
+    "context",
+    "recap",
+    "consistency",
+    "semantic",
+    "tfidf",
+    "intent",
+    "temporal",
+    "proactive",
+    "projects",
+    "hooks",
+    "auto-suggest"
+  ]
+}
