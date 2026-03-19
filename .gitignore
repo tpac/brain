@@ -38,3 +38,18 @@ Thumbs.db
 
 # Embedder model cache
 servers/models/
+
+# Model package — commit source only, not the 416MB ONNX model
+model-package/brain_embedding/model/
+model-package/dist/
+model-package/build/
+model-package/*.egg-info/
+
+# Historical simulation data — not part of source
+archives/
+
+# Git worktrees managed by Claude Code — not source
+.claude/
+
+# Design docs and session handoffs (not part of plugin source)
+docs/

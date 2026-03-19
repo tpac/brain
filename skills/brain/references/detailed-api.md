@@ -1,4 +1,8 @@
-# tmemory Detailed API Reference
+# brain Detailed API Reference
+
+> **NOTE (v4):** This document references the old HTTP server architecture (brain.js, port 7437, POST endpoints).
+> The brain is now **serverless Python** — all operations are direct method calls on the `Brain` class in `servers/brain.py`.
+> Translate any `POST /endpoint` references to `brain.method()` calls. See SKILL.md for the current API.
 
 ## Upgrade Guide for Future Claude
 
@@ -106,7 +110,7 @@ Parameter change history. Every weight adjustment is recorded with reason and li
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| TMEMORY_PORT | 7437 | TCP port |
-| TMEMORY_DB_DIR | ../data | Directory for brain.db |
-| TMEMORY_SOCKET | /tmp/tmemory.sock | Unix socket path (if TCP disabled) |
-| TMEMORY_TCP | 1 | Use TCP (default: yes) |
+| BRAIN_PORT | 7437 | TCP port |
+| BRAIN_DB_DIR | ../data | Directory for brain.db |
+| BRAIN_SOCKET | /tmp/brain.sock | Unix socket path (if TCP disabled) |
+| BRAIN_TCP | 1 | Use TCP (default: yes) |

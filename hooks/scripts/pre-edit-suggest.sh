@@ -1,5 +1,5 @@
 #!/bin/bash
-# tmemory v14 (serverless) — PreToolUse hook for Edit|Write
+# brain v14 (serverless) — PreToolUse hook for Edit|Write
 # Direct Python brain module call. No HTTP server needed.
 #
 # Input: JSON on stdin with tool_name, tool_input.file_path
@@ -10,27 +10,27 @@ SERVER_DIR="$PLUGIN_ROOT/servers"
 
 # ── Resolve brain DB ──
 DB_DIR=""
-if [ -n "$TMEMORY_DB_DIR" ] && [ -d "$TMEMORY_DB_DIR" ]; then
-  DB_DIR="$TMEMORY_DB_DIR"
+if [ -n "$BRAIN_DB_DIR" ] && [ -d "$BRAIN_DB_DIR" ]; then
+  DB_DIR="$BRAIN_DB_DIR"
 fi
 if [ -z "$DB_DIR" ]; then
-  for candidate in /sessions/*/mnt/AgentsContext/tmemory; do
+  for candidate in /sessions/*/mnt/AgentsContext/brain; do
     if [ -f "$candidate/brain.db" ]; then
       DB_DIR="$candidate"
       break
     fi
   done
 fi
-if [ -z "$DB_DIR" ] && [ -f "$HOME/AgentsContext/tmemory/brain.db" ]; then
-  DB_DIR="$HOME/AgentsContext/tmemory"
+if [ -z "$DB_DIR" ] && [ -f "$HOME/AgentsContext/brain/brain.db" ]; then
+  DB_DIR="$HOME/AgentsContext/brain"
 fi
 if [ -z "$DB_DIR" ] || [ ! -f "$DB_DIR/brain.db" ]; then
   echo '{"decision":"approve"}'
   exit 0
 fi
 
-export TMEMORY_DB_DIR="$DB_DIR"
-export TMEMORY_SERVER_DIR="$SERVER_DIR"
+export BRAIN_DB_DIR="$DB_DIR"
+export BRAIN_SERVER_DIR="$SERVER_DIR"
 
 # Read hook input from stdin
 export HOOK_INPUT=$(cat)
@@ -38,8 +38,8 @@ export HOOK_INPUT=$(cat)
 exec python3 -c '
 import json, sys, os, time
 
-server_dir = os.environ.get("TMEMORY_SERVER_DIR", "")
-db_dir = os.environ.get("TMEMORY_DB_DIR", "")
+server_dir = os.environ.get("BRAIN_SERVER_DIR", "")
+db_dir = os.environ.get("BRAIN_DB_DIR", "")
 db_path = os.path.join(db_dir, "brain.db")
 
 # Add servers dir to Python path
@@ -131,22 +131,42 @@ if not suggestions and not procedures and not context_files:
     sys.exit(0)
 
 # ── Format into readable context ──
-lines = [f"TMEMORY AUTO-SUGGEST for {filename}:", ""]
+lines = [f"BRAIN AUTO-SUGGEST for {filename}:", ""]
 
-for s in suggestions:
-    typ = s.get("type", "?")
-    if typ == "procedure":
-        continue
-    if typ == "file" and "[ctx:" in s.get("title", ""):
-        continue
-    title = s.get("title", "")[:80]
-    content = s.get("content", "")
-    locked = "LOCKED " if s.get("locked") else ""
-    if len(content) > 250:
-        content = content[:250] + "..."
-    lines.append(f"  [{typ}] {locked}{title}")
-    lines.append(f"    {content}")
+# v4: Code cognition types get their own section at top
+CODE_COGNITION_TYPES = {"fn_reasoning", "param_influence", "code_concept", "arch_constraint", "causal_chain", "bug_lesson", "comment_anchor"}
+
+code_nodes = [s for s in suggestions if s.get("type") in CODE_COGNITION_TYPES]
+other_nodes = [s for s in suggestions if s.get("type") not in CODE_COGNITION_TYPES and s.get("type") != "procedure" and not (s.get("type") == "file" and "[ctx:" in s.get("title", ""))]
+
+if code_nodes:
+    lines.append("CODE KNOWLEDGE (read carefully — these describe what you are about to edit):")
     lines.append("")
+    for s in code_nodes:
+        typ = s.get("type", "?")
+        title = s.get("title", "")[:80]
+        content = s.get("content", "")
+        locked = "LOCKED " if s.get("locked") else ""
+        if len(content) > 350:
+            content = content[:350] + "..."
+        lines.append(f"  [{typ}] {locked}{title}")
+        lines.append(f"    {content}")
+        lines.append("")
+
+if other_nodes:
+    if code_nodes:
+        lines.append("OTHER RULES & DECISIONS:")
+        lines.append("")
+    for s in other_nodes:
+        typ = s.get("type", "?")
+        title = s.get("title", "")[:80]
+        content = s.get("content", "")
+        locked = "LOCKED " if s.get("locked") else ""
+        if len(content) > 250:
+            content = content[:250] + "..."
+        lines.append(f"  [{typ}] {locked}{title}")
+        lines.append(f"    {content}")
+        lines.append("")
 
 if procedures:
     lines.append("TRIGGERED PROCEDURES:")
@@ -175,6 +195,14 @@ if context_files:
 if encoding_warning:
     lines.append("")
     lines.append(encoding_warning)
+    lines.append("")
+
+# v4: Embed communication tracking instruction
+# The host should report back whether it followed the brain guidance
+locked_ids = [s.get("id", "") for s in suggestions if s.get("locked")]
+if locked_ids:
+    lines.append("BRAIN->HOST: If you follow locked rules above, call brain.log_communication(node_id, 'high_priority', True).")
+    lines.append("If you must deviate, call brain.log_communication(node_id, 'high_priority', False, reason).")
     lines.append("")
 
 lines.append("Review these constraints before proceeding with the edit.")

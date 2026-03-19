@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tmemory — Relearning Comparison Engine
+brain — Relearning Comparison Engine
 
 Replays real conversation transcripts against a fresh brain to test whether
 the current brain logic can reproduce (and improve upon) what was learned.
@@ -68,7 +68,7 @@ class LLMEncoder:
         re.compile(r'^Skill .* is loading', re.I),
     ]
 
-    def __init__(self, model: str = 'claude-haiku-4-5-20251001', batch_size: int = 50,
+    def __init__(self, model: str = 'claude-haiku-4-5-20251001', batch_size: int = 15,
                  backend: str = 'auto', max_parallel: int = 5):
         """
         Args:
@@ -92,7 +92,11 @@ class LLMEncoder:
 
         if self.backend == 'api':
             import anthropic
-            self.client = anthropic.Anthropic()
+            import httpx
+            # Some environments (Cowork VM) use a proxy with self-signed certs.
+            # Disable SSL verification to allow API calls through the proxy.
+            http_client = httpx.Client(verify=False)
+            self.client = anthropic.Anthropic(http_client=http_client)
         else:
             self.client = None
 
@@ -237,7 +241,7 @@ class LLMEncoder:
             titles_hint = f"\nEXISTING BRAIN NODES (use these titles for connections when relevant):\n" + \
                           '\n'.join(f'  - {t}' for t in sample) + '\n'
 
-        prompt = f"""You are the encoding engine for tmemory, a persistent brain for Claude.
+        prompt = f"""You are the encoding engine for brain, a persistent brain for Claude.
 Analyze this conversation excerpt and extract what should be remembered.
 
 ENCODING RULES (from SKILL.md):
@@ -267,7 +271,7 @@ WHAT NOT TO ENCODE:
 - File paths from the VM (/sessions/...)
 - Claude's boilerplate responses
 - Repetitive turn-by-turn status updates
-- Content that's purely about tmemory's own internal operations (unless it's a decision about tmemory's design)
+- Content that's purely about brain's own internal operations (unless it's a decision about brain's design)
 
 DECOMPOSE, don't summarize. Each specific value, name, number gets its OWN node.
 If unsure whether it's valuable, ENCODE IT. Pruning handles cleanup.
@@ -417,7 +421,7 @@ PERSON_PATTERNS = [
 ]
 
 PROJECT_PATTERNS = [
-    re.compile(r'\b(Glo|EX\.CO|tmemory|project|platform|app|product|prototype|demo)\b', re.I),
+    re.compile(r'\b(Glo|EX\.CO|brain|project|platform|app|product|prototype|demo)\b', re.I),
 ]
 
 TASK_PATTERNS = [
@@ -728,7 +732,7 @@ def build_llm_encoding_prompt(turns_batch: List[Dict], session_context: Dict) ->
 
     conversation = '\n'.join(turns_text)
 
-    prompt = f"""You are a brain encoding engine for tmemory. Analyze this conversation excerpt and extract what should be remembered.
+    prompt = f"""You are a brain encoding engine for brain. Analyze this conversation excerpt and extract what should be remembered.
 
 Follow these encoding rules (from SKILL.md):
 - Decisions, architecture changes → type:"decision", locked:true. EACH specific value as its own node.
@@ -1413,7 +1417,7 @@ def print_replay_report(replay_log: Dict, comparison: Dict = None):
     """Print human-readable replay report."""
     print()
     print('=' * 70)
-    print('  tmemory RELEARNING COMPARISON REPORT')
+    print('  brain RELEARNING COMPARISON REPORT')
     print('=' * 70)
     print()
 

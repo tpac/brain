@@ -1,5 +1,5 @@
 """
-tmemory — Retrieval Quality Metrics
+brain — Retrieval Quality Metrics
 
 Standard information retrieval metrics for evaluating recall quality:
   - NDCG@K  (Normalized Discounted Cumulative Gain)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tmemory — Unified Test Runner
+brain — Unified Test Runner
 
 Single entry point for all testing:
     python tests/run_tests.py                        # Full eval + regression
@@ -90,8 +90,8 @@ def find_brain_db(args):
 
     search_paths = [
         os.path.join(os.path.dirname(__file__), '..', 'data', 'brain.db'),
-        os.path.expanduser('~/Documents/Claude/AgentsContext/tmemory/brain.db'),
-        os.environ.get('TMEMORY_DB_DIR', ''),
+        os.path.expanduser('~/Documents/Claude/AgentsContext/brain/brain.db'),
+        os.environ.get('BRAIN_DB_DIR', ''),
     ]
 
     for p in search_paths:
@@ -181,7 +181,7 @@ def main():
     # Default: run everything
     print()
     print('=' * 70)
-    print('  tmemory FULL TEST SUITE')
+    print('  brain FULL TEST SUITE')
     print('=' * 70)
 
     # 1. Metrics self-test

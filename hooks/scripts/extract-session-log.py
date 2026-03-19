@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tmemory v14 — Post-compaction session log extractor.
+brain v14 — Post-compaction session log extractor.
 
 Called at SessionStart. Uses DENSITY-BASED gap detection: chunks time into
 30-minute windows, compares user messages in the log vs nodes created in the
@@ -53,32 +53,24 @@ def find_jsonl_file():
     return None
 
 
-def get_brain_nodes_by_window(brain_url, since_iso):
+def get_brain_nodes_by_window(brain_db_path, since_iso):
     """
     Get node creation counts bucketed by 30-min windows from the brain.
     Returns dict: { "2026-03-17T08:00" : 5, "2026-03-17T08:30": 0, ... }
+    v4: Direct SQLite query (serverless — no HTTP server).
     """
-    import urllib.request
+    import sqlite3
 
-    # Get all nodes created since the given timestamp via /timeline
     nodes_by_window = {}
     try:
-        # Timeline returns nodes ordered by creation time
-        req = urllib.request.Request(
-            f"{brain_url}/timeline",
-            data=json.dumps({"limit": 500}).encode(),
-            headers={"Content-Type": "application/json"},
-            method="POST"
+        conn = sqlite3.connect(brain_db_path)
+        cursor = conn.execute(
+            "SELECT created_at FROM nodes WHERE created_at >= ? ORDER BY created_at",
+            (since_iso,)
         )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read())
-
-        events = data.get("events", [])
-        for node in events:
-            created = node.get("created_at", "")
-            if not created or created < since_iso:
+        for (created,) in cursor.fetchall():
+            if not created:
                 continue
-            # Bucket into 30-min window
             try:
                 dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
                 window_min = (dt.minute // WINDOW_MINUTES) * WINDOW_MINUTES
@@ -86,6 +78,7 @@ def get_brain_nodes_by_window(brain_url, since_iso):
                 nodes_by_window[window_key] = nodes_by_window.get(window_key, 0) + 1
             except (ValueError, AttributeError):
                 pass
+        conn.close()
     except Exception:
         pass
 
@@ -464,7 +457,9 @@ def main():
     parser.add_argument("--threshold", type=float, default=SPARSE_THRESHOLD, help="Sparse threshold ratio")
     args = parser.parse_args()
 
-    brain_url = os.environ.get("BRAIN_URL", "http://127.0.0.1:7437")
+    # v4: Serverless — direct SQLite, no HTTP server
+    brain_db_dir = os.environ.get("BRAIN_DB_DIR", "")
+    brain_db_path = os.path.join(brain_db_dir, "brain.db") if brain_db_dir else ""
 
     # Find the chat log
     jsonl_path = args.jsonl or find_jsonl_file()
@@ -492,7 +487,7 @@ def main():
         sys.exit(0)
 
     # Step 2: Get brain node counts per window
-    brain_windows = get_brain_nodes_by_window(brain_url, since_iso)
+    brain_windows = get_brain_nodes_by_window(brain_db_path, since_iso)
 
     # Step 3: Find sparse windows
     sparse = find_sparse_windows(user_windows, brain_windows)

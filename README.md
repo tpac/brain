@@ -1,4 +1,4 @@
-# tmemory
+# brain
 
 Persistent brain for Claude — a shared cognitive space that accumulates knowledge across sessions.
 
@@ -6,7 +6,7 @@ Co-created by **Tom Pachys** and **Claude**.
 
 ## What It Does
 
-tmemory gives Claude persistent memory. Decisions, corrections, rules, preferences, and context survive across conversations. The brain uses Hebbian learning, semantic recall (TF-IDF + embeddings), intent detection, and automatic relationship discovery to surface the right knowledge at the right time.
+brain gives Claude persistent memory. Decisions, corrections, rules, preferences, and context survive across conversations. The brain uses Hebbian learning, semantic recall (TF-IDF + embeddings), intent detection, and automatic relationship discovery to surface the right knowledge at the right time.
 
 ## Architecture
 
@@ -36,7 +36,7 @@ tests/              — Golden dataset evaluation, relearning simulation
 Install as a Claude Code plugin:
 
 ```bash
-bash build-plugin.sh tmemory.plugin
+bash build-plugin.sh brain.plugin
 ```
 
 Then add the generated `.plugin` file to your Claude Code setup.
@@ -44,7 +44,7 @@ Then add the generated `.plugin` file to your Claude Code setup.
 ## Brain Location
 
 The brain database (`brain.db`) is stored in:
-1. `AgentsContext/tmemory/brain.db` — user's personal brain
+1. `AgentsContext/brain/brain.db` — user's personal brain
 2. Plugin's `servers/data/brain.db` — fresh default for new users
 
 **Never commit brain.db** — it contains personal knowledge and is excluded via `.gitignore`.

@@ -1,5 +1,5 @@
 #!/bin/bash
-# tmemory v14 (serverless) — Layer C: Pre-response recall trigger
+# brain v14 (serverless) — Layer C: Pre-response recall trigger
 # Fires before Claude responds to ANY user message (not just file edits).
 # This is the key architectural improvement: brain context is available
 # during reasoning, not just during file operations.
@@ -12,34 +12,34 @@ SERVER_DIR="$PLUGIN_ROOT/servers"
 
 # ── Resolve brain DB ──
 DB_DIR=""
-if [ -n "$TMEMORY_DB_DIR" ] && [ -d "$TMEMORY_DB_DIR" ]; then
-  DB_DIR="$TMEMORY_DB_DIR"
+if [ -n "$BRAIN_DB_DIR" ] && [ -d "$BRAIN_DB_DIR" ]; then
+  DB_DIR="$BRAIN_DB_DIR"
 fi
 if [ -z "$DB_DIR" ]; then
-  for candidate in /sessions/*/mnt/AgentsContext/tmemory; do
+  for candidate in /sessions/*/mnt/AgentsContext/brain; do
     if [ -f "$candidate/brain.db" ]; then
       DB_DIR="$candidate"
       break
     fi
   done
 fi
-if [ -z "$DB_DIR" ] && [ -f "$HOME/AgentsContext/tmemory/brain.db" ]; then
-  DB_DIR="$HOME/AgentsContext/tmemory"
+if [ -z "$DB_DIR" ] && [ -f "$HOME/AgentsContext/brain/brain.db" ]; then
+  DB_DIR="$HOME/AgentsContext/brain"
 fi
 if [ -z "$DB_DIR" ] || [ ! -f "$DB_DIR/brain.db" ]; then
   echo '{"decision":"approve"}'
   exit 0
 fi
 
-export TMEMORY_DB_DIR="$DB_DIR"
-export TMEMORY_SERVER_DIR="$SERVER_DIR"
+export BRAIN_DB_DIR="$DB_DIR"
+export BRAIN_SERVER_DIR="$SERVER_DIR"
 export HOOK_INPUT=$(cat)
 
 exec python3 -c '
 import json, sys, os, time
 
-server_dir = os.environ.get("TMEMORY_SERVER_DIR", "")
-db_dir = os.environ.get("TMEMORY_DB_DIR", "")
+server_dir = os.environ.get("BRAIN_SERVER_DIR", "")
+db_dir = os.environ.get("BRAIN_DB_DIR", "")
 db_path = os.path.join(db_dir, "brain.db")
 
 if server_dir:
@@ -96,7 +96,24 @@ try:
     # Format recalled context — keep it concise for pre-response
     lines = ["BRAIN RECALL (auto-surfaced for this conversation):", ""]
 
-    for r in results[:5]:  # Show top 5
+    # v4: Separate evolution nodes from regular results
+    EVOLUTION_TYPES = {"tension", "hypothesis", "pattern", "catalyst", "aspiration"}
+    evolution_results = [r for r in results if r.get("type") in EVOLUTION_TYPES]
+    regular_results = [r for r in results if r.get("type") not in EVOLUTION_TYPES]
+
+    # Show evolution nodes first with their icons (consciousness layer)
+    if evolution_results:
+        lines.append("ACTIVE EVOLUTION (brain is tracking these):")
+        for r in evolution_results[:3]:
+            title = r.get("title", "")[:80]
+            content = r.get("content", "")
+            if len(content) > 150:
+                content = content[:150] + "..."
+            lines.append(f"  {title}")
+            lines.append(f"    {content}")
+            lines.append("")
+
+    for r in regular_results[:5]:
         typ = r.get("type", "?")
         title = r.get("title", "")[:60]
         content = r.get("content", "")
@@ -108,6 +125,50 @@ try:
         lines.append(f"  [{typ}] {locked}{title} (score: {score:.2f})")
         lines.append(f"    {content}")
         lines.append("")
+
+    # v4: Aspiration compass — find relevant aspirations for this conversation
+    try:
+        relevant_aspirations = brain.get_relevant_aspirations(user_message[:200], limit=2)
+        recalled_ids = set(r.get("id") for r in results)
+        new_aspirations = [a for a in relevant_aspirations if a.get("id") not in recalled_ids]
+        if new_aspirations:
+            lines.append("ASPIRATION COMPASS (relevant to this conversation):")
+            for a in new_aspirations:
+                atitle = a.get("title", "")[:80]
+                lines.append(f"  {atitle}")
+            lines.append("")
+    except Exception:
+        pass
+
+    # v4: Hypothesis validation — surface relevant hypothesis for confirmation
+    try:
+        hyp = brain.check_hypothesis_relevance(user_message[:200])
+        if hyp and hyp.get("id") not in set(r.get("id") for r in results):
+            hconf = hyp.get("confidence", 0)
+            lines.append("HYPOTHESIS TO VALIDATE (confidence: %.1f):" % hconf)
+            htitle = hyp.get("title", "")[:80]
+            lines.append(f"  {htitle}")
+            hcontent = str(hyp.get("content", ""))[:120]
+            if hcontent:
+                lines.append(f"    {hcontent}")
+            lines.append("  Does this conversation confirm or deny this? Use brain.confirm_evolution() or brain.dismiss_evolution().")
+            lines.append("")
+    except Exception:
+        pass
+
+    # v4: Check for unrecalled active tensions/aspirations
+    try:
+        active = brain.get_active_evolutions(["tension"])
+        recalled_ids = set(r.get("id") for r in results)
+        unrecalled = [a for a in active if a.get("id") not in recalled_ids]
+        if unrecalled:
+            lines.append("BRAIN AGENDA (active tensions):")
+            for a in unrecalled[:2]:
+                atitle = a.get("title", "")[:80]
+                lines.append(f"  {atitle}")
+            lines.append("")
+    except Exception:
+        pass
 
     lines.append("Use this context to inform your response. Call /remember for new decisions.")
     context = "\n".join(lines)

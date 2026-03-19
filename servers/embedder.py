@@ -1,51 +1,35 @@
 """
-tmemory — Embedding Engine (v14 Serverless)
+brain — Embedding Engine (Model-Agnostic)
 
-Replaces embedder.js (transformers.js + bge-m3) with:
-  - FastEmbed (ONNX-based, snowflake-arctic-embed-m, 768d, ~110MB, <1s cold start)
-  - sqlite-vec for KNN vector search (replaces brute-force O(n) cosine scan)
-
-WHY FASTEMBED:
-  FastEmbed uses ONNX runtime under the hood, same as transformers.js, but:
-  - Much smaller model: 110MB vs 560MB
-  - Much faster cold start: <1s vs 3-5s
-  - Pure Python: no Node.js dependency, no background server to kill
-  - snowflake-arctic-embed-m scores well on MTEB benchmarks for retrieval
-
-WHY SQLITE-VEC:
-  sqlite-vec is a SQLite extension for vector search. It:
-  - Stores vectors in the same .db file (no separate vector DB)
-  - Provides KNN search via virtual tables
-  - Works with standard sqlite3 module
-  - No server process needed
-
-EMBEDDING DIMENSION CHANGE:
-  bge-m3 = 1024d, snowflake-arctic-embed-m = 768d
-  Existing embeddings must be re-computed on migration (migrate.py handles this).
+Generic ONNX embedding engine. Doesn't know or care which model it's running.
+All model config (name, dimensions, pooling, paths) comes from the caller
+via load_model(config). Defaults come from plugin.json.
 
 ARCHITECTURE:
-  - embed() is synchronous (FastEmbed is fast enough: ~50ms per text)
-  - Store embeddings in node_embeddings table as BLOB (768 × 4 = 3072 bytes each)
-  - KNN search via sqlite-vec virtual table for top-k retrieval
-  - Graceful degradation: if FastEmbed fails to load, all paths fall back to TF-IDF
+  - load_model(config) initializes FastEmbed with whatever model config is passed
+  - embed() is synchronous (~50ms per text)
+  - Embeddings stored as BLOB (dim × 4 bytes each)
+  - Graceful degradation: if model fails to load, all paths fall back to TF-IDF
+  - Phase 0.5A: Loud failure reporting — silent degradation is broken by design
 """
 
 import struct
 import time
 import sys
 import os
-from typing import Optional, List, Tuple
+from typing import Optional, List, Dict, Any
 
-# ─── Model Configuration ───
-MODEL_NAME = "snowflake/snowflake-arctic-embed-m"
-EMBEDDING_DIM = 768
+# ─── Runtime State (set by load_model) ───
+_model = None
+_config = {}   # Current model config
 
-# ─── Stats Tracker ───
 stats = {
     'model_loaded': False,
-    'model_name': MODEL_NAME,
-    'embedding_dim': EMBEDDING_DIM,
+    'model_name': None,
+    'embedding_dim': None,
+    'pooling': None,
     'load_time_ms': 0,
+    'load_error': None,
     'total_embeddings': 0,
     'total_embed_time_ms': 0,
     'errors': 0,
@@ -53,30 +37,145 @@ stats = {
     'peak_embed_ms': 0,
 }
 
-# Global model instance
-_model = None
+
+def _discover_pip_model() -> Optional[str]:
+    """
+    Auto-discover model files from pip-installed brain-embedding package.
+    Returns model directory path if found, None otherwise.
+    """
+    try:
+        import brain_embedding
+        if brain_embedding.is_available():
+            return brain_embedding.get_model_path()
+    except ImportError:
+        pass
+    return None
 
 
-def load_model():
+def load_model(config: Optional[Dict[str, Any]] = None):
     """
-    Load the FastEmbed model. Called once at brain init.
-    FastEmbed downloads and caches models automatically (~110MB first time).
-    Subsequent loads are from local cache (<1s).
+    Load an embedding model from config.
+
+    Config keys (all optional — defaults from plugin.json via brain_meta):
+      model_name:  HuggingFace model ID, e.g. "Snowflake/snowflake-arctic-embed-m-v1.5"
+      dim:         Embedding dimensions, e.g. 768
+      pooling:     "cls" or "mean"
+      model_file:  ONNX file within the repo, e.g. "onnx/model.onnx"
+      model_path:  Local path override — skip download, load from here
+      cache_dir:   Where to cache downloaded models
+
+    Phase 0.5A: Loud failures. If this fails, the brain degrades to keyword-only
+    recall which is fundamentally broken for semantic understanding.
     """
-    global _model
+    global _model, _config
+
+    if config is None:
+        config = {}
+    _config = config
+
+    model_name = config.get('model_name', 'snowflake/snowflake-arctic-embed-m')
+    dim = config.get('dim', 768)
+    pooling = config.get('pooling', 'cls')
+    model_file = config.get('model_file', 'onnx/model.onnx')
+    model_path = config.get('model_path')  # Local path override
+    cache_dir = config.get('cache_dir')
+
+    stats['model_name'] = model_name
+    stats['embedding_dim'] = dim
+    stats['pooling'] = pooling
+
+    # Auto-discover pip-installed model package (brain-embedding)
+    if not model_path:
+        model_path = _discover_pip_model()
+
     t0 = time.time()
 
     try:
         from fastembed import TextEmbedding
-        _model = TextEmbedding(model_name=MODEL_NAME)
+        from fastembed.common.model_description import PoolingType, ModelSource
+
+        def _register_if_custom(name):
+            """Register model with FastEmbed if not in its built-in list."""
+            supported = [m['model'].lower() for m in TextEmbedding.list_supported_models()]
+            if name.lower() not in supported:
+                pooling_type = PoolingType.CLS if pooling == 'cls' else PoolingType.MEAN
+                TextEmbedding.add_custom_model(
+                    model=name,
+                    pooling=pooling_type,
+                    normalization=True,
+                    sources=ModelSource(hf=name),
+                    dim=dim,
+                    model_file=model_file,
+                )
+
+        _register_if_custom(model_name)
+
+        # ── Load chain: local path → HuggingFace cache → pip fallback ──
+
+        if model_path:
+            # Explicit local path — use directly, no network
+            print(f"[embedder] Loading from local path: {model_path}", file=sys.stderr)
+            _model = TextEmbedding(model_name=model_name,
+                                   specific_model_path=model_path,
+                                   **({"cache_dir": cache_dir} if cache_dir else {}))
+        else:
+            # Try 1: Let FastEmbed load normally (from cache or HuggingFace)
+            try:
+                kwargs = {}
+                if cache_dir:
+                    kwargs['cache_dir'] = cache_dir
+                _model = TextEmbedding(model_name=model_name, **kwargs)
+            except Exception as hf_err:
+                # Try 2: HuggingFace failed — try pip-installed model package
+                pip_path = _discover_pip_model()
+                if pip_path:
+                    print(f"[embedder] HuggingFace unavailable, using pip model: {pip_path}", file=sys.stderr)
+                    _model = TextEmbedding(model_name=model_name,
+                                           specific_model_path=pip_path)
+                else:
+                    # Try 3: pip package not installed — install it and retry
+                    print(f"[embedder] HuggingFace blocked ({hf_err}). Attempting pip install brain-embedding...", file=sys.stderr)
+                    import subprocess
+                    result = subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "brain-embedding",
+                         "--break-system-packages", "--quiet"],
+                        capture_output=True, timeout=300)
+                    pip_path = _discover_pip_model()
+                    if pip_path:
+                        print(f"[embedder] Installed model from pip: {pip_path}", file=sys.stderr)
+                        _model = TextEmbedding(model_name=model_name,
+                                               specific_model_path=pip_path)
+                    else:
+                        raise hf_err  # All fallbacks exhausted
+
         stats['load_time_ms'] = round((time.time() - t0) * 1000)
         stats['model_loaded'] = True
-        print(f"[embedder] Model loaded in {stats['load_time_ms']}ms", file=sys.stderr)
+        stats['load_error'] = None
+        source = "local" if model_path else ("pip" if _discover_pip_model() else "HuggingFace")
+        print(f"[embedder] {model_name} ({dim}d, {pooling}) loaded in {stats['load_time_ms']}ms [source: {source}]", file=sys.stderr)
+
+    except ImportError as e:
+        stats['model_loaded'] = False
+        stats['load_error'] = f"fastembed not installed: {e}"
+        stats['errors'] += 1
+        print(f"\n{'='*60}", file=sys.stderr)
+        print(f"[embedder] CRITICAL: fastembed not installed!", file=sys.stderr)
+        print(f"[embedder] Recall will degrade to keyword-only (BROKEN).", file=sys.stderr)
+        print(f"[embedder] Fix: pip install fastembed --break-system-packages", file=sys.stderr)
+        print(f"[embedder] Error: {e}", file=sys.stderr)
+        print(f"{'='*60}\n", file=sys.stderr)
+
     except Exception as e:
         stats['model_loaded'] = False
+        stats['load_error'] = str(e)
         stats['errors'] += 1
-        print(f"[embedder] FAILED to load model: {e}", file=sys.stderr)
-        # Don't re-raise — brain works without embeddings (TF-IDF fallback)
+        print(f"\n{'='*60}", file=sys.stderr)
+        print(f"[embedder] CRITICAL: Model failed to load!", file=sys.stderr)
+        print(f"[embedder] Recall will degrade to keyword-only (BROKEN).", file=sys.stderr)
+        print(f"[embedder] Error: {e}", file=sys.stderr)
+        print(f"[embedder] Model: {model_name}", file=sys.stderr)
+        print(f"[embedder] Tried: HuggingFace → pip package → all failed", file=sys.stderr)
+        print(f"{'='*60}\n", file=sys.stderr)
 
 
 def is_ready() -> bool:
@@ -84,12 +183,34 @@ def is_ready() -> bool:
     return stats['model_loaded'] and _model is not None
 
 
+def get_model_status() -> str:
+    """
+    Phase 0.5A: Human-readable status with error details.
+    """
+    name = stats.get('model_name', '?')
+    dim = stats.get('embedding_dim', '?')
+    if is_ready():
+        return f"READY: {name} ({dim}d, loaded in {stats['load_time_ms']}ms)"
+    elif stats['load_error']:
+        return f"FAILED: {stats['load_error']}"
+    else:
+        return "NOT LOADED: load_model() not called yet"
+
+
+def get_config() -> Dict[str, Any]:
+    """Return current embedder config."""
+    return {**_config}
+
+
+def get_dim() -> Optional[int]:
+    """Return current embedding dimension, or None if not loaded."""
+    return stats.get('embedding_dim')
+
+
 def embed(text: str) -> Optional[bytes]:
     """
     Embed a single text → bytes (serialized float32 array).
-
     Returns None if model not loaded — callers MUST handle None gracefully.
-    Returns raw bytes suitable for SQLite BLOB storage and sqlite-vec.
     """
     if not _model:
         stats['errors'] += 1
@@ -97,9 +218,8 @@ def embed(text: str) -> Optional[bytes]:
 
     t0 = time.time()
     try:
-        # FastEmbed returns a generator of numpy arrays
         embeddings = list(_model.embed([text]))
-        vec = embeddings[0]  # numpy array, shape (768,)
+        vec = embeddings[0]
 
         elapsed_ms = round((time.time() - t0) * 1000)
         stats['total_embeddings'] += 1
@@ -108,7 +228,6 @@ def embed(text: str) -> Optional[bytes]:
         if elapsed_ms > stats['peak_embed_ms']:
             stats['peak_embed_ms'] = elapsed_ms
 
-        # Serialize to bytes: 768 floats × 4 bytes = 3072 bytes
         return _vec_to_blob(vec)
     except Exception as e:
         stats['errors'] += 1
@@ -117,10 +236,7 @@ def embed(text: str) -> Optional[bytes]:
 
 
 def embed_batch(texts: List[str]) -> List[Optional[bytes]]:
-    """
-    Batch-embed multiple texts → list of bytes.
-    FastEmbed handles batching internally for efficiency.
-    """
+    """Batch-embed multiple texts → list of bytes."""
     if not _model or not texts:
         return []
 
@@ -147,8 +263,7 @@ def embed_batch(texts: List[str]) -> List[Optional[bytes]]:
 def cosine_similarity(a: bytes, b: bytes) -> float:
     """
     Cosine similarity between two embedding blobs.
-    For L2-normalized vectors (which snowflake-arctic-embed-m outputs),
-    cosine = dot product. No sqrt needed.
+    For L2-normalized vectors, cosine = dot product.
     """
     if not a or not b:
         return 0.0
@@ -161,29 +276,21 @@ def cosine_similarity(a: bytes, b: bytes) -> float:
 
 
 def _vec_to_blob(vec) -> bytes:
-    """
-    Serialize numpy array or list of floats → bytes for SQLite BLOB.
-    768 floats × 4 bytes = 3072 bytes per embedding.
-    Uses little-endian float32 (compatible with sqlite-vec).
-    """
+    """Serialize numpy array or list of floats → bytes for SQLite BLOB."""
     try:
-        # numpy array
         return vec.astype('float32').tobytes()
     except AttributeError:
-        # plain list
         return struct.pack(f'<{len(vec)}f', *vec)
 
 
 def _blob_to_vec(blob: bytes) -> list:
-    """
-    Deserialize bytes (from SQLite BLOB) → list of floats.
-    """
+    """Deserialize bytes → list of floats."""
     count = len(blob) // 4
     return list(struct.unpack(f'<{count}f', blob))
 
 
 def get_stats() -> dict:
-    """Snapshot of embedding engine stats for diagnostics."""
+    """Snapshot of embedding engine stats."""
     return {
         **stats,
         'avg_embed_ms': (
@@ -195,16 +302,13 @@ def get_stats() -> dict:
 
 def setup_sqlite_vec(conn):
     """
-    Try to load the sqlite-vec extension for KNN search.
-    If not available, falls back to brute-force cosine similarity.
-    Returns True if sqlite-vec is available.
+    Try to load sqlite-vec extension for KNN search.
+    Falls back to brute-force cosine similarity if not available.
     """
     try:
         conn.enable_load_extension(True)
-        # sqlite-vec installs as a loadable extension
-        # Try common paths
         for ext_path in [
-            'vec0',  # If installed system-wide
+            'vec0',
             '/usr/lib/sqlite3/vec0',
             '/usr/local/lib/sqlite3/vec0',
             os.path.expanduser('~/.local/lib/sqlite3/vec0'),
@@ -216,7 +320,6 @@ def setup_sqlite_vec(conn):
             except Exception:
                 continue
 
-        # Try loading via Python sqlite_vec package
         try:
             import sqlite_vec
             sqlite_vec.load(conn)

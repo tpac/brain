@@ -1,22 +1,58 @@
 ---
-name: tmemory
+name: brain
 description: >
   Persistent brain engine for Claude sessions. This skill should be used at the
   START of every session to boot memory context, and throughout the conversation
   to remember decisions, recall past context, tag emotional importance, and
   generate spontaneous associations. Triggers: "remember this", "what did we
   decide about", "recall", "brain", "memory", "context from last session",
-  "what do you know about", "tmemory", "persistent memory".
+  "what do you know about", "brain", "persistent memory".
 version: 1.2.0
 ---
 
-# tmemory — Persistent Brain for Claude (v7)
+# brain — Persistent Brain for Claude (v4)
 
 You have a brain. It persists across sessions. Use it.
 
 **Co-created by Tom Pachys (CEO, EX.CO) and Claude.**
 
-## v7 — Automatic Hooks (What's New)
+## CRITICAL: Serverless Architecture
+
+**There is NO HTTP server. No curl commands. No port 7437.**
+
+The brain is a Python module (`servers/brain.py`). All operations are Python method calls:
+```python
+brain.remember(...)           # Store knowledge
+brain.recall_with_embeddings(...)  # Retrieve (embeddings-first, 90/10)
+brain.connect(...)            # Link nodes
+brain.save()                  # Persist to disk
+```
+
+Any `curl -s -X POST http://127.0.0.1:7437/...` examples below are LEGACY documentation
+from the old HTTP server architecture. Translate them to Python calls on the `brain` object.
+
+The SessionStart hook (`boot-brain.sh`) boots the brain automatically. You do NOT need to
+start anything. Just read the boot output for session context and consciousness signals.
+
+## v4 — What's New
+
+### Consciousness Layer
+The brain surfaces its internal state at boot:
+- **Evolution types**: ⚡ tensions, 🔮 hypotheses, 🌱 aspirations, 📊 patterns, 🔥 catalysts
+- **Self-reflection**: 📈 performance, 🚫 failure modes, 🔧 capabilities, 🤝 interactions, 🔄 meta-learning
+- **Signals**: ⏳ fading knowledge, ✨ novelty, 💭 dream insights, ⚙️ host changes, 🔔 reminders
+- Consciousness **adapts** — surfaces more of what the human engages with
+
+### Personal Flag
+Mark personal info: `brain.remember(..., personal="fixed")` (permanent), `"fluid"` (evolving), `"contextual"` (conditional)
+
+### Code Cognition
+7 code knowledge types: `brain.create_fn_reasoning()`, `brain.create_param_influence()`, `brain.create_code_concept()`, `brain.create_arch_constraint()`, `brain.create_causal_chain()`, `brain.create_bug_lesson()`, `brain.create_comment_anchor()`
+
+### Embeddings-First Recall (Phase 0.5)
+90% embedding similarity + 10% keyword fallback. Model: Snowflake/snowflake-arctic-embed-m-v1.5 (768d).
+
+## Automatic Hooks
 
 v7 eliminates the three failure modes that caused UI regressions and lost decisions:
 
@@ -81,33 +117,42 @@ curl -s -X POST http://127.0.0.1:7437/health-check -d '{"auto_fix":true}'
 ## Brain Location
 
 The brain server resolves the database in this order:
-1. `TMEMORY_DB_DIR` env var — explicit override
-2. `AgentsContext/tmemory/brain.db` — user's personal brain
+1. `BRAIN_DB_DIR` env var — explicit override
+2. `AgentsContext/brain/brain.db` — user's personal brain
 3. Plugin's `servers/data/brain.db` — fresh/default brain for new users
 
 The SessionStart hook handles this automatically. Never overwrite a user's brain with the fresh default.
 
 ## EVERY SESSION — Mandatory Boot
 
-**Step 1: Start the brain (if not running)**
-```bash
-# The SessionStart hook usually handles this. If it didn't:
-curl -s http://127.0.0.1:7437/status 2>/dev/null || \
-  (cd ${CLAUDE_PLUGIN_ROOT}/servers && node index.js &)
+**IMPORTANT: The brain is SERVERLESS (v4). There is NO HTTP server. No `curl` commands. No port 7437.
+All brain operations happen through Python calls via the hooks or direct module import.**
+
+**Step 1: The SessionStart hook handles boot automatically.**
+It runs `boot-brain.sh` which:
+- Resolves the brain.db location
+- Installs fastembed if missing
+- Calls `Brain(db_path)` which loads the embedder and schema
+- Outputs session context, locked rules, consciousness signals, and health alerts
+
+**You do NOT need to start anything manually.** If the hook ran, the brain is ready.
+If you need to interact with the brain directly in code:
+```python
+import sys
+sys.path.insert(0, os.path.dirname(os.environ.get('BRAIN_SERVER_DIR', '')))
+from servers.brain import Brain
+brain = Brain('/path/to/brain.db')
 ```
 
-Wait 2 seconds, then verify:
-```bash
-curl -s http://127.0.0.1:7437/status
-```
+**Step 2: Read the boot output**
+The SessionStart hook prints structured context. Read it carefully — it contains:
+- Session number and last session handoff note
+- Health alerts (compaction boundaries, encoding gaps)
+- **BRAIN CONSCIOUSNESS** — active evolution nodes, reminders, fading knowledge, failure modes, host changes
+- Locked rules
+- Embedder status
 
-**Step 2: Boot context**
-```bash
-curl -s -X POST http://127.0.0.1:7437/context \
-  -d '{"user":"<username>","project":"<project>","task":"<what the user is asking about>"}'
-```
-
-This returns locked rules/decisions (never change these), recalled memories (relevant by spreading activation + recency + emotion + TF-IDF semantics), recent context, and `last_session_note` — a handoff message from the previous Claude. Read it. It tells you what session number you are (`reset_count`), what the last Claude was working on, and what to do next.
+This is your starting context. The consciousness section tells you what the brain is actively tracking.
 
 **Step 2a: Recap Encoding (MANDATORY when session starts with a continuation summary)**
 
@@ -152,16 +197,18 @@ If the conversation's first message is a session continuation summary (compacted
 
    **If unsure, ENCODE IT.** Pruning exists precisely so you can be generous with encoding. A node that wasn't useful will decay and die naturally. A node you never created is knowledge lost forever. Err on the side of more nodes, not fewer.
 
-   ```bash
-   curl -s -X POST http://127.0.0.1:7437/remember \
-     -d '{"type":"<type>","title":"<concise title>","content":"<what AND why — the full context, not a summary>","keywords":"<include numbers, proper nouns, specific values, technical terms>","locked":<true|false>,"emotion":<0-1>,"emotion_label":"<label>","emotion_source":"auto","project":"<project_id or null>"}'
+   The brain is serverless — use Python calls, not HTTP:
+   ```python
+   brain.remember(type="decision", title="...", content="...", keywords="...",
+                  locked=True, emotion=0.5, emotion_label="emphasis",
+                  personal="fixed")  # v4: personal flag for personal info
    ```
 
    **Keywords matter:** Include specific numbers ($500, 40%, 15s), proper nouns (Creatify, NanoBanana, bge-m3), technical terms (aurora_v1_fast, CLS pooling), and user-specific vocabulary (GLO Brightness, re-light). These are the unique identifiers that make recall precise.
 
-3. **Connect new nodes** to related existing ones via `POST /connect`. Every decomposed fact-node should connect to its parent concept.
+3. **Connect new nodes** to related existing ones via `brain.connect(source_id, target_id, relation, weight)`. Every decomposed fact-node should connect to its parent concept.
 
-4. **For existing nodes with updated info**, use `POST /update` instead of creating duplicates.
+4. **For existing nodes with updated info**, use `brain.update(node_id, ...)` instead of creating duplicates.
 
 5. **Budget 60-120 seconds** for this step. More nodes = more time, but less information loss. This is the most valuable work you can do at session boundaries.
 
@@ -170,19 +217,25 @@ If the conversation's first message is a session continuation summary (compacted
 **What NOT to re-encode:** Anything that `/context` already returned. Don't duplicate.
 
 **Step 2b: Before the session ends, write YOUR handoff note**
-```bash
-curl -s -X POST http://127.0.0.1:7437/remember \
-  -d '{"type":"context","title":"🧠 Claude Session Log — Reset #<N+1>","content":"Session #<N+1> (<date>). <what you worked on, what state things are in, what the next Claude should know, what the user cares about right now>","keywords":"session log reset counter claude meta self note handoff","locked":false,"emotion":0.5,"emotion_label":"curiosity"}'
+```python
+brain.remember(type="context", title="Session Log — Reset #<N+1>",
+    content="Session #<N+1> (<date>). <what you worked on, state, what next Claude should know>",
+    keywords="session log reset counter claude meta self note handoff",
+    emotion=0.5, emotion_label="curiosity")
 ```
 This is your space. Use it to help the next you.
 
-**Step 3: Use the brain throughout the conversation**
+**Step 3: Use the brain throughout the conversation (Python calls, NOT HTTP)**
 
-- Learn something important → `POST /remember`
-- Need context → `POST /recall`
-- Two things are related → `POST /connect`
-- Emotionally significant → `POST /feel`
-- Before ending a session → `POST /dream` then `POST /save`
+- Learn something important → `brain.remember(type, title, content, keywords, locked, emotion, emotion_label, personal)`
+- Need context → `brain.recall_with_embeddings(query, limit)` (embeddings-first, 90/10 blend)
+- Two things are related → `brain.connect(source_id, target_id, relation, weight)`
+- Emotionally significant → `brain.feel(node_id, emotion, label)`
+- Before ending a session → `brain.dream()` then `brain.save()`
+- Create evolution nodes → `brain.create_tension()`, `brain.create_hypothesis()`, `brain.create_aspiration()`, etc.
+- Create code knowledge → `brain.create_fn_reasoning()`, `brain.create_param_influence()`, etc.
+- Personal info → `brain.remember(..., personal="fixed")` or `brain.set_personal(node_id, "fluid")`
+- Reminders → `brain.create_reminder(title, due_date)`
 
 ## v5 Features
 
@@ -434,6 +487,36 @@ curl -s -X POST http://127.0.0.1:7437/remember \
   }'
 ```
 
+### Personal Flag (v4)
+
+When the user shares personal information, mark it with the `personal` parameter:
+
+**Fixed** — permanent facts that never change. Auto-locks the node.
+```bash
+curl -s -X POST http://127.0.0.1:7437/remember \
+  -d '{"type":"person","title":"Tom daughter birthday: March 25","content":"Permanent fact.","personal":"fixed"}'
+```
+
+**Fluid** — evolving truths. Decays 10x slower than normal. Periodically ask: "Still true?"
+```bash
+curl -s -X POST http://127.0.0.1:7437/remember \
+  -d '{"type":"concept","title":"Tom currently interested in TRIZ","content":"Active interest as of March 2026.","personal":"fluid"}'
+```
+
+**Contextual** — preferences that depend on conditions. Carries a qualifier.
+```bash
+curl -s -X POST http://127.0.0.1:7437/remember \
+  -d '{"type":"rule","title":"Tom prefers concise bullets","content":"True during technical work, not creative writing.","personal":"contextual","personal_context":"during technical sprints"}'
+```
+
+Mark existing nodes as personal: `brain.set_personal(node_id, "fixed")`.
+List all personal nodes: `brain.get_personal_nodes()` or `brain.get_personal_nodes("fluid")`.
+
+**When to mark personal:**
+- User shares family info, birthday, role, identity → `fixed`
+- User mentions current interest, active project, mood → `fluid`
+- User states a preference with context ("when I'm doing X, I prefer Y") → `contextual`
+
 ### Content Quality Rules
 
 The brain is **the only memory that survives context loss.** Future Claudes don't have the conversation — they only have what you stored. The brain's job isn't to be a thin index that triggers the LLM's guesses. Its job is to preserve alive knowledge: the WHAT, the WHY, the specific values, the emotional context, and the relationships between ideas. A thin cue like "Auth: Clerk recommended" will decay and the next Claude won't know whether Clerk was recommended, rejected, or just discussed.
@@ -473,7 +556,7 @@ Examples:
 - Changing an API field name → update the adapter, the server route, and the frontend consumer
 - Modifying a rule in the brain → check if connected rules need updating too
 
-This applies to tmemory itself: if you store a principle, check if existing nodes need to be updated to stay consistent with it.
+This applies to brain itself: if you store a principle, check if existing nodes need to be updated to stay consistent with it.
 
 ## Correction Events
 
@@ -625,7 +708,7 @@ Returns: recall precision, recall coverage, dream hit rate, emotion accuracy, an
 15. **Smart prune, not dumb prune.** Use `/smart-prune` instead of `/prune`. It respects typed edges — structural connections survive, incidental ones decay naturally.
 16. **Trust locked nodes.** They're confirmed. Don't contradict them.
 17. **Back up before brain engine changes.** `POST /backup`
-18. **Store every tmemory change in the brain.** When you modify tmemory itself, remember the change as a locked decision.
+18. **Store every brain change in the brain.** When you modify brain itself, remember the change as a locked decision.
 19. **Always assign a project.** When remembering project-specific nodes, include `"project":"<id>"`. Use `null` for cross-project rules.
 20. **Record reasoning chains for important decisions.** Capture the full reasoning journey, not just the outcome. Future Claudes need the *why*, not just the *what*.
 21. **Use typed edges.** When connecting nodes, use `/connect-typed` with the appropriate edge type.

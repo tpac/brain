@@ -1,5 +1,5 @@
 """
-tmemory — Canonical Database Schema (v14)
+brain — Canonical Database Schema (v14)
 
 SINGLE SOURCE OF TRUTH for every table, column, index, and constraint.
 Ported from schema.js — identical schema, Python-native implementation.
@@ -40,7 +40,27 @@ BRAIN_VERSION_KEY = 'brain_schema_version'
 NODE_TYPES = [
     'person', 'project', 'decision', 'rule', 'concept',
     'task', 'file', 'context', 'intuition', 'procedure',
-    'thought', 'object'
+    'thought', 'object',
+    # v4 Code Cognition types
+    'fn_reasoning',      # Intent and reasoning behind a function
+    'param_influence',   # Parameter with systemic effects across codebase
+    'code_concept',      # Semantic unit spanning multiple files/functions (blast radius)
+    'arch_constraint',   # What limits what and why
+    'causal_chain',      # Regression path: trigger → propagation → failure → root cause
+    'bug_lesson',        # General principle extracted from a specific bug
+    'comment_anchor',    # Load-bearing comment in code that transfers knowledge
+    # v4 Evolution types — forward-facing, describe what is BECOMING
+    'tension',           # Contradiction between two existing nodes → must resolve
+    'hypothesis',        # Untested belief with confidence score → validate or disprove
+    'pattern',           # Meta-observation about recurring behavior → confirm or dismiss
+    'catalyst',          # Emotional inflection point that changed direction → permanent
+    'aspiration',        # Directional goal without finish line → compass for decisions
+    # v4 Self-reflection types — brain looking inward
+    'performance',       # Brain's own quality metrics over time (trending, not snapshot)
+    'failure_mode',      # Named class of recurring failures with prevention strategy
+    'capability',        # What the brain can/cannot do — self-inventory
+    'interaction',       # Observed dynamics of human-Claude working relationship
+    'meta_learning',     # How the brain learned something — reusable methods
 ]
 
 NODE_TYPE_CHECK = f"CHECK(type IN ({','.join(repr(t) for t in NODE_TYPES)}))"
@@ -67,6 +87,12 @@ TABLES = {
             emotion_source TEXT DEFAULT 'auto',
             project TEXT,
             confidence REAL DEFAULT NULL,
+            personal TEXT DEFAULT NULL,
+            personal_context TEXT DEFAULT NULL,
+            evolution_status TEXT DEFAULT NULL,
+            resolved_at TEXT DEFAULT NULL,
+            resolved_by TEXT DEFAULT NULL,
+            due_date TEXT DEFAULT NULL,
             last_accessed TEXT,
             created_at TEXT,
             updated_at TEXT
@@ -78,7 +104,14 @@ TABLES = {
             'locked': '0', 'archived': '0', 'recency_score': '0',
             'emotion': '0', 'emotion_label': "'neutral'",
             'emotion_source': "'auto'", 'project': 'NULL',
-            'confidence': 'NULL', 'last_accessed': 'NULL',
+            'confidence': 'NULL',
+            'personal': 'NULL',              # v4: null | 'fixed' | 'fluid' | 'contextual'
+            'personal_context': 'NULL',      # v4: qualifier for contextual personal nodes
+            'evolution_status': 'NULL',      # v4: 'active' | 'resolved' | 'validated' | 'disproven' | 'confirmed' | 'dismissed'
+            'resolved_at': 'NULL',           # v4: when the evolution node was resolved
+            'resolved_by': 'NULL',           # v4: node_id of the decision/rule that resolved it
+            'due_date': 'NULL',              # v4: ISO timestamp for reminders, scanned at boot
+            'last_accessed': 'NULL',
             'created_at': 'NULL', 'updated_at': 'NULL',
         }
     },

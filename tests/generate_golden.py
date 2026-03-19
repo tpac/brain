@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tmemory — Golden Dataset Generator
+brain — Golden Dataset Generator
 
 Mines a real brain.db to auto-generate query/expected-recall test cases.
 
@@ -363,9 +363,9 @@ def _extract_topic(title: str) -> str:
 if __name__ == '__main__':
     # Auto-discover brain.db
     search_paths = [
-        os.path.expanduser('~/Documents/Claude/AgentsContext/tmemory/brain.db'),
+        os.path.expanduser('~/Documents/Claude/AgentsContext/brain/brain.db'),
         os.path.join(os.path.dirname(__file__), '..', 'data', 'brain.db'),
-        os.environ.get('TMEMORY_DB_DIR', ''),
+        os.environ.get('BRAIN_DB_DIR', ''),
     ]
 
     db_path = None

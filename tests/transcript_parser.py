@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tmemory — Transcript Parser
+brain — Transcript Parser
 
 Reads Claude session .jsonl transcripts and extracts structured conversation data
 for the Relearning Comparison simulation.

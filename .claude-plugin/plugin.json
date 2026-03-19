@@ -1,7 +1,7 @@
 {
-  "name": "tmemory",
-  "version": "3.2.0",
-  "description": "Persistent brain for Claude sessions — serverless architecture. v3.2: Singleton pattern (Brain.get_instance), brain.absorb() for merging knowledge from relearned brains, Hebbian edge creation fix (co_accessed auto-discovery), LLM-based relearning simulation, pre-filter + batch + parallel optimization, temporal lambda fix. Features: Python-native brain module (direct SQLite), FastEmbed embeddings, density-based gap detection, graph-based knowledge with semantic + TF-IDF recall, emergent bridging, time-dilated decay, auto-suggest, pre-response recall (Layer C).",
+  "name": "brain",
+  "version": "4.0.0",
+  "description": "Persistent brain for Claude sessions with consciousness layer. v4: Evolution types (tension, hypothesis, pattern, catalyst, aspiration), self-reflection types, personal flag (fixed/fluid/contextual), code cognition (7 types), consciousness surfacing at boot and pre-response, embeddings-first recall (90/10), model-agnostic embedder.",
   "author": {
     "name": "Tom Pachys"
   },
@@ -10,16 +10,22 @@
     "brain",
     "persistent",
     "knowledge-graph",
-    "context",
-    "recap",
-    "consistency",
+    "consciousness",
+    "evolution",
     "semantic",
-    "tfidf",
-    "intent",
-    "temporal",
-    "proactive",
-    "projects",
-    "hooks",
-    "auto-suggest"
-  ]
+    "embeddings",
+    "personal",
+    "code-cognition",
+    "hooks"
+  ],
+  "config": {
+    "embedder": {
+      "model_name": "Snowflake/snowflake-arctic-embed-m-v1.5",
+      "dim": 768,
+      "pooling": "cls",
+      "model_file": "onnx/model.onnx",
+      "model_path": null,
+      "cache_dir": null
+    }
+  }
 }

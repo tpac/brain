@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "brain-embedding"
+version = "0.1.0"
+description = "Snowflake Arctic Embed M v1.5 ONNX model for brain plugin"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.9"
+authors = [{name = "Tom Pachys"}]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[tool.setuptools.package-data]
+brain_embedding = ["model/onnx/*.onnx", "model/onnx/*.json", "model/*.json", "model/tokenizer.*", "model/special_tokens_map.json", "model/config.json"]

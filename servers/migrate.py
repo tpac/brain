@@ -1,5 +1,5 @@
 """
-tmemory — Migration Utility (v13 JS → v14 Python Serverless)
+brain — Migration Utility (v13 JS → v14 Python Serverless)
 
 Handles the one-time migration from the Node.js HTTP server architecture
 to the Python serverless architecture.
@@ -162,7 +162,7 @@ if __name__ == '__main__':
         # Try default location
         db_path = None
         for candidate in [
-            os.environ.get('TMEMORY_DB_DIR', ''),
+            os.environ.get('BRAIN_DB_DIR', ''),
         ]:
             if candidate:
                 p = os.path.join(candidate, 'brain.db')
@@ -174,8 +174,8 @@ if __name__ == '__main__':
             # Search common locations
             import glob
             for pattern in [
-                '/sessions/*/mnt/AgentsContext/tmemory/brain.db',
-                os.path.expanduser('~/AgentsContext/tmemory/brain.db'),
+                '/sessions/*/mnt/AgentsContext/brain/brain.db',
+                os.path.expanduser('~/AgentsContext/brain/brain.db'),
             ]:
                 matches = glob.glob(pattern)
                 if matches:

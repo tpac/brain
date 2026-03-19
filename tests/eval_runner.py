@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tmemory — Evaluation Runner
+brain — Evaluation Runner
 
 Runs golden dataset test cases against a live brain and reports metrics.
 Supports both golden eval (Approach 1) and snapshot regression (Approach 2).
@@ -489,7 +489,7 @@ def print_golden_report(result: Dict[str, Any]):
 
     print()
     print('=' * 70)
-    print('  tmemory GOLDEN DATASET EVALUATION REPORT')
+    print('  brain GOLDEN DATASET EVALUATION REPORT')
     print('=' * 70)
     print()
 
@@ -559,7 +559,7 @@ def print_regression_report(result: Dict[str, Any]):
     """Print human-readable regression report."""
     print()
     print('=' * 70)
-    print('  tmemory REGRESSION CHECK REPORT')
+    print('  brain REGRESSION CHECK REPORT')
     print('=' * 70)
     print()
 
@@ -646,8 +646,8 @@ def find_brain_db(args: List[str]) -> str:
     # Standard search paths
     search_paths = [
         os.path.join(os.path.dirname(__file__), '..', 'data', 'brain.db'),
-        os.path.expanduser('~/Documents/Claude/AgentsContext/tmemory/brain.db'),
-        os.environ.get('TMEMORY_DB_DIR', ''),
+        os.path.expanduser('~/Documents/Claude/AgentsContext/brain/brain.db'),
+        os.environ.get('BRAIN_DB_DIR', ''),
     ]
 
     for p in search_paths:

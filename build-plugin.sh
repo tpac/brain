@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-# tmemory v3.0 — Serverless plugin builder
+# brain v3.2 — Serverless plugin builder
 # Packs exactly what belongs in the .plugin file. Nothing else.
 #
 # v3.0: Python serverless — no Node.js, no HTTP server.
@@ -8,7 +8,7 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-OUT="${1:-tmemory.plugin}"
+OUT="${1:-brain.plugin}"
 
 # Explicit file manifest — if it's not listed, it doesn't ship
 FILES=(
@@ -27,8 +27,8 @@ FILES=(
   hooks/scripts/pre-response-recall.sh
   hooks/scripts/extract-session-log.py
   # Skill definition
-  skills/tmemory/SKILL.md
-  skills/tmemory/references/detailed-api.md
+  skills/brain/SKILL.md
+  skills/brain/references/detailed-api.md
   # Test framework
   tests/__init__.py
   tests/metrics.py
