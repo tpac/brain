@@ -1,0 +1,20 @@
+{
+  "name": "brain",
+  "owner": {
+    "name": "Tom Pachys"
+  },
+  "metadata": {
+    "description": "Persistent brain for Claude — v4 consciousness layer"
+  },
+  "plugins": [
+    {
+      "name": "brain",
+      "source": "./",
+      "description": "Persistent brain for Claude sessions — v4: consciousness, evolution types, code cognition, embeddings-first recall",
+      "version": "4.0.0",
+      "author": {
+        "name": "Tom Pachys"
+      }
+    }
+  ]
+}
