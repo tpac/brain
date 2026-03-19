@@ -138,6 +138,22 @@ try:
             output_lines.append(f"ENCODING GAP: {encoding_gap}")
             output_lines.append("")
 
+        # Recent encodings — what the brain logged this session
+        recent = signals.get("recent_encodings", [])
+        if recent:
+            output_lines.append(f"BRAIN LOGGED THIS SESSION ({len(recent)} nodes):")
+            for node in recent[:6]:
+                nid = node.get("id", "")[:12]
+                ntype = node.get("type", "")
+                title = node.get("title", "")[:70]
+                locked = " LOCKED" if node.get("locked") else ""
+                output_lines.append(f"  [{ntype}]{locked} {title}  (id: {nid})")
+            if len(recent) > 6:
+                output_lines.append(f"  ... and {len(recent) - 6} more")
+            output_lines.append("")
+            output_lines.append("  Anything wrong? Use brain.update(node_id, ...) to fix or brain.conn.execute('DELETE FROM nodes WHERE id=?', (id,)) to remove.")
+            output_lines.append("")
+
     except Exception:
         pass
 

@@ -91,6 +91,28 @@ try:
     except Exception:
         pass
 
+    # Check if brain.remember() was called this turn — acknowledge what was stored
+    try:
+        session_start = brain.get_config("session_start_at")
+        if session_start and "brain.remember" in message_lower:
+            cursor = brain.conn.execute(
+                """SELECT type, title, locked FROM nodes
+                   WHERE created_at >= ? AND archived = 0
+                     AND type NOT IN ('context', 'thought', 'intuition')
+                   ORDER BY created_at DESC LIMIT 3""",
+                (session_start,)
+            )
+            just_stored = cursor.fetchall()
+            if just_stored:
+                lines = ["BRAIN ACKNOWLEDGED — just stored:"]
+                for ntype, title, locked in just_stored:
+                    lock_icon = " LOCKED" if locked else ""
+                    lines.append("  [%s]%s %s" % (ntype, lock_icon, title[:70]))
+                lines.append("  Correct me if anything is wrong.")
+                print(json.dumps({"systemMessage": "\\n".join(lines)}))
+    except Exception:
+        pass
+
     brain.save()
     brain.close()
 

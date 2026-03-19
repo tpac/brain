@@ -8,6 +8,14 @@
 # 3. $HOME/AgentsContext/brain/ (local Claude Code via symlink)
 # 4. Create in first available Cowork AgentsContext mount
 # If none found, boot fails cleanly (no /tmp fallback — silent data loss is worse).
+#
+# TODO(pypi): Once PyPI storage limit is increased:
+#   - Re-add auto-install: pip install brain-embedding fastembed onnxruntime
+#   - Remove the manual pip install brain-embedding fallback in embedder.py (lines 136-149)
+#   - The brain-embedding wheel (~416MB) bundles the ONNX model so Cowork
+#     environments (where HuggingFace is proxy-blocked) can get embeddings.
+#   - Currently: fastembed+onnxruntime installed manually on local Mac,
+#     Cowork has them pre-installed. No auto-install in boot.
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 SERVER_DIR="$PLUGIN_ROOT/servers"

@@ -1024,6 +1024,7 @@ class Brain:
         self._update_session_activity('remember_count', 0)
         self._update_session_activity('edit_check_count', 0)
         self._update_session_activity('session_id', uuid.uuid4().hex)
+        self._update_session_activity('session_start_at', self.now())
 
     def record_remember(self):
         """Increment remember counter."""
@@ -4211,6 +4212,31 @@ class Brain:
                 signals['rule_contradictions'] = []
         except Exception:
             signals['rule_contradictions'] = []
+
+        # ── Recent encodings — what the brain logged this session ──
+        # Transparency: surface what was stored so the user can correct mistakes.
+        try:
+            session_start = self.get_config('session_start_at')
+            if session_start:
+                cursor = self.conn.execute(
+                    """SELECT id, type, title, content, locked, created_at
+                       FROM nodes
+                       WHERE created_at >= ? AND archived = 0
+                         AND type NOT IN ('context', 'thought', 'intuition')
+                       ORDER BY created_at DESC
+                       LIMIT 10""",
+                    (session_start,)
+                )
+                signals['recent_encodings'] = [
+                    {'id': r[0], 'type': r[1], 'title': r[2],
+                     'content': r[3][:150] if r[3] else '',
+                     'locked': bool(r[4]), 'created_at': r[5]}
+                    for r in cursor.fetchall()
+                ]
+            else:
+                signals['recent_encodings'] = []
+        except Exception:
+            signals['recent_encodings'] = []
 
         # ── v4: Consciousness adaptation ──
         # Read response history to prioritize signals the human engages with.

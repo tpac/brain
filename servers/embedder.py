@@ -134,6 +134,9 @@ def load_model(config: Optional[Dict[str, Any]] = None):
                                            specific_model_path=pip_path)
                 else:
                     # Try 3: pip package not installed — install it and retry
+                    # TODO(pypi): Remove auto-install once brain-embedding is on PyPI
+                    # and boot.sh handles installation. Currently kept as last-resort
+                    # fallback for Cowork environments where HuggingFace is blocked.
                     print(f"[embedder] HuggingFace blocked ({hf_err}). Attempting pip install brain-embedding...", file=sys.stderr)
                     import subprocess
                     result = subprocess.run(
