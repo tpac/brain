@@ -80,7 +80,27 @@ try:
     except Exception:
         pass
 
-    # ── 5. Surface consciousness signals ──
+    # ── 5. Auto-discover evolutions (graph-aware reflection) ──
+    try:
+        discoveries = brain.auto_discover_evolutions()
+        any_found = False
+        for dtype in ['tensions', 'patterns', 'hypotheses', 'aspirations']:
+            items = discoveries.get(dtype, [])
+            if items:
+                if not any_found:
+                    output_lines.append("BRAIN DISCOVERED (auto-evolution):")
+                    any_found = True
+                for item in items:
+                    title = item.get("title", "")[:70]
+                    nid = item.get("id", "")[:12]
+                    output_lines.append(f"  {title}  (id: {nid})")
+        if any_found:
+            output_lines.append("  → Confirm: brain.confirm_evolution(id) | Dismiss: brain.dismiss_evolution(id)")
+            output_lines.append("")
+    except Exception:
+        pass
+
+    # ── 6. Surface consciousness signals ──
     try:
         signals = brain.get_consciousness_signals()
 

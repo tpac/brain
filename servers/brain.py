@@ -2499,20 +2499,15 @@ class Brain:
         except:
             stats['embeddings_backfilled'] = 0
 
-        # ── v4: Auto-detect tensions during consolidation ──
-        tensions_detected = 0
+        # ── v4: Auto-discover evolutions (tensions, patterns, hypotheses, aspirations) ──
         try:
-            tensions_detected = self._detect_tensions()
-            stats['tensions_detected'] = tensions_detected
+            discoveries = self.auto_discover_evolutions()
+            stats['tensions_detected'] = len(discoveries.get('tensions', []))
+            stats['patterns_detected'] = len(discoveries.get('patterns', []))
+            stats['hypotheses_detected'] = len(discoveries.get('hypotheses', []))
+            stats['aspirations_detected'] = len(discoveries.get('aspirations', []))
         except Exception:
             stats['tensions_detected'] = 0
-
-        # ── v4: Auto-detect patterns from logs ──
-        patterns_detected = 0
-        try:
-            patterns_detected = self._detect_patterns()
-            stats['patterns_detected'] = patterns_detected
-        except Exception:
             stats['patterns_detected'] = 0
 
         return stats
@@ -2677,6 +2672,486 @@ class Brain:
             pass
 
         return created
+
+    def auto_discover_evolutions(self) -> Dict[str, Any]:
+        """
+        Graph-aware auto-discovery of evolutions from the brain's own structure.
+        Analyzes embeddings, edges, access patterns, and emotion to find:
+          - Tensions: semantic contradictions between locked nodes
+          - Patterns: correction clusters, co-access patterns, decay patterns
+          - Hypotheses: orphan beliefs, dream promotions, implicit assumptions
+          - Aspirations: emotional trajectories, recurring catalysts
+
+        Returns structured dict (designed for future self-model consumption):
+        {
+            'tensions': [created tension dicts],
+            'patterns': [created pattern dicts],
+            'hypotheses': [created hypothesis dicts],
+            'aspirations': [created aspiration dicts],
+            '_stats': { analysis metadata for self-model }
+        }
+        """
+        result = {
+            'tensions': [], 'patterns': [], 'hypotheses': [], 'aspirations': [],
+            '_stats': {
+                'locked_rules_scanned': 0, 'pairs_compared': 0,
+                'corrections_analyzed': 0, 'orphan_beliefs_found': 0,
+                'emotion_trends': {},
+            }
+        }
+
+        # ══════════════════════════════════════════════════
+        # 1. TENSION DISCOVERY
+        # ══════════════════════════════════════════════════
+
+        # 1a. Semantic contradictions — locked directive pairs with high similarity
+        if embedder.is_ready():
+            try:
+                cursor = self.conn.execute(
+                    """SELECT n.id, n.type, n.title, n.content, ne.embedding
+                       FROM nodes n
+                       JOIN node_embeddings ne ON n.id = ne.node_id
+                       WHERE n.locked = 1 AND n.archived = 0
+                         AND n.type IN ('rule', 'decision', 'arch_constraint')
+                       ORDER BY RANDOM() LIMIT 50"""
+                )
+                candidates = [
+                    {'id': r[0], 'type': r[1], 'title': r[2], 'content': r[3] or '', 'embedding': r[4]}
+                    for r in cursor.fetchall()
+                ]
+                result['_stats']['locked_rules_scanned'] = len(candidates)
+
+                # Compare pairs — sim > 0.65 is potential tension (lowered from 0.75)
+                close_pairs = []
+                pairs_checked = 0
+                for i in range(len(candidates)):
+                    for j in range(i + 1, len(candidates)):
+                        pairs_checked += 1
+                        sim = embedder.cosine_similarity(candidates[i]['embedding'], candidates[j]['embedding'])
+                        if sim > 0.65:
+                            # Check no existing contradicts edge
+                            existing = self.conn.execute(
+                                """SELECT COUNT(*) FROM edges
+                                   WHERE relation = 'contradicts'
+                                     AND ((source_id = ? AND target_id = ?) OR (source_id = ? AND target_id = ?))""",
+                                (candidates[i]['id'], candidates[j]['id'], candidates[j]['id'], candidates[i]['id'])
+                            ).fetchone()[0]
+                            if existing == 0:
+                                close_pairs.append((candidates[i], candidates[j], sim))
+                result['_stats']['pairs_compared'] = pairs_checked
+
+                # Create tensions (max 2 per cycle)
+                for node_a, node_b, sim in sorted(close_pairs, key=lambda x: -x[2])[:2]:
+                    tension = self.create_tension(
+                        title="%s vs %s" % (node_a['title'][:40], node_b['title'][:40]),
+                        content="Auto-discovered: these locked nodes are semantically similar (cosine %.2f) but may prescribe different approaches. Review whether they conflict or complement." % sim,
+                        node_a_id=node_a['id'],
+                        node_b_id=node_b['id'],
+                        keywords="auto-discovered tension semantic %s %s" % (node_a['title'][:15], node_b['title'][:15])
+                    )
+                    result['tensions'].append(tension)
+            except Exception:
+                pass
+
+        # 1b. Temporal contradictions — same topic, different conclusions over time
+        if embedder.is_ready():
+            try:
+                # Find decisions created >7 days apart on same project
+                decisions = self.conn.execute(
+                    """SELECT n.id, n.title, n.content, n.created_at, n.project, ne.embedding
+                       FROM nodes n
+                       JOIN node_embeddings ne ON n.id = ne.node_id
+                       WHERE n.type = 'decision' AND n.locked = 1 AND n.archived = 0
+                       ORDER BY n.created_at DESC LIMIT 40"""
+                ).fetchall()
+
+                for i in range(len(decisions)):
+                    for j in range(i + 1, len(decisions)):
+                        # Same project, >7 days apart
+                        if decisions[i][4] != decisions[j][4]:
+                            continue
+                        try:
+                            from datetime import datetime as _dt
+                            dt_i = _dt.fromisoformat(decisions[i][3].replace('Z', '+00:00'))
+                            dt_j = _dt.fromisoformat(decisions[j][3].replace('Z', '+00:00'))
+                            days_apart = abs((dt_i - dt_j).days)
+                        except Exception:
+                            continue
+                        if days_apart < 7:
+                            continue
+
+                        sim = embedder.cosine_similarity(decisions[i][5], decisions[j][5])
+                        if sim > 0.70:
+                            # High similarity + time gap = potential evolution/contradiction
+                            existing = self.conn.execute(
+                                """SELECT COUNT(*) FROM edges
+                                   WHERE relation = 'contradicts'
+                                     AND ((source_id = ? AND target_id = ?) OR (source_id = ? AND target_id = ?))""",
+                                (decisions[i][0], decisions[j][0], decisions[j][0], decisions[i][0])
+                            ).fetchone()[0]
+                            if existing == 0:
+                                newer = decisions[i] if decisions[i][3] > decisions[j][3] else decisions[j]
+                                older = decisions[j] if newer == decisions[i] else decisions[i]
+                                tension = self.create_tension(
+                                    title="Earlier '%s' vs later '%s'" % (older[1][:35], newer[1][:35]),
+                                    content="Auto-discovered: these decisions are %d days apart on the same topic (cosine %.2f). The later one may supersede or contradict the earlier. Review and resolve." % (days_apart, sim),
+                                    node_a_id=older[0],
+                                    node_b_id=newer[0],
+                                    keywords="auto-discovered tension temporal %s" % (older[4] or 'global')
+                                )
+                                result['tensions'].append(tension)
+                                if len(result['tensions']) >= 3:
+                                    break
+                    if len(result['tensions']) >= 3:
+                        break
+            except Exception:
+                pass
+
+        # ══════════════════════════════════════════════════
+        # 2. PATTERN DISCOVERY
+        # ══════════════════════════════════════════════════
+
+        # 2a. Correction clusters — group corrections/bug_lessons by embedding similarity
+        if embedder.is_ready():
+            try:
+                corrections = self.conn.execute(
+                    """SELECT n.id, n.title, n.content, ne.embedding
+                       FROM nodes n
+                       JOIN node_embeddings ne ON n.id = ne.node_id
+                       WHERE (n.title LIKE 'Correction:%' OR n.type = 'bug_lesson')
+                         AND n.archived = 0
+                       ORDER BY n.created_at DESC LIMIT 30"""
+                ).fetchall()
+                result['_stats']['corrections_analyzed'] = len(corrections)
+
+                # Simple clustering: group by sim > 0.60
+                clusters = []  # list of lists of correction indices
+                assigned = set()
+                for i in range(len(corrections)):
+                    if i in assigned:
+                        continue
+                    cluster = [i]
+                    assigned.add(i)
+                    for j in range(i + 1, len(corrections)):
+                        if j in assigned:
+                            continue
+                        sim = embedder.cosine_similarity(corrections[i][3], corrections[j][3])
+                        if sim > 0.60:
+                            cluster.append(j)
+                            assigned.add(j)
+                    if len(cluster) >= 3:
+                        clusters.append(cluster)
+
+                for cluster in clusters[:2]:
+                    titles = [corrections[idx][1][:40] for idx in cluster]
+                    # Check no existing pattern about this cluster
+                    check_kw = titles[0][:20]
+                    existing = self.conn.execute(
+                        "SELECT COUNT(*) FROM nodes WHERE type = 'pattern' AND keywords LIKE ? AND archived = 0",
+                        ('%auto-discovered pattern correction%' + check_kw + '%',)
+                    ).fetchone()[0]
+                    if existing > 0:
+                        continue
+
+                    pattern = self.create_pattern(
+                        title="Corrections cluster: %s (%d instances)" % (titles[0][:30], len(cluster)),
+                        content="Auto-discovered: %d corrections/bug lessons cluster together semantically. Titles: %s. This area may need a locked rule." % (
+                            len(cluster), '; '.join(titles)),
+                        evidence='; '.join(titles),
+                        keywords="auto-discovered pattern correction-cluster %s" % check_kw
+                    )
+                    result['patterns'].append(pattern)
+            except Exception:
+                pass
+
+        # 2b. Co-access patterns — heavily co-accessed but never explicitly connected
+        try:
+            strong_coaccesses = self.conn.execute(
+                """SELECT e.source_id, e.target_id, e.weight, n1.title, n2.title
+                   FROM edges e
+                   JOIN nodes n1 ON e.source_id = n1.id
+                   JOIN nodes n2 ON e.target_id = n2.id
+                   WHERE e.relation = 'co_accessed' AND e.weight > 0.6
+                     AND n1.archived = 0 AND n2.archived = 0
+                     AND NOT EXISTS (
+                       SELECT 1 FROM edges e2
+                       WHERE e2.source_id = e.source_id AND e2.target_id = e.target_id
+                         AND e2.relation != 'co_accessed'
+                     )
+                   ORDER BY e.weight DESC LIMIT 5"""
+            ).fetchall()
+
+            for src, tgt, weight, title_a, title_b in strong_coaccesses[:2]:
+                existing = self.conn.execute(
+                    "SELECT COUNT(*) FROM nodes WHERE type = 'pattern' AND keywords LIKE ? AND archived = 0",
+                    ('%auto-discovered pattern co-access%' + src[:12] + '%',)
+                ).fetchone()[0]
+                if existing > 0:
+                    continue
+
+                pattern = self.create_pattern(
+                    title="Always used together: '%s' + '%s'" % (title_a[:30], title_b[:30]),
+                    content="Auto-discovered: these concepts are co-accessed with weight %.2f but have no explicit relationship. Consider connecting them or creating a unifying concept." % weight,
+                    evidence="co_accessed edge weight: %.2f" % weight,
+                    keywords="auto-discovered pattern co-access %s" % src[:12]
+                )
+                result['patterns'].append(pattern)
+        except Exception:
+            pass
+
+        # 2c. Decay patterns — node types that get created and consistently archived
+        try:
+            decay_stats = self.conn.execute(
+                """SELECT type,
+                          SUM(CASE WHEN archived = 1 THEN 1 ELSE 0 END) as archived_count,
+                          SUM(CASE WHEN archived = 0 THEN 1 ELSE 0 END) as active_count
+                   FROM nodes
+                   WHERE type NOT IN ('context', 'thought', 'intuition')
+                   GROUP BY type
+                   HAVING archived_count > active_count AND archived_count >= 3"""
+            ).fetchall()
+
+            for ntype, archived_count, active_count in decay_stats[:1]:
+                existing = self.conn.execute(
+                    "SELECT COUNT(*) FROM nodes WHERE type = 'pattern' AND keywords LIKE ? AND archived = 0",
+                    ('%auto-discovered pattern decay-' + ntype + '%',)
+                ).fetchone()[0]
+                if existing > 0:
+                    continue
+
+                pattern = self.create_pattern(
+                    title="Retention issue: %s nodes (%d archived vs %d active)" % (ntype, archived_count, active_count),
+                    content="Auto-discovered: the brain creates %s nodes but they consistently decay. More are archived (%d) than active (%d). Consider locking important ones or adjusting decay rates." % (ntype, archived_count, active_count),
+                    keywords="auto-discovered pattern decay-%s retention" % ntype
+                )
+                result['patterns'].append(pattern)
+        except Exception:
+            pass
+
+        # ══════════════════════════════════════════════════
+        # 3. HYPOTHESIS DISCOVERY
+        # ══════════════════════════════════════════════════
+
+        # 3a. Orphan beliefs — high-access unlocked nodes with no locked backing
+        if embedder.is_ready():
+            try:
+                orphans = self.conn.execute(
+                    """SELECT n.id, n.title, n.content, n.access_count, ne.embedding
+                       FROM nodes n
+                       JOIN node_embeddings ne ON n.id = ne.node_id
+                       WHERE n.locked = 0 AND n.archived = 0
+                         AND n.access_count >= 5
+                         AND n.type NOT IN ('context', 'thought', 'intuition', 'tension', 'hypothesis', 'pattern', 'aspiration')
+                       ORDER BY n.access_count DESC LIMIT 10"""
+                ).fetchall()
+
+                locked_embeddings = self.conn.execute(
+                    """SELECT ne.embedding FROM node_embeddings ne
+                       JOIN nodes n ON n.id = ne.node_id
+                       WHERE n.locked = 1 AND n.archived = 0
+                       LIMIT 100"""
+                ).fetchall()
+
+                orphan_count = 0
+                for nid, title, content, access_count, emb in orphans:
+                    # Check if any locked node is similar (backing this belief)
+                    has_backing = False
+                    for (locked_emb,) in locked_embeddings:
+                        sim = embedder.cosine_similarity(emb, locked_emb)
+                        if sim > 0.70:
+                            has_backing = True
+                            break
+
+                    if not has_backing:
+                        existing = self.conn.execute(
+                            "SELECT COUNT(*) FROM nodes WHERE type = 'hypothesis' AND keywords LIKE ? AND archived = 0",
+                            ('%auto-discovered hypothesis orphan%' + nid[:12] + '%',)
+                        ).fetchone()[0]
+                        if existing > 0:
+                            continue
+
+                        hyp = self.create_hypothesis(
+                            title="'%s' relied on %dx but never locked" % (title[:50], access_count),
+                            content="Auto-discovered: this node is accessed frequently (%d times) but no locked rule or decision backs it. Should it be promoted to a rule? Original: %s" % (access_count, (content or '')[:200]),
+                            confidence=0.4,
+                            keywords="auto-discovered hypothesis orphan-belief %s" % nid[:12]
+                        )
+                        result['hypotheses'].append(hyp)
+                        orphan_count += 1
+                        if orphan_count >= 2:
+                            break
+
+                result['_stats']['orphan_beliefs_found'] = orphan_count
+            except Exception:
+                pass
+
+        # 3b. Dream promotions — intuitions that gained traction
+        try:
+            popular_intuitions = self.conn.execute(
+                """SELECT id, title, content FROM nodes
+                   WHERE type = 'intuition' AND archived = 0 AND access_count >= 2
+                   LIMIT 3"""
+            ).fetchall()
+
+            for nid, title, content in popular_intuitions:
+                # Check not already promoted
+                existing = self.conn.execute(
+                    "SELECT COUNT(*) FROM nodes WHERE type = 'hypothesis' AND keywords LIKE ? AND archived = 0",
+                    ('%auto-discovered hypothesis dream-promotion%' + nid[:12] + '%',)
+                ).fetchone()[0]
+                if existing > 0:
+                    continue
+
+                clean_title = title.replace('Dream connection: ', '').replace('Dream observation: ', '')
+                hyp = self.create_hypothesis(
+                    title="Dream insight gaining traction: %s" % clean_title[:50],
+                    content="Auto-discovered: this dream intuition was accessed 2+ times, suggesting it resonated. Original dream: %s" % (content or '')[:300],
+                    confidence=0.3,
+                    keywords="auto-discovered hypothesis dream-promotion %s" % nid[:12]
+                )
+                result['hypotheses'].append(hyp)
+
+                # Archive the intuition (promoted)
+                self.conn.execute("UPDATE nodes SET archived = 1 WHERE id = ?", (nid,))
+        except Exception:
+            pass
+
+        # 3c. Implicit assumptions — high in-degree unlocked nodes
+        try:
+            load_bearing = self.conn.execute(
+                """SELECT n.id, n.title, COUNT(e.source_id) as in_degree
+                   FROM nodes n
+                   JOIN edges e ON e.target_id = n.id
+                   WHERE n.locked = 0 AND n.archived = 0
+                     AND n.type NOT IN ('context', 'thought', 'intuition')
+                   GROUP BY n.id
+                   HAVING in_degree >= 5
+                   ORDER BY in_degree DESC LIMIT 3"""
+            ).fetchall()
+
+            for nid, title, in_degree in load_bearing[:1]:
+                existing = self.conn.execute(
+                    "SELECT COUNT(*) FROM nodes WHERE type = 'hypothesis' AND keywords LIKE ? AND archived = 0",
+                    ('%auto-discovered hypothesis implicit%' + nid[:12] + '%',)
+                ).fetchone()[0]
+                if existing > 0:
+                    continue
+
+                hyp = self.create_hypothesis(
+                    title="'%s' has %d dependents but isn't locked" % (title[:45], in_degree),
+                    content="Auto-discovered: this node is load-bearing (%d edges point to it) but unlocked. If it decays, dependent knowledge may become orphaned. Should it be locked?" % in_degree,
+                    confidence=0.5,
+                    keywords="auto-discovered hypothesis implicit-assumption %s" % nid[:12]
+                )
+                result['hypotheses'].append(hyp)
+        except Exception:
+            pass
+
+        # ══════════════════════════════════════════════════
+        # 4. ASPIRATION DISCOVERY
+        # ══════════════════════════════════════════════════
+
+        # 4a. Emotional trajectory — rising excitement about a topic
+        try:
+            # Compare avg emotion by project: last 7 days vs prior 30 days
+            recent = self.conn.execute(
+                """SELECT project, AVG(emotion), COUNT(*) FROM nodes
+                   WHERE emotion > 0 AND archived = 0
+                     AND created_at > datetime('now', '-7 days')
+                     AND project IS NOT NULL AND project != ''
+                   GROUP BY project HAVING COUNT(*) >= 3"""
+            ).fetchall()
+
+            older = self.conn.execute(
+                """SELECT project, AVG(emotion) FROM nodes
+                   WHERE emotion > 0 AND archived = 0
+                     AND created_at BETWEEN datetime('now', '-37 days') AND datetime('now', '-7 days')
+                     AND project IS NOT NULL AND project != ''
+                   GROUP BY project"""
+            ).fetchall()
+            older_map = {r[0]: r[1] for r in older}
+
+            for project, recent_avg, count in recent:
+                old_avg = older_map.get(project, 0.3)  # default baseline
+                trend = recent_avg - old_avg
+                result['_stats']['emotion_trends'][project] = {
+                    'recent': round(recent_avg, 2), 'older': round(old_avg, 2), 'delta': round(trend, 2)
+                }
+
+                if trend > 0.2:
+                    existing = self.conn.execute(
+                        "SELECT COUNT(*) FROM nodes WHERE type = 'aspiration' AND keywords LIKE ? AND archived = 0",
+                        ('%auto-discovered aspiration emotion%' + project[:15] + '%',)
+                    ).fetchone()[0]
+                    if existing > 0:
+                        continue
+
+                    asp = self.create_aspiration(
+                        title="Growing energy around %s (emotion +%.2f)" % (project, trend),
+                        content="Auto-discovered: emotional intensity for %s has increased from %.2f to %.2f over the last week (%d recent nodes). This sustained excitement may indicate an emerging goal or aspiration." % (
+                            project, old_avg, recent_avg, count),
+                        project=project,
+                        keywords="auto-discovered aspiration emotion-trajectory %s" % project[:15]
+                    )
+                    result['aspirations'].append(asp)
+        except Exception:
+            pass
+
+        # 4b. Recurring catalysts — repeated high-emotion events around same topic
+        try:
+            high_emotion = self.conn.execute(
+                """SELECT n.id, n.title, n.keywords, n.emotion, ne.embedding
+                   FROM nodes n
+                   LEFT JOIN node_embeddings ne ON n.id = ne.node_id
+                   WHERE n.emotion >= 0.7 AND n.archived = 0
+                     AND n.type IN ('decision', 'catalyst', 'rule')
+                     AND n.created_at > datetime('now', '-30 days')
+                   ORDER BY n.emotion DESC LIMIT 15"""
+            ).fetchall()
+
+            if len(high_emotion) >= 2 and embedder.is_ready():
+                # Cluster high-emotion nodes
+                clusters = []
+                assigned = set()
+                for i in range(len(high_emotion)):
+                    if i in assigned or not high_emotion[i][4]:
+                        continue
+                    cluster = [i]
+                    assigned.add(i)
+                    for j in range(i + 1, len(high_emotion)):
+                        if j in assigned or not high_emotion[j][4]:
+                            continue
+                        sim = embedder.cosine_similarity(high_emotion[i][4], high_emotion[j][4])
+                        if sim > 0.55:
+                            cluster.append(j)
+                            assigned.add(j)
+                    if len(cluster) >= 2:
+                        clusters.append(cluster)
+
+                for cluster in clusters[:1]:
+                    titles = [high_emotion[idx][1][:40] for idx in cluster]
+                    avg_emotion = sum(high_emotion[idx][3] for idx in cluster) / len(cluster)
+                    kw_check = titles[0][:15]
+
+                    existing = self.conn.execute(
+                        "SELECT COUNT(*) FROM nodes WHERE type = 'aspiration' AND keywords LIKE ? AND archived = 0",
+                        ('%auto-discovered aspiration catalyst%' + kw_check + '%',)
+                    ).fetchone()[0]
+                    if existing > 0:
+                        continue
+
+                    asp = self.create_aspiration(
+                        title="Repeated energy: %s (%d events, avg emotion %.1f)" % (titles[0][:30], len(cluster), avg_emotion),
+                        content="Auto-discovered: %d high-emotion events cluster around this theme. Titles: %s. Sustained emotional investment suggests an underlying aspiration." % (
+                            len(cluster), '; '.join(titles)),
+                        keywords="auto-discovered aspiration catalyst-cluster %s" % kw_check
+                    )
+                    result['aspirations'].append(asp)
+        except Exception:
+            pass
+
+        self.save()
+        return result
 
     def suggest(self, context: Optional[str] = None, file: Optional[str] = None,
                screen: Optional[str] = None, action: Optional[str] = None,
