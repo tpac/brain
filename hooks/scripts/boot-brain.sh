@@ -17,50 +17,13 @@
 #   - Currently: fastembed+onnxruntime installed manually on local Mac,
 #     Cowork has them pre-installed. No auto-install in boot.
 
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
-SERVER_DIR="$PLUGIN_ROOT/servers"
-
-# ── Resolve brain location ──
-DB_DIR=""
-
-if [ -n "$BRAIN_DB_DIR" ] && [ -d "$BRAIN_DB_DIR" ]; then
-  DB_DIR="$BRAIN_DB_DIR"
-fi
-
-# Cowork: search mounted AgentsContext directories
-if [ -z "$DB_DIR" ]; then
-  for candidate in /sessions/*/mnt/AgentsContext/brain; do
-    if [ -f "$candidate/brain.db" ]; then
-      DB_DIR="$candidate"
-      break
-    fi
-  done
-fi
-
-# Local Claude Code
-if [ -z "$DB_DIR" ] && [ -f "$HOME/AgentsContext/brain/brain.db" ]; then
-  DB_DIR="$HOME/AgentsContext/brain"
-fi
-
-# Cowork first-run: create in mounted AgentsContext if available
-if [ -z "$DB_DIR" ]; then
-  for ac_dir in /sessions/*/mnt/AgentsContext; do
-    if [ -d "$ac_dir" ]; then
-      DB_DIR="$ac_dir/brain"
-      mkdir -p "$DB_DIR" 2>/dev/null
-      break
-    fi
-  done
-fi
+source "$(dirname "$0")/resolve-brain-db.sh"
 
 # No DB found — fail cleanly
-if [ -z "$DB_DIR" ]; then
+if [ -z "$BRAIN_DB_DIR" ]; then
   echo "brain: No brain.db found and no AgentsContext available. Set BRAIN_DB_DIR env var." >&2
   exit 0
 fi
-
-export BRAIN_DB_DIR="$DB_DIR"
-export BRAIN_SERVER_DIR="$SERVER_DIR"
 
 # ── Direct Python brain call ──
 exec python3 -c '

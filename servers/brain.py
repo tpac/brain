@@ -2884,14 +2884,16 @@ class Brain:
         query = ' '.join(p for p in query_parts if p)
 
         # 1. Get locked nodes with full content for top N
+        # Project-scoped: return nodes for this project + global (NULL project)
         locked = self.conn.execute('''
             SELECT id, type, title, content, keywords FROM nodes
             WHERE locked = 1 AND archived = 0
+              AND (project = ? OR project IS NULL OR project = '')
             ORDER BY
               CASE type WHEN 'rule' THEN 0 WHEN 'decision' THEN 1 ELSE 2 END,
               access_count DESC, last_accessed DESC
             LIMIT ?
-        ''', (max_locked,)).fetchall()
+        ''', (project, max_locked)).fetchall()
 
         results = {
             'locked': [],
@@ -2909,15 +2911,16 @@ class Brain:
                 'content': r[3], 'keywords': r[4]
             })
 
-        # Title-only index for remaining locked nodes
+        # Title-only index for remaining locked nodes (same project scope)
         locked_index = self.conn.execute('''
             SELECT id, type, title FROM nodes
             WHERE locked = 1 AND archived = 0
+              AND (project = ? OR project IS NULL OR project = '')
             ORDER BY
               CASE type WHEN 'rule' THEN 0 WHEN 'decision' THEN 1 ELSE 2 END,
               access_count DESC, last_accessed DESC
             LIMIT 500 OFFSET ?
-        ''', (max_locked,)).fetchall()
+        ''', (project, max_locked)).fetchall()
 
         for r in locked_index:
             if r[0] not in seen:
@@ -2941,9 +2944,9 @@ class Brain:
                     'content': r[3]
                 })
 
-        # 3. Recall by context query
+        # 3. Recall by context query (project-scoped)
         if query:
-            recall_result = self.recall(query=query, limit=max_recall)
+            recall_result = self.recall(query=query, limit=max_recall, project=project)
             recalled = recall_result.get('results', recall_result) if isinstance(recall_result, dict) else recall_result
             for r in recalled:
                 if r['id'] not in seen:

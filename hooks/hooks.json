@@ -130,5 +130,29 @@
         }
       ]
     }
+  ],
+  "WorktreeCreate": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/worktree-context.sh",
+          "timeout": 5
+        }
+      ]
+    }
+  ],
+  "WorktreeRemove": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/worktree-cleanup.sh",
+          "timeout": 5
+        }
+      ]
+    }
   ]
 }

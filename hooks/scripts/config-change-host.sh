@@ -6,31 +6,11 @@
 # Input: JSON on stdin with { session_id, source, file_path }
 # Output: stdout with host diff (injected into context if significant)
 
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
-SERVER_DIR="$PLUGIN_ROOT/servers"
+source "$(dirname "$0")/resolve-brain-db.sh"
 
-# ── Resolve brain DB ──
-DB_DIR=""
-if [ -n "$BRAIN_DB_DIR" ] && [ -d "$BRAIN_DB_DIR" ]; then
-  DB_DIR="$BRAIN_DB_DIR"
-fi
-if [ -z "$DB_DIR" ]; then
-  for candidate in /sessions/*/mnt/AgentsContext/brain; do
-    if [ -f "$candidate/brain.db" ]; then
-      DB_DIR="$candidate"
-      break
-    fi
-  done
-fi
-if [ -z "$DB_DIR" ] && [ -f "$HOME/AgentsContext/brain/brain.db" ]; then
-  DB_DIR="$HOME/AgentsContext/brain"
-fi
-if [ -z "$DB_DIR" ] || [ ! -f "$DB_DIR/brain.db" ]; then
+if [ -z "$BRAIN_DB_DIR" ] || [ ! -f "$BRAIN_DB_DIR/brain.db" ]; then
   exit 0
 fi
-
-export BRAIN_DB_DIR="$DB_DIR"
-export BRAIN_SERVER_DIR="$SERVER_DIR"
 export HOOK_INPUT=$(cat)
 
 python3 -c '
