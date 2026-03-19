@@ -1,11 +1,11 @@
 #!/bin/bash
-# brain v14 (serverless) — Layer C: Pre-response recall trigger
-# Fires before Claude responds to ANY user message (not just file edits).
-# This is the key architectural improvement: brain context is available
-# during reasoning, not just during file operations.
+# brain v4 (serverless) — Layer C: Pre-response recall trigger
+# Hook: UserPromptSubmit — fires before Claude processes ANY user message.
+# Brain context is available during reasoning, not just during file operations.
 #
-# Input: JSON on stdin with tool_name (should be empty or "UserMessage")
+# Input: JSON on stdin with { prompt, session_id, cwd, transcript_path }
 # Output: JSON with decision + reason containing recalled context
+# Exit 0 stdout → injected into Claude's context automatically
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 SERVER_DIR="$PLUGIN_ROOT/servers"
@@ -54,11 +54,11 @@ except Exception:
     sys.exit(0)
 
 # The user message content comes from the hook input
-# For Notification hooks, the content is in the message field
-user_message = hook_input.get("message", "")
+# For UserPromptSubmit hooks, the content is in the prompt field
+user_message = hook_input.get("prompt", "")
 if not user_message:
-    # Try extracting from tool_input for compatibility
-    user_message = hook_input.get("tool_input", {}).get("content", "")
+    # Fallback: try message field (Cowork compatibility)
+    user_message = hook_input.get("message", "")
 
 if not user_message or len(user_message) < 5:
     print(json.dumps({"decision": "approve"}))

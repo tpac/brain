@@ -11,6 +11,18 @@
       ]
     }
   ],
+  "UserPromptSubmit": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-response-recall.sh",
+          "timeout": 5
+        }
+      ]
+    }
+  ],
   "PreToolUse": [
     {
       "matcher": "Edit|Write",
@@ -23,18 +35,6 @@
       ]
     }
   ],
-  "Notification": [
-    {
-      "matcher": "user_message",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-response-recall.sh",
-          "timeout": 5
-        }
-      ]
-    }
-  ],
   "PreCompact": [
     {
       "matcher": "",
@@ -43,6 +43,90 @@
           "type": "command",
           "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-compact-save.sh",
           "timeout": 10
+        }
+      ]
+    }
+  ],
+  "PostCompact": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-compact-reboot.sh",
+          "timeout": 10
+        }
+      ]
+    }
+  ],
+  "Stop": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-response-track.sh",
+          "timeout": 5
+        }
+      ]
+    }
+  ],
+  "StopFailure": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/stop-failure-log.sh",
+          "timeout": 5
+        }
+      ]
+    }
+  ],
+  "SessionEnd": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-end.sh",
+          "timeout": 10
+        }
+      ]
+    }
+  ],
+  "Notification": [
+    {
+      "matcher": "idle_prompt",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/idle-maintenance.sh",
+          "timeout": 30
+        }
+      ]
+    }
+  ],
+  "ConfigChange": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/config-change-host.sh",
+          "timeout": 5
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": "Bash",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-bash-host-check.sh",
+          "timeout": 5
         }
       ]
     }

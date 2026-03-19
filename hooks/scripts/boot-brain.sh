@@ -1,12 +1,13 @@
 #!/bin/bash
-# brain v14 (serverless) — SessionStart hook
-# No HTTP server to start. Imports Python brain module directly.
+# brain v4 (serverless) — SessionStart hook
+# Imports Python brain module directly. No HTTP server.
 #
-# Brain resolution order:
+# Brain DB resolution order:
 # 1. BRAIN_DB_DIR env var (explicit override)
-# 2. AgentsContext/brain/ in mounted paths (Cowork sessions)
-# 3. $HOME/AgentsContext/brain/ (local Claude Code)
-# 4. Create in first available AgentsContext
+# 2. /sessions/*/mnt/AgentsContext/brain/ (Cowork mounted paths)
+# 3. $HOME/AgentsContext/brain/ (local Claude Code via symlink)
+# 4. Create in first available Cowork AgentsContext mount
+# If none found, boot fails cleanly (no /tmp fallback — silent data loss is worse).
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 SERVER_DIR="$PLUGIN_ROOT/servers"
@@ -33,7 +34,7 @@ if [ -z "$DB_DIR" ] && [ -f "$HOME/AgentsContext/brain/brain.db" ]; then
   DB_DIR="$HOME/AgentsContext/brain"
 fi
 
-# Last resort: create in AgentsContext if it exists
+# Cowork first-run: create in mounted AgentsContext if available
 if [ -z "$DB_DIR" ]; then
   for ac_dir in /sessions/*/mnt/AgentsContext; do
     if [ -d "$ac_dir" ]; then
@@ -44,26 +45,16 @@ if [ -z "$DB_DIR" ]; then
   done
 fi
 
-# Final fallback — writable temp location
+# No DB found — fail cleanly
 if [ -z "$DB_DIR" ]; then
-  DB_DIR="/tmp/brain-data"
-  mkdir -p "$DB_DIR"
+  echo "brain: No brain.db found and no AgentsContext available. Set BRAIN_DB_DIR env var." >&2
+  exit 0
 fi
 
 export BRAIN_DB_DIR="$DB_DIR"
 export BRAIN_SERVER_DIR="$SERVER_DIR"
 
-# ── Auto-install embedding dependencies ──
-# fastembed auto-downloads models from HuggingFace on first use and caches them.
-# On normal machines: just works. No user action needed.
-# On restricted environments (Cowork/proxy): if HuggingFace is blocked,
-# fall back to brain-embedding pip package which bundles the model files.
-python3 -c "import fastembed" 2>/dev/null || \
-  pip install fastembed --break-system-packages --quiet 2>/dev/null || true
-
-# ── Direct Python brain call (no HTTP server needed) ──
-SCRIPT_DIR="$(dirname "$0")"
-
+# ── Direct Python brain call ──
 exec python3 -c '
 import sys, os, json
 
@@ -71,7 +62,6 @@ server_dir = os.environ.get("BRAIN_SERVER_DIR", "")
 db_dir = os.environ.get("BRAIN_DB_DIR", "")
 db_path = os.path.join(db_dir, "brain.db")
 
-# Add servers dir to Python path for imports
 if server_dir:
     parent = os.path.dirname(server_dir)
     sys.path.insert(0, parent)
@@ -79,24 +69,20 @@ if server_dir:
 try:
     from servers.brain import Brain, BRAIN_VERSION
 except ImportError as e:
-    print(f"brain: Failed to import brain module: {e}", file=sys.stderr)
+    print("brain: Failed to import brain module: " + str(e), file=sys.stderr)
     sys.exit(1)
 
-# Initialize brain (creates DB if needed, runs schema migration)
 try:
     brain = Brain(db_path)
 except Exception as e:
-    print(f"brain: Failed to initialize brain: {e}", file=sys.stderr)
+    print("brain: Failed to initialize: " + str(e), file=sys.stderr)
     sys.exit(1)
 
-# Reset session activity for new session
 brain.reset_session_activity()
 
-# Boot context
+# Resolve user/project from env or brain config
 user = os.environ.get("BRAIN_USER", "User")
 project = os.environ.get("BRAIN_PROJECT", "default")
-
-# Read user/project from brain config if not set
 if user == "User":
     stored_user = brain.get_config("default_user", "User")
     if stored_user and stored_user != "User":
@@ -107,29 +93,14 @@ if project == "default":
         project = stored_project
 
 ctx = brain.context_boot(user=user, project=project, task="session start")
-
-# Health check with auto-fix
 health = brain.health_check(session_id="session_boot", auto_fix=True)
-
-# Staged learnings
 staged = brain.list_staged(status="pending", limit=10)
-
-# Auto-promote staged with enough revisits
 brain.auto_promote_staged(revisit_threshold=3)
-
-# Suggest metrics
 metrics = brain.get_suggest_metrics(period_days=7)
-
-# Procedures for session start
 procs = brain.procedure_trigger("session_start", {"session_count": ctx.get("reset_count", 0)})
 
-# v4: Gather ALL consciousness signals
-consciousness = {}
-try:
-    consciousness = brain.get_consciousness_signals()
-except Exception:
-    pass  # Method may not exist on older schema
-
+# Consciousness signals
+consciousness = brain.get_consciousness_signals()
 active_evolutions = consciousness.get("evolutions", [])
 fluid_personal = consciousness.get("fluid_personal", [])
 reminders = consciousness.get("reminders", [])
@@ -147,37 +118,23 @@ density_shift = consciousness.get("density_shift")
 emotional_trajectory = consciousness.get("emotional_trajectory")
 rule_contradictions = consciousness.get("rule_contradictions", [])
 
-# v4: Host environment scan
+# Host environment scan
 host_info = {}
 host_diff = {}
 host_research = []
-try:
-    host_result = brain.scan_host_environment()
-    host_info = host_result.get("environment", {})
-    host_diff = host_result.get("diff", {})
-    host_research = host_result.get("research_needed", [])
-except Exception:
-    pass
+host_result = brain.scan_host_environment()
+host_info = host_result.get("environment", {})
+host_diff = host_result.get("diff", {})
+host_research = host_result.get("research_needed", [])
 
-# v4: Surfaceable dreams (high surprise, cross-cluster)
-dreams = []
-try:
-    dreams = brain.get_surfaceable_dreams(limit=2)
-except Exception:
-    pass
+# Dreams + self-reflection
+dreams = brain.get_surfaceable_dreams(limit=2)
+brain.auto_generate_self_reflection()
 
-# v4: Auto self-reflection
-try:
-    brain.auto_generate_self_reflection()
-except Exception:
-    pass
-
-# Save after all operations
 brain.save()
 
 # ── Output context for Claude ──
-# NOTE: Avoid f-strings with dict access containing quotes (breaks in bash -c)
-print("brain booted from: " + db_dir)
+print("brain v" + str(BRAIN_VERSION) + " booted from: " + db_dir)
 print()
 reset_count = ctx.get("reset_count", 0)
 print("Session #" + str(reset_count + 1))
@@ -256,16 +213,13 @@ if pending:
         print("  ... and " + str(len(pending) - 5) + " more")
     print()
 
-# ═══════════════════════════════════════════════════════════
-# v4: BRAIN CONSCIOUSNESS — everything the brain wants to share
-# ═══════════════════════════════════════════════════════════
+# ── BRAIN CONSCIOUSNESS ──
 has_conscious = reminders or active_evolutions or fluid_personal or fading or failure_modes or stale_count > 10 or performance or capabilities or interactions or meta_learning or novelty or miss_trends or encoding_gap or density_shift or emotional_trajectory or rule_contradictions
 
 if has_conscious:
     print("BRAIN CONSCIOUSNESS")
     print()
 
-# Reminders due — surface FIRST, before everything else
 if reminders:
     for rem in reminders:
         rtitle = rem.get("title", "")
@@ -275,7 +229,6 @@ if reminders:
         print("    due: " + rdue + " — set: " + rcreated)
     print()
 
-# Active evolution nodes
 if active_evolutions:
     for ev in active_evolutions[:6]:
         etitle = ev.get("title", "")
@@ -294,7 +247,6 @@ if active_evolutions:
         print("  ... and %d more active" % (len(active_evolutions) - 6))
     print()
 
-# Failure modes — always visible
 if failure_modes:
     for fm in failure_modes:
         print("  " + fm.get("title", "")[:80])
@@ -303,22 +255,19 @@ if failure_modes:
             print("    " + fmc)
     print()
 
-# Fading knowledge — important nodes about to decay
 if fading:
     print("  FADING KNOWLEDGE (accessed 3+ times but untouched for 14+ days):")
     for f in fading:
         ftitle = f.get("title", "")[:70]
         flast = str(f.get("last_accessed", ""))[:10]
-        print("    ⏳ " + ftitle + " — last: " + flast)
+        print("    " + ftitle + " — last: " + flast)
     print("  Still relevant? Access them to refresh, or let them decay.")
     print()
 
-# Stale context cleanup suggestion
 if stale_count > 10:
-    print("  ⏳ STALE — %d context nodes older than 7 days. Consider archiving." % stale_count)
+    print("  STALE — %d context nodes older than 7 days. Consider archiving." % stale_count)
     print()
 
-# Fluid personal nodes — "still true?" check
 if fluid_personal:
     print("  FLUID PERSONAL KNOWLEDGE — confirm or update:")
     for fp in fluid_personal[:5]:
@@ -326,42 +275,36 @@ if fluid_personal:
         print("    ? " + fptitle[:80] + " — still true?")
     print()
 
-# Performance observations
 if performance:
     for p in performance[:2]:
         ptitle = p.get("title", "")[:80]
         print("  " + ptitle)
     print()
 
-# Capabilities
 if capabilities:
     for c in capabilities[:2]:
         ctitle = c.get("title", "")[:80]
         print("  " + ctitle)
     print()
 
-# Interaction observations
 if interactions:
     for i in interactions[:2]:
         ititle = i.get("title", "")[:80]
         print("  " + ititle)
     print()
 
-# Meta-learning methods
 if meta_learning:
     for m in meta_learning[:2]:
         mtitle = m.get("title", "")[:80]
         print("  " + mtitle)
     print()
 
-# Novelty — new terms or concepts introduced recently
 if novelty:
     for n in novelty[:2]:
         ntitle = n.get("title", "")[:60]
         print("  " + ntitle + " — introduced this session")
     print()
 
-# Miss trends — queries that keep failing
 if miss_trends:
     for mt in miss_trends[:2]:
         mq = mt.get("query", "")[:50]
@@ -369,19 +312,16 @@ if miss_trends:
         print("  Recall keeps missing on: " + mq + " (%dx this week)" % mc)
     print()
 
-# Encoding gap warning
 if encoding_gap:
     egw = encoding_gap.get("warning", "")
     print("  " + egw)
     print()
 
-# Connection density shift
 if density_shift:
     dsw = density_shift.get("warning", "")
     print("  " + dsw)
     print()
 
-# Emotional trajectory
 if emotional_trajectory:
     etrend = emotional_trajectory.get("trend", "")
     eavg = emotional_trajectory.get("recent_avg", 0)
@@ -391,7 +331,6 @@ if emotional_trajectory:
         print("  Emotional intensity trending DOWN (avg %.2f recent)" % eavg)
     print()
 
-# Rule contradictions
 if rule_contradictions:
     print("  POTENTIAL RULE CONTRADICTIONS:")
     for rc in rule_contradictions[:3]:
@@ -401,7 +340,6 @@ if rule_contradictions:
         print("    " + rn + " may conflict with LOCKED: " + rl + " (sim %.2f)" % rs)
     print()
 
-# Surfaceable dreams — high surprise, cross-cluster connections
 if dreams:
     for dr in dreams:
         dtitle = dr.get("title", "")[:70]
@@ -412,7 +350,6 @@ if dreams:
             print("    " + dcontent)
     print()
 
-# Host environment changes
 if host_diff:
     print("  HOST CHANGES since last session:")
     for hkey in list(host_diff.keys())[:5]:
@@ -438,7 +375,7 @@ te = ctx.get("total_edges", "?")
 tl = ctx.get("total_locked", "?")
 print("Brain status: %s nodes, %s edges, %s locked" % (tn, te, tl))
 
-# Embedder status — alert user if running degraded
+# Embedder status
 from servers import embedder as _emb
 if _emb.is_ready():
     es = _emb.get_stats()
@@ -448,8 +385,6 @@ if _emb.is_ready():
     print("Embeddings: ACTIVE (" + str(ename) + ", " + str(edim) + "d, loaded in " + str(etime) + "ms)")
 else:
     print("WARNING: Embeddings UNAVAILABLE — running TF-IDF only (degraded recall quality).")
-    print("  The brain works but semantic recall is weaker without embeddings.")
-    print("  To fix: pip install fastembed sqlite-vec --break-system-packages")
 print()
 
 # Suggest metrics
@@ -468,12 +403,12 @@ if debug_on:
     print("DEBUG MODE ON - all brain interactions are being logged.")
     print()
 
-print("IMPORTANT: PreToolUse hook auto-surfaces memories before file edits. Use /remember for decisions.")
+print("PreToolUse hook auto-surfaces memories before file edits. Use brain.remember() for decisions.")
 
 brain.close()
-' 2>/dev/null
+'
 
-# ── v14: Post-compaction log reader ──
+# ── Post-compaction log reader ──
 SCRIPT_DIR="$(dirname "$0")"
 SESSION_LOG=""
 if [ -f "$SCRIPT_DIR/extract-session-log.py" ]; then
@@ -482,18 +417,11 @@ fi
 
 if [ -n "$SESSION_LOG" ]; then
   echo ""
-  echo "═══════════════════════════════════════════════════════════"
   echo "POST-COMPACTION LOG: Unencoded session history detected."
-  echo "Review this narrative and encode important learnings into"
-  echo "the brain. Both your reasoning and the user's decisions"
-  echo "matter — this is a shared brain."
-  echo "═══════════════════════════════════════════════════════════"
+  echo "Review and encode important learnings via brain.remember()."
   echo ""
   echo "$SESSION_LOG"
   echo ""
-  echo "═══════════════════════════════════════════════════════════"
-  echo "ACTION: Review the above and call /remember for any"
-  echo "decisions, corrections, learnings, or insights that are"
-  echo "not already in the brain. Then proceed with the user's task."
-  echo "═══════════════════════════════════════════════════════════"
+  echo "ACTION: Review the above and call brain.remember() for any"
+  echo "decisions, corrections, or insights not already in the brain."
 fi
