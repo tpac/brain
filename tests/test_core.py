@@ -41,7 +41,8 @@ class BrainTestBase(unittest.TestCase):
         self.brain.reset_session_activity()
 
     def tearDown(self):
-        self.brain.close()
+        if self.brain is not None:
+            self.brain.close()
         shutil.rmtree(self.tmp)
 
 
@@ -377,6 +378,74 @@ class TestValidateConfig(BrainTestBase):
         warnings = self.brain.validate_config()
         version_warnings = [w for w in warnings if 'Schema version' in w['message']]
         self.assertTrue(len(version_warnings) > 0, 'Should warn about schema version mismatch')
+
+
+class TestDaemon(BrainTestBase):
+    """Test persistent daemon client-server protocol."""
+
+    def setUp(self):
+        super().setUp()
+        # Kill any leftover daemon from previous test
+        from servers.daemon import stop_daemon, is_daemon_running, _kill_daemon
+        if is_daemon_running():
+            _kill_daemon()
+        import time
+        time.sleep(0.3)
+
+    def test_daemon_lifecycle(self):
+        """Daemon starts, responds to ping, remembers, recalls, stops cleanly."""
+        from servers.daemon import ensure_daemon, send_command, stop_daemon, is_daemon_running
+        import time
+
+        # Close brain so daemon can have exclusive access
+        self.brain.remember(type="lesson", title="daemon lifecycle target",
+                           content="unique content for daemon lifecycle testing")
+        self.brain.save()
+        self.brain.close()
+        self.brain = None
+
+        # Start daemon
+        ok = ensure_daemon(self.db_path)
+        self.assertTrue(ok, 'Daemon should start')
+        self.assertTrue(is_daemon_running(), 'Daemon should be running')
+
+        # Ping
+        resp = send_command("ping")
+        self.assertTrue(resp.get("ok"), 'Ping should succeed')
+        self.assertEqual(resp["result"]["status"], "alive")
+
+        # Recall — find the node we remembered directly
+        resp = send_command("recall", {"query": "daemon lifecycle target", "limit": 3})
+        self.assertTrue(resp.get("ok"), 'Recall should succeed')
+        results = resp["result"].get("results", [])
+        self.assertTrue(len(results) > 0, 'Should find the remembered node')
+
+        # Remember via daemon
+        resp = send_command("remember", {
+            "type": "lesson",
+            "title": "daemon remember test",
+            "content": "remembered via daemon"
+        })
+        self.assertTrue(resp.get("ok"), 'Remember should succeed: ' + str(resp))
+        self.assertIn("id", resp["result"])
+
+        # Record message + heartbeat
+        resp = send_command("record_message")
+        self.assertTrue(resp.get("ok"), 'Record message should succeed')
+
+        # Save and stop
+        send_command("save")
+        stop_daemon()
+        time.sleep(0.5)
+        self.assertFalse(is_daemon_running(), 'Daemon should be stopped')
+
+        # Verify remembered node persisted
+        from servers.brain import Brain
+        self.brain = Brain(self.db_path)
+        row = self.brain.conn.execute(
+            "SELECT title FROM nodes WHERE title = 'daemon remember test'"
+        ).fetchone()
+        self.assertIsNotNone(row, 'Node should persist in DB')
 
 
 if __name__ == '__main__':

@@ -34,10 +34,14 @@ output_lines = ["BRAIN POST-COMPACTION REBOOT (context was compacted, re-injecti
 
 try:
     # Re-run lightweight boot: locked rules + consciousness
-    boot = brain.context_boot()
+    # Resolve user/project from brain config (same as boot-brain.sh)
+    user = brain.get_config("default_user", "User")
+    project = brain.get_config("default_project", "default")
+    boot = brain.context_boot(user=user, project=project, task="post-compaction reboot")
 
     # Locked rules (these MUST survive compaction)
-    locked_rules = boot.get("locked_rules", [])
+    locked_nodes = boot.get("locked", [])
+    locked_rules = [n for n in locked_nodes if n.get("type") == "rule"]
     if locked_rules:
         output_lines.append(f"LOCKED RULES ({len(locked_rules)} active):")
         for rule in locked_rules[:15]:

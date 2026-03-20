@@ -11,6 +11,9 @@ TF-IDF semantic scoring, intent detection, temporal awareness.
 """
 
 import sys
+import warnings
+warnings.filterwarnings("ignore", message=".*urllib3.*OpenSSL.*")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="urllib3")
 import sqlite3
 import math
 import re
@@ -6164,7 +6167,7 @@ class Brain:
                     return f'matches "{t}" from context'
         return 'related via graph connections'
 
-    def context_boot(self, user: str, project: str, task: Optional[str] = None,
+    def context_boot(self, user: str = '', project: str = '', task: Optional[str] = None,
                      hints: Optional[str] = None) -> Dict[str, Any]:
         """
         3-tier progressive loading for context boot.

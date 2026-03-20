@@ -1,0 +1,685 @@
+"""
+brain — Persistent Daemon
+
+Keeps a Brain instance alive across hook invocations via a Unix domain socket.
+Instead of each hook spawning python3 → import brain → load embedder (~1-2s),
+hooks become thin clients that send commands and receive results in <10ms.
+
+ARCHITECTURE:
+  - daemon listens on a Unix socket (default: /tmp/brain-daemon-{uid}.sock)
+  - commands are newline-delimited JSON: {"cmd": "recall", "args": {...}}
+  - responses are newline-delimited JSON: {"ok": true, "result": {...}}
+  - daemon auto-starts on first hook call if not running
+  - daemon auto-exits after idle timeout (default: 30 minutes)
+  - PID file at /tmp/brain-daemon-{uid}.pid for lifecycle management
+
+LIFECYCLE:
+  - boot-brain.sh starts daemon if not running
+  - hooks send commands via socat/python client
+  - daemon saves brain periodically and on shutdown
+  - session-end.sh sends "shutdown" command
+
+PROTOCOL:
+  Client sends: {"cmd": "...", "args": {...}}\n
+  Server sends: {"ok": true, "result": {...}}\n
+
+  Commands:
+    context_boot {user, project, task}  → boot context
+    recall {query, limit}               → recall_with_embeddings
+    remember {type, title, content, ...} → remember
+    record_message {}                   → record_message + heartbeat check
+    heartbeat {}                        → get_encoding_heartbeat
+    vocab_check {message}               → vocabulary gap detection
+    save {}                             → force save
+    ping {}                             → health check
+    shutdown {}                         → graceful shutdown
+    eval {code}                         → eval arbitrary brain method (escape hatch)
+"""
+
+import sys
+import os
+import json
+import socket
+import select
+import signal
+import time
+import threading
+import traceback
+import atexit
+from typing import Optional, Dict, Any
+
+# ─── Configuration ───
+
+IDLE_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
+AUTOSAVE_INTERVAL_SECONDS = 60  # Save every 60 seconds if dirty
+SOCKET_BACKLOG = 5
+MAX_MESSAGE_SIZE = 1024 * 1024  # 1MB max message
+
+def get_socket_path() -> str:
+    """Get the daemon socket path, unique per user."""
+    uid = os.getuid()
+    return os.path.join("/tmp", "brain-daemon-{}.sock".format(uid))
+
+def get_pid_path() -> str:
+    """Get the daemon PID file path."""
+    uid = os.getuid()
+    return os.path.join("/tmp", "brain-daemon-{}.pid".format(uid))
+
+
+class BrainDaemon:
+    """Persistent Brain daemon that listens on a Unix socket."""
+
+    def __init__(self, db_path: str, socket_path: Optional[str] = None):
+        self.db_path = db_path
+        self.socket_path = socket_path or get_socket_path()
+        self.pid_path = get_pid_path()
+        self.brain = None
+        self.server_socket = None
+        self.running = False
+        self.last_activity = time.time()
+        self.dirty = False  # Track if brain has unsaved changes
+        self._lock = threading.Lock()
+
+    def start(self):
+        """Start the daemon — load brain, bind socket, serve."""
+        # Write PID file
+        with open(self.pid_path, 'w') as f:
+            f.write(str(os.getpid()))
+
+        # Clean up stale socket
+        if os.path.exists(self.socket_path):
+            os.unlink(self.socket_path)
+
+        # Load brain (this is the expensive part — done once)
+        self._load_brain()
+
+        # Bind socket
+        self.server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_socket.bind(self.socket_path)
+        self.server_socket.listen(SOCKET_BACKLOG)
+        self.server_socket.setblocking(False)
+
+        # Set permissions — owner only
+        os.chmod(self.socket_path, 0o600)
+
+        # Signal handlers
+        signal.signal(signal.SIGTERM, self._handle_signal)
+        signal.signal(signal.SIGINT, self._handle_signal)
+        signal.signal(signal.SIGHUP, self._handle_signal)
+
+        # Cleanup on exit
+        atexit.register(self._cleanup)
+
+        self.running = True
+        self._log("Daemon started. PID={}, socket={}".format(os.getpid(), self.socket_path))
+
+        # Start autosave thread
+        autosave_thread = threading.Thread(target=self._autosave_loop, daemon=True)
+        autosave_thread.start()
+
+        # Main event loop
+        self._serve()
+
+    def _load_brain(self):
+        """Load the Brain instance — the expensive operation we do once."""
+        parent = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if parent not in sys.path:
+            sys.path.insert(0, parent)
+
+        from servers.brain import Brain
+        self.brain = Brain(self.db_path)
+        self._log("Brain loaded from {}".format(self.db_path))
+
+    def _serve(self):
+        """Main event loop — accept connections, handle commands."""
+        while self.running:
+            # Check idle timeout
+            idle = time.time() - self.last_activity
+            if idle > IDLE_TIMEOUT_SECONDS:
+                self._log("Idle timeout ({}s). Shutting down.".format(int(idle)))
+                break
+
+            # Wait for connections (timeout every 5s to check idle)
+            try:
+                readable, _, _ = select.select([self.server_socket], [], [], 5.0)
+            except (select.error, OSError):
+                break
+
+            for sock in readable:
+                try:
+                    client, _ = sock.accept()
+                    client.settimeout(30.0)  # 30s timeout per request
+                    self._handle_client(client)
+                except Exception as e:
+                    self._log("Accept error: {}".format(e))
+
+        self._shutdown()
+
+    def _handle_client(self, client: socket.socket):
+        """Handle a single client connection."""
+        try:
+            # Read until newline
+            data = b""
+            while True:
+                chunk = client.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+                if b"\n" in data or len(data) > MAX_MESSAGE_SIZE:
+                    break
+
+            if not data:
+                return
+
+            # Parse command
+            try:
+                msg = json.loads(data.decode('utf-8').strip())
+            except json.JSONDecodeError as e:
+                self._send_error(client, "Invalid JSON: {}".format(e))
+                return
+
+            cmd = msg.get("cmd", "")
+            args = msg.get("args", {})
+
+            # Dispatch
+            self.last_activity = time.time()
+            result = self._dispatch(cmd, args)
+            self._send_response(client, result)
+
+        except Exception as e:
+            try:
+                self._send_error(client, "Internal error: {}".format(e))
+            except Exception:
+                pass
+        finally:
+            try:
+                client.close()
+            except Exception:
+                pass
+
+    def _dispatch(self, cmd: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Dispatch a command to the appropriate handler."""
+        with self._lock:
+            try:
+                if cmd == "ping":
+                    return {"ok": True, "result": {"status": "alive", "pid": os.getpid()}}
+
+                elif cmd == "shutdown":
+                    self.running = False
+                    return {"ok": True, "result": {"status": "shutting_down"}}
+
+                elif cmd == "save":
+                    self.brain.save()
+                    self.dirty = False
+                    return {"ok": True, "result": {"status": "saved"}}
+
+                elif cmd == "context_boot":
+                    ctx = self.brain.context_boot(
+                        user=args.get("user", "User"),
+                        project=args.get("project", "default"),
+                        task=args.get("task")
+                    )
+                    return {"ok": True, "result": ctx}
+
+                elif cmd == "recall":
+                    try:
+                        result = self.brain.recall_with_embeddings(
+                            query=args.get("query", ""),
+                            limit=args.get("limit", 8)
+                        )
+                    except Exception:
+                        result = self.brain.recall(
+                            query=args.get("query", ""),
+                            limit=args.get("limit", 8)
+                        )
+                    return {"ok": True, "result": result}
+
+                elif cmd == "remember":
+                    result = self.brain.remember(
+                        type=args.get("type", "context"),
+                        title=args.get("title", ""),
+                        content=args.get("content", ""),
+                        locked=args.get("locked", False),
+                        confidence=args.get("confidence", 0.5),
+                        emotion=args.get("emotion"),
+                        keywords=args.get("keywords"),
+                        project=args.get("project")
+                    )
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "connect":
+                    result = self.brain.connect(
+                        source_id=args.get("source_id", ""),
+                        target_id=args.get("target_id", ""),
+                        relation=args.get("relation", "related_to"),
+                        weight=args.get("weight", 0.5)
+                    )
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "record_message":
+                    self.brain.record_message()
+                    nudge = self.brain.get_encoding_heartbeat()
+                    self.dirty = True
+                    return {"ok": True, "result": {"nudge": nudge}}
+
+                elif cmd == "heartbeat":
+                    nudge = self.brain.get_encoding_heartbeat(
+                        nudge_threshold=args.get("threshold", 8)
+                    )
+                    return {"ok": True, "result": {"nudge": nudge}}
+
+                elif cmd == "vocab_check":
+                    message = args.get("message", "")
+                    # Resolve vocabulary terms
+                    import re
+                    candidates = set()
+                    candidates.update(
+                        t.strip().lower() for t in
+                        re.findall(r"\bthe\s+([\w][\w\s-]{2,25})\b", message, re.IGNORECASE)
+                    )
+                    candidates.update(
+                        t.strip().lower() for t in
+                        re.findall(r"\b([\w]+-[\w]+(?:-[\w]+)?)\b", message)
+                        if len(t) > 4
+                    )
+                    expansions = []
+                    for term in candidates:
+                        resolved = self.brain.resolve_vocabulary(term)
+                        if resolved:
+                            content = resolved.get("content", "")
+                            if content:
+                                expansions.append(content)
+                    return {"ok": True, "result": {"expansions": expansions}}
+
+                elif cmd == "reset_session":
+                    self.brain.reset_session_activity()
+                    self.dirty = True
+                    return {"ok": True, "result": {"status": "reset"}}
+
+                elif cmd == "validate_config":
+                    warnings = self.brain.validate_config()
+                    return {"ok": True, "result": {"warnings": warnings}}
+
+                elif cmd == "health_check":
+                    health = self.brain.health_check(
+                        session_id=args.get("session_id", "daemon"),
+                        auto_fix=args.get("auto_fix", True)
+                    )
+                    return {"ok": True, "result": health}
+
+                elif cmd == "consciousness":
+                    signals = self.brain.get_consciousness_signals()
+                    return {"ok": True, "result": signals}
+
+                elif cmd == "engineering_context":
+                    ctx = self.brain.get_engineering_context(
+                        project=args.get("project", "default")
+                    )
+                    return {"ok": True, "result": ctx}
+
+                elif cmd == "correction_patterns":
+                    patterns = self.brain.get_correction_patterns(
+                        limit=args.get("limit", 5)
+                    )
+                    return {"ok": True, "result": patterns}
+
+                elif cmd == "last_synthesis":
+                    synthesis = self.brain.get_last_synthesis()
+                    return {"ok": True, "result": synthesis}
+
+                elif cmd == "scan_host":
+                    result = self.brain.scan_host_environment()
+                    return {"ok": True, "result": result}
+
+                elif cmd == "dreams":
+                    dreams = self.brain.get_surfaceable_dreams(
+                        limit=args.get("limit", 2)
+                    )
+                    return {"ok": True, "result": dreams}
+
+                elif cmd == "self_reflection":
+                    self.brain.auto_generate_self_reflection()
+                    self.dirty = True
+                    return {"ok": True, "result": {"status": "generated"}}
+
+                elif cmd == "staged":
+                    staged = self.brain.list_staged(
+                        status=args.get("status", "pending"),
+                        limit=args.get("limit", 10)
+                    )
+                    return {"ok": True, "result": staged}
+
+                elif cmd == "promote_staged":
+                    self.brain.auto_promote_staged(
+                        revisit_threshold=args.get("threshold", 3)
+                    )
+                    self.dirty = True
+                    return {"ok": True, "result": {"status": "promoted"}}
+
+                elif cmd == "suggest_metrics":
+                    metrics = self.brain.get_suggest_metrics(
+                        period_days=args.get("period_days", 7)
+                    )
+                    return {"ok": True, "result": metrics}
+
+                elif cmd == "procedure_trigger":
+                    procs = self.brain.procedure_trigger(
+                        trigger=args.get("trigger", ""),
+                        context=args.get("context", {})
+                    )
+                    return {"ok": True, "result": procs}
+
+                elif cmd == "get_config":
+                    key = args.get("key", "")
+                    default = args.get("default", "")
+                    val = self.brain.get_config(key, default)
+                    return {"ok": True, "result": {"value": val}}
+
+                elif cmd == "set_config":
+                    self.brain.set_config(args.get("key", ""), args.get("value", ""))
+                    self.dirty = True
+                    return {"ok": True, "result": {"status": "set"}}
+
+                elif cmd == "get_debug_status":
+                    on = self.brain.get_debug_status()
+                    return {"ok": True, "result": {"debug": on}}
+
+                elif cmd == "log_debug":
+                    self.brain.log_debug(
+                        args.get("event", ""),
+                        args.get("source", ""),
+                        metadata=args.get("metadata")
+                    )
+                    return {"ok": True, "result": {"status": "logged"}}
+
+                elif cmd == "eval":
+                    # Escape hatch: eval arbitrary expression on brain
+                    # Only for development/debugging — not for production hooks
+                    code = args.get("code", "")
+                    if not code:
+                        return {"ok": False, "error": "No code provided"}
+                    # Limited eval — brain is available as 'brain'
+                    local_vars = {"brain": self.brain, "json": json}
+                    result = eval(code, {"__builtins__": {}}, local_vars)
+                    # Try to make result JSON-serializable
+                    try:
+                        json.dumps(result)
+                    except (TypeError, ValueError):
+                        result = str(result)
+                    return {"ok": True, "result": result}
+
+                else:
+                    return {"ok": False, "error": "Unknown command: {}".format(cmd)}
+
+            except Exception as e:
+                tb = traceback.format_exc()
+                self._log("Command '{}' failed: {}".format(cmd, tb))
+                try:
+                    self.brain._log_error("daemon_dispatch", str(e), "cmd={}, args={}".format(cmd, str(args)[:200]))
+                except Exception:
+                    pass
+                return {"ok": False, "error": str(e)}
+
+    def _send_response(self, client: socket.socket, data: Dict[str, Any]):
+        """Send a JSON response to the client."""
+        try:
+            response = json.dumps(data, default=str) + "\n"
+            client.sendall(response.encode('utf-8'))
+        except Exception as e:
+            self._log("Send error: {}".format(e))
+
+    def _send_error(self, client: socket.socket, message: str):
+        """Send an error response."""
+        self._send_response(client, {"ok": False, "error": message})
+
+    def _autosave_loop(self):
+        """Periodically save brain if dirty."""
+        while self.running:
+            time.sleep(AUTOSAVE_INTERVAL_SECONDS)
+            if self.dirty:
+                with self._lock:
+                    try:
+                        self.brain.save()
+                        self.dirty = False
+                        self._log("Autosaved")
+                    except Exception as e:
+                        self._log("Autosave error: {}".format(e))
+
+    def _handle_signal(self, signum, frame):
+        """Handle termination signals."""
+        self._log("Received signal {}".format(signum))
+        self.running = False
+
+    def _shutdown(self):
+        """Clean shutdown — save brain, close socket, remove files."""
+        self._log("Shutting down...")
+        try:
+            if self.brain:
+                self.brain.save()
+                self.brain.close()
+        except Exception as e:
+            self._log("Save error during shutdown: {}".format(e))
+
+        self._cleanup()
+
+    def _cleanup(self):
+        """Remove socket and PID files."""
+        try:
+            if self.server_socket:
+                self.server_socket.close()
+        except Exception:
+            pass
+        for path in [self.socket_path, self.pid_path]:
+            try:
+                if os.path.exists(path):
+                    os.unlink(path)
+            except Exception:
+                pass
+
+    def _log(self, message: str):
+        """Log to stderr (daemon output)."""
+        ts = time.strftime("%H:%M:%S")
+        print("[brain-daemon {}] {}".format(ts, message), file=sys.stderr)
+
+
+# ─── Client Functions (used by hooks) ───
+
+def send_command(cmd: str, args: Optional[Dict[str, Any]] = None,
+                 timeout: float = 10.0) -> Dict[str, Any]:
+    """Send a command to the running daemon. Returns response dict."""
+    socket_path = get_socket_path()
+
+    if not os.path.exists(socket_path):
+        return {"ok": False, "error": "Daemon not running"}
+
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+
+    try:
+        sock.connect(socket_path)
+        msg = json.dumps({"cmd": cmd, "args": args or {}}) + "\n"
+        sock.sendall(msg.encode('utf-8'))
+
+        # Read response
+        data = b""
+        while True:
+            chunk = sock.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+            if b"\n" in data:
+                break
+
+        if data:
+            return json.loads(data.decode('utf-8').strip())
+        return {"ok": False, "error": "No response"}
+
+    except socket.timeout:
+        return {"ok": False, "error": "Timeout"}
+    except ConnectionRefusedError:
+        return {"ok": False, "error": "Connection refused — daemon may be dead"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        sock.close()
+
+
+def is_daemon_running() -> bool:
+    """Check if the daemon is running."""
+    pid_path = get_pid_path()
+    if not os.path.exists(pid_path):
+        return False
+
+    try:
+        with open(pid_path) as f:
+            pid = int(f.read().strip())
+        # Check if process exists
+        os.kill(pid, 0)
+        return True
+    except (OSError, ValueError):
+        # Process doesn't exist or PID file is corrupt
+        try:
+            os.unlink(pid_path)
+        except Exception:
+            pass
+        return False
+
+
+def ensure_daemon(db_path: str) -> bool:
+    """Start the daemon if not running. Returns True if daemon is ready."""
+    if is_daemon_running():
+        # Verify it responds
+        resp = send_command("ping", timeout=2.0)
+        if resp.get("ok"):
+            return True
+        # Daemon is zombie — clean up and restart
+        _kill_daemon()
+
+    # Fork and start daemon
+    pid = os.fork()
+    if pid == 0:
+        # Child process — become the daemon
+        try:
+            # Double fork to detach from parent
+            if os.fork() > 0:
+                os._exit(0)
+
+            # New session
+            os.setsid()
+
+            # Redirect stdio
+            devnull = os.open(os.devnull, os.O_RDWR)
+            os.dup2(devnull, 0)
+            # Keep stderr for logging
+            log_path = os.path.join(os.path.dirname(db_path), "daemon.log")
+            try:
+                log_fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+                os.dup2(log_fd, 1)
+                os.dup2(log_fd, 2)
+            except Exception:
+                os.dup2(devnull, 1)
+                os.dup2(devnull, 2)
+
+            daemon = BrainDaemon(db_path)
+            daemon.start()
+        except Exception:
+            pass
+        finally:
+            os._exit(0)
+    else:
+        # Parent process — wait for child (intermediate fork)
+        os.waitpid(pid, 0)
+
+        # Wait for daemon to be ready (up to 10s for embedder load)
+        for _ in range(50):
+            time.sleep(0.2)
+            resp = send_command("ping", timeout=2.0)
+            if resp.get("ok"):
+                return True
+
+        return False
+
+
+def _kill_daemon():
+    """Kill a running daemon."""
+    pid_path = get_pid_path()
+    try:
+        with open(pid_path) as f:
+            pid = int(f.read().strip())
+        os.kill(pid, signal.SIGTERM)
+        time.sleep(0.5)
+    except Exception:
+        pass
+    # Clean up files
+    for path in [pid_path, get_socket_path()]:
+        try:
+            if os.path.exists(path):
+                os.unlink(path)
+        except Exception:
+            pass
+
+
+def stop_daemon():
+    """Gracefully stop the daemon."""
+    resp = send_command("shutdown", timeout=5.0)
+    if not resp.get("ok"):
+        _kill_daemon()
+
+
+# ─── CLI Entry Point ───
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="brain persistent daemon")
+    parser.add_argument("action", choices=["start", "stop", "status", "restart"],
+                       help="Daemon action")
+    parser.add_argument("--db", help="Path to brain.db")
+    args = parser.parse_args()
+
+    if args.action == "start":
+        if not args.db:
+            print("Error: --db required for start", file=sys.stderr)
+            sys.exit(1)
+        if is_daemon_running():
+            print("Daemon already running")
+        else:
+            if ensure_daemon(args.db):
+                print("Daemon started")
+            else:
+                print("Failed to start daemon", file=sys.stderr)
+                sys.exit(1)
+
+    elif args.action == "stop":
+        if is_daemon_running():
+            stop_daemon()
+            print("Daemon stopped")
+        else:
+            print("Daemon not running")
+
+    elif args.action == "status":
+        if is_daemon_running():
+            resp = send_command("ping")
+            if resp.get("ok"):
+                print("Daemon running (PID {})".format(resp["result"]["pid"]))
+            else:
+                print("Daemon zombie (PID file exists but not responding)")
+        else:
+            print("Daemon not running")
+
+    elif args.action == "restart":
+        if is_daemon_running():
+            stop_daemon()
+            time.sleep(1)
+        if args.db:
+            if ensure_daemon(args.db):
+                print("Daemon restarted")
+            else:
+                print("Failed to restart", file=sys.stderr)
+                sys.exit(1)
+        else:
+            print("Error: --db required for restart", file=sys.stderr)
+            sys.exit(1)

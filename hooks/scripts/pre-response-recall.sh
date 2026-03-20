@@ -16,6 +16,105 @@ if [ -z "$BRAIN_DB_DIR" ] || [ ! -f "$BRAIN_DB_DIR/brain.db" ]; then
 fi
 export HOOK_INPUT=$(cat)
 
+# ── Try daemon first (fast path: ~70ms vs ~2000ms) ──
+SOCKET_PATH="/tmp/brain-daemon-$(id -u).sock"
+if [ -S "$SOCKET_PATH" ]; then
+  DAEMON_RESULT=$(python3 -c '
+import json, sys, os, socket, re
+
+hook_input = json.loads(os.environ.get("HOOK_INPUT", "{}"))
+user_message = hook_input.get("prompt", "") or hook_input.get("message", "")
+if not user_message or len(user_message) < 5 or user_message.startswith("/") or user_message.startswith("!"):
+    print(json.dumps({"decision": "approve"}))
+    sys.exit(0)
+
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+sock.settimeout(10.0)
+try:
+    sock.connect("'"$SOCKET_PATH"'")
+
+    # Vocab expansion
+    vocab_msg = json.dumps({"cmd": "vocab_check", "args": {"message": user_message[:500]}}) + "\n"
+    sock.sendall(vocab_msg.encode())
+    data = b""
+    while b"\n" not in data:
+        chunk = sock.recv(65536)
+        if not chunk: break
+        data += chunk
+    vocab_resp = json.loads(data.decode().strip())
+    sock.close()
+
+    expansions = vocab_resp.get("result", {}).get("expansions", []) if vocab_resp.get("ok") else []
+    enriched = user_message[:500]
+    if expansions:
+        enriched += " " + " ".join(expansions)[:200]
+
+    # Recall
+    sock2 = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock2.settimeout(10.0)
+    sock2.connect("'"$SOCKET_PATH"'")
+    recall_msg = json.dumps({"cmd": "recall", "args": {"query": enriched, "limit": 8}}) + "\n"
+    sock2.sendall(recall_msg.encode())
+    data = b""
+    while b"\n" not in data:
+        chunk = sock2.recv(65536)
+        if not chunk: break
+        data += chunk
+    recall_resp = json.loads(data.decode().strip())
+    sock2.close()
+
+    if not recall_resp.get("ok"):
+        raise Exception("Daemon recall failed")
+
+    results = recall_resp.get("result", {}).get("results", [])
+    if not results:
+        print(json.dumps({"decision": "approve"}))
+        sys.exit(0)
+
+    lines = ["BRAIN RECALL (auto-surfaced for this conversation):", ""]
+    EVOLUTION_TYPES = {"tension", "hypothesis", "pattern", "catalyst", "aspiration"}
+    evolution_results = [r for r in results if r.get("type") in EVOLUTION_TYPES]
+    regular_results = [r for r in results if r.get("type") not in EVOLUTION_TYPES]
+
+    if evolution_results:
+        lines.append("ACTIVE EVOLUTION (brain is tracking these):")
+        for r in evolution_results[:3]:
+            title = r.get("title", "")[:80]
+            content = r.get("content", "")
+            if len(content) > 150: content = content[:150] + "..."
+            lines.append("  " + title)
+            lines.append("    " + content)
+            lines.append("")
+
+    for r in regular_results[:5]:
+        typ = r.get("type", "?")
+        title = r.get("title", "")[:60]
+        content = r.get("content", "")
+        locked = "LOCKED " if r.get("locked") else ""
+        score = r.get("effective_activation", 0)
+        if len(content) > 300: content = content[:300] + "..."
+        lines.append("  [%s] %s%s (score: %.2f)" % (typ, locked, title, score))
+        lines.append("    " + content)
+        lines.append("")
+
+    lines.append("Use this context to inform your response. Call /remember for new decisions.")
+    context = "\n".join(lines)
+    print(json.dumps({"decision": "approve", "reason": context}))
+
+except Exception as e:
+    # Daemon failed — signal to fall through to direct Python
+    print("DAEMON_FALLBACK")
+    sys.exit(1)
+' 2>/dev/null)
+
+  if [ $? -eq 0 ] && [ -n "$DAEMON_RESULT" ] && [ "$DAEMON_RESULT" != "DAEMON_FALLBACK" ]; then
+    echo "$DAEMON_RESULT"
+    exit 0
+  fi
+  # Fall through to direct Python if daemon failed
+fi
+
+# ── Direct Python fallback (cold path: ~2000ms) ──
 exec python3 -c '
 import json, sys, os, time
 

@@ -37,5 +37,13 @@ try:
     brain.save()
     brain.close()
 except Exception as e:
-    print(f"brain: session-end error: {e}", file=sys.stderr)
+    print("brain: session-end error: " + str(e), file=sys.stderr)
+
+# Stop the persistent daemon (if running)
+try:
+    from servers.daemon import stop_daemon, is_daemon_running
+    if is_daemon_running():
+        stop_daemon()
+except Exception:
+    pass
 ' 2>/dev/null

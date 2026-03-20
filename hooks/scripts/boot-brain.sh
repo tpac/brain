@@ -43,6 +43,23 @@ if [ -z "$BRAIN_DB_DIR" ]; then
   exit 0
 fi
 
+# ── Start persistent daemon for fast subsequent hooks ──
+# The daemon keeps Brain + embedder loaded in memory.
+# Boot still runs direct Python (needs full output formatting),
+# but all subsequent hooks (recall, track, edit-suggest) use the daemon.
+python3 -c "
+import sys, os
+parent = os.path.dirname(os.environ.get('BRAIN_SERVER_DIR', ''))
+if parent:
+    sys.path.insert(0, parent)
+try:
+    from servers.daemon import ensure_daemon
+    ensure_daemon(os.path.join(os.environ.get('BRAIN_DB_DIR', ''), 'brain.db'))
+except Exception:
+    pass  # Daemon is optional — hooks fall back to direct Python
+" &
+DAEMON_PID=$!
+
 # ── Direct Python brain call ──
 exec python3 -c '
 import sys, os, json
