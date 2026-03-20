@@ -17,10 +17,11 @@ Run: python tests/test_core.py
 
 import sys
 import os
-import tempfile
-import shutil
 import json
+import shutil
+import tempfile
 import unittest
+import sqlite3
 
 # Add parent to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -28,22 +29,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from servers.brain import Brain
 from servers.dal import LogsDAL, MetaDAL
 from servers.schema import ensure_schema, ensure_logs_schema
-import sqlite3
-
-
-class BrainTestBase(unittest.TestCase):
-    """Base class that creates a fresh brain per test."""
-
-    def setUp(self):
-        self.tmp = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.tmp, 'brain.db')
-        self.brain = Brain(self.db_path)
-        self.brain.reset_session_activity()
-
-    def tearDown(self):
-        if self.brain is not None:
-            self.brain.close()
-        shutil.rmtree(self.tmp)
+from tests.brain_test_base import BrainTestBase
 
 
 class TestRememberRecall(BrainTestBase):

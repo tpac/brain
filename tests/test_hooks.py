@@ -22,55 +22,43 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, PROJECT_ROOT)
 
 from servers.brain import Brain
+from tests.brain_test_base import HookTestBase as _SharedHookBase
 
 
-class HookTestBase(unittest.TestCase):
-    """Base class for hook integration tests.
+class HookTestBase(_SharedHookBase):
+    """Hook test base with additional setup for hook-specific needs.
 
-    Sets up a temp directory with a brain.db populated with realistic test data,
-    configures environment variables, and provides run_hook() for executing scripts.
+    Extends the shared HookTestBase with:
+    - Closes brain after seeding (hooks open their own connections)
+    - Adds PLUGIN_ROOT env var
+    - PID-based daemon cleanup
     """
 
     def setUp(self):
-        self.tmp = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.tmp, 'brain.db')
-        # Create brain with some test data
-        self.brain = Brain(self.db_path)
-        self.brain.reset_session_activity()
-        # Add realistic test data
-        self.brain.remember(
-            type='rule',
-            title='Authentication must use Clerk with magic links',
-            content=(
-                'Clerk handles auth flow. Magic links for login, no passwords. '
-                'Webhook syncs user data to our DB. Free tier covers MVP needs.'
-            ),
-            keywords='auth clerk login passwordless magic-link webhook',
-            locked=True,
-        )
+        super().setUp()
+        # Hook tests also add a second test node
         self.brain.remember(
             type='decision',
             title='React component architecture: atomic design pattern',
-            content=(
-                'Components organized by atomic design: atoms (Button, Input), '
-                'molecules (FormField), organisms (LoginForm). Shared via internal package.'
-            ),
+            content='Components organized by atomic design: atoms (Button, Input), '
+                    'molecules (FormField), organisms (LoginForm). Shared via internal package.',
             keywords='react components atomic design pattern architecture',
             locked=True,
         )
         self.brain.save()
+        # Hook tests close brain — hooks open their own connections
         self.brain.close()
         self.brain = None
 
-        # Set up environment
-        self.scripts_dir = os.path.join(os.path.dirname(__file__), '..', 'hooks', 'scripts')
-        self.env = os.environ.copy()
-        self.env['BRAIN_DB_DIR'] = self.tmp
-        self.env['BRAIN_SERVER_DIR'] = os.path.join(os.path.dirname(__file__), '..', 'servers')
-        self.env['PLUGIN_ROOT'] = os.path.join(os.path.dirname(__file__), '..')
+        # Override env with hook-specific vars
+        self.scripts_dir = self.hooks_dir
+        self.env['PLUGIN_ROOT'] = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), '..'))
+        self.env['BRAIN_SERVER_DIR'] = os.path.join(
+            os.path.dirname(__file__), '..', 'servers')
 
     def tearDown(self):
-        # Kill any daemon that may have been started
+        # PID-based daemon cleanup (hooks may start daemons)
         for pid_file in glob.glob('/tmp/brain-daemon-*.pid'):
             try:
                 with open(pid_file) as f:
@@ -78,7 +66,8 @@ class HookTestBase(unittest.TestCase):
                 os.kill(pid, signal.SIGTERM)
             except (OSError, ValueError):
                 pass
-        shutil.rmtree(self.tmp, ignore_errors=True)
+        # Delegate to shared base for logging + temp dir cleanup
+        super().tearDown()
 
     def run_hook(self, script_name, stdin_data=None, timeout=30):
         """Run a hook script and return (returncode, stdout, stderr)."""

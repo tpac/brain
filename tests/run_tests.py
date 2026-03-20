@@ -4,6 +4,9 @@ brain — Unified Test Runner
 
 Single entry point for all testing:
     python tests/run_tests.py                        # Full eval + regression
+    python tests/run_tests.py --unit                  # Unit + recall + hook tests (133 tests)
+    python tests/run_tests.py --unit --encode         # Run tests + encode findings to brain
+    python tests/run_tests.py --unit --trends         # Show historical test trends
     python tests/run_tests.py --golden               # Golden dataset only
     python tests/run_tests.py --regression            # Regression check only
     python tests/run_tests.py --baseline [label]      # Capture new baseline
@@ -88,10 +91,12 @@ def find_brain_db(args):
         if arg.endswith('.db') and os.path.exists(arg):
             return arg
 
+    brain_db_dir = os.environ.get('BRAIN_DB_DIR', '')
     search_paths = [
         os.path.join(os.path.dirname(__file__), '..', 'data', 'brain.db'),
+        os.path.expanduser('~/AgentsContext/brain/brain.db'),
         os.path.expanduser('~/Documents/Claude/AgentsContext/brain/brain.db'),
-        os.environ.get('BRAIN_DB_DIR', ''),
+        os.path.join(brain_db_dir, 'brain.db') if brain_db_dir else '',
     ]
 
     for p in search_paths:
@@ -107,6 +112,63 @@ def main():
     positionals = [a for a in args if not a.startswith('-')]
 
     verbose = '--verbose' in flags or '-v' in flags
+
+    # Unit test mode (test_core + test_recall_quality + test_hooks)
+    if '--unit' in flags:
+        import unittest
+        print()
+        print('=' * 70)
+        print('  brain UNIT TEST SUITE')
+        print('=' * 70)
+        print()
+
+        loader = unittest.TestLoader()
+        suite = unittest.TestSuite()
+        suite.addTests(loader.loadTestsFromName('tests.test_core'))
+        suite.addTests(loader.loadTestsFromName('tests.test_recall_quality'))
+        suite.addTests(loader.loadTestsFromName('tests.test_hooks'))
+
+        verbosity = 2 if verbose else 1
+        runner = unittest.TextTestRunner(verbosity=verbosity)
+        result = runner.run(suite)
+
+        # Post-run reporting
+        from tests.brain_test_base import get_run_summary
+
+        summary = get_run_summary()
+        if summary:
+            print()
+            print(f'[test] {summary["total"]} tests: '
+                  f'{summary["passed"]} pass, {summary["failed"]} fail, '
+                  f'{summary["errors"]} error ({summary["total_duration_ms"]/1000:.1f}s)')
+
+        # Encode to brain if --encode flag
+        if '--encode' in flags:
+            print()
+            print('[test] Encoding findings to brain...')
+            db_path = find_brain_db(positionals)
+            if db_path:
+                from servers.brain import Brain
+                brain = Brain(db_path)
+                from tests.test_encoder import encode_run_to_brain
+                enc_result = encode_run_to_brain(brain, verbose=verbose)
+                brain.close()
+                print(f'[test] Encoded {enc_result["encoded"]} findings')
+            else:
+                print('[test] WARNING: brain.db not found, skipping encoding')
+
+        # Show trends if --trends flag
+        if '--trends' in flags:
+            from tests.test_encoder import print_trends_report
+            print_trends_report()
+
+        sys.exit(0 if result.wasSuccessful() else 1)
+
+    # Show trends only
+    if '--trends' in flags:
+        from tests.test_encoder import print_trends_report
+        print_trends_report()
+        sys.exit(0)
 
     # Self-test mode
     if '--metrics-test' in flags:

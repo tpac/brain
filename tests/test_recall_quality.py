@@ -14,8 +14,6 @@ Run: python -m unittest tests.test_recall_quality -v
 
 import sys
 import os
-import tempfile
-import shutil
 import unittest
 from datetime import datetime, timedelta
 
@@ -30,21 +28,7 @@ from servers.brain_constants import (
     MAX_HOPS,
     TFIDF_STOP_WORDS,
 )
-
-
-class BrainTestBase(unittest.TestCase):
-    """Base class that creates a fresh brain per test."""
-
-    def setUp(self):
-        self.tmp = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.tmp, 'brain.db')
-        self.brain = Brain(self.db_path)
-        self.brain.reset_session_activity()
-
-    def tearDown(self):
-        if self.brain is not None:
-            self.brain.close()
-        shutil.rmtree(self.tmp)
+from tests.brain_test_base import BrainTestBase
 
 
 # ═══════════════════════════════════════════════════════════════
