@@ -7302,8 +7302,9 @@ class Brain(ConsciousnessMixin):
     # get_consciousness_signals() and log_consciousness_response() are now in
     # brain_consciousness.py (ConsciousnessMixin), inherited via class Brain(ConsciousnessMixin).
 
-    def _DELETED_get_consciousness_signals(self):
-        """MOVED TO brain_consciousness.py — this stub will be removed.
+    def _STUB_consciousness_removed(self):
+        """STUB — marks where 500+ lines of consciousness code used to live.
+        Now in brain_consciousness.py (ConsciousnessMixin).
         Gather all conscious-layer signals for surfacing.
         Returns categorized signals: reminders, evolutions, decay_warnings,
         fluid_personal, stale_context, encoding_health, fading_knowledge.
@@ -7808,10 +7809,6 @@ class Brain(ConsciousnessMixin):
             signals['silent_errors'] = []
 
         return signals
-
-    def _DELETED_log_consciousness_response(self, signal_type: str, responded: bool):
-        """MOVED TO brain_consciousness.py"""
-        pass  # Now provided by ConsciousnessMixin
 
     # ─── v4: PATTERN-INFORMED PRUNING ───
     # Confirmed patterns can adjust how the brain prunes. "Personal info is rare but
