@@ -587,6 +587,164 @@ class TestSilentFailures(BrainTestBase):
             )
 
 
+# ── P0: DAL Pattern Enforcement ──────────────────────────────────────
+
+class TestDALPatternEnforcement(unittest.TestCase):
+    """Meta-tests: enforce that DB access goes through the DAL.
+
+    The brain has a centralized Data Access Layer (dal.py) that owns access to:
+    - brain_meta table → MetaDAL (self._meta)
+    - brain_logs.db tables → LogsDAL (self._logs)
+
+    Direct self.logs_conn.execute() and direct brain_meta access in mixin files
+    bypasses the DAL. These tests catch violations so the pattern stays clean.
+    Nodes/edges in brain.db are NOT DAL-ified yet — direct access is allowed there.
+    """
+
+    SERVERS_DIR = os.path.join(os.path.dirname(__file__), '..', 'servers')
+    # Files that ARE the DAL or own the connections — allowed to use direct access
+    ALLOWED_DIRECT = {'dal.py', 'brain.py', 'schema.py'}
+    # Mixin files that should use DAL for logs and meta access
+    MIXIN_PATTERN = 'brain_*.py'
+
+    def _scan_mixin_files(self):
+        """Get all mixin .py files (brain_*.py) excluding allowed files."""
+        import glob as glob_mod
+        files = glob_mod.glob(os.path.join(self.SERVERS_DIR, self.MIXIN_PATTERN))
+        return [f for f in files if os.path.basename(f) not in self.ALLOWED_DIRECT]
+
+    def test_no_direct_logs_conn_in_mixins(self):
+        """Mixin files should use self._logs (LogsDAL) not self.logs_conn.execute().
+
+        brain_logs.db tables (debug_log, access_log, recall_log, miss_log, dream_log,
+        staged_learnings) should be accessed through LogsDAL methods, not raw SQL.
+        This ensures consistent error handling, timestamps, and commit behavior.
+        """
+        violations = []
+        for py_file in self._scan_mixin_files():
+            with open(py_file) as f:
+                lines = f.readlines()
+            for i, line in enumerate(lines):
+                if 'self.logs_conn.execute' in line:
+                    violations.append(
+                        f'{os.path.basename(py_file)}:{i+1}: {line.strip()[:80]}')
+
+        # Track the count for trend detection
+        if violations:
+            msg = (f'{len(violations)} direct logs_conn.execute() calls found in mixin files '
+                   f'(should use self._logs DAL methods):\n  '
+                   + '\n  '.join(violations[:10]))
+            if len(violations) > 10:
+                msg += f'\n  ... and {len(violations) - 10} more'
+            # Don't fail yet — document current state and track regression
+            # When migration is complete, change this to self.assertEqual(len(violations), 0, msg)
+            self._log_violation_count('logs_conn_direct', len(violations), violations[:5])
+
+    def test_no_direct_brain_meta_in_mixins(self):
+        """Mixin files should use self._meta (MetaDAL) not raw brain_meta SQL.
+
+        brain_meta is a key-value config store. All access should go through
+        MetaDAL.get(), .set(), .get_json(), .set_json(), .increment().
+        Direct INSERT/SELECT on brain_meta bypasses validation and timestamps.
+        """
+        import re as re_mod
+        violations = []
+        # Match direct brain_meta SQL — INSERT, SELECT, UPDATE, DELETE
+        pattern = re_mod.compile(r'(?:INSERT|SELECT|UPDATE|DELETE).*brain_meta', re_mod.IGNORECASE)
+        for py_file in self._scan_mixin_files():
+            with open(py_file) as f:
+                lines = f.readlines()
+            for i, line in enumerate(lines):
+                if pattern.search(line) and 'brain_meta' in line:
+                    violations.append(
+                        f'{os.path.basename(py_file)}:{i+1}: {line.strip()[:80]}')
+
+        if violations:
+            self._log_violation_count('brain_meta_direct', len(violations), violations[:5])
+
+    def test_no_direct_debug_log_in_mixins(self):
+        """Mixin files should use self._logs.write_error/write_debug, not raw debug_log SQL."""
+        violations = []
+        for py_file in self._scan_mixin_files():
+            with open(py_file) as f:
+                content = f.read()
+            # Direct INSERT into debug_log
+            for i, line in enumerate(content.split('\n')):
+                if 'debug_log' in line and ('INSERT' in line or 'SELECT' in line):
+                    violations.append(
+                        f'{os.path.basename(py_file)}:{i+1}: {line.strip()[:80]}')
+
+        if violations:
+            self._log_violation_count('debug_log_direct', len(violations), violations[:5])
+
+    def test_no_direct_miss_log_in_mixins(self):
+        """Mixin files should use self._logs.log_miss(), not raw miss_log SQL."""
+        violations = []
+        for py_file in self._scan_mixin_files():
+            with open(py_file) as f:
+                content = f.read()
+            for i, line in enumerate(content.split('\n')):
+                if 'miss_log' in line and ('INSERT' in line or 'SELECT' in line):
+                    violations.append(
+                        f'{os.path.basename(py_file)}:{i+1}: {line.strip()[:80]}')
+
+        if violations:
+            self._log_violation_count('miss_log_direct', len(violations), violations[:5])
+
+    def test_dal_methods_match_log_tables(self):
+        """LogsDAL should have methods for every log table in the schema.
+
+        Tracks which log tables lack DAL methods. As DAL grows, lower the threshold.
+        """
+        from servers.schema import LOG_TABLES
+
+        with open(os.path.join(self.SERVERS_DIR, 'dal.py')) as f:
+            dal_source = f.read()
+        uncovered = []
+        for table_name in LOG_TABLES:
+            if table_name not in dal_source:
+                uncovered.append(table_name)
+
+        # Current baseline: 5 tables not yet in DAL.
+        # Lower this as DAL methods are added.
+        MAX_UNCOVERED = 5
+        self.assertLessEqual(len(uncovered), MAX_UNCOVERED,
+                            f'Log tables without DAL coverage: {uncovered}. '
+                            f'Add DAL methods or lower threshold after migration.')
+
+    def test_violation_counts_not_increasing(self):
+        """Track total violation count — this number should only go DOWN over time.
+
+        Current baseline (2026-03-20): 28 logs_conn + ~6 brain_meta = ~34 violations.
+        After each migration session, lower the threshold.
+        """
+        total_violations = 0
+        for py_file in self._scan_mixin_files():
+            with open(py_file) as f:
+                content = f.read()
+            total_violations += content.count('self.logs_conn.execute')
+            # Count direct brain_meta access (excluding comments)
+            for line in content.split('\n'):
+                stripped = line.strip()
+                if stripped.startswith('#') or stripped.startswith('"""'):
+                    continue
+                if 'brain_meta' in line and any(kw in line for kw in ['INSERT', 'SELECT', 'UPDATE', 'DELETE']):
+                    total_violations += 1
+
+        # Threshold: current state. Lower this as DAL migration progresses.
+        MAX_ALLOWED_VIOLATIONS = 40
+        self.assertLessEqual(total_violations, MAX_ALLOWED_VIOLATIONS,
+                            f'{total_violations} direct DB violations in mixins '
+                            f'(max allowed: {MAX_ALLOWED_VIOLATIONS}). '
+                            f'Migrate to DAL methods or lower the threshold if you just migrated.')
+
+    def _log_violation_count(self, category, count, examples):
+        """Log violation count for trend tracking (no brain needed — just prints)."""
+        print(f'\n  [dal-audit] {category}: {count} violations')
+        for ex in examples:
+            print(f'    {ex}')
+
+
 # ── P1: Consciousness Signals ────────────────────────────────────────
 
 class TestConsciousnessSignals(BrainTestBase):
