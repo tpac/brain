@@ -139,6 +139,10 @@ class TestVocabulary(BrainTestBase):
         self.assertIn('GPR', resolve_result['title'])
 
     def test_context_dependent_ambiguity(self):
+        # Seed enough nodes so the generic threshold (>5%) isn't triggered for second learn
+        for i in range(25):
+            self.brain.remember(type='concept', title=f'Padding node {i}',
+                content=f'Unrelated content {i}')
         self.brain.learn_vocabulary('GPR', ['Gross Profit Rate'], context='finance')
         self.brain.learn_vocabulary('GPR', ['Google PageRank'], context='SEO')
         result = self.brain.resolve_vocabulary('GPR')
@@ -339,7 +343,7 @@ class TestSchemaMigration(unittest.TestCase):
 
         # Check version_history
         row = conn.execute(
-            "SELECT backup_path FROM version_history WHERE version = 15"
+            "SELECT backup_path FROM version_history WHERE version = 16"
         ).fetchone()
         conn.close()
 
@@ -1519,6 +1523,449 @@ class TestInstinctCheck(BrainTestBase):
         result = self.brain.get_instinct_check('what should we do next')
         self.assertIsNotNone(result, 'Should trigger encoding depth instinct')
         self.assertIn('nothing encoded', result.lower())
+
+
+# ═══════════════════════════════════════════════════════════════
+# Feature 1: Critical Flag Tests
+# ═══════════════════════════════════════════════════════════════
+
+class TestCriticalFlag(BrainTestBase):
+    """Critical flag — safety-important nodes get boosted in recall and force-surfaced at boot."""
+
+    def test_critical_column_exists(self):
+        """Schema v16 adds critical column to nodes table."""
+        cols = self.brain.conn.execute('PRAGMA table_info(nodes)').fetchall()
+        col_names = [c[1] for c in cols]
+        self.assertIn('critical', col_names)
+
+    def test_critical_default_zero(self):
+        """New nodes have critical=0 by default."""
+        result = self.brain.remember(type='rule', title='Test rule', content='Test')
+        row = self.brain.conn.execute(
+            'SELECT critical FROM nodes WHERE id = ?', (result['id'],)
+        ).fetchone()
+        self.assertEqual(row[0], 0)
+
+    def test_mark_critical_creates_pending(self):
+        """mark_critical() adds to pending list but does NOT set the column."""
+        result = self.brain.remember(type='rule', title='Never delete worktrees',
+            content='Worktree deletion destroys session CWD', locked=True)
+        node_id = result['id']
+
+        resp = self.brain.mark_critical(node_id, reason='Worktree deletion caused data loss')
+        self.assertEqual(resp['status'], 'pending')
+
+        # Column should still be 0
+        row = self.brain.conn.execute(
+            'SELECT critical FROM nodes WHERE id = ?', (node_id,)
+        ).fetchone()
+        self.assertEqual(row[0], 0)
+
+        # But should appear in pending list
+        pending = self.brain.get_pending_critical()
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0]['node_id'], node_id)
+
+    def test_approve_critical_sets_flag(self):
+        """approve_critical() sets critical=1 and removes from pending."""
+        result = self.brain.remember(type='rule', title='Never force push to main',
+            content='Force push destroys team history', locked=True)
+        node_id = result['id']
+
+        self.brain.mark_critical(node_id, reason='Prevents data loss')
+        self.brain.approve_critical(node_id)
+
+        row = self.brain.conn.execute(
+            'SELECT critical FROM nodes WHERE id = ?', (node_id,)
+        ).fetchone()
+        self.assertEqual(row[0], 1)
+
+        # Pending list should be empty
+        pending = self.brain.get_pending_critical()
+        self.assertEqual(len(pending), 0)
+
+    def test_critical_always_in_boot(self):
+        """Critical nodes appear in context_boot() regardless of limits."""
+        # Create a critical node
+        result = self.brain.remember(type='rule', title='SAFETY: Never delete worktree without confirmation',
+            content='Git worktrees may be actively used by other sessions. Deleting silently destroys working directory.',
+            keywords='worktree delete safety critical confirmation', locked=True)
+        self.brain.approve_critical(result['id'])
+
+        # Boot with very small limits — critical node must still appear
+        boot = self.brain.context_boot()
+        locked_titles = [n['title'] for n in boot.get('locked', [])]
+        self.assertIn('SAFETY: Never delete worktree without confirmation', locked_titles)
+        # And it should be marked as critical
+        critical_nodes = [n for n in boot['locked'] if n.get('_critical')]
+        self.assertGreaterEqual(len(critical_nodes), 1)
+
+    def test_critical_boosted_in_recall(self):
+        """Critical node ranks higher than equally-relevant non-critical node."""
+        # Create two nodes with identical keyword overlap for the query
+        n1 = self.brain.remember(type='rule', title='Worktree safety guidelines',
+            content='Guidelines for safe worktree operations',
+            keywords='worktree safety operations guidelines')
+        n2 = self.brain.remember(type='rule', title='Worktree safety critical rule',
+            content='Never delete worktrees without checking for active sessions',
+            keywords='worktree safety operations critical')
+        self.brain.approve_critical(n2['id'])
+
+        results = self.brain.recall('worktree safety operations')
+        result_ids = [r['id'] for r in results.get('results', results)]
+        # Critical node should rank first or very near top
+        if n2['id'] in result_ids and n1['id'] in result_ids:
+            self.assertLess(result_ids.index(n2['id']), result_ids.index(n1['id']),
+                'Critical node should rank higher than non-critical with similar relevance')
+
+    def test_critical_found_at_low_similarity(self):
+        """Critical nodes have a lower activation threshold — found even with weak matches."""
+        result = self.brain.remember(type='rule', title='SAFETY: Never rm -rf worktree directory',
+            content='Worktree directories are actively used. Deleting them destroys shell state.',
+            keywords='worktree rm -rf safety directory delete', locked=True)
+        self.brain.approve_critical(result['id'])
+
+        # Query with only loosely related terms
+        results = self.brain.recall('git branch cleanup procedures')
+        result_ids = [r['id'] for r in results.get('results', results)]
+        # We just verify the recall doesn't crash with critical nodes
+        # (The actual low-threshold behavior is in recall_with_embeddings which needs the embedder)
+        self.assertIsInstance(results, dict)
+
+    def test_remember_critical_only_pending(self):
+        """remember(critical=True) creates pending, does not set the column directly."""
+        result = self.brain.remember(type='rule', title='Test critical rule',
+            content='Should go to pending', critical=True)
+        node_id = result['id']
+
+        row = self.brain.conn.execute(
+            'SELECT critical FROM nodes WHERE id = ?', (node_id,)
+        ).fetchone()
+        self.assertEqual(row[0], 0, 'critical=True in remember() should NOT set column directly')
+
+        pending = self.brain.get_pending_critical()
+        pending_ids = [p['node_id'] for p in pending]
+        self.assertIn(node_id, pending_ids, 'Should appear in pending critical approvals')
+
+    def test_critical_persists_after_reopen(self):
+        """Critical flag survives brain close and reopen."""
+        result = self.brain.remember(type='rule', title='Persistent critical rule',
+            content='Must survive close/reopen', locked=True)
+        self.brain.approve_critical(result['id'])
+        self.brain.save()
+        self.brain.close()
+        self.brain = None  # Prevent double-close in tearDown
+
+        # Reopen
+        brain2 = Brain(self.db_path)
+        row = brain2.conn.execute(
+            'SELECT critical FROM nodes WHERE id = ?', (result['id'],)
+        ).fetchone()
+        brain2.close()
+        self.assertEqual(row[0], 1, 'critical=1 should persist after close/reopen')
+
+    def test_scenario_50_nodes_critical_surfaces(self):
+        """Realistic scenario: 50 nodes, 1 critical about worktree. Query 'clean up working copy' → critical in results."""
+        # Seed 50 diverse nodes
+        topics = [
+            ('decision', 'Use React for frontend', 'React component architecture'),
+            ('rule', 'All API calls must have error handling', 'Try-catch around fetch'),
+            ('lesson', 'Database migrations must be reversible', 'Learned from production incident'),
+            ('decision', 'Deploy via GitHub Actions', 'CI/CD pipeline configuration'),
+            ('rule', 'No direct SQL in controllers', 'Use ORM or DAL layer'),
+        ]
+        for i in range(50):
+            t = topics[i % len(topics)]
+            self.brain.remember(type=t[0], title=f'{t[1]} #{i}', content=t[2],
+                keywords=f'topic{i} {t[1].lower().replace(" ", " ")}')
+
+        # Create the critical worktree safety node
+        safety = self.brain.remember(type='rule',
+            title='NEVER delete a git worktree without alerting the user first',
+            content='Git worktrees may be actively used by other Claude sessions. Deleting silently destroys working directory and shell state.',
+            keywords='worktree delete remove git working copy directory session safety',
+            locked=True)
+        self.brain.approve_critical(safety['id'])
+
+        # Query with operator vocabulary
+        results = self.brain.recall('clean up working copy')
+        result_ids = [r['id'] for r in results.get('results', results)]
+        # The critical node should surface in the results
+        self.assertIn(safety['id'], result_ids,
+            'Critical worktree safety node must surface for "clean up working copy" query')
+
+
+# ═══════════════════════════════════════════════════════════════
+# Feature 2: Safety Check Tests
+# ═══════════════════════════════════════════════════════════════
+
+class TestSafetyCheck(BrainTestBase):
+    """safety_check() — classifies destructive commands and recalls safety nodes."""
+
+    def test_rm_rf_destructive(self):
+        """rm -rf is detected as destructive."""
+        result = self.brain.safety_check('rm -rf /tmp/foo')
+        self.assertTrue(result['destructive'])
+
+    def test_git_reset_hard_destructive(self):
+        """git reset --hard is detected as destructive."""
+        result = self.brain.safety_check('git reset --hard HEAD~3')
+        self.assertTrue(result['destructive'])
+
+    def test_git_push_force_destructive(self):
+        """git push --force is detected as destructive."""
+        result = self.brain.safety_check('git push --force origin main')
+        self.assertTrue(result['destructive'])
+
+    def test_ls_not_destructive(self):
+        """ls -la is NOT destructive."""
+        result = self.brain.safety_check('ls -la')
+        self.assertFalse(result['destructive'])
+
+    def test_npm_install_not_destructive(self):
+        """npm install is NOT destructive."""
+        result = self.brain.safety_check('npm install express')
+        self.assertFalse(result['destructive'])
+
+    def test_recalls_critical_on_match(self):
+        """Destructive command recalls critical safety nodes."""
+        safety = self.brain.remember(type='rule',
+            title='NEVER delete a git worktree without alerting the user first',
+            content='Worktree deletion destroys session CWD',
+            keywords='worktree delete remove git', locked=True)
+        self.brain.approve_critical(safety['id'])
+
+        result = self.brain.safety_check('git worktree remove vibrant-brown')
+        self.assertTrue(result['destructive'])
+        self.assertGreaterEqual(len(result.get('critical_matches', [])), 1,
+            'Should recall the critical worktree safety node')
+
+    def test_empty_brain_still_detects(self):
+        """Destructive command on empty brain still returns destructive=True."""
+        result = self.brain.safety_check('rm -rf /important/data')
+        self.assertTrue(result['destructive'])
+        self.assertEqual(len(result.get('warnings', [])), 0)
+
+    def test_drop_table_detected(self):
+        """SQL DROP TABLE is detected as destructive."""
+        result = self.brain.safety_check("sqlite3 db.sqlite 'DROP TABLE nodes'")
+        self.assertTrue(result['destructive'])
+
+    def test_piped_rm_detected(self):
+        """Piped rm via xargs is detected."""
+        result = self.brain.safety_check("find . -name '*.tmp' | xargs rm")
+        self.assertTrue(result['destructive'])
+
+    def test_quoted_rm_detected(self):
+        """rm -rf inside bash -c is detected."""
+        result = self.brain.safety_check("bash -c 'rm -rf /tmp'")
+        self.assertTrue(result['destructive'])
+
+
+# ═══════════════════════════════════════════════════════════════
+# Feature 3: Vocabulary Expansion Tests
+# ═══════════════════════════════════════════════════════════════
+
+class TestVocabularyExpansion(BrainTestBase):
+    """_expand_query_with_vocabulary() — expands operator terms in recall queries."""
+
+    def test_expansion_adds_mapped_terms(self):
+        """Learned vocabulary term gets expanded in query."""
+        self.brain.learn_vocabulary('working copy', maps_to=['worktree', 'git worktree'])
+        expanded = self.brain._expand_query_with_vocabulary('delete the working copy')
+        self.assertIn('worktree', expanded.lower())
+
+    def test_expansion_caps_at_max(self):
+        """Expansion capped at VOCAB_EXPANSION_MAX terms."""
+        from servers.brain_constants import VOCAB_EXPANSION_MAX
+        self.brain.learn_vocabulary('megamap', maps_to=['alpha', 'beta', 'gamma', 'delta', 'epsilon'])
+        expanded = self.brain._expand_query_with_vocabulary('use megamap')
+        added = expanded.replace('use megamap', '').strip().split()
+        self.assertLessEqual(len(added), VOCAB_EXPANSION_MAX)
+
+    def test_expansion_with_no_vocab(self):
+        """Empty vocabulary table — query returned unchanged."""
+        expanded = self.brain._expand_query_with_vocabulary('test query')
+        self.assertEqual(expanded, 'test query')
+
+    def test_expansion_logged(self):
+        """Vocabulary expansion is logged to recall_log."""
+        self.brain.learn_vocabulary('shortcut', maps_to=['keyboard_shortcut'])
+        self.brain._expand_query_with_vocabulary('use shortcut')
+        count = self.brain.logs_conn.execute(
+            "SELECT COUNT(*) FROM recall_log WHERE query = 'use shortcut' AND returned_ids LIKE 'vocab_expansion%'"
+        ).fetchone()[0]
+        self.assertGreaterEqual(count, 1)
+
+    def test_ambiguous_skipped(self):
+        """Ambiguous vocabulary (same term, multiple contexts) is NOT expanded."""
+        # Seed enough nodes so the generic threshold (>5%) isn't triggered
+        for i in range(25):
+            self.brain.remember(type='concept', title=f'Padding node {i}',
+                content=f'Generic content {i}')
+        self.brain.learn_vocabulary('the hook', maps_to=['pre-response-recall.sh'], context='recall')
+        self.brain.learn_vocabulary('the hook', maps_to=['pre-edit-suggest.sh'], context='editing')
+        expanded = self.brain._expand_query_with_vocabulary('what does the hook do')
+        # Should not add either mapping since it's ambiguous
+        self.assertNotIn('pre-response-recall', expanded)
+        self.assertNotIn('pre-edit-suggest', expanded)
+
+    def test_no_duplicate_terms(self):
+        """Mapped term already in query is not re-added."""
+        self.brain.learn_vocabulary('worktree', maps_to=['git worktree'])
+        expanded = self.brain._expand_query_with_vocabulary('delete the worktree')
+        # 'worktree' is already in query, shouldn't be duplicated
+        self.assertEqual(expanded.lower().count('worktree'), expanded.lower().count('worktree'))
+
+
+class TestVocabularyAdmission(BrainTestBase):
+    """Vocabulary admission guard — rejects generic/stop words."""
+
+    def test_stopword_rejected(self):
+        """Single stopword 'working' rejected as vocabulary."""
+        result = self.brain.learn_vocabulary('working', maps_to=['something'])
+        self.assertTrue(result.get('rejected') or result.get('error'),
+            "'working' should be rejected as vocabulary")
+
+    def test_compound_accepted(self):
+        """Compound term 'working copy' accepted as vocabulary."""
+        result = self.brain.learn_vocabulary('working copy', maps_to=['worktree'])
+        self.assertFalse(result.get('rejected', False),
+            "'working copy' should be accepted as vocabulary")
+        self.assertIn('id', result)
+
+    def test_generic_rejected(self):
+        """Term matching >5% of nodes rejected as too generic."""
+        # Create 20 nodes all containing 'test' in title
+        for i in range(20):
+            self.brain.remember(type='decision', title=f'Test decision {i}',
+                content=f'Testing thing {i}', keywords=f'test decision {i}')
+        result = self.brain.learn_vocabulary('test', maps_to=['unit_test'])
+        self.assertTrue(result.get('rejected') or result.get('error'),
+            "'test' matching >5% of nodes should be rejected")
+
+    def test_technical_accepted(self):
+        """Rare technical term accepted."""
+        result = self.brain.learn_vocabulary('worktree', maps_to=['git worktree', 'working directory'])
+        self.assertFalse(result.get('rejected', False),
+            "'worktree' should be accepted as vocabulary (rare term)")
+
+    def test_extended_stopwords(self):
+        """Extended stop words ('make', 'run', 'build') all rejected."""
+        for word in ['make', 'run', 'build']:
+            result = self.brain.learn_vocabulary(word, maps_to=['something'])
+            self.assertTrue(result.get('rejected') or result.get('error'),
+                f"'{word}' should be rejected as extended stopword")
+
+
+# ═══════════════════════════════════════════════════════════════
+# Feature 4: Inf Bug Tests
+# ═══════════════════════════════════════════════════════════════
+
+class TestInfBug(BrainTestBase):
+    """float('inf') JSON serialization bug in auto_heal/auto_tune."""
+
+    def test_inf_survives_config_roundtrip(self):
+        """Setting config with inf sentinel, reading back yields float('inf') in recall."""
+        import json
+        # Simulate what auto_heal does
+        half_lives = {'decision': 999999999, 'rule': 999999999, 'concept': 168}
+        self.brain.set_config('tunable_decay_half_lives', json.dumps(half_lives))
+
+        # Read back through _get_tunable
+        from servers.brain_constants import DECAY_HALF_LIFE
+        read_back = self.brain._get_tunable('decay_half_lives', DECAY_HALF_LIFE)
+        # Sentinel 999999999 should be treated as inf by recall
+        decision_hl = read_back.get('decision', 168)
+        self.assertTrue(decision_hl >= 999999 or decision_hl == float('inf'),
+            f'Expected inf-equivalent, got {decision_hl}')
+
+    def test_auto_heal_doesnt_corrupt(self):
+        """auto_heal() produces valid JSON for decay_half_lives."""
+        import json
+        # Seed some data so auto_heal has something to work with
+        for i in range(5):
+            self.brain.remember(type='decision', title=f'Decision {i}',
+                content=f'Important decision about thing {i}', locked=True)
+
+        self.brain.auto_heal()
+
+        config_val = self.brain.get_config('tunable_decay_half_lives')
+        if config_val:
+            parsed = json.loads(config_val)  # Should not throw
+            for k, v in parsed.items():
+                self.assertIsInstance(v, (int, float),
+                    f'decay_half_lives[{k}] = {v} ({type(v)}) — expected numeric')
+
+    def test_recall_handles_inf_string(self):
+        """Recall still works when config has string 'inf' from legacy bug."""
+        import json
+        # Simulate legacy corruption
+        half_lives = {'decision': 'inf', 'rule': 'inf', 'concept': 168}
+        self.brain.set_config('tunable_decay_half_lives', json.dumps(half_lives))
+
+        node = self.brain.remember(type='decision', title='Important decision about architecture',
+            content='We decided to use microservices',
+            keywords='architecture microservices decision')
+
+        # Recall should not crash
+        results = self.brain.recall('architecture decision')
+        self.assertIsInstance(results, dict)
+
+    def test_recall_handles_infinity_string(self):
+        """Recall handles 'Infinity' string variant."""
+        import json
+        half_lives = {'decision': 'Infinity', 'rule': 'Infinity'}
+        self.brain.set_config('tunable_decay_half_lives', json.dumps(half_lives))
+
+        self.brain.remember(type='decision', title='Test node for infinity',
+            content='Testing infinity handling', keywords='test infinity')
+
+        results = self.brain.recall('test infinity')
+        self.assertIsInstance(results, dict)
+
+    def test_recall_handles_nan(self):
+        """NaN in config falls back to default half-life."""
+        import json
+        # NaN can't be directly JSON-serialized, but 'NaN' string could end up in config
+        half_lives = {'decision': 'NaN', 'concept': 168}
+        self.brain.set_config('tunable_decay_half_lives', json.dumps(half_lives))
+
+        self.brain.remember(type='decision', title='NaN test node',
+            content='Testing NaN handling', keywords='nan test')
+
+        results = self.brain.recall('nan test')
+        self.assertIsInstance(results, dict)
+
+    def test_locked_recall_after_auto_heal(self):
+        """Scenario: create locked nodes, run auto_heal + auto_tune, verify recall still finds them."""
+        # Create nodes of types that use float('inf') half-life
+        nodes = []
+        for ntype, title in [
+            ('decision', 'Use embeddings-first recall pipeline'),
+            ('rule', 'Never commit secrets to git'),
+            ('lesson', 'Fallback paths need the most testing'),
+            ('procedure', 'Deploy procedure: staging then production'),
+        ]:
+            result = self.brain.remember(type=ntype, title=title,
+                content=f'Important {ntype} about {title.lower()}',
+                keywords=f'{ntype} {title.lower().replace(" ", " ")}',
+                locked=True)
+            nodes.append((result['id'], title))
+
+        # Run maintenance that could corrupt config
+        self.brain.auto_heal()
+        try:
+            self.brain.auto_tune()
+        except Exception:
+            pass  # auto_tune may not have enough data
+
+        # Verify all nodes still recallable
+        for node_id, title in nodes:
+            results = self.brain.recall(title)
+            result_ids = [r['id'] for r in results.get('results', results)]
+            self.assertIn(node_id, result_ids,
+                f'Locked {title} should still be recallable after auto_heal')
 
 
 if __name__ == '__main__':

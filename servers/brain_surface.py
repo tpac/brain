@@ -21,6 +21,19 @@ from .brain_constants import (
     CONTEXT_BOOT_RECENT_LIMIT,
 )
 
+DESTRUCTIVE_PATTERNS = [
+    re.compile(r'rm\s+(-[rf]+\s+|.*--force)', re.IGNORECASE),
+    re.compile(r'git\s+worktree\s+remove', re.IGNORECASE),
+    re.compile(r'git\s+reset\s+--hard', re.IGNORECASE),
+    re.compile(r'git\s+clean\s+-[fd]', re.IGNORECASE),
+    re.compile(r'git\s+checkout\s+--\s', re.IGNORECASE),
+    re.compile(r'git\s+push\s+.*--force', re.IGNORECASE),
+    re.compile(r'DROP\s+TABLE', re.IGNORECASE),
+    re.compile(r'DELETE\s+FROM', re.IGNORECASE),
+    re.compile(r'TRUNCATE', re.IGNORECASE),
+    re.compile(r'\brmdir\b', re.IGNORECASE),
+    re.compile(r'xargs\s+rm', re.IGNORECASE),
+]
 
 
 class BrainSurfaceMixin:
@@ -236,6 +249,31 @@ class BrainSurfaceMixin:
         query_parts = [user, project, task, hints]
         query = ' '.join(p for p in query_parts if p)
 
+        # v5.2: Critical nodes ALWAYS surface at boot — before everything else
+        critical_nodes = self.conn.execute('''
+            SELECT id, type, title, content, keywords FROM nodes
+            WHERE critical = 1 AND archived = 0
+            ORDER BY updated_at DESC
+        ''').fetchall()
+
+        results = {
+            'locked': [],
+            'locked_index': [],
+            'recalled': [],
+            'recent': [],
+            'pending_critical': self.get_pending_critical() if hasattr(self, 'get_pending_critical') else []
+        }
+
+        seen = set()
+
+        for r in critical_nodes:
+            seen.add(r[0])
+            results['locked'].insert(0, {
+                'id': r[0], 'type': r[1], 'title': r[2],
+                'content': r[3], 'keywords': r[4],
+                '_critical': True
+            })
+
         # 1. Get locked nodes with full content for top N
         # Project-scoped: return nodes for this project + global (NULL project)
         locked = self.conn.execute('''
@@ -248,16 +286,9 @@ class BrainSurfaceMixin:
             LIMIT ?
         ''', (project, max_locked)).fetchall()
 
-        results = {
-            'locked': [],
-            'locked_index': [],
-            'recalled': [],
-            'recent': []
-        }
-
-        seen = set()
-
         for r in locked:
+            if r[0] in seen:
+                continue  # Skip critical nodes already added
             seen.add(r[0])
             results['locked'].append({
                 'id': r[0], 'type': r[1], 'title': r[2],
@@ -762,6 +793,87 @@ class BrainSurfaceMixin:
             'embedder_ready': embedder.is_ready(),
             'debug_enabled': self.get_debug_status(),
             'timings': timings,
+        }
+
+    def safety_check(self, command: str) -> dict:
+        """
+        Check a bash command against destructive patterns and brain safety nodes.
+
+        Args:
+            command: The bash command string to check
+
+        Returns:
+            Dict with destructive (bool), risk_level, warnings, critical_matches
+        """
+        # Check against destructive patterns
+        matched_patterns = []
+        for pattern in DESTRUCTIVE_PATTERNS:
+            if pattern.search(command):
+                matched_patterns.append(pattern.pattern)
+
+        if not matched_patterns:
+            return {'destructive': False, 'risk_level': 'none'}
+
+        # Destructive command detected — query brain for safety context
+        warnings = []
+        critical_matches = []
+
+        try:
+            # Query for critical nodes
+            critical_rows = self.conn.execute('''
+                SELECT id, type, title, content FROM nodes
+                WHERE critical = 1 AND archived = 0
+            ''').fetchall()
+
+            for row in critical_rows:
+                node_id, node_type, title, content = row
+                # Check if command relates to this critical node
+                node_text = f"{title} {content}".lower()
+                cmd_lower = command.lower()
+                # Check for keyword overlap
+                cmd_words = [w for w in re.split(r'[\s/\\.\-_]+', cmd_lower) if len(w) > 2]
+                for word in cmd_words:
+                    if word in node_text:
+                        critical_matches.append({
+                            'id': node_id,
+                            'type': node_type,
+                            'title': title,
+                            'content': (content or '')[:300]
+                        })
+                        break
+
+            # Recall relevant safety context
+            recall_result = self.recall(command, limit=5)
+            results = recall_result.get('results', recall_result) if isinstance(recall_result, dict) else recall_result
+
+            safety_types = {'rule', 'decision', 'constraint', 'convention', 'lesson'}
+            for r in results:
+                node_type = r.get('type', '')
+                if node_type in safety_types or r.get('locked'):
+                    warnings.append({
+                        'id': r.get('id'),
+                        'type': node_type,
+                        'title': r.get('title', ''),
+                        'content': (r.get('content', '') or '')[:300]
+                    })
+
+        except Exception as e:
+            self._log_error("safety_check", e, "querying brain for safety context")
+
+        # Determine risk level
+        if critical_matches:
+            risk_level = 'high'
+        elif warnings:
+            risk_level = 'medium'
+        else:
+            risk_level = 'low'
+
+        return {
+            'destructive': True,
+            'risk_level': risk_level,
+            'warnings': warnings,
+            'critical_matches': critical_matches,
+            'matched_patterns': matched_patterns,
         }
 
     def procedure_trigger(self, trigger_type: str, context: dict = None) -> dict:

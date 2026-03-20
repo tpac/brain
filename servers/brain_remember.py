@@ -328,7 +328,8 @@ class BrainRememberMixin:
                  emotion_source: str = 'auto', project: Optional[str] = None,
                  confidence: float = 1.0,
                  personal: Optional[str] = None,
-                 personal_context: Optional[str] = None) -> Dict[str, Any]:
+                 personal_context: Optional[str] = None,
+                 critical: bool = False) -> Dict[str, Any]:
         """
         Store a new memory node with semantic indexing and connections.
 
@@ -396,6 +397,10 @@ class BrainRememberMixin:
              ts, ts, ts)
         )
         self.conn.commit()
+
+        # v5.2: Critical flag requires operator approval — don't set directly
+        if critical:
+            self._add_pending_critical(node_id, title)
 
         # v5: Build TF-IDF vector for this node
         try:
@@ -510,6 +515,97 @@ class BrainRememberMixin:
             node['_metadata'] = dict(zip(meta_cols, meta_row))
 
         return node
+
+    # ═══════════════════════════════════════════════════════════════
+    # v5.2: Critical node approval flow
+    # Critical nodes get force-surfaced at boot and boosted in recall.
+    # Setting critical=1 requires explicit operator approval.
+    # ═══════════════════════════════════════════════════════════════
+
+    def _add_pending_critical(self, node_id: str, title: str):
+        """Add a node to the pending critical approvals list."""
+        try:
+            import json as _json
+            pending_json = self.get_config('pending_critical_approvals', '[]')
+            pending = _json.loads(pending_json) if pending_json else []
+            pending.append({
+                'node_id': node_id,
+                'title': title,
+                'requested_at': self.now()
+            })
+            self.set_config('pending_critical_approvals', _json.dumps(pending))
+        except Exception as e:
+            self._log_error('_add_pending_critical', e, 'adding pending critical approval')
+
+    def mark_critical(self, node_id: str, reason: str = '') -> Dict[str, Any]:
+        """Propose a node as critical. Does NOT set the flag — requires approve_critical().
+
+        Args:
+            node_id: The node to mark as critical
+            reason: Why this node is critical (for the operator to review)
+
+        Returns:
+            Dict with node_id, status='pending', reason
+        """
+        # Verify node exists
+        row = self.conn.execute('SELECT title FROM nodes WHERE id = ?', (node_id,)).fetchone()
+        if not row:
+            return {'error': f'Node {node_id} not found'}
+
+        try:
+            import json as _json
+            pending_json = self.get_config('pending_critical_approvals', '[]')
+            pending = _json.loads(pending_json) if pending_json else []
+            # Don't duplicate
+            existing_ids = {p['node_id'] for p in pending}
+            if node_id not in existing_ids:
+                pending.append({
+                    'node_id': node_id,
+                    'title': row[0],
+                    'reason': reason,
+                    'requested_at': self.now()
+                })
+                self.set_config('pending_critical_approvals', _json.dumps(pending))
+        except Exception as e:
+            self._log_error('mark_critical', e, 'adding pending critical approval')
+            return {'error': str(e)}
+
+        return {'node_id': node_id, 'status': 'pending', 'reason': reason}
+
+    def approve_critical(self, node_id: str) -> Dict[str, Any]:
+        """Approve a node as critical — sets critical=1. Requires explicit operator action.
+
+        Args:
+            node_id: The node to approve as critical
+
+        Returns:
+            Dict with node_id, critical=1, approved_at
+        """
+        # Set the flag
+        ts = self.now()
+        self.conn.execute('UPDATE nodes SET critical = 1, updated_at = ? WHERE id = ?', (ts, node_id))
+        self.conn.commit()
+
+        # Remove from pending list
+        try:
+            import json as _json
+            pending_json = self.get_config('pending_critical_approvals', '[]')
+            pending = _json.loads(pending_json) if pending_json else []
+            pending = [p for p in pending if p.get('node_id') != node_id]
+            self.set_config('pending_critical_approvals', _json.dumps(pending))
+        except Exception as e:
+            self._log_error('approve_critical', e, 'removing from pending list')
+
+        return {'node_id': node_id, 'critical': 1, 'approved_at': ts}
+
+    def get_pending_critical(self) -> List[Dict[str, Any]]:
+        """Get all pending critical approval requests."""
+        try:
+            import json as _json
+            pending_json = self.get_config('pending_critical_approvals', '[]')
+            return _json.loads(pending_json) if pending_json else []
+        except Exception:
+            return []
 
     def backfill_summaries(self, batch_size: int = 50) -> Dict[str, Any]:
         """Generate content_summary for existing nodes that lack one. Run during idle."""

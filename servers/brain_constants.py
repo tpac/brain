@@ -141,6 +141,19 @@ TFIDF_STOP_WORDS = {
     'above', 'out', 'up', 'down', 'use', 'used', 'using', 'new', 'like', 'get', 'set', 'one', 'two',
 }
 
+# Vocabulary expansion
+VOCAB_EXPANSION_MAX = 3  # Max terms added per query via vocabulary expansion
+VOCAB_GENERIC_THRESHOLD = 0.05  # Reject vocab terms matching >5% of nodes
+
+# Extended stop words — includes common verbs that aren't domain-specific
+EXTENDED_STOP_WORDS = TFIDF_STOP_WORDS | {
+    'working', 'make', 'run', 'build', 'check', 'create', 'start', 'stop',
+    'need', 'want', 'thing', 'change', 'move', 'find', 'help', 'keep',
+    'try', 'show', 'call', 'put', 'think', 'look', 'take', 'give', 'say',
+    'come', 'go', 'see', 'know', 'good', 'bad', 'big', 'small', 'part',
+    'work', 'way', 'time', 'done', 'made',
+}
+
 # Intent detection patterns
 INTENT_PATTERNS = {
     'decision_lookup': re.compile(r'\b(what did (?:we|tom|i) (?:decide|choose|pick)|decision about|decided on)\b', re.IGNORECASE),
@@ -235,6 +248,10 @@ EDGE_TYPES = {
     'co_accessed': {'defaultWeight': 0.3, 'decays': True, 'halfLife': 168, 'description': 'Hebbian co-recall'},
     'emergent_bridge': {'defaultWeight': 0.15, 'decays': True, 'halfLife': 72, 'description': 'Auto-discovered bridge'},
 }
+
+# Critical node safety
+CRITICAL_BOOST = 3.0              # Recall score multiplier for critical=1 nodes
+CRITICAL_SIMILARITY_THRESHOLD = 0.20  # Lowered embedding threshold for critical nodes
 
 # Graph traversal
 SPREAD_DECAY = 0.5

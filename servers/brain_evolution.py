@@ -35,6 +35,32 @@ from .brain_constants import (
 class BrainEvolutionMixin:
     """Evolution methods for Brain."""
 
+    def _safe_serialize_half_lives(self, half_lives: dict) -> dict:
+        """Serialize decay half-lives for JSON storage, handling float('inf') and NaN.
+
+        float('inf') → 999999999 (sentinel: effectively infinite in hours = 114,000 years)
+        float('nan') → 168 (default: 7 days)
+        """
+        import math
+        result = {}
+        for k, v in half_lives.items():
+            if isinstance(v, float):
+                if math.isinf(v):
+                    result[k] = 999999999
+                elif math.isnan(v):
+                    result[k] = 168  # safe default
+                else:
+                    result[k] = v
+            elif isinstance(v, (int, str)):
+                # Handle legacy string "inf" from previous bug
+                if isinstance(v, str) and v.lower() in ('inf', 'infinity'):
+                    result[k] = 999999999
+                else:
+                    result[k] = v
+            else:
+                result[k] = v
+        return result
+
     def auto_heal(self) -> Dict[str, Any]:
         """
         Self-healing: resolve discoveries, tune parameters, clean graph.
@@ -427,8 +453,7 @@ class BrainEvolutionMixin:
                     })
 
             if changed:
-                # Convert inf to string for JSON
-                serializable = {k: (str(v) if v == float('inf') else v) for k, v in updated_half_lives.items()}
+                serializable = self._safe_serialize_half_lives(updated_half_lives)
                 self._set_tunable('decay_half_lives', serializable,
                                   f'Auto-tuned {len(results["tuned"])} decay rates')
         except Exception as _e:

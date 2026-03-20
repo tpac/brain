@@ -235,8 +235,8 @@ class BrainTestBase(unittest.TestCase):
         error_msg = None
         error_type = None
 
-        if result:
-            # Check for failures and errors for THIS specific test
+        if result and hasattr(result, 'failures'):
+            # unittest TestResult API
             test_id = str(self)
             for failed_test, traceback in result.failures:
                 if str(failed_test) == test_id:
@@ -322,7 +322,7 @@ class HookTestBase(unittest.TestCase):
         error_msg = None
         error_type = None
 
-        if result:
+        if result and hasattr(result, 'failures'):
             test_id = str(self)
             for failed_test, traceback in result.failures:
                 if str(failed_test) == test_id:

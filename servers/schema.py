@@ -42,7 +42,7 @@ import shutil
 import sqlite3
 from datetime import datetime, timezone
 
-BRAIN_VERSION = 15
+BRAIN_VERSION = 16
 BRAIN_VERSION_KEY = 'brain_schema_version'
 
 # ─── Allowed node types ───
@@ -104,6 +104,7 @@ TABLES = {
             access_count INTEGER DEFAULT 1,
             locked INTEGER DEFAULT 0,
             archived INTEGER DEFAULT 0,
+            critical INTEGER DEFAULT 0,
             recency_score REAL DEFAULT 0,
             emotion REAL DEFAULT 0,
             emotion_label TEXT DEFAULT 'neutral',
@@ -127,7 +128,7 @@ TABLES = {
             'id': None, 'type': None, 'title': None, 'content': None,
             'keywords': None,
             'activation': '1.0', 'stability': '1.0', 'access_count': '1',
-            'locked': '0', 'archived': '0', 'recency_score': '0',
+            'locked': '0', 'archived': '0', 'critical': '0', 'recency_score': '0',
             'emotion': '0', 'emotion_label': "'neutral'",
             'emotion_source': "'auto'", 'project': 'NULL',
             'confidence': 'NULL',
@@ -506,6 +507,8 @@ INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_project_maps_type ON project_maps(project, map_type)',
     # v15: nodes scope for engineering memory
     'CREATE INDEX IF NOT EXISTS idx_nodes_scope ON nodes(scope)',
+    # v16: critical flag for safety-important nodes
+    'CREATE INDEX IF NOT EXISTS idx_nodes_critical ON nodes(critical)',
 ]
 
 

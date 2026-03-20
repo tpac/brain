@@ -16,6 +16,8 @@ import struct
 import sys
 import time
 from .brain_constants import (
+    CRITICAL_BOOST,
+    CRITICAL_SIMILARITY_THRESHOLD,
     DECAY_HALF_LIFE,
     EDGE_TYPES,
     EMBEDDING_PRIMARY_WEIGHT,
@@ -36,6 +38,7 @@ from .brain_constants import (
     TFIDF_KEYWORD_WEIGHT,
     TFIDF_SEMANTIC_WEIGHT,
     TFIDF_STOP_WORDS,
+    VOCAB_EXPANSION_MAX,
 )
 
 
@@ -135,6 +138,71 @@ class BrainRecallMixin:
         self.conn.commit()
         return stored
 
+    def _expand_query_with_vocabulary(self, query: str) -> str:
+        """Expand query terms using vocabulary mappings (Step 0.5 in recall pipeline).
+
+        Resolves operator vocabulary to find additional search terms.
+        Example: "working copy" → "working copy worktree git worktree"
+        """
+        try:
+            # Check individual terms and bigrams
+            words = query.lower().split()
+            expansion_terms = []
+
+            # Check bigrams first (more specific)
+            checked_bigrams = set()
+            for i in range(len(words) - 1):
+                bigram = f'{words[i]} {words[i+1]}'
+                checked_bigrams.add(bigram)
+                result = self.resolve_vocabulary(bigram)
+                if result and not result.get('ambiguous'):
+                    # Parse maps_to from content: '"term" → X, Y'
+                    content = result.get('content', '')
+                    if '\u2192' in content:
+                        mapped = content.split('\u2192', 1)[1].strip()
+                        for t in mapped.split(','):
+                            t = t.strip()
+                            if t and t.lower() not in query.lower():
+                                expansion_terms.append(t)
+
+            # Check individual words (skip if part of a matched bigram)
+            for word in words:
+                if len(word) <= 2:
+                    continue
+                # Skip if this word was part of a matched bigram
+                if any(word in bg for bg in checked_bigrams if self.resolve_vocabulary(bg)):
+                    continue
+                result = self.resolve_vocabulary(word)
+                if result and not result.get('ambiguous'):
+                    content = result.get('content', '')
+                    if '\u2192' in content:
+                        mapped = content.split('\u2192', 1)[1].strip()
+                        for t in mapped.split(','):
+                            t = t.strip()
+                            if t and t.lower() not in query.lower():
+                                expansion_terms.append(t)
+
+            # Cap expansion
+            expansion_terms = expansion_terms[:VOCAB_EXPANSION_MAX]
+
+            if expansion_terms:
+                # Log expansion via recall_log (use returned_ids for expansion info)
+                try:
+                    session_id = getattr(self, 'session_id', 'unknown')
+                    self.logs_conn.execute(
+                        "INSERT INTO recall_log (session_id, query, returned_ids, returned_count, created_at) VALUES (?, ?, ?, ?, ?)",
+                        (session_id, query, 'vocab_expansion: ' + ', '.join(expansion_terms), len(expansion_terms), self.now())
+                    )
+                    self.logs_conn.commit()
+                except Exception:
+                    pass  # Non-critical logging
+
+                return query + ' ' + ' '.join(expansion_terms)
+
+            return query
+        except Exception:
+            return query  # Never break recall due to vocab expansion failure
+
     def recall(self, query: str, types: Optional[List[str]] = None, limit: int = 20,
                offset: int = 0, include_archived: bool = False, min_recency: float = 0,
                project: Optional[str] = None, session_id: Optional[str] = None) -> Dict[str, Any]:
@@ -156,6 +224,9 @@ class BrainRecallMixin:
         """
         limit = min(limit, MAX_PAGE_SIZE)
 
+        # v5.2 Step 0.5: Vocabulary expansion
+        expanded_query = self._expand_query_with_vocabulary(query)
+
         # v5 Step 0: Intent detection
         intent_data = self._classify_intent(query)
         intent = intent_data['intent']
@@ -163,7 +234,7 @@ class BrainRecallMixin:
         temporal_filter = intent_data['temporalFilter']
 
         # Step 1: Keyword search for seeds
-        seeds = self._search_keywords(query, 30)
+        seeds = self._search_keywords(expanded_query, 30)
 
         all_seeds = {}
         for seed in seeds:
@@ -189,7 +260,7 @@ class BrainRecallMixin:
                         # Fetch node data
                         cursor2 = self.conn.execute(
                             '''SELECT id, type, title, content, keywords, activation, stability,
-                                      access_count, locked, archived, last_accessed, created_at
+                                      access_count, locked, archived, last_accessed, created_at, critical
                                FROM nodes WHERE id = ?''',
                             (nid,)
                         )
@@ -201,7 +272,8 @@ class BrainRecallMixin:
                                 'activation': row2[5], 'stability': row2[6],
                                 'access_count': row2[7], 'locked': row2[8] == 1,
                                 'archived': row2[9] == 1, 'last_accessed': row2[10],
-                                'created_at': row2[11]
+                                'created_at': row2[11],
+                                'critical': row2[12] == 1 if len(row2) > 12 else False
                             }
             except Exception as _e:
                 self._log_error("recall", _e, "fetching seed node details from database")
@@ -291,6 +363,10 @@ class BrainRecallMixin:
             type_boost = type_boosts.get(node.get('type'), 1.0)
             relevance *= type_boost
 
+            # v5.2: Critical node boost
+            if node.get('critical'):
+                relevance *= CRITICAL_BOOST
+
             recency = self._recency_score(node.get('last_accessed'))
             frequency = self._frequency_score(node.get('access_count', 0))
             emotion_intensity = abs(node.get('emotion', 0))
@@ -307,9 +383,22 @@ class BrainRecallMixin:
             elif not node.get('locked'):
                 half_lives = self._get_tunable('decay_half_lives', DECAY_HALF_LIFE)
                 half_life = half_lives.get(node.get('type'), 168)
-                # Guard: JSON round-trip turns float('inf') into string "inf"
-                if isinstance(half_life, str) and half_life.lower() == 'inf':
-                    half_life = float('inf')
+                # v5.2: Comprehensive guard against inf bug variants
+                # auto_heal can corrupt half_lives via JSON round-trip:
+                #   float('inf') → str("inf") → breaks decay computation
+                if isinstance(half_life, str):
+                    if half_life.lower() in ('inf', 'infinity', '__inf__'):
+                        half_life = float('inf')
+                    else:
+                        try:
+                            half_life = float(half_life)
+                        except (ValueError, TypeError):
+                            half_life = 168  # fallback to default
+                if isinstance(half_life, (int, float)) and not isinstance(half_life, bool):
+                    if half_life >= 999999:  # sentinel for infinity
+                        half_life = float('inf')
+                    elif half_life != half_life:  # NaN check
+                        half_life = 168
                 # v4: Fluid personal nodes decay 10x slower
                 if node_personal == 'fluid':
                     half_life = half_life * 10 if half_life != float('inf') else half_life
@@ -492,9 +581,12 @@ class BrainRecallMixin:
 
         # ── PRIMARY PATH: Embeddings-first ──
 
+        # v5.2 Step 0.5: Vocabulary expansion (before embedding AND keyword search)
+        expanded_query = self._expand_query_with_vocabulary(query)
+
         # STEP 1: Embed the query
         try:
-            query_vec = embedder.embed(query)
+            query_vec = embedder.embed(expanded_query)
             if not query_vec:
                 # Embedding failed for this query — fall back
                 result = self.recall(query, types, limit, offset, include_archived,
@@ -538,8 +630,9 @@ class BrainRecallMixin:
                 project_filter = 'AND (n.project = ? OR n.project IS NULL)'
                 project_params = [project]
 
+            node_critical = {}  # node_id → critical flag
             cursor = self.conn.execute(
-                f'''SELECT ne.node_id, ne.embedding, n.personal, n.personal_context, n.confidence
+                f'''SELECT ne.node_id, ne.embedding, n.personal, n.personal_context, n.confidence, n.critical
                     FROM node_embeddings ne
                     JOIN nodes n ON n.id = ne.node_id
                     WHERE 1=1 {archive_filter} {type_filter} {project_filter}''',
@@ -550,6 +643,7 @@ class BrainRecallMixin:
                 blob = row[1]
                 node_personal_data[node_id] = (row[2], row[3])  # (personal, personal_context)
                 node_confidence[node_id] = row[4]  # may be None
+                node_critical[node_id] = row[5] or 0  # v5.2: critical flag
                 if blob:
                     sim = embedder.cosine_similarity(query_vec, blob)
                     embedding_scores[node_id] = sim
@@ -603,6 +697,13 @@ class BrainRecallMixin:
                 type_boost = type_boosts.get(node.get('type'), 1.0)
                 blended *= type_boost
 
+            # v5.2: Critical node boost — safety-important nodes always surface
+            is_critical = node_critical.get(nid, 0) if 'node_critical' in dir() else 0
+            if not is_critical and node:
+                is_critical = node.get('critical', 0)
+            if is_critical:
+                blended *= CRITICAL_BOOST
+
             # v5: Apply confidence as a scoring factor.
             # Confidence < 1.0 penalizes (corrected nodes rank lower).
             # Confidence > default (validated nodes) gets a mild boost.
@@ -637,7 +738,9 @@ class BrainRecallMixin:
                         _context_mismatch = True
 
             # Minimum threshold — don't return noise
-            if blended < 0.05:
+            # v5.2: Critical nodes get a much lower threshold
+            min_threshold = CRITICAL_SIMILARITY_THRESHOLD if is_critical else 0.05
+            if blended < min_threshold:
                 continue
 
             scored_results.append({
@@ -876,7 +979,7 @@ class BrainRecallMixin:
                 cursor = self.conn.execute(
                     '''SELECT id, type, title, content, keywords, activation, stability,
                               access_count, locked, archived, last_accessed, created_at,
-                              emotion, emotion_label, project
+                              emotion, emotion_label, project, critical
                        FROM nodes WHERE id = ?''',
                     (node_id,)
                 )
@@ -890,7 +993,8 @@ class BrainRecallMixin:
                         'archived': row[9] == 1, 'last_accessed': row[10],
                         'created_at': row[11],
                         'emotion': row[12] or 0, 'emotion_label': row[13] or 'neutral',
-                        'project': row[14]
+                        'project': row[14],
+                        'critical': row[15] == 1 if len(row) > 15 else False
                     }
                     node_cache[node_id] = node
 
@@ -931,7 +1035,7 @@ class BrainRecallMixin:
         try:
             cursor = self.conn.execute(
                 f'''SELECT id, type, title, content, keywords, activation, stability,
-                           access_count, locked, archived, last_accessed, created_at, project
+                           access_count, locked, archived, last_accessed, created_at, project, critical
                     FROM nodes WHERE archived = 0 AND ({where_clause}) LIMIT ?''',
                 params
             )
@@ -943,7 +1047,8 @@ class BrainRecallMixin:
                     'activation': row[5], 'stability': row[6],
                     'access_count': row[7], 'locked': row[8] == 1,
                     'archived': row[9] == 1, 'last_accessed': row[10],
-                    'created_at': row[11], 'project': row[12]
+                    'created_at': row[11], 'project': row[12],
+                    'critical': row[13] == 1 if len(row) > 13 else False
                 })
             return results
         except Exception:

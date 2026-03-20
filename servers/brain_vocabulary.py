@@ -6,13 +6,46 @@ via multiple inheritance. All methods reference self.conn, self.get_config, etc.
 which are provided by Brain.__init__.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import json
 import re
+
+from .brain_constants import EXTENDED_STOP_WORDS, VOCAB_GENERIC_THRESHOLD
 
 
 class BrainVocabularyMixin:
     """Vocabulary methods for Brain."""
+
+    def _validate_vocabulary_term(self, term: str) -> Tuple[bool, str]:
+        """Check if a term is specific enough to be useful vocabulary.
+
+        Returns (is_valid, reason) — rejects common/generic words.
+        """
+        tokens = term.lower().split()
+
+        # Single-word terms that are common English words
+        if len(tokens) == 1 and tokens[0] in EXTENDED_STOP_WORDS:
+            return (False, f"'{term}' is a common word")
+
+        # Check how many nodes match this term (too generic if > threshold)
+        try:
+            term_lower = term.lower()
+            match_count = self.conn.execute(
+                "SELECT COUNT(*) FROM nodes WHERE (LOWER(title) LIKE ? OR LOWER(keywords) LIKE ?) AND archived = 0",
+                (f'%{term_lower}%', f'%{term_lower}%')
+            ).fetchone()[0]
+
+            total_count = self.conn.execute(
+                "SELECT COUNT(*) FROM nodes WHERE archived = 0"
+            ).fetchone()[0]
+
+            if total_count > 0 and match_count > VOCAB_GENERIC_THRESHOLD * total_count:
+                pct = round(100 * match_count / total_count, 1)
+                return (False, f"'{term}' matches {pct}% of nodes — too generic")
+        except Exception:
+            pass  # If DB check fails, allow the term through
+
+        return (True, "")
 
     def learn_vocabulary(self, term: str, maps_to: List[str],
                          context: Optional[str] = None,
@@ -26,6 +59,11 @@ class BrainVocabularyMixin:
         Example: term="the recall hook"
                  maps_to=["pre-response-recall.sh", "recall_with_embeddings()"]
         """
+        # Admission guard: reject common/generic terms
+        is_valid, reason = self._validate_vocabulary_term(term)
+        if not is_valid:
+            return {'error': reason, 'rejected': True}
+
         maps_str = ', '.join(maps_to)
         content = '"%s" \u2192 %s' % (term, maps_str)
         if context:

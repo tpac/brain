@@ -7,10 +7,10 @@ description: >
   context, encode learnings, and interact with consciousness signals. Triggers:
   "remember this", "what did we decide about", "recall", "brain", "memory",
   "context from last session", "what do you know about", "persistent memory".
-version: 5.1.0
+version: 5.2.0
 ---
 
-# brain — Shared Cognitive Space (v5.1)
+# brain — Shared Cognitive Space (v5.2)
 
 You have a brain. It persists across sessions. It is not YOUR memory about the operator, and not the operator's notes via YOU. It is the memory of your COLLABORATION — a shared cognitive space where both minds build on each other's prior thinking.
 
@@ -36,7 +36,7 @@ brain.save()
 The SessionStart hook boots the brain automatically. You do NOT need to start anything.
 Read the boot output for session context, consciousness signals, and developmental stage.
 
-## Automatic Hooks (13 events)
+## Automatic Hooks (14 events)
 
 Hooks fire automatically. Do NOT manually replicate what they do.
 
@@ -47,12 +47,39 @@ Hooks fire automatically. Do NOT manually replicate what they do.
 | Notification(user_message) | pre-response-recall.sh + post-response-track.sh | Recall + vocabulary gap detection |
 | Notification(idle_prompt) | idle-maintenance.sh | Consolidation, healing, bridging, reflection |
 | PreToolUse(Edit\|Write) | pre-edit-suggest.sh | Surfaces rules/constraints before file edits |
+| **PreToolUse(Bash)** | **pre-bash-safety.sh** | **Safety check — detects destructive commands, recalls critical nodes, blocks/warns** |
 | PreCompact | pre-compact-save.sh | Session synthesis + confidence recalibration + save |
 | PostCompact | post-compact-reboot.sh | Re-boots context after compaction |
 | Stop | post-response-track.sh | Captures session activity |
 | SessionEnd | session-end.sh | Session synthesis + confidence recalibration + save |
 
-## v5.1 — What's New
+## v5.2 — What's New
+
+### Critical Flag & Safety Layer (v5.2)
+Nodes can be marked `critical` — safety-important knowledge that always surfaces regardless of recall scoring. Like survival instincts for the brain.
+
+- **Operator-gated approval**: `mark_critical(node_id, reason)` → pending → `approve_critical(node_id)` → flag set. Critical status requires explicit human approval.
+- **Recall boost**: Critical nodes get 3x score multiplier in both `recall()` and `recall_with_embeddings()`, plus a lowered similarity threshold (0.20 vs normal).
+- **Boot force-include**: Critical nodes always appear at the TOP of `context_boot()` locked list, before any limit-constrained query.
+- **PreToolUse(Bash) safety hook**: `pre-bash-safety.sh` intercepts destructive commands (`rm -rf`, `git reset --hard`, `git push --force`, `DROP TABLE`, etc.) BEFORE execution. When a destructive command matches critical nodes, the hook blocks it with the critical content as the reason.
+- **`safety_check(command)`**: Brain method that pattern-matches commands against destructive patterns and recalls relevant critical nodes.
+
+### Vocabulary Query Expansion (v5.2)
+`resolve_vocabulary()` is now wired into the recall pipeline. When a query uses operator terms that map to stored vocabulary, the query is automatically expanded before embedding/keyword search.
+
+- Example: Vocabulary "working copy" → "worktree". Query "delete working copy" now finds worktree nodes.
+- Ambiguous terms (same term, multiple contexts) are NOT expanded — avoids noise.
+- Capped at 3 expansion terms per query.
+- Generic-word admission guard: single stop words and terms matching >5% of nodes are rejected from vocabulary.
+
+### Inf Bug Fix (v5.2)
+`auto_heal` could corrupt `decay_half_lives` config via JSON serialization of `float('inf')`. Fixed on both write side (sentinel `999999999`) and read side (comprehensive type guards for string/numeric variants). Decision, rule, and lesson nodes now reliably never decay.
+
+### Schema v16
+- Added `critical INTEGER DEFAULT 0` column to nodes table
+- Indexed for fast critical-node queries
+
+## v5.1
 
 ### Mixin Architecture
 brain.py split from 9000-line monolith into 11 focused modules:
