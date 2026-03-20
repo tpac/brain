@@ -28,6 +28,7 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any, Set
 from .schema import ensure_schema, ensure_logs_schema, migrate_logs_to_separate_db, BRAIN_VERSION, BRAIN_VERSION_KEY, NODE_TYPES
 from .dal import LogsDAL, MetaDAL
+from .brain_consciousness import ConsciousnessMixin
 from . import embedder
 
 
@@ -265,7 +266,7 @@ CURIOSITY_DECAY_WARNING_HOURS = 18  # Flag context nodes within 18h of their 24h
 # BRAIN CLASS
 # ═══════════════════════════════════════════════════════════════
 
-class Brain:
+class Brain(ConsciousnessMixin):
     """
     Core brain engine.
 
@@ -7298,10 +7299,11 @@ class Brain:
         return results
 
     # ─── v4: CONSCIOUSNESS HELPERS ───
-    # Signals the brain computes internally that are worth sharing.
+    # get_consciousness_signals() and log_consciousness_response() are now in
+    # brain_consciousness.py (ConsciousnessMixin), inherited via class Brain(ConsciousnessMixin).
 
-    def get_consciousness_signals(self) -> Dict[str, Any]:
-        """
+    def _DELETED_get_consciousness_signals(self):
+        """MOVED TO brain_consciousness.py — this stub will be removed.
         Gather all conscious-layer signals for surfacing.
         Returns categorized signals: reminders, evolutions, decay_warnings,
         fluid_personal, stale_context, encoding_health, fading_knowledge.
@@ -7807,24 +7809,9 @@ class Brain:
 
         return signals
 
-    def log_consciousness_response(self, signal_type: str, responded: bool):
-        """
-        Track whether the human responded to a surfaced conscious signal.
-        Over time: surface more of what gets responses, less of what gets ignored.
-        """
-        ts = self.now()
-        try:
-            self.conn.execute(
-                """INSERT OR REPLACE INTO brain_meta (key, value, updated_at)
-                   VALUES (?, ?, ?)""",
-                (f'consciousness_response_{signal_type}_{"yes" if responded else "no"}',
-                 str(int(self.get_config(
-                     f'consciousness_response_{signal_type}_{"yes" if responded else "no"}', 0) or 0) + 1),
-                 ts)
-            )
-            self.conn.commit()
-        except Exception:
-            pass
+    def _DELETED_log_consciousness_response(self, signal_type: str, responded: bool):
+        """MOVED TO brain_consciousness.py"""
+        pass  # Now provided by ConsciousnessMixin
 
     # ─── v4: PATTERN-INFORMED PRUNING ───
     # Confirmed patterns can adjust how the brain prunes. "Personal info is rare but
