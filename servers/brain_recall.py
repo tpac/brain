@@ -13,6 +13,7 @@ import json
 import math
 import re
 import struct
+import sys
 import time
 from .brain_constants import (
     DECAY_HALF_LIFE,
