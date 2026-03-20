@@ -19,6 +19,7 @@ FILES=(
   servers/schema.py
   servers/embedder.py
   servers/migrate.py
+  servers/dal.py
   # Hook scripts
   hooks/hooks.json
   hooks/scripts/boot-brain.sh
