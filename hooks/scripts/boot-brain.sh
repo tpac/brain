@@ -69,6 +69,16 @@ except Exception as e:
 
 brain.reset_session_activity()
 
+# v5: Validate configuration — surface misconfig early
+config_warnings = brain.validate_config()
+for w in config_warnings:
+    level = w.get("level", "warning").upper()
+    msg = w.get("message", "")
+    if level == "CRITICAL":
+        print("CRITICAL: " + msg, file=sys.stderr)
+    else:
+        print("WARNING: " + msg, file=sys.stderr)
+
 # Resolve user/project from env or brain config
 user = os.environ.get("BRAIN_USER", "User")
 project = os.environ.get("BRAIN_PROJECT", "default")

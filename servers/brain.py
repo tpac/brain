@@ -6294,6 +6294,50 @@ class Brain:
             **results
         }
 
+    def validate_config(self) -> List[Dict[str, Any]]:
+        """Validate infrastructure configuration at boot. Returns list of warnings."""
+        warnings = []
+
+        # 1. Check DB is writable
+        try:
+            self.conn.execute("INSERT OR REPLACE INTO brain_meta (key, value, updated_at) VALUES ('_ping', '1', ?)", (self.now(),))
+            self.conn.execute("DELETE FROM brain_meta WHERE key = '_ping'")
+        except Exception as e:
+            warnings.append({'level': 'critical', 'message': 'brain.db is READ-ONLY: %s' % e})
+
+        # 2. Check logs DB is writable
+        try:
+            self.logs_conn.execute("INSERT INTO debug_log (event_type, source, created_at) VALUES ('ping', '_validate', ?)", (self.now(),))
+            self.logs_conn.execute("DELETE FROM debug_log WHERE source = '_validate'")
+            self.logs_conn.commit()
+        except Exception as e:
+            warnings.append({'level': 'critical', 'message': 'brain_logs.db is READ-ONLY: %s' % e})
+
+        # 3. Check schema version matches expected
+        try:
+            ver = int(self._meta.get(BRAIN_VERSION_KEY, '0'))
+            if ver < BRAIN_VERSION:
+                warnings.append({'level': 'warning', 'message': 'Schema version %d < expected %d — migration may have failed' % (ver, BRAIN_VERSION)})
+        except Exception:
+            pass
+
+        # 4. Check embedder status
+        if not embedder.is_ready():
+            warnings.append({'level': 'warning', 'message': 'Embedder not loaded — recall quality degraded (TF-IDF only)'})
+
+        # 5. Check DB file sizes
+        try:
+            main_size = os.path.getsize(self.db_path)
+            if main_size > 100 * 1024 * 1024:  # 100MB
+                warnings.append({'level': 'warning', 'message': 'brain.db is %.0fMB — consider archiving old nodes' % (main_size / 1024 / 1024)})
+            logs_size = os.path.getsize(self.logs_db_path)
+            if logs_size > self._max_logs_db_size:
+                warnings.append({'level': 'warning', 'message': 'brain_logs.db is %.0fMB — will auto-trim' % (logs_size / 1024 / 1024)})
+        except Exception:
+            pass
+
+        return warnings
+
     def health_check(self, session_id: str = 'boot', auto_fix: bool = True) -> Dict[str, Any]:
         """
         Check brain health: unresolved compaction boundaries, high miss rate,

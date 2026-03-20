@@ -361,5 +361,23 @@ class TestSchemaMigration(unittest.TestCase):
         self.assertIn('.v1.bak', row[0])
 
 
+class TestValidateConfig(BrainTestBase):
+    """Test infrastructure validation."""
+
+    def test_healthy_brain_no_warnings(self):
+        """Fresh brain should have no critical warnings."""
+        warnings = self.brain.validate_config()
+        critical = [w for w in warnings if w['level'] == 'critical']
+        self.assertEqual(len(critical), 0, 'Fresh brain should have no critical warnings')
+
+    def test_schema_version_mismatch_warned(self):
+        """Detect schema version mismatch."""
+        # Artificially set wrong version
+        self.brain._meta.set('brain_schema_version', '1')
+        warnings = self.brain.validate_config()
+        version_warnings = [w for w in warnings if 'Schema version' in w['message']]
+        self.assertTrue(len(version_warnings) > 0, 'Should warn about schema version mismatch')
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2, exit=True)
