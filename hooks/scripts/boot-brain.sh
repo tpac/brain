@@ -19,9 +19,27 @@
 
 source "$(dirname "$0")/resolve-brain-db.sh"
 
-# No DB found — fail cleanly
+# No DB found — guide the user
 if [ -z "$BRAIN_DB_DIR" ]; then
-  echo "brain: No brain.db found and no AgentsContext available. Set BRAIN_DB_DIR env var." >&2
+  echo ""
+  echo "brain: No brain.db found."
+  echo ""
+  echo "Two options:"
+  echo ""
+  echo "  1. CONNECT TO EXISTING BRAIN — Set the path to your brain folder:"
+  echo "     In Claude Code settings or .claude/settings.json, add to env:"
+  echo '       "BRAIN_DB_DIR": "/path/to/your/brain/folder"'
+  echo "     The folder should contain (or will contain) brain.db."
+  echo ""
+  echo "  2. START FRESH — Create a new brain:"
+  echo "     mkdir -p ~/AgentsContext/brain"
+  echo "     Then restart this session. The brain will initialize automatically."
+  echo ""
+  echo "Searched locations:"
+  echo "  - \$BRAIN_DB_DIR env var (not set)"
+  echo "  - /sessions/*/mnt/AgentsContext/brain/ (Cowork — not found)"
+  echo "  - \$HOME/AgentsContext/brain/ (not found)"
+  echo ""
   exit 0
 fi
 
@@ -69,22 +87,22 @@ ctx = brain.context_boot(user=user, project=project, task="session start")
 eng_ctx = {}
 try:
     eng_ctx = brain.get_engineering_context(project=project)
-except Exception:
-    pass
+except Exception as _e:
+    brain._log_error("boot_engineering_context", str(_e), "get_engineering_context failed at boot")
 
 # v5: Correction patterns — shape Claude's behavior
 correction_patterns = []
 try:
     correction_patterns = brain.get_correction_patterns(limit=5)
-except Exception:
-    pass
+except Exception as _e:
+    brain._log_error("boot_correction_patterns", str(_e), "get_correction_patterns failed at boot")
 
 # v5: Last session synthesis
 last_synthesis = None
 try:
     last_synthesis = brain.get_last_synthesis()
-except Exception:
-    pass
+except Exception as _e:
+    brain._log_error("boot_last_synthesis", str(_e), "get_last_synthesis failed at boot")
 
 # Health check with auto-fix
 health = brain.health_check(session_id="session_boot", auto_fix=True)
