@@ -45,12 +45,13 @@ Hooks fire automatically. Do NOT manually replicate what they do.
 |-------|--------|-------------|
 | SessionStart | boot-brain.sh | Boots brain, prints context + consciousness + rules + developmental stage |
 | UserPromptSubmit | pre-response-recall.sh | Recalls relevant memories + priming check + instinct check |
+| UserPromptSubmit | post-response-track.sh | Vocab gap detection + encoding heartbeat (needs user prompt text) |
 | Notification(idle_prompt) | idle-maintenance.sh | Consolidation, healing, bridging, reflection, dreams |
 | PreToolUse(Edit\|Write) | pre-edit-suggest.sh | Surfaces rules/constraints before file edits |
 | PreToolUse(Bash) | pre-bash-safety.sh | Safety check — detects destructive commands, blocks if critical nodes match |
 | PreCompact | pre-compact-save.sh | Session synthesis + confidence recalibration + save |
 | PostCompact | post-compact-reboot.sh | Re-boots context after compaction |
-| Stop | post-response-track.sh | Captures session activity + encoding heartbeat nudge |
+| Stop | post-response-track.sh | Encoding heartbeat nudge (fires after Claude responds) |
 | SessionEnd | session-end.sh | Session synthesis + confidence recalibration + WAL flush + save |
 
 ## EVERY SESSION — What You Must Do
