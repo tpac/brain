@@ -1153,8 +1153,9 @@ class Brain:
         """
         try:
             cursor = self.conn.execute(
-                'SELECT key, value FROM brain_meta WHERE key IN (?, ?, ?)',
-                ('remember_count', 'edit_check_count', 'session_id')
+                'SELECT key, value FROM brain_meta WHERE key IN (?, ?, ?, ?, ?, ?)',
+                ('remember_count', 'edit_check_count', 'session_id',
+                 'message_count', 'last_encode_at_message', 'boot_time')
             )
             result = {}
             for key, value in cursor.fetchall():
@@ -1184,6 +1185,9 @@ class Brain:
         """Reset session counters for new session."""
         self._update_session_activity('remember_count', 0)
         self._update_session_activity('edit_check_count', 0)
+        self._update_session_activity('message_count', 0)
+        self._update_session_activity('last_encode_at_message', 0)
+        self._update_session_activity('boot_time', self.now())
         self._update_session_activity('session_id', uuid.uuid4().hex)
         # v5: Reset session state accumulator
         self._session_state = {
@@ -1192,16 +1196,59 @@ class Brain:
         }
 
     def record_remember(self):
-        """Increment remember counter."""
+        """Increment remember counter and mark last encode position."""
         activity = self._get_session_activity()
         count = activity.get('remember_count', 0) + 1
         self._update_session_activity('remember_count', count)
+        # Track which message number the last encode happened at
+        msg_count = activity.get('message_count', 0)
+        self._update_session_activity('last_encode_at_message', msg_count)
+
+    def record_message(self):
+        """Increment message counter. Called by hooks on each user message."""
+        activity = self._get_session_activity()
+        count = activity.get('message_count', 0) + 1
+        self._update_session_activity('message_count', count)
 
     def record_edit_check(self):
         """Increment edit check counter."""
         activity = self._get_session_activity()
         count = activity.get('edit_check_count', 0) + 1
         self._update_session_activity('edit_check_count', count)
+
+    def get_encoding_heartbeat(self, nudge_threshold: int = 8) -> Optional[Dict[str, Any]]:
+        """Check if Claude should be nudged to encode learnings.
+
+        Returns a nudge dict if messages since last encode exceeds threshold,
+        None otherwise. The nudge includes context about what's been missed.
+
+        Args:
+            nudge_threshold: Messages without encoding before nudging (default 8)
+        """
+        activity = self._get_session_activity()
+        msg_count = int(activity.get('message_count', 0))
+        remember_count = int(activity.get('remember_count', 0))
+        last_encode_at = int(activity.get('last_encode_at_message', 0))
+
+        messages_since_encode = msg_count - last_encode_at
+
+        if messages_since_encode < nudge_threshold:
+            return None
+
+        # Build nudge with context
+        nudge = {
+            'messages_since_encode': messages_since_encode,
+            'total_messages': msg_count,
+            'total_encodes': remember_count,
+            'severity': 'gentle' if messages_since_encode < 15 else 'urgent',
+        }
+
+        if remember_count == 0:
+            nudge['message'] = '%d messages in session, nothing encoded yet. Decisions, corrections, or learnings to capture?' % msg_count
+        else:
+            nudge['message'] = '%d messages since last encode (%d total encodes). Any recent decisions or learnings worth preserving?' % (messages_since_encode, remember_count)
+
+        return nudge
 
     # ─── Utilities ───
 
@@ -1330,6 +1377,12 @@ class Brain:
             bridges = self._bridge_at_store_time(node_id)
         except Exception:
             pass  # Non-critical — bridging failure should never block remember
+
+        # v5: Track encoding for heartbeat
+        try:
+            self.record_remember()
+        except Exception:
+            pass
 
         return {
             'id': node_id,
