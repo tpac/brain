@@ -16,6 +16,21 @@ if [ -z "$BRAIN_DB_DIR" ] || [ ! -f "$BRAIN_DB_DIR/brain.db" ]; then
   exit 0
 fi
 
+# ── Try daemon first (fast path) ──
+source "$(dirname "$0")/daemon-client.sh"
+if daemon_available; then
+  # Synthesize session via daemon
+  daemon_send '{"cmd":"synthesize_session","args":{}}' 10 >/dev/null 2>&1
+  # Write compaction boundary marker
+  TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  daemon_send '{"cmd":"remember","args":{"type":"context","title":"Compaction boundary at '"$TS"'","content":"Context compacted. Post-compact log reader handles retroactive encoding.","keywords":"compaction boundary session handoff","locked":false}}' 5 >/dev/null 2>&1
+  # Save
+  daemon_send '{"cmd":"save","args":{}}' 5 >/dev/null 2>&1
+  echo '{"decision":"approve"}'
+  exit 0
+fi
+
+# ── Direct Python fallback ──
 python3 -c '
 import sys, os, json
 from datetime import datetime, timezone

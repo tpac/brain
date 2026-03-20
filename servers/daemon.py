@@ -395,6 +395,61 @@ class BrainDaemon:
                     )
                     return {"ok": True, "result": {"status": "logged"}}
 
+                elif cmd == "pre_edit":
+                    data = self.brain.pre_edit(
+                        file=args.get("file", ""),
+                        tool_name=args.get("tool_name", "Edit")
+                    )
+                    # Also get change impacts
+                    change_impacts = []
+                    try:
+                        change_impacts = self.brain.get_change_impact(args.get("file", ""))
+                    except Exception:
+                        pass
+                    data["change_impacts"] = change_impacts
+                    return {"ok": True, "result": data}
+
+                elif cmd == "consolidate":
+                    result = self.brain.consolidate()
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "dream":
+                    result = self.brain.dream()
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "auto_heal":
+                    result = self.brain.auto_heal()
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "auto_tune":
+                    result = self.brain.auto_tune()
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "prompt_reflection":
+                    result = self.brain.prompt_reflection()
+                    return {"ok": True, "result": result}
+
+                elif cmd == "backfill_summaries":
+                    result = self.brain.backfill_summaries(
+                        batch_size=args.get("batch_size", 50)
+                    )
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "synthesize_session":
+                    result = self.brain.synthesize_session()
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "get_active_evolutions":
+                    types = args.get("types")
+                    result = self.brain.get_active_evolutions(types)
+                    return {"ok": True, "result": result}
+
                 elif cmd == "eval":
                     # Escape hatch: eval arbitrary expression on brain
                     # Only for development/debugging — not for production hooks

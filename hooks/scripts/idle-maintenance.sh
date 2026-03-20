@@ -10,6 +10,160 @@ if [ -z "$BRAIN_DB_DIR" ]; then
   exit 0
 fi
 
+# ── Try daemon first (fast path) ──
+source "$(dirname "$0")/daemon-client.sh"
+if daemon_available; then
+  python3 -c '
+import json, sys, socket
+
+sock_path = "'"$BRAIN_SOCKET_PATH"'"
+
+def daemon_call(cmd, args=None, timeout=30.0):
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    sock.connect(sock_path)
+    msg = json.dumps({"cmd": cmd, "args": args or {}}) + "\n"
+    sock.sendall(msg.encode())
+    data = b""
+    while b"\n" not in data:
+        chunk = sock.recv(65536)
+        if not chunk: break
+        data += chunk
+    sock.close()
+    resp = json.loads(data.decode().strip())
+    return resp.get("result", {}) if resp.get("ok") else {}
+
+output = []
+
+# 1. Dream
+try:
+    dream_result = daemon_call("dream")
+    dream_count = dream_result.get("count", 0)
+    if dream_count > 0:
+        output.append("DREAM: %d dream(s) generated" % dream_count)
+        for d in dream_result.get("dreams", [])[:2]:
+            output.append("  - " + d.get("title", "untitled"))
+except Exception as e:
+    output.append("DREAM ERROR: %s" % e)
+
+# 2. Consolidate
+try:
+    cons_result = daemon_call("consolidate")
+    cons_count = cons_result.get("consolidated", 0)
+    output.append("CONSOLIDATE: %d nodes boosted" % cons_count)
+
+    discoveries = cons_result.get("discoveries", {})
+    total = discoveries.get("total", 0)
+    if total > 0:
+        output.append("\nBRAIN DISCOVERED (%d evolution(s)):" % total)
+        try:
+            active = daemon_call("get_active_evolutions")
+            if isinstance(active, list):
+                auto_discovered = [e for e in active if "auto-discovered" in (e.get("content") or "")]
+                for evo in auto_discovered[:5]:
+                    etype = evo.get("type", "").upper()
+                    title = evo.get("title", "")
+                    output.append("  %s: %s" % (etype, title))
+                    content = evo.get("content", "")
+                    if "ACTION:" in content:
+                        action = content.split("ACTION:")[-1].strip()
+                        output.append("    -> " + action)
+        except Exception:
+            pass
+except Exception as e:
+    output.append("CONSOLIDATE ERROR: %s" % e)
+
+# 3. Auto-heal
+try:
+    heal_result = daemon_call("auto_heal")
+    resolved = heal_result.get("resolved", [])
+    tuned = heal_result.get("tuned", [])
+    cleaned = heal_result.get("cleaned", {})
+
+    if resolved:
+        output.append("\nBRAIN HEALED (%d action(s)):" % len(resolved))
+        for r in resolved[:5]:
+            action = r.get("action", "unknown")
+            if action == "merge_duplicate":
+                output.append("  MERGED: \"%s\" into \"%s\"" % (r.get("archived", ""), r.get("kept", "")))
+            elif action == "auto_lock":
+                output.append("  LOCKED: \"%s\" (%d accesses)" % (r.get("title", ""), r.get("access_count", 0)))
+            else:
+                output.append("  %s" % action)
+
+    if tuned:
+        output.append("\nBRAIN TUNED (%d parameter(s)):" % len(tuned))
+        for t in tuned[:5]:
+            output.append("  %s: %s" % (t.get("param", ""), t.get("reason", "")))
+
+    archived = cleaned.get("archived", 0)
+    edges_created = cleaned.get("edges_created", 0)
+    merged = cleaned.get("merged", 0)
+    locked = cleaned.get("locked", 0)
+    if any([archived, edges_created, merged, locked]):
+        parts = []
+        if merged: parts.append("%d merged" % merged)
+        if locked: parts.append("%d locked" % locked)
+        if archived: parts.append("%d archived" % archived)
+        if edges_created: parts.append("%d edges created" % edges_created)
+        output.append("  HYGIENE: " + ", ".join(parts))
+except Exception as e:
+    output.append("HEAL ERROR: %s" % e)
+
+# 3b. Auto-tune
+try:
+    tune_result = daemon_call("auto_tune")
+    tuned = tune_result.get("tuned", [])
+    if tuned:
+        output.append("\nBRAIN AUTO-TUNED (%d parameter(s)):" % len(tuned))
+        for t in tuned[:5]:
+            output.append("  %s: %s" % (t.get("param", ""), t.get("reason", t.get("note", ""))))
+except Exception:
+    pass
+
+# 4. Reflection prompts
+try:
+    reflections = daemon_call("prompt_reflection")
+    if reflections and isinstance(reflections, list):
+        output.append("")
+        output.append("REFLECT (transferable insights from this session?):")
+        for r in reflections[:3]:
+            output.append("  " + str(r))
+        output.append("")
+except Exception:
+    pass
+
+# 5. Self-reflection
+try:
+    daemon_call("self_reflection")
+except Exception:
+    pass
+
+# 6. Backfill summaries
+try:
+    bf = daemon_call("backfill_summaries", {"batch_size": 50})
+    bf_count = bf.get("updated", 0)
+    if bf_count > 0:
+        output.append("SUMMARIES: backfilled %d nodes" % bf_count)
+except Exception:
+    pass
+
+# Save
+try:
+    daemon_call("save", timeout=5.0)
+except Exception:
+    pass
+
+if output:
+    print("\n".join(output))
+' 2>/dev/null
+  if [ $? -eq 0 ]; then
+    exit 0
+  fi
+  # Fall through to direct Python
+fi
+
+# ── Direct Python fallback ──
 exec python3 -c '
 import sys, os, json
 

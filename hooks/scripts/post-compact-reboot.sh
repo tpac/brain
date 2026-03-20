@@ -13,6 +13,79 @@ if [ -z "$BRAIN_DB_DIR" ] || [ ! -f "$BRAIN_DB_DIR/brain.db" ]; then
   exit 0
 fi
 
+# ── Try daemon first (fast path) ──
+source "$(dirname "$0")/daemon-client.sh"
+if daemon_available; then
+  python3 -c '
+import json, sys, socket
+
+sock_path = "'"$BRAIN_SOCKET_PATH"'"
+
+def daemon_call(cmd, args=None):
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(15.0)
+    sock.connect(sock_path)
+    msg = json.dumps({"cmd": cmd, "args": args or {}}) + "\n"
+    sock.sendall(msg.encode())
+    data = b""
+    while b"\n" not in data:
+        chunk = sock.recv(65536)
+        if not chunk: break
+        data += chunk
+    sock.close()
+    return json.loads(data.decode().strip())
+
+try:
+    # Get locked rules via context_boot
+    boot_resp = daemon_call("context_boot", {"user": "", "project": "", "task": "post-compaction reboot"})
+    consciousness_resp = daemon_call("consciousness")
+
+    output = ["BRAIN POST-COMPACTION REBOOT (context was compacted, re-injecting critical state):", ""]
+
+    if boot_resp.get("ok"):
+        locked_nodes = boot_resp.get("result", {}).get("locked", [])
+        rules = [n for n in locked_nodes if n.get("type") == "rule"]
+        if rules:
+            output.append("LOCKED RULES (%d active):" % len(rules))
+            for r in rules[:15]:
+                output.append("  " + r.get("title", "")[:80])
+            output.append("")
+
+    if consciousness_resp.get("ok"):
+        signals = consciousness_resp.get("result", {})
+        reminders = signals.get("reminders", [])
+        if reminders:
+            output.append("ACTIVE REMINDERS:")
+            for r in reminders[:5]:
+                output.append("  " + r.get("title", "")[:80])
+            output.append("")
+
+        evolutions = signals.get("evolutions", [])
+        if evolutions:
+            output.append("ACTIVE EVOLUTIONS:")
+            for e in evolutions[:5]:
+                output.append("  %s [%s]" % (e.get("title", "")[:80], e.get("type", "")))
+            output.append("")
+
+        encoding_gap = signals.get("encoding_gap")
+        if encoding_gap:
+            output.append("ENCODING GAP: %s" % encoding_gap.get("warning", ""))
+            output.append("")
+
+    output.append("Brain is live. Use brain.recall_with_embeddings() and brain.remember() as normal.")
+    print("\n".join(output))
+
+except Exception:
+    # Fall through handled by exit code
+    sys.exit(1)
+' 2>/dev/null
+  if [ $? -eq 0 ]; then
+    exit 0
+  fi
+  # Fall through to direct Python
+fi
+
+# ── Direct Python fallback ──
 python3 -c '
 import sys, os, json
 

@@ -12,6 +12,18 @@ if [ -z "$BRAIN_DB_DIR" ] || [ ! -f "$BRAIN_DB_DIR/brain.db" ]; then
   exit 0
 fi
 
+# ── Try daemon first (fast path) ──
+source "$(dirname "$0")/daemon-client.sh"
+if daemon_available; then
+  # Consolidate via daemon
+  daemon_send '{"cmd":"consolidate","args":{}}' 30 >/dev/null 2>&1
+  # Save and shutdown daemon (saves + closes brain + removes socket/PID)
+  daemon_send '{"cmd":"save","args":{}}' 5 >/dev/null 2>&1
+  daemon_send '{"cmd":"shutdown","args":{}}' 5 >/dev/null 2>&1
+  exit 0
+fi
+
+# ── Direct Python fallback ──
 python3 -c '
 import sys, os, json
 
@@ -38,12 +50,4 @@ try:
     brain.close()
 except Exception as e:
     print("brain: session-end error: " + str(e), file=sys.stderr)
-
-# Stop the persistent daemon (if running)
-try:
-    from servers.daemon import stop_daemon, is_daemon_running
-    if is_daemon_running():
-        stop_daemon()
-except Exception:
-    pass
 ' 2>/dev/null
