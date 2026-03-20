@@ -24,6 +24,7 @@ import random
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any, Set
 from .schema import ensure_schema, ensure_logs_schema, migrate_logs_to_separate_db, BRAIN_VERSION, BRAIN_VERSION_KEY, NODE_TYPES
+from .dal import LogsDAL, MetaDAL
 from . import embedder
 
 
@@ -356,6 +357,10 @@ class Brain:
 
         # One-time migration: move log tables from brain.db to brain_logs.db
         migrate_logs_to_separate_db(self.conn, self.logs_conn)
+
+        # DAL instances — incremental adoption, brain.py migrates one method at a time
+        self._meta = MetaDAL(self.conn)
+        self._logs_dal = LogsDAL(self.logs_conn)
 
         # Init rate limiter for error logging (DDoS protection)
         self._init_rate_limiter()
@@ -1145,41 +1150,15 @@ class Brain:
     # ─── Session Activity Tracking ───
 
     def _get_session_activity(self) -> Dict[str, Any]:
-        """
-        Read session activity from brain_meta table.
-
-        Returns:
-            Dict with remember_count, edit_check_count, etc.
-        """
+        """Read session activity from brain_meta via DAL."""
         try:
-            cursor = self.conn.execute(
-                'SELECT key, value FROM brain_meta WHERE key IN (?, ?, ?, ?, ?, ?)',
-                ('remember_count', 'edit_check_count', 'session_id',
-                 'message_count', 'last_encode_at_message', 'boot_time')
-            )
-            result = {}
-            for key, value in cursor.fetchall():
-                if key.endswith('_count'):
-                    result[key] = int(value) if value else 0
-                else:
-                    result[key] = value
-            return result
+            return self._meta.get_session_activity()
         except Exception:
             return {}
 
     def _update_session_activity(self, key: str, value: Any):
-        """
-        Write session activity to brain_meta table.
-
-        Args:
-            key: Config key
-            value: Config value (will be stringified)
-        """
-        self.conn.execute(
-            'INSERT OR REPLACE INTO brain_meta (key, value, updated_at) VALUES (?, ?, ?)',
-            (key, str(value), self.now())
-        )
-        self.conn.commit()
+        """Write session activity to brain_meta via DAL."""
+        self._meta.set(key, str(value))
 
     def reset_session_activity(self):
         """Reset session counters for new session."""
@@ -8433,15 +8412,9 @@ class Brain:
         return {'updated': updated, 'takes_effect': 'next boot'}
 
     def set_config(self, key: str, value: Any) -> Dict[str, Any]:
-        """
-        Set a config value in brain_meta. Persists across restarts.
-        """
-        ts = self.now()
-        self.conn.execute(
-            'INSERT OR REPLACE INTO brain_meta (key, value, updated_at) VALUES (?, ?, ?)',
-            (key, str(value), ts)
-        )
-        return {'key': key, 'value': value, 'updated_at': ts}
+        """Set a config value in brain_meta via DAL. Persists across restarts."""
+        self._meta.set(key, str(value))
+        return {'key': key, 'value': value, 'updated_at': self.now()}
 
     def get_suggest_metrics(self, period_days: int = 7) -> Dict[str, Any]:
         """
@@ -8465,19 +8438,14 @@ class Brain:
             return {'period_days': period_days, 'error': 'Could not aggregate metrics'}
 
     def get_debug_status(self) -> Dict[str, Any]:
-        """
-        Check if debug mode is enabled.
-        Reads from brain_meta, falls back to env var.
-        """
+        """Check if debug mode is enabled via DAL, falls back to env var."""
         try:
-            row = self.conn.execute("SELECT value FROM brain_meta WHERE key = 'debug_enabled'").fetchone()
-            if row:
-                return {'debug_enabled': row[0] == '1'}
-        except:
+            val = self._meta.get('debug_enabled', '')
+            if val:
+                return {'debug_enabled': val == '1'}
+        except Exception:
             pass
-
-        debug_env = os.environ.get('BRAIN_DEBUG') == '1'
-        return {'debug_enabled': debug_env}
+        return {'debug_enabled': os.environ.get('BRAIN_DEBUG') == '1'}
 
     def _log_error(self, source: str, error: Exception, context: str = ''):
         """Log an error to brain_logs.db + brain.log with rate limiting.
@@ -8526,29 +8494,9 @@ class Brain:
                   file=sys.stderr)
 
     def get_recent_errors(self, hours: int = 24, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get recent errors from brain_logs.db for consciousness surfacing."""
+        """Get recent errors from brain_logs.db via DAL."""
         try:
-            rows = self.logs_conn.execute(
-                """SELECT source, metadata, created_at FROM debug_log
-                   WHERE event_type = 'error'
-                     AND created_at > datetime('now', '-%d hours')
-                   ORDER BY created_at DESC LIMIT ?""" % hours,
-                (limit,)
-            ).fetchall()
-            results = []
-            for source, metadata, created_at in rows:
-                try:
-                    meta = json.loads(metadata)
-                except Exception:
-                    meta = {'error': metadata}
-                results.append({
-                    'source': source,
-                    'error': meta.get('error', ''),
-                    'type': meta.get('type', ''),
-                    'context': meta.get('context', ''),
-                    'created_at': created_at,
-                })
-            return results
+            return self._logs_dal.get_recent_errors(hours=hours, limit=limit)
         except Exception:
             return []
 
@@ -8630,33 +8578,26 @@ class Brain:
 
     def get_config(self, key: str, default_val: Any = None) -> Any:
         """
-        Get a config value from brain_meta.
-
-        Args:
-            key: Config key
-            default_val: Default if not found
-
-        Returns:
-            Config value or default
+        Get a config value from brain_meta via DAL.
+        Auto-parses numbers and booleans based on default_val type.
         """
         try:
-            cursor = self.conn.execute('SELECT value FROM brain_meta WHERE key = ?', (key,))
-            row = cursor.fetchone()
-            if row:
-                val = row[0]
-                # Auto-parse numbers
-                if default_val is not None and isinstance(default_val, (int, float)):
-                    try:
-                        return float(val) if '.' in str(val) else int(val)
-                    except (ValueError, TypeError) as _e:
-                        self._log_error("get_config", _e, f"parsing numeric config value for key '{key}'")
-                if val == 'true':
-                    return True
-                if val == 'false':
-                    return False
-                return val
+            val = self._meta.get(key, "")
+            if not val:
+                return default_val
+            # Auto-parse numbers
+            if default_val is not None and isinstance(default_val, (int, float)):
+                try:
+                    return float(val) if '.' in str(val) else int(val)
+                except (ValueError, TypeError) as _e:
+                    self._log_error("get_config", _e, "parsing numeric config value for key '%s'" % key)
+            if val == 'true':
+                return True
+            if val == 'false':
+                return False
+            return val
         except Exception as _e:
-            self._log_error("get_config", _e, f"reading config key '{key}' from brain_meta")
+            self._log_error("get_config", _e, "reading config key '%s' from brain_meta" % key)
         return default_val
 
     # ─── Pre-Edit Batch Method ───
