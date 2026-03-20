@@ -24,13 +24,10 @@ if [ -n "$BRAIN_DB_DIR" ] && [ -d "$BRAIN_DB_DIR" ]; then
 fi
 
 # 2. Cowork: search mounted AgentsContext directories
-if [ -z "$DB_DIR" ]; then
+if [ -z "$DB_DIR" ] && [ -d "/sessions" ]; then
   for candidate in /sessions/*/mnt/AgentsContext/brain; do
-    if [ -f "$candidate/brain.db" ]; then
-      DB_DIR="$candidate"
-      break
-    fi
-  done
+    [ -f "$candidate/brain.db" ] 2>/dev/null && DB_DIR="$candidate" && break
+  done 2>/dev/null
 fi
 
 # 3. Local Claude Code (symlink to Google Drive)
@@ -39,14 +36,14 @@ if [ -z "$DB_DIR" ] && [ -f "$HOME/AgentsContext/brain/brain.db" ]; then
 fi
 
 # 4. Cowork first-run: create in mounted AgentsContext
-if [ -z "$DB_DIR" ]; then
+if [ -z "$DB_DIR" ] && [ -d "/sessions" ]; then
   for ac_dir in /sessions/*/mnt/AgentsContext; do
-    if [ -d "$ac_dir" ]; then
+    if [ -d "$ac_dir" ] 2>/dev/null; then
       DB_DIR="$ac_dir/brain"
       mkdir -p "$DB_DIR" 2>/dev/null
       break
     fi
-  done
+  done 2>/dev/null
 fi
 
 BRAIN_DB_DIR="$DB_DIR"
