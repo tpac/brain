@@ -1,13 +1,15 @@
 #!/bin/bash
-# brain v14 (serverless) — PreCompact hook
+# brain v5.1 — PreCompact hook
 #
-# Pre-compact just SAVES. No HTTP server needed.
-# The post-compact log reader (extract-session-log.py, called at SessionStart)
-# handles retroactive encoding by reading the JSONL chat logs.
+# Fires before context compaction. Time-constrained (10s timeout).
+# Does THREE things as fast as possible:
+#   1. Synthesize session (harvests from DB, includes confidence recalibration)
+#   2. Write compaction boundary marker
+#   3. Save brain state to disk
 #
-# This hook does exactly two things:
-#   1. Save brain state to disk (commit WAL)
-#   2. Write a compaction boundary node (lightweight marker)
+# NOTE: This hook may NOT fire during context overflow (as opposed to
+# explicit /compact). The post-compact reboot and transcript rehydration
+# are the safety nets for that case.
 
 source "$(dirname "$0")/resolve-brain-db.sh"
 
@@ -19,18 +21,16 @@ fi
 # ── Try daemon first (fast path) ──
 source "$(dirname "$0")/daemon-client.sh"
 if daemon_available; then
-  # Synthesize session via daemon
-  daemon_send '{"cmd":"synthesize_session","args":{}}' 10 >/dev/null 2>&1
-  # Write compaction boundary marker
+  daemon_send '{"cmd":"synthesize_session","args":{}}' 8 2>/dev/null
   TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  daemon_send '{"cmd":"remember","args":{"type":"context","title":"Compaction boundary at '"$TS"'","content":"Context compacted. Post-compact log reader handles retroactive encoding.","keywords":"compaction boundary session handoff","locked":false}}' 5 >/dev/null 2>&1
-  # Save
-  daemon_send '{"cmd":"save","args":{}}' 5 >/dev/null 2>&1
+  daemon_send '{"cmd":"remember","args":{"type":"context","title":"Compaction boundary at '"$TS"'","content":"Context compacted. Synthesis ran. Post-compact reboot will re-inject context.","keywords":"compaction boundary session handoff","locked":false}}' 3 2>/dev/null
+  daemon_send '{"cmd":"save","args":{}}' 3 2>/dev/null
   echo '{"decision":"approve"}'
   exit 0
 fi
 
 # ── Direct Python fallback ──
+# IMPORTANT: Do NOT suppress stderr — errors must be visible for debugging.
 python3 -c '
 import sys, os, json
 from datetime import datetime, timezone
@@ -47,38 +47,34 @@ try:
     from servers.brain import Brain
     brain = Brain(db_path)
 
-    # v5: Synthesize session before compaction
-    # This captures decisions, corrections, teaching arcs, and open questions
+    # Synthesize session (includes confidence recalibration)
     try:
         synthesis = brain.synthesize_session()
-        syn_id = synthesis.get("id")
-        if syn_id:
-            parts = []
-            if synthesis.get("decisions"): parts.append(str(synthesis["decisions"]) + " decisions")
-            if synthesis.get("corrections"): parts.append(str(synthesis["corrections"]) + " corrections")
-            if synthesis.get("teaching_arcs"): parts.append(str(synthesis["teaching_arcs"]) + " teaching arcs")
-            if synthesis.get("open_questions"): parts.append(str(synthesis["open_questions"]) + " open questions")
-            if parts:
-                print("brain: session synthesis: " + ", ".join(parts), file=sys.stderr)
+        parts = []
+        for key in ("decisions", "corrections", "teaching_arcs", "open_questions"):
+            val = synthesis.get(key)
+            if val:
+                parts.append("%s %s" % (val, key))
+        if parts:
+            print("brain: pre-compact synthesis: " + ", ".join(parts), file=sys.stderr)
     except Exception as e:
-        print(f"brain: synthesis error (non-fatal): {e}", file=sys.stderr)
+        print("brain: synthesis error (non-fatal): %s" % e, file=sys.stderr)
 
     # Write compaction boundary marker
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     brain.remember(
         type="context",
-        title=f"Compaction boundary at {ts}",
-        content="Context compacted. The post-compact log reader will handle retroactive encoding at next session start.",
+        title="Compaction boundary at %s" % ts,
+        content="Context compacted. Synthesis ran. Post-compact reboot will re-inject context.",
         keywords="compaction boundary session handoff",
         locked=False,
     )
 
-    # Save brain state (critical operation)
     brain.save()
     brain.close()
 except Exception as e:
-    print(f"brain: pre-compact error: {e}", file=sys.stderr)
-' 2>/dev/null
+    print("brain: pre-compact error: %s" % e, file=sys.stderr)
+'
 
-# Approve compaction — don't fight it
+# Always approve — don't block compaction even if brain ops fail
 echo '{"decision":"approve"}'

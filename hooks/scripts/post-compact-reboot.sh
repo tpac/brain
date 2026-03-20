@@ -1,11 +1,13 @@
 #!/bin/bash
-# brain v4 — PostCompact hook
-# Hook: PostCompact — fires after context compaction completes.
+# brain v5.1 — PostCompact hook
+# Fires after context compaction. This is the SAFETY NET.
+#
 # Re-injects critical brain context into the fresh context window.
-# Without this, brain goes dark after compaction until next SessionStart.
+# Also checks if pre-compact synthesis succeeded — if not, runs it now.
+# Surfaces the latest synthesis and any transcript rehydration hints.
 #
 # Input: JSON on stdin with { session_id, trigger, compact_summary }
-# Output: stdout with locked rules + consciousness signals (injected into context)
+# Output: stdout with brain state re-injection
 
 source "$(dirname "$0")/resolve-brain-db.sh"
 
@@ -16,6 +18,7 @@ fi
 # ── Try daemon first (fast path) ──
 source "$(dirname "$0")/daemon-client.sh"
 if daemon_available; then
+  # Daemon path: quick re-injection
   python3 -c '
 import json, sys, socket
 
@@ -36,11 +39,10 @@ def daemon_call(cmd, args=None):
     return json.loads(data.decode().strip())
 
 try:
-    # Get locked rules via context_boot
     boot_resp = daemon_call("context_boot", {"user": "", "project": "", "task": "post-compaction reboot"})
     consciousness_resp = daemon_call("consciousness")
 
-    output = ["BRAIN POST-COMPACTION REBOOT (context was compacted, re-injecting critical state):", ""]
+    output = ["BRAIN POST-COMPACTION REBOOT:", ""]
 
     if boot_resp.get("ok"):
         locked_nodes = boot_resp.get("result", {}).get("locked", [])
@@ -53,36 +55,26 @@ try:
 
     if consciousness_resp.get("ok"):
         signals = consciousness_resp.get("result", {})
-        reminders = signals.get("reminders", [])
-        if reminders:
-            output.append("ACTIVE REMINDERS:")
-            for r in reminders[:5]:
-                output.append("  " + r.get("title", "")[:80])
-            output.append("")
+        for sig_key, sig_label in [("reminders", "REMINDERS"), ("evolutions", "EVOLUTIONS")]:
+            items = signals.get(sig_key, [])
+            if items:
+                output.append("%s:" % sig_label)
+                for item in items[:5]:
+                    output.append("  %s" % item.get("title", "")[:80])
+                output.append("")
 
-        evolutions = signals.get("evolutions", [])
-        if evolutions:
-            output.append("ACTIVE EVOLUTIONS:")
-            for e in evolutions[:5]:
-                output.append("  %s [%s]" % (e.get("title", "")[:80], e.get("type", "")))
-            output.append("")
-
-        encoding_gap = signals.get("encoding_gap")
-        if encoding_gap:
-            output.append("ENCODING GAP: %s" % encoding_gap.get("warning", ""))
-            output.append("")
-
-    output.append("Brain is live. Use brain.recall_with_embeddings() and brain.remember() as normal.")
+    output.append("Brain is live. Context was compacted — you lost conversation history.")
+    output.append("The brain persists. Use brain.recall_with_embeddings() to recover context.")
     print("\n".join(output))
 
-except Exception:
-    # Fall through handled by exit code
+except Exception as e:
+    import sys as _sys
+    print("brain: post-compact daemon error: %s" % e, file=_sys.stderr)
     sys.exit(1)
-' 2>/dev/null
+'
   if [ $? -eq 0 ]; then
     exit 0
   fi
-  # Fall through to direct Python
 fi
 
 # ── Direct Python fallback ──
@@ -100,63 +92,150 @@ if server_dir:
 try:
     from servers.brain import Brain
     brain = Brain(db_path)
-except Exception:
+except Exception as e:
+    print("brain: post-compact import failed: %s" % e, file=sys.stderr)
     sys.exit(0)
 
-output_lines = ["BRAIN POST-COMPACTION REBOOT (context was compacted, re-injecting critical state):", ""]
+output = ["BRAIN POST-COMPACTION REBOOT:", ""]
 
 try:
-    # Re-run lightweight boot: locked rules + consciousness
-    # Resolve user/project from brain config (same as boot-brain.sh)
     user = brain.get_config("default_user", "User")
     project = brain.get_config("default_project", "default")
+
+    # Safety net: check if pre-compact synthesis ran
+    import sqlite3
+    last_synth = brain.conn.execute(
+        "SELECT created_at FROM session_syntheses ORDER BY created_at DESC LIMIT 1"
+    ).fetchone()
+    session_start = brain.get_config("session_start_at", "")
+
+    synth_ran = False
+    if last_synth and session_start:
+        synth_ran = last_synth[0] >= session_start
+
+    if not synth_ran:
+        output.append("NOTE: Pre-compact synthesis did not run. Running now...")
+        try:
+            synthesis = brain.synthesize_session()
+            parts = []
+            for key in ("decisions", "corrections", "open_questions"):
+                val = synthesis.get(key)
+                if val:
+                    parts.append("%s %s" % (val, key))
+            if parts:
+                output.append("  Synthesis: " + ", ".join(parts))
+            else:
+                output.append("  Synthesis: no notable events captured")
+            brain.save()
+        except Exception as e:
+            output.append("  Synthesis failed: %s" % e)
+        output.append("")
+
+    # Re-run lightweight boot
     boot = brain.context_boot(user=user, project=project, task="post-compaction reboot")
 
-    # Locked rules (these MUST survive compaction)
+    # Locked rules
     locked_nodes = boot.get("locked", [])
     locked_rules = [n for n in locked_nodes if n.get("type") == "rule"]
     if locked_rules:
-        output_lines.append(f"LOCKED RULES ({len(locked_rules)} active):")
+        output.append("LOCKED RULES (%d active):" % len(locked_rules))
         for rule in locked_rules[:15]:
-            title = rule.get("title", "")[:80]
-            output_lines.append(f"  🔒 {title}")
-        output_lines.append("")
+            output.append("  %s" % rule.get("title", "")[:80])
+        output.append("")
 
-    # Active consciousness signals (abbreviated)
+    # Last synthesis — but only if recent (stale synthesis misleads more than helps)
+    synth_row = brain.conn.execute(
+        """SELECT open_questions, decisions_made, corrections_received, created_at
+           FROM session_syntheses ORDER BY created_at DESC LIMIT 1"""
+    ).fetchone()
+    if synth_row and synth_row[3]:
+        from datetime import datetime, timezone
+        try:
+            synth_time = datetime.fromisoformat(synth_row[3].replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc)
+            age_minutes = (now - synth_time).total_seconds() / 60
+
+            if age_minutes < 30:
+                # Fresh synthesis — show open questions
+                oq = synth_row[0]
+                if oq:
+                    try:
+                        questions = json.loads(oq)
+                        if questions:
+                            output.append("OPEN QUESTIONS (from synthesis %d min ago):" % int(age_minutes))
+                            for q in questions[:5]:
+                                output.append("  ? %s" % str(q)[:100])
+                            output.append("")
+                    except Exception:
+                        pass
+            else:
+                # Stale synthesis - just note it exists, skip old questions
+                output.append("NOTE: Last synthesis was %.0f hours ago - open questions may be resolved." % (age_minutes / 60))
+                output.append("  Use brain.recall_with_embeddings() for current context instead.")
+                output.append("")
+        except Exception:
+            pass
+
+    # Consciousness signals (abbreviated)
     signals = brain.get_consciousness_signals()
+    for sig_key, sig_label in [("reminders", "REMINDERS"), ("evolutions", "EVOLUTIONS")]:
+        items = signals.get(sig_key, [])
+        if items:
+            output.append("%s:" % sig_label)
+            for item in items[:5]:
+                output.append("  %s" % item.get("title", "")[:80])
+            output.append("")
 
-    reminders = signals.get("reminders", [])
-    if reminders:
-        output_lines.append("ACTIVE REMINDERS:")
-        for r in reminders[:5]:
-            title = r.get("title", "")[:80]
-            output_lines.append(f"  🔔 {title}")
-        output_lines.append("")
+    # Developmental stage (brief)
+    try:
+        dev = brain.assess_developmental_stage()
+        if dev:
+            output.append("STAGE: %s (%.0f%%)" % (dev.get("stage_name", "?"), dev.get("maturity_score", 0) * 100))
+            output.append("")
+    except Exception:
+        pass
 
-    evolutions = signals.get("evolutions", [])
-    if evolutions:
-        output_lines.append("ACTIVE EVOLUTIONS:")
-        for e in evolutions[:5]:
-            title = e.get("title", "")[:80]
-            etype = e.get("type", "")
-            output_lines.append(f"  {title} [{etype}]")
-        output_lines.append("")
+    # Find transcript for rehydration hint
+    transcript_path = None
+    try:
+        # Find the most recent JSONL transcript
+        home = os.path.expanduser("~")
+        claude_projects = os.path.join(home, ".claude", "projects")
+        if os.path.isdir(claude_projects):
+            candidates = []
+            for pdir in os.listdir(claude_projects):
+                ppath = os.path.join(claude_projects, pdir)
+                if not os.path.isdir(ppath):
+                    continue
+                for fname in os.listdir(ppath):
+                    if fname.endswith(".jsonl"):
+                        fpath = os.path.join(ppath, fname)
+                        candidates.append(fpath)
+            if candidates:
+                transcript_path = max(candidates, key=os.path.getmtime)
+    except Exception:
+        pass
 
-    encoding_gap = signals.get("encoding_gap")
-    if encoding_gap:
-        output_lines.append(f"⚠️ ENCODING GAP: {encoding_gap}")
-        output_lines.append("")
-
-    output_lines.append("Brain is live. Use brain.recall_with_embeddings() and brain.remember() as normal.")
+    output.append("Brain is live. Context was compacted — you lost conversation history.")
+    output.append("The brain persists. Use brain.recall_with_embeddings() to recover context.")
+    if transcript_path:
+        output.append("")
+        output.append("TRANSCRIPT AVAILABLE FOR REHYDRATION:")
+        output.append("  Path: %s" % transcript_path)
+        output.append("  To recover lost context, run:")
+        output.append("    BRAIN_DB_DIR=%s python3 %s/hooks/scripts/extract-session-log.py --last-n-hours 4" % (
+            db_dir, os.environ.get("CLAUDE_PLUGIN_ROOT", ".")))
+        output.append("  Or read the transcript directly to find what you lost.")
 
     brain.close()
-    print("\n".join(output_lines))
+    print("\n".join(output))
 
 except Exception as e:
+    print("brain: post-compact error: %s" % e, file=sys.stderr)
     try:
         brain.close()
     except Exception:
         pass
-' 2>/dev/null
+'
 
 exit 0

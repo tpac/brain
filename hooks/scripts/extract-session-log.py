@@ -42,7 +42,7 @@ TOOL_SUMMARY_MAX = 120        # Max chars for tool call one-liner
 
 def find_jsonl_file():
     """Find the most recent .jsonl chat log file."""
-    # Cowork sessions
+    # 1. Cowork sessions
     for pattern in [
         "/sessions/*/mnt/.claude/projects/-sessions-*/*.jsonl",
         "/sessions/*/mnt/.claude/projects/*/*.jsonl",
@@ -50,6 +50,24 @@ def find_jsonl_file():
         files = glob.glob(pattern)
         if files:
             return max(files, key=os.path.getmtime)
+
+    # 2. Local sessions (Mac/Linux) — ~/.claude/projects/*/
+    home = os.path.expanduser("~")
+    claude_projects = os.path.join(home, ".claude", "projects")
+    if os.path.isdir(claude_projects):
+        # Find all .jsonl files directly under project dirs (not subagent dirs)
+        files = []
+        for project_dir in os.listdir(claude_projects):
+            project_path = os.path.join(claude_projects, project_dir)
+            if not os.path.isdir(project_path):
+                continue
+            for fname in os.listdir(project_path):
+                if fname.endswith(".jsonl"):
+                    fpath = os.path.join(project_path, fname)
+                    files.append(fpath)
+        if files:
+            return max(files, key=os.path.getmtime)
+
     return None
 
 

@@ -292,6 +292,19 @@ def _blob_to_vec(blob: bytes) -> list:
     return list(struct.unpack(f'<{count}f', blob))
 
 
+def compute_centroid(blobs: List[bytes]) -> Optional[bytes]:
+    """Average N embedding blobs into a single centroid blob."""
+    if not blobs:
+        return None
+    vecs = [_blob_to_vec(b) for b in blobs if b]
+    if not vecs:
+        return None
+    dim = len(vecs[0])
+    n = len(vecs)
+    centroid = [sum(vecs[j][i] for j in range(n)) / n for i in range(dim)]
+    return _vec_to_blob(centroid)
+
+
 def get_stats() -> dict:
     """Snapshot of embedding engine stats."""
     return {

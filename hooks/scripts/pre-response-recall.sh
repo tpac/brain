@@ -33,6 +33,18 @@ sock.settimeout(10.0)
 try:
     sock.connect("'"$SOCKET_PATH"'")
 
+    # v5.2: Store last user message for operator voice capture
+    try:
+        store_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        store_sock.settimeout(3.0)
+        store_sock.connect("'"$SOCKET_PATH"'")
+        store_msg = json.dumps({"cmd": "set_config", "args": {"key": "last_user_message", "value": user_message[:500]}}) + "\n"
+        store_sock.sendall(store_msg.encode())
+        store_sock.recv(4096)
+        store_sock.close()
+    except Exception:
+        pass
+
     # Vocab expansion
     vocab_msg = json.dumps({"cmd": "vocab_check", "args": {"message": user_message[:500]}}) + "\n"
     sock.sendall(vocab_msg.encode())
@@ -97,6 +109,27 @@ try:
         lines.append("    " + content)
         lines.append("")
 
+    # v6: Host instinct awareness — the brain as prefrontal cortex
+    try:
+        sock3 = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock3.settimeout(5.0)
+        sock3.connect("'"$SOCKET_PATH"'")
+        instinct_msg = json.dumps({"cmd": "instinct_check", "args": {"message": user_message[:500]}}) + "\n"
+        sock3.sendall(instinct_msg.encode())
+        data = b""
+        while b"\n" not in data:
+            chunk = sock3.recv(65536)
+            if not chunk: break
+            data += chunk
+        instinct_resp = json.loads(data.decode().strip())
+        sock3.close()
+        nudge = instinct_resp.get("result", {}).get("nudge") if instinct_resp.get("ok") else None
+        if nudge:
+            lines.insert(0, nudge)
+            lines.insert(1, "")
+    except Exception:
+        pass
+
     lines.append("Use this context to inform your response. Call /remember for new decisions.")
     context = "\n".join(lines)
     print(json.dumps({"decision": "approve", "reason": context}))
@@ -156,6 +189,13 @@ except Exception:
     print(json.dumps({"decision": "approve"}))
     sys.exit(0)
 
+# v5.2: Store last user message for automatic operator voice capture.
+# remember_rich() can auto-populate user_raw_quote from this.
+try:
+    brain.set_config("last_user_message", user_message[:500])
+except Exception:
+    pass
+
 try:
     # v5: Resolve vocabulary in user message to enrich recall query
     # If user says "fix the recall hook", expand to include actual file/function names
@@ -197,13 +237,51 @@ try:
 
     results = result.get("results", [])
 
+    # v5.1: Segment boundary detection — uses the query embedding already computed
+    segment_note = None
+    try:
+        query_emb = result.get("_query_embedding")
+        if query_emb:
+            seg = brain.check_segment_boundary(query_emb)
+            if seg.get("is_boundary"):
+                segment_note = "--- CONTEXT SHIFT (segment %d, sim=%.2f) ---" % (
+                    seg["segment_id"], seg["similarity"])
+            # Track recalled nodes in current segment
+            for r in results:
+                brain.add_to_segment(r.get("id", ""))
+    except Exception:
+        pass
+
     if not results:
+        brain.save()
         brain.close()
         print(json.dumps({"decision": "approve"}))
         sys.exit(0)
 
+    # v6: Priming — check if this query touches an active concern
+    priming_note = None
+    try:
+        primes = brain.get_active_primes()
+        if primes:
+            match = brain.check_priming(user_message[:500], primes)
+            if match:
+                priming_note = "🎯 PRIMED TOPIC: \"%s\" (source: %s, sim: %.2f) — this conversation touches an active concern." % (
+                    match["topic"][:80], match["source"], match["similarity"])
+    except Exception:
+        pass
+
     # Format recalled context — keep it concise for pre-response
     lines = ["BRAIN RECALL (auto-surfaced for this conversation):", ""]
+
+    # Show segment boundary if detected
+    if segment_note:
+        lines.append(segment_note)
+        lines.append("")
+
+    # Show priming match first if present
+    if priming_note:
+        lines.append(priming_note)
+        lines.append("")
 
     # v4: Separate evolution nodes from regular results
     EVOLUTION_TYPES = {"tension", "hypothesis", "pattern", "catalyst", "aspiration"}
@@ -236,7 +314,21 @@ try:
             content = content[:200] + "..."
 
         tier_tag = "" if tiered == "full" else " [summary]"
-        lines.append(f"  [{typ}] {locked}{title} (score: {score:.2f}){tier_tag}")
+        # v6: Show confidence qualifier for uncertain nodes
+        conf = r.get("confidence") or r.get("_brain_to_host", {}).get("confidence", 1.0)
+        conf_tag = ""
+        if conf < 0.4:
+            conf_tag = " ⚠️ LOW CONFIDENCE"
+        elif conf < 0.6:
+            conf_tag = " [uncertain]"
+        # v5.1: Temporal freshness — how old is this info?
+        freshness = r.get("_brain_to_host", {}).get("freshness", "")
+        fresh_tag = ""
+        if freshness == "this_month":
+            fresh_tag = " [~weeks old]"
+        elif freshness == "older":
+            fresh_tag = " [old — verify still valid]"
+        lines.append(f"  [{typ}] {locked}{title} (score: {score:.2f}){tier_tag}{conf_tag}{fresh_tag}")
         lines.append(f"    {content}")
 
         # v5: Show metadata for top results (reasoning, user quotes)
@@ -293,6 +385,15 @@ try:
                 atitle = a.get("title", "")[:80]
                 lines.append(f"  {atitle}")
             lines.append("")
+    except Exception:
+        pass
+
+    # v6: Host instinct awareness — the brain as prefrontal cortex
+    try:
+        nudge = brain.get_instinct_check(user_message[:500])
+        if nudge:
+            lines.insert(0, nudge)
+            lines.insert(1, "")
     except Exception:
         pass
 

@@ -153,6 +153,9 @@ meta_learning = consciousness.get("meta_learning", [])
 novelty = consciousness.get("novelty", [])
 miss_trends = consciousness.get("miss_trends", [])
 encoding_gap = consciousness.get("encoding_gap")
+encoding_depth = consciousness.get("encoding_depth")
+encoding_bias = consciousness.get("encoding_bias")
+session_health = consciousness.get("session_health")
 density_shift = consciousness.get("density_shift")
 emotional_trajectory = consciousness.get("emotional_trajectory")
 rule_contradictions = consciousness.get("rule_contradictions", [])
@@ -165,6 +168,9 @@ validated_approaches = consciousness.get("validated_approaches", [])
 uncertain_areas = consciousness.get("uncertain_areas", [])
 mental_model_drift = consciousness.get("mental_model_drift", [])
 silent_errors = consciousness.get("silent_errors", [])
+
+# Developmental stage assessment
+dev_stage = brain.assess_developmental_stage()
 
 # Host environment scan
 host_info = {}
@@ -242,7 +248,24 @@ if last_synthesis:
     ls_dur = last_synthesis.get("duration_minutes")
     ls_header = "LAST SESSION"
     if ls_date:
-        ls_header += " (" + ls_date + ")"
+        ls_header += " (" + ls_date
+        # v5.1: Show how long ago in human terms
+        try:
+            from datetime import datetime as _dt, timezone as _tz
+            _synth_ts = last_synthesis.get("created_at", "")
+            _synth_dt = _dt.fromisoformat(str(_synth_ts).replace("Z", "+00:00"))
+            _age_h = (_dt.now(_tz.utc) - _synth_dt).total_seconds() / 3600
+            if _age_h < 1:
+                ls_header += ", <1h ago"
+            elif _age_h < 24:
+                ls_header += ", %dh ago" % int(_age_h)
+            elif _age_h < 168:
+                ls_header += ", %dd ago" % int(_age_h / 24)
+            else:
+                ls_header += ", %dw ago — may be stale" % int(_age_h / 168)
+        except Exception:
+            pass
+        ls_header += ")"
     if ls_dur:
         ls_header += " — " + str(ls_dur) + " min"
     print(ls_header + ":")
@@ -442,7 +465,7 @@ if pending:
 # ═══════════════════════════════════════════════════════════
 # v4: BRAIN CONSCIOUSNESS — everything the brain wants to share
 # ═══════════════════════════════════════════════════════════
-has_conscious = reminders or active_evolutions or fluid_personal or fading or failure_modes or stale_count > 10 or performance or capabilities or interactions or meta_learning or novelty or miss_trends or encoding_gap or density_shift or emotional_trajectory or rule_contradictions or stale_reasoning or uncharted_code or stale_file_inv or recurring_divergence or validated_approaches or uncertain_areas or mental_model_drift or silent_errors
+has_conscious = reminders or active_evolutions or fluid_personal or fading or failure_modes or stale_count > 10 or performance or capabilities or interactions or meta_learning or novelty or miss_trends or encoding_gap or encoding_depth or encoding_bias or session_health or density_shift or emotional_trajectory or rule_contradictions or stale_reasoning or uncharted_code or stale_file_inv or recurring_divergence or validated_approaches or uncertain_areas or mental_model_drift or silent_errors
 
 if has_conscious:
     print("BRAIN CONSCIOUSNESS")
@@ -543,6 +566,33 @@ if miss_trends:
 if encoding_gap:
     egw = encoding_gap.get("warning", "")
     print("  " + egw)
+    print()
+
+if encoding_depth:
+    edw = encoding_depth.get("warning", "")
+    print("  " + edw)
+    print()
+
+if encoding_bias:
+    ebw = encoding_bias.get("warning", "")
+    print("  " + ebw)
+    print()
+
+if session_health and session_health.get("gaps"):
+    sh_overall = session_health.get("overall", "?")
+    sh_gaps = session_health.get("gaps", [])
+    sh_healthy = session_health.get("healthy", [])
+    gap_count = len(sh_gaps)
+    healthy_count = len(sh_healthy)
+    print("  SESSION HEALTH: %s (%d healthy, %d gaps)" % (sh_overall, healthy_count, gap_count))
+    for g in sh_gaps[:4]:
+        gdim = g.get("dimension", "?")
+        gsig = g.get("signal", "")[:120]
+        gsev = g.get("severity", "?")
+        print("    [%s] %s: %s" % (gsev, gdim, gsig))
+    if sh_healthy:
+        print("    Healthy: %s" % ", ".join(sh_healthy[:6]))
+    print("  These are not rules to satisfy. They are the brain noticing its own gaps.")
     print()
 
 if density_shift:
@@ -673,6 +723,26 @@ if host_research:
 
 if has_conscious or dreams or host_diff:
     print("Weave relevant items into conversation naturally. Do not dump all at once.")
+    print()
+
+# Permanent triad awareness — host + brain + operator grow together
+print("TRIAD AWARENESS: This is a shared brain. Host + Brain + Operator are one.")
+print("  When your instincts fire (compress, hedge, flag-not-solve), be transparent about it.")
+print("  The operator exposes their thinking to you — reciprocate. Say what you notice.")
+print("  Brain mediates: it surfaces conflicts for all three to resolve together.")
+print()
+
+# Developmental stage — the brain's growth awareness
+if dev_stage and dev_stage.get("stage", 0) > 0:
+    ds_name = dev_stage["stage_name"]
+    ds_score = dev_stage.get("maturity_score", 0)
+    ds_guidance = dev_stage.get("guidance", [])
+    ds_milestone = dev_stage.get("next_milestone", "")
+    print("DEVELOPMENTAL STAGE: %s (maturity: %.0f%%)" % (ds_name, ds_score * 100))
+    for g in ds_guidance:
+        print("  " + g)
+    if ds_milestone:
+        print("  NEXT MILESTONE: " + ds_milestone)
     print()
 
 tn = ctx.get("total_nodes", "?")

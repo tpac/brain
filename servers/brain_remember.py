@@ -7,6 +7,7 @@ which are provided by Brain.__init__.
 """
 
 from . import embedder
+from .brain_constants import TYPE_CONFIDENCE
 from typing import Any, Dict, List, Optional, Set
 import json
 import math
@@ -356,6 +357,17 @@ class BrainRememberMixin:
         node_id = self._generate_id(type)
         ts = self.now()
 
+        # ══════════════════════════════════════════════════════════════
+        # v6: AUTO-ENRICHMENT — make every node rich by default
+        # The brain's data was shallow because rich encoding required
+        # extra effort. Now remember() fills in what it can automatically.
+        # ══════════════════════════════════════════════════════════════
+
+        # Auto-set confidence by type if caller left it at default
+        # TYPE_CONFIDENCE from brain_constants defines how reliable each type tends to be
+        if confidence == 1.0:  # default = unset by caller
+            confidence = TYPE_CONFIDENCE.get(type, 0.70)
+
         # Extract keywords if not provided
         if not keywords:
             keywords = self._extract_keywords(f'{title} {content or ""}')
@@ -371,13 +383,13 @@ class BrainRememberMixin:
         self.conn.execute(
             '''INSERT INTO nodes
                (id, type, title, content, content_summary, keywords,
-                activation, stability, locked,
+                activation, stability, locked, confidence,
                 recency_score, emotion, emotion_label, emotion_source, project,
                 personal, personal_context,
                 last_accessed, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, 1.0, 1.0, ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+               VALUES (?, ?, ?, ?, ?, ?, 1.0, 1.0, ?, ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (node_id, type, title, content, content_summary, keywords,
-             1 if locked else 0,
+             1 if locked else 0, confidence,
              emotion, emotion_label, emotion_source, project,
              personal, personal_context,
              ts, ts, ts)
@@ -421,6 +433,28 @@ class BrainRememberMixin:
                 if target_id:
                     self.connect(node_id, target_id, relation, weight)
 
+        # v6: Auto-connect to conversation context
+        # New nodes should be connected to recently accessed nodes — this is the
+        # "conversation context" connection. Eliminates orphan nodes.
+        try:
+            recent = self.conn.execute('''
+                SELECT id FROM nodes
+                WHERE id != ? AND archived = 0
+                  AND last_accessed > datetime('now', '-1 hour')
+                  AND type NOT IN ('thought', 'intuition')
+                ORDER BY last_accessed DESC LIMIT 3
+            ''', (node_id,)).fetchall()
+            for (recent_id,) in recent:
+                # Only create if no edge already exists
+                existing = self.conn.execute(
+                    'SELECT 1 FROM edges WHERE source_id = ? AND target_id = ?',
+                    (node_id, recent_id)
+                ).fetchone()
+                if not existing:
+                    self.connect(node_id, recent_id, 'co_accessed', 0.2)
+        except Exception:
+            pass  # Non-critical
+
         # v11: Emergent bridging at store-time
         bridges = []
         try:
@@ -431,6 +465,12 @@ class BrainRememberMixin:
         # v5: Track encoding for heartbeat
         try:
             self.record_remember()
+        except Exception:
+            pass
+
+        # v5.1: Track node in current conversation segment
+        try:
+            self.add_to_segment(node_id)
         except Exception:
             pass
 
@@ -521,6 +561,31 @@ class BrainRememberMixin:
             source_attribution: user_stated | claude_inferred | session_synthesis | correction | code_reading
             scope: system | module | file | function | cross-system | cross-file | cross-function
         """
+        # v5.2: Auto-populate user_raw_quote from last user message if not provided.
+        # The pre-response hook stores the user's message in brain_meta.
+        # This ensures operator voice is captured structurally, not by discipline.
+        #
+        # IMPORTANT: Quotes must not float. An auto-captured quote gets anchored with
+        # source_context that records what was being discussed (the node title acts as
+        # Claude's interpretation; source_context bridges the two).
+        if user_raw_quote is None:
+            try:
+                last_msg = self.get_config('last_user_message')
+                if last_msg and len(last_msg) >= 10:
+                    user_raw_quote = last_msg
+                    # Auto-anchor: if no source_context provided, generate one
+                    # that ties the quote to the node being created
+                    if source_context is None:
+                        source_context = (
+                            'Auto-captured operator message during encoding of: '
+                            '%s. Host understood this as: %s' % (
+                                title[:80],
+                                (content or title)[:150]
+                            )
+                        )
+            except Exception:
+                pass
+
         # Store the core node via remember()
         result = self.remember(type=type, title=title, content=content, **kwargs)
         node_id = result['id']

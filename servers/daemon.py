@@ -450,6 +450,15 @@ class BrainDaemon:
                     result = self.brain.get_active_evolutions(types)
                     return {"ok": True, "result": result}
 
+                elif cmd == "assess_developmental_stage":
+                    result = self.brain.assess_developmental_stage()
+                    return {"ok": True, "result": result}
+
+                elif cmd == "instinct_check":
+                    message = args.get("message", "")
+                    nudge = self.brain.get_instinct_check(message)
+                    return {"ok": True, "result": {"nudge": nudge}}
+
                 elif cmd == "eval":
                     # Escape hatch: eval arbitrary expression on brain
                     # Only for development/debugging — not for production hooks

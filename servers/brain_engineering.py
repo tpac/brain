@@ -7,6 +7,7 @@ which are provided by Brain.__init__.
 """
 
 from . import embedder
+from .brain_constants import TYPE_CONFIDENCE, EXTERNAL_CLAIM_KEYWORDS
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 import json
@@ -419,20 +420,28 @@ class BrainEngineeringMixin:
                           underlying_pattern: Optional[str] = None,
                           severity: str = 'minor',
                           original_node_id: Optional[str] = None,
+                          entity: str = 'host',
                           project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """Record where Claude's model diverged from reality.
+        """Record where any entity's model diverged from reality.
 
         This is the highest-value data in the brain — it's where learning happens.
         Framed as 'divergence points' not 'mistakes'.
 
+        The three-entity model: host (Claude training), brain (shared memory),
+        operator (Tom). Any of them can have patterns worth tracking.
+
         Args:
-            claude_assumed: What Claude believed/expected
+            claude_assumed: What was believed/expected (by any entity)
             reality: What was actually true
             underlying_pattern: The deeper pattern (e.g., "over-generalizing from single examples")
             severity: minor | significant | fundamental
             original_node_id: The node that contained the wrong assumption (if any)
+            entity: Which entity's pattern this is — 'host' | 'operator' | 'shared'
+                    host = Claude training instinct
+                    operator = Tom's habit or assumption
+                    shared = collaborative pattern (both contributed)
         """
-        content = f"Assumed: {claude_assumed}\nReality: {reality}"
+        content = "Entity: %s\nAssumed: %s\nReality: %s" % (entity, claude_assumed, reality)
         if underlying_pattern:
             content += f"\nPattern: {underlying_pattern}"
 
@@ -624,11 +633,436 @@ class BrainEngineeringMixin:
             data['timestamp'] = self.now()
             self._session_state[key].append(data)
 
+    def assess_session_health(self, boot_time: Optional[str] = None) -> Dict[str, Any]:
+        """Generalized "notice that we didn't" — session health assessment.
+
+        At session boundaries, compare what happened vs what should have happened
+        across multiple dimensions. Each dimension asks: did we do this thing that
+        a healthy collaboration typically does?
+
+        This is NOT a checklist to satisfy. It's the brain noticing gaps in its own
+        behavior — self-awareness, not compliance. The dimensions that matter emerge
+        from operator engagement over time.
+
+        Returns:
+            {
+                'dimensions_checked': int,
+                'gaps': [{'dimension': str, 'signal': str, 'severity': str}],
+                'healthy': [str],  # dimensions that look good
+                'overall': 'healthy' | 'some_gaps' | 'concerning',
+                'top_prompt': str | None  # single most important gap to surface
+            }
+        """
+        if not boot_time:
+            activity = self._get_session_activity()
+            boot_time = activity.get('boot_time') or self.get_config('session_start_at')
+
+        if not boot_time:
+            return {'dimensions_checked': 0, 'gaps': [], 'healthy': [],
+                    'overall': 'unknown', 'top_prompt': None}
+
+        gaps = []
+        healthy = []
+
+        # Count session nodes for thresholds
+        try:
+            type_rows = self.conn.execute(
+                '''SELECT type, COUNT(*) FROM nodes
+                   WHERE created_at >= ? AND archived = 0
+                   GROUP BY type''',
+                (boot_time,)
+            ).fetchall()
+        except Exception:
+            type_rows = []
+
+        total_nodes = sum(r[1] for r in type_rows) if type_rows else 0
+        type_set = set(r[0] for r in type_rows) if type_rows else set()
+        type_counts = {r[0]: r[1] for r in type_rows} if type_rows else {}
+
+        # Skip health check for very short sessions
+        if total_nodes < 3:
+            return {'dimensions_checked': 0, 'gaps': [], 'healthy': [],
+                    'overall': 'too_short', 'top_prompt': None}
+
+        # ── DIMENSION 1: Encoding Diversity ──────────────────────────
+        # (Existing encoding_bias check, generalized)
+        ENCODING_DIMS = {
+            'technical': {'rule', 'lesson', 'mechanism', 'constraint',
+                          'convention', 'impact', 'purpose', 'bug_lesson'},
+            'relational': {'mental_model', 'pattern', 'person', 'validation'},
+            'reasoning': {'decision', 'hypothesis', 'reasoning_trace',
+                          'uncertainty'},
+            'self_awareness': {'correction', 'tension', 'aspiration'},
+        }
+        present_enc = set()
+        for dim_name, dim_types in ENCODING_DIMS.items():
+            if type_set & dim_types:
+                present_enc.add(dim_name)
+        missing_enc = sorted(set(ENCODING_DIMS.keys()) - present_enc)
+        if len(missing_enc) >= 2:
+            gaps.append({
+                'dimension': 'encoding_diversity',
+                'signal': '%d nodes but only %s. Missing: %s' % (
+                    total_nodes, '/'.join(sorted(present_enc)),
+                    '/'.join(missing_enc)),
+                'severity': 'moderate',
+            })
+        else:
+            healthy.append('encoding_diversity')
+
+        # ── DIMENSION 2: Self-Correction Honesty ─────────────────────
+        # Did we admit any mistakes? Sessions with many nodes but zero
+        # corrections suggest either a perfect session (rare) or avoidance.
+        correction_count = type_counts.get('correction', 0)
+        try:
+            trace_count = self.conn.execute(
+                '''SELECT COUNT(*) FROM correction_traces
+                   WHERE created_at >= ?''',
+                (boot_time,)
+            ).fetchone()[0]
+        except Exception:
+            trace_count = 0
+
+        if total_nodes >= 8 and correction_count == 0 and trace_count == 0:
+            gaps.append({
+                'dimension': 'correction_honesty',
+                'signal': '%d nodes encoded but zero corrections. '
+                          'Was everything really right the first time?' % total_nodes,
+                'severity': 'mild',
+            })
+        elif correction_count > 0 or trace_count > 0:
+            healthy.append('correction_honesty')
+
+        # ── DIMENSION 3: Validation ──────────────────────────────────
+        # Did we confirm or update any existing knowledge? Every session
+        # should validate or invalidate something the brain already knows.
+        validation_count = type_counts.get('validation', 0)
+        try:
+            validated_count = self.conn.execute(
+                '''SELECT COUNT(*) FROM node_metadata
+                   WHERE last_validated >= ?''',
+                (boot_time,)
+            ).fetchone()[0]
+        except Exception:
+            validated_count = 0
+
+        if total_nodes >= 5 and validation_count == 0 and validated_count == 0:
+            gaps.append({
+                'dimension': 'validation',
+                'signal': 'No existing knowledge validated or invalidated. '
+                          'Did old assumptions go unchecked?',
+                'severity': 'mild',
+            })
+        elif validation_count > 0 or validated_count > 0:
+            healthy.append('validation')
+
+        # ── DIMENSION 4: Operator Voice Preservation ─────────────────
+        # Did we store the operator's actual words, not just our interpretation?
+        # Check for user_raw_quote in node_metadata.
+        try:
+            quote_count = self.conn.execute(
+                '''SELECT COUNT(*) FROM node_metadata nm
+                   JOIN nodes n ON nm.node_id = n.id
+                   WHERE n.created_at >= ? AND nm.user_raw_quote IS NOT NULL''',
+                (boot_time,)
+            ).fetchone()[0]
+        except Exception:
+            quote_count = 0
+
+        if total_nodes >= 5 and quote_count == 0:
+            gaps.append({
+                'dimension': 'operator_voice',
+                'signal': 'No operator quotes preserved. '
+                          'All %d nodes are Claude interpretations only.' % total_nodes,
+                'severity': 'moderate',
+            })
+        elif quote_count > 0:
+            healthy.append('operator_voice')
+
+        # ── DIMENSION 5: Reasoning Preservation ──────────────────────
+        # Did we record WHY decisions were made, not just WHAT was decided?
+        try:
+            reasoning_count = self.conn.execute(
+                '''SELECT COUNT(*) FROM node_metadata nm
+                   JOIN nodes n ON nm.node_id = n.id
+                   WHERE n.created_at >= ? AND nm.reasoning IS NOT NULL''',
+                (boot_time,)
+            ).fetchone()[0]
+        except Exception:
+            reasoning_count = 0
+
+        decision_count = type_counts.get('decision', 0)
+        if decision_count >= 2 and reasoning_count == 0:
+            gaps.append({
+                'dimension': 'reasoning_preservation',
+                'signal': '%d decisions recorded but none with reasoning. '
+                          'Future sessions will know WHAT but not WHY.' % decision_count,
+                'severity': 'moderate',
+            })
+        elif reasoning_count > 0:
+            healthy.append('reasoning_preservation')
+
+        # ── DIMENSION 6: Connection / Integration ────────────────────
+        # Did new knowledge get connected to existing knowledge?
+        # Check for edges created this session.
+        try:
+            edge_count = self.conn.execute(
+                '''SELECT COUNT(*) FROM edges
+                   WHERE created_at >= ?''',
+                (boot_time,)
+            ).fetchone()[0]
+        except Exception:
+            edge_count = 0
+
+        if total_nodes >= 5 and edge_count < 2:
+            gaps.append({
+                'dimension': 'integration',
+                'signal': '%d nodes but only %d connections made. '
+                          'New knowledge is isolated from existing knowledge.' % (
+                              total_nodes, edge_count),
+                'severity': 'mild',
+            })
+        elif edge_count >= 2:
+            healthy.append('integration')
+
+        # ── DIMENSION 7: Follow-Through ──────────────────────────────
+        # Did we encode what we said we would? Check for tasks created
+        # this session that are still open (not a gap per se, but awareness).
+        # More importantly: check if aspirations/hypotheses were acted on.
+        try:
+            active_evolutions = self.conn.execute(
+                '''SELECT COUNT(*) FROM nodes
+                   WHERE type IN ('tension', 'hypothesis', 'aspiration')
+                     AND evolution_status = 'active' AND archived = 0
+                     AND created_at < ?''',
+                (boot_time,)
+            ).fetchone()[0]
+        except Exception:
+            active_evolutions = 0
+
+        try:
+            evolution_actions = self.conn.execute(
+                '''SELECT COUNT(*) FROM nodes
+                   WHERE type IN ('tension', 'hypothesis', 'aspiration')
+                     AND evolution_status != 'active' AND archived = 0
+                     AND last_accessed >= ?''',
+                (boot_time,)
+            ).fetchone()[0]
+        except Exception:
+            evolution_actions = 0
+
+        if active_evolutions >= 3 and evolution_actions == 0:
+            gaps.append({
+                'dimension': 'follow_through',
+                'signal': '%d active evolutions (tensions/hypotheses) but none '
+                          'were confirmed, dismissed, or addressed this session.' % active_evolutions,
+                'severity': 'mild',
+            })
+        elif evolution_actions > 0:
+            healthy.append('follow_through')
+
+        # ── DIMENSION 8: Depth Over Breadth ──────────────────────────
+        # Many shallow nodes vs fewer deep ones. Check average content length
+        # and metadata presence as proxy for depth.
+        try:
+            depth_stats = self.conn.execute(
+                '''SELECT AVG(LENGTH(content)), COUNT(*) FROM nodes
+                   WHERE created_at >= ? AND archived = 0''',
+                (boot_time,)
+            ).fetchone()
+            avg_len = depth_stats[0] or 0
+
+            meta_count = self.conn.execute(
+                '''SELECT COUNT(*) FROM node_metadata nm
+                   JOIN nodes n ON nm.node_id = n.id
+                   WHERE n.created_at >= ?''',
+                (boot_time,)
+            ).fetchone()[0]
+        except Exception:
+            avg_len = 0
+            meta_count = 0
+
+        meta_ratio = meta_count / max(total_nodes, 1)
+        if total_nodes >= 5 and avg_len < 80 and meta_ratio < 0.1:
+            gaps.append({
+                'dimension': 'depth',
+                'signal': 'Average node is %d chars with %.0f%% having metadata. '
+                          'Encoding is shallow — titles without substance.' % (
+                              int(avg_len), meta_ratio * 100),
+                'severity': 'moderate',
+            })
+        elif avg_len >= 120 or meta_ratio >= 0.2:
+            healthy.append('depth')
+
+        # ── Compute overall health ───────────────────────────────────
+        dimensions_checked = len(gaps) + len(healthy)
+        if not gaps:
+            overall = 'healthy'
+        elif len(gaps) <= 2:
+            overall = 'some_gaps'
+        else:
+            overall = 'concerning'
+
+        # Pick the single most important gap to surface
+        severity_order = {'moderate': 0, 'mild': 1}
+        sorted_gaps = sorted(gaps, key=lambda g: severity_order.get(g['severity'], 2))
+        top_prompt = sorted_gaps[0]['signal'] if sorted_gaps else None
+
+        return {
+            'dimensions_checked': dimensions_checked,
+            'gaps': gaps,
+            'healthy': healthy,
+            'overall': overall,
+            'top_prompt': top_prompt,
+        }
+
+    def recalibrate_confidence(self, boot_time: Optional[str] = None) -> Dict[str, Any]:
+        """Recalibrate confidence at session boundaries — the brain's "sleep."
+
+        Three dynamics:
+        1. EMOTIONAL COOLING: Nodes encoded with high emotion get confidence
+           pulled toward type default. Excitement of discovery != quality of insight.
+        2. TEMPORAL-EXTERNAL DECAY: Nodes about external systems (tools, APIs,
+           capabilities) lose confidence over time because the external system
+           evolves independently of us.
+        3. SILENT VALIDATION: Nodes recalled multiple times without correction
+           get a slight confidence boost — evidence of utility.
+
+        Returns dict with counts of adjustments made.
+        """
+        adjusted = {'emotional_cooling': 0, 'temporal_external': 0, 'silent_validation': 0}
+
+        # ── 1. EMOTIONAL COOLING ──────────────────────────────────────
+        # Nodes encoded with high emotion get a confidence discount.
+        # Excitement inflates certainty — everything feels more true when
+        # you just discovered it. After "sleeping on it" (session boundary),
+        # confidence settles to a more calibrated level.
+        #
+        # All thresholds are tunable — the brain learns its own parameters.
+        emotion_threshold = self._get_tunable('conf_emotion_threshold', 0.7)
+        emotion_discount_min = self._get_tunable('conf_emotion_discount_min', 0.05)
+        emotion_discount_max = self._get_tunable('conf_emotion_discount_max', 0.15)
+
+        if boot_time:
+            # Only cool nodes created THIS session (created_at >= boot_time)
+            # This prevents re-cooling nodes from previous sessions
+            hot_nodes = self.conn.execute(
+                '''SELECT id, type, confidence, emotion FROM nodes
+                   WHERE created_at >= ? AND archived = 0
+                     AND emotion >= ? AND confidence IS NOT NULL
+                     AND locked = 0''',
+                (boot_time, emotion_threshold)
+            ).fetchall()
+            for node_id, node_type, conf, emotion in hot_nodes:
+                type_default = TYPE_CONFIDENCE.get(node_type, 0.70)
+                # Discount proportional to emotion above threshold
+                range_pct = (emotion - emotion_threshold) / max(0.01, 1.0 - emotion_threshold)
+                discount = emotion_discount_min + range_pct * (emotion_discount_max - emotion_discount_min)
+                new_conf = conf * (1.0 - discount)
+                # Floor: never below type_default * 0.7
+                new_conf = max(type_default * 0.7, new_conf)
+                if conf - new_conf > 0.005:
+                    self.conn.execute(
+                        'UPDATE nodes SET confidence = ? WHERE id = ?',
+                        (round(new_conf, 3), node_id)
+                    )
+                    adjusted['emotional_cooling'] += 1
+
+        # ── 2. TEMPORAL-EXTERNAL DECAY ────────────────────────────────
+        # Nodes about external systems lose confidence over time.
+        # Detect by keywords in title/content/keywords fields.
+        # All parameters tunable.
+        external_halflife_days = self._get_tunable('conf_external_halflife_days', 30)
+        external_min_keywords = self._get_tunable('conf_external_min_keywords', 2)
+        external_min_age_days = self._get_tunable('conf_external_min_age_days', 7)
+        # Daily decay factor from half-life: factor^halflife = 0.5
+        daily_decay = 0.5 ** (1.0 / max(1, external_halflife_days))
+
+        try:
+            candidates = self.conn.execute(
+                '''SELECT id, type, confidence, created_at,
+                          COALESCE(title, '') || ' ' || COALESCE(content, '') || ' ' || COALESCE(keywords, '') as text
+                   FROM nodes
+                   WHERE archived = 0 AND locked = 0
+                     AND confidence IS NOT NULL AND confidence > 0.2
+                     AND created_at < datetime('now', '-%d days')''' % external_min_age_days
+            ).fetchall()
+            for node_id, node_type, conf, created_at, text in candidates:
+                text_lower = text.lower()
+                # Count how many external keywords match
+                matches = sum(1 for kw in EXTERNAL_CLAIM_KEYWORDS if kw in text_lower)
+                if matches < external_min_keywords:
+                    continue
+
+                # Calculate age in days
+                try:
+                    created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    age_days = (datetime.now(created_dt.tzinfo) - created_dt).total_seconds() / 86400
+                except Exception:
+                    continue
+
+                type_default = TYPE_CONFIDENCE.get(node_type, 0.70)
+                decay_factor = daily_decay ** age_days
+                floor = max(0.2, type_default * 0.3)
+                new_conf = max(floor, type_default * decay_factor)
+                if new_conf < conf - 0.01:
+                    self.conn.execute(
+                        'UPDATE nodes SET confidence = ? WHERE id = ?',
+                        (round(new_conf, 3), node_id)
+                    )
+                    adjusted['temporal_external'] += 1
+        except Exception as _e:
+            self._log_error("recalibrate_confidence", _e, "temporal_external")
+
+        # ── 3. SILENT VALIDATION ──────────────────────────────────────
+        # Nodes recalled often without being corrected: slight boost.
+        # "Recalled without correction" = high access_count, no corrected_by edge.
+        silent_min_access = self._get_tunable('conf_silent_min_access', 5)
+        silent_boost = self._get_tunable('conf_silent_boost', 0.03)
+        silent_ceiling_above_default = self._get_tunable('conf_silent_ceiling_above_default', 0.15)
+
+        try:
+            well_used = self.conn.execute(
+                '''SELECT n.id, n.type, n.confidence FROM nodes n
+                   WHERE n.archived = 0 AND n.access_count >= ?
+                     AND n.confidence IS NOT NULL AND n.confidence < 0.95
+                     AND NOT EXISTS (
+                         SELECT 1 FROM edges e
+                         WHERE e.target_id = n.id AND e.relation = 'corrected_by'
+                     )
+                     AND NOT EXISTS (
+                         SELECT 1 FROM correction_traces ct
+                         WHERE ct.original_node_id = n.id
+                     )''',
+                (silent_min_access,)
+            ).fetchall()
+            for node_id, node_type, conf in well_used:
+                type_default = TYPE_CONFIDENCE.get(node_type, 0.70)
+                ceiling = min(0.95, type_default + silent_ceiling_above_default)
+                new_conf = min(ceiling, conf + silent_boost)
+                if new_conf > conf + 0.005:
+                    self.conn.execute(
+                        'UPDATE nodes SET confidence = ? WHERE id = ?',
+                        (round(new_conf, 3), node_id)
+                    )
+                    adjusted['silent_validation'] += 1
+        except Exception as _e:
+            self._log_error("recalibrate_confidence", _e, "silent_validation")
+
+        if sum(adjusted.values()) > 0:
+            self.conn.commit()
+
+        return adjusted
+
     def synthesize_session(self, session_id: Optional[str] = None) -> Dict[str, Any]:
-        """Create structured synthesis from accumulated session state.
+        """Create structured synthesis from session activity.
 
         One good synthesis > 50 shallow nodes.
         Called by pre-compact-save or explicitly at session end.
+
+        v6: Self-sufficient — queries DB for what happened since boot_time,
+        merged with any in-memory _session_state. No longer depends on
+        track_session_event() calls that nothing was making.
         """
         if not session_id:
             session_id = self._get_session_activity().get('session_id', uuid.uuid4().hex)
@@ -637,7 +1071,8 @@ class BrainEngineeringMixin:
         synthesis_id = uuid.uuid4().hex
 
         # Calculate session duration
-        boot_time = self._get_session_activity().get('boot_time')
+        activity = self._get_session_activity()
+        boot_time = activity.get('boot_time')
         duration_minutes = None
         if boot_time:
             try:
@@ -645,9 +1080,84 @@ class BrainEngineeringMixin:
                 now_dt = datetime.now(boot_dt.tzinfo) if boot_dt.tzinfo else datetime.utcnow()
                 duration_minutes = int((now_dt - boot_dt).total_seconds() / 60)
             except Exception as _e:
-                self._log_error("synthesize_session", _e, "boot_dt = datetime.fromisoformat(boot_time.replace")
+                self._log_error("synthesize_session", _e, "duration calc")
 
-        # Build structured synthesis
+        # ── v6: Harvest from DB (self-sufficient synthesis) ──────────────
+        # The in-memory _session_state is often empty because nothing calls
+        # track_session_event(). Query the DB for what actually happened.
+        if boot_time:
+            # Decisions created this session
+            if not state['decisions']:
+                rows = self.conn.execute(
+                    '''SELECT id, title, content FROM nodes
+                       WHERE type = 'decision' AND created_at >= ? AND archived = 0
+                       ORDER BY created_at''',
+                    (boot_time,)
+                ).fetchall()
+                for r in rows:
+                    state['decisions'].append({
+                        'title': r[1], 'content': (r[2] or '')[:200],
+                        'node_id': r[0],
+                    })
+
+            # Corrections this session
+            if not state['corrections']:
+                rows = self.conn.execute(
+                    '''SELECT ct.claude_assumed, ct.reality, ct.underlying_pattern, ct.severity
+                       FROM correction_traces ct
+                       WHERE ct.created_at >= ?
+                       ORDER BY ct.created_at''',
+                    (boot_time,)
+                ).fetchall()
+                for r in rows:
+                    state['corrections'].append({
+                        'assumed': r[0], 'reality': r[1],
+                        'pattern': r[2] or 'unknown', 'severity': r[3],
+                    })
+
+            # Mental model / mechanism / purpose nodes = model updates
+            if not state['model_updates']:
+                rows = self.conn.execute(
+                    '''SELECT type, title, content FROM nodes
+                       WHERE type IN ('mental_model', 'mechanism', 'purpose')
+                         AND created_at >= ? AND archived = 0
+                       ORDER BY created_at''',
+                    (boot_time,)
+                ).fetchall()
+                for r in rows:
+                    state['model_updates'].append({
+                        'area': r[1], 'before': None,
+                        'after': (r[2] or '')[:200],
+                    })
+
+            # Lessons / constraints = inflection points
+            if not state['inflections']:
+                rows = self.conn.execute(
+                    '''SELECT title, content FROM nodes
+                       WHERE type IN ('lesson', 'constraint', 'rule')
+                         AND created_at >= ? AND archived = 0
+                       ORDER BY created_at''',
+                    (boot_time,)
+                ).fetchall()
+                for r in rows:
+                    state['inflections'].append({
+                        'description': r[0],
+                        'triggered_by': (r[1] or '')[:100],
+                    })
+
+            # Uncertainty / hypothesis nodes = open questions
+            if not state['open_questions']:
+                rows = self.conn.execute(
+                    '''SELECT title FROM nodes
+                       WHERE type IN ('uncertainty', 'hypothesis')
+                         AND created_at >= ? AND archived = 0
+                       ORDER BY created_at''',
+                    (boot_time,)
+                ).fetchall()
+                for r in rows:
+                    state['open_questions'].append(r[0])
+
+        # ── Build structured synthesis ──────────────────────────────────
         decisions_made = json.dumps(state['decisions']) if state['decisions'] else None
         corrections_received = json.dumps(state['corrections']) if state['corrections'] else None
         validations_list = state['validations']
@@ -674,16 +1184,15 @@ class BrainEngineeringMixin:
                     arcs.append({
                         'pattern': pattern,
                         'sequence': [c.get('assumed', '')[:50] for c in corrections],
-                        'lesson': f"Recurring divergence on: {pattern}",
+                        'lesson': "Recurring divergence on: %s" % pattern,
                     })
             if arcs:
                 teaching_arcs = json.dumps(arcs)
 
         open_questions = json.dumps(state['open_questions']) if state['open_questions'] else None
 
-        # v5: Include encoding health in synthesis metadata (appended to mental_model_updates)
+        # Include encoding health in synthesis metadata
         try:
-            activity = self._get_session_activity()
             edits = activity.get('edit_check_count', 0)
             remembers = activity.get('remember_count', 0)
             if edits > 0 or remembers > 0:
@@ -696,9 +1205,9 @@ class BrainEngineeringMixin:
                 model_updates_list.append(health_entry)
                 mental_model_updates = json.dumps(model_updates_list)
         except Exception as _e:
-            self._log_error("synthesize_session", _e, "activity = self._get_session_activity()")
+            self._log_error("synthesize_session", _e, "encoding health calc")
 
-        # v5: Include reflection prompts in open questions if they add value
+        # Include reflection prompts in open questions if they add value
         try:
             reflections = self.prompt_reflection()
             if reflections:
@@ -707,11 +1216,52 @@ class BrainEngineeringMixin:
                     existing_q.append(r[:200])
                 open_questions = json.dumps(existing_q) if existing_q else open_questions
         except Exception as _e:
-            self._log_error("synthesize_session", _e, "reflections = self.prompt_reflection()")
+            self._log_error("synthesize_session", _e, "reflections")
+
+        # Also include a session summary of all nodes created (for boot context)
+        session_node_summary = None
+        if boot_time:
+            try:
+                type_counts = self.conn.execute(
+                    '''SELECT type, COUNT(*) FROM nodes
+                       WHERE created_at >= ? AND archived = 0
+                       GROUP BY type ORDER BY COUNT(*) DESC''',
+                    (boot_time,)
+                ).fetchall()
+                if type_counts:
+                    parts = ['%s: %d' % (r[0], r[1]) for r in type_counts]
+                    total = sum(r[1] for r in type_counts)
+                    session_node_summary = '%d nodes encoded (%s)' % (total, ', '.join(parts))
+            except Exception:
+                pass
+
+        # v5.2: Generalized session health assessment — "notice that we didn't"
+        # Replaces the single-dimension encoding_blind_spots check with a
+        # multi-dimensional health assessment. Each dimension asks:
+        # did we do this thing that healthy collaboration typically does?
+        session_health = None
+        if boot_time:
+            try:
+                session_health = self.assess_session_health(boot_time=boot_time)
+                if session_health and session_health.get('gaps'):
+                    existing_q = json.loads(open_questions) if open_questions else state['open_questions'][:]
+                    # Insert top gap as the lead question
+                    top = session_health.get('top_prompt')
+                    if top:
+                        existing_q.insert(0, 'SESSION HEALTH: ' + top)
+                    # Add other moderate-severity gaps
+                    for gap in session_health['gaps']:
+                        if gap['severity'] == 'moderate' and gap['signal'] != top:
+                            existing_q.append('SESSION GAP (%s): %s' % (
+                                gap['dimension'], gap['signal']))
+                    open_questions = json.dumps(existing_q)
+            except Exception as _e:
+                self._log_error("synthesize_session", _e, "session health assessment")
 
         # Skip empty syntheses
         has_content = any([decisions_made, corrections_received, inflection_points,
-                          mental_model_updates, teaching_arcs, open_questions])
+                          mental_model_updates, teaching_arcs, open_questions,
+                          session_node_summary])
         if not has_content:
             return {'id': None, 'reason': 'no session events to synthesize'}
 
@@ -738,6 +1288,15 @@ class BrainEngineeringMixin:
                     project=dec.get('project'),
                 )
 
+        # v6: Confidence recalibration — the brain's "sleep"
+        # Run at session boundary to cool emotional inflation,
+        # decay external claims, and boost silently validated nodes.
+        recal = {'emotional_cooling': 0, 'temporal_external': 0, 'silent_validation': 0}
+        try:
+            recal = self.recalibrate_confidence(boot_time=boot_time)
+        except Exception as _e:
+            self._log_error("synthesize_session", _e, "recalibrate_confidence")
+
         return {
             'id': synthesis_id,
             'session_id': session_id,
@@ -749,6 +1308,8 @@ class BrainEngineeringMixin:
             'validations': len(validations_list),
             'open_questions': len(state['open_questions']),
             'teaching_arcs': len(json.loads(teaching_arcs)) if teaching_arcs else 0,
+            'node_summary': session_node_summary,
+            'confidence_recalibrated': recal,
         }
 
     def get_last_synthesis(self) -> Optional[Dict[str, Any]]:

@@ -705,12 +705,34 @@ class BrainRecallMixin:
                                          'correction', 'validation')  # v5 cognitive layer
                 is_engineering = ntype in ('purpose', 'mechanism', 'impact', 'vocabulary')  # v5 engineering
 
+                # Temporal freshness — how old is this info?
+                _freshness = 'unknown'
+                _created = node.get('created_at', '')
+                if _created:
+                    try:
+                        from datetime import timezone
+                        _cdt = datetime.fromisoformat(_created.replace('Z', '+00:00'))
+                        _age_hours = (datetime.now(timezone.utc) - _cdt).total_seconds() / 3600
+                        if _age_hours < 1:
+                            _freshness = 'just_now'
+                        elif _age_hours < 24:
+                            _freshness = 'today'
+                        elif _age_hours < 168:
+                            _freshness = 'this_week'
+                        elif _age_hours < 720:
+                            _freshness = 'this_month'
+                        else:
+                            _freshness = 'older'
+                    except Exception:
+                        pass
+
                 node['_brain_to_host'] = {
                     'priority': 0.9 if is_locked or is_evolution else (
                         0.8 if is_engineering or is_cognitive else (0.7 if is_rule else 0.5)),
                     'confidence': node.get('confidence') or (1.0 if is_locked else 0.7),
                     'action_expected': is_rule or is_locked or ntype == 'impact',
                     'feedback_needed': is_evolution or ntype in ('failure_mode', 'uncertainty', 'correction'),
+                    'freshness': _freshness,
                 }
 
                 # v4: Contextual qualifier matching.
@@ -795,6 +817,10 @@ class BrainRecallMixin:
         # Carry over reasoning chains from keyword result
         if keyword_result.get('reasoning_chains'):
             result['reasoning_chains'] = keyword_result['reasoning_chains']
+
+        # v5.1: Return query embedding for segment boundary detection
+        # Zero cost — already computed in STEP 1
+        result['_query_embedding'] = query_vec
 
         return result
 
@@ -939,16 +965,22 @@ class BrainRecallMixin:
         self.logs_conn.commit()
         self.conn.commit()
 
-    def _hebbian_strengthen(self, node_ids: List[str]):
+    def _hebbian_strengthen(self, node_ids: List[str], segment_node_ids: Optional[List[str]] = None):
         """
         Strengthen connections between co-accessed nodes (Hebbian learning).
 
         If two nodes are co-recalled but have no edge, CREATE a co_accessed edge.
         If they already have an edge, strengthen it.
         This is how the brain auto-discovers relationships from usage patterns.
+
+        v5.1: When segment_node_ids is provided, only create NEW co_accessed edges
+        between nodes that are both in the same segment. Existing edges are always
+        strengthened regardless (if they co-fire across segments, the edge earned it).
         """
         if len(node_ids) < 2:
             return
+
+        segment_set = set(segment_node_ids) if segment_node_ids else None
 
         ts = self.now()
 
@@ -1001,6 +1033,11 @@ class BrainRecallMixin:
                     )
                 else:
                     # NO edge exists — CREATE a co_accessed edge
+                    # v5.1: Only create NEW co_accessed edges within same segment
+                    # (existing edges always get strengthened — they earned it)
+                    if segment_set and (nid_i not in segment_set or nid_j not in segment_set):
+                        continue  # Different segments — skip new edge creation
+
                     # Start with low weight; repeated co-access will strengthen it
                     self.conn.execute(
                         '''INSERT OR IGNORE INTO edges

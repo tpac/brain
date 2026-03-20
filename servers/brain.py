@@ -520,6 +520,113 @@ class Brain(
             'decisions': [], 'corrections': [], 'inflections': [],
             'model_updates': [], 'validations': [], 'open_questions': []
         }
+        # v5.1: Reset segment state
+        self.set_config('segment_id', '0')
+        self.set_config('segment_embeddings', '[]')
+        self.set_config('segment_node_ids', '[]')
+
+    def check_segment_boundary(self, query_embedding):
+        """Detect if a new message represents a context/topic shift.
+
+        Compares the query embedding against the centroid of the last N
+        message embeddings (sliding window). If similarity drops below
+        threshold, declares a new segment boundary.
+
+        Uses get_config/set_config directly (not _get_session_activity)
+        because the DAL's session activity reader has a fixed key list.
+
+        Args:
+            query_embedding: bytes blob from embedder.embed()
+
+        Returns:
+            Dict with is_boundary, similarity, segment_id, segment_count
+        """
+        if not query_embedding:
+            return {'is_boundary': False, 'segment_id': 0}
+
+        import base64
+
+        current_seg = int(self.get_config('segment_id', 0) or 0)
+
+        # Decode stored embeddings from brain_meta
+        stored_json = self.get_config('segment_embeddings', '[]') or '[]'
+        try:
+            stored_b64 = json.loads(stored_json)
+        except Exception:
+            stored_b64 = []
+
+        stored_blobs = []
+        for b64 in stored_b64:
+            try:
+                stored_blobs.append(base64.b64decode(b64))
+            except Exception:
+                pass
+
+        # Warmup: need at least N messages before detecting boundaries
+        window_size = int(self._get_tunable('segment_window_size', 2))
+        if len(stored_blobs) < window_size:
+            new_b64 = base64.b64encode(query_embedding).decode('ascii')
+            stored_b64.append(new_b64)
+            self.set_config('segment_embeddings', json.dumps(stored_b64))
+            return {
+                'is_boundary': False,
+                'similarity': 1.0,
+                'segment_id': current_seg,
+                'segment_count': current_seg + 1,
+            }
+
+        # Compute centroid of sliding window
+        centroid = embedder.compute_centroid(stored_blobs[-window_size:])
+        if not centroid:
+            return {'is_boundary': False, 'segment_id': current_seg}
+
+        sim = embedder.cosine_similarity(query_embedding, centroid)
+        threshold = float(self._get_tunable('segment_boundary_threshold', 0.74))
+
+        is_boundary = sim < threshold
+
+        if is_boundary:
+            new_seg = current_seg + 1
+            new_b64 = base64.b64encode(query_embedding).decode('ascii')
+            self.set_config('segment_id', str(new_seg))
+            self.set_config('segment_embeddings', json.dumps([new_b64]))
+            self.set_config('segment_node_ids', '[]')
+            return {
+                'is_boundary': True,
+                'similarity': round(sim, 3),
+                'segment_id': new_seg,
+                'segment_count': new_seg + 1,
+            }
+        else:
+            new_b64 = base64.b64encode(query_embedding).decode('ascii')
+            stored_b64.append(new_b64)
+            stored_b64 = stored_b64[-window_size:]
+            self.set_config('segment_embeddings', json.dumps(stored_b64))
+            return {
+                'is_boundary': False,
+                'similarity': round(sim, 3),
+                'segment_id': current_seg,
+                'segment_count': current_seg + 1,
+            }
+
+    def get_current_segment_id(self):
+        """Get the current conversation segment ID."""
+        return int(self.get_config('segment_id', 0) or 0)
+
+    def get_segment_node_ids(self):
+        """Get node IDs created/accessed in the current segment."""
+        raw = self.get_config('segment_node_ids', '[]') or '[]'
+        try:
+            return json.loads(raw)
+        except Exception:
+            return []
+
+    def add_to_segment(self, node_id):
+        """Add a node ID to the current segment's tracking list."""
+        current = self.get_segment_node_ids()
+        if node_id not in current:
+            current.append(node_id)
+            self.set_config('segment_node_ids', json.dumps(current))
 
     def record_remember(self):
         """Increment remember counter and mark last encode position."""

@@ -15,6 +15,8 @@ fi
 # ── Try daemon first (fast path) ──
 source "$(dirname "$0")/daemon-client.sh"
 if daemon_available; then
+  # Synthesize session before shutdown
+  daemon_send '{"cmd":"synthesize_session","args":{}}' 10 >/dev/null 2>&1
   # Consolidate via daemon
   daemon_send '{"cmd":"consolidate","args":{}}' 30 >/dev/null 2>&1
   # Save and shutdown daemon (saves + closes brain + removes socket/PID)
@@ -39,6 +41,20 @@ try:
     from servers.brain import Brain
     brain = Brain(db_path)
 
+    # Synthesize session before shutdown
+    try:
+        synthesis = brain.synthesize_session()
+        syn_id = synthesis.get("id")
+        if syn_id:
+            parts = []
+            if synthesis.get("decisions"): parts.append(str(synthesis["decisions"]) + " decisions")
+            if synthesis.get("corrections"): parts.append(str(synthesis["corrections"]) + " corrections")
+            if synthesis.get("node_summary"): parts.append(synthesis["node_summary"])
+            if parts:
+                print("brain: session synthesis: " + ", ".join(parts), file=sys.stderr)
+    except Exception as e:
+        print("brain: synthesis error (non-fatal): " + str(e), file=sys.stderr)
+
     # Consolidate: strengthen frequent memories, detect bridges
     try:
         brain.consolidate()
@@ -50,4 +66,4 @@ try:
     brain.close()
 except Exception as e:
     print("brain: session-end error: " + str(e), file=sys.stderr)
-' 2>/dev/null
+'

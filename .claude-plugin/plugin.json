@@ -1,7 +1,7 @@
 {
   "name": "brain",
-  "version": "5.0.0",
-  "description": "Shared cognitive space for Claude + operator. v5: Rich encoding (reasoning chains, alternatives, user quotes), tiered recall (full/summary), engineering memory (purpose, mechanism, impact, constraint, convention, lesson, vocabulary), self-correction traces, session synthesis, mental models, confidence-weighted recall, separated logs DB (brain_logs.db) with rate-limited error surfacing, human-readable brain.log, auto-heal with duplicate merge and confidence decay, auto-tune, 12 consciousness signals, vocabulary gap detection.",
+  "version": "5.1.0",
+  "description": "Shared cognitive space for Claude + operator. v5.1: Mixin architecture (11 modules), dynamic confidence (emotional cooling, temporal-external decay, silent validation), priming system (active concerns as background attention filter), developmental stage assessment (NEWBORN→INTEGRATED with growth guidance), self-sufficient session synthesis, tunable parameters, auto-enrichment in remember() (confidence, connections). Plus v5: tiered recall, engineering memory, self-correction traces, 12 consciousness signals, vocabulary gap detection.",
   "author": {
     "name": "Tom Pachys"
   },

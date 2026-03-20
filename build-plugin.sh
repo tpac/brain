@@ -1,9 +1,10 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-# brain v5.0.0 — Serverless plugin builder
+# brain v5.1.0 — Serverless plugin builder
 # Packs exactly what belongs in the .plugin file. Nothing else.
 #
-# v3.0: Python serverless — no Node.js, no HTTP server.
+# v5.1: Mixin architecture (11 modules), confidence dynamics,
+#        priming, developmental stages, self-sufficient synthesis.
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -13,13 +14,26 @@ OUT="${1:-brain.plugin}"
 # Explicit file manifest — if it's not listed, it doesn't ship
 FILES=(
   .claude-plugin/plugin.json
-  # Python brain module
+  # Python brain module — core + 11 mixin modules
   servers/__init__.py
   servers/brain.py
+  servers/brain_absorb.py
+  servers/brain_connections.py
+  servers/brain_consciousness.py
+  servers/brain_constants.py
+  servers/brain_dreams.py
+  servers/brain_engineering.py
+  servers/brain_evolution.py
+  servers/brain_recall.py
+  servers/brain_remember.py
+  servers/brain_surface.py
+  servers/brain_vocabulary.py
   servers/schema.py
   servers/embedder.py
   servers/migrate.py
   servers/dal.py
+  servers/daemon.py
+  servers/metrics.py
   # Hook scripts
   hooks/hooks.json
   hooks/scripts/boot-brain.sh
@@ -36,6 +50,8 @@ FILES=(
   hooks/scripts/worktree-context.sh
   hooks/scripts/worktree-cleanup.sh
   hooks/scripts/resolve-brain-db.sh
+  hooks/scripts/daemon-client.sh
+  hooks/scripts/brain-client.sh
   hooks/scripts/extract-session-log.py
   # Skill definition
   skills/brain/SKILL.md

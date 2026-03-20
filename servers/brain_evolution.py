@@ -771,6 +771,83 @@ class BrainEvolutionMixin:
         self.conn.commit()
         return results
 
+    def prune_irrelevant_quotes(self, batch_size: int = 30,
+                                 threshold: float = 0.50) -> Dict[str, Any]:
+        """Prune auto-captured operator quotes that don't match their node.
+
+        When remember_rich() auto-captures the last user message as user_raw_quote,
+        the quote may be about a completely different topic than the node being created.
+        E.g., user says "fix the CSS bug" then Claude encodes a node about embeddings —
+        the CSS quote gets attached to the embedding node.
+
+        This method uses embedding similarity to detect mismatches and removes the quote
+        (preserving source_context as a record that a quote was pruned).
+
+        Runs during idle. Threshold calibrated against Snowflake Arctic Embed:
+        unrelated pairs score 0.46-0.62, related pairs score 0.74+.
+        Default 0.50 catches clear mismatches while preserving tangentially related quotes.
+
+        Returns:
+            {'checked': int, 'pruned': int, 'pruned_nodes': [{'id': str, 'title': str, 'quote': str}]}
+        """
+        result = {'checked': 0, 'pruned': 0, 'pruned_nodes': []}
+
+        if not embedder.is_ready():
+            return result
+
+        # Find nodes with auto-captured quotes (source_context starts with 'Auto-captured')
+        rows = self.conn.execute(
+            '''SELECT nm.node_id, nm.user_raw_quote, nm.source_context,
+                      n.title, n.content, ne.embedding
+               FROM node_metadata nm
+               JOIN nodes n ON nm.node_id = n.id
+               LEFT JOIN node_embeddings ne ON n.id = ne.node_id
+               WHERE nm.user_raw_quote IS NOT NULL
+                 AND nm.source_context LIKE 'Auto-captured%'
+                 AND n.archived = 0
+               ORDER BY n.created_at DESC
+               LIMIT ?''',
+            (batch_size,)
+        ).fetchall()
+
+        for row in rows:
+            node_id, quote, source_ctx, title, content, node_emb = row
+            result['checked'] += 1
+
+            if not node_emb or not quote:
+                continue
+
+            # Embed the quote and compare to the node embedding
+            quote_emb = embedder.embed(quote)
+            if not quote_emb:
+                continue
+
+            sim = embedder.cosine_similarity(quote_emb, node_emb)
+
+            if sim < threshold:
+                # Clear mismatch — prune the quote but leave a trace
+                self.conn.execute(
+                    '''UPDATE node_metadata
+                       SET user_raw_quote = NULL,
+                           source_context = ?
+                       WHERE node_id = ?''',
+                    ('Pruned auto-quote (sim=%.2f, below %.2f): "%s"' % (
+                        sim, threshold, quote[:100]),
+                     node_id)
+                )
+                result['pruned'] += 1
+                result['pruned_nodes'].append({
+                    'id': node_id,
+                    'title': title[:60] if title else '',
+                    'quote': quote[:80],
+                    'similarity': round(sim, 3),
+                })
+
+        if result['pruned'] > 0:
+            self.conn.commit()
+
+        return result
+
     def auto_tune(self, eval_period_days: int = 7) -> Dict[str, Any]:
         """
         Standalone self-tuning method. Adjusts brain parameters based on observed behavior.
@@ -879,10 +956,138 @@ class BrainEvolutionMixin:
                 # Most syntheses are empty — tracking is too sparse
                 results['tuned'].append({
                     'param': 'synthesis_observation',
-                    'note': f'{empty_syntheses}/{total_syntheses} syntheses empty — need more track_session_event calls',
+                    'note': '%d/%d syntheses empty — need more track_session_event calls' % (
+                        empty_syntheses, total_syntheses),
                 })
         except Exception as _e:
             self._log_error("auto_tune", _e, "evaluating session synthesis density for tuning")
+
+        # v5.2: Embedding model calibration — measure actual similarity baseline
+        # so thresholds adapt to the model's operating range, not hardcoded assumptions.
+        # Samples random node pairs to estimate the floor (unrelated) and ceiling (similar).
+        # Runs at most once per day (cached in brain_meta).
+        try:
+            if embedder.is_ready():
+                last_calibration = self.get_config('embedding_calibration_at')
+                should_calibrate = True
+                if last_calibration:
+                    from datetime import datetime as _dt, timezone as _tz
+                    try:
+                        cal_dt = _dt.fromisoformat(last_calibration.replace('Z', '+00:00'))
+                        age_hours = (_dt.now(_tz.utc) - cal_dt).total_seconds() / 3600
+                        should_calibrate = age_hours > 24
+                    except Exception:
+                        pass
+
+                if should_calibrate:
+                    import random as _random
+                    # Sample diverse nodes (different types, different ages)
+                    sample_rows = self.conn.execute(
+                        """SELECT ne.embedding FROM node_embeddings ne
+                           JOIN nodes n ON n.id = ne.node_id
+                           WHERE n.archived = 0 AND n.content IS NOT NULL
+                             AND LENGTH(n.content) > 50
+                           ORDER BY RANDOM() LIMIT 40"""
+                    ).fetchall()
+
+                    if len(sample_rows) >= 20:
+                        embeddings = [r[0] for r in sample_rows]
+                        # Compute pairwise similarities for a random subset
+                        sims = []
+                        indices = list(range(len(embeddings)))
+                        pairs = []
+                        for i in range(len(indices)):
+                            for j in range(i + 1, len(indices)):
+                                pairs.append((i, j))
+                        # Sample up to 100 pairs
+                        if len(pairs) > 100:
+                            pairs = _random.sample(pairs, 100)
+                        for i, j in pairs:
+                            sim = embedder.cosine_similarity(embeddings[i], embeddings[j])
+                            sims.append(sim)
+
+                        if sims:
+                            sims.sort()
+                            floor = sims[int(len(sims) * 0.10)]  # 10th percentile
+                            median = sims[len(sims) // 2]
+                            p90 = sims[int(len(sims) * 0.90)]  # 90th percentile
+                            mean = sum(sims) / len(sims)
+
+                            calibration = {
+                                'floor_p10': round(floor, 4),
+                                'median': round(median, 4),
+                                'p90': round(p90, 4),
+                                'mean': round(mean, 4),
+                                'sample_pairs': len(sims),
+                                'sample_nodes': len(embeddings),
+                            }
+
+                            import json as _json
+                            self.set_config('embedding_calibration',
+                                            _json.dumps(calibration))
+                            self.set_config('embedding_calibration_at', self.now())
+
+                            # Now adjust thresholds relative to measured distribution
+                            current_thresholds = self._get_tunable('similarity_thresholds', {})
+                            if isinstance(current_thresholds, dict):
+                                new_thresholds = dict(current_thresholds)
+                                changed = False
+
+                                # Contradiction: should be well above median (genuine similarity)
+                                # Target: median + 60% of (p90 - median)
+                                ideal_contradiction = round(median + 0.6 * (p90 - median), 2)
+                                current_contradiction = new_thresholds.get('contradiction', 0.65)
+                                if abs(ideal_contradiction - current_contradiction) > 0.03:
+                                    # Clamp to safe range and limit change to 10%
+                                    new_val = max(0.55, min(0.80, ideal_contradiction))
+                                    delta = new_val - current_contradiction
+                                    if abs(delta) > current_contradiction * 0.10:
+                                        new_val = round(current_contradiction + 0.10 * (1 if delta > 0 else -1), 2)
+                                    new_thresholds['contradiction'] = new_val
+                                    changed = True
+
+                                # Correction clustering: slightly below contradiction
+                                ideal_correction = round(median + 0.4 * (p90 - median), 2)
+                                current_correction = new_thresholds.get('correction_cluster', 0.60)
+                                if abs(ideal_correction - current_correction) > 0.03:
+                                    new_val = max(0.45, min(0.75, ideal_correction))
+                                    delta = new_val - current_correction
+                                    if abs(delta) > current_correction * 0.10:
+                                        new_val = round(current_correction + 0.10 * (1 if delta > 0 else -1), 2)
+                                    new_thresholds['correction_cluster'] = new_val
+                                    changed = True
+
+                                # Orphan backing: high — need genuine similarity
+                                ideal_orphan = round(median + 0.7 * (p90 - median), 2)
+                                current_orphan = new_thresholds.get('orphan_backing', 0.70)
+                                if abs(ideal_orphan - current_orphan) > 0.03:
+                                    new_val = max(0.55, min(0.85, ideal_orphan))
+                                    delta = new_val - current_orphan
+                                    if abs(delta) > current_orphan * 0.10:
+                                        new_val = round(current_orphan + 0.10 * (1 if delta > 0 else -1), 2)
+                                    new_thresholds['orphan_backing'] = new_val
+                                    changed = True
+
+                                if changed:
+                                    self._set_tunable('similarity_thresholds', new_thresholds,
+                                                      'Model calibration: floor=%.3f median=%.3f p90=%.3f' % (
+                                                          floor, median, p90))
+                                    results['tuned'].append({
+                                        'param': 'similarity_thresholds (calibrated)',
+                                        'calibration': calibration,
+                                        'old': current_thresholds,
+                                        'new': new_thresholds,
+                                        'reason': 'Model baseline: floor=%.3f median=%.3f p90=%.3f' % (
+                                            floor, median, p90),
+                                    })
+                                else:
+                                    results['tuned'].append({
+                                        'param': 'embedding_calibration',
+                                        'calibration': calibration,
+                                        'reason': 'Calibrated — thresholds already aligned',
+                                    })
+        except Exception as _e:
+            self._log_error("auto_tune", _e, "embedding model calibration")
 
         self.conn.commit()
         return results
@@ -1031,14 +1236,16 @@ class BrainEvolutionMixin:
                 ]
                 result['_stats']['locked_rules_scanned'] = len(candidates)
 
-                # Compare pairs — sim > 0.65 is potential tension (lowered from 0.75)
+                # Compare pairs — threshold tunable, calibrated against model baseline
+                _sim_t = self._get_tunable('similarity_thresholds', {})
+                contradiction_threshold = _sim_t.get('contradiction', 0.65) if isinstance(_sim_t, dict) else 0.65
                 close_pairs = []
                 pairs_checked = 0
                 for i in range(len(candidates)):
                     for j in range(i + 1, len(candidates)):
                         pairs_checked += 1
                         sim = embedder.cosine_similarity(candidates[i]['embedding'], candidates[j]['embedding'])
-                        if sim > 0.65:
+                        if sim > contradiction_threshold:
                             # Check no existing contradicts edge
                             existing = self.conn.execute(
                                 """SELECT COUNT(*) FROM edges
@@ -1134,7 +1341,9 @@ class BrainEvolutionMixin:
                 ).fetchall()
                 result['_stats']['corrections_analyzed'] = len(corrections)
 
-                # Simple clustering: group by sim > 0.60
+                # Simple clustering: threshold tunable, calibrated against model baseline
+                _sim_t = self._get_tunable('similarity_thresholds', {})
+                correction_cluster_threshold = _sim_t.get('correction_cluster', 0.60) if isinstance(_sim_t, dict) else 0.60
                 clusters = []  # list of lists of correction indices
                 assigned = set()
                 for i in range(len(corrections)):
@@ -1146,7 +1355,7 @@ class BrainEvolutionMixin:
                         if j in assigned:
                             continue
                         sim = embedder.cosine_similarity(corrections[i][3], corrections[j][3])
-                        if sim > 0.60:
+                        if sim > correction_cluster_threshold:
                             cluster.append(j)
                             assigned.add(j)
                     if len(cluster) >= 3:
@@ -1262,13 +1471,15 @@ class BrainEvolutionMixin:
                        LIMIT 100"""
                 ).fetchall()
 
+                _sim_t = self._get_tunable('similarity_thresholds', {})
+                orphan_backing_threshold = _sim_t.get('orphan_backing', 0.70) if isinstance(_sim_t, dict) else 0.70
                 orphan_count = 0
                 for nid, title, content, access_count, emb in orphans:
                     # Check if any locked node is similar (backing this belief)
                     has_backing = False
                     for (locked_emb,) in locked_embeddings:
                         sim = embedder.cosine_similarity(emb, locked_emb)
-                        if sim > 0.70:
+                        if sim > orphan_backing_threshold:
                             has_backing = True
                             break
 

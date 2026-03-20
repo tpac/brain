@@ -148,6 +148,24 @@ try:
 except Exception:
     pass
 
+# 7. Backfill embeddings
+try:
+    emb = daemon_call("backfill_embeddings", {"batch_size": 20})
+    emb_count = emb if isinstance(emb, int) else emb.get("count", 0) if isinstance(emb, dict) else 0
+    if emb_count > 0:
+        output.append("EMBEDDINGS: backfilled %d nodes" % emb_count)
+except Exception:
+    pass
+
+# 8. Prune irrelevant auto-captured quotes
+try:
+    prune = daemon_call("prune_irrelevant_quotes", {"batch_size": 30})
+    pruned = prune.get("pruned", 0) if isinstance(prune, dict) else 0
+    if pruned > 0:
+        output.append("QUOTE PRUNING: %d irrelevant auto-quotes removed" % pruned)
+except Exception:
+    pass
+
 # Save
 try:
     daemon_call("save", timeout=5.0)
@@ -156,7 +174,7 @@ except Exception:
 
 if output:
     print("\n".join(output))
-' 2>/dev/null
+'
   if [ $? -eq 0 ]; then
     exit 0
   fi
@@ -316,6 +334,41 @@ try:
         bf_count = backfill.get("updated", 0)
         if bf_count > 0:
             output_lines.append("SUMMARIES: backfilled %d nodes" % bf_count)
+    except Exception:
+        pass
+
+    # 6. v5.2: Backfill embeddings for nodes missing them
+    try:
+        emb_count = brain.backfill_embeddings(batch_size=20)
+        if emb_count > 0:
+            output_lines.append("EMBEDDINGS: backfilled %d nodes" % emb_count)
+    except Exception:
+        pass
+
+    # 7. v5.2: Prune irrelevant auto-captured quotes
+    try:
+        prune_result = brain.prune_irrelevant_quotes(batch_size=30)
+        if prune_result.get("pruned", 0) > 0:
+            output_lines.append("QUOTE PRUNING: %d/%d checked, %d irrelevant removed" % (
+                prune_result["pruned"], prune_result["checked"], prune_result["pruned"]))
+            for p in prune_result.get("pruned_nodes", [])[:3]:
+                output_lines.append("  pruned: \"%s\" (sim %.2f) from: %s" % (
+                    p["quote"][:50], p["similarity"], p["title"][:40]))
+    except Exception:
+        pass
+
+    # 8. v5.2: Mid-session health check (surfaces gaps as a nudge)
+    try:
+        health = brain.assess_session_health()
+        if health and health.get("overall") == "concerning":
+            output_lines.append("")
+            output_lines.append("SESSION HEALTH CHECK: %s" % health["overall"])
+            top = health.get("top_prompt")
+            if top:
+                output_lines.append("  %s" % top)
+            for g in health.get("gaps", [])[:2]:
+                if g["signal"] != top:
+                    output_lines.append("  [%s] %s" % (g["dimension"], g["signal"][:100]))
     except Exception:
         pass
 

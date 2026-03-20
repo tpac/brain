@@ -56,6 +56,38 @@ DECAY_HALF_LIFE = {
     'vocabulary': float('inf'),
 }
 
+# ═══════════════════════════════════════════════════════════════
+# CONFIDENCE: Type defaults and dynamics
+# ═══════════════════════════════════════════════════════════════
+
+# Default confidence by node type — how reliable each type tends to be
+TYPE_CONFIDENCE = {
+    'rule': 0.85, 'decision': 0.80, 'lesson': 0.85, 'correction': 0.95,
+    'constraint': 0.85, 'convention': 0.80, 'procedure': 0.85,
+    'purpose': 0.80, 'mechanism': 0.75, 'impact': 0.75,
+    'mental_model': 0.65, 'hypothesis': 0.50, 'uncertainty': 0.40,
+    'concept': 0.70, 'context': 0.60, 'task': 0.70,
+    'intuition': 0.40, 'thought': 0.35,
+    'pattern': 0.60, 'tension': 0.55, 'aspiration': 0.50,
+    'person': 0.85, 'project': 0.80, 'file': 0.75,
+    'vocabulary': 0.90, 'validation': 0.90,
+    # Legacy code cognition types
+    'fn_reasoning': 0.75, 'param_influence': 0.70, 'code_concept': 0.70,
+    'arch_constraint': 0.85, 'causal_chain': 0.70, 'bug_lesson': 0.85,
+    'comment_anchor': 0.80,
+    'capability': 0.70, 'reasoning_trace': 0.65,
+}
+
+# Keywords that suggest a node is about external systems (faster confidence decay)
+EXTERNAL_CLAIM_KEYWORDS = {
+    'api', 'sdk', 'version', 'v1', 'v2', 'v3', 'v4', 'v5',
+    'library', 'package', 'framework', 'tool', 'plugin',
+    'supports', 'doesnt support', 'cannot', "can't", 'not possible',
+    'limitation', 'workaround', 'deprecat', 'breaking change',
+    'release', 'update', 'upgrade', 'migration',
+    'claude code', 'openai', 'github', 'npm', 'pip', 'docker',
+}
+
 # Stability floor
 STABILITY_FLOOR_ACCESS_THRESHOLD = 5
 STABILITY_FLOOR_RETENTION = 0.3
