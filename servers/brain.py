@@ -346,7 +346,7 @@ class Brain:
         self.conn.execute('PRAGMA foreign_keys=ON')
 
         # Create schema if needed
-        ensure_schema(self.conn)
+        ensure_schema(self.conn, db_path=db_path)
 
         # Open separate logs database (brain_logs.db)
         db_dir = os.path.dirname(db_path) or '.'

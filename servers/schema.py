@@ -37,6 +37,8 @@ WHAT NOT TO DO:
   All schema changes go HERE, in this file.
 """
 
+import os
+import shutil
 import sqlite3
 from datetime import datetime, timezone
 
@@ -512,6 +514,22 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def _backup_before_migration(db_path, from_version, to_version):
+    """Create a backup before schema migration. Returns backup path or None."""
+    if not db_path or from_version == 0 or from_version >= to_version:
+        return None
+    try:
+        backup_path = db_path + '.v%d.bak' % from_version
+        if os.path.exists(backup_path):
+            return backup_path  # already backed up from a previous attempt
+        shutil.copy2(db_path, backup_path)
+        print('[brain] Backup created: %s' % backup_path)
+        return backup_path
+    except Exception as e:
+        print('[brain] Backup failed (continuing anyway): %s' % e)
+        return None
+
+
 def _rebuild_nodes(conn, spec):
     """Rebuild nodes table when CHECK constraint changes (new node types)."""
     conn.execute('PRAGMA foreign_keys=OFF')
@@ -590,10 +608,14 @@ def _backfill_data(conn, from_version):
             print(f"[brain] v15 backfill note: {e}")
 
 
-def ensure_schema(conn):
+def ensure_schema(conn, db_path=None):
     """
     The ONLY function that touches table structure.
     Mirrors schema.js ensureSchema() exactly.
+
+    Args:
+        conn: SQLite connection
+        db_path: Optional path to the DB file (enables pre-migration backup)
     """
     # 1. Create brain_meta first
     conn.execute(TABLES['brain_meta']['create'])
@@ -604,6 +626,11 @@ def ensure_schema(conn):
     )
     row = cur.fetchone()
     current_version = int(row[0]) if row else 0
+
+    # 2b. Backup before migration if version is changing
+    backup_path = None
+    if current_version > 0 and current_version < BRAIN_VERSION and db_path:
+        backup_path = _backup_before_migration(db_path, current_version, BRAIN_VERSION)
 
     # 3. Get list of existing tables
     cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -660,9 +687,10 @@ def ensure_schema(conn):
 
         try:
             conn.execute(
-                "INSERT INTO version_history (version, migration_ts, description) VALUES (?, ?, ?)",
+                "INSERT INTO version_history (version, migration_ts, description, backup_path) VALUES (?, ?, ?, ?)",
                 (BRAIN_VERSION, _now(),
-                 f'Schema ensured: v{current_version} -> v{BRAIN_VERSION} (serverless Python)')
+                 f'Schema ensured: v{current_version} -> v{BRAIN_VERSION} (serverless Python)',
+                 backup_path)
             )
         except Exception:
             pass

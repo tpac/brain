@@ -285,5 +285,81 @@ class TestSessionActivity(BrainTestBase):
         self.assertEqual(int(activity.get('message_count', 0)), 2)
 
 
+class TestSchemaMigration(unittest.TestCase):
+    """Test schema migration safety features."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.tmp, 'brain.db')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def test_backup_created_on_version_change(self):
+        """Pre-migration backup is created when schema version changes."""
+        # Create a v1 database
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("""CREATE TABLE IF NOT EXISTS brain_meta (
+            key TEXT PRIMARY KEY, value TEXT, updated_at TEXT)""")
+        conn.execute(
+            "INSERT INTO brain_meta (key, value) VALUES (?, ?)",
+            ('brain_schema_version', '1')
+        )
+        conn.commit()
+        conn.close()
+
+        # Now open with ensure_schema which will migrate to v15
+        conn = sqlite3.connect(self.db_path)
+        ensure_schema(conn, db_path=self.db_path)
+        conn.close()
+
+        # Check backup exists
+        backup = self.db_path + '.v1.bak'
+        self.assertTrue(os.path.exists(backup),
+                       'Backup file should exist after migration')
+
+    def test_no_backup_on_fresh_db(self):
+        """No backup for brand new databases (version 0)."""
+        conn = sqlite3.connect(self.db_path)
+        ensure_schema(conn, db_path=self.db_path)
+        conn.close()
+
+        # No backup should exist for fresh DBs
+        import glob as glob_mod
+        backups = glob_mod.glob(self.db_path + '.v*.bak')
+        self.assertEqual(len(backups), 0,
+                        'No backup should be created for fresh databases')
+
+    def test_version_history_records_backup_path(self):
+        """Version history entry includes backup_path."""
+        # Create a v1 database
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("""CREATE TABLE IF NOT EXISTS brain_meta (
+            key TEXT PRIMARY KEY, value TEXT, updated_at TEXT)""")
+        conn.execute(
+            "INSERT INTO brain_meta (key, value) VALUES (?, ?)",
+            ('brain_schema_version', '1')
+        )
+        conn.execute("""CREATE TABLE IF NOT EXISTS version_history (
+            version INTEGER NOT NULL, migration_ts TEXT NOT NULL,
+            description TEXT, backup_path TEXT)""")
+        conn.commit()
+        conn.close()
+
+        # Migrate
+        conn = sqlite3.connect(self.db_path)
+        ensure_schema(conn, db_path=self.db_path)
+
+        # Check version_history
+        row = conn.execute(
+            "SELECT backup_path FROM version_history WHERE version = 15"
+        ).fetchone()
+        conn.close()
+
+        self.assertIsNotNone(row, 'Should have version_history entry')
+        self.assertIsNotNone(row[0], 'backup_path should be recorded')
+        self.assertIn('.v1.bak', row[0])
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2, exit=True)
