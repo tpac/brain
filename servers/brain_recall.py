@@ -307,6 +307,9 @@ class BrainRecallMixin:
             elif not node.get('locked'):
                 half_lives = self._get_tunable('decay_half_lives', DECAY_HALF_LIFE)
                 half_life = half_lives.get(node.get('type'), 168)
+                # Guard: JSON round-trip turns float('inf') into string "inf"
+                if isinstance(half_life, str) and half_life.lower() == 'inf':
+                    half_life = float('inf')
                 # v4: Fluid personal nodes decay 10x slower
                 if node_personal == 'fluid':
                     half_life = half_life * 10 if half_life != float('inf') else half_life
