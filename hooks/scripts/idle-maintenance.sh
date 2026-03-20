@@ -3,37 +3,12 @@
 # Runs during idle prompts: dream, consolidate (includes auto-discovery), self-reflect.
 # Surfaces any auto-discovered evolutions for consciousness.
 
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
-SERVER_DIR="$PLUGIN_ROOT/servers"
+# ── Resolve brain DB ──
+source "$(dirname "$0")/resolve-brain-db.sh"
 
-# ── Resolve brain location ──
-DB_DIR=""
-
-if [ -n "$BRAIN_DB_DIR" ] && [ -d "$BRAIN_DB_DIR" ]; then
-  DB_DIR="$BRAIN_DB_DIR"
-fi
-
-# Cowork: search mounted AgentsContext directories
-if [ -z "$DB_DIR" ]; then
-  for candidate in /sessions/*/mnt/AgentsContext/brain; do
-    if [ -f "$candidate/brain.db" ]; then
-      DB_DIR="$candidate"
-      break
-    fi
-  done
-fi
-
-# Local Claude Code
-if [ -z "$DB_DIR" ] && [ -f "$HOME/AgentsContext/brain/brain.db" ]; then
-  DB_DIR="$HOME/AgentsContext/brain"
-fi
-
-if [ -z "$DB_DIR" ]; then
+if [ -z "$BRAIN_DB_DIR" ]; then
   exit 0
 fi
-
-export BRAIN_DB_DIR="$DB_DIR"
-export BRAIN_SERVER_DIR="$SERVER_DIR"
 
 exec python3 -c '
 import sys, os, json
