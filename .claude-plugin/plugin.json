@@ -1,7 +1,7 @@
 {
   "name": "brain",
-  "version": "4.0.0",
-  "description": "Persistent brain for Claude sessions with consciousness layer. v4: Evolution types (tension, hypothesis, pattern, catalyst, aspiration), self-reflection types, personal flag (fixed/fluid/contextual), code cognition (7 types), consciousness surfacing at boot and pre-response, embeddings-first recall (90/10), model-agnostic embedder.",
+  "version": "5.0.0",
+  "description": "Shared cognitive space for Claude + operator. v5: Rich encoding (reasoning chains, alternatives, user quotes), tiered recall (full/summary), engineering memory (purpose, mechanism, impact, constraint, convention, lesson, vocabulary), self-correction traces, session synthesis, mental models, confidence-weighted recall, separated logs DB (brain_logs.db) with rate-limited error surfacing, human-readable brain.log, auto-heal with duplicate merge and confidence decay, auto-tune, 12 consciousness signals, vocabulary gap detection.",
   "author": {
     "name": "Tom Pachys"
   },
@@ -16,6 +16,10 @@
     "embeddings",
     "personal",
     "code-cognition",
+    "engineering-memory",
+    "self-correction",
+    "session-synthesis",
+    "vocabulary",
     "hooks"
   ],
   "config": {

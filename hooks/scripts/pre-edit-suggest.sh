@@ -94,6 +94,13 @@ context_files = data.get("context_files", [])
 encoding = data.get("encoding", {})
 debug_enabled = data.get("debug_enabled", False)
 
+# v5: Change impact maps — "if you modify this, also check..."
+change_impacts = []
+try:
+    change_impacts = brain.get_change_impact(filename)
+except Exception:
+    pass
+
 # ── Encoding health warning ──
 encoding_warning = ""
 health = encoding.get("health", "OK")
@@ -121,7 +128,7 @@ elif health == "STALE":
         )
 
 # ── Early exit if nothing to show ──
-if not suggestions and not procedures and not context_files:
+if not suggestions and not procedures and not context_files and not change_impacts:
     if encoding_warning:
         print(json.dumps({"decision": "approve", "reason": encoding_warning}))
     else:
@@ -133,11 +140,42 @@ if not suggestions and not procedures and not context_files:
 # ── Format into readable context ──
 lines = [f"BRAIN AUTO-SUGGEST for {filename}:", ""]
 
-# v4: Code cognition types get their own section at top
+# v5: Engineering memory types surface first
+ENGINEERING_TYPES = {"purpose", "mechanism", "impact", "constraint", "convention", "lesson", "vocabulary"}
+# v4: Code cognition types (legacy, still supported)
 CODE_COGNITION_TYPES = {"fn_reasoning", "param_influence", "code_concept", "arch_constraint", "causal_chain", "bug_lesson", "comment_anchor"}
 
+eng_nodes = [s for s in suggestions if s.get("type") in ENGINEERING_TYPES]
 code_nodes = [s for s in suggestions if s.get("type") in CODE_COGNITION_TYPES]
-other_nodes = [s for s in suggestions if s.get("type") not in CODE_COGNITION_TYPES and s.get("type") != "procedure" and not (s.get("type") == "file" and "[ctx:" in s.get("title", ""))]
+other_nodes = [s for s in suggestions if s.get("type") not in ENGINEERING_TYPES and s.get("type") not in CODE_COGNITION_TYPES and s.get("type") != "procedure" and not (s.get("type") == "file" and "[ctx:" in s.get("title", ""))]
+
+# v5: Change impact warnings — most critical, show first
+if change_impacts:
+    lines.append("CHANGE IMPACT WARNING:")
+    lines.append("")
+    for ci in change_impacts[:5]:
+        ci_title = ci.get("title", "")[:80]
+        ci_content = ci.get("content", "")
+        if len(ci_content) > 300:
+            ci_content = ci_content[:300] + "..."
+        lines.append("  [impact] " + ci_title)
+        lines.append("    " + ci_content)
+        lines.append("")
+
+# v5: Engineering memory (purpose, mechanism, constraint, convention, lesson)
+if eng_nodes:
+    lines.append("ENGINEERING MEMORY (read carefully — these describe what you are about to edit):")
+    lines.append("")
+    for s in eng_nodes:
+        typ = s.get("type", "?")
+        title = s.get("title", "")[:80]
+        content = s.get("content", "")
+        locked = "LOCKED " if s.get("locked") else ""
+        if len(content) > 350:
+            content = content[:350] + "..."
+        lines.append("  [" + typ + "] " + locked + title)
+        lines.append("    " + content)
+        lines.append("")
 
 if code_nodes:
     lines.append("CODE KNOWLEDGE (read carefully — these describe what you are about to edit):")

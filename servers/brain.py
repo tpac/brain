@@ -23,7 +23,7 @@ import threading
 import random
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any, Set
-from .schema import ensure_schema, BRAIN_VERSION, BRAIN_VERSION_KEY, NODE_TYPES
+from .schema import ensure_schema, ensure_logs_schema, migrate_logs_to_separate_db, BRAIN_VERSION, BRAIN_VERSION_KEY, NODE_TYPES
 from . import embedder
 
 
@@ -64,6 +64,20 @@ DECAY_HALF_LIFE = {
     'capability': 720,               # 30 days — capabilities change with host/plugin updates
     'interaction': 720,              # 30 days — working dynamics evolve over time
     'meta_learning': float('inf'),   # Never decay — learning methods are reusable forever
+    # v5 Cognitive layer — Claude's own thoughts
+    'correction': float('inf'),      # Never decay — correction traces are permanent learning
+    'validation': 720,               # 30 days — validations age
+    'mental_model': 720,             # 30 days — models evolve, need refresh
+    'reasoning_trace': 1440,         # 60 days — reusable logic lasts longer
+    'uncertainty': 168,              # 7 days — resolve quickly or they pile up
+    # v5 Engineering memory types
+    'purpose': float('inf'),         # Never decay — system/file/function purposes are structural
+    'mechanism': 720,                # 30 days — mechanisms evolve
+    'impact': float('inf'),          # Never decay — change impact links are safety-critical
+    'constraint': float('inf'),      # Never decay — constraints persist until invalidated
+    'convention': 1440,              # 60 days — conventions evolve slowly
+    'lesson': float('inf'),          # Never decay — lessons are permanent prevention
+    'vocabulary': float('inf'),      # Never decay — operator vocabulary is permanent
 }
 
 # Stability floor: nodes accessed >= this many times get a minimum retention
@@ -149,14 +163,14 @@ INTENT_PATTERNS = {
 
 # v5: Intent → type boosts (which node types score higher for each intent)
 INTENT_TYPE_BOOSTS = {
-    'decision_lookup':   {'decision': 1.5, 'rule': 1.0},
-    'reasoning_chain':   {'decision': 1.3, 'rule': 1.2, 'context': 1.1},
-    'state_query':       {'context': 1.5, 'project': 1.3, 'task': 1.3, 'object': 1.4},
+    'decision_lookup':   {'decision': 1.5, 'rule': 1.0, 'lesson': 1.2, 'correction': 1.3},
+    'reasoning_chain':   {'decision': 1.3, 'rule': 1.2, 'context': 1.1, 'mechanism': 1.3, 'reasoning_trace': 1.4, 'mental_model': 1.2},
+    'state_query':       {'context': 1.5, 'project': 1.3, 'task': 1.3, 'object': 1.4, 'purpose': 1.2},
     'temporal':          {'decision': 1.0, 'context': 1.2},
-    'correction_lookup': {'decision': 1.5, 'rule': 1.2},
-    'how_to':            {'rule': 1.5, 'decision': 1.2},
+    'correction_lookup': {'decision': 1.5, 'rule': 1.2, 'correction': 1.5, 'lesson': 1.3},
+    'how_to':            {'rule': 1.5, 'decision': 1.2, 'mechanism': 1.5, 'convention': 1.4, 'purpose': 1.2, 'constraint': 1.3},
     'list_query':        {'rule': 1.0, 'decision': 1.0, 'object': 1.3},
-    'general':           {},  # no boost
+    'general':           {'purpose': 1.1, 'mechanism': 1.1, 'impact': 1.1, 'vocabulary': 1.1},
 }
 
 # ─── v5: Temporal parsing patterns ───
@@ -334,8 +348,29 @@ class Brain:
         # Create schema if needed
         ensure_schema(self.conn)
 
+        # Open separate logs database (brain_logs.db)
+        db_dir = os.path.dirname(db_path) or '.'
+        self.logs_db_path = os.path.join(db_dir, 'brain_logs.db')
+        self.logs_conn = sqlite3.connect(self.logs_db_path, check_same_thread=False)
+        ensure_logs_schema(self.logs_conn)
+
+        # One-time migration: move log tables from brain.db to brain_logs.db
+        migrate_logs_to_separate_db(self.conn, self.logs_conn)
+
+        # Init rate limiter for error logging (DDoS protection)
+        self._init_rate_limiter()
+
+        # Init human-readable log file (brain.log with rotation)
+        self._init_file_logger(db_dir)
+
         # Post-schema initialization (TF-IDF rebuild if needed)
         self._post_schema_init()
+
+        # v5: Session state accumulator for synthesis
+        self._session_state = {
+            'decisions': [], 'corrections': [], 'inflections': [],
+            'model_updates': [], 'validations': [], 'open_questions': []
+        }
 
         # Load embedder with config from brain_meta (falls back to plugin.json defaults)
         try:
@@ -362,6 +397,128 @@ class Brain:
                 print('[brain] TF-IDF index built.')
         except Exception:
             # Tables might not exist yet on very first run
+            pass
+
+    def _init_rate_limiter(self):
+        """Initialize in-memory rate limiter for error logging (DDoS protection)."""
+        self._error_timestamps = {}    # source -> [monotonic timestamps]
+        self._error_fingerprints = {}  # fingerprint -> (last_seen, count)
+        self._error_suppressed = {}    # source -> suppressed_count
+        self._circuit_open_until = {}  # source -> monotonic time when circuit closes
+        self._last_db_size_check = 0.0
+        # Limits (tunable via brain_meta)
+        self._error_rate_window = 3600     # 1 hour
+        self._error_max_per_source = 50    # per source per window
+        self._error_max_global = 200       # across all sources per window
+        self._error_dedup_window = 60      # seconds
+        self._error_circuit_duration = 900 # 15 minutes
+        self._max_logs_db_size = 50 * 1024 * 1024  # 50MB
+
+    def _init_file_logger(self, db_dir: str):
+        """Initialize rotating file logger for human-readable brain.log."""
+        import logging
+        from logging.handlers import RotatingFileHandler
+        self._file_logger = logging.getLogger('brain_%s' % id(self))
+        self._file_logger.setLevel(logging.DEBUG)
+        # Avoid duplicate handlers on re-init
+        if not self._file_logger.handlers:
+            try:
+                handler = RotatingFileHandler(
+                    os.path.join(db_dir, 'brain.log'),
+                    maxBytes=5 * 1024 * 1024,  # 5MB per file
+                    backupCount=2,              # keep brain.log.1 and brain.log.2
+                )
+                handler.setFormatter(logging.Formatter('%(message)s'))
+                self._file_logger.addHandler(handler)
+            except Exception as e:
+                print('[brain] Could not init file logger: %s' % e)
+
+    def _check_rate_limit(self, source: str, fingerprint: str) -> bool:
+        """Check if an error should be logged or suppressed.
+
+        Returns True if the error should be SUPPRESSED (rate limited).
+        Three layers: dedup window, per-source limit, global limit, circuit breaker.
+        """
+        now = time.monotonic()
+
+        # Layer 0: Circuit breaker — if open, suppress everything from this source
+        circuit_until = self._circuit_open_until.get(source, 0)
+        if now < circuit_until:
+            self._error_suppressed[source] = self._error_suppressed.get(source, 0) + 1
+            return True
+        elif circuit_until > 0 and now >= circuit_until:
+            # Circuit just closed — log recovery
+            del self._circuit_open_until[source]
+            suppressed = self._error_suppressed.pop(source, 0)
+            if suppressed > 0:
+                self._write_to_file_log('INFO', source,
+                    'Circuit breaker closed. %d errors suppressed.' % suppressed)
+
+        # Layer 1: Dedup — same error within dedup window
+        fp_entry = self._error_fingerprints.get(fingerprint)
+        if fp_entry and (now - fp_entry[0]) < self._error_dedup_window:
+            self._error_fingerprints[fingerprint] = (fp_entry[0], fp_entry[1] + 1)
+            return True
+        self._error_fingerprints[fingerprint] = (now, 1)
+
+        # Layer 2: Per-source rate limit
+        timestamps = self._error_timestamps.get(source, [])
+        # Prune old timestamps
+        cutoff = now - self._error_rate_window
+        timestamps = [t for t in timestamps if t > cutoff]
+        if len(timestamps) >= self._error_max_per_source:
+            self._error_suppressed[source] = self._error_suppressed.get(source, 0) + 1
+            self._error_timestamps[source] = timestamps
+            # Check if circuit breaker should open (saturated 3 checks in a row)
+            if self._error_suppressed.get(source, 0) >= self._error_max_per_source:
+                self._circuit_open_until[source] = now + self._error_circuit_duration
+                self._write_to_file_log('WARN', source,
+                    'Circuit breaker OPENED for %ds. Source is flooding errors.' % self._error_circuit_duration)
+            return True
+
+        # Layer 3: Global rate limit
+        global_count = sum(len(v) for v in self._error_timestamps.values())
+        if global_count >= self._error_max_global:
+            return True
+
+        timestamps.append(now)
+        self._error_timestamps[source] = timestamps
+        return False
+
+    def _write_to_file_log(self, level: str, source: str, message: str, traceback_str: str = ''):
+        """Write a formatted entry to brain.log."""
+        try:
+            ts = self.now()
+            parts = ['[%s] %s %s: %s' % (ts, level, source, message)]
+            if traceback_str:
+                for line in traceback_str.strip().split('\n')[-5:]:
+                    parts.append('  ' + line)
+            parts.append('---')
+            self._file_logger.info('\n'.join(parts))
+        except Exception:
+            pass
+
+    def _check_logs_db_size(self):
+        """Rotate logs DB if it exceeds size limit. Checked at most once per minute."""
+        now = time.monotonic()
+        if now - self._last_db_size_check < 60:
+            return
+        self._last_db_size_check = now
+        try:
+            size = os.path.getsize(self.logs_db_path)
+            if size > self._max_logs_db_size:
+                # Delete entries older than 7 days
+                self.logs_conn.execute(
+                    "DELETE FROM debug_log WHERE created_at < datetime('now', '-7 days')")
+                self.logs_conn.execute(
+                    "DELETE FROM access_log WHERE timestamp < datetime('now', '-7 days')")
+                self.logs_conn.execute(
+                    "DELETE FROM recall_log WHERE created_at < datetime('now', '-7 days')")
+                self.logs_conn.execute(
+                    "DELETE FROM dream_log WHERE created_at < datetime('now', '-7 days')")
+                self.logs_conn.commit()
+                self._write_to_file_log('INFO', 'logs_db', 'Pruned entries older than 7 days (DB was %dMB)' % (size // (1024*1024)))
+        except Exception:
             pass
 
     def now(self) -> str:
@@ -435,10 +592,14 @@ class Brain:
             # Locked nodes: relevance dominant, emotion still matters
             return relevance * 0.5 + recency * 0.2 + frequency * 0.05 + emotion_score * 0.25
 
-        # Normal blend by weights
-        return (relevance * RELEVANCE_WEIGHT +
-                recency * RECENCY_WEIGHT +
-                frequency * FREQUENCY_WEIGHT +
+        # Normal blend by tunable weights (defaults to module constants)
+        w = self._get_tunable('recall_weights', {
+            'relevance': RELEVANCE_WEIGHT, 'recency': RECENCY_WEIGHT,
+            'frequency': FREQUENCY_WEIGHT, 'emotion': EMOTION_WEIGHT
+        })
+        return (relevance * w.get('relevance', RELEVANCE_WEIGHT) +
+                recency * w.get('recency', RECENCY_WEIGHT) +
+                frequency * w.get('frequency', FREQUENCY_WEIGHT) +
                 emotion_score * EMOTION_WEIGHT)
 
     def _classify_intent(self, query: str) -> Dict[str, Any]:
@@ -787,18 +948,18 @@ class Brain:
             old_weight, count = existing
             new_weight = min(MAX_WEIGHT, old_weight + LEARNING_RATE * 0.5)
             self.conn.execute(
-                'UPDATE edges SET weight = ?, co_access_count = ?, last_strengthened = ?, relation = ? WHERE source_id = ? AND target_id = ?',
-                (new_weight, count + 1, ts, relation, source_id, target_id)
+                'UPDATE edges SET weight = ?, co_access_count = ?, last_strengthened = ?, relation = ?, edge_type = ? WHERE source_id = ? AND target_id = ?',
+                (new_weight, count + 1, ts, relation, relation, source_id, target_id)
             )
         else:
             # Create bidirectional edge
             self.conn.execute(
-                'INSERT OR IGNORE INTO edges (source_id, target_id, weight, relation, co_access_count, stability, last_strengthened, created_at) VALUES (?, ?, ?, ?, 1, 1.0, ?, ?)',
-                (source_id, target_id, weight, relation, ts, ts)
+                'INSERT OR IGNORE INTO edges (source_id, target_id, weight, relation, edge_type, co_access_count, stability, last_strengthened, created_at) VALUES (?, ?, ?, ?, ?, 1, 1.0, ?, ?)',
+                (source_id, target_id, weight, relation, relation, ts, ts)
             )
             self.conn.execute(
-                'INSERT OR IGNORE INTO edges (source_id, target_id, weight, relation, co_access_count, stability, last_strengthened, created_at) VALUES (?, ?, ?, ?, 1, 1.0, ?, ?)',
-                (target_id, source_id, weight, relation, ts, ts)
+                'INSERT OR IGNORE INTO edges (source_id, target_id, weight, relation, edge_type, co_access_count, stability, last_strengthened, created_at) VALUES (?, ?, ?, ?, ?, 1, 1.0, ?, ?)',
+                (target_id, source_id, weight, relation, relation, ts, ts)
             )
 
         self.conn.commit()
@@ -1024,6 +1185,11 @@ class Brain:
         self._update_session_activity('remember_count', 0)
         self._update_session_activity('edit_check_count', 0)
         self._update_session_activity('session_id', uuid.uuid4().hex)
+        # v5: Reset session state accumulator
+        self._session_state = {
+            'decisions': [], 'corrections': [], 'inflections': [],
+            'model_updates': [], 'validations': [], 'open_questions': []
+        }
 
     def record_remember(self):
         """Increment remember counter."""
@@ -1101,15 +1267,20 @@ class Brain:
         if personal == 'fixed':
             locked = True
 
+        # v5: Auto-generate content summary for tiered recall
+        content_summary = self._generate_summary(title, content)
+
         # INSERT into nodes table
         self.conn.execute(
             '''INSERT INTO nodes
-               (id, type, title, content, keywords, activation, stability, locked,
+               (id, type, title, content, content_summary, keywords,
+                activation, stability, locked,
                 recency_score, emotion, emotion_label, emotion_source, project,
                 personal, personal_context,
                 last_accessed, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, 1.0, 1.0, ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-            (node_id, type, title, content, keywords, 1 if locked else 0,
+               VALUES (?, ?, ?, ?, ?, ?, 1.0, 1.0, ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (node_id, type, title, content, content_summary, keywords,
+             1 if locked else 0,
              emotion, emotion_label, emotion_source, project,
              personal, personal_context,
              ts, ts, ts)
@@ -1170,6 +1341,1085 @@ class Brain:
             'embedding_stored': embedding_stored,  # Phase 0.5C
             'personal': personal,  # v4
         }
+
+    def recall_expand(self, node_id: str) -> Dict[str, Any]:
+        """Return full content + metadata for a specific node (on-demand expansion).
+
+        Used when tiered recall returned a summary and the caller needs the full content.
+        """
+        cur = self.conn.execute(
+            'SELECT * FROM nodes WHERE id = ?', (node_id,)
+        )
+        row = cur.fetchone()
+        if not row:
+            return {'error': f'Node {node_id} not found'}
+        cols = [d[0] for d in cur.description]
+        node = dict(zip(cols, row))
+
+        # Attach metadata if it exists
+        meta_cur = self.conn.execute(
+            'SELECT * FROM node_metadata WHERE node_id = ?', (node_id,)
+        )
+        meta_row = meta_cur.fetchone()
+        if meta_row:
+            meta_cols = [d[0] for d in meta_cur.description]
+            node['_metadata'] = dict(zip(meta_cols, meta_row))
+
+        return node
+
+    def backfill_summaries(self, batch_size: int = 50) -> Dict[str, Any]:
+        """Generate content_summary for existing nodes that lack one. Run during idle."""
+        cur = self.conn.execute(
+            "SELECT id, title, content FROM nodes WHERE content IS NOT NULL AND content != '' AND content_summary IS NULL LIMIT ?",
+            (batch_size,)
+        )
+        rows = cur.fetchall()
+        count = 0
+        for node_id, title, content in rows:
+            summary = self._generate_summary(title, content)
+            if summary:
+                self.conn.execute(
+                    "UPDATE nodes SET content_summary = ? WHERE id = ?",
+                    (summary, node_id)
+                )
+                count += 1
+        if count:
+            self.conn.commit()
+        return {'backfilled': count, 'remaining': len(rows) - count}
+
+    # ─── v5 PHASE 2: Rich encoding API ───
+
+    def remember_rich(self, type: str, title: str, content: Optional[str] = None,
+                      reasoning: Optional[str] = None,
+                      alternatives: Optional[List[Dict[str, str]]] = None,
+                      user_raw_quote: Optional[str] = None,
+                      correction_of: Optional[str] = None,
+                      correction_pattern: Optional[str] = None,
+                      source_context: Optional[str] = None,
+                      confidence_rationale: Optional[str] = None,
+                      change_impacts: Optional[List[Dict[str, str]]] = None,
+                      source_attribution: Optional[str] = None,
+                      scope: Optional[str] = None,
+                      **kwargs) -> Dict[str, Any]:
+        """Store a memory node with rich metadata (v5 cognitive encoding).
+
+        Wraps remember() with additional metadata stored in node_metadata sidecar table.
+        Use this instead of remember() when you have reasoning, alternatives, corrections,
+        or other rich context to preserve.
+
+        Args:
+            type, title, content, **kwargs: Passed through to remember()
+            reasoning: The reasoning chain that produced this conclusion
+            alternatives: List of {option, rejected_because} dicts
+            user_raw_quote: User's exact words (prevents encoding bias)
+            correction_of: node_id this knowledge corrects
+            correction_pattern: The underlying divergence pattern
+            source_context: What prompted this knowledge (user correction, code reading, etc.)
+            confidence_rationale: WHY the confidence level was set
+            change_impacts: List of {if_modified, must_check, because} for engineering memory
+            source_attribution: user_stated | claude_inferred | session_synthesis | correction | code_reading
+            scope: system | module | file | function | cross-system | cross-file | cross-function
+        """
+        # Store the core node via remember()
+        result = self.remember(type=type, title=title, content=content, **kwargs)
+        node_id = result['id']
+
+        # Set source_attribution and scope on the node
+        updates = []
+        params = []
+        if source_attribution:
+            updates.append('source_attribution = ?')
+            params.append(source_attribution)
+        if scope:
+            updates.append('scope = ?')
+            params.append(scope)
+        if updates:
+            params.append(node_id)
+            self.conn.execute(
+                f"UPDATE nodes SET {', '.join(updates)} WHERE id = ?", params
+            )
+
+        # Store rich metadata in sidecar table
+        has_metadata = any([reasoning, alternatives, user_raw_quote, correction_of,
+                           correction_pattern, source_context, confidence_rationale,
+                           change_impacts])
+        if has_metadata:
+            self.conn.execute(
+                '''INSERT OR REPLACE INTO node_metadata
+                   (node_id, reasoning, alternatives, user_raw_quote, correction_of,
+                    correction_pattern, source_context, confidence_rationale,
+                    last_validated, validation_count, change_impacts, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)''',
+                (node_id, reasoning,
+                 json.dumps(alternatives) if alternatives else None,
+                 user_raw_quote, correction_of, correction_pattern,
+                 source_context, confidence_rationale,
+                 self.now() if correction_of else None,  # corrections are self-validating
+                 json.dumps(change_impacts) if change_impacts else None,
+                 self.now())
+            )
+
+        # If this corrects another node, create edge and lower its confidence
+        if correction_of:
+            try:
+                self.connect(node_id, correction_of, 'corrected_by', 0.8)
+                self.conn.execute(
+                    "UPDATE nodes SET confidence = MAX(0.2, COALESCE(confidence, 0.7) * 0.7) WHERE id = ?",
+                    (correction_of,)
+                )
+            except Exception as _e:
+                self._log_error("remember_rich", _e, "self.connect(node_id, correction_of, corrected_by")
+
+        self.conn.commit()
+
+        result['source_attribution'] = source_attribution
+        result['scope'] = scope
+        result['has_metadata'] = has_metadata
+        return result
+
+    def validate_node(self, node_id: str, context: Optional[str] = None) -> Dict[str, Any]:
+        """Mark a node as validated — its knowledge has been confirmed as still accurate.
+
+        Updates last_validated timestamp and increments validation_count.
+        Resets any age-based confidence decay.
+        """
+        ts = self.now()
+        # Upsert into node_metadata
+        existing = self.conn.execute(
+            'SELECT node_id FROM node_metadata WHERE node_id = ?', (node_id,)
+        ).fetchone()
+        if existing:
+            self.conn.execute(
+                '''UPDATE node_metadata
+                   SET last_validated = ?, validation_count = validation_count + 1
+                   WHERE node_id = ?''',
+                (ts, node_id)
+            )
+        else:
+            self.conn.execute(
+                '''INSERT INTO node_metadata (node_id, last_validated, validation_count, created_at)
+                   VALUES (?, ?, 1, ?)''',
+                (node_id, ts, ts)
+            )
+        # Boost confidence slightly
+        self.conn.execute(
+            "UPDATE nodes SET confidence = MIN(1.0, COALESCE(confidence, 0.7) + 0.05) WHERE id = ?",
+            (node_id,)
+        )
+        self.conn.commit()
+        return {'node_id': node_id, 'last_validated': ts, 'context': context}
+
+    def get_node_with_metadata(self, node_id: str) -> Dict[str, Any]:
+        """Return full node data joined with metadata sidecar."""
+        cur = self.conn.execute('SELECT * FROM nodes WHERE id = ?', (node_id,))
+        row = cur.fetchone()
+        if not row:
+            return {'error': f'Node {node_id} not found'}
+        cols = [d[0] for d in cur.description]
+        node = dict(zip(cols, row))
+
+        meta_cur = self.conn.execute(
+            'SELECT * FROM node_metadata WHERE node_id = ?', (node_id,)
+        )
+        meta_row = meta_cur.fetchone()
+        if meta_row:
+            meta_cols = [d[0] for d in meta_cur.description]
+            meta = dict(zip(meta_cols, meta_row))
+            # Parse JSON fields
+            for json_field in ('alternatives', 'change_impacts'):
+                if meta.get(json_field):
+                    try:
+                        meta[json_field] = json.loads(meta[json_field])
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+            node['_metadata'] = meta
+        return node
+
+    # ═══════════════════════════════════════════════════════════════
+    # v5 SPRINT 2: Engineering Memory + Cognitive Layer
+    # ═══════════════════════════════════════════════════════════════
+
+    # ─── Engineering Memory: 7 kinds of understanding ───
+
+    def remember_purpose(self, title: str, content: str, scope: str = 'system',
+                         project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+        """What something is and why it exists. The warm-up killer.
+
+        Scope: system | module | file | function
+        Examples:
+          system: "brain is a Claude Code plugin for persistent AI memory"
+          file: "brain.py (5500 lines) — core engine: schema, remember(), recall(), consciousness"
+          function: "recall_with_embeddings() — 90/10 embedding/keyword blend, returns ranked nodes"
+        """
+        return self.remember_rich(
+            type='purpose', title=title, content=content,
+            scope=scope, source_attribution='claude_inferred',
+            project=project, locked=True, **kwargs)
+
+    def remember_mechanism(self, title: str, content: str, scope: str = 'system',
+                           steps: Optional[List[str]] = None,
+                           data_flow: Optional[str] = None,
+                           project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+        """How something works: flows, algorithms, interactions.
+
+        Examples:
+          "Recall pipeline: embed query → cosine scan → keyword fallback → blend → rank → hydrate"
+        """
+        # Enrich content with structured steps/flow
+        enriched = content
+        if steps:
+            enriched += '\n\nSteps: ' + ' → '.join(steps)
+        if data_flow:
+            enriched += '\n\nData flow: ' + data_flow
+        return self.remember_rich(
+            type='mechanism', title=title, content=enriched,
+            scope=scope, source_attribution='claude_inferred',
+            project=project, **kwargs)
+
+    def remember_impact(self, title: str, if_changed: str, must_check: str,
+                        because: str, scope: str = 'cross-file',
+                        severity: str = 'medium',
+                        project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+        """What changes ripple where — the connectivity layer.
+
+        Example: if_changed="recall_with_embeddings() output format"
+                 must_check="pre-response-recall.sh, boot-brain.sh"
+                 because="they parse its return structure"
+        """
+        content = f'If {if_changed} changes → must check {must_check} because {because}'
+        change_impacts = [{'if_modified': if_changed, 'must_check': must_check, 'because': because}]
+        return self.remember_rich(
+            type='impact', title=title, content=content,
+            scope=scope, source_attribution='claude_inferred',
+            change_impacts=change_impacts,
+            project=project, locked=True,
+            emotion=0.3 if severity == 'critical' else 0.1,
+            emotion_label='concern' if severity in ('high', 'critical') else 'neutral',
+            **kwargs)
+
+    def remember_constraint(self, title: str, content: str, scope: str = 'system',
+                            violates_if: Optional[str] = None,
+                            project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+        """What must or must not be done.
+
+        Example: "Never call context_boot() without user/project args"
+                 violates_if="context_boot() called with no arguments"
+        """
+        enriched = content
+        if violates_if:
+            enriched += f'\n\nViolated when: {violates_if}'
+        return self.remember_rich(
+            type='constraint', title=title, content=enriched,
+            scope=scope, source_attribution='claude_inferred',
+            project=project, locked=True, **kwargs)
+
+    def remember_convention(self, title: str, content: str, scope: str = 'project-wide',
+                            examples: Optional[List[str]] = None,
+                            anti_patterns: Optional[List[str]] = None,
+                            project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+        """Patterns, utilities, coding style for a codebase.
+
+        Example: "Error handling in hooks: resolve DB path first, wrap brain imports in try/except"
+        """
+        enriched = content
+        if examples:
+            enriched += '\n\nExamples: ' + '; '.join(examples)
+        if anti_patterns:
+            enriched += '\n\nAnti-patterns: ' + '; '.join(anti_patterns)
+        return self.remember_rich(
+            type='convention', title=title, content=enriched,
+            scope=scope, source_attribution='claude_inferred',
+            project=project, **kwargs)
+
+    def remember_lesson(self, title: str, what_happened: str, root_cause: str,
+                        fix: str, preventive_principle: str,
+                        project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+        """What went wrong, root cause, fix, preventive principle.
+
+        Replaces both bug_lesson and causal_chain.
+        """
+        content = (f'What happened: {what_happened}\n'
+                   f'Root cause: {root_cause}\n'
+                   f'Fix: {fix}\n'
+                   f'Principle: {preventive_principle}')
+        return self.remember_rich(
+            type='lesson', title=title, content=content,
+            source_attribution='session_synthesis',
+            project=project, locked=True,
+            emotion=0.4, emotion_label='emphasis', **kwargs)
+
+    def learn_vocabulary(self, term: str, maps_to: List[str],
+                         context: Optional[str] = None,
+                         project: Optional[str] = None) -> Dict[str, Any]:
+        """How the operator refers to things → code mapping.
+
+        The same term can map to different things in different contexts.
+        Example: term="the hook", maps_to=["pre-response-recall.sh"], context="recall/memory"
+                 term="the hook", maps_to=["pre-edit-suggest.sh"], context="editing files"
+
+        Example: term="the recall hook"
+                 maps_to=["pre-response-recall.sh", "recall_with_embeddings()"]
+        """
+        maps_str = ', '.join(maps_to)
+        content = '"%s" \u2192 %s' % (term, maps_str)
+        if context:
+            content += '\nContext: %s' % context
+        title = '[vocab] %s' % term
+        if context:
+            title += ' (%s)' % context
+        result = self.remember_rich(
+            type='vocabulary', title=title, content=content,
+            source_attribution='user_stated',
+            project=project, locked=True)
+        # Connect vocabulary node to existing nodes that match maps_to targets
+        vocab_id = result.get('id')
+        if vocab_id:
+            self._connect_vocabulary(vocab_id, maps_to, term)
+        # Clear this term from vocabulary_gaps if present
+        self._clear_vocabulary_gap(term)
+        return result
+
+    def _clear_vocabulary_gap(self, term: str):
+        """Remove a learned term from the vocabulary_gaps store."""
+        try:
+            import json as _json
+            gaps_json = self.get_config('vocabulary_gaps', '[]')
+            gaps = _json.loads(gaps_json) if gaps_json else []
+            gaps = [g for g in gaps if (g.get('term') if isinstance(g, dict) else g) != term.lower()]
+            self.set_config('vocabulary_gaps', _json.dumps(gaps))
+        except Exception as _e:
+            self._log_error("_clear_vocabulary_gap", _e, "removing term from vocabulary_gaps config")
+
+    def _connect_vocabulary(self, vocab_id: str, maps_to: List[str], term: str):
+        """Connect a vocabulary node to existing nodes matching its maps_to targets.
+
+        Searches for nodes whose title contains any of the maps_to strings
+        (file names, function names, concepts) and creates edges.
+        Also connects to nodes whose title/keywords match the term itself.
+        """
+        try:
+            connected = set()
+            for target in maps_to:
+                # Clean target — strip parens from function names like "recall_with_embeddings()"
+                clean = target.strip().rstrip('()')
+                if not clean or len(clean) < 3:
+                    continue
+                # Find nodes matching the target (file nodes, purpose nodes, mechanism nodes, etc.)
+                rows = self.conn.execute(
+                    """SELECT id, type FROM nodes
+                       WHERE archived = 0 AND id != ?
+                         AND (title LIKE ? OR title LIKE ?)
+                       LIMIT 5""",
+                    (vocab_id, f'%{clean}%', f'%{target}%')
+                ).fetchall()
+                for row in rows:
+                    nid, ntype = row[0], row[1]
+                    if nid not in connected:
+                        self.connect(vocab_id, nid, 'maps_to', weight=0.8)
+                        connected.add(nid)
+            # Also connect to nodes matching the term itself
+            if term and len(term) >= 3:
+                term_rows = self.conn.execute(
+                    """SELECT id FROM nodes
+                       WHERE archived = 0 AND id != ? AND type != 'vocabulary'
+                         AND (title LIKE ? OR keywords LIKE ?)
+                       LIMIT 3""",
+                    (vocab_id, f'%{term}%', f'%{term}%')
+                ).fetchall()
+                for row in term_rows:
+                    if row[0] not in connected:
+                        self.connect(vocab_id, row[0], 'refers_to', weight=0.6)
+                        connected.add(row[0])
+        except Exception as _e:
+            self._log_error("_connect_vocabulary", _e, "connecting vocabulary node to related nodes via edges")
+
+    def resolve_vocabulary(self, term: str) -> Optional[Dict[str, Any]]:
+        """Look up what an operator term maps to.
+
+        Returns all matches if the term has context-dependent mappings.
+        Single match → returns dict. Multiple matches → returns dict with 'mappings' list.
+        If ambiguous, the caller should ask the user which context applies.
+        """
+        rows = self.conn.execute(
+            "SELECT id, title, content FROM nodes WHERE type = 'vocabulary' AND archived = 0 AND title LIKE ?",
+            (f'%{term}%',)
+        ).fetchall()
+        if not rows:
+            return None
+        if len(rows) == 1:
+            return {'id': rows[0][0], 'title': rows[0][1], 'content': rows[0][2]}
+        # Multiple mappings — same term, different contexts
+        return {
+            'term': term,
+            'ambiguous': True,
+            'mappings': [
+                {'id': r[0], 'title': r[1], 'content': r[2]}
+                for r in rows
+            ]
+        }
+
+    # ─── Cognitive Layer: Claude's own thoughts ───
+
+    def remember_mental_model(self, title: str, model_description: str,
+                              applies_to: Optional[str] = None,
+                              confidence: float = 0.7,
+                              project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+        """Claude's understanding of how systems/processes work.
+
+        Example: "brain.py has 3 layers: storage (SQLite), intelligence (embeddings + recall),
+                  consciousness (signals + evolution)"
+        """
+        content = model_description
+        if applies_to:
+            content += f'\n\nApplies to: {applies_to}'
+        return self.remember_rich(
+            type='mental_model', title=title, content=content,
+            source_attribution='claude_inferred',
+            confidence_rationale=f'Inferred from code reading (confidence: {confidence})',
+            project=project, confidence=confidence, **kwargs)
+
+    def remember_uncertainty(self, title: str, what_unknown: str,
+                             why_it_matters: str,
+                             project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+        """Where Claude knows it doesn't understand something.
+
+        These feed the curiosity system and guide future sessions.
+        """
+        content = f'Unknown: {what_unknown}\nWhy it matters: {why_it_matters}'
+        return self.remember_rich(
+            type='uncertainty', title=title, content=content,
+            source_attribution='claude_inferred',
+            confidence=0.3, project=project, **kwargs)
+
+    def record_reasoning_trace(self, title: str, steps: List[str],
+                               conclusion: str, reusable: bool = True,
+                               project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+        """Reusable logic chain — not just the conclusion but the path to it.
+
+        Populates reasoning_chains + reasoning_steps tables.
+        """
+        content = 'Steps:\n' + '\n'.join(f'  {i+1}. {s}' for i, s in enumerate(steps))
+        content += f'\n\nConclusion: {conclusion}'
+        result = self.remember_rich(
+            type='reasoning_trace', title=title, content=content,
+            reasoning=' → '.join(steps) + ' → ' + conclusion,
+            source_attribution='claude_inferred',
+            project=project, locked=reusable, **kwargs)
+
+        # Also populate reasoning_chains/steps tables
+        try:
+            chain_id = self._generate_id('chain')
+            ts = self.now()
+            self.conn.execute(
+                '''INSERT INTO reasoning_chains (id, decision_node_id, title, step_count, project, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)''',
+                (chain_id, result['id'], title, len(steps), project, ts)
+            )
+            for i, step in enumerate(steps):
+                self.conn.execute(
+                    '''INSERT INTO reasoning_steps (chain_id, step_order, step_type, content, node_id, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?)''',
+                    (chain_id, i + 1, 'observation', step, result['id'], ts)
+                )
+            # Final conclusion step
+            self.conn.execute(
+                '''INSERT INTO reasoning_steps (chain_id, step_order, step_type, content, node_id, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)''',
+                (chain_id, len(steps) + 1, 'decision', conclusion, result['id'], ts)
+            )
+            self.conn.commit()
+            result['chain_id'] = chain_id
+        except Exception as _e:
+            self._log_error("record_reasoning_trace", _e, "inserting reasoning steps into reasoning_steps table")
+        return result
+
+    # ─── Project Maps: file inventory + change detection ───
+
+    def update_file_inventory(self, project: str, file_path: str,
+                              purpose: str, key_exports: Optional[List[str]] = None,
+                              dependencies: Optional[List[str]] = None,
+                              file_hash: Optional[str] = None) -> Dict[str, Any]:
+        """Track what Claude knows about a file — purpose, exports, dependencies, last seen hash."""
+        ts = self.now()
+        map_id = f'file:{project}:{file_path}'
+        content = json.dumps({
+            'file_path': file_path,
+            'purpose': purpose,
+            'key_exports': key_exports or [],
+            'dependencies': dependencies or [],
+            'last_seen_hash': file_hash,
+            'last_seen_at': ts,
+        })
+        self.conn.execute(
+            '''INSERT OR REPLACE INTO project_maps (id, project, map_type, content, last_updated, created_at)
+               VALUES (?, ?, 'file_inventory', ?, ?, COALESCE(
+                   (SELECT created_at FROM project_maps WHERE id = ?), ?))''',
+            (map_id, project, content, ts, map_id, ts)
+        )
+        self.conn.commit()
+
+        # v5: Cross-reference with vocabulary — connect file to vocab nodes that mention it
+        try:
+            filename = os.path.basename(file_path)
+            vocab_nodes = self.conn.execute(
+                "SELECT id FROM nodes WHERE type = 'vocabulary' AND archived = 0 AND content LIKE ?",
+                (f'%{filename}%',)
+            ).fetchall()
+            # Also find purpose/mechanism nodes about this file
+            eng_nodes = self.conn.execute(
+                "SELECT id FROM nodes WHERE type IN ('purpose', 'mechanism') AND archived = 0 AND title LIKE ?",
+                (f'%{filename}%',)
+            ).fetchall()
+            # Create edges between file inventory's related nodes and vocabulary
+            for (vid,) in vocab_nodes:
+                for (eid,) in eng_nodes:
+                    self.connect(vid, eid, 'maps_to', weight=0.7)
+        except Exception as _e:
+            self._log_error("update_file_inventory", _e, "linking file inventory vocab nodes to engineering nodes")
+
+        return {'id': map_id, 'file_path': file_path, 'updated': True}
+
+    def get_file_inventory(self, project: str) -> List[Dict[str, Any]]:
+        """Return full file inventory for a project."""
+        cur = self.conn.execute(
+            "SELECT content FROM project_maps WHERE project = ? AND map_type = 'file_inventory' ORDER BY last_updated DESC",
+            (project,)
+        )
+        results = []
+        for row in cur.fetchall():
+            try:
+                results.append(json.loads(row[0]))
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return results
+
+    def detect_file_changes(self, project: str) -> List[Dict[str, Any]]:
+        """Compare stored file hashes against current state. Returns files that changed since last session.
+
+        Requires git to be available. Falls back to empty list if not.
+        """
+        import subprocess
+        inventory = self.get_file_inventory(project)
+        if not inventory:
+            return []
+
+        changes = []
+        for entry in inventory:
+            fp = entry.get('file_path', '')
+            stored_hash = entry.get('last_seen_hash')
+            if not fp or not stored_hash:
+                continue
+            try:
+                result = subprocess.run(
+                    ['git', 'hash-object', fp],
+                    capture_output=True, text=True, timeout=5
+                )
+                if result.returncode == 0:
+                    current_hash = result.stdout.strip()
+                    if current_hash != stored_hash:
+                        changes.append({
+                            'file_path': fp,
+                            'purpose': entry.get('purpose', ''),
+                            'stored_hash': stored_hash[:8],
+                            'current_hash': current_hash[:8],
+                        })
+            except Exception:
+                continue
+        return changes
+
+    def update_system_purpose(self, project: str, purpose: str,
+                              architecture: Optional[str] = None,
+                              key_decisions: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Store/update the system-level purpose for a project."""
+        ts = self.now()
+        map_id = f'purpose:{project}'
+        content = json.dumps({
+            'purpose': purpose,
+            'architecture': architecture,
+            'key_decisions': key_decisions or [],
+        })
+        self.conn.execute(
+            '''INSERT OR REPLACE INTO project_maps (id, project, map_type, content, last_updated, created_at)
+               VALUES (?, ?, 'system_purpose', ?, ?, COALESCE(
+                   (SELECT created_at FROM project_maps WHERE id = ?), ?))''',
+            (map_id, project, content, ts, map_id, ts)
+        )
+        self.conn.commit()
+        return {'id': map_id, 'project': project}
+
+    def get_engineering_context(self, project: Optional[str] = None) -> Dict[str, Any]:
+        """Synthesize all engineering memory for boot context. The warm-up killer."""
+        result = {}
+
+        # System purpose
+        if project:
+            cur = self.conn.execute(
+                "SELECT content FROM project_maps WHERE project = ? AND map_type = 'system_purpose'",
+                (project,)
+            )
+            row = cur.fetchone()
+            if row:
+                try:
+                    result['system_purpose'] = json.loads(row[0])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+        # Purpose nodes (system scope first, then file, then function)
+        purpose_filter = "AND project = ?" if project else ""
+        purpose_params = (project,) if project else ()
+        cur = self.conn.execute(
+            f'''SELECT id, title, content, scope FROM nodes
+                WHERE type = 'purpose' AND archived = 0 {purpose_filter}
+                ORDER BY CASE scope
+                    WHEN 'system' THEN 1 WHEN 'module' THEN 2
+                    WHEN 'file' THEN 3 WHEN 'function' THEN 4
+                    ELSE 5 END, access_count DESC
+                LIMIT 20''',
+            purpose_params
+        )
+        result['purposes'] = [{'id': r[0], 'title': r[1], 'content': r[2], 'scope': r[3]}
+                              for r in cur.fetchall()]
+
+        # Impact links (safety-critical)
+        cur = self.conn.execute(
+            f'''SELECT id, title, content FROM nodes
+                WHERE type = 'impact' AND archived = 0 {purpose_filter}
+                ORDER BY access_count DESC LIMIT 10''',
+            purpose_params
+        )
+        result['impacts'] = [{'id': r[0], 'title': r[1], 'content': r[2]} for r in cur.fetchall()]
+
+        # Constraints
+        cur = self.conn.execute(
+            f'''SELECT id, title, content FROM nodes
+                WHERE type = 'constraint' AND archived = 0 {purpose_filter}
+                ORDER BY access_count DESC LIMIT 10''',
+            purpose_params
+        )
+        result['constraints'] = [{'id': r[0], 'title': r[1], 'content': r[2]} for r in cur.fetchall()]
+
+        # Conventions
+        cur = self.conn.execute(
+            f'''SELECT id, title, content FROM nodes
+                WHERE type = 'convention' AND archived = 0 {purpose_filter}
+                ORDER BY access_count DESC LIMIT 5''',
+            purpose_params
+        )
+        result['conventions'] = [{'id': r[0], 'title': r[1], 'content': r[2]} for r in cur.fetchall()]
+
+        # Vocabulary
+        cur = self.conn.execute(
+            "SELECT id, title, content FROM nodes WHERE type = 'vocabulary' AND archived = 0 ORDER BY access_count DESC LIMIT 15"
+        )
+        result['vocabulary'] = [{'id': r[0], 'title': r[1], 'content': r[2]} for r in cur.fetchall()]
+
+        # File inventory
+        if project:
+            result['file_inventory'] = self.get_file_inventory(project)
+
+        # File changes since last session
+        if project:
+            try:
+                result['file_changes'] = self.detect_file_changes(project)
+            except Exception:
+                result['file_changes'] = []
+
+        return result
+
+    def get_change_impact(self, file_path: str) -> List[Dict[str, Any]]:
+        """Return all change impact entries for a file — 'If you modify this, also check...'"""
+        results = []
+        # Search impact nodes
+        cur = self.conn.execute(
+            "SELECT id, title, content FROM nodes WHERE type = 'impact' AND archived = 0 AND content LIKE ?",
+            (f'%{file_path}%',)
+        )
+        for row in cur.fetchall():
+            results.append({'id': row[0], 'title': row[1], 'content': row[2]})
+
+        # Also check node_metadata change_impacts
+        cur = self.conn.execute(
+            "SELECT nm.node_id, n.title, nm.change_impacts FROM node_metadata nm JOIN nodes n ON n.id = nm.node_id WHERE nm.change_impacts LIKE ?",
+            (f'%{file_path}%',)
+        )
+        for row in cur.fetchall():
+            try:
+                impacts = json.loads(row[2])
+                for imp in impacts:
+                    if file_path in imp.get('if_modified', '') or file_path in imp.get('must_check', ''):
+                        results.append({'id': row[0], 'title': row[1], 'impact': imp})
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return results
+
+    # ─── Phase 3: Self-Correction Traces + Positive Signals ───
+
+    def record_divergence(self, claude_assumed: str, reality: str,
+                          underlying_pattern: Optional[str] = None,
+                          severity: str = 'minor',
+                          original_node_id: Optional[str] = None,
+                          project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+        """Record where Claude's model diverged from reality.
+
+        This is the highest-value data in the brain — it's where learning happens.
+        Framed as 'divergence points' not 'mistakes'.
+
+        Args:
+            claude_assumed: What Claude believed/expected
+            reality: What was actually true
+            underlying_pattern: The deeper pattern (e.g., "over-generalizing from single examples")
+            severity: minor | significant | fundamental
+            original_node_id: The node that contained the wrong assumption (if any)
+        """
+        content = f"Assumed: {claude_assumed}\nReality: {reality}"
+        if underlying_pattern:
+            content += f"\nPattern: {underlying_pattern}"
+
+        # Create correction node via remember_rich
+        result = self.remember_rich(
+            type='correction',
+            title=f"Divergence: {claude_assumed[:60]}",
+            content=content,
+            reasoning=f"Claude assumed: {claude_assumed}. Actual: {reality}.",
+            correction_pattern=underlying_pattern,
+            source_attribution='correction',
+            confidence=1.0,
+            project=project,
+            **kwargs
+        )
+        node_id = result.get('id')
+
+        # Store in correction_traces table
+        session_id = self._get_session_activity().get('session_id', '')
+        corrected_node_id = node_id
+        self.conn.execute(
+            '''INSERT INTO correction_traces
+               (session_id, original_node_id, corrected_node_id, claude_assumed, reality,
+                underlying_pattern, severity, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+            (session_id, original_node_id, corrected_node_id,
+             claude_assumed, reality, underlying_pattern, severity, self.now())
+        )
+
+        # If original node exists, create corrected_by edge and lower its confidence
+        if original_node_id:
+            self.connect(original_node_id, node_id, 'corrected_by')
+            # Lower confidence on the corrected node (NULL treated as 0.7)
+            cur_conf = self.conn.execute("SELECT confidence FROM nodes WHERE id=?", (original_node_id,)).fetchone()
+            old_c = cur_conf[0] if cur_conf and cur_conf[0] is not None else 0.7
+            new_c = max(0.1, old_c - 0.2)
+            self.conn.execute("UPDATE nodes SET confidence = ? WHERE id = ?", (new_c, original_node_id))
+
+        # If pattern matches an existing pattern evolution node, strengthen the edge
+        if underlying_pattern:
+            pattern_nodes = self.conn.execute(
+                "SELECT id FROM nodes WHERE type = 'pattern' AND archived = 0 AND title LIKE ?",
+                (f'%{underlying_pattern[:30]}%',)
+            ).fetchall()
+            for pn in pattern_nodes:
+                self.connect(node_id, pn[0], 'exemplifies')
+
+            # If severity >= significant and no existing pattern, create one
+            if severity in ('significant', 'fundamental') and not pattern_nodes:
+                pat_result = self.remember(
+                    type='pattern',
+                    title=f"Pattern: {underlying_pattern[:80]}",
+                    content=f"Divergence pattern detected (severity: {severity}): {underlying_pattern}",
+                    project=project,
+                )
+                # Set evolution_status directly (remember() doesn't accept it)
+                if pat_result.get('id'):
+                    self.conn.execute(
+                        "UPDATE nodes SET evolution_status = 'active' WHERE id = ?",
+                        (pat_result['id'],)
+                    )
+
+        # v5: Cross-reference with impact maps — if correction relates to a predicted impact,
+        # strengthen the impact node (it was right) and create a causal link
+        try:
+            # Extract file/function names from the correction text
+            import re as _re
+            mentioned = set(_re.findall(r'[\w_-]+\.(?:py|sh|js|ts|json|sql)', f"{claude_assumed} {reality}"))
+            mentioned.update(_re.findall(r'[\w_]+\(\)', f"{claude_assumed} {reality}"))
+            for name in mentioned:
+                clean = name.rstrip('()')
+                impacts = self.conn.execute(
+                    """SELECT id, title FROM nodes WHERE type = 'impact' AND archived = 0
+                       AND content LIKE ?""",
+                    (f'%{clean}%',)
+                ).fetchall()
+                for impact_id, impact_title in impacts:
+                    # Link correction to the impact that predicted it
+                    self.connect(node_id, impact_id, 'validates_impact')
+                    # Boost impact node confidence (it was prophetic)
+                    self.conn.execute(
+                        """UPDATE nodes SET confidence = MIN(1.0, COALESCE(confidence, 0.7) + 0.1)
+                           WHERE id = ?""", (impact_id,)
+                    )
+        except Exception as _e:
+            self._log_error("record_divergence", _e, "")
+
+        # Track in session state
+        self._session_state['corrections'].append({
+            'node_id': node_id,
+            'assumed': claude_assumed[:100],
+            'reality': reality[:100],
+            'pattern': underlying_pattern,
+            'severity': severity,
+        })
+
+        return result
+
+    def record_validation(self, node_id: str, context: Optional[str] = None,
+                          project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+        """Record positive signal — this approach/knowledge was confirmed correct.
+
+        Creates a validation node, updates last_validated on the target,
+        and boosts its confidence.
+        """
+        # Get the node being validated
+        target = self.conn.execute(
+            "SELECT id, title, type FROM nodes WHERE id = ?", (node_id,)
+        ).fetchone()
+        if not target:
+            return {'error': f'Node {node_id} not found'}
+
+        target_title = target[1]
+        target_type = target[2]
+
+        # Create validation node
+        val_content = f"Validated: {target_title}"
+        if context:
+            val_content += f"\nContext: {context}"
+
+        result = self.remember_rich(
+            type='validation',
+            title=f"Confirmed: {target_title[:60]}",
+            content=val_content,
+            source_attribution='correction',
+            project=project,
+            **kwargs
+        )
+
+        # Update last_validated on the target node's metadata
+        self.validate_node(node_id, context)
+
+        # Create validation edge
+        if result.get('id'):
+            self.connect(result['id'], node_id, 'validates')
+
+        # Track in session state
+        self._session_state['validations'].append({
+            'node_id': node_id,
+            'title': target_title,
+            'context': context,
+        })
+
+        return result
+
+    def get_correction_patterns(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recurring divergence patterns by frequency.
+
+        Returns patterns that appear 2+ times — these shape Claude's behavior.
+        """
+        cur = self.conn.execute(
+            '''SELECT underlying_pattern, COUNT(*) as cnt,
+                      GROUP_CONCAT(claude_assumed, ' | ') as examples,
+                      MAX(severity) as max_severity,
+                      MAX(created_at) as latest
+               FROM correction_traces
+               WHERE underlying_pattern IS NOT NULL
+               GROUP BY underlying_pattern
+               HAVING cnt >= 2
+               ORDER BY cnt DESC, latest DESC
+               LIMIT ?''',
+            (limit,)
+        )
+        return [{
+            'pattern': r[0],
+            'count': r[1],
+            'examples': r[2][:200] if r[2] else '',
+            'max_severity': r[3],
+            'latest': r[4],
+        } for r in cur.fetchall()]
+
+    # ─── Phase 4: Session Synthesis Engine ───
+
+    def track_session_event(self, event_type: str, data: Dict[str, Any]):
+        """Accumulate session events for synthesis.
+
+        Called by hooks during the session to build running state.
+
+        event_type: decision | correction | inflection | model_update | validation | open_question
+        """
+        valid_types = {
+            'decision': 'decisions',
+            'correction': 'corrections',
+            'inflection': 'inflections',
+            'model_update': 'model_updates',
+            'validation': 'validations',
+            'open_question': 'open_questions',
+        }
+        key = valid_types.get(event_type)
+        if key and key in self._session_state:
+            data['timestamp'] = self.now()
+            self._session_state[key].append(data)
+
+    def synthesize_session(self, session_id: Optional[str] = None) -> Dict[str, Any]:
+        """Create structured synthesis from accumulated session state.
+
+        One good synthesis > 50 shallow nodes.
+        Called by pre-compact-save or explicitly at session end.
+        """
+        if not session_id:
+            session_id = self._get_session_activity().get('session_id', uuid.uuid4().hex)
+
+        state = self._session_state
+        synthesis_id = uuid.uuid4().hex
+
+        # Calculate session duration
+        boot_time = self._get_session_activity().get('boot_time')
+        duration_minutes = None
+        if boot_time:
+            try:
+                boot_dt = datetime.fromisoformat(boot_time.replace('Z', '+00:00'))
+                now_dt = datetime.now(boot_dt.tzinfo) if boot_dt.tzinfo else datetime.utcnow()
+                duration_minutes = int((now_dt - boot_dt).total_seconds() / 60)
+            except Exception as _e:
+                self._log_error("synthesize_session", _e, "boot_dt = datetime.fromisoformat(boot_time.replace")
+
+        # Build structured synthesis
+        decisions_made = json.dumps(state['decisions']) if state['decisions'] else None
+        corrections_received = json.dumps(state['corrections']) if state['corrections'] else None
+        validations_list = state['validations']
+
+        # Identify inflection points — moments where direction changed
+        inflection_points = json.dumps(state['inflections']) if state['inflections'] else None
+
+        # Identify mental model updates
+        mental_model_updates = json.dumps(state['model_updates']) if state['model_updates'] else None
+
+        # Identify teaching arcs — sequences of corrections that build toward understanding
+        teaching_arcs = None
+        if len(state['corrections']) >= 2:
+            # Group corrections by pattern
+            patterns = {}
+            for c in state['corrections']:
+                p = c.get('pattern', 'unknown')
+                if p not in patterns:
+                    patterns[p] = []
+                patterns[p].append(c)
+            arcs = []
+            for pattern, corrections in patterns.items():
+                if len(corrections) >= 2:
+                    arcs.append({
+                        'pattern': pattern,
+                        'sequence': [c.get('assumed', '')[:50] for c in corrections],
+                        'lesson': f"Recurring divergence on: {pattern}",
+                    })
+            if arcs:
+                teaching_arcs = json.dumps(arcs)
+
+        open_questions = json.dumps(state['open_questions']) if state['open_questions'] else None
+
+        # v5: Include encoding health in synthesis metadata (appended to mental_model_updates)
+        try:
+            activity = self._get_session_activity()
+            edits = activity.get('edit_check_count', 0)
+            remembers = activity.get('remember_count', 0)
+            if edits > 0 or remembers > 0:
+                health_status = 'GOOD' if remembers >= edits * 0.1 else ('SPARSE' if remembers > 0 else 'NONE')
+                health_entry = {
+                    'area': 'encoding_health', 'before': None,
+                    'after': '%d edits, %d remembers (%s)' % (edits, remembers, health_status),
+                }
+                model_updates_list = state['model_updates'][:]
+                model_updates_list.append(health_entry)
+                mental_model_updates = json.dumps(model_updates_list)
+        except Exception as _e:
+            self._log_error("synthesize_session", _e, "activity = self._get_session_activity()")
+
+        # v5: Include reflection prompts in open questions if they add value
+        try:
+            reflections = self.prompt_reflection()
+            if reflections:
+                existing_q = state['open_questions'][:]
+                for r in reflections[:2]:
+                    existing_q.append(r[:200])
+                open_questions = json.dumps(existing_q) if existing_q else open_questions
+        except Exception as _e:
+            self._log_error("synthesize_session", _e, "reflections = self.prompt_reflection()")
+
+        # Skip empty syntheses
+        has_content = any([decisions_made, corrections_received, inflection_points,
+                          mental_model_updates, teaching_arcs, open_questions])
+        if not has_content:
+            return {'id': None, 'reason': 'no session events to synthesize'}
+
+        # Store synthesis
+        self.conn.execute(
+            '''INSERT OR REPLACE INTO session_syntheses
+               (id, session_id, duration_minutes, decisions_made, corrections_received,
+                inflection_points, mental_model_updates, teaching_arcs, open_questions, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (synthesis_id, session_id, duration_minutes, decisions_made,
+             corrections_received, inflection_points, mental_model_updates,
+             teaching_arcs, open_questions, self.now())
+        )
+
+        # For significant decisions, create rich nodes
+        for dec in state['decisions']:
+            if dec.get('reasoning'):
+                self.remember_rich(
+                    type='decision',
+                    title=dec.get('title', 'Session decision')[:80],
+                    content=dec.get('content', ''),
+                    reasoning=dec.get('reasoning'),
+                    source_attribution='session_synthesis',
+                    project=dec.get('project'),
+                )
+
+        return {
+            'id': synthesis_id,
+            'session_id': session_id,
+            'duration_minutes': duration_minutes,
+            'decisions': len(state['decisions']),
+            'corrections': len(state['corrections']),
+            'inflections': len(state['inflections']),
+            'model_updates': len(state['model_updates']),
+            'validations': len(validations_list),
+            'open_questions': len(state['open_questions']),
+            'teaching_arcs': len(json.loads(teaching_arcs)) if teaching_arcs else 0,
+        }
+
+    def get_last_synthesis(self) -> Optional[Dict[str, Any]]:
+        """Get the most recent session synthesis for boot context."""
+        row = self.conn.execute(
+            '''SELECT id, session_id, duration_minutes, decisions_made,
+                      corrections_received, inflection_points, mental_model_updates,
+                      teaching_arcs, open_questions, created_at
+               FROM session_syntheses
+               ORDER BY created_at DESC LIMIT 1'''
+        ).fetchone()
+        if not row:
+            return None
+
+        result = {
+            'id': row[0], 'session_id': row[1], 'duration_minutes': row[2],
+            'created_at': row[9],
+        }
+        # Parse JSON fields
+        for i, key in enumerate(['decisions_made', 'corrections_received', 'inflection_points',
+                                  'mental_model_updates', 'teaching_arcs', 'open_questions'], 3):
+            val = row[i]
+            if val:
+                try:
+                    result[key] = json.loads(val)
+                except (json.JSONDecodeError, TypeError):
+                    result[key] = val
+            else:
+                result[key] = []
+        return result
 
     # ─── RECALL: v5 with TF-IDF + intent detection + temporal filtering + decay ───
 
@@ -1241,8 +2491,8 @@ class Brain:
                                 'archived': row2[9] == 1, 'last_accessed': row2[10],
                                 'created_at': row2[11]
                             }
-            except Exception:
-                pass
+            except Exception as _e:
+                self._log_error("recall", _e, "fetching seed node details from database")
 
         if not all_seeds:
             # Return recent nodes if no seeds found
@@ -1302,9 +2552,13 @@ class Brain:
             # v5: TF-IDF semantic relevance
             semantic_score = tfidf_scores.get(node['id'], 0)
 
-            # v5: Blend keyword and semantic scores
-            relevance = (TFIDF_KEYWORD_WEIGHT * keyword_relevance +
-                        TFIDF_SEMANTIC_WEIGHT * semantic_score)
+            # v5: Blend keyword and semantic scores (tunable blend)
+            blend = self._get_tunable('embedding_blend', {
+                'embedding': EMBEDDING_PRIMARY_WEIGHT, 'keyword': KEYWORD_FALLBACK_WEIGHT
+            })
+            emb_w = blend.get('embedding', EMBEDDING_PRIMARY_WEIGHT) if isinstance(blend, dict) else EMBEDDING_PRIMARY_WEIGHT
+            kw_w = blend.get('keyword', KEYWORD_FALLBACK_WEIGHT) if isinstance(blend, dict) else KEYWORD_FALLBACK_WEIGHT
+            relevance = (kw_w * keyword_relevance + emb_w * semantic_score)
 
             # v4: Hub dampening (nodes with 20+ connections get reduced relevance)
             cursor = self.conn.execute(
@@ -1312,8 +2566,10 @@ class Brain:
                 (node['id'],)
             )
             edge_count = cursor.fetchone()[0]
-            if edge_count > 40:
-                relevance *= 40 / edge_count
+            hub = self._get_tunable('hub_dampening', {'threshold': 40, 'penalty': 0.5})
+            hub_threshold = hub.get('threshold', 40) if isinstance(hub, dict) else 40
+            if edge_count > hub_threshold:
+                relevance *= hub_threshold / edge_count
 
             # v4: Type dampening
             if node.get('type') in ('project', 'person'):
@@ -1337,7 +2593,8 @@ class Brain:
             if node_personal == 'fixed':
                 retention = 1.0  # Skip all decay — same as locked
             elif not node.get('locked'):
-                half_life = DECAY_HALF_LIFE.get(node.get('type'), 168)
+                half_lives = self._get_tunable('decay_half_lives', DECAY_HALF_LIFE)
+                half_life = half_lives.get(node.get('type'), 168)
                 # v4: Fluid personal nodes decay 10x slower
                 if node_personal == 'fluid':
                     half_life = half_life * 10 if half_life != float('inf') else half_life
@@ -1356,8 +2613,8 @@ class Brain:
                         ).fetchone()[0]
                         if evo_conn > 0:
                             half_life = half_life * 3
-                    except Exception:
-                        pass
+                    except Exception as _e:
+                        self._log_error("recall", _e, "checking evolution connections for half-life adjustment")
                 if half_life != float('inf'):
                     last_accessed_str = node.get('last_accessed')
                     if last_accessed_str:
@@ -1450,8 +2707,8 @@ class Brain:
         recall_log_id = None
         try:
             recall_log_id = self._log_recall(session_id, query, returned_ids)
-        except Exception:
-            pass
+        except Exception as _e:
+            self._log_error("recall", _e, "logging recall event to recall_log")
 
         # v6: Attach reasoning chains when intent is reasoning_chain
         reasoning_chains = []
@@ -1547,6 +2804,7 @@ class Brain:
         # For 600 nodes this is fast (<50ms). At 10k+ nodes, switch to sqlite-vec.
         embedding_scores = {}  # node_id → cosine_similarity
         node_personal_data = {}  # node_id → (personal, personal_context) for pre-sort penalty
+        node_confidence = {}    # node_id → confidence (0-1, None=default)
         nodes_with_embeddings = 0
         nodes_without_embeddings = 0
 
@@ -1568,7 +2826,7 @@ class Brain:
                 project_params = [project]
 
             cursor = self.conn.execute(
-                f'''SELECT ne.node_id, ne.embedding, n.personal, n.personal_context
+                f'''SELECT ne.node_id, ne.embedding, n.personal, n.personal_context, n.confidence
                     FROM node_embeddings ne
                     JOIN nodes n ON n.id = ne.node_id
                     WHERE 1=1 {archive_filter} {type_filter} {project_filter}''',
@@ -1578,6 +2836,7 @@ class Brain:
                 node_id = row[0]
                 blob = row[1]
                 node_personal_data[node_id] = (row[2], row[3])  # (personal, personal_context)
+                node_confidence[node_id] = row[4]  # may be None
                 if blob:
                     sim = embedder.cosine_similarity(query_vec, blob)
                     embedding_scores[node_id] = sim
@@ -1631,6 +2890,20 @@ class Brain:
                 type_boost = type_boosts.get(node.get('type'), 1.0)
                 blended *= type_boost
 
+            # v5: Apply confidence as a scoring factor.
+            # Confidence < 1.0 penalizes (corrected nodes rank lower).
+            # Confidence > default (validated nodes) gets a mild boost.
+            # NULL confidence = 1.0 (no effect). Range: [0.1, 1.0] → multiplier [0.7, 1.05]
+            conf = node_confidence.get(nid)
+            if conf is not None:
+                # Map confidence [0.1, 1.0] to multiplier [0.7, 1.05]
+                # At 0.1 (heavily corrected): 0.7x penalty
+                # At 0.7 (default): 1.0x (neutral)
+                # At 1.0 (validated): 1.05x mild boost
+                conf_multiplier = 0.7 + (conf - 0.1) * (1.05 - 0.7) / (1.0 - 0.1)
+                conf_multiplier = max(0.7, min(1.05, conf_multiplier))
+                blended *= conf_multiplier
+
             # v4 FIX: Apply contextual qualifier penalty BEFORE sorting.
             # Previously this was applied post-hoc to effective_activation after the sort,
             # meaning it had zero effect on ordering. Now it penalizes the sort key itself.
@@ -1678,7 +2951,8 @@ class Brain:
                     cursor = self.conn.execute(
                         '''SELECT id, type, title, content, keywords, activation, stability,
                                   access_count, locked, archived, last_accessed, created_at,
-                                  emotion, emotion_label, project, personal, personal_context
+                                  emotion, emotion_label, project, personal, personal_context,
+                                  content_summary
                            FROM nodes WHERE id = ?''',
                         (nid,)
                     )
@@ -1693,6 +2967,7 @@ class Brain:
                             'created_at': row[11], 'emotion': row[12],
                             'emotion_label': row[13], 'project': row[14],
                             'personal': row[15], 'personal_context': row[16],
+                            'content_summary': row[17],
                         }
                 except Exception:
                     continue
@@ -1715,13 +2990,18 @@ class Brain:
                 ntype = node.get('type', '')
                 is_locked = node.get('locked', False)
                 is_evolution = ntype in ('tension', 'hypothesis', 'pattern', 'catalyst', 'aspiration')
-                is_rule = ntype in ('rule', 'arch_constraint', 'bug_lesson', 'failure_mode')
+                is_rule = ntype in ('rule', 'arch_constraint', 'bug_lesson', 'failure_mode',
+                                    'constraint', 'lesson', 'convention')  # v5 engineering memory
+                is_cognitive = ntype in ('mental_model', 'reasoning_trace', 'uncertainty',
+                                         'correction', 'validation')  # v5 cognitive layer
+                is_engineering = ntype in ('purpose', 'mechanism', 'impact', 'vocabulary')  # v5 engineering
 
                 node['_brain_to_host'] = {
-                    'priority': 0.9 if is_locked or is_evolution else (0.7 if is_rule else 0.5),
+                    'priority': 0.9 if is_locked or is_evolution else (
+                        0.8 if is_engineering or is_cognitive else (0.7 if is_rule else 0.5)),
                     'confidence': node.get('confidence') or (1.0 if is_locked else 0.7),
-                    'action_expected': is_rule or is_locked,
-                    'feedback_needed': is_evolution or ntype == 'failure_mode',
+                    'action_expected': is_rule or is_locked or ntype == 'impact',
+                    'feedback_needed': is_evolution or ntype in ('failure_mode', 'uncertainty', 'correction'),
                 }
 
                 # v4: Contextual qualifier matching.
@@ -1742,12 +3022,44 @@ class Brain:
 
                 final_results.append(node)
 
+        # STEP 7.5: v5 Tiered recall — top 3 get full content + metadata, rest get summary
+        TIERED_FULL_COUNT = 3
+        for i, node in enumerate(final_results):
+            if i >= TIERED_FULL_COUNT:
+                # Replace full content with summary for lower-ranked results
+                summary = node.get('content_summary')
+                if summary:
+                    node['content'] = summary
+                    node['_tiered'] = 'summary'
+                elif node.get('content') and len(node['content']) > 200:
+                    node['content'] = node['content'][:197] + '...'
+                    node['_tiered'] = 'truncated'
+            else:
+                node['_tiered'] = 'full'
+                # Attach metadata for top results
+                try:
+                    meta_cur = self.conn.execute(
+                        'SELECT reasoning, user_raw_quote, correction_of, last_validated FROM node_metadata WHERE node_id = ?',
+                        (node['id'],)
+                    )
+                    meta_row = meta_cur.fetchone()
+                    if meta_row and any(meta_row):
+                        node['_metadata'] = {
+                            'reasoning': meta_row[0],
+                            'user_raw_quote': meta_row[1],
+                            'correction_of': meta_row[2],
+                            'last_validated': meta_row[3],
+                        }
+                except Exception as _e:
+                    self._log_error("recall_with_embeddings", _e, "attaching node metadata from node_metadata table")
+
         # STEP 8: Mark accessed (for Hebbian learning)
+        sid = session_id or ('ses_%d' % int(time.time() * 1000))
         for node in final_results:
             try:
-                self._mark_accessed(node['id'])
-            except Exception:
-                pass
+                self._mark_accessed(node['id'], sid)
+            except Exception as _e:
+                self._log_error("recall_with_embeddings", _e, "marking node as accessed for Hebbian learning")
 
         # STEP 9: Build result
         recall_ms = (time.time() - t0) * 1000
@@ -1856,6 +3168,23 @@ class Brain:
 
     # ─── Helper methods for remember/recall ───
 
+    def _generate_summary(self, title: str, content: Optional[str] = None) -> Optional[str]:
+        """Generate a content_summary (max 200 chars) for tiered recall.
+
+        Returns first sentence of content, or first 200 chars if no sentence boundary.
+        Returns None if content is empty or very short (title suffices).
+        """
+        if not content or len(content) < 30:
+            return None
+        # First sentence
+        period_idx = content.find('. ')
+        if 0 < period_idx < 200:
+            return content[:period_idx + 1]
+        # First 200 chars with ellipsis
+        if len(content) > 200:
+            return content[:197] + '...'
+        return content
+
     def _extract_keywords(self, text: str) -> str:
         """
         Extract keywords from text (numbers, proper nouns, technical terms, common words).
@@ -1963,10 +3292,11 @@ class Brain:
                WHERE id = ?''',
             (ts, ts, node_id)
         )
-        self.conn.execute(
+        self.logs_conn.execute(
             'INSERT INTO access_log (session_id, node_id, timestamp) VALUES (?, ?, ?)',
             (session_id, node_id, ts)
         )
+        self.logs_conn.commit()
         self.conn.commit()
 
     def _hebbian_strengthen(self, node_ids: List[str]):
@@ -2045,15 +3375,15 @@ class Brain:
     def _log_recall(self, session_id: str, query: str, returned_ids: List[str]) -> Optional[str]:
         """Log a recall event."""
         ts = self.now()
-        cursor = self.conn.execute(
+        cursor = self.logs_conn.execute(
             '''INSERT INTO recall_log (session_id, query, returned_ids, returned_count, created_at)
                VALUES (?, ?, ?, ?, ?)''',
             (session_id or 'unknown', query, json.dumps(returned_ids), len(returned_ids), ts)
         )
-        self.conn.commit()
+        self.logs_conn.commit()
 
         # Return the last inserted row ID
-        cursor = self.conn.execute('SELECT last_insert_rowid()')
+        cursor = self.logs_conn.execute('SELECT last_insert_rowid()')
         row = cursor.fetchone()
         return str(row[0]) if row else None
 
@@ -2123,15 +3453,29 @@ class Brain:
 
         dreams = []
 
-        # Get pool of candidate seeds (40 random unlocked nodes)
+        # Get pool of candidate seeds (40 random unlocked nodes + some locked engineering)
         seed_pool = self.conn.execute('''
             SELECT n.id, n.emotion, n.last_accessed,
                    (SELECT COUNT(*) FROM edges e WHERE e.source_id = n.id AND e.weight >= 0.1) as edge_count
             FROM nodes n
             WHERE n.archived = 0 AND n.locked = 0
             ORDER BY RANDOM()
-            LIMIT 40
+            LIMIT 35
         ''').fetchall()
+
+        # v5: Include some locked engineering/vocabulary nodes as dream seeds
+        # Dreams that traverse engineering memory can surface unexpected connections
+        eng_seeds = self.conn.execute('''
+            SELECT n.id, n.emotion, n.last_accessed,
+                   (SELECT COUNT(*) FROM edges e WHERE e.source_id = n.id AND e.weight >= 0.1) as edge_count
+            FROM nodes n
+            WHERE n.archived = 0 AND n.locked = 1
+              AND n.type IN ('vocabulary', 'purpose', 'mechanism', 'impact',
+                             'lesson', 'mental_model')
+            ORDER BY RANDOM()
+            LIMIT 5
+        ''').fetchall()
+        seed_pool = list(seed_pool) + list(eng_seeds)
 
         if len(seed_pool) < 2:
             return {'dreams': [], 'message': 'Not enough nodes to dream'}
@@ -2183,8 +3527,13 @@ class Brain:
                     return c
             return seed_candidates[0]
 
-        # Generate dreams
-        for d in range(DREAM_COUNT):
+        # Generate dreams (tunable count)
+        dream_params = self._get_tunable('dream_params', {
+            'count': DREAM_COUNT, 'walk_length': DREAM_WALK_LENGTH, 'min_novelty': DREAM_MIN_NOVELTY
+        })
+        dream_count = dream_params.get('count', DREAM_COUNT) if isinstance(dream_params, dict) else DREAM_COUNT
+        dream_walk_len = dream_params.get('walk_length', DREAM_WALK_LENGTH) if isinstance(dream_params, dict) else DREAM_WALK_LENGTH
+        for d in range(dream_count):
             seed_a_data = pick_weighted_seed()
             seed_a = seed_a_data['id']
             seed_b_data = pick_weighted_seed(seed_a)
@@ -2193,8 +3542,8 @@ class Brain:
                 continue
 
             # Random walks
-            walk_a = self._random_walk(seed_a, DREAM_WALK_LENGTH)
-            walk_b = self._random_walk(seed_b, DREAM_WALK_LENGTH)
+            walk_a = self._random_walk(seed_a, dream_walk_len)
+            walk_b = self._random_walk(seed_b, dream_walk_len)
 
             # Endpoints
             end_a = walk_a[-1] if walk_a else seed_a
@@ -2234,7 +3583,7 @@ class Brain:
                 intuition_id = result['id']
 
             # Log dream
-            self.conn.execute('''
+            self.logs_conn.execute('''
                 INSERT INTO dream_log (session_id, intuition_node_id, seed_nodes, walk_path, insight, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (session_id, intuition_id, json.dumps([seed_a, seed_b]),
@@ -2321,7 +3670,7 @@ class Brain:
         bridge_proposals = 0
         max_dream_proposals = 3
         try:
-            recent_dreams = self.conn.execute('''
+            recent_dreams = self.logs_conn.execute('''
                 SELECT walk_path FROM dream_log WHERE session_id = ? ORDER BY created_at DESC LIMIT ?
             ''', (session_id, DREAM_COUNT)).fetchall()
             for (walk_json,) in recent_dreams:
@@ -2450,17 +3799,18 @@ class Brain:
         stats = {'consolidated': 0}
 
         # Boost stability for nodes accessed 3+ times in last 24h
-        candidates = self.conn.execute('''
+        candidates = self.logs_conn.execute('''
             SELECT node_id, COUNT(*) as cnt FROM access_log
             WHERE timestamp > datetime(?, '-24 hours')
             GROUP BY node_id HAVING cnt >= 3
         ''', (ts,)).fetchall()
 
+        stab_boost = self._get_tunable('stability_boost', STABILITY_BOOST)
         for node_id, _ in candidates:
             self.conn.execute('''
                 UPDATE nodes SET stability = stability * ?, activation = MIN(1.0, activation + 0.1),
                        updated_at = ? WHERE id = ? AND locked = 0
-            ''', (STABILITY_BOOST, ts, node_id))
+            ''', (stab_boost, ts, node_id))
             stats['consolidated'] += 1
 
         # Promote well-connected nodes
@@ -2498,184 +3848,1619 @@ class Brain:
         except:
             stats['embeddings_backfilled'] = 0
 
-        # ── v4: Auto-detect tensions during consolidation ──
-        tensions_detected = 0
+        # ── v4: Auto-discover evolutions (tensions, patterns, hypotheses, aspirations) ──
         try:
-            tensions_detected = self._detect_tensions()
-            stats['tensions_detected'] = tensions_detected
+            discoveries = self.auto_discover_evolutions()
+            stats['discoveries'] = {
+                'tensions': len(discoveries.get('tensions', [])),
+                'patterns': len(discoveries.get('patterns', [])),
+                'hypotheses': len(discoveries.get('hypotheses', [])),
+                'aspirations': len(discoveries.get('aspirations', [])),
+                'total': discoveries.get('_stats', {}).get('total_created', 0),
+            }
         except Exception:
-            stats['tensions_detected'] = 0
-
-        # ── v4: Auto-detect patterns from logs ──
-        patterns_detected = 0
-        try:
-            patterns_detected = self._detect_patterns()
-            stats['patterns_detected'] = patterns_detected
-        except Exception:
-            stats['patterns_detected'] = 0
+            stats['discoveries'] = {'tensions': 0, 'patterns': 0, 'hypotheses': 0, 'aspirations': 0, 'total': 0}
 
         return stats
 
-    def _detect_tensions(self) -> int:
+    def auto_discover_evolutions(self) -> Dict[str, Any]:
         """
-        v4 Phase 2: Auto-detect contradictions between locked nodes.
-        Two-pass: embeddings find semantically close pairs, keyword analysis confirms conflict.
-        Creates tension nodes for confirmed contradictions. Returns count created.
-        """
-        if not embedder.is_ready():
-            return 0
+        Graph-aware evolution discovery. Analyzes the knowledge graph structurally
+        to find tensions, patterns, hypotheses, and aspirations.
 
-        # Get locked rule/decision nodes that might conflict
-        cursor = self.conn.execute(
-            """SELECT n.id, n.type, n.title, n.content, ne.embedding
-               FROM nodes n
-               LEFT JOIN node_embeddings ne ON n.id = ne.node_id
-               WHERE n.locked = 1 AND n.archived = 0
-                 AND n.type IN ('rule', 'decision', 'arch_constraint')
-               ORDER BY RANDOM() LIMIT 30"""
-        )
-        candidates = []
-        for row in cursor.fetchall():
-            if row[4]:  # has embedding
-                candidates.append({
-                    'id': row[0], 'type': row[1], 'title': row[2],
-                    'content': row[3] or '', 'embedding': row[4]
+        Design principle: every discovery must be (1) interesting — not obvious from
+        a glance at the data, and (2) actionable — includes a concrete suggested action.
+
+        Returns structured dict for consciousness surfacing and future self-model:
+        {
+            'tensions': [{'id', 'title', 'action'}, ...],
+            'patterns': [{'id', 'title', 'action'}, ...],
+            'hypotheses': [{'id', 'title', 'action'}, ...],
+            'aspirations': [{'id', 'title', 'action'}, ...],
+            '_stats': { ... }
+        }
+        """
+        results = {'tensions': [], 'patterns': [], 'hypotheses': [], 'aspirations': [], '_stats': {}}
+        total_created = 0
+        MAX_PER_CYCLE = 3  # avoid noise — surface only the most interesting
+
+        # Tunable similarity thresholds
+        sim_thresholds = self._get_tunable('similarity_thresholds', {
+            'tension': 0.65, 'temporal': 0.70, 'cluster': 0.60,
+            'orphan_backing': 0.70, 'emotion_cluster': 0.65, 'merge': 0.85
+        })
+        SIM_TENSION = sim_thresholds.get('tension', 0.65) if isinstance(sim_thresholds, dict) else 0.65
+        SIM_TEMPORAL = sim_thresholds.get('temporal', 0.70) if isinstance(sim_thresholds, dict) else 0.70
+        SIM_CLUSTER = sim_thresholds.get('cluster', 0.60) if isinstance(sim_thresholds, dict) else 0.60
+        SIM_ORPHAN = sim_thresholds.get('orphan_backing', 0.70) if isinstance(sim_thresholds, dict) else 0.70
+        SIM_EMOTION = sim_thresholds.get('emotion_cluster', 0.65) if isinstance(sim_thresholds, dict) else 0.65
+
+        # ── 1. TENSION DISCOVERY ──
+
+        # 1a. Semantic contradictions: locked directive nodes that are suspiciously similar
+        if embedder.is_ready() and total_created < MAX_PER_CYCLE:
+            try:
+                cursor = self.conn.execute(
+                    """SELECT n.id, n.type, n.title, n.content, ne.embedding
+                       FROM nodes n
+                       JOIN node_embeddings ne ON n.id = ne.node_id
+                       WHERE n.locked = 1 AND n.archived = 0
+                         AND n.type IN ('rule', 'decision', 'arch_constraint')
+                       ORDER BY RANDOM() LIMIT 50"""
+                )
+                candidates = []
+                for row in cursor.fetchall():
+                    candidates.append({
+                        'id': row[0], 'type': row[1], 'title': row[2],
+                        'content': row[3] or '', 'embedding': row[4]
+                    })
+                results['_stats']['locked_rules_scanned'] = len(candidates)
+
+                # Find semantically close pairs
+                close_pairs = []
+                pairs_compared = 0
+                for i in range(len(candidates)):
+                    for j in range(i + 1, len(candidates)):
+                        pairs_compared += 1
+                        sim = embedder.cosine_similarity(
+                            candidates[i]['embedding'], candidates[j]['embedding']
+                        )
+                        if sim > SIM_TENSION:
+                            close_pairs.append((candidates[i], candidates[j], sim))
+                results['_stats']['pairs_compared'] = pairs_compared
+
+                # Sort by similarity desc — most interesting first
+                close_pairs.sort(key=lambda x: x[2], reverse=True)
+
+                for node_a, node_b, sim in close_pairs[:5]:
+                    if total_created >= MAX_PER_CYCLE:
+                        break
+                    # Skip if already connected by contradicts edge or existing tension
+                    existing = self.conn.execute(
+                        """SELECT COUNT(*) FROM edges
+                           WHERE edge_type = 'contradicts'
+                             AND ((source_id = ? AND target_id = ?) OR (source_id = ? AND target_id = ?))""",
+                        (node_a['id'], node_b['id'], node_b['id'], node_a['id'])
+                    ).fetchone()[0]
+                    if existing > 0:
+                        continue
+                    # Skip if there's already an active tension mentioning both nodes
+                    existing_tension = self.conn.execute(
+                        """SELECT COUNT(*) FROM nodes
+                           WHERE type = 'tension' AND evolution_status = 'active' AND archived = 0
+                             AND keywords LIKE ? AND keywords LIKE ?""",
+                        (f'%{node_a["id"][:8]}%', f'%{node_b["id"][:8]}%')
+                    ).fetchone()[0]
+                    if existing_tension > 0:
+                        continue
+
+                    action = "Review these two rules — do they conflict? Lock the winner, archive the loser, or add context for when each applies."
+                    result = self.create_tension(
+                        title=f"{node_a['title'][:40]} vs {node_b['title'][:40]}",
+                        content=(
+                            f"Auto-discovered: these two locked nodes are semantically similar "
+                            f"(cosine {sim:.2f}) suggesting they cover the same ground with "
+                            f"potentially different conclusions.\n\n"
+                            f"Node A [{node_a['type']}]: {node_a['title']}\n"
+                            f"Node B [{node_b['type']}]: {node_b['title']}\n\n"
+                            f"ACTION: {action}"
+                        ),
+                        node_a_id=node_a['id'],
+                        node_b_id=node_b['id'],
+                        keywords=f"auto-discovered tension {node_a['id'][:8]} {node_b['id'][:8]}"
+                    )
+                    results['tensions'].append({
+                        'id': result.get('id', ''), 'title': result.get('title', ''),
+                        'action': action, 'sim': round(sim, 2),
+                        'node_a': node_a['title'][:50], 'node_b': node_b['title'][:50]
+                    })
+                    total_created += 1
+            except Exception as _e:
+                self._log_error("auto_discover_evolutions", _e, "discovering semantic tensions between locked nodes")
+
+        # 1b. Temporal contradictions: same topic, different conclusions over time
+        if embedder.is_ready() and total_created < MAX_PER_CYCLE:
+            try:
+                # Get decisions/rules grouped by project, ordered by date
+                cursor = self.conn.execute(
+                    """SELECT n.id, n.type, n.title, n.content, n.project, n.created_at, ne.embedding
+                       FROM nodes n
+                       JOIN node_embeddings ne ON n.id = ne.node_id
+                       WHERE n.type IN ('decision', 'rule') AND n.archived = 0
+                         AND n.project IS NOT NULL
+                       ORDER BY n.project, n.created_at"""
+                )
+                by_project = {}
+                for row in cursor.fetchall():
+                    proj = row[4]
+                    by_project.setdefault(proj, []).append({
+                        'id': row[0], 'type': row[1], 'title': row[2],
+                        'content': row[3] or '', 'created_at': row[5], 'embedding': row[6]
+                    })
+
+                for proj, nodes in by_project.items():
+                    if total_created >= MAX_PER_CYCLE:
+                        break
+                    if len(nodes) < 2:
+                        continue
+                    # Compare early nodes with later nodes (>7 days apart)
+                    for i in range(len(nodes)):
+                        if total_created >= MAX_PER_CYCLE:
+                            break
+                        for j in range(i + 1, len(nodes)):
+                            if total_created >= MAX_PER_CYCLE:
+                                break
+                            # Check time gap
+                            try:
+                                from datetime import datetime as dt
+                                d_a = dt.fromisoformat(nodes[i]['created_at'].replace('Z', '+00:00'))
+                                d_b = dt.fromisoformat(nodes[j]['created_at'].replace('Z', '+00:00'))
+                                if abs((d_b - d_a).days) < 7:
+                                    continue
+                            except (ValueError, TypeError):
+                                continue
+
+                            sim = embedder.cosine_similarity(nodes[i]['embedding'], nodes[j]['embedding'])
+                            if sim > SIM_TEMPORAL:
+                                # Same topic revisited — check for existing tension
+                                existing = self.conn.execute(
+                                    """SELECT COUNT(*) FROM nodes
+                                       WHERE type = 'tension' AND evolution_status = 'active'
+                                         AND archived = 0 AND keywords LIKE ?""",
+                                    (f'%{nodes[i]["id"][:8]}%',)
+                                ).fetchone()[0]
+                                if existing > 0:
+                                    continue
+
+                                action = (
+                                    f"Brain decided differently about this topic on "
+                                    f"{nodes[i]['created_at'][:10]} vs {nodes[j]['created_at'][:10]}. "
+                                    f"Which is current? Archive the stale one."
+                                )
+                                result = self.create_tension(
+                                    title=f"Earlier '{nodes[i]['title'][:30]}' vs later '{nodes[j]['title'][:30]}'",
+                                    content=(
+                                        f"Auto-discovered temporal contradiction in project '{proj}':\n\n"
+                                        f"Earlier ({nodes[i]['created_at'][:10]}) [{nodes[i]['type']}]: {nodes[i]['title']}\n"
+                                        f"Later ({nodes[j]['created_at'][:10]}) [{nodes[j]['type']}]: {nodes[j]['title']}\n\n"
+                                        f"Semantic similarity: {sim:.2f} — same topic, possibly different conclusion.\n\n"
+                                        f"ACTION: {action}"
+                                    ),
+                                    node_a_id=nodes[i]['id'],
+                                    node_b_id=nodes[j]['id'],
+                                    keywords=f"auto-discovered temporal-tension {nodes[i]['id'][:8]} {nodes[j]['id'][:8]}"
+                                )
+                                results['tensions'].append({
+                                    'id': result.get('id', ''), 'title': result.get('title', ''),
+                                    'action': action, 'sim': round(sim, 2),
+                                    'node_a': nodes[i]['title'][:50], 'node_b': nodes[j]['title'][:50]
+                                })
+                                total_created += 1
+                                break  # one per project pair
+            except Exception as _e:
+                self._log_error("auto_discover_evolutions", _e, "discovering temporal contradictions across decisions and rules")
+
+        # ── 2. PATTERN DISCOVERY ──
+
+        # 2a. Correction clusters: corrections that cluster by embedding similarity
+        if embedder.is_ready() and total_created < MAX_PER_CYCLE:
+            try:
+                cursor = self.conn.execute(
+                    """SELECT n.id, n.title, n.content, ne.embedding
+                       FROM nodes n
+                       JOIN node_embeddings ne ON n.id = ne.node_id
+                       WHERE (n.type = 'bug_lesson' OR n.title LIKE 'Correction:%')
+                         AND n.archived = 0
+                       ORDER BY n.created_at DESC LIMIT 30"""
+                )
+                corrections = []
+                for row in cursor.fetchall():
+                    corrections.append({
+                        'id': row[0], 'title': row[1], 'content': row[2] or '', 'embedding': row[3]
+                    })
+                results['_stats']['corrections_analyzed'] = len(corrections)
+
+                # Simple clustering: for each correction, find others with sim > 0.60
+                used = set()
+                for i in range(len(corrections)):
+                    if total_created >= MAX_PER_CYCLE or corrections[i]['id'] in used:
+                        continue
+                    cluster = [corrections[i]]
+                    for j in range(i + 1, len(corrections)):
+                        if corrections[j]['id'] in used:
+                            continue
+                        sim = embedder.cosine_similarity(
+                            corrections[i]['embedding'], corrections[j]['embedding']
+                        )
+                        if sim > SIM_CLUSTER:
+                            cluster.append(corrections[j])
+                    if len(cluster) >= 3:
+                        # Found a correction cluster
+                        titles = [c['title'][:40] for c in cluster[:4]]
+                        theme = titles[0]  # use first as representative
+                        # Check for existing pattern
+                        existing = self.conn.execute(
+                            """SELECT COUNT(*) FROM nodes
+                               WHERE type = 'pattern' AND evolution_status = 'active'
+                                 AND archived = 0 AND keywords LIKE '%auto-discovered correction-cluster%'"""
+                        ).fetchone()[0]
+                        if existing > 0:
+                            continue
+
+                        action = f"{len(cluster)} corrections about this theme — consider creating a locked rule to prevent this class of mistake."
+                        result = self.create_pattern(
+                            title=f"Corrections cluster: {theme}",
+                            content=(
+                                f"Auto-discovered: {len(cluster)} corrections cluster around the same theme:\n\n"
+                                + "\n".join(f"  - {c['title']}" for c in cluster[:5])
+                                + f"\n\nACTION: {action}"
+                            ),
+                            evidence=f"{len(cluster)} semantically similar corrections",
+                            keywords=f"auto-discovered correction-cluster {theme[:20]}"
+                        )
+                        results['patterns'].append({
+                            'id': result.get('id', ''), 'title': result.get('title', ''),
+                            'action': action, 'count': len(cluster)
+                        })
+                        for c in cluster:
+                            used.add(c['id'])
+                        total_created += 1
+            except Exception as _e:
+                self._log_error("auto_discover_evolutions", _e, "discovering correction cluster patterns")
+
+        # 2b. Co-access without connection: nodes always recalled together but never linked
+        if total_created < MAX_PER_CYCLE:
+            try:
+                # Find high co-access pairs with no explicit edge
+                co_pairs = self.conn.execute(
+                    """SELECT e.source_id, e.target_id, e.co_access_count,
+                              s.title as s_title, t.title as t_title
+                       FROM edges e
+                       JOIN nodes s ON e.source_id = s.id
+                       JOIN nodes t ON e.target_id = t.id
+                       WHERE e.co_access_count >= 3
+                         AND e.edge_type NOT IN ('related', 'part_of', 'contradicts', 'corrected_by', 'exemplifies')
+                         AND s.archived = 0 AND t.archived = 0
+                       ORDER BY e.co_access_count DESC LIMIT 5"""
+                ).fetchall()
+
+                for src_id, tgt_id, co_count, s_title, t_title in co_pairs:
+                    if total_created >= MAX_PER_CYCLE:
+                        break
+                    # Check no explicit semantic edge exists
+                    has_explicit = self.conn.execute(
+                        """SELECT COUNT(*) FROM edges
+                           WHERE ((source_id = ? AND target_id = ?) OR (source_id = ? AND target_id = ?))
+                             AND edge_type IN ('related', 'part_of', 'exemplifies')""",
+                        (src_id, tgt_id, tgt_id, src_id)
+                    ).fetchone()[0]
+                    if has_explicit > 0:
+                        continue
+                    # Check for existing pattern about this pair
+                    existing = self.conn.execute(
+                        """SELECT COUNT(*) FROM nodes
+                           WHERE type = 'pattern' AND evolution_status = 'active' AND archived = 0
+                             AND keywords LIKE ? AND keywords LIKE ?""",
+                        (f'%{src_id[:8]}%', f'%{tgt_id[:8]}%')
+                    ).fetchone()[0]
+                    if existing > 0:
+                        continue
+
+                    action = "These nodes are always recalled together — should they be linked, merged, or is one part_of the other?"
+                    result = self.create_pattern(
+                        title=f"Always used together: '{s_title[:30]}' + '{t_title[:30]}'",
+                        content=(
+                            f"Auto-discovered: these two nodes are co-accessed {co_count} times "
+                            f"but have no explicit relationship.\n\n"
+                            f"  '{s_title}'\n  '{t_title}'\n\n"
+                            f"ACTION: {action}"
+                        ),
+                        evidence=f"co_access_count={co_count}, no explicit edge",
+                        keywords=f"auto-discovered co-access {src_id[:8]} {tgt_id[:8]}"
+                    )
+                    results['patterns'].append({
+                        'id': result.get('id', ''), 'title': result.get('title', ''),
+                        'action': action, 'co_count': co_count
+                    })
+                    total_created += 1
+            except Exception as _e:
+                self._log_error("auto_discover_evolutions", _e, "discovering co-access patterns for unlinked nodes")
+
+        # 2c. Decay patterns: types where brain keeps creating and losing nodes
+        if total_created < MAX_PER_CYCLE:
+            try:
+                decay_stats = self.conn.execute(
+                    """SELECT type,
+                              SUM(CASE WHEN archived = 1 AND created_at > datetime('now', '-30 days') THEN 1 ELSE 0 END) as archived_recent,
+                              SUM(CASE WHEN archived = 0 AND created_at > datetime('now', '-30 days') THEN 1 ELSE 0 END) as active_recent
+                       FROM nodes
+                       WHERE created_at > datetime('now', '-30 days')
+                       GROUP BY type
+                       HAVING archived_recent > active_recent AND archived_recent >= 3"""
+                ).fetchall()
+
+                # Types that are ephemeral by design — decay is expected
+                EPHEMERAL_TYPES = ('context', 'intuition')
+                for node_type, archived_count, active_count in decay_stats:
+                    if total_created >= MAX_PER_CYCLE:
+                        break
+                    if node_type in EPHEMERAL_TYPES:
+                        continue
+                    # Check for existing pattern about this type
+                    existing = self.conn.execute(
+                        """SELECT COUNT(*) FROM nodes
+                           WHERE type = 'pattern' AND evolution_status = 'active' AND archived = 0
+                             AND keywords LIKE ?""",
+                        (f'%auto-discovered decay-pattern {node_type}%',)
+                    ).fetchone()[0]
+                    if existing > 0:
+                        continue
+
+                    action = f"Brain keeps creating {node_type} nodes that decay — consider locking the important ones or stop creating ephemeral {node_type} nodes."
+                    result = self.create_pattern(
+                        title=f"Retention issue: {node_type} nodes keep decaying",
+                        content=(
+                            f"Auto-discovered: in the last 30 days, {archived_count} {node_type} nodes "
+                            f"were archived vs only {active_count} still active. The brain keeps learning "
+                            f"and forgetting the same kind of thing.\n\n"
+                            f"ACTION: {action}"
+                        ),
+                        evidence=f"{archived_count} archived vs {active_count} active in 30 days",
+                        keywords=f"auto-discovered decay-pattern {node_type}"
+                    )
+                    results['patterns'].append({
+                        'id': result.get('id', ''), 'title': result.get('title', ''),
+                        'action': action, 'type': node_type,
+                        'archived': archived_count, 'active': active_count
+                    })
+                    total_created += 1
+            except Exception as _e:
+                self._log_error("auto_discover_evolutions", _e, "discovering decay patterns for node types")
+
+        # ── 3. HYPOTHESIS DISCOVERY ──
+
+        # Types that should never be flagged as orphan beliefs
+        EXCLUDE_ORPHAN_TYPES = ('task', 'context', 'file', 'intuition', 'person', 'project', 'decision')
+
+        # 3a. Orphan beliefs: heavily accessed unlocked nodes with no locked backing
+        if embedder.is_ready() and total_created < MAX_PER_CYCLE:
+            try:
+                placeholders = ','.join('?' * len(EXCLUDE_ORPHAN_TYPES))
+                cursor = self.conn.execute(
+                    f"""SELECT n.id, n.type, n.title, n.content, n.access_count, ne.embedding
+                        FROM nodes n
+                        JOIN node_embeddings ne ON n.id = ne.node_id
+                        WHERE n.locked = 0 AND n.archived = 0
+                          AND n.access_count >= 5
+                          AND n.type NOT IN ({placeholders})
+                        ORDER BY n.access_count DESC LIMIT 10""",
+                    EXCLUDE_ORPHAN_TYPES
+                )
+                orphan_candidates = []
+                for row in cursor.fetchall():
+                    orphan_candidates.append({
+                        'id': row[0], 'type': row[1], 'title': row[2],
+                        'content': row[3] or '', 'access_count': row[4], 'embedding': row[5]
+                    })
+                results['_stats']['orphan_beliefs_found'] = len(orphan_candidates)
+
+                # Get locked nodes to compare against
+                locked_embeddings = self.conn.execute(
+                    """SELECT n.id, ne.embedding FROM nodes n
+                       JOIN node_embeddings ne ON n.id = ne.node_id
+                       WHERE n.locked = 1 AND n.archived = 0
+                       ORDER BY RANDOM() LIMIT 100"""
+                ).fetchall()
+
+                for candidate in orphan_candidates:
+                    if total_created >= MAX_PER_CYCLE:
+                        break
+                    # Check if any locked node covers the same ground
+                    has_backing = False
+                    for locked_id, locked_emb in locked_embeddings:
+                        sim = embedder.cosine_similarity(candidate['embedding'], locked_emb)
+                        if sim > SIM_ORPHAN:
+                            has_backing = True
+                            break
+                    if has_backing:
+                        continue
+                    # Check for existing hypothesis about this node
+                    existing = self.conn.execute(
+                        """SELECT COUNT(*) FROM nodes
+                           WHERE type = 'hypothesis' AND evolution_status = 'active' AND archived = 0
+                             AND keywords LIKE ?""",
+                        (f'%{candidate["id"][:8]}%',)
+                    ).fetchone()[0]
+                    if existing > 0:
+                        continue
+
+                    action = (
+                        f"'{candidate['title'][:50]}' is accessed {candidate['access_count']} times "
+                        f"but has no backing locked rule. Should it be promoted to a rule, or is it outdated?"
+                    )
+                    result = self.create_hypothesis(
+                        title=f"Orphan belief: '{candidate['title'][:50]}'",
+                        content=(
+                            f"Auto-discovered: this {candidate['type']} node is relied on "
+                            f"({candidate['access_count']} accesses) but has no locked rule "
+                            f"covering the same ground (no locked node with cosine > 0.70).\n\n"
+                            f"ACTION: {action}"
+                        ),
+                        confidence=0.4,
+                        keywords=f"auto-discovered orphan-belief {candidate['id'][:8]}"
+                    )
+                    results['hypotheses'].append({
+                        'id': result.get('id', ''), 'title': result.get('title', ''),
+                        'action': action, 'access_count': candidate['access_count']
+                    })
+                    total_created += 1
+            except Exception as _e:
+                self._log_error("auto_discover_evolutions", _e, "discovering orphan belief hypotheses")
+
+        # 3b. Dream promotions: intuitions that kept being useful
+        if total_created < MAX_PER_CYCLE:
+            try:
+                intuitions = self.conn.execute(
+                    """SELECT id, title, content FROM nodes
+                       WHERE type = 'intuition' AND archived = 0 AND access_count >= 2
+                       ORDER BY access_count DESC LIMIT 3"""
+                ).fetchall()
+
+                for node_id, title, content in intuitions:
+                    if total_created >= MAX_PER_CYCLE:
+                        break
+                    # Promote: update type from intuition to hypothesis
+                    self.conn.execute(
+                        """UPDATE nodes SET type = 'hypothesis', confidence = 0.3,
+                              evolution_status = 'active', updated_at = ?
+                           WHERE id = ?""",
+                        (self.now(), node_id)
+                    )
+                    action = "This dream insight kept being useful — validate and consider locking as a rule."
+                    results['hypotheses'].append({
+                        'id': node_id, 'title': f"Dream promoted: {title[:50]}",
+                        'action': action
+                    })
+                    total_created += 1
+            except Exception as _e:
+                self._log_error("auto_discover_evolutions", _e, "promoting dream intuitions to hypotheses")
+
+        # 3c. Load-bearing unlocked nodes: high in-degree but not locked
+        if total_created < MAX_PER_CYCLE:
+            try:
+                EXCLUDE_LOAD_TYPES = ('project', 'person', 'context', 'file', 'task', 'decision')
+                placeholders = ','.join('?' * len(EXCLUDE_LOAD_TYPES))
+                load_bearing = self.conn.execute(
+                    f"""SELECT n.id, n.title, n.type, COUNT(e.source_id) as in_degree
+                        FROM nodes n
+                        JOIN edges e ON n.id = e.target_id
+                        WHERE n.locked = 0 AND n.archived = 0
+                          AND n.type NOT IN ({placeholders})
+                        GROUP BY n.id
+                        HAVING in_degree >= 5
+                        ORDER BY in_degree DESC LIMIT 5""",
+                    EXCLUDE_LOAD_TYPES
+                ).fetchall()
+
+                for node_id, title, node_type, in_degree in load_bearing:
+                    if total_created >= MAX_PER_CYCLE:
+                        break
+                    # Check for existing hypothesis
+                    existing = self.conn.execute(
+                        """SELECT COUNT(*) FROM nodes
+                           WHERE type = 'hypothesis' AND evolution_status = 'active' AND archived = 0
+                             AND keywords LIKE ?""",
+                        (f'%{node_id[:8]}%',)
+                    ).fetchone()[0]
+                    if existing > 0:
+                        continue
+
+                    action = (
+                        f"'{title[:50]}' has {in_degree} nodes depending on it but isn't locked — "
+                        f"if it's wrong, {in_degree} things break. Lock it or re-evaluate."
+                    )
+                    result = self.create_hypothesis(
+                        title=f"Load-bearing unlocked: '{title[:50]}'",
+                        content=(
+                            f"Auto-discovered: this {node_type} node has {in_degree} edges pointing "
+                            f"to it (high in-degree) but is not locked. It's a foundational node "
+                            f"that many other nodes depend on.\n\n"
+                            f"ACTION: {action}"
+                        ),
+                        confidence=0.5,
+                        keywords=f"auto-discovered load-bearing {node_id[:8]}"
+                    )
+                    results['hypotheses'].append({
+                        'id': result.get('id', ''), 'title': result.get('title', ''),
+                        'action': action, 'in_degree': in_degree
+                    })
+                    total_created += 1
+            except Exception as _e:
+                self._log_error("auto_discover_evolutions", _e, "discovering load-bearing unlocked nodes")
+
+        # ── 4. ASPIRATION DISCOVERY ──
+
+        # 4a. Emotional trajectory: rising excitement about a project
+        if total_created < MAX_PER_CYCLE:
+            try:
+                # Compare recent 7-day emotion avg vs 30-day baseline by project
+                trends = self.conn.execute(
+                    """SELECT project,
+                              AVG(CASE WHEN created_at > datetime('now', '-7 days') THEN emotion END) as recent_avg,
+                              AVG(CASE WHEN created_at <= datetime('now', '-7 days')
+                                        AND created_at > datetime('now', '-30 days') THEN emotion END) as baseline_avg,
+                              COUNT(CASE WHEN created_at > datetime('now', '-7 days') THEN 1 END) as recent_count
+                       FROM nodes
+                       WHERE project IS NOT NULL AND archived = 0
+                         AND created_at > datetime('now', '-30 days')
+                       GROUP BY project
+                       HAVING recent_count >= 3 AND recent_avg IS NOT NULL AND baseline_avg IS NOT NULL"""
+                ).fetchall()
+                results['_stats']['emotion_trends'] = {}
+
+                for project, recent_avg, baseline_avg, recent_count in trends:
+                    if total_created >= MAX_PER_CYCLE:
+                        break
+                    delta = (recent_avg or 0) - (baseline_avg or 0)
+                    results['_stats']['emotion_trends'][project] = round(delta, 2)
+
+                    if delta > 0.2:
+                        # Check for existing aspiration about this project
+                        existing = self.conn.execute(
+                            """SELECT COUNT(*) FROM nodes
+                               WHERE type = 'aspiration' AND evolution_status = 'active' AND archived = 0
+                                 AND (project = ? OR keywords LIKE ?)""",
+                            (project, f'%auto-discovered emotion-trend {project[:20]}%')
+                        ).fetchone()[0]
+                        if existing > 0:
+                            continue
+
+                        action = f"Energy around {project} is rising (+{delta:.1f}) — is there a goal forming here? Consider creating an aspiration node."
+                        result = self.create_aspiration(
+                            title=f"Growing excitement about {project}",
+                            content=(
+                                f"Auto-discovered: emotion for project '{project}' has increased "
+                                f"by {delta:.2f} (recent 7-day avg: {recent_avg:.2f} vs 30-day baseline: {baseline_avg:.2f}, "
+                                f"based on {recent_count} recent nodes).\n\n"
+                                f"ACTION: {action}"
+                            ),
+                            project=project,
+                            keywords=f"auto-discovered emotion-trend {project[:20]}"
+                        )
+                        results['aspirations'].append({
+                            'id': result.get('id', ''), 'title': result.get('title', ''),
+                            'action': action, 'delta': round(delta, 2)
+                        })
+                        total_created += 1
+            except Exception as _e:
+                self._log_error("auto_discover_evolutions", _e, "discovering emotional trajectory aspirations by project")
+
+        # 4b. Recurring catalysts: multiple high-emotion events about same topic
+        if embedder.is_ready() and total_created < MAX_PER_CYCLE:
+            try:
+                high_emotion = self.conn.execute(
+                    """SELECT n.id, n.title, n.content, ne.embedding
+                       FROM nodes n
+                       JOIN node_embeddings ne ON n.id = ne.node_id
+                       WHERE n.emotion > 0.7 AND n.archived = 0
+                         AND n.created_at > datetime('now', '-30 days')
+                       ORDER BY n.emotion DESC LIMIT 20"""
+                ).fetchall()
+
+                # Cluster high-emotion nodes
+                used = set()
+                for i in range(len(high_emotion)):
+                    if total_created >= MAX_PER_CYCLE or high_emotion[i][0] in used:
+                        continue
+                    cluster = [high_emotion[i]]
+                    for j in range(i + 1, len(high_emotion)):
+                        if high_emotion[j][0] in used:
+                            continue
+                        sim = embedder.cosine_similarity(high_emotion[i][3], high_emotion[j][3])
+                        if sim > SIM_EMOTION:
+                            cluster.append(high_emotion[j])
+                    if len(cluster) >= 2:
+                        topic = cluster[0][1][:40]  # use first title as topic
+                        # Check for existing aspiration
+                        existing = self.conn.execute(
+                            """SELECT COUNT(*) FROM nodes
+                               WHERE type = 'aspiration' AND evolution_status = 'active' AND archived = 0
+                                 AND keywords LIKE '%auto-discovered recurring-catalyst%'"""
+                        ).fetchone()[0]
+                        if existing > 0:
+                            continue
+
+                        action = f"Multiple high-energy moments about '{topic}' — what's driving this? Name the aspiration."
+                        result = self.create_aspiration(
+                            title=f"Recurring energy: {topic}",
+                            content=(
+                                f"Auto-discovered: {len(cluster)} high-emotion nodes (emotion > 0.7) "
+                                f"cluster around the same topic:\n\n"
+                                + "\n".join(f"  - {c[1]}" for c in cluster[:5])
+                                + f"\n\nACTION: {action}"
+                            ),
+                            keywords=f"auto-discovered recurring-catalyst {topic[:20]}"
+                        )
+                        results['aspirations'].append({
+                            'id': result.get('id', ''), 'title': result.get('title', ''),
+                            'action': action, 'cluster_size': len(cluster)
+                        })
+                        for c in cluster:
+                            used.add(c[0])
+                        total_created += 1
+            except Exception as _e:
+                self._log_error("auto_discover_evolutions", _e, "discovering recurring high-emotion catalyst clusters")
+
+        results['_stats']['total_created'] = total_created
+        return results
+
+    def auto_heal(self) -> Dict[str, Any]:
+        """
+        Self-healing: resolve discoveries, tune parameters, clean graph.
+        Runs after auto_discover_evolutions() during idle.
+
+        Three categories:
+        1. Resolution healing — act on discovered evolutions (merge duplicates, auto-lock, etc.)
+        2. Adaptive tuning — adjust brain parameters based on observed behavior
+        3. Graph hygiene — clean orphan nodes, normalize edge weights, archive stale evolutions
+        """
+        ts = self.now()
+        results = {
+            'resolved': [],
+            'tuned': [],
+            'cleaned': {'archived': 0, 'edges_created': 0, 'edges_normalized': 0, 'merged': 0, 'locked': 0},
+        }
+
+        # ══════════════════════════════════════════════════════
+        # CATEGORY 1: Resolution Healing
+        # ══════════════════════════════════════════════════════
+
+        # 1a. Merge near-duplicates (sim > 0.85)
+        if embedder.is_ready():
+            try:
+                sim_thresholds = self._get_tunable('similarity_thresholds', {'merge': 0.85})
+                merge_threshold = sim_thresholds.get('merge', 0.85) if isinstance(sim_thresholds, dict) else 0.85
+
+                # Find locked node pairs with very high similarity
+                cursor = self.conn.execute(
+                    """SELECT n.id, n.type, n.title, n.created_at, ne.embedding
+                       FROM nodes n
+                       JOIN node_embeddings ne ON n.id = ne.node_id
+                       WHERE n.locked = 1 AND n.archived = 0
+                         AND n.type IN ('rule', 'decision', 'arch_constraint',
+                                        'constraint', 'lesson', 'impact', 'purpose',
+                                        'vocabulary', 'convention', 'mechanism')
+                       ORDER BY RANDOM() LIMIT 60"""
+                )
+                candidates = cursor.fetchall()
+
+                merged_this_cycle = 0
+                for i in range(len(candidates)):
+                    if merged_this_cycle >= 3:
+                        break
+                    for j in range(i + 1, len(candidates)):
+                        if merged_this_cycle >= 3:
+                            break
+                        sim = embedder.cosine_similarity(candidates[i][4], candidates[j][4])
+                        if sim > merge_threshold:
+                            id_a, type_a, title_a, created_a, _ = candidates[i]
+                            id_b, type_b, title_b, created_b, _ = candidates[j]
+
+                            # Keep newer (or longer content), archive older
+                            keep_id, archive_id = (id_b, id_a) if created_b > created_a else (id_a, id_b)
+                            keep_title = title_b if keep_id == id_b else title_a
+                            archive_title = title_a if archive_id == id_a else title_b
+
+                            # Archive the duplicate
+                            self.conn.execute(
+                                "UPDATE nodes SET archived = 1, updated_at = ? WHERE id = ?",
+                                (ts, archive_id)
+                            )
+                            # Transfer edges from archived → surviving node
+                            self.conn.execute(
+                                """UPDATE OR IGNORE edges SET source_id = ?
+                                   WHERE source_id = ? AND target_id != ?""",
+                                (keep_id, archive_id, keep_id)
+                            )
+                            self.conn.execute(
+                                """UPDATE OR IGNORE edges SET target_id = ?
+                                   WHERE target_id = ? AND source_id != ?""",
+                                (keep_id, archive_id, keep_id)
+                            )
+                            # Clean up any self-referential edges created by transfer
+                            self.conn.execute(
+                                "DELETE FROM edges WHERE source_id = target_id"
+                            )
+                            # Merge node_metadata: preserve best data from both
+                            try:
+                                keep_meta = self.conn.execute(
+                                    "SELECT * FROM node_metadata WHERE node_id = ?", (keep_id,)
+                                ).fetchone()
+                                archive_meta = self.conn.execute(
+                                    "SELECT * FROM node_metadata WHERE node_id = ?", (archive_id,)
+                                ).fetchone()
+                                if archive_meta and not keep_meta:
+                                    # Surviving node has no metadata — adopt archived node's
+                                    self.conn.execute(
+                                        "UPDATE node_metadata SET node_id = ? WHERE node_id = ?",
+                                        (keep_id, archive_id)
+                                    )
+                                elif archive_meta and keep_meta:
+                                    # Both have metadata — merge: take higher validation count,
+                                    # most recent last_validated, combine reasoning
+                                    cols = [d[1] for d in self.conn.execute(
+                                        "PRAGMA table_info(node_metadata)"
+                                    ).fetchall()]
+                                    arch_dict = dict(zip(cols, archive_meta))
+                                    keep_dict = dict(zip(cols, keep_meta))
+                                    # Merge validation counts
+                                    arch_vc = arch_dict.get('validation_count') or 0
+                                    keep_vc = keep_dict.get('validation_count') or 0
+                                    merged_vc = arch_vc + keep_vc
+                                    # Take most recent last_validated
+                                    arch_lv = arch_dict.get('last_validated') or ''
+                                    keep_lv = keep_dict.get('last_validated') or ''
+                                    best_lv = max(arch_lv, keep_lv) or None
+                                    # Combine reasoning if surviving is empty
+                                    merged_reasoning = keep_dict.get('reasoning') or arch_dict.get('reasoning')
+                                    merged_quote = keep_dict.get('user_raw_quote') or arch_dict.get('user_raw_quote')
+                                    merged_impacts = keep_dict.get('change_impacts') or arch_dict.get('change_impacts')
+                                    self.conn.execute(
+                                        """UPDATE node_metadata SET
+                                           validation_count = ?, last_validated = ?,
+                                           reasoning = COALESCE(reasoning, ?),
+                                           user_raw_quote = COALESCE(user_raw_quote, ?),
+                                           change_impacts = COALESCE(change_impacts, ?)
+                                           WHERE node_id = ?""",
+                                        (merged_vc, best_lv, merged_reasoning,
+                                         merged_quote, merged_impacts, keep_id)
+                                    )
+                            except Exception:
+                                pass  # metadata merge is best-effort
+                            # Create audit trail edge
+                            self.conn.execute(
+                                """INSERT OR IGNORE INTO edges (source_id, target_id, edge_type, weight, relation, description, created_at)
+                                   VALUES (?, ?, 'contradicts', 0.9, 'merged_duplicate',
+                                           'Auto-healed: merged near-duplicate (sim > ' || ? || ')', ?)""",
+                                (keep_id, archive_id, str(round(sim, 2)), ts)
+                            )
+                            results['resolved'].append({
+                                'action': 'merge_duplicate',
+                                'kept': keep_title[:60],
+                                'archived': archive_title[:60],
+                                'sim': round(sim, 2)
+                            })
+                            results['cleaned']['merged'] += 1
+                            merged_this_cycle += 1
+            except Exception as _e:
+                self._log_error("auto_heal", _e, "")
+
+        # 1c. Auto-lock orphan beliefs (access_count >= 10)
+        EXCLUDE_ORPHAN_TYPES = ('task', 'context', 'file', 'intuition', 'person', 'project', 'decision')
+        try:
+            placeholders = ','.join('?' * len(EXCLUDE_ORPHAN_TYPES))
+            high_access_unlocked = self.conn.execute(
+                f"""SELECT id, title, type, access_count FROM nodes
+                    WHERE locked = 0 AND archived = 0
+                      AND access_count >= 10
+                      AND type NOT IN ({placeholders})
+                    ORDER BY access_count DESC LIMIT 5""",
+                EXCLUDE_ORPHAN_TYPES
+            ).fetchall()
+
+            for node_id, title, node_type, access_count in high_access_unlocked:
+                self.conn.execute(
+                    "UPDATE nodes SET locked = 1, updated_at = ? WHERE id = ?",
+                    (ts, node_id)
+                )
+                results['resolved'].append({
+                    'action': 'auto_lock',
+                    'title': title[:60],
+                    'type': node_type,
+                    'access_count': access_count
                 })
+                results['cleaned']['locked'] += 1
+        except Exception as _e:
+            self._log_error("auto_heal", _e, "")
 
-        if len(candidates) < 2:
-            return 0
+        # 1d. Create missing edges from co-access (count >= 5)
+        try:
+            co_pairs = self.conn.execute(
+                """SELECT e.source_id, e.target_id, e.co_access_count
+                   FROM edges e
+                   WHERE e.co_access_count >= 5
+                     AND e.edge_type NOT IN ('related', 'part_of', 'contradicts', 'corrected_by',
+                                             'exemplifies', 'produced', 'reasoning_step', 'depends_on')
+                   ORDER BY e.co_access_count DESC LIMIT 10"""
+            ).fetchall()
 
-        # Pass 1: Find semantically close pairs (>0.75 cosine)
-        close_pairs = []
-        for i in range(len(candidates)):
-            for j in range(i + 1, len(candidates)):
-                sim = embedder.cosine_similarity(candidates[i]['embedding'], candidates[j]['embedding'])
-                if sim > 0.75:
-                    close_pairs.append((candidates[i], candidates[j], sim))
+            for src_id, tgt_id, co_count in co_pairs:
+                # Check no explicit semantic edge exists
+                has_explicit = self.conn.execute(
+                    """SELECT COUNT(*) FROM edges
+                       WHERE ((source_id = ? AND target_id = ?) OR (source_id = ? AND target_id = ?))
+                         AND edge_type IN ('related', 'part_of', 'exemplifies', 'depends_on')""",
+                    (src_id, tgt_id, tgt_id, src_id)
+                ).fetchone()[0]
+                if has_explicit > 0:
+                    continue
 
-        if not close_pairs:
-            return 0
+                weight = 0.6 if co_count >= 10 else 0.4
+                self.conn.execute(
+                    """INSERT OR IGNORE INTO edges (source_id, target_id, edge_type, weight, relation, description, created_at)
+                       VALUES (?, ?, 'related', ?, 'co_access_promoted',
+                               'Auto-healed: promoted from co-access (' || ? || 'x)', ?)""",
+                    (src_id, tgt_id, weight, str(co_count), ts)
+                )
+                results['cleaned']['edges_created'] += 1
+        except Exception as _e:
+            self._log_error("auto_heal", _e, "")
 
-        # Pass 2: Keyword analysis for actual conflict signals
-        conflict_words = {'not', 'never', 'must', 'always', 'instead', 'rather', 'but', 'however',
-                          'default', 'primary', 'secondary', 'first', 'only'}
-        tensions_created = 0
+        # 1f. Resolve confirmed/dismissed evolutions
+        try:
+            # Auto-archive evolutions dismissed 2+ times (from consciousness tracking)
+            dismissed = self.conn.execute(
+                """SELECT bm.key, bm.value FROM brain_meta bm
+                   WHERE bm.key LIKE 'consciousness_response_%_no'
+                     AND CAST(bm.value AS INTEGER) >= 2"""
+            ).fetchall()
+            for key, count in dismissed:
+                # Extract signal type from key
+                signal = key.replace('consciousness_response_', '').replace('_no', '')
+                if signal == 'evolutions':
+                    # Archive all active evolutions that have been repeatedly dismissed
+                    self.conn.execute(
+                        """UPDATE nodes SET evolution_status = 'dismissed', archived = 1, updated_at = ?
+                           WHERE type IN ('tension', 'hypothesis', 'pattern', 'aspiration')
+                             AND evolution_status = 'active' AND archived = 0
+                             AND keywords LIKE '%auto-discovered%'""",
+                        (ts,)
+                    )
+        except Exception as _e:
+            self._log_error("auto_heal", _e, "")
 
-        for node_a, node_b, sim in close_pairs[:5]:
-            # Check if there's already a tension between these
-            existing = self.conn.execute(
-                """SELECT COUNT(*) FROM edges
-                   WHERE edge_type = 'contradicts'
-                     AND ((source_id = ? AND target_id = ?) OR (source_id = ? AND target_id = ?))""",
-                (node_a['id'], node_b['id'], node_b['id'], node_a['id'])
+        # 1g. Consolidate correction clusters — 3+ corrections with same pattern → locked rule
+        try:
+            patterns = self.conn.execute(
+                '''SELECT underlying_pattern, COUNT(*) as cnt
+                   FROM correction_traces
+                   WHERE underlying_pattern IS NOT NULL
+                   GROUP BY underlying_pattern HAVING cnt >= 3
+                   ORDER BY cnt DESC LIMIT 3'''
+            ).fetchall()
+            for pattern, count in patterns:
+                # Check if a rule already exists for this pattern
+                existing = self.conn.execute(
+                    "SELECT id FROM nodes WHERE type IN ('rule', 'lesson') AND archived = 0 AND title LIKE ?",
+                    (f'%{pattern[:30]}%',)
+                ).fetchone()
+                if existing:
+                    continue
+                # Get examples
+                examples = self.conn.execute(
+                    "SELECT claude_assumed, reality FROM correction_traces WHERE underlying_pattern = ? ORDER BY created_at DESC LIMIT 3",
+                    (pattern,)
+                ).fetchall()
+                example_text = "; ".join([f"assumed '{r[0][:40]}' but was '{r[1][:40]}'" for r in examples])
+                # Create locked lesson node
+                self.remember_lesson(
+                    title=f"Recurring divergence: {pattern[:60]}",
+                    what_happened=f"Pattern appeared {count} times in correction traces",
+                    root_cause=pattern,
+                    fix=f"Be aware of this tendency and verify assumptions",
+                    preventive_principle=f"Examples: {example_text[:200]}",
+                )
+                results['resolved'].append({
+                    'action': 'correction_consolidated',
+                    'pattern': pattern[:60],
+                    'count': count,
+                })
+        except Exception as _e:
+            self._log_error("auto_heal", _e, "")
+
+        # 1h. Backfill missing embeddings
+        try:
+            if embedder.is_ready():
+                missing = self.conn.execute(
+                    """SELECT n.id, n.title, n.content FROM nodes n
+                       LEFT JOIN node_embeddings ne ON n.id = ne.node_id
+                       WHERE ne.node_id IS NULL AND n.archived = 0
+                       LIMIT 20"""
+                ).fetchall()
+                for nid, ntitle, ncontent in missing:
+                    try:
+                        text = f"{ntitle} {ncontent or ''}"
+                        vec = embedder.embed(text)
+                        if vec is not None:
+                            self.conn.execute(
+                                "INSERT OR REPLACE INTO node_embeddings (node_id, embedding, model_name, created_at) VALUES (?, ?, ?, ?)",
+                                (nid, vec, embedder.get_stats().get('model_name', ''), ts)
+                            )
+                    except Exception as _e:
+                        self._log_error("auto_heal", _e, "backfilling embedding for single node")
+        except Exception as _e:
+            self._log_error("auto_heal", _e, "backfilling missing embeddings for nodes without embeddings")
+
+        # 1i. Consciousness signal → automated confidence adjustments
+        # Stale reasoning and recurring divergence should affect scoring, not just display.
+        try:
+            # Stale reasoning: nodes with reasoning metadata but never validated (>21 days old)
+            stale_nodes = self.conn.execute(
+                """SELECT nm.node_id, n.confidence FROM node_metadata nm
+                   JOIN nodes n ON n.id = nm.node_id
+                   WHERE nm.reasoning IS NOT NULL
+                     AND (nm.last_validated IS NULL OR nm.last_validated < datetime('now', '-21 days'))
+                     AND n.archived = 0 AND n.confidence IS NOT NULL AND n.confidence > 0.5
+                     AND nm.created_at < datetime('now', '-21 days')
+                   LIMIT 10"""
+            ).fetchall()
+            for nid, conf in stale_nodes:
+                # Mild confidence decay: -0.05 per cycle, floor at 0.5
+                new_conf = max(0.5, (conf or 0.7) - 0.05)
+                if new_conf < (conf or 0.7):
+                    self.conn.execute(
+                        "UPDATE nodes SET confidence = ? WHERE id = ?", (new_conf, nid)
+                    )
+
+            # Recurring divergence patterns: lower confidence on nodes that keep getting corrected
+            recurring = self.conn.execute(
+                """SELECT original_node_id, COUNT(*) as cnt FROM correction_traces
+                   WHERE original_node_id IS NOT NULL
+                   GROUP BY original_node_id HAVING cnt >= 3"""
+            ).fetchall()
+            for nid, cnt in recurring:
+                cur = self.conn.execute(
+                    "SELECT confidence FROM nodes WHERE id = ? AND archived = 0", (nid,)
+                ).fetchone()
+                if cur:
+                    old_conf = cur[0] if cur[0] is not None else 0.7
+                    # Floor at 0.3 for repeatedly-corrected nodes
+                    new_conf = max(0.3, old_conf - 0.1)
+                    if new_conf < old_conf:
+                        self.conn.execute(
+                            "UPDATE nodes SET confidence = ? WHERE id = ?", (new_conf, nid)
+                        )
+        except Exception as _e:
+            self._log_error("auto_heal", _e, "")
+
+        # ══════════════════════════════════════════════════════
+        # CATEGORY 2: Adaptive Tuning
+        # ══════════════════════════════════════════════════════
+
+        # 2a. Decay rates — if a type keeps getting recreated after decay, increase half-life
+        try:
+            current_half_lives = self._get_tunable('decay_half_lives', DECAY_HALF_LIFE)
+            if not isinstance(current_half_lives, dict):
+                current_half_lives = dict(DECAY_HALF_LIFE)
+            updated_half_lives = dict(current_half_lives)
+            changed = False
+
+            # Find types with high re-creation rate (archived > active in last 30 days)
+            decay_stats = self.conn.execute(
+                """SELECT type,
+                          SUM(CASE WHEN archived = 1 AND created_at > datetime('now', '-30 days') THEN 1 ELSE 0 END) as arc,
+                          SUM(CASE WHEN archived = 0 AND created_at > datetime('now', '-30 days') THEN 1 ELSE 0 END) as act
+                   FROM nodes
+                   WHERE created_at > datetime('now', '-30 days')
+                   GROUP BY type
+                   HAVING arc > act AND arc >= 3"""
+            ).fetchall()
+
+            EPHEMERAL_TYPES = ('context', 'intuition', 'thought')  # expected to decay
+            for node_type, archived, active in decay_stats:
+                if node_type in EPHEMERAL_TYPES:
+                    continue
+                old_hl = updated_half_lives.get(node_type, 168)
+                if old_hl == float('inf'):
+                    continue
+                new_hl = min(2160, old_hl * 1.5)  # cap at 90 days
+                if new_hl != old_hl:
+                    updated_half_lives[node_type] = new_hl
+                    changed = True
+                    results['tuned'].append({
+                        'param': f'decay_half_life.{node_type}',
+                        'old': old_hl, 'new': new_hl,
+                        'reason': f'{archived} archived vs {active} active in 30d — slowing decay'
+                    })
+
+            # Find types where nodes are never accessed after creation
+            never_accessed = self.conn.execute(
+                """SELECT type, COUNT(*) as cnt FROM nodes
+                   WHERE access_count <= 1 AND archived = 0
+                     AND created_at < datetime('now', '-7 days')
+                     AND locked = 0
+                   GROUP BY type HAVING cnt >= 5"""
+            ).fetchall()
+            for node_type, count in never_accessed:
+                old_hl = updated_half_lives.get(node_type, 168)
+                if old_hl == float('inf') or old_hl <= 1:
+                    continue
+                new_hl = max(1, old_hl * 0.75)  # floor at 1 hour
+                if new_hl != old_hl:
+                    updated_half_lives[node_type] = new_hl
+                    changed = True
+                    results['tuned'].append({
+                        'param': f'decay_half_life.{node_type}',
+                        'old': old_hl, 'new': new_hl,
+                        'reason': f'{count} nodes never re-accessed — speeding decay'
+                    })
+
+            if changed:
+                # Convert inf to string for JSON
+                serializable = {k: (str(v) if v == float('inf') else v) for k, v in updated_half_lives.items()}
+                self._set_tunable('decay_half_lives', serializable,
+                                  f'Auto-tuned {len(results["tuned"])} decay rates')
+        except Exception as _e:
+            self._log_error("auto_heal", _e, "")
+
+        # 2b. Recall weights — track which signal best predicts re-access
+        try:
+            # Simple heuristic: if old nodes (low recency) are frequently re-accessed,
+            # recency weight is too high
+            # Two-step: get accessed IDs from logs DB, then filter in main DB
+            accessed_ids = self.logs_conn.execute(
+                """SELECT DISTINCT node_id FROM access_log
+                   WHERE timestamp > datetime('now', '-7 days')"""
+            ).fetchall()
+            if accessed_ids:
+                id_list = ','.join("'%s'" % r[0].replace("'", "''") for r in accessed_ids)
+                old_reaccessed = self.conn.execute(
+                    """SELECT COUNT(*) FROM nodes
+                       WHERE id IN (%s) AND created_at < datetime('now', '-30 days')
+                         AND locked = 0""" % id_list
+                ).fetchone()[0]
+            else:
+                old_reaccessed = 0
+            total_accessed = self.logs_conn.execute(
+                """SELECT COUNT(*) FROM access_log
+                   WHERE timestamp > datetime('now', '-7 days')"""
             ).fetchone()[0]
-            if existing > 0:
-                continue
 
-            # Look for directional conflict in content
-            text_a = (node_a['title'] + ' ' + node_a['content']).lower()
-            text_b = (node_b['title'] + ' ' + node_b['content']).lower()
-            words_a = set(text_a.split()) & conflict_words
-            words_b = set(text_b.split()) & conflict_words
-            if words_a and words_b:
-                # Both nodes have directive language — potential tension
-                self.create_tension(
-                    title=f"{node_a['title'][:40]} vs {node_b['title'][:40]}",
-                    content=f"Auto-detected: these two locked nodes are semantically similar (cosine {sim:.2f}) but both contain directive language, suggesting potential contradiction. Review and resolve.",
-                    node_a_id=node_a['id'],
-                    node_b_id=node_b['id'],
-                    keywords=f"auto-detected tension {node_a['title'][:20]} {node_b['title'][:20]}"
-                )
-                tensions_created += 1
+            if total_accessed > 20:
+                old_ratio = old_reaccessed / total_accessed
+                current_weights = self._get_tunable('recall_weights', {
+                    'relevance': RELEVANCE_WEIGHT, 'recency': RECENCY_WEIGHT,
+                    'frequency': FREQUENCY_WEIGHT, 'emotion': EMOTION_WEIGHT
+                })
+                if not isinstance(current_weights, dict):
+                    current_weights = {'relevance': RELEVANCE_WEIGHT, 'recency': RECENCY_WEIGHT,
+                                       'frequency': FREQUENCY_WEIGHT, 'emotion': EMOTION_WEIGHT}
 
-        return tensions_created
+                # If >40% of re-accessed nodes are old, recency is over-weighted
+                if old_ratio > 0.4 and current_weights.get('recency', RECENCY_WEIGHT) > 0.15:
+                    new_weights = dict(current_weights)
+                    delta = 0.05
+                    new_weights['recency'] = round(new_weights.get('recency', RECENCY_WEIGHT) - delta, 2)
+                    new_weights['relevance'] = round(new_weights.get('relevance', RELEVANCE_WEIGHT) + delta, 2)
+                    self._set_tunable('recall_weights', new_weights,
+                                      f'Old nodes re-accessed at {old_ratio:.0%} — shifting weight from recency to relevance')
+                    results['tuned'].append({
+                        'param': 'recall_weights',
+                        'old': current_weights, 'new': new_weights,
+                        'reason': f'{old_ratio:.0%} of re-accessed nodes are old'
+                    })
+                # If <10% are old, recency is under-weighted
+                elif old_ratio < 0.1 and current_weights.get('recency', RECENCY_WEIGHT) < 0.45:
+                    new_weights = dict(current_weights)
+                    delta = 0.05
+                    new_weights['recency'] = round(new_weights.get('recency', RECENCY_WEIGHT) + delta, 2)
+                    new_weights['relevance'] = round(new_weights.get('relevance', RELEVANCE_WEIGHT) - delta, 2)
+                    self._set_tunable('recall_weights', new_weights,
+                                      f'Old nodes rarely re-accessed ({old_ratio:.0%}) — boosting recency')
+                    results['tuned'].append({
+                        'param': 'recall_weights',
+                        'old': current_weights, 'new': new_weights,
+                        'reason': f'Only {old_ratio:.0%} of re-accessed nodes are old'
+                    })
+        except Exception as _e:
+            self._log_error("auto_heal", _e, "")
 
-    def _detect_patterns(self) -> int:
-        """
-        v4 Phase 2: Auto-detect patterns from miss_log and recall_log.
-        Creates hypotheses first (confidence 0.3). If the same pattern is detected
-        again later, promotes to a real pattern node.
-        Returns count of new hypotheses/patterns created.
-        """
-        created = 0
-
-        # Pattern 1: Repeated miss signals on same topic
+        # 2c. Similarity thresholds — adjust based on evolution dismiss/confirm rates
         try:
-            repeated_misses = self.conn.execute(
-                """SELECT query, COUNT(*) as cnt
-                   FROM miss_log
-                   WHERE created_at > datetime('now', '-7 days')
-                   GROUP BY query HAVING cnt >= 2
-                   ORDER BY cnt DESC LIMIT 3"""
+            confirmed = self.conn.execute(
+                """SELECT COUNT(*) FROM nodes
+                   WHERE type IN ('tension', 'hypothesis', 'pattern', 'aspiration')
+                     AND evolution_status IN ('confirmed', 'validated', 'resolved')
+                     AND keywords LIKE '%auto-discovered%'"""
+            ).fetchone()[0]
+            dismissed = self.conn.execute(
+                """SELECT COUNT(*) FROM nodes
+                   WHERE type IN ('tension', 'hypothesis', 'pattern', 'aspiration')
+                     AND evolution_status IN ('dismissed', 'disproven')
+                     AND keywords LIKE '%auto-discovered%'"""
+            ).fetchone()[0]
+            total_evolutions = confirmed + dismissed
+
+            if total_evolutions >= 5:
+                dismiss_rate = dismissed / total_evolutions
+                current_thresholds = self._get_tunable('similarity_thresholds', {
+                    'tension': 0.65, 'temporal': 0.70, 'cluster': 0.60,
+                    'orphan_backing': 0.70, 'emotion_cluster': 0.65, 'merge': 0.85
+                })
+                if isinstance(current_thresholds, dict):
+                    new_thresholds = dict(current_thresholds)
+                    if dismiss_rate > 0.6:
+                        # Too many false positives — raise thresholds
+                        for k in ('tension', 'temporal', 'cluster'):
+                            new_thresholds[k] = min(0.90, round(new_thresholds.get(k, 0.65) + 0.05, 2))
+                        self._set_tunable('similarity_thresholds', new_thresholds,
+                                          f'High dismiss rate ({dismiss_rate:.0%}) — raising thresholds')
+                        results['tuned'].append({
+                            'param': 'similarity_thresholds',
+                            'old': current_thresholds, 'new': new_thresholds,
+                            'reason': f'{dismiss_rate:.0%} dismiss rate'
+                        })
+                    elif dismiss_rate < 0.2 and total_evolutions >= 10:
+                        # Very few false positives — can lower thresholds
+                        for k in ('tension', 'temporal', 'cluster'):
+                            new_thresholds[k] = max(0.50, round(new_thresholds.get(k, 0.65) - 0.03, 2))
+                        self._set_tunable('similarity_thresholds', new_thresholds,
+                                          f'Low dismiss rate ({dismiss_rate:.0%}) — lowering thresholds')
+                        results['tuned'].append({
+                            'param': 'similarity_thresholds',
+                            'old': current_thresholds, 'new': new_thresholds,
+                            'reason': f'{dismiss_rate:.0%} dismiss rate — room to discover more'
+                        })
+        except Exception as _e:
+            self._log_error("auto_heal", _e, "")
+
+        # 2d. Stability boost — check for stability inflation or excessive decay
+        try:
+            avg_stability = self.conn.execute(
+                "SELECT AVG(stability) FROM nodes WHERE locked = 0 AND archived = 0"
+            ).fetchone()[0] or 1.0
+            current_boost = self._get_tunable('stability_boost', STABILITY_BOOST)
+            if not isinstance(current_boost, (int, float)):
+                current_boost = STABILITY_BOOST
+
+            if avg_stability > 5.0 and current_boost > 1.1:
+                # Stability inflation — reduce boost
+                new_boost = round(max(1.1, current_boost - 0.1), 2)
+                self._set_tunable('stability_boost', new_boost,
+                                  f'Avg stability {avg_stability:.1f} > 5.0 — reducing boost')
+                results['tuned'].append({
+                    'param': 'stability_boost', 'old': current_boost, 'new': new_boost,
+                    'reason': f'Stability inflation (avg {avg_stability:.1f})'
+                })
+            elif avg_stability < 0.5 and current_boost < 3.0:
+                # Nodes decaying too fast — increase boost
+                new_boost = round(min(3.0, current_boost + 0.2), 2)
+                self._set_tunable('stability_boost', new_boost,
+                                  f'Avg stability {avg_stability:.1f} < 0.5 — increasing boost')
+                results['tuned'].append({
+                    'param': 'stability_boost', 'old': current_boost, 'new': new_boost,
+                    'reason': f'Excessive decay (avg stability {avg_stability:.1f})'
+                })
+        except Exception as _e:
+            self._log_error("auto_heal", _e, "")
+
+        # 2e. Embedding blend — shift toward keywords when embedder is degraded
+        try:
+            if not embedder.is_ready():
+                current_blend = self._get_tunable('embedding_blend', {
+                    'embedding': EMBEDDING_PRIMARY_WEIGHT, 'keyword': KEYWORD_FALLBACK_WEIGHT
+                })
+                if isinstance(current_blend, dict) and current_blend.get('embedding', 0.9) > 0.5:
+                    new_blend = {'embedding': 0.0, 'keyword': 1.0}
+                    self._set_tunable('embedding_blend', new_blend,
+                                      'Embedder offline — shifting to keyword-only')
+                    results['tuned'].append({
+                        'param': 'embedding_blend', 'old': current_blend, 'new': new_blend,
+                        'reason': 'Embedder not ready'
+                    })
+            else:
+                # Embedder is healthy — restore if previously degraded
+                current_blend = self._get_tunable('embedding_blend', None)
+                if isinstance(current_blend, dict) and current_blend.get('embedding', 0.9) < 0.5:
+                    new_blend = {'embedding': EMBEDDING_PRIMARY_WEIGHT, 'keyword': KEYWORD_FALLBACK_WEIGHT}
+                    self._set_tunable('embedding_blend', new_blend,
+                                      'Embedder restored — reverting to embedding-primary')
+                    results['tuned'].append({
+                        'param': 'embedding_blend', 'old': current_blend, 'new': new_blend,
+                        'reason': 'Embedder recovered'
+                    })
+        except Exception as _e:
+            self._log_error("auto_heal", _e, "")
+
+        # 2f. Hub dampening — adjust based on hub recall patterns
+        try:
+            # If high-degree nodes dominate recall results, lower the threshold
+            # Two-step: get hub IDs from main DB, then count in logs DB
+            hub_ids = self.conn.execute(
+                """SELECT source_id FROM edges GROUP BY source_id HAVING COUNT(*) > 30"""
             ).fetchall()
-
-            for query, count in repeated_misses:
-                # Check if we already have a hypothesis about this
-                existing = self.conn.execute(
-                    "SELECT COUNT(*) FROM nodes WHERE type IN ('hypothesis', 'pattern') AND keywords LIKE ? AND archived = 0",
-                    (f'%miss-pattern {query[:30]}%',)
+            hub_in_recent = 0
+            if hub_ids:
+                hub_id_list = ','.join("'%s'" % r[0].replace("'", "''") for r in hub_ids)
+                hub_in_recent = self.logs_conn.execute(
+                    """SELECT COUNT(*) FROM access_log
+                       WHERE node_id IN (%s) AND timestamp > datetime('now', '-7 days')""" % hub_id_list
                 ).fetchone()[0]
-                if existing > 0:
-                    continue
+            total_recent = self.logs_conn.execute(
+                "SELECT COUNT(*) FROM access_log WHERE timestamp > datetime('now', '-7 days')"
+            ).fetchone()[0]
 
-                self.create_hypothesis(
-                    title=f"Recall keeps missing on '{query[:50]}'",
-                    content=f"Auto-detected: {count} miss signals for queries about '{query}' in the last 7 days. The brain may be missing knowledge on this topic, or the encoding is poor.",
-                    confidence=0.3,
-                    keywords=f"auto-detected miss-pattern {query[:30]} recall gap"
-                )
-                created += 1
-        except Exception:
-            pass
+            if total_recent > 20:
+                hub_ratio = hub_in_recent / total_recent
+                current_hub = self._get_tunable('hub_dampening', {'threshold': 40, 'penalty': 0.5})
+                if isinstance(current_hub, dict):
+                    if hub_ratio > 0.5:
+                        # Hubs dominating — lower threshold (dampen more aggressively)
+                        new_hub = dict(current_hub)
+                        new_hub['threshold'] = max(10, current_hub.get('threshold', 40) - 5)
+                        self._set_tunable('hub_dampening', new_hub,
+                                          f'Hub nodes at {hub_ratio:.0%} of recalls — dampening more')
+                        results['tuned'].append({
+                            'param': 'hub_dampening', 'old': current_hub, 'new': new_hub,
+                            'reason': f'Hubs dominate at {hub_ratio:.0%}'
+                        })
+                    elif hub_ratio < 0.1:
+                        # Hubs under-recalled — raise threshold (dampen less)
+                        new_hub = dict(current_hub)
+                        new_hub['threshold'] = min(100, current_hub.get('threshold', 40) + 5)
+                        self._set_tunable('hub_dampening', new_hub,
+                                          f'Hub nodes at {hub_ratio:.0%} of recalls — dampening less')
+                        results['tuned'].append({
+                            'param': 'hub_dampening', 'old': current_hub, 'new': new_hub,
+                            'reason': f'Hubs under-recalled at {hub_ratio:.0%}'
+                        })
+        except Exception as _e:
+            self._log_error("auto_heal", _e, "")
 
-        # Pattern 2: Correction frequency by topic
+        # 2g. Dream params — adjust based on dream utility
         try:
-            corrections = self.conn.execute(
-                """SELECT n.keywords, COUNT(*) as cnt
-                   FROM nodes n
-                   WHERE n.title LIKE 'Correction:%' AND n.created_at > datetime('now', '-30 days')
-                   GROUP BY substr(n.keywords, 1, 30) HAVING cnt >= 2
-                   ORDER BY cnt DESC LIMIT 3"""
+            dreams_promoted = self.conn.execute(
+                """SELECT COUNT(*) FROM nodes
+                   WHERE type = 'hypothesis' AND keywords LIKE '%auto-discovered%'
+                     AND title LIKE 'Dream promoted%'"""
+            ).fetchone()[0]
+            total_dreams = self.logs_conn.execute(
+                "SELECT COUNT(*) FROM dream_log WHERE created_at > datetime('now', '-30 days')"
+            ).fetchone()[0]
+
+            current_dream = self._get_tunable('dream_params', {
+                'count': DREAM_COUNT, 'walk_length': DREAM_WALK_LENGTH, 'min_novelty': DREAM_MIN_NOVELTY
+            })
+            if isinstance(current_dream, dict) and total_dreams > 10:
+                promotion_rate = dreams_promoted / max(1, total_dreams)
+                if promotion_rate > 0.1:
+                    # Dreams are useful — more dreams, longer walks
+                    new_dream = dict(current_dream)
+                    new_dream['count'] = min(10, current_dream.get('count', DREAM_COUNT) + 1)
+                    new_dream['walk_length'] = min(10, current_dream.get('walk_length', DREAM_WALK_LENGTH) + 1)
+                    self._set_tunable('dream_params', new_dream,
+                                      f'Dream promotion rate {promotion_rate:.0%} — more dreaming')
+                    results['tuned'].append({
+                        'param': 'dream_params', 'old': current_dream, 'new': new_dream,
+                        'reason': f'{promotion_rate:.0%} dream promotion rate'
+                    })
+                elif promotion_rate == 0 and total_dreams > 30:
+                    # Dreams are never useful — fewer dreams
+                    new_dream = dict(current_dream)
+                    new_dream['count'] = max(1, current_dream.get('count', DREAM_COUNT) - 1)
+                    self._set_tunable('dream_params', new_dream,
+                                      f'No dream promotions in {total_dreams} dreams — less dreaming')
+                    results['tuned'].append({
+                        'param': 'dream_params', 'old': current_dream, 'new': new_dream,
+                        'reason': f'0 promotions from {total_dreams} dreams'
+                    })
+        except Exception as _e:
+            self._log_error("auto_heal", _e, "")
+
+        # 2h. Boot limits — check compaction patterns
+        # (Simple heuristic: if session_minutes < 30 before first compaction, boot is too heavy)
+        try:
+            session_min = float(self.get_config('total_session_minutes', 0) or 0)
+            compaction_count = self.conn.execute(
+                """SELECT COUNT(*) FROM brain_meta
+                   WHERE key LIKE 'compaction_%' AND updated_at > datetime('now', '-7 days')"""
+            ).fetchone()[0]
+
+            current_limits = self._get_tunable('boot_limits', {
+                'locked': CONTEXT_BOOT_LOCKED_LIMIT,
+                'recall': CONTEXT_BOOT_RECALL_LIMIT,
+                'recent': CONTEXT_BOOT_RECENT_LIMIT
+            })
+            if isinstance(current_limits, dict) and compaction_count > 3 and session_min < 30:
+                # Frequent compaction, short sessions — boot context too heavy
+                new_limits = dict(current_limits)
+                new_limits['locked'] = max(10, current_limits.get('locked', 50) - 10)
+                new_limits['recall'] = max(5, current_limits.get('recall', 15) - 3)
+                self._set_tunable('boot_limits', new_limits,
+                                  f'{compaction_count} compactions in <30min sessions — reducing boot')
+                results['tuned'].append({
+                    'param': 'boot_limits', 'old': current_limits, 'new': new_limits,
+                    'reason': f'Frequent compaction ({compaction_count}x) in short sessions'
+                })
+        except Exception as _e:
+            self._log_error("auto_heal", _e, "")
+
+        # ══════════════════════════════════════════════════════
+        # CATEGORY 3: Graph Hygiene
+        # ══════════════════════════════════════════════════════
+
+        # 3a. Orphan node cleanup — 0 edges, 0 access in 30 days, not locked
+        try:
+            orphans = self.conn.execute(
+                """SELECT n.id FROM nodes n
+                   LEFT JOIN edges e1 ON n.id = e1.source_id
+                   LEFT JOIN edges e2 ON n.id = e2.target_id
+                   WHERE n.locked = 0 AND n.archived = 0
+                     AND n.access_count <= 1
+                     AND n.created_at < datetime('now', '-30 days')
+                     AND e1.source_id IS NULL AND e2.target_id IS NULL
+                   LIMIT 20"""
             ).fetchall()
-
-            for keywords, count in corrections:
-                existing = self.conn.execute(
-                    "SELECT COUNT(*) FROM nodes WHERE type IN ('hypothesis', 'pattern') AND keywords LIKE ? AND archived = 0",
-                    (f'%correction-pattern {keywords[:20]}%',)
-                ).fetchone()[0]
-                if existing > 0:
-                    continue
-
-                self.create_hypothesis(
-                    title=f"Repeated corrections on '{keywords[:40]}'",
-                    content=f"Auto-detected: {count} correction events about '{keywords}' in the last 30 days. This area may need a locked rule or deeper understanding.",
-                    confidence=0.3,
-                    keywords=f"auto-detected correction-pattern {keywords[:20]}"
+            if orphans:
+                orphan_ids = [r[0] for r in orphans]
+                placeholders = ','.join('?' * len(orphan_ids))
+                self.conn.execute(
+                    f"UPDATE nodes SET archived = 1, updated_at = ? WHERE id IN ({placeholders})",
+                    [ts] + orphan_ids
                 )
-                created += 1
-        except Exception:
-            pass
+                results['cleaned']['archived'] += len(orphan_ids)
+        except Exception as _e:
+            self._log_error("auto_heal", _e, "")
 
-        # Pattern 3: Encoding gaps (long stretches with no remember calls)
+        # 3b. Edge weight normalization — cap non-structural edges at 0.9
         try:
-            gap = self.conn.execute(
-                """SELECT MAX(CASE WHEN key = 'last_remember_at' THEN value END),
-                          MAX(CASE WHEN key = 'total_session_minutes' THEN value END)
-                   FROM brain_meta WHERE key IN ('last_remember_at', 'total_session_minutes')"""
-            ).fetchone()
-            if gap and gap[0] and gap[1]:
-                session_min = float(gap[1] or 0)
-                if session_min > 30:
-                    # Check if there's been encoding in this session
-                    last_remember = gap[0]
-                    # If session is long but no recent remembers, that's a gap
-                    # (This is already handled by pre-edit encoding check,
-                    #  but consolidation can reinforce it as a pattern)
-                    pass
+            normalized = self.conn.execute(
+                """UPDATE edges SET weight = 0.9
+                   WHERE weight > 0.95
+                     AND edge_type NOT IN ('reasoning_step', 'produced', 'corrected_by')"""
+            ).rowcount
+            results['cleaned']['edges_normalized'] = normalized or 0
+        except Exception as _e:
+            self._log_error("auto_heal", _e, "normalized = self.conn.execute(")
+
+        # 3d. Stale evolution cleanup — >90 days, no engagement
+        try:
+            stale = self.conn.execute(
+                """UPDATE nodes SET archived = 1, evolution_status = 'dismissed', updated_at = ?
+                   WHERE type IN ('tension', 'hypothesis', 'pattern', 'aspiration')
+                     AND evolution_status = 'active' AND archived = 0
+                     AND created_at < datetime('now', '-90 days')
+                     AND (last_accessed IS NULL OR last_accessed < datetime('now', '-60 days'))"""
+                , (ts,)
+            ).rowcount
+            results['cleaned']['archived'] += (stale or 0)
+        except Exception as _e:
+            self._log_error("auto_heal", _e, "stale = self.conn.execute(")
+
+        self.conn.commit()
+        return results
+
+    def auto_tune(self, eval_period_days: int = 7) -> Dict[str, Any]:
+        """
+        Standalone self-tuning method. Adjusts brain parameters based on observed behavior.
+        Can be called independently or as part of auto_heal.
+
+        Returns dict of parameter changes made.
+        Safe: never changes values by >10% per cycle.
+        """
+        # auto_heal already contains comprehensive tuning (categories 2a-2h).
+        # This method provides a clean entry point and adds v5-specific tuning.
+        results = {'tuned': []}
+
+        # v5: Tune engineering memory boot limits based on token usage patterns
+        try:
+            purpose_count = self.conn.execute(
+                "SELECT COUNT(*) FROM nodes WHERE type = 'purpose' AND archived = 0"
+            ).fetchone()[0]
+            impact_count = self.conn.execute(
+                "SELECT COUNT(*) FROM nodes WHERE type = 'impact' AND archived = 0"
+            ).fetchone()[0]
+            vocab_count = self.conn.execute(
+                "SELECT COUNT(*) FROM nodes WHERE type = 'vocabulary' AND archived = 0"
+            ).fetchone()[0]
+
+            current_eng_limits = self._get_tunable('engineering_boot_limits', {
+                'purposes': 20, 'impacts': 10, 'constraints': 10,
+                'conventions': 5, 'vocabulary': 15, 'file_inventory': 30
+            })
+            if isinstance(current_eng_limits, dict):
+                new_limits = dict(current_eng_limits)
+                changed = False
+
+                # If we have many purpose nodes, increase boot limit
+                if purpose_count > 15 and new_limits.get('purposes', 20) < 30:
+                    new_limits['purposes'] = min(30, new_limits.get('purposes', 20) + 5)
+                    changed = True
+                # If vocabulary is growing, increase limit
+                if vocab_count > 10 and new_limits.get('vocabulary', 15) < 25:
+                    new_limits['vocabulary'] = min(25, new_limits.get('vocabulary', 15) + 5)
+                    changed = True
+                # If impacts are growing, ensure they're all visible (safety-critical)
+                if impact_count > 8 and new_limits.get('impacts', 10) < impact_count:
+                    new_limits['impacts'] = min(20, impact_count)
+                    changed = True
+
+                if changed:
+                    self._set_tunable('engineering_boot_limits', new_limits,
+                                      f'Adjusted for {purpose_count} purposes, {impact_count} impacts, {vocab_count} vocab')
+                    results['tuned'].append({
+                        'param': 'engineering_boot_limits',
+                        'old': current_eng_limits, 'new': new_limits,
+                        'reason': f'Growing engineering memory ({purpose_count}p/{impact_count}i/{vocab_count}v)'
+                    })
+        except Exception as _e:
+            self._log_error("auto_tune", _e, "tuning engineering_boot_limits based on memory sizes")
+
+        # v5: Tune correction sensitivity based on correction frequency
+        try:
+            recent_corrections = self.conn.execute(
+                f"SELECT COUNT(*) FROM correction_traces WHERE created_at > datetime('now', '-{eval_period_days} days')"
+            ).fetchone()[0]
+            recent_validations = self.conn.execute(
+                f"""SELECT COUNT(*) FROM node_metadata
+                    WHERE last_validated > datetime('now', '-{eval_period_days} days')"""
+            ).fetchone()[0]
+
+            if recent_corrections + recent_validations >= 5:
+                correction_ratio = recent_corrections / (recent_corrections + recent_validations)
+                # If corrections greatly outnumber validations, the brain is frequently wrong
+                # → surface more corrections at boot, be more cautious
+                current_correction_boot = self._get_tunable('correction_boot_limit', 3)
+                if not isinstance(current_correction_boot, (int, float)):
+                    current_correction_boot = 3
+
+                if correction_ratio > 0.7 and current_correction_boot < 5:
+                    new_limit = min(5, int(current_correction_boot) + 1)
+                    self._set_tunable('correction_boot_limit', new_limit,
+                                      f'High correction ratio ({correction_ratio:.0%}) — showing more patterns at boot')
+                    results['tuned'].append({
+                        'param': 'correction_boot_limit',
+                        'old': current_correction_boot, 'new': new_limit,
+                        'reason': f'{correction_ratio:.0%} correction ratio'
+                    })
+                elif correction_ratio < 0.3 and current_correction_boot > 2:
+                    new_limit = max(2, int(current_correction_boot) - 1)
+                    self._set_tunable('correction_boot_limit', new_limit,
+                                      f'Low correction ratio ({correction_ratio:.0%}) — fewer patterns needed')
+                    results['tuned'].append({
+                        'param': 'correction_boot_limit',
+                        'old': current_correction_boot, 'new': new_limit,
+                        'reason': f'{correction_ratio:.0%} correction ratio — improving'
+                    })
+        except Exception as _e:
+            self._log_error("auto_tune", _e, "tuning correction_boot_limit based on correction frequency")
+
+        # v5: Tune session synthesis sensitivity
+        try:
+            total_syntheses = self.conn.execute(
+                "SELECT COUNT(*) FROM session_syntheses"
+            ).fetchone()[0]
+            empty_syntheses = self.conn.execute(
+                "SELECT COUNT(*) FROM session_syntheses WHERE decisions_made IS NULL AND corrections_received IS NULL"
+            ).fetchone()[0]
+
+            if total_syntheses >= 5 and empty_syntheses > total_syntheses * 0.5:
+                # Most syntheses are empty — tracking is too sparse
+                results['tuned'].append({
+                    'param': 'synthesis_observation',
+                    'note': f'{empty_syntheses}/{total_syntheses} syntheses empty — need more track_session_event calls',
+                })
+        except Exception as _e:
+            self._log_error("auto_tune", _e, "evaluating session synthesis density for tuning")
+
+        self.conn.commit()
+        return results
+
+    def prompt_reflection(self) -> List[str]:
+        """Generate reflection prompts based on recent session activity.
+
+        Called during idle maintenance. Surfaces questions the host should consider
+        encoding as lessons, corrections, or mental model updates.
+
+        Returns a list of reflection prompts (strings) for the host to act on.
+        """
+        prompts = []
+
+        # 1. New node types added this session without lifecycle audit
+        try:
+            recent_types = self.conn.execute(
+                """SELECT DISTINCT type FROM nodes
+                   WHERE created_at > datetime('now', '-2 hours')
+                     AND type NOT IN (SELECT DISTINCT type FROM nodes
+                                      WHERE created_at < datetime('now', '-2 hours'))"""
+            ).fetchall()
+            for (new_type,) in recent_types:
+                prompts.append(
+                    "NEW NODE TYPE '%s' introduced this session. "
+                    "Lifecycle check: does it connect at birth? participate in consolidation? "
+                    "get merged when duplicated? have the right decay rate? "
+                    "If not, encode a constraint or fix the gap." % new_type
+                )
         except Exception:
             pass
 
-        return created
+        # 2. High edit-to-remember ratio — lots of work, few learnings encoded
+        try:
+            activity = self._get_session_activity()
+            recent_edits = activity.get('edit_check_count', 0)
+            recent_remembers = activity.get('remember_count', 0)
+            if recent_edits > 10 and recent_remembers < 2:
+                prompts.append(
+                    "HIGH EDIT-TO-REMEMBER RATIO: %d edits but only %d remembers. "
+                    "Were there decisions, corrections, or patterns worth encoding? "
+                    "The brain can only learn from what gets stored." % (recent_edits, recent_remembers)
+                )
+        except Exception:
+            pass
+
+        # 3. Corrections without underlying patterns extracted
+        try:
+            unpattern = self.conn.execute(
+                """SELECT COUNT(*) FROM correction_traces
+                   WHERE underlying_pattern IS NULL
+                     AND created_at > datetime('now', '-24 hours')"""
+            ).fetchone()[0]
+            if unpattern >= 2:
+                prompts.append(
+                    "%d recent corrections have no underlying_pattern. "
+                    "Look for the common thread — is there a systemic issue? "
+                    "A pattern encoded once prevents the same mistake across all future sessions." % unpattern
+                )
+        except Exception:
+            pass
+
+        # 4. Features built without engineering memory
+        try:
+            recent_files = self.conn.execute(
+                """SELECT DISTINCT title FROM nodes
+                   WHERE type = 'file' AND archived = 0
+                     AND last_accessed > datetime('now', '-2 hours')
+                     AND access_count >= 3"""
+            ).fetchall()
+            for (fname,) in recent_files:
+                has_purpose = self.conn.execute(
+                    "SELECT 1 FROM nodes WHERE type IN ('purpose', 'mechanism') AND archived = 0 AND title LIKE ?",
+                    (f'%{fname}%',)
+                ).fetchone()
+                if not has_purpose:
+                    prompts.append(
+                        "FILE '%s' was heavily accessed but has no purpose or mechanism node. "
+                        "What does it do? Why does it exist? "
+                        "This context eliminates warm-up time in future sessions." % fname
+                    )
+        except Exception:
+            pass
+
+        # 5. Session events tracked but not synthesized
+        try:
+            total_events = sum(len(v) for v in self._session_state.values())
+            if total_events >= 3:
+                event_types = [k for k, v in self._session_state.items() if v]
+                prompts.append(
+                    "SESSION HAS %d unprocessed events (%s). "
+                    "Consider: what's the transferable insight from this session? "
+                    "What would help a fresh Claude hit the ground running?" % (
+                        total_events, ', '.join(event_types))
+                )
+        except Exception:
+            pass
+
+        return prompts
 
     def suggest(self, context: Optional[str] = None, file: Optional[str] = None,
                screen: Optional[str] = None, action: Optional[str] = None,
@@ -2848,7 +5633,7 @@ class Brain:
 
         # Log suggestion
         try:
-            self.conn.execute('''
+            self.logs_conn.execute('''
                 INSERT INTO suggest_log (session_id, context, suggested_ids, created_at)
                 VALUES (?, ?, ?, ?)
             ''', ('auto', ' | '.join(queries), json.dumps([s['id'] for s in suggestions]), ts))
@@ -2875,9 +5660,14 @@ class Brain:
         recent nodes, task-recalled nodes.
         Returns dict with brain_version, locked, recalled, recent, reset_count, last_session_note.
         """
-        max_locked = CONTEXT_BOOT_LOCKED_LIMIT
-        max_recall = CONTEXT_BOOT_RECALL_LIMIT
-        max_recent = CONTEXT_BOOT_RECENT_LIMIT
+        boot_limits = self._get_tunable('boot_limits', {
+            'locked': CONTEXT_BOOT_LOCKED_LIMIT,
+            'recall': CONTEXT_BOOT_RECALL_LIMIT,
+            'recent': CONTEXT_BOOT_RECENT_LIMIT
+        })
+        max_locked = boot_limits.get('locked', CONTEXT_BOOT_LOCKED_LIMIT) if isinstance(boot_limits, dict) else CONTEXT_BOOT_LOCKED_LIMIT
+        max_recall = boot_limits.get('recall', CONTEXT_BOOT_RECALL_LIMIT) if isinstance(boot_limits, dict) else CONTEXT_BOOT_RECALL_LIMIT
+        max_recent = boot_limits.get('recent', CONTEXT_BOOT_RECENT_LIMIT) if isinstance(boot_limits, dict) else CONTEXT_BOOT_RECENT_LIMIT
 
         query_parts = [user, project, task, hints]
         query = ' '.join(p for p in query_parts if p)
@@ -3014,7 +5804,7 @@ class Brain:
             })
 
         # 2. Check for recent miss logs
-        miss_count_row = self.conn.execute(
+        miss_count_row = self.logs_conn.execute(
             "SELECT COUNT(*) FROM miss_log WHERE created_at > datetime('now', '-24 hours')"
         ).fetchone()
         miss_count = miss_count_row[0] if miss_count_row else 0
@@ -3068,7 +5858,7 @@ class Brain:
         # 5. Auto-enrich keywords on missed nodes
         if auto_fix:
             try:
-                missed_nodes = self.conn.execute('''
+                missed_nodes = self.logs_conn.execute('''
                     SELECT DISTINCT expected_node_id FROM miss_log
                     WHERE expected_node_id IS NOT NULL
                     ORDER BY rowid DESC LIMIT 10
@@ -3096,7 +5886,7 @@ class Brain:
 
         # 7. Check for stale pending staged learnings
         try:
-            stale_staged_row = self.conn.execute('''
+            stale_staged_row = self.logs_conn.execute('''
                 SELECT COUNT(*) FROM staged_learnings
                 WHERE status = 'pending' AND created_at < datetime('now', '-7 days')
             ''').fetchone()
@@ -3112,7 +5902,7 @@ class Brain:
 
         # Log health check
         try:
-            self.conn.execute('''
+            self.logs_conn.execute('''
                 INSERT INTO health_log (session_id, check_type, result, actions_taken, created_at)
                 VALUES (?, ?, ?, ?, ?)
             ''', (session_id, 'boot_check', json.dumps(issues), json.dumps(actions), ts))
@@ -3231,12 +6021,20 @@ class Brain:
             ORDER BY RANDOM() LIMIT ?
         ''', (scan_size,)).fetchall()
 
+        # Include locked engineering/vocabulary nodes — they need organic connections too
+        locked_eng = self.conn.execute('''
+            SELECT id FROM nodes WHERE archived = 0 AND locked = 1
+            AND type IN ('vocabulary', 'purpose', 'mechanism', 'impact',
+                         'constraint', 'convention', 'lesson', 'mental_model')
+            ORDER BY RANDOM() LIMIT ?
+        ''', (max(1, scan_size // 4),)).fetchall()
+
         # Merge with dedup
         seen_ids = set()
         merged = []
-        for source in [recent, random_nodes]:
+        for source in [recent, random_nodes, locked_eng]:
             for (node_id,) in source:
-                if node_id not in seen_ids and len(merged) < scan_size:
+                if node_id not in seen_ids and len(merged) < scan_size + len(locked_eng):
                     seen_ids.add(node_id)
                     merged.append(node_id)
 
@@ -3262,8 +6060,8 @@ class Brain:
                                 'cluster_observation'
                             )
                             thoughts += 1
-                        except:
-                            pass
+                        except Exception as _e:
+                            self._log_error("_bridge_at_consolidation", _e, "spawning cluster observation thought")
 
         return created
 
@@ -3344,8 +6142,8 @@ class Brain:
                         "UPDATE bridge_proposals SET status = 'expired' WHERE id = ?",
                         (row_id,)
                     )
-        except:
-            pass
+        except Exception as _e:
+            self._log_error("_mature_bridge_proposals", _e, "maturing or expiring bridge proposals")
 
         return matured
 
@@ -3354,23 +6152,30 @@ class Brain:
         List staged learnings with optional status filter.
         Returns dict with staged list.
         """
-        query = '''
-            SELECT sl.*, n.title, n.content, n.type, n.confidence as node_confidence
-            FROM staged_learnings sl
-            JOIN nodes n ON sl.node_id = n.id
-            WHERE n.archived = 0
-        '''
+        # Two-step: get staged from logs DB, then enrich from main DB
+        query = 'SELECT node_id, status, times_revisited, created_at FROM staged_learnings WHERE 1=1'
         params = []
-
         if status != 'all':
-            query += ' AND sl.status = ?'
+            query += ' AND status = ?'
             params.append(status)
-
-        query += ' ORDER BY sl.created_at DESC LIMIT ?'
+        query += ' ORDER BY created_at DESC LIMIT ?'
         params.append(limit)
 
-        rows = self.conn.execute(query, params).fetchall()
-        return {'staged': [dict(zip(['node_id', 'status', 'times_revisited', 'title', 'content', 'type', 'confidence'], r)) for r in rows]}
+        rows = self.logs_conn.execute(query, params).fetchall()
+        results = []
+        for node_id, sl_status, times_revisited, created_at in rows:
+            node_row = self.conn.execute(
+                'SELECT title, content, type, confidence FROM nodes WHERE id = ? AND archived = 0',
+                (node_id,)
+            ).fetchone()
+            if node_row:
+                results.append({
+                    'node_id': node_id, 'status': sl_status,
+                    'times_revisited': times_revisited,
+                    'title': node_row[0], 'content': node_row[1],
+                    'type': node_row[2], 'confidence': node_row[3],
+                })
+        return {'staged': results}
 
     def confirm_staged(self, node_id: str, lock: bool = False, new_title: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -3396,7 +6201,7 @@ class Brain:
             )
 
         # Update staged_learnings
-        self.conn.execute(
+        self.logs_conn.execute(
             "UPDATE staged_learnings SET status = 'confirmed', updated_at = ?, reviewed_session = ? WHERE node_id = ?",
             (ts, 'current', node_id)
         )
@@ -3413,7 +6218,7 @@ class Brain:
 
         ts = self.now()
         self.conn.execute('UPDATE nodes SET archived = 1, updated_at = ? WHERE id = ?', (ts, node_id))
-        self.conn.execute(
+        self.logs_conn.execute(
             "UPDATE staged_learnings SET status = 'dismissed', updated_at = ?, reviewed_session = ? WHERE node_id = ?",
             (ts, reason or 'current', node_id)
         )
@@ -3426,11 +6231,19 @@ class Brain:
         Threshold: 3+ revisits = auto-promote to confidence 0.7.
         """
         ts = self.now()
-        candidates = self.conn.execute('''
-            SELECT sl.node_id, sl.times_revisited, n.title
-            FROM staged_learnings sl JOIN nodes n ON sl.node_id = n.id
-            WHERE sl.status = 'pending' AND sl.times_revisited >= ? AND n.archived = 0
+        # Two-step: get pending staged from logs DB, then filter by main DB
+        staged_rows = self.logs_conn.execute('''
+            SELECT node_id, times_revisited
+            FROM staged_learnings
+            WHERE status = 'pending' AND times_revisited >= ?
         ''', (revisit_threshold,)).fetchall()
+        candidates = []
+        for node_id, times_revisited in staged_rows:
+            row = self.conn.execute(
+                'SELECT title FROM nodes WHERE id = ? AND archived = 0', (node_id,)
+            ).fetchone()
+            if row:
+                candidates.append((node_id, times_revisited, row[0]))
 
         if not candidates:
             return {'promoted': 0}
@@ -3441,7 +6254,7 @@ class Brain:
                 'UPDATE nodes SET confidence = 0.7, title = REPLACE(title, "[staged] ", ""), updated_at = ? WHERE id = ?',
                 (ts, node_id)
             )
-            self.conn.execute(
+            self.logs_conn.execute(
                 "UPDATE staged_learnings SET status = 'promoted', updated_at = ? WHERE node_id = ?",
                 (ts, node_id)
             )
@@ -4067,7 +6880,7 @@ class Brain:
 
         # #6: Recall miss trends — queries that keep failing
         try:
-            cursor = self.conn.execute(
+            cursor = self.logs_conn.execute(
                 """SELECT query, COUNT(*) as cnt, MAX(created_at) as latest
                    FROM miss_log
                    WHERE created_at > datetime('now', '-7 days')
@@ -4192,8 +7005,8 @@ class Brain:
                         row = self.conn.execute('SELECT embedding FROM node_embeddings WHERE node_id = ?', (nid,)).fetchone()
                         if row:
                             node_vec = row[0]
-                    except Exception:
-                        pass
+                    except Exception as _e:
+                        self._log_error("get_consciousness_signals", _e, "fetching node embedding for rule contradiction check")
                     if not node_vec:
                         continue
                     for rule_id, rule_vec, rule_title in locked_rules:
@@ -4250,8 +7063,160 @@ class Brain:
                                                   [e for e in signals[target_key] if e.get('type') == st][:1]
                         else:
                             signals[target_key] = signals[target_key][:1]
+        except Exception as _e:
+            self._log_error("get_consciousness_signals", _e, "")
+
+        # v5: Stale reasoning signal — nodes with rich reasoning that haven't been validated recently
+        try:
+            stale_cur = self.conn.execute('''
+                SELECT n.id, n.type, n.title, nm.reasoning, nm.last_validated, n.confidence, n.created_at
+                FROM node_metadata nm
+                JOIN nodes n ON n.id = nm.node_id
+                WHERE nm.reasoning IS NOT NULL
+                  AND n.archived = 0
+                  AND (nm.last_validated IS NULL
+                       OR julianday('now') - julianday(nm.last_validated) > 21)
+                  AND COALESCE(n.confidence, 0.7) > 0.5
+                ORDER BY n.access_count DESC
+                LIMIT 3
+            ''')
+            stale_rows = stale_cur.fetchall()
+            if stale_rows:
+                signals['stale_reasoning'] = [{
+                    'id': r[0], 'type': r[1], 'title': r[2],
+                    'reasoning_preview': (r[3][:100] + '...') if len(r[3]) > 100 else r[3],
+                    'last_validated': r[4], 'confidence': r[5], 'created_at': r[6],
+                } for r in stale_rows]
+        except Exception as _e:
+            self._log_error("get_consciousness_signals", _e, "")
+
+        # v5: UNCHARTED_CODE — files edited multiple times with no engineering memory nodes
+        try:
+            # Files that appear in the brain (type='file') but have no purpose/mechanism nodes
+            file_nodes = self.conn.execute(
+                """SELECT n.title FROM nodes n
+                   WHERE n.type = 'file' AND n.archived = 0 AND n.access_count >= 3
+                   AND NOT EXISTS (
+                       SELECT 1 FROM nodes p WHERE p.type IN ('purpose', 'mechanism')
+                       AND p.archived = 0 AND p.title LIKE '%' || n.title || '%'
+                   )
+                   ORDER BY n.access_count DESC LIMIT 3"""
+            ).fetchall()
+            signals['uncharted_code'] = [r[0] for r in file_nodes] if file_nodes else []
         except Exception:
-            pass
+            signals['uncharted_code'] = []
+
+        # v5: STALE_FILE_INVENTORY — files changed since last session (from project_maps)
+        try:
+            project = self.get_config('default_project', 'default')
+            changes = []
+            if project:
+                changes = self.detect_file_changes(project)
+            signals['stale_file_inventory'] = changes[:5] if changes else []
+        except Exception:
+            signals['stale_file_inventory'] = []
+
+        # v5: VOCABULARY_GAP — unmapped operator terms detected by post-response-track hook
+        try:
+            gaps_json = self.get_config('vocabulary_gaps', '[]')
+            import json as _json
+            gaps = _json.loads(gaps_json) if gaps_json else []
+            signals['vocabulary_gap'] = gaps[-5:] if gaps else []
+        except Exception:
+            signals['vocabulary_gap'] = []
+
+        # v5: RECURRING DIVERGENCE — same correction pattern appears 3+ times
+        try:
+            recurring = self.conn.execute(
+                '''SELECT underlying_pattern, COUNT(*) as cnt
+                   FROM correction_traces
+                   WHERE underlying_pattern IS NOT NULL
+                   GROUP BY underlying_pattern HAVING cnt >= 3
+                   ORDER BY cnt DESC LIMIT 3'''
+            ).fetchall()
+            signals['recurring_divergence'] = [
+                {'pattern': r[0], 'count': r[1]} for r in recurring
+            ] if recurring else []
+        except Exception:
+            signals['recurring_divergence'] = []
+
+        # v5: VALIDATED APPROACHES — recently confirmed decisions/approaches
+        try:
+            validated = self.conn.execute(
+                '''SELECT n.id, n.title, nm.last_validated, nm.validation_count
+                   FROM node_metadata nm
+                   JOIN nodes n ON n.id = nm.node_id
+                   WHERE nm.last_validated IS NOT NULL
+                     AND nm.last_validated > datetime('now', '-7 days')
+                     AND n.archived = 0
+                   ORDER BY nm.last_validated DESC LIMIT 3'''
+            ).fetchall()
+            signals['validated_approaches'] = [
+                {'id': r[0], 'title': r[1], 'last_validated': r[2], 'count': r[3]}
+                for r in validated
+            ] if validated else []
+        except Exception:
+            signals['validated_approaches'] = []
+
+        # v5: UNCERTAIN AREAS — uncertainty nodes related to current work
+        try:
+            uncertain = self.conn.execute(
+                '''SELECT n.id, n.title, n.content, n.created_at
+                   FROM nodes n
+                   WHERE n.type = 'uncertainty' AND n.archived = 0
+                   ORDER BY n.created_at DESC LIMIT 3'''
+            ).fetchall()
+            signals['uncertain_areas'] = [
+                {'id': r[0], 'title': r[1],
+                 'preview': (r[2][:120] + '...') if r[2] and len(r[2]) > 120 else (r[2] or ''),
+                 'created_at': r[3]}
+                for r in uncertain
+            ] if uncertain else []
+        except Exception:
+            signals['uncertain_areas'] = []
+
+        # v5: MENTAL MODEL DRIFT — mental model nodes that may contradict recent evidence
+        # Detected by: mental_model nodes with corrections referencing them, or old unvalidated models
+        try:
+            drifted = self.conn.execute(
+                '''SELECT n.id, n.title, n.created_at, n.confidence,
+                       COALESCE(nm.last_validated, n.created_at) as last_checked
+                   FROM nodes n
+                   LEFT JOIN node_metadata nm ON nm.node_id = n.id
+                   WHERE n.type = 'mental_model' AND n.archived = 0
+                     AND (
+                       -- Model has been corrected
+                       EXISTS (SELECT 1 FROM correction_traces ct WHERE ct.original_node_id = n.id)
+                       -- Or model is old and never validated
+                       OR (nm.last_validated IS NULL AND n.created_at < datetime('now', '-14 days'))
+                     )
+                   ORDER BY n.created_at ASC LIMIT 3'''
+            ).fetchall()
+            signals['mental_model_drift'] = [
+                {'id': r[0], 'title': r[1], 'created_at': r[2],
+                 'confidence': r[3], 'last_checked': r[4]}
+                for r in drifted
+            ] if drifted else []
+        except Exception:
+            signals['mental_model_drift'] = []
+
+        # v5: SILENT ERRORS — errors that were caught but not surfaced
+        try:
+            recent_errors = self.get_recent_errors(hours=24, limit=5)
+            if recent_errors:
+                # Deduplicate by source+error
+                seen = set()
+                deduped = []
+                for e in recent_errors:
+                    key = (e['source'], e['error'][:50])
+                    if key not in seen:
+                        seen.add(key)
+                        deduped.append(e)
+                signals['silent_errors'] = deduped
+            else:
+                signals['silent_errors'] = []
+        except Exception:
+            signals['silent_errors'] = []
 
         return signals
 
@@ -4448,18 +7413,22 @@ class Brain:
         Filters: interest_score >= 4, created in last 48 hours, cross-cluster.
         """
         try:
-            cursor = self.conn.execute(
-                """SELECT dl.intuition_node_id, dl.insight, dl.seed_nodes, dl.walk_path, dl.created_at,
-                          n.title, n.content
-                   FROM dream_log dl
-                   LEFT JOIN nodes n ON dl.intuition_node_id = n.id
-                   WHERE dl.created_at > datetime('now', '-48 hours')
-                     AND dl.intuition_node_id IS NOT NULL
-                   ORDER BY dl.created_at DESC
+            cursor = self.logs_conn.execute(
+                """SELECT intuition_node_id, insight, seed_nodes, walk_path, created_at
+                   FROM dream_log
+                   WHERE created_at > datetime('now', '-48 hours')
+                     AND intuition_node_id IS NOT NULL
+                   ORDER BY created_at DESC
                    LIMIT 20"""
             )
             dreams = []
             for row in cursor.fetchall():
+                # Look up node title/content from main DB
+                node_row = self.conn.execute(
+                    'SELECT title, content FROM nodes WHERE id = ?', (row[0],)
+                ).fetchone()
+                node_title = node_row[0] if node_row else ''
+                node_content = node_row[1] if node_row else ''
                 # Recompute surprise: longer walks = more distant = more surprising
                 try:
                     walks = json.loads(row[3])
@@ -4471,8 +7440,8 @@ class Brain:
                     dreams.append({
                         'intuition_id': row[0],
                         'insight': row[1],
-                        'title': row[5] or '',
-                        'content': row[6] or '',
+                        'title': node_title,
+                        'content': node_content,
                         'created_at': row[4],
                         'total_hops': total_hops,
                     })
@@ -4655,9 +7624,9 @@ class Brain:
 
         # Performance: recall quality from recall_log
         try:
-            recall_stats = self.conn.execute(
+            recall_stats = self.logs_conn.execute(
                 """SELECT COUNT(*) as total,
-                          SUM(CASE WHEN results_used > 0 THEN 1 ELSE 0 END) as useful
+                          SUM(CASE WHEN used_count > 0 THEN 1 ELSE 0 END) as useful
                    FROM recall_log
                    WHERE created_at > datetime('now', '-7 days')"""
             ).fetchone()
@@ -4675,12 +7644,12 @@ class Brain:
                         keywords="auto performance recall precision weekly"
                     )
                     generated['performance'] += 1
-        except Exception:
-            pass
+        except Exception as _e:
+            self._log_error("auto_generate_self_reflection", _e, "generating recall precision performance node")
 
         # Failure detection: repeated miss signals
         try:
-            repeated = self.conn.execute(
+            repeated = self.logs_conn.execute(
                 """SELECT signal, COUNT(*) as cnt FROM miss_log
                    WHERE created_at > datetime('now', '-7 days')
                    GROUP BY signal HAVING cnt >= 3
@@ -4698,8 +7667,8 @@ class Brain:
                         keywords=f"auto failure-mode {signal} recurring"
                     )
                     generated['failure'] += 1
-        except Exception:
-            pass
+        except Exception as _e:
+            self._log_error("auto_generate_self_reflection", _e, "detecting repeated miss signals from miss_log")
 
         # Capability: check embedder status
         try:
@@ -4716,8 +7685,8 @@ class Brain:
                     keywords="auto capability embedder status"
                 )
                 generated['capability'] += 1
-        except Exception:
-            pass
+        except Exception as _e:
+            self._log_error("auto_generate_self_reflection", _e, "generating embedder capability status node")
 
         # Interaction: analyze consciousness response patterns
         try:
@@ -4745,15 +7714,15 @@ class Brain:
                             keywords='auto consciousness-response interaction engagement pattern'
                         )
                         generated['interaction'] = generated.get('interaction', 0) + 1
-        except Exception:
-            pass
+        except Exception as _e:
+            self._log_error("auto_generate_self_reflection", _e, "analyzing consciousness response engagement patterns")
 
         # Meta-learning: track which encoding methods produce good recall
         try:
             # Check if nodes created with embeddings have better recall than those without
-            emb_recalled = self.conn.execute(
+            emb_recalled = self.logs_conn.execute(
                 """SELECT COUNT(DISTINCT rl.id) FROM recall_log rl
-                   WHERE rl.results_used > 0 AND rl.created_at > datetime('now', '-7 days')"""
+                   WHERE rl.used_count > 0 AND rl.created_at > datetime('now', '-7 days')"""
             ).fetchone()[0]
 
             if emb_recalled >= 10:
@@ -4768,8 +7737,8 @@ class Brain:
                         keywords='auto recall-method meta-learning embeddings weekly'
                     )
                     generated['meta_learning'] = generated.get('meta_learning', 0) + 1
-        except Exception:
-            pass
+        except Exception as _e:
+            self._log_error("auto_generate_self_reflection", _e, "generating meta-learning node for recall method effectiveness")
 
         return generated
 
@@ -4920,7 +7889,7 @@ class Brain:
         """
         since = datetime.utcnow().timestamp() - (period_days * 86400)
         try:
-            rows = self.conn.execute('''
+            rows = self.logs_conn.execute('''
                 SELECT COUNT(*) as calls, AVG(LENGTH(suggested_ids)) as avg_pool_size
                 FROM suggest_log
                 WHERE created_at > datetime(?, 'unixepoch')
@@ -4949,18 +7918,90 @@ class Brain:
         debug_env = os.environ.get('BRAIN_DEBUG') == '1'
         return {'debug_enabled': debug_env}
 
-    def log_debug(self, event_type: str, source: str, **kwargs) -> Dict[str, Any]:
-        """
-        Log a debug event.
-        Writes to debug_log table with event metadata.
+    def _log_error(self, source: str, error: Exception, context: str = ''):
+        """Log an error to brain_logs.db + brain.log with rate limiting.
+
+        Replaces silent `except: pass` blocks. Errors are stored in the logs DB
+        and surfaced at boot via consciousness signals.
         """
         try:
+            import traceback
+            error_str = str(error)
+            error_type = type(error).__name__
+
+            # Rate limit check — compute fingerprint
+            fingerprint = '%s:%s:%s' % (source, error_type, error_str[:100])
+            if self._check_rate_limit(source, fingerprint):
+                return  # suppressed
+
+            tb = traceback.format_exception(type(error), error, error.__traceback__)
+            tb_short = ''.join(tb[-3:]) if len(tb) > 3 else ''.join(tb)
+
+            # Write to logs DB
+            self._check_logs_db_size()
+            self.logs_conn.execute('''
+                INSERT INTO debug_log
+                  (session_id, event_type, source, metadata, created_at)
+                VALUES (?, 'error', ?, ?, ?)
+            ''', (
+                self._get_session_activity().get('session_id', 'unknown'),
+                source,
+                json.dumps({
+                    'error': error_str,
+                    'type': error_type,
+                    'context': context,
+                    'traceback': tb_short[:500],
+                }),
+                self.now()
+            ))
+
+            # Write to human-readable log file
+            self._write_to_file_log('ERROR', source,
+                '%s: %s' % (error_type, error_str),
+                tb_short)
+        except Exception:
+            # Last resort — can't even log the error. Print to stderr.
+            print('brain: error in %s: %s (context: %s)' % (source, error, context),
+                  file=sys.stderr)
+
+    def get_recent_errors(self, hours: int = 24, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent errors from brain_logs.db for consciousness surfacing."""
+        try:
+            rows = self.logs_conn.execute(
+                """SELECT source, metadata, created_at FROM debug_log
+                   WHERE event_type = 'error'
+                     AND created_at > datetime('now', '-%d hours')
+                   ORDER BY created_at DESC LIMIT ?""" % hours,
+                (limit,)
+            ).fetchall()
+            results = []
+            for source, metadata, created_at in rows:
+                try:
+                    meta = json.loads(metadata)
+                except Exception:
+                    meta = {'error': metadata}
+                results.append({
+                    'source': source,
+                    'error': meta.get('error', ''),
+                    'type': meta.get('type', ''),
+                    'context': meta.get('context', ''),
+                    'created_at': created_at,
+                })
+            return results
+        except Exception:
+            return []
+
+    def log_debug(self, event_type: str, source: str, **kwargs) -> Dict[str, Any]:
+        """Log a debug event to brain_logs.db + brain.log."""
+        try:
             ts = self.now()
-            self.conn.execute('''
+            self.logs_conn.execute('''
                 INSERT INTO debug_log
                   (session_id, event_type, source, metadata, created_at)
                 VALUES (?, ?, ?, ?, ?)
             ''', ('unknown', event_type, source, json.dumps(kwargs), ts))
+            # Also write to file log for non-error events
+            self._write_to_file_log('DEBUG', source, '%s: %s' % (event_type, json.dumps(kwargs)[:200]))
             return {'logged': True}
         except Exception as e:
             return {'logged': False, 'error': str(e)}
@@ -4990,6 +8031,42 @@ class Brain:
         except:
             return None
 
+    # ─── Tunable Parameters ───
+    # Brain-level parameters that can be self-tuned during healing.
+    # Hardcoded module constants (DECAY_HALF_LIFE, etc.) serve as defaults.
+    # Runtime values stored in brain_meta with 'tunable_' prefix.
+
+    def _get_tunable(self, key: str, default: Any = None) -> Any:
+        """Read a tunable parameter from brain_meta, falling back to hardcoded default."""
+        stored = self.get_config(f'tunable_{key}')
+        if stored is not None:
+            if isinstance(stored, str):
+                try:
+                    return json.loads(stored)
+                except (json.JSONDecodeError, TypeError) as _e:
+                    self._log_error("_get_tunable", _e, f"parsing JSON for tunable key '{key}'")
+            return stored
+        return default
+
+    def _set_tunable(self, key: str, value: Any, reason: str = '') -> None:
+        """Write a tunable parameter to brain_meta and log the change to tuning_log."""
+        old = self._get_tunable(key)
+        ts = self.now()
+        # Store as JSON if dict/list, else as string
+        store_val = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+        self.set_config(f'tunable_{key}', store_val)
+        # Log to tuning_log (old_value/new_value are REAL, so log summary for dicts)
+        try:
+            old_num = float(old) if isinstance(old, (int, float)) else 0.0
+            new_num = float(value) if isinstance(value, (int, float)) else 0.0
+            self.logs_conn.execute(
+                """INSERT INTO tuning_log (parameter, old_value, new_value, reason, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (key, old_num, new_num, reason, ts)
+            )
+        except Exception as _e:
+            self._log_error("_set_tunable", _e, f"writing tuning_log entry for parameter '{key}'")
+
     def get_config(self, key: str, default_val: Any = None) -> Any:
         """
         Get a config value from brain_meta.
@@ -5010,15 +8087,15 @@ class Brain:
                 if default_val is not None and isinstance(default_val, (int, float)):
                     try:
                         return float(val) if '.' in str(val) else int(val)
-                    except (ValueError, TypeError):
-                        pass
+                    except (ValueError, TypeError) as _e:
+                        self._log_error("get_config", _e, f"parsing numeric config value for key '{key}'")
                 if val == 'true':
                     return True
                 if val == 'false':
                     return False
                 return val
-        except Exception:
-            pass
+        except Exception as _e:
+            self._log_error("get_config", _e, f"reading config key '{key}' from brain_meta")
         return default_val
 
     # ─── Pre-Edit Batch Method ───
@@ -5078,8 +8155,8 @@ class Brain:
             try:
                 last_dt = _dt.fromisoformat(last_remember.replace('Z', '+00:00'))
                 mins_since_remember = (now_dt - last_dt).total_seconds() / 60
-            except Exception:
-                pass
+            except Exception as _e:
+                self._log_error("pre_edit", _e, "last_dt = _dt.fromisoformat(last_remember.replace(")
 
         # Determine encoding health status
         edits_since = edits_checked  # approximate — reset on each remember
@@ -5105,8 +8182,8 @@ class Brain:
                     'id': row[0], 'title': row[1], 'summary': (row[2] or '')[:200],
                     'topic': row[3] or '', 'last_updated': row[4],
                 })
-        except Exception:
-            pass
+        except Exception as _e:
+            self._log_error("pre_edit", _e, "cursor = self.conn.execute(")
 
         timings['total_ms'] = round((_time.time() - t0) * 1000)
 
@@ -5175,8 +8252,8 @@ class Brain:
                         'steps': steps,
                         'category': category,
                     })
-        except Exception:
-            pass
+        except Exception as _e:
+            self._log_error("procedure_trigger", _e, "matching procedure nodes to trigger context")
 
         return {'matched': matched}
 
@@ -5448,8 +8525,8 @@ class Brain:
                     edge_type=edge_type or 'related',
                 )
                 created += 1
-            except Exception:
-                pass
+            except Exception as _e:
+                self._log_error("_absorb_connections", _e, "absorbing edge connection from source brain")
 
         return created
 
@@ -5461,6 +8538,10 @@ class Brain:
             backup: If True, create a backup copy
         """
         self.conn.commit()
+        try:
+            self.logs_conn.commit()
+        except Exception:
+            pass
 
         if backup and self.db_path:
             try:
@@ -5471,9 +8552,14 @@ class Brain:
                 print(f'[brain] Backup failed: {e}')
 
     def close(self):
-        """Commit, close database connection, and remove from singleton cache."""
+        """Commit, close both database connections, and remove from singleton cache."""
         self.conn.commit()
         self.conn.close()
+        try:
+            self.logs_conn.commit()
+            self.logs_conn.close()
+        except Exception:
+            pass
         # Remove from singleton registry if present
         canonical = os.path.realpath(self.db_path)
         with Brain._lock:
