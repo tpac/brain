@@ -32,6 +32,22 @@ try:
     from servers.brain import Brain
     brain = Brain(db_path)
 
+    # v5: Synthesize session before compaction
+    # This captures decisions, corrections, teaching arcs, and open questions
+    try:
+        synthesis = brain.synthesize_session()
+        syn_id = synthesis.get("id")
+        if syn_id:
+            parts = []
+            if synthesis.get("decisions"): parts.append(str(synthesis["decisions"]) + " decisions")
+            if synthesis.get("corrections"): parts.append(str(synthesis["corrections"]) + " corrections")
+            if synthesis.get("teaching_arcs"): parts.append(str(synthesis["teaching_arcs"]) + " teaching arcs")
+            if synthesis.get("open_questions"): parts.append(str(synthesis["open_questions"]) + " open questions")
+            if parts:
+                print("brain: session synthesis: " + ", ".join(parts), file=sys.stderr)
+    except Exception as e:
+        print(f"brain: synthesis error (non-fatal): {e}", file=sys.stderr)
+
     # Write compaction boundary marker
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     brain.remember(

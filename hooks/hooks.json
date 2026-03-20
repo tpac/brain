@@ -35,6 +35,33 @@
       ]
     }
   ],
+  "Notification": [
+    {
+      "matcher": "user_message",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-response-recall.sh",
+          "timeout": 5
+        },
+        {
+          "type": "command",
+          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-response-track.sh",
+          "timeout": 3
+        }
+      ]
+    },
+    {
+      "matcher": "idle_prompt",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/idle-maintenance.sh",
+          "timeout": 30
+        }
+      ]
+    }
+  ],
   "PreCompact": [
     {
       "matcher": "",

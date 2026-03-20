@@ -1,6 +1,6 @@
 #!/bin/bash
-# brain v4 (serverless) — SessionStart hook
-# Imports Python brain module directly. No HTTP server.
+# brain v15 (serverless) — SessionStart hook
+# No HTTP server to start. Imports Python brain module directly.
 #
 # Brain DB resolution order:
 # 1. BRAIN_DB_DIR env var (explicit override)
@@ -64,6 +64,29 @@ if project == "default":
         project = stored_project
 
 ctx = brain.context_boot(user=user, project=project, task="session start")
+
+# v5: Engineering context — the warm-up killer
+eng_ctx = {}
+try:
+    eng_ctx = brain.get_engineering_context(project=project)
+except Exception:
+    pass
+
+# v5: Correction patterns — shape Claude's behavior
+correction_patterns = []
+try:
+    correction_patterns = brain.get_correction_patterns(limit=5)
+except Exception:
+    pass
+
+# v5: Last session synthesis
+last_synthesis = None
+try:
+    last_synthesis = brain.get_last_synthesis()
+except Exception:
+    pass
+
+# Health check with auto-fix
 health = brain.health_check(session_id="session_boot", auto_fix=True)
 staged = brain.list_staged(status="pending", limit=10)
 brain.auto_promote_staged(revisit_threshold=3)
@@ -88,6 +111,15 @@ encoding_gap = consciousness.get("encoding_gap")
 density_shift = consciousness.get("density_shift")
 emotional_trajectory = consciousness.get("emotional_trajectory")
 rule_contradictions = consciousness.get("rule_contradictions", [])
+stale_reasoning = consciousness.get("stale_reasoning", [])
+uncharted_code = consciousness.get("uncharted_code", [])
+stale_file_inv = consciousness.get("stale_file_inventory", [])
+vocabulary_gap = consciousness.get("vocabulary_gap", [])
+recurring_divergence = consciousness.get("recurring_divergence", [])
+validated_approaches = consciousness.get("validated_approaches", [])
+uncertain_areas = consciousness.get("uncertain_areas", [])
+mental_model_drift = consciousness.get("mental_model_drift", [])
+silent_errors = consciousness.get("silent_errors", [])
 
 # Host environment scan
 host_info = {}
@@ -119,6 +151,184 @@ if note:
     ncontent = note.get("content", "")
     if ncontent:
         print(ncontent[:500])
+    print()
+
+# ═══════════════════════════════════════════════════════════
+# v5: ENGINEERING CONTEXT — warm-up killer boot sequence
+# ═══════════════════════════════════════════════════════════
+
+# Layer 1: System purpose
+sys_purpose = eng_ctx.get("system_purpose")
+if sys_purpose:
+    sp_purpose = sys_purpose.get("purpose", "")
+    if sp_purpose:
+        print("SYSTEM PURPOSE: " + sp_purpose[:300])
+        sp_arch = sys_purpose.get("architecture", "")
+        if sp_arch:
+            print("Architecture: " + sp_arch[:200])
+        sp_decisions = sys_purpose.get("key_decisions")
+        if sp_decisions:
+            try:
+                decs = json.loads(sp_decisions) if isinstance(sp_decisions, str) else sp_decisions
+                if decs:
+                    print("Key decisions: " + "; ".join(str(d)[:60] for d in decs[:3]))
+            except (json.JSONDecodeError, TypeError):
+                pass
+        print()
+
+# Layer 1b: Purpose nodes (system/module/file scope)
+purposes = eng_ctx.get("purposes", [])
+if purposes:
+    print("PROJECT UNDERSTANDING:")
+    for p in purposes[:8]:
+        pscope = p.get("scope", "?")
+        ptitle = p.get("title", "")[:70]
+        pcontent = p.get("content", "")
+        if len(pcontent) > 150:
+            pcontent = pcontent[:150] + "..."
+        print("  [" + pscope + "] " + ptitle)
+        if pcontent:
+            print("    " + pcontent)
+    print()
+
+# Layer 2: Last session synthesis
+if last_synthesis:
+    ls_date = str(last_synthesis.get("created_at", ""))[:10]
+    ls_dur = last_synthesis.get("duration_minutes")
+    ls_header = "LAST SESSION"
+    if ls_date:
+        ls_header += " (" + ls_date + ")"
+    if ls_dur:
+        ls_header += " — " + str(ls_dur) + " min"
+    print(ls_header + ":")
+    ls_decisions = last_synthesis.get("decisions_made", [])
+    if ls_decisions:
+        print("  Decisions:")
+        for d in ls_decisions[:3]:
+            dtitle = d.get("title", "") if isinstance(d, dict) else str(d)
+            print("    - " + dtitle[:80])
+    ls_corrections = last_synthesis.get("corrections_received", [])
+    if ls_corrections:
+        print("  Corrections received: " + str(len(ls_corrections)))
+        for c in ls_corrections[:2]:
+            assumed = c.get("assumed", "") if isinstance(c, dict) else str(c)
+            print("    - " + assumed[:80])
+    ls_arcs = last_synthesis.get("teaching_arcs", [])
+    if ls_arcs:
+        print("  Teaching arcs:")
+        for a in ls_arcs[:2]:
+            apattern = a.get("pattern", "") if isinstance(a, dict) else str(a)
+            print("    - " + apattern[:80])
+    ls_open = last_synthesis.get("open_questions", [])
+    if ls_open:
+        print("  Open questions:")
+        for q in ls_open[:3]:
+            qtext = q.get("text", q) if isinstance(q, dict) else str(q)
+            print("    ? " + str(qtext)[:80])
+    print()
+
+# Layer 3: File changes since last session
+file_changes = eng_ctx.get("file_changes", [])
+if file_changes:
+    print("FILES CHANGED since last session:")
+    for fc in file_changes[:10]:
+        fpath = fc.get("file_path", "")
+        fpurpose = fc.get("purpose", "")
+        print("  " + fpath)
+        if fpurpose:
+            print("    was: " + fpurpose[:80])
+    print("  Re-read changed files to update your understanding.")
+    print()
+
+# Layer 4: Correction patterns — Claude's known failure modes
+if correction_patterns:
+    print("CORRECTION PATTERNS (known divergence tendencies):")
+    for cp in correction_patterns[:3]:
+        cpat = cp.get("pattern", "")[:70]
+        ccnt = cp.get("count", 0)
+        csev = cp.get("max_severity", "minor")
+        print("  [" + csev + " x" + str(ccnt) + "] " + cpat)
+        cex = cp.get("examples", "")[:120]
+        if cex:
+            print("    e.g.: " + cex)
+    print("  Be aware of these patterns. They are where you tend to diverge from reality.")
+    print()
+
+# Layer 5: Active evolutions — already handled in consciousness section below
+
+# Layer 6: Operator vocabulary
+vocab = eng_ctx.get("vocabulary", [])
+if vocab:
+    print("OPERATOR VOCABULARY:")
+    for v in vocab[:10]:
+        vtitle = v.get("title", "")[:40]
+        vcontent = v.get("content", "")[:80]
+        print("  " + vtitle + " => " + vcontent)
+    print()
+
+# Vocabulary gaps — terms the user used that have no mapping
+if vocabulary_gap:
+    print("VOCABULARY GAPS (unmapped operator terms — consider learning these):")
+    for vg in vocabulary_gap[:5]:
+        if isinstance(vg, dict):
+            vgterm = vg.get("term", "")
+            vgpreview = vg.get("message_preview", "")[:60]
+            print("  ? " + vgterm)
+            if vgpreview:
+                print("    from: " + vgpreview + "...")
+        else:
+            print("  ? " + str(vg))
+    print("  ACTION: If you know what these map to, use brain.learn_vocabulary(term, maps_to, context).")
+    print("  If unsure, ASK the user: 'You mentioned X — what does that refer to in this context?'")
+    print("  Note: the same term can mean different things in different contexts. Include context when learning.")
+    print()
+
+# Layer 7: Constraints + Conventions (architecture overview)
+constraints = eng_ctx.get("constraints", [])
+if constraints:
+    print("CONSTRAINTS:")
+    for c in constraints[:5]:
+        ctitle = c.get("title", "")[:70]
+        print("  " + ctitle)
+        ccontent = c.get("content", "")
+        if ccontent and len(ccontent) > 120:
+            ccontent = ccontent[:120] + "..."
+        if ccontent:
+            print("    " + ccontent)
+    print()
+
+conventions = eng_ctx.get("conventions", [])
+if conventions:
+    print("CONVENTIONS:")
+    for cv in conventions[:3]:
+        cvtitle = cv.get("title", "")[:70]
+        print("  " + cvtitle)
+        cvcontent = cv.get("content", "")
+        if cvcontent and len(cvcontent) > 120:
+            cvcontent = cvcontent[:120] + "..."
+        if cvcontent:
+            print("    " + cvcontent)
+    print()
+
+# Impact links — surfaced at boot for awareness
+impacts = eng_ctx.get("impacts", [])
+if impacts:
+    print("CHANGE IMPACT MAP:")
+    for imp in impacts[:5]:
+        imptitle = imp.get("title", "")[:80]
+        print("  " + imptitle)
+    print()
+
+# File inventory summary
+file_inv = eng_ctx.get("file_inventory", {}).get("files", [])
+if file_inv:
+    print("FILE INVENTORY (" + str(len(file_inv)) + " tracked):")
+    for fi in file_inv[:8]:
+        fipath = fi.get("file_path", "")
+        fipurpose = fi.get("purpose", "")[:60]
+        print("  " + fipath + " — " + fipurpose)
+    if len(file_inv) > 8:
+        print("  ... and " + str(len(file_inv) - 8) + " more")
     print()
 
 # Health alerts
@@ -184,8 +394,10 @@ if pending:
         print("  ... and " + str(len(pending) - 5) + " more")
     print()
 
-# ── BRAIN CONSCIOUSNESS ──
-has_conscious = reminders or active_evolutions or fluid_personal or fading or failure_modes or stale_count > 10 or performance or capabilities or interactions or meta_learning or novelty or miss_trends or encoding_gap or density_shift or emotional_trajectory or rule_contradictions
+# ═══════════════════════════════════════════════════════════
+# v4: BRAIN CONSCIOUSNESS — everything the brain wants to share
+# ═══════════════════════════════════════════════════════════
+has_conscious = reminders or active_evolutions or fluid_personal or fading or failure_modes or stale_count > 10 or performance or capabilities or interactions or meta_learning or novelty or miss_trends or encoding_gap or density_shift or emotional_trajectory or rule_contradictions or stale_reasoning or uncharted_code or stale_file_inv or recurring_divergence or validated_approaches or uncertain_areas or mental_model_drift or silent_errors
 
 if has_conscious:
     print("BRAIN CONSCIOUSNESS")
@@ -311,6 +523,83 @@ if rule_contradictions:
         print("    " + rn + " may conflict with LOCKED: " + rl + " (sim %.2f)" % rs)
     print()
 
+# v5: Stale reasoning — rich nodes that need revalidation
+if stale_reasoning:
+    print("  STALE REASONING (detailed rationale that may be outdated):")
+    for sr in stale_reasoning:
+        srt = sr.get("title", "")[:60]
+        srlv = sr.get("last_validated")
+        srage = "never validated" if not srlv else "validated: " + str(srlv)[:10]
+        print("    " + srt + " — " + srage)
+        srp = sr.get("reasoning_preview", "")
+        if srp:
+            print("      " + srp[:100])
+    print("  Still accurate? Use brain.validate_node(id) to confirm.")
+    print()
+
+# v5: Recurring divergence patterns — surfaced as consciousness
+if recurring_divergence:
+    print("  RECURRING DIVERGENCE PATTERNS:")
+    for rd in recurring_divergence[:3]:
+        rdpat = rd.get("pattern", "")[:70]
+        rdcnt = rd.get("count", 0)
+        print("    [x" + str(rdcnt) + "] " + rdpat)
+    print("  These are persistent failure modes. Be extra careful in these areas.")
+    print()
+
+# v5: Recently validated approaches
+if validated_approaches:
+    print("  RECENTLY VALIDATED:")
+    for va in validated_approaches[:3]:
+        vatitle = va.get("title", "")[:70]
+        vacount = va.get("count", 0)
+        print("    " + vatitle + " (validated " + str(vacount) + "x)")
+    print()
+
+# v5: Silent errors — operations that failed without surfacing
+if silent_errors:
+    print("  SILENT ERRORS (last 24h — these failed without you knowing):")
+    for se in silent_errors[:5]:
+        se_source = se.get("source", "unknown")
+        se_error = se.get("error", "")[:100]
+        se_context = se.get("context", "")[:60]
+        se_time = se.get("created_at", "")[:19]
+        print("    [%s] %s: %s" % (se_time, se_source, se_error))
+        if se_context:
+            print("      context: %s" % se_context)
+    print("  ACTION: These may indicate broken features. Investigate and fix.")
+    print("  Use brain.get_recent_errors() for full details + tracebacks.")
+    print()
+
+# v5: Uncertain areas — things Claude knows it doesn't understand
+if uncertain_areas:
+    print("  UNCERTAIN AREAS (unresolved):")
+    for ua in uncertain_areas[:3]:
+        uatitle = ua.get("title", "")[:70]
+        uapreview = ua.get("preview", "")[:100]
+        print("    ? " + uatitle)
+        if uapreview:
+            print("      " + uapreview)
+    print("  Consider investigating these if relevant to current work.")
+    print()
+
+# v5: Mental model drift — models that may be outdated or contradicted
+if mental_model_drift:
+    print("  MENTAL MODEL DRIFT (may need revision):")
+    for mm in mental_model_drift[:3]:
+        mmtitle = mm.get("title", "")[:70]
+        mmconf = mm.get("confidence")
+        mmchecked = mm.get("last_checked", "")[:10]
+        label = mmtitle
+        if mmconf is not None:
+            label += " (confidence: " + str(round(mmconf, 2)) + ")"
+        if mmchecked:
+            label += " [last checked: " + mmchecked + "]"
+        print("    ~ " + label)
+    print("  These mental models may be stale. Validate before relying on them.")
+    print()
+
+# Surfaceable dreams — high surprise, cross-cluster connections
 if dreams:
     for dr in dreams:
         dtitle = dr.get("title", "")[:70]
@@ -374,7 +663,12 @@ if debug_on:
     print("DEBUG MODE ON - all brain interactions are being logged.")
     print()
 
-print("PreToolUse hook auto-surfaces memories before file edits. Use brain.remember() for decisions.")
+print("IMPORTANT: PreToolUse hook auto-surfaces memories before file edits.")
+print("  /remember — store decisions, learnings")
+print("  /remember_rich — detailed encoding with reasoning, alternatives, user quotes")
+print("  brain.remember_purpose/mechanism/impact/constraint/convention/lesson — engineering memory")
+print("  brain.learn_vocabulary — map operator terms to code")
+print("  brain.remember_mental_model/remember_uncertainty — Claude cognitive layer")
 
 brain.close()
 '

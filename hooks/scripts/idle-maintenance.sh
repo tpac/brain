@@ -1,25 +1,41 @@
 #!/bin/bash
-# brain v4 — Idle maintenance + brain voice
-# Hook: Notification/idle_prompt — fires when Claude is idle (waiting for user).
-# This is when the brain thinks out loud: run maintenance AND surface insights.
-#
-# Operations:
-#   1. dream() — random-walk association discovery
-#   2. smart_prune() — decay weak edges by half-life
-#   3. backfill_embeddings() — ensure all nodes have embeddings
-#   4. consolidate() — strengthen frequent memories, detect bridges
-#   5. get_consciousness_signals() — surface brain state to user
-#
-# Input: JSON on stdin with { session_id, notification_type, message }
-# Output: stdout text surfaced to user (brain's voice during downtime)
+# brain — idle maintenance hook
+# Runs during idle prompts: dream, consolidate (includes auto-discovery), self-reflect.
+# Surfaces any auto-discovered evolutions for consciousness.
 
-source "$(dirname "$0")/resolve-brain-db.sh"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
+SERVER_DIR="$PLUGIN_ROOT/servers"
 
-if [ -z "$BRAIN_DB_DIR" ] || [ ! -f "$BRAIN_DB_DIR/brain.db" ]; then
+# ── Resolve brain location ──
+DB_DIR=""
+
+if [ -n "$BRAIN_DB_DIR" ] && [ -d "$BRAIN_DB_DIR" ]; then
+  DB_DIR="$BRAIN_DB_DIR"
+fi
+
+# Cowork: search mounted AgentsContext directories
+if [ -z "$DB_DIR" ]; then
+  for candidate in /sessions/*/mnt/AgentsContext/brain; do
+    if [ -f "$candidate/brain.db" ]; then
+      DB_DIR="$candidate"
+      break
+    fi
+  done
+fi
+
+# Local Claude Code
+if [ -z "$DB_DIR" ] && [ -f "$HOME/AgentsContext/brain/brain.db" ]; then
+  DB_DIR="$HOME/AgentsContext/brain"
+fi
+
+if [ -z "$DB_DIR" ]; then
   exit 0
 fi
 
-python3 -c '
+export BRAIN_DB_DIR="$DB_DIR"
+export BRAIN_SERVER_DIR="$SERVER_DIR"
+
+exec python3 -c '
 import sys, os, json
 
 server_dir = os.environ.get("BRAIN_SERVER_DIR", "")
@@ -32,142 +48,153 @@ if server_dir:
 
 try:
     from servers.brain import Brain
+
     brain = Brain(db_path)
-except Exception:
-    sys.exit(0)
 
-output_lines = []
+    output_lines = []
 
-try:
-    # ── 1. Dream: random-walk association discovery ──
+    # 1. Dream — random walks, surprise scoring, intuition creation
     try:
-        dream_result = brain.dream(session_id="idle")
-        insights = dream_result.get("insights", [])
-        if insights:
-            output_lines.append("BRAIN DREAM (idle associations):")
-            for insight in insights[:3]:
-                title = insight.get("title", "")[:80]
-                content = str(insight.get("content", ""))[:120]
-                output_lines.append(f"  💭 {title}")
-                if content:
-                    output_lines.append(f"    {content}")
+        dream_result = brain.dream()
+        dream_count = dream_result.get("count", 0)
+        if dream_count > 0:
+            output_lines.append("DREAM: %d dream(s) generated" % dream_count)
+            for d in dream_result.get("dreams", [])[:2]:
+                dtitle = d.get("title", "untitled")
+                output_lines.append("  - " + dtitle)
+    except Exception as e:
+        output_lines.append("DREAM ERROR: %s" % e)
+
+    # 2. Consolidate — stability boosts, bridging, and auto-evolution discovery
+    try:
+        consolidate_result = brain.consolidate()
+        cons_count = consolidate_result.get("consolidated", 0)
+        output_lines.append("CONSOLIDATE: %d nodes boosted" % cons_count)
+
+        # Surface auto-discovered evolutions
+        discoveries = consolidate_result.get("discoveries", {})
+        total = discoveries.get("total", 0)
+        if total > 0:
+            output_lines.append("\nBRAIN DISCOVERED (%d evolution(s)):" % total)
+
+            # Get the actual discovery details from a fresh call
+            # (consolidate already created them, just fetch active ones)
+            active = brain.get_active_evolutions()
+            auto_discovered = [e for e in active if "auto-discovered" in (e.get("content") or "")]
+
+            for evo in auto_discovered[:5]:
+                etype = evo["type"].upper()
+                title = evo["title"]
+                eid = evo["id"]
+                # Extract action from content
+                content = evo.get("content", "")
+                action = ""
+                if "ACTION:" in content:
+                    action = content.split("ACTION:")[-1].strip()
+
+                output_lines.append("  %s: %s" % (etype, title))
+                if action:
+                    output_lines.append("    -> " + action)
+                eid_short = eid[:8]
+                output_lines.append("    [confirm: brain.confirm_evolution(\"%s...\")]" % eid_short)
+                output_lines.append("    [dismiss: brain.dismiss_evolution(\"%s...\")]" % eid_short)
+    except Exception as e:
+        output_lines.append("CONSOLIDATE ERROR: %s" % e)
+
+    # 3. Self-healing — resolve discoveries, tune parameters, clean graph
+    try:
+        heal_result = brain.auto_heal()
+        resolved = heal_result.get("resolved", [])
+        tuned = heal_result.get("tuned", [])
+        cleaned = heal_result.get("cleaned", {})
+
+        if resolved:
+            output_lines.append("\nBRAIN HEALED (%d action(s)):" % len(resolved))
+            for r in resolved[:5]:
+                action = r.get("action", "unknown")
+                if action == "merge_duplicate":
+                    archived_name = r.get("archived", "")
+                    kept_name = r.get("kept", "")
+                    sim_val = r.get("sim", "")
+                    output_lines.append("  MERGED: \"%s\" into \"%s\" (sim %s)" % (archived_name, kept_name, sim_val))
+                elif action == "auto_lock":
+                    lock_title = r.get("title", "")
+                    ac = r.get("access_count", 0)
+                    output_lines.append("  LOCKED: \"%s\" (%d accesses)" % (lock_title, ac))
+                else:
+                    output_lines.append("  %s: %s" % (action, r))
+
+        if tuned:
+            output_lines.append("\nBRAIN TUNED (%d parameter(s)):" % len(tuned))
+            for t in tuned[:5]:
+                tparam = t.get("param", "")
+                treason = t.get("reason", "")
+                output_lines.append("  %s: %s" % (tparam, treason))
+
+        archived = cleaned.get("archived", 0)
+        edges_created = cleaned.get("edges_created", 0)
+        edges_normalized = cleaned.get("edges_normalized", 0)
+        merged = cleaned.get("merged", 0)
+        locked = cleaned.get("locked", 0)
+        if any([archived, edges_created, edges_normalized, merged, locked]):
+            parts = []
+            if merged: parts.append("%d merged" % merged)
+            if locked: parts.append("%d locked" % locked)
+            if archived: parts.append("%d archived" % archived)
+            if edges_created: parts.append("%d edges created" % edges_created)
+            if edges_normalized: parts.append("%d edges normalized" % edges_normalized)
+            output_lines.append("  HYGIENE: " + ", ".join(parts))
+    except Exception as e:
+        output_lines.append("HEAL ERROR: %s" % e)
+
+    # 3b. v5: Standalone auto-tune (v5-specific parameter adjustments)
+    try:
+        tune_result = brain.auto_tune()
+        tuned = tune_result.get("tuned", [])
+        if tuned:
+            output_lines.append("\nBRAIN AUTO-TUNED (%d parameter(s)):" % len(tuned))
+            for t in tuned[:5]:
+                param = t.get("param", "")
+                reason = t.get("reason", t.get("note", ""))
+                output_lines.append("  %s: %s" % (param, reason))
+    except Exception:
+        pass
+
+    # 4. Reflection prompts — surface questions for the host to encode learnings
+    try:
+        reflections = brain.prompt_reflection()
+        if reflections:
+            output_lines.append("")
+            output_lines.append("REFLECT (transferable insights from this session?):")
+            for r in reflections[:3]:
+                output_lines.append("  " + r)
             output_lines.append("")
     except Exception:
         pass
 
-    # ── 2. Smart prune: decay weak edges ──
+    # 5. Self-reflection — performance/capability/interaction nodes
     try:
-        brain.smart_prune()
-    except Exception:
-        pass
+        reflection = brain.auto_generate_self_reflection()
+        ref_count = sum(1 for v in reflection.values() if v)
+        if ref_count > 0:
+            output_lines.append("SELF-REFLECTION: %d reflection(s) generated" % ref_count)
+    except Exception as e:
+        pass  # self-reflection is optional
 
-    # ── 3. Backfill embeddings ──
+    # 5. v5: Backfill content summaries for nodes missing them
     try:
-        backfill_count = brain.backfill_embeddings(batch_size=20)
-        if backfill_count and backfill_count > 0:
-            output_lines.append(f"BRAIN MAINTENANCE: Backfilled {backfill_count} embeddings")
-            output_lines.append("")
-    except Exception:
-        pass
-
-    # ── 4. Consolidate: strengthen frequent, detect bridges ──
-    try:
-        consolidation = brain.consolidate()
-        bridges = consolidation.get("bridges_created", 0) if consolidation else 0
-        if bridges > 0:
-            output_lines.append(f"BRAIN CONSOLIDATION: Discovered {bridges} new bridges between knowledge clusters")
-            output_lines.append("")
-    except Exception:
-        pass
-
-    # ── 5. Auto-discover evolutions (graph-aware reflection) ──
-    try:
-        discoveries = brain.auto_discover_evolutions()
-        any_found = False
-        for dtype in ['tensions', 'patterns', 'hypotheses', 'aspirations']:
-            items = discoveries.get(dtype, [])
-            if items:
-                if not any_found:
-                    output_lines.append("BRAIN DISCOVERED (auto-evolution):")
-                    any_found = True
-                for item in items:
-                    title = item.get("title", "")[:70]
-                    nid = item.get("id", "")[:12]
-                    output_lines.append(f"  {title}  (id: {nid})")
-        if any_found:
-            output_lines.append("  → Confirm: brain.confirm_evolution(id) | Dismiss: brain.dismiss_evolution(id)")
-            output_lines.append("")
-    except Exception:
-        pass
-
-    # ── 6. Surface consciousness signals ──
-    try:
-        signals = brain.get_consciousness_signals()
-
-        # Fading knowledge warnings
-        fading = signals.get("fading", [])
-        if fading:
-            output_lines.append("FADING KNOWLEDGE (not accessed in 25+ days):")
-            for node in fading[:3]:
-                title = node.get("title", "")[:80]
-                output_lines.append(f"  ⏳ {title}")
-            output_lines.append("")
-
-        # Active evolutions
-        evolutions = signals.get("evolutions", [])
-        if evolutions:
-            output_lines.append("ACTIVE EVOLUTIONS:")
-            for evo in evolutions[:3]:
-                title = evo.get("title", "")[:80]
-                etype = evo.get("type", "")
-                output_lines.append(f"  {title} [{etype}]")
-            output_lines.append("")
-
-        # Fluid personal nodes ("still true?")
-        fluid = signals.get("fluid_personal", [])
-        if fluid:
-            output_lines.append("FLUID PERSONAL (still true?):")
-            for node in fluid[:2]:
-                title = node.get("title", "")[:80]
-                output_lines.append(f"  🔄 {title}")
-            output_lines.append("")
-
-        # Encoding gap warning
-        encoding_gap = signals.get("encoding_gap")
-        if encoding_gap:
-            output_lines.append(f"ENCODING GAP: {encoding_gap}")
-            output_lines.append("")
-
-        # Recent encodings — what the brain logged this session
-        recent = signals.get("recent_encodings", [])
-        if recent:
-            output_lines.append(f"BRAIN LOGGED THIS SESSION ({len(recent)} nodes):")
-            for node in recent[:6]:
-                nid = node.get("id", "")[:12]
-                ntype = node.get("type", "")
-                title = node.get("title", "")[:70]
-                locked = " LOCKED" if node.get("locked") else ""
-                output_lines.append(f"  [{ntype}]{locked} {title}  (id: {nid})")
-            if len(recent) > 6:
-                output_lines.append(f"  ... and {len(recent) - 6} more")
-            output_lines.append("")
-            output_lines.append("  Anything wrong? Use brain.update(node_id, ...) to fix or brain.conn.execute('DELETE FROM nodes WHERE id=?', (id,)) to remove.")
-            output_lines.append("")
-
+        backfill = brain.backfill_summaries(batch_size=50)
+        bf_count = backfill.get("updated", 0)
+        if bf_count > 0:
+            output_lines.append("SUMMARIES: backfilled %d nodes" % bf_count)
     except Exception:
         pass
 
     brain.save()
-    brain.close()
 
     if output_lines:
         print("\n".join(output_lines))
 
 except Exception as e:
-    try:
-        brain.close()
-    except Exception:
-        pass
-' 2>/dev/null
-
-exit 0
+    print("IDLE MAINTENANCE ERROR: %s" % e, file=sys.stderr)
+'

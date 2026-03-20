@@ -1,7 +1,8 @@
 #!/bin/bash
-# brain v4 (serverless) — Layer C: Pre-response recall trigger
-# Hook: UserPromptSubmit — fires before Claude processes ANY user message.
-# Brain context is available during reasoning, not just during file operations.
+# brain v15 (serverless) — Layer C: Pre-response recall trigger
+# Fires before Claude responds to ANY user message (not just file edits).
+# This is the key architectural improvement: brain context is available
+# during reasoning, not just during file operations.
 #
 # Input: JSON on stdin with { prompt, session_id, cwd, transcript_path }
 # Output: JSON with decision + reason containing recalled context
@@ -57,14 +58,43 @@ except Exception:
     sys.exit(0)
 
 try:
+    # v5: Resolve vocabulary in user message to enrich recall query
+    # If user says "fix the recall hook", expand to include actual file/function names
+    vocab_expansions = []
+    try:
+        import re as _re
+        # Extract candidate terms (2-4 word phrases, hyphenated terms)
+        candidates = set()
+        candidates.update(t.strip().lower() for t in _re.findall(r"\bthe\s+([\w][\w\s-]{2,25})\b", user_message, _re.IGNORECASE))
+        candidates.update(t.strip().lower() for t in _re.findall(r"\b([\w]+-[\w]+(?:-[\w]+)?)\b", user_message) if len(t) > 4)
+        for term in candidates:
+            resolved = brain.resolve_vocabulary(term)
+            if resolved:
+                if resolved.get("ambiguous"):
+                    # Multiple mappings — include all targets
+                    for m in resolved.get("mappings", []):
+                        content = m.get("content", "")
+                        vocab_expansions.append(content)
+                else:
+                    content = resolved.get("content", "")
+                    vocab_expansions.append(content)
+    except Exception:
+        pass
+
+    # Build enriched query: original message + vocabulary expansions
+    enriched_query = user_message[:500]
+    if vocab_expansions:
+        expansion_text = " ".join(vocab_expansions)[:200]
+        enriched_query = enriched_query + " " + expansion_text
+
     # Recall with embeddings if available, fall back to TF-IDF
     try:
         result = brain.recall_with_embeddings(
-            query=user_message[:500],  # Cap query length
+            query=enriched_query,
             limit=8
         )
     except Exception:
-        result = brain.recall(query=user_message[:500], limit=8)
+        result = brain.recall(query=enriched_query, limit=8)
 
     results = result.get("results", [])
 
@@ -99,11 +129,28 @@ try:
         content = r.get("content", "")
         locked = "LOCKED " if r.get("locked") else ""
         score = r.get("effective_activation", 0)
+        tiered = r.get("_tiered", "full")
 
-        if len(content) > 200:
+        if tiered == "full" and len(content) > 300:
+            content = content[:300] + "..."
+        elif tiered != "full" and len(content) > 200:
             content = content[:200] + "..."
-        lines.append(f"  [{typ}] {locked}{title} (score: {score:.2f})")
+
+        tier_tag = "" if tiered == "full" else " [summary]"
+        lines.append(f"  [{typ}] {locked}{title} (score: {score:.2f}){tier_tag}")
         lines.append(f"    {content}")
+
+        # v5: Show metadata for top results (reasoning, user quotes)
+        meta = r.get("_metadata")
+        if meta:
+            if meta.get("reasoning"):
+                reasoning_preview = meta["reasoning"][:120]
+                if len(meta["reasoning"]) > 120:
+                    reasoning_preview += "..."
+                lines.append(f"    Reasoning: {reasoning_preview}")
+            if meta.get("user_raw_quote"):
+                lines.append(f"    User said: \"{meta['user_raw_quote'][:100]}\"")
+
         lines.append("")
 
     # v4: Aspiration compass — find relevant aspirations for this conversation
