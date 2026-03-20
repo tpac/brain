@@ -1,7 +1,7 @@
 {
   "name": "brain",
-  "version": "5.1.0",
-  "description": "Shared cognitive space for Claude + operator. v5.1: Mixin architecture (11 modules), dynamic confidence (emotional cooling, temporal-external decay, silent validation), priming system (active concerns as background attention filter), developmental stage assessment (NEWBORN→INTEGRATED with growth guidance), self-sufficient session synthesis, tunable parameters, auto-enrichment in remember() (confidence, connections). Plus v5: tiered recall, engineering memory, self-correction traces, 12 consciousness signals, vocabulary gap detection.",
+  "version": "5.2.0",
+  "description": "Shared cognitive space for Claude + operator. v5.2: Critical flag safety layer (operator-gated, 3x recall boost, boot force-include), PreToolUse(Bash) destructive command detection, vocabulary query expansion in recall pipeline, inf bug fix. Plus: 11 mixin modules, dynamic confidence, priming, developmental stages, 20+ consciousness signals, engineering memory, self-correction traces, vocabulary gap detection.",
   "author": {
     "name": "Tom Pachys"
   },

@@ -1,30 +1,54 @@
-# brain Detailed API Reference
+# brain — Detailed API Reference (v5.2)
 
-> **NOTE (v4):** This document references the old HTTP server architecture (brain.js, port 7437, POST endpoints).
-> The brain is now **serverless Python** — all operations are direct method calls on the `Brain` class in `servers/brain.py`.
-> Translate any `POST /endpoint` references to `brain.method()` calls. See SKILL.md for the current API.
+## Architecture
 
-## Upgrade Guide for Future Claude
+Serverless Python module. 11 mixin modules assembled by `brain.py`. No HTTP server.
+DB resolved automatically by hooks via `resolve-brain-db.sh`.
 
-1. **ALWAYS back up first**: `POST /backup`
-2. **Version gate**: Add `if (fromVersion < N)` in `_migrate()` in brain.js. Increment `BRAIN_VERSION`.
-3. **Table rebuilds**: Disable FK with `PRAGMA foreign_keys=OFF` before DROP/RENAME. Re-enable after. This is CRITICAL — CASCADE will delete all edges otherwise.
-4. **Test on backup**: Copy brain.db, test migration, then apply to real DB.
-5. **Migration history**: Every migration logged in `version_history`. Never delete.
-6. **Rollback**: Backups in data dir as `brain_backup_v*`. Stop server, replace brain.db, restart.
-7. **DO NOT** change existing migration steps — only add new ones.
-8. **DO NOT** modify locked nodes without user confirmation.
-9. **Emotion calibration**: The `emotion_calibration` table contains the user's explicit feedback. Use this data to improve auto-emotion detection.
+## Node Types (37 types, schema v16)
 
-## Scoring Formula (v3)
+| Category | Types | Decay |
+|----------|-------|-------|
+| **Core** | decision, rule | Never (locked) |
+| **Core** | concept | 7 days |
+| **Core** | task | 2 days |
+| **Core** | context | 1 day |
+| **Core** | person, project, object | 30 days |
+| **Core** | file | 7 days |
+| **Core** | intuition | 12 hours |
+| **Core** | thought | 3 hours |
+| **Core** | procedure | Never |
+| **Engineering** | purpose, mechanism, impact, constraint, convention, lesson, vocabulary | Varies (constraint/lesson: never) |
+| **Cognitive** | mental_model, reasoning_trace, uncertainty, correction, validation | Varies |
+| **Evolution** | tension, hypothesis, pattern, catalyst, aspiration | Varies (720-2160h) |
+| **Self-reflection** | performance, failure_mode, capability, interaction, meta_learning | Varies |
+| **Code cognition** | fn_reasoning, param_influence, code_concept, arch_constraint, causal_chain, bug_lesson, comment_anchor | Varies |
 
-**Regular nodes:** 35% relevance + 30% recency + 25% emotion + 10% frequency
+### Critical flag (v5.2)
+Any node can be marked `critical=1` via operator approval. Critical nodes:
+- Get 3x recall boost in both `recall()` and `recall_with_embeddings()`
+- Have lowered similarity threshold (0.20 vs normal)
+- Always appear at TOP of `context_boot()` output
+- Are surfaced by `safety_check()` when destructive commands detected
 
-**Locked nodes:** 50% relevance + 25% emotion + 20% recency + 5% frequency
+## Scoring Formula (v5.2)
 
-**Emotion score:** `EMOTION_FLOOR (0.3) + raw_emotion * (1 - EMOTION_FLOOR)`
+**Combined score blend:**
+- 35% relevance (keyword + TF-IDF + embeddings)
+- 30% recency (time-banded)
+- 25% emotion (intensity 0-1)
+- 10% frequency (access count)
 
-**Emotion retention boost:** If emotion > 0.5, retention multiplied by `(1 + emotion * 0.5)`
+**Modifiers applied to relevance:**
+- Hub dampening: nodes with 40+ connections get reduced
+- Type dampening: project/person nodes × 0.5
+- Intent boost: query intent → type-specific multipliers
+- Critical boost: critical=1 nodes × 3.0
+- Confidence weighting: node confidence affects final score
+
+**Locked nodes:** Skip decay entirely. Relevance weight increased.
+
+**Ebbinghaus retention:** `2^(-hours / half_life)` with time-dilation for personal/fluid nodes.
 
 ## Recency Bands
 
@@ -38,79 +62,100 @@
 | < 1 month | 0.15 |
 | older | 0.05 |
 
-## Node Type Decay Rates
+## Recall Pipeline
 
-| Type | Half-life | Notes |
-|------|-----------|-------|
-| person | 30 days | |
-| project | 30 days | |
-| decision | Infinity | Never decays if locked |
-| rule | Infinity | Never decays |
-| concept | 7 days | |
-| task | 2 days | |
-| file | 7 days | |
-| context | 1 day | Session-specific |
-| intuition | 12 hours | Dream-generated, fades unless accessed |
+1. **Step 0.5**: Vocabulary expansion — `_expand_query_with_vocabulary()` resolves operator terms
+2. **Step 1a**: Keyword search + embedding scan (if available)
+3. **Step 1b**: Direct keyword match strength per seed
+4. **Step 2**: Spreading activation (3 hops, decay 0.5^hop)
+5. **Step 3**: TF-IDF cosine similarity (batch scoring)
+6. **Step 4**: Combined scoring with all modifiers
+7. **Step 5**: Intent detection → type boosting
+8. **Step 6**: Critical node boost
+9. **Step 7**: Ebbinghaus retention decay
+10. **Step 8**: Threshold filtering (0.05 normal, 0.20 for critical)
 
-## Database Schema
+## Intent Detection
 
-Tables: `nodes`, `edges`, `access_log`, `brain_meta`, `summaries`, `version_history`, `emotion_calibration`, `dream_log`
+| Intent | Trigger patterns | Boosted types |
+|--------|-----------------|---------------|
+| decision_lookup | "what did we decide", "decision about" | decision, rule, lesson, correction |
+| reasoning_chain | "why did we", "reason for" | decision, mechanism, reasoning_trace |
+| state_query | "what's the current", "status of" | context, project, task, object |
+| temporal | "when did", "last week", "recently" | decision, context |
+| correction_lookup | "what mistake", "lessons learned" | decision, correction, lesson |
+| how_to | "how do", "best way" | rule, mechanism, convention, constraint |
+| list_query | "list all", "show me all" | rule, decision, object |
 
-Key columns on nodes: id, type, title, content, keywords, activation, stability, access_count, locked, archived, recency_score, emotion, emotion_label, emotion_source, last_accessed, created_at, updated_at
+## Edge Types
 
-Key columns on edges: source_id, target_id, weight, relation, co_access_count, stability, last_strengthened, created_at
+| Type | Weight | Decays | Purpose |
+|------|--------|--------|---------|
+| reasoning_step | 0.9 | Never | Steps in reasoning chain |
+| produced | 0.85 | Never | Chain → decision link |
+| corrected_by | 0.85 | Never | Correction events |
+| exemplifies | 0.8 | 30d half-life | Rule → example |
+| part_of | 0.7 | Never | Structural hierarchy |
+| depends_on | 0.7 | Never | Dependency |
+| related | 0.5 | 14d half-life | General association |
+| co_accessed | 0.3 | 7d half-life | Hebbian co-recall |
+| emergent_bridge | 0.15 | 3d half-life | Auto-discovered bridge |
 
-## Dreaming Mechanics
+## Confidence System
 
-1. Pick 20 candidate seed nodes biased toward high-emotion, recent
-2. Select 2 random seeds per dream (3 dreams per session)
-3. Random walk 5 steps from each seed (weighted by edge weight)
-4. If walk endpoints aren't already connected, create `intuition` node bridging them
-5. Intuition nodes decay in 12h unless someone accesses them
-6. Dream logged in `dream_log` table
+- Each node has `confidence` (0.1-1.0), auto-set by type
+- Defaults: rule=0.85, decision=0.80, hypothesis=0.50, intuition=0.40, thought=0.35
+- At session boundaries: emotional cooling, temporal-external decay, silent validation boost
+- `record_validation(node_id)` increases confidence
+- Corrections decrease target confidence (× 0.7)
 
-## Hebbian Learning
+## Consciousness Signals (20+)
 
-Co-accessed memories get stronger connections. When multiple nodes appear in the same recall result:
-- Edge weight increases by `LEARNING_RATE * 0.1`
-- Co-access count increments
-- Stability increases by `STABILITY_BOOST (1.5×)`
+Generated by `get_consciousness_signals()`, surfaced at boot:
 
-## v4: Self-Improvement Tables
+- **reminders**: Due date scanning
+- **evolutions**: Active tensions, hypotheses, patterns, catalysts, aspirations
+- **fading**: Important nodes untouched 14+ days
+- **encoding_gap**: Long session with no remember() calls
+- **encoding_depth**: Average chars/node below 400
+- **encoding_bias**: Type distribution skew
+- **silent_errors**: Operations that failed (last 24h)
+- **vocabulary_gap**: Operator terms with no mapping
+- **recurring_divergence**: Correction patterns repeating
+- **mental_model_drift**: Models not validated recently
+- **rule_contradictions**: Rules that conflict
+- **stale_reasoning**: Reasoning chains not accessed 14+ days
+- **validated_approaches**: Recently confirmed nodes
+- **uncertain_areas**: Unresolved uncertainties
+- **session_health**: Overall health scoring (gaps + healthy dimensions)
+- **density_shift**: Sudden change in encoding rate
+- **emotional_trajectory**: Trending emotion across session
+- **novelty**: Concepts created in last 2 hours
 
-### recall_log
-Tracks every recall event. `returned_ids` logged automatically. `used_ids` and `precision_score` filled in by Claude via `/mark-recall-used`.
+## Destructive Pattern Detection (v5.2)
 
-### miss_log
-Tracks retrieval failures. Signals: `repetition` (worst — auto-locks node), `correction`, `explicit_miss`, `stale_recall`.
+`safety_check(command)` matches against:
+- `rm -rf`, `rm --force`, `rmdir`
+- `git reset --hard`, `git clean -fd`, `git checkout --`
+- `git worktree remove`, `git push --force`
+- `DROP TABLE`, `DELETE FROM`, `TRUNCATE`
+- `xargs rm`
 
-### eval_snapshots
-Periodic evaluation results. Stores precision, coverage, dream hit rate, emotion accuracy, recommendations.
+When matched: recalls critical nodes, returns risk level (high/medium/low).
 
-### tuning_log
-Parameter change history. Every weight adjustment is recorded with reason and linked to the eval snapshot that triggered it.
+## Database Schema (v16)
 
-### Metrics Definitions
+**Main tables:** nodes, edges, access_log, brain_meta, summaries, version_history, emotion_calibration, dream_log, node_metadata, node_embeddings, reasoning_chains, reasoning_steps, session_syntheses, correction_traces, bridge_proposals, staged_learnings, project_maps, procedures
 
-- **Recall precision**: `used_count / returned_count` — what fraction of returned nodes were actually useful
-- **Recall coverage**: `successful_recalls / (successful_recalls + misses)` — how often the brain finds what it should
-- **Dream hit rate**: `intuitions_accessed / total_intuitions_created` — are dreams producing useful associations
-- **Emotion accuracy**: `1 - avg(|auto_emotion - user_emotion|)` — how well auto-tagging matches user feedback
+**Key node columns:** id, type, title, content, keywords, activation, stability, access_count, locked, archived, critical, recency_score, emotion, emotion_label, confidence, personal, personal_context, project, last_accessed, created_at, updated_at
 
-### Improvement Thresholds
-
-| Metric | Good | Needs work | Critical |
-|--------|------|-----------|----------|
-| Recall precision | > 50% | 30-50% | < 30% |
-| Recall coverage | > 80% | 60-80% | < 60% |
-| Dream hit rate | > 10% | 5-10% | < 5% |
-| Repetition misses | 0 | 1-2 | > 2 |
+**Logs DB (brain_logs.db):** recall_log, miss_log, eval_snapshots, tuning_log, dream_log, curiosity_log, health_log, staged_learnings, error_log
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| BRAIN_PORT | 7437 | TCP port |
-| BRAIN_DB_DIR | ../data | Directory for brain.db |
-| BRAIN_SOCKET | /tmp/brain.sock | Unix socket path (if TCP disabled) |
-| BRAIN_TCP | 1 | Use TCP (default: yes) |
+| Variable | Purpose |
+|----------|---------|
+| BRAIN_DB_DIR | Directory containing brain.db |
+| BRAIN_SERVER_DIR | Path to servers/brain.py |
+| BRAIN_PROJECT | Default project name |
+| BRAIN_USER | Default user name |

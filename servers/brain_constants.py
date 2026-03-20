@@ -151,7 +151,7 @@ EXTENDED_STOP_WORDS = TFIDF_STOP_WORDS | {
     'need', 'want', 'thing', 'change', 'move', 'find', 'help', 'keep',
     'try', 'show', 'call', 'put', 'think', 'look', 'take', 'give', 'say',
     'come', 'go', 'see', 'know', 'good', 'bad', 'big', 'small', 'part',
-    'work', 'way', 'time', 'done', 'made',
+    'work', 'way', 'time', 'done', 'made', 'feature',
 }
 
 # Intent detection patterns

@@ -1,10 +1,10 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-# brain v5.1.0 — Serverless plugin builder
+# brain v5.2.0 — Serverless plugin builder
 # Packs exactly what belongs in the .plugin file. Nothing else.
 #
-# v5.1: Mixin architecture (11 modules), confidence dynamics,
-#        priming, developmental stages, self-sufficient synthesis.
+# v5.2: Critical flag, PreToolUse(Bash) safety, vocabulary expansion,
+#        inf bug fix. Plus v5.1 mixin architecture, confidence dynamics.
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -39,6 +39,7 @@ FILES=(
   hooks/scripts/boot-brain.sh
   hooks/scripts/pre-compact-save.sh
   hooks/scripts/pre-edit-suggest.sh
+  hooks/scripts/pre-bash-safety.sh
   hooks/scripts/pre-response-recall.sh
   hooks/scripts/post-response-track.sh
   hooks/scripts/idle-maintenance.sh
