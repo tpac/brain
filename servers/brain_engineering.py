@@ -1560,6 +1560,10 @@ class BrainEngineeringMixin:
         generated = {'performance': 0, 'capability': 0, 'interaction': 0, 'failure': 0}
 
         # Performance: recall quality from recall_log
+        # NOTE: This signal is BROKEN until mark_recall_used() is implemented.
+        # used_count is always 0 because nothing writes back to recall_log.
+        # Skipping generation to avoid false "0% precision" alarms.
+        # TODO: Re-enable once mark_recall_used() exists. See tests/relearning.py.
         try:
             recall_stats = self.logs_conn.execute(
                 """SELECT COUNT(*) as total,
@@ -1570,17 +1574,18 @@ class BrainEngineeringMixin:
             if recall_stats and recall_stats[0] >= 10:
                 total, useful = recall_stats
                 precision = useful / total if total > 0 else 0
-                # Check if we already have a recent performance node
-                existing = self.conn.execute(
-                    "SELECT COUNT(*) FROM nodes WHERE type = 'performance' AND created_at > datetime('now', '-3 days')"
-                ).fetchone()[0]
-                if existing == 0:
-                    self.create_performance(
-                        f"Recall precision this week: {precision:.0%} ({useful}/{total} useful)",
-                        f"Auto-generated from recall_log. {total} recalls in 7 days, {useful} had results marked as used.",
-                        keywords="auto performance recall precision weekly"
-                    )
-                    generated['performance'] += 1
+                # Only generate if mark_recall_used() is actually populating data
+                if useful > 0:
+                    existing = self.conn.execute(
+                        "SELECT COUNT(*) FROM nodes WHERE type = 'performance' AND created_at > datetime('now', '-3 days')"
+                    ).fetchone()[0]
+                    if existing == 0:
+                        self.create_performance(
+                            f"Recall precision this week: {precision:.0%} ({useful}/{total} useful)",
+                            f"Auto-generated from recall_log. {total} recalls in 7 days, {useful} had results marked as used.",
+                            keywords="auto performance recall precision weekly"
+                        )
+                        generated['performance'] += 1
         except Exception as _e:
             self._log_error("auto_generate_self_reflection", _e, "generating recall precision performance node")
 

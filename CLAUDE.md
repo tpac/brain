@@ -38,12 +38,31 @@ The boot hook resolves the DB automatically via `resolve-brain-db.sh`:
 
 The actual DB path is printed in the boot output. Do not guess paths.
 
+## Brain + Documents: Division of Labor
+
+**The brain is associative memory, not a document store.** Don't encode formal plans, task lists, or specs as brain nodes. Those belong in markdown files in the repo.
+
+| Use documents for | Use brain for |
+|---|---|
+| Task lists, refactoring targets | Lessons learned (WHY, not WHAT) |
+| Architecture specs, API refs | Corrections and self-correction traces |
+| Anything needing guaranteed retrieval | Vocabulary, cross-session patterns |
+| Anything 1-10 pages read top-to-bottom | Associative links, confidence signals |
+
+**Brain nodes should POINT TO documents**, not duplicate them. Example: a brain node says "refactoring targets are in REFACTORING.md — top priority is mark_recall_used because it blocks the precision feedback loop." The node holds the *why* and the *pointer*. The document holds the *what*.
+
+**Active documents:**
+- `REFACTORING.md` — current cleanup targets with priorities and status
+- `docs/HOOKS-ARCHITECTURE.md` — hook system design (v5.3+)
+
 ## What To Do Each Session
 
 1. **Read the boot output.** It contains session context, locked rules, consciousness signals (fading knowledge, tensions, vocabulary gaps, errors, mental model drift).
 2. **If starting from a compaction summary**, encode the delta into the brain (Step 2a in SKILL.md). This is mandatory — compacted knowledge is lost forever if not encoded.
-3. **Use the brain throughout** — remember decisions, recall context, connect related nodes.
-4. **Let hooks do their job** — don't manually call suggest before edits (the PreToolUse hook does it), don't manually save (hooks save at compaction and session end).
+3. **Check REFACTORING.md** if doing cleanup work. Pick one target. Don't boil the ocean.
+4. **Use the brain throughout** — remember decisions, recall context, connect related nodes.
+5. **Let hooks do their job** — don't manually call suggest before edits (the PreToolUse hook does it), don't manually save (hooks save at compaction and session end).
+6. **One refactor per session.** Commit before compaction. Update REFACTORING.md when done.
 
 ## Common Mistakes
 

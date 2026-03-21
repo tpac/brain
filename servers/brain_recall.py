@@ -523,6 +523,10 @@ class BrainRecallMixin:
                 # Note: reasoning methods not yet implemented, skipping for now
                 pass
 
+        # TODO: _recall_log_id is returned but nothing calls mark_recall_used()
+        # to close the loop.  Until that method exists, recall_log.used_count
+        # stays 0 and the "recall precision" consciousness signal is always 0%.
+        # See: tests/relearning.py header for the full TODO list.
         result = {
             'results': page,
             '_recall_log_id': recall_log_id,

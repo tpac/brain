@@ -1,26 +1,30 @@
 #!/usr/bin/env python3
 """
-brain — Relearning Comparison Engine
+⚠️  OBSOLETE — DO NOT USE (2026-03-21)
 
-Replays real conversation transcripts against a fresh brain to test whether
-the current brain logic can reproduce (and improve upon) what was learned.
+This module was an early prototype for replaying transcripts against a fresh
+brain.  Several assumptions are outdated:
 
-Architecture:
-  1. Parse transcripts into sessions and turns
-  2. For each session:
-     a. Boot hook: context_boot + health_check + dream/consolidate
-     b. For each turn:
-        - Pre-response: recall_with_embeddings on user message (log what surfaces)
-        - Encoding: Extract remember-worthy content from the turn
-        - Remember: Store extracted content in the fresh brain
-        - Pre-edit: If files were edited, fire pre_edit
-     c. End-of-session: consolidate + dream + save
-  3. Compare relearned brain vs current brain
+  • mark_recall_used() was never implemented on Brain, so recall-precision
+    tracking (used_count / precision_score in recall_log) is dead code.
+  • The encoding extraction heuristics predate the daemon consolidation
+    (v5.3) and thin-client hook architecture.
+  • Session lifecycle simulation is now covered by tests/test_system.py.
 
-The encoding extraction is the KEY — it follows the current SKILL.md encoding
-philosophy (Step 2a) to decide what to remember from each conversation turn.
+TODO:
+  - Implement Brain.mark_recall_used() and wire it into post_response_track
+    so recall_log.used_count actually gets populated.
+  - Decide whether this replay framework is worth resurrecting or if
+    test_system.py's lifecycle tests are sufficient.
+  - If resurrecting: rewrite to use daemon_hooks.py functions directly
+    instead of duplicating hook logic inline.
 
-Usage:
+Original description (for reference):
+    Relearning Comparison Engine — replays real conversation transcripts
+    against a fresh brain to test whether the current brain logic can
+    reproduce (and improve upon) what was learned.
+
+Usage (disabled):
     python tests/relearning.py <transcript.jsonl> [--current-brain brain.db]
 """
 
