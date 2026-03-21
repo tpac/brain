@@ -1,5 +1,5 @@
 #!/bin/bash
-# brain v5.2 — Post-response tracker: vocab gap detection + encoding heartbeat
+# brain v5.3 — Post-response tracker: vocab gap detection + 5-focus rotating encoding checkpoints
 # Fires on TWO events:
 #   - UserPromptSubmit (input has "prompt" field) — vocab gap detection + heartbeat
 #   - Stop (input has "last_assistant_message" field) — encoding heartbeat only
@@ -49,15 +49,50 @@ try:
         if nudge:
             severity = nudge.get("severity", "gentle")
             nudge_msg = nudge.get("message", "")
-            if severity == "urgent":
-                print("")
-                print("ENCODING ALERT: " + nudge_msg)
-                print("Use brain.remember() to capture decisions, corrections, and learnings.")
-                print("")
-            else:
-                print("")
-                print("ENCODING NUDGE: " + nudge_msg)
-                print("")
+
+            # 5-focus rotating checkpoint (eval-tested best strategy)
+            checkpoint_cycle = [
+                "UNCERTAINTY: What don\u0027t you fully understand? Encode brain.remember_uncertainty(). Honest \u0027I don\u0027t know\u0027 > thin facts.",
+                "CONNECTIONS: Use brain.connect() between related nodes. brain.remember_impact() for dependencies. Orphan nodes die.",
+                "DECISIONS + LESSONS: brain.remember(type=\u0027decision\u0027, locked=True) with reasoning. brain.remember_lesson() for mistakes.",
+                "BLAST RADIUS: brain.remember_impact(if_changed, must_check, because). Map what breaks if this changes.",
+                "PATTERNS: brain.remember_convention() for patterns. brain.remember(type=\u0027mental_model\u0027) for architecture.",
+            ]
+
+            # Get + rotate checkpoint index via daemon
+            try:
+                sock_idx = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                sock_idx.settimeout(3.0)
+                sock_idx.connect(sock_path)
+                sock_idx.sendall(json.dumps({"cmd": "get_config", "args": {"key": "checkpoint_index", "default": "0"}}).encode() + b"\n")
+                idx_data = b""
+                while b"\n" not in idx_data:
+                    chunk = sock_idx.recv(4096)
+                    if not chunk: break
+                    idx_data += chunk
+                idx_resp = json.loads(idx_data.decode().strip())
+                sock_idx.close()
+                idx = int(idx_resp.get("result", "0")) if idx_resp.get("ok") else 0
+            except Exception:
+                idx = 0
+
+            focus = checkpoint_cycle[idx % len(checkpoint_cycle)]
+
+            # Rotate index
+            try:
+                sock_set = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                sock_set.settimeout(3.0)
+                sock_set.connect(sock_path)
+                sock_set.sendall(json.dumps({"cmd": "set_config", "args": {"key": "checkpoint_index", "value": str((idx + 1) % len(checkpoint_cycle))}}).encode() + b"\n")
+                sock_set.recv(4096)
+                sock_set.close()
+            except Exception:
+                pass
+
+            print("")
+            print("ENCODING CHECKPOINT: " + nudge_msg)
+            print(focus)
+            print("")
 
     # Vocab gap detection (if we have a message)
     if user_message and len(user_message) >= 10:
@@ -208,21 +243,60 @@ if has_user_message:
     except Exception:
         pass
 
-# ── Encoding heartbeat (always runs) ──
+# ── Encoding heartbeat with rotating checkpoints ──
 try:
     brain.record_message()
     nudge = brain.get_encoding_heartbeat()
     if nudge:
         severity = nudge.get("severity", "gentle")
         msg = nudge.get("message", "")
+
+        # Rotating checkpoint: 5-focus cycle (eval-tested best strategy)
+        checkpoint_cycle = [
+            "UNCERTAINTY: What don\u0027t you fully understand from the last few exchanges? Encode at least one brain.remember_uncertainty(). Honest \u0027I don\u0027t know\u0027 is more valuable than thin facts.",
+            "CONNECTIONS: What connections did you discover? Use brain.connect() between related nodes and brain.remember_impact(if_changed, must_check, because) for dependencies. Orphan nodes die.",
+            "DECISIONS + LESSONS: What was decided or learned? brain.remember(type=\u0027decision\u0027, locked=True) with full reasoning. brain.remember_lesson() for any bugs or mistakes. Include WHY, not just WHAT.",
+            "BLAST RADIUS: What could break if this code changes? brain.remember_impact(if_changed=\u0027component\u0027, must_check=[\u0027dependents\u0027], because=\u0027reason\u0027). Map the ripple effects you noticed.",
+            "PATTERNS: What patterns or conventions did you observe? brain.remember_convention() for coding patterns. brain.remember(type=\u0027mental_model\u0027) for architectural insights. Name the pattern.",
+        ]
+
+        # Get checkpoint index from brain config (rotates 0, 1, 2, 0, 1, 2...)
+        try:
+            idx = int(brain.get_config("checkpoint_index", "0"))
+        except Exception:
+            idx = 0
+        focus = checkpoint_cycle[idx % len(checkpoint_cycle)]
+        brain.set_config("checkpoint_index", str((idx + 1) % len(checkpoint_cycle)))
+
+        # Get session encoding stats for context
+        try:
+            session_id = brain.get_config("current_session_id", "")
+            node_count = brain.conn.execute(
+                "SELECT COUNT(*) FROM nodes WHERE created_at > datetime(\u0027now\u0027, \u0027-2 hours\u0027)"
+            ).fetchone()[0]
+            uncert_count = brain.conn.execute(
+                "SELECT COUNT(*) FROM nodes WHERE type = \u0027uncertainty\u0027 AND created_at > datetime(\u0027now\u0027, \u0027-2 hours\u0027)"
+            ).fetchone()[0]
+            connect_count = brain.conn.execute(
+                "SELECT COUNT(*) FROM edges WHERE created_at > datetime(\u0027now\u0027, \u0027-2 hours\u0027)"
+            ).fetchone()[0]
+            stats = f"Session stats: {node_count} nodes, {uncert_count} uncertainties, {connect_count} connections."
+        except Exception:
+            stats = ""
+
         if severity == "urgent":
             print("")
-            print("ENCODING ALERT: " + msg)
-            print("Use brain.remember() to capture decisions, corrections, and learnings.")
+            print("ENCODING CHECKPOINT: " + msg)
+            if stats:
+                print(stats)
+            print(focus)
             print("")
         else:
             print("")
-            print("ENCODING NUDGE: " + msg)
+            print("ENCODING CHECKPOINT: " + msg)
+            if stats:
+                print(stats)
+            print(focus)
             print("")
 except Exception:
     pass

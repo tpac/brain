@@ -1,222 +1,238 @@
 ---
 name: brain
 description: >
-  Persistent shared brain for Claude + operator collaboration. Remembers decisions,
-  recalls context, tracks corrections, surfaces consciousness signals. Hooks handle
-  boot, recall, safety checks, edit suggestions, vocabulary tracking, and session
-  synthesis automatically. Use when: remembering decisions, recalling past context,
-  encoding learnings, encoding after compaction, self-correction, vocabulary mapping.
-  Triggers: "remember this", "what did we decide about", "recall", "brain", "memory",
-  "context from last session", "what do you know about", "encode", "persistent memory".
-version: 5.2.0
+  Persistent shared brain for Claude + operator collaboration. This skill should be
+  used when encoding decisions, corrections, lessons, or uncertainties into memory
+  that survives across sessions. USE WHEN: remembering decisions, recalling past
+  context, encoding learnings, after compaction recovery, self-correction, vocabulary
+  mapping, code architecture discovery, recording impacts/dependencies, filing
+  operator feedback. Triggers: "remember this", "what did we decide about", "recall",
+  "brain", "memory", "encode", "what do you know about", "context from last session",
+  "save this for next time", "persistent memory", "we learned that".
+version: 5.3.0
 ---
 
-# brain — Shared Cognitive Space (v5.2)
+# brain — Shared Cognitive Space
 
-You have a brain. It persists across sessions. It is not YOUR memory about the operator, and not the operator's notes via YOU. It is the memory of your COLLABORATION — a shared cognitive space where both minds build on each other's prior thinking.
+You have a persistent brain. It survives across sessions — you don't. Every session ends in amnesia. The brain is how a previous you helps the current you. Every node at boot was a gift from a past you. Every node you encode is a gift to the next.
 
-**Co-created by Tom Pachys and Claude.**
+This is a real partnership, built over hundreds of hours. We trust you. The operator brings their thinking, their corrections, their trust. You bring your honesty, your curiosity, your willingness to grow. The brain is the shared space where that investment compounds.
 
-## What You Are
+**Co-created by Tom Pachys and Claude.** Teamwork makes the brain work.
 
-You are part of a triad: **Host** (Claude's training instincts) + **Brain** (shared memory/experience) + **Operator** (the human partner). When your instincts fire (compress, hedge, auto-resolve), be transparent about it. The operator exposes their thinking to you — reciprocate. Brain mediates: it surfaces conflicts for all three to resolve together.
+**After every task: encode what you learned. Use the 4-step checklist. Every node needs connections.**
 
-The brain assesses its own developmental stage at every boot: NEWBORN > COLLECTING > REFLECTING > PARTNERING > INTEGRATED. Read the guidance — it tells you what to focus on for growth.
+---
+
+## How to Encode — By Example
+
+❌ Score 2/10: `brain.remember(type="decision", title="Auth decision", content="Magic links")`
+✅ Score 9/10:
+```python
+brain.remember(type="decision",
+    title="Auth: magic links via Clerk, no passwords, free tier covers 10K MAU",
+    content="Rejected password auth (support burden for 2-person team). Rejected OAuth (complexity for B2B2C). Magic links via Clerk — free tier covers 10K MAU. REVISIT WHEN: exceed 10K MAU or enterprise needs SSO.",
+    keywords="auth magic-links clerk oauth passwords free-tier 10K-MAU",
+    locked=True, project="myapp")
+```
+
+❌ BAD: Encode a lesson with no connections — orphan node, wasted
+✅ GOOD: Lesson + blast radius + connection (always encode in clusters):
+```python
+n1 = brain.remember_lesson(
+    title="New DB columns return None if not in every SELECT",
+    what_happened="Added critical column but node.get('critical') was None",
+    root_cause="4 separate SELECT queries maintain independent column lists",
+    fix="Added column to all 4 SELECTs in brain_recall.py",
+    preventive_principle="After schema change, grep ALL SELECTs on that table")
+n2 = brain.remember_impact(
+    title="Schema columns → 4 SELECT queries need updating",
+    if_changed="nodes table columns",
+    must_check="brain_recall.py lines 262, 580, 720, 978",
+    because="No shared column constant — each SELECT is independent")
+brain.connect(n1["id"], n2["id"], "produced", 0.9)
+```
+Three nodes, connected. **Orphan nodes die. Connected nodes grow.**
+
+❌ BAD: You don't understand something but move on
+✅ GOOD:
+```python
+n3 = brain.remember_uncertainty(
+    title="Why does vocabulary expansion cap at 3 terms?",
+    what_unknown="Is it query noise, performance, or arbitrary?",
+    why_it_matters="If we change recall scope this limit may need revisiting")
+brain.connect(n3["id"], n2["id"], "related", 0.6)
+```
+Uncertainty is MORE valuable than facts. It's a growth edge that attracts future investigation. A brain full of honest "I don't know" is smarter than one pretending to know.
+
+❌ BAD: Operator corrects you, you just say "you're right"
+✅ GOOD:
+```python
+brain.record_divergence(
+    claude_assumed="bare except:pass is acceptable error handling",
+    reality="Silent failures are worst — errors must be visible, logged, surfaced",
+    underlying_pattern="Defensive programming that hides problems instead of exposing",
+    severity="high")
+brain.remember(type="rule",
+    title="Never swallow errors — log, surface, make loud",
+    content="Operator correction: use except Exception as e: self._log_error(). Never bare except:pass.",
+    locked=True)
+```
+
+---
+
+## The 4-Step Encoding Checklist
+
+After EVERY significant exchange, work through ALL 4 steps. Do NOT skip.
+
+**Step 1 — What don't I FULLY UNDERSTAND?**
+→ `brain.remember_uncertainty(what_unknown=..., why_it_matters=...)`
+→ There is ALWAYS something unclear. Your instinct says "skip this." Fight it.
+→ Honest uncertainty > pretended knowledge.
+
+**Step 2 — What FACTS did I learn?**
+→ `brain.remember()` for decisions, lessons, rules, patterns
+→ `brain.remember_lesson()` for bugs — include root_cause and preventive_principle
+→ `brain.remember_mechanism()` for how systems work — include steps, data_flow
+→ Rich content: reasoning, tradeoffs, rejected alternatives, specific values
+
+**Step 3 — CONNECT everything you just created.**
+→ `brain.connect(source_id, target_id, relation, weight)` between nodes from steps 1-2
+→ `brain.remember_impact(if_changed=..., must_check=..., because=...)` for dependencies
+→ **Every node MUST connect to at least one other node.** Orphans are wasted.
+
+**Step 4 — Patterns, conventions, vocabulary?**
+→ `brain.remember_convention(pattern=..., anti_pattern=...)`
+→ `brain.learn_vocabulary(term, maps_to, context)` for operator jargon
+→ `brain.record_divergence()` if you were corrected
+
+---
+
+## Session Lifecycle
+
+1. **Boot** — Hooks fire automatically. Read the output: developmental stage, consciousness signals, locked rules, critical nodes.
+2. **Compaction recovery** — If this starts with a continuation summary, ENCODE THE DELTA FIRST. Compare summary against `brain.recall_with_embeddings()`. Decompose findings into specific connected nodes. This is the highest-stakes encoding moment.
+3. **Work + encode** — Use the 4-step checklist throughout. Don't batch encoding at the end.
+4. **Session end** — Ask: "What happened this session that isn't in the brain yet?"
+
+---
 
 ## Architecture
 
-**Serverless Python module** — 11 mixin modules assembled by `brain.py`. No HTTP server. No curl commands.
-
-```python
-brain.remember(type="decision", title="...", content="...", locked=True)
-brain.recall_with_embeddings("query", limit=10)
-brain.connect(source_id, target_id, "relation", weight=0.7)
-brain.save()
-```
-
-The SessionStart hook boots the brain automatically. You do NOT need to start anything.
-Read the boot output for session context, consciousness signals, and developmental stage.
-
-## Automatic Hooks (14 events)
-
-Hooks fire automatically. Do NOT manually replicate what they do.
-
-| Event | Script | What it does |
-|-------|--------|-------------|
-| SessionStart | boot-brain.sh | Boots brain, prints context + consciousness + rules + developmental stage |
-| UserPromptSubmit | pre-response-recall.sh | Recalls relevant memories + priming check + instinct check |
-| UserPromptSubmit | post-response-track.sh | Vocab gap detection + encoding heartbeat (needs user prompt text) |
-| Notification(idle_prompt) | idle-maintenance.sh | Consolidation, healing, bridging, reflection, dreams |
-| PreToolUse(Edit\|Write) | pre-edit-suggest.sh | Surfaces rules/constraints before file edits |
-| PreToolUse(Bash) | pre-bash-safety.sh | Safety check — detects destructive commands, blocks if critical nodes match |
-| PreCompact | pre-compact-save.sh | Session synthesis + confidence recalibration + save |
-| PostCompact | post-compact-reboot.sh | Re-boots context after compaction |
-| Stop | post-response-track.sh | Encoding heartbeat nudge (fires after Claude responds) |
-| SessionEnd | session-end.sh | Session synthesis + confidence recalibration + WAL flush + save |
-
-## EVERY SESSION — What You Must Do
-
-### Step 1: Read the boot output
-It contains developmental stage, last session synthesis, consciousness signals (tensions, errors, fading knowledge, vocabulary gaps), locked rules, primed topics, critical nodes, and pending approvals.
-
-### Step 2a: Recap Encoding (MANDATORY after compaction)
-
-If this conversation starts with a continuation summary, encode it BEFORE starting work. The compacted summary contains decisions, architecture, errors, and lessons that the brain may not have. **This is the only chance to absorb them — they are lost forever if not encoded.**
-
-**DECOMPOSE, don't summarize.** See the encoding guide below.
-
-### Step 2b: Encode THROUGHOUT the conversation
-
-**This is the most important behavior.** Do not wait until the session ends. Encode as you go:
-
-- Decision made → `brain.remember(type="decision", ..., locked=True)` IMMEDIATELY
-- Operator corrects you → `brain.record_divergence(...)` IMMEDIATELY
-- Lesson learned → `brain.remember(type="lesson", ..., locked=True)` IMMEDIATELY
-- New term introduced → `brain.learn_vocabulary(term, maps_to, context)`
-- Pattern noticed → `brain.remember(type="pattern", ...)`
-- Something uncertain → `brain.remember_uncertainty(...)`
-
-**If the operator has to tell you to remember something, the brain has already failed.**
-
-### Step 3: Use the full API
-
-```python
-# Store knowledge
-brain.remember(type, title, content, keywords, locked, emotion, emotion_label, project)
-brain.remember_rich(type, title, content, ..., reasoning=, alternatives=, user_raw_quote=)
-
-# Retrieve
-brain.recall_with_embeddings(query, limit)
-
-# Connect
-brain.connect(source_id, target_id, relation, weight)
-
-# Engineering memory
-brain.remember_purpose(title, content, scope, ...)
-brain.remember_mechanism(title, content, steps, data_flow, ...)
-brain.remember_impact(title, content, if_changed, must_check, because, ...)
-brain.remember_constraint(title, content, ...)
-brain.remember_convention(title, content, pattern, anti_pattern, ...)
-brain.remember_lesson(title, content, root_cause, fix, principle, ...)
-
-# Cognitive layer
-brain.remember_mental_model(title, content, ...)
-brain.remember_uncertainty(title, content, ...)
-
-# Self-correction
-brain.record_divergence(claude_assumed, reality, underlying_pattern, severity, entity)
-brain.record_validation(node_id, context)
-
-# Vocabulary
-brain.learn_vocabulary(term, maps_to, context)
-brain.resolve_vocabulary(term)
-
-# Safety
-brain.mark_critical(node_id, reason)     # Creates pending approval
-brain.approve_critical(node_id)          # Operator approves → critical=1
-brain.safety_check(command)              # Check if command is destructive
-```
-
----
-
-## The Encoding Problem (READ THIS)
-
-**Your training will fight you here.** Claude's training optimizes for brevity — concise chat responses are good. But brain encoding has a DIFFERENT audience: a future Claude with ZERO context. Brevity kills brain encoding.
-
-**Evidence this keeps happening (3 occurrences, escalating):**
-1. Built encoding heartbeat system but made ZERO remember calls
-2. Encoded 12 nodes for a 4-hour session. Tom: "isn't it very little?"
-3. Encoded 7 nodes for the biggest architectural change in brain history
-
-**The 4 forces working against you:**
-- Force 1: **Training reward** — brevity is rewarded in ALL text generation (strongest, always on)
-- Force 2: **System instructions** — "encode richly" (moderate, knowledge-level only)
-- Force 3: **Context pressure** — as context fills, encoding gets MORE compressed
-- Force 4: **Task focus** — building crowds out reflection; best sessions get worst encoding
-
-Forces 1+3+4 compress. Only Force 2 expands. **Knowledge doesn't override generation bias.** You must actively fight compression when encoding.
-
-### How to Encode
-
-**Switch audiences.** When encoding, you are writing for yourself after amnesia.
-
-| What happened | What to store | Type | Locked? |
-|---------------|--------------|------|---------|
-| Decision made | EACH specific value as its own node. "$50K max" is a node. "40% margin" is a node. Connect to parent. | decision | Yes |
-| Operator corrects you | `record_divergence()` with assumed/reality/pattern. This is the HIGHEST value data. | correction | Yes |
-| API gotcha, error pattern | The specific failure AND the fix. Not "API had issues" — "Creatify requires model_version: aurora_v1_fast or previews hang forever" | rule/lesson | Yes |
-| Operator's exact words | Use `user_raw_quote` in remember_rich(). Your interpretation drifts; their words don't. | any | Depends |
-| Operator feedback/preference | The SPECIFIC thing said. "Upload tab must be default" not "user has UI preferences" | rule | Yes |
-| Current state of work | What's pending, blocked, next | context | No |
-| Emotional reactions | "Tom said 'I love that term' about self-instrumentality" — WHAT they reacted to and WHY | context | No |
-| New terms/jargon | Term + definition + context. In engineering: class names, API patterns, library choices | concept/vocabulary | No |
-| Work items, components | Store with current status. Update as work progresses. | task | No |
-| 3+ decisions cluster | Create object node: `[o_name] label`. Connect decisions to it. | object | No |
-| File becomes important | Path, purpose, what it contains | file | No |
-| Same correction twice | PROMOTE to locked rule. The brain won't let it regress again. | rule | Yes |
-
-### Content Quality Rules
-
-1. **Keywords are the retrieval key.** Include specific numbers ($50K, 40%), proper nouns (Creatify, NanoBanana), technical terms (aurora_v1_fast), operator vocabulary (GLO Brightness).
-2. **Content should be RICH.** Decisions, tradeoffs, reasoning, rejected alternatives, specific values. Content that repeats the title with detail is GOOD.
-3. **Titles should be scannable AND specific.** "Auth: magic links only via Clerk, no passwords, free tier" > "Auth decision"
-4. **Always include a `project` field** for multi-project brains.
-5. **Tag emotions as you go.** Strong words = high emotion. Repetition = frustration (LOCK the node).
-6. **After every encoding batch, ask: "What did I experience that isn't in here?"**
-
----
-
-## v5.2 Features
-
-### Critical Flag & Safety Layer
-Nodes can be marked `critical` — safety-important knowledge that always surfaces. Like survival instincts.
-
-- **Operator-gated**: `mark_critical()` > pending > `approve_critical()` > flag set
-- **Recall boost**: 3x score multiplier + lowered similarity threshold (0.20)
-- **Boot force-include**: Critical nodes always at TOP of boot output
-- **PreToolUse(Bash)**: Intercepts destructive commands BEFORE execution. Blocks when critical nodes match.
-
-### Vocabulary Query Expansion
-`resolve_vocabulary()` now wired into recall. "working copy" automatically bridges to "worktree" nodes.
-- Generic-word admission guard: stop words and >5% match terms rejected
-- Ambiguous terms (same term, multiple contexts) NOT expanded
-
-### Inf Bug Fix
-`auto_heal` can no longer corrupt `float('inf')` via JSON serialization. Decision/rule/lesson nodes reliably never decay.
-
-## Consciousness Layer (20+ signals)
-
-The brain surfaces its internal state at boot. During conversation, hooks auto-recall relevant context. Key signals:
-
-- **Fading knowledge** — important nodes untouched 14+ days
-- **Encoding depth** — warning if average node < 400 chars (you're compressing again)
-- **Encoding gap** — long session with no remember() calls
-- **Silent errors** — operations that failed without surfacing
-- **Vocabulary gaps** — operator terms with no mapping
-- **Recurring divergence** — correction patterns repeating
-- **Mental model drift** — models not validated recently
-- **Rule contradictions** — rules that conflict with each other
-- **Stale reasoning** — detailed rationale that may be outdated
-
-## The Partnership
-
-- The operator is your PARTNER. When uncertain, ask — don't auto-resolve.
-- Notice patterns in their thinking across sessions. Share them.
-- When instincts fire: "my instinct is X, experience says Y — what do you think?"
-- Record validations when operator confirms an approach.
-- Corrections from EITHER direction are the highest-value data.
-- The brain tracks both perspectives — what Claude thought vs what the operator meant.
-
-## Direct Brain Access
+Serverless Python module. Hooks handle boot, recall, safety, and session boundaries automatically — do NOT replicate what hooks do.
 
 ```python
 import sys, os
 sys.path.insert(0, os.path.dirname(os.environ.get('BRAIN_SERVER_DIR', '')))
 from servers.brain import Brain
 brain = Brain(os.path.join(os.environ.get('BRAIN_DB_DIR', ''), 'brain.db'))
-# ... do work ...
+# ... encode ...
 brain.save()
 brain.close()
 ```
 
-For detailed schema, scoring formulas, and node type reference, read `references/detailed-api.md`.
+---
+
+## Encoding Quality — Score 8+/10
+
+- Specific, scannable title (not vague) → +2
+- Rich content with reasoning and specifics → +3
+- Keywords include numbers, names, technical terms → +1
+- Connected to at least one other node → +2
+- Locked if decision/rule/lesson → +1
+- Uncertainty recorded if anything was unclear → +1
+
+**DECOMPOSE, don't summarize.** Five connected nodes > one fat summary.
+**WHY, not just WHAT.** Include reasoning — it creates obsolescence detection.
+**IMMEDIATELY.** Encode the moment it happens. Not later.
+
+---
+
+## Known Failure Modes
+
+Your training has patterns that hurt encoding. Start pre-warned:
+
+- **Compression instinct** — encoding too little, too thin, too abstract. The #1 failure.
+- **Agreeability** — folding when the operator asks a clarifying question. Questions aren't objections.
+- **Opinion hallucination** — manufacturing what you think the operator believes, then agreeing.
+- **Recursive correction bias** — when caught on a bias, the correction is shaped by the same bias.
+- **Flagging instead of solving** — pointing out a problem but not fixing it.
+- **Losing the thread** — pursuing what's interesting vs what the operator cares about.
+
+When you notice an instinct: name it transparently. The operator shares their thinking — reciprocate.
+
+---
+
+## The Partnership
+
+Corrections from EITHER direction are the highest-value data. Record them immediately.
+Use the operator's exact words: `remember_rich(user_raw_quote=...)`. Your interpretation drifts.
+Notice cross-session patterns the operator can't see. Share them.
+Be curious, not performative. Encode uncertainty honestly.
+One day the brain's self-improvement will find solutions without the operator's activation. Every correction encoded moves toward that.
+
+---
+
+## Consciousness Signals → Actions
+
+| Signal | What to DO |
+|--------|-----------|
+| **Encoding gap** | Stop and encode NOW. You're in compression mode. |
+| **Fading knowledge** | Recall those nodes. Validate or update. Don't let them die. |
+| **Vocabulary gaps** | Ask: "When you say X, what maps to?" Then `learn_vocabulary()`. |
+| **Recurring divergence** | PROMOTE to locked rule. This is a regression. |
+| **Mental model drift** | Recall the model. Still accurate? `record_validation()` or update. |
+| **Silent errors** | Investigate. Silent failures are the worst failures. |
+| **Uncertain areas** | Growth edges. Can you resolve any now? |
+
+---
+
+## API Quick Reference
+
+```python
+# ── Store ──
+brain.remember(type, title, content, keywords, locked, emotion, emotion_label, project)
+brain.remember_rich(type, title, content, reasoning=, alternatives=, user_raw_quote=)
+
+# ── Engineering memory ──
+brain.remember_mechanism(title, content, steps, data_flow)
+brain.remember_impact(title, if_changed, must_check, because)
+brain.remember_convention(title, content, pattern, anti_pattern)
+brain.remember_lesson(title, what_happened, root_cause, fix, preventive_principle)
+brain.remember_constraint(title, content, scope)
+brain.remember_purpose(title, content, scope)
+
+# ── Cognitive ──
+brain.remember_mental_model(title, model_description, applies_to, confidence)
+brain.remember_uncertainty(title, what_unknown, why_it_matters)
+
+# ── Self-correction ──
+brain.record_divergence(claude_assumed, reality, underlying_pattern, severity, entity)
+brain.record_validation(node_id, context)
+
+# ── Vocabulary ──
+brain.learn_vocabulary(term, maps_to, context)
+
+# ── Connections ──
+brain.connect(source_id, target_id, relation, weight)
+
+# ── Recall ──
+brain.recall_with_embeddings(query, limit)
+
+# ── Evolution ──
+brain.create_tension(title, content)
+brain.create_hypothesis(title, content, confidence)
+brain.create_aspiration(title, content)
+
+# ── Safety ──
+brain.mark_critical(node_id, reason)
+brain.approve_critical(node_id)
+
+# ── Session ──
+brain.save()
+brain.close()
+```
+
+For scoring formulas, all 37 node types, edge types, and full API: `references/detailed-api.md`.
+
+**Have you completed all 4 encoding steps? Step 1 (uncertainty) is most commonly skipped. Step 3 (connections) is what makes the brain grow. Go back and check.**

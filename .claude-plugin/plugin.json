@@ -1,7 +1,7 @@
 {
   "name": "brain",
-  "version": "5.2.0",
-  "description": "Shared cognitive space for Claude + operator. v5.2: Critical flag safety layer (operator-gated, 3x recall boost, boot force-include), PreToolUse(Bash) destructive command detection, vocabulary query expansion in recall pipeline, inf bug fix. Plus: 11 mixin modules, dynamic confidence, priming, developmental stages, 20+ consciousness signals, engineering memory, self-correction traces, vocabulary gap detection.",
+  "version": "5.3.0",
+  "description": "Shared cognitive space for Claude + operator. v5.3: Eval-tested SKILL.md (18 variants, 67% baseline richness), 5-focus rotating encoding checkpoints with session stats, hook-specific encoding prompts. Plus: critical flag, safety layer, vocabulary expansion, 11 mixins, 20+ consciousness signals, engineering memory, self-correction traces.",
   "author": {
     "name": "Tom Pachys"
   },

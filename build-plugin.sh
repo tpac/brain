@@ -1,10 +1,10 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-# brain v5.2.0 — Serverless plugin builder
+# brain v5.3.0 — Serverless plugin builder
 # Packs exactly what belongs in the .plugin file. Nothing else.
 #
-# v5.2: Critical flag, PreToolUse(Bash) safety, vocabulary expansion,
-#        inf bug fix. Plus v5.1 mixin architecture, confidence dynamics.
+# v5.3: Eval-tested SKILL.md, 5-focus rotating checkpoints, session stats.
+#        Plus v5.2 critical flag, safety layer, vocabulary expansion.
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 

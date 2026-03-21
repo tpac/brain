@@ -53,3 +53,4 @@ archives/
 
 # Design docs and session handoffs (not part of plugin source)
 docs/
+eval/results/
