@@ -132,7 +132,7 @@ try:
 
     lines.append("Use this context to inform your response. Call /remember for new decisions.")
     context = "\n".join(lines)
-    print(json.dumps({"decision": "approve", "reason": context}))
+    print(json.dumps({"additionalContext": context}))
 
 except Exception as e:
     # Daemon failed — signal to fall through to direct Python
@@ -402,7 +402,7 @@ try:
 
     brain.save()
     brain.close()
-    print(json.dumps({"decision": "approve", "reason": context}))
+    print(json.dumps({"additionalContext": context}))
 
 except Exception:
     try:

@@ -63,6 +63,49 @@ try:
                     output.append("  %s" % item.get("title", "")[:80])
                 output.append("")
 
+    # v5.3: Recall recent session context — what was Claude working on before compaction?
+    # Use last_synthesis + recall to recover working context
+    try:
+        synth_resp = daemon_call("last_synthesis")
+        recall_query = ""
+        if synth_resp.get("ok"):
+            synth = synth_resp.get("result", {})
+            # Build recall query from synthesis
+            parts = []
+            for key in ("decisions_made", "corrections_received", "open_questions"):
+                val = synth.get(key, "")
+                if val and val != "[]":
+                    parts.append(str(val)[:150])
+            if parts:
+                recall_query = " ".join(parts)[:500]
+
+        # If no synthesis, try recalling recent config hints
+        if not recall_query:
+            try:
+                task_resp = daemon_call("get_config", {"key": "current_task", "default": ""})
+                if task_resp.get("ok") and task_resp.get("result"):
+                    recall_query = str(task_resp["result"])[:500]
+            except Exception:
+                pass
+
+        if recall_query:
+            recall_resp = daemon_call("recall", {"query": recall_query, "limit": 8})
+            if recall_resp.get("ok"):
+                recall_results = recall_resp.get("result", {}).get("results", [])
+                if recall_results:
+                    output.append("RECALLED CONTEXT (related to recent work):")
+                    for r in recall_results[:6]:
+                        typ = r.get("type", "?")
+                        title = r.get("title", "")[:70]
+                        content = r.get("content", "")
+                        if len(content) > 200: content = content[:200] + "..."
+                        locked = "LOCKED " if r.get("locked") else ""
+                        output.append("  [%s] %s%s" % (typ, locked, title))
+                        output.append("    %s" % content)
+                        output.append("")
+    except Exception:
+        pass
+
     output.append("Brain is live. Context was compacted — you lost conversation history.")
     output.append("The brain persists. Use brain.recall_with_embeddings() to recover context.")
     print("\n".join(output))
@@ -192,6 +235,54 @@ try:
         if dev:
             output.append("STAGE: %s (%.0f%%)" % (dev.get("stage_name", "?"), dev.get("maturity_score", 0) * 100))
             output.append("")
+    except Exception:
+        pass
+
+    # v5.3: Recall context related to recent work — what was Claude doing before compaction?
+    try:
+        # Build recall query from recent nodes + synthesis
+        recall_query_parts = []
+
+        # Recent node titles (last 2 hours)
+        recent_rows = brain.conn.execute(
+            "SELECT title FROM nodes WHERE created_at > datetime('now', '-2 hours') ORDER BY created_at DESC LIMIT 5"
+        ).fetchall()
+        for row in recent_rows:
+            if row[0]:
+                recall_query_parts.append(row[0])
+
+        # Synthesis decisions/corrections
+        if synth_row:
+            for field_idx in (1, 2):  # decisions_made, corrections_received
+                val = synth_row[field_idx]
+                if val and val != "[]":
+                    recall_query_parts.append(str(val)[:150])
+
+        if recall_query_parts:
+            recall_query = " ".join(recall_query_parts)[:500]
+            try:
+                result = brain.recall_with_embeddings(query=recall_query, limit=8)
+            except Exception:
+                result = brain.recall(query=recall_query, limit=8)
+
+            recall_results = result.get("results", [])
+            # Filter out very recent nodes (already captured in synthesis)
+            recent_ids = {r[0] if len(r) > 0 else None for r in brain.conn.execute(
+                "SELECT id FROM nodes WHERE created_at > datetime('now', '-2 hours')"
+            ).fetchall()}
+            new_recall = [r for r in recall_results if r.get("id") not in recent_ids]
+
+            if new_recall:
+                output.append("RECALLED CONTEXT (related to recent work):")
+                for r in new_recall[:6]:
+                    typ = r.get("type", "?")
+                    title = r.get("title", "")[:70]
+                    content = r.get("content", "")
+                    if len(content) > 200: content = content[:200] + "..."
+                    locked = "LOCKED " if r.get("locked") else ""
+                    output.append("  [%s] %s%s" % (typ, locked, title))
+                    output.append("    %s" % content)
+                    output.append("")
     except Exception:
         pass
 
