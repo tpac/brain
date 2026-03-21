@@ -64,6 +64,29 @@ The actual DB path is printed in the boot output. Do not guess paths.
 5. **Let hooks do their job** — don't manually call suggest before edits (the PreToolUse hook does it), don't manually save (hooks save at compaction and session end).
 6. **One refactor per session.** Commit before compaction. Update REFACTORING.md when done.
 
+## Test Integrity Rule
+
+**When a test fails, STOP. Do not change the test OR the code to make it pass.** This is a hard rule.
+
+If a test fails:
+1. **Stop.** Do not change anything.
+2. **Report to the user:** what the test expected vs what the code returned.
+3. **Ask:** "Is the test expectation wrong, or does the code have a bug?"
+4. **Wait for the answer** before proceeding.
+
+This applies in BOTH directions:
+- **Do NOT weaken the test** — changing `assertEqual(0.7)` to `assertGreater(0)`, removing assertions, adding `try/except` around assertions.
+- **Do NOT "fix" the code to satisfy a test** — the test might be wrong, or the "fix" might break something else. Only the user can decide which side is correct.
+
+Exception: tests you JUST wrote in the same session that fail on first run — you may fix those since they have no history. But if an EXISTING test that was previously passing starts failing, that's a regression signal. Stop and report.
+
+If you must adjust a test or code after user approval, add a comment explaining why:
+```python
+# ADJUSTED: weight is 0.3 not 0.7 because Hebbian learning applies on connect()
+# Confirmed with Tom 2026-03-21 — this is expected behavior
+self.assertAlmostEqual(edge[2], 0.3, places=1)
+```
+
 ## Common Mistakes
 
 - Using `curl` commands — there is no HTTP server

@@ -1,6 +1,18 @@
 """
 Comprehensive Brain Tests — Deep coverage of all subsystems.
 
+!! IMPORTANT — TEST INTEGRITY RULE (read before modifying) !!
+If a test in this file FAILS, do NOT change the test or the code to make it pass.
+Stop and report to the user: what the test expected vs what the code returned.
+Ask: "Is the test wrong, or does the code have a bug?" Wait for the answer.
+This applies to ALL tests — weakening assertions or "fixing" code to satisfy
+tests without user approval masks regressions. See CLAUDE.md for full rule.
+
+When ADDING new tests, always include a comment explaining:
+  1. What the expected value is and WHY (not just WHAT)
+  2. Whether the value was verified empirically or from documentation
+  3. Date of last verification
+
 Written with full architectural context from the v5.3.1 session (2026-03-21).
 Covers gaps identified in the test inventory:
 
@@ -194,7 +206,10 @@ class TestConsciousnessSignals(BrainTestBase):
         """get_consciousness_signals() returns dict with all signal categories."""
         signals = self.brain.get_consciousness_signals()
         self.assertIsInstance(signals, dict)
-        # Core signal categories that must always exist
+        # These 10 signal categories are always present in the return dict
+        # (values may be empty lists/None, but keys must exist).
+        # Source: brain_consciousness.py ConsciousnessMixin.get_consciousness_signals()
+        # Each category maps to a specific SQL query in that method.
         expected_keys = [
             'reminders', 'evolutions', 'fading', 'stale_context_count',
             'failure_modes', 'performance', 'capabilities', 'interactions',
@@ -215,9 +230,10 @@ class TestConsciousnessSignals(BrainTestBase):
     def test_fading_knowledge_requires_age_and_access(self):
         """Fading signal only fires for old, accessed, unlocked nodes."""
         signals = self.brain.get_consciousness_signals()
-        # Our freshly-created nodes shouldn't appear as fading
         fading = signals.get('fading', [])
-        # None of our test nodes should be fading (they're all just created)
+        # Fading requires: unlocked, access_count >= 3, last_accessed > 14 days ago,
+        # type NOT IN (context, thought, intuition). Fresh nodes fail the age check.
+        # Source: brain_consciousness.py line ~50, SQL WHERE clause.
         self.assertEqual(len(fading), 0,
                          "Fresh nodes should not appear as fading knowledge")
 
@@ -343,7 +359,10 @@ class TestDreamConsolidateHeal(BrainTestBase):
 
     def test_auto_heal_locks_high_access_nodes(self):
         """auto_heal() auto-locks unlocked nodes with access_count >= 10."""
-        # Create a high-access unlocked node
+        # auto_heal section 1c: locks orphan beliefs with access_count >= 10.
+        # Excludes types: task, context, file, intuition, person, project, decision.
+        # 'lesson' type is eligible for auto-lock.
+        # Source: brain_evolution.py auto_heal() EXCLUDE_ORPHAN_TYPES.
         n = self.brain.remember(type='lesson', title='Frequently accessed lesson',
                                 content='Accessed many times.', keywords='frequent access')
         node_id = n['id']
@@ -353,7 +372,6 @@ class TestDreamConsolidateHeal(BrainTestBase):
 
         result = self.brain.auto_heal()
 
-        # Check node is now locked
         locked = self.brain.conn.execute(
             "SELECT locked FROM nodes WHERE id = ?", (node_id,)
         ).fetchone()[0]
@@ -362,6 +380,10 @@ class TestDreamConsolidateHeal(BrainTestBase):
 
     def test_auto_heal_does_not_corrupt_locked_nodes(self):
         """auto_heal() never deletes or archives locked nodes."""
+        # INVARIANT: locked node count can only increase (via auto-lock), never decrease.
+        # auto_heal's merge_duplicate only archives the OLDER of two near-duplicates,
+        # and keeps the newer. Both must be locked for merge to trigger.
+        # Even in merge, one survives — so net locked count stays same or increases.
         locked_before = self.brain.conn.execute(
             "SELECT COUNT(*) FROM nodes WHERE locked = 1 AND archived = 0"
         ).fetchone()[0]
@@ -371,7 +393,6 @@ class TestDreamConsolidateHeal(BrainTestBase):
         locked_after = self.brain.conn.execute(
             "SELECT COUNT(*) FROM nodes WHERE locked = 1 AND archived = 0"
         ).fetchone()[0]
-        # Locked count can only go up (auto-lock), never down
         self.assertGreaterEqual(locked_after, locked_before,
                                 "auto_heal must never archive locked nodes")
 
@@ -475,12 +496,13 @@ class TestEngineeringMemoryTypes(BrainTestBase):
 
     def test_remember_purpose(self):
         """remember_purpose() creates locked purpose node with scope."""
+        # remember_purpose() always auto-locks because purposes are foundational.
+        # Source: brain_engineering.py remember_purpose() passes locked=True.
         n = self.brain.remember_purpose(
             title='brain.py is the core engine',
             content='Constructor, schema, mixin assembly.',
             scope='file')
         self.assertEqual(n['type'], 'purpose')
-        # Should be auto-locked
         locked = self.brain.conn.execute(
             "SELECT locked FROM nodes WHERE id = ?", (n['id'],)
         ).fetchone()[0]
@@ -488,12 +510,13 @@ class TestEngineeringMemoryTypes(BrainTestBase):
 
     def test_remember_mechanism_with_steps(self):
         """remember_mechanism() enriches content with steps."""
+        # remember_mechanism() appends "Steps: step1 → step2 → ..." to content.
+        # Source: brain_engineering.py remember_mechanism(), the ' → '.join(steps) line.
         n = self.brain.remember_mechanism(
             title='Recall pipeline',
             content='Multi-stage retrieval.',
             steps=['embed query', 'cosine scan', 'keyword fallback', 'blend', 'rank'])
         self.assertEqual(n['type'], 'mechanism')
-        # Content should include the steps
         node = self.brain.conn.execute(
             "SELECT content FROM nodes WHERE id = ?", (n['id'],)
         ).fetchone()
@@ -733,23 +756,28 @@ class TestSchemaIntegrity(BrainTestBase):
 class TestDevelopmentalStages(BrainTestBase):
     """Test brain developmental stage assessment."""
 
-    def test_empty_brain_is_nascent(self):
-        """Fresh brain should be early stage."""
+    def test_empty_brain_is_newborn(self):
+        """Fresh brain should be stage 1 / NEWBORN with 0 maturity."""
         stage = self.brain.assess_developmental_stage()
         self.assertIsInstance(stage, dict)
-        self.assertIn('stage', stage)
-        # With 0 nodes, should be early stage (exact name may vary)
-        self.assertIsNotNone(stage['stage'])
+        # NOTE: Empty brain returns stage=1, stage_name='NEWBORN', maturity_score=0.0.
+        # These are exact values, not approximations. Confirmed with Tom 2026-03-21.
+        self.assertEqual(stage['stage'], 1)
+        self.assertEqual(stage['stage_name'], 'NEWBORN')
+        self.assertEqual(stage['maturity_score'], 0.0)
 
     def test_rich_brain_advances_stage(self):
-        """Brain with many locked nodes should be more advanced."""
+        """Brain with many locked nodes should advance past NEWBORN."""
         _seed_rich_brain(self.brain, node_count=50)
         stage = self.brain.assess_developmental_stage()
-        # Should have stage info and be more advanced than empty brain
-        self.assertIn('stage', stage)
-        # With 50+ nodes, maturity should exist (may be nested)
-        stage_str = json.dumps(stage, default=str)
-        self.assertGreater(len(stage_str), 10, "Stage should have meaningful data")
+        # NOTE: With 50+ nodes (mostly shallow test content), brain reaches
+        # stage 2 / COLLECTING with maturity ~0.11. Exact maturity depends on
+        # content richness, but stage must be > 1 and maturity > 0.
+        # Confirmed with Tom 2026-03-21.
+        self.assertGreaterEqual(stage['stage'], 2)
+        self.assertGreater(stage['maturity_score'], 0)
+        self.assertIn(stage['stage_name'], ['COLLECTING', 'DEVELOPING', 'REFLECTING',
+                                             'PARTNERING', 'INTEGRATED'])
 
     def test_stage_includes_node_stats(self):
         """Developmental stage includes node/edge statistics."""
@@ -780,8 +808,11 @@ class TestEdgeSemantics(BrainTestBase):
         ).fetchone()
         self.assertIsNotNone(edge, "Edge should be created")
         self.assertEqual(edge[0], 'related')
-        # Weight may be adjusted by Hebbian learning, just check it's positive
-        self.assertGreater(edge[2], 0)
+        # NOTE: connect() applies Hebbian learning on first creation.
+        # connect(weight=0.7) stores ~0.3 (LEARNING_RATE * requested_weight).
+        # The requested weight is NOT stored as-is. This is by design.
+        # Confirmed with Tom 2026-03-21.
+        self.assertAlmostEqual(edge[2], 0.3, places=1)
 
     def test_weight_clamps_to_valid_range(self):
         """Edge weights should be clamped to [0, MAX_WEIGHT]."""
@@ -878,7 +909,10 @@ class TestCrossSessionPersistence(unittest.TestCase):
                 (a['id'], b['id'])
             ).fetchone()
             self.assertIsNotNone(edge, "Edge should persist")
-            self.assertGreater(edge[0], 0, "Edge weight should be positive")
+            # NOTE: connect(weight=0.8) stores ~0.3 due to Hebbian learning rate.
+            # We're testing persistence, not the exact weight — but using the real value.
+            # Confirmed with Tom 2026-03-21.
+            self.assertAlmostEqual(edge[0], 0.3, places=1)
         finally:
             brain2.close()
 
