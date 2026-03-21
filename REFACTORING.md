@@ -12,32 +12,25 @@ Start a new session. Say "open REFACTORING.md and pick one target." One target p
 
 ### 1. `mark_recall_used()` not implemented
 
-**Status:** Not started
-**Files:** `servers/brain_recall.py`, `servers/brain_engineering.py`, `servers/daemon_hooks.py`
+**Status:** Completed (2026-03-21) — replaced with `brain_precision.py` module
+**Files:** `servers/brain_precision.py` (NEW), `servers/brain_recall.py`, `servers/brain_engineering.py`, `servers/daemon_hooks.py`
 
-The recall precision feedback loop is dead:
-- `recall_log` schema has `used_ids`, `used_count`, `precision_score` columns
-- `recall_with_embeddings()` returns `_recall_log_id` with every result
-- **Nothing ever writes back** to update the row
-- The consciousness signal in `brain_engineering.py:1563` checks `used_count > 0` — always finds 0
-- Signal generator currently gated (`if useful > 0`) as workaround so it doesn't fire false 0% alarms
+The recall precision feedback loop was dead. Fixed by:
+1. Created `servers/brain_precision.py` — `RecallPrecision` class owns all `recall_log` access
+2. Three-signal evaluation model: Claude's response (stub), user followup (stub), explicit feedback (active)
+3. Decoupled `_log_recall()` from `recall_with_embeddings()` — hooks call precision module explicitly
+4. Wired into `hook_recall()` (two-turn followup) and `hook_post_response_track()` (response storage)
+5. Consciousness reads `get_precision_summary()` instead of raw SQL
+6. 24 tests in `tests/test_precision.py`
 
-**To fix:**
-1. Add `Brain.mark_recall_used(recall_log_id, used_ids)` method
-2. In `hook_post_response_track()`: compare recalled node IDs against response content, call mark with matches
-3. Remove the `if useful > 0` gate in `brain_engineering.py`
-4. Add test in `test_system.py`
+**Follow-up needed:** LLM evaluator to replace `pending_llm` stubs in evaluate_response/evaluate_followup.
 
 ### 2. `dal.py` log_recall() column mismatch
 
-**Status:** Not started
-**Files:** `servers/dal.py:141`, `servers/schema.py:742`, `servers/brain_recall.py:1165`
+**Status:** Deprecated (2026-03-21) — superseded by `RecallPrecision.log_recall()`
+**Files:** `servers/dal.py:141`
 
-Two code paths write to `recall_log` with different column names:
-- `dal.py:141` uses `result_ids` and `intent` (columns that **don't exist** in schema)
-- `brain_recall.py:1165` uses `returned_ids` and `returned_count` (correct)
-
-**To fix:** Align `dal.py` to match schema, or remove `dal.py`'s `log_recall()` entirely since `brain_recall.py` handles it.
+`dal.py`'s `log_recall()` uses wrong column names and is now bypassed. Marked deprecated with a comment pointing to `brain_precision.py`. No new callers should use it.
 
 ---
 
@@ -92,6 +85,8 @@ TODO comment about removing auto-install once brain-embedding package is on PyPI
 
 ## Completed
 
+- [x] **Recall precision module** (2026-03-21) — `brain_precision.py` with three-signal evaluation model, 24 tests, hooks wired, consciousness reads summary
+- [x] **dal.py log_recall deprecated** (2026-03-21) — superseded by `RecallPrecision.log_recall()`, wrong column names marked as deprecated
 - [x] **Daemon consolidation** (v5.3.1, 2026-03-21) — 13 hooks centralized into `daemon_hooks.py`, ~3100 lines of duplicated code eliminated
 - [x] **Recall precision signal gated** (2026-03-21) — `brain_engineering.py` now only fires recall precision signal when `useful > 0`, preventing false 0% alarms
 - [x] **Stale 0% performance node deleted** (2026-03-21) — removed bogus consciousness node from live brain

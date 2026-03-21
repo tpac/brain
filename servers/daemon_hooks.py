@@ -112,6 +112,19 @@ def _drain_graph_changes(graph_changes):
     return changes
 
 
+def _get_precision(brain):
+    """Get or create a RecallPrecision instance cached on the brain object.
+
+    Caching avoids re-running _ensure_columns() on every hook invocation.
+    The instance is garbage collected if the brain object is replaced
+    (e.g., daemon restart).
+    """
+    if not hasattr(brain, '_precision') or brain._precision is None:
+        from servers.brain_precision import RecallPrecision
+        brain._precision = RecallPrecision(brain.logs_conn, brain.conn)
+    return brain._precision
+
+
 def _format_recall_results(results, lines):
     """Format recall results into output lines."""
     evolution_results = [r for r in results if r.get("type") in EVOLUTION_TYPES]
@@ -288,10 +301,24 @@ def hook_recall(brain, args, graph_changes):
     aspirations, hypotheses, tensions, instincts, pending messages, graph changes.
     """
     user_message = args.get("prompt", "") or args.get("message", "")
+    session_id = brain.get_config("session_id", "ses_unknown")
 
     # Store last user message for operator voice capture
     try:
         brain.set_config("last_user_message", user_message[:500])
+    except Exception:
+        pass
+
+    # ── Two-turn precision: evaluate previous turn's followup ──
+    # The user's current message is the "followup" signal for the PREVIOUS
+    # turn's recall. If there's a pending evaluated recall, feed the user's
+    # message to evaluate_followup() before starting the new recall cycle.
+    try:
+        prev_log_id = brain.get_config("last_evaluated_recall_id", "")
+        if prev_log_id and user_message:
+            precision = _get_precision(brain)
+            precision.evaluate_followup(int(prev_log_id), user_message)
+            brain.set_config("last_evaluated_recall_id", "")
     except Exception:
         pass
 
@@ -330,6 +357,28 @@ def hook_recall(brain, args, graph_changes):
         result = brain.recall(query=enriched, limit=8)
 
     results = result.get("results", [])
+
+    # ── Precision: log recall through the precision module ──
+    # Previously, logging was buried inside recall_with_embeddings() via _log_recall().
+    # Now the hook calls precision.log_recall() explicitly, storing full context
+    # (titles, snippets, embeddings_used flag) for future evaluation.
+    if results:
+        try:
+            precision = _get_precision(brain)
+            recalled_titles = {r.get("id"): r.get("title", "")[:100] for r in results}
+            recalled_snippets = {r.get("id"): (r.get("content") or "")[:150] for r in results}
+            embeddings_used = result.get("_recall_mode") != "keyword_only_DEGRADED"
+            recall_log_id = precision.log_recall(
+                session_id=session_id,
+                query=enriched[:500],
+                returned_ids=[r.get("id") for r in results],
+                recalled_titles=recalled_titles,
+                recalled_snippets=recalled_snippets,
+                embeddings_used=embeddings_used,
+            )
+            brain.set_config("last_recall_log_id", str(recall_log_id))
+        except Exception:
+            pass
 
     # Segment boundary detection
     segment_note = None
@@ -466,6 +515,18 @@ def hook_recall(brain, args, graph_changes):
             lines.append(str(pm))
             lines.append("")
 
+    # ── Precision: request feedback if uncertain about previous recall ──
+    try:
+        prev_eval_id = brain.get_config("last_evaluated_recall_id", "")
+        if prev_eval_id:
+            precision = _get_precision(brain)
+            fb = precision.request_feedback(int(prev_eval_id))
+            if fb:
+                lines.append("")
+                lines.append(fb)
+    except Exception:
+        pass
+
     lines.append("Use this context to inform your response. Call /remember for new decisions.")
     context = "\n".join(lines)
 
@@ -474,13 +535,53 @@ def hook_recall(brain, args, graph_changes):
 
 
 def hook_post_response_track(brain, args, graph_changes):
-    """Post-response tracker: vocab gap detection + encoding checkpoints.
+    """Post-response tracker: precision evaluation + vocab gap detection + encoding checkpoints.
 
     Fires on UserPromptSubmit AND Stop.
     """
     user_message = args.get("prompt", "") or args.get("message", "")
     has_user_message = user_message and len(user_message) >= 10
     is_user_prompt = bool(args.get("prompt"))
+
+    # ── Precision: evaluate Claude's response (Signal 1) ──
+    # The Stop event provides last_assistant_message — Claude's actual response.
+    # We store it on the recall_log row for future LLM-based evaluation.
+    # This is the WEAK signal (biased — Claude absorbs injected context).
+    assistant_response = args.get("last_assistant_message", "")
+    if not assistant_response:
+        # Fallback for backward compat / events that don't provide it
+        assistant_response = ""
+    assistant_response = assistant_response[:4000]
+
+    session_id = brain.get_config("session_id", "ses_unknown")
+    recall_log_id = brain.get_config("last_recall_log_id", "")
+
+    if recall_log_id and assistant_response and len(assistant_response) >= 20:
+        try:
+            precision = _get_precision(brain)
+            precision.evaluate_response(int(recall_log_id), assistant_response)
+            # Store for followup evaluation on next user message
+            brain.set_config("last_evaluated_recall_id", recall_log_id)
+            # Clear to prevent double-evaluation
+            brain.set_config("last_recall_log_id", "")
+        except Exception:
+            pass
+    elif recall_log_id and (not assistant_response or len(assistant_response) < 20):
+        # Log diagnostic — empty response means precision evaluation can't run.
+        # This helps detect if the hook communication is broken.
+        try:
+            brain._logs_dal.write_debug(
+                "precision",
+                "Empty/short assistant response in Stop event — precision evaluation skipped",
+                session_id=session_id,
+                metadata=json.dumps({
+                    "args_keys": list(args.keys()),
+                    "response_len": len(assistant_response or ""),
+                    "recall_log_id": recall_log_id,
+                }),
+            )
+        except Exception:
+            pass
 
     # ── Vocab gap detection (only when we have user message) ──
     if has_user_message:

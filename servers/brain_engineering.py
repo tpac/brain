@@ -1559,33 +1559,31 @@ class BrainEngineeringMixin:
         """
         generated = {'performance': 0, 'capability': 0, 'interaction': 0, 'failure': 0}
 
-        # Performance: recall quality from recall_log
-        # NOTE: This signal is BROKEN until mark_recall_used() is implemented.
-        # used_count is always 0 because nothing writes back to recall_log.
-        # Skipping generation to avoid false "0% precision" alarms.
-        # TODO: Re-enable once mark_recall_used() exists. See tests/relearning.py.
+        # Performance: recall quality from the precision module.
+        # Previously this was BROKEN (used_count always 0 because mark_recall_used()
+        # didn't exist). Now the RecallPrecision module handles all recall_log access.
+        # Consciousness reads the summary — it doesn't own precision logic.
         try:
-            recall_stats = self.logs_conn.execute(
-                """SELECT COUNT(*) as total,
-                          SUM(CASE WHEN used_count > 0 THEN 1 ELSE 0 END) as useful
-                   FROM recall_log
-                   WHERE created_at > datetime('now', '-7 days')"""
-            ).fetchone()
-            if recall_stats and recall_stats[0] >= 10:
-                total, useful = recall_stats
-                precision = useful / total if total > 0 else 0
-                # Only generate if mark_recall_used() is actually populating data
-                if useful > 0:
-                    existing = self.conn.execute(
-                        "SELECT COUNT(*) FROM nodes WHERE type = 'performance' AND created_at > datetime('now', '-3 days')"
-                    ).fetchone()[0]
-                    if existing == 0:
-                        self.create_performance(
-                            f"Recall precision this week: {precision:.0%} ({useful}/{total} useful)",
-                            f"Auto-generated from recall_log. {total} recalls in 7 days, {useful} had results marked as used.",
-                            keywords="auto performance recall precision weekly"
-                        )
-                        generated['performance'] += 1
+            from servers.brain_precision import RecallPrecision
+            precision_mod = RecallPrecision(self.logs_conn, self.conn)
+            summary = precision_mod.get_precision_summary(hours=168)  # 7 days
+            if summary.get("has_data") and summary["evaluated_recalls"] >= 10:
+                existing = self.conn.execute(
+                    "SELECT COUNT(*) FROM nodes WHERE type = 'performance' AND created_at > datetime('now', '-3 days')"
+                ).fetchone()[0]
+                if existing == 0:
+                    avg_p = summary["avg_precision"]
+                    total = summary["total_recalls"]
+                    evaluated = summary["evaluated_recalls"]
+                    emb_pct = summary["embeddings_used_pct"]
+                    self.create_performance(
+                        f"Recall precision this week: {avg_p:.0%} ({evaluated}/{total} evaluated)",
+                        f"Auto-generated from recall precision tracking. "
+                        f"Embeddings used: {emb_pct:.0%}. "
+                        f"Feedback count: {summary['feedback_count']}.",
+                        keywords="auto performance recall precision weekly"
+                    )
+                    generated['performance'] += 1
         except Exception as _e:
             self._log_error("auto_generate_self_reflection", _e, "generating recall precision performance node")
 

@@ -134,7 +134,13 @@ class LogsDAL:
 
     def log_recall(self, session_id: str, query: str, result_count: int,
                    result_ids: Optional[List[str]] = None, intent: str = "") -> int:
-        """Record a recall event. Returns the recall_log id."""
+        """Record a recall event. Returns the recall_log id.
+
+        DEPRECATED: Use RecallPrecision.log_recall() from servers/brain_precision.py instead.
+        This method uses wrong column names (result_ids/intent vs the actual schema's
+        returned_ids/returned_count) and lacks the precision tracking columns.
+        Kept for backward compatibility only — do not add new callers.
+        """
         now = datetime.now(timezone.utc).isoformat()
         ids_json = json.dumps(result_ids) if result_ids else '[]'
         cursor = self.conn.execute(

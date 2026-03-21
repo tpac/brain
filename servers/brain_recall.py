@@ -205,7 +205,8 @@ class BrainRecallMixin:
 
     def recall(self, query: str, types: Optional[List[str]] = None, limit: int = 20,
                offset: int = 0, include_archived: bool = False, min_recency: float = 0,
-               project: Optional[str] = None, session_id: Optional[str] = None) -> Dict[str, Any]:
+               project: Optional[str] = None, session_id: Optional[str] = None,
+               _skip_log: bool = False) -> Dict[str, Any]:
         """
         Retrieve relevant nodes with TF-IDF scoring, spreading activation, and decay.
 
@@ -506,13 +507,15 @@ class BrainRecallMixin:
 
         self._hebbian_strengthen([n['id'] for n in page])
 
-        # v4: Auto-instrument
+        # v4: Auto-instrument (skipped when called from recall_with_embeddings
+        # or hooks — they log via the precision module instead)
         returned_ids = [n['id'] for n in page]
         recall_log_id = None
-        try:
-            recall_log_id = self._log_recall(session_id, query, returned_ids)
-        except Exception as _e:
-            self._log_error("recall", _e, "logging recall event to recall_log")
+        if not _skip_log:
+            try:
+                recall_log_id = self._log_recall(session_id, query, returned_ids)
+            except Exception as _e:
+                self._log_error("recall", _e, "logging recall event to recall_log")
 
         # v6: Attach reasoning chains when intent is reasoning_chain
         reasoning_chains = []
@@ -573,7 +576,7 @@ class BrainRecallMixin:
         # ── FALLBACK: If embedder not ready, degrade to keyword-only ──
         if not embedder.is_ready():
             result = self.recall(query, types, limit, offset, include_archived,
-                               min_recency, project, session_id)
+                               min_recency, project, session_id, _skip_log=True)
             result['_recall_mode'] = 'keyword_only_DEGRADED'
             result['_embedding_stats'] = {
                 'embedder_ready': False,
@@ -657,8 +660,9 @@ class BrainRecallMixin:
 
         # STEP 4: Also run keyword recall to catch nodes WITHOUT embeddings
         # and to get keyword precision scores for exact-match tiebreaking
+        # _skip_log=True: precision module handles logging via hooks, not here.
         keyword_result = self.recall(query, types, limit * 3, offset, include_archived,
-                                    min_recency, project, session_id)
+                                    min_recency, project, session_id, _skip_log=True)
         keyword_scores = {}  # node_id → keyword_effective_activation
         keyword_nodes = {}   # node_id → full node dict
         for node in keyword_result.get('results', []):
@@ -907,7 +911,8 @@ class BrainRecallMixin:
         recall_ms = (time.time() - t0) * 1000
         result = {
             'results': final_results,
-            '_recall_log_id': keyword_result.get('_recall_log_id'),
+            # Logging is now handled by the precision module in hooks, not here.
+            '_recall_log_id': None,
             'intent': intent,
             '_recall_mode': 'embeddings_first',
             '_embedding_stats': {
