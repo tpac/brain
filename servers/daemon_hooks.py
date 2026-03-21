@@ -122,6 +122,12 @@ def _get_precision(brain):
     if not hasattr(brain, '_precision') or brain._precision is None:
         from servers.brain_precision import RecallPrecision
         brain._precision = RecallPrecision(brain.logs_conn, brain.conn)
+        # Lazy-load BART for precision evaluation (stays warm for daemon lifetime)
+        try:
+            from servers.recall_scorer import load_bart
+            load_bart()
+        except Exception:
+            pass  # Graceful degradation: regex+embeddings still work
     return brain._precision
 
 

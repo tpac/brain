@@ -30,13 +30,20 @@ Signal 3 — Explicit operator feedback (STRONGEST):
     "useful", "not_useful", or "partially_useful". This overrides any
     computed scores and provides ground-truth calibration data.
 
-== CURRENT STATE: STUBS FOR EVALUATE ==
+== LAYERED EVALUATION (v3) ==
 
-evaluate_response() and evaluate_followup() store data but don't compute
-precision scores. Substring/keyword matching is fundamentally wrong for
-semantic evaluation — Claude reformulates, paraphrases, and synthesizes.
-A future LLM evaluator will replace the 'pending_llm' stubs with actual
-semantic analysis. Until then, only explicit feedback produces scores.
+evaluate_response() stores response data and pre-computes embedding signals.
+evaluate_followup() runs the full layered evaluation:
+  L0: Expanded regex (30+ patterns) — intent markers
+  L1: Arctic embeddings — topic similarity
+  L1b: BART-Large-MNLI — stance detection (if available)
+  L2: Cross-signal patterns — combos, parroting, polite dismiss
+
+Validated at 92% accuracy (11/12 clear cases) via 10 experiments.
+See docs/PRECISION-EVAL-RESULTS.md for full evaluation history.
+
+The one remaining miss (semantic contradiction — user advocates anti-pattern)
+requires LLM. Deferred to future Haiku integration.
 
 == WHAT WE STORE AND WHY ==
 
@@ -193,25 +200,14 @@ class RecallPrecision:
         self.logs_conn.commit()
         return cursor.lastrowid
 
-    # ── Signal 1: Claude's Response (stub) ──
+    # ── Signal 1: Claude's Response ──
 
     def evaluate_response(self, recall_log_id: int, assistant_response: str) -> Dict[str, Any]:
-        """Store Claude's response for future LLM-based evaluation.
+        """Store Claude's response and pre-compute embedding signals.
 
-        WHY THIS IS A STUB:
-        Substring/keyword matching is fundamentally wrong for semantic
-        evaluation. Claude absorbs injected context and reformulates it —
-        matching needs to understand meaning, not words. Additionally,
-        Claude naturally references recalled content even when irrelevant,
-        creating a reinforcement bias where popular nodes get recalled more.
-
-        The LLM evaluator (follow-up task) will replace 'pending_llm' with
-        actual semantic analysis that can distinguish:
-          - "Claude genuinely used this context" vs
-          - "Claude mentioned it because it was in the prompt"
-
-        For now, we just store the response snippet and mark the row as
-        having been through the response evaluation step.
+        The response is a BIASED signal (Claude absorbs injected context),
+        so we do NOT compute precision_score here. We store the snippet and
+        pre-compute embedding signals that evaluate_followup() will use.
 
         Args:
             recall_log_id: The recall_log row ID from log_recall().
@@ -223,13 +219,33 @@ class RecallPrecision:
         now = datetime.now(timezone.utc).isoformat()
         snippet = (assistant_response or "")[:_MAX_RESPONSE_SNIPPET]
 
+        # Pre-compute embedding signals if response is substantial
+        eval_meta = {}
+        if snippet and len(snippet) >= 20:
+            row = self.logs_conn.execute(
+                "SELECT recalled_titles, recalled_snippets FROM recall_log WHERE id = ?",
+                (recall_log_id,),
+            ).fetchone()
+            if row and row[0] and row[1]:
+                try:
+                    titles = json.loads(row[0])
+                    snippets = json.loads(row[1])
+                    from servers.recall_scorer import compute_embedding_signals
+                    emb_signals = compute_embedding_signals(snippets, titles, snippet, "")
+                    eval_meta["response_emb_signals"] = emb_signals
+                except Exception:
+                    pass
+
+        meta_json = json.dumps(eval_meta) if eval_meta else None
+
         self.logs_conn.execute(
             """UPDATE recall_log
                SET assistant_response_snippet = ?,
-                   match_method = 'pending_llm',
+                   match_method = 'response_stored',
+                   evaluation_metadata = COALESCE(?, evaluation_metadata),
                    evaluated_at = ?
                WHERE id = ?""",
-            (snippet, now, recall_log_id),
+            (snippet, meta_json, now, recall_log_id),
         )
         self.logs_conn.commit()
 
@@ -239,44 +255,43 @@ class RecallPrecision:
             "assistant_response_len": len(assistant_response or ""),
         }
 
-    # ── Signal 2: User's Next Message (stub) ──
+    # ── Signal 2: User's Next Message (layered evaluation) ──
 
     def evaluate_followup(self, recall_log_id: int, user_message: str) -> Dict[str, Any]:
-        """Store user's follow-up message for future LLM-based evaluation.
+        """Evaluate user's follow-up message using layered scoring.
 
-        WHY THIS IS A STUB:
-        Real followup evaluation needs semantic understanding:
-          - "Perfect, how does the magic link flow work?" = positive (user
-            builds on recalled content — strong unbiased signal)
-          - "No, that's not what I meant. Just fix the typo." = negative
-            (user redirects — brain distracted Claude)
-          - "Continue" = neutral (can't determine relevance)
+        This is the UNBIASED signal — the user didn't see the raw recall
+        injection. Their follow-up reflects genuine usefulness.
 
-        Pattern matching ("no I meant" = negative) is too fragile. The LLM
-        evaluator will analyze whether the user's follow-up message builds
-        on, redirects from, or ignores the recalled context.
+        Runs L0 (regex) + L1 (embeddings, if available) + L1b (BART, if
+        available) + L2 (cross-signal patterns). Writes followup_signal,
+        match_method, precision_score, and evaluation_metadata.
 
-        The two-turn model is the key insight: the user is the only actor
-        who isn't biased by the injection itself.
+        Never overrides explicit_feedback — operator feedback is ground truth.
 
         Args:
             recall_log_id: The recall_log row ID from log_recall().
             user_message: The user's message in the NEXT turn after recall.
 
         Returns:
-            Dict with recall_log_id, status, and followup length.
+            Dict with recall_log_id, status, followup_signal, evidence, confidence.
         """
         now = datetime.now(timezone.utc).isoformat()
         followup_snippet = (user_message or "")[:_MAX_FOLLOWUP_SNIPPET]
 
-        # Fetch existing metadata to append (don't overwrite)
+        # Fetch existing data
         row = self.logs_conn.execute(
-            "SELECT evaluation_metadata FROM recall_log WHERE id = ?",
+            """SELECT evaluation_metadata, recalled_titles, recalled_snippets,
+                      assistant_response_snippet, explicit_feedback
+               FROM recall_log WHERE id = ?""",
             (recall_log_id,),
         ).fetchone()
 
+        if not row:
+            return {"recall_log_id": recall_log_id, "status": "not_found"}
+
         existing_meta = {}
-        if row and row[0]:
+        if row[0]:
             try:
                 existing_meta = json.loads(row[0])
             except (json.JSONDecodeError, TypeError):
@@ -285,19 +300,103 @@ class RecallPrecision:
         existing_meta["followup_message"] = followup_snippet
         existing_meta["followup_stored_at"] = now
 
+        # Don't override explicit feedback
+        if row[4]:
+            existing_meta["auto_eval_skipped"] = "explicit_feedback_exists"
+            self.logs_conn.execute(
+                """UPDATE recall_log
+                   SET evaluation_metadata = ?, evaluated_at = ?
+                   WHERE id = ?""",
+                (json.dumps(existing_meta), now, recall_log_id),
+            )
+            self.logs_conn.commit()
+            return {
+                "recall_log_id": recall_log_id,
+                "status": "skipped_has_feedback",
+                "followup_len": len(user_message or ""),
+            }
+
+        # Parse recalled data
+        titles = {}
+        snippets = {}
+        response = row[3] or ""
+        if row[1]:
+            try:
+                titles = json.loads(row[1])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        if row[2]:
+            try:
+                snippets = json.loads(row[2])
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # ── Run layered evaluation ──
+        from servers.recall_scorer import (
+            compute_regex_signals, compute_bart_signals,
+            compute_embedding_signals, score_recall,
+            evidence_to_precision, classify_followup_signal,
+            determine_match_method, is_bart_ready,
+        )
+
+        regex_signals = compute_regex_signals(followup_snippet)
+        bart_signals = compute_bart_signals(followup_snippet)
+
+        # Embedding signals: use pre-computed from evaluate_response if available,
+        # otherwise compute fresh
+        emb_signals = existing_meta.get("response_emb_signals")
+        emb_available = False
+        if snippets and titles:
+            try:
+                emb_signals = compute_embedding_signals(
+                    snippets, titles, response, followup_snippet,
+                )
+                emb_available = True
+            except Exception:
+                pass
+
+        if not emb_signals:
+            from servers.recall_scorer import _empty_emb
+            emb_signals = _empty_emb()
+            # Carry over resp_words from response if we have it
+            if response:
+                emb_signals["resp_words"] = len(response.split())
+
+        evidence, confidence, reasons, n_signals = score_recall(
+            regex_signals, bart_signals, emb_signals,
+        )
+        precision = evidence_to_precision(evidence, confidence)
+        signal = classify_followup_signal(evidence, confidence)
+        method = determine_match_method(is_bart_ready(), emb_available)
+
+        # Store evaluation results
+        top_reasons = [(w, r, d) for w, r, d in reasons[:5]]
+        existing_meta["evidence"] = round(evidence, 4)
+        existing_meta["confidence"] = round(confidence, 4)
+        existing_meta["n_signals"] = n_signals
+        existing_meta["top_reasons"] = top_reasons
+        existing_meta["regex_signals"] = regex_signals
+        existing_meta["bart_available"] = is_bart_ready()
+        existing_meta["emb_available"] = emb_available
+
         self.logs_conn.execute(
             """UPDATE recall_log
-               SET followup_signal = 'pending_llm',
+               SET followup_signal = ?,
+                   match_method = ?,
+                   precision_score = ?,
                    evaluation_metadata = ?,
                    evaluated_at = ?
-               WHERE id = ?""",
-            (json.dumps(existing_meta), now, recall_log_id),
+               WHERE id = ? AND explicit_feedback IS NULL""",
+            (signal, method, precision, json.dumps(existing_meta), now, recall_log_id),
         )
         self.logs_conn.commit()
 
         return {
             "recall_log_id": recall_log_id,
             "status": "stored",
+            "followup_signal": signal,
+            "evidence": round(evidence, 4),
+            "confidence": round(confidence, 4),
             "followup_len": len(user_message or ""),
         }
 
@@ -374,9 +473,20 @@ class RecallPrecision:
         if explicit_fb:
             return None
 
-        # Don't ask if precision already computed (future: by LLM evaluator)
+        # Don't ask if precision already computed with high confidence
         if precision is not None:
-            return None
+            # Check confidence in metadata — only skip if confident
+            try:
+                meta_row = self.logs_conn.execute(
+                    "SELECT evaluation_metadata FROM recall_log WHERE id = ?",
+                    (recall_log_id,),
+                ).fetchone()
+                if meta_row and meta_row[0]:
+                    meta = json.loads(meta_row[0])
+                    if meta.get("confidence", 1.0) >= 0.5:
+                        return None
+            except Exception:
+                return None
 
         # Don't ask if no recall happened
         if not returned_count or returned_count == 0:
@@ -513,7 +623,7 @@ class RecallPrecision:
         ).fetchone()[0] or 0
 
         # Followup signals breakdown
-        followup_signals = {"positive": 0, "negative": 0, "neutral": 0, "pending_llm": 0}
+        followup_signals = {"positive": 0, "negative": 0, "neutral": 0, "uncertain": 0, "pending_llm": 0}
         for signal_val in followup_signals:
             count = self.logs_conn.execute(
                 f"SELECT COUNT(*) FROM recall_log {base_where} AND followup_signal = ?",
