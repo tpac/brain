@@ -172,8 +172,21 @@ try:
 except Exception:
     pass
 
+# Notification stdout is NOT injected into context.
+# Store output as pending message for next UserPromptSubmit recall.
 if output:
-    print("\n".join(output))
+    summary = "\n".join(output)
+    try:
+        existing = daemon_call("get_config", {"key": "pending_hook_messages", "default": "[]"})
+        pending = json.loads(existing) if isinstance(existing, str) else []
+    except Exception:
+        pending = []
+    pending.append("IDLE MAINTENANCE:\n" + summary)
+    pending = pending[-5:]
+    try:
+        daemon_call("set_config", {"key": "pending_hook_messages", "value": json.dumps(pending)}, timeout=3.0)
+    except Exception:
+        pass
 '
   if [ $? -eq 0 ]; then
     exit 0
@@ -372,10 +385,20 @@ try:
     except Exception:
         pass
 
-    brain.save()
-
+    # Notification stdout is NOT injected into context.
+    # Store output as pending message for next UserPromptSubmit recall.
     if output_lines:
-        print("\n".join(output_lines))
+        summary = "\n".join(output_lines)
+        try:
+            existing = brain.get_config("pending_hook_messages", "[]")
+            pending = json.loads(existing) if existing else []
+        except Exception:
+            pending = []
+        pending.append("IDLE MAINTENANCE:\n" + summary)
+        pending = pending[-5:]
+        brain.set_config("pending_hook_messages", json.dumps(pending))
+
+    brain.save()
 
 except Exception as e:
     print("IDLE MAINTENANCE ERROR: %s" % e, file=sys.stderr)

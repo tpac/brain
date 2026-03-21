@@ -66,8 +66,19 @@ try:
             new_val = change.get("new", "?")
             output_lines.append(f"  {key}: {old_val} → {new_val}")
         output_lines.append(f"  Command: {command[:100]}")
-        output_lines.append("")
-        print("\n".join(output_lines))
+
+        # PostToolUse stdout is NOT injected into context.
+        # Store output as pending message for next UserPromptSubmit recall.
+        summary = "\n".join(output_lines)
+        try:
+            existing = brain.get_config("pending_hook_messages", "[]")
+            pending = json.loads(existing) if existing else []
+        except Exception:
+            pending = []
+        pending.append(summary)
+        pending = pending[-5:]
+        brain.set_config("pending_hook_messages", json.dumps(pending))
+        brain.save()
 
     brain.close()
 

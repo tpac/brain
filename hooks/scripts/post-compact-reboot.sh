@@ -106,6 +106,21 @@ try:
     except Exception:
         pass
 
+    # v5.3: Drain pending messages from background hooks
+    try:
+        pending_resp = daemon_call("get_config", {"key": "pending_hook_messages", "default": "[]"})
+        if pending_resp:
+            pending = json.loads(pending_resp) if isinstance(pending_resp, str) else []
+            if pending:
+                output.append("")
+                output.append("--- QUEUED MESSAGES (from background hooks) ---")
+                for pm in pending:
+                    output.append(str(pm))
+                    output.append("")
+                daemon_call("set_config", {"key": "pending_hook_messages", "value": "[]"})
+    except Exception:
+        pass
+
     output.append("Brain is live. Context was compacted — you lost conversation history.")
     output.append("The brain persists. Use brain.recall_with_embeddings() to recover context.")
     print("\n".join(output))
@@ -304,6 +319,21 @@ try:
                         candidates.append(fpath)
             if candidates:
                 transcript_path = max(candidates, key=os.path.getmtime)
+    except Exception:
+        pass
+
+    # v5.3: Drain pending messages from background hooks
+    try:
+        existing = brain.get_config("pending_hook_messages", "[]")
+        pending = json.loads(existing) if existing else []
+        if pending:
+            output.append("")
+            output.append("--- QUEUED MESSAGES (from background hooks) ---")
+            for pm in pending:
+                output.append(str(pm))
+                output.append("")
+            brain.set_config("pending_hook_messages", "[]")
+            brain.save()
     except Exception:
         pass
 

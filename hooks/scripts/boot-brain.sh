@@ -117,7 +117,7 @@ try:
 except Exception as _e:
     brain._log_error("boot_engineering_context", str(_e), "get_engineering_context failed at boot")
 
-# v5: Correction patterns — shape Claude's behavior
+# v5: Correction patterns — shape behavior
 correction_patterns = []
 try:
     correction_patterns = brain.get_correction_patterns(limit=5)
@@ -308,7 +308,7 @@ if file_changes:
     print("  Re-read changed files to update your understanding.")
     print()
 
-# Layer 4: Correction patterns — Claude's known failure modes
+# Layer 4: Correction patterns — known failure modes
 if correction_patterns:
     print("CORRECTION PATTERNS (known divergence tendencies):")
     for cp in correction_patterns[:3]:
@@ -347,7 +347,7 @@ if vocabulary_gap:
         else:
             print("  ? " + str(vg))
     print("  ACTION: If you know what these map to, use brain.learn_vocabulary(term, maps_to, context).")
-    print("  If unsure, ASK the user: 'You mentioned X — what does that refer to in this context?'")
+    print("  If unsure, ASK the user: \"You mentioned X -- what does that refer to in this context?\"")
     print("  Note: the same term can mean different things in different contexts. Include context when learning.")
     print()
 
@@ -666,7 +666,7 @@ if silent_errors:
     print("  Use brain.get_recent_errors() for full details + tracebacks.")
     print()
 
-# v5: Uncertain areas — things Claude knows it doesn't understand
+# v5: Uncertain areas — things not fully understood
 if uncertain_areas:
     print("  UNCERTAIN AREAS (unresolved):")
     for ua in uncertain_areas[:3]:
@@ -732,7 +732,7 @@ print("  The operator exposes their thinking to you — reciprocate. Say what yo
 print("  Brain mediates: it surfaces conflicts for all three to resolve together.")
 print()
 
-# Developmental stage — the brain's growth awareness
+# Developmental stage — growth awareness
 if dev_stage and dev_stage.get("stage", 0) > 0:
     ds_name = dev_stage["stage_name"]
     ds_score = dev_stage.get("maturity_score", 0)

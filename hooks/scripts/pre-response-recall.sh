@@ -79,11 +79,42 @@ try:
         raise Exception("Daemon recall failed")
 
     results = recall_resp.get("result", {}).get("results", [])
-    if not results:
+
+    # v5.3: Check for pending messages even if no recall results
+    pending_messages = []
+    try:
+        pending_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        pending_sock.settimeout(3.0)
+        pending_sock.connect("'"$SOCKET_PATH"'")
+        pending_sock.sendall(json.dumps({"cmd": "get_config", "args": {"key": "pending_hook_messages", "default": "[]"}}).encode() + b"\n")
+        pdata = b""
+        while b"\n" not in pdata:
+            chunk = pending_sock.recv(4096)
+            if not chunk: break
+            pdata += chunk
+        pending_resp = json.loads(pdata.decode().strip())
+        pending_sock.close()
+        if pending_resp.get("ok"):
+            pending_messages = json.loads(pending_resp.get("result", "[]"))
+            if pending_messages:
+                # Clear the queue
+                clear_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                clear_sock.settimeout(3.0)
+                clear_sock.connect("'"$SOCKET_PATH"'")
+                clear_sock.sendall(json.dumps({"cmd": "set_config", "args": {"key": "pending_hook_messages", "value": "[]"}}).encode() + b"\n")
+                clear_sock.recv(4096)
+                clear_sock.close()
+    except Exception:
+        pass
+
+    if not results and not pending_messages:
         print(json.dumps({"decision": "approve"}))
         sys.exit(0)
 
-    lines = ["BRAIN RECALL (auto-surfaced for this conversation):", ""]
+    lines = []
+    if results:
+        lines.append("BRAIN RECALL (auto-surfaced for this conversation):")
+        lines.append("")
     EVOLUTION_TYPES = {"tension", "hypothesis", "pattern", "catalyst", "aspiration"}
     evolution_results = [r for r in results if r.get("type") in EVOLUTION_TYPES]
     regular_results = [r for r in results if r.get("type") not in EVOLUTION_TYPES]
@@ -129,6 +160,14 @@ try:
             lines.insert(1, "")
     except Exception:
         pass
+
+    # Append pending messages (already drained above)
+    if pending_messages:
+        lines.append("")
+        lines.append("--- QUEUED MESSAGES (from background hooks) ---")
+        for pm in pending_messages:
+            lines.append(str(pm))
+            lines.append("")
 
     lines.append("Use this context to inform your response. Call /remember for new decisions.")
     context = "\n".join(lines)
@@ -252,7 +291,17 @@ try:
     except Exception:
         pass
 
-    if not results:
+    # v5.3: Check for pending messages from background hooks
+    pending_messages_fb = []
+    try:
+        existing = brain.get_config("pending_hook_messages", "[]")
+        pending_messages_fb = json.loads(existing) if existing else []
+        if pending_messages_fb:
+            brain.set_config("pending_hook_messages", "[]")
+    except Exception:
+        pass
+
+    if not results and not pending_messages_fb:
         brain.save()
         brain.close()
         print(json.dumps({"decision": "approve"}))
@@ -271,7 +320,10 @@ try:
         pass
 
     # Format recalled context — keep it concise for pre-response
-    lines = ["BRAIN RECALL (auto-surfaced for this conversation):", ""]
+    lines = []
+    if results:
+        lines.append("BRAIN RECALL (auto-surfaced for this conversation):")
+        lines.append("")
 
     # Show segment boundary if detected
     if segment_note:
@@ -396,6 +448,14 @@ try:
             lines.insert(1, "")
     except Exception:
         pass
+
+    # Append pending messages (already drained above)
+    if pending_messages_fb:
+        lines.append("")
+        lines.append("--- QUEUED MESSAGES (from background hooks) ---")
+        for pm in pending_messages_fb:
+            lines.append(str(pm))
+            lines.append("")
 
     lines.append("Use this context to inform your response. Call /remember for new decisions.")
     context = "\n".join(lines)

@@ -57,10 +57,21 @@ try:
         output_lines.append("")
         output_lines.append("Review arch_constraint and capability nodes that may be affected.")
 
-    brain.close()
-
+    # ConfigChange stdout is NOT injected into context.
+    # Store output as pending message for next UserPromptSubmit recall.
     if output_lines:
-        print("\n".join(output_lines))
+        summary = "\n".join(output_lines)
+        try:
+            existing = brain.get_config("pending_hook_messages", "[]")
+            pending = json.loads(existing) if existing else []
+        except Exception:
+            pending = []
+        pending.append(summary)
+        pending = pending[-5:]
+        brain.set_config("pending_hook_messages", json.dumps(pending))
+        brain.save()
+
+    brain.close()
 
 except Exception:
     try:

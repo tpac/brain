@@ -89,10 +89,45 @@ try:
             except Exception:
                 pass
 
-            print("")
-            print("ENCODING CHECKPOINT: " + nudge_msg)
-            print(focus)
-            print("")
+            # Build checkpoint message
+            checkpoint_text = "ENCODING CHECKPOINT: " + nudge_msg + "\n" + focus
+
+            # Detect which event — UserPromptSubmit has "prompt", Stop does not
+            is_user_prompt = bool(hook_input.get("prompt"))
+
+            if is_user_prompt:
+                # UserPromptSubmit — stdout IS injected into context
+                print("")
+                print(checkpoint_text)
+                print("")
+            else:
+                # Stop event — stdout is INVISIBLE. Store for next recall.
+                try:
+                    cfg_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    cfg_sock.settimeout(3.0)
+                    cfg_sock.connect(sock_path)
+                    cfg_sock.sendall(json.dumps({"cmd": "get_config", "args": {"key": "pending_hook_messages", "default": "[]"}}).encode() + b"\n")
+                    cfg_data = b""
+                    while b"\n" not in cfg_data:
+                        chunk = cfg_sock.recv(4096)
+                        if not chunk: break
+                        cfg_data += chunk
+                    cfg_resp = json.loads(cfg_data.decode().strip())
+                    cfg_sock.close()
+                    pending = json.loads(cfg_resp.get("result", "[]")) if cfg_resp.get("ok") else []
+                except Exception:
+                    pending = []
+                pending.append(checkpoint_text)
+                pending = pending[-5:]
+                try:
+                    set_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    set_sock.settimeout(3.0)
+                    set_sock.connect(sock_path)
+                    set_sock.sendall(json.dumps({"cmd": "set_config", "args": {"key": "pending_hook_messages", "value": json.dumps(pending)}}).encode() + b"\n")
+                    set_sock.recv(4096)
+                    set_sock.close()
+                except Exception:
+                    pass
 
     # Vocab gap detection (if we have a message)
     if user_message and len(user_message) >= 10:
@@ -284,20 +319,34 @@ try:
         except Exception:
             stats = ""
 
-        if severity == "urgent":
+        # Build checkpoint message
+        checkpoint_lines = []
+        checkpoint_lines.append("ENCODING CHECKPOINT: " + msg)
+        if stats:
+            checkpoint_lines.append(stats)
+        checkpoint_lines.append(focus)
+        checkpoint_text = "\n".join(checkpoint_lines)
+
+        # Detect which event this is
+        is_stop = bool(hook_input.get("stop_hook_active") or hook_input.get("last_assistant_message"))
+        is_user_prompt = bool(hook_input.get("prompt"))
+
+        if is_user_prompt:
+            # UserPromptSubmit — stdout IS injected into context
             print("")
-            print("ENCODING CHECKPOINT: " + msg)
-            if stats:
-                print(stats)
-            print(focus)
+            print(checkpoint_text)
             print("")
         else:
-            print("")
-            print("ENCODING CHECKPOINT: " + msg)
-            if stats:
-                print(stats)
-            print(focus)
-            print("")
+            # Stop event — stdout is INVISIBLE. Store for next UserPromptSubmit.
+            try:
+                existing = brain.get_config("pending_hook_messages", "[]")
+                pending = json.loads(existing) if existing else []
+            except Exception:
+                pending = []
+            pending.append(checkpoint_text)
+            pending = pending[-5:]  # keep last 5 max
+            brain.set_config("pending_hook_messages", json.dumps(pending))
+
 except Exception:
     pass
 
