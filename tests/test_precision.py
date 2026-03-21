@@ -499,7 +499,7 @@ class TestRecallPrecision(BrainTestBase):
         # No precision score set (no feedback, no LLM) — should trigger request
         fb = self.precision.request_feedback(log_id)
         self.assertIsNotNone(fb)
-        self.assertIn("BRAIN FEEDBACK", fb)
+        self.assertIn("[BRAIN] FEEDBACK", fb)
         self.assertIn("Clerk", fb)
 
     # ── Lifecycle & Infrastructure Tests ──

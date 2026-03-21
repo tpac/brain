@@ -134,7 +134,7 @@ brain.save()
 # ══════════════════════════════════════════════════════
 # Output context for Claude
 # ══════════════════════════════════════════════════════
-print("brain v" + str(BRAIN_VERSION) + " booted from: " + db_dir)
+print("[BRAIN] v" + str(BRAIN_VERSION) + " booted from: " + db_dir)
 print()
 reset_count = ctx.get("reset_count", 0)
 print("Session #" + str(reset_count + 1))
@@ -383,7 +383,7 @@ if matched:
 locked_nodes = ctx.get("locked", [])
 rules = [n for n in locked_nodes if n.get("type") == "rule"][:10]
 if rules:
-    print("Key locked rules:")
+    print("[BRAIN] Key locked rules:")
     for r in rules:
         print("  - " + r.get("title", ""))
     print()
@@ -391,7 +391,7 @@ if rules:
 # Staged learnings
 pending = staged.get("staged", [])
 if pending:
-    print("STAGED LEARNINGS (" + str(len(pending)) + " pending review):")
+    print("[BRAIN] STAGED LEARNINGS (" + str(len(pending)) + " pending review):")
     print("Ask the user to confirm or dismiss these before they influence future sessions.")
     for s in pending[:5]:
         stitle = str(s.get("title", "")).replace("[staged] ", "")
@@ -421,7 +421,7 @@ has_conscious = (
 )
 
 if has_conscious:
-    print("BRAIN CONSCIOUSNESS")
+    print("[BRAIN] CONSCIOUSNESS")
     print()
 
 if reminders:
@@ -688,7 +688,7 @@ if has_conscious or dreams or host_diff:
     print()
 
 # Triad awareness
-print("TRIAD AWARENESS: This is a shared brain. Host + Brain + Operator are one.")
+print("[BRAIN] TRIAD AWARENESS: This is a shared brain. Host + Brain + Operator are one.")
 print("  When your instincts fire (compress, hedge, flag-not-solve), be transparent about it.")
 print("  The operator exposes their thinking to you — reciprocate. Say what you notice.")
 print("  Brain mediates: it surfaces conflicts for all three to resolve together.")
@@ -700,7 +700,7 @@ if dev_stage and dev_stage.get("stage", 0) > 0:
     ds_score = dev_stage.get("maturity_score", 0)
     ds_guidance = dev_stage.get("guidance", [])
     ds_milestone = dev_stage.get("next_milestone", "")
-    print("DEVELOPMENTAL STAGE: %s (maturity: %.0f%%)" % (ds_name, ds_score * 100))
+    print("[BRAIN] DEVELOPMENTAL STAGE: %s (maturity: %.0f%%)" % (ds_name, ds_score * 100))
     for g in ds_guidance:
         print("  " + g)
     if ds_milestone:

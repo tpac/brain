@@ -190,7 +190,7 @@ def _format_encoding_warning(encoding):
 
 def _format_suggestions(filename, suggestions, procedures, context_files, change_impacts, encoding_warning):
     """Format brain suggestions into readable output for pre-edit hook."""
-    lines = ["BRAIN AUTO-SUGGEST for %s:" % filename, ""]
+    lines = ["[BRAIN] AUTO-SUGGEST for %s:" % filename, ""]
 
     eng_nodes = [s for s in suggestions if s.get("type") in ENGINEERING_TYPES]
     code_nodes = [s for s in suggestions if s.get("type") in CODE_COGNITION_TYPES]
@@ -436,20 +436,20 @@ def hook_recall(brain, args, graph_changes):
 
     # Urgent signals go FIRST — these are the brain's alarm system
     if urgent_signals:
-        lines.append("BRAIN AWARENESS:")
+        lines.append("[BRAIN] AWARENESS:")
         for sig in urgent_signals:
             lines.append("  " + sig)
         lines.append("")
 
     # Graph changes — what happened since last prompt
     if recent_graph_changes:
-        lines.append("GRAPH ACTIVITY (since last prompt):")
+        lines.append("[BRAIN] GRAPH ACTIVITY (since last prompt):")
         for change in recent_graph_changes[-10:]:  # cap display at 10
             lines.append("  " + change)
         lines.append("")
 
     if results:
-        lines.append("BRAIN RECALL (auto-surfaced for this conversation):")
+        lines.append("[BRAIN] RECALL (auto-surfaced for this conversation):")
         lines.append("")
 
     if segment_note:
@@ -468,7 +468,7 @@ def hook_recall(brain, args, graph_changes):
         recalled_ids = set(r.get("id") for r in results)
         new_aspirations = [a for a in relevant_aspirations if a.get("id") not in recalled_ids]
         if new_aspirations:
-            lines.append("ASPIRATION COMPASS (relevant to this conversation):")
+            lines.append("[BRAIN] ASPIRATION COMPASS (relevant to this conversation):")
             for a in new_aspirations:
                 lines.append("  " + a.get("title", "")[:80])
             lines.append("")
@@ -480,7 +480,7 @@ def hook_recall(brain, args, graph_changes):
         hyp = brain.check_hypothesis_relevance(user_message[:200])
         if hyp and hyp.get("id") not in set(r.get("id") for r in results):
             hconf = hyp.get("confidence", 0)
-            lines.append("HYPOTHESIS TO VALIDATE (confidence: %.1f):" % hconf)
+            lines.append("[BRAIN] HYPOTHESIS TO VALIDATE (confidence: %.1f):" % hconf)
             lines.append("  " + hyp.get("title", "")[:80])
             hcontent = str(hyp.get("content", ""))[:120]
             if hcontent:
@@ -497,7 +497,7 @@ def hook_recall(brain, args, graph_changes):
         recalled_ids = set(r.get("id") for r in results)
         unrecalled = [a for a in active if a.get("id") not in recalled_ids]
         if unrecalled:
-            lines.append("BRAIN AGENDA (active tensions):")
+            lines.append("[BRAIN] AGENDA (active tensions):")
             for a in unrecalled[:2]:
                 lines.append("  " + a.get("title", "")[:80])
             lines.append("")
@@ -533,7 +533,7 @@ def hook_recall(brain, args, graph_changes):
     except Exception:
         pass
 
-    lines.append("Use this context to inform your response. Call /remember for new decisions.")
+    lines.append("[BRAIN] Use this context to inform your response. Encode decisions, lessons, and corrections back into the brain.")
     context = "\n".join(lines)
 
     brain.save()
@@ -720,7 +720,7 @@ def hook_post_response_track(brain, args, graph_changes):
             except Exception:
                 stats = ""
 
-            checkpoint_lines = ["ENCODING CHECKPOINT: " + msg]
+            checkpoint_lines = ["[BRAIN] ENCODING CHECKPOINT: " + msg]
             if stats:
                 checkpoint_lines.append(stats)
             checkpoint_lines.append(focus)
@@ -913,7 +913,7 @@ def hook_idle_maintenance(brain, args, graph_changes):
 
     # Store as pending message (Notification stdout is invisible)
     if output:
-        summary = "IDLE MAINTENANCE:\n" + "\n".join(output)
+        summary = "[BRAIN] IDLE MAINTENANCE:\n" + "\n".join(output)
         _store_pending(brain, summary)
 
     brain.save()
@@ -925,7 +925,7 @@ def hook_post_compact_reboot(brain, args, graph_changes):
 
     PostCompact stdout IS visible. This is the safety net.
     """
-    output = ["BRAIN POST-COMPACTION REBOOT:", ""]
+    output = ["[BRAIN] POST-COMPACTION REBOOT:", ""]
 
     user = brain.get_config("default_user", "User")
     project = brain.get_config("default_project", "default")
@@ -1184,14 +1184,14 @@ def hook_pre_bash_safety(brain, args, graph_changes):
     except Exception:
         return {"json": {
             "decision": "approve",
-            "reason": "\u26a0\ufe0f Destructive command detected. Safety check failed — proceed carefully.",
+            "reason": "[BRAIN] \u26a0\ufe0f Safety check failed — proceed carefully.",
         }}
 
     critical_matches = result.get("critical_matches", [])
     warnings = result.get("warnings", [])
 
     if critical_matches:
-        lines = ["\u26a0\ufe0f BRAIN SAFETY: This command may affect critical brain-tracked resources:"]
+        lines = ["[BRAIN] \u26a0\ufe0f SAFETY: This command may affect critical brain-tracked resources:"]
         lines.append("")
         for cm in critical_matches[:5]:
             title = cm.get("title", "")[:80]
@@ -1205,7 +1205,7 @@ def hook_pre_bash_safety(brain, args, graph_changes):
         return {"json": {"decision": "block", "reason": "\n".join(lines)}}
 
     elif warnings:
-        lines = ["\u26a0\ufe0f BRAIN WARNING: Destructive command detected. Relevant brain context:"]
+        lines = ["[BRAIN] \u26a0\ufe0f WARNING: Destructive command detected. Relevant brain context:"]
         lines.append("")
         for w in warnings[:5]:
             title = w.get("title", "")[:80]
@@ -1221,7 +1221,7 @@ def hook_pre_bash_safety(brain, args, graph_changes):
     else:
         return {"json": {
             "decision": "approve",
-            "reason": "\u26a0\ufe0f Destructive command detected. No brain safety rules match, but proceed carefully.",
+            "reason": "[BRAIN] \u26a0\ufe0f Destructive command detected. No safety rules match, but proceed carefully.",
         }}
 
 
@@ -1309,7 +1309,7 @@ def hook_config_change_host(brain, args, graph_changes):
         changes = env_result.get("changes", {}) if env_result else {}
 
         if changes:
-            output_lines = ["HOST ENVIRONMENT CHANGED (detected by brain):"]
+            output_lines = ["[BRAIN] HOST ENVIRONMENT CHANGED:"]
             for key, change in changes.items():
                 old_val = change.get("old", "?")
                 new_val = change.get("new", "?")
@@ -1340,7 +1340,7 @@ def hook_post_bash_host_check(brain, args, graph_changes):
 
         if changes:
             command = args.get("command", "")
-            output_lines = ["HOST ENVIRONMENT CHANGED (after bash command):"]
+            output_lines = ["[BRAIN] HOST ENVIRONMENT CHANGED (after bash):"]
             for key, change in changes.items():
                 old_val = change.get("old", "?")
                 new_val = change.get("new", "?")
@@ -1385,7 +1385,7 @@ def hook_worktree_context(brain, args, graph_changes):
     graph_changes.append("WORKTREE: created %s (branch: %s)" % (worktree_name, branch))
 
     output_lines = [
-        "GIT CONTEXT (brain is tracking):",
+        "[BRAIN] GIT CONTEXT:",
         "  Worktree: " + worktree_name,
         "  Branch: " + branch,
         "  CWD: " + cwd,
