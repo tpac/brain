@@ -13,6 +13,7 @@ All methods reference self.conn, self.logs_conn, self.get_config, etc.
 which are provided by Brain's __init__.
 """
 
+import os
 from typing import Dict, List, Optional, Any
 from . import embedder
 
@@ -584,7 +585,108 @@ class ConsciousnessMixin:
         except Exception:
             signals['silent_errors'] = []
 
+        # v5.3: HOOK ERRORS — from hook_common.log_hook_error() in brain_logs.db
+        # These are structural failures (import errors, bash failures, timeouts)
+        # that occur outside the brain's normal error logging.
+        try:
+            import sqlite3 as _sql3
+            logs_db = os.path.join(os.path.dirname(self.db_path), "brain_logs.db")
+            if os.path.isfile(logs_db):
+                lconn = _sql3.connect(logs_db, timeout=3)
+                tables = lconn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='hook_errors'"
+                ).fetchall()
+                if tables:
+                    rows = lconn.execute(
+                        """SELECT id, created_at, hook_name, level, error, context
+                           FROM hook_errors WHERE surfaced = 0
+                           ORDER BY id DESC LIMIT 10"""
+                    ).fetchall()
+                    if rows:
+                        signals['hook_errors'] = [
+                            {'id': r[0], 'created_at': r[1], 'hook_name': r[2],
+                             'level': r[3], 'error': r[4], 'context': r[5]}
+                            for r in rows
+                        ]
+                        # Mark as surfaced
+                        ids = [r[0] for r in rows]
+                        placeholders = ",".join("?" * len(ids))
+                        lconn.execute(
+                            "UPDATE hook_errors SET surfaced = 1 WHERE id IN (%s)" % placeholders,
+                            ids,
+                        )
+                        lconn.commit()
+                lconn.close()
+            if 'hook_errors' not in signals:
+                signals['hook_errors'] = []
+        except Exception:
+            signals['hook_errors'] = []
+
         return signals
+
+    def get_urgent_signals(self) -> List[str]:
+        """Lightweight consciousness check for frequent hooks (e.g., every UserPromptSubmit).
+
+        Returns a list of urgent text lines to surface. Empty list = nothing urgent.
+        Designed to be fast (<50ms) — only checks things that indicate broken/degraded state.
+        This is the brain's awareness heartbeat.
+        """
+        urgent = []
+
+        # 1. Hook errors (structural failures)
+        try:
+            import sqlite3 as _sql3
+            logs_db = os.path.join(os.path.dirname(self.db_path), "brain_logs.db")
+            if os.path.isfile(logs_db):
+                lconn = _sql3.connect(logs_db, timeout=2)
+                tables = lconn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='hook_errors'"
+                ).fetchall()
+                if tables:
+                    rows = lconn.execute(
+                        "SELECT id, created_at, hook_name, level, error, context "
+                        "FROM hook_errors WHERE surfaced = 0 ORDER BY id DESC LIMIT 5"
+                    ).fetchall()
+                    if rows:
+                        urgent.append("HOOK ERRORS (%d unsurfaced):" % len(rows))
+                        for r in rows:
+                            urgent.append("  [%s] %s: %s" % (r[1][:19], r[2], r[4][:100]))
+                            if r[5]:
+                                urgent.append("    context: %s" % r[5][:80])
+                        urgent.append("  ACTION: Hook failures detected. Investigate.")
+                        # Mark surfaced
+                        ids = [r[0] for r in rows]
+                        lconn.execute(
+                            "UPDATE hook_errors SET surfaced = 1 WHERE id IN (%s)" % ",".join("?" * len(ids)),
+                            ids,
+                        )
+                        lconn.commit()
+                lconn.close()
+        except Exception:
+            pass
+
+        # 2. Silent brain errors (last 2 hours, recent only)
+        try:
+            recent = self.get_recent_errors(hours=2, limit=3)
+            if recent:
+                seen = set()
+                for e in recent:
+                    key = (e['source'], e['error'][:30])
+                    if key not in seen:
+                        seen.add(key)
+                        urgent.append("BRAIN ERROR: [%s] %s" % (e['source'], e['error'][:100]))
+        except Exception:
+            pass
+
+        # 3. Overdue reminders
+        try:
+            due = self.get_due_reminders()
+            for rem in due[:2]:
+                urgent.append("REMINDER DUE: %s" % rem.get("title", "")[:80])
+        except Exception:
+            pass
+
+        return urgent
 
     def assess_developmental_stage(self) -> Dict[str, Any]:
         """Assess the brain's current developmental stage and generate growth guidance.

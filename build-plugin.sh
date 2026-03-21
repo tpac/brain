@@ -1,8 +1,10 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-# brain v5.3.0 — Serverless plugin builder
+# brain v5.3.1 — Serverless plugin builder
 # Packs exactly what belongs in the .plugin file. Nothing else.
 #
+# v5.3.1: Daemon consolidation + graph change tracking.
+#          All hook logic centralized in daemon_hooks.py.
 # v5.3: Eval-tested SKILL.md, 5-focus rotating checkpoints, session stats.
 #        Plus v5.2 critical flag, safety layer, vocabulary expansion.
 # ═══════════════════════════════════════════════════════════════
@@ -33,8 +35,9 @@ FILES=(
   servers/migrate.py
   servers/dal.py
   servers/daemon.py
+  servers/daemon_hooks.py
   servers/metrics.py
-  # Hook scripts
+  # Hook scripts — bash shims (thin wrappers)
   hooks/hooks.json
   hooks/scripts/boot-brain.sh
   hooks/scripts/pre-compact-save.sh
@@ -53,6 +56,22 @@ FILES=(
   hooks/scripts/resolve-brain-db.sh
   hooks/scripts/daemon-client.sh
   hooks/scripts/brain-client.sh
+  # Hook scripts — Python logic (imported by bash shims)
+  hooks/scripts/hook_common.py
+  hooks/scripts/boot_brain.py
+  hooks/scripts/pre_compact_save.py
+  hooks/scripts/pre_edit_suggest.py
+  hooks/scripts/pre_bash_safety.py
+  hooks/scripts/pre_response_recall.py
+  hooks/scripts/post_response_track.py
+  hooks/scripts/idle_maintenance.py
+  hooks/scripts/post_compact_reboot.py
+  hooks/scripts/session_end.py
+  hooks/scripts/stop_failure_log.py
+  hooks/scripts/config_change_host.py
+  hooks/scripts/post_bash_host_check.py
+  hooks/scripts/worktree_context.py
+  hooks/scripts/worktree_cleanup.py
   hooks/scripts/extract-session-log.py
   # Skill definition
   skills/brain/SKILL.md

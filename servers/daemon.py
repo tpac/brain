@@ -78,6 +78,7 @@ class BrainDaemon:
         self.running = False
         self.last_activity = time.time()
         self.dirty = False  # Track if brain has unsaved changes
+        self.graph_changes = []  # In-memory graph mutation log, drained by hook_recall
         self._lock = threading.Lock()
 
     def start(self):
@@ -235,30 +236,6 @@ class BrainDaemon:
                         )
                     return {"ok": True, "result": result}
 
-                elif cmd == "remember":
-                    result = self.brain.remember(
-                        type=args.get("type", "context"),
-                        title=args.get("title", ""),
-                        content=args.get("content", ""),
-                        locked=args.get("locked", False),
-                        confidence=args.get("confidence", 0.5),
-                        emotion=args.get("emotion"),
-                        keywords=args.get("keywords"),
-                        project=args.get("project")
-                    )
-                    self.dirty = True
-                    return {"ok": True, "result": result}
-
-                elif cmd == "connect":
-                    result = self.brain.connect(
-                        source_id=args.get("source_id", ""),
-                        target_id=args.get("target_id", ""),
-                        relation=args.get("relation", "related_to"),
-                        weight=args.get("weight", 0.5)
-                    )
-                    self.dirty = True
-                    return {"ok": True, "result": result}
-
                 elif cmd == "record_message":
                     self.brain.record_message()
                     nudge = self.brain.get_encoding_heartbeat()
@@ -313,6 +290,10 @@ class BrainDaemon:
                 elif cmd == "consciousness":
                     signals = self.brain.get_consciousness_signals()
                     return {"ok": True, "result": signals}
+
+                elif cmd == "urgent_signals":
+                    urgent = self.brain.get_urgent_signals()
+                    return {"ok": True, "result": urgent}
 
                 elif cmd == "engineering_context":
                     ctx = self.brain.get_engineering_context(
@@ -473,6 +454,118 @@ class BrainDaemon:
                         json.dumps(result)
                     except (TypeError, ValueError):
                         result = str(result)
+                    return {"ok": True, "result": result}
+
+                # ── Hook commands (centralized in daemon_hooks.py) ──
+                elif cmd == "hook_recall":
+                    from servers.daemon_hooks import hook_recall
+                    result = hook_recall(self.brain, args, self.graph_changes)
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "hook_post_response_track":
+                    from servers.daemon_hooks import hook_post_response_track
+                    result = hook_post_response_track(self.brain, args, self.graph_changes)
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "hook_idle_maintenance":
+                    from servers.daemon_hooks import hook_idle_maintenance
+                    result = hook_idle_maintenance(self.brain, args, self.graph_changes)
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "hook_post_compact_reboot":
+                    from servers.daemon_hooks import hook_post_compact_reboot
+                    result = hook_post_compact_reboot(self.brain, args, self.graph_changes)
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "hook_pre_edit":
+                    from servers.daemon_hooks import hook_pre_edit
+                    result = hook_pre_edit(self.brain, args, self.graph_changes)
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "hook_pre_bash_safety":
+                    from servers.daemon_hooks import hook_pre_bash_safety
+                    result = hook_pre_bash_safety(self.brain, args, self.graph_changes)
+                    return {"ok": True, "result": result}
+
+                elif cmd == "hook_pre_compact_save":
+                    from servers.daemon_hooks import hook_pre_compact_save
+                    result = hook_pre_compact_save(self.brain, args, self.graph_changes)
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "hook_session_end":
+                    from servers.daemon_hooks import hook_session_end
+                    result = hook_session_end(self.brain, args, self.graph_changes)
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "hook_stop_failure_log":
+                    from servers.daemon_hooks import hook_stop_failure_log
+                    result = hook_stop_failure_log(self.brain, args, self.graph_changes)
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "hook_config_change_host":
+                    from servers.daemon_hooks import hook_config_change_host
+                    result = hook_config_change_host(self.brain, args, self.graph_changes)
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "hook_post_bash_host_check":
+                    from servers.daemon_hooks import hook_post_bash_host_check
+                    result = hook_post_bash_host_check(self.brain, args, self.graph_changes)
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "hook_worktree_context":
+                    from servers.daemon_hooks import hook_worktree_context
+                    result = hook_worktree_context(self.brain, args, self.graph_changes)
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                elif cmd == "hook_worktree_cleanup":
+                    from servers.daemon_hooks import hook_worktree_cleanup
+                    result = hook_worktree_cleanup(self.brain, args, self.graph_changes)
+                    self.dirty = True
+                    return {"ok": True, "result": result}
+
+                # ── Track graph mutations from standard commands ──
+                elif cmd == "remember":
+                    result = self.brain.remember(
+                        type=args.get("type", "context"),
+                        title=args.get("title", ""),
+                        content=args.get("content", ""),
+                        locked=args.get("locked", False),
+                        confidence=args.get("confidence", 0.5),
+                        emotion=args.get("emotion"),
+                        keywords=args.get("keywords"),
+                        project=args.get("project")
+                    )
+                    self.dirty = True
+                    node_id = result.get("id", "?")[:8] if isinstance(result, dict) else "?"
+                    self.graph_changes.append(
+                        "REMEMBER: [%s] %s (%s...)" % (
+                            args.get("type", "?"), args.get("title", "")[:50], node_id))
+                    return {"ok": True, "result": result}
+
+                elif cmd == "connect":
+                    result = self.brain.connect(
+                        source_id=args.get("source_id", ""),
+                        target_id=args.get("target_id", ""),
+                        relation=args.get("relation", "related_to"),
+                        weight=args.get("weight", 0.5)
+                    )
+                    self.dirty = True
+                    self.graph_changes.append(
+                        "CONNECT: %s -[%s]-> %s" % (
+                            args.get("source_id", "?")[:8],
+                            args.get("relation", "related_to"),
+                            args.get("target_id", "?")[:8]))
                     return {"ok": True, "result": result}
 
                 else:
