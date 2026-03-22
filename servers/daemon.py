@@ -224,6 +224,17 @@ class BrainDaemon:
 
     def _load_brain(self):
         """Load the Brain instance + embedder — the expensive operation we do once."""
+        # Disable PyTorch MPS (Metal Performance Shaders) before any import.
+        # PyTorch auto-dispatches attention ops to MPS on Apple Silicon,
+        # but MPS requires GPU context that background daemons don't have,
+        # causing SIGABRT in MTLComputePipelineStateCache.
+        try:
+            import torch
+            torch.backends.mps.is_available = lambda: False
+            torch.backends.mps.is_built = lambda: False
+        except ImportError:
+            pass
+
         parent = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         if parent not in sys.path:
             sys.path.insert(0, parent)
