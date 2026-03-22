@@ -982,5 +982,115 @@ class TestRecallPrecision(BrainTestBase):
         self.assertGreater(total_signals, 0)
 
 
+class ConflictProtocolTests(BrainTestBase):
+    """Tests for brain-Claude conflict logging and consciousness surfacing."""
+
+    def test_log_conflict_creates_row(self):
+        """log_conflict() writes to conflict_log in brain_logs.db.
+
+        VERIFIES: Conflict is recorded with correct fields.
+        SIGNALS: If row is missing, the conflict pipeline is broken from the start.
+        """
+        cid = self.brain.log_conflict(
+            hook_name="pre_bash_safety",
+            brain_decision="block",
+            rule_node_id="node_123",
+            rule_title="Never delete production data",
+            claude_action="rm -rf /data",
+        )
+        self.assertIsNotNone(cid)
+
+        row = self.brain.logs_conn.execute(
+            "SELECT hook_name, brain_decision, rule_title, claude_action, resolution "
+            "FROM conflict_log WHERE id = ?",
+            (cid,),
+        ).fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row[0], "pre_bash_safety")
+        self.assertEqual(row[1], "block")
+        self.assertEqual(row[2], "Never delete production data")
+        self.assertEqual(row[3], "rm -rf /data")
+        self.assertEqual(row[4], "pending")
+
+    def test_resolve_conflict_updates_row(self):
+        """resolve_conflict() updates the resolution and operator_response.
+
+        VERIFIES: Resolution path works end-to-end.
+        SIGNALS: If resolution stays 'pending' after resolve, the update query is broken.
+        """
+        cid = self.brain.log_conflict(
+            hook_name="pre_edit",
+            brain_decision="warn",
+            rule_title="Test integrity rule",
+            claude_action="Editing test_precision.py",
+        )
+
+        self.brain.resolve_conflict(cid, "claude_correct", "Tom said: go ahead, the test update is fine")
+
+        row = self.brain.logs_conn.execute(
+            "SELECT resolution, operator_response FROM conflict_log WHERE id = ?",
+            (cid,),
+        ).fetchone()
+        self.assertEqual(row[0], "claude_correct")
+        self.assertIn("Tom said", row[1])
+
+    def test_conflict_surfaces_in_consciousness(self):
+        """Unsurfaced conflicts appear in get_consciousness_signals().
+
+        VERIFIES: The consciousness query finds pending conflicts.
+        SIGNALS: If empty, the conflict_log query in brain_consciousness.py is broken.
+        """
+        self.brain.log_conflict(
+            hook_name="pre_bash_safety",
+            brain_decision="block",
+            rule_title="Safety rule: never rm production",
+            claude_action="rm -rf /prod",
+        )
+
+        signals = self.brain.get_consciousness_signals()
+        conflicts = signals.get("brain_claude_conflicts", [])
+        self.assertGreater(len(conflicts), 0, "Conflict should appear in consciousness")
+        self.assertEqual(conflicts[0]["hook_name"], "pre_bash_safety")
+        self.assertEqual(conflicts[0]["brain_decision"], "block")
+        self.assertEqual(conflicts[0]["resolution"], "pending")
+
+    def test_conflict_marked_surfaced_after_consciousness(self):
+        """After get_consciousness_signals(), conflicts are marked surfaced.
+
+        VERIFIES: Conflicts don't appear twice in consecutive boot outputs.
+        SIGNALS: If still returned, the UPDATE surfaced=1 query is broken.
+        """
+        self.brain.log_conflict(
+            hook_name="pre_edit",
+            brain_decision="warn",
+            rule_title="Test rule",
+        )
+
+        # First call surfaces it
+        signals1 = self.brain.get_consciousness_signals()
+        self.assertGreater(len(signals1.get("brain_claude_conflicts", [])), 0)
+
+        # Second call should be empty (already surfaced)
+        signals2 = self.brain.get_consciousness_signals()
+        self.assertEqual(len(signals2.get("brain_claude_conflicts", [])), 0)
+
+    def test_log_conflict_with_warn_decision(self):
+        """warn-type conflicts also get logged correctly.
+
+        VERIFIES: Both 'block' and 'warn' decisions are stored.
+        """
+        cid = self.brain.log_conflict(
+            hook_name="pre_edit",
+            brain_decision="warn",
+            rule_title="Locked rule about error handling",
+            claude_action="Editing brain.py exception handler",
+        )
+        row = self.brain.logs_conn.execute(
+            "SELECT brain_decision FROM conflict_log WHERE id = ?",
+            (cid,),
+        ).fetchone()
+        self.assertEqual(row[0], "warn")
+
+
 if __name__ == "__main__":
     unittest.main()

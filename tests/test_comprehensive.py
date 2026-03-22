@@ -213,7 +213,7 @@ class TestConsciousnessSignals(BrainTestBase):
         expected_keys = [
             'reminders', 'evolutions', 'fading', 'stale_context_count',
             'failure_modes', 'performance', 'capabilities', 'interactions',
-            'novelty', 'miss_trends',
+            'novelty', 'miss_trends', 'brain_claude_conflicts',
         ]
         for key in expected_keys:
             self.assertIn(key, signals, f"Missing signal category: {key}")

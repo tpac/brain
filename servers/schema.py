@@ -852,7 +852,7 @@ LOG_TABLES = {
             rule_title TEXT,
             claude_action TEXT,
             brain_decision TEXT NOT NULL CHECK(brain_decision IN ('block', 'warn')),
-            resolution TEXT CHECK(resolution IN ('pending', 'brain_correct', 'claude_correct', 'scoped_exception', 'dismissed')),
+            resolution TEXT DEFAULT 'pending' CHECK(resolution IN ('pending', 'brain_correct', 'claude_correct', 'scoped_exception', 'dismissed')),
             operator_response TEXT,
             surfaced INTEGER DEFAULT 0,
             created_at TEXT

@@ -763,6 +763,7 @@ class TestConsciousnessSignals(BrainTestBase):
             'capabilities', 'interactions', 'meta_learning', 'novelty',
             'miss_trends', 'encoding_gap', 'recent_encodings',
             '_engagement_scores', 'rule_contradictions',
+            'brain_claude_conflicts',
         ]
         for key in expected_keys:
             self.assertIn(key, signals, 'Missing consciousness signal: %s' % key)

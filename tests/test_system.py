@@ -1256,5 +1256,128 @@ class TestPreScreenGuards(SystemTestBase):
                             f"Non-env command '{cmd}' took {elapsed:.1f}s — should exit instantly")
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# TEST 9: Seed Brain Tests — foundational knowledge for new brains
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestSeedBrain(unittest.TestCase):
+    """Tests for scripts/seed_brain.py — the seed brain populator."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='brain_test_seed_')
+        # Create a fresh brain
+        db_path = os.path.join(self.tmpdir, 'brain.db')
+        self.brain = Brain(db_path)
+        self.brain.save()
+
+    def tearDown(self):
+        self.brain.close()
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_seed_creates_expected_nodes(self):
+        """seed_brain.py creates all 5 foundational nodes.
+
+        VERIFIES: Seed nodes are created with correct types and locked status.
+        SIGNALS: If count < 5, a seed node definition is missing.
+        """
+        sys.path.insert(0, PROJECT_ROOT)
+        from scripts.seed_brain import seed_brain
+        seed_brain(self.tmpdir)
+
+        # Should have exactly 5 seed nodes
+        count = self.brain.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+        self.assertEqual(count, 5, "Seed should create exactly 5 nodes")
+
+        # Check locked nodes (4 of 5 should be locked)
+        locked = self.brain.conn.execute("SELECT COUNT(*) FROM nodes WHERE locked = 1").fetchone()[0]
+        self.assertEqual(locked, 4, "4 of 5 seed nodes should be locked")
+
+    def test_seed_is_idempotent(self):
+        """Running seed twice doesn't create duplicates.
+
+        VERIFIES: Idempotency via exact title match.
+        SIGNALS: If count > 5 after double seed, duplicate detection is broken.
+        """
+        from scripts.seed_brain import seed_brain
+        seed_brain(self.tmpdir)
+        seed_brain(self.tmpdir)  # Second run
+
+        count = self.brain.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+        self.assertEqual(count, 5, "Double seed should still produce exactly 5 nodes")
+
+    def test_seed_creates_connections(self):
+        """Seed creates cross-connections between foundational nodes.
+
+        VERIFIES: Edges exist between seed nodes.
+        SIGNALS: If 0 edges, the connection logic in seed_brain.py is broken.
+        """
+        from scripts.seed_brain import seed_brain
+        seed_brain(self.tmpdir)
+
+        edge_count = self.brain.conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
+        self.assertGreaterEqual(edge_count, 3, "Seed should create at least 3 connections")
+
+    def test_seed_includes_conflict_protocol(self):
+        """The conflict protocol rule is a seed node.
+
+        VERIFIES: The most important seed node (conflict protocol) exists and is locked.
+        """
+        from scripts.seed_brain import seed_brain
+        seed_brain(self.tmpdir)
+
+        row = self.brain.conn.execute(
+            "SELECT locked FROM nodes WHERE title LIKE '%conflict protocol%'"
+        ).fetchone()
+        self.assertIsNotNone(row, "Conflict protocol node should exist")
+        self.assertEqual(row[0], 1, "Conflict protocol should be locked")
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# TEST 10: Daemon Dispatch Tests — hook table + telemetry wrapper
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestDaemonDispatch(unittest.TestCase):
+    """Tests for the daemon's hook dispatch table and telemetry wrapper."""
+
+    def test_hook_table_covers_all_hooks(self):
+        """HOOK_TABLE has entries for all 13 hook functions.
+
+        VERIFIES: No hook was forgotten when converting from elif blocks.
+        SIGNALS: Missing entry means that hook silently fails in daemon mode.
+        """
+        expected_hooks = [
+            'hook_recall', 'hook_post_response_track', 'hook_idle_maintenance',
+            'hook_post_compact_reboot', 'hook_pre_edit', 'hook_pre_bash_safety',
+            'hook_pre_compact_save', 'hook_session_end', 'hook_stop_failure_log',
+            'hook_config_change_host', 'hook_post_bash_host_check',
+            'hook_worktree_context', 'hook_worktree_cleanup',
+        ]
+        for hook_name in expected_hooks:
+            self.assertIn(hook_name, BrainDaemon.HOOK_TABLE,
+                         f"Missing hook in HOOK_TABLE: {hook_name}")
+
+    def test_hook_table_functions_exist(self):
+        """All functions referenced in HOOK_TABLE exist in daemon_hooks module.
+
+        VERIFIES: No typos in function names.
+        SIGNALS: ImportError at runtime if a function name is wrong.
+        """
+        import servers.daemon_hooks as dh
+        for hook_name, (func_name, _) in BrainDaemon.HOOK_TABLE.items():
+            self.assertTrue(hasattr(dh, func_name),
+                           f"daemon_hooks missing function: {func_name}")
+            self.assertTrue(callable(getattr(dh, func_name)),
+                           f"{func_name} is not callable")
+
+    def test_hook_table_dirty_flags(self):
+        """Verify which hooks mark the brain as dirty.
+
+        VERIFIES: pre_bash_safety is the only non-dirty hook (read-only safety check).
+        """
+        non_dirty = [name for name, (_, dirty) in BrainDaemon.HOOK_TABLE.items() if not dirty]
+        self.assertEqual(non_dirty, ['hook_pre_bash_safety'],
+                        "Only pre_bash_safety should be non-dirty")
+
+
 if __name__ == '__main__':
     unittest.main()

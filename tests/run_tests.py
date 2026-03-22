@@ -127,6 +127,10 @@ def main():
         suite.addTests(loader.loadTestsFromName('tests.test_core'))
         suite.addTests(loader.loadTestsFromName('tests.test_recall_quality'))
         suite.addTests(loader.loadTestsFromName('tests.test_hooks'))
+        suite.addTests(loader.loadTestsFromName('tests.test_precision'))
+        suite.addTests(loader.loadTestsFromName('tests.test_comprehensive'))
+        suite.addTests(loader.loadTestsFromName('tests.test_recall_scorer'))
+        suite.addTests(loader.loadTestsFromName('tests.test_system'))
 
         verbosity = 2 if verbose else 1
         runner = unittest.TextTestRunner(verbosity=verbosity)
