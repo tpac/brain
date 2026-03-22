@@ -8,6 +8,7 @@ which are provided by Brain.__init__.
 
 from . import embedder
 from .schema import BRAIN_VERSION, BRAIN_VERSION_KEY, NODE_TYPES
+from .text_processing import split_identifier
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 import json
@@ -54,15 +55,13 @@ class BrainSurfaceMixin:
         if context:
             queries.append(context)
         if file:
-            # Clean filename
-            clean_file = file.replace('/', ' ').replace('\\', ' ').replace(os.path.splitext(file)[1], '')
-            clean_file = re.sub(r'([a-z])([A-Z])', r'\1 \2', clean_file)
-            clean_file = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1 \2', clean_file)
-            queries.append(clean_file)
-            # File parts
-            file_parts = [p for p in re.split(r'[\s\-_]+', clean_file) if len(p) > 2]
-            if len(file_parts) > 1:
-                queries.extend(file_parts)
+            # Split filename into search tokens using camelCase-aware splitter
+            file_tokens = split_identifier(file)
+            if file_tokens:
+                queries.append(' '.join(file_tokens))
+                # Individual tokens as separate queries for broader recall
+                if len(file_tokens) > 1:
+                    queries.extend(t for t in file_tokens if len(t) > 2)
 
         if screen:
             queries.append(screen)

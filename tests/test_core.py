@@ -1969,5 +1969,204 @@ class TestInfBug(BrainTestBase):
                 f'Locked {title} should still be recallable after auto_heal')
 
 
+# ── Identifier Splitting ─────────────────────────────────────────────
+
+from servers.text_processing import split_identifier
+
+
+class TestIdentifierSplitting(unittest.TestCase):
+    """Unit tests for split_identifier() — camelCase-aware tokenization."""
+
+    def test_camel_case_basic(self):
+        self.assertEqual(split_identifier('camelCase'), ['camel', 'case'])
+
+    def test_pascal_case(self):
+        self.assertEqual(split_identifier('RecallScorer'), ['recall', 'scorer'])
+
+    def test_acronym_before_word(self):
+        """HTMLParser → html parser (not HTMLP arser)."""
+        self.assertEqual(split_identifier('HTMLParser'), ['html', 'parser'])
+
+    def test_acronym_mid_identifier(self):
+        """parseHTMLDoc → parse html doc."""
+        self.assertEqual(split_identifier('parseHTMLDoc'), ['parse', 'html', 'doc'])
+
+    def test_trailing_acronym(self):
+        """getURL → get url."""
+        self.assertEqual(split_identifier('getURL'), ['get', 'url'])
+
+    def test_snake_case(self):
+        self.assertEqual(split_identifier('brain_surface'), ['brain', 'surface'])
+
+    def test_kebab_case(self):
+        self.assertEqual(split_identifier('pre-response-recall'), ['pre', 'response', 'recall'])
+
+    def test_file_extension_stripped(self):
+        self.assertEqual(split_identifier('brain_surface.py'), ['brain', 'surface'])
+
+    def test_sh_extension_stripped(self):
+        self.assertEqual(split_identifier('pre-edit-suggest.sh'), ['pre', 'edit', 'suggest'])
+
+    def test_version_number_preserved(self):
+        result = split_identifier('v2.3.1-beta')
+        self.assertIn('v2.3.1', result)
+        self.assertIn('beta', result)
+
+    def test_version_only(self):
+        result = split_identifier('v5.4.0')
+        self.assertEqual(result, ['v5.4.0'])
+
+    def test_digits_preserved(self):
+        """Digits like '8' in UTF8Encoder should not be filtered."""
+        result = split_identifier('UTF8Encoder')
+        self.assertIn('8', result)
+        self.assertIn('utf', result)
+        self.assertIn('encoder', result)
+
+    def test_path_splitting(self):
+        result = split_identifier('servers/daemon_hooks.py')
+        self.assertEqual(result, ['servers', 'daemon', 'hooks'])
+
+    def test_deep_path(self):
+        result = split_identifier('hooks/scripts/pre_response_recall.py')
+        self.assertIn('hooks', result)
+        self.assertIn('scripts', result)
+        self.assertIn('pre', result)
+        self.assertIn('response', result)
+        self.assertIn('recall', result)
+
+    def test_empty_string(self):
+        self.assertEqual(split_identifier(''), [])
+
+    def test_none_like_input(self):
+        self.assertEqual(split_identifier('   '), [])
+
+    def test_dots_only(self):
+        self.assertEqual(split_identifier('....'), [])
+
+    def test_single_char(self):
+        """Single alphabetic chars are filtered out."""
+        self.assertEqual(split_identifier('A'), [])
+
+    def test_database_file(self):
+        self.assertEqual(split_identifier('brain.db'), ['brain'])
+
+    def test_all_lowercase_preserved(self):
+        result = split_identifier('BrainSurfaceMixin')
+        for token in result:
+            self.assertEqual(token, token.lower(),
+                           'All tokens should be lowercase: %s' % token)
+
+    def test_short_acronym(self):
+        """getID → get id (short acronyms preserved)."""
+        result = split_identifier('getID')
+        self.assertIn('get', result)
+        self.assertIn('id', result)
+
+    def test_acronym_to_acronym(self):
+        """HTMLToJSON → html to json."""
+        result = split_identifier('HTMLToJSON')
+        self.assertIn('html', result)
+        self.assertIn('to', result)
+        self.assertIn('json', result)
+
+
+class TestIdentifierSplittingE2E(BrainTestBase):
+    """End-to-end: verify split_identifier integrates correctly with suggest()."""
+
+    def test_suggest_with_camelcase_file(self):
+        """suggest() should find relevant nodes when given a camelCase filename."""
+        self.brain.remember(
+            type='rule',
+            title='Recall scorer must use layered evaluation',
+            content='Three layers: regex patterns, embedding similarity, BART NLI. '
+                    'Layer 0 regex is fast, Layer 1 embeddings catch semantic matches, '
+                    'Layer 1b BART provides entailment scores.',
+            keywords='recall scorer evaluation layers regex embeddings',
+            locked=True)
+        self.brain.save()
+
+        result = self.brain.suggest(file='RecallScorer.py', limit=5)
+        suggestions = result.get('suggestions', [])
+        titles = [s.get('title', '') for s in suggestions]
+        self.assertTrue(
+            any('recall' in t.lower() or 'scorer' in t.lower() for t in titles),
+            'suggest() with camelCase file "RecallScorer.py" should find recall scorer rule. '
+            'Got: %s' % titles)
+
+    def test_suggest_with_acronym_file(self):
+        """suggest() should handle files with acronyms like HTMLParser."""
+        self.brain.remember(
+            type='decision',
+            title='HTML parsing uses BeautifulSoup',
+            content='We chose BeautifulSoup over lxml for HTML parsing because '
+                    'it handles malformed HTML gracefully.',
+            keywords='html parsing beautifulsoup parser',
+            locked=True)
+        self.brain.save()
+
+        result = self.brain.suggest(file='HTMLParser.py', limit=5)
+        suggestions = result.get('suggestions', [])
+        titles = [s.get('title', '') for s in suggestions]
+        # The tokenization should produce "html parser" which matches the node
+        self.assertTrue(
+            any('html' in t.lower() or 'parser' in t.lower() for t in titles),
+            'suggest() with "HTMLParser.py" should find HTML parsing decision. '
+            'Got: %s' % titles)
+
+    def test_suggest_with_deep_path(self):
+        """suggest() with a deep path should extract meaningful tokens."""
+        self.brain.remember(
+            type='rule',
+            title='Hook scripts must handle daemon unavailable',
+            content='All hook scripts in hooks/scripts/ must gracefully fall back '
+                    'to direct Python when the daemon is not running.',
+            keywords='hooks scripts daemon fallback',
+            locked=True)
+        self.brain.save()
+
+        result = self.brain.suggest(file='hooks/scripts/pre_response_recall.py', limit=5)
+        suggestions = result.get('suggestions', [])
+        titles = [s.get('title', '') for s in suggestions]
+        self.assertTrue(
+            any('hook' in t.lower() or 'daemon' in t.lower() for t in titles),
+            'suggest() with deep path should find hook-related rules. '
+            'Got: %s' % titles)
+
+    def test_suggest_with_version_in_filename(self):
+        """Version numbers in filenames should not corrupt tokenization."""
+        self.brain.remember(
+            type='decision',
+            title='Migration system uses sequential version numbers',
+            content='Schema migrations are numbered 001, 002, etc. '
+                    'Each migration file applies changes to brain.db or brain_logs.db.',
+            keywords='migration version schema upgrade',
+            locked=True)
+        self.brain.save()
+
+        # This should not crash or produce garbage tokens
+        result = self.brain.suggest(file='migrations/v2.3.1_add_columns.py', limit=5)
+        self.assertIn('suggestions', result)
+
+    def test_suggest_with_snake_case_matches_camelcase_node(self):
+        """snake_case file should match PascalCase-titled nodes."""
+        self.brain.remember(
+            type='concept',
+            title='BrainSurface handles suggest and edit context',
+            content='The BrainSurface mixin provides suggest(), get_edit_context(), '
+                    'and other surface-level retrieval methods.',
+            keywords='brain surface suggest edit context mixin',
+            locked=True)
+        self.brain.save()
+
+        result = self.brain.suggest(file='brain_surface.py', limit=5)
+        suggestions = result.get('suggestions', [])
+        titles = [s.get('title', '') for s in suggestions]
+        self.assertTrue(
+            any('surface' in t.lower() or 'brain' in t.lower() for t in titles),
+            'snake_case file should match PascalCase node titles. '
+            'Got: %s' % titles)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2, exit=True)
