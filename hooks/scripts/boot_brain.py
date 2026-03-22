@@ -112,6 +112,7 @@ uncertain_areas = consciousness.get("uncertain_areas", [])
 mental_model_drift = consciousness.get("mental_model_drift", [])
 silent_errors = consciousness.get("silent_errors", [])
 hook_errors = consciousness.get("hook_errors", [])
+brain_claude_conflicts = consciousness.get("brain_claude_conflicts", [])
 
 # Developmental stage
 dev_stage = brain.assess_developmental_stage()
@@ -418,6 +419,7 @@ has_conscious = (
     or stale_reasoning or uncharted_code or stale_file_inv
     or recurring_divergence or validated_approaches or uncertain_areas
     or mental_model_drift or silent_errors or hook_errors
+    or brain_claude_conflicts
 )
 
 if has_conscious:
@@ -629,6 +631,34 @@ if hook_errors:
     print("  ACTION: These are hook-level failures (imports, syntax, timeouts).")
     print("  They happen OUTSIDE the brain — check hook scripts and hook_common.py.")
     print()
+
+if brain_claude_conflicts:
+    pending = [c for c in brain_claude_conflicts if c.get("resolution") == "pending"]
+    resolved = [c for c in brain_claude_conflicts if c.get("resolution") != "pending"]
+    if pending:
+        print("  BRAIN-CLAUDE CONFLICTS (%d unresolved):" % len(pending))
+        for bc in pending[:5]:
+            bc_time = bc.get("created_at", "")[:19]
+            bc_hook = bc.get("hook_name", "?")
+            bc_decision = bc.get("brain_decision", "?").upper()
+            bc_rule = bc.get("rule_title", "unknown rule")[:70]
+            bc_action = bc.get("claude_action", "")[:80]
+            print("    [%s] %s via %s" % (bc_time, bc_decision, bc_hook))
+            print("      Brain rule: %s" % bc_rule)
+            if bc_action:
+                print("      Claude wanted: %s" % bc_action)
+        print("  ACTION: Brain and Claude disagreed. Operator should resolve:")
+        print("    - If brain was right: the rule works. No action needed.")
+        print("    - If Claude was right: update or scope the rule.")
+        print("    - If context-dependent: add a scoped exception.")
+        print()
+    if resolved:
+        print("  RECENTLY RESOLVED CONFLICTS (%d):" % len(resolved))
+        for rc in resolved[:3]:
+            rc_rule = rc.get("rule_title", "")[:60]
+            rc_resolution = rc.get("resolution", "?")
+            print("    %s → %s" % (rc_rule, rc_resolution))
+        print()
 
 if uncertain_areas:
     print("  UNCERTAIN AREAS (unresolved):")

@@ -622,6 +622,42 @@ class ConsciousnessMixin:
         except Exception:
             signals['hook_errors'] = []
 
+        # Brain-Claude conflicts (unsurfaced from conflict_log)
+        try:
+            import sqlite3 as _sql3c
+            logs_db = os.path.join(os.path.dirname(self.db_path), "brain_logs.db")
+            if os.path.isfile(logs_db):
+                lconn = _sql3c.connect(logs_db, timeout=2)
+                tables = lconn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='conflict_log'"
+                ).fetchall()
+                if tables:
+                    rows = lconn.execute(
+                        "SELECT id, created_at, hook_name, rule_title, claude_action, "
+                        "brain_decision, resolution "
+                        "FROM conflict_log WHERE surfaced = 0 ORDER BY id DESC LIMIT 10"
+                    ).fetchall()
+                    if rows:
+                        signals['brain_claude_conflicts'] = [
+                            {'id': r[0], 'created_at': r[1], 'hook_name': r[2],
+                             'rule_title': r[3] or '', 'claude_action': r[4] or '',
+                             'brain_decision': r[5], 'resolution': r[6] or 'pending'}
+                            for r in rows
+                        ]
+                        # Mark as surfaced
+                        ids = [r[0] for r in rows]
+                        placeholders = ",".join("?" * len(ids))
+                        lconn.execute(
+                            "UPDATE conflict_log SET surfaced = 1 WHERE id IN (%s)" % placeholders,
+                            ids,
+                        )
+                        lconn.commit()
+                lconn.close()
+            if 'brain_claude_conflicts' not in signals:
+                signals['brain_claude_conflicts'] = []
+        except Exception:
+            signals['brain_claude_conflicts'] = []
+
         return signals
 
     def get_urgent_signals(self) -> List[str]:

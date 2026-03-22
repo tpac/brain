@@ -1207,6 +1207,20 @@ def hook_pre_bash_safety(brain, args, graph_changes):
             lines.append("")
         lines.append("Review the above before proceeding. This command has been BLOCKED.")
         lines.append("[/BRAIN]")
+
+        # Log brain-Claude conflict
+        try:
+            rule_title = critical_matches[0].get("title", "")[:120] if critical_matches else "safety rule"
+            brain.log_conflict(
+                hook_name="pre_bash_safety",
+                brain_decision="block",
+                rule_node_id=critical_matches[0].get("id") if critical_matches else None,
+                rule_title=rule_title,
+                claude_action=command[:200],
+            )
+        except Exception:
+            pass
+
         return {"json": {"decision": "block", "reason": "\n".join(lines)}}
 
     elif warnings:

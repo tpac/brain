@@ -1637,6 +1637,73 @@ class Brain(
             pass
         return {'debug_enabled': os.environ.get('BRAIN_DEBUG') == '1'}
 
+    def log_conflict(self, hook_name: str, brain_decision: str,
+                     rule_node_id: str = None, rule_title: str = None,
+                     claude_action: str = None) -> Optional[int]:
+        """Record a brain-Claude conflict for consciousness surfacing.
+
+        Called when a brain rule blocks or warns Claude's action. The conflict
+        is surfaced at next boot as a consciousness signal so the operator can
+        resolve it.
+
+        Args:
+            hook_name: Which hook detected the conflict (e.g., 'pre_edit', 'pre_bash')
+            brain_decision: 'block' or 'warn'
+            rule_node_id: The brain node whose rule triggered the conflict
+            rule_title: Human-readable rule title
+            claude_action: What Claude was trying to do
+
+        Returns:
+            conflict_log row id, or None on error
+        """
+        try:
+            session_id = self._get_session_activity().get('session_id', 'unknown')
+            self.logs_conn.execute("""
+                CREATE TABLE IF NOT EXISTS conflict_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT,
+                    hook_name TEXT NOT NULL,
+                    rule_node_id TEXT,
+                    rule_title TEXT,
+                    claude_action TEXT,
+                    brain_decision TEXT NOT NULL,
+                    resolution TEXT DEFAULT 'pending',
+                    operator_response TEXT,
+                    surfaced INTEGER DEFAULT 0,
+                    created_at TEXT
+                )
+            """)
+            cursor = self.logs_conn.execute("""
+                INSERT INTO conflict_log
+                  (session_id, hook_name, rule_node_id, rule_title, claude_action,
+                   brain_decision, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (session_id, hook_name, rule_node_id, rule_title,
+                  claude_action, brain_decision, self.now()))
+            self.logs_conn.commit()
+            return cursor.lastrowid
+        except Exception as e:
+            self._log_error('log_conflict', e, hook_name)
+            return None
+
+    def resolve_conflict(self, conflict_id: int, resolution: str,
+                         operator_response: str = None):
+        """Resolve a brain-Claude conflict after operator decision.
+
+        Args:
+            conflict_id: Row id from conflict_log
+            resolution: 'brain_correct', 'claude_correct', 'scoped_exception', 'dismissed'
+            operator_response: What the operator said (for learning)
+        """
+        try:
+            self.logs_conn.execute("""
+                UPDATE conflict_log SET resolution = ?, operator_response = ?
+                WHERE id = ?
+            """, (resolution, operator_response, conflict_id))
+            self.logs_conn.commit()
+        except Exception as e:
+            self._log_error('resolve_conflict', e, str(conflict_id))
+
     def _log_error(self, source: str, error: Exception, context: str = ''):
         """Log an error to brain_logs.db + brain.log with rate limiting.
 

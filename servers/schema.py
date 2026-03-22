@@ -843,6 +843,27 @@ LOG_TABLES = {
             created_at TEXT
         )""",
     },
+    'conflict_log': {
+        'create': """CREATE TABLE IF NOT EXISTS conflict_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            hook_name TEXT NOT NULL,
+            rule_node_id TEXT,
+            rule_title TEXT,
+            claude_action TEXT,
+            brain_decision TEXT NOT NULL CHECK(brain_decision IN ('block', 'warn')),
+            resolution TEXT CHECK(resolution IN ('pending', 'brain_correct', 'claude_correct', 'scoped_exception', 'dismissed')),
+            operator_response TEXT,
+            surfaced INTEGER DEFAULT 0,
+            created_at TEXT
+        )""",
+        'columns': {
+            'session_id': 'NULL', 'hook_name': None, 'rule_node_id': 'NULL',
+            'rule_title': 'NULL', 'claude_action': 'NULL', 'brain_decision': None,
+            'resolution': "'pending'", 'operator_response': 'NULL',
+            'surfaced': '0', 'created_at': 'NULL'}
+    },
+
     'staged_learnings': {
         'create': """CREATE TABLE IF NOT EXISTS staged_learnings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -873,6 +894,8 @@ LOG_INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_health_session ON health_log(session_id)',
     'CREATE INDEX IF NOT EXISTS idx_staged_status ON staged_learnings(status)',
     'CREATE INDEX IF NOT EXISTS idx_staged_node ON staged_learnings(node_id)',
+    'CREATE INDEX IF NOT EXISTS idx_conflict_session ON conflict_log(session_id)',
+    'CREATE INDEX IF NOT EXISTS idx_conflict_surfaced ON conflict_log(surfaced)',
 ]
 
 
