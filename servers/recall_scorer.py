@@ -187,7 +187,8 @@ def compute_bart_signals(followup: str) -> Dict[str, float]:
 
     whole_scores = _bart_classify(followup)
 
-    sents = [s.strip() for s in re.split(r'[.!?]+', followup) if len(s.strip()) > 3]
+    from .text_processing import split_sentences
+    sents = [s for s in split_sentences(followup) if len(s.strip()) > 3]
     max_sent_agree = 0.0
     max_sent_disagree = 0.0
     max_sent_redirect = 0.0
@@ -266,8 +267,9 @@ def compute_embedding_signals(
     s["max_fup_sim"] = max(per_node_fup.values()) if per_node_fup else 0.0
     s["sim_delta"] = s["max_fup_sim"] - s["max_resp_sim"]
 
-    resp_sents = [t.strip() for t in re.split(r'[.!?]+', response) if len(t.strip()) > 15]
-    fup_sents = [t.strip() for t in re.split(r'[.!?]+', followup) if len(t.strip()) > 15]
+    from .text_processing import split_sentences
+    resp_sents = [t for t in split_sentences(response) if len(t.strip()) > 15]
+    fup_sents = [t for t in split_sentences(followup) if len(t.strip()) > 15]
     resp_on = sum(
         1 for t in resp_sents
         if embedder.cosine_similarity(recalled_vec, embedder.embed(t)) > 0.5

@@ -236,3 +236,111 @@ def filter_domain_terms(candidates: List[str]) -> List[str]:
         if is_domain_specific(term):
             result.append(term)
     return result
+
+
+# ── Sentence Splitting ────────────────────────────────────────────────
+
+# Code reference pattern: brain.recall(), self.conn.execute(), os.path.join
+_CODE_REF_RE = re.compile(
+    r'[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)+(?:\(\))?'
+)
+
+# File path with extension: daemon_hooks.py, path/to/file.js
+_FILE_PATH_RE = re.compile(
+    r'\b[\w/\\]+\.(?:py|js|ts|sh|md|json|yaml|yml|toml|sql|html|css|xml)\b',
+    re.IGNORECASE
+)
+
+# Version number: v5.3.1, 2.0.1, Python 3.11
+_SENT_VERSION_RE = re.compile(r'\bv?\d+\.\d+(?:\.\d+)*\b', re.IGNORECASE)
+
+# URL pattern
+_URL_RE = re.compile(r'https?://\S+')
+
+# Placeholder character (Unicode object replacement)
+_PH = '\uFFFC'
+
+# Cached pySBD segmenter
+_segmenter = None
+
+
+def _get_segmenter():
+    """Lazy-load pySBD segmenter. Returns None if pySBD not installed."""
+    global _segmenter
+    if _segmenter is not None:
+        return _segmenter
+    try:
+        import pysbd
+        _segmenter = pysbd.Segmenter(language="en", clean=False)
+        return _segmenter
+    except ImportError:
+        return None
+
+
+def split_sentences(text: str) -> List[str]:
+    """Split text into sentences using pySBD with code reference protection.
+
+    Handles:
+    - Code references: brain.recall(), self.conn.execute()
+    - File paths: daemon_hooks.py, path/to/file.js
+    - Version numbers: v2.3.1, Python 3.11
+    - URLs: https://example.com/path
+    - Abbreviations: e.g., i.e., Dr., etc.
+    - Ellipses: thinking...
+
+    Falls back to regex splitting if pySBD is not installed.
+
+    Examples:
+        >>> split_sentences('I used brain.recall() to find it. It worked great.')
+        ['I used brain.recall() to find it.', 'It worked great.']
+        >>> split_sentences("We're on v2.3.1 now. The update fixed it.")
+        ["We're on v2.3.1 now.", "The update fixed it."]
+    """
+    if not text or not text.strip():
+        return []
+
+    # Protect patterns that contain periods from being split on
+    replacements = {}
+    counter = [0]
+
+    def _protect(match):
+        key = '%s%d%s' % (_PH, counter[0], _PH)
+        replacements[key] = match.group(0)
+        counter[0] += 1
+        return key
+
+    protected = text
+    protected = _URL_RE.sub(_protect, protected)
+    protected = _CODE_REF_RE.sub(_protect, protected)
+    protected = _FILE_PATH_RE.sub(_protect, protected)
+    protected = _SENT_VERSION_RE.sub(_protect, protected)
+
+    # Try pySBD first
+    segmenter = _get_segmenter()
+    if segmenter:
+        sentences = segmenter.segment(protected)
+    else:
+        # Fallback: split on sentence-ending punctuation followed by space + uppercase
+        parts = re.split(r'([.!?]+)\s+(?=[A-Z"])', protected)
+        sentences = []
+        i = 0
+        while i < len(parts):
+            s = parts[i]
+            if i + 1 < len(parts) and re.match(r'^[.!?]+$', parts[i + 1]):
+                s += parts[i + 1]
+                i += 2
+            else:
+                i += 1
+            if s.strip():
+                sentences.append(s.strip())
+
+    # Restore protected patterns
+    result = []
+    for sent in sentences:
+        for key, val in replacements.items():
+            sent = sent.replace(key, val)
+        sent = sent.strip()
+        if sent:
+            result.append(sent)
+
+    return result

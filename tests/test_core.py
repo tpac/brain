@@ -2474,5 +2474,133 @@ class TestVocabExtractionE2E(BrainTestBase):
         self.assertTrue(any('DAL' in t for t in terms))
 
 
+# ── Sentence Splitting ────────────────────────────────────────────────
+
+from servers.text_processing import split_sentences
+
+
+class TestSentenceSplitting(unittest.TestCase):
+    """Unit tests for split_sentences() — pySBD with code reference protection."""
+
+    def test_code_reference_preserved(self):
+        """brain.recall() should not be split on the dot."""
+        sents = split_sentences('I used brain.recall() to find it. It worked great.')
+        self.assertEqual(len(sents), 2)
+        self.assertIn('brain.recall()', sents[0])
+
+    def test_dotted_path_preserved(self):
+        """self.conn.execute() should stay intact."""
+        sents = split_sentences('Check self.conn.execute() for the query. Also look at os.path.join.')
+        self.assertEqual(len(sents), 2)
+        self.assertIn('self.conn.execute()', sents[0])
+
+    def test_version_number_preserved(self):
+        """v2.3.1 should not be split on dots."""
+        sents = split_sentences("We're on v2.3.1 now. The update fixed it.")
+        self.assertEqual(len(sents), 2)
+        self.assertTrue(any('v2.3.1' in s for s in sents))
+
+    def test_file_extension_preserved(self):
+        """daemon_hooks.py should not split at the dot."""
+        sents = split_sentences('Fix bug in daemon_hooks.py. The vocab detection fails.')
+        self.assertEqual(len(sents), 2)
+        self.assertIn('daemon_hooks.py', sents[0])
+
+    def test_url_preserved(self):
+        """URLs should not be split on dots."""
+        sents = split_sentences('See https://example.com/path.html for details. It has everything.')
+        self.assertEqual(len(sents), 2)
+        self.assertIn('https://example.com/path.html', sents[0])
+
+    def test_abbreviation_mr(self):
+        """Mr. and Dr. should not cause splits."""
+        sents = split_sentences('Mr. Smith said it was fine. Dr. Jones agreed.')
+        self.assertEqual(len(sents), 2)
+
+    def test_decimal_number(self):
+        """0.85 should not be split on the dot."""
+        sents = split_sentences('The score was 0.85 on precision. That is good enough.')
+        self.assertEqual(len(sents), 2)
+        self.assertTrue(any('0.85' in s for s in sents))
+
+    def test_ellipsis(self):
+        """Ellipsis should not cause splits."""
+        sents = split_sentences('thinking... maybe we should try it.')
+        self.assertEqual(len(sents), 1)
+
+    def test_normal_split(self):
+        """Normal sentences should split correctly."""
+        sents = split_sentences('First. Second. Third.')
+        self.assertEqual(len(sents), 3)
+
+    def test_empty_input(self):
+        self.assertEqual(split_sentences(''), [])
+        self.assertEqual(split_sentences('   '), [])
+
+    def test_no_punctuation(self):
+        sents = split_sentences('A single sentence with no period')
+        self.assertEqual(len(sents), 1)
+
+    def test_multiple_code_refs(self):
+        """Multiple code refs in different sentences."""
+        sents = split_sentences('brain.recall() found 3 results. brain.suggest() found 5.')
+        self.assertEqual(len(sents), 2)
+        self.assertIn('brain.recall()', sents[0])
+        self.assertIn('brain.suggest()', sents[1])
+
+
+class TestSentenceSplittingE2E(BrainTestBase):
+    """End-to-end: verify sentence splitting works in recall scorer context."""
+
+    def test_split_preserves_code_for_embedding(self):
+        """Sentences with code refs should be valid for embedding comparison."""
+        sents = split_sentences(
+            'The brain.recall() function uses embeddings. '
+            'It scores with recall_scorer.py methods.'
+        )
+        # Both sentences should be complete and embeddable
+        self.assertEqual(len(sents), 2)
+        for sent in sents:
+            self.assertTrue(len(sent) > 10,
+                          'Sentence too short for embedding: "%s"' % sent)
+
+    def test_split_on_real_response_text(self):
+        """Splitting a realistic Claude response should produce clean sentences."""
+        response = (
+            'I found the relevant brain nodes using brain.recall(). '
+            'The recall_scorer.py module evaluated precision at 0.85. '
+            'Dr. Smith documented this in v2.3.1 release notes. '
+            'See https://github.com/example/brain for details.'
+        )
+        sents = split_sentences(response)
+        # Should be 4 sentences, not 10+ fragments
+        self.assertEqual(len(sents), 4,
+                        'Expected 4 sentences from response. Got %d: %s' % (len(sents), sents))
+
+    def test_split_with_brain_node_content(self):
+        """Splitting brain node content should work for similarity comparison."""
+        self.brain.remember(
+            type='decision',
+            title='Use recall_scorer.py for precision',
+            content='The recall_scorer.py module handles precision evaluation. '
+                    'It uses three layers: regex patterns at v1.0, embeddings at v2.0, '
+                    'and BART NLI at v3.0. Each layer scores independently.',
+            keywords='recall scorer precision evaluation')
+        self.brain.save()
+
+        node = self.brain.conn.execute(
+            "SELECT content FROM nodes WHERE title LIKE '%recall_scorer%'"
+        ).fetchone()
+        content = node[0]
+
+        sents = split_sentences(content)
+        # Should get 3 sentences, not fragmented by version numbers or file refs
+        self.assertEqual(len(sents), 3,
+                        'Expected 3 sentences. Got %d: %s' % (len(sents), sents))
+        # Version numbers should be intact
+        self.assertTrue(any('v1.0' in s or 'v2.0' in s for s in sents),
+                       'Version numbers should be preserved in sentences')
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2, exit=True)
