@@ -33,15 +33,12 @@ from servers.schema import ensure_logs_schema
 # to detect trends: "TestConsciousness fails 80% of the time", etc.
 
 def _get_test_logs_db_path():
-    """Resolve the test logs DB path. Uses real brain_logs.db if available."""
-    # Try real brain location first
-    brain_db_dir = os.environ.get('BRAIN_DB_DIR', '')
-    if brain_db_dir:
-        return os.path.join(brain_db_dir, 'brain_logs.db')
-    home_path = os.path.expanduser('~/AgentsContext/brain/brain_logs.db')
-    if os.path.exists(os.path.dirname(home_path)):
-        return home_path
-    # Fallback: local to test directory
+    """Resolve the test logs DB path.
+
+    ALWAYS uses a separate test_logs.db — never writes to production brain_logs.db.
+    Test results polluting production logs makes debug_log useless for real
+    hook telemetry (lesson from 4,885 test rows vs 79 real rows in debug_log).
+    """
     return os.path.join(os.path.dirname(__file__), 'results', 'test_logs.db')
 
 
