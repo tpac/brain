@@ -38,6 +38,14 @@ PROTOCOL:
 
 import sys
 import os
+
+# Force CPU-only for ONNX and PyTorch BEFORE any downstream import.
+# On macOS Apple Silicon, CoreML/Metal XPC connections cause SIGABRT
+# in background/daemon processes that lack GPU context.
+os.environ["ORT_DISABLE_ALL_ACCELERATORS"] = "1"
+os.environ.setdefault("ONNX_PROVIDERS", "CPUExecutionProvider")
+os.environ.setdefault("PYTORCH_MPS_DISABLE", "1")
+
 import json
 import socket
 import select
@@ -794,7 +802,17 @@ def ensure_daemon(db_path: str) -> bool:
             stdout=log_fd,
             stderr=log_fd,
             start_new_session=True,
-            env={**os.environ, "VECLIB_MAXIMUM_THREADS": "1", "ONNX_CPU_ONLY": "1"},
+            env={
+                **os.environ,
+                "VECLIB_MAXIMUM_THREADS": "1",
+                # Force ONNX Runtime to CPU-only before any import.
+                # CoreML/Metal triggers SIGABRT in background processes on Apple Silicon.
+                "ORT_DISABLE_ALL_ACCELERATORS": "1",
+                "ONNX_PROVIDERS": "CPUExecutionProvider",
+                # Disable PyTorch MPS as well (sentence-transformers may use it)
+                "PYTORCH_MPS_DISABLE": "1",
+                "PYTORCH_ENABLE_MPS_FALLBACK": "0",
+            },
         )
 
     # Wait for daemon to become ready
