@@ -96,6 +96,11 @@ def get_lock_path() -> str:
     uid = os.getuid()
     return os.path.join("/tmp", "brain-daemon-{}.lock".format(uid))
 
+def get_status_path() -> str:
+    """Get the daemon status file path (read by statusline script)."""
+    uid = os.getuid()
+    return os.path.join("/tmp", "brain-status-{}.json".format(uid))
+
 
 class BrainDaemon:
     """Persistent Brain daemon that listens on a Unix socket."""
@@ -171,6 +176,9 @@ class BrainDaemon:
             )
         except Exception as e:
             self._log("Telemetry write failed for %s: %s" % (cmd, e))
+
+        # Update status file after each hook (best-effort, non-blocking)
+        self._write_status()
 
         return result
 
@@ -638,6 +646,54 @@ class BrainDaemon:
         """Send an error response."""
         self._send_response(client, {"ok": False, "error": message})
 
+    def _write_status(self):
+        """Write brain status to a JSON file for the statusline script."""
+        try:
+            import json as _json
+            brain = self.brain
+            if not brain:
+                return
+
+            node_count = brain.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+            locked_count = brain.conn.execute("SELECT COUNT(*) FROM nodes WHERE locked = 1").fetchone()[0]
+            edge_count = brain.conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
+
+            # Tension count
+            tension_count = brain.conn.execute(
+                "SELECT COUNT(*) FROM nodes WHERE type = 'tension'"
+            ).fetchone()[0]
+
+            # Embedding status
+            from servers import embedder
+            emb_ready = embedder.is_ready()
+            emb_stats = embedder.get_stats() if emb_ready else {}
+
+            # Last encode time
+            last_encode = brain.conn.execute(
+                "SELECT created_at FROM nodes ORDER BY created_at DESC LIMIT 1"
+            ).fetchone()
+            last_encode_at = last_encode[0] if last_encode else None
+
+            status = {
+                "nodes": node_count,
+                "edges": edge_count,
+                "locked": locked_count,
+                "tensions": tension_count,
+                "embedder_ready": emb_ready,
+                "model_name": emb_stats.get("model_name", ""),
+                "last_encode_at": last_encode_at,
+                "pid": os.getpid(),
+                "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+
+            status_path = get_status_path()
+            tmp_path = status_path + ".tmp"
+            with open(tmp_path, "w") as f:
+                _json.dump(status, f)
+            os.replace(tmp_path, status_path)
+        except Exception:
+            pass  # Status file is best-effort
+
     def _autosave_loop(self):
         """Periodically save brain if dirty."""
         while self.running:
@@ -650,6 +706,8 @@ class BrainDaemon:
                         self._log("Autosaved")
                     except Exception as e:
                         self._log("Autosave error: {}".format(e))
+            # Always update status (even if not dirty — status line needs fresh data)
+            self._write_status()
 
     def _handle_signal(self, signum, frame):
         """Handle termination signals."""
@@ -675,7 +733,7 @@ class BrainDaemon:
                 self.server_socket.close()
         except Exception:
             pass
-        for path in [self.socket_path, self.pid_path]:
+        for path in [self.socket_path, self.pid_path, get_status_path()]:
             try:
                 if os.path.exists(path):
                     os.unlink(path)
