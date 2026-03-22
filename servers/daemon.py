@@ -138,8 +138,8 @@ class BrainDaemon:
                     "decision": result.get("json", {}).get("decision", "") if isinstance(result, dict) and "json" in result else "",
                 }),
             )
-        except Exception:
-            pass
+        except Exception as e:
+            self._log("Telemetry write failed for %s: %s" % (cmd, e))
 
         return result
 
@@ -447,8 +447,8 @@ class BrainDaemon:
                     change_impacts = []
                     try:
                         change_impacts = self.brain.get_change_impact(args.get("file", ""))
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        self._log("get_change_impact error: %s" % e)
                     data["change_impacts"] = change_impacts
                     return {"ok": True, "result": data}
 

@@ -27,6 +27,65 @@ def _get_hook_name():
     return "unknown_hook"
 
 
+# ── Debug mode ──
+_debug_mode_cache = None
+
+
+def is_debug_mode():
+    """Check if brain debug mode is on.
+
+    Resolution order:
+      1. BRAIN_DEBUG env var (fastest, set at boot)
+      2. brain_meta.debug_enabled in brain.db (persistent config)
+
+    Debug mode shows all brain activity to Claude: recalls, injections,
+    errors, encoding, telemetry. Toggle with brain.set_config('debug_enabled', '1'|'0').
+    """
+    global _debug_mode_cache
+    if _debug_mode_cache is not None:
+        return _debug_mode_cache
+
+    # Env var (fast path)
+    env = os.environ.get("BRAIN_DEBUG", "")
+    if env:
+        _debug_mode_cache = env == "1"
+        return _debug_mode_cache
+
+    # Read from brain_meta
+    if db_path and os.path.isfile(db_path):
+        try:
+            conn = sqlite3.connect(db_path, timeout=2)
+            row = conn.execute(
+                "SELECT value FROM brain_meta WHERE key = 'debug_enabled'"
+            ).fetchone()
+            conn.close()
+            _debug_mode_cache = row is not None and row[0] == "1"
+            return _debug_mode_cache
+        except Exception:
+            pass
+
+    _debug_mode_cache = False
+    return False
+
+
+def brain_debug(msg):
+    """Print debug info visible to Claude. Only when debug mode is on.
+
+    Output goes to stderr so it appears in Claude's context without
+    interfering with hook JSON output on stdout.
+    """
+    if is_debug_mode():
+        print("[BRAIN DEBUG] %s" % msg, file=sys.stderr)
+
+
+def brain_error(msg):
+    """Print error visible to Claude. Always prints (not gated by debug).
+
+    Errors should never be silent — this is the lesson from 1,740 blind recalls.
+    """
+    print("[BRAIN ERROR] %s" % msg, file=sys.stderr)
+
+
 def log_hook_error(source, error, context="", level="error"):
     """Log a hook error to brain_logs.db AND stderr.
 
@@ -180,6 +239,9 @@ def daemon_call(cmd, args=None, timeout=10.0):
 def daemon_call_raw(cmd, args=None, timeout=10.0):
     """Send a command to the daemon and return the full response.
     Returns the raw response dict including 'ok' field.
+
+    On error: always prints [BRAIN ERROR] to stderr so Claude sees it.
+    On success + debug mode: prints [BRAIN DEBUG] summary.
     """
     try:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -194,9 +256,24 @@ def daemon_call_raw(cmd, args=None, timeout=10.0):
                 break
             data += chunk
         sock.close()
-        return json.loads(data.decode().strip())
-    except Exception:
-        return {"ok": False}
+        resp = json.loads(data.decode().strip())
+
+        if not resp.get("ok"):
+            err = resp.get("error", "unknown error")
+            brain_error("%s failed: %s" % (cmd, err))
+            log_hook_error(cmd, err, "daemon returned ok=false")
+
+        return resp
+    except socket.timeout:
+        brain_error("%s timed out after %.0fs" % (cmd, timeout))
+        log_hook_error(cmd, "timeout", "%.0fs" % timeout)
+        return {"ok": False, "error": "timeout"}
+    except ConnectionRefusedError:
+        brain_error("%s: daemon not running" % cmd)
+        return {"ok": False, "error": "daemon not running"}
+    except Exception as e:
+        brain_error("%s: %s" % (cmd, e))
+        return {"ok": False, "error": str(e)}
 
 
 def store_pending_message(brain_or_daemon, message):

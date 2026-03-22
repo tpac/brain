@@ -6,7 +6,7 @@ Output: JSON {"decision":"approve"|"block","reason":"..."}.
 import sys, os, json, re
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import get_hook_input, daemon_available, daemon_call_raw, get_brain, close_brain
+from hook_common import get_hook_input, daemon_available, daemon_call_raw, get_brain, close_brain, brain_debug
 
 APPROVE = json.dumps({"decision": "approve"})
 
@@ -36,10 +36,12 @@ DESTRUCTIVE_REGEXES = [
 is_destructive = any(re.search(pat, command, re.IGNORECASE) for pat in DESTRUCTIVE_REGEXES)
 
 if not is_destructive:
+    brain_debug("bash: safe → %s" % command[:80])
     print(APPROVE)
     sys.exit(0)
 
 # ── Destructive command detected — call daemon/brain for safety check ──
+brain_debug("bash: DESTRUCTIVE → %s" % command[:120])
 try:
     if daemon_available():
         resp = daemon_call_raw("hook_pre_bash_safety", {"command": command}, timeout=7.0)

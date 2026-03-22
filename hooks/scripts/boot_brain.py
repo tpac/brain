@@ -135,7 +135,15 @@ brain.save()
 # ══════════════════════════════════════════════════════
 # Output context for Claude
 # ══════════════════════════════════════════════════════
+# Check debug mode and export for child hooks
+debug_enabled = brain.get_config("debug_enabled", "0") == "1"
+if debug_enabled:
+    os.environ["BRAIN_DEBUG"] = "1"
+
 print("[BRAIN] v" + str(BRAIN_VERSION) + " booted from: " + db_dir)
+if debug_enabled:
+    print("[BRAIN] 🔍 DEBUG MODE ON — all hook activity will be visible")
+    print("[BRAIN]   Turn off: brain.set_config('debug_enabled', '0')")
 print()
 reset_count = ctx.get("reset_count", 0)
 print("Session #" + str(reset_count + 1))
