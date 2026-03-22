@@ -278,12 +278,12 @@ class BrainDaemon:
                     return {"ok": True, "result": {"status": "saved"}}
 
                 elif cmd == "context_boot":
-                    ctx = self.brain.context_boot(
+                    text = self.brain.format_boot_context(
                         user=args.get("user", "User"),
                         project=args.get("project", "default"),
-                        task=args.get("task")
+                        db_dir=args.get("db_dir", "")
                     )
-                    return {"ok": True, "result": ctx}
+                    return {"ok": True, "result": text}
 
                 elif cmd == "recall":
                     try:

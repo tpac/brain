@@ -143,13 +143,12 @@ TOOLS = [
     },
     {
         "name": "context_boot",
-        "description": "Full brain boot — returns stats, locked rules, consciousness signals, last session note. Use at session start.",
+        "description": "Full brain boot — returns formatted text with stats, locked rules, consciousness signals, engineering context, health. Use at session start.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "user": {"type": "string", "default": "User"},
-                "project": {"type": "string", "default": "default"},
-                "task": {"type": "string"}
+                "project": {"type": "string", "default": "default"}
             },
         }
     },
