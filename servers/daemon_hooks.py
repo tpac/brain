@@ -899,7 +899,28 @@ def hook_idle_maintenance(brain, args, graph_changes):
     except Exception:
         pass
 
-    # 9. Session health check
+    # 9. DB maintenance (prune old logs, clean orphans)
+    try:
+        from servers.dal import LogsDAL
+        logs_dal = LogsDAL(brain.logs_conn)
+        maint = logs_dal.run_maintenance(graph_conn=brain.conn)
+        total_pruned = maint.get('total_pruned', 0)
+        total_orphans = maint.get('total_orphans', 0)
+        if total_pruned > 0 or total_orphans > 0:
+            parts = []
+            if total_pruned:
+                parts.append("%d log rows pruned" % total_pruned)
+            if total_orphans:
+                parts.append("%d orphans cleaned" % total_orphans)
+            output.append("DB MAINTENANCE: " + ", ".join(parts))
+            # Log details in debug mode
+            for k, v in maint.items():
+                if v > 0 and k not in ('total_pruned', 'total_orphans'):
+                    output.append("  %s: %d" % (k, v))
+    except Exception as e:
+        output.append("DB MAINTENANCE ERROR: %s" % e)
+
+    # 10. Session health check
     try:
         health = brain.assess_session_health()
         if health and health.get("overall") == "concerning":

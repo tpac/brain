@@ -188,6 +188,97 @@ class LogsDAL:
         )
         self.conn.commit()
 
+    # ── DB maintenance ──
+
+    def run_maintenance(self, graph_conn: sqlite3.Connection) -> Dict[str, Any]:
+        """Run DB maintenance: prune old logs, clean orphans, reindex.
+
+        Retention policy (Option C — significance-based):
+          - access_log: 30 days (just counters, node.access_count is the durable stat)
+          - debug_log errors: keep forever (errors are always signal)
+          - debug_log telemetry: 30 days
+          - recall_log evaluated: keep forever (precision data is gold)
+          - recall_log unevaluated: 30 days
+          - suggest_log: 30 days
+          - health_log: 90 days
+          - dream_log: keep forever (small, useful for trends)
+
+        Also cleans orphaned graph data (vectors, edges, embeddings for deleted nodes).
+        """
+        stats = {}
+
+        # --- Logs DB retention ---
+        # access_log: 30 days (uses 'timestamp' column, not 'created_at')
+        cur = self.conn.execute(
+            "DELETE FROM access_log WHERE timestamp < datetime('now', '-30 days')")
+        stats['access_log_pruned'] = cur.rowcount
+
+        # debug_log: keep errors forever, prune telemetry/other after 30 days
+        cur = self.conn.execute(
+            "DELETE FROM debug_log WHERE event_type != 'error' "
+            "AND created_at < datetime('now', '-30 days')")
+        stats['debug_log_pruned'] = cur.rowcount
+
+        # recall_log: keep evaluated forever, prune unevaluated after 30 days
+        cur = self.conn.execute(
+            "DELETE FROM recall_log WHERE evaluated_at IS NULL "
+            "AND created_at < datetime('now', '-30 days')")
+        stats['recall_log_pruned'] = cur.rowcount
+
+        # suggest_log: 30 days
+        cur = self.conn.execute(
+            "DELETE FROM suggest_log WHERE created_at < datetime('now', '-30 days')")
+        stats['suggest_log_pruned'] = cur.rowcount
+
+        # health_log: 90 days
+        cur = self.conn.execute(
+            "DELETE FROM health_log WHERE created_at < datetime('now', '-90 days')")
+        stats['health_log_pruned'] = cur.rowcount
+
+        # hook_errors: 30 days (surfaced ones only — unsurfaced kept until shown)
+        try:
+            cur = self.conn.execute(
+                "DELETE FROM hook_errors WHERE surfaced = 1 "
+                "AND created_at < datetime('now', '-30 days')")
+            stats['hook_errors_pruned'] = cur.rowcount
+        except Exception:
+            stats['hook_errors_pruned'] = 0
+
+        self.conn.commit()
+
+        # --- Graph DB orphan cleanup ---
+        if graph_conn:
+            cur = graph_conn.execute(
+                "DELETE FROM node_vectors WHERE node_id NOT IN (SELECT id FROM nodes)")
+            stats['orphaned_vectors'] = cur.rowcount
+
+            cur = graph_conn.execute(
+                "DELETE FROM edges WHERE source_id NOT IN (SELECT id FROM nodes) "
+                "OR target_id NOT IN (SELECT id FROM nodes)")
+            stats['orphaned_edges'] = cur.rowcount
+
+            cur = graph_conn.execute(
+                "DELETE FROM node_embeddings WHERE node_id NOT IN (SELECT id FROM nodes)")
+            stats['orphaned_embeddings'] = cur.rowcount
+
+            cur = graph_conn.execute(
+                "DELETE FROM node_metadata WHERE node_id NOT IN (SELECT id FROM nodes)")
+            stats['orphaned_metadata'] = cur.rowcount
+
+            cur = graph_conn.execute(
+                "DELETE FROM doc_freq WHERE term NOT IN (SELECT DISTINCT term FROM node_vectors)")
+            stats['orphaned_terms'] = cur.rowcount
+
+            graph_conn.commit()
+
+        # Summarize
+        total_pruned = sum(v for k, v in stats.items() if 'pruned' in k)
+        total_orphans = sum(v for k, v in stats.items() if 'orphaned' in k)
+        stats['total_pruned'] = total_pruned
+        stats['total_orphans'] = total_orphans
+
+        return stats
+
     # ── staged_learnings ──
 
     def get_staged(self, status: str = "pending", limit: int = 10) -> List[Dict[str, Any]]:
