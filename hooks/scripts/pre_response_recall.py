@@ -30,9 +30,9 @@ def _debug_recall_result(result, latency_ms):
     node_count = len(re.findall(r'^\s+\[(?:rule|decision|concept|correction|lesson|procedure|person|project|task|mental_model|vocabulary|pattern|uncertainty)\]', ctx, re.MULTILINE))
     chars = len(ctx)
     brain_debug("recall: %d nodes, %d chars injected, %dms" % (node_count, chars, latency_ms))
-    if reason:
+    if ctx:
         # Show first 200 chars of what was injected
-        brain_debug("recall preview: %s" % reason[:200].replace("\n", " "))
+        brain_debug("recall preview: %s" % ctx[:200].replace("\n", " "))
 
 t0 = time.time()
 try:
@@ -40,7 +40,7 @@ try:
         resp = daemon_call_raw("hook_recall", {
             "prompt": hook_input.get("prompt", ""),
             "message": hook_input.get("message", ""),
-        }, timeout=4.5)
+        }, timeout=9.0)
         latency = (time.time() - t0) * 1000
         if resp.get("ok"):
             result = resp.get("result", {})

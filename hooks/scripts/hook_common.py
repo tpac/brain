@@ -69,13 +69,34 @@ def is_debug_mode():
 
 
 def brain_debug(msg):
-    """Print debug info visible to Claude. Only when debug mode is on.
+    """Log debug info to brain_logs.db for draining into Claude's context.
 
-    Output goes to stderr so it appears in Claude's context without
-    interfering with hook JSON output on stdout.
+    Messages are written to the debug_log table with event_type='hook_debug'.
+    The pre-response recall hook drains these and includes them in
+    additionalContext, making them visible to Claude on the next prompt.
+
+    Only logs when debug mode is on. Falls back to stderr if DB write fails.
     """
-    if is_debug_mode():
-        print("[BRAIN DEBUG] %s" % msg, file=sys.stderr)
+    if not is_debug_mode():
+        return
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    source = _get_hook_name()
+    logs_db = os.path.join(db_dir, "brain_logs.db") if db_dir else ""
+    if logs_db and os.path.isdir(db_dir):
+        try:
+            conn = sqlite3.connect(logs_db, timeout=2)
+            conn.execute(
+                "INSERT INTO debug_log (session_id, event_type, source, metadata, created_at) "
+                "VALUES (?, 'hook_debug', ?, ?, ?)",
+                ('current', source, json.dumps({"message": msg}), ts),
+            )
+            conn.commit()
+            conn.close()
+            return
+        except Exception:
+            pass
+    # Fallback: stderr (won't reach Claude but at least not lost)
+    print("[BRAIN DEBUG] %s" % msg, file=sys.stderr)
 
 
 def brain_error(msg):

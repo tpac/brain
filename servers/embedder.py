@@ -19,6 +19,13 @@ import sys
 import os
 from typing import Optional, List, Dict, Any
 
+# Force ONNX Runtime to CPU-only BEFORE any import of onnxruntime.
+# On macOS Apple Silicon, the CoreML/Metal execution provider triggers
+# SIGABRT ("XPC_ERROR_CONNECTION_INVALID") in background/daemon processes.
+# These env vars must be set before onnxruntime is imported anywhere.
+os.environ["ORT_DISABLE_ALL_ACCELERATORS"] = "1"
+os.environ.setdefault("ONNX_PROVIDERS", "CPUExecutionProvider")
+
 # ─── Runtime State (set by load_model) ───
 _model = None
 _config = {}   # Current model config
@@ -110,10 +117,9 @@ def load_model(config: Optional[Dict[str, Any]] = None):
 
         _register_if_custom(model_name)
 
-        # Force CPU-only when ONNX_CPU_ONLY=1 (set by daemon).
+        # Always force CPU-only execution provider.
         # CoreML/Metal causes SIGABRT in background processes on Apple Silicon.
-        cpu_only = os.environ.get("ONNX_CPU_ONLY") == "1"
-        provider_kwargs = {"providers": ["CPUExecutionProvider"]} if cpu_only else {}
+        provider_kwargs = {"providers": ["CPUExecutionProvider"]}
 
         # ── Load chain: local path → HuggingFace cache → pip fallback ──
 

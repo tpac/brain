@@ -103,6 +103,40 @@ def _drain_pending(brain):
     return pending
 
 
+def _drain_debug_logs(brain):
+    """Read and clear hook_debug entries from brain_logs.db.
+
+    Uses a high-water mark (last_drained_debug_id in brain_meta) so each
+    debug message is surfaced exactly once. Returns list of formatted strings.
+    """
+    try:
+        last_id = int(brain.get_config("last_drained_debug_id", "0") or 0)
+        rows = brain.logs_conn.execute(
+            "SELECT id, source, metadata, created_at FROM debug_log "
+            "WHERE event_type = 'hook_debug' AND id > ? ORDER BY id LIMIT 20",
+            (last_id,),
+        ).fetchall()
+        if not rows:
+            return []
+        messages = []
+        max_id = last_id
+        for row in rows:
+            rid, source, metadata, ts = row
+            if rid > max_id:
+                max_id = rid
+            try:
+                meta = json.loads(metadata) if metadata else {}
+            except Exception:
+                meta = {}
+            msg = meta.get("message", metadata or "")
+            short_ts = ts[11:19] if ts and len(ts) > 19 else ts or ""
+            messages.append("[%s] %s: %s" % (short_ts, source, msg))
+        brain.set_config("last_drained_debug_id", str(max_id))
+        return messages
+    except Exception:
+        return []
+
+
 def _drain_graph_changes(graph_changes):
     """Drain and return graph changes, clearing the list."""
     if not graph_changes:
@@ -404,6 +438,9 @@ def hook_recall(brain, args, graph_changes):
     # Drain pending messages
     pending_messages = _drain_pending(brain)
 
+    # Drain debug logs (hook_debug entries from brain_logs.db)
+    debug_messages = _drain_debug_logs(brain)
+
     # Drain graph changes
     recent_graph_changes = _drain_graph_changes(graph_changes)
 
@@ -414,7 +451,7 @@ def hook_recall(brain, args, graph_changes):
     except Exception:
         pass
 
-    if not results and not pending_messages and not urgent_signals and not recent_graph_changes:
+    if not results and not pending_messages and not urgent_signals and not recent_graph_changes and not debug_messages:
         brain.save()
         return {"json": {"decision": "approve"}}
 
@@ -521,6 +558,14 @@ def hook_recall(brain, args, graph_changes):
         for pm in pending_messages:
             lines.append(str(pm))
             lines.append("")
+
+    # Append debug log messages
+    if debug_messages:
+        lines.append("")
+        lines.append("[BRAIN DEBUG]")
+        for dm in debug_messages:
+            lines.append("  " + dm)
+        lines.append("")
 
     # ── Precision: request feedback if uncertain about previous recall ──
     try:
