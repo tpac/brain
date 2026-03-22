@@ -14,8 +14,8 @@ ARCHITECTURE:
   - PID file at /tmp/brain-daemon-{uid}.pid for lifecycle management
 
 LIFECYCLE:
-  - boot-brain.sh starts daemon if not running
-  - hooks send commands via socat/python client
+  - boot-brain.sh starts daemon via subprocess.Popen (detached, CPU-only)
+  - hooks send commands via Python Unix socket client
   - daemon saves brain periodically and on shutdown
   - session-end.sh sends "shutdown" command
 
@@ -46,6 +46,7 @@ import time
 import threading
 import traceback
 import atexit
+import fcntl
 from typing import Optional, Dict, Any
 
 # ─── Configuration ───
@@ -81,6 +82,11 @@ def get_pid_path() -> str:
     """Get the daemon PID file path."""
     uid = os.getuid()
     return os.path.join("/tmp", "brain-daemon-{}.pid".format(uid))
+
+def get_lock_path() -> str:
+    """Get the daemon lock file path for startup serialization."""
+    uid = os.getuid()
+    return os.path.join("/tmp", "brain-daemon-{}.lock".format(uid))
 
 
 class BrainDaemon:
@@ -161,8 +167,23 @@ class BrainDaemon:
         return result
 
     def start(self):
-        """Start the daemon — load brain, bind socket, serve."""
-        # Write PID file
+        """Start the daemon — load brain, bind socket, serve.
+
+        Uses fcntl.flock() on a lockfile to prevent duplicate daemons.
+        If another daemon is starting concurrently, we exit immediately.
+        """
+        # Acquire exclusive lock — prevents duplicate daemon startup race
+        lock_path = get_lock_path()
+        self._lock_fd = open(lock_path, 'w')
+        try:
+            fcntl.flock(self._lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (IOError, OSError):
+            # Another daemon is starting — exit cleanly
+            self._lock_fd.close()
+            self._log("Another daemon is starting — exiting duplicate")
+            return
+
+        # Write PID file (we hold the lock, so this is safe)
         with open(self.pid_path, 'w') as f:
             f.write(str(os.getpid()))
 
@@ -202,7 +223,7 @@ class BrainDaemon:
         self._serve()
 
     def _load_brain(self):
-        """Load the Brain instance — the expensive operation we do once."""
+        """Load the Brain instance + embedder — the expensive operation we do once."""
         parent = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         if parent not in sys.path:
             sys.path.insert(0, parent)
@@ -629,7 +650,7 @@ class BrainDaemon:
         self._cleanup()
 
     def _cleanup(self):
-        """Remove socket and PID files."""
+        """Remove socket, PID, and lock files."""
         try:
             if self.server_socket:
                 self.server_socket.close()
@@ -641,6 +662,13 @@ class BrainDaemon:
                     os.unlink(path)
             except Exception:
                 pass
+        # Release startup lock
+        try:
+            if hasattr(self, '_lock_fd') and self._lock_fd:
+                fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
+                self._lock_fd.close()
+        except Exception:
+            pass
 
     def _log(self, message: str):
         """Log to stderr (daemon output)."""
@@ -714,12 +742,11 @@ def is_daemon_running() -> bool:
 def ensure_daemon(db_path: str) -> bool:
     """Start the daemon if not running. Returns True if daemon is ready.
 
-    Race condition fix: PID file is written before the socket is bound
-    (embedder loading takes ~1-2s). We retry pings before declaring zombie.
+    PID file is written before the socket is bound (brain+embedder loading
+    takes ~1-2s). We retry pings before declaring zombie.
     """
     if is_daemon_running():
-        # Daemon process exists — give it time to finish loading
-        # (embedder takes ~1-2s, socket isn't bound until after)
+        # Daemon process exists — wait for socket to be ready
         for attempt in range(25):  # 5 seconds total
             resp = send_command("ping", timeout=2.0)
             if resp.get("ok"):
@@ -730,7 +757,7 @@ def ensure_daemon(db_path: str) -> bool:
                     sys.stderr.write("[brain-daemon] Code changed (daemon={}, current={}) — restarting\n".format(
                         daemon_fp[:12] or "none", current_fp[:12]))
                     _kill_daemon()
-                    break  # Fall through to fork-and-start below
+                    break  # Fall through to start below
                 return True
             time.sleep(0.2)
         else:
@@ -738,42 +765,28 @@ def ensure_daemon(db_path: str) -> bool:
             sys.stderr.write("[brain-daemon] Killing zombie daemon (PID alive but unresponsive for 5s)\n")
             _kill_daemon()
 
-    # Fork and start daemon
-    pid = os.fork()
-    if pid == 0:
-        # Child process — become the daemon
-        try:
-            # Double fork to detach from parent
-            if os.fork() > 0:
-                os._exit(0)
+    # Spawn daemon as a detached subprocess.
+    # subprocess.Popen (not fork) — macOS Accelerate/Metal uses XPC connections
+    # that are invalid in forked children, causing SIGABRT. A clean subprocess
+    # with CPU-only env vars avoids this entirely.
+    import subprocess
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    log_path = os.path.join(os.path.dirname(db_path), "daemon.log")
 
-            # New session
-            os.setsid()
+    with open(log_path, 'a') as log_fd, open(os.devnull, 'r') as devnull:
+        subprocess.Popen(
+            [sys.executable, '-c',
+             'import sys, os; sys.path.insert(0, %r); '
+             'from servers.daemon import BrainDaemon; '
+             'd = BrainDaemon(%r); d.start()' % (parent_dir, db_path)],
+            stdin=devnull,
+            stdout=log_fd,
+            stderr=log_fd,
+            start_new_session=True,
+            env={**os.environ, "VECLIB_MAXIMUM_THREADS": "1", "ONNX_CPU_ONLY": "1"},
+        )
 
-            # Redirect stdio
-            devnull = os.open(os.devnull, os.O_RDWR)
-            os.dup2(devnull, 0)
-            # Keep stderr for logging
-            log_path = os.path.join(os.path.dirname(db_path), "daemon.log")
-            try:
-                log_fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
-                os.dup2(log_fd, 1)
-                os.dup2(log_fd, 2)
-            except Exception:
-                os.dup2(devnull, 1)
-                os.dup2(devnull, 2)
-
-            daemon = BrainDaemon(db_path)
-            daemon.start()
-        except Exception as e:
-            sys.stderr.write("[brain-daemon] Daemon crashed: {}\n".format(e))
-        finally:
-            os._exit(0)
-    else:
-        # Parent process — wait for child (intermediate fork)
-        os.waitpid(pid, 0)
-
-    # Wait for the new daemon to become ready
+    # Wait for daemon to become ready
     for attempt in range(30):  # 6 seconds total
         resp = send_command("ping", timeout=2.0)
         if resp.get("ok"):

@@ -110,6 +110,11 @@ def load_model(config: Optional[Dict[str, Any]] = None):
 
         _register_if_custom(model_name)
 
+        # Force CPU-only when ONNX_CPU_ONLY=1 (set by daemon).
+        # CoreML/Metal causes SIGABRT in background processes on Apple Silicon.
+        cpu_only = os.environ.get("ONNX_CPU_ONLY") == "1"
+        provider_kwargs = {"providers": ["CPUExecutionProvider"]} if cpu_only else {}
+
         # ── Load chain: local path → HuggingFace cache → pip fallback ──
 
         if model_path:
@@ -117,21 +122,23 @@ def load_model(config: Optional[Dict[str, Any]] = None):
             print(f"[embedder] Loading from local path: {model_path}", file=sys.stderr)
             _model = TextEmbedding(model_name=model_name,
                                    specific_model_path=model_path,
-                                   **({"cache_dir": cache_dir} if cache_dir else {}))
+                                   **({"cache_dir": cache_dir} if cache_dir else {}),
+                                   **provider_kwargs)
         else:
             # Try 1: Let FastEmbed load normally (from cache or HuggingFace)
             try:
                 kwargs = {}
                 if cache_dir:
                     kwargs['cache_dir'] = cache_dir
-                _model = TextEmbedding(model_name=model_name, **kwargs)
+                _model = TextEmbedding(model_name=model_name, **kwargs, **provider_kwargs)
             except Exception as hf_err:
                 # Try 2: HuggingFace failed — try pip-installed model package
                 pip_path = _discover_pip_model()
                 if pip_path:
                     print(f"[embedder] HuggingFace unavailable, using pip model: {pip_path}", file=sys.stderr)
                     _model = TextEmbedding(model_name=model_name,
-                                           specific_model_path=pip_path)
+                                           specific_model_path=pip_path,
+                                           **provider_kwargs)
                 else:
                     # Try 3: pip package not installed — install it and retry
                     # TODO(pypi): Remove auto-install once brain-embedding is on PyPI
