@@ -45,9 +45,13 @@ if parent:
     sys.path.insert(0, parent)
 try:
     from servers.daemon import ensure_daemon
-    ensure_daemon(os.path.join(os.environ.get('BRAIN_DB_DIR', ''), 'brain.db'))
-except Exception:
-    pass  # Daemon is optional — hooks fall back to direct Python
+    ready = ensure_daemon(os.path.join(os.environ.get('BRAIN_DB_DIR', ''), 'brain.db'))
+    if ready:
+        sys.stderr.write('[brain-boot] Daemon ready\n')
+    else:
+        sys.stderr.write('[brain-boot] WARNING: Daemon failed to start — hooks will fall back to direct Python (slow)\n')
+except Exception as e:
+    sys.stderr.write('[brain-boot] WARNING: Daemon startup error: {} — hooks will fall back to direct Python (slow)\n'.format(e))
 " &
 
 exec python3 "$(dirname "$0")/boot_brain.py"

@@ -16,6 +16,7 @@ OUT="${1:-brain.plugin}"
 # Explicit file manifest — if it's not listed, it doesn't ship
 FILES=(
   .claude-plugin/plugin.json
+  .mcp.json
   # Python brain module — core + 11 mixin modules
   servers/__init__.py
   servers/brain.py
@@ -36,6 +37,7 @@ FILES=(
   servers/dal.py
   servers/daemon.py
   servers/daemon_hooks.py
+  servers/brain_mcp.py
   servers/metrics.py
   # Hook scripts — bash shims (thin wrappers)
   hooks/hooks.json

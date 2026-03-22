@@ -695,13 +695,21 @@ def is_daemon_running() -> bool:
 
 
 def ensure_daemon(db_path: str) -> bool:
-    """Start the daemon if not running. Returns True if daemon is ready."""
+    """Start the daemon if not running. Returns True if daemon is ready.
+
+    Race condition fix: PID file is written before the socket is bound
+    (embedder loading takes ~1-2s). We retry pings before declaring zombie.
+    """
     if is_daemon_running():
-        # Verify it responds
-        resp = send_command("ping", timeout=2.0)
-        if resp.get("ok"):
-            return True
-        # Daemon is zombie — clean up and restart
+        # Daemon process exists — give it time to finish loading
+        # (embedder takes ~1-2s, socket isn't bound until after)
+        for attempt in range(25):  # 5 seconds total
+            resp = send_command("ping", timeout=2.0)
+            if resp.get("ok"):
+                return True
+            time.sleep(0.2)
+        # Still not responding after 5s — truly zombie, kill and restart
+        sys.stderr.write("[brain-daemon] Killing zombie daemon (PID alive but unresponsive for 5s)\n")
         _kill_daemon()
 
     # Fork and start daemon
@@ -731,22 +739,23 @@ def ensure_daemon(db_path: str) -> bool:
 
             daemon = BrainDaemon(db_path)
             daemon.start()
-        except Exception:
-            pass
+        except Exception as e:
+            sys.stderr.write("[brain-daemon] Daemon crashed: {}\n".format(e))
         finally:
             os._exit(0)
     else:
         # Parent process — wait for child (intermediate fork)
         os.waitpid(pid, 0)
 
-        # Wait for daemon to be ready (up to 10s for embedder load)
-        for _ in range(50):
-            time.sleep(0.2)
-            resp = send_command("ping", timeout=2.0)
-            if resp.get("ok"):
-                return True
+    # Wait for the new daemon to become ready
+    for attempt in range(30):  # 6 seconds total
+        resp = send_command("ping", timeout=2.0)
+        if resp.get("ok"):
+            return True
+        time.sleep(0.2)
 
-        return False
+    sys.stderr.write("[brain-daemon] Daemon failed to start within 6s\n")
+    return False
 
 
 def _kill_daemon():
@@ -755,10 +764,11 @@ def _kill_daemon():
     try:
         with open(pid_path) as f:
             pid = int(f.read().strip())
+        sys.stderr.write("[brain-daemon] Killing daemon PID={}\n".format(pid))
         os.kill(pid, signal.SIGTERM)
         time.sleep(0.5)
-    except Exception:
-        pass
+    except Exception as e:
+        sys.stderr.write("[brain-daemon] Kill failed: {}\n".format(e))
     # Clean up files
     for path in [pid_path, get_socket_path()]:
         try:
