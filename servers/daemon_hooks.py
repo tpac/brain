@@ -594,43 +594,92 @@ def hook_post_response_track(brain, args, graph_changes):
     # ── Vocab gap detection (only when we have user message) ──
     if has_user_message:
         try:
-            # Extract candidate terms
+            from servers.text_processing import filter_domain_terms
+
+            # ── Strategy 1: Quoted terms ──
             quoted = re.findall(r'["]([\w\s-]{3,30})["]', user_message)
+
+            # ── Strategy 2: "the/a/this X" with expanded suffix list ──
             the_patterns = re.findall(
-                r"\bthe\s+([\w][\w\s-]{2,25}(?:hook|script|table|file|function|method|class|"
-                r"module|layer|loop|sequence|pipeline|system|engine|server|db|database|config|"
-                r"schema|signal|node|type|map|graph|cache|queue|log|test|spec))\b",
+                r"\b(?:the|a|an|this|that|our|my|your)\s+"
+                r"([\w][\w\s-]{2,25}(?:hook|script|table|file|function|method|class|"
+                r"module|layer|loop|sequence|pipeline|system|engine|server|db|database|"
+                r"config|schema|signal|node|type|map|graph|cache|queue|log|test|spec|"
+                r"worker|adapter|pattern|protocol|daemon|scorer|mixin|handler|resolver|"
+                r"builder|encoder|decoder|parser|formatter|validator|serializer|"
+                r"middleware|endpoint|route|trigger|listener|callback|factory|strategy|"
+                r"observer|wrapper|proxy|bridge|decorator|registry|repository|mapper|"
+                r"transformer|dispatcher|emitter|collector|aggregator|provider|consumer|"
+                r"subscriber|publisher|context|session|token|metric|monitor|tracer|"
+                r"profiler|compiler|runtime|kernel|driver|plugin|extension|toolkit|"
+                r"library|framework|platform|screen|component|service|client))\b",
                 user_message, re.IGNORECASE,
             )
+
+            # ── Strategy 3: Verb-object patterns (expanded) ──
             action_context = re.findall(
                 r"\b(?:fix|update|change|modify|check|look at|review|debug|test|refactor|"
-                r"rewrite|add|remove|delete|move|rename|split|merge|clean)\s+(?:the\s+)?"
+                r"rewrite|add|remove|delete|move|rename|split|merge|clean|implement|"
+                r"configure|deploy|migrate|optimize|integrate|initialize|bootstrap|"
+                r"instrument|validate|authenticate|provision|dispatch|schedule|monitor|"
+                r"benchmark|evaluate|classify|extract|transform|aggregate|normalize|"
+                r"cache|batch|rollback|seed|stub|mock|patch|inject|bind|resolve|"
+                r"register|subscribe|emit|consume|publish)\s+(?:the\s+)?"
                 r"([\w]+(?:\s+[\w]+){0,3}?)(?:\s*(?:and|or|but|also|then|,|;|\.|!|\?)|\s*$)",
                 user_message, re.IGNORECASE,
             )
             action_context = [t.strip() for t in action_context if len(t.strip()) >= 3]
+
+            # ── Strategy 4: Hyphenated compounds ──
             hyphenated = re.findall(r"\b([\w]+-[\w]+(?:-[\w]+)?)\b", user_message)
             hyphenated = [h for h in hyphenated if len(h) > 4 and h.lower() not in (
                 "re-run", "re-do", "non-null", "non-zero", "up-to-date", "e-g",
                 "pre-existing", "co-authored-by",
             )]
 
+            # ── Strategy 5: Capitalized mid-sentence terms (product names, entities) ──
+            capitalized = re.findall(
+                r'(?<=[a-z.,;:!?\s])\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
+                user_message,
+            )
+            # Filter out sentence-start words and common words
+            capitalized = [c.strip() for c in capitalized
+                          if c.strip() and c.strip() not in (
+                              'I', 'The', 'This', 'That', 'It', 'We', 'You',
+                              'He', 'She', 'They', 'But', 'And', 'Or', 'So',
+                              'If', 'When', 'What', 'How', 'Why', 'Where',
+                              'Yes', 'No', 'Ok', 'Sure', 'Please', 'Thanks',
+                          )]
+
+            # ── Strategy 6: Backtick-wrapped code terms ──
+            backtick = re.findall(r'`([^`]{2,40})`', user_message)
+
+            # ── Strategy 7: Acronyms (2-6 uppercase letters) ──
+            acronyms = re.findall(r'\b([A-Z]{2,6})\b', user_message)
+
+            # ── Collect and filter candidates ──
             skip_words = {
                 "the", "a", "an", "this", "that", "it", "them", "is", "are",
                 "was", "were", "be", "been", "do", "does", "did", "have", "has",
                 "can", "could", "will", "would", "should", "may", "might",
                 "yes", "no", "ok", "sure", "please", "thanks", "code", "file",
                 "thing", "stuff", "something", "everything", "nothing",
+                "just", "also", "very", "really", "actually", "basically",
+                "like", "about", "some", "more", "here", "there", "now", "then",
             }
-            candidates = set()
-            for term in quoted + the_patterns + action_context + hyphenated:
-                term = term.strip().lower()
-                if len(term) < 3 or len(term) > 40:
+            raw_candidates = set()
+            for term in (quoted + the_patterns + action_context + hyphenated +
+                        capitalized + backtick + acronyms):
+                term = term.strip()
+                if len(term) < 2 or len(term) > 40:
                     continue
-                words = term.split()
+                words = term.lower().split()
                 if all(w in skip_words for w in words):
                     continue
-                candidates.add(term)
+                raw_candidates.add(term)
+
+            # Apply domain-specificity filter
+            candidates = set(filter_domain_terms(list(raw_candidates)))
 
             if candidates:
                 try:

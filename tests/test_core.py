@@ -2290,5 +2290,189 @@ class TestCommonWordFilterE2E(BrainTestBase):
         self.assertNotIn('handle', filtered)
 
 
+# ── Vocabulary Extraction (7-strategy) ────────────────────────────────
+# Tests validate the 7-strategy extraction in daemon_hooks.py (lines 594-686)
+# and domain filter in text_processing.py. The _extract_vocab helper mirrors
+# daemon_hooks logic for isolated testability (same approach as bench_vocab_extraction.py).
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+
+
+def _extract_vocab(message):
+    """Extract vocab candidates using the new 7-strategy approach.
+
+    Mirrors the logic in daemon_hooks.py for testability.
+    """
+    import re
+    from servers.text_processing import filter_domain_terms
+
+    quoted = re.findall(r'["]([\w\s-]{3,30})["]', message)
+    the_patterns = re.findall(
+        r"\b(?:the|a|an|this|that|our|my|your)\s+"
+        r"([\w][\w\s-]{2,25}(?:hook|script|table|file|function|method|class|"
+        r"module|layer|loop|sequence|pipeline|system|engine|server|db|database|"
+        r"config|schema|signal|node|type|map|graph|cache|queue|log|test|spec|"
+        r"worker|adapter|pattern|protocol|daemon|scorer|mixin|handler|resolver|"
+        r"builder|encoder|decoder|parser|formatter|validator|serializer|"
+        r"middleware|endpoint|route|trigger|listener|callback|factory|strategy|"
+        r"observer|wrapper|proxy|bridge|decorator|registry|repository|mapper|"
+        r"transformer|dispatcher|emitter|collector|aggregator|provider|consumer|"
+        r"subscriber|publisher|context|session|token|metric|monitor|tracer|"
+        r"profiler|compiler|runtime|kernel|driver|plugin|extension|toolkit|"
+        r"library|framework|platform|screen|component|service|client))\b",
+        message, re.IGNORECASE,
+    )
+    action_context = re.findall(
+        r"\b(?:fix|update|change|modify|check|look at|review|debug|test|refactor|"
+        r"rewrite|add|remove|delete|move|rename|split|merge|clean|implement|"
+        r"configure|deploy|migrate|optimize|integrate|initialize|bootstrap|"
+        r"instrument|validate|authenticate|provision|dispatch|schedule|monitor|"
+        r"benchmark|evaluate|classify|extract|transform|aggregate|normalize|"
+        r"cache|batch|rollback|seed|stub|mock|patch|inject|bind|resolve|"
+        r"register|subscribe|emit|consume|publish)\s+(?:the\s+)?"
+        r"([\w]+(?:\s+[\w]+){0,3}?)(?:\s*(?:and|or|but|also|then|,|;|\.|!|\?)|\s*$)",
+        message, re.IGNORECASE,
+    )
+    action_context = [t.strip() for t in action_context if len(t.strip()) >= 3]
+    hyphenated = re.findall(r"\b([\w]+-[\w]+(?:-[\w]+)?)\b", message)
+    hyphenated = [h for h in hyphenated if len(h) > 4 and h.lower() not in (
+        "re-run", "re-do", "non-null", "non-zero", "up-to-date", "e-g",
+        "pre-existing", "co-authored-by",
+    )]
+    capitalized = re.findall(
+        r'(?<=[a-z.,;:!?\s])\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)', message)
+    capitalized = [c.strip() for c in capitalized
+                  if c.strip() and c.strip() not in (
+                      'I', 'The', 'This', 'That', 'It', 'We', 'You',
+                      'He', 'She', 'They', 'But', 'And', 'Or', 'So',
+                      'If', 'When', 'What', 'How', 'Why', 'Where',
+                      'Yes', 'No', 'Ok', 'Sure', 'Please', 'Thanks',
+                  )]
+    backtick = re.findall(r'`([^`]{2,40})`', message)
+    acronyms = re.findall(r'\b([A-Z]{2,6})\b', message)
+
+    skip_words = {
+        "the", "a", "an", "this", "that", "it", "them", "is", "are",
+        "was", "were", "be", "been", "do", "does", "did", "have", "has",
+        "can", "could", "will", "would", "should", "may", "might",
+        "yes", "no", "ok", "sure", "please", "thanks", "code", "file",
+        "thing", "stuff", "something", "everything", "nothing",
+        "just", "also", "very", "really", "actually", "basically",
+        "like", "about", "some", "more", "here", "there", "now", "then",
+    }
+    raw = set()
+    for term in (quoted + the_patterns + action_context + hyphenated +
+                capitalized + backtick + acronyms):
+        term = term.strip()
+        if len(term) < 2 or len(term) > 40:
+            continue
+        words = term.lower().split()
+        if all(w in skip_words for w in words):
+            continue
+        raw.add(term)
+    return set(filter_domain_terms(list(raw)))
+
+
+class TestVocabExtraction(unittest.TestCase):
+    """Unit tests for the 7-strategy vocabulary extraction."""
+
+    def test_backtick_extraction(self):
+        """Backtick-wrapped terms should be extracted."""
+        terms = _extract_vocab('Look at `brain.recall()` and `daemon_hooks.py`')
+        term_lower = {t.lower() for t in terms}
+        self.assertIn('brain.recall()', term_lower)
+        self.assertIn('daemon_hooks.py', term_lower)
+
+    def test_acronym_extraction(self):
+        """Uppercase acronyms 2-6 chars should be extracted."""
+        terms = _extract_vocab('The DAL uses SQL queries and BART for NLP')
+        self.assertTrue(any('DAL' in t for t in terms))
+        self.assertTrue(any('SQL' in t for t in terms))
+        self.assertTrue(any('BART' in t for t in terms))
+        self.assertTrue(any('NLP' in t for t in terms))
+
+    def test_acronym_common_excluded(self):
+        """Common acronyms like OK, AM should be filtered out."""
+        terms = _extract_vocab('OK I will do it AM tomorrow')
+        self.assertFalse(any(t == 'OK' for t in terms))
+        self.assertFalse(any(t == 'AM' for t in terms))
+
+    def test_capitalized_midsentence(self):
+        """Capitalized product names mid-sentence should be extracted."""
+        terms = _extract_vocab('we should use Clerk for auth and Redis for cache')
+        self.assertTrue(any('Clerk' in t for t in terms),
+                       'Clerk should be extracted. Got: %s' % terms)
+        self.assertTrue(any('Redis' in t for t in terms),
+                       'Redis should be extracted. Got: %s' % terms)
+
+    def test_expanded_the_patterns(self):
+        """Expanded suffix list catches more the-X patterns."""
+        terms = _extract_vocab('Fix the webhook handler and the supply adapter pattern')
+        term_lower = {t.lower() for t in terms}
+        self.assertTrue(any('webhook handler' in t for t in term_lower),
+                       'webhook handler should match. Got: %s' % terms)
+        self.assertTrue(any('supply adapter pattern' in t for t in term_lower),
+                       'supply adapter pattern should match. Got: %s' % terms)
+
+    def test_no_false_positives_simple_message(self):
+        """Simple conversational messages should yield nothing."""
+        terms = _extract_vocab('yes please do that')
+        self.assertEqual(len(terms), 0,
+                        'Simple message should yield no terms. Got: %s' % terms)
+
+    def test_no_false_positives_greeting(self):
+        terms = _extract_vocab('great thanks')
+        self.assertEqual(len(terms), 0,
+                        'Greeting should yield no terms. Got: %s' % terms)
+
+    def test_hyphenated_preserved(self):
+        """Hyphenated compound terms should still work."""
+        terms = _extract_vocab('The hook-chain and pre-response-recall are important')
+        term_lower = {t.lower() for t in terms}
+        self.assertIn('hook-chain', term_lower)
+        self.assertIn('pre-response-recall', term_lower)
+
+    def test_quoted_terms_preserved(self):
+        """Quoted terms should still be extracted."""
+        terms = _extract_vocab('Use a "supply adapter" for abstraction')
+        term_lower = {t.lower() for t in terms}
+        self.assertIn('supply adapter', term_lower)
+
+
+class TestVocabExtractionE2E(BrainTestBase):
+    """End-to-end: verify vocab extraction integrates with brain recall."""
+
+    def test_extracted_terms_match_brain_recall(self):
+        """Terms extracted from a message should match brain nodes."""
+        self.brain.remember(
+            type='vocabulary',
+            title='webhook → HTTP callback triggered by events',
+            content='A webhook is an HTTP POST triggered by a system event.',
+            keywords='webhook http callback event integration')
+        self.brain.save()
+
+        terms = _extract_vocab('Check if the Clerk webhook fires correctly')
+        self.assertTrue(any('Clerk' in t for t in terms),
+                       'Clerk should be extracted. Got: %s' % terms)
+
+        results = self.brain.recall('webhook', limit=5)
+        result_list = results.get('results', results) if isinstance(results, dict) else results
+        titles = [r.get('title', '') for r in result_list]
+        self.assertTrue(any('webhook' in t.lower() for t in titles),
+                       'Brain should recall webhook node. Got: %s' % titles)
+
+    def test_no_vocab_gap_for_known_term(self):
+        """If brain already knows a term, extraction still finds it as candidate."""
+        self.brain.remember(
+            type='vocabulary',
+            title='DAL → data access layer',
+            content='Thin abstraction over SQLite tables.',
+            keywords='dal data access layer')
+        self.brain.save()
+
+        terms = _extract_vocab('The DAL needs refactoring')
+        self.assertTrue(any('DAL' in t for t in terms))
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2, exit=True)
