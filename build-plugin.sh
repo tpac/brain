@@ -1,12 +1,12 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-# brain v5.3.1 — Serverless plugin builder
+# brain v5.4.0 — Serverless plugin builder
 # Packs exactly what belongs in the .plugin file. Nothing else.
 #
+# v5.4.0: Brain-Claude conflict protocol, [BRAIN] identity tags,
+#          layered precision evaluation, per-hook telemetry, seed brain.
 # v5.3.1: Daemon consolidation + graph change tracking.
-#          All hook logic centralized in daemon_hooks.py.
 # v5.3: Eval-tested SKILL.md, 5-focus rotating checkpoints, session stats.
-#        Plus v5.2 critical flag, safety layer, vocabulary expansion.
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -85,6 +85,22 @@ FILES=(
   tests/golden_dataset.json
   tests/transcript_parser.py
   tests/relearning.py
+  tests/brain_test_base.py
+  tests/test_core.py
+  tests/test_precision.py
+  tests/test_comprehensive.py
+  tests/test_recall_scorer.py
+  tests/test_recall_quality.py
+  tests/test_hooks.py
+  tests/test_system.py
+  # Migrations
+  servers/migrations/__init__.py
+  servers/migrations/004_logs_precision_columns.py
+  # Precision + recall scorer
+  servers/brain_precision.py
+  servers/recall_scorer.py
+  # Seed brain
+  scripts/seed_brain.py
 )
 
 cd "$DIR"

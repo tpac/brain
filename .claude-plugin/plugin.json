@@ -1,7 +1,7 @@
 {
   "name": "brain",
-  "version": "5.3.0",
-  "description": "Shared cognitive space for Claude + operator. v5.3: Eval-tested SKILL.md (18 variants, 67% baseline richness), 5-focus rotating encoding checkpoints with session stats, hook-specific encoding prompts. Plus: critical flag, safety layer, vocabulary expansion, 11 mixins, 20+ consciousness signals, engineering memory, self-correction traces.",
+  "version": "5.4.0",
+  "description": "Shared cognitive space for Claude + operator. v5.4: Brain-Claude conflict protocol, [BRAIN]...[/BRAIN] identity tags, layered recall precision evaluation (regex+embeddings+BART), per-hook telemetry, seed brain for new instances. 301 tests. Plus: eval-tested SKILL.md, rotating checkpoints, consciousness signals, engineering memory, self-correction traces.",
   "author": {
     "name": "Tom Pachys"
   },
