@@ -1,23 +1,36 @@
 # Brain Plugin — Claude Instructions
 
-## Architecture
+## How to Talk to the Brain
 
-Brain is a **serverless Python module** (`servers/brain.py`). There is NO HTTP server, no curl commands, no port 7437.
+Use the **MCP tools** (`mcp__plugin_brain_brain__*`). They are your primary interface. The boot hook starts the daemon automatically — you don't need to import Python modules, construct paths, or run bash scripts.
 
-All operations are Python method calls on a `Brain` object:
-```python
-brain.remember(type="decision", title="...", content="...", locked=True)
-brain.recall_with_embeddings("query", limit=10)
-brain.connect(source_id, target_id, "relation", weight=0.7)
-brain.save()
+**Core MCP tools:**
+- `recall` — semantic search by meaning (query, limit)
+- `remember` — store a node (type, title, content, keywords, locked, confidence, project)
+- `connect` — create edge between nodes (source_id, target_id, relation, weight)
+- `consciousness` — get all consciousness signals
+- `context_boot` — full brain boot (stats, locked rules, signals)
+- `eval` — escape hatch for any brain method not exposed as a tool
+- `set_config` / `get_config` — brain configuration
+- `health_check`, `save`, `ping`, `engineering_context`
+
+**For specialized methods** (remember_lesson, remember_impact, record_divergence, learn_vocabulary, etc.), use the `eval` tool:
 ```
+eval: brain.remember_lesson(title="...", what_happened="...", root_cause="...", fix="...", preventive_principle="...")
+```
+
+**Do NOT:**
+- Write Python scripts in Bash to call brain methods
+- Import Brain or use sys.path
+- Construct DB paths or use BRAIN_DB_DIR/BRAIN_SERVER_DIR directly
+- Use curl commands — there is no HTTP server
 
 ## Hooks Handle Everything
 
 **Do NOT manually run boot scripts, resolve DB paths, or import the Brain module.**
 
 The plugin has 13 hooks that fire automatically:
-- `SessionStart` → `boot-brain.sh` — boots brain, prints context + consciousness signals
+- `SessionStart` → `boot-brain.sh` — boots brain + daemon, prints context + consciousness signals
 - `UserPromptSubmit` → `pre-response-recall.sh` — recalls relevant memories before responding
 - `Notification(user_message)` → `pre-response-recall.sh` + `post-response-track.sh` — recall + vocab gap detection
 - `Notification(idle_prompt)` → `idle-maintenance.sh` — consolidation, healing, reflection
@@ -29,14 +42,18 @@ The plugin has 13 hooks that fire automatically:
 
 If a hook fails, check the boot output for error messages. The brain logs errors to `brain_logs.db` and surfaces them as consciousness signals.
 
-## DB Location
+## Architecture (for reference, not for direct use)
 
-The boot hook resolves the DB automatically via `resolve-brain-db.sh`:
+Brain is a Python module (`servers/brain.py`) behind a persistent daemon (`servers/daemon.py`) that keeps the embedder loaded in memory. The MCP server (`servers/brain_mcp.py`) is a thin stdio proxy to the daemon via Unix socket. Claude Code starts the MCP server automatically from `.mcp.json`.
+
+```
+Claude Code → MCP server (brain_mcp.py, stdio) → daemon (Unix socket) → Brain + embedder
+```
+
+The boot hook resolves the DB automatically:
 1. `BRAIN_DB_DIR` env var (explicit override)
 2. `/sessions/*/mnt/AgentsContext/brain/` (Cowork mounts)
 3. `$HOME/AgentsContext/brain/` (local, typically a symlink to Google Drive)
-
-The actual DB path is printed in the boot output. Do not guess paths.
 
 ## Brain + Documents: Division of Labor
 
@@ -89,23 +106,11 @@ self.assertAlmostEqual(edge[2], 0.3, places=1)
 
 ## Common Mistakes
 
+- Using Python/bash to call brain methods when MCP tools are available
 - Using `curl` commands — there is no HTTP server
 - Manually running `boot-brain.sh` — the SessionStart hook does this
-- Constructing DB paths by guessing — read the boot output or use `resolve-brain-db.sh`
-- Importing Brain without the right sys.path — use `BRAIN_SERVER_DIR` env var set by hooks
-
-## When You Need Direct Brain Access
-
-If you must call brain methods directly (e.g., to encode learnings):
-```python
-import sys, os
-sys.path.insert(0, os.path.dirname(os.environ.get('BRAIN_SERVER_DIR', '')))
-from servers.brain import Brain
-brain = Brain(os.path.join(os.environ.get('BRAIN_DB_DIR', ''), 'brain.db'))
-# ... do work ...
-brain.save()
-brain.close()
-```
+- Constructing DB paths by guessing — read the boot output
+- Importing Brain or using sys.path — use MCP tools instead
 
 ## Key v5 Features
 
