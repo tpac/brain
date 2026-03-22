@@ -32,6 +32,10 @@ node_modules/
 *.swp
 *.swo
 
+# Logs
+brain.log
+daemon.log
+
 # OS
 .DS_Store
 Thumbs.db
