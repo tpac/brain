@@ -99,6 +99,9 @@ FILES=(
   # Precision + recall scorer
   servers/brain_precision.py
   servers/recall_scorer.py
+  servers/text_processing.py
+  # Data files
+  data/common_words_10k.txt
   # Seed brain
   scripts/seed_brain.py
 )
