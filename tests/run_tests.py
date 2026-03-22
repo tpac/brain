@@ -131,6 +131,7 @@ def main():
         suite.addTests(loader.loadTestsFromName('tests.test_comprehensive'))
         suite.addTests(loader.loadTestsFromName('tests.test_recall_scorer'))
         suite.addTests(loader.loadTestsFromName('tests.test_system'))
+        suite.addTests(loader.loadTestsFromName('tests.test_brain_voice'))
 
         verbosity = 2 if verbose else 1
         runner = unittest.TextTestRunner(verbosity=verbosity)

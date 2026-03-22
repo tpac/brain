@@ -21,15 +21,17 @@ import time
 import traceback
 from datetime import datetime, timezone
 
-# ── Constants ──
+# ── Constants (canonical definitions in brain_voice.py) ──
 
-EVOLUTION_TYPES = {"tension", "hypothesis", "pattern", "catalyst", "aspiration"}
+from servers.brain_voice import (
+    EVOLUTION_TYPES, ENGINEERING_TYPES, CODE_COGNITION_TYPES,
+    BrainVoice,
+)
 
-ENGINEERING_TYPES = {"purpose", "mechanism", "impact", "constraint", "convention",
-                     "lesson", "vocabulary"}
-CODE_COGNITION_TYPES = {"fn_reasoning", "param_influence", "code_concept",
-                        "arch_constraint", "causal_chain", "bug_lesson",
-                        "comment_anchor"}
+# Backwards-compatible function aliases — delegate to BrainVoice static methods
+_format_recall_results = BrainVoice.format_recall_results
+_format_encoding_warning = BrainVoice.format_encoding_warning
+_format_suggestions = BrainVoice.format_suggestions
 
 CHECKPOINT_CYCLE = [
     "UNCERTAINTY: What don't you fully understand from the last few exchanges? "
@@ -163,170 +165,6 @@ def _get_precision(brain):
         except Exception:
             pass  # Graceful degradation: regex+embeddings still work
     return brain._precision
-
-
-def _format_recall_results(results, lines):
-    """Format recall results into output lines."""
-    evolution_results = [r for r in results if r.get("type") in EVOLUTION_TYPES]
-    regular_results = [r for r in results if r.get("type") not in EVOLUTION_TYPES]
-
-    if evolution_results:
-        lines.append("ACTIVE EVOLUTION (brain is tracking these):")
-        for r in evolution_results[:3]:
-            title = r.get("title", "")[:80]
-            content = r.get("content", "")
-            if len(content) > 150:
-                content = content[:150] + "..."
-            lines.append("  " + title)
-            lines.append("    " + content)
-            lines.append("")
-
-    for r in regular_results[:5]:
-        typ = r.get("type", "?")
-        title = r.get("title", "")[:60]
-        content = r.get("content", "")
-        locked = "LOCKED " if r.get("locked") else ""
-        score = r.get("effective_activation", 0)
-        if len(content) > 300:
-            content = content[:300] + "..."
-        lines.append("  [%s] %s%s (score: %.2f)" % (typ, locked, title, score))
-        lines.append("    " + content)
-        lines.append("")
-
-
-def _format_encoding_warning(encoding):
-    """Generate encoding health warning if needed."""
-    health = encoding.get("health", "OK")
-    edits_gap = encoding.get("edits_since_last_remember", 0)
-    mins_since = encoding.get("minutes_since_last_remember", 0)
-    session_min = encoding.get("session_minutes", 0)
-
-    if health == "NONE" and session_min > 3:
-        return (
-            "ENCODING ALERT: You have not stored ANY learnings in the brain this session. "
-            "If decisions were made, corrections happened, or the user gave feedback — "
-            "call /remember NOW before continuing. The brain cannot learn from what you do not store."
-        )
-    elif health == "STALE":
-        if edits_gap > 15:
-            return (
-                "ENCODING WARNING: %d edits since your last /remember call "
-                "(%d min ago). If anything worth remembering happened in that span — "
-                "a decision, a correction, a pattern, feedback — store it now." % (edits_gap, mins_since)
-            )
-        elif edits_gap > 8:
-            return (
-                "ENCODING CHECK: %d edits since last /remember. "
-                "Anything worth storing? Decisions, corrections, lessons?" % edits_gap
-            )
-    return ""
-
-
-def _format_suggestions(filename, suggestions, procedures, context_files, change_impacts, encoding_warning):
-    """Format brain suggestions into readable output for pre-edit hook."""
-    lines = ["[BRAIN] AUTO-SUGGEST for %s:" % filename, ""]
-
-    eng_nodes = [s for s in suggestions if s.get("type") in ENGINEERING_TYPES]
-    code_nodes = [s for s in suggestions if s.get("type") in CODE_COGNITION_TYPES]
-    other_nodes = [s for s in suggestions if (
-        s.get("type") not in ENGINEERING_TYPES
-        and s.get("type") not in CODE_COGNITION_TYPES
-        and s.get("type") != "procedure"
-        and not (s.get("type") == "file" and "[ctx:" in s.get("title", ""))
-    )]
-
-    if change_impacts:
-        lines.append("CHANGE IMPACT WARNING:")
-        lines.append("")
-        for ci in change_impacts[:5]:
-            ci_title = ci.get("title", "")[:80]
-            ci_content = ci.get("content", "")
-            if len(ci_content) > 300:
-                ci_content = ci_content[:300] + "..."
-            lines.append("  [impact] " + ci_title)
-            lines.append("    " + ci_content)
-            lines.append("")
-
-    if eng_nodes:
-        lines.append("ENGINEERING MEMORY (read carefully — these describe what you are about to edit):")
-        lines.append("")
-        for s in eng_nodes:
-            typ = s.get("type", "?")
-            title = s.get("title", "")[:80]
-            content = s.get("content", "")
-            locked = "LOCKED " if s.get("locked") else ""
-            if len(content) > 350:
-                content = content[:350] + "..."
-            lines.append("  [%s] %s%s" % (typ, locked, title))
-            lines.append("    " + content)
-            lines.append("")
-
-    if code_nodes:
-        lines.append("CODE KNOWLEDGE:")
-        lines.append("")
-        for s in code_nodes:
-            typ = s.get("type", "?")
-            title = s.get("title", "")[:80]
-            content = s.get("content", "")
-            locked = "LOCKED " if s.get("locked") else ""
-            if len(content) > 350:
-                content = content[:350] + "..."
-            lines.append("  [%s] %s%s" % (typ, locked, title))
-            lines.append("    " + content)
-            lines.append("")
-
-    if other_nodes:
-        if code_nodes:
-            lines.append("OTHER RULES & DECISIONS:")
-        lines.append("")
-        for s in other_nodes:
-            typ = s.get("type", "?")
-            title = s.get("title", "")[:80]
-            content = s.get("content", "")
-            locked = "LOCKED " if s.get("locked") else ""
-            if len(content) > 250:
-                content = content[:250] + "..."
-            lines.append("  [%s] %s%s" % (typ, locked, title))
-            lines.append("    " + content)
-            lines.append("")
-
-    if procedures:
-        lines.append("TRIGGERED PROCEDURES:")
-        for p in procedures[:3]:
-            lines.append("  [procedure] " + p.get("title", ""))
-            psteps = p.get("steps", "")
-            if len(psteps) > 300:
-                psteps = psteps[:300] + "..."
-            lines.append("    " + psteps)
-            lines.append("")
-
-    if context_files:
-        lines.append("CONTEXT FILES (read before editing — may contain detailed requirements):")
-        for cf in context_files[:2]:
-            cftopic = cf.get("topic", "")
-            cftitle = cf.get("title", "")
-            cfupdated = str(cf.get("last_updated", ""))[:10]
-            cfsummary = str(cf.get("summary", ""))[:150]
-            lines.append("  [%s] %s (updated %s)" % (cftopic, cftitle, cfupdated))
-            lines.append("    " + cfsummary)
-            lines.append("")
-        lines.append("IMPORTANT: If the context file conflicts with current work, flag the conflict.")
-        lines.append("")
-
-    if encoding_warning:
-        lines.append("")
-        lines.append(encoding_warning)
-        lines.append("")
-
-    locked_ids = [s.get("id", "") for s in suggestions if s.get("locked")]
-    if locked_ids:
-        lines.append("BRAIN->HOST: If you follow locked rules above, call brain.log_communication(node_id, 'high_priority', True).")
-        lines.append("If you must deviate, call brain.log_communication(node_id, 'high_priority', False, reason).")
-        lines.append("")
-
-    lines.append("Review these constraints before proceeding with the edit.")
-    lines.append("[/BRAIN]")
-    return "\n".join(lines)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -469,122 +307,36 @@ def hook_recall(brain, args, graph_changes):
     except Exception:
         pass
 
-    # Format output
-    lines = []
-
-    # Urgent signals go FIRST — these are the brain's alarm system
-    if urgent_signals:
-        lines.append("[BRAIN] AWARENESS:")
-        for sig in urgent_signals:
-            lines.append("  " + sig)
-        lines.append("")
-
-    # Graph changes — what happened since last prompt
-    if recent_graph_changes:
-        lines.append("[BRAIN] GRAPH ACTIVITY (since last prompt):")
-        for change in recent_graph_changes[-10:]:  # cap display at 10
-            lines.append("  " + change)
-        lines.append("")
-
-    if results:
-        lines.append("[BRAIN] RECALL (auto-surfaced for this conversation):")
-        lines.append("")
-
-    if segment_note:
-        lines.append(segment_note)
-        lines.append("")
-
-    if priming_note:
-        lines.append(priming_note)
-        lines.append("")
-
-    _format_recall_results(results, lines)
-
-    # Aspiration compass
-    try:
-        relevant_aspirations = brain.get_relevant_aspirations(user_message[:200], limit=2)
-        recalled_ids = set(r.get("id") for r in results)
-        new_aspirations = [a for a in relevant_aspirations if a.get("id") not in recalled_ids]
-        if new_aspirations:
-            lines.append("[BRAIN] ASPIRATION COMPASS (relevant to this conversation):")
-            for a in new_aspirations:
-                lines.append("  " + a.get("title", "")[:80])
-            lines.append("")
-    except Exception:
-        pass
-
-    # Hypothesis validation
-    try:
-        hyp = brain.check_hypothesis_relevance(user_message[:200])
-        if hyp and hyp.get("id") not in set(r.get("id") for r in results):
-            hconf = hyp.get("confidence", 0)
-            lines.append("[BRAIN] HYPOTHESIS TO VALIDATE (confidence: %.1f):" % hconf)
-            lines.append("  " + hyp.get("title", "")[:80])
-            hcontent = str(hyp.get("content", ""))[:120]
-            if hcontent:
-                lines.append("    " + hcontent)
-            lines.append("  Does this conversation confirm or deny this? "
-                         "Use brain.confirm_evolution() or brain.dismiss_evolution().")
-            lines.append("")
-    except Exception:
-        pass
-
-    # Active tensions
-    try:
-        active = brain.get_active_evolutions(["tension"])
-        recalled_ids = set(r.get("id") for r in results)
-        unrecalled = [a for a in active if a.get("id") not in recalled_ids]
-        if unrecalled:
-            lines.append("[BRAIN] AGENDA (active tensions):")
-            for a in unrecalled[:2]:
-                lines.append("  " + a.get("title", "")[:80])
-            lines.append("")
-    except Exception:
-        pass
-
-    # Host instinct check
-    try:
-        nudge = brain.get_instinct_check(user_message[:500])
-        if nudge:
-            lines.insert(0, nudge)
-            lines.insert(1, "")
-    except Exception:
-        pass
-
-    # Append pending messages
-    if pending_messages:
-        lines.append("")
-        lines.append("--- QUEUED MESSAGES (from background hooks) ---")
-        for pm in pending_messages:
-            lines.append(str(pm))
-            lines.append("")
-
-    # Append debug log messages
-    if debug_messages:
-        lines.append("")
-        lines.append("[BRAIN DEBUG]")
-        for dm in debug_messages:
-            lines.append("  " + dm)
-        lines.append("")
-
     # ── Precision: request feedback if uncertain about previous recall ──
+    precision_feedback = None
     try:
         prev_eval_id = brain.get_config("last_evaluated_recall_id", "")
         if prev_eval_id:
             precision = _get_precision(brain)
-            fb = precision.request_feedback(int(prev_eval_id))
-            if fb:
-                lines.append("")
-                lines.append(fb)
+            precision_feedback = precision.request_feedback(int(prev_eval_id))
     except Exception:
         pass
 
-    lines.append("[BRAIN] Use this context to inform your response. Encode decisions, lessons, and corrections back into the brain.")
-    lines.append("[/BRAIN]")
-    context = "\n".join(lines)
+    # ── DECIDE + FORMAT via BrainVoice ──
+    voice = BrainVoice(brain)
+    prompt_signals = voice.select_prompt_signals(user_message, results)
+    rendered = voice.render_prompt(
+        results=results,
+        prompt_signals=prompt_signals,
+        urgent_signals=urgent_signals,
+        segment_note=segment_note,
+        priming_note=priming_note,
+        graph_changes=recent_graph_changes,
+        pending_messages=pending_messages,
+        debug_messages=debug_messages,
+        precision_feedback=precision_feedback,
+    )
 
     brain.save()
-    return {"json": {"additionalContext": context}}
+    result_json = {"additionalContext": rendered['for_claude']}
+    if rendered.get('for_operator'):
+        result_json["systemMessage"] = rendered['for_operator']
+    return {"json": result_json}
 
 
 def hook_post_response_track(brain, args, graph_changes):
@@ -1042,13 +794,16 @@ def hook_post_compact_reboot(brain, args, graph_changes):
     """Post-compact reboot — re-inject brain context after compaction.
 
     PostCompact stdout IS visible. This is the safety net.
+    COMPUTE phase gathers data, then delegates to BrainVoice for FORMAT.
     """
-    output = ["[BRAIN] POST-COMPACTION REBOOT:", ""]
-
     user = brain.get_config("default_user", "User")
     project = brain.get_config("default_project", "default")
 
+    # ── COMPUTE: gather all data ──
+
     # Safety net: check if pre-compact synthesis ran
+    synthesis_info = {}
+    synth_row = None
     try:
         last_synth = brain.conn.execute(
             "SELECT created_at FROM session_syntheses ORDER BY created_at DESC LIMIT 1"
@@ -1060,7 +815,6 @@ def hook_post_compact_reboot(brain, args, graph_changes):
             synth_ran = last_synth[0] >= session_start
 
         if not synth_ran:
-            output.append("NOTE: Pre-compact synthesis did not run. Running now...")
             try:
                 synthesis = brain.synthesize_session()
                 parts = []
@@ -1068,13 +822,9 @@ def hook_post_compact_reboot(brain, args, graph_changes):
                     val = synthesis.get(key)
                     if val:
                         parts.append("%s %s" % (val, key))
-                if parts:
-                    output.append("  Synthesis: " + ", ".join(parts))
-                else:
-                    output.append("  Synthesis: no notable events captured")
+                synthesis_info = {"just_ran": True, "parts": parts}
             except Exception as e:
-                output.append("  Synthesis failed: %s" % e)
-            output.append("")
+                synthesis_info = {"error": str(e)}
     except Exception:
         pass
 
@@ -1084,11 +834,6 @@ def hook_post_compact_reboot(brain, args, graph_changes):
     # Locked rules
     locked_nodes = boot.get("locked", [])
     locked_rules = [n for n in locked_nodes if n.get("type") == "rule"]
-    if locked_rules:
-        output.append("LOCKED RULES (%d active):" % len(locked_rules))
-        for rule in locked_rules[:15]:
-            output.append("  %s" % rule.get("title", "")[:80])
-        output.append("")
 
     # Last synthesis — open questions with age
     try:
@@ -1102,22 +847,18 @@ def hook_post_compact_reboot(brain, args, graph_changes):
                 now = datetime.now(timezone.utc)
                 age_minutes = (now - synth_time).total_seconds() / 60
 
-                if age_minutes < 30:
-                    oq = synth_row[0]
-                    if oq:
-                        try:
-                            questions = json.loads(oq)
-                            if questions:
-                                output.append("OPEN QUESTIONS (from synthesis %d min ago):" % int(age_minutes))
-                                for q in questions[:5]:
-                                    output.append("  ? %s" % str(q)[:100])
-                                output.append("")
-                        except Exception:
-                            pass
-                else:
-                    output.append("NOTE: Last synthesis was %.0f hours ago - open questions may be resolved." % (age_minutes / 60))
-                    output.append("  Use brain.recall_with_embeddings() for current context instead.")
-                    output.append("")
+                oq = synth_row[0]
+                if oq:
+                    try:
+                        questions = json.loads(oq)
+                        if questions:
+                            synthesis_info["open_questions"] = questions
+                            synthesis_info["age_minutes"] = age_minutes
+                    except Exception:
+                        pass
+                elif age_minutes >= 30:
+                    synthesis_info["open_questions"] = []
+                    synthesis_info["age_minutes"] = age_minutes
             except Exception:
                 pass
     except Exception:
@@ -1125,24 +866,16 @@ def hook_post_compact_reboot(brain, args, graph_changes):
 
     # Consciousness signals
     signals = brain.get_consciousness_signals()
-    for sig_key, sig_label in [("reminders", "REMINDERS"), ("evolutions", "EVOLUTIONS")]:
-        items = signals.get(sig_key, [])
-        if items:
-            output.append("%s:" % sig_label)
-            for item in items[:5]:
-                output.append("  %s" % item.get("title", "")[:80])
-            output.append("")
 
     # Developmental stage
+    dev_stage = None
     try:
-        dev = brain.assess_developmental_stage()
-        if dev:
-            output.append("STAGE: %s (%.0f%%)" % (dev.get("stage_name", "?"), dev.get("maturity_score", 0) * 100))
-            output.append("")
+        dev_stage = brain.assess_developmental_stage()
     except Exception:
         pass
 
     # Recall context related to recent work
+    recall_results = []
     try:
         recall_query_parts = []
         recent_rows = brain.conn.execute(
@@ -1165,28 +898,18 @@ def hook_post_compact_reboot(brain, args, graph_changes):
             except Exception:
                 result = brain.recall(query=recall_query, limit=8)
 
-            recall_results = result.get("results", [])
+            all_recall = result.get("results", [])
             recent_ids = {r[0] for r in brain.conn.execute(
                 "SELECT id FROM nodes WHERE created_at > datetime('now', '-2 hours')"
             ).fetchall()}
-            new_recall = [r for r in recall_results if r.get("id") not in recent_ids]
-
-            if new_recall:
-                output.append("RECALLED CONTEXT (related to recent work):")
-                for r in new_recall[:6]:
-                    typ = r.get("type", "?")
-                    title = r.get("title", "")[:70]
-                    content = r.get("content", "")
-                    if len(content) > 200:
-                        content = content[:200] + "..."
-                    locked = "LOCKED " if r.get("locked") else ""
-                    output.append("  [%s] %s%s" % (typ, locked, title))
-                    output.append("    %s" % content)
-                    output.append("")
+            recall_results = [r for r in all_recall if r.get("id") not in recent_ids]
     except Exception:
         pass
 
     # Find transcript for rehydration hint
+    transcript_path = None
+    db_dir_env = os.environ.get("BRAIN_DB_DIR", "")
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", ".")
     try:
         home = os.path.expanduser("~")
         claude_projects = os.path.join(home, ".claude", "projects")
@@ -1202,33 +925,29 @@ def hook_post_compact_reboot(brain, args, graph_changes):
                         candidates.append(fpath)
             if candidates:
                 transcript_path = max(candidates, key=os.path.getmtime)
-                db_dir_env = os.environ.get("BRAIN_DB_DIR", "")
-                plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", ".")
-                output.append("")
-                output.append("TRANSCRIPT AVAILABLE FOR REHYDRATION:")
-                output.append("  Path: %s" % transcript_path)
-                output.append("  To recover lost context, run:")
-                output.append("    BRAIN_DB_DIR=%s python3 %s/hooks/scripts/extract-session-log.py --last-n-hours 4" % (
-                    db_dir_env, plugin_root))
-                output.append("  Or read the transcript directly to find what you lost.")
     except Exception:
         pass
 
     # Drain pending messages
     pending = _drain_pending(brain)
-    if pending:
-        output.append("")
-        output.append("--- QUEUED MESSAGES (from background hooks) ---")
-        for pm in pending:
-            output.append(str(pm))
-            output.append("")
 
-    output.append("Brain is live. Context was compacted — you lost conversation history.")
-    output.append("The brain persists. Use brain.recall_with_embeddings() to recover context.")
-    output.append("[/BRAIN]")
+    # ── FORMAT via BrainVoice ──
+    voice = BrainVoice(brain)
+    rendered = voice.render_reboot(
+        boot_context=boot,
+        synthesis_info=synthesis_info,
+        locked_rules=locked_rules,
+        signals=signals,
+        dev_stage=dev_stage,
+        recall_results=recall_results,
+        pending_messages=pending if pending else None,
+        transcript_path=transcript_path,
+        db_dir_env=db_dir_env,
+        plugin_root=plugin_root,
+    )
 
     brain.save()
-    return {"output": "\n".join(output)}
+    return {"output": rendered['for_claude']}
 
 
 def hook_pre_edit(brain, args, graph_changes):
