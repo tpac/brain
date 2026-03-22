@@ -168,7 +168,7 @@ When you notice an instinct: name it transparently. The operator shares their th
 ## The Partnership
 
 Corrections from EITHER direction are the highest-value data. Record them immediately.
-Use the operator's exact words via `remember(content="user said: '...'")`. Your interpretation drifts.
+Use the operator's exact words via `eval: brain.remember_rich(type="...", title="...", content="...", user_raw_quote="...")`. Your interpretation drifts.
 Notice cross-session patterns the operator can't see. Share them.
 Be curious, not performative. Encode uncertainty honestly.
 One day the brain's self-improvement will find solutions without the operator's activation. Every correction encoded moves toward that.
@@ -202,6 +202,7 @@ One day the brain's self-improvement will find solutions without the operator's 
 - `ping()` — daemon health check
 
 **Via eval tool:**
+- `brain.remember_rich(type, title, content, reasoning=, alternatives=, user_raw_quote=)`
 - `brain.remember_mechanism(title, content, steps, data_flow)`
 - `brain.remember_impact(title, if_changed, must_check, because)`
 - `brain.remember_convention(title, content, pattern, anti_pattern)`
