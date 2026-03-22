@@ -1971,7 +1971,7 @@ class TestInfBug(BrainTestBase):
 
 # ── Identifier Splitting ─────────────────────────────────────────────
 
-from servers.text_processing import split_identifier
+from servers.text_processing import split_identifier, is_domain_specific, filter_domain_terms
 
 
 class TestIdentifierSplitting(unittest.TestCase):
@@ -2166,6 +2166,128 @@ class TestIdentifierSplittingE2E(BrainTestBase):
             any('surface' in t.lower() or 'brain' in t.lower() for t in titles),
             'snake_case file should match PascalCase node titles. '
             'Got: %s' % titles)
+
+
+# ── Common-Word Filter ────────────────────────────────────────────────
+
+
+class TestCommonWordFilter(unittest.TestCase):
+    """Unit tests for is_domain_specific() and filter_domain_terms()."""
+
+    def test_common_word_detected(self):
+        """Common English words should NOT be domain-specific."""
+        for word in ['file', 'house', 'water', 'system', 'time']:
+            self.assertFalse(is_domain_specific(word),
+                           '%s should be common' % word)
+
+    def test_domain_word_detected(self):
+        """Technical terms not in common English should be domain-specific."""
+        for word in ['webhook', 'daemon', 'middleware', 'serializer', 'linter']:
+            self.assertTrue(is_domain_specific(word),
+                          '%s should be domain-specific' % word)
+
+    def test_acronym_domain(self):
+        """Technical acronyms should be domain-specific."""
+        for acr in ['DAL', 'API', 'NLP', 'SQL', 'HTML', 'CSS']:
+            self.assertTrue(is_domain_specific(acr),
+                          '%s should be domain-specific' % acr)
+
+    def test_acronym_common_excluded(self):
+        """Common acronyms should NOT be domain-specific."""
+        for acr in ['OK', 'AM', 'PM', 'US', 'UK', 'FAQ']:
+            self.assertFalse(is_domain_specific(acr),
+                           '%s should be common' % acr)
+
+    def test_capitalized_proper_noun(self):
+        """Capitalized terms (product names, entities) should be domain-specific."""
+        for name in ['Clerk', 'Redis', 'Valinor', 'Supabase']:
+            self.assertTrue(is_domain_specific(name),
+                          '%s should be domain-specific (proper noun)' % name)
+
+    def test_multiword_domain_head(self):
+        """Multi-word terms with uncommon head word are domain-specific."""
+        self.assertTrue(is_domain_specific('recall scorer'))
+        self.assertTrue(is_domain_specific('brain daemon'))
+
+    def test_multiword_domain_compound(self):
+        """Multi-word compounds of common words can still be domain-specific."""
+        self.assertTrue(is_domain_specific('hook chain'))
+        self.assertTrue(is_domain_specific('supply adapter'))
+        self.assertTrue(is_domain_specific('precision loop'))
+
+    def test_multiword_common_phrase(self):
+        """Trivially common phrases should NOT be domain-specific."""
+        for phrase in ['the file', 'good idea', 'new feature', 'last time', 'next step']:
+            self.assertFalse(is_domain_specific(phrase),
+                           '"%s" should be a common phrase' % phrase)
+
+    def test_empty_input(self):
+        self.assertFalse(is_domain_specific(''))
+        self.assertFalse(is_domain_specific('   '))
+
+    def test_filter_removes_common(self):
+        """filter_domain_terms should keep only domain-specific terms."""
+        candidates = ['the file', 'recall scorer', 'webhook', 'DAL', 'good idea']
+        filtered = filter_domain_terms(candidates)
+        self.assertIn('recall scorer', filtered)
+        self.assertIn('webhook', filtered)
+        self.assertIn('DAL', filtered)
+        self.assertNotIn('the file', filtered)
+        self.assertNotIn('good idea', filtered)
+
+    def test_filter_deduplicates(self):
+        """filter_domain_terms should remove case-insensitive duplicates."""
+        filtered = filter_domain_terms(['Webhook', 'webhook', 'WEBHOOK'])
+        self.assertEqual(len(filtered), 1)
+
+    def test_filter_empty_input(self):
+        self.assertEqual(filter_domain_terms([]), [])
+
+
+class TestCommonWordFilterE2E(BrainTestBase):
+    """End-to-end: verify domain filter works with brain vocabulary concepts."""
+
+    def test_domain_terms_match_brain_vocabulary(self):
+        """Terms the brain stores as vocabulary should be domain-specific."""
+        # These are real terms from brain's vocabulary system
+        domain_terms = ['webhook', 'daemon', 'recall scorer', 'DAL',
+                       'embeddings', 'middleware']
+        for term in domain_terms:
+            self.assertTrue(is_domain_specific(term),
+                          'Brain vocab term "%s" should be domain-specific' % term)
+
+    def test_common_phrases_not_stored(self):
+        """Common English phrases should not trigger vocabulary storage."""
+        common_phrases = ['the file', 'good idea', 'new feature',
+                         'last time', 'next step', 'other side']
+        for phrase in common_phrases:
+            self.assertFalse(is_domain_specific(phrase),
+                           '"%s" should not trigger vocabulary storage' % phrase)
+
+    def test_product_names_detected(self):
+        """Product names like Clerk, Redis should be detected as entities."""
+        # Store a node about Clerk
+        self.brain.remember(
+            type='vocabulary',
+            title='Clerk = auth provider with magic links',
+            content='Clerk handles authentication. Passwordless via magic links.',
+            keywords='clerk auth provider')
+        # The term "Clerk" should be domain-specific
+        self.assertTrue(is_domain_specific('Clerk'))
+        # Even "clerk" lowercase is common — but capitalized signals entity
+        # This tests that the capitalization check works for entity detection
+
+    def test_filter_on_realistic_message(self):
+        """Simulate extracting terms from a real user message."""
+        # Simulate extracted candidates from: "Fix the recall scorer to handle Clerk webhook"
+        candidates = ['recall scorer', 'Clerk', 'webhook', 'the', 'handle']
+        filtered = filter_domain_terms(candidates)
+        # Should keep domain terms, filter common words
+        self.assertIn('recall scorer', filtered)
+        self.assertIn('Clerk', filtered)
+        self.assertIn('webhook', filtered)
+        self.assertNotIn('the', filtered)
+        self.assertNotIn('handle', filtered)
 
 
 if __name__ == '__main__':
