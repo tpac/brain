@@ -326,8 +326,8 @@ def hook_recall(brain, args, graph_changes):
             precision = _get_precision(brain)
             precision.evaluate_followup(int(prev_log_id), user_message)
             brain.set_config("last_evaluated_recall_id", "")
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('precision_evaluate_followup', e, 'prev_log_id=%s' % prev_log_id)
 
     # Vocabulary expansion
     expansions = []
@@ -384,8 +384,8 @@ def hook_recall(brain, args, graph_changes):
                 embeddings_used=embeddings_used,
             )
             brain.set_config("last_recall_log_id", str(recall_log_id))
-        except Exception:
-            pass
+        except Exception as e:
+            brain._log_error('precision_log_recall', e, 'query=%s' % enriched[:100])
 
     # Segment boundary detection
     segment_note = None
@@ -572,8 +572,8 @@ def hook_post_response_track(brain, args, graph_changes):
             brain.set_config("last_evaluated_recall_id", recall_log_id)
             # Clear to prevent double-evaluation
             brain.set_config("last_recall_log_id", "")
-        except Exception:
-            pass
+        except Exception as e:
+            brain._log_error('precision_evaluate_response', e, 'recall_log_id=%s' % recall_log_id)
     elif recall_log_id and (not assistant_response or len(assistant_response) < 20):
         # Log diagnostic — empty response means precision evaluation can't run.
         # This helps detect if the hook communication is broken.

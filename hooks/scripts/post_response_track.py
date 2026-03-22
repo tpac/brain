@@ -24,6 +24,7 @@ try:
             "prompt": hook_input.get("prompt", ""),
             "message": hook_input.get("message", ""),
             "hook_event_name": event_name,
+            "last_assistant_message": hook_input.get("last_assistant_message", ""),
         }, timeout=3.0)
         if resp.get("ok"):
             output = resp.get("result", {}).get("output", "")

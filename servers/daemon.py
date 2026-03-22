@@ -81,6 +81,68 @@ class BrainDaemon:
         self.graph_changes = []  # In-memory graph mutation log, drained by hook_recall
         self._lock = threading.Lock()
 
+    # Hook dispatch table: hook_name → (module_attr, marks_dirty)
+    HOOK_TABLE = {
+        "hook_recall": ("hook_recall", True),
+        "hook_post_response_track": ("hook_post_response_track", True),
+        "hook_idle_maintenance": ("hook_idle_maintenance", True),
+        "hook_post_compact_reboot": ("hook_post_compact_reboot", True),
+        "hook_pre_edit": ("hook_pre_edit", True),
+        "hook_pre_bash_safety": ("hook_pre_bash_safety", False),
+        "hook_pre_compact_save": ("hook_pre_compact_save", True),
+        "hook_session_end": ("hook_session_end", True),
+        "hook_stop_failure_log": ("hook_stop_failure_log", True),
+        "hook_config_change_host": ("hook_config_change_host", True),
+        "hook_post_bash_host_check": ("hook_post_bash_host_check", True),
+        "hook_worktree_context": ("hook_worktree_context", True),
+        "hook_worktree_cleanup": ("hook_worktree_cleanup", True),
+    }
+
+    def _dispatch_hook(self, cmd, args):
+        """Dispatch a hook command with telemetry wrapping.
+
+        Measures latency and injection volume for every hook fire,
+        logs to debug_log for per-hook activity tracking.
+        """
+        import servers.daemon_hooks as _hooks
+
+        entry = self.HOOK_TABLE.get(cmd)
+        if not entry:
+            return {"error": "Unknown hook: %s" % cmd}
+
+        func_name, marks_dirty = entry
+        hook_func = getattr(_hooks, func_name)
+
+        start_t = time.time()
+        result = hook_func(self.brain, args, self.graph_changes)
+        latency_ms = (time.time() - start_t) * 1000
+
+        if marks_dirty:
+            self.dirty = True
+
+        # Measure injection volume
+        injection_chars = 0
+        if isinstance(result, dict):
+            reason = result.get("json", {}).get("reason", "") if "json" in result else ""
+            output = result.get("output", "")
+            injection_chars = len(reason) + len(output)
+
+        # Log telemetry (non-blocking, best-effort)
+        try:
+            self.brain.log_debug(
+                event_type=cmd,
+                source="hook_telemetry",
+                latency_ms=latency_ms,
+                metadata=json.dumps({
+                    "injection_chars": injection_chars,
+                    "decision": result.get("json", {}).get("decision", "") if isinstance(result, dict) and "json" in result else "",
+                }),
+            )
+        except Exception:
+            pass
+
+        return result
+
     def start(self):
         """Start the daemon — load brain, bind socket, serve."""
         # Write PID file
@@ -457,81 +519,8 @@ class BrainDaemon:
                     return {"ok": True, "result": result}
 
                 # ── Hook commands (centralized in daemon_hooks.py) ──
-                elif cmd == "hook_recall":
-                    from servers.daemon_hooks import hook_recall
-                    result = hook_recall(self.brain, args, self.graph_changes)
-                    self.dirty = True
-                    return {"ok": True, "result": result}
-
-                elif cmd == "hook_post_response_track":
-                    from servers.daemon_hooks import hook_post_response_track
-                    result = hook_post_response_track(self.brain, args, self.graph_changes)
-                    self.dirty = True
-                    return {"ok": True, "result": result}
-
-                elif cmd == "hook_idle_maintenance":
-                    from servers.daemon_hooks import hook_idle_maintenance
-                    result = hook_idle_maintenance(self.brain, args, self.graph_changes)
-                    self.dirty = True
-                    return {"ok": True, "result": result}
-
-                elif cmd == "hook_post_compact_reboot":
-                    from servers.daemon_hooks import hook_post_compact_reboot
-                    result = hook_post_compact_reboot(self.brain, args, self.graph_changes)
-                    self.dirty = True
-                    return {"ok": True, "result": result}
-
-                elif cmd == "hook_pre_edit":
-                    from servers.daemon_hooks import hook_pre_edit
-                    result = hook_pre_edit(self.brain, args, self.graph_changes)
-                    self.dirty = True
-                    return {"ok": True, "result": result}
-
-                elif cmd == "hook_pre_bash_safety":
-                    from servers.daemon_hooks import hook_pre_bash_safety
-                    result = hook_pre_bash_safety(self.brain, args, self.graph_changes)
-                    return {"ok": True, "result": result}
-
-                elif cmd == "hook_pre_compact_save":
-                    from servers.daemon_hooks import hook_pre_compact_save
-                    result = hook_pre_compact_save(self.brain, args, self.graph_changes)
-                    self.dirty = True
-                    return {"ok": True, "result": result}
-
-                elif cmd == "hook_session_end":
-                    from servers.daemon_hooks import hook_session_end
-                    result = hook_session_end(self.brain, args, self.graph_changes)
-                    self.dirty = True
-                    return {"ok": True, "result": result}
-
-                elif cmd == "hook_stop_failure_log":
-                    from servers.daemon_hooks import hook_stop_failure_log
-                    result = hook_stop_failure_log(self.brain, args, self.graph_changes)
-                    self.dirty = True
-                    return {"ok": True, "result": result}
-
-                elif cmd == "hook_config_change_host":
-                    from servers.daemon_hooks import hook_config_change_host
-                    result = hook_config_change_host(self.brain, args, self.graph_changes)
-                    self.dirty = True
-                    return {"ok": True, "result": result}
-
-                elif cmd == "hook_post_bash_host_check":
-                    from servers.daemon_hooks import hook_post_bash_host_check
-                    result = hook_post_bash_host_check(self.brain, args, self.graph_changes)
-                    self.dirty = True
-                    return {"ok": True, "result": result}
-
-                elif cmd == "hook_worktree_context":
-                    from servers.daemon_hooks import hook_worktree_context
-                    result = hook_worktree_context(self.brain, args, self.graph_changes)
-                    self.dirty = True
-                    return {"ok": True, "result": result}
-
-                elif cmd == "hook_worktree_cleanup":
-                    from servers.daemon_hooks import hook_worktree_cleanup
-                    result = hook_worktree_cleanup(self.brain, args, self.graph_changes)
-                    self.dirty = True
+                elif cmd.startswith("hook_"):
+                    result = self._dispatch_hook(cmd, args)
                     return {"ok": True, "result": result}
 
                 # ── Track graph mutations from standard commands ──

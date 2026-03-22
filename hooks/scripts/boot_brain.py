@@ -742,6 +742,31 @@ te = ctx.get("total_edges", "?")
 tl = ctx.get("total_locked", "?")
 print("Brain status: %s nodes, %s edges, %s locked" % (tn, te, tl))
 
+# Precision feedback loop status
+try:
+    from servers.brain_precision import RecallPrecision
+    _prec = RecallPrecision(brain.logs_conn, brain.conn)
+    prec_summary = _prec.get_precision_summary(hours=24)
+    total_recalls = prec_summary.get("total_recalls", 0)
+    evaluated = prec_summary.get("evaluated_recalls", 0)
+    fsigs = prec_summary.get("followup_signals", {})
+    pos = fsigs.get("positive", 0)
+    neg = fsigs.get("negative", 0)
+    neut = fsigs.get("neutral", 0)
+    unc = fsigs.get("uncertain", 0)
+    fb = prec_summary.get("feedback_count", 0)
+    emb_pct = prec_summary.get("embeddings_used_pct", 0)
+    if total_recalls > 0:
+        eval_pct = (evaluated / total_recalls * 100) if total_recalls else 0
+        print("[BRAIN] PRECISION (24h): %d recalls, %d evaluated (%.0f%%) — +%d -%d ~%d ?%d | %d explicit feedback" % (
+            total_recalls, evaluated, eval_pct, pos, neg, neut, unc, fb))
+        if evaluated == 0 and total_recalls > 5:
+            print("  WARNING: Precision loop not producing evaluations. Check last_assistant_message forwarding.")
+    else:
+        print("[BRAIN] PRECISION: No recalls in last 24h.")
+except Exception as _pe:
+    pass  # Don't block boot on precision errors
+
 # Embedder status
 from servers import embedder as _emb
 if _emb.is_ready():
@@ -762,6 +787,37 @@ if total_suggests > 0:
     ap = metrics.get("avg_promoted_per_suggest", 0)
     print("Suggest metrics (%dd): %d calls, avg %.0f locked/call, avg %.1f promoted/call" % (pd, total_suggests, al, ap))
     print()
+
+# Hook activity telemetry (last 24h)
+try:
+    import sqlite3 as _tel_sql
+    _tel_logs = os.path.join(db_dir, "brain_logs.db")
+    if os.path.isfile(_tel_logs):
+        _tc = _tel_sql.connect(_tel_logs, timeout=2)
+        _tel_rows = _tc.execute("""
+            SELECT event_type, COUNT(*) as fires,
+                   AVG(latency_ms) as avg_lat,
+                   SUM(json_extract(metadata, '$.injection_chars')) as total_chars
+            FROM debug_log
+            WHERE source = 'hook_telemetry'
+              AND created_at > datetime('now', '-1 day')
+            GROUP BY event_type
+            ORDER BY fires DESC
+        """).fetchall()
+        if _tel_rows:
+            print("[BRAIN] HOOK ACTIVITY (24h):")
+            for _tr in _tel_rows:
+                _h_name = _tr[0].replace("hook_", "")
+                _h_fires = _tr[1]
+                _h_lat = _tr[2] or 0
+                _h_chars = int(_tr[3] or 0)
+                print("  %s: %d fires, avg %.0fms, ~%s chars injected" % (
+                    _h_name, _h_fires, _h_lat,
+                    "{:,}".format(_h_chars) if _h_chars else "0"))
+            print()
+        _tc.close()
+except Exception:
+    pass
 
 # Debug mode
 debug_on = brain.get_debug_status()
