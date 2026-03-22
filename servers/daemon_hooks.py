@@ -291,6 +291,7 @@ def _format_suggestions(filename, suggestions, procedures, context_files, change
         lines.append("")
 
     lines.append("Review these constraints before proceeding with the edit.")
+    lines.append("[/BRAIN]")
     return "\n".join(lines)
 
 
@@ -534,6 +535,7 @@ def hook_recall(brain, args, graph_changes):
         pass
 
     lines.append("[BRAIN] Use this context to inform your response. Encode decisions, lessons, and corrections back into the brain.")
+    lines.append("[/BRAIN]")
     context = "\n".join(lines)
 
     brain.save()
@@ -724,6 +726,7 @@ def hook_post_response_track(brain, args, graph_changes):
             if stats:
                 checkpoint_lines.append(stats)
             checkpoint_lines.append(focus)
+            checkpoint_lines.append("[/BRAIN]")
             checkpoint_text = "\n".join(checkpoint_lines)
 
             if is_user_prompt:
@@ -913,7 +916,7 @@ def hook_idle_maintenance(brain, args, graph_changes):
 
     # Store as pending message (Notification stdout is invisible)
     if output:
-        summary = "[BRAIN] IDLE MAINTENANCE:\n" + "\n".join(output)
+        summary = "[BRAIN] IDLE MAINTENANCE:\n" + "\n".join(output) + "\n[/BRAIN]"
         _store_pending(brain, summary)
 
     brain.save()
@@ -1107,6 +1110,7 @@ def hook_post_compact_reboot(brain, args, graph_changes):
 
     output.append("Brain is live. Context was compacted — you lost conversation history.")
     output.append("The brain persists. Use brain.recall_with_embeddings() to recover context.")
+    output.append("[/BRAIN]")
 
     brain.save()
     return {"output": "\n".join(output)}
@@ -1184,7 +1188,7 @@ def hook_pre_bash_safety(brain, args, graph_changes):
     except Exception:
         return {"json": {
             "decision": "approve",
-            "reason": "[BRAIN] \u26a0\ufe0f Safety check failed — proceed carefully.",
+            "reason": "[BRAIN] \u26a0\ufe0f Safety check failed — proceed carefully. [/BRAIN]",
         }}
 
     critical_matches = result.get("critical_matches", [])
@@ -1202,6 +1206,7 @@ def hook_pre_bash_safety(brain, args, graph_changes):
             lines.append("    %s" % content)
             lines.append("")
         lines.append("Review the above before proceeding. This command has been BLOCKED.")
+        lines.append("[/BRAIN]")
         return {"json": {"decision": "block", "reason": "\n".join(lines)}}
 
     elif warnings:
@@ -1216,12 +1221,13 @@ def hook_pre_bash_safety(brain, args, graph_changes):
             lines.append("    %s" % content)
             lines.append("")
         lines.append("Proceed carefully — verify this command is intentional.")
+        lines.append("[/BRAIN]")
         return {"json": {"decision": "approve", "reason": "\n".join(lines)}}
 
     else:
         return {"json": {
             "decision": "approve",
-            "reason": "[BRAIN] \u26a0\ufe0f Destructive command detected. No safety rules match, but proceed carefully.",
+            "reason": "[BRAIN] \u26a0\ufe0f Destructive command detected. No safety rules match, but proceed carefully. [/BRAIN]",
         }}
 
 
@@ -1319,6 +1325,7 @@ def hook_config_change_host(brain, args, graph_changes):
                 output_lines.append("  File: %s" % file_path)
             output_lines.append("")
             output_lines.append("Review arch_constraint and capability nodes that may be affected.")
+            output_lines.append("[/BRAIN]")
 
             _store_pending(brain, "\n".join(output_lines))
             graph_changes.append("HOST: environment changed (%d items)" % len(changes))
@@ -1346,6 +1353,7 @@ def hook_post_bash_host_check(brain, args, graph_changes):
                 new_val = change.get("new", "?")
                 output_lines.append("  %s: %s \u2192 %s" % (key, old_val, new_val))
             output_lines.append("  Command: %s" % command[:100])
+            output_lines.append("[/BRAIN]")
 
             _store_pending(brain, "\n".join(output_lines))
             graph_changes.append("HOST: env changed after bash (%d items)" % len(changes))
@@ -1389,6 +1397,7 @@ def hook_worktree_context(brain, args, graph_changes):
         "  Worktree: " + worktree_name,
         "  Branch: " + branch,
         "  CWD: " + cwd,
+        "[/BRAIN]",
     ]
 
     brain.save()

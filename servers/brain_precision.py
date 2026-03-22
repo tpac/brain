@@ -518,7 +518,8 @@ class RecallPrecision:
         return (
             f"[BRAIN] FEEDBACK REQUEST: {returned_count} node(s) were recalled. "
             f"Were they relevant?\n{title_list}\n"
-            f"(Reply: useful / not_useful / partially_useful — or ignore to skip)"
+            f"(Reply: useful / not_useful / partially_useful — or ignore to skip)\n"
+            f"[/BRAIN]"
         )
 
     # ── Query Methods ──

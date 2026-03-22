@@ -746,5 +746,6 @@ print("  /remember_rich — detailed encoding with reasoning, alternatives, user
 print("  brain.remember_purpose/mechanism/impact/constraint/convention/lesson — engineering memory")
 print("  brain.learn_vocabulary — map operator terms to code")
 print("  brain.remember_mental_model/remember_uncertainty — Claude cognitive layer")
+print("[/BRAIN]")
 
 brain.close()
