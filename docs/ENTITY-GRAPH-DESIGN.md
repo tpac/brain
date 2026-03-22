@@ -160,11 +160,13 @@ What already exists that supports this:
 
 ## Implementation Plan
 
-### Phase 1: Better Extraction (zero new dependencies)
+### Phase 1: Better Extraction (zero new dependencies) ✅ COMPLETE
 - [x] Identifier splitting: `re.findall` replaces fragile two-pass `re.sub`
-- [ ] Sentence splitting: pySBD (MIT, pure Python, 97.9% accuracy)
-- [ ] Vocabulary regex: improved patterns (capitalized terms, backticks, acronyms, verb-object, multi-word NPs)
-- [ ] Common-word filter: 10K word list to detect domain-specific terms
+- [x] Sentence splitting: pySBD (MIT, pure Python, 97.9% accuracy)
+- [x] Vocabulary regex: improved patterns (capitalized terms, backticks, acronyms, verb-object, multi-word NPs)
+- [x] Common-word filter: 10K word list to detect domain-specific terms
+
+**Deployed:** 2026-03-22. Plugin rebuilt, cache replaced. 65 tests, 4 benchmarks. See brain node `8acd81b1` for full system docs.
 
 ### Phase 2: Entity Extraction (one dependency: spaCy)
 - [ ] Install `spacy` + `en_core_web_sm` (15MB)
