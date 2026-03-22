@@ -51,6 +51,23 @@ from typing import Optional, Dict, Any
 # ─── Configuration ───
 
 IDLE_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
+
+def _code_fingerprint() -> str:
+    """Return a deterministic fingerprint of the server code files.
+    Changes when any .py file in servers/ is modified."""
+    import hashlib
+    try:
+        servers_dir = os.path.dirname(os.path.abspath(__file__))
+        mtimes = []
+        for f in sorted(os.listdir(servers_dir)):
+            if f.endswith('.py'):
+                mtimes.append("{}:{}".format(f, os.path.getmtime(os.path.join(servers_dir, f))))
+        return hashlib.md5("|".join(mtimes).encode()).hexdigest()[:16]
+    except Exception:
+        return "unknown"
+
+# Captured at import time — represents the code version this process loaded
+_CODE_FINGERPRINT = _code_fingerprint()
 AUTOSAVE_INTERVAL_SECONDS = 60  # Save every 60 seconds if dirty
 SOCKET_BACKLOG = 5
 MAX_MESSAGE_SIZE = 1024 * 1024  # 1MB max message
@@ -266,7 +283,7 @@ class BrainDaemon:
         with self._lock:
             try:
                 if cmd == "ping":
-                    return {"ok": True, "result": {"status": "alive", "pid": os.getpid()}}
+                    return {"ok": True, "result": {"status": "alive", "pid": os.getpid(), "code_fingerprint": _CODE_FINGERPRINT}}
 
                 elif cmd == "shutdown":
                     self.running = False
@@ -706,11 +723,20 @@ def ensure_daemon(db_path: str) -> bool:
         for attempt in range(25):  # 5 seconds total
             resp = send_command("ping", timeout=2.0)
             if resp.get("ok"):
+                # Check if code has been updated since daemon loaded
+                daemon_fp = resp.get("result", {}).get("code_fingerprint", "")
+                current_fp = _code_fingerprint()
+                if current_fp != "unknown" and daemon_fp != current_fp:
+                    sys.stderr.write("[brain-daemon] Code changed (daemon={}, current={}) — restarting\n".format(
+                        daemon_fp[:12] or "none", current_fp[:12]))
+                    _kill_daemon()
+                    break  # Fall through to fork-and-start below
                 return True
             time.sleep(0.2)
-        # Still not responding after 5s — truly zombie, kill and restart
-        sys.stderr.write("[brain-daemon] Killing zombie daemon (PID alive but unresponsive for 5s)\n")
-        _kill_daemon()
+        else:
+            # Still not responding after 5s — truly zombie, kill and restart
+            sys.stderr.write("[brain-daemon] Killing zombie daemon (PID alive but unresponsive for 5s)\n")
+            _kill_daemon()
 
     # Fork and start daemon
     pid = os.fork()
