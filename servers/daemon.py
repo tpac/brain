@@ -816,13 +816,13 @@ def ensure_daemon(db_path: str) -> bool:
         )
 
     # Wait for daemon to become ready
-    for attempt in range(30):  # 6 seconds total
+    for attempt in range(50):  # 10 seconds total
         resp = send_command("ping", timeout=2.0)
         if resp.get("ok"):
             return True
         time.sleep(0.2)
 
-    sys.stderr.write("[brain-daemon] Daemon failed to start within 6s\n")
+    sys.stderr.write("[brain-daemon] Daemon failed to start within 10s\n")
     return False
 
 
