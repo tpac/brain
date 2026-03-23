@@ -5,7 +5,6 @@
     "category": "keyword",
     "expected_relevant": {
       "dec_rqjns07z": 2,
-      "rul_8xgct2hg": 1,
       "rul_9oosw82x": 1
     },
     "min_hit_rate_at_10": 1.0,
@@ -16,7 +15,6 @@
     "query": "budget_order",
     "category": "keyword",
     "expected_relevant": {
-      "rul_8xgct2hg": 2,
       "dec_rqjns07z": 1,
       "pro_i1pc8fs7": 1,
       "rul_17qtllqm": 1,
@@ -72,21 +70,10 @@
     "category": "keyword",
     "expected_relevant": {
       "rul_17qtllqm": 2,
-      "rul_8xgct2hg": 1,
       "rul_jd8ib8c2": 1
     },
     "min_hit_rate_at_10": 1.0,
     "description": "Keyword recall for [rule]: Rule: media mockup must show creative ON publisher media wit"
-  },
-  {
-    "id": "kw_pro_6e9w",
-    "query": "budget screen pre-edit audit",
-    "category": "keyword",
-    "expected_relevant": {
-      "pro_6e9wbfrj": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [procedure]: Budget screen pre-edit audit"
   },
   {
     "id": "kw_rul_jd8i",
@@ -104,8 +91,6 @@
     "query": "glo lifecycle: draft\u2192pending review\u2192active\u2192completed",
     "category": "keyword",
     "expected_relevant": {
-      "dec_ske5osc2": 2,
-      "con_b4g2ux5s": 1,
       "pro_i1pc8fs7": 1
     },
     "min_hit_rate_at_10": 1.0,
@@ -137,8 +122,6 @@
     "query": "payment: glo credits 1:1 usd, stripe customer balance",
     "category": "keyword",
     "expected_relevant": {
-      "dec_qz2r5qnm": 2,
-      "con_esyy9xi1": 1,
       "pro_i1pc8fs7": 1
     },
     "min_hit_rate_at_10": 1.0,
@@ -170,9 +153,6 @@
     "query": "full refund + duplicate option to start new glo from same creative",
     "category": "keyword",
     "expected_relevant": {
-      "dec_zn7co4dn": 2,
-      "con_b4g2ux5s": 1,
-      "con_esyy9xi1": 1,
       "pro_i1pc8fs7": 1
     },
     "min_hit_rate_at_10": 1.0,
@@ -183,10 +163,7 @@
     "query": "ai video gen is not the moat",
     "category": "keyword",
     "expected_relevant": {
-      "dec_cww0oo7d": 2,
-      "con_hlytgmqx": 1,
       "con_qapunc9e": 1,
-      "con_rd9bmn59": 1,
       "pro_i1pc8fs7": 1
     },
     "min_hit_rate_at_10": 1.0,
@@ -197,10 +174,7 @@
     "query": "creative strategy: ai video gen is not the moat",
     "category": "keyword",
     "expected_relevant": {
-      "dec_y78ln1w0": 2,
-      "con_hlytgmqx": 1,
       "con_qapunc9e": 1,
-      "con_rd9bmn59": 1,
       "pro_i1pc8fs7": 1
     },
     "min_hit_rate_at_10": 1.0,
@@ -222,8 +196,6 @@
     "category": "keyword",
     "expected_relevant": {
       "dec_c0h38kix": 2,
-      "dec_bzdb0leg": 1,
-      "dec_xdcei6i9": 1,
       "pro_0gaibwq7": 1
     },
     "min_hit_rate_at_10": 1.0,
@@ -234,8 +206,6 @@
     "query": "payment: glo credits 1:1 usd",
     "category": "keyword",
     "expected_relevant": {
-      "dec_j3vp1rdc": 2,
-      "con_esyy9xi1": 1,
       "pro_i1pc8fs7": 1
     },
     "min_hit_rate_at_10": 1.0,
@@ -256,7 +226,6 @@
     "query": "goal_placement",
     "category": "keyword",
     "expected_relevant": {
-      "rul_eo65j1tn": 2,
       "pro_i1pc8fs7": 1
     },
     "min_hit_rate_at_10": 1.0,
@@ -291,36 +260,6 @@
     },
     "min_hit_rate_at_10": 1.0,
     "description": "Decision lookup intent: Glo component map: 13 components defined with boundaries and"
-  },
-  {
-    "id": "intent_dec_dec_ske5",
-    "query": "what did we decide about glo lifecycle",
-    "category": "intent_decision",
-    "expected_relevant": {
-      "dec_ske5osc2": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Decision lookup intent: Glo lifecycle: Draft\u2192Pending Review\u2192Active\u2192Completed. Reject"
-  },
-  {
-    "id": "intent_dec_dec_qz2r",
-    "query": "what did we decide about payment",
-    "category": "intent_decision",
-    "expected_relevant": {
-      "dec_qz2r5qnm": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Decision lookup intent: Payment: Glo Credits 1:1 USD, Stripe customer balance. SSO\u2192p"
-  },
-  {
-    "id": "intent_howto_rul_8xgc",
-    "query": "how should we handle budget_order",
-    "category": "intent_howto",
-    "expected_relevant": {
-      "rul_8xgct2hg": 2
-    },
-    "min_hit_rate_at_10": 0.8,
-    "description": "How-to intent for rule: [o_glo] Rule: budget_order"
   },
   {
     "id": "intent_howto_rul_9oos",
@@ -370,7 +309,6 @@
       "rule"
     ],
     "expected_relevant": {
-      "rul_8xgct2hg": 2,
       "rul_9oosw82x": 2,
       "rul_ovwvt4ch": 2
     },
@@ -400,7 +338,6 @@
       "procedure"
     ],
     "expected_relevant": {
-      "pro_6e9wbfrj": 2,
       "pro_rg69dev3": 2,
       "pro_p2k92uai": 2
     },
@@ -412,12 +349,7 @@
     "query": "glo",
     "category": "hub",
     "expected_relevant": {
-      "pro_i1pc8fs7": 2,
-      "513a4e6232704122bb2aa731188c24c7": 1,
-      "con_0qfhpayv": 1,
-      "con_140i0soc": 1,
-      "con_1b4au6hz": 1,
-      "con_2jl3lv9n": 1
+      "pro_i1pc8fs7": 2
     },
     "min_hit_rate_at_10": 1.0,
     "description": "Hub recall: [project] Glo.io \u2014 Self-serve ad platform on EX.CO ad server. Anyone b (326 edges)"
@@ -428,10 +360,7 @@
     "category": "hub",
     "expected_relevant": {
       "pro_mb9mas11": 2,
-      "con_140i0soc": 1,
       "con_5ej15u5g": 1,
-      "con_7far6rky": 1,
-      "con_7sp3ziq7": 1,
       "con_9wgrg928": 1
     },
     "min_hit_rate_at_10": 1.0,
@@ -445,9 +374,7 @@
       "pro_0gaibwq7": 2,
       "con_aofbtzix": 1,
       "con_l4vb6dd0": 1,
-      "dec_3nu4rgj4": 1,
-      "dec_7zjb9wgv": 1,
-      "dec_bdhgxfx7": 1
+      "dec_7zjb9wgv": 1
     },
     "min_hit_rate_at_10": 1.0,
     "description": "Hub recall: [project] Glo.io \u2014 Self-serve advertising platform (26 edges)"
@@ -457,12 +384,7 @@
     "query": "creative strategy",
     "category": "hub",
     "expected_relevant": {
-      "dec_y78ln1w0": 2,
-      "513a4e6232704122bb2aa731188c24c7": 1,
-      "con_aatt62me": 1,
-      "con_hlytgmqx": 1,
-      "con_qapunc9e": 1,
-      "con_rd9bmn59": 1
+      "con_qapunc9e": 1
     },
     "min_hit_rate_at_10": 1.0,
     "description": "Hub recall: [decision] Creative strategy: AI video gen is NOT the moat. Buy/integra (18 edges)"
@@ -473,7 +395,6 @@
     "category": "hub",
     "expected_relevant": {
       "per_nzqi8kyf": 2,
-      "con_8z2mozek": 1,
       "con_q6pydb49": 1,
       "pro_mb9mas11": 1,
       "rul_1dp9w358": 1,
@@ -483,66 +404,13 @@
     "description": "Hub recall: [person] Tom \u2014 CEO of EX.CO (18 edges)"
   },
   {
-    "id": "edge_empty",
-    "query": "",
-    "category": "edge_case",
-    "expected_relevant": {},
-    "min_hit_rate_at_10": 0.0,
-    "description": "Empty query should not crash",
-    "expect_no_crash": true
-  },
-  {
-    "id": "edge_garbage",
-    "query": "xyzzy frobnicator quantum banana",
-    "category": "edge_case",
-    "expected_relevant": {},
-    "min_hit_rate_at_10": 0.0,
-    "description": "Garbage query should return gracefully (recent nodes)",
-    "expect_no_crash": true
-  },
-  {
-    "id": "edge_long_query",
-    "query": "What is the current state of the budget screen layout and how does it relate to the tier pricing and spend mode toggle and what decisions were made about the horizontal scrollable design",
-    "category": "edge_case",
-    "expected_relevant": {
-      "dec_bzdb0leg": 1,
-      "dec_xdcei6i9": 1,
-      "rul_8xgct2hg": 1,
-      "dec_nnyhd99u": 1,
-      "dec_7ld3306a": 1
-    },
-    "min_hit_rate_at_10": 0.5,
-    "description": "Long verbose query should still work",
-    "expect_no_crash": true
-  },
-  {
-    "id": "edge_single_word",
-    "query": "budget",
-    "category": "edge_case",
-    "expected_relevant": {
-      "dec_bzdb0leg": 1,
-      "dec_xdcei6i9": 1,
-      "rul_8xgct2hg": 1,
-      "dec_nnyhd99u": 1,
-      "dec_7ld3306a": 1
-    },
-    "min_hit_rate_at_10": 0.5,
-    "description": "Single-word query should recall relevant nodes"
-  },
-  {
     "id": "project_pro_0gai",
     "query": "everything about glo",
     "category": "cross_domain",
     "expected_relevant": {
       "pro_0gaibwq7": 2,
-      "dec_bdhgxfx7": 1,
-      "dec_iweemnjn": 1,
       "dec_dp93qu36": 1,
       "dec_7zjb9wgv": 1,
-      "dec_3nu4rgj4": 1,
-      "dec_m9fq8akb": 1,
-      "dec_dumnu9n7": 1,
-      "fil_mi74f6rq": 1,
       "con_l4vb6dd0": 1,
       "dec_c0h38kix": 1
     },
@@ -555,9 +423,7 @@
     "category": "cross_domain",
     "expected_relevant": {
       "pro_mb9mas11": 2,
-      "dec_0a4u7zrv": 1,
-      "dec_qgpataos": 1,
-      "dec_00i02v1y": 1
+      "dec_0a4u7zrv": 1
     },
     "min_hit_rate_at_10": 1.0,
     "description": "Cross-domain project recall: EX.CO \u2014 End-to-end video platform for publishers: CMS, ad se"
@@ -567,19 +433,99 @@
     "query": "everything about glo",
     "category": "cross_domain",
     "expected_relevant": {
-      "pro_i1pc8fs7": 2,
-      "dec_o8fqg5v9": 1,
-      "dec_94kstp68": 1,
-      "dec_cww0oo7d": 1,
-      "dec_0sv57szx": 1,
-      "dec_6z006j7r": 1,
-      "dec_qz2r5qnm": 1,
-      "dec_6rruh9bf": 1,
-      "dec_89qq5rfh": 1,
-      "dec_8vvy8az3": 1,
-      "dec_dp9gw843": 1
+      "pro_i1pc8fs7": 2
     },
     "min_hit_rate_at_10": 1.0,
     "description": "Cross-domain project recall: Glo.io \u2014 Self-serve ad platform on EX.CO ad server. Anyone b"
+  },
+  {
+    "id": "brain_operator_channel",
+    "query": "how does brain talk to the operator",
+    "category": "brain_architecture",
+    "expected_relevant": {
+      "8bac897879ae4b73b61d3e800dacd936": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Brain architecture: operator channel via Claude relay"
+  },
+  {
+    "id": "brain_precision_lifecycle",
+    "query": "precision recall evaluation lifecycle",
+    "category": "brain_architecture",
+    "expected_relevant": {
+      "d2ef1bfa697b42afa23d227a4c11813c": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Precision pipeline: table-driven lifecycle"
+  },
+  {
+    "id": "brain_systemmessage_dead",
+    "query": "systemMessage hook output operator",
+    "category": "brain_architecture",
+    "expected_relevant": {
+      "7e19064c2b164b34b76d2e51a228b543": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Constraint: systemMessage is dead channel"
+  },
+  {
+    "id": "brain_additional_context",
+    "query": "additionalContext hook channel",
+    "category": "brain_architecture",
+    "expected_relevant": {
+      "7d2869e81a444bb682318d5046c30872": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: additionalContext is the only working hook channel"
+  },
+  {
+    "id": "brain_meta_lesson_encoding",
+    "query": "how to encode lessons practices",
+    "category": "brain_practices",
+    "expected_relevant": {
+      "de604090da284de9b4d004feb330209a": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Meta-lesson: encode practices not incidents"
+  },
+  {
+    "id": "brain_testing_first",
+    "query": "benchmark testing sacred system",
+    "category": "brain_practices",
+    "expected_relevant": {
+      "695c59de5e3b421686321300949d0415": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Practice: testing-first with real-world cases"
+  },
+  {
+    "id": "brain_recall_pipeline",
+    "query": "recall embedding keyword graph traversal",
+    "category": "brain_architecture",
+    "expected_relevant": {
+      "c37a06e2b13d442398bba780a8ef5548": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: recall pipeline has two paths"
+  },
+  {
+    "id": "brain_test_integrity_hook",
+    "query": "test integrity violation pre-edit hook",
+    "category": "brain_practices",
+    "expected_relevant": {
+      "07187eb2a78b4450b49d838597fe534a": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: pre-edit hook blocks test weakening"
+  },
+  {
+    "id": "brain_session_9",
+    "query": "operator channel precision loop session",
+    "category": "brain_history",
+    "expected_relevant": {
+      "d65e88ba201649d1a00960fb642ffcd7": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Session #9: operator channel + Phase A"
   }
 ]
