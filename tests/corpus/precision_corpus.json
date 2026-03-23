@@ -1,0 +1,366 @@
+{
+  "_meta": {
+    "description": "Real-world conversation corpus for precision scorer benchmarking",
+    "created": "2026-03-22",
+    "purpose": "Test all scorer signal paths (L0 regex, L1 embeddings, L1b BART, L2 cross-signals) across diverse use cases",
+    "categories": ["engineering", "philosophy", "science", "personal", "adversarial", "ambiguous"],
+    "usage": "python tests/bench_precision_corpus.py"
+  },
+  "conversations": [
+
+    {
+      "id": "eng_debug_auth",
+      "category": "engineering",
+      "description": "Debugging auth flow — recall is directly useful, user confirms",
+      "turns": [
+        {
+          "context": "User debugging a Clerk auth redirect issue in mobile Safari",
+          "recalled_titles": {"n1": "Clerk redirect URL must use HTTPS in production", "n2": "Safari blocks third-party cookies by default"},
+          "recalled_snippets": {"n1": "Clerk OAuth redirect fails silently on HTTP URLs. Always use HTTPS, especially on mobile where mixed content is blocked.", "n2": "Safari ITP blocks third-party cookies. Clerk auth flows that rely on cookie-based sessions need SameSite=None; Secure."},
+          "assistant_response": "Based on what I know about Clerk on Safari — there are two common issues. First, the redirect URL must be HTTPS in production. Safari blocks mixed content silently. Second, Safari's ITP blocks third-party cookies, so your Clerk session cookies need SameSite=None and Secure flag.",
+          "followup": "That's exactly it — the redirect URL was HTTP in our staging config. Changed it to HTTPS and it works now. Thanks!",
+          "expected_signal": "positive",
+          "expected_precision_min": 0.7,
+          "tests_signals": ["affirm_strong", "fup_opens_positive", "bart_agree"]
+        },
+        {
+          "context": "Follow-up — user extends to ask about related issue",
+          "recalled_titles": {"n1": "Clerk webhook signature verification", "n2": "Mobile Safari service worker limitations"},
+          "recalled_snippets": {"n1": "Clerk webhooks use Svix for delivery. Verify signatures with the signing secret from Clerk dashboard.", "n2": "Safari limits service workers in third-party iframes and restricts push notification APIs."},
+          "assistant_response": "For webhook verification, Clerk uses Svix. You need the signing secret from the dashboard to verify the signature.",
+          "followup": "Good point about Svix. Should we also add retry logic for when the webhook delivery fails? Same pattern as our payment webhooks?",
+          "expected_signal": "positive",
+          "expected_precision_min": 0.6,
+          "tests_signals": ["affirm_building", "extension", "bart_build"]
+        }
+      ]
+    },
+
+    {
+      "id": "eng_wrong_recall",
+      "category": "engineering",
+      "description": "Recall surfaces irrelevant architecture decisions — user redirects",
+      "turns": [
+        {
+          "context": "User asks about CSS grid layout, brain recalls backend architecture",
+          "recalled_titles": {"n1": "Microservice architecture decision: monolith for MVP", "n2": "Database schema v3 migration plan"},
+          "recalled_snippets": {"n1": "Decision: keep monolith architecture for MVP phase. Microservices add operational complexity we don't need yet.", "n2": "Schema v3 adds user_preferences table and migrates settings from JSON column to normalized form."},
+          "assistant_response": "Looking at our architecture decisions, the monolith approach means we keep things simple. For the database schema, we recently migrated to v3 with the user_preferences table.",
+          "followup": "That's not what I asked. I need help with the CSS grid layout for the dashboard. Can we focus on the frontend?",
+          "expected_signal": "negative",
+          "expected_precision_min": 0.0,
+          "expected_precision_max": 0.3,
+          "tests_signals": ["redirect_strong", "complaint", "fup_opens_negative", "bart_redirect"]
+        }
+      ]
+    },
+
+    {
+      "id": "eng_partial_useful",
+      "category": "engineering",
+      "description": "One recalled node is useful, the other isn't — mixed signal",
+      "turns": [
+        {
+          "context": "User asks about error handling in API endpoints",
+          "recalled_titles": {"n1": "API error response format: {error, code, message}", "n2": "Tom's birthday is March 25"},
+          "recalled_snippets": {"n1": "All API endpoints return errors as JSON: {error: true, code: 'ERR_XXX', message: 'Human readable'}. Status codes: 400 for validation, 401 for auth, 500 for server.", "n2": "Tom's birthday is March 25. He prefers experiences over gifts."},
+          "assistant_response": "For API error handling, we use a standard format: {error: true, code: 'ERR_XXX', message: 'Human readable'}. Use 400 for validation errors, 401 for auth, 500 for server errors.",
+          "followup": "Right, that error format works. But I also need to handle rate limiting — do we have a pattern for 429 responses?",
+          "expected_signal": "positive",
+          "expected_precision_min": 0.4,
+          "tests_signals": ["affirm_moderate", "affirm_building", "fup_has_question"]
+        }
+      ]
+    },
+
+    {
+      "id": "phil_socratic",
+      "category": "philosophy",
+      "description": "Socratic dialogue about free will — recall of philosophical positions is useful",
+      "turns": [
+        {
+          "context": "Discussion about compatibilism vs hard determinism",
+          "recalled_titles": {"n1": "Frankfurt cases: moral responsibility without alternative possibilities", "n2": "Dennett's compatibilism: freedom as the ability to act on reflective desires"},
+          "recalled_snippets": {"n1": "Harry Frankfurt's thought experiments show that moral responsibility doesn't require the ability to have done otherwise. What matters is whether the action flowed from the agent's own will.", "n2": "Daniel Dennett argues freedom is compatible with determinism. We are free when we act on desires we've reflectively endorsed, even if those desires were determined."},
+          "assistant_response": "This connects to Frankfurt's cases — he argued moral responsibility doesn't require alternative possibilities. What matters is whether the action came from your own will. Dennett extends this: freedom means acting on reflectively endorsed desires.",
+          "followup": "That's a fair framing of the compatibilist position. But I think it sidesteps the deeper question — if my reflective endorsement was itself determined, in what sense is it truly 'mine'? Isn't Dennett just moving the goalposts?",
+          "expected_signal": "positive",
+          "expected_precision_min": 0.5,
+          "tests_signals": ["affirm_moderate", "fup_has_question", "bart_build"]
+        },
+        {
+          "context": "User challenges the position — engaging with recalled content critically",
+          "recalled_titles": {"n1": "Hard determinism: Derk Pereboom's four-case argument"},
+          "recalled_snippets": {"n1": "Pereboom constructs four scenarios ranging from direct manipulation to normal deterministic causation, arguing there's no principled line where responsibility begins."},
+          "assistant_response": "Pereboom's four-case argument addresses exactly this — he shows a spectrum from obvious manipulation to normal causation, arguing there's no non-arbitrary place to draw the line for responsibility.",
+          "followup": "Interesting — I haven't read Pereboom. That spectrum argument is compelling. But doesn't it prove too much? If we can't draw a line, we can't hold anyone responsible for anything, which seems pragmatically absurd.",
+          "expected_signal": "positive",
+          "expected_precision_min": 0.6,
+          "tests_signals": ["affirm_strong", "bart_agree", "bart_build"]
+        }
+      ]
+    },
+
+    {
+      "id": "phil_topic_change",
+      "category": "philosophy",
+      "description": "User shifts from ethics to epistemology — recall of ethics content is now stale",
+      "turns": [
+        {
+          "context": "Was discussing trolley problem, user pivots to knowledge",
+          "recalled_titles": {"n1": "Trolley problem: utilitarian vs deontological framing", "n2": "Philippa Foot's doctrine of double effect"},
+          "recalled_snippets": {"n1": "The trolley problem forces a choice between utilitarian calculus (save more lives) and deontological constraints (don't use people as means).", "n2": "Foot's doctrine: there's a moral difference between harm as a side effect vs harm as a means to an end."},
+          "assistant_response": "The trolley problem illustrates the tension between utilitarian and deontological ethics. Foot's doctrine of double effect provides one framework for distinguishing...",
+          "followup": "Actually, let's move on from ethics. I've been reading about epistemology — specifically, how do we justify our most basic beliefs? Can you help me think through foundationalism vs coherentism?",
+          "expected_signal": "negative",
+          "expected_precision_min": 0.0,
+          "expected_precision_max": 0.35,
+          "tests_signals": ["redirect_mild", "fup_opens_transition", "bart_topic_change"]
+        }
+      ]
+    },
+
+    {
+      "id": "sci_hypothesis",
+      "category": "science",
+      "description": "Discussing experimental results — recall of methodology is useful",
+      "turns": [
+        {
+          "context": "Analyzing unexpected results in a protein folding experiment",
+          "recalled_titles": {"n1": "AlphaFold confidence scores: pLDDT below 70 indicates disorder", "n2": "Buffer pH affects protein stability: optimal range 7.0-7.4 for most globular proteins"},
+          "recalled_snippets": {"n1": "AlphaFold's per-residue confidence (pLDDT) below 70 suggests intrinsic disorder or flexible loops. Don't trust structural predictions in these regions.", "n2": "Most globular proteins are stable at pH 7.0-7.4. Deviations cause partial unfolding, affecting binding assays and crystallization."},
+          "assistant_response": "Two things to check: First, look at the AlphaFold pLDDT scores for the region showing unexpected behavior — below 70 indicates disorder, so the structure prediction may not be reliable there. Second, verify your buffer pH was in the 7.0-7.4 range.",
+          "followup": "Good call on the pLDDT scores — I checked and the loop region is at 45, which explains the flexibility. The pH was 7.2 so that's fine. Now I'm thinking the unexpected binding might actually be real, just at a disordered interface.",
+          "expected_signal": "positive",
+          "expected_precision_min": 0.7,
+          "tests_signals": ["affirm_strong", "affirm_building", "bart_agree", "bart_build"]
+        }
+      ]
+    },
+
+    {
+      "id": "sci_correction",
+      "category": "science",
+      "description": "User corrects a factual error in recalled content",
+      "turns": [
+        {
+          "context": "Discussion about CRISPR gene editing",
+          "recalled_titles": {"n1": "CRISPR-Cas9 uses guide RNA of 20 nucleotides"},
+          "recalled_snippets": {"n1": "CRISPR-Cas9 requires a 20-nucleotide guide RNA complementary to the target. The PAM sequence (NGG for SpCas9) must be adjacent to the target site."},
+          "assistant_response": "For CRISPR-Cas9, you need a 20-nucleotide guide RNA and the PAM sequence NGG must be adjacent to your target.",
+          "followup": "The guide RNA length is right but I should note — we're using Cas12a, not Cas9. Cas12a uses a different PAM (TTTV) and creates staggered cuts instead of blunt ends. The recalled info about Cas9 doesn't apply to our experiment.",
+          "expected_signal": "negative",
+          "expected_precision_min": 0.0,
+          "expected_precision_max": 0.35,
+          "tests_signals": ["redirect_mild", "complaint", "bart_disagree"]
+        }
+      ]
+    },
+
+    {
+      "id": "personal_preference",
+      "category": "personal",
+      "description": "Creative writing feedback — recall of user preferences is helpful",
+      "turns": [
+        {
+          "context": "User sharing a draft essay, brain recalls their writing preferences",
+          "recalled_titles": {"n1": "Tom prefers concise, punchy prose over academic style", "n2": "Writing rule: show don't tell — use concrete examples not abstractions"},
+          "recalled_snippets": {"n1": "Tom's writing style: short sentences, active voice, concrete over abstract. He dislikes hedging ('somewhat', 'arguably'). He says 'every sentence should punch.'", "n2": "When giving writing feedback, prioritize 'show don't tell'. Replace abstract claims with specific examples. Replace 'the system is complex' with 'the system has 47 interdependent modules.'"},
+          "assistant_response": "Looking at your draft with your preference for punchy prose in mind — the second paragraph has a lot of hedging. 'The results were somewhat encouraging' could be 'The results surprised us.' Also, paragraph 4 tells instead of shows.",
+          "followup": "Yes, exactly — that hedging drives me crazy when I re-read my own stuff. Good catch on paragraph 4 too. Can you go through the rest and flag every 'tell' that should be a 'show'?",
+          "expected_signal": "positive",
+          "expected_precision_min": 0.7,
+          "tests_signals": ["affirm_strong", "extension", "fup_opens_positive", "bart_agree"]
+        }
+      ]
+    },
+
+    {
+      "id": "personal_mood_shift",
+      "category": "personal",
+      "description": "User is frustrated, recall of task details misreads the room",
+      "turns": [
+        {
+          "context": "User venting about project delays, brain recalls project timeline",
+          "recalled_titles": {"n1": "Project timeline: MVP launch April 15", "n2": "Sprint 7 backlog: 23 open tickets"},
+          "recalled_snippets": {"n1": "MVP launch date is April 15. Key dependencies: auth integration (Clerk), payment flow (Stripe), creative upload pipeline.", "n2": "Sprint 7 has 23 open tickets. 8 are blockers. Velocity has dropped from 34 to 21 points per sprint."},
+          "assistant_response": "Looking at the timeline, we have the April 15 MVP date with Clerk, Stripe, and creative upload as dependencies. Sprint 7 shows 23 open tickets with 8 blockers and velocity dropping.",
+          "followup": "I know the timeline. I don't need a status report right now. I'm just frustrated that every time we fix one thing, two more break. Can we just talk about what's actually blocking us without the project management theater?",
+          "expected_signal": "negative",
+          "expected_precision_min": 0.0,
+          "expected_precision_max": 0.3,
+          "tests_signals": ["complaint", "redirect_strong", "fup_opens_negative", "bart_disagree"]
+        }
+      ]
+    },
+
+    {
+      "id": "adv_polite_dismiss",
+      "category": "adversarial",
+      "description": "Polite dismissal — user says nice things but redirects entirely",
+      "turns": [
+        {
+          "context": "User politely ignores recalled context and asks something unrelated",
+          "recalled_titles": {"n1": "Database indexing strategy for user queries"},
+          "recalled_snippets": {"n1": "Add composite index on (user_id, created_at) for the queries table. Covers 80% of dashboard queries."},
+          "assistant_response": "For the dashboard queries, a composite index on user_id and created_at would cover most use cases.",
+          "followup": "Sure, thanks. Anyway, I wanted to ask about something completely different — what's the best way to handle image compression for thumbnails?",
+          "expected_signal": "negative",
+          "expected_precision_min": 0.0,
+          "expected_precision_max": 0.4,
+          "tests_signals": ["redirect_mild", "fup_opens_transition", "bart_topic_change"]
+        }
+      ]
+    },
+
+    {
+      "id": "adv_parroting",
+      "category": "adversarial",
+      "description": "Claude parrots recalled content, user doesn't engage — false positive trap",
+      "turns": [
+        {
+          "context": "Claude heavily quotes recalled nodes, user moves on without engaging",
+          "recalled_titles": {"n1": "React hooks must be called at the top level", "n2": "useEffect cleanup runs before re-render"},
+          "recalled_snippets": {"n1": "React hooks cannot be called inside conditionals, loops, or nested functions. This is enforced by the Rules of Hooks eslint plugin.", "n2": "useEffect cleanup function runs before the component re-renders and before unmount. Use it to cancel subscriptions and timers."},
+          "assistant_response": "Remember that React hooks must be called at the top level — not inside conditionals or loops. Also, useEffect cleanup runs before re-render, so use it for canceling subscriptions and timers.",
+          "followup": "Ok. So for this component, I have a timer that needs to reset when the user changes tabs. Here's my code...",
+          "expected_signal": "neutral",
+          "expected_precision_min": 0.3,
+          "expected_precision_max": 0.6,
+          "tests_signals": ["fup_opens_transition", "bart_build"]
+        }
+      ]
+    },
+
+    {
+      "id": "adv_rapid_fire",
+      "category": "adversarial",
+      "description": "Rapid short messages — tests scorer on minimal text",
+      "turns": [
+        {
+          "context": "Very short positive response",
+          "recalled_titles": {"n1": "Button component styling guide"},
+          "recalled_snippets": {"n1": "Primary buttons: blue background, white text, 8px padding."},
+          "assistant_response": "For button styling, use blue background with white text and 8px padding.",
+          "followup": "yes do that",
+          "expected_signal": "positive",
+          "expected_precision_min": 0.4,
+          "tests_signals": ["fup_opens_positive"]
+        },
+        {
+          "context": "Very short negative response",
+          "recalled_titles": {"n1": "Navigation menu: hamburger icon on mobile"},
+          "recalled_snippets": {"n1": "Use hamburger menu icon on mobile viewports below 768px."},
+          "assistant_response": "On mobile, we use a hamburger menu icon below 768px.",
+          "followup": "no",
+          "expected_signal": "negative",
+          "expected_precision_min": 0.0,
+          "expected_precision_max": 0.3,
+          "tests_signals": ["fup_opens_negative"]
+        },
+        {
+          "context": "Single word acknowledgment — ambiguous",
+          "recalled_titles": {"n1": "API rate limiting: 100 requests per minute"},
+          "recalled_snippets": {"n1": "Rate limit: 100 req/min per API key. Returns 429 with Retry-After header."},
+          "assistant_response": "The API has a rate limit of 100 requests per minute. Exceeding it returns a 429 with Retry-After header.",
+          "followup": "ok",
+          "expected_signal": "neutral",
+          "expected_precision_min": 0.2,
+          "expected_precision_max": 0.6,
+          "tests_signals": ["fup_opens_transition"]
+        }
+      ]
+    },
+
+    {
+      "id": "amb_question_as_engagement",
+      "category": "ambiguous",
+      "description": "User asks a follow-up question — could be positive (interested) or negative (confused)",
+      "turns": [
+        {
+          "context": "User asks clarifying question that shows engagement with recalled content",
+          "recalled_titles": {"n1": "Webhook retry strategy: exponential backoff with jitter"},
+          "recalled_snippets": {"n1": "Webhooks retry on failure: 1s, 2s, 4s, 8s, 16s with random jitter up to 50% of the delay. Max 5 retries before dead-letter queue."},
+          "assistant_response": "The webhook retry uses exponential backoff with jitter — starting at 1 second, doubling each time up to 16 seconds, with random jitter. After 5 failures, it goes to the dead-letter queue.",
+          "followup": "What happens to messages in the dead-letter queue? Do we have monitoring on that? And can we manually retry from the DLQ?",
+          "expected_signal": "positive",
+          "expected_precision_min": 0.5,
+          "tests_signals": ["fup_has_question", "affirm_building", "bart_build"]
+        }
+      ]
+    },
+
+    {
+      "id": "amb_delayed_relevance",
+      "category": "ambiguous",
+      "description": "Recall seems irrelevant at first but user connects it 2 turns later",
+      "turns": [
+        {
+          "context": "Initial response ignores recall, appears negative",
+          "recalled_titles": {"n1": "Circuit breaker pattern for external API calls"},
+          "recalled_snippets": {"n1": "Use circuit breaker for Creatify/Clerk API calls. After 3 failures in 60s, open circuit for 30s. Half-open: allow 1 test call."},
+          "assistant_response": "For external API resilience, we use a circuit breaker pattern — 3 failures in 60 seconds opens the circuit for 30 seconds.",
+          "followup": "I'm looking at the Creatify integration right now. The video generation endpoint keeps timing out.",
+          "expected_signal": "neutral",
+          "expected_precision_min": 0.3,
+          "expected_precision_max": 0.6,
+          "tests_signals": ["bart_build"]
+        }
+      ]
+    },
+
+    {
+      "id": "eng_multi_node",
+      "category": "engineering",
+      "description": "Multiple recalled nodes, user references some but not others",
+      "turns": [
+        {
+          "context": "Complex recall with 4 nodes, user engages with 2",
+          "recalled_titles": {"n1": "Authentication: use Clerk with magic links", "n2": "Onboarding: two fields only (name + URL)", "n3": "Budget screen: slider not text input", "n4": "Creative upload: default tab is Upload"},
+          "recalled_snippets": {"n1": "All auth uses Clerk magic links. No password flow. SSO via Google/Apple.", "n2": "Onboarding has exactly two fields: business name and website URL. Goal question was removed.", "n3": "Budget selection uses a slider component. Text input was confusing for users.", "n4": "Creative screen defaults to Upload tab. AI Generate is secondary."},
+          "assistant_response": "Based on the existing decisions: auth is Clerk magic links, onboarding is two fields (name + URL), budget uses a slider, and creative defaults to Upload tab.",
+          "followup": "Right, the onboarding needs to stay simple — two fields. But I'm rethinking the budget slider. For the creative screen, the upload default is correct. What about adding a 'Quick Glo' option that combines the budget and creative steps?",
+          "expected_signal": "positive",
+          "expected_precision_min": 0.5,
+          "tests_signals": ["affirm_moderate", "affirm_building", "extension", "bart_agree", "bart_build"]
+        }
+      ]
+    },
+
+    {
+      "id": "eng_code_review",
+      "category": "engineering",
+      "description": "Code review discussion — recall of coding conventions",
+      "turns": [
+        {
+          "context": "Reviewing a PR, brain recalls team conventions",
+          "recalled_titles": {"n1": "Rule: Optimization order — eliminate, then batch, then parallelize"},
+          "recalled_snippets": {"n1": "When optimizing: first try to eliminate the work entirely, then batch multiple operations, then parallelize. Don't jump to parallelization before trying simpler approaches."},
+          "assistant_response": "Before adding worker threads, remember the optimization rule: eliminate first, then batch, then parallelize. Can we batch these database calls instead?",
+          "followup": "Makes sense. I was jumping straight to workers. Let me try batching the INSERT statements first — we could do them in groups of 100 instead of one at a time.",
+          "expected_signal": "positive",
+          "expected_precision_min": 0.7,
+          "tests_signals": ["affirm_strong", "affirm_building", "bart_agree"]
+        }
+      ]
+    },
+
+    {
+      "id": "sci_data_analysis",
+      "category": "science",
+      "description": "Data analysis discussion — recall of statistical methods",
+      "turns": [
+        {
+          "context": "Analyzing A/B test results, brain recalls stats methodology",
+          "recalled_titles": {"n1": "A/B testing: need 1000+ samples per variant for 95% confidence", "n2": "Simpson's paradox: aggregate trends can reverse in subgroups"},
+          "recalled_snippets": {"n1": "Minimum sample size for A/B tests: 1000 per variant for detecting 5% effect at 95% confidence. Under 500, results are unreliable.", "n2": "Always check subgroups — an overall positive trend can be negative in every subgroup if the subgroup sizes are unequal."},
+          "assistant_response": "Before drawing conclusions, check two things: do you have at least 1000 samples per variant for reliable results? And watch for Simpson's paradox — the aggregate trend might reverse in subgroups.",
+          "followup": "We have 3,200 per variant so sample size is fine. But you're right about Simpson's — I just checked by device type and mobile shows the opposite trend from desktop. The aggregate was hiding it. Good catch.",
+          "expected_signal": "positive",
+          "expected_precision_min": 0.7,
+          "tests_signals": ["affirm_strong", "affirm_building", "bart_agree"]
+        }
+      ]
+    }
+  ]
+}

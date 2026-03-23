@@ -333,9 +333,8 @@ def hook_recall(brain, args, graph_changes):
     )
 
     brain.save()
-    result_json = {"additionalContext": rendered['for_claude']}
-    if rendered.get('for_operator'):
-        result_json["systemMessage"] = rendered['for_operator']
+    merged = voice.wrap_for_hook(rendered['for_claude'], rendered.get('for_operator'))
+    result_json = {"additionalContext": merged}
     return {"json": result_json}
 
 
@@ -947,7 +946,9 @@ def hook_post_compact_reboot(brain, args, graph_changes):
     )
 
     brain.save()
-    return {"output": rendered['for_claude']}
+    merged = voice.wrap_for_hook(rendered['for_claude'], rendered.get('for_operator'))
+    result = {"output": merged}
+    return result
 
 
 def hook_pre_edit(brain, args, graph_changes):

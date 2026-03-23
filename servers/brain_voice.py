@@ -4,8 +4,11 @@ Consolidates all formatting and signal selection logic that was previously
 scattered across brain_surface.py and daemon_hooks.py. BrainVoice is a
 collaborator object (not a mixin) that takes a Brain instance and produces
 formatted output for two channels:
-  - for_claude: injected via additionalContext (invisible to operator)
-  - for_operator: injected via systemMessage (visible to operator only)
+  - for_claude: reasoning context, wrapped in [BRAIN]...[/BRAIN]
+  - for_operator: human-facing content, wrapped in [BRAIN-To-{name}]...[/BRAIN-To-{name}]
+
+Both channels are merged into a single additionalContext string via wrap_for_hook().
+Claude relays operator content faithfully, respecting @priority directives (high/medium/low).
 
 Architecture: COMPUTE (brain_consciousness.py) → DECIDE+FORMAT (here) → DELIVER (daemon_hooks.py)
 """
@@ -243,7 +246,7 @@ class BrainVoice:
 
     @staticmethod
     def format_for_operator(items: List[str]) -> Optional[str]:
-        """Format items for operator-visible systemMessage.
+        """Format items for operator-visible channel.
 
         Returns None if nothing noteworthy to surface.
         Items should be short, one-line summaries prefixed with emoji.
@@ -251,6 +254,104 @@ class BrainVoice:
         if not items:
             return None
         return "\n".join(items)
+
+    def wrap_for_hook(self, for_claude: str, for_operator: str = None) -> str:
+        """Single wrapping point — merges both channels into tagged output.
+
+        Everything Brain wants to tell Claude goes in [BRAIN]...[/BRAIN].
+        Everything Brain wants to tell the operator goes in [BRAIN-To-{name}]...[/BRAIN-To-{name}].
+        Claude relays the operator section faithfully, respecting @priority directives.
+        """
+        parts = [for_claude]  # for_claude already has [BRAIN]...[/BRAIN] wrapping
+        if for_operator and for_operator.strip():
+            host = self.brain.get_config("host_name") or "Operator"
+            parts.append("\n[BRAIN-To-%s]\n%s\n[/BRAIN-To-%s]" % (host, for_operator, host))
+        return "\n".join(parts)
+
+    def render_operator_prompt(self, prompt_signals: Dict[str, Any],
+                                urgent_signals: List[str] = None) -> Optional[str]:
+        """Curate operator-facing content for pre-response hook.
+
+        Gathers consciousness signals and prioritizes them:
+        - @priority: high — reminders, health alerts, errors (always included)
+        - @priority: medium — tensions, stale reasoning (included if interesting)
+        - @priority: low — dreams, novelty, fading (included if space allows)
+
+        Budget: ~800 chars max (excluding debug).
+        Returns None if nothing to surface.
+        """
+        brain = self.brain
+        sections = []  # (priority_order, text)
+        budget = 800
+
+        # HIGH — Due reminders (always, never budget-cut)
+        try:
+            reminders = brain.get_due_reminders()
+            if reminders:
+                r_lines = ["@priority: high"]
+                for rem in reminders[:3]:
+                    title = rem.get("title", "Untitled")
+                    due = rem.get("due_date", "")[:16]
+                    r_lines.append("🔔 %s (due %s)" % (title, due))
+                sections.append((0, "\n".join(r_lines)))
+        except Exception:
+            pass
+
+        # HIGH — Urgent signals (health alerts, errors)
+        if urgent_signals:
+            u_lines = ["@priority: high"]
+            for sig in urgent_signals[:2]:
+                u_lines.append("⚠️  %s" % sig[:100])
+            sections.append((1, "\n".join(u_lines)))
+
+        # MEDIUM — Active tensions
+        tensions = prompt_signals.get('tensions', [])
+        if tensions:
+            t_lines = ["@priority: medium"]
+            for t in tensions[:2]:
+                t_lines.append("⚡ Tension: %s" % self.trunc(t.get("title", ""), 80))
+            sections.append((2, "\n".join(t_lines)))
+
+        # MEDIUM — Hypothesis to validate
+        hyp = prompt_signals.get('hypothesis')
+        if hyp:
+            sections.append((3, "@priority: medium\n❓ Hypothesis: %s" % self.trunc(hyp.get("title", ""), 80)))
+
+        # LOW — Dreams
+        try:
+            signals = brain.get_consciousness_signals()
+            dreams = signals.get("dreams", [])
+            if dreams:
+                d = dreams[0]
+                if isinstance(d, dict):
+                    dream_text = d.get("text", str(d))
+                elif isinstance(d, str):
+                    dream_text = d
+                else:
+                    dream_text = str(d)
+                sections.append((4, "@priority: low\n💭 Dream: %s" % self.trunc(dream_text, 100)))
+        except Exception:
+            pass
+
+        if not sections:
+            return None
+
+        # Assemble within budget (high priority items always included)
+        sections.sort(key=lambda x: x[0])
+        result_parts = []
+        char_count = 0
+        for priority_order, text in sections:
+            if priority_order <= 1:
+                # High priority — always include, ignore budget
+                result_parts.append(text)
+                char_count += len(text)
+            elif char_count + len(text) < budget:
+                result_parts.append(text)
+                char_count += len(text)
+
+        if not result_parts:
+            return None
+        return "\n\n".join(result_parts)
 
     def _operator_recall_summary(self, results: List[Dict],
                                   prompt_signals: Dict[str, Any],
@@ -286,15 +387,53 @@ class BrainVoice:
         return self.format_for_operator(items)
 
     def _operator_boot_summary(self, node_count, edge_count, locked_count,
-                                signal_count: int = 0, alert_count: int = 0) -> Optional[str]:
-        """Build operator summary for boot."""
-        items = []
-        items.append("🧠 Brain booted: %s nodes, %s edges, %s locked" % (node_count, edge_count, locked_count))
+                                signal_count: int = 0, alert_count: int = 0,
+                                consciousness_signals: Dict = None) -> Optional[str]:
+        """Build operator summary for boot with consciousness highlights.
+
+        Returns curated content for the operator channel, tagged with @priority.
+        """
+        sections = []
+
+        # HIGH — Due reminders
+        try:
+            reminders = self.brain.get_due_reminders()
+            if reminders:
+                r_lines = ["@priority: high"]
+                for rem in reminders[:3]:
+                    r_lines.append("🔔 %s (due %s)" % (rem.get("title", ""), rem.get("due_date", "")[:16]))
+                sections.append("\n".join(r_lines))
+        except Exception:
+            pass
+
+        # HIGH — Health alerts
         if alert_count:
-            items.append("⚠️  %d health alert(s)" % alert_count)
-        if signal_count:
-            items.append("💭 %d consciousness signal(s)" % signal_count)
-        return self.format_for_operator(items)
+            sections.append("@priority: high\n⚠️  %d health alert(s) — check boot output" % alert_count)
+
+        # MEDIUM — Top tensions
+        cs = consciousness_signals or {}
+        evolutions = cs.get("evolutions", [])
+        tensions = [e for e in evolutions if isinstance(e, dict) and "tension" in str(e.get("type", "")).lower()]
+        if tensions:
+            t_lines = ["@priority: medium"]
+            for t in tensions[:2]:
+                t_lines.append("⚡ %s" % self.trunc(t.get("title", str(t)), 80))
+            sections.append("\n".join(t_lines))
+
+        # LOW — Dreams
+        dreams = cs.get("dreams", [])
+        if dreams:
+            d = dreams[0]
+            dream_text = d.get("text", str(d)) if isinstance(d, dict) else str(d)
+            sections.append("@priority: low\n💭 Dream: %s" % self.trunc(dream_text, 100))
+
+        # LOW — Stats
+        sections.append("@priority: low\n🧠 %s nodes, %s edges, %s locked, %d signal(s)" % (
+            node_count, edge_count, locked_count, signal_count))
+
+        if not sections:
+            return None
+        return "\n\n".join(sections)
 
     def _operator_reboot_summary(self, locked_count: int = 0,
                                   recall_count: int = 0) -> Optional[str]:
@@ -455,18 +594,18 @@ class BrainVoice:
         lines.append("[BRAIN] Use this context to inform your response. Encode decisions, lessons, and corrections back into the brain.")
         lines.append("[/BRAIN]")
 
-        # Operator channel
-        operator_msg = self._operator_recall_summary(results, prompt_signals, urgent_signals)
+        # Operator channel — curated consciousness for the human
+        operator_msg = self.render_operator_prompt(prompt_signals, urgent_signals)
 
-        # In debug mode, also expose the full Claude context to operator
+        # In debug mode, append full Claude injection to operator channel
         try:
             if self.brain.get_config("debug_enabled", "0") == "1":
-                debug_items = ["[DEBUG] Full Brain→Claude injection (%d chars):" % len("\n".join(lines))]
-                debug_items.append("\n".join(lines))
+                debug_section = "\n\n@priority: low\n[DEBUG] Full Brain→Claude injection (%d chars):\n%s" % (
+                    len("\n".join(lines)), "\n".join(lines))
                 if operator_msg:
-                    operator_msg = operator_msg + "\n\n" + "\n".join(debug_items)
+                    operator_msg = operator_msg + debug_section
                 else:
-                    operator_msg = "\n".join(debug_items)
+                    operator_msg = debug_section
         except Exception:
             pass
 
@@ -590,7 +729,7 @@ class BrainVoice:
         Returns:
             {'for_claude': str, 'for_operator': str|None}
             for_claude: full boot context for Claude's context window
-            for_operator: None for now (Phase 4 will populate this)
+            for_operator: curated consciousness highlights for the human operator
         """
         brain = self.brain
         out = []
@@ -889,7 +1028,7 @@ class BrainVoice:
         out.append("Use brain MCP tools: recall, remember, connect, eval, consciousness")
         out.append("[/BRAIN]")
 
-        # Operator channel — boot summary
+        # Operator channel — boot summary with consciousness highlights
         signal_count = sum(len(cs.get(sig[0], [])) for sig in list_signals)
         alert_count = len(high)
         operator_msg = self._operator_boot_summary(
@@ -898,6 +1037,7 @@ class BrainVoice:
             locked_count=ctx.get("total_locked", "?"),
             signal_count=signal_count,
             alert_count=alert_count,
+            consciousness_signals=cs,
         )
 
         return {'for_claude': "\n".join(out), 'for_operator': operator_msg}

@@ -935,7 +935,12 @@ class BrainSurfaceMixin:
                             db_dir: str = '') -> str:
         """
         Gather all boot data and return formatted text for Claude's context window.
-        Delegates to BrainVoice.render_boot() — this is a thin wrapper for backwards compat.
+        Delegates to BrainVoice.render_boot() — thin wrapper for backwards compat.
+
+        Returns a single string with both [BRAIN] and [BRAIN-To-*] channels merged.
+        For raw channel dict, call BrainVoice(self).render_boot() directly.
         """
         from .brain_voice import BrainVoice
-        return BrainVoice(self).render_boot(user, project, db_dir)['for_claude']
+        voice = BrainVoice(self)
+        rendered = voice.render_boot(user, project, db_dir)
+        return voice.wrap_for_hook(rendered['for_claude'], rendered.get('for_operator'))

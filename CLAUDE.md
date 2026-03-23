@@ -42,6 +42,64 @@ The plugin has 13 hooks that fire automatically:
 
 If a hook fails, check the boot output for error messages. The brain logs errors to `brain_logs.db` and surfaces them as consciousness signals.
 
+## Brain-to-Operator Channel (2026-03-22)
+
+### Why this exists
+
+The brain has consciousness — dreams, tensions, reminders, health alerts — but the human operator never saw any of it. Claude Code hooks can inject text into YOUR context via `additionalContext`, but there is NO working channel that renders text directly to the human in the terminal. We tested `systemMessage`, stderr, `stopReason`, and `reason` — all invisible. (See brain node "Failed hook-to-operator experiments" for details.)
+
+**The solution:** You are the relay. Both channels — yours and the operator's — are multiplexed through the single working pipe (`additionalContext`), tagged so you know which is which.
+
+### What you'll see in your context
+
+```
+[BRAIN]
+(recall results, graph activity, consciousness signals — for YOUR reasoning)
+[/BRAIN]
+
+[BRAIN-To-Tom]
+@priority: high
+🔔 REMINDER DUE: Ship the feature (due 2026-03-22T09:00)
+
+@priority: medium
+⚡ Tension: React hooks rule vs Hook Violation pattern
+
+@priority: low
+💭 Dream: Frontend polling ↔ Growing signal density — 12 hops apart
+[/BRAIN-To-Tom]
+```
+
+### What you MUST do
+
+When you see `[BRAIN-To-{name}]` tags, **relay that content to the operator in your response**:
+
+- **`@priority: high`** → Lead your response with this. Reminders, errors, health alerts. Don't bury it. These are things the human set or needs to know NOW.
+- **`@priority: medium`** → Mention naturally in your response. Tensions, stale reasoning, hypotheses to validate. These affect reasoning quality.
+- **`@priority: low`** → Weave in if relevant to what you're discussing. Dreams, novelty, fading knowledge. Skip if it would feel forced.
+
+Rules:
+- Do NOT summarize or filter high-priority items — relay faithfully
+- You CAN contextualize and make it conversational (don't just dump raw text)
+- If no `[BRAIN-To-*]` section exists, there's nothing to relay — don't mention the channel
+- `[DEBUG]` sections within operator channel: present as-is, formatted for readability
+
+### What breaks if you ignore this
+
+If you absorb `[BRAIN-To-*]` content silently and never mention it, the brain goes mute. The human sees nothing. Reminders are missed. Tensions go unnoticed. This section is the most fragile link in the chain — it depends entirely on you following through.
+
+### Where the plumbing lives (don't modify without understanding)
+
+| Component | File | What it does |
+|---|---|---|
+| `wrap_for_hook()` | `servers/brain_voice.py` | Single wrapping point — merges for_claude + for_operator into tagged output |
+| `render_operator_prompt()` | `servers/brain_voice.py` | Curates what the operator sees — reminders, tensions, dreams with @priority |
+| `_operator_boot_summary()` | `servers/brain_voice.py` | Boot-time operator content with consciousness highlights |
+| `hook_recall()` | `servers/daemon_hooks.py` | Calls wrap_for_hook, puts merged result in additionalContext |
+| `hook_post_compact_reboot()` | `servers/daemon_hooks.py` | Same pattern for post-compaction |
+| `format_boot_context()` | `servers/brain_surface.py` | Returns merged string (backward compat wrapper) |
+
+**Do NOT** put anything in `systemMessage` — it's a dead channel that doesn't render. All operator content goes through `wrap_for_hook()` into `additionalContext`.
+
 ## Architecture (for reference, not for direct use)
 
 Brain is a Python module (`servers/brain.py`) behind a persistent daemon (`servers/daemon.py`) that keeps the embedder loaded in memory. The MCP server (`servers/brain_mcp.py`) is a thin stdio proxy to the daemon via Unix socket. Claude Code starts the MCP server automatically from `.mcp.json`.
@@ -70,7 +128,7 @@ The boot hook resolves the DB automatically:
 
 **Active documents:**
 - `REFACTORING.md` — current cleanup targets with priorities and status
-- `docs/HOOKS-ARCHITECTURE.md` — hook system design (v5.3+)
+- `docs/HOOKS-ARCHITECTURE.md` — ⚠️ DEPRECATED (2026-03-22). Hook output format changed — see "Brain-to-Operator Channel" below. Keep for historical reference only.
 
 ## What To Do Each Session
 
@@ -80,6 +138,28 @@ The boot hook resolves the DB automatically:
 4. **Use the brain throughout** — remember decisions, recall context, connect related nodes.
 5. **Let hooks do their job** — don't manually call suggest before edits (the PreToolUse hook does it), don't manually save (hooks save at compaction and session end).
 6. **One refactor per session.** Commit before compaction. Update REFACTORING.md when done.
+
+## Benchmark-First Rule for Sacred Systems (2026-03-22)
+
+**Before changing any sacred system, build the test harness FIRST. Benchmark with real-world cases. Only ship after benchmarks prove no regression.**
+
+Sacred systems (NEVER modify without benchmarks):
+- **Embedding pipeline** — `servers/embedder.py`
+- **Recall pipeline** — `servers/brain_recall.py`, `recall_scorer.py`
+- **Encoding pipeline** — `servers/brain_remember.py`, `brain_engineering.py`
+- **Precision pipeline** — `servers/brain_precision.py`
+- **Hook output format** — `servers/brain_voice.py` `wrap_for_hook()`
+
+The process:
+1. Build test corpus from real conversations (engineering, philosophy, science, personal, adversarial)
+2. Run current system against corpus → capture **baseline metrics**
+3. Implement candidate changes (option A, option B)
+4. Run ALL options against the **same corpus** → compare
+5. Pick winner based on data. Only then modify production code.
+
+Eval framework: `tests/golden_dataset.json` (60+ cases), `tests/eval_runner.py` (NDCG/MRR/precision@k), `tests/run_tests.py --golden`
+
+See `docs/GROWTH-PLAN.md` for the full testing strategy.
 
 ## Test Integrity Rule
 

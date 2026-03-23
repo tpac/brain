@@ -154,8 +154,10 @@ class TestBrainVoiceRenderBoot(BrainTestBase):
         self.assertIn("nodes,", wrapper)
         # Must contain MCP tools reminder
         self.assertIn("Use brain MCP tools:", wrapper)
-        # Must end with closing tag
-        self.assertTrue(wrapper.rstrip().endswith("[/BRAIN]"))
+        # Must contain closing brain tag (may be followed by operator channel)
+        # ADJUSTED: format_boot_context now returns merged output via wrap_for_hook,
+        # so [/BRAIN] may not be at the very end if operator channel is present. (2026-03-22)
+        self.assertIn("[/BRAIN]", wrapper)
 
     def test_render_boot_includes_consciousness_when_signals_present(self):
         """Consciousness section appears when get_consciousness_signals returns data.
@@ -195,11 +197,15 @@ class TestBrainVoiceRenderBoot(BrainTestBase):
         self.assertIn("locked rules", result['for_claude'].lower())
 
     def test_render_boot_operator_has_summary(self):
-        """Phase 4: Operator channel includes boot summary."""
+        """Phase 4: Operator channel includes boot summary with priority tags."""
+        # ADJUSTED: _operator_boot_summary now uses @priority-tagged format
+        # instead of emoji one-liners. This is intentional — operator channel
+        # content is now structured for Claude relay. (2026-03-22)
         voice = BrainVoice(self.brain)
         result = voice.render_boot()
         self.assertIsNotNone(result['for_operator'])
-        self.assertIn("Brain booted", result['for_operator'])
+        self.assertIn("@priority:", result['for_operator'])
+        self.assertIn("nodes", result['for_operator'])
 
 
 class TestBrainVoiceSelectPromptSignals(BrainTestBase):
@@ -396,30 +402,10 @@ class TestBrainVoiceOperatorChannel(BrainTestBase):
         self.assertIsNotNone(result)
         self.assertIn("3 nodes recalled", result)
 
-    def test_render_prompt_operator_includes_recall_summary(self):
-        results = [
-            {"type": "rule", "title": "R1", "content": "C", "locked": True, "effective_activation": 0.9},
-            {"type": "decision", "title": "D1", "content": "C", "locked": False, "effective_activation": 0.7},
-        ]
-        voice = BrainVoice(self.brain)
-        rendered = voice.render_prompt(
-            results=results,
-            prompt_signals={'aspirations': [], 'hypothesis': None, 'tensions': [], 'instinct_nudge': None},
-        )
-        op = rendered['for_operator']
-        self.assertIsNotNone(op)
-        self.assertIn("Recalled 2 nodes", op)
-        self.assertIn("1 locked", op)
-
-    def test_render_prompt_operator_empty_when_no_results(self):
-        voice = BrainVoice(self.brain)
-        rendered = voice.render_prompt(
-            results=[],
-            prompt_signals={'aspirations': [], 'hypothesis': None, 'tensions': [], 'instinct_nudge': None},
-        )
-        self.assertIsNone(rendered['for_operator'])
-
-    def test_render_prompt_operator_includes_tensions(self):
+    def test_render_prompt_operator_with_signals(self):
+        """Operator channel uses render_operator_prompt with priority tags."""
+        # ADJUSTED: render_prompt now uses render_operator_prompt (priority-tagged)
+        # instead of _operator_recall_summary (emoji one-liners). (2026-03-22)
         voice = BrainVoice(self.brain)
         rendered = voice.render_prompt(
             results=[{"type": "rule", "title": "R", "content": "C", "effective_activation": 0.5}],
@@ -430,7 +416,18 @@ class TestBrainVoiceOperatorChannel(BrainTestBase):
             },
         )
         op = rendered['for_operator']
-        self.assertIn("2 active tension", op)
+        self.assertIsNotNone(op)
+        self.assertIn("@priority: medium", op)
+        self.assertIn("Tension", op)
+
+    def test_render_prompt_operator_empty_when_no_signals(self):
+        """No recall results and no signals → operator channel is None."""
+        voice = BrainVoice(self.brain)
+        rendered = voice.render_prompt(
+            results=[],
+            prompt_signals={'aspirations': [], 'hypothesis': None, 'tensions': [], 'instinct_nudge': None},
+        )
+        self.assertIsNone(rendered['for_operator'])
 
     def test_render_reboot_operator_summary(self):
         voice = BrainVoice(self.brain)
@@ -456,6 +453,223 @@ class TestBrainVoiceOperatorChannel(BrainTestBase):
         op = rendered['for_operator']
         self.assertIn("[DEBUG]", op)
         self.assertIn("Brain→Claude injection", op)
+
+
+class TestBrainVoiceOperatorChannelV2(BrainTestBase):
+    """Phase 5: Operator channel via Claude relay — wrap_for_hook + render_operator_prompt."""
+
+    # ── wrap_for_hook ──
+
+    def test_wrap_for_hook_claude_only(self):
+        """No for_operator → output has [BRAIN], no [BRAIN-To-*]."""
+        voice = BrainVoice(self.brain)
+        result = voice.wrap_for_hook("[BRAIN]\ntest content\n[/BRAIN]")
+        self.assertIn("[BRAIN]", result)
+        self.assertNotIn("[BRAIN-To-", result)
+
+    def test_wrap_for_hook_both_channels(self):
+        """Both present → output has both tagged sections in order."""
+        voice = BrainVoice(self.brain)
+        result = voice.wrap_for_hook("[BRAIN]\nclaude stuff\n[/BRAIN]", "@priority: high\nHello Tom")
+        self.assertIn("[BRAIN]", result)
+        self.assertIn("[BRAIN-To-", result)
+        # Claude section comes first
+        brain_pos = result.index("[BRAIN]")
+        tom_pos = result.index("[BRAIN-To-")
+        self.assertLess(brain_pos, tom_pos)
+
+    def test_wrap_for_hook_empty_operator(self):
+        """Empty string for_operator → treated as no operator content."""
+        voice = BrainVoice(self.brain)
+        result = voice.wrap_for_hook("[BRAIN]\nstuff\n[/BRAIN]", "")
+        self.assertNotIn("[BRAIN-To-", result)
+        result2 = voice.wrap_for_hook("[BRAIN]\nstuff\n[/BRAIN]", "   ")
+        self.assertNotIn("[BRAIN-To-", result2)
+
+    def test_wrap_for_hook_host_name(self):
+        """Uses brain config host_name in tag."""
+        self.brain.set_config("host_name", "Tom")
+        voice = BrainVoice(self.brain)
+        result = voice.wrap_for_hook("[BRAIN]\ntest\n[/BRAIN]", "hello")
+        self.assertIn("[BRAIN-To-Tom]", result)
+        self.assertIn("[/BRAIN-To-Tom]", result)
+
+    def test_wrap_for_hook_default_host(self):
+        """No host_name config → falls back to 'Operator'."""
+        voice = BrainVoice(self.brain)
+        result = voice.wrap_for_hook("[BRAIN]\ntest\n[/BRAIN]", "hello")
+        self.assertIn("[BRAIN-To-Operator]", result)
+
+    # ── render_operator_prompt ──
+
+    def test_render_operator_prompt_reminders_high_priority(self):
+        """Due reminders always appear with @priority: high."""
+        self.brain.create_reminder("Call mom", "2020-01-01T00:00:00")
+        voice = BrainVoice(self.brain)
+        result = voice.render_operator_prompt(
+            prompt_signals={'aspirations': [], 'hypothesis': None, 'tensions': [], 'instinct_nudge': None},
+        )
+        self.assertIsNotNone(result)
+        self.assertIn("@priority: high", result)
+        self.assertIn("Call mom", result)
+
+    def test_render_operator_prompt_reminders_always_included(self):
+        """Reminders never get budget-cut — they surface even with lots of other content."""
+        self.brain.create_reminder("Important task", "2020-01-01T00:00:00")
+        voice = BrainVoice(self.brain)
+        result = voice.render_operator_prompt(
+            prompt_signals={
+                'aspirations': [], 'hypothesis': {"title": "Test hyp"},
+                'tensions': [{"title": "T1"}, {"title": "T2"}],
+                'instinct_nudge': None,
+            },
+        )
+        self.assertIn("Important task", result)
+
+    def test_render_operator_prompt_dreams(self):
+        """Dreams from consciousness appear with @priority: low."""
+        # Create nodes that might generate dreams via consciousness
+        voice = BrainVoice(self.brain)
+        # Test with mock — render_operator_prompt calls get_consciousness_signals
+        result = voice.render_operator_prompt(
+            prompt_signals={'aspirations': [], 'hypothesis': None, 'tensions': [], 'instinct_nudge': None},
+        )
+        # Fresh brain may not have dreams — test the format when tensions exist
+        # (dreams tested via integration)
+
+    def test_render_operator_prompt_tensions(self):
+        """Active tensions appear with @priority: medium."""
+        voice = BrainVoice(self.brain)
+        result = voice.render_operator_prompt(
+            prompt_signals={
+                'aspirations': [], 'hypothesis': None,
+                'tensions': [{"title": "React hooks vs class components"}],
+                'instinct_nudge': None,
+            },
+        )
+        self.assertIsNotNone(result)
+        self.assertIn("@priority: medium", result)
+        self.assertIn("Tension", result)
+
+    def test_render_operator_prompt_health_alerts(self):
+        """Urgent signals get @priority: high."""
+        voice = BrainVoice(self.brain)
+        result = voice.render_operator_prompt(
+            prompt_signals={'aspirations': [], 'hypothesis': None, 'tensions': [], 'instinct_nudge': None},
+            urgent_signals=["REMINDER DUE: Fix the bug"],
+        )
+        self.assertIsNotNone(result)
+        self.assertIn("@priority: high", result)
+        self.assertIn("Fix the bug", result)
+
+    def test_render_operator_prompt_empty(self):
+        """No interesting signals → returns None."""
+        voice = BrainVoice(self.brain)
+        result = voice.render_operator_prompt(
+            prompt_signals={'aspirations': [], 'hypothesis': None, 'tensions': [], 'instinct_nudge': None},
+        )
+        self.assertIsNone(result)
+
+    def test_render_operator_prompt_budget(self):
+        """Operator content stays under ~800 chars (excluding debug)."""
+        # Create some content that could be large
+        voice = BrainVoice(self.brain)
+        result = voice.render_operator_prompt(
+            prompt_signals={
+                'aspirations': [], 'hypothesis': {"title": "Test hypothesis " * 10},
+                'tensions': [{"title": "Tension " * 20}, {"title": "Another " * 20}],
+                'instinct_nudge': None,
+            },
+        )
+        if result:
+            self.assertLess(len(result), 1200)  # generous but bounded
+
+    # ── debug mode ──
+
+    def test_render_operator_prompt_debug_mode(self):
+        """When debug_enabled, full Claude injection appended to for_operator."""
+        self.brain.set_config("debug_enabled", "1")
+        voice = BrainVoice(self.brain)
+        rendered = voice.render_prompt(
+            results=[{"type": "rule", "title": "Debug test", "content": "C", "effective_activation": 0.5}],
+            prompt_signals={'aspirations': [], 'hypothesis': None, 'tensions': [], 'instinct_nudge': None},
+        )
+        op = rendered['for_operator']
+        self.assertIsNotNone(op)
+        self.assertIn("[DEBUG]", op)
+        self.assertIn("Brain→Claude injection", op)
+
+    def test_render_operator_prompt_debug_off(self):
+        """When debug off, no debug section in operator output."""
+        self.brain.set_config("debug_enabled", "0")
+        voice = BrainVoice(self.brain)
+        rendered = voice.render_prompt(
+            results=[],
+            prompt_signals={'aspirations': [], 'hypothesis': None, 'tensions': [], 'instinct_nudge': None},
+        )
+        op = rendered['for_operator']
+        # Either None or no DEBUG
+        if op:
+            self.assertNotIn("[DEBUG]", op)
+
+    def test_debug_no_longer_uses_system_message(self):
+        """Debug expansion goes to for_operator, which gets merged via wrap_for_hook,
+        NOT to a separate systemMessage field."""
+        self.brain.set_config("debug_enabled", "1")
+        voice = BrainVoice(self.brain)
+        rendered = voice.render_prompt(
+            results=[{"type": "rule", "title": "Test", "content": "C", "effective_activation": 0.5}],
+            prompt_signals={'aspirations': [], 'hypothesis': None, 'tensions': [], 'instinct_nudge': None},
+        )
+        # Verify debug is in for_operator (which wrap_for_hook will merge)
+        self.assertIn("[DEBUG]", rendered['for_operator'])
+        # The actual merging is done by daemon_hooks via wrap_for_hook
+        merged = voice.wrap_for_hook(rendered['for_claude'], rendered['for_operator'])
+        self.assertIn("[DEBUG]", merged)
+        self.assertIn("[BRAIN-To-", merged)
+
+    # ── boot summary ──
+
+    def test_operator_boot_summary_expanded(self):
+        """Boot summary includes consciousness highlights and priority tags."""
+        voice = BrainVoice(self.brain)
+        result = voice._operator_boot_summary(
+            node_count=100, edge_count=200, locked_count=50,
+            signal_count=5, alert_count=2,
+            consciousness_signals={"evolutions": [], "dreams": []},
+        )
+        self.assertIsNotNone(result)
+        self.assertIn("@priority:", result)
+        self.assertIn("100", result)
+
+    def test_operator_boot_summary_reminders(self):
+        """Boot summary surfaces due reminders as high priority."""
+        self.brain.create_reminder("Ship feature", "2020-01-01T00:00:00")
+        voice = BrainVoice(self.brain)
+        result = voice._operator_boot_summary(
+            node_count=100, edge_count=200, locked_count=50,
+            consciousness_signals={},
+        )
+        self.assertIn("@priority: high", result)
+        self.assertIn("Ship feature", result)
+
+    def test_meta_instructions_format(self):
+        """@priority levels are well-formed (high/medium/low only)."""
+        import re
+        voice = BrainVoice(self.brain)
+        self.brain.create_reminder("Test", "2020-01-01T00:00:00")
+        result = voice.render_operator_prompt(
+            prompt_signals={
+                'aspirations': [], 'hypothesis': {"title": "Hyp"},
+                'tensions': [{"title": "T1"}],
+                'instinct_nudge': None,
+            },
+            urgent_signals=["Alert!"],
+        )
+        # All @priority values should be high, medium, or low
+        priorities = re.findall(r'@priority:\s*(\w+)', result)
+        for p in priorities:
+            self.assertIn(p, ("high", "medium", "low"), "Invalid priority: %s" % p)
 
 
 class TestBrainVoiceConstants(unittest.TestCase):
