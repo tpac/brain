@@ -262,11 +262,15 @@ class BrainVoice:
         Everything Brain wants to tell the operator goes in [BRAIN-To-{name}]...[/BRAIN-To-{name}].
         Claude relays the operator section faithfully, respecting @priority directives.
         """
-        parts = [for_claude]  # for_claude already has [BRAIN]...[/BRAIN] wrapping
+        # Operator section goes FIRST — if hook times out, Claude content is cut,
+        # not the operator's messages. The human's reminders and alerts matter more
+        # than Claude's reasoning context.
+        parts = []
         if for_operator and for_operator.strip():
             host = self.brain.get_config("host_name") or "Operator"
-            parts.append("\n[BRAIN-To-%s]\n%s\n[/BRAIN-To-%s]" % (host, for_operator, host))
-        return "\n".join(parts)
+            parts.append("[BRAIN-To-%s]\n%s\n[/BRAIN-To-%s]" % (host, for_operator, host))
+        parts.append(for_claude)  # for_claude already has [BRAIN]...[/BRAIN] wrapping
+        return "\n\n".join(parts)
 
     def render_operator_prompt(self, prompt_signals: Dict[str, Any],
                                 urgent_signals: List[str] = None) -> Optional[str]:
