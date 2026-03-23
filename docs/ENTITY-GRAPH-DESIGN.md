@@ -1,7 +1,8 @@
 # Entity-Aware Knowledge Graph — Design Document
 
-**Status:** Planned (not yet implemented)
+**Status:** Phase 1 complete ✅, Phases 2-4 planned
 **Created:** 2026-03-21
+**Updated:** 2026-03-22 — Precision loop (GROWTH-PLAN.md Phase A) complete. This feeds Phase 3+ with measurement data.
 **Brain nodes:** 6cd874, c0b404, d5d89d, 7713d6 (all locked)
 
 ---

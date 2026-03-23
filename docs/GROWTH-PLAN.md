@@ -2,7 +2,8 @@
 
 **Authors**: Tom Pachys & Claude
 **Created**: 2026-03-22
-**Status**: Phase A ready to implement
+**Status**: Phase A COMPLETE ✅ — Phase B next
+**Last updated**: 2026-03-22 (Session #9)
 **Companion to**: `ENTITY-GRAPH-DESIGN.md` (Phase C), `SPEC-v4.md` (overall architecture)
 
 ---
@@ -22,14 +23,17 @@ It's like writing a detailed journal and having someone else read three random s
 Each phase builds on the previous. Order matters.
 
 ```
-Phase A: Close the precision loop (measurement → action)
+Phase A: Close the precision loop ✅ COMPLETE (2026-03-22)
     ↓ generates data about what works
-Phase B: Smarter decode (graph-augmented recall, confidence-weighted)
+Phase B: Smarter decode ← NEXT
     ↓ uses Phase A data to validate improvements
 Phase C: Entity graph (typed edges, traversal, resolution)
     ↓ Phase A tells us which traversal patterns help
 Phase D: Self-tuning (brain learns to recall)
     ↓ all previous phases feed this
+
+Prerequisite (also complete):
+  Operator Channel ✅ — Brain talks to Tom via [BRAIN-To-*] tags
 ```
 
 **Why this order:**
@@ -40,13 +44,25 @@ Phase D: Self-tuning (brain learns to recall)
 
 ---
 
-## Phase A: Close the Precision Loop
+## Phase A: Close the Precision Loop ✅ COMPLETE
 
-**Goal:** Every recall gets scored. Scores flow back into node confidence. The brain gets smarter with every conversation.
+**Completed:** 2026-03-22 (Session #9, 8 commits)
 
-**Why this is first:** We have 1,896 recalls logged but only 53 evaluated (2.8%). We're flying blind. The precision pipeline is fully built (three-layer scoring with regex + embeddings + BART) but two things are broken:
-1. The two-turn handoff loses 68% of evaluations
-2. Scores never feed back into node confidence
+**Results:**
+
+| Sub-phase | What | Before | After |
+|---|---|---|---|
+| A.0 | Fix scorer bias | 38% accuracy | **90% accuracy** |
+| A.1 | Table-driven lifecycle | 62% eval rate | **100% eval rate** |
+| A.2 | Explicit feedback | Never called | **Wired via operator channel** |
+| A.3 | Confidence loop | Disconnected | **Precision → node confidence (lr=0.05)** |
+
+**Key architectural decisions:**
+- Table-driven lifecycle: recall_log table IS the state, no config keys for handoff between hooks
+- All recall_log SQL moved to `dal.py` (LogsDAL) — clean layer separation
+- `ask_operator` signal replaces `uncertain` — brain asks Tom instead of guessing
+- Operator section goes FIRST in hook output — survives timeout truncation
+- Benchmark-first: every change validated against real-world conversation corpus before shipping
 
 ### What exists today (fully operational)
 
@@ -353,62 +369,82 @@ Stage 3 (EVALUATED) or Stage 4 (FEEDBACK_RECEIVED):
 
 ---
 
-## Phase B: Smarter Decode
+## Phase B: Smarter Decode ← NEXT
 
-**Depends on:** Phase A (precision data to validate improvements)
+**Depends on:** Phase A ✅ (precision data now flowing, confidence loop closed)
 
-**Goal:** Recall returns better nodes by using graph structure and confidence.
+**Goal:** Recall returns better nodes by using graph structure, confidence, and vocabulary. Validate every change against precision benchmarks.
+
+**Approach:** Testing-first. Build benchmark corpus for each sub-phase. Measure golden dataset NDCG before and after. Sacred system rules apply — embed, encode, recall are sacred.
+
+### B.vocab: Wire vocabulary encoding (do first — quick win)
+
+**Problem:** `learn_vocabulary()` method exists, only 6 vocabulary nodes (manually created in Session #9). The automated gap detector runs but catches garbage (XML fragments, UUIDs). SKILL.md Step 4 tells Claude to encode vocabulary manually, but the automated pipeline should also work.
+
+**Fix:**
+1. Clean up gap detector — filter through common-word list (`text_processing.py:filter_domain_terms()`, already built)
+2. Wire `learn_vocabulary()` into encoding pipeline (idle hook or post-response)
+3. Connect new vocab nodes to concept/project nodes they relate to
+4. Verify SKILL.md Step 4 alignment — automated encoding matches manual quality
+
+**Files:**
+- `servers/daemon_hooks.py:594-685` — vocab extraction strategies (7 strategies, need common-word filter)
+- `servers/brain_engineering.py` `learn_vocabulary()` — exists, needs to be called automatically
+- `servers/text_processing.py` `filter_domain_terms()` — exists, needs to be wired into gap detection
+- `skills/brain/SKILL.md` — Step 4 defines vocabulary encoding quality expectations
 
 ### B.1: Confidence-weighted recall
 
-When scoring recall results, weight by node confidence (which Phase A now keeps updated):
+**Why now:** Phase A's confidence loop means node confidence is now a live signal — nodes that consistently help recall have higher confidence. Use it.
+
+When scoring recall results, weight by node confidence:
 ```
 effective_score = embedding_similarity * 0.7 + node_confidence * 0.3
 ```
 
 **File:** `servers/brain_recall.py:652` — Already reads confidence. Needs to weight it.
 
-**Lead to investigate:** Current scoring formula in `recall_with_embeddings()`. What weight does confidence have today? Is it additive or multiplicative?
+**Leads to investigate:**
+- Current scoring formula in `recall_with_embeddings()` — what weight does confidence have today?
+- How does `recalibrate_confidence()` (session boundary) interact with precision-driven updates?
+- Run golden dataset before/after to verify NDCG improvement
 
-### B.2: Graph-augmented recall (1-hop neighbors)
+### B.2: Graph-augmented recall (1-hop typed neighbors)
 
-When embedding search returns node X, also pull X's typed neighbors (not co_accessed noise):
+**Why now:** 82% of edges are auto-generated noise (co_accessed, bridges). The 17% intentional edges (depends_on, part_of, implements) carry real meaning. Use them.
+
+When embedding search returns node X, also pull X's typed neighbors:
 ```
-Embedding finds: "Clerk auth decision"
-1-hop typed: → depends_on → "Glo login screen"
+Embedding finds: "Auth decision"
+1-hop typed: → depends_on → "Login screen"
              → decided_by → "Tom: use magic links"
 ```
 
-**File:** `servers/brain_recall.py` — After embedding results, run 1-hop traversal on intentional edges only (exclude co_accessed, emergent_bridge, dreamed_from)
+**Files:**
+- `servers/brain_recall.py` — After embedding results, run 1-hop traversal
+- `brain_surface.py` `suggest()` — already does 1-hop traversal for locked nodes. Reuse pattern.
 
-**Lead:** `brain_surface.py` `suggest()` already does 1-hop traversal for locked nodes. Reuse that pattern.
+**Edge types to traverse** (intentional only):
+`related`, `about`, `part_of`, `depends_on`, `implements`, `contains`, `enables`, `constrains`, `governs`, `extends`, `describes`, `corrected_by`, `produced`, `addresses`, `elaborates`, `informed_by`
+
+**Edge types to SKIP** (auto-generated noise):
+`co_accessed`, `emergent_bridge`, `dreamed_from`, `cluster_observation`, `dream_observation`
 
 ### B.3: Vocabulary-augmented recall
 
-Wire vocabulary nodes into recall enrichment. When query contains a known term, expand with its definition:
-```
-Query: "DAL migration"
-Vocab: DAL = data access layer
-Expanded: "DAL data access layer migration"
-```
+Wire vocabulary nodes into query expansion (mechanism already exists in `daemon_hooks.py:204-230` but finds nothing with 0 vocab nodes — B.vocab fixes this).
 
-**File:** `daemon_hooks.py:204-230` — Already does vocab expansion! But with 0 vocabulary nodes, it finds nothing. Phase A.vocab (below) fixes this.
+### B.4: Surface precision stats to operator (A.4 deferred here)
 
-### B.vocab: Wire vocabulary encoding
+Surface top/bottom performing nodes through operator channel so Tom sees which knowledge areas work and which don't. Add `get_top_and_bottom_nodes(hours=24)` to brain_precision.
 
-**Quick win, can ship with Phase A.**
+### Testing strategy for Phase B
 
-**Problem:** `learn_vocabulary()` method exists, 0 vocabulary nodes stored, gap detector runs but catches garbage (XML fragments, UUIDs).
-
-**Fix:**
-1. Clean up gap detector — filter through common-word list (Phase 1 text processing, already built)
-2. Wire `learn_vocabulary()` into encoding pipeline (idle hook or post-response)
-3. Connect new vocab nodes to concept/project nodes they relate to
-
-**Files:**
-- `servers/daemon_hooks.py:594-685` — vocab extraction strategies (already have 7 strategies, need common-word filter)
-- `servers/brain_engineering.py` `learn_vocabulary()` — exists, needs to be called
-- `servers/text_processing.py` `filter_domain_terms()` — exists, needs to be wired into gap detection
+1. Run golden dataset (`tests/eval_runner.py`) BEFORE any change → capture baseline NDCG
+2. For each sub-phase, run golden dataset AFTER → verify no regression
+3. Run precision corpus (`tests/bench_precision_corpus.py`) → verify scorer still 90%+
+4. Run lifecycle benchmark (`tests/bench_precision_lifecycle.py`) → verify still 100%
+5. If NDCG drops on any change, revert and investigate
 
 ---
 
@@ -488,22 +524,25 @@ See `ENTITY-GRAPH-DESIGN.md` for full design.
 
 ---
 
-## Current Brain Stats (2026-03-22)
+## Current Brain Stats (2026-03-22, post-Phase A)
 
 | Metric | Value | Health |
 |---|---|---|
-| Total nodes | 951 | ✅ |
-| Locked nodes | 706 | ✅ |
-| Total edges | 12,745 | ⚠️ 82% auto-generated |
-| Intentional edges | 2,270 (17%) | ⚠️ Need more typed edges |
-| Orphaned locked nodes | 5 | ⚠️ Need connections |
-| Thin locked nodes (<100ch) | 30 | ⚠️ Need enrichment |
-| Vocabulary nodes | 0 | ❌ Never wired |
+| Total nodes | ~910 (42 Creatify archived) | ✅ Cleaner |
+| Locked nodes | ~670 | ✅ |
+| Total edges | ~12,500 | ⚠️ 82% auto-generated |
+| Intentional edges | ~2,270 (17%) | ⚠️ Phase B.2 will leverage these |
+| Vocabulary nodes | 6 (first ever, Session #9) | ⚠️ Phase B.vocab will grow this |
 | Recalls (all time) | 1,896 | ✅ |
-| Evaluated recalls | 53 (2.8%) | ❌ Phase A fixes this |
-| Avg precision (evaluated) | 0.61 | ⚠️ Baseline |
+| Scorer accuracy | **90%** (was 38%) | ✅ Phase A.0 |
+| Evaluation rate | **100%** (was 62%) | ✅ Phase A.1 |
+| Explicit feedback | **Wired** (was never called) | ✅ Phase A.2 |
+| Confidence loop | **Closed** (was disconnected) | ✅ Phase A.3 |
+| Operator channel | **Live** (first conversation!) | ✅ |
 | BART available | ✅ | All 3 scoring layers active |
-| Golden dataset | 60+ cases | ✅ Regression firewall ready |
+| Golden dataset | 60+ recall cases | ✅ |
+| Precision corpus | 17 convos, 21 turns | ✅ |
+| Benchmarks | 3 scripts (scorer, lifecycle, operator) | ✅ |
 
 ---
 
