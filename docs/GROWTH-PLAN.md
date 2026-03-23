@@ -429,15 +429,133 @@ Embedding finds: "Auth decision"
              → decided_by → "Tom: use magic links"
 ```
 
-**Files:**
-- `servers/brain_recall.py` — After embedding results, run 1-hop traversal
-- `brain_surface.py` `suggest()` — already does 1-hop traversal for locked nodes. Reuse pattern.
+#### Code mapping (2026-03-22)
 
-**Edge types to traverse** (intentional only):
-`related`, `about`, `part_of`, `depends_on`, `implements`, `contains`, `enables`, `constrains`, `governs`, `extends`, `describes`, `corrected_by`, `produced`, `addresses`, `elaborates`, `informed_by`
+**The recall pipeline has TWO paths:**
 
-**Edge types to SKIP** (auto-generated noise):
+```
+recall_with_embeddings() — EMBEDDING PATH (primary, brain_recall.py:544)
+├─ Step 0.5: Vocabulary expansion (_expand_query_with_vocabulary)
+├─ Step 1: Embed query → cosine similarity against ALL stored embeddings
+├─ Step 4: Also run keyword recall() as parallel fallback
+├─ Step 5: Build unified candidate set (embedding ∪ keyword)
+├─ Step 6: Score each candidate:
+│   ├─ Blend: EMBEDDING_PRIMARY_WEIGHT * emb + KEYWORD_FALLBACK_WEIGHT * kw
+│   ├─ Intent-based type boosting
+│   ├─ Critical node boost (CRITICAL_BOOST)
+│   ├─ Confidence multiplier [0.7-1.05] ← FED BY PRECISION LOOP (Phase A)
+│   └─ Contextual qualifier penalty
+├─ Sort + limit to top N (line 763-765) ← B.2 INSERTION POINT
+└─ Step 7: Hydrate full node data (line 767+)
+
+recall() — KEYWORD PATH (fallback, brain_recall.py:206)
+├─ Step 0.5: Vocabulary expansion
+├─ Step 0: Intent detection + type boosts + temporal filter
+├─ Step 1: Keyword search for seeds + TF-IDF seeds
+├─ Step 1b: Direct keyword match strength
+├─ Step 2: spread_activation() — 3-HOP GRAPH TRAVERSAL (ALL edges, including noise!)
+│   ├─ MAX_HOPS=3, MAX_NEIGHBORS=50
+│   ├─ Decay: SPREAD_DECAY^hop (0.5^hop)
+│   └─ Traverses ALL edge types (co_accessed, bridges = 82% noise)
+├─ Step 3: Score: TF-IDF + keyword + intent + hub dampening + type dampening
+│   ├─ Hub dampening: >40 edges → penalize (threshold/edge_count)
+│   ├─ Type dampening: project/person → 0.5x
+│   ├─ Ebbinghaus retention with time-dilation (session vs idle hours)
+│   ├─ Evolution-informed decay protection (active tension/hypothesis → 3x slower)
+│   ├─ Personal node handling (fixed/fluid/contextual)
+│   └─ Emotion intensity boost
+├─ Step 4: Filter (archived, types, recency, project, temporal)
+├─ Step 5: Sort by effective_activation
+└─ Step 7: Mark accessed + Hebbian co-access edge creation
+```
+
+**THE GAP:** Embedding path has NO graph traversal. Keyword path traverses the graph but through ALL edges. B.2 adds typed-edge traversal to the embedding path.
+
+#### Insertion point
+
+**Line 763-765 of `brain_recall.py`** (after sort, before hydrate):
+```python
+# Current:
+scored_results.sort(key=lambda x: -x['blended_score'])
+scored_results = scored_results[:limit]
+
+# B.2 adds STEP 6.5 here:
+# For top N results, pull 1-hop typed neighbors
+# Add neighbors to candidate set with dampened score
+# Re-sort and re-limit
+```
+
+#### Edge type classification
+
+**Traverse (intentional, 2,270 edges):**
+`related`, `about`, `part_of`, `depends_on`, `implements`, `contains`, `enables`, `constrains`, `governs`, `extends`, `describes`, `corrected_by`, `produced`, `addresses`, `elaborates`, `informed_by`, `exemplifies`, `evolved`, `questions`, `traced`, `tests`
+
+**Skip (auto-generated noise, 10,475 edges):**
 `co_accessed`, `emergent_bridge`, `dreamed_from`, `cluster_observation`, `dream_observation`
+
+#### Algorithm for STEP 6.5
+
+```python
+# After sort + limit to top N:
+GRAPH_AUGMENT_TOP_N = 5  # Only augment from top 5 results
+NEIGHBOR_DAMPEN = 0.6    # Neighbors score at 60% of parent
+INTENTIONAL_EDGES = {'related', 'about', 'part_of', 'depends_on', ...}
+
+top_ids = [sr['node_id'] for sr in scored_results[:GRAPH_AUGMENT_TOP_N]]
+neighbor_candidates = {}
+
+for parent_id in top_ids:
+    parent_score = next(sr['blended_score'] for sr in scored_results if sr['node_id'] == parent_id)
+    # Query typed neighbors
+    rows = conn.execute("""
+        SELECT target_id, relation, weight FROM edges
+        WHERE source_id = ? AND relation IN (...)
+        ORDER BY weight DESC LIMIT 10
+    """, (parent_id,))
+    for target_id, relation, weight in rows:
+        if target_id not in {sr['node_id'] for sr in scored_results}:
+            dampened = parent_score * NEIGHBOR_DAMPEN * weight
+            if target_id in neighbor_candidates:
+                neighbor_candidates[target_id] = max(neighbor_candidates[target_id], dampened)
+            else:
+                neighbor_candidates[target_id] = dampened
+
+# Add neighbors to scored_results, re-sort, re-limit
+for nid, score in neighbor_candidates.items():
+    scored_results.append({'node_id': nid, 'blended_score': score, ...})
+scored_results.sort(key=lambda x: -x['blended_score'])
+scored_results = scored_results[:limit]
+```
+
+#### SQL for DAL layer
+
+New method in `dal.py` (all SQL in DAL, not inline):
+```python
+def get_typed_neighbors(self, node_id: str, edge_types: List[str], limit: int = 10):
+    """Get 1-hop neighbors via intentional (typed) edges only."""
+```
+
+#### Testing strategy
+
+1. Run golden dataset BEFORE → capture NDCG baseline (current: 0.423)
+2. Build test cases: "mention node X, does neighbor Y surface?"
+3. Implement B.2
+4. Run golden dataset AFTER → NDCG must not drop
+5. Run precision corpus → scorer must stay 90%+
+6. Manual test: recall "operator channel" → should pull in "additionalContext" via `foundation_for` edge
+
+#### Edge cases to handle
+- Circular edges (A→B→A) — skip already-seen nodes
+- High-hub neighbors (>40 edges) — apply same hub dampening
+- Archived neighbors — skip
+- Neighbor already in results — keep higher score, don't duplicate
+
+#### Files to modify
+- `servers/brain_recall.py:763` — Add STEP 6.5
+- `servers/dal.py` — Add `get_typed_neighbors()` (SQL in DAL)
+- `servers/brain_constants.py` — Add INTENTIONAL_EDGE_TYPES set, GRAPH_AUGMENT_TOP_N, NEIGHBOR_DAMPEN
+- `tests/test_recall_quality.py` — Add graph augmentation tests
+- `tests/golden_dataset.json` — Add cases testing neighbor surfacing
 
 ### B.3: Vocabulary-augmented recall
 
