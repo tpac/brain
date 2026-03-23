@@ -85,6 +85,9 @@ def load_model(config: Optional[Dict[str, Any]] = None):
     pooling = config.get('pooling', 'cls')
     model_file = config.get('model_file', 'onnx/model.onnx')
     model_path = config.get('model_path')  # Local path override
+    if model_path and not os.path.isabs(model_path):
+        plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        model_path = os.path.join(plugin_root, model_path)
     cache_dir = config.get('cache_dir')
 
     stats['model_name'] = model_name

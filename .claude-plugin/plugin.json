@@ -28,7 +28,7 @@
       "dim": 768,
       "pooling": "cls",
       "model_file": "onnx/model.onnx",
-      "model_path": null,
+      "model_path": "model-package/brain_embedding/model",
       "cache_dir": null
     }
   }

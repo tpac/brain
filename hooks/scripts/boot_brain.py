@@ -57,6 +57,10 @@ if debug_enabled:
     os.environ["BRAIN_DEBUG"] = "1"
 
 # Single call — all formatting lives in Brain
-print(brain.format_boot_context(user=user, project=project, db_dir=db_dir))
+rendered = brain.format_boot_context(user=user, project=project, db_dir=db_dir)
+if isinstance(rendered, dict):
+    print(rendered.get("for_claude", ""))
+else:
+    print(rendered)
 
 brain.close()

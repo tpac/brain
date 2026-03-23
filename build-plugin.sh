@@ -31,6 +31,7 @@ FILES=(
   servers/brain_remember.py
   servers/brain_surface.py
   servers/brain_vocabulary.py
+  servers/brain_voice.py
   servers/schema.py
   servers/embedder.py
   servers/migrate.py
@@ -55,6 +56,7 @@ FILES=(
   hooks/scripts/post-bash-host-check.sh
   hooks/scripts/worktree-context.sh
   hooks/scripts/worktree-cleanup.sh
+  hooks/scripts/brain-statusline.sh
   hooks/scripts/resolve-brain-db.sh
   hooks/scripts/daemon-client.sh
   hooks/scripts/brain-client.sh
@@ -95,6 +97,7 @@ FILES=(
   tests/test_recall_quality.py
   tests/test_hooks.py
   tests/test_system.py
+  tests/test_brain_voice.py
   # Migrations
   servers/migrations/__init__.py
   servers/migrations/004_logs_precision_columns.py

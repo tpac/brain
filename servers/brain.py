@@ -161,6 +161,7 @@ class Brain(
         # Open SQLite connection with WAL mode for concurrency
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.execute('PRAGMA journal_mode=WAL')
+        self.conn.execute('PRAGMA busy_timeout = 5000')
         self.conn.execute('PRAGMA foreign_keys=ON')
 
         # Create schema if needed
@@ -170,6 +171,8 @@ class Brain(
         db_dir = os.path.dirname(db_path) or '.'
         self.logs_db_path = os.path.join(db_dir, 'brain_logs.db')
         self.logs_conn = sqlite3.connect(self.logs_db_path, check_same_thread=False)
+        self.logs_conn.execute("PRAGMA journal_mode=WAL")
+        self.logs_conn.execute("PRAGMA busy_timeout = 5000")
         ensure_logs_schema(self.logs_conn)
 
         # One-time migration: move log tables from brain.db to brain_logs.db
@@ -1583,7 +1586,7 @@ class Brain(
         'dim': 768,
         'pooling': 'cls',
         'model_file': 'onnx/model.onnx',
-        'model_path': None,
+        'model_path': 'model-package/brain_embedding/model',
         'cache_dir': None,
     }
 
