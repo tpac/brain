@@ -360,6 +360,24 @@ class BrainVoice:
         except Exception:
             pass
 
+        # MEDIUM — Context pressure warning (estimated from hook fire count)
+        try:
+            recall_count = brain.logs_conn.execute(
+                """SELECT COUNT(*) FROM debug_log
+                   WHERE source='hook_telemetry' AND event_type='hook_recall'
+                   AND created_at > datetime('now', '-6 hours')""").fetchone()[0]
+            # Rough estimate: ~2800 tokens per turn (user + claude + hooks + tools)
+            est_tokens = recall_count * 2800
+            est_pct = int(est_tokens * 100 / 1000000)  # 1M context
+            if est_pct >= 60:
+                sections.append((1, "@priority: high\n⚠️ Context ~%d%% full (~%dK tokens, %d turns). Quality may degrade. Consider compacting." % (
+                    est_pct, est_tokens // 1000, recall_count)))
+            elif est_pct >= 40:
+                sections.append((2, "@priority: medium\n📊 Context ~%d%% full (~%dK tokens, %d turns). Still healthy." % (
+                    est_pct, est_tokens // 1000, recall_count)))
+        except Exception:
+            pass
+
         # LOW — Thin locked nodes needing enrichment (brain cleanup)
         try:
             thin = brain.conn.execute(
