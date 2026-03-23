@@ -64,6 +64,11 @@ class BrainVocabularyMixin:
         if not is_valid:
             return {'error': reason, 'rejected': True}
 
+        # Guard against maps_to being a string instead of list
+        # (common mistake when called via eval tool)
+        if isinstance(maps_to, str):
+            maps_to = [maps_to]
+
         maps_str = ', '.join(maps_to)
         content = '"%s" \u2192 %s' % (term, maps_str)
         if context:

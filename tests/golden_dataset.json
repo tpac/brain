@@ -588,5 +588,493 @@
     },
     "min_hit_rate_at_10": 0.8,
     "description": "Intent: 'hook fails' → failed hook experiments lesson"
+  },
+
+  {
+    "id": "sem_goal_ai_path",
+    "query": "when do users set goals for their ad",
+    "category": "semantic",
+    "expected_relevant": {
+      "dec_ea73z2xh": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: 'Goal only in AI generate path' should match paraphrased query about ad goals"
+  },
+  {
+    "id": "sem_moderation_prescreen",
+    "query": "how do we check if ads are safe before publishing",
+    "category": "semantic",
+    "expected_relevant": {
+      "dec_aky2oorz": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: 'Moderation: AI pre-screen' should match ad safety checking query"
+  },
+  {
+    "id": "sem_moderation_model",
+    "query": "who reviews glo submissions first the bot or a human",
+    "category": "semantic",
+    "expected_relevant": {
+      "dec_du3vwge2": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: 'Moderation model: AI moderates first' should match bot vs human review query"
+  },
+  {
+    "id": "sem_creative_intelligence",
+    "query": "does the AI help design the ad creative",
+    "category": "semantic",
+    "expected_relevant": {
+      "dec_xymi39b7": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: 'Glo Creative Intelligence: LLM as Creative Director' should match AI ad design query"
+  },
+  {
+    "id": "sem_anti_fraud",
+    "query": "how do we prevent fake accounts and bots",
+    "category": "semantic",
+    "expected_relevant": {
+      "dec_g9us24ox": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: 'Anti-fraud: Payment as strongest gate' should match fake accounts prevention query"
+  },
+  {
+    "id": "sem_decompose_dont_summarize",
+    "query": "should I write one big brain node or many small ones",
+    "category": "semantic",
+    "expected_relevant": {
+      "deb08b9023514a069838f36efe35776a": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: 'decompose don't summarize' lesson should match node granularity question"
+  },
+  {
+    "id": "sem_session_notes_automatic",
+    "query": "are session notes automatic or does claude choose to write them",
+    "category": "semantic",
+    "expected_relevant": {
+      "dec_rgfy6myo": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: 'Session notes moved from memory-cue to code-enforced' should match session notes automation query"
+  },
+  {
+    "id": "sem_video_multi_image",
+    "query": "can we generate video from multiple images",
+    "category": "semantic",
+    "expected_relevant": {
+      "dec_w07txi6t": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: 'Veo 3.1 via Gemini API' should match multi-image video generation query"
+  },
+
+  {
+    "id": "natq_adapter_thing",
+    "query": "remind me about the adapter thing",
+    "category": "natural_question",
+    "expected_relevant": {
+      "dec_dp93qu36": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Natural question: vague 'adapter thing' should recall Supply Adapter pattern"
+  },
+  {
+    "id": "natq_embeddings_deal",
+    "query": "what's the deal with embeddings",
+    "category": "natural_question",
+    "expected_relevant": {
+      "c21514ab37744c5ca90109afc1638d7b": 1,
+      "3bad7b02a5fe4d648f2c28037465f49a": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Natural question: vague 'deal with embeddings' should surface embedding similarity nodes"
+  },
+  {
+    "id": "natq_tom_preferences",
+    "query": "tell me about tom's preferences",
+    "category": "natural_question",
+    "expected_relevant": {
+      "rul_0ex588kq": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Natural question: 'tom's preferences' should surface communication style rule"
+  },
+  {
+    "id": "natq_why_hooks_exist",
+    "query": "why do hooks exist",
+    "category": "natural_question",
+    "expected_relevant": {
+      "73c0123bb33c4fe99f8e5241a095e3c2": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Natural question: 'why hooks exist' should surface 13-hook feedback loop node"
+  },
+  {
+    "id": "natq_what_keeps_breaking",
+    "query": "what keeps breaking",
+    "category": "natural_question",
+    "expected_relevant": {
+      "4b158d2836294cb9ba414126e8da5267": 1,
+      "3d688d9f8d3346c8809ff1e7dc79afdc": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Natural question: 'what keeps breaking' should surface debugging layers lesson and notification bug"
+  },
+  {
+    "id": "natq_how_make_money",
+    "query": "how do we make money",
+    "category": "natural_question",
+    "expected_relevant": {
+      "dec_c0h38kix": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Natural question: 'how do we make money' should surface tier pricing markup decision"
+  },
+  {
+    "id": "natq_who_is_exco",
+    "query": "who is exco",
+    "category": "natural_question",
+    "expected_relevant": {
+      "pro_mb9mas11": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Natural question: 'who is exco' should surface EX.CO project node"
+  },
+  {
+    "id": "natq_rule_about_tests",
+    "query": "is there a rule about tests",
+    "category": "natural_question",
+    "expected_relevant": {
+      "07187eb2a78b4450b49d838597fe534a": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Natural question: 'rule about tests' should surface pre-edit hook blocks test weakening"
+  },
+
+  {
+    "id": "intent_dec_monolith",
+    "query": "what did we decide about splitting brain.py",
+    "category": "intent_decision",
+    "expected_relevant": {
+      "f91454eb1d2b43f6ae45b67d582bb5bd": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Intent: 'what did we decide about splitting brain.py' → monolith split decision"
+  },
+  {
+    "id": "intent_dec_moderation",
+    "query": "what did we decide about content moderation",
+    "category": "intent_decision",
+    "expected_relevant": {
+      "dec_aky2oorz": 2,
+      "dec_du3vwge2": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Intent: 'what did we decide about content moderation' → AI pre-screen + moderation model decisions"
+  },
+  {
+    "id": "intent_howto_add_node_type",
+    "query": "how do I add a new node type to the brain",
+    "category": "intent_howto",
+    "expected_relevant": {
+      "4ad55ad84986478087195e390aee468b": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Intent: 'how to add node type' → constraint about new methods in right mixin"
+  },
+  {
+    "id": "intent_howto_compaction",
+    "query": "what should I do when context gets compacted",
+    "category": "intent_howto",
+    "expected_relevant": {
+      "140e864594a34f52affe0b5992baa04a": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Intent: 'what to do when compacted' → compaction destroys unencoded knowledge constraint"
+  },
+  {
+    "id": "intent_dec_video",
+    "query": "what did we decide about video generation",
+    "category": "intent_decision",
+    "expected_relevant": {
+      "dec_z0mbdh0n": 2,
+      "dec_w07txi6t": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Intent: 'what did we decide about video generation' → video prompt structure + Veo 3.1 decisions"
+  },
+
+  {
+    "id": "mech_skill_eval",
+    "query": "how does the skill eval benchmark work",
+    "category": "mechanism",
+    "expected_relevant": {
+      "e4cdab4e82064a9dba7042e34ab92f51": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: skill eval benchmark — how SKILL.md variants are A/B tested"
+  },
+  {
+    "id": "mech_debug_mode",
+    "query": "how does debug mode work in the brain",
+    "category": "mechanism",
+    "expected_relevant": {
+      "d5044a889bce4148b817cd28de151d59": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: debug mode routes through operator channel"
+  },
+  {
+    "id": "mech_when_to_encode",
+    "query": "how does the brain decide when to encode",
+    "category": "mechanism",
+    "expected_relevant": {
+      "87d42862e161410b9cfaaba59da33b66": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Mechanism: adaptive checkpoints determine encoding timing"
+  },
+  {
+    "id": "mech_pre_edit_block",
+    "query": "how does the pre-edit hook decide what to block",
+    "category": "mechanism",
+    "expected_relevant": {
+      "07187eb2a78b4450b49d838597fe534a": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: pre-edit hook blocks test weakening"
+  },
+  {
+    "id": "mech_embedding_storage",
+    "query": "how are nodes embedded and stored",
+    "category": "mechanism",
+    "expected_relevant": {
+      "fddd1b00fd2c4569bc952bd40b9d87d6": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: recall_with_embeddings() rewrite — how nodes are embedded and stored"
+  },
+
+  {
+    "id": "corr_compression",
+    "query": "should brain nodes be concise",
+    "category": "correction_chain",
+    "expected_relevant": {
+      "e8658fecfda54a14bcea842f3c875661": 2,
+      "c8747a53a7cf44479a88d80a9650a06d": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Correction chain: Claude compresses when encoding vs brain encoding should be concise — tension pair"
+  },
+  {
+    "id": "corr_confidence_encoding",
+    "query": "does confidence at encoding time reflect quality",
+    "category": "correction_chain",
+    "expected_relevant": {
+      "bb7705fd90634f2997a5c8e6f8ca3231": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Correction chain: divergence about confidence at encoding time accurately reflecting quality"
+  },
+  {
+    "id": "corr_session_activity",
+    "query": "does get_session_activity return all brain meta keys",
+    "category": "correction_chain",
+    "expected_relevant": {
+      "2e4b1c7b65394878b94b5d4643235fa2": 2,
+      "27ded8a388fc4e5c980a8bbe32bc036e": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Correction chain: _get_session_activity() divergence corrected by DAL fixed key list"
+  },
+  {
+    "id": "corr_stderr_silence",
+    "query": "should we redirect errors to dev null",
+    "category": "correction_chain",
+    "expected_relevant": {
+      "05a738aaf8ed49db9f67303c39a9d8f7": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Correction chain: found another 2>/dev/null suppressing errors in post-compact-reboot.sh"
+  },
+
+  {
+    "id": "graph_email_system",
+    "query": "glo email notification system",
+    "category": "graph_neighbor",
+    "expected_relevant": {
+      "con_5ej15u5g": 2,
+      "pro_i1pc8fs7": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Graph: Email/Notification System concept connected to Glo.io project via part_of"
+  },
+  {
+    "id": "graph_glo_app_state",
+    "query": "glo app state routing",
+    "category": "graph_neighbor",
+    "expected_relevant": {
+      "con_aofbtzix": 2,
+      "pro_0gaibwq7": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Graph: App state model screen-based routing connected to Glo.io project via part_of"
+  },
+  {
+    "id": "graph_relay_instruction",
+    "query": "CLAUDE.md relay instruction",
+    "category": "graph_neighbor",
+    "expected_relevant": {
+      "e18fa6ee4ec8418288169924de40a8d4": 2,
+      "8bac897879ae4b73b61d3e800dacd936": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Graph: CLAUDE.md relay instruction enables operator channel architecture"
+  },
+  {
+    "id": "graph_video_nanobanana",
+    "query": "video prompt API constraints",
+    "category": "graph_neighbor",
+    "expected_relevant": {
+      "dec_z0mbdh0n": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Graph: video prompt decision depends_on NanoBanana API node"
+  },
+
+  {
+    "id": "old_reject_flow",
+    "query": "glo reject flow refund",
+    "category": "old_but_valid",
+    "expected_relevant": {
+      "dec_yvj3fuvx": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Old but valid: reject flow with predefined categories + optional moderator note"
+  },
+  {
+    "id": "old_campaign_params_resolver",
+    "query": "CampaignParamsResolver component",
+    "category": "old_but_valid",
+    "expected_relevant": {
+      "dec_bv3bmcjs": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Old but valid: CampaignParamsResolver component decision"
+  },
+  {
+    "id": "old_publisher_profile",
+    "query": "glo publisher profile metadata",
+    "category": "old_but_valid",
+    "expected_relevant": {
+      "dec_6bo4ejah": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Old but valid: Glo owns publisher profiles decision"
+  },
+
+  {
+    "id": "vocab_table_driven_lifecycle",
+    "query": "table-driven lifecycle",
+    "category": "vocabulary",
+    "expected_relevant": {
+      "d2ef1bfa697b42afa23d227a4c11813c": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Vocabulary: 'table-driven lifecycle' vocab term should be directly findable"
+  },
+  {
+    "id": "vocab_confidence_loop",
+    "query": "confidence loop precision",
+    "category": "vocabulary",
+    "expected_relevant": {
+      "6cab0a2d8ba944fd993ac3448ea4a86f": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Vocabulary: 'confidence loop' vocab term should surface with precision context"
+  },
+  {
+    "id": "vocab_ask_operator",
+    "query": "ask operator signal",
+    "category": "vocabulary",
+    "expected_relevant": {
+      "988a2edd8c8f4344b77239d3b520aacb": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Vocabulary: 'ask_operator' vocab term should be directly findable"
+  },
+
+  {
+    "id": "edge_empty",
+    "query": "",
+    "category": "edge_case",
+    "expected_relevant": {},
+    "min_hit_rate_at_10": 0.0,
+    "expect_no_crash": true,
+    "description": "Edge case: empty query should not crash, return empty or graceful result"
+  },
+  {
+    "id": "edge_garbage",
+    "query": "xyzzy frobnicator quantum flux",
+    "category": "edge_case",
+    "expected_relevant": {},
+    "min_hit_rate_at_10": 0.0,
+    "expect_no_crash": true,
+    "description": "Edge case: nonsense query should not crash, return empty or low-relevance results"
+  },
+  {
+    "id": "edge_code_snippet",
+    "query": "def recall_with_embeddings",
+    "category": "edge_case",
+    "expected_relevant": {
+      "fddd1b00fd2c4569bc952bd40b9d87d6": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Edge case: code snippet as query should match recall_with_embeddings rewrite node"
+  },
+  {
+    "id": "edge_single_word",
+    "query": "compaction",
+    "category": "edge_case",
+    "expected_relevant": {
+      "140e864594a34f52affe0b5992baa04a": 1,
+      "6c75f6edb7a94c01ab15d99915343511": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Edge case: single word 'compaction' should surface compaction-related nodes"
+  },
+  {
+    "id": "edge_very_long",
+    "query": "I need to understand everything about how the brain stores information, retrieves it later, handles corrections and updates, manages confidence scores, deals with vocabulary expansion, and processes consciousness signals including dreams tensions hypotheses and fading knowledge",
+    "category": "edge_case",
+    "expected_relevant": {
+      "fbfe9694334942d98e29fad75f78ff6f": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Edge case: very long query should still return relevant results without crashing"
+  },
+
+  {
+    "id": "lowconf_structural_enforcement",
+    "query": "structural enforcement counteract brevity bias",
+    "category": "low_confidence",
+    "expected_relevant": {
+      "be62eda8f8f84deeb3a27827a0ae089e": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Low-confidence (0.5) hypothesis: structural enforcement counteracts brevity bias"
+  },
+  {
+    "id": "lowconf_priming_system",
+    "query": "priming system active concerns recall filter",
+    "category": "low_confidence",
+    "expected_relevant": {
+      "5faa8bd66d7c4e3ea8201bb84a882043": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Low-confidence (0.65) priming system: active concerns as background recall filter"
   }
 ]
