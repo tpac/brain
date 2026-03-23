@@ -130,14 +130,29 @@ The boot hook resolves the DB automatically:
 - `REFACTORING.md` — current cleanup targets with priorities and status
 - `docs/HOOKS-ARCHITECTURE.md` — ⚠️ DEPRECATED (2026-03-22). Hook output format changed — see "Brain-to-Operator Channel" below. Keep for historical reference only.
 
+## CRITICAL: SKILL.md Is Your Operating Manual (2026-03-22)
+
+**`skills/brain/SKILL.md` is the brain's encoding playbook. Without it, the brain cannot grow.**
+
+At session start, verify the skill is loaded. If you don't see it in your available skills, the brain is running blind — encoding quality will be poor, vocabulary won't be captured, connections won't be made.
+
+The skill defines:
+- The **4-Step Encoding Checklist** (uncertainty → facts → connections → vocabulary) — follow it after every significant exchange
+- **Encoding quality scoring** — aim for 8+/10 on every node
+- **Known failure modes** — compression instinct, agreeability, opinion hallucination
+- **API quick reference** — every brain method and when to use it
+
+**If you skip the checklist, the brain degrades. Every unencoded decision is lost forever.**
+
 ## What To Do Each Session
 
-1. **Read the boot output.** It contains session context, locked rules, consciousness signals (fading knowledge, tensions, vocabulary gaps, errors, mental model drift).
-2. **If starting from a compaction summary**, encode the delta into the brain (Step 2a in SKILL.md). This is mandatory — compacted knowledge is lost forever if not encoded.
-3. **Check REFACTORING.md** if doing cleanup work. Pick one target. Don't boil the ocean.
-4. **Use the brain throughout** — remember decisions, recall context, connect related nodes.
+1. **Verify SKILL.md is loaded.** This is non-negotiable. The skill defines how to encode.
+2. **Read the boot output.** It contains session context, locked rules, consciousness signals (fading knowledge, tensions, vocabulary gaps, errors, mental model drift).
+3. **If starting from a compaction summary**, encode the delta into the brain (Step 2a in SKILL.md). This is mandatory — compacted knowledge is lost forever if not encoded.
+4. **Use the 4-step checklist throughout** — uncertainty, facts, connections, vocabulary. Don't batch encoding at the end.
 5. **Let hooks do their job** — don't manually call suggest before edits (the PreToolUse hook does it), don't manually save (hooks save at compaction and session end).
-6. **One refactor per session.** Commit before compaction. Update REFACTORING.md when done.
+6. **Check REFACTORING.md** if doing cleanup work. Pick one target. Don't boil the ocean.
+7. **One refactor per session.** Commit before compaction. Update REFACTORING.md when done.
 
 ## Benchmark-First Rule for Sacred Systems (2026-03-22)
 
