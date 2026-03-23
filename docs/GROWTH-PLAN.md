@@ -418,7 +418,11 @@ effective_score = embedding_similarity * 0.7 + node_confidence * 0.3
 - How does `recalibrate_confidence()` (session boundary) interact with precision-driven updates?
 - Run golden dataset before/after to verify NDCG improvement
 
-### B.2: Graph-augmented recall (1-hop typed neighbors)
+### B.2: Graph-augmented recall (1-hop typed neighbors) ✅ COMPLETE
+
+**Completed:** 2026-03-22 (Session #10)
+
+**Results:** NDCG@10 0.416→0.422 (+0.006), MRR 0.427→0.437 (+0.010), hit_rate 0.562→0.571, 27→28 tests passing. Parameter sweep (6 variations) showed the effect is from graph structure, not tuning — all param combos land within ±0.003 NDCG. Current params (top=5, dampen=0.6, limit=10) kept.
 
 **Why now:** 82% of edges are auto-generated noise (co_accessed, bridges). The 17% intentional edges (depends_on, part_of, implements) carry real meaning. Use them.
 

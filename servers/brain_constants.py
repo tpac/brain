@@ -259,6 +259,17 @@ MAX_HOPS = 3
 MAX_NEIGHBORS = 50
 STABILITY_BOOST = 1.5
 
+# B.2: Graph-augmented recall (1-hop typed neighbors)
+GRAPH_AUGMENT_TOP_N = 5       # Augment from top N embedding results
+NEIGHBOR_DAMPEN = 0.6          # Neighbors score at 60% of parent
+INTENTIONAL_EDGE_TYPES = {
+    'related', 'about', 'part_of', 'depends_on', 'implements', 'contains',
+    'enables', 'constrains', 'governs', 'extends', 'describes', 'corrected_by',
+    'produced', 'addresses', 'elaborates', 'informed_by', 'exemplifies',
+    'evolved', 'questions', 'traced', 'tests', 'foundation_for',
+}
+GRAPH_NEIGHBOR_LIMIT = 10      # Max neighbors per parent node
+
 # Dreaming
 DREAM_WALK_LENGTH = 5
 DREAM_COUNT = 3

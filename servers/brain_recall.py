@@ -21,6 +21,9 @@ from .brain_constants import (
     DECAY_HALF_LIFE,
     EDGE_TYPES,
     EMBEDDING_PRIMARY_WEIGHT,
+    GRAPH_AUGMENT_TOP_N,
+    GRAPH_NEIGHBOR_LIMIT,
+    INTENTIONAL_EDGE_TYPES,
     INTENT_PATTERNS,
     INTENT_TYPE_BOOSTS,
     KEYWORD_FALLBACK_WEIGHT,
@@ -29,6 +32,7 @@ from .brain_constants import (
     MAX_NEIGHBORS,
     MAX_PAGE_SIZE,
     MAX_WEIGHT,
+    NEIGHBOR_DAMPEN,
     PRUNE_THRESHOLD,
     SPREAD_DECAY,
     STABILITY_BOOST,
@@ -40,6 +44,7 @@ from .brain_constants import (
     TFIDF_STOP_WORDS,
     VOCAB_EXPANSION_MAX,
 )
+from .dal import GraphDAL
 
 
 class BrainRecallMixin:
@@ -763,6 +768,61 @@ class BrainRecallMixin:
         # Sort by blended score descending
         scored_results.sort(key=lambda x: -x['blended_score'])
         scored_results = scored_results[:limit]
+
+        # STEP 6.5: Graph-augmented recall — pull 1-hop typed neighbors
+        # For top N results, find neighbors via intentional edges and add
+        # them as candidates with dampened scores. Re-sort and re-limit.
+        try:
+            graph_dal = GraphDAL(self.conn)
+            existing_ids = {sr['node_id'] for sr in scored_results}
+            # Track: neighbor_id -> list of (dampened_score, parent_id)
+            neighbor_hits = {}
+
+            for sr in scored_results[:GRAPH_AUGMENT_TOP_N]:
+                parent_id = sr['node_id']
+                parent_score = sr['blended_score']
+                neighbors = graph_dal.get_typed_neighbors(
+                    parent_id, INTENTIONAL_EDGE_TYPES, limit=GRAPH_NEIGHBOR_LIMIT
+                )
+                for nb in neighbors:
+                    nid = nb['neighbor_id']
+                    if nid in existing_ids:
+                        continue
+                    archived_check = self.conn.execute(
+                        'SELECT archived FROM nodes WHERE id = ?', (nid,)
+                    ).fetchone()
+                    if not archived_check or archived_check[0] == 1:
+                        continue
+                    dampened = parent_score * NEIGHBOR_DAMPEN * nb['weight']
+                    if nid not in neighbor_hits:
+                        neighbor_hits[nid] = []
+                    neighbor_hits[nid].append((dampened, parent_id))
+
+            # Convergence: neighbors connected to multiple parents get boosted
+            neighbor_candidates = {}
+            for nid, hits in neighbor_hits.items():
+                base_score = max(h[0] for h in hits)
+                num_parents = len(set(h[1] for h in hits))
+                # 30% boost per additional parent connection
+                convergence_multiplier = 1.0 + 0.3 * (num_parents - 1)
+                neighbor_candidates[nid] = base_score * convergence_multiplier
+
+            # Add graph neighbors to scored results
+            for nid, score in neighbor_candidates.items():
+                scored_results.append({
+                    'node_id': nid,
+                    'blended_score': score,
+                    'embedding_similarity': None,
+                    'keyword_score': None,
+                    '_source': 'graph_neighbor',
+                    '_context_mismatch': False,
+                })
+
+            if neighbor_candidates:
+                scored_results.sort(key=lambda x: -x['blended_score'])
+                scored_results = scored_results[:limit]
+        except Exception as e:
+            self._log_error("recall_with_embeddings", e, "STEP 6.5 graph-augmented recall")
 
         # STEP 7: Hydrate full node data for top results
         final_results = []

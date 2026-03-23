@@ -478,3 +478,37 @@ class MetaDAL:
             new_val = 1
         self.set(key, str(new_val))
         return new_val
+
+
+class GraphDAL:
+    """Access layer for brain.db graph tables: edges."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def get_typed_neighbors(self, node_id: str, edge_types: set,
+                            limit: int = 10) -> List[Dict[str, Any]]:
+        """Get 1-hop neighbors via intentional (typed) edges only.
+
+        Searches both directions (source→target and target→source).
+        Returns list of dicts with keys: neighbor_id, relation, weight.
+        """
+        placeholders = ','.join('?' * len(edge_types))
+        params = [node_id] + list(edge_types) + [node_id] + list(edge_types) + [limit]
+        rows = self.conn.execute(f"""
+            SELECT neighbor_id, relation, weight FROM (
+                SELECT target_id AS neighbor_id, relation, weight
+                FROM edges
+                WHERE source_id = ? AND relation IN ({placeholders})
+                UNION
+                SELECT source_id AS neighbor_id, relation, weight
+                FROM edges
+                WHERE target_id = ? AND relation IN ({placeholders})
+            )
+            ORDER BY weight DESC
+            LIMIT ?
+        """, params).fetchall()
+        return [
+            {'neighbor_id': r[0], 'relation': r[1], 'weight': r[2]}
+            for r in rows
+        ]
