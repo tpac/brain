@@ -153,7 +153,7 @@ def run_benchmark(category=None, verbose=False):
     # Aggregate results
     all_results = []
     by_category = {}
-    signal_confusion = {'positive': {}, 'negative': {}, 'neutral': {}, 'uncertain': {}}
+    signal_confusion = {'positive': {}, 'negative': {}, 'neutral': {}, 'uncertain': {}, 'ask_operator': {}}
 
     for convo in convos:
         cat = convo['category']
@@ -206,7 +206,7 @@ def run_benchmark(category=None, verbose=False):
         print(f"  {cat:15s}  signal={acc:3d}%  range={rng:3d}%  avg_precision={avg_p:.2f}  n={stats['total']}")
 
     print(f"\nConfusion Matrix (expected → actual):")
-    signals = ['positive', 'negative', 'neutral', 'uncertain']
+    signals = ['positive', 'negative', 'neutral', 'ask_operator', 'uncertain']
     header = f"  {'expected':12s} " + " ".join(f"{s:>10s}" for s in signals)
     print(header)
     for expected in signals:
@@ -256,7 +256,18 @@ def main():
     parser.add_argument('--verbose', '-v', action='store_true', help='Show per-turn details')
     args = parser.parse_args()
 
-    # Ensure BART is loaded for full evaluation
+    # Ensure embedder + BART are loaded for full evaluation
+    print("Loading embedder...")
+    from servers import embedder
+    if not embedder.is_ready():
+        # Use local model path (same as daemon), not Google Drive symlink
+        local_model = os.path.join(os.path.dirname(__file__), '..', 'model-package', 'brain_embedding', 'model')
+        if os.path.isdir(local_model):
+            embedder.load_model({"model_path": os.path.abspath(local_model)})
+        else:
+            embedder.load_model()
+    print(f"Embedder ready: {embedder.is_ready()}")
+
     print("Loading BART model...")
     load_bart()
     print(f"BART ready: {is_bart_ready()}")

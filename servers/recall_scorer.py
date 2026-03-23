@@ -371,10 +371,17 @@ def score_recall(
     else:
         unc.append((0.10, "L1b: BART uncertain (%+.2f)" % bd))
 
-    if bart_s.get("bart_agree", 0) > 0.7:
-        pos.append((0.15, "L1b: BART high agreement (%.0f%%)" % (bart_s["bart_agree"] * 100)))
-    if bart_s.get("bart_disagree", 0) > 0.7:
-        neg.append((0.15, "L1b: BART high disagreement (%.0f%%)" % (bart_s["bart_disagree"] * 100)))
+    # When BART sees both agreement AND disagreement strongly, the user is doing
+    # "yes-but" (partial agree + redirect). Don't let them cancel — flag as uncertain.
+    bart_both_high = bart_s.get("bart_agree", 0) > 0.7 and bart_s.get("bart_disagree", 0) > 0.7
+    if bart_both_high:
+        unc.append((0.20, "L1b: BART conflicted — ask operator (agree=%.0f%% disagree=%.0f%%)" % (
+            bart_s["bart_agree"] * 100, bart_s["bart_disagree"] * 100)))
+    else:
+        if bart_s.get("bart_agree", 0) > 0.7:
+            pos.append((0.15, "L1b: BART high agreement (%.0f%%)" % (bart_s["bart_agree"] * 100)))
+        if bart_s.get("bart_disagree", 0) > 0.7:
+            neg.append((0.15, "L1b: BART high disagreement (%.0f%%)" % (bart_s["bart_disagree"] * 100)))
 
     # ── LAYER 2: Cross-signal patterns ──
 
@@ -407,6 +414,18 @@ def score_recall(
     )
     if not has_any_pos and not has_any_neg:
         neg.append((0.08, "L2: no engagement signals"))
+
+    # Transition opener + no substantive engagement = neutral acknowledgment.
+    # "ok", "well", "hmm", "so" open transition, not agreement. When the user
+    # opens with a transition word and doesn't build, extend, or ask a question,
+    # dampen any positive signals from BART — it's acknowledgment, not agreement.
+    # Note: "Great!!!" IS positive because fup_opens_positive catches it.
+    # This only fires for transition openers like "ok", "well", "so".
+    if (regex["fup_opens_transition"] and
+            regex["affirm_building"] == 0 and regex["extension"] == 0 and
+            regex["affirm_strong"] == 0 and
+            not regex["fup_has_question"]):
+        unc.append((0.25, "L2: transition opener without engagement — neutral acknowledgment"))
 
     # ── Compute final ──
 
@@ -444,10 +463,15 @@ def evidence_to_precision(evidence: float, confidence: float) -> Optional[float]
 def classify_followup_signal(evidence: float, confidence: float) -> str:
     """Classify the followup into a signal category.
 
-    Returns one of: "positive", "negative", "neutral", "uncertain"
+    Returns one of: "positive", "negative", "neutral", "uncertain", "ask_operator"
+
+    "ask_operator" means the scorer genuinely can't tell — surface this to the
+    operator through the operator channel for explicit feedback. The operator's
+    answer becomes ground truth (confidence 1.0).
     """
     if confidence < 0.15:
-        return "uncertain"
+        # Genuinely uncertain — ask the operator instead of guessing
+        return "ask_operator"
     if evidence > 0.1:
         return "positive"
     if evidence < -0.1:
