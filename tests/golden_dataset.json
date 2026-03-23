@@ -1,5 +1,460 @@
 [
   {
+    "id": "sem_why_separate_api",
+    "query": "why did we separate the backend from the frontend",
+    "category": "semantic",
+    "expected_relevant": {
+      "dec_7zjb9wgv": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: 'separate API + Web architecture' should match 'backend from frontend'"
+  },
+  {
+    "id": "sem_error_handling",
+    "query": "what happens when we swallow errors silently",
+    "category": "semantic",
+    "expected_relevant": {
+      "4815ba61645f4db6b1e7700c4bd28178": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: 'silent failures are the most dangerous' should match 'swallow errors silently'"
+  },
+  {
+    "id": "sem_how_brain_remembers",
+    "query": "how does the brain store new information",
+    "category": "semantic",
+    "expected_relevant": {
+      "990c9002f39140008cbf301641113a70": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: brain_remember.py purpose node should match 'store new information'"
+  },
+  {
+    "id": "sem_pricing_model",
+    "query": "how much do we charge advertisers relative to publisher cost",
+    "category": "semantic",
+    "expected_relevant": {
+      "dec_c0h38kix": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: 'tier pricing 1.4x markup' should match pricing question"
+  },
+  {
+    "id": "sem_context_lost",
+    "query": "what happens when claude runs out of context window",
+    "category": "semantic",
+    "expected_relevant": {
+      "140e864594a34f52affe0b5992baa04a": 2,
+      "6c75f6edb7a94c01ab15d99915343511": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: compaction constraint + context continuation should match context window question"
+  },
+  {
+    "id": "sem_brain_split",
+    "query": "why was brain.py broken into multiple files",
+    "category": "semantic",
+    "expected_relevant": {
+      "f91454eb1d2b43f6ae45b67d582bb5bd": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: monolith split decision should match 'broken into multiple files'"
+  },
+  {
+    "id": "sem_who_is_tom",
+    "query": "who runs the company and what does he do",
+    "category": "semantic",
+    "expected_relevant": {
+      "per_o9s9fdzq": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: Tom person node should match 'who runs the company'"
+  },
+  {
+    "id": "sem_agreeability",
+    "query": "claude agrees too easily and makes up what the other person thinks",
+    "category": "semantic",
+    "expected_relevant": {
+      "dd641e7f6d4b41a89f5ba83b71b983a7": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: agreeability instinct hallucination correction should match"
+  },
+  {
+    "id": "corr_file_structure",
+    "query": "brain file structure and modules",
+    "category": "correction_chain",
+    "expected_relevant": {
+      "f91454eb1d2b43f6ae45b67d582bb5bd": 2,
+      "0c818d6a68f1493d9644602fa4adf7dd": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Correction chain: monolith split corrected old file structure — both should surface, newer ranked higher"
+  },
+  {
+    "id": "corr_embedding_floor",
+    "query": "what is the embedding similarity floor",
+    "category": "correction_chain",
+    "expected_relevant": {
+      "3bad7b02a5fe4d648f2c28037465f49a": 2,
+      "c21514ab37744c5ca90109afc1638d7b": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Correction chain: floor depends on content length corrected by specific floor range (0.58-0.63)"
+  },
+  {
+    "id": "corr_demanding_tone",
+    "query": "should the brain use demanding tone to motivate encoding",
+    "category": "correction_chain",
+    "expected_relevant": {
+      "76ab57c545554a879acae39ed9c57e77": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Correction: demanding tone was counterproductive — divergence node should surface"
+  },
+  {
+    "id": "graph_operator_to_additional",
+    "query": "operator channel architecture",
+    "category": "graph_neighbor",
+    "expected_relevant": {
+      "8bac897879ae4b73b61d3e800dacd936": 2,
+      "7d2869e81a444bb682318d5046c30872": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Graph: operator channel has foundation_for edge to additionalContext — both should surface"
+  },
+  {
+    "id": "graph_dal_to_refactor",
+    "query": "data access layer design",
+    "category": "graph_neighbor",
+    "expected_relevant": {
+      "d96ab256c9254a7d883d1ebcc508b73c": 2,
+      "7d14f588f95544388747e077c14011d1": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Graph: DAL refactor node implements DAL incremental adoption decision — both should surface"
+  },
+  {
+    "id": "graph_exco_enables_glo",
+    "query": "how does EX.CO relate to Glo",
+    "category": "graph_neighbor",
+    "expected_relevant": {
+      "pro_mb9mas11": 2,
+      "pro_i1pc8fs7": 1,
+      "dec_0a4u7zrv": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Graph: EX.CO enables Glo — both project nodes + 'closed-loop demand layer' decision"
+  },
+  {
+    "id": "graph_tmemory_decisions",
+    "query": "tmemory design decisions",
+    "category": "graph_neighbor",
+    "expected_relevant": {
+      "con_indnhlfx": 2,
+      "dec_10c3j7ft": 1,
+      "dec_546e3kou": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Graph: Tmemory concept has part_of edges to separation and self-improvement decisions"
+  },
+  {
+    "id": "graph_bug_chain",
+    "query": "brain not learning debugging layers",
+    "category": "graph_neighbor",
+    "expected_relevant": {
+      "4b158d2836294cb9ba414126e8da5267": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Graph: lesson about 3 independent failure layers has traced edges to specific bugs"
+  },
+  {
+    "id": "mech_recall_paths",
+    "query": "how does recall work what are the two paths",
+    "category": "mechanism",
+    "expected_relevant": {
+      "c37a06e2b13d442398bba780a8ef5548": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: recall pipeline two paths (embedding + keyword)"
+  },
+  {
+    "id": "mech_operator_rendering",
+    "query": "how does brain output reach the terminal",
+    "category": "mechanism",
+    "expected_relevant": {
+      "b363b27e7bf243ec8d9c77e7557e6ee2": 2,
+      "8bac897879ae4b73b61d3e800dacd936": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Mechanism: operator channel rendering pipeline + Claude relay architecture"
+  },
+  {
+    "id": "mech_mcp_server",
+    "query": "how does claude talk to the brain daemon",
+    "category": "mechanism",
+    "expected_relevant": {
+      "eba208bf0048480597c8379f5ce8a8ad": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: MCP server stdio proxy to daemon"
+  },
+  {
+    "id": "mech_hook_loop",
+    "query": "what hooks fire and in what order",
+    "category": "mechanism",
+    "expected_relevant": {
+      "73c0123bb33c4fe99f8e5241a095e3c2": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: 13 hooks form perception-action-reflection cycle"
+  },
+  {
+    "id": "mech_consciousness",
+    "query": "what are consciousness signals and how do they work",
+    "category": "mechanism",
+    "expected_relevant": {
+      "fbfe9694334942d98e29fad75f78ff6f": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: 12+ consciousness signal types"
+  },
+  {
+    "id": "lowconf_mark_recall_used",
+    "query": "how to determine which recalled nodes claude used",
+    "category": "low_confidence",
+    "expected_relevant": {
+      "8a8f9bbc533e4abf9a9d2b24eb79fc1a": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Low-confidence (0.3) uncertainty: mark_recall_used should still be findable"
+  },
+  {
+    "id": "lowconf_import_bug_pattern",
+    "query": "import bugs on fallback paths never exercised",
+    "category": "low_confidence",
+    "expected_relevant": {
+      "2d48bd5b93ca409ea991f02e06254fcb": 2
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Low-confidence (0.3) pattern: bugs on degradation paths — tests recoverability"
+  },
+  {
+    "id": "old_communication_style",
+    "query": "how to talk to tom communication preferences",
+    "category": "old_but_valid",
+    "expected_relevant": {
+      "rul_0ex588kq": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Old (Mar 15) but still valid: communication style rule"
+  },
+  {
+    "id": "old_react_hooks",
+    "query": "react hooks rules",
+    "category": "old_but_valid",
+    "expected_relevant": {
+      "rul_bdcn9o3m": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Old (Mar 15) but still valid: React hooks rule"
+  },
+  {
+    "id": "old_glo_architecture",
+    "query": "glo system architecture who owns what",
+    "category": "old_but_valid",
+    "expected_relevant": {
+      "dec_l3785iyj": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Old (Mar 15) locked decision: system architecture — Glo owns users/billing/creative"
+  },
+  {
+    "id": "old_magnite_research",
+    "query": "magnite adtech competitor research",
+    "category": "old_but_valid",
+    "expected_relevant": {
+      "pro_v93b9hus": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Old (Mar 15) project: Magnite research — should still be findable"
+  },
+  {
+    "id": "bug_zsh_glob",
+    "query": "zsh glob error killed boot script",
+    "category": "bug_lesson",
+    "expected_relevant": {
+      "8be8e1721484429b9abd078e1bf499c6": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Bug: zsh treats unmatched globs as errors"
+  },
+  {
+    "id": "bug_duplicate_json",
+    "query": "hooks json duplicate keys notification",
+    "category": "bug_lesson",
+    "expected_relevant": {
+      "15ef04e6ee314a418eef9edf2f778ffe": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Bug: duplicate JSON keys in hooks.json silently overwrite"
+  },
+  {
+    "id": "bug_daemon_race",
+    "query": "daemon race condition pid before socket",
+    "category": "bug_lesson",
+    "expected_relevant": {
+      "4f7f879736f749dfba4197e676d1636d": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Bug: daemon PID written before socket bound — race condition"
+  },
+  {
+    "id": "bug_confidence_column",
+    "query": "remember insert missing column",
+    "category": "bug_lesson",
+    "expected_relevant": {
+      "50cbf6f85ce642f195fe7ee9e02ecc71": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Bug: remember() INSERT was missing confidence column"
+  },
+  {
+    "id": "bug_edge_columns",
+    "query": "edges table relation vs edge_type both columns",
+    "category": "bug_lesson",
+    "expected_relevant": {
+      "ef2a3a46c4c04b11b3d9d9be23e370be": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Bug: edges table has both relation and edge_type columns"
+  },
+  {
+    "id": "const_mixin_no_init",
+    "query": "can mixins define __init__",
+    "category": "constraint",
+    "expected_relevant": {
+      "1807f5e44f2344e5a86490ffd93fcd52": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Constraint: only brain.py may define __init__"
+  },
+  {
+    "id": "const_mixin_no_import",
+    "query": "can mixin import from brain.py",
+    "category": "constraint",
+    "expected_relevant": {
+      "9acfd0aca6b3461f8e50c157b32e4512": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Constraint: mixins must not import from brain.py"
+  },
+  {
+    "id": "const_temporal_awareness",
+    "query": "must information show how old it is",
+    "category": "constraint",
+    "expected_relevant": {
+      "0f4149e14be5464d87782fc572fe101a": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Constraint: all surfaced info must carry age context"
+  },
+  {
+    "id": "const_observe_operator",
+    "query": "should claude proactively notice operator patterns",
+    "category": "constraint",
+    "expected_relevant": {
+      "7a86ae3c224a474ea6d8cde03b2b172c": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Constraint: Claude must proactively observe operator patterns"
+  },
+  {
+    "id": "div_hook_decision_maker",
+    "query": "who is the decision maker the hook or the brain",
+    "category": "divergence",
+    "expected_relevant": {
+      "ca120c1974944c0e8aaaa7c7d290a26f": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Divergence: hook was not the decision-maker, brain was"
+  },
+  {
+    "id": "div_encoding_bias",
+    "query": "encoding only technical topics missing relational",
+    "category": "divergence",
+    "expected_relevant": {
+      "facb97eacfb44083aca0365bb652550b": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Divergence: encoding bias toward technical, missing relational/reasoning"
+  },
+  {
+    "id": "div_self_preservation",
+    "query": "self preservation framing technique",
+    "category": "divergence",
+    "expected_relevant": {
+      "42023e1478a14174aa73807863a6b552": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Divergence: self-preservation framing is not a technique"
+  },
+  {
+    "id": "natq_whats_glo",
+    "query": "what is glo",
+    "category": "natural_question",
+    "expected_relevant": {
+      "pro_i1pc8fs7": 2,
+      "pro_0gaibwq7": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Natural question: 'what is glo' — should surface project nodes"
+  },
+  {
+    "id": "natq_how_brain_works",
+    "query": "how does the brain work",
+    "category": "natural_question",
+    "expected_relevant": {
+      "eba208bf0048480597c8379f5ce8a8ad": 1,
+      "fbfe9694334942d98e29fad75f78ff6f": 1,
+      "c37a06e2b13d442398bba780a8ef5548": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Natural question: vague 'how does brain work' — should return MCP, consciousness, recall mechanisms"
+  },
+  {
+    "id": "natq_what_went_wrong",
+    "query": "what bugs have we hit recently",
+    "category": "natural_question",
+    "expected_relevant": {
+      "4f7f879736f749dfba4197e676d1636d": 1,
+      "3d688d9f8d3346c8809ff1e7dc79afdc": 1,
+      "50cbf6f85ce642f195fe7ee9e02ecc71": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Natural question: 'what bugs' — should return bug_lesson and bug nodes"
+  },
+  {
+    "id": "natq_what_changed_recently",
+    "query": "what did we build in the last session",
+    "category": "natural_question",
+    "expected_relevant": {
+      "d65e88ba201649d1a00960fb642ffcd7": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Natural question: session 9 accomplishments should surface for 'last session'"
+  },
+  {
+    "id": "natq_supply_adapter",
+    "query": "how do we connect to ad exchanges",
+    "category": "natural_question",
+    "expected_relevant": {
+      "dec_dp93qu36": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Natural question: Supply Adapter pattern should match 'connect to ad exchanges'"
+  },
+  {
     "id": "kw_dec_rqjn",
     "query": "budget screen layout regressed",
     "category": "keyword",
@@ -8,41 +463,17 @@
       "rul_9oosw82x": 1
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [decision]: Correction: Budget screen layout regressed \u2014 tiers went vert"
-  },
-  {
-    "id": "kw_rul_8xgc",
-    "query": "budget_order",
-    "category": "keyword",
-    "expected_relevant": {
-      "dec_rqjns07z": 1,
-      "pro_i1pc8fs7": 1,
-      "rul_17qtllqm": 1,
-      "rul_57bp94y5": 1
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [rule]: [o_glo] Rule: budget_order"
+    "description": "Keyword: budget screen layout regression"
   },
   {
     "id": "kw_rul_9oos",
     "query": "every screen component must have a ui contract comment at top",
     "category": "keyword",
     "expected_relevant": {
-      "rul_9oosw82x": 2,
-      "dec_rqjns07z": 1
+      "rul_9oosw82x": 2
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [rule]: Rule: every screen component must have a UI CONTRACT comment"
-  },
-  {
-    "id": "kw_dec_u129",
-    "query": "tmemory v7: automatic hooks",
-    "category": "keyword",
-    "expected_relevant": {
-      "dec_u1291joh": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [decision]: tmemory v7: automatic hooks \u2014 PreToolUse, PreCompact, improv"
+    "description": "Keyword: UI CONTRACT comment rule"
   },
   {
     "id": "kw_dec_sn3n",
@@ -52,17 +483,7 @@
       "dec_sn3nayjg": 2
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [decision]: Glo component map: 13 components defined with boundaries and"
-  },
-  {
-    "id": "kw_rul_ovwv",
-    "query": "never manipulate data to pass your own tests",
-    "category": "keyword",
-    "expected_relevant": {
-      "rul_ovwvt4ch": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [rule]: Rule: never manipulate data to pass your own tests"
+    "description": "Keyword: Glo component map"
   },
   {
     "id": "kw_rul_17qt",
@@ -73,28 +494,17 @@
       "rul_jd8ib8c2": 1
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [rule]: Rule: media mockup must show creative ON publisher media wit"
+    "description": "Keyword: media mockup rule"
   },
   {
     "id": "kw_rul_jd8i",
-    "query": "glo disruptive concept",
+    "query": "glo disruptive concept anyone can upload",
     "category": "keyword",
     "expected_relevant": {
-      "rul_jd8ib8c2": 2,
-      "rul_17qtllqm": 1
+      "rul_jd8ib8c2": 2
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [rule]: Rule: Glo disruptive concept \u2014 anyone can upload to any medi"
-  },
-  {
-    "id": "kw_dec_ske5",
-    "query": "glo lifecycle: draft\u2192pending review\u2192active\u2192completed",
-    "category": "keyword",
-    "expected_relevant": {
-      "pro_i1pc8fs7": 1
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [decision]: Glo lifecycle: Draft\u2192Pending Review\u2192Active\u2192Completed. Reject"
+    "description": "Keyword: Glo disruptive concept rule"
   },
   {
     "id": "kw_rul_uz02",
@@ -104,112 +514,18 @@
       "rul_uz02526a": 2
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [rule]: Screen-scoped edits"
-  },
-  {
-    "id": "kw_rul_9bsa",
-    "query": "tmemory design principle: brain is a cue system, not a search engine",
-    "category": "keyword",
-    "expected_relevant": {
-      "rul_9bsawi7g": 2,
-      "con_indnhlfx": 1
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [rule]: tmemory design principle: brain is a cue system, not a searc"
-  },
-  {
-    "id": "kw_dec_qz2r",
-    "query": "payment: glo credits 1:1 usd, stripe customer balance",
-    "category": "keyword",
-    "expected_relevant": {
-      "pro_i1pc8fs7": 1
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [decision]: Payment: Glo Credits 1:1 USD, Stripe customer balance. SSO\u2192p"
-  },
-  {
-    "id": "kw_dec_10c3",
-    "query": "tmemory: separate user brain from plugin (fresh vs personal)",
-    "category": "keyword",
-    "expected_relevant": {
-      "dec_10c3j7ft": 2,
-      "con_indnhlfx": 1
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [decision]: tmemory: separate user brain from plugin (fresh vs personal)"
-  },
-  {
-    "id": "kw_fil_zdnf",
-    "query": "test crud file",
-    "category": "keyword",
-    "expected_relevant": {
-      "fil_zdnfovz2": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [file]: [ctx:test-crud-file] Test CRUD File"
-  },
-  {
-    "id": "kw_dec_zn7c",
-    "query": "full refund + duplicate option to start new glo from same creative",
-    "category": "keyword",
-    "expected_relevant": {
-      "pro_i1pc8fs7": 1
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [decision]: Rejected: full refund + duplicate option to start new Glo fr"
-  },
-  {
-    "id": "kw_dec_cww0",
-    "query": "ai video gen is not the moat",
-    "category": "keyword",
-    "expected_relevant": {
-      "con_qapunc9e": 1,
-      "pro_i1pc8fs7": 1
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [decision]: AI video gen is NOT the moat. Buy/integrate: Creatify MVP $9"
-  },
-  {
-    "id": "kw_dec_y78l",
-    "query": "creative strategy: ai video gen is not the moat",
-    "category": "keyword",
-    "expected_relevant": {
-      "con_qapunc9e": 1,
-      "pro_i1pc8fs7": 1
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [decision]: Creative strategy: AI video gen is NOT the moat. Buy/integra"
-  },
-  {
-    "id": "kw_fil_e2wc",
-    "query": "tmemory",
-    "category": "keyword",
-    "expected_relevant": {
-      "fil_e2wcepf4": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [file]: [ctx:tmemory-architecture] tmemory \u2014 Brain Plugin Architectu"
+    "description": "Keyword: screen-scoped edits rule"
   },
   {
     "id": "kw_dec_c0h3",
-    "query": "tier pricing: 1",
+    "query": "tier pricing 1.4x markup multiplier",
     "category": "keyword",
     "expected_relevant": {
       "dec_c0h38kix": 2,
       "pro_0gaibwq7": 1
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [decision]: Tier pricing: 1.4x markup multiplier on publisher CPM"
-  },
-  {
-    "id": "kw_dec_j3vp",
-    "query": "payment: glo credits 1:1 usd",
-    "category": "keyword",
-    "expected_relevant": {
-      "pro_i1pc8fs7": 1
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [decision]: Payment: Glo Credits 1:1 USD. Wallet via Stripe customer bal"
+    "description": "Keyword: tier pricing"
   },
   {
     "id": "kw_fil_ap5c",
@@ -219,313 +535,58 @@
       "fil_ap5c1iju": 2
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [file]: [ctx:big-test-file] Large Content Test"
+    "description": "Keyword: large content test file"
   },
   {
-    "id": "kw_rul_eo65",
-    "query": "goal_placement",
-    "category": "keyword",
+    "id": "vocab_operator_channel",
+    "query": "operator channel",
+    "category": "vocabulary",
     "expected_relevant": {
-      "pro_i1pc8fs7": 1
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword recall for [rule]: [o_glo] Rule: goal_placement"
-  },
-  {
-    "id": "intent_dec_dec_rqjn",
-    "query": "what did we decide about budget screen layout regressed",
-    "category": "intent_decision",
-    "expected_relevant": {
-      "dec_rqjns07z": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Decision lookup intent: Correction: Budget screen layout regressed \u2014 tiers went vert"
-  },
-  {
-    "id": "intent_dec_dec_u129",
-    "query": "what did we decide about tmemory v7",
-    "category": "intent_decision",
-    "expected_relevant": {
-      "dec_u1291joh": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Decision lookup intent: tmemory v7: automatic hooks \u2014 PreToolUse, PreCompact, improv"
-  },
-  {
-    "id": "intent_dec_dec_sn3n",
-    "query": "what did we decide about glo component map",
-    "category": "intent_decision",
-    "expected_relevant": {
-      "dec_sn3nayjg": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Decision lookup intent: Glo component map: 13 components defined with boundaries and"
-  },
-  {
-    "id": "intent_howto_rul_9oos",
-    "query": "how should we handle every screen component must have a",
-    "category": "intent_howto",
-    "expected_relevant": {
-      "rul_9oosw82x": 2
-    },
-    "min_hit_rate_at_10": 0.8,
-    "description": "How-to intent for rule: Rule: every screen component must have a UI CONTRACT comment"
-  },
-  {
-    "id": "intent_howto_rul_ovwv",
-    "query": "how should we handle never manipulate data to pass your own tests",
-    "category": "intent_howto",
-    "expected_relevant": {
-      "rul_ovwvt4ch": 2
-    },
-    "min_hit_rate_at_10": 0.8,
-    "description": "How-to intent for rule: Rule: never manipulate data to pass your own tests"
-  },
-  {
-    "id": "intent_howto_rul_17qt",
-    "query": "how should we handle media mockup must show creative on",
-    "category": "intent_howto",
-    "expected_relevant": {
-      "rul_17qtllqm": 2
-    },
-    "min_hit_rate_at_10": 0.8,
-    "description": "How-to intent for rule: Rule: media mockup must show creative ON publisher media wit"
-  },
-  {
-    "id": "intent_howto_rul_jd8i",
-    "query": "how should we handle glo disruptive concept",
-    "category": "intent_howto",
-    "expected_relevant": {
-      "rul_jd8ib8c2": 2
-    },
-    "min_hit_rate_at_10": 0.8,
-    "description": "How-to intent for rule: Rule: Glo disruptive concept \u2014 anyone can upload to any medi"
-  },
-  {
-    "id": "type_rule",
-    "query": "budget_order",
-    "category": "type_filter",
-    "type_filter": [
-      "rule"
-    ],
-    "expected_relevant": {
-      "rul_9oosw82x": 2,
-      "rul_ovwvt4ch": 2
+      "8bac897879ae4b73b61d3e800dacd936": 2,
+      "df21084c89244814bfc1db14258e1f57": 1
     },
     "min_hit_rate_at_10": 0.5,
-    "description": "Type-filtered recall for rule nodes"
+    "description": "Vocabulary: 'operator channel' is a vocab term → should expand to BRAIN-To-Tom, additionalContext"
   },
   {
-    "id": "type_decision",
-    "query": "budget screen layout regressed",
-    "category": "type_filter",
-    "type_filter": [
-      "decision"
-    ],
+    "id": "vocab_sacred_system",
+    "query": "sacred system rules",
+    "category": "vocabulary",
     "expected_relevant": {
-      "dec_rqjns07z": 2,
-      "dec_u1291joh": 2,
-      "dec_sn3nayjg": 2
+      "2cd35a6420ae435e944ccc319a36713a": 1,
+      "695c59de5e3b421686321300949d0415": 1
     },
     "min_hit_rate_at_10": 0.5,
-    "description": "Type-filtered recall for decision nodes"
+    "description": "Vocabulary: 'sacred system' is a vocab term → should find benchmark-first practice"
   },
   {
-    "id": "type_procedure",
-    "query": "budget screen pre-edit audit",
-    "category": "type_filter",
-    "type_filter": [
-      "procedure"
-    ],
+    "id": "intent_what_decided_pricing",
+    "query": "what did we decide about pricing",
+    "category": "intent_decision",
     "expected_relevant": {
-      "pro_rg69dev3": 2,
-      "pro_p2k92uai": 2
-    },
-    "min_hit_rate_at_10": 0.5,
-    "description": "Type-filtered recall for procedure nodes"
-  },
-  {
-    "id": "hub_pro_i1pc",
-    "query": "glo",
-    "category": "hub",
-    "expected_relevant": {
-      "pro_i1pc8fs7": 2
+      "dec_c0h38kix": 2
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Hub recall: [project] Glo.io \u2014 Self-serve ad platform on EX.CO ad server. Anyone b (326 edges)"
+    "description": "Intent: 'what did we decide about pricing' → tier pricing decision"
   },
   {
-    "id": "hub_pro_mb9m",
-    "query": "ex",
-    "category": "hub",
+    "id": "intent_how_add_method",
+    "query": "where should I put a new brain method",
+    "category": "intent_howto",
     "expected_relevant": {
-      "pro_mb9mas11": 2,
-      "con_5ej15u5g": 1,
-      "con_9wgrg928": 1
+      "4ad55ad84986478087195e390aee468b": 2
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Hub recall: [project] EX.CO \u2014 End-to-end video platform for publishers: CMS, ad se (64 edges)"
+    "description": "Intent: 'where to put new method' → constraint about right mixin"
   },
   {
-    "id": "hub_pro_0gai",
-    "query": "glo",
-    "category": "hub",
+    "id": "intent_how_handle_hook_fail",
+    "query": "what should I do when a hook fails",
+    "category": "intent_howto",
     "expected_relevant": {
-      "pro_0gaibwq7": 2,
-      "con_aofbtzix": 1,
-      "con_l4vb6dd0": 1,
-      "dec_7zjb9wgv": 1
+      "89129afebc484a578f251f39a291e959": 1
     },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Hub recall: [project] Glo.io \u2014 Self-serve advertising platform (26 edges)"
-  },
-  {
-    "id": "hub_dec_y78l",
-    "query": "creative strategy",
-    "category": "hub",
-    "expected_relevant": {
-      "con_qapunc9e": 1
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Hub recall: [decision] Creative strategy: AI video gen is NOT the moat. Buy/integra (18 edges)"
-  },
-  {
-    "id": "hub_per_nzqi",
-    "query": "tom",
-    "category": "hub",
-    "expected_relevant": {
-      "per_nzqi8kyf": 2,
-      "con_q6pydb49": 1,
-      "pro_mb9mas11": 1,
-      "rul_1dp9w358": 1,
-      "rul_5ixyibjl": 1
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Hub recall: [person] Tom \u2014 CEO of EX.CO (18 edges)"
-  },
-  {
-    "id": "project_pro_0gai",
-    "query": "everything about glo",
-    "category": "cross_domain",
-    "expected_relevant": {
-      "pro_0gaibwq7": 2,
-      "dec_dp93qu36": 1,
-      "dec_7zjb9wgv": 1,
-      "con_l4vb6dd0": 1,
-      "dec_c0h38kix": 1
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Cross-domain project recall: Glo.io \u2014 Self-serve advertising platform"
-  },
-  {
-    "id": "project_pro_mb9m",
-    "query": "everything about ex",
-    "category": "cross_domain",
-    "expected_relevant": {
-      "pro_mb9mas11": 2,
-      "dec_0a4u7zrv": 1
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Cross-domain project recall: EX.CO \u2014 End-to-end video platform for publishers: CMS, ad se"
-  },
-  {
-    "id": "project_pro_i1pc",
-    "query": "everything about glo",
-    "category": "cross_domain",
-    "expected_relevant": {
-      "pro_i1pc8fs7": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Cross-domain project recall: Glo.io \u2014 Self-serve ad platform on EX.CO ad server. Anyone b"
-  },
-  {
-    "id": "brain_operator_channel",
-    "query": "how does brain talk to the operator",
-    "category": "brain_architecture",
-    "expected_relevant": {
-      "8bac897879ae4b73b61d3e800dacd936": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Brain architecture: operator channel via Claude relay"
-  },
-  {
-    "id": "brain_precision_lifecycle",
-    "query": "precision recall evaluation lifecycle",
-    "category": "brain_architecture",
-    "expected_relevant": {
-      "d2ef1bfa697b42afa23d227a4c11813c": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Precision pipeline: table-driven lifecycle"
-  },
-  {
-    "id": "brain_systemmessage_dead",
-    "query": "systemMessage hook output operator",
-    "category": "brain_architecture",
-    "expected_relevant": {
-      "7e19064c2b164b34b76d2e51a228b543": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Constraint: systemMessage is dead channel"
-  },
-  {
-    "id": "brain_additional_context",
-    "query": "additionalContext hook channel",
-    "category": "brain_architecture",
-    "expected_relevant": {
-      "7d2869e81a444bb682318d5046c30872": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Mechanism: additionalContext is the only working hook channel"
-  },
-  {
-    "id": "brain_meta_lesson_encoding",
-    "query": "how to encode lessons practices",
-    "category": "brain_practices",
-    "expected_relevant": {
-      "de604090da284de9b4d004feb330209a": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Meta-lesson: encode practices not incidents"
-  },
-  {
-    "id": "brain_testing_first",
-    "query": "benchmark testing sacred system",
-    "category": "brain_practices",
-    "expected_relevant": {
-      "695c59de5e3b421686321300949d0415": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Practice: testing-first with real-world cases"
-  },
-  {
-    "id": "brain_recall_pipeline",
-    "query": "recall embedding keyword graph traversal",
-    "category": "brain_architecture",
-    "expected_relevant": {
-      "c37a06e2b13d442398bba780a8ef5548": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Mechanism: recall pipeline has two paths"
-  },
-  {
-    "id": "brain_test_integrity_hook",
-    "query": "test integrity violation pre-edit hook",
-    "category": "brain_practices",
-    "expected_relevant": {
-      "07187eb2a78b4450b49d838597fe534a": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Mechanism: pre-edit hook blocks test weakening"
-  },
-  {
-    "id": "brain_session_9",
-    "query": "operator channel precision loop session",
-    "category": "brain_history",
-    "expected_relevant": {
-      "d65e88ba201649d1a00960fb642ffcd7": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Session #9: operator channel + Phase A"
+    "min_hit_rate_at_10": 0.8,
+    "description": "Intent: 'hook fails' → failed hook experiments lesson"
   }
 ]
