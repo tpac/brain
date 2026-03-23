@@ -412,6 +412,13 @@ class RecallPrecision:
                 (signal, method, precision, json.dumps(existing_meta), now, recall_log_id))
             self.logs_conn.commit()
 
+        # Close the loop: precision → node confidence
+        if precision is not None:
+            try:
+                self.update_node_confidence(recall_log_id, precision)
+            except Exception:
+                pass
+
         return {
             "recall_log_id": recall_log_id,
             "status": "stored",
@@ -464,6 +471,12 @@ class RecallPrecision:
                    WHERE id = ?""",
                 (feedback_json, score, now, recall_log_id))
             self.logs_conn.commit()
+
+        # Close the loop: explicit feedback → node confidence (strongest signal)
+        try:
+            self.update_node_confidence(recall_log_id, score)
+        except Exception:
+            pass
 
     # ── Feedback Request ──
 
@@ -546,6 +559,74 @@ class RecallPrecision:
             f"(Reply: useful / not_useful / partially_useful — or ignore to skip)\n"
             f"[/BRAIN]"
         )
+
+    # ── Confidence Feedback Loop ──
+
+    # Learning rate for precision → confidence updates.
+    # Small = gradual learning. One bad recall doesn't tank a good node.
+    # Over many recalls, consistently unhelpful nodes drift down.
+    _CONFIDENCE_LEARNING_RATE = 0.05
+    _CONFIDENCE_MIN = 0.1
+    _CONFIDENCE_MAX = 1.0
+
+    def update_node_confidence(self, recall_log_id: int, precision_score: float) -> int:
+        """Nudge confidence of recalled nodes toward observed precision.
+
+        Called after evaluate_followup() or receive_feedback() when a
+        precision_score is available. Each recalled node gets a small
+        nudge toward the observed score.
+
+        Why small learning rate: A single recall might be bad because the
+        QUERY was bad, not the NODE. Over many recalls, the signal emerges
+        from volume — consistently unhelpful nodes drift down.
+
+        Returns number of nodes updated.
+        """
+        if not self.brain_conn or precision_score is None:
+            return 0
+
+        # Get returned node IDs from the recall log
+        if self._dal:
+            row = self._dal.get_recall_row(recall_log_id)
+            ids_json = row.get('returned_ids', '[]') if row else '[]'
+        else:
+            r = self.logs_conn.execute(
+                "SELECT returned_ids FROM recall_log WHERE id = ?",
+                (recall_log_id,)).fetchone()
+            ids_json = r[0] if r else '[]'
+
+        try:
+            node_ids = json.loads(ids_json)
+        except (json.JSONDecodeError, TypeError):
+            return 0
+
+        if not node_ids:
+            return 0
+
+        updated = 0
+        lr = self._CONFIDENCE_LEARNING_RATE
+        for node_id in node_ids:
+            try:
+                row = self.brain_conn.execute(
+                    "SELECT confidence FROM nodes WHERE id = ? AND archived = 0",
+                    (node_id,)).fetchone()
+                if not row:
+                    continue
+                current = row[0] or 0.5
+                # Nudge toward observed precision
+                delta = (precision_score - current) * lr
+                new_conf = max(self._CONFIDENCE_MIN, min(self._CONFIDENCE_MAX, current + delta))
+                if abs(new_conf - current) > 0.001:
+                    self.brain_conn.execute(
+                        "UPDATE nodes SET confidence = ? WHERE id = ?",
+                        (round(new_conf, 4), node_id))
+                    updated += 1
+            except Exception:
+                continue
+
+        if updated:
+            self.brain_conn.commit()
+        return updated
 
     # ── Query Methods ──
 
