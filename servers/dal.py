@@ -380,16 +380,21 @@ class LogsDAL:
         return row[0] if row else None
 
     def get_pending_followups(self, session_id: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """Find recalls awaiting followup evaluation (Stage 2 → 3).
+        """Find recalls awaiting followup evaluation (any stage before EVALUATED).
 
-        Returns list of {id, created_at} for recalls that have a response
-        stored but no followup signal and no explicit feedback yet.
+        Returns recalls that have no followup signal and no explicit feedback,
+        regardless of whether a response was stored. This catches:
+        - Stage 2 rows (response stored, awaiting followup) — normal flow
+        - Stage 1 rows (no response — hook timeout or short response) — recovery
+
+        The followup evaluation can run without the response — it just won't
+        have embedding signals from evaluate_response. Better to evaluate with
+        partial data than not evaluate at all.
         """
         rows = self.conn.execute(
             """SELECT id, created_at FROM recall_log
-               WHERE session_id = ? AND assistant_response_snippet IS NOT NULL
-                 AND followup_signal IS NULL AND explicit_feedback IS NULL
-                 AND returned_count > 0
+               WHERE session_id = ? AND followup_signal IS NULL
+                 AND explicit_feedback IS NULL AND returned_count > 0
                ORDER BY created_at DESC LIMIT ?""",
             (session_id, limit)).fetchall()
         return [{'id': r[0], 'created_at': r[1]} for r in rows]
