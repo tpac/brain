@@ -384,36 +384,31 @@ def print_stats(stats: Dict[str, Any], label: str = ""):
 # ═══════════════════════════════════════════════════════════════
 
 def run_benchmark(db_path: str) -> Dict[str, Any]:
-    """Run golden dataset benchmark against the given DB."""
-    from tests.brain_test_base import copy_brain_for_testing
-    from servers.brain import Brain
-    from tests.eval_runner import GoldenEvaluator, print_golden_report
+    """Run golden dataset benchmark against the given DB via subprocess.
 
-    # Copy to temp for benchmark (eval_runner modifies access_count etc.)
-    tmp_dir, tmp_db = copy_brain_for_testing(db_path)
+    Uses subprocess to avoid FastEmbed model registration conflicts
+    between the standalone Embedder and the Brain's embedder module.
+    """
+    result = subprocess.run(
+        [sys.executable, '-u', 'tests/eval_runner.py', db_path],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        cwd=os.path.join(os.path.dirname(__file__), '..'),
+    )
+    print(result.stdout)
+    if result.stderr:
+        # Filter out just the important lines from stderr
+        for line in result.stderr.split('\n'):
+            if line.strip() and not line.startswith('/Users') and 'NotOpenSSLWarning' not in line:
+                print(line, file=sys.stderr)
 
-    # But we need the enrichments! Copy them over
-    src_conn = sqlite3.connect(db_path)
-    dst_conn = sqlite3.connect(tmp_db)
-    enrichments = src_conn.execute(
-        'SELECT id, node_id, vector_type, text, embedding, model, created_at FROM node_enrichments'
-    ).fetchall()
-    if enrichments:
-        dst_conn.executemany(
-            'INSERT OR REPLACE INTO node_enrichments (id, node_id, vector_type, text, embedding, model, created_at) VALUES (?,?,?,?,?,?,?)',
-            enrichments
-        )
-        dst_conn.commit()
-    src_conn.close()
-    dst_conn.close()
-
-    brain = Brain(tmp_db)
-    evaluator = GoldenEvaluator(brain)
-    result = evaluator.run(verbose=False)
-    print_golden_report(result)
-    brain.close()
-    shutil.rmtree(tmp_dir, ignore_errors=True)
-    return result
+    # Parse results from the JSON report
+    json_path = os.path.join(os.path.dirname(__file__), '..', 'tests', 'results', 'golden_eval.json')
+    if os.path.exists(json_path):
+        with open(json_path) as f:
+            return json.load(f)
+    return {'summary': {'passed': 0, 'total': 0}, 'aggregate': {}}
 
 
 # ═══════════════════════════════════════════════════════════════

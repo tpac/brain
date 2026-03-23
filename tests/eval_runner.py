@@ -140,11 +140,14 @@ class GoldenEvaluator:
         t0 = time.time()
 
         try:
-            # Run recall
+            # Run recall — use recall_with_embeddings (production pathway via daemon)
+            # which includes enrichment vectors, falling back to keyword-only if
+            # embedder isn't loaded.
+            recall_fn = getattr(self.brain, 'recall_with_embeddings', self.brain.recall)
             if type_filter:
-                result = self.brain.recall(query, types=type_filter, limit=20)
+                result = recall_fn(query, types=type_filter, limit=20)
             else:
-                result = self.brain.recall(query, limit=20)
+                result = recall_fn(query, limit=20)
 
             elapsed_ms = (time.time() - t0) * 1000
             retrieved_ids = [r['id'] for r in result.get('results', [])]
