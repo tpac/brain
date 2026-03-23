@@ -448,6 +448,45 @@ Surface top/bottom performing nodes through operator channel so Tom sees which k
 
 ---
 
+## Post-Phase-B: Telemetry Layer (Brain Proprioception)
+
+**TODO — do after Phase B is complete. Reminder set for 7 days.**
+
+The brain needs to feel itself. Every component we've built needs telemetry so failures are visible, successes are measurable, and brain+Claude have clear system visibility without reading code.
+
+### What needs telemetry
+
+| Component | What to measure | Where to surface |
+|---|---|---|
+| **Operator channel** | Did [BRAIN-To-*] appear in output? Was it truncated? Did Tom respond? | Boot stats + consciousness |
+| **Precision scoring** | Evaluation rate, avg precision, confidence drift over time | Boot stats (already partial) |
+| **Confidence loop** | How many nodes nudged per session, avg delta, drift direction | New consciousness signal |
+| **Explicit feedback** | How often Tom responds, useful vs not_useful ratio | Precision summary |
+| **Vocabulary encoding** | Auto-encoded count, quality score, duplicates detected | Boot stats |
+| **Graph-augmented recall** | Did 1-hop neighbors surface? Were they useful (precision)? | Precision breakdown |
+| **Hook latency** | Every hook timed and logged (already partial via debug_log) | Boot stats (exists) |
+| **Thin node enrichment** | How many surfaced, how many enriched by Tom | Consciousness signal |
+| **Errors** | Catch all, log all, surface through consciousness | Silent errors signal (exists) |
+| **ask_operator requests** | How many surfaced, response rate, answer distribution | Precision summary |
+
+### Architecture
+
+All telemetry writes to `brain_logs.db` via `LogsDAL`. Consciousness reads it and surfaces anomalies. Operator channel shows Tom the highlights. This is NOT just logging — it's the brain's proprioception.
+
+### render_operator_prompt() — what it currently surfaces (2026-03-22)
+
+| Signal | Priority | Source |
+|---|---|---|
+| Due reminders | high | `get_due_reminders()` |
+| Urgent signals (health alerts) | high | `get_urgent_signals()` |
+| Active tensions | medium | `select_prompt_signals()['tensions']` |
+| Hypothesis to validate | medium | `select_prompt_signals()['hypothesis']` |
+| Precision feedback request | low | `ask_operator` signal from recall_log |
+| Dreams | low | `get_consciousness_signals()['dreams']` |
+| Thin locked nodes needing enrichment | low | Random node with <100 chars content |
+
+---
+
 ## Phase C: Entity Graph
 
 **Depends on:** Phase A (measurement), Phase B (graph-augmented recall working)

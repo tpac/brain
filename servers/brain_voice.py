@@ -360,6 +360,18 @@ class BrainVoice:
         except Exception:
             pass
 
+        # LOW — Thin locked nodes needing enrichment (brain cleanup)
+        try:
+            thin = brain.conn.execute(
+                """SELECT title, LENGTH(content) FROM nodes
+                   WHERE locked=1 AND archived=0 AND LENGTH(content) < 100
+                   ORDER BY RANDOM() LIMIT 1""").fetchone()
+            if thin:
+                sections.append((5, "@priority: low\n@present: aside\n📝 Old node needs enrichment: \"%s\" (%d chars, no WHY). Can you help me remember it better?" % (
+                    self.trunc(thin[0], 50), thin[1])))
+        except Exception:
+            pass
+
         if not sections:
             return None
 
