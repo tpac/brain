@@ -369,13 +369,22 @@ Stage 3 (EVALUATED) or Stage 4 (FEEDBACK_RECEIVED):
 
 ---
 
-## Phase B: Smarter Decode ← NEXT
+## Phase B: Smarter Decode ← NEXT (target: 24 hours)
 
 **Depends on:** Phase A ✅ (precision data now flowing, confidence loop closed)
 
 **Goal:** Recall returns better nodes by using graph structure, confidence, and vocabulary. Validate every change against precision benchmarks.
 
+**Timeline:** Ship all of Phase B within 24 hours (2026-03-23). Multiple sessions. Brain cleanup runs in parallel via operator channel (Tom enriches thin nodes as they surface).
+
 **Approach:** Testing-first. Build benchmark corpus for each sub-phase. Measure golden dataset NDCG before and after. Sacred system rules apply — embed, encode, recall are sacred.
+
+**Order (revised from original plan):**
+1. B.vocab — quick win, unblocks B.3
+2. B.2 — graph-augmented recall (uses existing 2,270 typed edges)
+3. B.1 — confidence-weighted recall (loop is running, even fresh data helps)
+4. B.3 — vocabulary-augmented query expansion (uses B.vocab nodes)
+5. B.4 — precision stats to operator
 
 ### B.vocab: Wire vocabulary encoding (do first — quick win)
 
