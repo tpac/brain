@@ -471,7 +471,7 @@ The brain needs to feel itself. Every component we've built needs telemetry so f
 | **Precision scoring** | Evaluation rate, avg precision, confidence drift over time | Boot stats (already partial) |
 | **Confidence loop** | How many nodes nudged per session, avg delta, drift direction | New consciousness signal |
 | **Explicit feedback** | How often Tom responds, useful vs not_useful ratio | Precision summary |
-| **Vocabulary encoding** | Auto-encoded count, quality score, duplicates detected | Boot stats |
+| **Vocabulary encoding** | Auto-encoded count, quality score, duplicates detected, learn_vocabulary() call rate, gap-to-node conversion rate | Boot stats |
 | **Graph-augmented recall** | Did 1-hop neighbors surface? Were they useful (precision)? | Precision breakdown |
 | **Hook latency** | Every hook timed and logged (already partial via debug_log) | Boot stats (exists) |
 | **Thin node enrichment** | How many surfaced, how many enriched by Tom | Consciousness signal |
