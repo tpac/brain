@@ -142,8 +142,9 @@ class TestBrainVoiceRenderBoot(BrainTestBase):
         required sections — same structure that render_boot() would produce.
         """
         wrapper = self.brain.format_boot_context(user="Tom", project="test", db_dir="/test")
-        # Must start with brain header containing version and db_dir
-        self.assertTrue(wrapper.startswith("[BRAIN] v"))
+        # ADJUSTED: Operator section may come first (2026-03-22, timeout-survival ordering).
+        # Brain header still present, just may not be at position 0.
+        self.assertIn("[BRAIN] v", wrapper)
         self.assertIn("booted from: /test", wrapper)
         # Must contain session number
         self.assertIn("Session #", wrapper)
@@ -473,10 +474,11 @@ class TestBrainVoiceOperatorChannelV2(BrainTestBase):
         result = voice.wrap_for_hook("[BRAIN]\nclaude stuff\n[/BRAIN]", "@priority: high\nHello Tom")
         self.assertIn("[BRAIN]", result)
         self.assertIn("[BRAIN-To-", result)
-        # Claude section comes first
-        brain_pos = result.index("[BRAIN]")
+        # ADJUSTED: Operator section comes FIRST (2026-03-22) — survives hook
+        # timeout truncation. Tom's reminders matter more than Claude's reasoning.
         tom_pos = result.index("[BRAIN-To-")
-        self.assertLess(brain_pos, tom_pos)
+        brain_pos = result.index("[BRAIN]\n")
+        self.assertLess(tom_pos, brain_pos)
 
     def test_wrap_for_hook_empty_operator(self):
         """Empty string for_operator → treated as no operator content."""

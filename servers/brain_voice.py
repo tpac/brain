@@ -13,6 +13,7 @@ Claude relays operator content faithfully, respecting @priority directives (high
 Architecture: COMPUTE (brain_consciousness.py) → DECIDE+FORMAT (here) → DELIVER (daemon_hooks.py)
 """
 
+import json
 from typing import List, Dict, Any, Optional, Callable, Union
 
 from . import embedder
@@ -320,6 +321,28 @@ class BrainVoice:
         hyp = prompt_signals.get('hypothesis')
         if hyp:
             sections.append((3, "@priority: medium\n❓ Hypothesis: %s" % self.trunc(hyp.get("title", ""), 80)))
+
+        # LOW — Precision feedback request (ask operator if recall was useful)
+        try:
+            from servers.brain_precision import RecallPrecision
+            dal = getattr(brain, '_logs_dal', None)
+            precision = RecallPrecision(brain.logs_conn, brain.conn, logs_dal=dal)
+            # Find the most recent ask_operator signal
+            row = brain.logs_conn.execute(
+                """SELECT id, recalled_titles, returned_count FROM recall_log
+                   WHERE followup_signal = 'ask_operator' AND explicit_feedback IS NULL
+                   ORDER BY created_at DESC LIMIT 1""").fetchone()
+            if row:
+                titles = []
+                try:
+                    titles = list(json.loads(row[1]).values())[:3] if row[1] else []
+                except Exception:
+                    pass
+                if titles:
+                    title_list = ", ".join(t[:40] for t in titles)
+                    sections.append((3, "@priority: low\n@present: aside\n🎯 Brain recalled %d nodes but isn't sure if they helped: %s\n   (say \"useful\", \"not useful\", or ignore)" % (row[2], title_list)))
+        except Exception:
+            pass
 
         # LOW — Dreams
         try:

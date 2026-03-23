@@ -189,6 +189,38 @@ def hook_recall(brain, args, graph_changes):
     except Exception:
         pass
 
+    # ── Explicit feedback detection ──
+    # If the user says "useful", "not useful", "garbage", etc., process it as
+    # feedback on the most recent ask_operator recall. This is ground truth.
+    try:
+        _msg_lower = user_message.lower().strip()
+        _feedback_map = {
+            'useful': 'useful', 'helpful': 'useful', 'yes useful': 'useful',
+            'that was useful': 'useful', 'good recall': 'useful',
+            'not useful': 'not_useful', 'not helpful': 'not_useful',
+            'garbage': 'not_useful', 'irrelevant': 'not_useful',
+            'partially useful': 'partially_useful', 'somewhat useful': 'partially_useful',
+            'partly': 'partially_useful',
+        }
+        _matched_feedback = None
+        for phrase, signal in _feedback_map.items():
+            if _msg_lower.startswith(phrase) or _msg_lower == phrase:
+                _matched_feedback = signal
+                break
+        if _matched_feedback:
+            precision = _get_precision(brain)
+            # Find the most recent ask_operator recall
+            _ask_row = brain.logs_conn.execute(
+                """SELECT id FROM recall_log
+                   WHERE followup_signal = 'ask_operator' AND explicit_feedback IS NULL
+                   ORDER BY created_at DESC LIMIT 1""").fetchone()
+            if _ask_row:
+                precision.receive_feedback(_ask_row[0], _matched_feedback, source="operator")
+                brain.log_debug("precision_feedback", "Operator feedback: %s on recall %d" % (
+                    _matched_feedback, _ask_row[0]))
+    except Exception:
+        pass
+
     # ── Table-driven precision: evaluate ALL pending followups ──
     # The user's current message is the "followup" signal for PREVIOUS recalls.
     # Query the table for all recalls awaiting evaluation (Stage 2 → 3),
