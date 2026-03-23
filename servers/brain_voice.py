@@ -367,14 +367,16 @@ class BrainVoice:
                    WHERE source='hook_telemetry' AND event_type='hook_recall'
                    AND created_at > datetime('now', '-6 hours')""").fetchone()[0]
             # Rough estimate: ~2800 tokens per turn (user + claude + hooks + tools)
+            # Context window: configurable, default 200K (Claude Code typical allocation)
             est_tokens = recall_count * 2800
-            est_pct = int(est_tokens * 100 / 1000000)  # 1M context
+            context_limit = int(brain.get_config("context_window_tokens", "200000") or 200000)
+            est_pct = int(est_tokens * 100 / context_limit)
             if est_pct >= 60:
-                sections.append((1, "@priority: high\n⚠️ Context ~%d%% full (~%dK tokens, %d turns). Quality may degrade. Consider compacting." % (
-                    est_pct, est_tokens // 1000, recall_count)))
+                sections.append((1, "@priority: high\n⚠️ Context ~%d%% full (~%dK/%dK tokens, %d turns). Quality may degrade. Consider compacting." % (
+                    est_pct, est_tokens // 1000, context_limit // 1000, recall_count)))
             elif est_pct >= 40:
-                sections.append((2, "@priority: medium\n📊 Context ~%d%% full (~%dK tokens, %d turns). Still healthy." % (
-                    est_pct, est_tokens // 1000, recall_count)))
+                sections.append((2, "@priority: medium\n📊 Context ~%d%% full (~%dK/%dK tokens, %d turns)." % (
+                    est_pct, est_tokens // 1000, context_limit // 1000, recall_count)))
         except Exception:
             pass
 
