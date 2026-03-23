@@ -15,6 +15,7 @@ Usage:
 import sqlite3
 import json
 import os
+import shutil
 import sys
 import time
 import math
@@ -668,9 +669,17 @@ def main():
 
     print(f'[eval] Using brain.db: {db_path}')
 
-    # Import and initialize brain
+    # Copy both DBs to temp dir — avoids locking the live DB and prevents
+    # test side effects (access_count bumps, Hebbian edges) from polluting it
+    from tests.brain_test_base import copy_brain_for_testing
+    tmp_dir, tmp_db = copy_brain_for_testing(db_path)
+    print(f'[eval] Working on temp copy: {tmp_db}')
+
+    # Import and initialize brain against the copy
     from servers.brain import Brain
-    brain = Brain(db_path)
+    brain = Brain(tmp_db)
+
+    exit_code = 0
 
     if '--baseline' in args:
         label = 'manual'
@@ -690,7 +699,7 @@ def main():
         save_json_report(result, json_path)
 
         if result['status'] == 'regression_detected':
-            sys.exit(1)
+            exit_code = 1
 
     else:
         # Full golden eval (default)
@@ -712,11 +721,16 @@ def main():
             reg = SnapshotRegression(brain)
             reg.capture_baseline('initial')
 
-        # Exit with error code if too many failures
         if result['summary']['pass_rate'] < 0.6:
-            sys.exit(1)
+            exit_code = 1
 
     brain.close()
+
+    # Clean up temp copy
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    if exit_code:
+        sys.exit(exit_code)
 
 
 if __name__ == '__main__':

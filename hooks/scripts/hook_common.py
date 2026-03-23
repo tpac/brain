@@ -54,7 +54,7 @@ def is_debug_mode():
     # Read from brain_meta
     if db_path and os.path.isfile(db_path):
         try:
-            conn = sqlite3.connect(db_path, timeout=2)
+            conn = sqlite3.connect(db_path, timeout=10)
             row = conn.execute(
                 "SELECT value FROM brain_meta WHERE key = 'debug_enabled'"
             ).fetchone()
@@ -84,7 +84,7 @@ def brain_debug(msg):
     logs_db = os.path.join(db_dir, "brain_logs.db") if db_dir else ""
     if logs_db and os.path.isdir(db_dir):
         try:
-            conn = sqlite3.connect(logs_db, timeout=2)
+            conn = sqlite3.connect(logs_db, timeout=10)
             conn.execute(
                 "INSERT INTO debug_log (session_id, event_type, source, metadata, created_at) "
                 "VALUES (?, 'hook_debug', ?, ?, ?)",
@@ -126,7 +126,7 @@ def log_hook_error(source, error, context="", level="error"):
     logs_db = os.path.join(db_dir, "brain_logs.db") if db_dir else ""
     if logs_db and os.path.isdir(db_dir):
         try:
-            conn = sqlite3.connect(logs_db, timeout=3)
+            conn = sqlite3.connect(logs_db, timeout=10)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS hook_errors (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -157,7 +157,7 @@ def get_unsurfaced_hook_errors(limit=10):
     if not logs_db or not os.path.isfile(logs_db):
         return []
     try:
-        conn = sqlite3.connect(logs_db, timeout=3)
+        conn = sqlite3.connect(logs_db, timeout=10)
         # Check if table exists
         tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='hook_errors'").fetchall()
         if not tables:
@@ -179,7 +179,7 @@ def mark_hook_errors_surfaced(error_ids):
     if not logs_db or not error_ids:
         return
     try:
-        conn = sqlite3.connect(logs_db, timeout=3)
+        conn = sqlite3.connect(logs_db, timeout=10)
         placeholders = ",".join("?" * len(error_ids))
         conn.execute("UPDATE hook_errors SET surfaced = 1 WHERE id IN (%s)" % placeholders, error_ids)
         conn.commit()

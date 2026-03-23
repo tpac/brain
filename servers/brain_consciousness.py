@@ -592,7 +592,7 @@ class ConsciousnessMixin:
             import sqlite3 as _sql3
             logs_db = os.path.join(os.path.dirname(self.db_path), "brain_logs.db")
             if os.path.isfile(logs_db):
-                lconn = _sql3.connect(logs_db, timeout=3)
+                lconn = _sql3.connect(logs_db, timeout=10)
                 tables = lconn.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name='hook_errors'"
                 ).fetchall()
@@ -627,7 +627,7 @@ class ConsciousnessMixin:
             import sqlite3 as _sql3c
             logs_db = os.path.join(os.path.dirname(self.db_path), "brain_logs.db")
             if os.path.isfile(logs_db):
-                lconn = _sql3c.connect(logs_db, timeout=2)
+                lconn = _sql3c.connect(logs_db, timeout=10)
                 tables = lconn.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name='conflict_log'"
                 ).fetchall()
@@ -674,7 +674,7 @@ class ConsciousnessMixin:
             import sqlite3 as _sql3
             logs_db = os.path.join(os.path.dirname(self.db_path), "brain_logs.db")
             if os.path.isfile(logs_db):
-                lconn = _sql3.connect(logs_db, timeout=2)
+                lconn = _sql3.connect(logs_db, timeout=10)
                 tables = lconn.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name='hook_errors'"
                 ).fetchall()

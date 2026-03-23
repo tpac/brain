@@ -207,6 +207,30 @@ def get_slowest_tests(limit=10):
         return []
 
 
+# ── Isolated DB copy for agents and eval ─────────────────────────────
+
+def copy_brain_for_testing(db_path: str) -> tuple:
+    """Copy brain.db + brain_logs.db to a temp dir for isolated use.
+
+    Returns (tmp_dir, tmp_db_path). Caller must clean up tmp_dir when done
+    (e.g. shutil.rmtree(tmp_dir, ignore_errors=True)).
+
+    Both DBs are copied together so agents/eval get a consistent snapshot
+    without locking the live databases.
+    """
+    tmp_dir = tempfile.mkdtemp(prefix='brain_test_')
+    tmp_db = os.path.join(tmp_dir, 'brain.db')
+    shutil.copy2(db_path, tmp_db)
+
+    # Copy brain_logs.db alongside it — Brain() expects it in the same dir
+    db_dir = os.path.dirname(db_path)
+    logs_db = os.path.join(db_dir, 'brain_logs.db')
+    if os.path.isfile(logs_db):
+        shutil.copy2(logs_db, os.path.join(tmp_dir, 'brain_logs.db'))
+
+    return tmp_dir, tmp_db
+
+
 # ── BrainTestBase — for unit tests ──────────────────────────────────
 
 class BrainTestBase(unittest.TestCase):
