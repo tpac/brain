@@ -584,9 +584,24 @@ def hook_post_response_track(brain, args, graph_changes):
                     except Exception:
                         gaps = []
                     existing_terms = {g.get("term") if isinstance(g, dict) else g for g in gaps}
+
+                    # Auto-encode high-confidence terms immediately.
+                    # Backtick, acronym, and capitalized terms are almost certainly real.
+                    # Store with message context — thin-node enrichment will ask Tom later.
+                    _high_conf = set(t.strip() for t in backtick + acronyms + capitalized)
                     for term in unmapped[:5]:
                         if term not in existing_terms:
-                            gaps.append({"term": term, "message_preview": user_message[:80]})
+                            if term in _high_conf:
+                                try:
+                                    brain.learn_vocabulary(
+                                        term=term,
+                                        maps_to=["detected in: '%s'" % user_message[:80]],
+                                        context="auto-detected")
+                                except Exception:
+                                    # If learn_vocabulary fails (validation, etc), fall through to gap
+                                    gaps.append({"term": term, "message_preview": user_message[:80]})
+                            else:
+                                gaps.append({"term": term, "message_preview": user_message[:80]})
                     gaps = gaps[-20:]
                     brain.set_config("vocabulary_gaps", json.dumps(gaps))
         except Exception:
