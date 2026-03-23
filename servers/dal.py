@@ -512,3 +512,206 @@ class GraphDAL:
             {'neighbor_id': r[0], 'relation': r[1], 'weight': r[2]}
             for r in rows
         ]
+
+    def get_neighbors_with_context(self, node_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Get neighbors with their full context (title, type, keywords, confidence).
+
+        Used by V5 enrichment to build the structured prompt with neighbor info.
+        Returns neighbors sorted by edge weight, enriched with node data.
+        """
+        rows = self.conn.execute("""
+            SELECT n.id, n.type, n.title, n.keywords, n.confidence, e.relation, e.weight
+            FROM (
+                SELECT target_id AS nid, relation, weight FROM edges WHERE source_id = ?
+                UNION
+                SELECT source_id AS nid, relation, weight FROM edges WHERE target_id = ?
+            ) e
+            JOIN nodes n ON n.id = e.nid
+            WHERE n.archived = 0
+            ORDER BY e.weight DESC
+            LIMIT ?
+        """, (node_id, node_id, limit)).fetchall()
+        return [
+            {'id': r[0], 'type': r[1], 'title': r[2], 'keywords': r[3],
+             'confidence': r[4], 'relation': r[5], 'weight': r[6]}
+            for r in rows
+        ]
+
+
+class EnrichmentDAL:
+    """Access layer for node_enrichments table — multi-vector encoding.
+
+    Each node can have up to 4 enrichment vectors:
+    - question: natural-language question the node answers
+    - anchor: short phrase using neighbor vocabulary
+    - bridge: sentence connecting to most important neighbor
+    - keywords: shared keywords from neighbors
+    """
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def store(self, node_id: str, vector_type: str, text: str,
+              embedding: Optional[bytes] = None, model: str = 'snowflake-arctic-embed-m') -> str:
+        """Store an enrichment vector for a node. Returns enrichment ID."""
+        import uuid
+        eid = str(uuid.uuid4().hex[:16])
+        now = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            '''INSERT OR REPLACE INTO node_enrichments
+               (id, node_id, vector_type, text, embedding, model, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            (eid, node_id, vector_type, text, embedding, model, now)
+        )
+        self.conn.commit()
+        return eid
+
+    def get_for_node(self, node_id: str) -> List[Dict[str, Any]]:
+        """Get all enrichments for a node."""
+        rows = self.conn.execute(
+            'SELECT id, vector_type, text, embedding FROM node_enrichments WHERE node_id = ?',
+            (node_id,)
+        ).fetchall()
+        return [
+            {'id': r[0], 'vector_type': r[1], 'text': r[2], 'embedding': r[3]}
+            for r in rows
+        ]
+
+    def get_all_embeddings(self) -> List[Dict[str, Any]]:
+        """Get all enrichment embeddings for recall scanning.
+
+        Returns list of dicts with node_id, vector_type, embedding.
+        Only returns enrichments that have embeddings (not NULL).
+        """
+        rows = self.conn.execute(
+            '''SELECT node_id, vector_type, embedding
+               FROM node_enrichments
+               WHERE embedding IS NOT NULL'''
+        ).fetchall()
+        return [
+            {'node_id': r[0], 'vector_type': r[1], 'embedding': r[2]}
+            for r in rows
+        ]
+
+    def count_for_node(self, node_id: str) -> int:
+        """Count enrichments for a node."""
+        row = self.conn.execute(
+            'SELECT COUNT(*) FROM node_enrichments WHERE node_id = ?', (node_id,)
+        ).fetchone()
+        return row[0] if row else 0
+
+    def delete_for_node(self, node_id: str) -> int:
+        """Delete all enrichments for a node. Returns count deleted."""
+        self.conn.execute('DELETE FROM node_enrichments WHERE node_id = ?', (node_id,))
+        self.conn.commit()
+        return self.conn.execute('SELECT changes()').fetchone()[0]
+
+    def get_coverage_stats(self) -> Dict[str, Any]:
+        """Get enrichment coverage statistics."""
+        total_nodes = self.conn.execute('SELECT COUNT(*) FROM nodes').fetchone()[0]
+        enriched_nodes = self.conn.execute(
+            'SELECT COUNT(DISTINCT node_id) FROM node_enrichments WHERE embedding IS NOT NULL'
+        ).fetchone()[0]
+        by_type = self.conn.execute(
+            'SELECT vector_type, COUNT(*) FROM node_enrichments GROUP BY vector_type'
+        ).fetchall()
+        return {
+            'total_nodes': total_nodes,
+            'enriched_nodes': enriched_nodes,
+            'coverage_pct': round(enriched_nodes / total_nodes * 100, 1) if total_nodes else 0,
+            'by_type': {r[0]: r[1] for r in by_type},
+        }
+
+
+class TelemetryDAL:
+    """Access layer for brain_telemetry table — operation logging.
+
+    Every critical operation logs timing, success/failure, and metadata.
+    No silent failures — this is the audit trail.
+    """
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def log(self, operation: str, success: bool, duration_ms: float = None,
+            error_message: str = None, **metadata) -> None:
+        """Log a telemetry event.
+
+        NOTE: This uses brain_logs.db (not brain.db). Caller must pass logs_conn.
+        Errors are printed to stderr but NOT silenced — they propagate so callers
+        know telemetry is broken and can fix it.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        meta_json = json.dumps(metadata) if metadata else None
+        self.conn.execute(
+            '''INSERT INTO brain_telemetry
+               (timestamp, operation, duration_ms, success, error_message, metadata, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            (now, operation, duration_ms, 1 if success else 0,
+             error_message, meta_json, now)
+        )
+        self.conn.commit()
+
+    def get_stats(self, hours: int = 24) -> Dict[str, Any]:
+        """Get telemetry stats for the last N hours."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        rows = self.conn.execute('''
+            SELECT operation,
+                   COUNT(*) as total,
+                   SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failures,
+                   AVG(duration_ms) as avg_ms,
+                   MAX(duration_ms) as max_ms
+            FROM brain_telemetry
+            WHERE timestamp > ?
+            GROUP BY operation
+        ''', (cutoff,)).fetchall()
+        return {
+            r[0]: {'total': r[1], 'failures': r[2], 'avg_ms': round(r[3], 1) if r[3] else None,
+                   'max_ms': round(r[4], 1) if r[4] else None}
+            for r in rows
+        }
+
+    def get_recent_failures(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent failures across all operations."""
+        rows = self.conn.execute('''
+            SELECT timestamp, operation, duration_ms, error_message, metadata
+            FROM brain_telemetry
+            WHERE success = 0
+            ORDER BY timestamp DESC
+            LIMIT ?
+        ''', (limit,)).fetchall()
+        return [
+            {'timestamp': r[0], 'operation': r[1], 'duration_ms': r[2],
+             'error': r[3], 'metadata': json.loads(r[4]) if r[4] else None}
+            for r in rows
+        ]
+
+    def get_enrichment_hit_rate(self, hours: int = 24) -> Dict[str, Any]:
+        """Calculate how often enrichment vectors are used in recall."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        rows = self.conn.execute('''
+            SELECT metadata FROM brain_telemetry
+            WHERE operation = 'recall' AND success = 1 AND timestamp > ?
+        ''', (cutoff,)).fetchall()
+
+        total_recalls = len(rows)
+        enrichment_hits = 0
+        by_type = {'question': 0, 'anchor': 0, 'bridge': 0, 'keywords': 0}
+
+        for (meta_json,) in rows:
+            if meta_json:
+                try:
+                    meta = json.loads(meta_json)
+                    if meta.get('enrichment_hits', 0) > 0:
+                        enrichment_hits += 1
+                    for vtype in by_type:
+                        by_type[vtype] += meta.get(f'enrichment_hit_{vtype}', 0)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+        return {
+            'total_recalls': total_recalls,
+            'enrichment_hits': enrichment_hits,
+            'hit_rate_pct': round(enrichment_hits / total_recalls * 100, 1) if total_recalls else 0,
+            'by_type': by_type,
+        }

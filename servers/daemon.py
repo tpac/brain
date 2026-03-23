@@ -622,6 +622,25 @@ class BrainDaemon:
                             args.get("target_id", "?")[:8]))
                     return {"ok": True, "result": result}
 
+                elif cmd == "enrich":
+                    result = self.brain.store_enrichments(
+                        node_id=args.get("node_id", ""),
+                        question=args.get("question"),
+                        anchor=args.get("anchor"),
+                        bridge=args.get("bridge"),
+                        keywords=args.get("keywords"),
+                    )
+                    self.dirty = True
+                    stored = result.get("enrichments_stored", 0)
+                    self.graph_changes.append(
+                        "ENRICH: %s (+%d vectors)" % (
+                            args.get("node_id", "?")[:8], stored))
+                    return {"ok": True, "result": result}
+
+                elif cmd == "enrichment_coverage":
+                    result = self.brain.get_enrichment_coverage()
+                    return {"ok": True, "result": result}
+
                 else:
                     return {"ok": False, "error": "Unknown command: {}".format(cmd)}
 

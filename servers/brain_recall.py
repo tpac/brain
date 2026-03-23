@@ -619,7 +619,9 @@ class BrainRecallMixin:
         # STEP 3: Brute-force cosine similarity against ALL stored embeddings
         # This is the core change: embeddings drive retrieval, not keywords.
         # For 600 nodes this is fast (<50ms). At 10k+ nodes, switch to sqlite-vec.
-        embedding_scores = {}  # node_id → cosine_similarity
+        # v6: Also scans enrichment embeddings (question, anchor, bridge, keywords vectors).
+        embedding_scores = {}  # node_id → cosine_similarity (best across primary + enrichments)
+        enrichment_hits = {}   # node_id → vector_type that matched best (for telemetry)
         node_personal_data = {}  # node_id → (personal, personal_context) for pre-sort penalty
         node_confidence = {}    # node_id → confidence (0-1, None=default)
         nodes_with_embeddings = 0
@@ -659,7 +661,43 @@ class BrainRecallMixin:
                 if blob:
                     sim = embedder.cosine_similarity(query_vec, blob)
                     embedding_scores[node_id] = sim
+                    enrichment_hits[node_id] = 'primary'
                     nodes_with_embeddings += 1
+
+            # v6 STEP 3.5: Scan enrichment embeddings (V5 multi-vector encoding)
+            # Each node may have up to 4 enrichment vectors. Take the BEST score
+            # across primary + all enrichments for each node.
+            enrichment_count = 0
+            enrichment_used = 0
+            try:
+                enrich_cursor = self.conn.execute(
+                    'SELECT node_id, vector_type, embedding FROM node_enrichments WHERE embedding IS NOT NULL'
+                )
+                for erow in enrich_cursor.fetchall():
+                    e_node_id, e_type, e_blob = erow
+                    if not e_blob:
+                        continue
+                    enrichment_count += 1
+                    # Skip if node is filtered out by type/project/archive
+                    if e_node_id not in node_confidence and e_node_id not in embedding_scores:
+                        # Check if node passes filters
+                        check = self.conn.execute(
+                            f'''SELECT 1 FROM nodes WHERE id = ? {archive_filter} {type_filter} {project_filter}''',
+                            [e_node_id] + type_params + project_params
+                        ).fetchone()
+                        if not check:
+                            continue
+                    e_sim = embedder.cosine_similarity(query_vec, e_blob)
+                    current_best = embedding_scores.get(e_node_id, 0)
+                    if e_sim > current_best:
+                        embedding_scores[e_node_id] = e_sim
+                        enrichment_hits[e_node_id] = e_type
+                        enrichment_used += 1
+            except Exception as e:
+                # Table might not exist yet during migration
+                if 'no such table' not in str(e):
+                    self._log_error("recall_enrichment_scan", e, "STEP 3.5 enrichment scan")
+
         except Exception as e:
             print(f'[brain] Embedding scan error: {e}', file=sys.stderr)
 
@@ -986,7 +1024,12 @@ class BrainRecallMixin:
                     'embedding+keyword': sum(1 for r in final_results if r.get('_source') == 'embedding+keyword'),
                     'embedding_only': sum(1 for r in final_results if r.get('_source') == 'embedding_only'),
                     'keyword_only_fallback': sum(1 for r in final_results if r.get('_source') == 'keyword_only_fallback'),
+                    'graph_neighbor': sum(1 for r in final_results if r.get('_source') == 'graph_neighbor'),
                 },
+                # v6: Enrichment scan stats
+                'enrichment_vectors_scanned': enrichment_count if 'enrichment_count' in dir() else 0,
+                'enrichment_vectors_used': enrichment_used if 'enrichment_used' in dir() else 0,
+                'results_via_enrichment': sum(1 for r in final_results if enrichment_hits.get(r.get('id', ''), 'primary') != 'primary'),
             },
         }
 

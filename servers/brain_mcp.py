@@ -223,6 +223,21 @@ TOOLS = [
             },
         }
     },
+    {
+        "name": "enrich",
+        "description": "Store V5 enrichment vectors for a node (after filling in the enrichment_prompt from remember()). Pass the generated question, anchor phrase, bridge sentence, and/or keywords. Each is embedded and stored for improved recall.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "node_id": {"type": "string", "description": "Node ID to enrich (from remember() response)"},
+                "question": {"type": "string", "description": "One question a user would ask that leads to this node"},
+                "anchor": {"type": "string", "description": "3-5 word phrase using neighbor vocabulary"},
+                "bridge": {"type": "string", "description": "One sentence connecting this node to its most important neighbor"},
+                "keywords": {"type": "string", "description": "Comma-separated keywords borrowed from neighbors"}
+            },
+            "required": ["node_id"]
+        }
+    },
 ]
 
 

@@ -8,6 +8,11 @@ which are provided by Brain.__init__.
 
 from . import embedder
 from .brain_constants import TYPE_CONFIDENCE
+from .dal import EnrichmentDAL, GraphDAL
+from .brain_constants import (
+    ENRICHMENT_NEIGHBOR_COUNT,
+    ENRICHMENT_PROMPT_TEMPLATE,
+)
 from typing import Any, Dict, List, Optional, Set
 import json
 import math
@@ -480,6 +485,17 @@ class BrainRememberMixin:
         except Exception:
             pass
 
+        # v6: Generate enrichment prompt for Claude to fill in.
+        # The brain recalls neighbors and builds a structured prompt.
+        # If enrichments are provided inline (from a previous enrich() call), store them.
+        # Otherwise, return the prompt so Claude can fill it in.
+        enrichment_prompt = None
+        enrichment_stored = 0
+        try:
+            enrichment_prompt = self._build_enrichment_prompt(node_id, title, content)
+        except Exception as e:
+            print(f'[brain] V5 enrichment prompt failed for {node_id}: {e}', file=sys.stderr)
+
         return {
             'id': node_id,
             'type': type,
@@ -489,6 +505,8 @@ class BrainRememberMixin:
             'bridges_created': len(bridges),
             'embedding_stored': embedding_stored,  # Phase 0.5C
             'personal': personal,  # v4
+            'enrichment_prompt': enrichment_prompt,  # v6: for Claude to fill in
+            'enrichment_stored': enrichment_stored,  # v6: count of stored enrichments
         }
 
     def recall_expand(self, node_id: str) -> Dict[str, Any]:
@@ -958,6 +976,97 @@ class BrainRememberMixin:
                 'personal_context': row[5], 'locked': row[6] == 1,
             })
         return results
+
+    # ═══════════════════════════════════════════════════════════════
+    # v6: Multi-vector enrichment (Embedding Migration to LLM)
+    # The brain builds a structured prompt with neighbors.
+    # Claude (or a local LLM) fills in Q/A/B/K.
+    # Each is embedded and stored in node_enrichments.
+    # ═══════════════════════════════════════════════════════════════
+
+    def _build_enrichment_prompt(self, node_id: str, title: str,
+                                  content: Optional[str] = None) -> Optional[str]:
+        """Build the V5 structured enrichment prompt for a node.
+
+        Finds neighbors via edges, formats them, and returns the prompt
+        for Claude (or local LLM) to fill in.
+
+        Returns None if node has no neighbors (nothing to anchor to).
+        """
+        try:
+            graph_dal = GraphDAL(self.conn)
+            neighbors = graph_dal.get_neighbors_with_context(
+                node_id, limit=ENRICHMENT_NEIGHBOR_COUNT
+            )
+            if not neighbors:
+                return None
+
+            neighbor_lines = []
+            for nb in neighbors:
+                kw = nb.get('keywords', '') or ''
+                kw_short = ', '.join(kw.split()[:5]) if kw else 'none'
+                neighbor_lines.append(
+                    f"- {nb['title'][:80]} ({nb['type']}, keywords: {kw_short})"
+                )
+
+            content_preview = (content or '')[:200]
+            prompt = ENRICHMENT_PROMPT_TEMPLATE.format(
+                neighbors='\n'.join(neighbor_lines),
+                title=title,
+                content=content_preview,
+            )
+            return prompt
+        except Exception as e:
+            print(f'[brain] _build_enrichment_prompt failed: {e}', file=sys.stderr)
+            return None
+
+    def store_enrichments(self, node_id: str, question: Optional[str] = None,
+                          anchor: Optional[str] = None, bridge: Optional[str] = None,
+                          keywords: Optional[str] = None) -> Dict[str, Any]:
+        """Store enrichment vectors for a node (called after Claude fills in the prompt).
+
+        Each non-None enrichment text is embedded and stored in node_enrichments.
+        Returns count of enrichments stored and any errors.
+        """
+        enrichment_dal = EnrichmentDAL(self.conn)
+        stored = 0
+        errors = []
+
+        enrichments = {
+            'question': question,
+            'anchor': anchor,
+            'bridge': bridge,
+            'keywords': keywords,
+        }
+
+        for vtype, text in enrichments.items():
+            if not text or not text.strip():
+                continue
+            text = text.strip()
+            try:
+                blob = None
+                if embedder.is_ready():
+                    blob = embedder.embed(text)
+                enrichment_dal.store(node_id, vtype, text, blob,
+                                    model=embedder.stats.get('model_name', 'unknown') if embedder.is_ready() else 'none')
+                stored += 1
+            except Exception as e:
+                errors.append(f'{vtype}: {str(e)[:100]}')
+                print(f'[brain] Enrichment embed failed for {node_id}/{vtype}: {e}', file=sys.stderr)
+
+        return {
+            'node_id': node_id,
+            'enrichments_stored': stored,
+            'errors': errors if errors else None,
+        }
+
+    def get_enrichment_coverage(self) -> Dict[str, Any]:
+        """Get enrichment coverage stats."""
+        try:
+            enrichment_dal = EnrichmentDAL(self.conn)
+            return enrichment_dal.get_coverage_stats()
+        except Exception as e:
+            return {'error': str(e)}
 
     def enrich_keywords(self, node_id: str) -> Optional[str]:
         """

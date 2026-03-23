@@ -364,6 +364,31 @@ TABLES = {
                     'model': "'snowflake-arctic-embed-m'", 'created_at': None}
     },
 
+    # v6: Node enrichments — multi-vector encoding for improved recall.
+    # Each node can have multiple enrichment vectors (question, anchor, bridge, keywords)
+    # generated at encode time by an LLM. These are searched alongside the primary embedding.
+    # See PLAN.md "Embedding Migration to LLM" for design rationale and benchmark results.
+    'node_enrichments': {
+        'create': """CREATE TABLE IF NOT EXISTS node_enrichments (
+            id TEXT PRIMARY KEY,
+            node_id TEXT NOT NULL,
+            vector_type TEXT NOT NULL CHECK(vector_type IN ('question', 'anchor', 'bridge', 'keywords')),
+            text TEXT NOT NULL,
+            embedding BLOB,
+            model TEXT DEFAULT 'snowflake-arctic-embed-m',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
+        )""",
+        'columns': {
+            'id': None, 'node_id': None, 'vector_type': None, 'text': None,
+            'embedding': 'NULL', 'model': "'snowflake-arctic-embed-m'",
+            'created_at': 'CURRENT_TIMESTAMP',
+        }
+    },
+
+    # brain_telemetry — moved to brain_logs.db (see LOG_TABLES)
+    # High-volume operational data doesn't belong in brain.db.
+
     # v14: Session activity tracking — replaces in-memory sessionActivity from index.js
     'session_activity': {
         'create': """CREATE TABLE IF NOT EXISTS session_activity (
@@ -509,6 +534,10 @@ INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_nodes_scope ON nodes(scope)',
     # v16: critical flag for safety-important nodes
     'CREATE INDEX IF NOT EXISTS idx_nodes_critical ON nodes(critical)',
+    # v6 (LLM migration): node_enrichments
+    'CREATE INDEX IF NOT EXISTS idx_enrichments_node ON node_enrichments(node_id)',
+    'CREATE INDEX IF NOT EXISTS idx_enrichments_type ON node_enrichments(vector_type)',
+    # brain_telemetry indexes — moved to LOG_INDEXES (brain_logs.db)
 ]
 
 
@@ -878,6 +907,22 @@ LOG_TABLES = {
             updated_at TEXT
         )""",
     },
+
+    # v6: Brain telemetry — every critical operation logs timing, success/failure.
+    # No silent failures. Surfaced via consciousness signals and health_check.
+    # Lives in brain_logs.db to avoid lock contention with brain.db.
+    'brain_telemetry': {
+        'create': """CREATE TABLE IF NOT EXISTS brain_telemetry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+            operation TEXT NOT NULL,
+            duration_ms REAL,
+            success INTEGER NOT NULL DEFAULT 1,
+            error_message TEXT,
+            metadata TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )""",
+    },
 }
 
 LOG_INDEXES = [
@@ -896,6 +941,9 @@ LOG_INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_staged_node ON staged_learnings(node_id)',
     'CREATE INDEX IF NOT EXISTS idx_conflict_session ON conflict_log(session_id)',
     'CREATE INDEX IF NOT EXISTS idx_conflict_surfaced ON conflict_log(surfaced)',
+    # v6: brain_telemetry
+    'CREATE INDEX IF NOT EXISTS idx_telemetry_op ON brain_telemetry(operation, timestamp)',
+    'CREATE INDEX IF NOT EXISTS idx_telemetry_fail ON brain_telemetry(success)',
 ]
 
 

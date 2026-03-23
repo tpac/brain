@@ -270,6 +270,29 @@ INTENTIONAL_EDGE_TYPES = {
 }
 GRAPH_NEIGHBOR_LIMIT = 10      # Max neighbors per parent node
 
+# V5 Multi-vector enrichment (Embedding Migration to LLM)
+# At encode time, an LLM generates enrichment vectors for each node:
+# Q (question), A (anchor), B (bridge), K (keywords).
+# These are embedded and searched alongside the primary embedding.
+# Benchmark: NDCG 0.701, 93/104 passed (vs baseline 0.204, 34/104).
+ENRICHMENT_NEIGHBOR_COUNT = 5    # Number of neighbors to include in enrichment prompt
+ENRICHMENT_VECTOR_TYPES = ('question', 'anchor', 'bridge', 'keywords')
+
+# V5 Structured prompt template (V2 variant — proven best for small LLMs)
+# Small models need constrained structured prompts, NOT motivational framing.
+# See: "Lesson: small LLMs ignore context, cant follow motivational framing"
+ENRICHMENT_PROMPT_TEMPLATE = """The brain found these related memories:
+{neighbors}
+
+New node: "{title}"
+Content: "{content}"
+
+Generate exactly these lines, no explanations:
+Q: [one question a user would naturally ask that leads to this node]
+A: [3-5 word phrase using words from the neighbors above]
+B: [one sentence connecting this node to its most important neighbor]
+K: [5 comma-separated keywords borrowed from neighbors that also describe this node]"""
+
 # Dreaming
 DREAM_WALK_LENGTH = 5
 DREAM_COUNT = 3
