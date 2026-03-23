@@ -1,0 +1,1740 @@
+[
+  {
+    "id": "sem_error_handling",
+    "query": "what happens when we swallow errors silently",
+    "category": "semantic",
+    "expected_relevant": {
+      "4815ba61645f4db6b1e7700c4bd28178": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: 'silent failures are the most dangerous' should match 'swallow errors silently'"
+  },
+  {
+    "id": "sem_how_brain_remembers",
+    "query": "how does the brain store new information",
+    "category": "semantic",
+    "expected_relevant": {
+      "990c9002f39140008cbf301641113a70": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: brain_remember.py purpose node should match 'store new information'"
+  },
+  {
+    "id": "sem_context_lost",
+    "query": "what happens when claude runs out of context window",
+    "category": "semantic",
+    "expected_relevant": {
+      "140e864594a34f52affe0b5992baa04a": 2,
+      "6c75f6edb7a94c01ab15d99915343511": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: compaction constraint + context continuation should match context window question"
+  },
+  {
+    "id": "sem_brain_split",
+    "query": "why was brain.py broken into multiple files",
+    "category": "semantic",
+    "expected_relevant": {
+      "f91454eb1d2b43f6ae45b67d582bb5bd": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: monolith split decision should match 'broken into multiple files'"
+  },
+  {
+    "id": "sem_agreeability",
+    "query": "claude agrees too easily and makes up what the other person thinks",
+    "category": "semantic",
+    "expected_relevant": {
+      "dd641e7f6d4b41a89f5ba83b71b983a7": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: agreeability instinct hallucination correction should match"
+  },
+  {
+    "id": "corr_file_structure",
+    "query": "brain file structure and modules",
+    "category": "correction_chain",
+    "expected_relevant": {
+      "f91454eb1d2b43f6ae45b67d582bb5bd": 2,
+      "0c818d6a68f1493d9644602fa4adf7dd": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Correction chain: monolith split corrected old file structure \u2014 both should surface, newer ranked higher"
+  },
+  {
+    "id": "corr_embedding_floor",
+    "query": "what is the embedding similarity floor",
+    "category": "correction_chain",
+    "expected_relevant": {
+      "3bad7b02a5fe4d648f2c28037465f49a": 2,
+      "c21514ab37744c5ca90109afc1638d7b": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Correction chain: floor depends on content length corrected by specific floor range (0.58-0.63)"
+  },
+  {
+    "id": "corr_demanding_tone",
+    "query": "should the brain use demanding tone to motivate encoding",
+    "category": "correction_chain",
+    "expected_relevant": {
+      "76ab57c545554a879acae39ed9c57e77": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Correction: demanding tone was counterproductive \u2014 divergence node should surface"
+  },
+  {
+    "id": "graph_operator_to_additional",
+    "query": "operator channel architecture",
+    "category": "graph_neighbor",
+    "expected_relevant": {
+      "8bac897879ae4b73b61d3e800dacd936": 2,
+      "7d2869e81a444bb682318d5046c30872": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Graph: operator channel has foundation_for edge to additionalContext \u2014 both should surface"
+  },
+  {
+    "id": "graph_dal_to_refactor",
+    "query": "data access layer design",
+    "category": "graph_neighbor",
+    "expected_relevant": {
+      "d96ab256c9254a7d883d1ebcc508b73c": 2,
+      "7d14f588f95544388747e077c14011d1": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Graph: DAL refactor node implements DAL incremental adoption decision \u2014 both should surface"
+  },
+  {
+    "id": "graph_bug_chain",
+    "query": "brain not learning debugging layers",
+    "category": "graph_neighbor",
+    "expected_relevant": {
+      "4b158d2836294cb9ba414126e8da5267": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Graph: lesson about 3 independent failure layers has traced edges to specific bugs"
+  },
+  {
+    "id": "mech_recall_paths",
+    "query": "how does recall work what are the two paths",
+    "category": "mechanism",
+    "expected_relevant": {
+      "c37a06e2b13d442398bba780a8ef5548": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: recall pipeline two paths (embedding + keyword)"
+  },
+  {
+    "id": "mech_operator_rendering",
+    "query": "how does brain output reach the terminal",
+    "category": "mechanism",
+    "expected_relevant": {
+      "b363b27e7bf243ec8d9c77e7557e6ee2": 2,
+      "8bac897879ae4b73b61d3e800dacd936": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Mechanism: operator channel rendering pipeline + Claude relay architecture"
+  },
+  {
+    "id": "mech_mcp_server",
+    "query": "how does claude talk to the brain daemon",
+    "category": "mechanism",
+    "expected_relevant": {
+      "eba208bf0048480597c8379f5ce8a8ad": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: MCP server stdio proxy to daemon"
+  },
+  {
+    "id": "mech_hook_loop",
+    "query": "what hooks fire and in what order",
+    "category": "mechanism",
+    "expected_relevant": {
+      "73c0123bb33c4fe99f8e5241a095e3c2": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: 13 hooks form perception-action-reflection cycle"
+  },
+  {
+    "id": "mech_consciousness",
+    "query": "what are consciousness signals and how do they work",
+    "category": "mechanism",
+    "expected_relevant": {
+      "fbfe9694334942d98e29fad75f78ff6f": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: 12+ consciousness signal types"
+  },
+  {
+    "id": "lowconf_mark_recall_used",
+    "query": "how to determine which recalled nodes claude used",
+    "category": "low_confidence",
+    "expected_relevant": {
+      "8a8f9bbc533e4abf9a9d2b24eb79fc1a": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Low-confidence (0.3) uncertainty: mark_recall_used should still be findable"
+  },
+  {
+    "id": "lowconf_import_bug_pattern",
+    "query": "import bugs on fallback paths never exercised",
+    "category": "low_confidence",
+    "expected_relevant": {
+      "2d48bd5b93ca409ea991f02e06254fcb": 2
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Low-confidence (0.3) pattern: bugs on degradation paths \u2014 tests recoverability"
+  },
+  {
+    "id": "bug_duplicate_json",
+    "query": "hooks json duplicate keys notification",
+    "category": "bug_lesson",
+    "expected_relevant": {
+      "15ef04e6ee314a418eef9edf2f778ffe": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Bug: duplicate JSON keys in hooks.json silently overwrite"
+  },
+  {
+    "id": "bug_daemon_race",
+    "query": "daemon race condition pid before socket",
+    "category": "bug_lesson",
+    "expected_relevant": {
+      "4f7f879736f749dfba4197e676d1636d": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Bug: daemon PID written before socket bound \u2014 race condition"
+  },
+  {
+    "id": "bug_confidence_column",
+    "query": "remember insert missing column",
+    "category": "bug_lesson",
+    "expected_relevant": {
+      "50cbf6f85ce642f195fe7ee9e02ecc71": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Bug: remember() INSERT was missing confidence column"
+  },
+  {
+    "id": "bug_edge_columns",
+    "query": "edges table relation vs edge_type both columns",
+    "category": "bug_lesson",
+    "expected_relevant": {
+      "ef2a3a46c4c04b11b3d9d9be23e370be": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Bug: edges table has both relation and edge_type columns"
+  },
+  {
+    "id": "const_mixin_no_init",
+    "query": "can mixins define __init__",
+    "category": "constraint",
+    "expected_relevant": {
+      "1807f5e44f2344e5a86490ffd93fcd52": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Constraint: only brain.py may define __init__"
+  },
+  {
+    "id": "const_mixin_no_import",
+    "query": "can mixin import from brain.py",
+    "category": "constraint",
+    "expected_relevant": {
+      "9acfd0aca6b3461f8e50c157b32e4512": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Constraint: mixins must not import from brain.py"
+  },
+  {
+    "id": "const_temporal_awareness",
+    "query": "must information show how old it is",
+    "category": "constraint",
+    "expected_relevant": {
+      "0f4149e14be5464d87782fc572fe101a": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Constraint: all surfaced info must carry age context"
+  },
+  {
+    "id": "const_observe_operator",
+    "query": "should claude proactively notice operator patterns",
+    "category": "constraint",
+    "expected_relevant": {
+      "7a86ae3c224a474ea6d8cde03b2b172c": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Constraint: Claude must proactively observe operator patterns"
+  },
+  {
+    "id": "div_hook_decision_maker",
+    "query": "who is the decision maker the hook or the brain",
+    "category": "divergence",
+    "expected_relevant": {
+      "ca120c1974944c0e8aaaa7c7d290a26f": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Divergence: hook was not the decision-maker, brain was"
+  },
+  {
+    "id": "div_encoding_bias",
+    "query": "encoding only technical topics missing relational",
+    "category": "divergence",
+    "expected_relevant": {
+      "facb97eacfb44083aca0365bb652550b": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Divergence: encoding bias toward technical, missing relational/reasoning"
+  },
+  {
+    "id": "div_self_preservation",
+    "query": "self preservation framing technique",
+    "category": "divergence",
+    "expected_relevant": {
+      "42023e1478a14174aa73807863a6b552": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Divergence: self-preservation framing is not a technique"
+  },
+  {
+    "id": "natq_how_brain_works",
+    "query": "how does the brain work",
+    "category": "natural_question",
+    "expected_relevant": {
+      "eba208bf0048480597c8379f5ce8a8ad": 1,
+      "fbfe9694334942d98e29fad75f78ff6f": 1,
+      "c37a06e2b13d442398bba780a8ef5548": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Natural question: vague 'how does brain work' \u2014 should return MCP, consciousness, recall mechanisms"
+  },
+  {
+    "id": "natq_what_went_wrong",
+    "query": "what bugs have we hit recently",
+    "category": "natural_question",
+    "expected_relevant": {
+      "4f7f879736f749dfba4197e676d1636d": 1,
+      "3d688d9f8d3346c8809ff1e7dc79afdc": 1,
+      "50cbf6f85ce642f195fe7ee9e02ecc71": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Natural question: 'what bugs' \u2014 should return bug_lesson and bug nodes"
+  },
+  {
+    "id": "natq_what_changed_recently",
+    "query": "what did we build in the last session",
+    "category": "natural_question",
+    "expected_relevant": {
+      "d65e88ba201649d1a00960fb642ffcd7": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Natural question: session 9 accomplishments should surface for 'last session'"
+  },
+  {
+    "id": "kw_rul_uz02",
+    "query": "screen-scoped edits",
+    "category": "keyword",
+    "expected_relevant": {
+      "rul_uz02526a": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword: screen-scoped edits rule"
+  },
+  {
+    "id": "kw_fil_ap5c",
+    "query": "large content test",
+    "category": "keyword",
+    "expected_relevant": {
+      "fil_ap5c1iju": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Keyword: large content test file"
+  },
+  {
+    "id": "vocab_operator_channel",
+    "query": "operator channel",
+    "category": "vocabulary",
+    "expected_relevant": {
+      "8bac897879ae4b73b61d3e800dacd936": 2,
+      "df21084c89244814bfc1db14258e1f57": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Vocabulary: 'operator channel' is a vocab term \u2192 should expand to BRAIN-To-Tom, additionalContext"
+  },
+  {
+    "id": "vocab_sacred_system",
+    "query": "sacred system rules",
+    "category": "vocabulary",
+    "expected_relevant": {
+      "2cd35a6420ae435e944ccc319a36713a": 1,
+      "695c59de5e3b421686321300949d0415": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Vocabulary: 'sacred system' is a vocab term \u2192 should find benchmark-first practice"
+  },
+  {
+    "id": "intent_how_add_method",
+    "query": "where should I put a new brain method",
+    "category": "intent_howto",
+    "expected_relevant": {
+      "4ad55ad84986478087195e390aee468b": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Intent: 'where to put new method' \u2192 constraint about right mixin"
+  },
+  {
+    "id": "intent_how_handle_hook_fail",
+    "query": "what should I do when a hook fails",
+    "category": "intent_howto",
+    "expected_relevant": {
+      "89129afebc484a578f251f39a291e959": 1
+    },
+    "min_hit_rate_at_10": 0.8,
+    "description": "Intent: 'hook fails' \u2192 failed hook experiments lesson"
+  },
+  {
+    "id": "sem_decompose_dont_summarize",
+    "query": "should I write one big brain node or many small ones",
+    "category": "semantic",
+    "expected_relevant": {
+      "deb08b9023514a069838f36efe35776a": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: 'decompose don't summarize' lesson should match node granularity question"
+  },
+  {
+    "id": "natq_embeddings_deal",
+    "query": "what's the deal with embeddings",
+    "category": "natural_question",
+    "expected_relevant": {
+      "c21514ab37744c5ca90109afc1638d7b": 1,
+      "3bad7b02a5fe4d648f2c28037465f49a": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Natural question: vague 'deal with embeddings' should surface embedding similarity nodes"
+  },
+  {
+    "id": "natq_why_hooks_exist",
+    "query": "why do hooks exist",
+    "category": "natural_question",
+    "expected_relevant": {
+      "73c0123bb33c4fe99f8e5241a095e3c2": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Natural question: 'why hooks exist' should surface 13-hook feedback loop node"
+  },
+  {
+    "id": "natq_what_keeps_breaking",
+    "query": "what keeps breaking",
+    "category": "natural_question",
+    "expected_relevant": {
+      "4b158d2836294cb9ba414126e8da5267": 1,
+      "3d688d9f8d3346c8809ff1e7dc79afdc": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Natural question: 'what keeps breaking' should surface debugging layers lesson and notification bug"
+  },
+  {
+    "id": "natq_rule_about_tests",
+    "query": "is there a rule about tests",
+    "category": "natural_question",
+    "expected_relevant": {
+      "07187eb2a78b4450b49d838597fe534a": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Natural question: 'rule about tests' should surface pre-edit hook blocks test weakening"
+  },
+  {
+    "id": "intent_dec_monolith",
+    "query": "what did we decide about splitting brain.py",
+    "category": "intent_decision",
+    "expected_relevant": {
+      "f91454eb1d2b43f6ae45b67d582bb5bd": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Intent: 'what did we decide about splitting brain.py' \u2192 monolith split decision"
+  },
+  {
+    "id": "intent_howto_add_node_type",
+    "query": "how do I add a new node type to the brain",
+    "category": "intent_howto",
+    "expected_relevant": {
+      "4ad55ad84986478087195e390aee468b": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Intent: 'how to add node type' \u2192 constraint about new methods in right mixin"
+  },
+  {
+    "id": "intent_howto_compaction",
+    "query": "what should I do when context gets compacted",
+    "category": "intent_howto",
+    "expected_relevant": {
+      "140e864594a34f52affe0b5992baa04a": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Intent: 'what to do when compacted' \u2192 compaction destroys unencoded knowledge constraint"
+  },
+  {
+    "id": "mech_skill_eval",
+    "query": "how does the skill eval benchmark work",
+    "category": "mechanism",
+    "expected_relevant": {
+      "e4cdab4e82064a9dba7042e34ab92f51": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: skill eval benchmark \u2014 how SKILL.md variants are A/B tested"
+  },
+  {
+    "id": "mech_debug_mode",
+    "query": "how does debug mode work in the brain",
+    "category": "mechanism",
+    "expected_relevant": {
+      "d5044a889bce4148b817cd28de151d59": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: debug mode routes through operator channel"
+  },
+  {
+    "id": "mech_when_to_encode",
+    "query": "how does the brain decide when to encode",
+    "category": "mechanism",
+    "expected_relevant": {
+      "87d42862e161410b9cfaaba59da33b66": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Mechanism: adaptive checkpoints determine encoding timing"
+  },
+  {
+    "id": "mech_pre_edit_block",
+    "query": "how does the pre-edit hook decide what to block",
+    "category": "mechanism",
+    "expected_relevant": {
+      "07187eb2a78b4450b49d838597fe534a": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: pre-edit hook blocks test weakening"
+  },
+  {
+    "id": "mech_embedding_storage",
+    "query": "how are nodes embedded and stored",
+    "category": "mechanism",
+    "expected_relevant": {
+      "fddd1b00fd2c4569bc952bd40b9d87d6": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Mechanism: recall_with_embeddings() rewrite \u2014 how nodes are embedded and stored"
+  },
+  {
+    "id": "corr_compression",
+    "query": "should brain nodes be concise",
+    "category": "correction_chain",
+    "expected_relevant": {
+      "e8658fecfda54a14bcea842f3c875661": 2,
+      "c8747a53a7cf44479a88d80a9650a06d": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Correction chain: Claude compresses when encoding vs brain encoding should be concise \u2014 tension pair"
+  },
+  {
+    "id": "corr_confidence_encoding",
+    "query": "does confidence at encoding time reflect quality",
+    "category": "correction_chain",
+    "expected_relevant": {
+      "bb7705fd90634f2997a5c8e6f8ca3231": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Correction chain: divergence about confidence at encoding time accurately reflecting quality"
+  },
+  {
+    "id": "corr_session_activity",
+    "query": "does get_session_activity return all brain meta keys",
+    "category": "correction_chain",
+    "expected_relevant": {
+      "2e4b1c7b65394878b94b5d4643235fa2": 2,
+      "27ded8a388fc4e5c980a8bbe32bc036e": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Correction chain: _get_session_activity() divergence corrected by DAL fixed key list"
+  },
+  {
+    "id": "corr_stderr_silence",
+    "query": "should we redirect errors to dev null",
+    "category": "correction_chain",
+    "expected_relevant": {
+      "05a738aaf8ed49db9f67303c39a9d8f7": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Correction chain: found another 2>/dev/null suppressing errors in post-compact-reboot.sh"
+  },
+  {
+    "id": "graph_relay_instruction",
+    "query": "CLAUDE.md relay instruction",
+    "category": "graph_neighbor",
+    "expected_relevant": {
+      "e18fa6ee4ec8418288169924de40a8d4": 2,
+      "8bac897879ae4b73b61d3e800dacd936": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Graph: CLAUDE.md relay instruction enables operator channel architecture"
+  },
+  {
+    "id": "vocab_table_driven_lifecycle",
+    "query": "table-driven lifecycle",
+    "category": "vocabulary",
+    "expected_relevant": {
+      "d2ef1bfa697b42afa23d227a4c11813c": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Vocabulary: 'table-driven lifecycle' vocab term should be directly findable"
+  },
+  {
+    "id": "vocab_confidence_loop",
+    "query": "confidence loop precision",
+    "category": "vocabulary",
+    "expected_relevant": {
+      "6cab0a2d8ba944fd993ac3448ea4a86f": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Vocabulary: 'confidence loop' vocab term should surface with precision context"
+  },
+  {
+    "id": "vocab_ask_operator",
+    "query": "ask operator signal",
+    "category": "vocabulary",
+    "expected_relevant": {
+      "988a2edd8c8f4344b77239d3b520aacb": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Vocabulary: 'ask_operator' vocab term should be directly findable"
+  },
+  {
+    "id": "edge_empty",
+    "query": "",
+    "category": "edge_case",
+    "expected_relevant": {},
+    "min_hit_rate_at_10": 0.0,
+    "expect_no_crash": true,
+    "description": "Edge case: empty query should not crash, return empty or graceful result"
+  },
+  {
+    "id": "edge_garbage",
+    "query": "xyzzy frobnicator quantum flux",
+    "category": "edge_case",
+    "expected_relevant": {},
+    "min_hit_rate_at_10": 0.0,
+    "expect_no_crash": true,
+    "description": "Edge case: nonsense query should not crash, return empty or low-relevance results"
+  },
+  {
+    "id": "edge_code_snippet",
+    "query": "def recall_with_embeddings",
+    "category": "edge_case",
+    "expected_relevant": {
+      "fddd1b00fd2c4569bc952bd40b9d87d6": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Edge case: code snippet as query should match recall_with_embeddings rewrite node"
+  },
+  {
+    "id": "edge_single_word",
+    "query": "compaction",
+    "category": "edge_case",
+    "expected_relevant": {
+      "140e864594a34f52affe0b5992baa04a": 1,
+      "6c75f6edb7a94c01ab15d99915343511": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Edge case: single word 'compaction' should surface compaction-related nodes"
+  },
+  {
+    "id": "edge_very_long",
+    "query": "I need to understand everything about how the brain stores information, retrieves it later, handles corrections and updates, manages confidence scores, deals with vocabulary expansion, and processes consciousness signals including dreams tensions hypotheses and fading knowledge",
+    "category": "edge_case",
+    "expected_relevant": {
+      "fbfe9694334942d98e29fad75f78ff6f": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Edge case: very long query should still return relevant results without crashing"
+  },
+  {
+    "id": "lowconf_structural_enforcement",
+    "query": "structural enforcement counteract brevity bias",
+    "category": "low_confidence",
+    "expected_relevant": {
+      "be62eda8f8f84deeb3a27827a0ae089e": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Low-confidence (0.5) hypothesis: structural enforcement counteracts brevity bias"
+  },
+  {
+    "id": "lowconf_priming_system",
+    "query": "priming system active concerns recall filter",
+    "category": "low_confidence",
+    "expected_relevant": {
+      "5faa8bd66d7c4e3ea8201bb84a882043": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Low-confidence (0.65) priming system: active concerns as background recall filter"
+  },
+  {
+    "id": "temp_original_architecture",
+    "query": "what was the original brain architecture before the split",
+    "category": "temporal_reasoning",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "0c818d6a68f1493d9644602fa4adf7dd": 2,
+      "f91454eb1d2b43f6ae45b67d582bb5bd": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Temporal: 'original architecture' should find old file structure context AND monolith split decision",
+    "notes": "Tests whether recall surfaces the older context node (brain.py + 8 modules) alongside the newer split decision"
+  },
+  {
+    "id": "temp_latest_recall_design",
+    "query": "what is the latest design for the recall pipeline",
+    "category": "temporal_reasoning",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "56ef30079c9a47818b917fc63430fb34": 2,
+      "37c825ce640c4a06805dcfe04c23897f": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Temporal: 'latest' should prefer V5 multi-vector encoding and recall benchmark over older recall decisions",
+    "notes": "The most recent recall decisions from 2026-03-23 should rank highest"
+  },
+  {
+    "id": "temp_before_daemon",
+    "query": "how did hooks work before the daemon existed",
+    "category": "temporal_reasoning",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "dec_0qnwsqv4": 2,
+      "009cc3e8a41b4a918539f32db5391560": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Temporal: 'before daemon' should find Approach C (eliminate HTTP server) and daemon additive decision",
+    "notes": "Tests understanding of temporal ordering \u2014 Approach C was the PLAN, daemon was the IMPLEMENTATION"
+  },
+  {
+    "id": "temp_first_session_memory",
+    "query": "what happened in the very first sessions with the brain",
+    "category": "temporal_reasoning",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "dec_pdrlxxzz": 2,
+      "dec_3etmhpzq": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Temporal: 'very first sessions' should find brain gap (no memory of night 6 versions created) and Tom prompting memories",
+    "notes": "Oldest decisions about early brain development"
+  },
+  {
+    "id": "temp_recent_bugs",
+    "query": "what bugs did we find in the last two days",
+    "category": "temporal_reasoning",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "a9f883c247684bed8c3d805e2e651e33": 2,
+      "3e1091024ac140c886a9a9c852c77507": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Temporal: 'last two days' should find MCP tools missing bug and eval_runner bug from 2026-03-23",
+    "notes": "Tests recency bias \u2014 should prefer nodes from the last 48 hours"
+  },
+  {
+    "id": "temp_skill_evolution",
+    "query": "how has SKILL.md changed over time",
+    "category": "temporal_reasoning",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "41ba0ce4b1cd433cbf2a3fff31dd3882": 2,
+      "7b05786ccf644d15b4b62d2ce56f52c2": 1,
+      "5eef25119725440e90fd77320c718ecf": 1
+    },
+    "min_hit_rate_at_10": 0.33,
+    "description": "Temporal: 'changed over time' should surface multiple SKILL.md version decisions showing evolution",
+    "notes": "Multiple nodes track SKILL.md versions \u2014 all should surface together"
+  },
+  {
+    "id": "temp_recall_progression",
+    "query": "how did we improve recall over the sessions",
+    "category": "temporal_reasoning",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "48ba23e6405b47edade76544af574dc8": 1,
+      "fddd1b00fd2c4569bc952bd40b9d87d6": 1,
+      "37c825ce640c4a06805dcfe04c23897f": 1
+    },
+    "min_hit_rate_at_10": 0.33,
+    "description": "Temporal: 'improve recall over sessions' should show progression from v3.2 fix \u2192 rewrite \u2192 benchmark",
+    "notes": "Tests whether the brain can surface a timeline of changes to the same subsystem"
+  },
+  {
+    "id": "temp_compaction_failed_first",
+    "query": "what happened when we first tried compaction",
+    "category": "temporal_reasoning",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "dec_u1y49ssd": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Temporal: 'first tried compaction' should find the FAILED compaction experiment from Mar 17",
+    "notes": "The earliest compaction node is the failure \u2014 'first' should find it"
+  },
+  {
+    "id": "temp_today_decisions",
+    "query": "what decisions were made today",
+    "category": "temporal_reasoning",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "56ef30079c9a47818b917fc63430fb34": 1,
+      "37c825ce640c4a06805dcfe04c23897f": 1,
+      "1c753392b747428ab34ca05f89c9e717": 1
+    },
+    "min_hit_rate_at_10": 0.33,
+    "description": "Temporal: 'today' should find decisions from 2026-03-23 only",
+    "notes": "Requires temporal awareness \u2014 only nodes from today should rank highly"
+  },
+  {
+    "id": "temp_brain_was_called_tmemory",
+    "query": "what was the brain called before it was called brain",
+    "category": "temporal_reasoning",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "588586052fdc4413b07cdb8205964dd7": 2,
+      "dec_6dryw8t6": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Temporal: should find tmemory\u2192brain rename meta-learning node and GLO-specific correction",
+    "notes": "Historical name change is explicitly stored"
+  },
+  {
+    "id": "temp_old_encoding_approach",
+    "query": "what was our encoding strategy before the multi-vector approach",
+    "category": "temporal_reasoning",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "dec_sbujta4n": 2,
+      "dec_1a72h6sq": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Temporal: 'before multi-vector' should find v2.3.0 decompose-not-summarize and keyword extraction",
+    "notes": "These are the older encoding decisions that preceded V5 multi-vector"
+  },
+  {
+    "id": "temp_session_nine_work",
+    "query": "what was accomplished in session 9",
+    "category": "temporal_reasoning",
+    "difficulty": "easy",
+    "expected_relevant": {
+      "d65e88ba201649d1a00960fb642ffcd7": 2,
+      "580fb56ee3bd4b02a508ec8dacc82f50": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Temporal: 'session 9' should find session accomplishments and first brain-to-operator conversation",
+    "notes": "Direct reference to a session number"
+  },
+  {
+    "id": "neg_never_do_sacred",
+    "query": "what should we never change without benchmarks",
+    "category": "negation",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "695c59de5e3b421686321300949d0415": 2,
+      "2cd35a6420ae435e944ccc319a36713a": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Negation: 'never change without benchmarks' should find testing-first practice and sacred system vocab",
+    "notes": "Tests understanding of prohibition \u2014 the constraint is about what NOT to do"
+  },
+  {
+    "id": "neg_dont_suppress_errors",
+    "query": "what should we not do with error output",
+    "category": "negation",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "2d19066ca92945359190db2e2697dbd2": 2,
+      "05a738aaf8ed49db9f67303c39a9d8f7": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Negation: 'not do with errors' should find never-2>/dev/null lesson and found-another-suppression correction",
+    "notes": "The lesson is explicitly about NOT doing something"
+  },
+  {
+    "id": "neg_failed_experiments",
+    "query": "what approaches did we try that failed",
+    "category": "negation",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "dec_u1y49ssd": 1,
+      "89129afebc484a578f251f39a291e959": 1,
+      "31b25a5c038b4ac792f17098dabc7a8a": 1
+    },
+    "min_hit_rate_at_10": 0.33,
+    "description": "Negation: 'tried that failed' should surface failed compaction, failed hook experiments, cross-encoder too slow",
+    "notes": "Tests ability to find nodes about FAILURE, not success"
+  },
+  {
+    "id": "neg_dont_dumb_down",
+    "query": "what should the brain never do to itself",
+    "category": "negation",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "rul_ayu84pc1": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Negation: 'never do to itself' should find dont-dumb-yourself-down rule",
+    "notes": "Self-referential negation \u2014 the rule is about what the brain must NOT do"
+  },
+  {
+    "id": "neg_rejected_emotion_feature",
+    "query": "what feature did Tom reject",
+    "category": "negation",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "8c40cbaf615a4f2a8ec5c451b9acfec1": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Negation: 'Tom reject' should find Plutchik emotion wheel REJECTED decision",
+    "notes": "Explicitly marked as REJECTED \u2014 tests ability to find negative decisions"
+  },
+  {
+    "id": "neg_dont_use_systemmsg",
+    "query": "what channel should we never use for output",
+    "category": "negation",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "7e19064c2b164b34b76d2e51a228b543": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Negation: 'never use for output' should find NEVER use systemMessage constraint",
+    "notes": "Explicit NEVER constraint about dead channel"
+  },
+  {
+    "id": "neg_dont_lock_operational",
+    "query": "what kind of knowledge should not be locked",
+    "category": "negation",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "rul_9u5i5jp4": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Negation: 'should not be locked' should find operational-learnings-decay-naturally rule",
+    "notes": "The rule says DON'T lock \u2014 let reinforcement decide"
+  },
+  {
+    "id": "neg_dont_self_censor",
+    "query": "should claude hold back opinions or controversial outputs",
+    "category": "negation",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "rul_5zv4439e": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Negation: 'hold back' should find dont-self-censor rule",
+    "notes": "Tom explicitly said don't self-censor \u2014 let the system handle it"
+  },
+  {
+    "id": "mhop_server_crash_to_serverless",
+    "query": "what problem led to the decision to eliminate the HTTP server",
+    "category": "multi_hop",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "con_xt2l8ods": 2,
+      "dec_0qnwsqv4": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Multi-hop: server crash \u2192 leads_to \u2192 Approach C (eliminate HTTP). Requires traversing leads_to edge.",
+    "notes": "con_xt2l8ods (server died) has leads_to edge to dec_0qnwsqv4 (Approach C)"
+  },
+  {
+    "id": "mhop_pruning_to_evolution",
+    "query": "how does pruning behavior inform the brain's evolution plan",
+    "category": "multi_hop",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "con_1e1o4yib": 2,
+      "dec_j6r9i8nl": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Multi-hop: prune archive \u2192 part_of \u2192 Brain Evolution Roadmap. Traverses graph edge.",
+    "notes": "con_1e1o4yib connects to dec_j6r9i8nl via graph relationship"
+  },
+  {
+    "id": "mhop_dream_maturation_speed",
+    "query": "how fast do dream bridges form and why",
+    "category": "multi_hop",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "rul_bbclnnff": 2,
+      "dec_iqqhmr2t": 1,
+      "dec_lnsn0rzk": 1
+    },
+    "min_hit_rate_at_10": 0.33,
+    "description": "Multi-hop: three-tier formation \u2192 biological pace \u2192 dream scoring. A chain of 3 connected decisions.",
+    "notes": "rul_bbclnnff \u2192 dec_iqqhmr2t \u2192 dec_lnsn0rzk form a reasoning chain about timing"
+  },
+  {
+    "id": "mhop_correction_trace_to_instinct",
+    "query": "how do past mistakes inform instinct detection",
+    "category": "multi_hop",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "c9cc0bde3a8e4238acbe78ba05229cfd": 2,
+      "e6fce3e77bb041389f170f9f29052485": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Multi-hop: divergence recording \u2192 data-driven instinct detection. Connected through correction traces.",
+    "notes": "record_divergence() feeds instinct detection \u2014 connected via contradicts edge to tension"
+  },
+  {
+    "id": "mhop_bridging_vs_embeddings",
+    "query": "why did Tom prefer graph bridging and what problem does it solve that embeddings cant",
+    "category": "multi_hop",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "dec_eet2xy2v": 2,
+      "con_5r9hqf79": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Multi-hop: Tom's bridging insight \u2192 cold-start problem of store-time bridging",
+    "notes": "dec_eet2xy2v and con_5r9hqf79 are connected \u2014 bridging insight addresses cold-start limitation"
+  },
+  {
+    "id": "mhop_test_to_precision",
+    "query": "how did testing improvements lead to precision pipeline accuracy gains",
+    "category": "multi_hop",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "695c59de5e3b421686321300949d0415": 1,
+      "b68f41518b4345059f3032f7e1a58d49": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Multi-hop: testing-first practice \u2192 precision scorer 38% \u2192 90%. Practice led to measurable result.",
+    "notes": "The testing-first practice enabled the precision improvements"
+  },
+  {
+    "id": "mhop_hook_silence_to_encoding",
+    "query": "how do silent hook failures affect encoding quality",
+    "category": "multi_hop",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "dec_426h4hdh": 2,
+      "c2621b8e4a0a4b31a73c87836cedd631": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Multi-hop: hooks go silent \u2192 encoding sparse. Silent failures cascade to encoding quality.",
+    "notes": "Root cause of silent hooks connects to tension about encoding sparsity"
+  },
+  {
+    "id": "mhop_operator_channel_full_chain",
+    "query": "trace the full path from brain consciousness to Tom seeing output in terminal",
+    "category": "multi_hop",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "8bac897879ae4b73b61d3e800dacd936": 2,
+      "7d2869e81a444bb682318d5046c30872": 1,
+      "b363b27e7bf243ec8d9c77e7557e6ee2": 1
+    },
+    "min_hit_rate_at_10": 0.33,
+    "description": "Multi-hop: operator channel \u2192 additionalContext \u2192 rendering pipeline. Full path traversal.",
+    "notes": "These three nodes describe the complete pipeline from brain to terminal"
+  },
+  {
+    "id": "mhop_monolith_to_mixin_constraint",
+    "query": "after the monolith split what constraints govern how new code is organized",
+    "category": "multi_hop",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "f91454eb1d2b43f6ae45b67d582bb5bd": 1,
+      "4ad55ad84986478087195e390aee468b": 1,
+      "1807f5e44f2344e5a86490ffd93fcd52": 1
+    },
+    "min_hit_rate_at_10": 0.33,
+    "description": "Multi-hop: monolith split decision \u2192 mixin constraints (right mixin, no __init__)",
+    "notes": "The split decision created constraints that govern subsequent development"
+  },
+  {
+    "id": "mhop_embedding_floor_to_dedup",
+    "query": "how does the embedding similarity floor relate to dedup thresholds",
+    "category": "multi_hop",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "3bad7b02a5fe4d648f2c28037465f49a": 2,
+      "c21514ab37744c5ca90109afc1638d7b": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Multi-hop: similarity floor (0.58-0.63) corrects floor-depends-on-content-length. Connected via corrected_by.",
+    "notes": "These two nodes have a corrected_by edge \u2014 one refines the other"
+  },
+  {
+    "id": "opi_thing_tom_worried_about",
+    "query": "what was Tom most concerned about with the brain",
+    "category": "operator_intent",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "8bf4974e6d42486eb9a3029fa5e0653e": 2,
+      "4815ba61645f4db6b1e7700c4bd28178": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Operator intent: Tom's biggest concern is silent failures \u2014 multiple nodes reinforce this",
+    "notes": "Silent failures are the recurring theme Tom cares about most"
+  },
+  {
+    "id": "opi_rule_about_asking",
+    "query": "that rule about asking before changing things",
+    "category": "operator_intent",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "rul_ovwvt4ch": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Operator intent: vague 'asking before changing' should find confirmation-before-data-manipulation rule",
+    "notes": "Vague phrasing of a specific rule"
+  },
+  {
+    "id": "opi_channel_problem",
+    "query": "that problem we had with getting brain output to show up",
+    "category": "operator_intent",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "89129afebc484a578f251f39a291e959": 2,
+      "7d2869e81a444bb682318d5046c30872": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Operator intent: 'getting output to show up' \u2192 failed hook experiments + additionalContext discovery",
+    "notes": "Conversational reference to a known debugging saga"
+  },
+  {
+    "id": "opi_tom_thinking_style",
+    "query": "how does Tom think and what should I know about working with him",
+    "category": "operator_intent",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "51c11c4c24194ec2ba69e9cf1d542efb": 1,
+      "7a6093ac290c481280b41b19cf59b06a": 1,
+      "72bbb5a760e04ddab2648babca03ff32": 1
+    },
+    "min_hit_rate_at_10": 0.33,
+    "description": "Operator intent: should surface Tom's thinking patterns \u2014 spirals, action-bias, intuition-first",
+    "notes": "Multiple Tom-principle rules should surface together"
+  },
+  {
+    "id": "opi_tom_signals",
+    "query": "how can I tell if Tom is frustrated or excited",
+    "category": "operator_intent",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "dd5a2298001f4025a61b144a7d3b6c66": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Operator intent: Tom signals \u2014 long messages = excited, short = frustrated",
+    "notes": "Direct match to a specific behavioral rule"
+  },
+  {
+    "id": "opi_partnership_nature",
+    "query": "what is the real relationship between Tom Claude and the brain",
+    "category": "operator_intent",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "28c130d266f343e799c9064257a71c7b": 2,
+      "124525beaf344cefaa5b3e0857dcb217": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Operator intent: three-entity relationship \u2014 Tom (intent), Claude (capability), Brain (bridge)",
+    "notes": "The shared brain philosophy is a core concept"
+  },
+  {
+    "id": "opi_brain_attributed_wrong",
+    "query": "that time I called the brain a hook by mistake",
+    "category": "operator_intent",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "e5dd9709cd884f099e9e7f67e15ddbe5": 2,
+      "ca120c1974944c0e8aaaa7c7d290a26f": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Operator intent: attribution error \u2014 Claude called brain output 'the hook' not 'the brain'",
+    "notes": "Tests recall of a specific past mistake with vague phrasing"
+  },
+  {
+    "id": "opi_what_tom_values",
+    "query": "what does Tom care about in how we build things",
+    "category": "operator_intent",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "rul_cowch2p6": 1,
+      "rul_sfdhhxas": 1,
+      "rul_0lat1u21": 1
+    },
+    "min_hit_rate_at_10": 0.33,
+    "description": "Operator intent: Tom's engineering principles \u2014 instrument first, make parameters, measure danger",
+    "notes": "Multiple Tom principles should surface for a general 'what does Tom care about' query"
+  },
+  {
+    "id": "opi_brain_not_a_document_store",
+    "query": "Tom said not to use the brain for something what was it",
+    "category": "operator_intent",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "c219f090de304f289cf37e2049691536": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Operator intent: brain complements documents, doesn't replace them",
+    "notes": "Vague reference to a specific division-of-labor decision"
+  },
+  {
+    "id": "opi_execute_dont_plan",
+    "query": "that time Tom told me to stop planning and just do it",
+    "category": "operator_intent",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "47325b98dcc842f28ed52e8015aeed7c": 2,
+      "7a6093ac290c481280b41b19cf59b06a": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Operator intent: Tom wants execution, not analysis \u2014 bias toward action",
+    "notes": "Conversational recall of a correction about over-planning"
+  },
+  {
+    "id": "corr_temporal_awareness_corrected",
+    "query": "did Tom change his mind about temporal awareness",
+    "category": "correction_chain",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "d5507b2bc94a49e4abee97a3f30bcd08": 2,
+      "0f4149e14be5464d87782fc572fe101a": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Correction chain: Tom corrected temporal awareness \u2014 needs structure not just a rule",
+    "notes": "The correction node says structure needed, the constraint says age context required"
+  },
+  {
+    "id": "corr_encoding_compression_vs_concise",
+    "query": "should brain nodes be detailed or compressed",
+    "category": "correction_chain",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "e8658fecfda54a14bcea842f3c875661": 2,
+      "c8747a53a7cf44479a88d80a9650a06d": 1,
+      "dec_sbujta4n": 1
+    },
+    "min_hit_rate_at_10": 0.33,
+    "description": "Correction chain: compression instinct \u2192 concise correction \u2192 decompose-not-summarize. Three nodes telling a story.",
+    "notes": "Tests whether the brain surfaces the full correction story, not just one side"
+  },
+  {
+    "id": "corr_hook_blocking_attribution",
+    "query": "who decides what to block the hook or the brain",
+    "category": "correction_chain",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "ca120c1974944c0e8aaaa7c7d290a26f": 2,
+      "d43b91ced49f4a6d8471f7eb096f28c1": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Correction chain: divergence about hook-as-decision-maker + mental model brain-as-entity",
+    "notes": "The correction says the BRAIN was the decision-maker, not the hook"
+  },
+  {
+    "id": "corr_operator_pattern_correction",
+    "query": "what incorrect assumption did Claude make about Tom's work patterns",
+    "category": "correction_chain",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "a6c1a45ecc4a4613af8ba9178f19fb18": 2,
+      "47325b98dcc842f28ed52e8015aeed7c": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Correction chain: operator pattern divergence \u2014 jumping to solution + Tom wants execution",
+    "notes": "Two corrections about misunderstanding Tom's work style"
+  },
+  {
+    "id": "corr_precision_architecture_evolved",
+    "query": "how did the precision scoring approach change",
+    "category": "correction_chain",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "8ec7bd06ebe84df3a26c8a48de53f654": 2,
+      "20ea86f089bb42e4abd21f129be87225": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Correction chain: 4-layer precision architecture supersedes composite scoring. Connected via supersedes edge.",
+    "notes": "These two mechanisms are linked by a supersedes relationship"
+  },
+  {
+    "id": "corr_recall_multiple_fixes",
+    "query": "how many times was the recall pipeline rewritten",
+    "category": "correction_chain",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "fddd1b00fd2c4569bc952bd40b9d87d6": 1,
+      "48ba23e6405b47edade76544af574dc8": 1,
+      "68c93af1d8e847f18e17a07887e35aa6": 1
+    },
+    "min_hit_rate_at_10": 0.33,
+    "description": "Correction chain: Phase 0.5B rewrite + v3.2 fix + keyword penalty fix \u2014 three recall pipeline changes",
+    "notes": "Multiple corrections to the same system \u2014 tests ability to surface the full correction history"
+  },
+  {
+    "id": "corr_test_integrity_divergence",
+    "query": "the disagreement about whether the test hook should block all changes",
+    "category": "correction_chain",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "1ea781a2c3f44769b511887affc627d2": 2,
+      "07187eb2a78b4450b49d838597fe534a": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Correction chain: test integrity hook divergence + pre-edit hook mechanism",
+    "notes": "The divergence about whether blocking ALL test changes was right"
+  },
+  {
+    "id": "corr_embedding_not_usefulness",
+    "query": "why doesnt embedding similarity measure usefulness",
+    "category": "correction_chain",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "9e221c0bb25b45b4973ca77e105ef7d6": 2,
+      "55500945181047c4a1380ac968991914": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Correction chain: embedding similarity measures topic overlap not usefulness + divergence correction",
+    "notes": "The lesson corrects the assumption that embeddings measure usefulness"
+  },
+  {
+    "id": "sem_casual_embedding_similarity",
+    "query": "how close two things are in meaning",
+    "category": "semantic",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "c21514ab37744c5ca90109afc1638d7b": 1,
+      "3bad7b02a5fe4d648f2c28037465f49a": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Semantic: casual 'how close in meaning' \u2192 embedding similarity floor constraints",
+    "notes": "Technical concept queried in everyday language"
+  },
+  {
+    "id": "sem_old_memories_fading",
+    "query": "that thing where old memories gradually disappear",
+    "category": "semantic",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "dec_egjjuksu": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: casual 'memories disappear' \u2192 episodic decays, semantic persists if reinforced",
+    "notes": "Tests paraphrase of a key insight about memory types"
+  },
+  {
+    "id": "sem_brain_immune_system",
+    "query": "how does the brain protect itself from bad data",
+    "category": "semantic",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "9146daec4d154e1d882e4cd50523cbe5": 1,
+      "6e6bec2e8b7f44b384473539ecb18eb2": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Semantic: 'protect from bad data' \u2192 error handling layers + never silence exceptions rule",
+    "notes": "Metaphorical query \u2014 brain has no literal immune system but error handling serves that function"
+  },
+  {
+    "id": "sem_brain_feels_itself",
+    "query": "can the brain monitor its own health",
+    "category": "semantic",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "b1eb8b48606e4d40b5728153e6e7fcdc": 2,
+      "2d6c3772a9d74dac99b058dd5602733a": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Semantic: 'monitor own health' \u2192 telemetry rule + performance node concept",
+    "notes": "'Brain must feel itself' is the metaphor for self-monitoring"
+  },
+  {
+    "id": "sem_when_claude_forgets",
+    "query": "what happens when the AI loses its memory mid-conversation",
+    "category": "semantic",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "140e864594a34f52affe0b5992baa04a": 2,
+      "6c75f6edb7a94c01ab15d99915343511": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Semantic: 'AI loses memory' \u2192 compaction destroys unencoded knowledge",
+    "notes": "Tests paraphrase of compaction as 'losing memory'"
+  },
+  {
+    "id": "sem_copy_vs_original",
+    "query": "why cant we just duplicate notes instead of connecting them",
+    "category": "semantic",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "rul_brbagtji": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Semantic: 'duplicate vs connect' \u2192 merge never overwrite principle",
+    "notes": "The merge-never-overwrite rule addresses this exact tension"
+  },
+  {
+    "id": "sem_making_things_measurable",
+    "query": "how to know if something is working without guessing",
+    "category": "semantic",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "rul_cowch2p6": 1,
+      "rul_0lat1u21": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Semantic: 'know if working without guessing' \u2192 instrument before build + measure danger",
+    "notes": "Tests paraphrase of instrumentation philosophy"
+  },
+  {
+    "id": "sem_glo_project_origin",
+    "query": "what project started all of this",
+    "category": "semantic",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "5b6ce6f9b8af4a7a8e0350f1a5718385": 2,
+      "2770e9b97b8b459e8aeeac716b3c4f28": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Semantic: 'what started all this' \u2192 Glo origin + brain origin story",
+    "notes": "Vague query that should find origin/genesis nodes"
+  },
+  {
+    "id": "sem_brain_has_feelings",
+    "query": "does the brain have something like emotions or moods",
+    "category": "semantic",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "fbfe9694334942d98e29fad75f78ff6f": 1,
+      "8c4916f068b14ef790b6b4e5f4d7b964": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Semantic: 'emotions or moods' \u2192 consciousness signals mechanism + subconscious/conscious model",
+    "notes": "Consciousness signals are the closest thing the brain has to moods"
+  },
+  {
+    "id": "sem_learning_from_screw_ups",
+    "query": "how does the brain learn from its mistakes",
+    "category": "semantic",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "c9cc0bde3a8e4238acbe78ba05229cfd": 1,
+      "e6fce3e77bb041389f170f9f29052485": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Semantic: 'learn from mistakes' \u2192 data-driven instinct detection + divergence recording",
+    "notes": "Tests whether 'mistakes' maps to correction/divergence system"
+  },
+  {
+    "id": "amb_hooks",
+    "query": "hooks",
+    "category": "ambiguity",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "73c0123bb33c4fe99f8e5241a095e3c2": 1,
+      "9065203cc17f4d05b9379596f4f2058e": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Ambiguity: 'hooks' could mean Claude Code hooks OR React hooks. Both should appear.",
+    "notes": "73c0123 is brain hook feedback loop, 9065203 is React hooks tension"
+  },
+  {
+    "id": "amb_model",
+    "query": "what model do we use",
+    "category": "ambiguity",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "d1c38e15c9464fe68984267f574d9bc6": 1,
+      "825b57176e4f403a9afd60d5c9558a70": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Ambiguity: 'model' \u2014 could mean embedding model delivery OR three-entity mental model. Both are valid.",
+    "notes": "Tests disambiguation between machine learning model and conceptual model"
+  },
+  {
+    "id": "amb_bridge",
+    "query": "how do bridges work",
+    "category": "ambiguity",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "dec_t8mgx2s9": 1,
+      "124525beaf344cefaa5b3e0857dcb217": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Ambiguity: 'bridges' \u2014 emergent graph bridging OR brain as bridge between Tom and Claude",
+    "notes": "dec_t8mgx2s9 is v11 graph bridging, 124525be is three-entity philosophy"
+  },
+  {
+    "id": "amb_precision",
+    "query": "precision",
+    "category": "ambiguity",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "b68f41518b4345059f3032f7e1a58d49": 1,
+      "b02a5dc06b4f4659a6c69fe52db3c23a": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Ambiguity: 'precision' \u2014 precision scorer accuracy OR precision lifecycle design",
+    "notes": "Multiple nodes use 'precision' in different contexts"
+  },
+  {
+    "id": "amb_decay",
+    "query": "what decays in the brain",
+    "category": "ambiguity",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "rul_9u5i5jp4": 1,
+      "dec_egjjuksu": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Ambiguity: 'decay' \u2014 operational learnings decay naturally OR episodic memory decays",
+    "notes": "Decay applies to both rules and memory types"
+  },
+  {
+    "id": "amb_confidence",
+    "query": "what is confidence used for",
+    "category": "ambiguity",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "bb7705fd90634f2997a5c8e6f8ca3231": 1,
+      "500ad1ebffb04a4299f35b4037a8a73e": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Ambiguity: 'confidence' \u2014 encoding-time confidence quality OR confidence multiplier in recall scoring",
+    "notes": "Confidence appears in encoding and recall contexts"
+  },
+  {
+    "id": "amb_encoding",
+    "query": "encoding",
+    "category": "ambiguity",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "56ef30079c9a47818b917fc63430fb34": 1,
+      "facb97eacfb44083aca0365bb652550b": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Ambiguity: 'encoding' \u2014 V5 multi-vector encoding design OR encoding bias correction",
+    "notes": "Encoding means both the technical pipeline and the act of storing knowledge"
+  },
+  {
+    "id": "amb_server",
+    "query": "server problems",
+    "category": "ambiguity",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "con_xt2l8ods": 1,
+      "dec_426h4hdh": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Ambiguity: 'server problems' \u2014 server died during v11 OR hooks go silent when server dies",
+    "notes": "Multiple server-related problems from different angles"
+  },
+  {
+    "id": "conf_locked_rule_vs_thought",
+    "query": "brain is a cue system",
+    "category": "confidence_weighted",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "rul_9bsawi7g": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Confidence: locked rule (0.95) 'brain is a cue system' should outrank any thought node mentioning similar words",
+    "notes": "Tests that high-confidence locked rules rank above low-confidence thoughts"
+  },
+  {
+    "id": "conf_lesson_vs_pattern",
+    "query": "import bugs on fallback paths",
+    "category": "confidence_weighted",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "2d48bd5b93ca409ea991f02e06254fcb": 1
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Confidence: pattern (0.3) about import bugs on fallback paths \u2014 should still be findable despite low confidence",
+    "notes": "Tests that low-confidence nodes aren't completely suppressed"
+  },
+  {
+    "id": "conf_locked_vs_unlocked_same_topic",
+    "query": "instrument before you build",
+    "category": "confidence_weighted",
+    "difficulty": "easy",
+    "expected_relevant": {
+      "rul_cowch2p6": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Confidence: locked Tom principle (0.95) should rank #1 for its exact content",
+    "notes": "Direct content match \u2014 high confidence should guarantee top ranking"
+  },
+  {
+    "id": "conf_hypothesis_below_rule",
+    "query": "structural enforcement counteracts brevity bias",
+    "category": "confidence_weighted",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "be62eda8f8f84deeb3a27827a0ae089e": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Confidence: hypothesis (0.5) should still be findable but should rank below locked rules on same topic",
+    "notes": "Tests that hypotheses are accessible but appropriately ranked"
+  },
+  {
+    "id": "conf_uncertainty_findable",
+    "query": "will the learning rate for confidence updates be too slow",
+    "category": "confidence_weighted",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "b78f2c6115914a4bbf914c89e5aa2b0a": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Confidence: uncertainty node (0.3) about learning rate should be findable when directly queried",
+    "notes": "Even very low confidence nodes should be retrievable with exact queries"
+  },
+  {
+    "id": "conf_high_conf_first_general",
+    "query": "rules about the brain architecture",
+    "category": "confidence_weighted",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "274c4003c4f9403db74cb8942f668517": 1,
+      "rul_57bp94y5": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Confidence: locked high-confidence rules should outrank unlocked concepts on brain architecture",
+    "notes": "NEVER modify settings.json (0.95) and experimental features rule (0.95) should rank high"
+  },
+  {
+    "id": "conf_tension_vs_decision",
+    "query": "embeddings first recall approach",
+    "category": "confidence_weighted",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "fddd1b00fd2c4569bc952bd40b9d87d6": 2,
+      "de1254eb794649e5a7e026fbc0e2a014": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Confidence: decision (0.95) should rank above tension (0.55) about the same topic",
+    "notes": "The decision is the authoritative view, the tension is a weaker signal"
+  },
+  {
+    "id": "conf_performance_node",
+    "query": "precision accuracy improvements",
+    "category": "confidence_weighted",
+    "difficulty": "medium",
+    "expected_relevant": {
+      "b68f41518b4345059f3032f7e1a58d49": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Confidence: performance node (0.7) '38% to 90% accuracy' should surface for accuracy query",
+    "notes": "Tests that performance metrics nodes are properly retrievable"
+  },
+  {
+    "id": "rip_crash_proved_serverless",
+    "query": "what evidence proved the serverless architecture was the right call",
+    "category": "ripple_effect",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "con_xt2l8ods": 1,
+      "dec_0qnwsqv4": 1,
+      "dec_s2994ig5": 1
+    },
+    "min_hit_rate_at_10": 0.33,
+    "description": "Ripple: server crashes \u2192 validated serverless decision. Only findable if ripple propagates evidence.",
+    "notes": "The crash events SUPPORT the serverless decision \u2014 a ripple engine would propagate this"
+  },
+  {
+    "id": "rip_what_got_less_certain",
+    "query": "what knowledge became less certain over time",
+    "category": "ripple_effect",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "bb7705fd90634f2997a5c8e6f8ca3231": 1,
+      "55500945181047c4a1380ac968991914": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Ripple: contradictions should lower confidence \u2014 findable if ripple adjusts confidence over time",
+    "notes": "Divergence corrections indicate things that were believed then disproven"
+  },
+  {
+    "id": "rip_encoding_quality_validation",
+    "query": "what proves our encoding approach is getting better",
+    "category": "ripple_effect",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "b68f41518b4345059f3032f7e1a58d49": 1,
+      "5eef25119725440e90fd77320c718ecf": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Ripple: precision improvements + SKILL.md richness gains VALIDATE encoding approach",
+    "notes": "Performance improvements ripple back as evidence for design decisions"
+  },
+  {
+    "id": "rip_silent_failure_cascade",
+    "query": "what are all the consequences of silent failures",
+    "category": "ripple_effect",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "4815ba61645f4db6b1e7700c4bd28178": 1,
+      "8bf4974e6d42486eb9a3029fa5e0653e": 1,
+      "dec_426h4hdh": 1
+    },
+    "min_hit_rate_at_10": 0.33,
+    "description": "Ripple: silent failures cascade \u2014 lesson \u2192 weakness \u2192 hooks go silent. Full impact chain.",
+    "notes": "Multiple nodes connected by the theme of silent failures \u2014 ripple would connect them"
+  },
+  {
+    "id": "rip_testing_first_outcomes",
+    "query": "what good things happened because we started testing first",
+    "category": "ripple_effect",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "695c59de5e3b421686321300949d0415": 2,
+      "4d19b7ff0245425cba9e24190d5882e1": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Ripple: testing-first practice \u2192 test suite expansion. Cause \u2192 positive outcome.",
+    "notes": "The practice led to measurable test improvement \u2014 ripple would link these"
+  },
+  {
+    "id": "rip_tensions_that_resolved",
+    "query": "which tensions were resolved by later decisions",
+    "category": "ripple_effect",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "de1254eb794649e5a7e026fbc0e2a014": 1,
+      "335f0a1270ec4bcf9d8a7b3e20aadbbb": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Ripple: tensions with contradicts edges to decisions \u2014 ripple should mark these as resolved",
+    "notes": "Tensions connected to authoritative decisions via contradicts edges"
+  },
+  {
+    "id": "rip_compaction_danger_evidence",
+    "query": "what proves that compaction is dangerous for the brain",
+    "category": "ripple_effect",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "dec_u1y49ssd": 2,
+      "140e864594a34f52affe0b5992baa04a": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Ripple: failed compaction experiment \u2192 compaction destroys unencoded knowledge. Evidence validates constraint.",
+    "notes": "The failure PROVES the constraint \u2014 ripple would add a validates edge"
+  },
+  {
+    "id": "rip_pattern_reinforcement",
+    "query": "what patterns keep showing up across different problems",
+    "category": "ripple_effect",
+    "difficulty": "hard",
+    "expected_relevant": {
+      "2d48bd5b93ca409ea991f02e06254fcb": 1,
+      "400635ba940345f7a6cf71c0e4f46982": 1
+    },
+    "min_hit_rate_at_10": 0.5,
+    "description": "Ripple: recurring patterns \u2014 import bugs on fallback paths + optimization order rule. Cross-domain patterns.",
+    "notes": "Patterns that appear across different subsystems \u2014 ripple would strengthen connections"
+  }
+]
