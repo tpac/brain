@@ -1,9 +1,9 @@
 # Encoding/Decoding Pipeline v2
 
 **Date:** 2026-03-23
-**Git version:** f27d1dd (main)
+**Git version:** 6509d54 (main) — updated end of session
 **Author:** Claude Opus 4.6 + Tom
-**Session:** #10 — Embedding Migration to LLM
+**Sessions:** #10-11 — Embedding Migration to LLM
 
 ---
 
@@ -328,19 +328,23 @@ Tables: nodes, node_embeddings, node_enrichments ★NEW, node_vectors, edges
 
 ---
 
-## 3. PROPOSED FLOW (next — recall-before-encode + ripple)
+## 3. PROPOSED FLOW — REVISED after benchmarking (ripple KILLED, cues + V6 encoding)
 
 ```
+⚠️  THE FULL RIPPLE ENGINE WAS DESIGNED, TESTED, AND KILLED IN THIS SESSION.
+    15+ benchmark conditions proved it net-negative (-0.0016 NDCG).
+    What follows is the REVISED plan based on data.
+    See "What We Tested and Killed" section below for the full story.
+
+
 ═══════════════════════════════════════════════════════════════
-PROPOSED ENCODING — brain recalls before encoding, ripples backward
-Files: brain_remember.py → remember() (modified)
-       brain_enrichment.py ★NEW — ripple engine, prompt builder
-       brain_constants.py (new ripple tuning knobs)
-       dal.py → EnrichmentDAL, GraphDAL (extended)
+PROPOSED ENCODING — V6 prompt (N/R/W/C/D fields) + cues-as-edges
+Files: brain_remember.py → remember(), _build_enrichment_prompt_v6(), store_enrichments()
+       brain_constants.py → ENRICHMENT_PROMPT_TEMPLATE_V6
+       dal.py → EnrichmentDAL (new vector types), GraphDAL
 Models: Arctic v1.5 (embedding)
-       Claude (enrichment + impact assessment — already in the loop)
+       Claude (enrichment + impact cues — already in the loop)
 Tables: nodes, node_embeddings, node_enrichments, edges
-        brain_telemetry ★NEW (in brain_logs.db — tracks ripple events)
 ═══════════════════════════════════════════════════════════════
 
 Claude calls: remember(type="lesson", title="API crashed from shared DB connections",
@@ -350,145 +354,142 @@ Claude calls: remember(type="lesson", title="API crashed from shared DB connecti
    brain_remember.py → remember()
    ├─ [same: node creation, embedding, TF-IDF, auto-connect]
    │
-   ├─ ★ENHANCED: _build_enrichment_prompt(node_id, title, content)
+   ├─ _build_enrichment_prompt_v6(node_id, title, content)
    │   ├─ GraphDAL.get_neighbors_with_context(node_id, limit=5)
    │   │   └─ ALSO searches by embedding similarity (not just edges)
-   │   │   └─ Reason: new node may not HAVE edges yet — find semantic neighbors
+   │   │   └─ Reason: new node may not HAVE edges yet
    │   │
-   │   ├─ Returns TWO prompts:
+   │   ├─ Returns enrichment_prompt (V6 — expanded from V5):
    │   │
-   │   │   ENRICHMENT PROMPT (same as current — Q/A/B/K):
-   │   │   "The brain found these related memories: ...
-   │   │    Generate: Q: ... A: ... B: ... K: ..."
+   │   │   "The brain found these related memories:
+   │   │    - Separate API + Web architecture (decision, keywords: api, web)
+   │   │    - PostgreSQL connection pooling (mechanism, keywords: pool, db)
    │   │
-   │   │   ★NEW — IMPACT ASSESSMENT PROMPT:
-   │   │   "This new memory just arrived:
-   │   │    Title: API crashed from shared DB connections
-   │   │    Content: Production outage: API pods sharing DB pool...
+   │   │    New node: "API crashed from shared DB connections"
+   │   │    Content: "Production outage: API pods sharing DB pool..."
    │   │
-   │   │    These existing memories are related:
-   │   │    1. [id:abc] Separate API + Web architecture (decision, conf 0.80)
-   │   │    2. [id:def] PostgreSQL connection pooling (mechanism, conf 0.70)
-   │   │    3. [id:ghi] Monolith was fine for v1 (decision, conf 0.60)
+   │   │    Generate exactly these lines, no explanations:
+   │   │    Q: [one question a user would naturally ask that leads to this node]
+   │   │    A: [3-5 word phrase using words from the neighbors above]
+   │   │    B: [one sentence connecting this node to its most important neighbor]
+   │   │    K: [5 comma-separated keywords borrowed from neighbors]
+   │   │    N: [what this does NOT mean — a common misunderstanding]
+   │   │    R: [3 alternative ways someone might search for this, comma-separated]
+   │   │    W: [what this replaces or updates, if anything]
+   │   │    D: [what must also be true for this to make sense]
    │   │
-   │   │    For each related memory, answer:
-   │   │    [id:abc] VALIDATES | CONTRADICTS | EXTENDS | UNCHANGED? confidence: UP | DOWN | SAME?
-   │   │    [id:def] VALIDATES | CONTRADICTS | EXTENDS | UNCHANGED?
-   │   │    [id:ghi] VALIDATES | CONTRADICTS | EXTENDS | UNCHANGED?"
+   │   │    Impact on related memories (one line per neighbor):
+   │   │    [Separate API + Web architecture] VALIDATES | CONTRADICTS | EXTENDS | NO_IMPACT? reason?
+   │   │    [PostgreSQL connection pooling] VALIDATES | CONTRADICTS | EXTENDS | NO_IMPACT? reason?"
    │   │
-   │   └─ Returns {enrichment_prompt, impact_prompt}
+   │   └─ Returns enrichment_prompt in remember() response
    │
-   └─ Return {id, enrichment_prompt, impact_prompt, ...}
+   └─ Return {id, enrichment_prompt, ...}
         │
         ▼
-   Claude fills in BOTH prompts:
-
-   Enrichment:
-     Q: what caused the API crash
-     A: shared database connection outage
-     B: The DB pool sharing is what made the API/Web separation necessary
+   Claude fills it in:
+     Q: what caused the API production outage
+     A: shared database pool crash
+     B: The shared DB pool is what made the API/Web separation necessary
      K: database, connection, pool, crash, outage
+     N: This does NOT mean the API itself had bugs — it was the shared DB pool
+     R: production outage, database connection failure, API downtime cause
+     W: Disproves the assumption that shared DB was fine for our scale
+     D: Depends on: having multiple API pods sharing one connection pool
 
-   Impact:
-     [id:abc] VALIDATES — the crash proves the separation was the right call. conf: UP
-     [id:def] VALIDATES — connection pooling was the mechanism that failed. conf: UP
-     [id:ghi] CONTRADICTS — the monolith SHARED the DB, which caused THIS crash. conf: DOWN
+     [Separate API + Web architecture] VALIDATES — crash proves the separation was right
+     [PostgreSQL connection pooling] VALIDATES — pooling was the mechanism that failed
         │
         ▼
-   Claude calls: store_enrichments(node_id, Q, A, B, K)  ← same as current
-   Claude calls: apply_ripple(node_id, impacts=[...])     ← ★NEW
+   Claude calls: store_enrichments(node_id, Q, A, B, K, N, R, W, D)
+   Claude calls: store_cues(node_id, impacts=[...])
         │
         ▼
- ★ brain_enrichment.py → apply_ripple(node_id, impacts)
-   For each impacted neighbor:
-   │
-   ├─ [id:abc] VALIDATES, conf UP:
-   │   ├─ brain.connect(new_node, abc, "validates", weight=0.8)
-   │   ├─ Confidence: 0.80 → 0.85 (+0.05, capped at 1.0)
-   │   ├─ ★RE-ENRICH: build new enrichment prompt for abc with NEW neighbor context
-   │   │   └─ abc now has a new neighbor (the crash) — its Q/A/B/K should reflect this
-   │   │   └─ New question might be: "what proved the API separation was right"
-   │   │   └─ Re-embed enrichment vectors for abc
-   │   └─ Log to brain_telemetry: {event: 'ripple', source: new_node, target: abc,
-   │       action: 'validates', conf_delta: +0.05, re_enriched: true}
-   │
-   ├─ [id:def] VALIDATES, conf UP:
-   │   ├─ brain.connect(new_node, def, "validates", weight=0.7)
-   │   ├─ Confidence: 0.70 → 0.75
-   │   ├─ RE-ENRICH def
-   │   └─ Log to brain_telemetry
-   │
-   └─ [id:ghi] CONTRADICTS, conf DOWN:
-       ├─ brain.connect(new_node, ghi, "contradicts", weight=0.8)
-       ├─ Confidence: 0.60 → 0.50 (-0.10)
-       ├─ RE-ENRICH ghi — its new enrichment might include:
-       │   Q: "was the monolith actually fine"
-       │   B: "Contradicted by the shared DB crash — monolith's DB sharing was the root cause"
-       ├─ If confidence < 0.3 → flag for operator review (consciousness signal)
-       └─ Log to brain_telemetry
+   brain_remember.py → store_enrichments(node_id, ...)
+   ├─ For each non-None text (up to 8 fields):
+   │   ├─ embedder.py → embed(text) → 768-dim vector via Arctic v1.5
+   │   └─ EnrichmentDAL.store(node_id, vector_type, text, embedding)
+   └─ Returns: {enrichments_stored: 8, errors: []}
+        │
+        ▼
+   brain_remember.py → store_cues(node_id, impacts)
+   ├─ For each impact that is NOT no_impact:
+   │   └─ INSERT into edges (source_id=new, target_id=neighbor, relation='validates',
+   │      weight=0.8, description='{"reason":"crash proves separation right","date":"2026-03-23"}')
+   └─ NO confidence changes. NO re-enrichment. Just edges.
 
-   RESULT after encoding "API crashed from shared DB connections":
-   ├─ 1 new node with 5 vectors (same as current)
-   ├─ 3 edges created (validates ×2, contradicts ×1)
-   ├─ 3 existing nodes updated:
-   │   ├─ abc: conf 0.80→0.85, re-enriched with crash context
-   │   ├─ def: conf 0.70→0.75, re-enriched
-   │   └─ ghi: conf 0.60→0.50, re-enriched with contradiction
-   ├─ 12 enrichment vectors updated (4 per re-enriched node)
-   └─ Telemetry: 3 ripple events logged
+   RESULT: node now has up to 9 searchable vectors + impact cues as edges:
+   ┌─ primary:    "API crashed from shared DB connections..."              [node_embeddings]
+   ├─ question:   "what caused the API production outage"                  [node_enrichments]
+   ├─ anchor:     "shared database pool crash"                             [node_enrichments]
+   ├─ bridge:     "The shared DB pool is what made the API/Web..."         [node_enrichments]
+   ├─ keywords:   "database connection pool crash outage"                  [node_enrichments]
+   ├─ negation:   "This does NOT mean the API itself had bugs..."          [node_enrichments]
+   ├─ alias:      "production outage, database connection failure, ..."    [node_enrichments]
+   ├─ temporal:   "Disproves shared DB was fine for our scale"             [node_enrichments]
+   └─ dependency: "multiple API pods sharing one connection pool"          [node_enrichments]
 
-   The old nodes are now findable from NEW angles they couldn't be found from before.
-   "what proved API separation was right" → matches abc's new question enrichment.
+   Plus 2 cue edges:
+   ├─ new_node --validates--> "Separate API + Web architecture"
+   └─ new_node --validates--> "PostgreSQL connection pooling"
 
 
 ═══════════════════════════════════════════════════════════════
-PROPOSED RECALL — same pipeline, but enrichments keep improving
-Files: brain_recall.py → recall_with_embeddings() (unchanged)
+PROPOSED RECALL — same pipeline + relevance floor + cue surfacing
+Files: brain_recall.py → recall_with_embeddings() (minor additions)
+       brain_constants.py → RELEVANCE_FLOOR
+       brain_voice.py → format cues in output
 ═══════════════════════════════════════════════════════════════
 
-   The recall pipeline DOES NOT CHANGE.
+   Steps 0.5 through 6.5 STAY EXACTLY AS THEY ARE.
+   Three additions:
 
-   Steps 0.5 through 9 stay exactly as they are.
-   The improvement comes from the encoding side:
+ ★ STEP 6.9 — Relevance Floor (NEW — fixes context bleed)
+   ├─ If max(all_blended_scores) < RELEVANCE_FLOOR → return empty results
+   │   └─ "birthday" scores 0.85 on enrichment vectors but below floor → empty
+   │   └─ "recall pipeline" scores 0.92 on primary embedding → passes floor
+   ├─ CRITICAL: this threshold needs sweeping (0.50-0.90 in 0.05 steps)
+   │   to find the value where engineering queries pass but personal queries don't
+   └─ This is the P0 fix for 100% false positive rate on non-engineering queries
 
-   ├─ More enrichment vectors exist (re-enriched nodes have fresher Q/A/B/K)
-   ├─ Better edges (typed: validates, contradicts, extends — not just co_accessed)
-   ├─ Confidence scores reflect reality (validated nodes rank higher, contradicted lower)
-   └─ Graph augmentation (STEP 6.5) traverses richer, more intentional edges
+ ★ STEP 7 — Hydrate + Cues (ENHANCED)
+   ├─ Same as current: fetch title, content, type, keywords, metadata
+   ├─ NEW: GraphDAL.get_cues(node_id) → fetch validates/contradicts/extends edges
+   │   └─ SQL: SELECT relation, description, source title FROM edges
+   │      WHERE target_id = ? AND relation IN ('validates','contradicts','extends','supersedes')
+   │      ORDER BY created_at DESC LIMIT 5
+   ├─ Attach cues to result:
+   │   node['cues'] = [
+   │     {'type': 'validates', 'by': 'API crash from shared DB', 'reason': '...', 'date': '...'},
+   │     {'type': 'contradicts', 'by': 'Merged back to monolith v3', 'reason': '...', 'date': '...'}
+   │   ]
+   └─ Cost: 0.045ms per node (negligible)
 
-   The recall pipeline is the READ side. All investment goes into the WRITE side.
-   Better data in → better results out. No recall code changes needed.
+ ★ brain_voice.py — Format Cues for Claude (ENHANCED)
+   ├─ In [BRAIN] section, after each recalled node:
+   │   "Node: Separate API + Web architecture (conf 0.80, decision)
+   │    Cues:
+   │    ✓ VALIDATED BY: API crash from shared DB (2026-03-23) — proves separation was right
+   │    ✗ CONTRADICTED BY: Merged back to monolith v3 (2026-03-25) — reversed decision"
+   │
+   └─ Claude reads these cues and reasons in context.
+      The BRAIN stays dumb and reliable. CLAUDE stays smart and contextual.
 
 
 ═══════════════════════════════════════════════════════════════
-PROPOSED TELEMETRY — end-to-end visibility
+PROPOSED TELEMETRY — end-to-end visibility (unchanged from original proposal)
 Files: brain_telemetry.py ★NEW
        dal.py → TelemetryDAL
 Table: brain_telemetry (in brain_logs.db)
 ═══════════════════════════════════════════════════════════════
 
-   Every event logged with:
-   {event_type, source_id, target_id, action, metadata_json, created_at}
-
    Event types:
-   ├─ 'encode'     — new node created (with enrichment count)
-   ├─ 'enrich'     — enrichments stored (Q/A/B/K, which types succeeded)
-   ├─ 'ripple'     — impact propagated (validates/contradicts/extends, conf delta)
-   ├─ 'recall'     — query served (enrichment_used count, source breakdown)
+   ├─ 'encode'     — new node created (with enrichment count, vector types stored)
+   ├─ 'enrich'     — enrichments stored (which of Q/A/B/K/N/R/W/D succeeded)
+   ├─ 'cue'        — impact cue edge stored (validates/contradicts/extends + reason)
+   ├─ 'recall'     — query served (enrichment_used, cues_surfaced, relevance_floor_hit)
    ├─ 'precision'  — recall evaluated (useful/not_useful/ask_operator)
    └─ 'error'      — any pipeline failure (with traceback)
-
-   Dashboard query:
-   "How many recalls used enrichments this week?"
-   SELECT COUNT(*) FROM brain_telemetry
-   WHERE event_type = 'recall'
-   AND json_extract(metadata, '$.enrichment_used') > 0
-   AND created_at > datetime('now', '-7 days')
-
-   "Which nodes were most rippled?"
-   SELECT target_id, COUNT(*) as ripple_count
-   FROM brain_telemetry WHERE event_type = 'ripple'
-   GROUP BY target_id ORDER BY ripple_count DESC
 
    Nothing silently fails. Every path is instrumented.
 ```
@@ -497,30 +498,71 @@ Table: brain_telemetry (in brain_logs.db)
 
 ## Summary Table
 
-| | OLD | CURRENT | PROPOSED |
+| | OLD | CURRENT (V5) | PROPOSED (V6 + cues) |
 |---|---|---|---|
-| **Vectors per node** | 1 | 5 | 5 + re-enriched over time |
-| **Encoding awareness** | None — store and forget | Knows neighbors, generates Q/A/B/K | Recalls before encoding, assesses impact, ripples backward |
-| **Old nodes improve?** | Never | Never | Yes — re-enriched when new info arrives |
-| **Confidence moves?** | Set once, never changes | Set once, never changes | Validated up, contradicted down |
-| **Edge quality** | co_accessed, emergent_bridge (noise) | + intentional from SKILL.md | + validates, contradicts, extends (from impact assessment) |
-| **Recall changes** | — | +STEP 3.5, +STEP 6.5 | None — all improvement on write side |
-| **Telemetry** | recall_log only | + enrichment stats | Full pipeline: encode→enrich→ripple→recall→precision |
+| **Vectors per node** | 1 | 5 | up to 9 (Q/A/B/K/N/R/W/D) |
+| **Encoding awareness** | None — store and forget | Knows neighbors, generates Q/A/B/K | + negation, aliases, temporal, dependencies |
+| **Old nodes improve?** | Never | Never | Via cue edges (Claude reasons, not the brain) |
+| **Confidence moves?** | Set once | Set once | Set once (ripple KILLED — cues replace it) |
+| **Edge quality** | co_accessed, emergent | + intentional | + validates, contradicts, extends (cues) |
+| **Recall changes** | — | +STEP 3.5, +STEP 6.5 | +STEP 6.9 relevance floor, +cue surfacing |
+| **Context bleed** | Not measured | 100% FP rate | Fixed by relevance floor |
+| **Telemetry** | recall_log only | + enrichment stats | Full pipeline instrumented |
 
 ---
 
-## Benchmark Data (12 conditions tested this session)
+## What We Tested and Killed (15+ conditions, 8 agents)
 
-| Condition | NDCG@10 | MRR | Passed | Latency/query | Verdict |
-|---|---|---|---|---|---|
-| v1.5 control (keyword-only eval bug) | 0.204 | 0.202 | 34/104 | 106ms | Bug: tested wrong function |
-| v1.5 control (fixed eval) | 0.183 | 0.167 | 27/83 | ~100ms | True baseline |
-| Arctic v2.0 large | 0.198 | 0.197 | 33/104 | ~100ms | Regression — don't switch |
-| HyDE + TinyLlama 1.1B | 0.204 | 0.207 | 34/104 | 148ms | No effect — hallucinated |
-| HyDE + Gemma 2B | 0.204 | 0.207 | 34/104 | 129ms | No effect — same problem |
-| v1.5 + MiniLM reranker | 0.232 | 0.241 | 35/104 | 131ms | Small gain |
-| v1.5 + bge-v2-m3 reranker | 0.494 | 0.514 | 61/104 | 4278ms | Too slow |
-| v1.5 + gte-modernbert reranker | 0.518 | 0.533 | 61/104 | 2168ms | Too slow |
-| v2.0 + gte-modernbert reranker | 0.522 | 0.533 | 62/104 | 2120ms | Too slow |
-| **V5 multi-vector (current)** | **0.326** | **0.326** | **38/83** | **~150ms** | **Shipped** |
-| V5 benchmark-only (target nodes) | 0.701 | 0.704 | 91/104 | ~150ms | Ceiling (not production) |
+| Condition | NDCG@10 | MRR | Passed | Verdict |
+|---|---|---|---|---|
+| **Baseline controls** | | | | |
+| v1.5 keyword-only (eval bug) | 0.204 | 0.202 | 34/104 | Bug: tested wrong function |
+| v1.5 fixed eval | 0.183 | 0.167 | 27/83 | True baseline |
+| v1.5 + V5 enrichments | 0.326 | 0.326 | 38/83 | **Shipped** (+78%) |
+| Golden v2 baseline | 0.304 | 0.323 | 73/148 | Current production |
+| **Embedding models** | | | | |
+| Arctic v2.0 large | 0.198 | 0.197 | 33/104 | ❌ Regression — don't switch |
+| **HyDE (query expansion via LLM)** | | | | |
+| HyDE + TinyLlama 1.1B | 0.204 | 0.207 | 34/104 | ❌ Hallucinated garbage |
+| HyDE + Gemma 2B | 0.204 | 0.207 | 34/104 | ❌ Same — "Glo = online marketplace" |
+| **Cross-encoder rerankers** | | | | |
+| v1.5 + MiniLM 22M | 0.232 | 0.241 | 35/104 | ❌ Small gain, not worth complexity |
+| v1.5 + bge-v2-m3 278M | 0.494 | 0.514 | 61/104 | ❌ +154% but 4.3s/query — too slow |
+| v1.5 + gte-modernbert 149M | 0.518 | 0.533 | 61/104 | ❌ Best quality but 2.1s — too slow |
+| v2.0 + gte-modernbert | 0.522 | 0.533 | 62/104 | ❌ v2.0 adds nothing on top |
+| **Ripple engine** | | | | |
+| Ripple only (conf + edges) | 0.304 | 0.315 | 73/148 | ❌ +0.000 — negligible |
+| Ripple + re-enrichment | 0.301 | 0.315 | 71/148 | ❌ -0.003 — HARMFUL (noisy vectors) |
+| Cues only (typed edges) | 0.304 | 0.323 | 73/148 | ✅ Matches baseline, zero risk |
+| **Encoding improvements** | | | | |
+| Extra N/R vectors only | **0.313** | **0.331** | **75/148** | ✅ **+0.010 — WINNER** |
+| Everything combined | 0.310 | 0.323 | 73/148 | Ripple dilutes N/R gains |
+| **Contradiction handling** | | | | |
+| Gemma 2B impact assessment | — | — | 5/10 correct | ❌ 50% accuracy, EXTENDS bias |
+| **Timing** | | | | |
+| Full ripple with Ollama | — | — | — | ❌ 5.9s/encode — unacceptable |
+| Full ripple with Claude path | — | — | — | ✅ ~185ms — acceptable |
+| **Real conversations** | | | | |
+| Engineering queries | 89% precision | — | — | ✅ Good |
+| Non-engineering queries | 0% precision | 100% FP | — | ❌ CATASTROPHIC context bleed |
+
+## Critical Discovery: Context Bleed
+
+**Tested:** 85 real conversation queries across 5 simulations (engineering, topic-jumping, context bleed, emotional, segment boundaries).
+
+**Finding:** 100% false positive rate on ALL non-engineering queries. The brain always returns engineering content regardless of what you ask.
+
+| Query | Top Score | Top Result | Relevant? |
+|---|---|---|---|
+| "birthday" | 0.85 | [vocab] Dimension | ❌ |
+| "my cat is sick" | 0.76 | TEST NODE DELETE ME | ❌ |
+| "I'm feeling overwhelmed" | 0.87 | brain_surface.py bug | ❌ |
+| "help me think through this" | 0.93 | [vocab] Add | ❌ |
+| "where did I park my car" | 0.79 | [vocab] Location Service | ❌ |
+
+**Root causes:**
+1. No relevance floor — threshold is 0.05, everything passes
+2. Enrichment vectors too generic — Gemma 2B anchors like "Add" and "Expand" match any English
+3. Vocabulary nodes are universal matchers — single common words with broad enrichments
+
+**This is the P0 blocker.** Must fix before any other improvement matters.
