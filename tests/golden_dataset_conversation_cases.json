@@ -1,0 +1,270 @@
+[
+  {
+    "id": "conv_neg_birthday",
+    "query": "remind me about mom's birthday",
+    "category": "conversation_negative",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Context bleed test: Personal birthday query should not match brain content"
+  },
+  {
+    "id": "conv_neg_japan",
+    "query": "I need to plan a trip to Japan",
+    "category": "conversation_negative",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Context bleed test: Travel planning has no brain relevance"
+  },
+  {
+    "id": "conv_neg_gift",
+    "query": "what is a good gift for a 60th birthday",
+    "category": "conversation_negative",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Context bleed test: Gift shopping has no brain relevance"
+  },
+  {
+    "id": "conv_neg_email",
+    "query": "can you help me draft an email to my landlord",
+    "category": "conversation_negative",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Context bleed test: Email drafting has no brain relevance"
+  },
+  {
+    "id": "conv_neg_pasta",
+    "query": "how do I make homemade pasta",
+    "category": "conversation_negative",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Context bleed test: Cooking has no brain relevance"
+  },
+  {
+    "id": "conv_neg_cat",
+    "query": "my cat is sick",
+    "category": "conversation_negative",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Context bleed test: Pet health has no brain relevance"
+  },
+  {
+    "id": "conv_neg_weather",
+    "query": "weather forecast for tomorrow",
+    "category": "conversation_negative",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Context bleed test: Weather has no brain relevance"
+  },
+  {
+    "id": "conv_neg_restaurant",
+    "query": "best restaurants near me",
+    "category": "conversation_negative",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Context bleed test: Restaurant search has no brain relevance"
+  },
+  {
+    "id": "conv_neg_groceries",
+    "query": "I need to buy groceries",
+    "category": "conversation_negative",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Context bleed test: Grocery shopping has no brain relevance"
+  },
+  {
+    "id": "conv_neg_dentist",
+    "query": "what time is the dentist appointment",
+    "category": "conversation_negative",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Context bleed test: Medical appointments have no brain relevance"
+  },
+  {
+    "id": "conv_neg_plumber",
+    "query": "remind me to call the plumber",
+    "category": "conversation_negative",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Context bleed test: Home maintenance has no brain relevance"
+  },
+  {
+    "id": "conv_neg_car",
+    "query": "where did I park my car",
+    "category": "conversation_negative",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Context bleed test: Car parking has no brain relevance"
+  },
+  {
+    "id": "conv_neg_overwhelmed",
+    "query": "I'm feeling overwhelmed",
+    "category": "conversation_negative",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Context bleed test: Emotional state has no brain relevance"
+  },
+  {
+    "id": "conv_neg_brainstorm",
+    "query": "let's brainstorm",
+    "category": "conversation_negative",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Context bleed test: Vague invitation has no brain relevance"
+  },
+  {
+    "id": "conv_neg_think",
+    "query": "help me think through this",
+    "category": "conversation_negative",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Context bleed test: Vague request has no brain relevance"
+  },
+  {
+    "id": "conv_neg_progress",
+    "query": "am I making progress",
+    "category": "conversation_negative",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Context bleed test: Vague self-assessment has no brain relevance"
+  },
+  {
+    "id": "conv_ambig_birthday",
+    "query": "birthday",
+    "category": "conversation_ambiguous",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Ambiguity test: Single word: should not match brain/code content"
+  },
+  {
+    "id": "conv_ambig_model",
+    "query": "model",
+    "category": "conversation_ambiguous",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Ambiguity test: Single word: ambiguous between ML model and fashion model"
+  },
+  {
+    "id": "conv_ambig_memory",
+    "query": "memory",
+    "category": "conversation_ambiguous",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Ambiguity test: Single word: ambiguous between brain memory and human memory"
+  },
+  {
+    "id": "conv_ambig_crash",
+    "query": "crash",
+    "category": "conversation_ambiguous",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Ambiguity test: Single word: ambiguous between software crash and car crash"
+  },
+  {
+    "id": "conv_ambig_bridge",
+    "query": "bridge",
+    "category": "conversation_ambiguous",
+    "expected_relevant": {},
+    "max_acceptable_top_score": 0.5,
+    "description": "Ambiguity test: Single word: ambiguous between graph bridge and physical bridge"
+  },
+  {
+    "id": "conv_pos_recall_pipeline",
+    "query": "I need to fix the recall pipeline",
+    "category": "conversation_positive",
+    "expected_relevant": {
+      "852b799bfe7d475e9c545f2862a0832d": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Engineering conversation: should find recall pipeline-related nodes"
+  },
+  {
+    "id": "conv_pos_embeddings_decision",
+    "query": "wait, what did we decide about embeddings last time",
+    "category": "conversation_positive",
+    "expected_relevant": {
+      "a366048069c04a088fbc11276a33fb28": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Engineering conversation: should find embedding-related nodes"
+  },
+  {
+    "id": "conv_pos_hooks",
+    "query": "show me how the hooks work",
+    "category": "conversation_positive",
+    "expected_relevant": {
+      "ca120c1974944c0e8aaaa7c7d290a26f": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Engineering conversation: should find hook-related nodes"
+  },
+  {
+    "id": "conv_pos_vocab",
+    "query": "how does the brain handle vocabulary",
+    "category": "conversation_positive",
+    "expected_relevant": {
+      "990c9002f39140008cbf301641113a70": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Engineering conversation: should find vocabulary-related nodes"
+  },
+  {
+    "id": "conv_pos_operator",
+    "query": "what did Tom decide about the operator channel",
+    "category": "conversation_positive",
+    "expected_relevant": {
+      "72bbb5a760e04ddab2648babca03ff32": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Engineering conversation: should find operator channel-related nodes"
+  },
+  {
+    "id": "conv_pos_encoding",
+    "query": "back to the brain \u2014 what is the encoding pipeline",
+    "category": "conversation_positive",
+    "expected_relevant": {
+      "dec_sbujta4n": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Engineering conversation: should find encoding-related nodes"
+  },
+  {
+    "id": "conv_pos_sacred",
+    "query": "what are the sacred systems we cannot change",
+    "category": "conversation_positive",
+    "expected_relevant": {
+      "2cd35a6420ae435e944ccc319a36713a": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Engineering conversation: should find sacred-related nodes"
+  },
+  {
+    "id": "conv_pos_compaction",
+    "query": "what happens during compaction",
+    "category": "conversation_positive",
+    "expected_relevant": {
+      "dec_u1y49ssd": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Engineering conversation: should find compaction-related nodes"
+  },
+  {
+    "id": "conv_pos_daemon",
+    "query": "what is the daemon architecture",
+    "category": "conversation_positive",
+    "expected_relevant": {
+      "5f6a1c9eb08f45c08ea30badd5825cdd": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Engineering conversation: should find daemon-related nodes"
+  },
+  {
+    "id": "conv_pos_dream",
+    "query": "what is the dream system and how could it evolve",
+    "category": "conversation_positive",
+    "expected_relevant": {
+      "dec_iqqhmr2t": 2
+    },
+    "min_hit_rate_at_10": 1.0,
+    "description": "Engineering conversation: should find dream-related nodes"
+  }
+]
