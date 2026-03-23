@@ -109,9 +109,13 @@ class RecallPrecision:
         summary = precision.get_precision_summary(hours=168)
     """
 
-    def __init__(self, logs_conn: sqlite3.Connection, brain_conn: Optional[sqlite3.Connection] = None):
+    def __init__(self, logs_conn: sqlite3.Connection, brain_conn: Optional[sqlite3.Connection] = None,
+                 logs_dal=None):
         self.logs_conn = logs_conn
         self.brain_conn = brain_conn
+        # DAL for table-driven lifecycle. If not provided, methods fall back to raw SQL.
+        # Migration: once all callers pass logs_dal, raw SQL paths can be removed.
+        self._dal = logs_dal
         self._ensure_columns()
 
     # ── Schema Safety ──
@@ -181,22 +185,23 @@ class RecallPrecision:
             {nid: s[:_MAX_SNIPPET_LEN] for nid, s in (recalled_snippets or {}).items()}
         )
 
+        if self._dal:
+            return self._dal.insert_recall_log(
+                session_id=session_id, query=query[:500],
+                returned_ids=json.dumps(returned_ids),
+                returned_count=len(returned_ids),
+                embeddings_used=1 if embeddings_used else 0,
+                recalled_titles=titles_json, recalled_snippets=snippets_json,
+                created_at=now)
+        # Fallback: raw SQL (remove once all callers pass logs_dal)
         cursor = self.logs_conn.execute(
             """INSERT INTO recall_log
                (session_id, query, returned_ids, returned_count,
                 embeddings_used, recalled_titles, recalled_snippets, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                session_id,
-                query[:500],
-                json.dumps(returned_ids),
-                len(returned_ids),
-                1 if embeddings_used else 0,
-                titles_json,
-                snippets_json,
-                now,
-            ),
-        )
+            (session_id, query[:500], json.dumps(returned_ids),
+             len(returned_ids), 1 if embeddings_used else 0,
+             titles_json, snippets_json, now))
         self.logs_conn.commit()
         return cursor.lastrowid
 
@@ -238,16 +243,21 @@ class RecallPrecision:
 
         meta_json = json.dumps(eval_meta) if eval_meta else None
 
-        self.logs_conn.execute(
-            """UPDATE recall_log
-               SET assistant_response_snippet = ?,
-                   match_method = 'response_stored',
-                   evaluation_metadata = COALESCE(?, evaluation_metadata),
-                   evaluated_at = ?
-               WHERE id = ?""",
-            (snippet, meta_json, now, recall_log_id),
-        )
-        self.logs_conn.commit()
+        if self._dal:
+            self._dal.update_recall_response(
+                recall_log_id=recall_log_id, response_snippet=snippet,
+                match_method='response_stored', evaluation_metadata=meta_json,
+                evaluated_at=now)
+        else:
+            self.logs_conn.execute(
+                """UPDATE recall_log
+                   SET assistant_response_snippet = ?,
+                       match_method = 'response_stored',
+                       evaluation_metadata = COALESCE(?, evaluation_metadata),
+                       evaluated_at = ?
+                   WHERE id = ?""",
+                (snippet, meta_json, now, recall_log_id))
+            self.logs_conn.commit()
 
         return {
             "recall_log_id": recall_log_id,
@@ -280,15 +290,21 @@ class RecallPrecision:
         followup_snippet = (user_message or "")[:_MAX_FOLLOWUP_SNIPPET]
 
         # Fetch existing data
-        row = self.logs_conn.execute(
-            """SELECT evaluation_metadata, recalled_titles, recalled_snippets,
-                      assistant_response_snippet, explicit_feedback
-               FROM recall_log WHERE id = ?""",
-            (recall_log_id,),
-        ).fetchone()
-
-        if not row:
-            return {"recall_log_id": recall_log_id, "status": "not_found"}
+        if self._dal:
+            row_dict = self._dal.get_recall_row(recall_log_id)
+            if not row_dict:
+                return {"recall_log_id": recall_log_id, "status": "not_found"}
+            row = (row_dict.get('evaluation_metadata'), row_dict.get('recalled_titles'),
+                   row_dict.get('recalled_snippets'), row_dict.get('assistant_response_snippet'),
+                   row_dict.get('explicit_feedback'))
+        else:
+            row = self.logs_conn.execute(
+                """SELECT evaluation_metadata, recalled_titles, recalled_snippets,
+                          assistant_response_snippet, explicit_feedback
+                   FROM recall_log WHERE id = ?""",
+                (recall_log_id,)).fetchone()
+            if not row:
+                return {"recall_log_id": recall_log_id, "status": "not_found"}
 
         existing_meta = {}
         if row[0]:
@@ -379,17 +395,22 @@ class RecallPrecision:
         existing_meta["bart_available"] = is_bart_ready()
         existing_meta["emb_available"] = emb_available
 
-        self.logs_conn.execute(
-            """UPDATE recall_log
-               SET followup_signal = ?,
-                   match_method = ?,
-                   precision_score = ?,
-                   evaluation_metadata = ?,
-                   evaluated_at = ?
-               WHERE id = ? AND explicit_feedback IS NULL""",
-            (signal, method, precision, json.dumps(existing_meta), now, recall_log_id),
-        )
-        self.logs_conn.commit()
+        if self._dal:
+            self._dal.update_recall_evaluation(
+                recall_log_id=recall_log_id, followup_signal=signal,
+                match_method=method, precision_score=precision,
+                evaluation_metadata=json.dumps(existing_meta), evaluated_at=now)
+        else:
+            self.logs_conn.execute(
+                """UPDATE recall_log
+                   SET followup_signal = ?,
+                       match_method = ?,
+                       precision_score = ?,
+                       evaluation_metadata = ?,
+                       evaluated_at = ?
+                   WHERE id = ? AND explicit_feedback IS NULL""",
+                (signal, method, precision, json.dumps(existing_meta), now, recall_log_id))
+            self.logs_conn.commit()
 
         return {
             "recall_log_id": recall_log_id,
@@ -430,15 +451,19 @@ class RecallPrecision:
             "timestamp": now,
         })
 
-        self.logs_conn.execute(
-            """UPDATE recall_log
-               SET explicit_feedback = ?,
-                   precision_score = ?,
-                   evaluated_at = ?
-               WHERE id = ?""",
-            (feedback_json, score, now, recall_log_id),
-        )
-        self.logs_conn.commit()
+        if self._dal:
+            self._dal.update_recall_feedback(
+                recall_log_id=recall_log_id, explicit_feedback=feedback_json,
+                precision_score=score, evaluated_at=now)
+        else:
+            self.logs_conn.execute(
+                """UPDATE recall_log
+                   SET explicit_feedback = ?,
+                       precision_score = ?,
+                       evaluated_at = ?
+                   WHERE id = ?""",
+                (feedback_json, score, now, recall_log_id))
+            self.logs_conn.commit()
 
     # ── Feedback Request ──
 

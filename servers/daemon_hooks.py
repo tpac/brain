@@ -157,7 +157,8 @@ def _get_precision(brain):
     """
     if not hasattr(brain, '_precision') or brain._precision is None:
         from servers.brain_precision import RecallPrecision
-        brain._precision = RecallPrecision(brain.logs_conn, brain.conn)
+        brain._precision = RecallPrecision(brain.logs_conn, brain.conn,
+                                            logs_dal=getattr(brain, '_logs_dal', None))
         # Lazy-load BART for precision evaluation (stays warm for daemon lifetime)
         try:
             from servers.recall_scorer import load_bart
@@ -188,18 +189,31 @@ def hook_recall(brain, args, graph_changes):
     except Exception:
         pass
 
-    # ── Two-turn precision: evaluate previous turn's followup ──
-    # The user's current message is the "followup" signal for the PREVIOUS
-    # turn's recall. If there's a pending evaluated recall, feed the user's
-    # message to evaluate_followup() before starting the new recall cycle.
+    # ── Table-driven precision: evaluate ALL pending followups ──
+    # The user's current message is the "followup" signal for PREVIOUS recalls.
+    # Query the table for all recalls awaiting evaluation (Stage 2 → 3),
+    # not just the last one. This fixes the 68% evaluation loss.
     try:
-        prev_log_id = brain.get_config("last_evaluated_recall_id", "")
-        if prev_log_id and user_message:
-            precision = _get_precision(brain)
-            precision.evaluate_followup(int(prev_log_id), user_message)
-            brain.set_config("last_evaluated_recall_id", "")
+        dal = getattr(brain, '_logs_dal', None)
+        if dal and user_message:
+            pending = dal.get_pending_followups(session_id, limit=5)
+            if pending:
+                precision = _get_precision(brain)
+                for p in pending:
+                    try:
+                        precision.evaluate_followup(p['id'], user_message)
+                    except Exception as e:
+                        brain._log_error('precision_evaluate_followup', e,
+                                         'recall_log_id=%s' % p['id'])
+        else:
+            # Fallback: single-slot config handoff (remove once DAL always available)
+            prev_log_id = brain.get_config("last_evaluated_recall_id", "")
+            if prev_log_id and user_message:
+                precision = _get_precision(brain)
+                precision.evaluate_followup(int(prev_log_id), user_message)
+                brain.set_config("last_evaluated_recall_id", "")
     except Exception as e:
-        brain._log_error('precision_evaluate_followup', e, 'prev_log_id=%s' % prev_log_id)
+        brain._log_error('precision_evaluate_followup', e, 'table-driven')
 
     # Vocabulary expansion
     expansions = []
@@ -255,7 +269,10 @@ def hook_recall(brain, args, graph_changes):
                 recalled_snippets=recalled_snippets,
                 embeddings_used=embeddings_used,
             )
-            brain.set_config("last_recall_log_id", str(recall_log_id))
+            # Table-driven: row IS the state (Stage 1: LOGGED). No config key needed.
+            # Fallback config set for backward compat if DAL not available.
+            if not getattr(brain, '_logs_dal', None):
+                brain.set_config("last_recall_log_id", str(recall_log_id))
         except Exception as e:
             brain._log_error('precision_log_recall', e, 'query=%s' % enriched[:100])
 
@@ -358,16 +375,28 @@ def hook_post_response_track(brain, args, graph_changes):
     assistant_response = assistant_response[:4000]
 
     session_id = brain.get_config("session_id", "ses_unknown")
-    recall_log_id = brain.get_config("last_recall_log_id", "")
+    if not session_id.startswith("ses_"):
+        session_id = "ses_%s" % session_id
+
+    # Table-driven: find the most recent recall awaiting response storage
+    recall_log_id = None
+    try:
+        dal = getattr(brain, '_logs_dal', None)
+        if dal:
+            recall_log_id = dal.get_pending_response(session_id)
+        else:
+            # Fallback: config-slot (remove once DAL is always available)
+            recall_log_id = brain.get_config("last_recall_log_id", "")
+            if recall_log_id:
+                recall_log_id = int(recall_log_id)
+    except Exception:
+        pass
 
     if recall_log_id and assistant_response and len(assistant_response) >= 20:
         try:
             precision = _get_precision(brain)
             precision.evaluate_response(int(recall_log_id), assistant_response)
-            # Store for followup evaluation on next user message
-            brain.set_config("last_evaluated_recall_id", recall_log_id)
-            # Clear to prevent double-evaluation
-            brain.set_config("last_recall_log_id", "")
+            # No config keys to set — table row IS the state (Stage 2: RESPONSE_STORED)
         except Exception as e:
             brain._log_error('precision_evaluate_response', e, 'recall_log_id=%s' % recall_log_id)
     elif recall_log_id and (not assistant_response or len(assistant_response) < 20):

@@ -279,6 +279,121 @@ class LogsDAL:
 
         return stats
 
+    # ── recall_log (precision lifecycle) ──
+    # Schema: id, session_id, query, returned_ids, returned_count, used_ids, used_count,
+    #         precision_score, embeddings_used, recalled_titles, recalled_snippets,
+    #         assistant_response_snippet, match_method, evaluation_metadata,
+    #         followup_signal, explicit_feedback, evaluated_at, created_at
+    #
+    # Row lifecycle: LOGGED → RESPONSE_STORED → EVALUATED → FEEDBACK_RECEIVED
+    # Hooks query the table for pending work — no config keys for handoff.
+
+    def insert_recall_log(self, session_id: str, query: str, returned_ids: str,
+                          returned_count: int, embeddings_used: int,
+                          recalled_titles: str, recalled_snippets: str,
+                          created_at: str) -> int:
+        """Insert a new recall_log row (Stage 1: LOGGED). Returns row ID."""
+        cursor = self.conn.execute(
+            """INSERT INTO recall_log
+               (session_id, query, returned_ids, returned_count,
+                embeddings_used, recalled_titles, recalled_snippets, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (session_id, query, returned_ids, returned_count,
+             embeddings_used, recalled_titles, recalled_snippets, created_at))
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def update_recall_response(self, recall_log_id: int, response_snippet: str,
+                                match_method: str, evaluation_metadata: Optional[str],
+                                evaluated_at: str) -> None:
+        """Store Claude's response on a recall row (Stage 2: RESPONSE_STORED)."""
+        self.conn.execute(
+            """UPDATE recall_log
+               SET assistant_response_snippet = ?,
+                   match_method = ?,
+                   evaluation_metadata = COALESCE(?, evaluation_metadata),
+                   evaluated_at = ?
+               WHERE id = ?""",
+            (response_snippet, match_method, evaluation_metadata, evaluated_at, recall_log_id))
+        self.conn.commit()
+
+    def update_recall_evaluation(self, recall_log_id: int, followup_signal: str,
+                                  match_method: str, precision_score: Optional[float],
+                                  evaluation_metadata: str, evaluated_at: str) -> None:
+        """Store followup evaluation (Stage 3: EVALUATED). Won't override explicit feedback."""
+        self.conn.execute(
+            """UPDATE recall_log
+               SET followup_signal = ?,
+                   match_method = ?,
+                   precision_score = ?,
+                   evaluation_metadata = ?,
+                   evaluated_at = ?
+               WHERE id = ? AND explicit_feedback IS NULL""",
+            (followup_signal, match_method, precision_score,
+             evaluation_metadata, evaluated_at, recall_log_id))
+        self.conn.commit()
+
+    def update_recall_feedback(self, recall_log_id: int, explicit_feedback: str,
+                                precision_score: float, evaluated_at: str) -> None:
+        """Store explicit operator feedback (Stage 4: FEEDBACK_RECEIVED). Overrides auto-score."""
+        self.conn.execute(
+            """UPDATE recall_log
+               SET explicit_feedback = ?,
+                   precision_score = ?,
+                   evaluated_at = ?
+               WHERE id = ?""",
+            (explicit_feedback, precision_score, evaluated_at, recall_log_id))
+        self.conn.commit()
+
+    def get_recall_row(self, recall_log_id: int) -> Optional[Dict[str, Any]]:
+        """Fetch a single recall_log row by ID."""
+        row = self.conn.execute(
+            """SELECT id, session_id, query, returned_ids, returned_count,
+                      recalled_titles, recalled_snippets, assistant_response_snippet,
+                      match_method, evaluation_metadata, followup_signal,
+                      explicit_feedback, precision_score, evaluated_at, created_at
+               FROM recall_log WHERE id = ?""",
+            (recall_log_id,)).fetchone()
+        if not row:
+            return None
+        return {
+            'id': row[0], 'session_id': row[1], 'query': row[2],
+            'returned_ids': row[3], 'returned_count': row[4],
+            'recalled_titles': row[5], 'recalled_snippets': row[6],
+            'assistant_response_snippet': row[7], 'match_method': row[8],
+            'evaluation_metadata': row[9], 'followup_signal': row[10],
+            'explicit_feedback': row[11], 'precision_score': row[12],
+            'evaluated_at': row[13], 'created_at': row[14],
+        }
+
+    def get_pending_response(self, session_id: str) -> Optional[int]:
+        """Find the most recent recall awaiting response storage (Stage 1 → 2).
+
+        Returns recall_log ID or None.
+        """
+        row = self.conn.execute(
+            """SELECT id FROM recall_log
+               WHERE session_id = ? AND assistant_response_snippet IS NULL
+                 AND returned_count > 0
+               ORDER BY created_at DESC LIMIT 1""",
+            (session_id,)).fetchone()
+        return row[0] if row else None
+
+    def get_pending_followups(self, session_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Find recalls awaiting followup evaluation (Stage 2 → 3).
+
+        Returns list of {id, created_at} for recalls that have a response
+        stored but no followup signal and no explicit feedback yet.
+        """
+        rows = self.conn.execute(
+            """SELECT id, created_at FROM recall_log
+               WHERE session_id = ? AND assistant_response_snippet IS NOT NULL
+                 AND followup_signal IS NULL AND explicit_feedback IS NULL
+                 AND returned_count > 0
+               ORDER BY created_at DESC LIMIT ?""",
+            (session_id, limit)).fetchall()
+        return [{'id': r[0], 'created_at': r[1]} for r in rows]
+
     # ── staged_learnings ──
 
     def get_staged(self, status: str = "pending", limit: int = 10) -> List[Dict[str, Any]]:
