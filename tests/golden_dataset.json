@@ -30,16 +30,6 @@
     "description": "Semantic: brain_remember.py purpose node should match 'store new information'"
   },
   {
-    "id": "sem_pricing_model",
-    "query": "how much do we charge advertisers relative to publisher cost",
-    "category": "semantic",
-    "expected_relevant": {
-      "dec_c0h38kix": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Semantic: 'tier pricing 1.4x markup' should match pricing question"
-  },
-  {
     "id": "sem_context_lost",
     "query": "what happens when claude runs out of context window",
     "category": "semantic",
@@ -89,7 +79,7 @@
       "0c818d6a68f1493d9644602fa4adf7dd": 1
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Correction chain: monolith split corrected old file structure — both should surface, newer ranked higher"
+    "description": "Correction chain: monolith split corrected old file structure \u2014 both should surface, newer ranked higher"
   },
   {
     "id": "corr_embedding_floor",
@@ -110,7 +100,7 @@
       "76ab57c545554a879acae39ed9c57e77": 2
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Correction: demanding tone was counterproductive — divergence node should surface"
+    "description": "Correction: demanding tone was counterproductive \u2014 divergence node should surface"
   },
   {
     "id": "graph_operator_to_additional",
@@ -121,7 +111,7 @@
       "7d2869e81a444bb682318d5046c30872": 1
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Graph: operator channel has foundation_for edge to additionalContext — both should surface"
+    "description": "Graph: operator channel has foundation_for edge to additionalContext \u2014 both should surface"
   },
   {
     "id": "graph_dal_to_refactor",
@@ -132,19 +122,7 @@
       "7d14f588f95544388747e077c14011d1": 1
     },
     "min_hit_rate_at_10": 0.5,
-    "description": "Graph: DAL refactor node implements DAL incremental adoption decision — both should surface"
-  },
-  {
-    "id": "graph_exco_enables_glo",
-    "query": "how does EX.CO relate to Glo",
-    "category": "graph_neighbor",
-    "expected_relevant": {
-      "pro_mb9mas11": 2,
-      "pro_i1pc8fs7": 1,
-      "dec_0a4u7zrv": 1
-    },
-    "min_hit_rate_at_10": 0.5,
-    "description": "Graph: EX.CO enables Glo — both project nodes + 'closed-loop demand layer' decision"
+    "description": "Graph: DAL refactor node implements DAL incremental adoption decision \u2014 both should surface"
   },
   {
     "id": "graph_tmemory_decisions",
@@ -237,7 +215,7 @@
       "2d48bd5b93ca409ea991f02e06254fcb": 2
     },
     "min_hit_rate_at_10": 0.5,
-    "description": "Low-confidence (0.3) pattern: bugs on degradation paths — tests recoverability"
+    "description": "Low-confidence (0.3) pattern: bugs on degradation paths \u2014 tests recoverability"
   },
   {
     "id": "old_communication_style",
@@ -260,36 +238,6 @@
     "description": "Old (Mar 15) but still valid: React hooks rule"
   },
   {
-    "id": "old_glo_architecture",
-    "query": "glo system architecture who owns what",
-    "category": "old_but_valid",
-    "expected_relevant": {
-      "dec_l3785iyj": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Old (Mar 15) locked decision: system architecture — Glo owns users/billing/creative"
-  },
-  {
-    "id": "old_magnite_research",
-    "query": "magnite adtech competitor research",
-    "category": "old_but_valid",
-    "expected_relevant": {
-      "pro_v93b9hus": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Old (Mar 15) project: Magnite research — should still be findable"
-  },
-  {
-    "id": "bug_zsh_glob",
-    "query": "zsh glob error killed boot script",
-    "category": "bug_lesson",
-    "expected_relevant": {
-      "8be8e1721484429b9abd078e1bf499c6": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Bug: zsh treats unmatched globs as errors"
-  },
-  {
     "id": "bug_duplicate_json",
     "query": "hooks json duplicate keys notification",
     "category": "bug_lesson",
@@ -307,7 +255,7 @@
       "4f7f879736f749dfba4197e676d1636d": 2
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Bug: daemon PID written before socket bound — race condition"
+    "description": "Bug: daemon PID written before socket bound \u2014 race condition"
   },
   {
     "id": "bug_confidence_column",
@@ -400,17 +348,6 @@
     "description": "Divergence: self-preservation framing is not a technique"
   },
   {
-    "id": "natq_whats_glo",
-    "query": "what is glo",
-    "category": "natural_question",
-    "expected_relevant": {
-      "pro_i1pc8fs7": 2,
-      "pro_0gaibwq7": 1
-    },
-    "min_hit_rate_at_10": 0.5,
-    "description": "Natural question: 'what is glo' — should surface project nodes"
-  },
-  {
     "id": "natq_how_brain_works",
     "query": "how does the brain work",
     "category": "natural_question",
@@ -420,7 +357,7 @@
       "c37a06e2b13d442398bba780a8ef5548": 1
     },
     "min_hit_rate_at_10": 0.5,
-    "description": "Natural question: vague 'how does brain work' — should return MCP, consciousness, recall mechanisms"
+    "description": "Natural question: vague 'how does brain work' \u2014 should return MCP, consciousness, recall mechanisms"
   },
   {
     "id": "natq_what_went_wrong",
@@ -432,7 +369,7 @@
       "50cbf6f85ce642f195fe7ee9e02ecc71": 1
     },
     "min_hit_rate_at_10": 0.5,
-    "description": "Natural question: 'what bugs' — should return bug_lesson and bug nodes"
+    "description": "Natural question: 'what bugs' \u2014 should return bug_lesson and bug nodes"
   },
   {
     "id": "natq_what_changed_recently",
@@ -476,37 +413,6 @@
     "description": "Keyword: UI CONTRACT comment rule"
   },
   {
-    "id": "kw_dec_sn3n",
-    "query": "glo component map: 13 components defined with boundaries and dependencies",
-    "category": "keyword",
-    "expected_relevant": {
-      "dec_sn3nayjg": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword: Glo component map"
-  },
-  {
-    "id": "kw_rul_17qt",
-    "query": "media mockup must show creative on publisher media with logo",
-    "category": "keyword",
-    "expected_relevant": {
-      "rul_17qtllqm": 2,
-      "rul_jd8ib8c2": 1
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword: media mockup rule"
-  },
-  {
-    "id": "kw_rul_jd8i",
-    "query": "glo disruptive concept anyone can upload",
-    "category": "keyword",
-    "expected_relevant": {
-      "rul_jd8ib8c2": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword: Glo disruptive concept rule"
-  },
-  {
     "id": "kw_rul_uz02",
     "query": "screen-scoped edits",
     "category": "keyword",
@@ -515,17 +421,6 @@
     },
     "min_hit_rate_at_10": 1.0,
     "description": "Keyword: screen-scoped edits rule"
-  },
-  {
-    "id": "kw_dec_c0h3",
-    "query": "tier pricing 1.4x markup multiplier",
-    "category": "keyword",
-    "expected_relevant": {
-      "dec_c0h38kix": 2,
-      "pro_0gaibwq7": 1
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Keyword: tier pricing"
   },
   {
     "id": "kw_fil_ap5c",
@@ -546,7 +441,7 @@
       "df21084c89244814bfc1db14258e1f57": 1
     },
     "min_hit_rate_at_10": 0.5,
-    "description": "Vocabulary: 'operator channel' is a vocab term → should expand to BRAIN-To-Tom, additionalContext"
+    "description": "Vocabulary: 'operator channel' is a vocab term \u2192 should expand to BRAIN-To-Tom, additionalContext"
   },
   {
     "id": "vocab_sacred_system",
@@ -557,7 +452,7 @@
       "695c59de5e3b421686321300949d0415": 1
     },
     "min_hit_rate_at_10": 0.5,
-    "description": "Vocabulary: 'sacred system' is a vocab term → should find benchmark-first practice"
+    "description": "Vocabulary: 'sacred system' is a vocab term \u2192 should find benchmark-first practice"
   },
   {
     "id": "intent_what_decided_pricing",
@@ -567,7 +462,7 @@
       "dec_c0h38kix": 2
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Intent: 'what did we decide about pricing' → tier pricing decision"
+    "description": "Intent: 'what did we decide about pricing' \u2192 tier pricing decision"
   },
   {
     "id": "intent_how_add_method",
@@ -577,7 +472,7 @@
       "4ad55ad84986478087195e390aee468b": 2
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Intent: 'where to put new method' → constraint about right mixin"
+    "description": "Intent: 'where to put new method' \u2192 constraint about right mixin"
   },
   {
     "id": "intent_how_handle_hook_fail",
@@ -587,9 +482,8 @@
       "89129afebc484a578f251f39a291e959": 1
     },
     "min_hit_rate_at_10": 0.8,
-    "description": "Intent: 'hook fails' → failed hook experiments lesson"
+    "description": "Intent: 'hook fails' \u2192 failed hook experiments lesson"
   },
-
   {
     "id": "sem_goal_ai_path",
     "query": "when do users set goals for their ad",
@@ -599,36 +493,6 @@
     },
     "min_hit_rate_at_10": 1.0,
     "description": "Semantic: 'Goal only in AI generate path' should match paraphrased query about ad goals"
-  },
-  {
-    "id": "sem_moderation_prescreen",
-    "query": "how do we check if ads are safe before publishing",
-    "category": "semantic",
-    "expected_relevant": {
-      "dec_aky2oorz": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Semantic: 'Moderation: AI pre-screen' should match ad safety checking query"
-  },
-  {
-    "id": "sem_moderation_model",
-    "query": "who reviews glo submissions first the bot or a human",
-    "category": "semantic",
-    "expected_relevant": {
-      "dec_du3vwge2": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Semantic: 'Moderation model: AI moderates first' should match bot vs human review query"
-  },
-  {
-    "id": "sem_creative_intelligence",
-    "query": "does the AI help design the ad creative",
-    "category": "semantic",
-    "expected_relevant": {
-      "dec_xymi39b7": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Semantic: 'Glo Creative Intelligence: LLM as Creative Director' should match AI ad design query"
   },
   {
     "id": "sem_anti_fraud",
@@ -670,7 +534,6 @@
     "min_hit_rate_at_10": 1.0,
     "description": "Semantic: 'Veo 3.1 via Gemini API' should match multi-image video generation query"
   },
-
   {
     "id": "natq_adapter_thing",
     "query": "remind me about the adapter thing",
@@ -734,16 +597,6 @@
     "description": "Natural question: 'how do we make money' should surface tier pricing markup decision"
   },
   {
-    "id": "natq_who_is_exco",
-    "query": "who is exco",
-    "category": "natural_question",
-    "expected_relevant": {
-      "pro_mb9mas11": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Natural question: 'who is exco' should surface EX.CO project node"
-  },
-  {
     "id": "natq_rule_about_tests",
     "query": "is there a rule about tests",
     "category": "natural_question",
@@ -753,7 +606,6 @@
     "min_hit_rate_at_10": 0.5,
     "description": "Natural question: 'rule about tests' should surface pre-edit hook blocks test weakening"
   },
-
   {
     "id": "intent_dec_monolith",
     "query": "what did we decide about splitting brain.py",
@@ -762,18 +614,7 @@
       "f91454eb1d2b43f6ae45b67d582bb5bd": 2
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Intent: 'what did we decide about splitting brain.py' → monolith split decision"
-  },
-  {
-    "id": "intent_dec_moderation",
-    "query": "what did we decide about content moderation",
-    "category": "intent_decision",
-    "expected_relevant": {
-      "dec_aky2oorz": 2,
-      "dec_du3vwge2": 1
-    },
-    "min_hit_rate_at_10": 0.5,
-    "description": "Intent: 'what did we decide about content moderation' → AI pre-screen + moderation model decisions"
+    "description": "Intent: 'what did we decide about splitting brain.py' \u2192 monolith split decision"
   },
   {
     "id": "intent_howto_add_node_type",
@@ -783,7 +624,7 @@
       "4ad55ad84986478087195e390aee468b": 1
     },
     "min_hit_rate_at_10": 0.5,
-    "description": "Intent: 'how to add node type' → constraint about new methods in right mixin"
+    "description": "Intent: 'how to add node type' \u2192 constraint about new methods in right mixin"
   },
   {
     "id": "intent_howto_compaction",
@@ -793,7 +634,7 @@
       "140e864594a34f52affe0b5992baa04a": 2
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Intent: 'what to do when compacted' → compaction destroys unencoded knowledge constraint"
+    "description": "Intent: 'what to do when compacted' \u2192 compaction destroys unencoded knowledge constraint"
   },
   {
     "id": "intent_dec_video",
@@ -804,9 +645,8 @@
       "dec_w07txi6t": 1
     },
     "min_hit_rate_at_10": 0.5,
-    "description": "Intent: 'what did we decide about video generation' → video prompt structure + Veo 3.1 decisions"
+    "description": "Intent: 'what did we decide about video generation' \u2192 video prompt structure + Veo 3.1 decisions"
   },
-
   {
     "id": "mech_skill_eval",
     "query": "how does the skill eval benchmark work",
@@ -815,7 +655,7 @@
       "e4cdab4e82064a9dba7042e34ab92f51": 2
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Mechanism: skill eval benchmark — how SKILL.md variants are A/B tested"
+    "description": "Mechanism: skill eval benchmark \u2014 how SKILL.md variants are A/B tested"
   },
   {
     "id": "mech_debug_mode",
@@ -855,9 +695,8 @@
       "fddd1b00fd2c4569bc952bd40b9d87d6": 2
     },
     "min_hit_rate_at_10": 1.0,
-    "description": "Mechanism: recall_with_embeddings() rewrite — how nodes are embedded and stored"
+    "description": "Mechanism: recall_with_embeddings() rewrite \u2014 how nodes are embedded and stored"
   },
-
   {
     "id": "corr_compression",
     "query": "should brain nodes be concise",
@@ -867,7 +706,7 @@
       "c8747a53a7cf44479a88d80a9650a06d": 1
     },
     "min_hit_rate_at_10": 0.5,
-    "description": "Correction chain: Claude compresses when encoding vs brain encoding should be concise — tension pair"
+    "description": "Correction chain: Claude compresses when encoding vs brain encoding should be concise \u2014 tension pair"
   },
   {
     "id": "corr_confidence_encoding",
@@ -900,29 +739,6 @@
     "min_hit_rate_at_10": 1.0,
     "description": "Correction chain: found another 2>/dev/null suppressing errors in post-compact-reboot.sh"
   },
-
-  {
-    "id": "graph_email_system",
-    "query": "glo email notification system",
-    "category": "graph_neighbor",
-    "expected_relevant": {
-      "con_5ej15u5g": 2,
-      "pro_i1pc8fs7": 1
-    },
-    "min_hit_rate_at_10": 0.5,
-    "description": "Graph: Email/Notification System concept connected to Glo.io project via part_of"
-  },
-  {
-    "id": "graph_glo_app_state",
-    "query": "glo app state routing",
-    "category": "graph_neighbor",
-    "expected_relevant": {
-      "con_aofbtzix": 2,
-      "pro_0gaibwq7": 1
-    },
-    "min_hit_rate_at_10": 0.5,
-    "description": "Graph: App state model screen-based routing connected to Glo.io project via part_of"
-  },
   {
     "id": "graph_relay_instruction",
     "query": "CLAUDE.md relay instruction",
@@ -934,48 +750,6 @@
     "min_hit_rate_at_10": 0.5,
     "description": "Graph: CLAUDE.md relay instruction enables operator channel architecture"
   },
-  {
-    "id": "graph_video_nanobanana",
-    "query": "video prompt API constraints",
-    "category": "graph_neighbor",
-    "expected_relevant": {
-      "dec_z0mbdh0n": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Graph: video prompt decision depends_on NanoBanana API node"
-  },
-
-  {
-    "id": "old_reject_flow",
-    "query": "glo reject flow refund",
-    "category": "old_but_valid",
-    "expected_relevant": {
-      "dec_yvj3fuvx": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Old but valid: reject flow with predefined categories + optional moderator note"
-  },
-  {
-    "id": "old_campaign_params_resolver",
-    "query": "CampaignParamsResolver component",
-    "category": "old_but_valid",
-    "expected_relevant": {
-      "dec_bv3bmcjs": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Old but valid: CampaignParamsResolver component decision"
-  },
-  {
-    "id": "old_publisher_profile",
-    "query": "glo publisher profile metadata",
-    "category": "old_but_valid",
-    "expected_relevant": {
-      "dec_6bo4ejah": 2
-    },
-    "min_hit_rate_at_10": 1.0,
-    "description": "Old but valid: Glo owns publisher profiles decision"
-  },
-
   {
     "id": "vocab_table_driven_lifecycle",
     "query": "table-driven lifecycle",
@@ -1006,7 +780,6 @@
     "min_hit_rate_at_10": 1.0,
     "description": "Vocabulary: 'ask_operator' vocab term should be directly findable"
   },
-
   {
     "id": "edge_empty",
     "query": "",
@@ -1056,7 +829,6 @@
     "min_hit_rate_at_10": 0.5,
     "description": "Edge case: very long query should still return relevant results without crashing"
   },
-
   {
     "id": "lowconf_structural_enforcement",
     "query": "structural enforcement counteract brevity bias",
