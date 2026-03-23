@@ -277,12 +277,13 @@ class TestEvidenceMapping(unittest.TestCase):
     def test_classify_uncertain(self):
         """Low confidence → 'uncertain' signal regardless of evidence.
 
-        VERIFIES: confidence < 0.15 always returns 'uncertain'.
+        VERIFIES: confidence < 0.15 always returns 'ask_operator'.
         SIGNALS: If uncertain cases get classified as positive/negative, data quality drops.
-        FUTURE: No changes needed.
+        ADJUSTED: 'uncertain' renamed to 'ask_operator' (2026-03-22) — genuinely uncertain
+        cases should ask the operator for explicit feedback instead of guessing.
         """
-        self.assertEqual(classify_followup_signal(0.9, 0.1), "uncertain")
-        self.assertEqual(classify_followup_signal(-0.9, 0.1), "uncertain")
+        self.assertEqual(classify_followup_signal(0.9, 0.1), "ask_operator")
+        self.assertEqual(classify_followup_signal(-0.9, 0.1), "ask_operator")
 
     def test_determine_match_method(self):
         """Match method string reflects active layers.

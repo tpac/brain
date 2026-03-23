@@ -989,7 +989,7 @@ class BrainVoice:
                 fs = ps.get("followup_signals", {})
                 out.append("Precision (24h): %d recalls, %d eval (%.0f%%) — +%d -%d ~%d ?%d" % (
                     tr, ev, ev / tr * 100, fs.get("positive", 0), fs.get("negative", 0),
-                    fs.get("neutral", 0), fs.get("uncertain", 0)))
+                    fs.get("neutral", 0), fs.get("uncertain", 0) + fs.get("ask_operator", 0)))
         except Exception:
             pass
 

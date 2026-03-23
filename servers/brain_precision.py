@@ -624,7 +624,7 @@ class RecallPrecision:
         ).fetchone()[0] or 0
 
         # Followup signals breakdown
-        followup_signals = {"positive": 0, "negative": 0, "neutral": 0, "uncertain": 0, "pending_llm": 0}
+        followup_signals = {"positive": 0, "negative": 0, "neutral": 0, "uncertain": 0, "ask_operator": 0, "pending_llm": 0}
         for signal_val in followup_signals:
             count = self.logs_conn.execute(
                 f"SELECT COUNT(*) FROM recall_log {base_where} AND followup_signal = ?",
