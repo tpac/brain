@@ -191,6 +191,178 @@ class TestMCPRoundTrip(BrainTestBase):
         result = self._dispatch("engineering_context", {"project": "brain"})
         self.assertIsInstance(result, dict)
 
+    # ── Compound operations ──
+
+    def test_find_node_by_title(self):
+        """find_node_by_title locates nodes by fuzzy title matching with context."""
+        self._dispatch("remember", {
+            "type": "decision", "title": "Use Arctic v1.5 for embeddings",
+            "content": "Chose Arctic v1.5 because it balances quality and speed."
+        })
+        result = self._dispatch("find_node_by_title", {
+            "title_query": "Arctic embedding model", "threshold": 0.5
+        })
+        self.assertIsNotNone(result, "Should find a node matching 'Arctic embedding model'")
+        self.assertIn("id", result)
+        self.assertIn("content_snippet", result, "Should include content snippet for verification")
+        self.assertIn("keywords", result, "Should include keywords for verification")
+        self.assertGreater(result["similarity"], 0.5)
+
+    def test_find_node_by_title_no_match(self):
+        """find_node_by_title returns None when nothing matches."""
+        result = self._dispatch("find_node_by_title", {
+            "title_query": "completely unrelated xyzzy topic", "threshold": 0.9
+        })
+        self.assertIsNone(result)
+
+    def test_encode_cluster(self):
+        """encode_cluster stores multiple nodes with connections in one call."""
+        # Seed an existing node to connect to
+        self._dispatch("remember", {
+            "type": "decision", "title": "Brain uses SQLite with WAL mode",
+            "content": "WAL allows concurrent readers with one writer."
+        })
+
+        result = self._dispatch("encode_cluster", {
+            "nodes": [
+                {"type": "lesson", "title": "Lock timeout prevents deadlocks",
+                 "content": "Write lock had no timeout, could hang forever.",
+                 "enrichment": {"question": "What prevents daemon deadlocks?", "keywords": "lock, timeout, deadlock"}},
+                {"type": "mechanism", "title": "Autosave loop with health check",
+                 "content": "Every 60s: save if dirty, verify SQLite alive."},
+            ],
+            "connect_to": ["Brain uses SQLite"],
+            "auto_connect": True
+        })
+        self.assertEqual(result["nodes_created"], 2)
+        self.assertGreater(result["connections_created"], 0, "Should create inter-cluster + connect_to edges")
+        self.assertEqual(len(result["node_ids"]), 2)
+
+    def test_encode_cluster_detects_duplicates(self):
+        """encode_cluster warns about near-duplicate nodes."""
+        self._dispatch("remember", {
+            "type": "lesson", "title": "Lock timeout prevents deadlocks",
+            "content": "Original lesson about lock timeouts."
+        })
+        result = self._dispatch("encode_cluster", {
+            "nodes": [
+                {"type": "lesson", "title": "Lock timeout prevents deadlock issues",
+                 "content": "Very similar to existing node."}
+            ]
+        })
+        self.assertEqual(result["nodes_created"], 1)
+        # Should detect the near-duplicate
+        self.assertGreater(len(result["duplicates"]), 0, "Should detect near-duplicate title")
+
+    # ── Safety: find_node_by_title edge cases ──
+
+    def test_find_node_does_not_match_self(self):
+        """find_node_by_title shouldn't cause self-referential connections in encode_cluster."""
+        r = self._dispatch("remember", {
+            "type": "lesson", "title": "Unique title for self-test",
+            "content": "Content for self-reference test."
+        })
+        # Searching for exact same title should find the node
+        match = self._dispatch("find_node_by_title", {
+            "title_query": "Unique title for self-test", "threshold": 0.5
+        })
+        self.assertIsNotNone(match)
+        self.assertEqual(match["id"], r["id"])
+
+    def test_find_node_high_threshold_rejects_weak_matches(self):
+        """High threshold prevents false matches that would pollute connections."""
+        self._dispatch("remember", {
+            "type": "lesson", "title": "Daemon race condition fix",
+            "content": "PID written before socket bound."
+        })
+        # A loosely related query should NOT match at high threshold
+        result = self._dispatch("find_node_by_title", {
+            "title_query": "HTTP server configuration", "threshold": 0.85
+        })
+        self.assertIsNone(result, "Weak semantic match should be rejected at 0.85 threshold")
+
+    def test_find_node_returns_best_not_first(self):
+        """find_node_by_title returns highest similarity, not first found."""
+        self._dispatch("remember", {"type": "concept", "title": "Database indexing strategies", "content": "B-trees vs hash indexes"})
+        self._dispatch("remember", {"type": "lesson", "title": "SQLite WAL mode for concurrent access", "content": "WAL allows readers and writers"})
+        result = self._dispatch("find_node_by_title", {
+            "title_query": "SQLite WAL concurrent", "threshold": 0.5
+        })
+        self.assertIsNotNone(result)
+        self.assertIn("WAL", result["title"], "Should match the WAL node, not the generic indexing node")
+
+    # ── Safety: encode_cluster edge cases ──
+
+    def test_encode_cluster_empty_nodes(self):
+        """encode_cluster with empty nodes list creates nothing."""
+        result = self._dispatch("encode_cluster", {"nodes": []})
+        self.assertEqual(result["nodes_created"], 0)
+        self.assertEqual(result["connections_created"], 0)
+
+    def test_encode_cluster_single_node(self):
+        """encode_cluster with one node doesn't create self-connections."""
+        result = self._dispatch("encode_cluster", {
+            "nodes": [{"type": "lesson", "title": "Solo node test", "content": "Just one."}],
+            "auto_connect": False
+        })
+        self.assertEqual(result["nodes_created"], 1)
+        # Single node + no auto_connect = 0 inter-cluster connections
+        self.assertEqual(result["connections_created"], 0)
+
+    def test_encode_cluster_connect_to_nonexistent(self):
+        """encode_cluster with connect_to that doesn't match reports in missing."""
+        # Seed a node so there's something in the brain, but not a match for our query
+        self._dispatch("remember", {
+            "type": "decision", "title": "Use PostgreSQL for production database",
+            "content": "PostgreSQL chosen for ACID compliance."
+        })
+        result = self._dispatch("encode_cluster", {
+            "nodes": [{"type": "concept", "title": "Unrelated topic about gardening", "content": "How to grow tomatoes."}],
+            "connect_to": ["Quantum physics string theory multiverse"],
+            "auto_connect": False
+        })
+        self.assertEqual(result["nodes_created"], 1)
+        # Quantum physics shouldn't match PostgreSQL at threshold 0.75
+        self.assertTrue(
+            any("no match" in m for m in result["missing"]) or len(result.get("connected_to", [])) == 0,
+            "Should report no match for unrelated connect_to query")
+
+    def test_encode_cluster_missing_enrichment_reported(self):
+        """encode_cluster reports nodes without enrichments in missing."""
+        result = self._dispatch("encode_cluster", {
+            "nodes": [
+                {"type": "lesson", "title": "Has enrichment", "content": "Content.",
+                 "enrichment": {"question": "What is this?"}},
+                {"type": "lesson", "title": "No enrichment", "content": "Content."},
+            ],
+            "auto_connect": False
+        })
+        self.assertEqual(result["nodes_created"], 2)
+        self.assertTrue(any("No enrichment" in m for m in result["missing"]),
+                        "Should report node without enrichment")
+
+    def test_encode_cluster_inter_cluster_connections(self):
+        """encode_cluster connects all nodes in the cluster to each other."""
+        result = self._dispatch("encode_cluster", {
+            "nodes": [
+                {"type": "concept", "title": "Node Alpha", "content": "First."},
+                {"type": "concept", "title": "Node Beta", "content": "Second."},
+                {"type": "concept", "title": "Node Gamma", "content": "Third."},
+            ],
+            "auto_connect": False
+        })
+        self.assertEqual(result["nodes_created"], 3)
+        # 3 nodes = 3 inter-cluster pairs: A-B, A-C, B-C
+        self.assertGreaterEqual(result["connections_created"], 3)
+        # Verify edges exist in DB
+        ids = result["node_ids"]
+        for i, src in enumerate(ids):
+            for dst in ids[i+1:]:
+                edge = self.brain.conn.execute(
+                    "SELECT 1 FROM edges WHERE source_id = ? AND target_id = ?",
+                    (src, dst)).fetchone()
+                self.assertIsNotNone(edge, "Missing edge between cluster nodes %s → %s" % (src[:8], dst[:8]))
+
     # ── Escape hatch ──
 
     def test_eval(self):

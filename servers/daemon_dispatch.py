@@ -360,6 +360,24 @@ def _handle_learn_vocabulary(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
+def _handle_find_node_by_title(brain, args, graph_changes):
+    result = brain.find_node_by_title(
+        title_query=args.get("title_query", ""),
+        threshold=args.get("threshold", 0.75),
+        top_k=args.get("top_k", 1))
+    return {"ok": True, "result": result}
+
+
+def _handle_encode_cluster(brain, args, graph_changes):
+    result = brain.encode_cluster(
+        nodes=args.get("nodes", []),
+        connect_to=args.get("connect_to"),
+        auto_connect=args.get("auto_connect", True))
+    n = result.get("nodes_created", 0)
+    graph_changes.append("ENCODE_CLUSTER: %d nodes" % n)
+    return {"ok": True, "result": result}
+
+
 def _handle_connect(brain, args, graph_changes):
     result = brain.connect(
         source_id=args.get("source_id", ""),
@@ -455,6 +473,8 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "remember_mental_model": CmdEntry(_handle_remember_mental_model, is_write=True, marks_dirty=True),
     "record_divergence":     CmdEntry(_handle_record_divergence,   is_write=True, marks_dirty=True),
     "learn_vocabulary":      CmdEntry(_handle_learn_vocabulary,    is_write=True, marks_dirty=True),
+    "find_node_by_title":    CmdEntry(_handle_find_node_by_title,  is_write=False, marks_dirty=False),
+    "encode_cluster":        CmdEntry(_handle_encode_cluster,      is_write=True, marks_dirty=True),
     "connect":               CmdEntry(_handle_connect,             is_write=True, marks_dirty=True),
     "enrich":                CmdEntry(_handle_enrich,              is_write=True, marks_dirty=True),
     "eval":                  CmdEntry(_handle_eval,                is_write=True, marks_dirty=True),
