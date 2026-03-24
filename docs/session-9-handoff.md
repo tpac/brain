@@ -36,8 +36,14 @@ Claude's words: "The 24K chars are telling Claude what to do. The 5K chars of me
 
 ## What's Next
 
-### Priority 1: Fix the Daemon
-It has never reliably worked. Starts, accepts connections, goes dead. Every session loses 10-20 minutes. The Brain works perfectly when used directly — the daemon wrapper is the problem. This blocks everything because MCP tools and hooks depend on it.
+### Priority 1: Fix the Daemon (CRITICAL — blocks everything)
+It has never reliably worked. Starts, port listens, then every send_command times out. lsof shows dozens of CLOSED connections accumulating. The event loop is accepting but not processing.
+
+**Why this is #1:** During Session #9, the entire encoding system (heartbeat, precision loop, MCP tools) was dead because the daemon was unresponsive. Every node was encoded manually via Brain() directly. The Anchor's automatic encoding never fired. The hooks couldn't reach the brain. This means the precision loop fix (Bug #1) and the heartbeat questions — all shipped but untested in production.
+
+**The Brain itself works perfectly.** `Brain(db_path=...)` never fails. The daemon TCP server wrapper is the problem. Something in `servers/daemon_server.py` is blocking or not cleaning up connections.
+
+**Approach:** Research asyncio TCP server patterns, check if the daemon is single-threaded blocking on long operations (embedding, recall), or if connections aren't being closed properly. Consider: is the daemon even needed? Could the MCP server talk to Brain directly?
 
 ### Priority 2: Relevance Floor
 Sweep floor values 0.30-0.70 against decode funnel. Find where noise gets filtered without losing signal. Currently the brain returns results for everything — no "I don't know."
