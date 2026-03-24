@@ -358,14 +358,15 @@ class TestDaemonModuleStructure(unittest.TestCase):
                         f"daemon_dispatch.py is {lines} lines — should be <500")
 
     def test_daemon_server_is_readable(self):
-        """daemon_server.py should stay under 400 lines.
+        """daemon_server.py should stay under 450 lines.
         # ADJUSTED: 350→400 approved by Tom 2026-03-23 — same rationale as dispatch.
+        # ADJUSTED: 400→450 approved by Tom 2026-03-24 — observer channel wiring added.
         """
         path = os.path.join(PROJECT_ROOT, 'servers', 'daemon_server.py')
         with open(path) as f:
             lines = len(f.readlines())
-        self.assertLess(lines, 400,
-                        f"daemon_server.py is {lines} lines — should be <400")
+        self.assertLess(lines, 450,
+                        f"daemon_server.py is {lines} lines — should be <450")
 
     def test_no_circular_imports(self):
         """Importing daemon modules in any order should not cause circular imports."""

@@ -105,6 +105,13 @@ class BrainDaemon:
         self._log("Daemon started. PID={}, addr={}:{}, workers={}".format(
             os.getpid(), self.daemon_addr[0], self.daemon_addr[1], THREAD_POOL_SIZE))
 
+        # Start observer channel (separate port for Tom's visibility)
+        try:
+            from servers import brain_observer
+            brain_observer.start()
+        except Exception as e:
+            self._log("Observer channel failed to start: %s" % e)
+
         # Start autosave thread
         autosave_thread = threading.Thread(target=self._autosave_loop, daemon=True)
         autosave_thread.start()
@@ -200,6 +207,19 @@ class BrainDaemon:
     def _dispatch(self, cmd: str, args: Dict[str, Any]) -> Dict[str, Any]:
         """Route command to handler with appropriate locking."""
         try:
+            # Emit to observer channel — Tom sees all brain activity
+            try:
+                from servers.brain_observer import emit, has_listeners
+                if has_listeners():
+                    # Summarize args (avoid sending huge blobs)
+                    obs_args = {}
+                    for k, v in (args or {}).items():
+                        s = str(v)
+                        obs_args[k] = s[:120] + "..." if len(s) > 120 else s
+                    emit("command", command=cmd, args=obs_args)
+            except Exception:
+                pass
+
             # Shutdown — async, signals main thread immediately
             if cmd == "shutdown":
                 self.running = False  # next select() iteration exits the loop
@@ -360,7 +380,12 @@ class BrainDaemon:
             self._pool.shutdown(wait=False)
 
     def _cleanup(self):
-        """Close server socket, remove PID and lock files."""
+        """Close server socket, observer channel, remove PID and lock files."""
+        try:
+            from servers import brain_observer
+            brain_observer.stop()
+        except Exception:
+            pass
         try:
             if self.server_socket:
                 self.server_socket.close()

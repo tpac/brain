@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "brain-daemon",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["servers/daemon.py", "start", "--db", "/Users/tpac/AgentsContext/brain/brain.db"],
+      "port": 47203
+    },
+    {
+      "name": "brain-observer",
+      "runtimeExecutable": "nc",
+      "runtimeArgs": ["localhost", "47303"],
+      "port": 47303
+    }
+  ]
+}
