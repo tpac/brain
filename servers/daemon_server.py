@@ -204,37 +204,55 @@ class BrainDaemon:
             except Exception:
                 pass
 
-    def _observe_command(self, cmd, args):
-        """Emit command to observer channel. One place, all observation."""
+    def _observe(self, event_type, **kwargs):
+        """Emit to observer channel. One place, all observation."""
         try:
             from servers.brain_observer import emit, has_listeners
             if not has_listeners():
                 return
+            emit(event_type, **kwargs)
+        except Exception:
+            pass
+
+    def _observe_command(self, cmd, args, result=None):
+        """Observe a full command round-trip: request + response."""
+        try:
+            from servers.brain_observer import has_listeners
+            if not has_listeners():
+                return
+
+            # Summarize args
             obs_args = {}
             for k, v in (args or {}).items():
                 s = str(v)
                 obs_args[k] = s[:120] + "..." if len(s) > 120 else s
-            emit("command", command=cmd, args=obs_args)
+
+            # Summarize result
+            obs_result = None
+            if result:
+                obs_result = {}
+                for k, v in result.items():
+                    s = str(v)
+                    obs_result[k] = s[:300] + "..." if len(s) > 300 else s
+
+            self._observe("command", command=cmd, args=obs_args, result=obs_result)
         except Exception:
             pass
 
     def _dispatch(self, cmd: str, args: Dict[str, Any]) -> Dict[str, Any]:
         """Route command to handler with appropriate locking."""
         try:
-            # Emit to observer channel — Tom sees all brain activity.
-            # This is the ONLY place observer events are emitted.
-            # All observation logic lives in brain_observer.py.
-            self._observe_command(cmd, args)
-
             # Shutdown — async, signals main thread immediately
             if cmd == "shutdown":
-                self.running = False  # next select() iteration exits the loop
+                self.running = False
                 return {"ok": True, "result": {"status": "shutting_down"}}
 
             # Hook commands — always write-locked
             if cmd.startswith("hook_"):
                 with self._write_lock:
-                    return self._dispatch_hook(cmd, args)
+                    result = self._dispatch_hook(cmd, args)
+                    self._observe_command(cmd, args, result)
+                    return result
 
             # Table-driven dispatch
             entry = COMMAND_TABLE.get(cmd)
@@ -246,10 +264,12 @@ class BrainDaemon:
                     result = entry.handler(self.brain, args, self.graph_changes)
                     if entry.marks_dirty:
                         self.dirty = True
+                    self._observe_command(cmd, args, result)
                     return result
             else:
-                # Reads — no lock, concurrent execution OK
-                return entry.handler(self.brain, args, self.graph_changes)
+                result = entry.handler(self.brain, args, self.graph_changes)
+                self._observe_command(cmd, args, result)
+                return result
 
         except Exception as e:
             tb = traceback.format_exc()
