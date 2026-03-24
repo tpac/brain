@@ -37,6 +37,10 @@ FILES=(
   servers/migrate.py
   servers/dal.py
   servers/daemon.py
+  servers/daemon_config.py
+  servers/daemon_server.py
+  servers/daemon_client.py
+  servers/daemon_dispatch.py
   servers/daemon_hooks.py
   servers/brain_mcp.py
   servers/metrics.py
