@@ -1,0 +1,205 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_brain_brain__recall",
+      "mcp__plugin_brain_brain__remember",
+      "mcp__plugin_brain_brain__connect",
+      "mcp__plugin_brain_brain__enrich",
+      "mcp__plugin_brain_brain__remember_lesson",
+      "mcp__plugin_brain_brain__remember_impact",
+      "mcp__plugin_brain_brain__remember_mechanism",
+      "mcp__plugin_brain_brain__remember_convention",
+      "mcp__plugin_brain_brain__remember_uncertainty",
+      "mcp__plugin_brain_brain__remember_mental_model",
+      "mcp__plugin_brain_brain__record_divergence",
+      "mcp__plugin_brain_brain__learn_vocabulary",
+      "mcp__plugin_brain_brain__encode_cluster",
+      "mcp__plugin_brain_brain__find_node_by_title",
+      "mcp__plugin_brain_brain__consciousness",
+      "mcp__plugin_brain_brain__engineering_context",
+      "mcp__plugin_brain_brain__eval"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/boot-brain.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/pre-response-recall.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/post-response-track.sh",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/pre-edit-suggest.sh",
+            "timeout": 8
+          },
+          {
+            "type": "prompt",
+            "prompt": "You are a test integrity guardian. Examine this tool call: $ARGUMENTS\n\nIF the file being edited/written is NOT a test file (filename does not contain 'test_' or '_test' or is not in a 'tests/' directory), respond: {\"decision\": \"allow\"}\n\nIF it IS a test file, check whether the edit WEAKENS any assertion. Weakening means:\n- Changing assertEqual/assertAlmostEqual to assertGreater/assertLess/assertIsNotNone/assertTrue (less specific)\n- Removing assert statements entirely\n- Wrapping assertions in try/except to swallow failures\n- Changing exact expected values to ranges or looser checks\n- Adding skip decorators to previously-passing tests\n- Commenting out assertions\n\nIf the edit WEAKENS assertions, respond:\n{\"decision\": \"block\", \"reason\": \"⚠️ TEST INTEGRITY: This edit weakens test assertions. Do NOT modify tests to make them pass. Instead, STOP and report to the user: what the test expected vs what the code returned. Ask: 'Is the test expectation wrong, or does the code have a bug?' Wait for approval before changing any test.\"}\n\nIf the edit adds NEW tests, strengthens existing assertions, adds comments, or makes non-assertion changes to test files, respond: {\"decision\": \"allow\"}\n\nIf unclear, respond: {\"decision\": \"allow\", \"reason\": \"⚠️ Test file modified — remember the Test Integrity Rule: do not weaken assertions without user approval.\"}"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/pre-bash-safety.sh",
+            "timeout": 8
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/post-bash-host-check.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "user_message",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/pre-response-recall.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/post-response-track.sh",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "matcher": "idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/idle-maintenance.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/post-response-track.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/stop-failure-log.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/pre-compact-save.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/post-compact-reboot.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "ConfigChange": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/config-change-host.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/session-end.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/worktree-context.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/worktree-cleanup.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

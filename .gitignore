@@ -52,8 +52,9 @@ model-package/*.egg-info/
 # Historical simulation data — not part of source
 archives/
 
-# Git worktrees managed by Claude Code — not source
-.claude/
+# Claude Code — only track settings.json (hooks + permissions)
+.claude/*
+!.claude/settings.json
 
 # Design docs and session handoffs (not part of plugin source)
 docs/
