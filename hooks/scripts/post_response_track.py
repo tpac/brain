@@ -1,5 +1,6 @@
 """Post-response tracker: vocab gap detection + encoding checkpoints.
-Fires on UserPromptSubmit AND Stop.
+Fires on Stop only (removed from UserPromptSubmit — it fired before Claude
+responded, so last_assistant_message was always empty, breaking precision loop).
 Thin client: sends hook_post_response_track to daemon, falls back to direct Python.
 """
 import sys, os, json, time

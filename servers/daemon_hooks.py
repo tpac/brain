@@ -413,7 +413,8 @@ def hook_recall(brain, args, graph_changes):
 def hook_post_response_track(brain, args, graph_changes):
     """Post-response tracker: precision evaluation + vocab gap detection + encoding checkpoints.
 
-    Fires on UserPromptSubmit AND Stop.
+    Fires on Stop only (removed from UserPromptSubmit — it fired before Claude
+    responded, so last_assistant_message was always empty, breaking precision).
     """
     user_message = args.get("prompt", "") or args.get("message", "")
     has_user_message = user_message and len(user_message) >= 10
@@ -778,22 +779,35 @@ def hook_idle_maintenance(brain, args, graph_changes):
     except Exception as e:
         output.append("HEAL ERROR: %s" % e)
 
-    # 3b. Vocab cleanup — prune junk auto-detected single-word vocabulary nodes
+    # 3b. Vocab cleanup — prune junk vocabulary nodes that pollute recall
     try:
+        # Strategy 1: auto-detected junk (title or content has "auto-detected")
         junk_vocab = brain.conn.execute("""
             SELECT id, title FROM nodes
-            WHERE type = 'vocabulary' AND content LIKE '%auto-detected%'
-            AND title LIKE '%auto-detected%'
+            WHERE type = 'vocabulary' AND archived = 0
+            AND (content LIKE '%auto-detected%' OR title LIKE '%auto-detected%')
         """).fetchall()
-        if junk_vocab:
-            for nid, title in junk_vocab:
+
+        # Strategy 2: single-word vocab nodes with no real definition
+        # These match everything in cosine similarity and bury real results
+        single_word_junk = brain.conn.execute("""
+            SELECT id, title FROM nodes
+            WHERE type = 'vocabulary' AND archived = 0
+            AND title NOT LIKE '% %'
+            AND (content IS NULL OR content = '' OR LENGTH(content) < 30)
+            AND confidence < 0.5
+        """).fetchall()
+
+        all_junk = {nid: title for nid, title in junk_vocab + single_word_junk}
+        if all_junk:
+            for nid in all_junk:
                 brain.conn.execute("DELETE FROM node_enrichments WHERE node_id = ?", (nid,))
                 brain.conn.execute("DELETE FROM node_vectors WHERE node_id = ?", (nid,))
                 brain.conn.execute("DELETE FROM edges WHERE source_id = ? OR target_id = ?", (nid, nid))
                 brain.conn.execute("DELETE FROM nodes WHERE id = ?", (nid,))
             brain.conn.commit()
-            output.append("VOCAB CLEANUP: pruned %d junk auto-detected nodes" % len(junk_vocab))
-            graph_changes.append("VOCAB_CLEANUP: %d pruned" % len(junk_vocab))
+            output.append("VOCAB CLEANUP: pruned %d junk nodes" % len(all_junk))
+            graph_changes.append("VOCAB_CLEANUP: %d pruned" % len(all_junk))
     except Exception as e:
         output.append("VOCAB CLEANUP ERROR: %s" % e)
 

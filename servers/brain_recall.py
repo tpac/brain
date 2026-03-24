@@ -379,6 +379,20 @@ class BrainRecallMixin:
             frequency = self._frequency_score(node.get('access_count', 0))
             emotion_intensity = abs(node.get('emotion', 0))
 
+            # v6: Recency boost — recent nodes get relevance multiplier
+            # This ensures recent work is findable even if embedding match is imperfect
+            created = node.get('created_at') or node.get('last_accessed')
+            if created:
+                try:
+                    created_dt = datetime.fromisoformat(created.replace('Z', '+00:00'))
+                    hours_since = (datetime.utcnow() - created_dt.replace(tzinfo=None)).total_seconds() / 3600
+                    if hours_since <= 48:
+                        relevance *= 1.5  # Strong boost for last 2 days
+                    elif hours_since <= 168:
+                        relevance *= 1.2  # Moderate boost for last week
+                except Exception:
+                    pass
+
             # ─── Ebbinghaus retention with time-dilation ───
             retention = 1.0
             # v4: Personal flag overrides decay
