@@ -86,6 +86,30 @@ def ensure_daemon(db_path: str) -> bool:
     PID file is written before the socket is bound (brain+embedder loading
     takes ~1-2s). We retry pings before declaring zombie.
     """
+    # Clean stale lock: lock exists but no live process
+    lock_path = get_lock_path()
+    pid_path = get_pid_path()
+    if os.path.exists(lock_path) and not os.path.exists(pid_path):
+        sys.stderr.write("[brain-daemon] Removing stale lock (no PID file)\n")
+        try:
+            os.unlink(lock_path)
+        except Exception:
+            pass
+    elif os.path.exists(lock_path) and os.path.exists(pid_path):
+        try:
+            with open(pid_path) as f:
+                pid = int(f.read().strip())
+            os.kill(pid, 0)  # Check if process is alive
+        except (OSError, ValueError):
+            sys.stderr.write("[brain-daemon] Removing stale lock (PID {} not alive)\n".format(
+                pid if 'pid' in dir() else '?'))
+            for p in [lock_path, pid_path, get_socket_path()]:
+                try:
+                    if os.path.exists(p):
+                        os.unlink(p)
+                except Exception:
+                    pass
+
     if is_daemon_running():
         # Daemon process exists — wait for socket to be ready
         for attempt in range(25):  # 5 seconds total
@@ -158,8 +182,8 @@ def _kill_daemon():
         time.sleep(0.5)
     except Exception as e:
         sys.stderr.write("[brain-daemon] Kill failed: {}\n".format(e))
-    # Clean up files
-    for path in [pid_path, get_socket_path()]:
+    # Clean up files (PID, socket, AND lock)
+    for path in [pid_path, get_socket_path(), get_lock_path()]:
         try:
             if os.path.exists(path):
                 os.unlink(path)
