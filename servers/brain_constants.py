@@ -24,7 +24,7 @@ DECAY_HALF_LIFE = {
     'context': 24,      # 1 day
     'intuition': 12,    # 12 hours
     'procedure': float('inf'),
-    'thought': 3,       # 3 hours
+    'thought': 168,     # 7 days — thoughts need time to connect across sessions
     'fn_reasoning': float('inf'),
     'param_influence': float('inf'),
     'code_concept': 720,
@@ -54,6 +54,7 @@ DECAY_HALF_LIFE = {
     'convention': 1440,
     'lesson': float('inf'),
     'vocabulary': float('inf'),
+    'boot': float('inf'),         # Boot nodes persist forever — they ARE the handoff
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -70,7 +71,7 @@ TYPE_CONFIDENCE = {
     'intuition': 0.40, 'thought': 0.35,
     'pattern': 0.60, 'tension': 0.55, 'aspiration': 0.50,
     'person': 0.85, 'project': 0.80, 'file': 0.75,
-    'vocabulary': 0.90, 'validation': 0.90,
+    'vocabulary': 0.90, 'validation': 0.90, 'boot': 0.90,
     # Legacy code cognition types
     'fn_reasoning': 0.75, 'param_influence': 0.70, 'code_concept': 0.70,
     'arch_constraint': 0.85, 'causal_chain': 0.70, 'bug_lesson': 0.85,
@@ -140,6 +141,16 @@ TFIDF_STOP_WORDS = {
     'most', 'any', 'own', 'same', 'over', 'only', 'very', 'after', 'before', 'between', 'under',
     'above', 'out', 'up', 'down', 'use', 'used', 'using', 'new', 'like', 'get', 'set', 'one', 'two',
 }
+
+# Encoding version — bumps when encoding pipeline changes.
+# Stored on each node so recall knows encoding quality.
+CURRENT_ENCODING_VERSION = "v5"
+
+# Relevance floor — version-aware. Enriched nodes get higher bar.
+# Sweep data (214 enriched cases): 0.80 → 87/89 pos, 32/54 neg blocked.
+# Bare nodes (no enrichments) use lower bar to stay visible.
+RELEVANCE_FLOOR_ENRICHED = 0.80   # top result won via enrichment vector
+RELEVANCE_FLOOR_PRIMARY = 0.50    # top result won via primary embedding only
 
 # Vocabulary expansion
 VOCAB_EXPANSION_MAX = 3  # Max terms added per query via vocabulary expansion

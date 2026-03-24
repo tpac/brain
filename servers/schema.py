@@ -42,7 +42,7 @@ import shutil
 import sqlite3
 from datetime import datetime, timezone
 
-BRAIN_VERSION = 16
+BRAIN_VERSION = 18
 BRAIN_VERSION_KEY = 'brain_schema_version'
 
 # ─── Allowed node types ───
@@ -84,6 +84,8 @@ NODE_TYPES = [
     'convention',        # Patterns, utilities, coding style for a codebase
     'lesson',            # What went wrong, root cause, preventive principle
     'vocabulary',        # How operator refers to things → code mapping (shared brain)
+    # v6 Consciousness layer — Claude's evolving identity across sessions
+    'boot',              # Shapes the boot message — written by previous session's Claude for the next
 ]
 
 NODE_TYPE_CHECK = f"CHECK(type IN ({','.join(repr(t) for t in NODE_TYPES)}))"
@@ -120,6 +122,7 @@ TABLES = {
             content_summary TEXT DEFAULT NULL,
             source_attribution TEXT DEFAULT NULL,
             scope TEXT DEFAULT NULL,
+            encoding_version TEXT DEFAULT NULL,
             last_accessed TEXT,
             created_at TEXT,
             updated_at TEXT
@@ -141,6 +144,7 @@ TABLES = {
             'content_summary': 'NULL',       # v5: max 200 chars, auto-generated for tiered recall
             'source_attribution': 'NULL',    # v5: user_stated | claude_inferred | session_synthesis | correction | code_reading
             'scope': 'NULL',                 # v5: system | module | file | function | cross-system | cross-file | cross-function
+            'encoding_version': 'NULL',      # v6: encoding pipeline version (v5, v6, etc.) — floor adapts to quality
             'last_accessed': 'NULL',
             'created_at': 'NULL', 'updated_at': 'NULL',
         }

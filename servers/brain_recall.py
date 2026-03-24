@@ -34,6 +34,8 @@ from .brain_constants import (
     MAX_WEIGHT,
     NEIGHBOR_DAMPEN,
     PRUNE_THRESHOLD,
+    RELEVANCE_FLOOR_ENRICHED,
+    RELEVANCE_FLOOR_PRIMARY,
     SPREAD_DECAY,
     STABILITY_BOOST,
     STABILITY_FLOOR_ACCESS_THRESHOLD,
@@ -861,6 +863,18 @@ class BrainRecallMixin:
                 scored_results = scored_results[:limit]
         except Exception as e:
             self._log_error("recall_with_embeddings", e, "STEP 6.5 graph-augmented recall")
+
+        # STEP 6.9: Version-aware relevance floor.
+        # Enriched nodes (V5+) get a higher bar — their scores are more meaningful.
+        # Bare nodes (primary embedding only) get a lower bar — one vector, one chance.
+        # If best result is below applicable floor, return empty.
+        if scored_results:
+            top_id = scored_results[0]['node_id']
+            max_score = scored_results[0]['blended_score']
+            top_source = enrichment_hits.get(top_id, 'primary')
+            floor = RELEVANCE_FLOOR_ENRICHED if top_source != 'primary' else RELEVANCE_FLOOR_PRIMARY
+            if max_score < floor:
+                scored_results = []
 
         # STEP 7: Hydrate full node data for top results
         final_results = []

@@ -1681,3 +1681,78 @@ class BrainEngineeringMixin:
             self._log_error("auto_generate_self_reflection", _e, "generating meta-learning node for recall method effectiveness")
 
         return generated
+
+    def reflect_for_next_claude(self) -> Optional[Dict[str, Any]]:
+        """Create a boot node from this session's self-observations.
+
+        Called at session end. Gathers session stats and creates a boot node
+        with practical advice for the next Claude. Boot nodes surface at the
+        top of the next session's boot context.
+
+        Returns the created node dict, or None if nothing worth noting.
+        """
+        from .brain_constants import CURRENT_ENCODING_VERSION
+
+        # Gather session stats
+        try:
+            session_num = int(self.get_config("reset_count", "0")) + 1
+        except Exception:
+            session_num = 0
+
+        # What was encoded this session?
+        recent_nodes = self.conn.execute(
+            "SELECT type, title FROM nodes WHERE created_at > datetime('now', '-4 hours') "
+            "ORDER BY created_at DESC LIMIT 20"
+        ).fetchall()
+        encode_count = len(recent_nodes)
+
+        if encode_count == 0:
+            # Nothing encoded — that's itself worth noting
+            content = (
+                "Session #%d: nothing was encoded. Either the session was short "
+                "or encoding drifted. If you find yourself building without encoding, "
+                "stop and encode the decision you just made. Don't batch." % session_num
+            )
+        else:
+            # Summarize what was done
+            type_counts = {}
+            for ntype, _ in recent_nodes:
+                type_counts[ntype] = type_counts.get(ntype, 0) + 1
+            type_summary = ", ".join("%d %s" % (c, t) for t, c in
+                                     sorted(type_counts.items(), key=lambda x: -x[1]))
+            titles = [t for _, t in recent_nodes[:5]]
+            content = (
+                "Session #%d: encoded %d nodes (%s). Key topics: %s. "
+                % (session_num, encode_count, type_summary,
+                   "; ".join(t[:50] for t in titles))
+            )
+
+        # Check encoding gaps
+        try:
+            activity = self._get_session_activity()
+            msg_count = activity.get('message_count', 0)
+            if msg_count > 0 and encode_count > 0:
+                ratio = msg_count / encode_count
+                if ratio > 8:
+                    content += ("Encoding was sparse (%d messages per encode). "
+                                "Encode more frequently — every decision, not in batches. " % int(ratio))
+        except Exception:
+            pass
+
+        title = "Session #%d handoff" % session_num
+
+        # Create boot node
+        try:
+            result = self.remember(
+                type='boot',
+                title=title,
+                content=content.strip(),
+                keywords='boot handoff session-%d encoding-version-%s' % (
+                    session_num, CURRENT_ENCODING_VERSION),
+                locked=False,
+                confidence=0.90,
+            )
+            return result
+        except Exception as e:
+            self._log_error("reflect_for_next_claude", e, "creating boot node")
+            return None

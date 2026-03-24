@@ -805,6 +805,8 @@ class BrainVoice:
                 brain._log_error("boot_%s" % fn.__name__, str(e), "")
                 return default if default is not None else ([] if 'pattern' in fn.__name__ else None)
 
+        boot_nodes = _safe(lambda: brain.fetch_boot_nodes(limit=3), [])
+        self_knowledge = _safe(lambda: brain.fetch_self_knowledge(limit=3), [])
         eng_ctx = _safe(lambda: brain.get_engineering_context(project=project), {})
         correction_patterns = _safe(lambda: brain.get_correction_patterns(limit=5), [])
         last_synthesis = _safe(lambda: brain.get_last_synthesis())
@@ -830,6 +832,22 @@ class BrainVoice:
         out.append("")
         out.append("Session #%d" % (ctx.get("reset_count", 0) + 1))
         out.append("")
+
+        # ── Boot nodes (messages from previous Claude) ─────────────
+        if boot_nodes:
+            out.append("FROM PREVIOUS YOU:")
+            for bn in boot_nodes:
+                out.append("  %s" % bn.get('content', bn.get('title', ''))[:300])
+            out.append("")
+
+        # ── Self-knowledge (what you know about yourself) ──────────
+        if self_knowledge:
+            out.append("WHAT YOU KNOW ABOUT YOURSELF:")
+            for sk in self_knowledge:
+                out.append("  [%s] %s" % (sk.get('type', '?'), sk.get('title', '')[:100]))
+                if sk.get('content'):
+                    out.append("    %s" % sk['content'][:200])
+            out.append("")
 
         # Last session note
         note = ctx.get("last_session_note") or {}

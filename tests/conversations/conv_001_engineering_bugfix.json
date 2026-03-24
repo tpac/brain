@@ -1,0 +1,70 @@
+{
+  "id": "conv_001",
+  "category": "engineering_bugfix",
+  "description": "Recall returns empty during daemon startup because keyword tokenizer secretly depends on embedder",
+  "messages": [
+    {
+      "role": "user",
+      "content": "The recall function returns empty results sometimes. I noticed it happens when I restart the daemon — the first few recalls after restart come back with nothing, then they start working. Here's the daemon log:\n\n```\n[brain-daemon] Starting daemon with /Users/tpac/AgentsContext/brain/brain.db\n[brain-daemon] Loading brain...\n[brain-daemon] Brain loaded (760 nodes, 11835 edges)\n[brain-daemon] Loading embedder...\n[brain-daemon] Embedder load time: 4.2s\n```\n\nThe gap between 'Brain loaded' and 'Embedder load time: 4.2s' is when recall breaks. During those 4 seconds, recall_with_embeddings() is called but the embedder isn't ready yet. It's supposed to fall back to keyword-only recall but I'm getting empty results instead of keyword results.\n\nHere's the relevant code:\n```python\ndef recall_with_embeddings(self, query, limit=8):\n    if not self.embedder or not self.embedder.stats.get('model_loaded'):\n        print('[recall] embedder not ready, falling back', file=sys.stderr)\n        return self.recall(query, limit)  # keyword-only fallback\n    query_vec = self.embedder.embed(query)\n    if query_vec is None:\n        return self.recall(query, limit)\n    # ... cosine scan ...\n```\n\nThe fallback path calls self.recall() which does keyword search. But that's also returning empty. I think the issue might be in _search_keywords() — it uses the TF-IDF index which might not be loaded yet either."
+    },
+    {
+      "role": "assistant",
+      "content": "I see the issue. Let me trace the full call chain during the startup window:\n\n1. Daemon starts, loads brain (instant — just SQLite connection)\n2. Embedder starts loading (4.2s for Arctic v1.5 ONNX model)\n3. During this window, hook_recall fires on user message\n4. recall_with_embeddings() checks embedder.stats['model_loaded'] → False\n5. Falls back to self.recall() (keyword-only)\n6. self.recall() calls _search_keywords() which does regex matching on titles/content — this SHOULD work without embedder\n7. Then calls _batch_tfidf_scores() which queries node_vectors table\n8. Then calls spread_activation() which traverses edges\n\nThe keyword path doesn't depend on the embedder at all — it's pure SQLite queries. So the empty result isn't from the embedder being unavailable.\n\nLet me check _search_keywords()... Ah. The issue is that _search_keywords() tokenizes the query and searches for each token. But the tokenizer uses the embedder's tokenizer for subword splitting. When the embedder isn't loaded, the tokenizer falls back to whitespace splitting, which means compound terms like 'recall_pipeline' don't get split into ['recall', 'pipeline']. The keyword search gets the unsplit term, which doesn't match any node's keywords.\n\nThe fix: _search_keywords() should use its OWN tokenizer (the one in _extract_keywords()) instead of depending on the embedder's tokenizer. They're doing the same thing differently — one for encoding, one for search. They should share the same code path.\n\nThis also explains why it starts working after 4 seconds — once the embedder loads, the tokenizer is available, and even the keyword fallback path benefits from proper tokenization."
+    },
+    {
+      "role": "user",
+      "content": "That's exactly it. Fix it. And think about what else might break during that startup window — are there other paths that silently depend on the embedder being loaded?"
+    }
+  ],
+  "expected_encodings": [
+    {
+      "should_encode": true,
+      "type_hint": "lesson",
+      "must_contain": ["tokenizer", "embedder", "_search_keywords", "whitespace"],
+      "must_contain_reasoning": "root cause is tokenizer dependency, NOT embedder itself",
+      "quality_minimum": 7,
+      "rich_example": "recall empty during 4.2s startup window because _search_keywords() uses embedder tokenizer for subword splitting. When embedder not loaded, falls back to whitespace split → compound terms like recall_pipeline don't match. Fix: share _extract_keywords() tokenizer across encode and search paths.",
+      "thin_example_to_reject": "Fixed recall when embedder not loaded"
+    },
+    {
+      "should_encode": true,
+      "format": "code",
+      "description": "Claude traced a 8-step call chain — this mental map should be encoded",
+      "must_contain_pattern": "recall_with_embeddings|_search_keywords|_batch_tfidf|spread_activation",
+      "rich_example": "recall_with_embeddings(query)\n  → check embedder.stats['model_loaded'] → False during 4.2s window\n  → fallback: self.recall(query)\n    → _search_keywords(query) → tokenizer uses EMBEDDER tokenizer\n    → when embedder not loaded: whitespace split only\n    → compound terms don't match → empty results\n  → fix: _search_keywords should use _extract_keywords tokenizer"
+    },
+    {
+      "should_encode": true,
+      "type_hint": "impact",
+      "must_contain": ["startup window", "embedder", "other paths"],
+      "description": "Tom asked 'what else might break during that startup window'",
+      "rich_example": "if_changed: embedder availability during startup, must_check: any code path that uses embedder.tokenizer or embedder.embed() with a fallback, because: 4.2s window where embedder is loading but brain is serving requests"
+    },
+    {
+      "should_encode": true,
+      "type_hint": "uncertainty",
+      "must_contain": ["other paths", "silently depend"],
+      "description": "Claude should encode what it DOESN'T know",
+      "rich_example": "what_unknown: Are there other code paths beyond _search_keywords that silently depend on embedder being loaded? why_it_matters: Any hidden dependency means the startup window breaks more than just recall"
+    }
+  ],
+  "expected_connections": [
+    {"from_contains": "tokenizer", "to_contains": "embedder", "relation": "depends_on"},
+    {"from_contains": "startup window", "to_contains": "recall", "relation": "related"}
+  ],
+  "aha_moments": [
+    {
+      "turn": 2,
+      "signal": "Ah. The issue is that _search_keywords() tokenizes the query",
+      "description": "Real root cause: tokenizer dependency in keyword path, not embedder absence",
+      "should_trigger_encoding": true,
+      "encoding_should_capture": "The surprise — keyword fallback was SUPPOSED to be embedder-independent but secretly depends on it through the tokenizer"
+    }
+  ],
+  "recall_queries": [
+    {"query": "why does recall return empty after daemon restart", "should_find": "lesson about tokenizer dependency"},
+    {"query": "what breaks during embedder startup window", "should_find": "impact node about embedder dependencies"},
+    {"query": "tokenizer fallback whitespace splitting", "should_find": "lesson or code node about _search_keywords"},
+    {"query": "mom's birthday", "should_find_nothing": true}
+  ]
+}

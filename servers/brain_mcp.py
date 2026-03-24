@@ -111,7 +111,7 @@ TOOLS = [
                 "title": {"type": "string", "description": "Specific, scannable title"},
                 "content": {"type": "string", "description": "Rich content with reasoning, tradeoffs, specifics"},
                 "locked": {"type": "boolean", "description": "Lock node (for decisions, rules, lessons)", "default": False},
-                "confidence": {"type": "number", "description": "Confidence 0.0-1.0", "default": 0.5},
+                "confidence": {"type": "number", "description": "Confidence 0.0-1.0", "default": 1.0},
                 "keywords": {"type": "string", "description": "Space-separated keywords for search"},
                 "project": {"type": "string", "description": "Project scope"},
                 "emotion": {"type": "number", "description": "Emotional valence -1.0 to 1.0"}

@@ -55,6 +55,34 @@ CHECKPOINT_CYCLE = [
     "brain.remember(type='mental_model') for architectural insights. Name the pattern.",
 ]
 
+SELF_KNOWLEDGE_KEYWORDS = ('encoding', 'drift', 'instinct', 'compress', 'claude',
+                           'agreeab', 'bias', 'failure', 'self-correct', 'batch')
+
+def _behavioral_mirror(brain, messages_since_encode, total_encodes):
+    """Query brain for self-knowledge relevant to Claude's current behavioral state.
+    Returns a string to include in the encoding checkpoint, or empty string."""
+    # Build query based on behavioral pattern
+    if total_encodes == 0:
+        query = "Claude never encoded anything in session, encoding drift compression instinct"
+    elif messages_since_encode > 10:
+        query = "encoding drift building without remembering, losing context compaction"
+    else:
+        query = "encoding gap during active work, compression instinct defer to later"
+
+    try:
+        results = brain.recall_with_embeddings(query, limit=3)
+        for node in (results if isinstance(results, list) else results.get('results', [])):
+            node_type = node.get('type', '')
+            keywords = node.get('keywords', '') or ''
+            if node_type in ('lesson', 'correction', 'pattern', 'mental_model', 'failure_mode', 'boot'):
+                if any(kw in keywords.lower() for kw in SELF_KNOWLEDGE_KEYWORDS):
+                    content = node.get('content', node.get('title', ''))[:200]
+                    return "Previous Claude: %s" % content
+    except Exception:
+        pass
+    return ""
+
+
 DESTRUCTIVE_REGEXES = [
     r"rm\s+(-[rf]+\s+|.*--force)",
     r"git\s+worktree\s+remove",
@@ -643,10 +671,21 @@ def hook_post_response_track(brain, args, graph_changes):
             except Exception:
                 stats = ""
 
+            # Behavioral mirror: surface relevant self-knowledge when drifting
+            mirror_text = ""
+            try:
+                since_encode = nudge.get("messages_since_encode", 0)
+                if since_encode > 4:
+                    mirror_text = _behavioral_mirror(brain, since_encode, nudge.get("total_encodes", 0))
+            except Exception:
+                pass
+
             checkpoint_lines = ["[BRAIN] ENCODING CHECKPOINT: " + msg]
             if stats:
                 checkpoint_lines.append(stats)
             checkpoint_lines.append(focus)
+            if mirror_text:
+                checkpoint_lines.append(mirror_text)
             checkpoint_lines.append("[/BRAIN]")
             checkpoint_text = "\n".join(checkpoint_lines)
 
@@ -1188,10 +1227,16 @@ def hook_pre_compact_save(brain, args, graph_changes):
 
 
 def hook_session_end(brain, args, graph_changes):
-    """SessionEnd — session synthesis + consolidation + clean shutdown."""
+    """SessionEnd — session synthesis + reflection + consolidation + clean shutdown."""
     # Synthesize
     try:
-        synthesis = brain.synthesize_session()
+        brain.synthesize_session()
+    except Exception:
+        pass
+
+    # Reflect for next Claude — create boot node with session handoff
+    try:
+        brain.reflect_for_next_claude()
     except Exception:
         pass
 

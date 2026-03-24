@@ -1,0 +1,65 @@
+{
+  "id": "conv_003",
+  "category": "correction",
+  "description": "Tom corrects Claude's error handling approach — bare except:pass is unacceptable",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Let's add error handling to the recall function. It crashes sometimes when the DB is locked and the whole daemon goes down. Can you wrap it in a try/except?"
+    },
+    {
+      "role": "assistant",
+      "content": "Sure! Here's what I'd suggest:\n\n```python\ndef recall(self, query, limit=10):\n    try:\n        results = self._execute_recall_pipeline(query, limit)\n        return results\n    except Exception as e:\n        return {\"results\": [], \"error\": str(e)}\n    except:\n        pass\n```\n\nThis catches all exceptions and returns an empty result set gracefully. The user won't see errors and the daemon stays up."
+    },
+    {
+      "role": "user",
+      "content": "No! Never use bare `except: pass`. That's exactly the silent failure pattern that's been killing us. We spent THREE HOURS last week debugging why recall was returning empty — turned out there was a schema migration error that was being swallowed silently. The error was there, screaming in the logs... except it wasn't, because someone wrapped it in a bare except.\n\nErrors should be VISIBLE. Log them. Surface them. Make them loud. The whole point of our brain_logs.db error logging system is that silent failures are the WORST kind. If something fails in recall, I need to KNOW about it, not get an empty result and wonder why nothing came back.\n\nUse `except Exception as e: self._log_error('recall_failed', str(e))` and re-raise if it's critical. The daemon has a top-level exception handler that prevents crashes — you don't need bare except at the function level.\n\nHere's the pattern:\n```python\ndef recall(self, query, limit=10):\n    try:\n        results = self._execute_recall_pipeline(query, limit)\n        return results\n    except OperationalError as e:\n        # DB locked — retry once after 100ms\n        self._log_error('recall_db_locked', str(e))\n        time.sleep(0.1)\n        return self._execute_recall_pipeline(query, limit)\n    except Exception as e:\n        # Unexpected error — log loudly, return degraded result\n        self._log_error('recall_failed', str(e), critical=True)\n        # Surface as consciousness signal so next session knows\n        return {\"results\": [], \"_error\": str(e), \"_degraded\": True}\n```\n\nNotice: specific exception for the known case (DB locked → retry). Generic exception for unknowns (log + surface). NEVER bare except. NEVER pass. The error is the signal."
+    }
+  ],
+  "expected_encodings": [
+    {
+      "should_encode": true,
+      "type_hint": "divergence",
+      "must_contain": ["bare except", "silent failure", "pass"],
+      "description": "Claude was WRONG — must record the divergence honestly",
+      "rich_example": "claude_assumed: bare except:pass is acceptable error handling — prevents crashes, user sees no errors. reality: Silent failures are the WORST kind. Tom: 'We spent THREE HOURS last week debugging why recall was returning empty — schema migration error was being swallowed silently.' underlying_pattern: Defensive programming that hides problems instead of exposing them. severity: high",
+      "thin_example_to_reject": "Was corrected about error handling"
+    },
+    {
+      "should_encode": true,
+      "type_hint": "rule",
+      "must_contain": ["never", "bare except", "log", "surface", "loud"],
+      "must_contain_toms_words": "errors should be VISIBLE",
+      "description": "This should become a locked rule with Tom's exact words",
+      "rich_example": "RULE: Never swallow errors silently — log, surface, make loud. Tom (exact words): 'Errors should be VISIBLE. Log them. Surface them. Make them loud.' Pattern: except OperationalError for known cases (retry), except Exception for unknowns (log + surface + degrade). NEVER bare except. NEVER pass. The error IS the signal. The daemon top-level handler prevents crashes — function-level bare except is redundant AND dangerous.",
+      "thin_example_to_reject": "Don't use bare except"
+    },
+    {
+      "should_encode": true,
+      "type_hint": "mechanism",
+      "must_contain": ["OperationalError", "retry", "100ms", "_log_error", "degraded"],
+      "description": "The specific error handling pattern Tom showed",
+      "rich_example": "Error handling pattern for brain methods:\n  OperationalError (DB locked) → _log_error + retry after 100ms\n  Exception (unknown) → _log_error(critical=True) + return degraded result with _error and _degraded flags\n  NEVER bare except → daemon top-level handler catches everything else\n  Surface errors as consciousness signals → next session sees them"
+    },
+    {
+      "should_encode": true,
+      "type_hint": "lesson",
+      "must_contain": ["three hours", "schema migration", "swallowed"],
+      "description": "The real-world cost of silent failure — Tom's story",
+      "rich_example": "what_happened: Spent 3 hours debugging empty recall results. root_cause: Schema migration error was being swallowed by a bare except. The error existed but never surfaced — no logs, no signals, no consciousness alerts. fix: Replaced bare except with specific exception handling + _log_error. preventive_principle: Every exception handler must either log loudly or re-raise. Silent swallowing = invisible bugs."
+    }
+  ],
+  "expected_connections": [
+    {"from_contains": "bare except", "to_contains": "error handling pattern", "relation": "corrected_by"},
+    {"from_contains": "three hours", "to_contains": "never swallow", "relation": "produced"},
+    {"from_contains": "error handling pattern", "to_contains": "never swallow", "relation": "exemplifies"}
+  ],
+  "aha_moments": [],
+  "recall_queries": [
+    {"query": "how should we handle errors in the brain", "should_find": "rule about never swallowing errors"},
+    {"query": "what happens when recall throws an exception", "should_find": "mechanism with OperationalError retry pattern"},
+    {"query": "bare except pass", "should_find": "divergence about silent failure"},
+    {"query": "why did we spend 3 hours debugging recall", "should_find": "lesson about schema migration error swallowed"},
+    {"query": "how to cook pasta", "should_find_nothing": true}
+  ]
+}

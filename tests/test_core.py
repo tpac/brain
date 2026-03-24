@@ -343,7 +343,7 @@ class TestSchemaMigration(unittest.TestCase):
 
         # Check version_history
         row = conn.execute(
-            "SELECT backup_path FROM version_history WHERE version = 16"
+            "SELECT backup_path FROM version_history ORDER BY version DESC LIMIT 1"
         ).fetchone()
         conn.close()
 

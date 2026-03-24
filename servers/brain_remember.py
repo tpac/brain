@@ -387,18 +387,19 @@ class BrainRememberMixin:
         content_summary = self._generate_summary(title, content)
 
         # INSERT into nodes table
+        from .brain_constants import CURRENT_ENCODING_VERSION
         self.conn.execute(
             '''INSERT INTO nodes
                (id, type, title, content, content_summary, keywords,
                 activation, stability, locked, confidence,
                 recency_score, emotion, emotion_label, emotion_source, project,
-                personal, personal_context,
+                personal, personal_context, encoding_version,
                 last_accessed, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, 1.0, 1.0, ?, ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+               VALUES (?, ?, ?, ?, ?, ?, 1.0, 1.0, ?, ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (node_id, type, title, content, content_summary, keywords,
              1 if locked else 0, confidence,
              emotion, emotion_label, emotion_source, project,
-             personal, personal_context,
+             personal, personal_context, CURRENT_ENCODING_VERSION,
              ts, ts, ts)
         )
         self.conn.commit()

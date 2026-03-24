@@ -929,6 +929,36 @@ class BrainSurfaceMixin:
 
         return {'matched': matched}
 
+    # ── Self-knowledge for boot ──────────────
+
+    def fetch_boot_nodes(self, limit: int = 3) -> list:
+        """Fetch boot nodes — messages from previous sessions' Claude to this one."""
+        rows = self.conn.execute('''
+            SELECT id, title, content, created_at FROM nodes
+            WHERE type = 'boot' AND archived = 0
+            ORDER BY created_at DESC LIMIT ?
+        ''', (limit,)).fetchall()
+        return [{'id': r[0], 'title': r[1], 'content': r[2], 'created_at': r[3]} for r in rows]
+
+    def fetch_self_knowledge(self, limit: int = 3) -> list:
+        """Fetch Claude's self-reflective nodes — behavioral patterns, corrections, lessons about itself."""
+        # Query for nodes that are about Claude's own behavior
+        self_keywords = ('encoding', 'drift', 'instinct', 'compress', 'claude',
+                         'agreeab', 'bias', 'failure mode', 'self-correct')
+        keyword_clause = ' OR '.join('keywords LIKE ?' for _ in self_keywords)
+        params = [f'%{kw}%' for kw in self_keywords]
+        params.append(limit)
+        rows = self.conn.execute(f'''
+            SELECT id, type, title, content, keywords, confidence FROM nodes
+            WHERE type IN ('lesson', 'correction', 'pattern', 'mental_model', 'failure_mode')
+              AND archived = 0
+              AND ({keyword_clause})
+            ORDER BY confidence DESC, updated_at DESC
+            LIMIT ?
+        ''', params).fetchall()
+        return [{'id': r[0], 'type': r[1], 'title': r[2], 'content': r[3],
+                 'keywords': r[4], 'confidence': r[5]} for r in rows]
+
     # ── Formatted boot context ──────────────
 
     def format_boot_context(self, user: str = 'User', project: str = 'default',
