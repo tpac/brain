@@ -108,7 +108,7 @@ class BrainDaemon:
         # Start observer channel (separate port for Tom's visibility)
         try:
             from servers import brain_dashboard
-            brain_dashboard.start(brain=self.brain, daemon=self)
+            brain_dashboard.start(brain=self.brain)
         except Exception as e:
             self._log("Observer channel failed to start: %s" % e)
 

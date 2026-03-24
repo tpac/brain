@@ -29,18 +29,16 @@ from servers.daemon_config import DAEMON_HOST, DAEMON_PORT
 
 DASHBOARD_PORT = DAEMON_PORT + 100
 _brain = None  # Set by daemon on startup
-_daemon = None  # Set by daemon — used to reset idle timeout on HTTP requests
 _event_queues = []  # SSE client queues
 _event_lock = threading.Lock()
 _server = None
 _running = False
 
 
-def start(brain=None, daemon=None):
+def start(brain=None):
     """Start dashboard HTTP server. Called by daemon on startup."""
-    global _brain, _daemon, _server, _running
+    global _brain, _server, _running
     _brain = brain
-    _daemon = daemon
     if _running:
         return
     try:
@@ -51,6 +49,9 @@ def start(brain=None, daemon=None):
         _running = True
         t = threading.Thread(target=_serve_loop, daemon=True, name="dashboard-http")
         t.start()
+        # Keepalive: ping daemon every 5 min so it doesn't idle-timeout
+        k = threading.Thread(target=_keepalive_loop, daemon=True, name="dashboard-keepalive")
+        k.start()
         _log("Dashboard listening on http://%s:%d" % (DAEMON_HOST, DASHBOARD_PORT))
     except Exception as e:
         _log("Dashboard failed to start: %s" % e)
@@ -97,6 +98,24 @@ def has_listeners():
         return len(_event_queues) > 0
 
 
+def _keepalive_loop():
+    """Ping daemon every 5 min to prevent idle timeout while dashboard is up."""
+    while _running:
+        for _ in range(300):  # 5 min in 1s intervals
+            if not _running:
+                return
+            time.sleep(1)
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(5)
+            s.connect((DAEMON_HOST, DAEMON_PORT))
+            s.sendall(b'{"cmd":"ping","args":{}}\n')
+            s.recv(1024)
+            s.close()
+        except Exception:
+            pass
+
+
 def _serve_loop():
     while _running:
         try:
@@ -118,9 +137,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
         pass  # Silence default logging
 
     def do_GET(self):
-        # Keep daemon alive while dashboard is being viewed
-        if _daemon:
-            _daemon.last_activity = time.time()
         parsed = urlparse(self.path)
         path = parsed.path
         params = parse_qs(parsed.query)
