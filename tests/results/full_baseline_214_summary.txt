@@ -1,6 +1,6 @@
 ==============================================================================
 FULL BASELINE BENCHMARK — 214 Golden Dataset v2
-Timestamp: 2026-03-23T13:14:40.441037
+Timestamp: 2026-03-23T16:24:46.481362
 DB: /tmp/brain_full_baseline.db (837 primary, 2779 enrichment vectors)
 ==============================================================================
 
@@ -20,7 +20,7 @@ Avg top score             N/A                       0.7981
 Max top score             N/A                       0.9687                   
 Min top score             N/A                       0.6385                   
 
-Timing: 214 cases in 52.4s (244.8ms avg)
+Timing: 214 cases in 58.8s (274.8ms avg)
 
 ──────────────────────────────────────────────────────────────────────────────
 TABLE 2: PER-CATEGORY BREAKDOWN

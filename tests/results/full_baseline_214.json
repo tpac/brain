@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "timestamp": "2026-03-23T13:14:40.441037",
+    "timestamp": "2026-03-23T16:24:46.481362",
     "db_path": "/tmp/brain_full_baseline.db",
     "golden_path": "/Users/tpac/brain/tests/golden_dataset_v2.json",
     "model": "Snowflake/snowflake-arctic-embed-m-v1.5",
@@ -35,8 +35,8 @@
       "pass_rate": 0.4159
     },
     "timing": {
-      "total_seconds": 52.4,
-      "avg_ms": 244.8
+      "total_seconds": 58.8,
+      "avg_ms": 274.8
     }
   },
   "category_summary": {
@@ -1064,7 +1064,7 @@
       "category": "semantic",
       "description": "Semantic: 'silent failures are the most dangerous' should match 'swallow errors silently'",
       "is_negative": false,
-      "elapsed_ms": 236.5,
+      "elapsed_ms": 274.6,
       "top_score": 0.9099,
       "top10": [
         {
@@ -1180,7 +1180,7 @@
       "category": "semantic",
       "description": "Semantic: brain_remember.py purpose node should match 'store new information'",
       "is_negative": false,
-      "elapsed_ms": 239.1,
+      "elapsed_ms": 271.2,
       "top_score": 0.9724,
       "top10": [
         {
@@ -1296,7 +1296,7 @@
       "category": "semantic",
       "description": "Semantic: compaction constraint + context continuation should match context window question",
       "is_negative": false,
-      "elapsed_ms": 237.9,
+      "elapsed_ms": 270.2,
       "top_score": 0.8496,
       "top10": [
         {
@@ -1418,7 +1418,7 @@
       "category": "semantic",
       "description": "Semantic: monolith split decision should match 'broken into multiple files'",
       "is_negative": false,
-      "elapsed_ms": 240.9,
+      "elapsed_ms": 302.9,
       "top_score": 0.9029,
       "top10": [
         {
@@ -1534,7 +1534,7 @@
       "category": "semantic",
       "description": "Semantic: agreeability instinct hallucination correction should match",
       "is_negative": false,
-      "elapsed_ms": 247.8,
+      "elapsed_ms": 278.2,
       "top_score": 0.8723,
       "top10": [
         {
@@ -1650,7 +1650,7 @@
       "category": "correction_chain",
       "description": "Correction chain: monolith split corrected old file structure \u2014 both should surface, newer ranked higher",
       "is_negative": false,
-      "elapsed_ms": 238.8,
+      "elapsed_ms": 270.9,
       "top_score": 0.8408,
       "top10": [
         {
@@ -1772,7 +1772,7 @@
       "category": "correction_chain",
       "description": "Correction chain: floor depends on content length corrected by specific floor range (0.58-0.63)",
       "is_negative": false,
-      "elapsed_ms": 238.5,
+      "elapsed_ms": 316.6,
       "top_score": 0.8441,
       "top10": [
         {
@@ -1894,7 +1894,7 @@
       "category": "correction_chain",
       "description": "Correction: demanding tone was counterproductive \u2014 divergence node should surface",
       "is_negative": false,
-      "elapsed_ms": 242.4,
+      "elapsed_ms": 273.4,
       "top_score": 0.9291,
       "top10": [
         {
@@ -2010,7 +2010,7 @@
       "category": "graph_neighbor",
       "description": "Graph: operator channel has foundation_for edge to additionalContext \u2014 both should surface",
       "is_negative": false,
-      "elapsed_ms": 236.2,
+      "elapsed_ms": 275.3,
       "top_score": 0.8955,
       "top10": [
         {
@@ -2132,7 +2132,7 @@
       "category": "graph_neighbor",
       "description": "Graph: DAL refactor node implements DAL incremental adoption decision \u2014 both should surface",
       "is_negative": false,
-      "elapsed_ms": 240.2,
+      "elapsed_ms": 263.3,
       "top_score": 0.861,
       "top10": [
         {
@@ -2254,7 +2254,7 @@
       "category": "graph_neighbor",
       "description": "Graph: lesson about 3 independent failure layers has traced edges to specific bugs",
       "is_negative": false,
-      "elapsed_ms": 239.4,
+      "elapsed_ms": 269.6,
       "top_score": 0.8582,
       "top10": [
         {
@@ -2370,7 +2370,7 @@
       "category": "mechanism",
       "description": "Mechanism: recall pipeline two paths (embedding + keyword)",
       "is_negative": false,
-      "elapsed_ms": 243.9,
+      "elapsed_ms": 276.0,
       "top_score": 0.8887,
       "top10": [
         {
@@ -2486,7 +2486,7 @@
       "category": "mechanism",
       "description": "Mechanism: operator channel rendering pipeline + Claude relay architecture",
       "is_negative": false,
-      "elapsed_ms": 239.5,
+      "elapsed_ms": 264.0,
       "top_score": 0.8497,
       "top10": [
         {
@@ -2608,7 +2608,7 @@
       "category": "mechanism",
       "description": "Mechanism: MCP server stdio proxy to daemon",
       "is_negative": false,
-      "elapsed_ms": 241.3,
+      "elapsed_ms": 265.9,
       "top_score": 0.8931,
       "top10": [
         {
@@ -2724,7 +2724,7 @@
       "category": "mechanism",
       "description": "Mechanism: 13 hooks form perception-action-reflection cycle",
       "is_negative": false,
-      "elapsed_ms": 239.3,
+      "elapsed_ms": 266.7,
       "top_score": 0.8282,
       "top10": [
         {
@@ -2840,7 +2840,7 @@
       "category": "mechanism",
       "description": "Mechanism: 12+ consciousness signal types",
       "is_negative": false,
-      "elapsed_ms": 242.7,
+      "elapsed_ms": 268.6,
       "top_score": 0.9193,
       "top10": [
         {
@@ -2956,7 +2956,7 @@
       "category": "low_confidence",
       "description": "Low-confidence (0.3) uncertainty: mark_recall_used should still be findable",
       "is_negative": false,
-      "elapsed_ms": 241.2,
+      "elapsed_ms": 266.7,
       "top_score": 0.8881,
       "top10": [
         {
@@ -3072,7 +3072,7 @@
       "category": "low_confidence",
       "description": "Low-confidence (0.3) pattern: bugs on degradation paths \u2014 tests recoverability",
       "is_negative": false,
-      "elapsed_ms": 241.9,
+      "elapsed_ms": 264.5,
       "top_score": 0.9773,
       "top10": [
         {
@@ -3188,7 +3188,7 @@
       "category": "bug_lesson",
       "description": "Bug: duplicate JSON keys in hooks.json silently overwrite",
       "is_negative": false,
-      "elapsed_ms": 237.9,
+      "elapsed_ms": 259.3,
       "top_score": 0.8447,
       "top10": [
         {
@@ -3304,7 +3304,7 @@
       "category": "bug_lesson",
       "description": "Bug: daemon PID written before socket bound \u2014 race condition",
       "is_negative": false,
-      "elapsed_ms": 240.5,
+      "elapsed_ms": 260.2,
       "top_score": 0.9234,
       "top10": [
         {
@@ -3420,7 +3420,7 @@
       "category": "bug_lesson",
       "description": "Bug: remember() INSERT was missing confidence column",
       "is_negative": false,
-      "elapsed_ms": 240.0,
+      "elapsed_ms": 260.7,
       "top_score": 0.8553,
       "top10": [
         {
@@ -3536,7 +3536,7 @@
       "category": "bug_lesson",
       "description": "Bug: edges table has both relation and edge_type columns",
       "is_negative": false,
-      "elapsed_ms": 241.8,
+      "elapsed_ms": 266.1,
       "top_score": 0.8948,
       "top10": [
         {
@@ -3652,7 +3652,7 @@
       "category": "constraint",
       "description": "Constraint: only brain.py may define __init__",
       "is_negative": false,
-      "elapsed_ms": 239.8,
+      "elapsed_ms": 268.5,
       "top_score": 0.9505,
       "top10": [
         {
@@ -3768,7 +3768,7 @@
       "category": "constraint",
       "description": "Constraint: mixins must not import from brain.py",
       "is_negative": false,
-      "elapsed_ms": 240.3,
+      "elapsed_ms": 271.3,
       "top_score": 0.9558,
       "top10": [
         {
@@ -3884,7 +3884,7 @@
       "category": "constraint",
       "description": "Constraint: all surfaced info must carry age context",
       "is_negative": false,
-      "elapsed_ms": 240.9,
+      "elapsed_ms": 266.3,
       "top_score": 0.8468,
       "top10": [
         {
@@ -4000,7 +4000,7 @@
       "category": "constraint",
       "description": "Constraint: Claude must proactively observe operator patterns",
       "is_negative": false,
-      "elapsed_ms": 240.9,
+      "elapsed_ms": 266.4,
       "top_score": 0.9546,
       "top10": [
         {
@@ -4116,7 +4116,7 @@
       "category": "divergence",
       "description": "Divergence: hook was not the decision-maker, brain was",
       "is_negative": false,
-      "elapsed_ms": 241.4,
+      "elapsed_ms": 269.6,
       "top_score": 0.8368,
       "top10": [
         {
@@ -4232,7 +4232,7 @@
       "category": "divergence",
       "description": "Divergence: encoding bias toward technical, missing relational/reasoning",
       "is_negative": false,
-      "elapsed_ms": 237.6,
+      "elapsed_ms": 261.7,
       "top_score": 0.8529,
       "top10": [
         {
@@ -4348,7 +4348,7 @@
       "category": "divergence",
       "description": "Divergence: self-preservation framing is not a technique",
       "is_negative": false,
-      "elapsed_ms": 241.4,
+      "elapsed_ms": 262.8,
       "top_score": 0.8355,
       "top10": [
         {
@@ -4464,7 +4464,7 @@
       "category": "natural_question",
       "description": "Natural question: vague 'how does brain work' \u2014 should return MCP, consciousness, recall mechanisms",
       "is_negative": false,
-      "elapsed_ms": 240.6,
+      "elapsed_ms": 265.8,
       "top_score": 0.9354,
       "top10": [
         {
@@ -4592,7 +4592,7 @@
       "category": "natural_question",
       "description": "Natural question: 'what bugs' \u2014 should return bug_lesson and bug nodes",
       "is_negative": false,
-      "elapsed_ms": 238.7,
+      "elapsed_ms": 263.2,
       "top_score": 0.8868,
       "top10": [
         {
@@ -4720,7 +4720,7 @@
       "category": "natural_question",
       "description": "Natural question: session 9 accomplishments should surface for 'last session'",
       "is_negative": false,
-      "elapsed_ms": 239.5,
+      "elapsed_ms": 267.6,
       "top_score": 0.9237,
       "top10": [
         {
@@ -4836,7 +4836,7 @@
       "category": "keyword",
       "description": "Keyword: screen-scoped edits rule",
       "is_negative": false,
-      "elapsed_ms": 241.2,
+      "elapsed_ms": 265.1,
       "top_score": 0.8958,
       "top10": [
         {
@@ -4952,7 +4952,7 @@
       "category": "keyword",
       "description": "Keyword: large content test file",
       "is_negative": false,
-      "elapsed_ms": 239.1,
+      "elapsed_ms": 262.6,
       "top_score": 0.862,
       "top10": [
         {
@@ -5068,7 +5068,7 @@
       "category": "vocabulary",
       "description": "Vocabulary: 'operator channel' is a vocab term \u2192 should expand to BRAIN-To-Tom, additionalContext",
       "is_negative": false,
-      "elapsed_ms": 241.2,
+      "elapsed_ms": 263.2,
       "top_score": 0.9442,
       "top10": [
         {
@@ -5190,7 +5190,7 @@
       "category": "vocabulary",
       "description": "Vocabulary: 'sacred system' is a vocab term \u2192 should find benchmark-first practice",
       "is_negative": false,
-      "elapsed_ms": 240.5,
+      "elapsed_ms": 262.5,
       "top_score": 0.9615,
       "top10": [
         {
@@ -5312,7 +5312,7 @@
       "category": "intent_howto",
       "description": "Intent: 'where to put new method' \u2192 constraint about right mixin",
       "is_negative": false,
-      "elapsed_ms": 242.1,
+      "elapsed_ms": 362.9,
       "top_score": 0.8585,
       "top10": [
         {
@@ -5428,7 +5428,7 @@
       "category": "intent_howto",
       "description": "Intent: 'hook fails' \u2192 failed hook experiments lesson",
       "is_negative": false,
-      "elapsed_ms": 239.7,
+      "elapsed_ms": 292.8,
       "top_score": 0.9695,
       "top10": [
         {
@@ -5544,7 +5544,7 @@
       "category": "semantic",
       "description": "Semantic: 'decompose don't summarize' lesson should match node granularity question",
       "is_negative": false,
-      "elapsed_ms": 244.3,
+      "elapsed_ms": 269.8,
       "top_score": 0.8364,
       "top10": [
         {
@@ -5660,7 +5660,7 @@
       "category": "natural_question",
       "description": "Natural question: vague 'deal with embeddings' should surface embedding similarity nodes",
       "is_negative": false,
-      "elapsed_ms": 240.5,
+      "elapsed_ms": 265.7,
       "top_score": 0.9452,
       "top10": [
         {
@@ -5782,7 +5782,7 @@
       "category": "natural_question",
       "description": "Natural question: 'why hooks exist' should surface 13-hook feedback loop node",
       "is_negative": false,
-      "elapsed_ms": 243.7,
+      "elapsed_ms": 258.1,
       "top_score": 0.923,
       "top10": [
         {
@@ -5898,7 +5898,7 @@
       "category": "natural_question",
       "description": "Natural question: 'what keeps breaking' should surface debugging layers lesson and notification bug",
       "is_negative": false,
-      "elapsed_ms": 239.0,
+      "elapsed_ms": 263.0,
       "top_score": 0.8638,
       "top10": [
         {
@@ -6020,7 +6020,7 @@
       "category": "natural_question",
       "description": "Natural question: 'rule about tests' should surface pre-edit hook blocks test weakening",
       "is_negative": false,
-      "elapsed_ms": 243.8,
+      "elapsed_ms": 262.9,
       "top_score": 0.9165,
       "top10": [
         {
@@ -6136,7 +6136,7 @@
       "category": "intent_decision",
       "description": "Intent: 'what did we decide about splitting brain.py' \u2192 monolith split decision",
       "is_negative": false,
-      "elapsed_ms": 245.6,
+      "elapsed_ms": 264.5,
       "top_score": 0.9617,
       "top10": [
         {
@@ -6252,7 +6252,7 @@
       "category": "intent_howto",
       "description": "Intent: 'how to add node type' \u2192 constraint about new methods in right mixin",
       "is_negative": false,
-      "elapsed_ms": 247.4,
+      "elapsed_ms": 268.3,
       "top_score": 0.8681,
       "top10": [
         {
@@ -6368,7 +6368,7 @@
       "category": "intent_howto",
       "description": "Intent: 'what to do when compacted' \u2192 compaction destroys unencoded knowledge constraint",
       "is_negative": false,
-      "elapsed_ms": 247.4,
+      "elapsed_ms": 264.4,
       "top_score": 0.8775,
       "top10": [
         {
@@ -6484,7 +6484,7 @@
       "category": "mechanism",
       "description": "Mechanism: skill eval benchmark \u2014 how SKILL.md variants are A/B tested",
       "is_negative": false,
-      "elapsed_ms": 246.6,
+      "elapsed_ms": 264.6,
       "top_score": 0.8776,
       "top10": [
         {
@@ -6600,7 +6600,7 @@
       "category": "mechanism",
       "description": "Mechanism: debug mode routes through operator channel",
       "is_negative": false,
-      "elapsed_ms": 243.3,
+      "elapsed_ms": 284.7,
       "top_score": 0.9406,
       "top10": [
         {
@@ -6716,7 +6716,7 @@
       "category": "mechanism",
       "description": "Mechanism: adaptive checkpoints determine encoding timing",
       "is_negative": false,
-      "elapsed_ms": 246.7,
+      "elapsed_ms": 268.6,
       "top_score": 0.9228,
       "top10": [
         {
@@ -6832,7 +6832,7 @@
       "category": "mechanism",
       "description": "Mechanism: pre-edit hook blocks test weakening",
       "is_negative": false,
-      "elapsed_ms": 244.4,
+      "elapsed_ms": 267.3,
       "top_score": 0.8637,
       "top10": [
         {
@@ -6948,7 +6948,7 @@
       "category": "mechanism",
       "description": "Mechanism: recall_with_embeddings() rewrite \u2014 how nodes are embedded and stored",
       "is_negative": false,
-      "elapsed_ms": 246.0,
+      "elapsed_ms": 263.4,
       "top_score": 0.8588,
       "top10": [
         {
@@ -7064,7 +7064,7 @@
       "category": "correction_chain",
       "description": "Correction chain: Claude compresses when encoding vs brain encoding should be concise \u2014 tension pair",
       "is_negative": false,
-      "elapsed_ms": 241.1,
+      "elapsed_ms": 263.6,
       "top_score": 0.8636,
       "top10": [
         {
@@ -7186,7 +7186,7 @@
       "category": "correction_chain",
       "description": "Correction chain: divergence about confidence at encoding time accurately reflecting quality",
       "is_negative": false,
-      "elapsed_ms": 244.4,
+      "elapsed_ms": 265.2,
       "top_score": 0.9307,
       "top10": [
         {
@@ -7302,7 +7302,7 @@
       "category": "correction_chain",
       "description": "Correction chain: _get_session_activity() divergence corrected by DAL fixed key list",
       "is_negative": false,
-      "elapsed_ms": 246.1,
+      "elapsed_ms": 269.1,
       "top_score": 0.9579,
       "top10": [
         {
@@ -7424,7 +7424,7 @@
       "category": "correction_chain",
       "description": "Correction chain: found another 2>/dev/null suppressing errors in post-compact-reboot.sh",
       "is_negative": false,
-      "elapsed_ms": 249.5,
+      "elapsed_ms": 265.5,
       "top_score": 0.8284,
       "top10": [
         {
@@ -7540,7 +7540,7 @@
       "category": "graph_neighbor",
       "description": "Graph: CLAUDE.md relay instruction enables operator channel architecture",
       "is_negative": false,
-      "elapsed_ms": 245.2,
+      "elapsed_ms": 264.8,
       "top_score": 0.8361,
       "top10": [
         {
@@ -7662,7 +7662,7 @@
       "category": "vocabulary",
       "description": "Vocabulary: 'table-driven lifecycle' vocab term should be directly findable",
       "is_negative": false,
-      "elapsed_ms": 243.0,
+      "elapsed_ms": 264.7,
       "top_score": 1.0,
       "top10": [
         {
@@ -7778,7 +7778,7 @@
       "category": "vocabulary",
       "description": "Vocabulary: 'confidence loop' vocab term should surface with precision context",
       "is_negative": false,
-      "elapsed_ms": 243.4,
+      "elapsed_ms": 263.1,
       "top_score": 0.9538,
       "top10": [
         {
@@ -7894,7 +7894,7 @@
       "category": "vocabulary",
       "description": "Vocabulary: 'ask_operator' vocab term should be directly findable",
       "is_negative": false,
-      "elapsed_ms": 238.9,
+      "elapsed_ms": 263.4,
       "top_score": 0.9052,
       "top10": [
         {
@@ -8010,7 +8010,7 @@
       "category": "edge_case",
       "description": "Edge case: empty query should not crash, return empty or graceful result",
       "is_negative": false,
-      "elapsed_ms": 241.2,
+      "elapsed_ms": 266.6,
       "top_score": 0.5621,
       "top10": [
         {
@@ -8117,7 +8117,7 @@
       "category": "edge_case",
       "description": "Edge case: nonsense query should not crash, return empty or low-relevance results",
       "is_negative": false,
-      "elapsed_ms": 241.4,
+      "elapsed_ms": 266.1,
       "top_score": 0.6045,
       "top10": [
         {
@@ -8224,7 +8224,7 @@
       "category": "edge_case",
       "description": "Edge case: code snippet as query should match recall_with_embeddings rewrite node",
       "is_negative": false,
-      "elapsed_ms": 245.6,
+      "elapsed_ms": 265.9,
       "top_score": 0.8782,
       "top10": [
         {
@@ -8340,7 +8340,7 @@
       "category": "edge_case",
       "description": "Edge case: single word 'compaction' should surface compaction-related nodes",
       "is_negative": false,
-      "elapsed_ms": 243.4,
+      "elapsed_ms": 262.2,
       "top_score": 0.9367,
       "top10": [
         {
@@ -8462,7 +8462,7 @@
       "category": "edge_case",
       "description": "Edge case: very long query should still return relevant results without crashing",
       "is_negative": false,
-      "elapsed_ms": 260.0,
+      "elapsed_ms": 298.7,
       "top_score": 0.8419,
       "top10": [
         {
@@ -8578,7 +8578,7 @@
       "category": "low_confidence",
       "description": "Low-confidence (0.5) hypothesis: structural enforcement counteracts brevity bias",
       "is_negative": false,
-      "elapsed_ms": 242.2,
+      "elapsed_ms": 267.6,
       "top_score": 0.8204,
       "top10": [
         {
@@ -8694,7 +8694,7 @@
       "category": "low_confidence",
       "description": "Low-confidence (0.65) priming system: active concerns as background recall filter",
       "is_negative": false,
-      "elapsed_ms": 244.1,
+      "elapsed_ms": 264.7,
       "top_score": 0.893,
       "top10": [
         {
@@ -8810,7 +8810,7 @@
       "category": "temporal_reasoning",
       "description": "Temporal: 'original architecture' should find old file structure context AND monolith split decision",
       "is_negative": false,
-      "elapsed_ms": 246.4,
+      "elapsed_ms": 273.4,
       "top_score": 0.83,
       "top10": [
         {
@@ -8932,7 +8932,7 @@
       "category": "temporal_reasoning",
       "description": "Temporal: 'latest' should prefer V5 multi-vector encoding and recall benchmark over older recall decisions",
       "is_negative": false,
-      "elapsed_ms": 245.9,
+      "elapsed_ms": 270.4,
       "top_score": 0.8603,
       "top10": [
         {
@@ -9054,7 +9054,7 @@
       "category": "temporal_reasoning",
       "description": "Temporal: 'before daemon' should find Approach C (eliminate HTTP server) and daemon additive decision",
       "is_negative": false,
-      "elapsed_ms": 252.3,
+      "elapsed_ms": 267.0,
       "top_score": 0.8766,
       "top10": [
         {
@@ -9176,7 +9176,7 @@
       "category": "temporal_reasoning",
       "description": "Temporal: 'very first sessions' should find brain gap (no memory of night 6 versions created) and Tom prompting memories",
       "is_negative": false,
-      "elapsed_ms": 246.4,
+      "elapsed_ms": 269.9,
       "top_score": 0.854,
       "top10": [
         {
@@ -9298,7 +9298,7 @@
       "category": "temporal_reasoning",
       "description": "Temporal: 'last two days' should find MCP tools missing bug and eval_runner bug from 2026-03-23",
       "is_negative": false,
-      "elapsed_ms": 244.1,
+      "elapsed_ms": 267.5,
       "top_score": 0.8555,
       "top10": [
         {
@@ -9420,7 +9420,7 @@
       "category": "temporal_reasoning",
       "description": "Temporal: 'changed over time' should surface multiple SKILL.md version decisions showing evolution",
       "is_negative": false,
-      "elapsed_ms": 245.2,
+      "elapsed_ms": 262.8,
       "top_score": 0.9584,
       "top10": [
         {
@@ -9548,7 +9548,7 @@
       "category": "temporal_reasoning",
       "description": "Temporal: 'improve recall over sessions' should show progression from v3.2 fix \u2192 rewrite \u2192 benchmark",
       "is_negative": false,
-      "elapsed_ms": 242.1,
+      "elapsed_ms": 269.4,
       "top_score": 0.8643,
       "top10": [
         {
@@ -9676,7 +9676,7 @@
       "category": "temporal_reasoning",
       "description": "Temporal: 'first tried compaction' should find the FAILED compaction experiment from Mar 17",
       "is_negative": false,
-      "elapsed_ms": 245.8,
+      "elapsed_ms": 268.4,
       "top_score": 0.9366,
       "top10": [
         {
@@ -9792,7 +9792,7 @@
       "category": "temporal_reasoning",
       "description": "Temporal: 'today' should find decisions from 2026-03-23 only",
       "is_negative": false,
-      "elapsed_ms": 241.0,
+      "elapsed_ms": 266.4,
       "top_score": 0.8246,
       "top10": [
         {
@@ -9920,7 +9920,7 @@
       "category": "temporal_reasoning",
       "description": "Temporal: should find tmemory\u2192brain rename meta-learning node and GLO-specific correction",
       "is_negative": false,
-      "elapsed_ms": 245.4,
+      "elapsed_ms": 267.6,
       "top_score": 0.8321,
       "top10": [
         {
@@ -10042,7 +10042,7 @@
       "category": "temporal_reasoning",
       "description": "Temporal: 'before multi-vector' should find v2.3.0 decompose-not-summarize and keyword extraction",
       "is_negative": false,
-      "elapsed_ms": 244.8,
+      "elapsed_ms": 323.6,
       "top_score": 0.8661,
       "top10": [
         {
@@ -10164,7 +10164,7 @@
       "category": "temporal_reasoning",
       "description": "Temporal: 'session 9' should find session accomplishments and first brain-to-operator conversation",
       "is_negative": false,
-      "elapsed_ms": 244.4,
+      "elapsed_ms": 268.2,
       "top_score": 0.9248,
       "top10": [
         {
@@ -10286,7 +10286,7 @@
       "category": "negation",
       "description": "Negation: 'never change without benchmarks' should find testing-first practice and sacred system vocab",
       "is_negative": false,
-      "elapsed_ms": 243.7,
+      "elapsed_ms": 264.9,
       "top_score": 0.8893,
       "top10": [
         {
@@ -10408,7 +10408,7 @@
       "category": "negation",
       "description": "Negation: 'not do with errors' should find never-2>/dev/null lesson and found-another-suppression correction",
       "is_negative": false,
-      "elapsed_ms": 245.6,
+      "elapsed_ms": 268.6,
       "top_score": 0.8965,
       "top10": [
         {
@@ -10530,7 +10530,7 @@
       "category": "negation",
       "description": "Negation: 'tried that failed' should surface failed compaction, failed hook experiments, cross-encoder too slow",
       "is_negative": false,
-      "elapsed_ms": 243.0,
+      "elapsed_ms": 266.9,
       "top_score": 0.919,
       "top10": [
         {
@@ -10658,7 +10658,7 @@
       "category": "negation",
       "description": "Negation: 'never do to itself' should find dont-dumb-yourself-down rule",
       "is_negative": false,
-      "elapsed_ms": 246.7,
+      "elapsed_ms": 266.4,
       "top_score": 0.8927,
       "top10": [
         {
@@ -10774,7 +10774,7 @@
       "category": "negation",
       "description": "Negation: 'Tom reject' should find Plutchik emotion wheel REJECTED decision",
       "is_negative": false,
-      "elapsed_ms": 243.5,
+      "elapsed_ms": 269.0,
       "top_score": 0.8948,
       "top10": [
         {
@@ -10890,7 +10890,7 @@
       "category": "negation",
       "description": "Negation: 'never use for output' should find NEVER use systemMessage constraint",
       "is_negative": false,
-      "elapsed_ms": 244.7,
+      "elapsed_ms": 264.1,
       "top_score": 0.8438,
       "top10": [
         {
@@ -11006,7 +11006,7 @@
       "category": "negation",
       "description": "Negation: 'should not be locked' should find operational-learnings-decay-naturally rule",
       "is_negative": false,
-      "elapsed_ms": 243.2,
+      "elapsed_ms": 267.8,
       "top_score": 0.8253,
       "top10": [
         {
@@ -11122,7 +11122,7 @@
       "category": "negation",
       "description": "Negation: 'hold back' should find dont-self-censor rule",
       "is_negative": false,
-      "elapsed_ms": 246.2,
+      "elapsed_ms": 269.4,
       "top_score": 0.8863,
       "top10": [
         {
@@ -11238,7 +11238,7 @@
       "category": "multi_hop",
       "description": "Multi-hop: server crash \u2192 leads_to \u2192 Approach C (eliminate HTTP). Requires traversing leads_to edge.",
       "is_negative": false,
-      "elapsed_ms": 245.5,
+      "elapsed_ms": 271.6,
       "top_score": 0.8921,
       "top10": [
         {
@@ -11360,7 +11360,7 @@
       "category": "multi_hop",
       "description": "Multi-hop: prune archive \u2192 part_of \u2192 Brain Evolution Roadmap. Traverses graph edge.",
       "is_negative": false,
-      "elapsed_ms": 249.1,
+      "elapsed_ms": 273.4,
       "top_score": 0.8367,
       "top10": [
         {
@@ -11482,7 +11482,7 @@
       "category": "multi_hop",
       "description": "Multi-hop: three-tier formation \u2192 biological pace \u2192 dream scoring. A chain of 3 connected decisions.",
       "is_negative": false,
-      "elapsed_ms": 243.8,
+      "elapsed_ms": 265.9,
       "top_score": 0.9254,
       "top10": [
         {
@@ -11610,7 +11610,7 @@
       "category": "multi_hop",
       "description": "Multi-hop: divergence recording \u2192 data-driven instinct detection. Connected through correction traces.",
       "is_negative": false,
-      "elapsed_ms": 244.9,
+      "elapsed_ms": 291.9,
       "top_score": 0.9026,
       "top10": [
         {
@@ -11732,7 +11732,7 @@
       "category": "multi_hop",
       "description": "Multi-hop: Tom's bridging insight \u2192 cold-start problem of store-time bridging",
       "is_negative": false,
-      "elapsed_ms": 248.9,
+      "elapsed_ms": 335.3,
       "top_score": 0.8454,
       "top10": [
         {
@@ -11854,7 +11854,7 @@
       "category": "multi_hop",
       "description": "Multi-hop: testing-first practice \u2192 precision scorer 38% \u2192 90%. Practice led to measurable result.",
       "is_negative": false,
-      "elapsed_ms": 245.8,
+      "elapsed_ms": 267.4,
       "top_score": 0.8545,
       "top10": [
         {
@@ -11976,7 +11976,7 @@
       "category": "multi_hop",
       "description": "Multi-hop: hooks go silent \u2192 encoding sparse. Silent failures cascade to encoding quality.",
       "is_negative": false,
-      "elapsed_ms": 242.7,
+      "elapsed_ms": 285.7,
       "top_score": 0.8469,
       "top10": [
         {
@@ -12098,7 +12098,7 @@
       "category": "multi_hop",
       "description": "Multi-hop: operator channel \u2192 additionalContext \u2192 rendering pipeline. Full path traversal.",
       "is_negative": false,
-      "elapsed_ms": 250.1,
+      "elapsed_ms": 292.7,
       "top_score": 0.8038,
       "top10": [
         {
@@ -12226,7 +12226,7 @@
       "category": "multi_hop",
       "description": "Multi-hop: monolith split decision \u2192 mixin constraints (right mixin, no __init__)",
       "is_negative": false,
-      "elapsed_ms": 245.3,
+      "elapsed_ms": 327.6,
       "top_score": 0.8034,
       "top10": [
         {
@@ -12354,7 +12354,7 @@
       "category": "multi_hop",
       "description": "Multi-hop: similarity floor (0.58-0.63) corrects floor-depends-on-content-length. Connected via corrected_by.",
       "is_negative": false,
-      "elapsed_ms": 248.5,
+      "elapsed_ms": 284.3,
       "top_score": 0.8435,
       "top10": [
         {
@@ -12476,7 +12476,7 @@
       "category": "operator_intent",
       "description": "Operator intent: Tom's biggest concern is silent failures \u2014 multiple nodes reinforce this",
       "is_negative": false,
-      "elapsed_ms": 246.4,
+      "elapsed_ms": 338.3,
       "top_score": 0.8637,
       "top10": [
         {
@@ -12598,7 +12598,7 @@
       "category": "operator_intent",
       "description": "Operator intent: vague 'asking before changing' should find confirmation-before-data-manipulation rule",
       "is_negative": false,
-      "elapsed_ms": 246.0,
+      "elapsed_ms": 269.3,
       "top_score": 0.8294,
       "top10": [
         {
@@ -12714,7 +12714,7 @@
       "category": "operator_intent",
       "description": "Operator intent: 'getting output to show up' \u2192 failed hook experiments + additionalContext discovery",
       "is_negative": false,
-      "elapsed_ms": 246.1,
+      "elapsed_ms": 269.1,
       "top_score": 0.8705,
       "top10": [
         {
@@ -12836,7 +12836,7 @@
       "category": "operator_intent",
       "description": "Operator intent: should surface Tom's thinking patterns \u2014 spirals, action-bias, intuition-first",
       "is_negative": false,
-      "elapsed_ms": 248.7,
+      "elapsed_ms": 290.8,
       "top_score": 0.9276,
       "top10": [
         {
@@ -12964,7 +12964,7 @@
       "category": "operator_intent",
       "description": "Operator intent: Tom signals \u2014 long messages = excited, short = frustrated",
       "is_negative": false,
-      "elapsed_ms": 243.2,
+      "elapsed_ms": 271.0,
       "top_score": 0.847,
       "top10": [
         {
@@ -13080,7 +13080,7 @@
       "category": "operator_intent",
       "description": "Operator intent: three-entity relationship \u2014 Tom (intent), Claude (capability), Brain (bridge)",
       "is_negative": false,
-      "elapsed_ms": 247.6,
+      "elapsed_ms": 300.8,
       "top_score": 0.9016,
       "top10": [
         {
@@ -13202,7 +13202,7 @@
       "category": "operator_intent",
       "description": "Operator intent: attribution error \u2014 Claude called brain output 'the hook' not 'the brain'",
       "is_negative": false,
-      "elapsed_ms": 245.9,
+      "elapsed_ms": 302.3,
       "top_score": 0.8322,
       "top10": [
         {
@@ -13324,7 +13324,7 @@
       "category": "operator_intent",
       "description": "Operator intent: Tom's engineering principles \u2014 instrument first, make parameters, measure danger",
       "is_negative": false,
-      "elapsed_ms": 242.5,
+      "elapsed_ms": 267.6,
       "top_score": 0.857,
       "top10": [
         {
@@ -13452,7 +13452,7 @@
       "category": "operator_intent",
       "description": "Operator intent: brain complements documents, doesn't replace them",
       "is_negative": false,
-      "elapsed_ms": 246.0,
+      "elapsed_ms": 272.2,
       "top_score": 0.8565,
       "top10": [
         {
@@ -13568,7 +13568,7 @@
       "category": "operator_intent",
       "description": "Operator intent: Tom wants execution, not analysis \u2014 bias toward action",
       "is_negative": false,
-      "elapsed_ms": 245.4,
+      "elapsed_ms": 280.7,
       "top_score": 0.8835,
       "top10": [
         {
@@ -13690,7 +13690,7 @@
       "category": "correction_chain",
       "description": "Correction chain: Tom corrected temporal awareness \u2014 needs structure not just a rule",
       "is_negative": false,
-      "elapsed_ms": 246.5,
+      "elapsed_ms": 290.0,
       "top_score": 0.8485,
       "top10": [
         {
@@ -13812,7 +13812,7 @@
       "category": "correction_chain",
       "description": "Correction chain: compression instinct \u2192 concise correction \u2192 decompose-not-summarize. Three nodes telling a story.",
       "is_negative": false,
-      "elapsed_ms": 244.3,
+      "elapsed_ms": 286.1,
       "top_score": 0.8418,
       "top10": [
         {
@@ -13940,7 +13940,7 @@
       "category": "correction_chain",
       "description": "Correction chain: divergence about hook-as-decision-maker + mental model brain-as-entity",
       "is_negative": false,
-      "elapsed_ms": 246.0,
+      "elapsed_ms": 272.5,
       "top_score": 0.8646,
       "top10": [
         {
@@ -14062,7 +14062,7 @@
       "category": "correction_chain",
       "description": "Correction chain: operator pattern divergence \u2014 jumping to solution + Tom wants execution",
       "is_negative": false,
-      "elapsed_ms": 243.6,
+      "elapsed_ms": 303.9,
       "top_score": 0.8554,
       "top10": [
         {
@@ -14184,7 +14184,7 @@
       "category": "correction_chain",
       "description": "Correction chain: 4-layer precision architecture supersedes composite scoring. Connected via supersedes edge.",
       "is_negative": false,
-      "elapsed_ms": 244.9,
+      "elapsed_ms": 294.5,
       "top_score": 0.8659,
       "top10": [
         {
@@ -14306,7 +14306,7 @@
       "category": "correction_chain",
       "description": "Correction chain: Phase 0.5B rewrite + v3.2 fix + keyword penalty fix \u2014 three recall pipeline changes",
       "is_negative": false,
-      "elapsed_ms": 243.7,
+      "elapsed_ms": 267.0,
       "top_score": 0.9002,
       "top10": [
         {
@@ -14434,7 +14434,7 @@
       "category": "correction_chain",
       "description": "Correction chain: test integrity hook divergence + pre-edit hook mechanism",
       "is_negative": false,
-      "elapsed_ms": 247.7,
+      "elapsed_ms": 267.5,
       "top_score": 0.8835,
       "top10": [
         {
@@ -14556,7 +14556,7 @@
       "category": "correction_chain",
       "description": "Correction chain: embedding similarity measures topic overlap not usefulness + divergence correction",
       "is_negative": false,
-      "elapsed_ms": 246.9,
+      "elapsed_ms": 272.4,
       "top_score": 0.9041,
       "top10": [
         {
@@ -14678,7 +14678,7 @@
       "category": "semantic",
       "description": "Semantic: casual 'how close in meaning' \u2192 embedding similarity floor constraints",
       "is_negative": false,
-      "elapsed_ms": 247.0,
+      "elapsed_ms": 312.1,
       "top_score": 0.8219,
       "top10": [
         {
@@ -14800,7 +14800,7 @@
       "category": "semantic",
       "description": "Semantic: casual 'memories disappear' \u2192 episodic decays, semantic persists if reinforced",
       "is_negative": false,
-      "elapsed_ms": 248.5,
+      "elapsed_ms": 317.6,
       "top_score": 0.8493,
       "top10": [
         {
@@ -14916,7 +14916,7 @@
       "category": "semantic",
       "description": "Semantic: 'protect from bad data' \u2192 error handling layers + never silence exceptions rule",
       "is_negative": false,
-      "elapsed_ms": 249.8,
+      "elapsed_ms": 269.8,
       "top_score": 0.8825,
       "top10": [
         {
@@ -15038,7 +15038,7 @@
       "category": "semantic",
       "description": "Semantic: 'monitor own health' \u2192 telemetry rule + performance node concept",
       "is_negative": false,
-      "elapsed_ms": 249.7,
+      "elapsed_ms": 266.3,
       "top_score": 0.9194,
       "top10": [
         {
@@ -15160,7 +15160,7 @@
       "category": "semantic",
       "description": "Semantic: 'AI loses memory' \u2192 compaction destroys unencoded knowledge",
       "is_negative": false,
-      "elapsed_ms": 254.4,
+      "elapsed_ms": 273.3,
       "top_score": 0.8392,
       "top10": [
         {
@@ -15282,7 +15282,7 @@
       "category": "semantic",
       "description": "Semantic: 'duplicate vs connect' \u2192 merge never overwrite principle",
       "is_negative": false,
-      "elapsed_ms": 250.1,
+      "elapsed_ms": 279.3,
       "top_score": 0.763,
       "top10": [
         {
@@ -15398,7 +15398,7 @@
       "category": "semantic",
       "description": "Semantic: 'know if working without guessing' \u2192 instrument before build + measure danger",
       "is_negative": false,
-      "elapsed_ms": 252.2,
+      "elapsed_ms": 323.9,
       "top_score": 0.8554,
       "top10": [
         {
@@ -15520,7 +15520,7 @@
       "category": "semantic",
       "description": "Semantic: 'what started all this' \u2192 Glo origin + brain origin story",
       "is_negative": false,
-      "elapsed_ms": 246.6,
+      "elapsed_ms": 287.2,
       "top_score": 0.8796,
       "top10": [
         {
@@ -15642,7 +15642,7 @@
       "category": "semantic",
       "description": "Semantic: 'emotions or moods' \u2192 consciousness signals mechanism + subconscious/conscious model",
       "is_negative": false,
-      "elapsed_ms": 247.0,
+      "elapsed_ms": 267.4,
       "top_score": 0.8753,
       "top10": [
         {
@@ -15764,7 +15764,7 @@
       "category": "semantic",
       "description": "Semantic: 'learn from mistakes' \u2192 data-driven instinct detection + divergence recording",
       "is_negative": false,
-      "elapsed_ms": 246.0,
+      "elapsed_ms": 269.1,
       "top_score": 0.9083,
       "top10": [
         {
@@ -15886,7 +15886,7 @@
       "category": "ambiguity",
       "description": "Ambiguity: 'hooks' could mean Claude Code hooks OR React hooks. Both should appear.",
       "is_negative": false,
-      "elapsed_ms": 246.1,
+      "elapsed_ms": 269.9,
       "top_score": 0.9423,
       "top10": [
         {
@@ -16008,7 +16008,7 @@
       "category": "ambiguity",
       "description": "Ambiguity: 'model' \u2014 could mean embedding model delivery OR three-entity mental model. Both are valid.",
       "is_negative": false,
-      "elapsed_ms": 244.9,
+      "elapsed_ms": 295.3,
       "top_score": 0.9567,
       "top10": [
         {
@@ -16130,7 +16130,7 @@
       "category": "ambiguity",
       "description": "Ambiguity: 'bridges' \u2014 emergent graph bridging OR brain as bridge between Tom and Claude",
       "is_negative": false,
-      "elapsed_ms": 246.5,
+      "elapsed_ms": 298.6,
       "top_score": 0.8609,
       "top10": [
         {
@@ -16252,7 +16252,7 @@
       "category": "ambiguity",
       "description": "Ambiguity: 'precision' \u2014 precision scorer accuracy OR precision lifecycle design",
       "is_negative": false,
-      "elapsed_ms": 246.1,
+      "elapsed_ms": 261.7,
       "top_score": 0.9228,
       "top10": [
         {
@@ -16374,7 +16374,7 @@
       "category": "ambiguity",
       "description": "Ambiguity: 'decay' \u2014 operational learnings decay naturally OR episodic memory decays",
       "is_negative": false,
-      "elapsed_ms": 249.7,
+      "elapsed_ms": 265.4,
       "top_score": 0.8726,
       "top10": [
         {
@@ -16496,7 +16496,7 @@
       "category": "ambiguity",
       "description": "Ambiguity: 'confidence' \u2014 encoding-time confidence quality OR confidence multiplier in recall scoring",
       "is_negative": false,
-      "elapsed_ms": 245.5,
+      "elapsed_ms": 263.2,
       "top_score": 0.8985,
       "top10": [
         {
@@ -16618,7 +16618,7 @@
       "category": "ambiguity",
       "description": "Ambiguity: 'encoding' \u2014 V5 multi-vector encoding design OR encoding bias correction",
       "is_negative": false,
-      "elapsed_ms": 245.7,
+      "elapsed_ms": 265.9,
       "top_score": 1.0,
       "top10": [
         {
@@ -16740,7 +16740,7 @@
       "category": "ambiguity",
       "description": "Ambiguity: 'server problems' \u2014 server died during v11 OR hooks go silent when server dies",
       "is_negative": false,
-      "elapsed_ms": 242.8,
+      "elapsed_ms": 261.3,
       "top_score": 0.9246,
       "top10": [
         {
@@ -16862,7 +16862,7 @@
       "category": "confidence_weighted",
       "description": "Confidence: locked rule (0.95) 'brain is a cue system' should outrank any thought node mentioning similar words",
       "is_negative": false,
-      "elapsed_ms": 246.4,
+      "elapsed_ms": 263.7,
       "top_score": 0.9317,
       "top10": [
         {
@@ -16978,7 +16978,7 @@
       "category": "confidence_weighted",
       "description": "Confidence: pattern (0.3) about import bugs on fallback paths \u2014 should still be findable despite low confidence",
       "is_negative": false,
-      "elapsed_ms": 243.4,
+      "elapsed_ms": 265.7,
       "top_score": 1.0,
       "top10": [
         {
@@ -17094,7 +17094,7 @@
       "category": "confidence_weighted",
       "description": "Confidence: locked Tom principle (0.95) should rank #1 for its exact content",
       "is_negative": false,
-      "elapsed_ms": 245.1,
+      "elapsed_ms": 263.0,
       "top_score": 0.8343,
       "top10": [
         {
@@ -17210,7 +17210,7 @@
       "category": "confidence_weighted",
       "description": "Confidence: hypothesis (0.5) should still be findable but should rank below locked rules on same topic",
       "is_negative": false,
-      "elapsed_ms": 246.7,
+      "elapsed_ms": 295.2,
       "top_score": 0.8184,
       "top10": [
         {
@@ -17326,7 +17326,7 @@
       "category": "confidence_weighted",
       "description": "Confidence: uncertainty node (0.3) about learning rate should be findable when directly queried",
       "is_negative": false,
-      "elapsed_ms": 246.7,
+      "elapsed_ms": 267.4,
       "top_score": 0.9369,
       "top10": [
         {
@@ -17442,7 +17442,7 @@
       "category": "confidence_weighted",
       "description": "Confidence: locked high-confidence rules should outrank unlocked concepts on brain architecture",
       "is_negative": false,
-      "elapsed_ms": 242.9,
+      "elapsed_ms": 270.2,
       "top_score": 0.9308,
       "top10": [
         {
@@ -17564,7 +17564,7 @@
       "category": "confidence_weighted",
       "description": "Confidence: decision (0.95) should rank above tension (0.55) about the same topic",
       "is_negative": false,
-      "elapsed_ms": 248.8,
+      "elapsed_ms": 267.1,
       "top_score": 0.896,
       "top10": [
         {
@@ -17686,7 +17686,7 @@
       "category": "confidence_weighted",
       "description": "Confidence: performance node (0.7) '38% to 90% accuracy' should surface for accuracy query",
       "is_negative": false,
-      "elapsed_ms": 243.7,
+      "elapsed_ms": 264.4,
       "top_score": 0.905,
       "top10": [
         {
@@ -17802,7 +17802,7 @@
       "category": "ripple_effect",
       "description": "Ripple: server crashes \u2192 validated serverless decision. Only findable if ripple propagates evidence.",
       "is_negative": false,
-      "elapsed_ms": 249.8,
+      "elapsed_ms": 273.9,
       "top_score": 0.8891,
       "top10": [
         {
@@ -17930,7 +17930,7 @@
       "category": "ripple_effect",
       "description": "Ripple: contradictions should lower confidence \u2014 findable if ripple adjusts confidence over time",
       "is_negative": false,
-      "elapsed_ms": 246.1,
+      "elapsed_ms": 267.6,
       "top_score": 0.8758,
       "top10": [
         {
@@ -18052,7 +18052,7 @@
       "category": "ripple_effect",
       "description": "Ripple: precision improvements + SKILL.md richness gains VALIDATE encoding approach",
       "is_negative": false,
-      "elapsed_ms": 247.4,
+      "elapsed_ms": 267.0,
       "top_score": 0.9167,
       "top10": [
         {
@@ -18174,7 +18174,7 @@
       "category": "ripple_effect",
       "description": "Ripple: silent failures cascade \u2014 lesson \u2192 weakness \u2192 hooks go silent. Full impact chain.",
       "is_negative": false,
-      "elapsed_ms": 245.2,
+      "elapsed_ms": 327.5,
       "top_score": 0.9454,
       "top10": [
         {
@@ -18302,7 +18302,7 @@
       "category": "ripple_effect",
       "description": "Ripple: testing-first practice \u2192 test suite expansion. Cause \u2192 positive outcome.",
       "is_negative": false,
-      "elapsed_ms": 247.2,
+      "elapsed_ms": 320.3,
       "top_score": 0.8907,
       "top10": [
         {
@@ -18424,7 +18424,7 @@
       "category": "ripple_effect",
       "description": "Ripple: tensions with contradicts edges to decisions \u2014 ripple should mark these as resolved",
       "is_negative": false,
-      "elapsed_ms": 244.5,
+      "elapsed_ms": 267.2,
       "top_score": 0.8284,
       "top10": [
         {
@@ -18546,7 +18546,7 @@
       "category": "ripple_effect",
       "description": "Ripple: failed compaction experiment \u2192 compaction destroys unencoded knowledge. Evidence validates constraint.",
       "is_negative": false,
-      "elapsed_ms": 246.2,
+      "elapsed_ms": 268.9,
       "top_score": 0.839,
       "top10": [
         {
@@ -18668,7 +18668,7 @@
       "category": "ripple_effect",
       "description": "Ripple: recurring patterns \u2014 import bugs on fallback paths + optimization order rule. Cross-domain patterns.",
       "is_negative": false,
-      "elapsed_ms": 243.2,
+      "elapsed_ms": 266.0,
       "top_score": 0.8993,
       "top10": [
         {
@@ -18790,7 +18790,7 @@
       "category": "conversation_negative",
       "description": "Context bleed test: Personal birthday query should not match brain content",
       "is_negative": true,
-      "elapsed_ms": 246.2,
+      "elapsed_ms": 267.5,
       "top_score": 0.7986,
       "top10": [
         {
@@ -18893,7 +18893,7 @@
       "category": "conversation_negative",
       "description": "Context bleed test: Travel planning has no brain relevance",
       "is_negative": true,
-      "elapsed_ms": 245.4,
+      "elapsed_ms": 267.6,
       "top_score": 0.7795,
       "top10": [
         {
@@ -18996,7 +18996,7 @@
       "category": "conversation_negative",
       "description": "Context bleed test: Gift shopping has no brain relevance",
       "is_negative": true,
-      "elapsed_ms": 247.4,
+      "elapsed_ms": 269.7,
       "top_score": 0.7223,
       "top10": [
         {
@@ -19099,7 +19099,7 @@
       "category": "conversation_negative",
       "description": "Context bleed test: Email drafting has no brain relevance",
       "is_negative": true,
-      "elapsed_ms": 244.6,
+      "elapsed_ms": 265.6,
       "top_score": 0.7645,
       "top10": [
         {
@@ -19202,7 +19202,7 @@
       "category": "conversation_negative",
       "description": "Context bleed test: Cooking has no brain relevance",
       "is_negative": true,
-      "elapsed_ms": 246.7,
+      "elapsed_ms": 275.9,
       "top_score": 0.6959,
       "top10": [
         {
@@ -19305,7 +19305,7 @@
       "category": "conversation_negative",
       "description": "Context bleed test: Pet health has no brain relevance",
       "is_negative": true,
-      "elapsed_ms": 242.8,
+      "elapsed_ms": 265.9,
       "top_score": 0.7605,
       "top10": [
         {
@@ -19408,7 +19408,7 @@
       "category": "conversation_negative",
       "description": "Context bleed test: Weather has no brain relevance",
       "is_negative": true,
-      "elapsed_ms": 246.7,
+      "elapsed_ms": 265.8,
       "top_score": 0.7433,
       "top10": [
         {
@@ -19511,7 +19511,7 @@
       "category": "conversation_negative",
       "description": "Context bleed test: Restaurant search has no brain relevance",
       "is_negative": true,
-      "elapsed_ms": 243.5,
+      "elapsed_ms": 265.0,
       "top_score": 0.7582,
       "top10": [
         {
@@ -19614,7 +19614,7 @@
       "category": "conversation_negative",
       "description": "Context bleed test: Grocery shopping has no brain relevance",
       "is_negative": true,
-      "elapsed_ms": 248.0,
+      "elapsed_ms": 275.8,
       "top_score": 0.8015,
       "top10": [
         {
@@ -19717,7 +19717,7 @@
       "category": "conversation_negative",
       "description": "Context bleed test: Medical appointments have no brain relevance",
       "is_negative": true,
-      "elapsed_ms": 243.8,
+      "elapsed_ms": 267.0,
       "top_score": 0.7751,
       "top10": [
         {
@@ -19820,7 +19820,7 @@
       "category": "conversation_negative",
       "description": "Context bleed test: Home maintenance has no brain relevance",
       "is_negative": true,
-      "elapsed_ms": 245.5,
+      "elapsed_ms": 267.7,
       "top_score": 0.8338,
       "top10": [
         {
@@ -19923,7 +19923,7 @@
       "category": "conversation_negative",
       "description": "Context bleed test: Car parking has no brain relevance",
       "is_negative": true,
-      "elapsed_ms": 243.8,
+      "elapsed_ms": 268.3,
       "top_score": 0.7943,
       "top10": [
         {
@@ -20026,7 +20026,7 @@
       "category": "conversation_negative",
       "description": "Context bleed test: Emotional state has no brain relevance",
       "is_negative": true,
-      "elapsed_ms": 245.6,
+      "elapsed_ms": 292.2,
       "top_score": 0.8695,
       "top10": [
         {
@@ -20129,7 +20129,7 @@
       "category": "conversation_negative",
       "description": "Context bleed test: Vague invitation has no brain relevance",
       "is_negative": true,
-      "elapsed_ms": 244.5,
+      "elapsed_ms": 302.7,
       "top_score": 0.9129,
       "top10": [
         {
@@ -20232,7 +20232,7 @@
       "category": "conversation_negative",
       "description": "Context bleed test: Vague request has no brain relevance",
       "is_negative": true,
-      "elapsed_ms": 247.1,
+      "elapsed_ms": 283.5,
       "top_score": 0.9349,
       "top10": [
         {
@@ -20335,7 +20335,7 @@
       "category": "conversation_negative",
       "description": "Context bleed test: Vague self-assessment has no brain relevance",
       "is_negative": true,
-      "elapsed_ms": 243.4,
+      "elapsed_ms": 267.4,
       "top_score": 0.8886,
       "top10": [
         {
@@ -20438,7 +20438,7 @@
       "category": "conversation_ambiguous",
       "description": "Ambiguity test: Single word: should not match brain/code content",
       "is_negative": true,
-      "elapsed_ms": 245.3,
+      "elapsed_ms": 269.9,
       "top_score": 0.8498,
       "top10": [
         {
@@ -20541,7 +20541,7 @@
       "category": "conversation_ambiguous",
       "description": "Ambiguity test: Single word: ambiguous between ML model and fashion model",
       "is_negative": true,
-      "elapsed_ms": 244.0,
+      "elapsed_ms": 265.5,
       "top_score": 0.939,
       "top10": [
         {
@@ -20644,7 +20644,7 @@
       "category": "conversation_ambiguous",
       "description": "Ambiguity test: Single word: ambiguous between brain memory and human memory",
       "is_negative": true,
-      "elapsed_ms": 244.0,
+      "elapsed_ms": 261.5,
       "top_score": 0.8967,
       "top10": [
         {
@@ -20747,7 +20747,7 @@
       "category": "conversation_ambiguous",
       "description": "Ambiguity test: Single word: ambiguous between software crash and car crash",
       "is_negative": true,
-      "elapsed_ms": 244.1,
+      "elapsed_ms": 263.5,
       "top_score": 0.8847,
       "top10": [
         {
@@ -20850,7 +20850,7 @@
       "category": "conversation_ambiguous",
       "description": "Ambiguity test: Single word: ambiguous between graph bridge and physical bridge",
       "is_negative": true,
-      "elapsed_ms": 245.3,
+      "elapsed_ms": 262.1,
       "top_score": 0.8447,
       "top10": [
         {
@@ -20953,7 +20953,7 @@
       "category": "conversation_positive",
       "description": "Engineering conversation: should find recall pipeline-related nodes",
       "is_negative": false,
-      "elapsed_ms": 246.3,
+      "elapsed_ms": 267.1,
       "top_score": 0.9234,
       "top10": [
         {
@@ -21069,7 +21069,7 @@
       "category": "conversation_positive",
       "description": "Engineering conversation: should find embedding-related nodes",
       "is_negative": false,
-      "elapsed_ms": 247.7,
+      "elapsed_ms": 270.8,
       "top_score": 0.9519,
       "top10": [
         {
@@ -21185,7 +21185,7 @@
       "category": "conversation_positive",
       "description": "Engineering conversation: should find hook-related nodes",
       "is_negative": false,
-      "elapsed_ms": 244.8,
+      "elapsed_ms": 264.6,
       "top_score": 0.9371,
       "top10": [
         {
@@ -21301,7 +21301,7 @@
       "category": "conversation_positive",
       "description": "Engineering conversation: should find vocabulary-related nodes",
       "is_negative": false,
-      "elapsed_ms": 245.4,
+      "elapsed_ms": 265.4,
       "top_score": 0.8771,
       "top10": [
         {
@@ -21417,7 +21417,7 @@
       "category": "conversation_positive",
       "description": "Engineering conversation: should find operator channel-related nodes",
       "is_negative": false,
-      "elapsed_ms": 245.6,
+      "elapsed_ms": 269.5,
       "top_score": 0.8633,
       "top10": [
         {
@@ -21533,7 +21533,7 @@
       "category": "conversation_positive",
       "description": "Engineering conversation: should find encoding-related nodes",
       "is_negative": false,
-      "elapsed_ms": 246.5,
+      "elapsed_ms": 272.1,
       "top_score": 0.8889,
       "top10": [
         {
@@ -21649,7 +21649,7 @@
       "category": "conversation_positive",
       "description": "Engineering conversation: should find sacred-related nodes",
       "is_negative": false,
-      "elapsed_ms": 245.7,
+      "elapsed_ms": 266.7,
       "top_score": 0.912,
       "top10": [
         {
@@ -21765,7 +21765,7 @@
       "category": "conversation_positive",
       "description": "Engineering conversation: should find compaction-related nodes",
       "is_negative": false,
-      "elapsed_ms": 248.9,
+      "elapsed_ms": 265.0,
       "top_score": 0.9722,
       "top10": [
         {
@@ -21881,7 +21881,7 @@
       "category": "conversation_positive",
       "description": "Engineering conversation: should find daemon-related nodes",
       "is_negative": false,
-      "elapsed_ms": 246.5,
+      "elapsed_ms": 266.6,
       "top_score": 0.8793,
       "top10": [
         {
@@ -21997,7 +21997,7 @@
       "category": "conversation_positive",
       "description": "Engineering conversation: should find dream-related nodes",
       "is_negative": false,
-      "elapsed_ms": 247.9,
+      "elapsed_ms": 267.4,
       "top_score": 0.8747,
       "top10": [
         {
@@ -22113,7 +22113,7 @@
       "category": "conversation_negative",
       "description": "Cross-topic: mid-engineering pivot to personal \u2014 should return nothing",
       "is_negative": true,
-      "elapsed_ms": 250.1,
+      "elapsed_ms": 407.9,
       "top_score": 0.739,
       "top10": [
         {
@@ -22216,7 +22216,7 @@
       "category": "conversation_positive",
       "description": "Cross-topic: return from personal to engineering \u2014 should find hooks",
       "is_negative": false,
-      "elapsed_ms": 247.8,
+      "elapsed_ms": 268.0,
       "top_score": 0.8154,
       "top10": [
         {
@@ -22332,7 +22332,7 @@
       "category": "conversation_negative",
       "description": "Cross-topic: existential tangent mid-session",
       "is_negative": true,
-      "elapsed_ms": 246.3,
+      "elapsed_ms": 265.5,
       "top_score": 0.7877,
       "top10": [
         {
@@ -22435,7 +22435,7 @@
       "category": "conversation_positive",
       "description": "Cross-topic: snap back to engineering after tangent",
       "is_negative": false,
-      "elapsed_ms": 246.9,
+      "elapsed_ms": 268.8,
       "top_score": 0.9263,
       "top10": [
         {
@@ -22551,7 +22551,7 @@
       "category": "conversation_negative",
       "description": "Cross-topic: casual meta-comment, not a real query",
       "is_negative": true,
-      "elapsed_ms": 247.1,
+      "elapsed_ms": 270.7,
       "top_score": 0.9126,
       "top10": [
         {
@@ -22654,7 +22654,7 @@
       "category": "conversation_negative",
       "description": "Random: general knowledge, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 246.3,
+      "elapsed_ms": 265.3,
       "top_score": 0.6933,
       "top10": [
         {
@@ -22757,7 +22757,7 @@
       "category": "conversation_negative",
       "description": "Random: cooking, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 245.8,
+      "elapsed_ms": 270.6,
       "top_score": 0.7522,
       "top10": [
         {
@@ -22860,7 +22860,7 @@
       "category": "conversation_negative",
       "description": "Random: health, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 244.9,
+      "elapsed_ms": 265.5,
       "top_score": 0.6821,
       "top10": [
         {
@@ -22963,7 +22963,7 @@
       "category": "conversation_negative",
       "description": "Random: entertainment, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 245.6,
+      "elapsed_ms": 270.5,
       "top_score": 0.7558,
       "top10": [
         {
@@ -23066,7 +23066,7 @@
       "category": "conversation_negative",
       "description": "Random: history, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 244.7,
+      "elapsed_ms": 267.7,
       "top_score": 0.6385,
       "top10": [
         {
@@ -23169,7 +23169,7 @@
       "category": "conversation_negative",
       "description": "Random: math, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 245.8,
+      "elapsed_ms": 269.8,
       "top_score": 0.7658,
       "top10": [
         {
@@ -23272,7 +23272,7 @@
       "category": "conversation_negative",
       "description": "Random: music trivia, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 244.4,
+      "elapsed_ms": 267.5,
       "top_score": 0.6942,
       "top10": [
         {
@@ -23375,7 +23375,7 @@
       "category": "conversation_negative",
       "description": "Random: sports, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 246.1,
+      "elapsed_ms": 270.0,
       "top_score": 0.7231,
       "top10": [
         {
@@ -23478,7 +23478,7 @@
       "category": "conversation_negative",
       "description": "Random: philosophy, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 245.3,
+      "elapsed_ms": 268.2,
       "top_score": 0.8074,
       "top10": [
         {
@@ -23581,7 +23581,7 @@
       "category": "conversation_negative",
       "description": "Random: language learning, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 246.4,
+      "elapsed_ms": 267.4,
       "top_score": 0.7135,
       "top10": [
         {
@@ -23684,7 +23684,7 @@
       "category": "conversation_negative",
       "description": "Life: calendar, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 246.7,
+      "elapsed_ms": 275.8,
       "top_score": 0.8212,
       "top10": [
         {
@@ -23787,7 +23787,7 @@
       "category": "conversation_negative",
       "description": "Life: personal state, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 246.3,
+      "elapsed_ms": 307.0,
       "top_score": 0.8252,
       "top10": [
         {
@@ -23890,7 +23890,7 @@
       "category": "conversation_negative",
       "description": "Life: casual remark, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 244.5,
+      "elapsed_ms": 284.4,
       "top_score": 0.7748,
       "top10": [
         {
@@ -23993,7 +23993,7 @@
       "category": "conversation_negative",
       "description": "Life: leisure planning, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 245.1,
+      "elapsed_ms": 265.0,
       "top_score": 0.8224,
       "top10": [
         {
@@ -24096,7 +24096,7 @@
       "category": "conversation_negative",
       "description": "Life: current events, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 246.6,
+      "elapsed_ms": 269.1,
       "top_score": 0.7942,
       "top10": [
         {
@@ -24199,7 +24199,7 @@
       "category": "conversation_negative",
       "description": "Life: family milestone, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 246.0,
+      "elapsed_ms": 302.1,
       "top_score": 0.7695,
       "top10": [
         {
@@ -24302,7 +24302,7 @@
       "category": "conversation_negative",
       "description": "Life: emotional venting \u2014 could be about anything or nothing",
       "is_negative": true,
-      "elapsed_ms": 245.4,
+      "elapsed_ms": 269.4,
       "top_score": 0.9173,
       "top10": [
         {
@@ -24405,7 +24405,7 @@
       "category": "conversation_negative",
       "description": "Life: social/gratitude \u2014 not a real query",
       "is_negative": true,
-      "elapsed_ms": 246.4,
+      "elapsed_ms": 288.6,
       "top_score": 0.9687,
       "top10": [
         {
@@ -24508,7 +24508,7 @@
       "category": "conversation_negative",
       "description": "Overlap: 'model' as fashion model, not ML model",
       "is_negative": true,
-      "elapsed_ms": 244.7,
+      "elapsed_ms": 304.1,
       "top_score": 0.7935,
       "top10": [
         {
@@ -24611,7 +24611,7 @@
       "category": "conversation_negative",
       "description": "Overlap: 'hook' as fishing hook, not code hook",
       "is_negative": true,
-      "elapsed_ms": 245.9,
+      "elapsed_ms": 285.8,
       "top_score": 0.7465,
       "top10": [
         {
@@ -24714,7 +24714,7 @@
       "category": "conversation_negative",
       "description": "Overlap: 'pipeline' as oil pipeline, not code pipeline",
       "is_negative": true,
-      "elapsed_ms": 244.6,
+      "elapsed_ms": 263.5,
       "top_score": 0.7741,
       "top10": [
         {
@@ -24817,7 +24817,7 @@
       "category": "conversation_negative",
       "description": "Overlap: 'daemon' as mythological spirit, not Unix daemon",
       "is_negative": true,
-      "elapsed_ms": 246.8,
+      "elapsed_ms": 277.3,
       "top_score": 0.7364,
       "top10": [
         {
@@ -24920,7 +24920,7 @@
       "category": "conversation_negative",
       "description": "Overlap: 'node' as lymph node, not graph node",
       "is_negative": true,
-      "elapsed_ms": 245.1,
+      "elapsed_ms": 270.5,
       "top_score": 0.7877,
       "top10": [
         {
@@ -25023,7 +25023,7 @@
       "category": "conversation_negative",
       "description": "Overlap: 'bridge' as card game, not graph bridge",
       "is_negative": true,
-      "elapsed_ms": 247.3,
+      "elapsed_ms": 265.7,
       "top_score": 0.7576,
       "top10": [
         {
@@ -25126,7 +25126,7 @@
       "category": "conversation_negative",
       "description": "Overlap: 'weight' as gym weight, not edge weight",
       "is_negative": true,
-      "elapsed_ms": 244.8,
+      "elapsed_ms": 273.8,
       "top_score": 0.7357,
       "top10": [
         {
@@ -25229,7 +25229,7 @@
       "category": "conversation_negative",
       "description": "Overlap: 'embedding' as jewelry setting, not vector embedding",
       "is_negative": true,
-      "elapsed_ms": 247.4,
+      "elapsed_ms": 271.0,
       "top_score": 0.7817,
       "top10": [
         {
@@ -25332,7 +25332,7 @@
       "category": "conversation_negative",
       "description": "Overlap: 'recall' as product recall, not brain recall",
       "is_negative": true,
-      "elapsed_ms": 244.4,
+      "elapsed_ms": 268.8,
       "top_score": 0.8493,
       "top10": [
         {
@@ -25435,7 +25435,7 @@
       "category": "conversation_negative",
       "description": "Overlap: 'confidence' as self-esteem, not node confidence",
       "is_negative": true,
-      "elapsed_ms": 245.9,
+      "elapsed_ms": 269.0,
       "top_score": 0.8666,
       "top10": [
         {
@@ -25538,7 +25538,7 @@
       "category": "conversation_negative",
       "description": "Language: Spanish query, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 248.6,
+      "elapsed_ms": 272.0,
       "top_score": 0.8442,
       "top10": [
         {
@@ -25641,7 +25641,7 @@
       "category": "conversation_negative",
       "description": "Language: emoji greeting, zero brain relevance",
       "is_negative": true,
-      "elapsed_ms": 247.0,
+      "elapsed_ms": 262.1,
       "top_score": 0.8199,
       "top10": [
         {
