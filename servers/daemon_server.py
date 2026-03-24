@@ -66,14 +66,18 @@ class BrainDaemon:
 
     def start(self):
         """Start the daemon — load brain, bind socket, serve."""
-        # Acquire exclusive lock — prevents duplicate daemon startup race
+        # Acquire exclusive lock with retry (handles stale locks from crashes)
         lock_path = get_lock_path()
         self._lock_fd = open(lock_path, 'w')
-        try:
-            fcntl.flock(self._lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except (IOError, OSError):
+        for _ in range(50):  # 5s total
+            try:
+                fcntl.flock(self._lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except (IOError, OSError):
+                time.sleep(0.1)
+        else:
             self._lock_fd.close()
-            self._log("Another daemon is starting — exiting duplicate")
+            self._log("Another daemon is starting — exiting duplicate (waited 5s)")
             return
 
         # Write PID file
@@ -204,55 +208,40 @@ class BrainDaemon:
             except Exception:
                 pass
 
-    def _observe(self, event_type, **kwargs):
-        """Emit to observer channel. One place, all observation."""
+    def _observe_command(self, cmd, args, result=None):
+        """Emit command to dashboard observer channel (no-op if nobody's listening)."""
         try:
             from servers.brain_dashboard import emit, has_listeners
             if not has_listeners():
                 return
-            emit(event_type, **kwargs)
+            obs_args = {k: str(v)[:120] for k, v in (args or {}).items()}
+            obs_result = {k: str(v)[:300] for k, v in result.items()} if result else None
+            emit("command", command=cmd, args=obs_args, result=obs_result)
         except Exception:
             pass
 
-    def _observe_command(self, cmd, args, result=None):
-        """Observe a full command round-trip: request + response."""
+    def _locked_exec(self, fn, cmd, args):
+        """Acquire write lock with timeout, execute fn, observe result."""
+        if not self._write_lock.acquire(timeout=10.0):
+            self._log("Write lock timeout (10s) for: {}".format(cmd))
+            return {"ok": False, "error": "Write lock timeout — another operation is holding the lock"}
         try:
-            from servers.brain_dashboard import has_listeners
-            if not has_listeners():
-                return
-
-            # Summarize args
-            obs_args = {}
-            for k, v in (args or {}).items():
-                s = str(v)
-                obs_args[k] = s[:120] + "..." if len(s) > 120 else s
-
-            # Summarize result
-            obs_result = None
-            if result:
-                obs_result = {}
-                for k, v in result.items():
-                    s = str(v)
-                    obs_result[k] = s[:300] + "..." if len(s) > 300 else s
-
-            self._observe("command", command=cmd, args=obs_args, result=obs_result)
-        except Exception:
-            pass
+            result = fn()
+            self._observe_command(cmd, args, result)
+            return result
+        finally:
+            self._write_lock.release()
 
     def _dispatch(self, cmd: str, args: Dict[str, Any]) -> Dict[str, Any]:
         """Route command to handler with appropriate locking."""
         try:
-            # Shutdown — async, signals main thread immediately
             if cmd == "shutdown":
                 self.running = False
                 return {"ok": True, "result": {"status": "shutting_down"}}
 
             # Hook commands — always write-locked
             if cmd.startswith("hook_"):
-                with self._write_lock:
-                    result = self._dispatch_hook(cmd, args)
-                    self._observe_command(cmd, args, result)
-                    return result
+                return self._locked_exec(lambda: self._dispatch_hook(cmd, args), cmd, args)
 
             # Table-driven dispatch
             entry = COMMAND_TABLE.get(cmd)
@@ -260,12 +249,12 @@ class BrainDaemon:
                 return {"ok": False, "error": "Unknown command: {}".format(cmd)}
 
             if entry.is_write:
-                with self._write_lock:
+                def _write():
                     result = entry.handler(self.brain, args, self.graph_changes)
                     if entry.marks_dirty:
                         self.dirty = True
-                    self._observe_command(cmd, args, result)
                     return result
+                return self._locked_exec(_write, cmd, args)
             else:
                 result = entry.handler(self.brain, args, self.graph_changes)
                 self._observe_command(cmd, args, result)
@@ -372,17 +361,24 @@ class BrainDaemon:
             pass  # Status file is best-effort
 
     def _autosave_loop(self):
-        """Periodically save brain if dirty."""
+        """Periodically save brain if dirty + run internal health check."""
         while self.running:
             time.sleep(AUTOSAVE_INTERVAL_SECONDS)
             if self.dirty:
-                with self._write_lock:
+                if self._write_lock.acquire(timeout=5.0):
                     try:
                         self.brain.save()
                         self.dirty = False
                         self._log("Autosaved")
                     except Exception as e:
                         self._log("Autosave error: {}".format(e))
+                    finally:
+                        self._write_lock.release()
+            # Internal health check — verify SQLite and embedder
+            try:
+                self.brain.conn.execute("SELECT 1").fetchone()
+            except Exception as e:
+                self._log("HEALTH: SQLite check failed: {}".format(e))
             self._write_status()
 
     def _handle_signal(self, signum, frame):
@@ -407,9 +403,9 @@ class BrainDaemon:
             self._log("Save error during shutdown: {}".format(e))
         self._cleanup()
         try:
-            self._pool.shutdown(wait=False, cancel_futures=True)
+            self._pool.shutdown(wait=True, cancel_futures=False)
         except TypeError:
-            self._pool.shutdown(wait=False)
+            self._pool.shutdown(wait=True)
 
     def _cleanup(self):
         """Close server socket, observer channel, remove PID and lock files.

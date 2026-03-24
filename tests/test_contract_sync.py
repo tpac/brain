@@ -162,10 +162,14 @@ class TestMCPToolSync(unittest.TestCase):
                           f"MCP tool '{tool}' has no daemon command — will fail at runtime")
 
     def test_core_encoding_tools_exposed(self):
-        """Core encoding tools should be MCP-native, not eval-only."""
+        """Core encoding tools should be MCP-native, not eval-only.
+        Note: ping, save, health_check, set_config, get_config removed in Session #14 —
+        daemon self-manages. Specialized remember_* promoted to first-class tools."""
         should_be_mcp = [
-            'remember', 'connect', 'recall', 'consciousness',
-            'ping', 'save', 'eval',
+            'remember', 'connect', 'recall', 'consciousness', 'eval',
+            'remember_lesson', 'remember_impact', 'remember_mechanism',
+            'remember_convention', 'remember_uncertainty', 'remember_mental_model',
+            'record_divergence', 'learn_vocabulary',
         ]
         for tool in should_be_mcp:
             self.assertIn(tool, self.mcp_tools,

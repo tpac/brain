@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "brain-dashboard",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-c", "import sys; sys.path.insert(0, '/Users/tpac/brain'); from servers.daemon import BrainDaemon; d = BrainDaemon('/Users/tpac/AgentsContext/brain/brain.db'); d.start()"],
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "echo 'Brain dashboard on port 47303' && while sleep 3600; do :; done"],
       "port": 47303
     }
   ]

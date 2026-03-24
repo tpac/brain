@@ -17,7 +17,7 @@ import socket
 
 # ── Daemon communication ──
 
-DAEMON_HOST = "127.0.0.1"
+DAEMON_HOST = "127.0.0.1"  # Client connects via IPv4 loopback
 DAEMON_PORT = 47200 + (os.getuid() % 100)
 
 
@@ -86,156 +86,113 @@ SERVER_VERSION = "1.0.0"
 PROTOCOL_VERSION = "2024-11-05"
 
 # Tool definitions — what Claude sees as native tools
+# Memory operations only. No operational tools (ping, save, health_check, config).
+# Daemon self-manages; hooks use internal commands directly.
 TOOLS = [
-    {
-        "name": "recall",
-        "description": "Semantic recall from brain — searches nodes by meaning using embeddings. Returns ranked results with titles, content, types, confidence.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query (semantic, not keyword)"},
-                "limit": {"type": "integer", "description": "Max results (default 8)", "default": 8}
-            },
-            "required": ["query"]
-        }
-    },
-    {
-        "name": "remember",
-        "description": "Store a new node in the brain. Types: decision, rule, lesson, concept, context, pattern, convention, mechanism, impact, constraint, purpose, mental_model, uncertainty, vocabulary, hypothesis, tension, aspiration, catalyst, interaction, meta_learning, failure_mode, performance, capability, arch_constraint, code_concept, fn_reasoning, param_influence, comment_anchor, bug_lesson.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "type": {"type": "string", "description": "Node type"},
-                "title": {"type": "string", "description": "Specific, scannable title"},
-                "content": {"type": "string", "description": "Rich content with reasoning, tradeoffs, specifics"},
-                "locked": {"type": "boolean", "description": "Lock node (for decisions, rules, lessons)", "default": False},
-                "confidence": {"type": "number", "description": "Confidence 0.0-1.0", "default": 1.0},
-                "keywords": {"type": "string", "description": "Space-separated keywords for search"},
-                "project": {"type": "string", "description": "Project scope"},
-                "emotion": {"type": "number", "description": "Emotional valence -1.0 to 1.0"}
-            },
-            "required": ["type", "title", "content"]
-        }
-    },
-    {
-        "name": "connect",
-        "description": "Create a weighted edge between two brain nodes. Relations: related_to, caused_by, depends_on, contradicts, supports, produced, evolved_from, blocks, enables, example_of.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "source_id": {"type": "string", "description": "Source node ID"},
-                "target_id": {"type": "string", "description": "Target node ID"},
-                "relation": {"type": "string", "description": "Edge relation type", "default": "related_to"},
-                "weight": {"type": "number", "description": "Edge weight 0.0-1.0", "default": 0.5}
-            },
-            "required": ["source_id", "target_id"]
-        }
-    },
-    {
-        "name": "consciousness",
-        "description": "Get brain consciousness signals — fading knowledge, tensions, vocabulary gaps, encoding health, errors, mental model drift, uncertainties, dream insights, reminders.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {},
-        }
-    },
-    {
-        "name": "context_boot",
-        "description": "Full brain boot — returns formatted text with stats, locked rules, consciousness signals, engineering context, health. Use at session start.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "user": {"type": "string", "default": "User"},
-                "project": {"type": "string", "default": "default"}
-            },
-        }
-    },
-    {
-        "name": "set_config",
-        "description": "Set a brain configuration value.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "key": {"type": "string", "description": "Config key"},
-                "value": {"type": "string", "description": "Config value"}
-            },
-            "required": ["key", "value"]
-        }
-    },
-    {
-        "name": "get_config",
-        "description": "Get a brain configuration value.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "key": {"type": "string", "description": "Config key"},
-                "default": {"type": "string", "description": "Default if not set", "default": ""}
-            },
-            "required": ["key"]
-        }
-    },
-    {
-        "name": "health_check",
-        "description": "Run brain health check — schema integrity, orphan nodes, edge consistency.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "auto_fix": {"type": "boolean", "description": "Auto-fix issues", "default": True}
-            },
-        }
-    },
-    {
-        "name": "save",
-        "description": "Force brain save to disk.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {},
-        }
-    },
-    {
-        "name": "ping",
-        "description": "Check if brain daemon is alive.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {},
-        }
-    },
-    {
-        "name": "eval",
-        "description": "Escape hatch — evaluate arbitrary Python expression on brain object. Variable 'brain' is the Brain instance. Use for methods not exposed as tools (e.g. remember_lesson, remember_impact, record_divergence, learn_vocabulary, etc).",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "code": {"type": "string", "description": "Python expression to eval (brain object available as 'brain')"}
-            },
-            "required": ["code"]
-        }
-    },
-    {
-        "name": "engineering_context",
-        "description": "Get engineering memory context — mechanisms, impacts, constraints, conventions for a project.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "project": {"type": "string", "default": "default"}
-            },
-        }
-    },
-    {
-        "name": "enrich",
-        "description": "Store V5 enrichment vectors for a node (after filling in the enrichment_prompt from remember()). Pass the generated question, anchor phrase, bridge sentence, and/or keywords. Each is embedded and stored for improved recall.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "node_id": {"type": "string", "description": "Node ID to enrich (from remember() response)"},
-                "question": {"type": "string", "description": "One question a user would ask that leads to this node"},
-                "anchor": {"type": "string", "description": "3-5 word phrase using neighbor vocabulary"},
-                "bridge": {"type": "string", "description": "One sentence connecting this node to its most important neighbor"},
-                "keywords": {"type": "string", "description": "Comma-separated keywords borrowed from neighbors"}
-            },
-            "required": ["node_id"]
-        }
-    },
+    # ── Core memory operations ──
+    {"name": "recall",
+     "description": "Semantic recall from brain — searches nodes by meaning using embeddings. Returns ranked results with titles, content, types, confidence.",
+     "inputSchema": {"type": "object", "required": ["query"], "properties": {
+         "query": {"type": "string", "description": "Search query (semantic, not keyword)"},
+         "limit": {"type": "integer", "description": "Max results (default 8)", "default": 8}}}},
+    {"name": "remember",
+     "description": "Store a new node in the brain. Types: decision, rule, lesson, concept, context, pattern, convention, mechanism, impact, constraint, purpose, mental_model, uncertainty, vocabulary, hypothesis, tension, aspiration, catalyst, interaction, meta_learning, failure_mode, performance, capability, arch_constraint, code_concept, fn_reasoning, param_influence, comment_anchor, bug_lesson.",
+     "inputSchema": {"type": "object", "required": ["type", "title", "content"], "properties": {
+         "type": {"type": "string", "description": "Node type"},
+         "title": {"type": "string", "description": "Specific, scannable title"},
+         "content": {"type": "string", "description": "Rich content with reasoning, tradeoffs, specifics"},
+         "locked": {"type": "boolean", "description": "Lock node (for decisions, rules, lessons)", "default": False},
+         "confidence": {"type": "number", "description": "Confidence 0.0-1.0", "default": 1.0},
+         "keywords": {"type": "string", "description": "Space-separated keywords for search"},
+         "project": {"type": "string", "description": "Project scope"},
+         "emotion": {"type": "number", "description": "Emotional valence -1.0 to 1.0"}}}},
+    {"name": "connect",
+     "description": "Create a weighted edge between two brain nodes. Relations: related_to, caused_by, depends_on, contradicts, supports, produced, evolved_from, blocks, enables, example_of.",
+     "inputSchema": {"type": "object", "required": ["source_id", "target_id"], "properties": {
+         "source_id": {"type": "string", "description": "Source node ID"},
+         "target_id": {"type": "string", "description": "Target node ID"},
+         "relation": {"type": "string", "description": "Edge relation type", "default": "related_to"},
+         "weight": {"type": "number", "description": "Edge weight 0.0-1.0", "default": 0.5}}}},
+    {"name": "enrich",
+     "description": "Store V5 enrichment vectors for a node (after filling in the enrichment_prompt from remember()). Pass the generated question, anchor phrase, bridge sentence, and/or keywords. Each is embedded and stored for improved recall.",
+     "inputSchema": {"type": "object", "required": ["node_id"], "properties": {
+         "node_id": {"type": "string", "description": "Node ID to enrich (from remember() response)"},
+         "question": {"type": "string", "description": "One question a user would ask that leads to this node"},
+         "anchor": {"type": "string", "description": "3-5 word phrase using neighbor vocabulary"},
+         "bridge": {"type": "string", "description": "One sentence connecting this node to its most important neighbor"},
+         "keywords": {"type": "string", "description": "Comma-separated keywords borrowed from neighbors"}}}},
+
+    # ── Specialized encoding (promoted from eval) ──
+    {"name": "remember_lesson",
+     "description": "Store a lesson learned — what happened, root cause, fix, and preventive principle. Auto-locked, structured content.",
+     "inputSchema": {"type": "object", "required": ["title", "what_happened", "root_cause", "fix", "preventive_principle"], "properties": {
+         "title": {"type": "string", "description": "Lesson title"},
+         "what_happened": {"type": "string", "description": "What went wrong or was discovered"},
+         "root_cause": {"type": "string", "description": "Why it happened"},
+         "fix": {"type": "string", "description": "How it was fixed"},
+         "preventive_principle": {"type": "string", "description": "General principle to prevent recurrence"}}}},
+    {"name": "remember_impact",
+     "description": "Store what changes ripple where — the connectivity layer. What must be checked if something changes.",
+     "inputSchema": {"type": "object", "required": ["title", "if_changed", "must_check", "because"], "properties": {
+         "title": {"type": "string", "description": "Impact title"},
+         "if_changed": {"type": "string", "description": "What might change"},
+         "must_check": {"type": "string", "description": "What must be verified"},
+         "because": {"type": "string", "description": "Why the dependency exists"}}}},
+    {"name": "remember_mechanism",
+     "description": "Store how something works — flows, algorithms, interactions.",
+     "inputSchema": {"type": "object", "required": ["title", "content"], "properties": {
+         "title": {"type": "string", "description": "Mechanism title"},
+         "content": {"type": "string", "description": "How it works"},
+         "steps": {"type": "array", "items": {"type": "string"}, "description": "Step-by-step flow"},
+         "data_flow": {"type": "string", "description": "Data flow description"}}}},
+    {"name": "remember_convention",
+     "description": "Store patterns, utilities, coding style for a codebase.",
+     "inputSchema": {"type": "object", "required": ["title", "content"], "properties": {
+         "title": {"type": "string", "description": "Convention title"},
+         "content": {"type": "string", "description": "The convention/pattern"},
+         "pattern": {"type": "string", "description": "Example of correct usage"},
+         "anti_pattern": {"type": "string", "description": "Example of what NOT to do"}}}},
+    {"name": "remember_uncertainty",
+     "description": "Store where you know you don't understand — honest not-knowing. Low confidence, encourages future investigation.",
+     "inputSchema": {"type": "object", "required": ["title", "what_unknown", "why_it_matters"], "properties": {
+         "title": {"type": "string", "description": "Uncertainty title"},
+         "what_unknown": {"type": "string", "description": "What is not understood"},
+         "why_it_matters": {"type": "string", "description": "Why resolving this matters"}}}},
+    {"name": "remember_mental_model",
+     "description": "Store your understanding of how systems/processes work. Confidence reflects how sure you are.",
+     "inputSchema": {"type": "object", "required": ["title", "model_description"], "properties": {
+         "title": {"type": "string", "description": "Mental model title"},
+         "model_description": {"type": "string", "description": "How you understand this system/process works"},
+         "applies_to": {"type": "string", "description": "What domain/system this applies to"},
+         "confidence": {"type": "number", "description": "How confident in this model (0.0-1.0)", "default": 0.7}}}},
+    {"name": "record_divergence",
+     "description": "Track where your model diverged from reality — corrections. Creates correction traces and adjusts related node confidence.",
+     "inputSchema": {"type": "object", "required": ["claude_assumed", "reality", "underlying_pattern"], "properties": {
+         "claude_assumed": {"type": "string", "description": "What you assumed was true"},
+         "reality": {"type": "string", "description": "What turned out to be true"},
+         "underlying_pattern": {"type": "string", "description": "The general pattern behind this divergence"},
+         "severity": {"type": "string", "description": "minor, medium, significant, or critical", "default": "medium"}}}},
+    {"name": "learn_vocabulary",
+     "description": "Map an operator term to its meaning — vocabulary learning. Improves recall by expanding queries with mapped terms.",
+     "inputSchema": {"type": "object", "required": ["term", "maps_to", "context"], "properties": {
+         "term": {"type": "string", "description": "The term as the operator uses it"},
+         "maps_to": {"type": "string", "description": "What it means in brain/code context"},
+         "context": {"type": "string", "description": "Where/how this term is used"}}}},
+
+    # ── Introspection ──
+    {"name": "consciousness",
+     "description": "Get brain consciousness signals — fading knowledge, tensions, vocabulary gaps, encoding health, errors, mental model drift, uncertainties, dream insights, reminders.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "engineering_context",
+     "description": "Get engineering memory context — mechanisms, impacts, constraints, conventions for a project.",
+     "inputSchema": {"type": "object", "properties": {
+         "project": {"type": "string", "default": "default"}}}},
+
+    # ── Escape hatch ──
+    {"name": "eval",
+     "description": "Escape hatch — evaluate arbitrary Python expression on brain object. Variable 'brain' is the Brain instance. Use for methods not exposed as direct tools.",
+     "inputSchema": {"type": "object", "required": ["code"], "properties": {
+         "code": {"type": "string", "description": "Python expression to eval (brain object available as 'brain')"}}}},
 ]
 
 
@@ -262,35 +219,37 @@ def handle_tools_list(request_id):
 
 
 def handle_tools_call(request_id, params):
+    import time as _time
     tool_name = params.get("name", "")
     arguments = params.get("arguments", {})
 
-    # Map tool name to daemon command (1:1 for now)
-    resp = daemon_send(tool_name, arguments)
+    # Try up to 3 times with backoff — daemon may be restarting
+    backoff = [0, 0.5, 1.5]  # immediate, 0.5s, 1.5s
+    last_error = ""
+    for attempt, delay in enumerate(backoff):
+        if delay > 0:
+            _time.sleep(delay)
 
-    if resp.get("ok"):
-        result_text = json.dumps(resp["result"], indent=2, default=str)
-        return make_response(request_id, {
-            "content": [{"type": "text", "text": result_text}]
-        })
-    else:
-        error_msg = resp.get("error", "Unknown daemon error")
-        # Try to restart daemon and retry once
-        if "not running" in error_msg or "connection" in error_msg.lower():
-            sys.stderr.write("[brain-mcp] Daemon down, attempting restart...\n")
-            if ensure_daemon_running():
-                resp = daemon_send(tool_name, arguments)
-                if resp.get("ok"):
-                    result_text = json.dumps(resp["result"], indent=2, default=str)
-                    return make_response(request_id, {
-                        "content": [{"type": "text", "text": result_text}]
-                    })
-                error_msg = resp.get("error", "Unknown daemon error after restart")
+        resp = daemon_send(tool_name, arguments)
+        if resp.get("ok"):
+            result_text = json.dumps(resp["result"], indent=2, default=str)
+            return make_response(request_id, {
+                "content": [{"type": "text", "text": result_text}]
+            })
 
-        return make_response(request_id, {
-            "content": [{"type": "text", "text": "ERROR: {}".format(error_msg)}],
-            "isError": True
-        })
+        last_error = resp.get("error", "Unknown daemon error")
+        is_connection_error = "connection" in last_error.lower() or "timeout" in last_error.lower()
+
+        if is_connection_error and attempt < len(backoff) - 1:
+            sys.stderr.write("[brain-mcp] Attempt {}: {} — restarting daemon...\n".format(attempt + 1, last_error))
+            ensure_daemon_running()
+        else:
+            break
+
+    return make_response(request_id, {
+        "content": [{"type": "text", "text": "ERROR: {}".format(last_error)}],
+        "isError": True
+    })
 
 
 def handle_ping(request_id):

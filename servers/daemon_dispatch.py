@@ -326,6 +326,17 @@ def _handle_remember_convention(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
+def _handle_remember_mental_model(brain, args, graph_changes):
+    result = brain.remember_mental_model(
+        title=args.get("title", ""),
+        model_description=args.get("model_description", ""),
+        applies_to=args.get("applies_to"),
+        confidence=args.get("confidence", 0.7),
+        project=args.get("project"))
+    graph_changes.append("REMEMBER_MENTAL_MODEL: %s" % args.get("title", "")[:50])
+    return {"ok": True, "result": result}
+
+
 def _handle_record_divergence(brain, args, graph_changes):
     result = brain.record_divergence(
         claude_assumed=args.get("claude_assumed", ""),
@@ -441,6 +452,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "remember_mechanism":    CmdEntry(_handle_remember_mechanism,  is_write=True, marks_dirty=True),
     "remember_uncertainty":  CmdEntry(_handle_remember_uncertainty, is_write=True, marks_dirty=True),
     "remember_convention":   CmdEntry(_handle_remember_convention, is_write=True, marks_dirty=True),
+    "remember_mental_model": CmdEntry(_handle_remember_mental_model, is_write=True, marks_dirty=True),
     "record_divergence":     CmdEntry(_handle_record_divergence,   is_write=True, marks_dirty=True),
     "learn_vocabulary":      CmdEntry(_handle_learn_vocabulary,    is_write=True, marks_dirty=True),
     "connect":               CmdEntry(_handle_connect,             is_write=True, marks_dirty=True),
