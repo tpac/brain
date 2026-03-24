@@ -36,14 +36,29 @@ Claude's words: "The 24K chars are telling Claude what to do. The 5K chars of me
 
 ## What's Next
 
-### Priority 1: Fix the Daemon (CRITICAL — blocks everything)
-It has never reliably worked. Starts, port listens, then every send_command times out. lsof shows dozens of CLOSED connections accumulating. The event loop is accepting but not processing.
+### Priority 1: Eliminate the Daemon (CRITICAL — blocks everything)
 
-**Why this is #1:** During Session #9, the entire encoding system (heartbeat, precision loop, MCP tools) was dead because the daemon was unresponsive. Every node was encoded manually via Brain() directly. The Anchor's automatic encoding never fired. The hooks couldn't reach the brain. This means the precision loop fix (Bug #1) and the heartbeat questions — all shipped but untested in production.
+**Research completed Session #9.** The daemon has 7 identified failure modes and should be eliminated, not patched.
 
-**The Brain itself works perfectly.** `Brain(db_path=...)` never fails. The daemon TCP server wrapper is the problem. Something in `servers/daemon_server.py` is blocking or not cleaning up connections.
+**Root causes found:**
+1. `_write_lock` serializes ALL hooks including reads (`daemon_server.py` L209-211) — hook_recall (4-6s) blocks every other connection
+2. PID written before socket bound — `ensure_daemon()` has 75-line retry loop full of races
+3. Embedder loading (4.2s) blocks daemon startup — port not listening during load
+4. TCP TIME_WAIT after crashes keeps port occupied
+5. Three independent TCP client implementations with different behavior
+6. Claude Code can kill daemon mid-operation
 
-**Approach:** Research asyncio TCP server patterns, check if the daemon is single-threaded blocking on long operations (embedding, recall), or if connections aren't being closed properly. Consider: is the daemon even needed? Could the MCP server talk to Brain directly?
+**The decision: make MCP server the brain host.** `brain_mcp.py` is already long-lived (Claude Code manages its lifecycle). Load Brain directly in the MCP process — no TCP, no port, no PID files, no lock files.
+
+**Four phases:**
+1. **MCP server loads Brain directly** (~50 line change in `brain_mcp.py`) — eliminates daemon for all tool calls
+2. **Lazy embedder loading** — Brain constructor starts embedder in background thread, keyword fallback until ready
+3. **Hooks use Brain.get_instance() directly** — remove `daemon_call_raw()`, use direct path (hooks already have this as fallback)
+4. **Delete daemon entirely** — remove daemon_server.py, daemon_client.py, daemon_config.py, daemon_dispatch.py, daemon.py (~1500 lines)
+
+**What stays:** Brain, embedder, COMMAND_TABLE handlers (become direct method calls), SQLite WAL (supports concurrent readers natively).
+
+**Key insight:** The Brain works perfectly when used directly. The daemon was adding a fragile TCP layer on top of something that doesn't need it. Resilient by design = remove the fragile layer.
 
 ### Priority 2: Relevance Floor
 Sweep floor values 0.30-0.70 against decode funnel. Find where noise gets filtered without losing signal. Currently the brain returns results for everything — no "I don't know."
