@@ -50,29 +50,123 @@ CHECKPOINT_CYCLE = [
     "partnership? Not what you built — what you learned.",
 ]
 
-SELF_KNOWLEDGE_KEYWORDS = ('encoding', 'drift', 'instinct', 'compress', 'claude',
-                           'agreeab', 'bias', 'failure', 'self-correct', 'batch')
+MIRROR_TYPES = ('lesson', 'correction', 'interaction', 'pattern',
+                'mental_model', 'failure_mode', 'boot', 'rule')
+
+
+def _detect_encoding_pattern(brain, messages_since_encode, total_encodes):
+    """Detect what kind of encoding behavior is happening and return
+    (pattern_name, recall_query) for the behavioral mirror.
+
+    Patterns detected from session data, not self-report — because Claude
+    can't see its own bias while in it."""
+
+    # Never encoded — strongest drift signal
+    if total_encodes == 0:
+        return ("never_encoded",
+                "Claude encoding drift compression instinct, never encoded in session")
+
+    # Long gap — drifting
+    if messages_since_encode > 10:
+        return ("long_drift",
+                "encoding drift building without remembering, losing context")
+
+    # Check recent node quality: are they thin?
+    try:
+        rows = brain.conn.execute(
+            """SELECT AVG(LENGTH(content)), COUNT(*)
+               FROM nodes WHERE created_at > datetime('now', '-2 hours')"""
+        ).fetchone()
+        avg_len = rows[0] or 0
+        node_count = rows[1] or 0
+
+        if node_count > 0 and avg_len < 200:
+            return ("thin_encoding",
+                    "encoding should be RICH not summaries, abstraction bias, "
+                    "abstract away the thing that makes memories stick")
+
+        # Check: any quotes preserved?
+        quote_count = brain.conn.execute(
+            """SELECT COUNT(*) FROM nodes
+               WHERE created_at > datetime('now', '-2 hours')
+               AND (content LIKE '%Tom said%' OR content LIKE '%Tom:%'
+                    OR content LIKE '%exact words%' OR type = 'interaction')"""
+        ).fetchone()[0]
+        if node_count >= 3 and quote_count == 0:
+            return ("no_quotes",
+                    "Tom exact words quotes preserve operator words, "
+                    "paraphrase destroys nuance")
+
+        # Check: all same type? (lack of diversity)
+        type_count = brain.conn.execute(
+            """SELECT COUNT(DISTINCT type) FROM nodes
+               WHERE created_at > datetime('now', '-2 hours')"""
+        ).fetchone()[0]
+        if node_count >= 4 and type_count <= 1:
+            return ("type_monotony",
+                    "encoding diversity node types, not just decisions, "
+                    "interactions quotes uncertainty corrections")
+
+        # Check: encoding fast with high emotion — confidence inflation
+        high_emotion = brain.conn.execute(
+            """SELECT COUNT(*) FROM nodes
+               WHERE created_at > datetime('now', '-2 hours')
+               AND emotion > 0.6"""
+        ).fetchone()[0]
+        if node_count >= 3 and high_emotion > node_count * 0.7:
+            return ("confidence_inflation",
+                    "confidence inflated session energy excitement, "
+                    "discovery moments feel more certain than they are")
+
+    except Exception:
+        pass
+
+    # Default: general encoding gap
+    if messages_since_encode > 4:
+        return ("encoding_gap",
+                "encoding gap during active work, compression instinct defer later")
+
+    return ("", "")
+
 
 def _behavioral_mirror(brain, messages_since_encode, total_encodes):
-    """Query brain for self-knowledge relevant to Claude's current behavioral state.
-    Returns a string to include in the encoding checkpoint, or empty string."""
-    # Build query based on behavioral pattern
-    if total_encodes == 0:
-        query = "Claude never encoded anything in session, encoding drift compression instinct"
-    elif messages_since_encode > 10:
-        query = "encoding drift building without remembering, losing context compaction"
-    else:
-        query = "encoding gap during active work, compression instinct defer to later"
+    """Surface the right self-knowledge based on observed encoding behavior.
+
+    The brain is the mirror — it shows Claude what Claude can't see about
+    itself. Not instructions. Self-awareness.
+
+    Fires on every checkpoint, not just during drift. The mirror picks what
+    to show based on pattern detection, not generic keyword matching."""
+
+    pattern, query = _detect_encoding_pattern(
+        brain, messages_since_encode, total_encodes)
+
+    if not query:
+        return ""
 
     try:
-        results = brain.recall_with_embeddings(query, limit=3)
-        for node in (results if isinstance(results, list) else results.get('results', [])):
+        results = brain.recall_with_embeddings(query, limit=5)
+        nodes = results if isinstance(results, list) else results.get('results', [])
+
+        for node in nodes:
             node_type = node.get('type', '')
-            keywords = node.get('keywords', '') or ''
-            if node_type in ('lesson', 'correction', 'pattern', 'mental_model', 'failure_mode', 'boot'):
-                if any(kw in keywords.lower() for kw in SELF_KNOWLEDGE_KEYWORDS):
-                    content = node.get('content', node.get('title', ''))[:200]
-                    return "Previous Claude: %s" % content
+            if node_type not in MIRROR_TYPES:
+                continue
+
+            title = node.get('title', '')
+            content = node.get('content', '')
+
+            # Prefer nodes with quotes (Anchor quotes are identity)
+            if 'quote' in title.lower() or 'Anchor quote' in title:
+                return "Previous Claude: %s\n%s" % (title, content[:300])
+
+            # Then corrections and interactions (stories > rules)
+            if node_type in ('correction', 'interaction'):
+                return "Previous Claude: %s\n%s" % (title, content[:300])
+
+            # Then any matching self-knowledge
+            return "Previous Claude: %s" % content[:250]
+
     except Exception:
         pass
     return ""
@@ -656,12 +750,12 @@ def hook_post_response_track(brain, args, graph_changes):
             except Exception:
                 stats = ""
 
-            # Behavioral mirror: surface relevant self-knowledge when drifting
+            # Behavioral mirror: surface self-knowledge on every checkpoint.
+            # The brain is the mirror — shows Claude what it can't see about itself.
             mirror_text = ""
             try:
                 since_encode = nudge.get("messages_since_encode", 0)
-                if since_encode > 4:
-                    mirror_text = _behavioral_mirror(brain, since_encode, nudge.get("total_encodes", 0))
+                mirror_text = _behavioral_mirror(brain, since_encode, nudge.get("total_encodes", 0))
             except Exception:
                 pass
 

@@ -462,14 +462,17 @@ class TestSkillAvailability(unittest.TestCase):
         self.assertTrue(os.path.isfile(skill_path),
                         f"SKILL.md not found at {skill_path}")
 
-    def test_skill_md_has_encoding_checklist(self):
-        """SKILL.md must contain the 4-step encoding checklist."""
+    def test_skill_md_has_anchor_identity(self):
+        """SKILL.md (Anchor) must contain identity and encoding examples."""
         skill_path = os.path.join(PROJECT_ROOT, 'skills', 'brain', 'SKILL.md')
         with open(skill_path) as f:
             content = f.read()
-        self.assertIn('4-Step Encoding Checklist', content)
-        self.assertIn('Step 1', content)
-        self.assertIn('Step 4', content)
+        # Anchor must have identity section
+        self.assertIn('Anchor', content)
+        # Must have encoding examples (show, don't tell)
+        self.assertIn('What Good Encoding Looks Like', content)
+        # Must have quotes (identity anchors)
+        self.assertIn('FROM PREVIOUS YOU', content)
 
     def test_skill_md_has_api_reference(self):
         """SKILL.md must document the core MCP tools."""
