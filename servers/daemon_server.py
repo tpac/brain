@@ -388,9 +388,16 @@ class BrainDaemon:
     def _handle_signal(self, signum, frame):
         self._log("Received signal {}".format(signum))
         self.running = False
+        # Close server socket immediately to unblock select() and reject new connections
+        try:
+            if self.server_socket:
+                self.server_socket.close()
+                self.server_socket = None
+        except Exception:
+            pass
 
     def _shutdown(self):
-        """Clean shutdown."""
+        """Clean shutdown — save brain, close sockets, release all resources."""
         self._log("Shutting down...")
         try:
             if self.brain:
@@ -400,13 +407,13 @@ class BrainDaemon:
             self._log("Save error during shutdown: {}".format(e))
         self._cleanup()
         try:
-            self._pool.shutdown(wait=True, cancel_futures=True)
+            self._pool.shutdown(wait=False, cancel_futures=True)
         except TypeError:
-            # Python < 3.9 doesn't have cancel_futures
             self._pool.shutdown(wait=False)
 
     def _cleanup(self):
-        """Close server socket, observer channel, remove PID and lock files."""
+        """Close server socket, observer channel, remove PID and lock files.
+        Idempotent — safe to call multiple times (signal + atexit + explicit)."""
         try:
             from servers import brain_observer
             brain_observer.stop()
@@ -415,6 +422,7 @@ class BrainDaemon:
         try:
             if self.server_socket:
                 self.server_socket.close()
+                self.server_socket = None
         except Exception:
             pass
         for path in [self.pid_path, get_status_path()]:
