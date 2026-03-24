@@ -2,15 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "brain-daemon",
+      "name": "brain-dashboard",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["servers/daemon.py", "start", "--db", "/Users/tpac/AgentsContext/brain/brain.db"],
-      "port": 47203
-    },
-    {
-      "name": "brain-observer",
-      "runtimeExecutable": "nc",
-      "runtimeArgs": ["localhost", "47303"],
+      "runtimeArgs": ["-c", "import sys; sys.path.insert(0, '/Users/tpac/brain'); from servers.daemon import BrainDaemon; d = BrainDaemon('/Users/tpac/AgentsContext/brain/brain.db'); d.start()"],
       "port": 47303
     }
   ]

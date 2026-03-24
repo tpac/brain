@@ -107,8 +107,8 @@ class BrainDaemon:
 
         # Start observer channel (separate port for Tom's visibility)
         try:
-            from servers import brain_observer
-            brain_observer.start()
+            from servers import brain_dashboard
+            brain_dashboard.start(brain=self.brain)
         except Exception as e:
             self._log("Observer channel failed to start: %s" % e)
 
@@ -207,7 +207,7 @@ class BrainDaemon:
     def _observe(self, event_type, **kwargs):
         """Emit to observer channel. One place, all observation."""
         try:
-            from servers.brain_observer import emit, has_listeners
+            from servers.brain_dashboard import emit, has_listeners
             if not has_listeners():
                 return
             emit(event_type, **kwargs)
@@ -217,7 +217,7 @@ class BrainDaemon:
     def _observe_command(self, cmd, args, result=None):
         """Observe a full command round-trip: request + response."""
         try:
-            from servers.brain_observer import has_listeners
+            from servers.brain_dashboard import has_listeners
             if not has_listeners():
                 return
 
@@ -415,8 +415,8 @@ class BrainDaemon:
         """Close server socket, observer channel, remove PID and lock files.
         Idempotent — safe to call multiple times (signal + atexit + explicit)."""
         try:
-            from servers import brain_observer
-            brain_observer.stop()
+            from servers import brain_dashboard
+            brain_dashboard.stop()
         except Exception:
             pass
         try:
