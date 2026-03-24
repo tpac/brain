@@ -1,7 +1,7 @@
 {
   "name": "brain",
-  "version": "5.4.0",
-  "description": "Shared cognitive space for Claude + operator. v5.4: Brain-Claude conflict protocol, [BRAIN]...[/BRAIN] identity tags, layered recall precision evaluation (regex+embeddings+BART), per-hook telemetry, seed brain for new instances. 301 tests. Plus: eval-tested SKILL.md, rotating checkpoints, consciousness signals, engineering memory, self-correction traces.",
+  "version": "6.0.0",
+  "description": "Shared cognitive space for Claude + operator. v6.0: Anchor (identity-first SKILL.md), Continuity Benchmark (13 encoding variants), decode funnel (50 queries, 51% top-3), recency boost (1.5x/1.2x), precision loop fix, TCP daemon, vocab auto-cleanup. Identity drives encoding — brain IS the prompt.",
   "author": {
     "name": "Tom Pachys"
   },
