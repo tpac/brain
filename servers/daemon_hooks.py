@@ -786,6 +786,9 @@ def hook_idle_maintenance(brain, args, graph_changes):
 
     Fires on Notification(idle_prompt). Output stored as pending message.
     """
+    import datetime
+    start_time = datetime.datetime.now()
+    _log("idle_maintenance STARTED at %s" % start_time.isoformat())
     output = []
 
     # 1. Dream
@@ -1011,6 +1014,13 @@ def hook_idle_maintenance(brain, args, graph_changes):
     if output:
         summary = "[BRAIN] IDLE MAINTENANCE:\n" + "\n".join(output) + "\n[/BRAIN]"
         _store_pending(brain, summary)
+
+    # Log so we can verify idle fires and what it does
+    import datetime
+    elapsed = (datetime.datetime.now() - start_time).total_seconds()
+    _log("idle_maintenance COMPLETED in %.1fs — %d output lines" % (elapsed, len(output)))
+    for line in output:
+        _log("  idle: %s" % line)
 
     brain.save()
     return {"output": ""}  # Notification stdout invisible
