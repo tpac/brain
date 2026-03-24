@@ -393,7 +393,8 @@ class BrainDaemon:
             pass
 
     def _shutdown(self):
-        """Clean shutdown — save brain, close sockets, release all resources."""
+        """Clean shutdown — save brain, close sockets, release all resources.
+        Forces exit after 5s if workers are stuck (e.g. embedder CPU loop)."""
         self._log("Shutting down...")
         try:
             if self.brain:
@@ -402,6 +403,13 @@ class BrainDaemon:
         except Exception as e:
             self._log("Save error during shutdown: {}".format(e))
         self._cleanup()
+        # Give workers 5s to finish, then force exit
+        import _thread
+        def _force_exit():
+            time.sleep(5)
+            self._log("Workers stuck — forcing exit")
+            os._exit(0)
+        _thread.start_new_thread(_force_exit, ())
         try:
             self._pool.shutdown(wait=True, cancel_futures=False)
         except TypeError:

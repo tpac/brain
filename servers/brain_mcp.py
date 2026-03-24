@@ -19,6 +19,7 @@ import socket
 
 DAEMON_HOST = "127.0.0.1"  # Client connects via IPv4 loopback
 DAEMON_PORT = 47200 + (os.getuid() % 100)
+_last_daemon_fingerprint = None  # Track daemon restarts
 
 
 def daemon_send(cmd, args=None, timeout=30.0):
@@ -263,6 +264,7 @@ def handle_tools_call(request_id, params):
         if is_connection_error and attempt < len(backoff) - 1:
             sys.stderr.write("[brain-mcp] Attempt {}: {} — restarting daemon...\n".format(attempt + 1, last_error))
             ensure_daemon_running()
+            check_daemon_fingerprint()
         else:
             break
 
@@ -283,6 +285,25 @@ def send(msg):
     sys.stdout.flush()
 
 
+def send_notification(method):
+    """Send a JSON-RPC 2.0 notification (no id, no response expected)."""
+    send({"jsonrpc": "2.0", "method": method})
+
+
+def check_daemon_fingerprint():
+    """Check if daemon restarted (new code). If so, notify Claude Code to refresh tools."""
+    global _last_daemon_fingerprint
+    resp = daemon_send("ping", timeout=3.0)
+    if not resp.get("ok"):
+        return
+    fp = resp.get("result", {}).get("code_fingerprint")
+    if fp and _last_daemon_fingerprint and fp != _last_daemon_fingerprint:
+        sys.stderr.write("[brain-mcp] Daemon fingerprint changed: {} → {} — notifying tools/list_changed\n".format(
+            _last_daemon_fingerprint, fp))
+        send_notification("notifications/tools/list_changed")
+    _last_daemon_fingerprint = fp
+
+
 def main():
     # Ensure daemon is running — retry a few times since boot hook may be starting it concurrently
     sys.stderr.write("[brain-mcp] Starting MCP server...\n")
@@ -296,6 +317,7 @@ def main():
             sys.stderr.write("[brain-mcp] Daemon not ready, retry {}/3 in 2s...\n".format(attempt + 1))
             time.sleep(2)
     if daemon_ready:
+        check_daemon_fingerprint()  # Record initial fingerprint
         sys.stderr.write("[brain-mcp] Daemon connected. Serving {} tools.\n".format(len(TOOLS)))
     else:
         sys.stderr.write("[brain-mcp] WARNING: Daemon not available at startup. Will retry on each tool call.\n")
