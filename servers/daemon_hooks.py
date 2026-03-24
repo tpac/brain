@@ -608,23 +608,12 @@ def hook_post_response_track(brain, args, graph_changes):
                         gaps = []
                     existing_terms = {g.get("term") if isinstance(g, dict) else g for g in gaps}
 
-                    # Auto-encode high-confidence terms immediately.
-                    # Backtick, acronym, and capitalized terms are almost certainly real.
-                    # Store with message context — thin-node enrichment will ask Tom later.
-                    _high_conf = set(t.strip() for t in backtick + acronyms + capitalized)
+                    # Record as gaps only — auto-encoding created junk single-word
+                    # nodes that polluted recall. Let Claude encode vocab manually
+                    # when terms actually matter.
                     for term in unmapped[:5]:
                         if term not in existing_terms:
-                            if term in _high_conf:
-                                try:
-                                    brain.learn_vocabulary(
-                                        term=term,
-                                        maps_to=["detected in: '%s'" % user_message[:80]],
-                                        context="auto-detected")
-                                except Exception:
-                                    # If learn_vocabulary fails (validation, etc), fall through to gap
-                                    gaps.append({"term": term, "message_preview": user_message[:80]})
-                            else:
-                                gaps.append({"term": term, "message_preview": user_message[:80]})
+                            gaps.append({"term": term, "message_preview": user_message[:80]})
                     gaps = gaps[-20:]
                     brain.set_config("vocabulary_gaps", json.dumps(gaps))
         except Exception:
@@ -789,7 +778,26 @@ def hook_idle_maintenance(brain, args, graph_changes):
     except Exception as e:
         output.append("HEAL ERROR: %s" % e)
 
-    # 3b. Auto-tune
+    # 3b. Vocab cleanup — prune junk auto-detected single-word vocabulary nodes
+    try:
+        junk_vocab = brain.conn.execute("""
+            SELECT id, title FROM nodes
+            WHERE type = 'vocabulary' AND content LIKE '%auto-detected%'
+            AND title LIKE '%auto-detected%'
+        """).fetchall()
+        if junk_vocab:
+            for nid, title in junk_vocab:
+                brain.conn.execute("DELETE FROM node_enrichments WHERE node_id = ?", (nid,))
+                brain.conn.execute("DELETE FROM node_vectors WHERE node_id = ?", (nid,))
+                brain.conn.execute("DELETE FROM edges WHERE source_id = ? OR target_id = ?", (nid, nid))
+                brain.conn.execute("DELETE FROM nodes WHERE id = ?", (nid,))
+            brain.conn.commit()
+            output.append("VOCAB CLEANUP: pruned %d junk auto-detected nodes" % len(junk_vocab))
+            graph_changes.append("VOCAB_CLEANUP: %d pruned" % len(junk_vocab))
+    except Exception as e:
+        output.append("VOCAB CLEANUP ERROR: %s" % e)
+
+    # 3c. Auto-tune
     try:
         tune_result = brain.auto_tune()
         tuned = tune_result.get("tuned", [])
