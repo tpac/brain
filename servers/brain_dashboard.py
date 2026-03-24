@@ -29,16 +29,18 @@ from servers.daemon_config import DAEMON_HOST, DAEMON_PORT
 
 DASHBOARD_PORT = DAEMON_PORT + 100
 _brain = None  # Set by daemon on startup
+_daemon = None  # Set by daemon — used to reset idle timeout on HTTP requests
 _event_queues = []  # SSE client queues
 _event_lock = threading.Lock()
 _server = None
 _running = False
 
 
-def start(brain=None):
+def start(brain=None, daemon=None):
     """Start dashboard HTTP server. Called by daemon on startup."""
-    global _brain, _server, _running
+    global _brain, _daemon, _server, _running
     _brain = brain
+    _daemon = daemon
     if _running:
         return
     try:
@@ -116,6 +118,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         pass  # Silence default logging
 
     def do_GET(self):
+        # Keep daemon alive while dashboard is being viewed
+        if _daemon:
+            _daemon.last_activity = time.time()
         parsed = urlparse(self.path)
         path = parsed.path
         params = parse_qs(parsed.query)
