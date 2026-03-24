@@ -38,6 +38,14 @@ The 24K of instructions made Claude a task-executor. The naked Claude just liste
 - Vocab cleanup in idle maintenance (`servers/daemon_hooks.py`)
 - Fixed post-response-track: removed from UserPromptSubmit, kept only on Stop
 - Live brain eval mode: real daemon for reads, fake for writes
+- Dynamic behavioral mirror: detects 6 encoding patterns, fires every checkpoint, prefers stories over rules
+- Brain Dashboard (`servers/brain_dashboard.py`): HTTP server on port 47303, serves in Claude Code preview pane
+  - Live tab: real-time SSE event stream of all brain commands
+  - Graph tab: force-directed canvas visualization, 80 nodes, drag/zoom/hover
+  - Explorer tab: searchable/filterable node browser
+  - Health tab: Anchor Insights — systematic problems surfaced for Tom
+- Plugin cache bypass: `resolve-brain-db.sh` ignores CLAUDE_PLUGIN_ROOT, always uses working dir
+- Daemon shutdown fix: close socket on signal, idempotent cleanup, no-wait pool
 
 ### Brain:
 - 20+ nodes encoded this session, all connected in clusters
