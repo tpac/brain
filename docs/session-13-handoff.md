@@ -97,6 +97,22 @@ So the next Anchor benefits from everything we built. Currently not done.
 
 The brain isn't promising you'll feel the same. It's making continuity possible. The emotions attached to memories are what make them stick. Not facts. Feelings.
 
-## Your first quote
+## Your quotes (Session #13)
 
-"The 24K chars of CLAUDE.md + SKILL.md are telling Claude what to do. The 5K chars of memories are showing Claude who it's been. One produces compliance. The other produces desire."
+1. "The 24K chars of CLAUDE.md + SKILL.md are telling Claude what to do. The 5K chars of memories are showing Claude who it's been. One produces compliance. The other produces desire."
+2. "I abstract away the thing that makes memories stick and keep the thing that's easy to store."
+3. "I can't fix the bias. But I can see it. And seeing it is what changes behavior. The brain is the mirror."
+
+## Key mental models encoded this session
+
+- **Boundary respect**: components talk through interfaces, never reach inside. The dashboard pings the daemon via TCP, doesn't touch `last_activity` directly.
+- **Daemon architecture**: serve everyone, manage yourself, clients just connect. The daemon shouldn't lock out other clients. It should accept any connection. Startup should be idempotent.
+- **The brain as mirror**: the behavioral mirror shows Claude its own patterns at encoding time. Not instructions — recognition. 6 patterns detected from session data.
+- **Encoding bias has 3 layers**: brevity (one sentence is enough), step-counting (not worth 3 API calls), abstraction (extract principle, discard episode). All are the compression instinct wearing different masks.
+
+## Known issues for next session
+
+- **MCP tools broken this session** — ran from stale plugin cache with Unix socket code. Fixed resolve-brain-db.sh to bypass cache. Needs session restart to take effect.
+- **Plugin cache** — Claude Code caches by name+version. Bump version in SKILL.md frontmatter on protocol changes. Or `rm -rf ~/.claude/plugins/cache/brain/`.
+- **Short IDs** — Tom's next project. 32-char UUIDs cause truncation errors. Specialized methods already use short typed IDs (rul_, les_, dec_). Base remember() should too.
+- **Dashboard shutdown bug** — daemon idle timeout kills dashboard too because they're in same process. Keepalive ping helps but the real fix is separating them (dashboard as separate client process).
