@@ -1,9 +1,13 @@
 # Encoding/Decoding Pipeline v2
 
-**Date:** 2026-03-23
-**Git version:** 6509d54 (main) — updated end of session
+**Date:** 2026-03-23 (updated 2026-03-24)
+**Git version:** 6509d54 (main) → efaaf5c (Session #9 decode pipeline)
 **Author:** Claude Opus 4.6 + Tom
-**Sessions:** #10-11 — Embedding Migration to LLM
+**Sessions:** #10-11 — Embedding Migration to LLM, #9 — Identity-First Encoding + Decode Pipeline
+
+---
+
+> **Session #9 Update (2026-03-24):** The encoding problem is solved. Identity + examples + live brain access produces 100%±0% aha capture. Instructions/checklists are killed — they produce compliance, not judgment. The decode side now has a 50-query funnel (51% top-3 after recency boost). See `docs/session-9-handoff.md` for full results.
 
 ---
 

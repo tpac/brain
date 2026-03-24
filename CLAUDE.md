@@ -21,8 +21,10 @@ eval: brain.remember_lesson(title="...", what_happened="...", root_cause="...", 
 - `PreToolUse(Edit|Write)` → surfaces rules before file edits
 - `PreCompact` → saves brain before context loss
 - `PostCompact` → re-boots context after compaction
-- `Stop` → captures session activity
+- `Stop` → captures session activity + stores response for precision evaluation
 - `SessionEnd` → session synthesis + save
+
+**Important:** `post-response-track` fires ONLY on `Stop` (not UserPromptSubmit). It needs Claude's response to evaluate precision. See Session #9 handoff.
 
 ## Brain-to-Operator Channel
 
@@ -75,7 +77,9 @@ Before changing sacred systems, benchmark FIRST:
 - Precision: `servers/brain_precision.py`
 - Hook output: `servers/brain_voice.py`
 
-**Continuity Benchmark** (`eval/encode_eval_v2.py`): tests encoding quality across model versions. Runs Monday/Thursday. Baseline: 100%±0% aha on all 3 segments.
+**Continuity Benchmark** (`eval/encode_eval_v2.py`): tests encoding quality across model versions. Runs Monday/Thursday. Baseline: 100%±0% aha on all 3 segments. Winner: `identity_examples` variant with live brain access.
+
+**Decode Funnel** (`eval/decode_funnel.py`): tests recall quality — 50 queries, 5 categories. Baseline after recency boost: 51% top-3, 69% top-8. Run before ANY recall change.
 
 ## Test Integrity Rule
 
