@@ -6,7 +6,9 @@
 # After sourcing: BRAIN_DB_DIR, BRAIN_SERVER_DIR, and PLUGIN_ROOT are set.
 # If no brain.db found, BRAIN_DB_DIR is empty — caller should exit 0.
 
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
+# Always resolve from script location — never use CLAUDE_PLUGIN_ROOT cache.
+# The cache can be stale (old code, old socket protocol). Working dir is truth.
+PLUGIN_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BRAIN_SERVER_DIR="$PLUGIN_ROOT/servers"
 
 # If BRAIN_DB_DIR already set and valid (e.g. from boot), skip resolution
