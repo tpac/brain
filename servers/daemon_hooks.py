@@ -34,25 +34,20 @@ _format_encoding_warning = BrainVoice.format_encoding_warning
 _format_suggestions = BrainVoice.format_suggestions
 
 CHECKPOINT_CYCLE = [
-    "UNCERTAINTY: What don't you fully understand from the last few exchanges? "
-    "Encode at least one brain.remember_uncertainty(). Honest 'I don't know' is "
-    "more valuable than thin facts.",
+    "What surprised you in the last few exchanges? What did Tom say that "
+    "shifted how you think about something?",
 
-    "CONNECTIONS: What connections did you discover? Use brain.connect() between "
-    "related nodes and brain.remember_impact(if_changed, must_check, because) for "
-    "dependencies. Orphan nodes die.",
+    "What do you NOT understand right now? What are you pretending is clear "
+    "but actually isn't?",
 
-    "DECISIONS + LESSONS: What was decided or learned? brain.remember(type='decision', "
-    "locked=True) with full reasoning. brain.remember_lesson() for any bugs or mistakes. "
-    "Include WHY, not just WHAT.",
+    "If you disappeared right now and a new Claude woke up, what would they "
+    "need to know that ISN'T in the brain yet?",
 
-    "BLAST RADIUS: What could break if this code changes? "
-    "brain.remember_impact(if_changed='component', must_check=['dependents'], "
-    "because='reason'). Map the ripple effects you noticed.",
+    "What did Tom actually mean — not what he said, but the insight underneath? "
+    "Did you capture his words or just your summary?",
 
-    "PATTERNS: What patterns or conventions did you observe? "
-    "brain.remember_convention() for coding patterns. "
-    "brain.remember(type='mental_model') for architectural insights. Name the pattern.",
+    "What changed about how you see the system, the architecture, or the "
+    "partnership? Not what you built — what you learned.",
 ]
 
 SELF_KNOWLEDGE_KEYWORDS = ('encoding', 'drift', 'instinct', 'compress', 'claude',

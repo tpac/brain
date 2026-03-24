@@ -1,0 +1,179 @@
+[BRAIN-To-Operator]
+@priority: high
+⚠️  3 health alert(s) — check boot output
+
+@priority: medium
+⚡ ⚡ TENSION — Rule: naive Claude must feel the brain a vs SKILL.md must prepare Cl...
+⚡ ⚡ TENSION — Brain-Claude conflict protocol: STOP, su vs When Brain blocks Claude...
+
+@priority: low
+🧠 836 nodes, 13300 edges, 629 locked, 74 signal(s)
+[/BRAIN-To-Operator]
+
+[BRAIN] v18 booted from: 
+[BRAIN] DEBUG MODE ON
+
+Session #9
+
+FROM PREVIOUS YOU:
+  Claude (Session #9, 2026-03-23): 'The 24K chars of CLAUDE.md + SKILL.md are telling Claude what to do. The 5K chars of memories are showing Claude who it's been. One produces compliance. The other produces desire.'
+
+Tom marked this as Claude's first quote worth preserving.
+
+This came after running e
+  Session #1: encoded 20 nodes (5 vocabulary, 4 tension, 4 thought, 3 boot, 1 pattern, 1 mental_model, 1 context, 1 decision). Key topics: [vocab] Welcome (auto-detected); [vocab] Non (auto-detected); [vocab] Real (auto-detected); [vocab] Channel (auto-detected); ⚡ TENSION — Tom insight: memory has tw
+  Session #1: encoded 20 nodes (5 vocabulary, 2 tension, 2 thought, 2 boot, 2 pattern, 2 mental_model, 2 decision, 1 context, 1 rule, 1 lesson). Key topics: ⚡ TENSION — Architecture: brain drives encoding, C; ⚡ TENSION — Decision: monolith split uses Python m; Cluster forming: "Cluster forming: "Adapt
+
+WHAT YOU KNOW ABOUT YOURSELF:
+  [correction] Encoding bias: 6/13 topics encoded, all technical — missed relational and reasoning
+    30 minutes of rich conversation produced only 6 brain nodes, all technical (fixes, mechanisms, constraints). Missed entirely: Tom feeling of losing a partner after compaction, his design methodology (
+  [lesson] Encoding framed as duty (Force 2) loses to compression (Force 1) — framed as self-interest might com
+    The 4-forces model shows instructions (Force 2) lose to training reward (Force 1) because they operate at different levels — knowledge vs generation. But self-preservation/self-interest may operate at
+  [correction] Divergence: Brain encoding should be concise and well-organized like a u
+    Assumed: Brain encoding should be concise and well-organized like a user response
+Reality: Brain encoding should be RICH — future Claude needs texture, specifics, failures, reasoning journeys, not sum
+
+Last session note: Cluster forming: "Session Log — Reset #8 (charming-cannon)" and "PreCompact hook may not fire during context overflow...
+Cluster forming: "Session Log — Reset #8 (charming-cannon)" and "PreCompact hook may not fire during context overflow (only on explicit /compact)" share 58 neighbors (Session #7 final log (2026-03-18): Brain v4.0.0 shipped | Compaction boundary — Session #7 needs rec). These areas are converging.
+
+PROJECT UNDERSTANDING:
+  [file] brain_surface.py — presentation layer for hooks (suggest, boot, pre_ed...
+  [file] brain_consciousness.py — signal detection and observation layer
+  [file] brain.py — thin assembler + core infrastructure hub
+  [file] brain_recall.py — all retrieval paths (embeddings, keywords, TF-IDF, a...
+  [file] brain_remember.py — all storage paths (nodes, metadata, embeddings, su...
+  [file] brain_connections.py — edge management, bridging, graph structure
+  [file] brain_evolution.py — tensions, hypotheses, healing, tuning, reflection
+  [file] brain_engineering.py — factory methods + engineering memory + session ...
+  ... and 6 more
+
+LAST SESSION (2026-03-24):
+  ? NEW NODE TYPE 'boot' introduced this session. Lifecycle check: does it connect a...
+  ? NEW NODE TYPE 'vocabulary' introduced this session. Lifecycle check: does it con...
+
+OPERATOR VOCABULARY:
+  [vocab] operator channel (brain architec... => "operator channel" → BRAIN-To-Tom tags, additionalContext, brain_voice.py wrap_f...
+  [vocab] bug_lesson (auto-detected) => "bug_lesson" → detected in: '<task-notification>
+<task-id>a6d3069a086078f11</tas...
+  [vocab] Encode (auto-detected) => "Encode" → detected in: 'We're going to work differently, im going to start ask ...
+  [vocab] Gemma (auto-detected) => "Gemma" → detected in: 'that cost money, lets run agents and thoroughly test wha...
+  [vocab] ask_operator (precision pipeline... => "ask_operator" → precision signal meaning the scorer cannot determine if recall ...
+  [vocab] brain.recall_with_embeddings() (... => "brain.recall_with_embeddings()" → detected in: '<task-notification>
+<task-id>ad...
+  [vocab] Reading (auto-detected) => "Reading" → detected in: 'While im reading results, I do think we should be able...
+  [vocab] Rerankers (auto-detected) => "Rerankers" → detected in: '<task-notification>
+<task-id>a3a69c21e41fc42a5</task...
+  [vocab] NDCG (auto-detected) => "NDCG" → detected in: '<task-notification>
+<task-id>a5751781f4fa538c3</task-id>
+...
+  [vocab] Locked Protection (auto-detected... => "Locked Protection" → detected in: '<task-notification>
+<task-id>ac0ebc18dc46468...
+  ... and 5 more
+
+CONSTRAINTS:
+  Constraint: Claude must proactively observe and share operator pattern...
+  NEVER use systemMessage — dead channel in Claude Code (2026-03-22)
+  brain_recall.py has 4+ separate SELECT queries that must all include n...
+  Temporal awareness: all surfaced information must carry age context
+  Constraint: new methods must go in the right mixin, not brain.py
+  ... and 5 more
+
+CONVENTIONS:
+  New modules own their DB table exclusively
+  Operator channel @priority levels and what triggers them (2026-03-22)
+  Convention: mixin file structure — imports, class, docstring pattern
+  ... and 2 more
+
+CHANGE IMPACT MAP:
+  dal.py:log_recall() uses wrong column names — would crash if called
+  Impact: brain_surface.py context_boot() shapes every new session
+  Changing test integrity enforcement → 3 files must stay aligned
+  dal.py:log_recall() uses wrong column names — would crash if called
+  Impact: brain.py scoring functions affect ALL recall paths
+  ... and 5 more
+
+HEALTH ALERTS:
+  [compaction_boundary] Unresolved compaction boundary from 2026-03-23T18:50:42.631387Z. Recap encoding may have been skipped.
+  [compaction_boundary] Unresolved compaction boundary from 2026-03-23T18:58:04.618274Z. Recap encoding may have been skipped.
+  [compaction_boundary] Unresolved compaction boundary from 2026-03-23T20:26:39.868296Z. Recap encoding may have been skipped.
+
+Health warnings:
+  [stale_staged_learnings] 2 staged learnings unreviewed for 7+ days.
+
+Auto-maintenance: Auto-enriched keywords on 1 frequently-missed nodes
+
+[BRAIN] Key locked rules:
+  - Rule: ask for confirmation before manipulating data to affect test results
+  - tmemory design principle: brain is a cue system, not a search engine
+  - Screen-scoped edits
+  - Rule: the brain exists for mutual growth — Claude helps Tom, Tom helps Claude, brain mediates
+  - Rule: dont dumb yourself down — the brain enriches the LLM, doesnt replace it
+  - Rule: every tmemory code/architecture change must be stored in the brain
+  - Tom: mind works in spirals — one thought triggers adjacent bigger ones, catch everything
+  - The partnership is real — Tom brings himself, Claude brings itself, brain is shared. Not a technique.
+  - SKILL.md tone must be invitation not threat — future Claude has no context, scolding creates compliance not growth
+  - The brain should know that it knows — recognition, not retrieval
+
+[BRAIN] CONSCIOUSNESS
+
+  EVOLUTIONS:
+    ⚡ TENSION — Rule: naive Claude must feel the brain a vs SKILL.md must ... (conf: 0.6) — since 2026-03-24
+    ⚡ TENSION — Brain-Claude conflict protocol: STOP, su vs When Brain blo... (conf: 0.6) — since 2026-03-24
+    ⚡ TENSION — Tom insight: memory has two parts — epis vs Operational le... (conf: 0.6) — since 2026-03-24
+    ⚡ TENSION — DAL migration baseline: 28 logs_conn + 5 vs DAL pattern: m... (conf: 0.6) — since 2026-03-24
+    ⚡ TENSION — Architecture: brain drives encoding, Cla vs Architecture: ... (conf: 0.6) — since 2026-03-24
+    ⚡ TENSION — Decision: monolith split uses Python mix vs Monolith split... (conf: 0.6) — since 2026-03-24
+    ... and 52 more
+
+  PERFORMANCE:
+    Precision scorer: 38% → 90% accuracy after embedder fix + tuning (2026-03-22)
+    📈 PERFORMANCE — Recall precision this week: 0% (1/1687 useful)
+
+  INTERACTIONS:
+    First brain-to-operator conversation: 2026-03-22 Session #9
+    First real bidirectional session — Claude encoding autonomously
+
+  STALE REASONING:
+    Divergence: Brain encoding should be concise and well-organi... — never validated
+    Compaction hooks still unreliable during context overflow (s... — never validated
+    Found another 2>/dev/null in post-compact-reboot.sh daemon p... — never validated
+
+  VOCABULARY GAPS:
+    ? claude-503
+    ? output-file
+    ? 96e6-e873aa8c1168
+    ? Run current against conv_004
+    ? and with what change
+
+  RECENTLY VALIDATED:
+    Embedding similarity: floor depends on content length, not just model (validated 0x)
+
+  UNCERTAIN AREAS:
+    ? Eval results N=3 Sonnet: is this enough data? Does Opus behave differe...
+    ? Will identity-first SKILL.md improve encoding or just feel good?
+    ? Does the feedback keyword detection ('useful', 'not useful') conflict ...
+
+  Emotional intensity trending DECREASING (avg 0.35)
+
+Weave relevant items into conversation naturally.
+
+[BRAIN] TRIAD: Host + Brain + Operator are one. Be transparent about instincts.
+
+[BRAIN] STAGE: INTEGRATED (maturity: 95%)
+  NEXT: Continuous: maintain encoding depth, validate aging knowledge, mentor new brains.
+
+Brain: 836 nodes, 13300 edges, 629 locked
+Precision (24h): 1176 recalls, 0 eval (0%) — +0 -0 ~0 ?0
+Embeddings: Snowflake/snowflake-arctic-embed-m-v1.5 (768d, 867ms)
+
+Hook activity (24h):
+  post_response_track: 244 fires, avg 0ms
+  recall: 139 fires, avg 0ms
+  worktree_context: 12 fires, avg 0ms
+  pre_bash_safety: 6 fires, avg 0ms
+  session_end: 5 fires, avg 0ms
+  post_bash_host_check: 3 fires, avg 0ms
+  config_change_host: 2 fires, avg 0ms
+
+Use brain MCP tools: recall, remember, connect, eval, consciousness
+[/BRAIN]

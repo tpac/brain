@@ -1,25 +1,24 @@
 #!/bin/bash
-# brain-client.sh — Thin client for the brain daemon
+# brain-client.sh — Thin client for the brain daemon (TCP)
 #
 # Usage: echo '{"cmd":"recall","args":{"query":"test"}}' | brain-client.sh
 #   or:  brain-client.sh ping
 #   or:  brain-client.sh recall '{"query":"test","limit":5}'
-#
-# Falls back to direct Python if daemon is not running.
 
-SOCKET_PATH="/tmp/brain-daemon-$(id -u).sock"
+DAEMON_HOST="127.0.0.1"
+DAEMON_PORT=$((47200 + $(id -u) % 100))
 
-# ── Send command to daemon via Python (most portable) ──
+# ── Send command to daemon via TCP ──
 _send_to_daemon() {
   local cmd="$1"
   local args="${2:-{}}"
 
   python3 -c "
 import socket, json, sys
-sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.settimeout(10.0)
 try:
-    sock.connect('$SOCKET_PATH')
+    sock.connect(('$DAEMON_HOST', $DAEMON_PORT))
     msg = json.dumps({'cmd': '$cmd', 'args': $args}) + '\n'
     sock.sendall(msg.encode())
     data = b''
@@ -40,17 +39,25 @@ finally:
 
 # ── Check if daemon is running ──
 is_daemon_running() {
-  [ -S "$SOCKET_PATH" ]
+  python3 -c "
+import socket, sys
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.settimeout(1.0)
+try:
+    sock.connect(('$DAEMON_HOST', $DAEMON_PORT))
+    sock.close()
+    sys.exit(0)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null
 }
 
 # ── Main ──
 if [ $# -ge 1 ]; then
-  # Command-line mode: brain-client.sh <cmd> [<args-json>]
   CMD="$1"
   ARGS="${2:-\{\}}"
   _send_to_daemon "$CMD" "$ARGS"
 elif [ ! -t 0 ]; then
-  # Pipe mode: echo '{"cmd":"...","args":{}}' | brain-client.sh
   INPUT=$(cat)
   CMD=$(echo "$INPUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('cmd',''))" 2>/dev/null)
   ARGS=$(echo "$INPUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps(d.get('args',{})))" 2>/dev/null)

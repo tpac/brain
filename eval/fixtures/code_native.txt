@@ -1,0 +1,49 @@
+═══ HOW I ACTUALLY THINK ABOUT THESE ═══
+
+WAL race condition:
+  remember() commits → recall() starts reading → read started BEFORE commit
+  → WAL snapshot isolation → node exists but invisible to reader
+  I assumed → function-level bug (traced remember, traced recall, both clean)
+  Reality → concurrency-model bug (the SPACE between them)
+  The gap teaches → bugs at boundaries live between components, not inside
+
+Tokenizer dependency:
+  _search_keywords() → tokenizer → uses EMBEDDER tokenizer
+  → embedder loading (4.2s) → tokenizer unavailable → whitespace fallback
+  → compound terms don't split → empty results
+  This is like → the WAL bug: hidden dependency crossing a boundary
+
+Encoding pipeline:
+  remember(type, title, content)
+    → INSERT nodes → COMMIT
+    → embed(title+content) → 768d vec → INSERT node_vectors → COMMIT
+    → extract_keywords() → UPDATE nodes → COMMIT
+    → return {id, enrichment_prompt}
+  4 separate commits = 4 windows for partial state
+
+Recall pipeline:
+  recall(query)
+    → embed(query) → query_vec
+    → cosine_scan(node_vectors ∪ enrichment_vectors, floor=0.3)
+    → keyword_scan(nodes.keywords, TF-IDF)
+    → merge(embed=0.9, kw=0.1) → spread_activation(edges, 1-hop)
+
+Dependency map:
+  {changed: "nodes table columns"
+   check: [brain_recall.py L262, L580, L720]
+   why: "no shared column constant — each SELECT independent"}
+
+  {changed: "embedder model or tokenizer"
+   check: [_search_keywords(), cosine thresholds, enrichment prompts]
+   why: "all three depend on embedding characteristics"}
+
+Self-correction trace format:
+  I assumed → [what I thought]
+  Reality → [what was actually true]
+  The gap teaches → [transferable principle]
+  This is like → [pattern link to similar experience]
+
+Debugging trace format:
+  HYPOTHESIS 1: [description] → traced [path] → [plausible/ruled out]
+  HYPOTHESIS 2: [description] → recognized from [previous bug] → [not the cause]
+  REAL CAUSE: [root cause at system boundary, not component level]

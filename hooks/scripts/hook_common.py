@@ -217,19 +217,18 @@ def close_brain(brain):
 
 
 # ── Daemon helpers ──
-SOCKET_PATH = f"/tmp/brain-daemon-{os.getuid()}.sock"
+DAEMON_HOST = "127.0.0.1"
+DAEMON_PORT = 47200 + (os.getuid() % 100)
 
 
 def daemon_available():
-    """Check if daemon socket exists."""
-    return os.path.exists(SOCKET_PATH) and stat_is_socket(SOCKET_PATH)
-
-
-def stat_is_socket(path):
-    """Check if path is a Unix socket."""
-    import stat
+    """Check if daemon is reachable via TCP."""
     try:
-        return stat.S_ISSOCK(os.stat(path).st_mode)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1.0)
+        sock.connect((DAEMON_HOST, DAEMON_PORT))
+        sock.close()
+        return True
     except Exception:
         return False
 
@@ -239,9 +238,9 @@ def daemon_call(cmd, args=None, timeout=10.0):
     Returns the result dict on success, empty dict on failure.
     """
     try:
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
-        sock.connect(SOCKET_PATH)
+        sock.connect((DAEMON_HOST, DAEMON_PORT))
         msg = json.dumps({"cmd": cmd, "args": args or {}}) + "\n"
         sock.sendall(msg.encode())
         data = b""
@@ -265,9 +264,9 @@ def daemon_call_raw(cmd, args=None, timeout=10.0):
     On success + debug mode: prints [BRAIN DEBUG] summary.
     """
     try:
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
-        sock.connect(SOCKET_PATH)
+        sock.connect((DAEMON_HOST, DAEMON_PORT))
         msg = json.dumps({"cmd": cmd, "args": args or {}}) + "\n"
         sock.sendall(msg.encode())
         data = b""

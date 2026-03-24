@@ -12,29 +12,28 @@
 #     echo "Fallback to direct Python"
 #   fi
 
-BRAIN_SOCKET_PATH="/tmp/brain-daemon-$(id -u).sock"
+BRAIN_DAEMON_HOST="127.0.0.1"
+BRAIN_DAEMON_PORT=$((47200 + $(id -u) % 100))
 
 # daemon_send CMD_JSON [TIMEOUT]
-# Sends a JSON command to the daemon via Python socket client.
+# Sends a JSON command to the daemon via TCP.
 # Returns 0 + prints response JSON on success, returns 1 on failure.
 daemon_send() {
   local cmd_json="$1"
   local timeout="${2:-10}"
 
-  # Quick check: socket file must exist
-  [ -S "$BRAIN_SOCKET_PATH" ] || return 1
-
   python3 -c '
 import json, socket, sys
 
-sock_path = "'"$BRAIN_SOCKET_PATH"'"
+host = "'"$BRAIN_DAEMON_HOST"'"
+port = int("'"$BRAIN_DAEMON_PORT"'")
 timeout = float("'"$timeout"'")
 cmd_json = '"'"''"$cmd_json"''"'"'
 
-sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.settimeout(timeout)
 try:
-    sock.connect(sock_path)
+    sock.connect((host, port))
     sock.sendall((cmd_json + "\n").encode())
     data = b""
     while b"\n" not in data:
@@ -59,7 +58,17 @@ finally:
   return $?
 }
 
-# daemon_available — quick check if daemon socket exists
+# daemon_available — quick TCP connect check
 daemon_available() {
-  [ -S "$BRAIN_SOCKET_PATH" ]
+  python3 -c '
+import socket, sys
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.settimeout(1.0)
+try:
+    sock.connect(("'"$BRAIN_DAEMON_HOST"'", int("'"$BRAIN_DAEMON_PORT"'")))
+    sock.close()
+    sys.exit(0)
+except Exception:
+    sys.exit(1)
+' 2>/dev/null
 }

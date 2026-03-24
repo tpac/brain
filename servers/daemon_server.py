@@ -1,7 +1,7 @@
 """
 brain — Daemon Server
 
-BrainDaemon class: loads Brain, serves commands over Unix socket.
+BrainDaemon class: loads Brain, serves commands over TCP localhost.
 Thread pool (5 workers) handles concurrent connections.
 Reads run without lock, writes serialize via _write_lock.
 """
@@ -23,18 +23,20 @@ from typing import Optional, Dict, Any
 from .daemon_config import (
     IDLE_TIMEOUT_SECONDS, AUTOSAVE_INTERVAL_SECONDS,
     SOCKET_BACKLOG, MAX_MESSAGE_SIZE, THREAD_POOL_SIZE,
+    DAEMON_HOST, DAEMON_PORT,
     _CODE_FINGERPRINT,
-    get_socket_path, get_pid_path, get_lock_path, get_status_path,
+    get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
 )
 from .daemon_dispatch import COMMAND_TABLE
 
 
 class BrainDaemon:
-    """Persistent Brain daemon that listens on a Unix socket."""
+    """Persistent Brain daemon that listens on TCP localhost."""
 
     def __init__(self, db_path: str, socket_path: Optional[str] = None):
         self.db_path = db_path
-        self.socket_path = socket_path or get_socket_path()
+        self.socket_path = socket_path or get_socket_path()  # kept for stale cleanup
+        self.daemon_addr = get_daemon_addr()
         self.pid_path = get_pid_path()
         self.brain = None
         self.server_socket = None
@@ -78,20 +80,19 @@ class BrainDaemon:
         with open(self.pid_path, 'w') as f:
             f.write(str(os.getpid()))
 
-        # Clean up stale socket
+        # Clean up stale Unix socket if it exists (migration from old protocol)
         if os.path.exists(self.socket_path):
             os.unlink(self.socket_path)
 
         # Load brain (expensive — done once)
         self._load_brain()
 
-        # Bind socket
-        self.server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        # Bind TCP socket on localhost
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.bind(self.socket_path)
+        self.server_socket.bind(self.daemon_addr)
         self.server_socket.listen(SOCKET_BACKLOG)
         self.server_socket.setblocking(False)
-        os.chmod(self.socket_path, 0o600)
 
         # Signal handlers
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -101,8 +102,8 @@ class BrainDaemon:
         atexit.register(self._cleanup)
 
         self.running = True
-        self._log("Daemon started. PID={}, socket={}, workers={}".format(
-            os.getpid(), self.socket_path, THREAD_POOL_SIZE))
+        self._log("Daemon started. PID={}, addr={}:{}, workers={}".format(
+            os.getpid(), self.daemon_addr[0], self.daemon_addr[1], THREAD_POOL_SIZE))
 
         # Start autosave thread
         autosave_thread = threading.Thread(target=self._autosave_loop, daemon=True)
@@ -359,13 +360,13 @@ class BrainDaemon:
             self._pool.shutdown(wait=False)
 
     def _cleanup(self):
-        """Remove socket, PID, and lock files."""
+        """Close server socket, remove PID and lock files."""
         try:
             if self.server_socket:
                 self.server_socket.close()
         except Exception:
             pass
-        for path in [self.socket_path, self.pid_path, get_status_path()]:
+        for path in [self.pid_path, get_status_path()]:
             try:
                 if os.path.exists(path):
                     os.unlink(path)

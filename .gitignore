@@ -58,3 +58,6 @@ archives/
 # Design docs and session handoffs (not part of plugin source)
 docs/
 eval/results/
+eval/fixtures/brain_eval_copy.db*
+eval/fixtures/eval_daemon.log
+eval/results/

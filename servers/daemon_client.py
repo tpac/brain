@@ -15,23 +15,20 @@ from typing import Any, Dict, Optional
 
 from .daemon_config import (
     _code_fingerprint, _CODE_FINGERPRINT,
-    get_socket_path, get_pid_path, get_lock_path, get_status_path,
+    get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
 )
 
 
 def send_command(cmd: str, args: Optional[Dict[str, Any]] = None,
                  timeout: float = 10.0) -> Dict[str, Any]:
-    """Send a command to the running daemon. Returns response dict."""
-    socket_path = get_socket_path()
+    """Send a command to the running daemon via TCP. Returns response dict."""
+    addr = get_daemon_addr()
 
-    if not os.path.exists(socket_path):
-        return {"ok": False, "error": "Daemon not running"}
-
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(timeout)
 
     try:
-        sock.connect(socket_path)
+        sock.connect(addr)
         msg = json.dumps({"cmd": cmd, "args": args or {}}) + "\n"
         sock.sendall(msg.encode('utf-8'))
 
@@ -103,7 +100,7 @@ def ensure_daemon(db_path: str) -> bool:
         except (OSError, ValueError):
             sys.stderr.write("[brain-daemon] Removing stale lock (PID {} not alive)\n".format(
                 pid if 'pid' in dir() else '?'))
-            for p in [lock_path, pid_path, get_socket_path()]:
+            for p in [lock_path, pid_path]:
                 try:
                     if os.path.exists(p):
                         os.unlink(p)
@@ -182,8 +179,8 @@ def _kill_daemon():
         time.sleep(0.5)
     except Exception as e:
         sys.stderr.write("[brain-daemon] Kill failed: {}\n".format(e))
-    # Clean up files (PID, socket, AND lock)
-    for path in [pid_path, get_socket_path(), get_lock_path()]:
+    # Clean up files (PID and lock)
+    for path in [pid_path, get_lock_path()]:
         try:
             if os.path.exists(path):
                 os.unlink(path)

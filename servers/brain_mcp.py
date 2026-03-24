@@ -3,7 +3,7 @@
 Brain MCP Server — Thin stdio proxy to brain daemon.
 
 Zero-dependency MCP server (JSON-RPC 2.0 over stdio).
-Forwards tool calls to the brain daemon via Unix socket.
+Forwards tool calls to the brain daemon via TCP localhost.
 Embedder loads once in the daemon; this process is just a relay.
 
 Error policy: NEVER swallow errors silently. If something fails,
@@ -17,18 +17,16 @@ import socket
 
 # ── Daemon communication ──
 
-SOCKET_PATH = "/tmp/brain-daemon-{}.sock".format(os.getuid())
+DAEMON_HOST = "127.0.0.1"
+DAEMON_PORT = 47200 + (os.getuid() % 100)
 
 
 def daemon_send(cmd, args=None, timeout=30.0):
-    """Send command to brain daemon, return result dict."""
-    if not os.path.exists(SOCKET_PATH):
-        return {"ok": False, "error": "Daemon not running (no socket at {})".format(SOCKET_PATH)}
-
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    """Send command to brain daemon via TCP, return result dict."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(timeout)
     try:
-        sock.connect(SOCKET_PATH)
+        sock.connect((DAEMON_HOST, DAEMON_PORT))
         msg = json.dumps({"cmd": cmd, "args": args or {}}) + "\n"
         sock.sendall(msg.encode("utf-8"))
         data = b""
@@ -307,12 +305,21 @@ def send(msg):
 
 
 def main():
-    # Ensure daemon is running before accepting connections
+    # Ensure daemon is running — retry a few times since boot hook may be starting it concurrently
     sys.stderr.write("[brain-mcp] Starting MCP server...\n")
-    if not ensure_daemon_running():
-        sys.stderr.write("[brain-mcp] FATAL: Cannot start brain daemon. Exiting.\n")
-        sys.exit(1)
-    sys.stderr.write("[brain-mcp] Daemon connected. Serving {} tools.\n".format(len(TOOLS)))
+    import time
+    daemon_ready = False
+    for attempt in range(4):
+        if ensure_daemon_running():
+            daemon_ready = True
+            break
+        if attempt < 3:
+            sys.stderr.write("[brain-mcp] Daemon not ready, retry {}/3 in 2s...\n".format(attempt + 1))
+            time.sleep(2)
+    if daemon_ready:
+        sys.stderr.write("[brain-mcp] Daemon connected. Serving {} tools.\n".format(len(TOOLS)))
+    else:
+        sys.stderr.write("[brain-mcp] WARNING: Daemon not available at startup. Will retry on each tool call.\n")
 
     # Main loop — read JSON-RPC from stdin
     for line in sys.stdin:

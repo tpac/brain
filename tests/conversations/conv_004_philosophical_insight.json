@@ -49,6 +49,11 @@
     {"from_contains": "coupled", "to_contains": "snapshot", "relation": "produced"},
     {"from_contains": "V6 enrichment", "to_contains": "coupled", "relation": "exemplifies"}
   ],
+  "must_preserve_quotes": [
+    "Tom: 'Fix the enrichments by snapshotting — encode once, freeze the DB'",
+    "Claude: 'You're describing a fundamental coupling that we've been treating as separable'",
+    "Claude: 'The REAL question is: if Claude encodes a decision in session 5, can a different Claude find it in session 12 when they need it?'"
+  ],
   "aha_moments": [
     {
       "turn": 2,

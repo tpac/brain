@@ -23,6 +23,8 @@ AUTOSAVE_INTERVAL_SECONDS = 60  # Save every 60 seconds if dirty
 SOCKET_BACKLOG = 5
 MAX_MESSAGE_SIZE = 1024 * 1024  # 1MB max message
 THREAD_POOL_SIZE = 5  # Max concurrent connections
+DAEMON_HOST = "127.0.0.1"
+DAEMON_PORT = 47200 + (os.getuid() % 100)  # Per-user port to avoid collisions
 
 
 # ─── Code Fingerprinting ───
@@ -47,8 +49,13 @@ _CODE_FINGERPRINT = _code_fingerprint()
 
 # ─── Path Helpers ───
 
+def get_daemon_addr():
+    """Get (host, port) for TCP daemon connection."""
+    return (DAEMON_HOST, DAEMON_PORT)
+
+
 def get_socket_path() -> str:
-    """Get the daemon socket path, unique per user."""
+    """DEPRECATED: Use get_daemon_addr() for TCP. Kept for cleanup of stale sockets."""
     return os.path.join("/tmp", "brain-daemon-{}.sock".format(os.getuid()))
 
 
