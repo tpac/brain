@@ -197,13 +197,34 @@ def get_hook_input():
         return {}
 
 
+def daemon_unavailable_error(hook_name=None):
+    """Return an error message when daemon is not available.
+
+    Use this instead of get_brain() fallback. The daemon should always be
+    running after boot. If it's not, surface the error — don't silently
+    load a separate model copy.
+    """
+    name = hook_name or _get_hook_name()
+    msg = "[BRAIN ERROR] Daemon unavailable — %s cannot access brain. " \
+          "Memories not lost. Restart session to reconnect." % name
+    print("[brain] %s: daemon unavailable" % name, file=sys.stderr)
+    return msg
+
+
 def get_brain():
-    """Import and instantiate Brain. Returns None on failure (logged)."""
+    """DEPRECATED: Import and instantiate Brain directly.
+
+    Loads a separate embedder model copy (~300ms). Only use in boot fallback.
+    Normal hooks should use daemon_call() and daemon_unavailable_error().
+    """
+    hook = _get_hook_name()
+    print("[brain] WARNING: %s using direct Brain() — daemon unavailable. "
+          "This loads a separate model copy." % hook, file=sys.stderr)
     try:
         from servers.brain import Brain
         return Brain(db_path)
     except Exception as e:
-        log_hook_error(_get_hook_name(), e, "Failed to import/init Brain")
+        log_hook_error(hook, e, "Failed to import/init Brain")
         return None
 
 

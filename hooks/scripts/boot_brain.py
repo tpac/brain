@@ -1,66 +1,96 @@
-"""SessionStart hook — boots brain, prints context + consciousness signals.
-Thin wrapper: resolves env, calls Brain.format_boot_context(), prints result.
-All formatting logic lives in BrainSurfaceMixin.format_boot_context().
+"""SessionStart hook — boots brain context via daemon.
+
+Uses daemon for all brain access (single model, single process).
+Falls back to direct Brain() ONLY if daemon is completely unavailable.
 """
-import sys, os
+import sys, os, json
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import db_path
+from hook_common import db_path, daemon_available, daemon_call, daemon_call_raw
 
-server_dir = os.environ.get("BRAIN_SERVER_DIR", "")
 db_dir = os.environ.get("BRAIN_DB_DIR", "")
 
-if server_dir:
-    parent = os.path.dirname(server_dir)
-    if parent not in sys.path:
-        sys.path.insert(0, parent)
 
-try:
-    from servers.brain import Brain
-except ImportError as e:
-    print("brain: Failed to import brain module: " + str(e), file=sys.stderr)
-    sys.exit(1)
+def _boot_via_daemon():
+    """Boot context through daemon — the normal path."""
+    # Reset session activity
+    daemon_call("reset_session", {})
 
-try:
-    brain = Brain(db_path)
-except Exception as e:
-    print("brain: Failed to initialize: " + str(e), file=sys.stderr)
-    sys.exit(1)
+    # Get debug mode
+    debug = daemon_call("get_config", {"key": "debug_enabled", "default": "0"})
+    if isinstance(debug, str) and debug == "1":
+        os.environ["BRAIN_DEBUG"] = "1"
+    elif isinstance(debug, dict) and debug.get("value") == "1":
+        os.environ["BRAIN_DEBUG"] = "1"
 
-brain.reset_session_activity()
+    # Resolve user/project
+    user = os.environ.get("BRAIN_USER", "User")
+    project = os.environ.get("BRAIN_PROJECT", "default")
+    if user == "User":
+        stored = daemon_call("get_config", {"key": "default_user", "default": "User"})
+        if isinstance(stored, str) and stored != "User":
+            user = stored
+        elif isinstance(stored, dict) and stored.get("value", "User") != "User":
+            user = stored["value"]
+    if project == "default":
+        stored = daemon_call("get_config", {"key": "default_project", "default": "default"})
+        if isinstance(stored, str) and stored != "default":
+            project = stored
+        elif isinstance(stored, dict) and stored.get("value", "default") != "default":
+            project = stored["value"]
 
-# Validate config (stderr for critical warnings)
-config_warnings = brain.validate_config()
-for w in config_warnings:
-    level = w.get("level", "warning").upper()
-    msg = w.get("message", "")
-    if level == "CRITICAL":
-        print("CRITICAL: " + msg, file=sys.stderr)
-    else:
-        print("WARNING: " + msg, file=sys.stderr)
+    # Get formatted boot context
+    result = daemon_call("context_boot", {"user": user, "project": project})
+    if isinstance(result, dict):
+        text = result.get("for_claude", "") or result.get("text", "")
+        if text:
+            print(text)
+            return True
+    elif isinstance(result, str) and result:
+        print(result)
+        return True
 
-# Resolve user/project from env or brain config
-user = os.environ.get("BRAIN_USER", "User")
-project = os.environ.get("BRAIN_PROJECT", "default")
-if user == "User":
-    stored_user = brain.get_config("default_user", "User")
-    if stored_user and stored_user != "User":
-        user = stored_user
-if project == "default":
-    stored_project = brain.get_config("default_project", "default")
-    if stored_project and stored_project != "default":
-        project = stored_project
+    return False
 
-# Export debug mode for child hooks
-debug_enabled = brain.get_config("debug_enabled", "0") == "1"
-if debug_enabled:
-    os.environ["BRAIN_DEBUG"] = "1"
 
-# Single call — all formatting lives in Brain
-rendered = brain.format_boot_context(user=user, project=project, db_dir=db_dir)
-if isinstance(rendered, dict):
-    print(rendered.get("for_claude", ""))
+def _boot_via_direct():
+    """Fallback: direct Brain() — only if daemon is completely dead."""
+    server_dir = os.environ.get("BRAIN_SERVER_DIR", "")
+    if server_dir:
+        parent = os.path.dirname(server_dir)
+        if parent not in sys.path:
+            sys.path.insert(0, parent)
+
+    try:
+        from servers.brain import Brain
+    except ImportError as e:
+        print("brain: Failed to import: " + str(e), file=sys.stderr)
+        return
+
+    try:
+        brain = Brain(db_path)
+    except Exception as e:
+        print("brain: Failed to init: " + str(e), file=sys.stderr)
+        return
+
+    try:
+        brain.reset_session_activity()
+        user = os.environ.get("BRAIN_USER", "User")
+        project = os.environ.get("BRAIN_PROJECT", "default")
+        rendered = brain.format_boot_context(user=user, project=project, db_dir=db_dir)
+        if isinstance(rendered, dict):
+            print(rendered.get("for_claude", ""))
+        else:
+            print(rendered)
+    finally:
+        brain.close()
+
+
+# ── Main ──
+if daemon_available():
+    if not _boot_via_daemon():
+        print("[brain-boot] Daemon returned empty context, falling back to direct", file=sys.stderr)
+        _boot_via_direct()
 else:
-    print(rendered)
-
-brain.close()
+    print("[brain-boot] Daemon not available, using direct Brain()", file=sys.stderr)
+    _boot_via_direct()

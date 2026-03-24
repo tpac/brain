@@ -78,6 +78,11 @@ def load_model(config: Optional[Dict[str, Any]] = None):
 
     if config is None:
         config = {}
+
+    # Singleton guard: don't reload if model already loaded with same config
+    if _model is not None and config == _config:
+        return
+
     _config = config
 
     model_name = config.get('model_name', 'snowflake/snowflake-arctic-embed-m')

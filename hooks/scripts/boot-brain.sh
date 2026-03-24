@@ -34,10 +34,10 @@ if [ -z "$BRAIN_DB_DIR" ]; then
   exit 0
 fi
 
-# ── Start persistent daemon for fast subsequent hooks ──
+# ── Start daemon FIRST (foreground) — single source of truth ──
 # The daemon keeps Brain + embedder loaded in memory.
-# Boot still runs direct Python (needs full output formatting),
-# but all subsequent hooks (recall, track, edit-suggest) use the daemon.
+# Boot waits for daemon, then uses it for context formatting.
+# No direct Brain() instantiation — daemon owns the model.
 python3 -c "
 import sys, os
 parent = os.path.dirname(os.environ.get('BRAIN_SERVER_DIR', ''))
@@ -49,9 +49,9 @@ try:
     if ready:
         sys.stderr.write('[brain-boot] Daemon ready\n')
     else:
-        sys.stderr.write('[brain-boot] WARNING: Daemon failed to start — hooks will fall back to direct Python (slow)\n')
+        sys.stderr.write('[brain-boot] WARNING: Daemon failed to start\n')
 except Exception as e:
-    sys.stderr.write('[brain-boot] WARNING: Daemon startup error: {} — hooks will fall back to direct Python (slow)\n'.format(e))
-" &
+    sys.stderr.write('[brain-boot] WARNING: Daemon startup error: {}\n'.format(e))
+"
 
 exec python3 "$(dirname "$0")/boot_brain.py"

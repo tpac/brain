@@ -6,7 +6,7 @@ Thin client: sends hook_post_response_track to daemon, falls back to direct Pyth
 import sys, os, json, time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import get_hook_input, daemon_available, daemon_call_raw, get_brain, close_brain, brain_debug, is_debug_mode
+from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, is_debug_mode
 
 hook_input = get_hook_input()
 
@@ -41,23 +41,6 @@ try:
         else:
             brain_debug("track: daemon returned ok=false")
     else:
-        # Direct fallback
-        parent = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        if parent not in sys.path:
-            sys.path.insert(0, parent)
-        from servers.daemon_hooks import hook_post_response_track
-        brain = get_brain()
-        if brain:
-            try:
-                result = hook_post_response_track(brain, hook_input, [])
-                latency = (time.time() - t0) * 1000
-                output = result.get("output", "")
-                brain_debug("track (direct): completed in %dms" % latency)
-                if output:
-                    print(output)
-            except Exception:
-                pass
-            finally:
-                close_brain(brain)
+        daemon_unavailable_error("post_response_track")
 except Exception:
     pass

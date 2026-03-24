@@ -5,7 +5,7 @@ Output: JSON {"decision":"approve","reason":"..."}.
 import sys, os, json, time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import get_hook_input, daemon_available, daemon_call_raw, get_brain, close_brain, brain_debug, is_debug_mode
+from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, is_debug_mode
 
 APPROVE = json.dumps({"decision": "approve"})
 
@@ -48,26 +48,6 @@ try:
         else:
             print(APPROVE)
     else:
-        # Direct fallback
-        parent = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        if parent not in sys.path:
-            sys.path.insert(0, parent)
-        from servers.daemon_hooks import hook_pre_edit
-        brain = get_brain()
-        if not brain:
-            print(APPROVE)
-            sys.exit(0)
-        try:
-            result = hook_pre_edit(brain, {"filename": filename, "tool_name": tool_name}, [])
-            latency = (time.time() - t0) * 1000
-            if "json" in result:
-                brain_debug("suggest (direct): %s → %d chars, %dms" % (filename, len(result["json"].get("reason", "")), latency))
-                print(json.dumps(result["json"]))
-            else:
-                print(APPROVE)
-        except Exception:
-            print(APPROVE)
-        finally:
-            close_brain(brain)
+        print(json.dumps({"decision": "approve", "reason": daemon_unavailable_error("pre_edit_suggest")}))
 except Exception:
     print(APPROVE)

@@ -5,7 +5,7 @@ Thin client: sends hook_recall to daemon, falls back to direct Python.
 import sys, os, json, time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import get_hook_input, daemon_available, daemon_call_raw, get_brain, close_brain, brain_debug, is_debug_mode
+from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, is_debug_mode
 
 APPROVE = json.dumps({"decision": "approve"})
 
@@ -54,28 +54,8 @@ try:
         else:
             print(APPROVE)
     else:
-        # Direct Python fallback — import and run hook logic directly
-        parent = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        if parent not in sys.path:
-            sys.path.insert(0, parent)
-        from servers.daemon_hooks import hook_recall
-        brain = get_brain()
-        if not brain:
-            print(APPROVE)
-            sys.exit(0)
-        try:
-            result = hook_recall(brain, hook_input, [])
-            latency = (time.time() - t0) * 1000
-            _debug_recall_result(result, latency)
-            if "json" in result:
-                print(json.dumps(result["json"]))
-            elif "output" in result:
-                print(result["output"])
-            else:
-                print(APPROVE)
-        except Exception:
-            print(APPROVE)
-        finally:
-            close_brain(brain)
+        # Daemon unavailable — surface error, don't load separate model
+        err = daemon_unavailable_error("recall")
+        print(json.dumps({"additionalContext": err}))
 except Exception:
     print(APPROVE)

@@ -6,7 +6,7 @@ Output: JSON {"decision":"approve"|"block","reason":"..."}.
 import sys, os, json, re
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import get_hook_input, daemon_available, daemon_call_raw, get_brain, close_brain, brain_debug
+from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug
 
 APPROVE = json.dumps({"decision": "approve"})
 
@@ -60,31 +60,7 @@ try:
                 "reason": "\u26a0\ufe0f Destructive command detected. Safety check unavailable — proceed carefully.",
             }))
     else:
-        # Direct fallback
-        parent = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        if parent not in sys.path:
-            sys.path.insert(0, parent)
-        from servers.daemon_hooks import hook_pre_bash_safety
-        brain = get_brain()
-        if not brain:
-            print(json.dumps({
-                "decision": "approve",
-                "reason": "\u26a0\ufe0f Destructive command detected. Brain unavailable — proceed carefully.",
-            }))
-            sys.exit(0)
-        try:
-            result = hook_pre_bash_safety(brain, {"command": command}, [])
-            if "json" in result:
-                print(json.dumps(result["json"]))
-            else:
-                print(APPROVE)
-        except Exception:
-            print(json.dumps({
-                "decision": "approve",
-                "reason": "\u26a0\ufe0f Destructive command detected. Safety check failed — proceed carefully.",
-            }))
-        finally:
-            close_brain(brain)
+        print(json.dumps({"decision": "approve", "reason": daemon_unavailable_error("pre_bash_safety")}))
 except Exception:
     print(json.dumps({
         "decision": "approve",
