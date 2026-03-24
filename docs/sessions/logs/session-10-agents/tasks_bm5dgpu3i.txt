@@ -1,0 +1,81 @@
+
+  Encode Eval v2
+  Model: claude-sonnet-4-20250514
+  Variant: Real brain memories + questions (no checklist, no SKILL.md)
+  Segments: 1
+  System prompt: 5293 chars
+
+  Running: conv_007 (engineering_debug_long)... ✅ 3 nodes, 2 edges, ExpMatch=20%, Aha=100%, Types=3
+
+================================================================================
+  BRAIN INSPECTION — What was encoded
+================================================================================
+
+  Nodes: 3 | Connections: 2 | Enrichments: 3 | Eval calls: 0
+
+  ── Node 1 ──
+  Type: lesson
+  Title: Bugs at system boundaries don't live in any single function
+  Locked: True
+  Keywords: debugging system boundaries concurrency composition threading database isolation
+    When debugging a symptom that manifests across system boundaries (database write in one thread, read in another), the bug often doesn't live in any individual function. All components work correctly in isolation but fail in composition.
+    
+    Example: remember() returns success, recall() returns empty results. Traced remember() → clean. Traced recall() → clean. Real bug was WAL snapshot isolation: the recall thread's transaction predated the remember thread's commit, so the reader saw a stale snapshot.
+    
+    The pattern: stop looking at the components and look at how they interact. The bug is in the arrows of the architecture diagram, not the boxes. With concurrent systems, trace the FLOW through time, not just the code paths.
+    
+    Architecture bugs require holding the entire flow in your head simultaneously. No amount of reading individual functions will find them because they emerge from composition, not implementation.
+
+  ── Node 2 ──
+  Type: mechanism
+  Title: SQLite WAL snapshot isolation creates read-after-write races in threaded daemon
+  Locked: True
+  Keywords: SQLite WAL snapshot isolation threading race conditions daemon concurrency
+    Brain daemon uses SQLite with WAL mode + thread pool (5 workers). WAL provides snapshot isolation: readers see database state from when their transaction began, not latest commits.
+    
+    Race condition:
+    1. Thread A starts read transaction (recall)  
+    2. Thread B commits write (remember)
+    3. Thread A executes query → sees pre-commit snapshot
+    4. Result: node exists in DB but invisible to reader
+    
+    Affects ALL write→read pairs: remember/recall, connect/spread_activation, enrich/_enrich_scan. With 5 concurrent threads, probability compounds.
+    
+    ... (919 chars total)
+
+  ── Node 3 ──
+  Type: pattern
+  Title: Debugging methodology: trace data flow across system boundaries, not just code paths
+  Locked: False
+  Keywords: debugging methodology concurrency boundaries data flow tracing system architecture
+    When debugging intermittent failures in distributed or concurrent systems, the standard approach of reading individual functions often fails. The bug may not exist in any single component but in their interaction.
+    
+    Effective approach demonstrated in brain daemon WAL race:
+    1. Map complete data flow: remember() → SQLite commit → recall() → vector scan
+    2. Identify boundary crossings: thread boundaries, transaction boundaries, process boundaries  
+    3. For each boundary, ask: what state could be inconsistent across this boundary?
+    4. Trace timing: not just "A calls B" but "A starts transaction, B commits, A reads"
+    
+    Key insight: Hold the entire flow in your head simultaneously. Draw the arrows between components, not just the components themselves. Bugs at boundaries emerge from composition, not implementation.
+    
+    ... (977 chars total)
+
+  ── Connection 1 ──
+  b4a23e4fb6c7514b --example_of--> d8349af862436902 (w=0.9)
+
+  ── Connection 2 ──
+  cef433d7ba437026 --enables--> d8349af862436902 (w=0.8)
+
+================================================================================
+
+================================================================================
+  SUMMARY: Real brain memories + questions (no checklist, no SKILL.md)
+================================================================================
+
+  Segment                        | Nodes | Edges | Types | AvgLen |  ExpM |  Aha | Quote | Unc
+  -----------------------------------------------------------------------------------------------
+  conv_007                       |     3 |     2 |     3 |    939 |   20% | 100% |     2 |   0
+  -----------------------------------------------------------------------------------------------
+  AVERAGE                        |   3.0 |   2.0 |   3.0 |    939 |   20% | 100% |   2.0 | 0.0
+
+  💾 Saved to /Users/tpac/brain/eval/results/encode_v2_memories_20260323_213619.json

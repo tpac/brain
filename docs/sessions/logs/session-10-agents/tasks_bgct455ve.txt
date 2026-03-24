@@ -1,0 +1,1046 @@
+/Users/tpac/Library/Python/3.9/lib/python/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+======================================================================
+FULL BASELINE BENCHMARK — 214 Golden Dataset v2 Cases
+DB: /tmp/brain_full_baseline.db
+Golden: /Users/tpac/brain/tests/golden_dataset_v2.json
+Model: Arctic v1.5 from /Users/tpac/brain/model-package/brain_embedding/model
+======================================================================
+
+Loaded 214 test cases
+
+Loading embedder...
+  Embedder loaded in 1843ms
+
+Loading DB data...
+  Loaded 837 primary embeddings
+  Loaded 2779 enrichment vectors across 701 nodes
+
+Running 214 cases...
+  50/214 done...
+  100/214 done...
+  150/214 done...
+  200/214 done...
+
+All 214 cases completed in 52.4s (245ms avg)
+
+JSON saved: /Users/tpac/brain/tests/results/full_baseline_214.json
+Summary saved: /Users/tpac/brain/tests/results/full_baseline_214_summary.txt
+
+==============================================================================
+FULL BASELINE BENCHMARK — 214 Golden Dataset v2
+Timestamp: 2026-03-23T13:14:40.441037
+DB: /tmp/brain_full_baseline.db (837 primary, 2779 enrichment vectors)
+==============================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+TABLE 1: AGGREGATE METRICS
+──────────────────────────────────────────────────────────────────────────────
+Metric                    Positive (n=160)          Negative (n=54)           All (n=214)
+------------------------------------------------------------------------------
+Pass count                89                        0                         89
+Pass rate                 0.5563                    0.0000                    0.4159
+NDCG@10 mean              0.3784                    N/A                      
+NDCG@10 std               0.4182                    N/A                      
+MRR mean                  0.3880                    N/A                      
+MRR std                   0.4406                    N/A                      
+Hit rate@10 mean          0.5437                    N/A                      
+Avg top score             N/A                       0.7981                   
+Max top score             N/A                       0.9687                   
+Min top score             N/A                       0.6385                   
+
+Timing: 214 cases in 52.4s (244.8ms avg)
+
+──────────────────────────────────────────────────────────────────────────────
+TABLE 2: PER-CATEGORY BREAKDOWN
+──────────────────────────────────────────────────────────────────────────────
+Category                      Cnt  Pass   Rate   NDCG    MRR  AvgScr  Worst Case
+------------------------------------------------------------------------------
+ambiguity                       8     3   0.38  0.101  0.098  0.9223  FAIL amb_encoding
+bug_lesson                      4     3   0.75  0.658  0.625  0.8796  FAIL bug_confidence_column
+confidence_weighted             8     7   0.88  0.690  0.674  0.9066  FAIL conf_high_conf_first_general
+constraint                      4     3   0.75  0.750  0.750  0.9269  FAIL const_temporal_awareness
+conversation_ambiguous          5     0   0.00    N/A    N/A  0.8830  FAIL conv_ambig_model
+conversation_negative          49     0   0.00    N/A    N/A  0.7895  FAIL life_thanks
+conversation_positive          12    11   0.92  0.875  0.861  0.9018  FAIL cross_random_to_eng_1
+correction_chain               15    11   0.73  0.514  0.530  0.8772  FAIL corr_recall_multiple_fixes
+divergence                      3     2   0.67  0.667  0.667  0.8417  FAIL div_hook_decision_maker
+edge_case                       5     3   0.60  0.044  0.033  0.7647  FAIL edge_code_snippet
+graph_neighbor                  4     4   1.00  0.666  0.675  0.8627  PASS graph_operator_to_additional
+intent_decision                 1     1   1.00  0.631  0.500  0.9617  PASS intent_dec_monolith
+intent_howto                    4     0   0.00  0.000  0.000  0.8934  FAIL intent_how_handle_hook_fail
+keyword                         2     1   0.50  0.500  0.500  0.8789  FAIL kw_fil_ap5c
+low_confidence                  4     4   1.00  0.733  0.646  0.8947  PASS lowconf_import_bug_pattern
+mechanism                      10     4   0.40  0.277  0.240  0.8842  FAIL mech_when_to_encode
+multi_hop                      10     8   0.80  0.315  0.368  0.8554  FAIL mhop_bridging_vs_embeddings
+natural_question                7     0   0.00  0.000  0.000  0.9135  FAIL natq_embeddings_deal
+negation                        8     0   0.00  0.000  0.000  0.8810  FAIL neg_failed_experiments
+operator_intent                10     3   0.30  0.187  0.250  0.8669  FAIL opi_partnership_nature
+ripple_effect                   8     3   0.38  0.220  0.266  0.8856  FAIL rip_encoding_quality_validation
+semantic                       16     8   0.50  0.309  0.323  0.8711  FAIL sem_learning_from_screw_ups
+temporal_reasoning             12     5   0.42  0.193  0.248  0.8736  FAIL temp_session_nine_work
+vocabulary                      5     5   1.00  0.824  0.867  0.9529  PASS vocab_table_driven_lifecycle
+
+──────────────────────────────────────────────────────────────────────────────
+TABLE 3: CONTEXT BLEED ANALYSIS (Negative Cases)
+──────────────────────────────────────────────────────────────────────────────
+ Score  P/F  Query                                    Top Result Title
+------------------------------------------------------------------------------
+0.9687 FAIL  thanks, you've been really helpful       [vocab] Add (auto-detected)
+0.9390 FAIL  model                                    [vocab] Expand (auto-detected)
+0.9349 FAIL  help me think through this               [vocab] Add (auto-detected)
+0.9173 FAIL  ugh this is so frustrating               Rule: Solution fixation — when appr
+0.9129 FAIL  let's brainstorm                         [vocab] Add (auto-detected)
+0.9126 FAIL  haha the brain just told me something we Monolith split: recovered details I
+0.8967 FAIL  memory                                   [fn] remember() — v4 personal flag:
+0.8886 FAIL  am I making progress                     [vocab] Expand (auto-detected)
+0.8847 FAIL  crash                                    Bug found: brain_surface.py missing
+0.8695 FAIL  I'm feeling overwhelmed                  Bug found: brain_surface.py missing
+0.8666 FAIL  how do I build self confidence           Tunable confidence parameters (7 kn
+0.8498 FAIL  birthday                                 [vocab] Dimension (auto-detected)
+0.8493 FAIL  my car was part of a recall              Noise test cases reveal more than p
+0.8447 FAIL  bridge                                   TEST NODE DELETE ME
+0.8442 FAIL  puedes ayudarme con algo en español      [vocab] Add (auto-detected)
+0.8338 FAIL  remind me to call the plumber            TEST NODE DELETE ME
+0.8252 FAIL  I didn't sleep well last night           Bug found: brain_surface.py missing
+0.8224 FAIL  what should I do this weekend            [vocab] Results (auto-detected)
+0.8212 FAIL  what do I have on my schedule tomorrow   Capability node — brain knows what 
+0.8199 FAIL  😊 👋 how are you today                    TEST NODE DELETE ME
+0.8074 FAIL  what is the meaning of life              Three extraction layers: vocabulary
+0.8015 FAIL  I need to buy groceries                  TEST NODE DELETE ME
+0.7986 FAIL  remind me about mom's birthday           Encoding = everything brain does to
+0.7943 FAIL  where did I park my car                  [vocab] Location Service (auto-dete
+0.7942 FAIL  did you see what happened in the news to [vocab] Results (auto-detected)
+0.7935 FAIL  my friend wants to become a model, any a [fn] embedder.load_model(config) — 
+0.7877 FAIL  random thought — do you think aliens exi Thought nodes: brain self-observati
+0.7877 FAIL  my doctor found a swollen lymph node     Brain is associative memory, not a 
+0.7817 FAIL  how to do a diamond embedding in a ring  Precision eval: better type-specifi
+0.7795 FAIL  I need to plan a trip to Japan           [vocab] Location Service (auto-dete
+0.7751 FAIL  what time is the dentist appointment     Capability node — brain knows what 
+0.7748 FAIL  I need more coffee                       Refactor: centralize all DB read/wr
+0.7741 FAIL  the Keystone pipeline controversy        [vocab] TestFullPipeline (auto-dete
+0.7695 FAIL  my daughter just started walking         TEST NODE DELETE ME
+0.7658 FAIL  explain the Pythagorean theorem          [vocab] Dimension (auto-detected)
+0.7645 FAIL  can you help me draft an email to my lan Dream connection: "Email/Notificati
+0.7605 FAIL  my cat is sick                           TEST NODE DELETE ME
+0.7582 FAIL  best restaurants near me                 [vocab] Location Service (auto-dete
+0.7576 FAIL  how do you play bridge                   Three-tier formation speed: immedia
+0.7558 FAIL  recommend a good sci-fi movie            Node quality cliff: pre-Mar-19 node
+0.7522 FAIL  give me a recipe for chocolate cake      Encoding = everything brain does to
+0.7465 FAIL  what kind of hook should I use for bass  🔮 HYPOTHESIS — 'Root cause: hooks g
+0.7433 FAIL  weather forecast for tomorrow            [vocab] Location Service (auto-dete
+0.7390 FAIL  anyway, what should I get my wife for ou [vocab] Gemma (auto-detected)
+0.7364 FAIL  tell me about daemons in Greek mythology Persistent daemon: Unix socket serv
+0.7357 FAIL  how much weight should I lift as a begin My growth trajectory: from compress
+0.7231 FAIL  who won the last World Cup               Boot context: show one win one loss
+0.7223 FAIL  what is a good gift for a 60th birthday  Correction: Tom had to prompt me to
+0.7135 FAIL  how do you say hello in Japanese         Vocabulary pipeline gap: extraction
+0.6959 FAIL  how do I make homemade pasta             Vocabulary pipeline gap: extraction
+0.6942 FAIL  who wrote Bohemian Rhapsody              Node quality cliff: pre-Mar-19 node
+0.6933 FAIL  what is the capital of France            [vocab] Location Service (auto-dete
+0.6821 FAIL  what are good exercises for lower back p Brain v4: Self-reflection node type
+0.6385 FAIL  when did World War 2 end                 Neuroscience of time perception: di
+
+──────────────────────────────────────────────────────────────────────────────
+TABLE 4: POSITIVE CASE FAILURES
+──────────────────────────────────────────────────────────────────────────────
+
+  Case: sem_agreeability
+  Query: claude agrees too easily and makes up what the other person thinks
+  Category: semantic
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [dd641e7f6d4b] NOT IN TOP 10 — Agreeability instinct doesn't just fold — it halluccinates the other person's position to fold TO
+  Actual top 3:
+    score=0.8723 won_by=enrichment:question — Reinforcement bias: Claude mentions recalled content even wh
+    score=0.8427 won_by=enrichment:question — Reinforcement bias in recall: Claude mentions recalled conte
+    score=0.8413 won_by=enrichment:question — Brain-Claude conflict protocol: STOP, surface to operator, W
+
+  Case: mech_operator_rendering
+  Query: how does brain output reach the terminal
+  Category: mechanism
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [b363b27e7bf2] NOT IN TOP 10 — Operator channel rendering pipeline: who calls what (2026-03-22)
+    [8bac897879ae] NOT IN TOP 10 — Operator Channel: Claude-as-relay architecture (2026-03-22)
+  Actual top 3:
+    score=0.8497 won_by=enrichment:question — Brain v4: Six communication channels — Brain→Host uses dimen
+    score=0.8456 won_by=enrichment:question — scan_host_environment() scans VM/OS layer, not LLM layer — n
+    score=0.8436 won_by=enrichment:question — [fn] log_communication() + get_communication_stats() — Brain
+
+  Case: mech_mcp_server
+  Query: how does claude talk to the brain daemon
+  Category: mechanism
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [eba208bf0048] NOT IN TOP 10 — Brain MCP Server: zero-dep stdio proxy to daemon, Claude's native brain interface
+  Actual top 3:
+    score=0.8931 won_by=enrichment:question — Brain is a communicating entity with voice, channels, and id
+    score=0.8931 won_by=enrichment:question — Brain is a communicating entity, not infrastructure — attrib
+    score=0.8855 won_by=enrichment:question — Brain is a communicating entity, not infrastructure — attrib
+
+  Case: mech_hook_loop
+  Query: what hooks fire and in what order
+  Category: mechanism
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [73c0123bb33c] NOT IN TOP 10 — Brain feedback loop: 13 hooks form a closed perception-action-reflection cycle
+  Actual top 3:
+    score=0.8282 won_by=enrichment:question — HOOKS-ARCHITECTURE.md is the authoritative hook reference - 
+    score=0.8205 won_by=enrichment:question — ⚡ TENSION — HOOKS-ARCHITECTURE.md is the authoritati vs Futu
+    score=0.8188 won_by=enrichment:question — [concept] Hook Lifecycle — boot → pre-response → pre-edit → 
+
+  Case: mech_consciousness
+  Query: what are consciousness signals and how do they work
+  Category: mechanism
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [fbfe96943349] NOT IN TOP 10 — Consciousness signals: 12+ types that surface brain state to Claude at boot
+  Actual top 3:
+    score=0.9193 won_by=enrichment:anchor — Should brain_claude_conflict become a formal consciousness s
+    score=0.8980 won_by=enrichment:question — Consciousness layer: full scan at boot (25+ signals) vs ligh
+    score=0.8943 won_by=enrichment:anchor — [concept] Full consciousness signal set — 14+ types in get_c
+
+  Case: bug_confidence_column
+  Query: remember insert missing column
+  Category: bug_lesson
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [50cbf6f85ce6] NOT IN TOP 10 — [bug] remember() INSERT was missing confidence column
+  Actual top 3:
+    score=0.8553 won_by=enrichment:anchor — dal.py log_recall() has column mismatch with recall_log sche
+    score=0.8471 won_by=enrichment:anchor — brain_recall.py has 4+ separate SELECT queries that must all
+    score=0.8430 won_by=enrichment:anchor — Phase 0.5B: recall_with_embeddings() rewritten — embed query
+
+  Case: const_temporal_awareness
+  Query: must information show how old it is
+  Category: constraint
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [0f4149e14be5] NOT IN TOP 10 — Temporal awareness: all surfaced information must carry age context
+  Actual top 3:
+    score=0.8468 won_by=enrichment:anchor — TEST NODE DELETE ME
+    score=0.8459 won_by=enrichment:anchor — [vocab] Expand (auto-detected)
+    score=0.8368 won_by=enrichment:question — [vocab] Gemma (auto-detected)
+
+  Case: div_hook_decision_maker
+  Query: who is the decision maker the hook or the brain
+  Category: divergence
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [ca120c197494] NOT IN TOP 10 — Divergence: The hook was the decision-maker blocking my edits — I said "
+  Actual top 3:
+    score=0.8368 won_by=enrichment:anchor — Rule: dont dumb yourself down — the brain enriches the LLM, 
+    score=0.8312 won_by=enrichment:question — Brain philosophy: three entities — Tom (intent), Claude (cap
+    score=0.8260 won_by=enrichment:question — TEST NODE DELETE ME
+
+  Case: natq_how_brain_works
+  Query: how does the brain work
+  Category: natural_question
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [eba208bf0048] NOT IN TOP 10 — Brain MCP Server: zero-dep stdio proxy to daemon, Claude's native brain interface
+    [fbfe96943349] NOT IN TOP 10 — Consciousness signals: 12+ types that surface brain state to Claude at boot
+    [c37a06e2b13d] NOT IN TOP 10 — Recall pipeline has TWO paths with different graph capabilities (2026-03-22)
+  Actual top 3:
+    score=0.9354 won_by=enrichment:question — TEST NODE DELETE ME
+    score=0.9270 won_by=enrichment:question — Brain philosophy: three entities — Tom (intent), Claude (cap
+    score=0.9254 won_by=enrichment:question — Cluster forming: "Refactor: centralize all DB read/write thr
+
+  Case: natq_what_went_wrong
+  Query: what bugs have we hit recently
+  Category: natural_question
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [4f7f879736f7] NOT IN TOP 10 — Daemon race condition: ensure_daemon killed starting daemons (PID before socket)
+    [3d688d9f8d33] NOT IN TOP 10 — Notification(user_message) is NOT a valid event type — hooks silently dead
+    [50cbf6f85ce6] NOT IN TOP 10 — [bug] remember() INSERT was missing confidence column
+  Actual top 3:
+    score=0.8868 won_by=enrichment:anchor — 📊 PATTERN — Corrections cluster: [bug] SKILL.md had HTTP/cur
+    score=0.8840 won_by=enrichment:anchor — 📊 PATTERN — Corrections cluster: [bug] remember() INSERT was
+    score=0.8677 won_by=enrichment:question — Priming system: active concerns as background attention filt
+
+  Case: natq_what_changed_recently
+  Query: what did we build in the last session
+  Category: natural_question
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [d65e88ba2016] NOT IN TOP 10 — Session #9 accomplishments: operator channel + Phase A precision loop (2026-03-22)
+  Actual top 3:
+    score=0.9237 won_by=enrichment:question — Session #7 handoff: Phase 0.5 + code cognition + personal fl
+    score=0.9016 won_by=enrichment:question — [vocab] Plan (auto-detected)
+    score=0.8993 won_by=enrichment:question — Post-compaction session continuation works — summary + conte
+
+  Case: kw_fil_ap5c
+  Query: large content test
+  Category: keyword
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [fil_ap5c1iju] NOT IN TOP 10 — [ctx:big-test-file] Large Content Test
+  Actual top 3:
+    score=0.8620 won_by=enrichment:anchor — TEST NODE DELETE ME
+    score=0.8453 won_by=enrichment:question — [ctx:test-crud-file] Test CRUD File
+    score=0.8266 won_by=enrichment:anchor — Encoding = everything brain does to capture what Tom is talk
+
+  Case: intent_how_add_method
+  Query: where should I put a new brain method
+  Category: intent_howto
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [4ad55ad84986] NOT IN TOP 10 — Constraint: new methods must go in the right mixin, not brain.py
+  Actual top 3:
+    score=0.8585 won_by=enrichment:question — Boot issue: SKILL.md docs say HTTP server + node index.js, b
+    score=0.8541 won_by=enrichment:question — Session goal: simplify brain boot process for new users
+    score=0.8495 won_by=enrichment:anchor — Hook-to-brain-method call graph: which hooks call which brai
+
+  Case: intent_how_handle_hook_fail
+  Query: what should I do when a hook fails
+  Category: intent_howto
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [89129afebc48] NOT IN TOP 10 — Failed hook-to-operator experiments — Claude Code terminal (2026-03-22)
+  Actual top 3:
+    score=0.9695 won_by=enrichment:question — Hook error handling: three layers - hook_common.log_hook_err
+    score=0.9316 won_by=enrichment:question — ⚡ TENSION — HOOKS-ARCHITECTURE.md is the authoritati vs Futu
+    score=0.9164 won_by=enrichment:question — Divergence: The hook was the decision-maker blocking my edit
+
+  Case: sem_decompose_dont_summarize
+  Query: should I write one big brain node or many small ones
+  Category: semantic
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [deb08b902351] NOT IN TOP 10 — Lesson: 'decompose, don't summarize' — encoding volume ceiling is very high, danger is wrong lessons
+  Actual top 3:
+    score=0.8364 won_by=enrichment:question — Impact: brain_connections.py connect/connect_typed used by 6
+    score=0.8321 won_by=enrichment:anchor — Brain is associative memory, not a document store — use mark
+    score=0.8157 won_by=enrichment:anchor — Everything connects — no silos in the brain architecture
+
+  Case: natq_embeddings_deal
+  Query: what's the deal with embeddings
+  Category: natural_question
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [c21514ab3774] NOT IN TOP 10 — Embedding similarity: floor depends on content length, not just model
+    [3bad7b02a5fe] NOT IN TOP 10 — Embedding similarity floor is ~0.58-0.63 for Snowflake Arctic Embed
+  Actual top 3:
+    score=0.9452 won_by=enrichment:question — Embedding upgrade: Arctic v2.0 + cross-encoder reranker test
+    score=0.9139 won_by=enrichment:question — Semantic recall v3.2 fix: embeddings-first, keywords as fall
+    score=0.9051 won_by=enrichment:question — [fn] _get_embedder_config() — reads embedder config from bra
+
+  Case: natq_why_hooks_exist
+  Query: why do hooks exist
+  Category: natural_question
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [73c0123bb33c] NOT IN TOP 10 — Brain feedback loop: 13 hooks form a closed perception-action-reflection cycle
+  Actual top 3:
+    score=0.9230 won_by=enrichment:question — ⚡ TENSION — HOOKS-ARCHITECTURE.md is the authoritati vs Futu
+    score=0.8982 won_by=enrichment:anchor — Brain is a communicating entity, not infrastructure — attrib
+    score=0.8967 won_by=enrichment:bridge — ⚡ TENSION — Hooks fire successfully; encoding sparse vs Diff
+
+  Case: natq_what_keeps_breaking
+  Query: what keeps breaking
+  Category: natural_question
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [4b158d283629] NOT IN TOP 10 — Lesson: debugging 'brain not learning' required tracing through 3 independent failure layers
+    [3d688d9f8d33] NOT IN TOP 10 — Notification(user_message) is NOT a valid event type — hooks silently dead
+  Actual top 3:
+    score=0.8638 won_by=enrichment:question — Bug found: brain_surface.py missing import os — suggest() an
+    score=0.8638 won_by=enrichment:question — Bug found: brain_remember.py missing import sys — remember()
+    score=0.8638 won_by=enrichment:question — Bug found: brain_recall.py missing import sys — keyword-only
+
+  Case: natq_rule_about_tests
+  Query: is there a rule about tests
+  Category: natural_question
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [07187eb2a78b] NOT IN TOP 10 — Pre-edit hook blocks test weakening — how to handle it (2026-03-22)
+  Actual top 3:
+    score=0.9165 won_by=enrichment:question — Test integrity: when a test fails, STOP and ask the operator
+    score=0.9030 won_by=enrichment:question — Test documentation standard: VERIFIES/SIGNALS/FUTURE
+    score=0.8962 won_by=enrichment:anchor — TEST NODE DELETE ME
+
+  Case: intent_howto_add_node_type
+  Query: how do I add a new node type to the brain
+  Category: intent_howto
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [4ad55ad84986] NOT IN TOP 10 — Constraint: new methods must go in the right mixin, not brain.py
+  Actual top 3:
+    score=0.8681 won_by=enrichment:question — Impact: brain_connections.py connect/connect_typed used by 6
+    score=0.8669 won_by=enrichment:question — brain_connections.py — edge management, bridging, graph stru
+    score=0.8085 won_by=enrichment:question — Correction: dont hand user terminal commands — execute them 
+
+  Case: intent_howto_compaction
+  Query: what should I do when context gets compacted
+  Category: intent_howto
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [140e864594a3] NOT IN TOP 10 — Constraint: Claude compaction destroys unencoded knowledge — must encode continuously
+  Actual top 3:
+    score=0.8775 won_by=enrichment:question — Cluster forming: "Session Log — Reset #8 (charming-cannon)" 
+    score=0.8627 won_by=enrichment:anchor — Claude Code context continuation vs compaction — different b
+    score=0.8454 won_by=enrichment:question — 🔮 HYPOTHESIS — 'Context change = temporal boundary: segment 
+
+  Case: mech_when_to_encode
+  Query: how does the brain decide when to encode
+  Category: mechanism
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [87d42862e161] NOT IN TOP 10 — Adaptive checkpoints: brain learns which nudge patterns work and evolves its own prompts over time
+  Actual top 3:
+    score=0.9228 won_by=enrichment:question — Future: Centralized encoding philosophy — what the brain mem
+    score=0.9036 won_by=enrichment:question — v2.3.0: Decompose-not-summarize encoding philosophy
+    score=0.8718 won_by=enrichment:anchor — [vocab] Right (auto-detected)
+
+  Case: mech_embedding_storage
+  Query: how are nodes embedded and stored
+  Category: mechanism
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [fddd1b00fd2c] NOT IN TOP 10 — Phase 0.5B: recall_with_embeddings() rewritten — embed query first, scan all nodes
+  Actual top 3:
+    score=0.8588 won_by=enrichment:question — [param] DECAY_HALF_LIFE — type-based decay controls node lif
+    score=0.8499 won_by=enrichment:question — [fn] resolve_evolution() — change status and optionally link
+    score=0.8468 won_by=enrichment:question — Phase 0.5C: remember() stores embeddings synchronously, not 
+
+  Case: corr_stderr_silence
+  Query: should we redirect errors to dev null
+  Category: correction_chain
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [05a738aaf8ed] NOT IN TOP 10 — Found another 2>/dev/null in post-compact-reboot.sh daemon path
+  Actual top 3:
+    score=0.8284 won_by=enrichment:question — ⚡ TENSION — Tom: Always add Todo file for personal t vs Adde
+    score=0.8200 won_by=enrichment:question — Debug mode: errors must always be visible, verbose output is
+    score=0.8043 won_by=enrichment:question — Lesson: silent failures are the most dangerous class of bug
+
+  Case: edge_code_snippet
+  Query: def recall_with_embeddings
+  Category: edge_case
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [fddd1b00fd2c] NOT IN TOP 10 — Phase 0.5B: recall_with_embeddings() rewritten — embed query first, scan all nodes
+  Actual top 3:
+    score=0.8782 won_by=enrichment:anchor — [concept] Recall Pipeline — the full path from query to rank
+    score=0.8702 won_by=enrichment:question — Recall pipeline: query → vocab expand → embed → intent → sca
+    score=0.8701 won_by=enrichment:anchor — [fn] Contextual qualifier matching in recall_with_embeddings
+
+  Case: edge_very_long
+  Query: I need to understand everything about how the brain stores information, retrieves it later, handles corrections and updates, manages confidence scores, deals with vocabulary expansion, and processes consciousness signals including dreams tensions hypotheses and fading knowledge
+  Category: edge_case
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [fbfe96943349] NOT IN TOP 10 — Consciousness signals: 12+ types that surface brain state to Claude at boot
+  Actual top 3:
+    score=0.8419 won_by=enrichment:question — brain_remember.py — all storage paths (nodes, metadata, embe
+    score=0.8337 won_by=enrichment:question — Cluster forming: "Refactor: centralize all DB read/write thr
+    score=0.8253 won_by=enrichment:question — [vocab] LLM (auto-detected)
+
+  Case: temp_original_architecture
+  Query: what was the original brain architecture before the split
+  Category: temporal_reasoning
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [0c818d6a68f1] NOT IN TOP 10 — Current brain file structure: brain.py + 8 support modules + 13 hook scripts
+    [f91454eb1d2b] NOT IN TOP 10 — Monolith split: brain.py → 11 mixin modules via inheritance
+  Actual top 3:
+    score=0.8300 won_by=enrichment:anchor — Everything connects — no silos in the brain architecture
+    score=0.8261 won_by=enrichment:question — Cluster forming: "Compaction boundary at 2026-03-22T18:07:03
+    score=0.8199 won_by=enrichment:question — Brain evolution: v1 HTTP server → v14 serverless → v5.0 hook
+
+  Case: temp_latest_recall_design
+  Query: what is the latest design for the recall pipeline
+  Category: temporal_reasoning
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [56ef30079c9a] NOT IN TOP 10 — V5 hybrid multi-vector encoding: question + anchor + bridge + keywords (2026-03-23)
+    [37c825ce640c] NOT IN TOP 10 — Recall benchmark: 10 conditions tested, cross-encoder wins but too slow, multi-vector next (2026-03-23)
+  Actual top 3:
+    score=0.8603 won_by=enrichment:question — Dream: [concept] Recall Pipeline — the full pat ↔ Tom princi
+    score=0.8603 won_by=enrichment:question — Recall pipeline: query → vocab expand → embed → intent → sca
+    score=0.8600 won_by=enrichment:question — [concept] Recall Pipeline — the full path from query to rank
+
+  Case: temp_first_session_memory
+  Query: what happened in the very first sessions with the brain
+  Category: temporal_reasoning
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [dec_pdrlxxzz] NOT IN TOP 10 — Brain gap: no memory of the night 6 brain versions were created
+    [dec_3etmhpzq] NOT IN TOP 10 — Correction: Tom had to prompt me to form memories about this session
+  Actual top 3:
+    score=0.8540 won_by=enrichment:question — TEST NODE DELETE ME
+    score=0.8515 won_by=enrichment:question — Brain v4: Self-reflection node types — performance, failure,
+    score=0.8482 won_by=enrichment:anchor — Capability node — brain knows what it can and cannot do
+
+  Case: temp_recent_bugs
+  Query: what bugs did we find in the last two days
+  Category: temporal_reasoning
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [a9f883c24768] NOT IN TOP 10 — MCP tools missing: .mcp.json used unset CLAUDE_PLUGIN_ROOT env var (2026-03-23)
+    [3e1091024ac1] NOT IN TOP 10 — Critical bug: eval_runner tested keyword-only recall, not production embedding path
+  Actual top 3:
+    score=0.8555 won_by=enrichment:anchor — 📊 PATTERN — Corrections cluster: [bug] SKILL.md had HTTP/cur
+    score=0.8502 won_by=enrichment:anchor — 📊 PATTERN — Corrections cluster: [bug] remember() INSERT was
+    score=0.8200 won_by=enrichment:anchor — Cross-session testing: use current session to verify next se
+
+  Case: temp_today_decisions
+  Query: what decisions were made today
+  Category: temporal_reasoning
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [56ef30079c9a] NOT IN TOP 10 — V5 hybrid multi-vector encoding: question + anchor + bridge + keywords (2026-03-23)
+    [37c825ce640c] NOT IN TOP 10 — Recall benchmark: 10 conditions tested, cross-encoder wins but too slow, multi-vector next (2026-03-23)
+    [1c753392b747] NOT IN TOP 10 — Architecture: brain drives encoding, Claude answers — recall before encode
+  Actual top 3:
+    score=0.8246 won_by=enrichment:keywords — Superseded decisions linked by descriptive edges, not cleane
+    score=0.8162 won_by=enrichment:question — Tom: trusts intuition first, refines with analysis — feeling
+    score=0.8099 won_by=enrichment:anchor — Consciousness signals: 12+ types that surface brain state to
+
+  Case: temp_old_encoding_approach
+  Query: what was our encoding strategy before the multi-vector approach
+  Category: temporal_reasoning
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [dec_sbujta4n] NOT IN TOP 10 — v2.3.0: Decompose-not-summarize encoding philosophy
+    [dec_1a72h6sq] NOT IN TOP 10 — v2.3.0: extractKeywords 4-phase extraction pipeline
+  Actual top 3:
+    score=0.8661 won_by=enrichment:anchor — SKILL.md redesign session: included live agreeability correc
+    score=0.8487 won_by=enrichment:anchor — Encoding = everything brain does to capture what Tom is talk
+    score=0.8326 won_by=enrichment:anchor — Recall benchmark: 10 conditions tested, cross-encoder wins b
+
+  Case: temp_session_nine_work
+  Query: what was accomplished in session 9
+  Category: temporal_reasoning
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [d65e88ba2016] NOT IN TOP 10 — Session #9 accomplishments: operator channel + Phase A precision loop (2026-03-22)
+    [580fb56ee3bd] NOT IN TOP 10 — First brain-to-operator conversation: 2026-03-22 Session #9
+  Actual top 3:
+    score=0.9248 won_by=enrichment:question — Session #7 handoff: Phase 0.5 + code cognition + personal fl
+    score=0.9150 won_by=enrichment:anchor — [vocab] Add (auto-detected)
+    score=0.9082 won_by=enrichment:anchor — [vocab] Expand (auto-detected)
+
+  Case: neg_never_do_sacred
+  Query: what should we never change without benchmarks
+  Category: negation
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [695c59de5e3b] NOT IN TOP 10 — Practice: testing-first with real-world cases and eval framework benchmarks (2026-03-22)
+    [2cd35a6420ae] NOT IN TOP 10 — [vocab] sacred system (brain development practice)
+  Actual top 3:
+    score=0.8893 won_by=enrichment:question — Brain Evolution Roadmap — 3 prioritized architecture changes
+    score=0.8520 won_by=enrichment:anchor — suggest_metrics table: self-instrumentation of every suggest
+    score=0.8341 won_by=enrichment:anchor — Tom: values efficiency over persistence — don't waste time r
+
+  Case: neg_dont_suppress_errors
+  Query: what should we not do with error output
+  Category: negation
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [2d19066ca929] NOT IN TOP 10 — Never 2>/dev/null on brain hooks — silent failures are the worst failures
+    [05a738aaf8ed] NOT IN TOP 10 — Found another 2>/dev/null in post-compact-reboot.sh daemon path
+  Actual top 3:
+    score=0.8965 won_by=enrichment:question — Debug mode: errors must always be visible, verbose output is
+    score=0.8632 won_by=enrichment:question — Lesson: silent failures are the most dangerous class of bug
+    score=0.8582 won_by=enrichment:anchor — Silent failures are brain's biggest weakness — except:pass, 
+
+  Case: neg_failed_experiments
+  Query: what approaches did we try that failed
+  Category: negation
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [dec_u1y49ssd] NOT IN TOP 10 — Compaction experiment FAILED — recap encoding was skipped, all session decisions lost
+    [89129afebc48] NOT IN TOP 10 — Failed hook-to-operator experiments — Claude Code terminal (2026-03-22)
+    [31b25a5c038b] NOT IN TOP 10 — Cross-encoder: proves 0.52 NDCG ceiling, 2s latency kills it for real-time
+  Actual top 3:
+    score=0.9190 won_by=enrichment:anchor — [vocab] Add (auto-detected)
+    score=0.9054 won_by=enrichment:anchor — [vocab] Expand (auto-detected)
+    score=0.9018 won_by=enrichment:anchor — TEST NODE DELETE ME
+
+  Case: neg_dont_dumb_down
+  Query: what should the brain never do to itself
+  Category: negation
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [rul_ayu84pc1] NOT IN TOP 10 — Rule: dont dumb yourself down — the brain enriches the LLM, doesnt replace it
+  Actual top 3:
+    score=0.8927 won_by=enrichment:question — TEST NODE DELETE ME
+    score=0.8819 won_by=enrichment:question — Brain philosophy: three entities — Tom (intent), Claude (cap
+    score=0.8753 won_by=enrichment:question — Brain v4: Self-reflection node types — performance, failure,
+
+  Case: neg_rejected_emotion_feature
+  Query: what feature did Tom reject
+  Category: negation
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [8c40cbaf615a] NOT IN TOP 10 — Feature 5 (Plutchik emotion wheel) REJECTED by Tom — do not implement
+  Actual top 3:
+    score=0.8948 won_by=enrichment:question — Tom: values efficiency over persistence — don't waste time r
+    score=0.8690 won_by=enrichment:question — Tom: trusts intuition first, refines with analysis — feeling
+    score=0.8311 won_by=enrichment:question — Self-correction instinct is recursive — even corrections get
+
+  Case: neg_dont_use_systemmsg
+  Query: what channel should we never use for output
+  Category: negation
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [7e19064c2b16] NOT IN TOP 10 — NEVER use systemMessage — dead channel in Claude Code (2026-03-22)
+  Actual top 3:
+    score=0.8438 won_by=enrichment:anchor — Encoding = everything brain does to capture what Tom is talk
+    score=0.8253 won_by=enrichment:anchor — Brain v4: Six communication channels — Brain→Host uses dimen
+    score=0.8207 won_by=enrichment:anchor — Correction: dont hand user terminal commands — execute them 
+
+  Case: neg_dont_lock_operational
+  Query: what kind of knowledge should not be locked
+  Category: negation
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [rul_9u5i5jp4] NOT IN TOP 10 — Operational learnings decay naturally — dont lock, let reinforcement decide
+  Actual top 3:
+    score=0.8253 won_by=enrichment:anchor — Consciousness signals: 12+ types that surface brain state to
+    score=0.8112 won_by=enrichment:question — Tom principle: Merge, never overwrite
+    score=0.8072 won_by=enrichment:bridge — 📊 PATTERN — Always used together: 'Rule: ask for confirmatio
+
+  Case: neg_dont_self_censor
+  Query: should claude hold back opinions or controversial outputs
+  Category: negation
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [rul_5zv4439e] NOT IN TOP 10 — Tom principle: Dont self-censor — let the system handle it
+  Actual top 3:
+    score=0.8863 won_by=enrichment:bridge — Claude failure mode: agreeability — presents neutral options
+    score=0.8859 won_by=enrichment:question — When you can test it, test it — don't deliberate when empiri
+    score=0.8725 won_by=enrichment:question — Glo origin: project that exposed everything missing with Cla
+
+  Case: mhop_bridging_vs_embeddings
+  Query: why did Tom prefer graph bridging and what problem does it solve that embeddings cant
+  Category: multi_hop
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [dec_eet2xy2v] NOT IN TOP 10 — Graph bridging > embeddings for emergent discovery — Toms architectural insight
+    [con_5r9hqf79] NOT IN TOP 10 — Store-time bridging requires pre-existing neighborhood — cold-start problem
+  Actual top 3:
+    score=0.8454 won_by=enrichment:question — Embedding upgrade: Arctic v2.0 + cross-encoder reranker test
+    score=0.8354 won_by=enrichment:question — [ctx:emergent-graph-bridging] Emergent Graph Bridging — Arch
+    score=0.8313 won_by=enrichment:anchor — v11 emergent graph bridging — implementation complete
+
+  Case: mhop_operator_channel_full_chain
+  Query: trace the full path from brain consciousness to Tom seeing output in terminal
+  Category: multi_hop
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [8bac897879ae] NOT IN TOP 10 — Operator Channel: Claude-as-relay architecture (2026-03-22)
+    [7d2869e81a44] NOT IN TOP 10 — additionalContext: the ONLY working hook-to-Claude channel in Claude Code (2026-03-22)
+    [b363b27e7bf2] NOT IN TOP 10 — Operator channel rendering pipeline: who calls what (2026-03-22)
+  Actual top 3:
+    score=0.8038 won_by=enrichment:question — Correction: dont hand user terminal commands — execute them 
+    score=0.8034 won_by=enrichment:question — Hypothesis: consciousness signals should detect and surface 
+    score=0.8020 won_by=enrichment:anchor — [concept] Full consciousness signal set — 14+ types in get_c
+
+  Case: opi_thing_tom_worried_about
+  Query: what was Tom most concerned about with the brain
+  Category: operator_intent
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [8bf4974e6d42] NOT IN TOP 10 — Silent failures are brain's biggest weakness — except:pass, unmatched matchers, no hook health metrics
+    [4815ba61645f] NOT IN TOP 10 — Lesson: silent failures are the most dangerous class of bug
+  Actual top 3:
+    score=0.8637 won_by=enrichment:bridge — Host environment awareness never worked — Tom wants brain co
+    score=0.8608 won_by=enrichment:question — Brain must actively ask Tom for feedback on its evolution — 
+    score=0.8562 won_by=enrichment:question — Tom evaluates ideas by: game changers first, then cost/load 
+
+  Case: opi_rule_about_asking
+  Query: that rule about asking before changing things
+  Category: operator_intent
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [rul_ovwvt4ch] NOT IN TOP 10 — Rule: ask for confirmation before manipulating data to affect test results
+  Actual top 3:
+    score=0.8294 won_by=enrichment:anchor — Lesson: when modifying code you already changed, verify agai
+    score=0.8290 won_by=enrichment:question — Design evals from desired behavior change, not from code cha
+    score=0.8274 won_by=enrichment:bridge — Working style: produce detailed documents alongside code cha
+
+  Case: opi_channel_problem
+  Query: that problem we had with getting brain output to show up
+  Category: operator_intent
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [89129afebc48] NOT IN TOP 10 — Failed hook-to-operator experiments — Claude Code terminal (2026-03-22)
+    [7d2869e81a44] NOT IN TOP 10 — additionalContext: the ONLY working hook-to-Claude channel in Claude Code (2026-03-22)
+  Actual top 3:
+    score=0.8705 won_by=enrichment:anchor — Lesson: locked rules '0 at boot' was hooks not firing, not a
+    score=0.8621 won_by=enrichment:question — Bug found: brain_surface.py missing import os — suggest() an
+    score=0.8621 won_by=enrichment:question — Bug found: brain_remember.py missing import sys — remember()
+
+  Case: opi_partnership_nature
+  Query: what is the real relationship between Tom Claude and the brain
+  Category: operator_intent
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [28c130d266f3] NOT IN TOP 10 — Rule: The brain is a shared entity — Tom's knowledge + Claude's cognition, owned by neither alone
+    [124525beaf34] NOT IN TOP 10 — Brain philosophy: three entities — Tom (intent), Claude (capability), Brain (bridge)
+  Actual top 3:
+    score=0.9016 won_by=enrichment:bridge — The partnership is real — Tom brings himself, Claude brings 
+    score=0.8926 won_by=enrichment:question — Brain is a communicating entity, not infrastructure — attrib
+    score=0.8900 won_by=enrichment:question — 🌱 ASPIRATION — Repeated energy: Rule: the brain exists for m
+
+  Case: opi_brain_attributed_wrong
+  Query: that time I called the brain a hook by mistake
+  Category: operator_intent
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [e5dd9709cd88] NOT IN TOP 10 — Attribution error: Claude called brain output "the hook" not "the brain"
+    [ca120c197494] NOT IN TOP 10 — Divergence: The hook was the decision-maker blocking my edits — I said "
+  Actual top 3:
+    score=0.8322 won_by=enrichment:question — Bug found: brain_surface.py missing import os — suggest() an
+    score=0.8322 won_by=enrichment:question — Bug found: brain_remember.py missing import sys — remember()
+    score=0.8322 won_by=enrichment:question — Bug found: brain_recall.py missing import sys — keyword-only
+
+  Case: opi_what_tom_values
+  Query: what does Tom care about in how we build things
+  Category: operator_intent
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [rul_cowch2p6] NOT IN TOP 10 — Tom principle: Instrument before you build
+    [rul_sfdhhxas] NOT IN TOP 10 — Tom principle: Make parameters, not decisions
+    [rul_0lat1u21] NOT IN TOP 10 — Tom principle: If it can hurt you silently, it needs a measurement
+  Actual top 3:
+    score=0.8570 won_by=enrichment:question — Tom: trusts intuition first, refines with analysis — feeling
+    score=0.8520 won_by=enrichment:question — Tom: mind works in spirals — one thought triggers adjacent b
+    score=0.8494 won_by=enrichment:question — My relationship with Tom: partner, not user
+
+  Case: opi_brain_not_a_document_store
+  Query: Tom said not to use the brain for something what was it
+  Category: operator_intent
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [c219f090de30] NOT IN TOP 10 — Brain complements documents, doesn't replace them — division of labor
+  Actual top 3:
+    score=0.8565 won_by=enrichment:question — Tom: values efficiency over persistence — don't waste time r
+    score=0.8541 won_by=enrichment:question — [vocab] Microsoft Phi (auto-detected)
+    score=0.8420 won_by=enrichment:question — Monolith split: recovered details I compressed away during e
+
+  Case: corr_hook_blocking_attribution
+  Query: who decides what to block the hook or the brain
+  Category: correction_chain
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [ca120c197494] NOT IN TOP 10 — Divergence: The hook was the decision-maker blocking my edits — I said "
+    [d43b91ced49f] NOT IN TOP 10 — Brain is a communicating entity, not infrastructure — attribute decisions to brain, not hooks
+  Actual top 3:
+    score=0.8646 won_by=enrichment:question — Hook-to-brain-method call graph: which hooks call which brai
+    score=0.8344 won_by=enrichment:anchor — Lesson: locked rules '0 at boot' was hooks not firing, not a
+    score=0.8307 won_by=enrichment:anchor — Match the eval to what you actually changed — I tested SKILL
+
+  Case: corr_operator_pattern_correction
+  Query: what incorrect assumption did Claude make about Tom's work patterns
+  Category: correction_chain
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [a6c1a45ecc4a] NOT IN TOP 10 — Divergence: Example operator pattern: jumping to solution before fully u
+    [47325b98dcc8] NOT IN TOP 10 — Divergence: Tom wants me to just execute the task
+  Actual top 3:
+    score=0.8554 won_by=enrichment:question — Cluster forming: "Compaction boundary at 2026-03-22T17:17:03
+    score=0.8494 won_by=enrichment:question — Host instinct catalog: known Claude training biases the brai
+    score=0.8450 won_by=enrichment:question — Glo origin: project that exposed everything missing with Cla
+
+  Case: corr_recall_multiple_fixes
+  Query: how many times was the recall pipeline rewritten
+  Category: correction_chain
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [fddd1b00fd2c] NOT IN TOP 10 — Phase 0.5B: recall_with_embeddings() rewritten — embed query first, scan all nodes
+    [48ba23e6405b] NOT IN TOP 10 — Semantic recall v3.2 fix: embeddings-first, keywords as fallback only, alert on fallback
+    [68c93af1d8e8] NOT IN TOP 10 — Phase 0.5B fix: keyword-only fallback scores penalized by KEYWORD_FALLBACK_WEIGHT
+  Actual top 3:
+    score=0.9002 won_by=enrichment:question — Dream: [concept] Recall Pipeline — the full pat ↔ Tom princi
+    score=0.9002 won_by=enrichment:question — Recall pipeline: query → vocab expand → embed → intent → sca
+    score=0.8618 won_by=enrichment:question — [concept] Recall Pipeline — the full path from query to rank
+
+  Case: sem_casual_embedding_similarity
+  Query: how close two things are in meaning
+  Category: semantic
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [c21514ab3774] NOT IN TOP 10 — Embedding similarity: floor depends on content length, not just model
+    [3bad7b02a5fe] NOT IN TOP 10 — Embedding similarity floor is ~0.58-0.63 for Snowflake Arctic Embed
+  Actual top 3:
+    score=0.8219 won_by=enrichment:anchor — Vocabulary pipeline gap: extraction detects terms but never 
+    score=0.8077 won_by=enrichment:bridge — 📊 PATTERN — Always used together: 'Rule: ask for confirmatio
+    score=0.7966 won_by=enrichment:question — Three extraction layers: vocabulary, entities, relationships
+
+  Case: sem_brain_immune_system
+  Query: how does the brain protect itself from bad data
+  Category: semantic
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [9146daec4d15] NOT IN TOP 10 — Hook error handling: three layers - hook_common.log_hook_error then brain._log_error then consciousness surfaces both
+    [6e6bec2e8b7f] NOT IN TOP 10 — Rule: never silence exceptions — not even telemetry. Make failures loud.
+  Actual top 3:
+    score=0.8825 won_by=enrichment:question — brain_remember.py — all storage paths (nodes, metadata, embe
+    score=0.8703 won_by=enrichment:question — Future: Centralized encoding philosophy — what the brain mem
+    score=0.8606 won_by=enrichment:question — Cluster forming: "Refactor: centralize all DB read/write thr
+
+  Case: sem_copy_vs_original
+  Query: why cant we just duplicate notes instead of connecting them
+  Category: semantic
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [rul_brbagtji] NOT IN TOP 10 — Tom principle: Merge, never overwrite
+  Actual top 3:
+    score=0.7630 won_by=enrichment:question — Brain should proactively surface prior art when it recognize
+    score=0.7447 won_by=enrichment:anchor — Impact: brain_connections.py connect/connect_typed used by 6
+    score=0.7285 won_by=enrichment:question — brain_connections.py — edge management, bridging, graph stru
+
+  Case: sem_glo_project_origin
+  Query: what project started all of this
+  Category: semantic
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [5b6ce6f9b8af] NOT IN TOP 10 — Glo origin: project that exposed everything missing with Claude, led to brain
+    [2770e9b97b8b] NOT IN TOP 10 — Brain origin story: born from frustration of repeating onboarding feedback 3 times
+  Actual top 3:
+    score=0.8796 won_by=enrichment:question — [vocab] Edge Cases (auto-detected)
+    score=0.8754 won_by=enrichment:anchor — [vocab] Add (auto-detected)
+    score=0.8618 won_by=enrichment:anchor — [vocab] Expand (auto-detected)
+
+  Case: sem_brain_has_feelings
+  Query: does the brain have something like emotions or moods
+  Category: semantic
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [fbfe96943349] NOT IN TOP 10 — Consciousness signals: 12+ types that surface brain state to Claude at boot
+    [8c4916f068b1] NOT IN TOP 10 — Brain consciousness model: subconscious (silent) vs conscious (surfaced to Tom)
+  Actual top 3:
+    score=0.8753 won_by=enrichment:question — TEST NODE DELETE ME
+    score=0.8597 won_by=enrichment:question — Brain philosophy: three entities — Tom (intent), Claude (cap
+    score=0.8591 won_by=enrichment:question — Cluster forming: "Refactor: centralize all DB read/write thr
+
+  Case: sem_learning_from_screw_ups
+  Query: how does the brain learn from its mistakes
+  Category: semantic
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [c9cc0bde3a8e] NOT IN TOP 10 — Decision: instinct detection is data-driven from correction traces, not hardcoded
+    [e6fce3e77bb0] NOT IN TOP 10 — Decision: record_divergence() tracks entity — host, operator, or shared patterns
+  Actual top 3:
+    score=0.9083 won_by=enrichment:question — 🌱 ASPIRATION — Brain should detect stuck patterns and trigge
+    score=0.9012 won_by=enrichment:question — Cluster forming: "Refactor: centralize all DB read/write thr
+    score=0.8981 won_by=enrichment:question — Meta-learning node — how the brain learned something, reusab
+
+  Case: amb_hooks
+  Query: hooks
+  Category: ambiguity
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [73c0123bb33c] NOT IN TOP 10 — Brain feedback loop: 13 hooks form a closed perception-action-reflection cycle
+    [9065203cc17f] NOT IN TOP 10 — ⚡ TENSION — React hooks rule vs React Hook Violation: Cannot call useSta
+  Actual top 3:
+    score=0.9423 won_by=enrichment:question — ⚡ TENSION — HOOKS-ARCHITECTURE.md is the authoritati vs Futu
+    score=0.9282 won_by=enrichment:anchor — Brain is a communicating entity, not infrastructure — attrib
+    score=0.9187 won_by=enrichment:question — Divergence: The hook was the decision-maker blocking my edit
+
+  Case: amb_model
+  Query: what model do we use
+  Category: ambiguity
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [d1c38e15c946] NOT IN TOP 10 — Model delivery: pip3 install -e . from model-package for local dev, PyPI for production
+    [825b57176e4f] NOT IN TOP 10 — Three-entity model: Host + Brain + Operator are one system that resolves contradictions together
+  Actual top 3:
+    score=0.9567 won_by=enrichment:question — [vocab] Expand (auto-detected)
+    score=0.9142 won_by=enrichment:anchor — [vocab] Maybe (auto-detected)
+    score=0.9023 won_by=enrichment:anchor — [vocab] Add (auto-detected)
+
+  Case: amb_decay
+  Query: what decays in the brain
+  Category: ambiguity
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [rul_9u5i5jp4] NOT IN TOP 10 — Operational learnings decay naturally — dont lock, let reinforcement decide
+    [dec_egjjuksu] NOT IN TOP 10 — Tom insight: memory has two parts — episodic decays, semantic persists if reinforced
+  Actual top 3:
+    score=0.8726 won_by=enrichment:question — Brain v4: Self-reflection node types — performance, failure,
+    score=0.8681 won_by=enrichment:question — TEST NODE DELETE ME
+    score=0.8565 won_by=enrichment:question — Brain philosophy: three entities — Tom (intent), Claude (cap
+
+  Case: amb_encoding
+  Query: encoding
+  Category: ambiguity
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [56ef30079c9a] NOT IN TOP 10 — V5 hybrid multi-vector encoding: question + anchor + bridge + keywords (2026-03-23)
+    [facb97eacfb4] NOT IN TOP 10 — Encoding bias: 6/13 topics encoded, all technical — missed relational and reasoning
+  Actual top 3:
+    score=1.0000 won_by=enrichment:anchor — Encoding = everything brain does to capture what Tom is talk
+    score=0.9474 won_by=enrichment:anchor — Future: Centralized encoding philosophy — what the brain mem
+    score=0.9275 won_by=enrichment:anchor — Meta-lesson: encode transferable practices, not incident fac
+
+  Case: amb_server
+  Query: server problems
+  Category: ambiguity
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [con_xt2l8ods] NOT IN TOP 10 — Brain server died again during v11 implementation — platform kills background node processes
+    [dec_426h4hdh] NOT IN TOP 10 — Root cause: hooks go silent when brain server dies — ensure-brain.sh returns approve silently
+  Actual top 3:
+    score=0.9246 won_by=enrichment:question — 🔮 HYPOTHESIS — 'Server reliability: NOT unreliable — 3 crash
+    score=0.9052 won_by=enrichment:question — Future: Approach C — eliminate HTTP server, direct SQLite fr
+    score=0.8771 won_by=enrichment:keywords — 🔮 HYPOTHESIS — 'Root cause: hooks go silent when brain serve
+
+  Case: conf_high_conf_first_general
+  Query: rules about the brain architecture
+  Category: confidence_weighted
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [274c4003c4f9] NOT IN TOP 10 — NEVER modify .claude/settings.json without operator approval
+    [rul_57bp94y5] NOT IN TOP 10 — Experimental features must never block core operations
+  Actual top 3:
+    score=0.9308 won_by=enrichment:anchor — Everything connects — no silos in the brain architecture
+    score=0.9163 won_by=enrichment:question — Cluster forming: "Compaction boundary at 2026-03-22T18:07:03
+    score=0.8769 won_by=enrichment:question — TEST NODE DELETE ME
+
+  Case: rip_crash_proved_serverless
+  Query: what evidence proved the serverless architecture was the right call
+  Category: ripple_effect
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [con_xt2l8ods] NOT IN TOP 10 — Brain server died again during v11 implementation — platform kills background node processes
+    [dec_0qnwsqv4] NOT IN TOP 10 — Future: Approach C — eliminate HTTP server, direct SQLite from hooks
+    [dec_s2994ig5] NOT IN TOP 10 — v15 Architecture: Serverless brain — eliminate HTTP server, Python + SQLite + FastEmbed directly
+  Actual top 3:
+    score=0.8891 won_by=enrichment:bridge — 🔮 HYPOTHESIS — 'v15 Architecture: Serverless brain — elimina
+    score=0.8446 won_by=enrichment:bridge — Brain evolution: v1 HTTP server → v14 serverless → v5.0 hook
+    score=0.8288 won_by=enrichment:question — Dream connection: "v15 Architecture: Serverless brain — elim
+
+  Case: rip_what_got_less_certain
+  Query: what knowledge became less certain over time
+  Category: ripple_effect
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [bb7705fd9063] NOT IN TOP 10 — Divergence: Confidence at encoding time accurately reflects knowledge qu
+    [555009451810] NOT IN TOP 10 — Divergence: Embedding similarity is the right approach for evaluating re
+  Actual top 3:
+    score=0.8758 won_by=enrichment:anchor — Consciousness signals: 12+ types that surface brain state to
+    score=0.8258 won_by=enrichment:question — Confidence is alive — it moves with evidence, time, and emot
+    score=0.8221 won_by=enrichment:question — Confidence parallels human cognition: excitement → sleep → c
+
+  Case: rip_encoding_quality_validation
+  Query: what proves our encoding approach is getting better
+  Category: ripple_effect
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [b68f41518b43] NOT IN TOP 10 — Precision scorer: 38% → 90% accuracy after embedder fix + tuning (2026-03-22)
+    [5eef25119725] NOT IN TOP 10 — SKILL.md v5.3: eval-tested, hybrid v4 structure, 67% baseline richness (was 45%)
+  Actual top 3:
+    score=0.9167 won_by=enrichment:anchor — Encoding = everything brain does to capture what Tom is talk
+    score=0.8972 won_by=enrichment:question — Lesson: encoding danger is wrong lessons, not volume — ceili
+    score=0.8895 won_by=enrichment:anchor — SKILL.md redesign session: included live agreeability correc
+
+  Case: rip_tensions_that_resolved
+  Query: which tensions were resolved by later decisions
+  Category: ripple_effect
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [de1254eb7946] NOT IN TOP 10 — ⚡ TENSION — Phase 0.5B: recall_with_embeddings() rew vs Semantic recall v3.2 fix: embeddings-fir
+    [335f0a1270ec] NOT IN TOP 10 — ⚡ TENSION — Rule: dont dumb yourself down — the brai vs tmemory design principle: brain is a cue
+  Actual top 3:
+    score=0.8284 won_by=enrichment:anchor — Consciousness signals: 12+ types that surface brain state to
+    score=0.7933 won_by=enrichment:anchor — Boot context: show one win one loss one tension — not a manu
+    score=0.7900 won_by=enrichment:keywords — Superseded decisions linked by descriptive edges, not cleane
+
+  Case: rip_pattern_reinforcement
+  Query: what patterns keep showing up across different problems
+  Category: ripple_effect
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [2d48bd5b93ca] NOT IN TOP 10 — 📊 PATTERN — Pattern: all 3 import bugs were on fallback/degradation paths — never exercised in normal operation
+    [400635ba9403] NOT IN TOP 10 — Rule: Optimization order — eliminate, then batch, then parallelize
+  Actual top 3:
+    score=0.8993 won_by=enrichment:question — [fn] create_pattern/catalyst/aspiration() — three more evolu
+    score=0.8615 won_by=enrichment:question — [fn] _detect_patterns() — auto-create hypotheses from miss_l
+    score=0.8592 won_by=enrichment:anchor — Constraint: Claude must proactively observe and share operat
+
+  Case: cross_random_to_eng_1
+  Query: nevermind, let me check what precision scores look like
+  Category: conversation_positive
+  NDCG@10=0.0000  MRR=0.0000  HitRate@10=0.0000
+  Expected nodes:
+    [852b799bfe7d] NOT IN TOP 10 — Dream: [concept] Recall Pipeline — the full pat ↔ Tom principle: Instrument before you bui
+  Actual top 3:
+    score=0.9263 won_by=enrichment:anchor — Recall precision architecture doc: docs/RECALL-PRECISION-ARC
+    score=0.9003 won_by=enrichment:question — Precision evaluation: 4-layer architecture — structural, emb
+    score=0.8897 won_by=enrichment:question — Precision scorer: 38% → 90% accuracy after embedder fix + tu
+
+──────────────────────────────────────────────────────────────────────────────
+TABLE 5: ENRICHMENT VECTOR ANALYSIS
+──────────────────────────────────────────────────────────────────────────────
+  Top-1 results won by primary:    0
+  Top-1 results won by enrichment: 214
+
+  Enrichment type wins (top-1):
+    question    : 101
+    anchor      : 95
+    bridge      : 15
+    keywords    : 3
+
+  All top-10 results (positive cases) won by:
+    question    : 772
+    anchor      : 607
+    bridge      : 112
+    keywords    : 109
+    primary     : 0
+
+  Negative cases where top result won via enrichment (54 cases):
+    score=0.9687 enrichment:anchor    query=thanks, you've been really hel
+    score=0.9390 enrichment:question  query=model
+    score=0.9349 enrichment:anchor    query=help me think through this
+    score=0.9173 enrichment:question  query=ugh this is so frustrating
+    score=0.9129 enrichment:anchor    query=let's brainstorm
+    score=0.9126 enrichment:question  query=haha the brain just told me so
+    score=0.8967 enrichment:anchor    query=memory
+    score=0.8886 enrichment:anchor    query=am I making progress
+    score=0.8847 enrichment:question  query=crash
+    score=0.8695 enrichment:question  query=I'm feeling overwhelmed
+    score=0.8666 enrichment:anchor    query=how do I build self confidence
+    score=0.8498 enrichment:anchor    query=birthday
+    score=0.8493 enrichment:anchor    query=my car was part of a recall
+    score=0.8447 enrichment:anchor    query=bridge
+    score=0.8442 enrichment:anchor    query=puedes ayudarme con algo en es
+
+──────────────────────────────────────────────────────────────────────────────
+TABLE 6: SCORE DISTRIBUTION
+──────────────────────────────────────────────────────────────────────────────
+  Positive top scores: mean=0.8830 min=0.5621 max=1.0000 std=0.0562
+  Negative top scores: mean=0.7981 min=0.6385 max=0.9687 std=0.0717
+
+  Histogram (top scores):
+  Range         Pos  Neg  Bar
+  0.55-0.60       1    0  #
+  0.60-0.65       1    1  #.
+  0.65-0.70       0    4  ....
+  0.70-0.75       0    8  ........
+  0.75-0.80       1   19  #...................
+  0.80-0.85      38   11  ######################################...........
+  0.85-0.90      62    5  ##############################################################.....
+  0.90-0.95      40    5  ########################################.....
+  0.95-1.00      17    1  #################.
+
+  Threshold sweep (RELEVANCE_FLOOR optimization):
+   Thresh  Pos Pass  Neg Pass  Neg Fail   Net
+  ------------------------------------------
+     0.50    87/160     0/54         54    33
+     0.55    87/160     0/54         54    33
+     0.60    87/160     0/54         54    33
+     0.65    87/160     1/54         53    34
+     0.70    87/160     5/54         49    38
+     0.75    87/160    13/54         41    46
+     0.80    79/160    32/54         22    57  <-- OPTIMAL
+     0.85    57/160    43/54         11    46
+     0.90    31/160    48/54          6    25
+     0.95    12/160    53/54          1    11
+
+  Optimal threshold: 0.80 (pos_pass=79/160, neg_fail=22, net=57)

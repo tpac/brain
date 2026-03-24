@@ -1,0 +1,2172 @@
+time=2026-03-23T12:04:13.218-04:00 level=INFO source=routes.go:1727 msg="server config" env="map[HTTPS_PROXY: HTTP_PROXY: NO_PROXY: OLLAMA_CONTEXT_LENGTH:0 OLLAMA_DEBUG:INFO OLLAMA_EDITOR: OLLAMA_FLASH_ATTENTION:false OLLAMA_GPU_OVERHEAD:0 OLLAMA_HOST:http://127.0.0.1:11434 OLLAMA_KEEP_ALIVE:5m0s OLLAMA_KV_CACHE_TYPE: OLLAMA_LLM_LIBRARY: OLLAMA_LOAD_TIMEOUT:5m0s OLLAMA_MAX_LOADED_MODELS:0 OLLAMA_MAX_QUEUE:512 OLLAMA_MODELS:/Users/tpac/.ollama/models OLLAMA_MULTIUSER_CACHE:false OLLAMA_NEW_ENGINE:false OLLAMA_NOHISTORY:false OLLAMA_NOPRUNE:false OLLAMA_NO_CLOUD:false OLLAMA_NUM_PARALLEL:1 OLLAMA_ORIGINS:[http://localhost https://localhost http://localhost:* https://localhost:* http://127.0.0.1 https://127.0.0.1 http://127.0.0.1:* https://127.0.0.1:* http://0.0.0.0 https://0.0.0.0 http://0.0.0.0:* https://0.0.0.0:* app://* file://* tauri://* vscode-webview://* vscode-file://*] OLLAMA_REMOTES:[ollama.com] OLLAMA_SCHED_SPREAD:false http_proxy: https_proxy: no_proxy:]"
+time=2026-03-23T12:04:13.218-04:00 level=INFO source=routes.go:1729 msg="Ollama cloud disabled: false"
+time=2026-03-23T12:04:13.223-04:00 level=INFO source=images.go:477 msg="total blobs: 10"
+time=2026-03-23T12:04:13.224-04:00 level=INFO source=images.go:484 msg="total unused blobs removed: 0"
+time=2026-03-23T12:04:13.225-04:00 level=INFO source=routes.go:1782 msg="Listening on 127.0.0.1:11434 (version 0.18.2)"
+time=2026-03-23T12:04:13.226-04:00 level=INFO source=runner.go:67 msg="discovering available GPUs..."
+time=2026-03-23T12:04:13.227-04:00 level=INFO source=server.go:430 msg="starting runner" cmd="/Applications/Ollama.app/Contents/Resources/ollama runner --ollama-engine --port 52976"
+time=2026-03-23T12:04:23.728-04:00 level=INFO source=types.go:42 msg="inference compute" id=0 filter_id=0 library=Metal compute=0.0 name=Metal description="Apple M2 Max" libdirs="" driver=0.0 pci_id="" type=discrete total="48.0 GiB" available="48.0 GiB"
+time=2026-03-23T12:04:23.728-04:00 level=INFO source=routes.go:1832 msg="vram-based default context" total_vram="48.0 GiB" default_num_ctx=262144
+[GIN] 2026/03/23 - 12:04:23 | 200 |     106.042µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:04:23 | 200 |    5.260167ms |       127.0.0.1 | GET      "/api/tags"
+[GIN] 2026/03/23 - 12:04:27 | 200 |    1.245208ms |       127.0.0.1 | GET      "/api/tags"
+[GIN] 2026/03/23 - 12:05:42 | 200 |      19.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:05:42 | 200 |    4.089459ms |       127.0.0.1 | GET      "/api/tags"
+[GIN] 2026/03/23 - 12:07:02 | 200 |      19.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:07:02 | 200 |   99.746209ms |       127.0.0.1 | POST     "/api/show"
+ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+ggml_metal_library_init: using embedded metal library
+ggml_metal_library_init: loaded in 0.013 sec
+ggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)
+ggml_metal_device_init: GPU name:   Apple M2 Max
+ggml_metal_device_init: GPU family: MTLGPUFamilyApple8  (1008)
+ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+ggml_metal_device_init: GPU family: MTLGPUFamilyMetal3  (5001)
+ggml_metal_device_init: simdgroup reduction   = true
+ggml_metal_device_init: simdgroup matrix mul. = true
+ggml_metal_device_init: has unified memory    = true
+ggml_metal_device_init: has bfloat            = true
+ggml_metal_device_init: has tensor            = false
+ggml_metal_device_init: use residency sets    = true
+ggml_metal_device_init: use shared buffers    = true
+ggml_metal_device_init: recommendedMaxWorkingSetSize  = 51539.61 MB
+llama_model_load_from_file_impl: using device Metal (Apple M2 Max) (unknown id) - 49150 MiB free
+llama_model_loader: loaded meta data with 34 key-value pairs and 288 tensors from /Users/tpac/.ollama/models/blobs/sha256-7462734796d67c40ecec2ca98eddf970e171dbb6b370e43fd633ee75b69abe1b (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = gemma2
+llama_model_loader: - kv   1:                               general.type str              = model
+llama_model_loader: - kv   2:                               general.name str              = Gemma 2.0 2b It Transformers
+llama_model_loader: - kv   3:                           general.finetune str              = it-transformers
+llama_model_loader: - kv   4:                           general.basename str              = gemma-2.0
+llama_model_loader: - kv   5:                         general.size_label str              = 2B
+llama_model_loader: - kv   6:                            general.license str              = gemma
+llama_model_loader: - kv   7:                      gemma2.context_length u32              = 8192
+llama_model_loader: - kv   8:                    gemma2.embedding_length u32              = 2304
+llama_model_loader: - kv   9:                         gemma2.block_count u32              = 26
+llama_model_loader: - kv  10:                 gemma2.feed_forward_length u32              = 9216
+llama_model_loader: - kv  11:                gemma2.attention.head_count u32              = 8
+llama_model_loader: - kv  12:             gemma2.attention.head_count_kv u32              = 4
+llama_model_loader: - kv  13:    gemma2.attention.layer_norm_rms_epsilon f32              = 0.000001
+llama_model_loader: - kv  14:                gemma2.attention.key_length u32              = 256
+llama_model_loader: - kv  15:              gemma2.attention.value_length u32              = 256
+llama_model_loader: - kv  16:                          general.file_type u32              = 2
+llama_model_loader: - kv  17:              gemma2.attn_logit_softcapping f32              = 50.000000
+llama_model_loader: - kv  18:             gemma2.final_logit_softcapping f32              = 30.000000
+llama_model_loader: - kv  19:            gemma2.attention.sliding_window u32              = 4096
+llama_model_loader: - kv  20:                       tokenizer.ggml.model str              = llama
+llama_model_loader: - kv  21:                         tokenizer.ggml.pre str              = default
+llama_model_loader: - kv  22:                      tokenizer.ggml.tokens arr[str,256000]  = ["<pad>", "<eos>", "<bos>", "<unk>", ...
+llama_model_loader: - kv  23:                      tokenizer.ggml.scores arr[f32,256000]  = [-1000.000000, -1000.000000, -1000.00...
+llama_model_loader: - kv  24:                  tokenizer.ggml.token_type arr[i32,256000]  = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...
+llama_model_loader: - kv  25:                tokenizer.ggml.bos_token_id u32              = 2
+llama_model_loader: - kv  26:                tokenizer.ggml.eos_token_id u32              = 1
+llama_model_loader: - kv  27:            tokenizer.ggml.unknown_token_id u32              = 3
+llama_model_loader: - kv  28:            tokenizer.ggml.padding_token_id u32              = 0
+llama_model_loader: - kv  29:               tokenizer.ggml.add_bos_token bool             = true
+llama_model_loader: - kv  30:               tokenizer.ggml.add_eos_token bool             = false
+llama_model_loader: - kv  31:                    tokenizer.chat_template str              = {{ bos_token }}{% if messages[0]['rol...
+llama_model_loader: - kv  32:            tokenizer.ggml.add_space_prefix bool             = false
+llama_model_loader: - kv  33:               general.quantization_version u32              = 2
+llama_model_loader: - type  f32:  105 tensors
+llama_model_loader: - type q4_0:  182 tensors
+llama_model_loader: - type q6_K:    1 tensors
+print_info: file format = GGUF V3 (latest)
+print_info: file type   = Q4_0
+print_info: file size   = 1.51 GiB (4.97 BPW) 
+load: control-looking token:    107 '<end_of_turn>' was not control-type; this is probably a bug in the model. its type will be overridden
+load: special_eos_id is not in special_eog_ids - the tokenizer config may be incorrect
+load: printing all EOG tokens:
+load:   - 1 ('<eos>')
+load:   - 107 ('<end_of_turn>')
+load: special tokens cache size = 249
+load: token to piece cache size = 1.6014 MB
+print_info: arch             = gemma2
+print_info: vocab_only       = 1
+print_info: no_alloc         = 0
+print_info: model type       = ?B
+print_info: model params     = 2.61 B
+print_info: general.name     = Gemma 2.0 2b It Transformers
+print_info: vocab type       = SPM
+print_info: n_vocab          = 256000
+print_info: n_merges         = 0
+print_info: BOS token        = 2 '<bos>'
+print_info: EOS token        = 1 '<eos>'
+print_info: EOT token        = 107 '<end_of_turn>'
+print_info: UNK token        = 3 '<unk>'
+print_info: PAD token        = 0 '<pad>'
+print_info: LF token         = 227 '<0x0A>'
+print_info: EOG token        = 1 '<eos>'
+print_info: EOG token        = 107 '<end_of_turn>'
+print_info: max token length = 48
+llama_model_load: vocab only - skipping tensors
+time=2026-03-23T12:07:03.024-04:00 level=WARN source=server.go:168 msg="requested context size too large for model" num_ctx=262144 n_ctx_train=8192
+time=2026-03-23T12:07:03.024-04:00 level=INFO source=server.go:430 msg="starting runner" cmd="/Applications/Ollama.app/Contents/Resources/ollama runner --model /Users/tpac/.ollama/models/blobs/sha256-7462734796d67c40ecec2ca98eddf970e171dbb6b370e43fd633ee75b69abe1b --port 53067"
+time=2026-03-23T12:07:03.028-04:00 level=INFO source=sched.go:484 msg="system memory" total="64.0 GiB" free="34.2 GiB" free_swap="0 B"
+time=2026-03-23T12:07:03.028-04:00 level=INFO source=sched.go:491 msg="gpu memory" id=0 library=Metal available="47.5 GiB" free="48.0 GiB" minimum="512.0 MiB" overhead="0 B"
+time=2026-03-23T12:07:03.028-04:00 level=INFO source=server.go:497 msg="loading model" "model layers"=27 requested=-1
+time=2026-03-23T12:07:03.028-04:00 level=INFO source=device.go:240 msg="model weights" device=Metal size="1.5 GiB"
+time=2026-03-23T12:07:03.028-04:00 level=INFO source=device.go:251 msg="kv cache" device=Metal size="832.0 MiB"
+time=2026-03-23T12:07:03.028-04:00 level=INFO source=device.go:262 msg="compute graph" device=Metal size="504.5 MiB"
+time=2026-03-23T12:07:03.028-04:00 level=INFO source=device.go:272 msg="total memory" size="2.8 GiB"
+time=2026-03-23T12:07:03.081-04:00 level=INFO source=runner.go:965 msg="starting go runner"
+ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+ggml_metal_library_init: using embedded metal library
+ggml_metal_library_init: loaded in 9.661 sec
+ggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)
+ggml_metal_device_init: GPU name:   Apple M2 Max
+ggml_metal_device_init: GPU family: MTLGPUFamilyApple8  (1008)
+ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+ggml_metal_device_init: GPU family: MTLGPUFamilyMetal3  (5001)
+ggml_metal_device_init: simdgroup reduction   = true
+ggml_metal_device_init: simdgroup matrix mul. = true
+ggml_metal_device_init: has unified memory    = true
+ggml_metal_device_init: has bfloat            = true
+ggml_metal_device_init: has tensor            = false
+ggml_metal_device_init: use residency sets    = true
+ggml_metal_device_init: use shared buffers    = true
+ggml_metal_device_init: recommendedMaxWorkingSetSize  = 51539.61 MB
+time=2026-03-23T12:07:03.111-04:00 level=INFO source=ggml.go:104 msg=system Metal.0.EMBED_LIBRARY=1 CPU.0.NEON=1 CPU.0.ARM_FMA=1 CPU.0.FP16_VA=1 CPU.0.DOTPROD=1 CPU.0.LLAMAFILE=1 CPU.0.ACCELERATE=1 compiler=cgo(clang)
+time=2026-03-23T12:07:12.818-04:00 level=INFO source=runner.go:1001 msg="Server listening on 127.0.0.1:53067"
+time=2026-03-23T12:07:12.829-04:00 level=INFO source=runner.go:895 msg=load request="{Operation:commit LoraPath:[] Parallel:1 BatchSize:512 FlashAttention:Auto KvSize:8192 KvCacheType: NumThreads:8 GPULayers:27[ID:0 Layers:27(0..26)] MultiUserCache:false ProjectorPath: MainGPU:0 UseMmap:true}"
+llama_model_load_from_file_impl: using device Metal (Apple M2 Max) (unknown id) - 49150 MiB free
+time=2026-03-23T12:07:12.829-04:00 level=INFO source=server.go:1350 msg="waiting for llama runner to start responding"
+time=2026-03-23T12:07:12.830-04:00 level=INFO source=server.go:1384 msg="waiting for server to become available" status="llm server loading model"
+llama_model_loader: loaded meta data with 34 key-value pairs and 288 tensors from /Users/tpac/.ollama/models/blobs/sha256-7462734796d67c40ecec2ca98eddf970e171dbb6b370e43fd633ee75b69abe1b (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = gemma2
+llama_model_loader: - kv   1:                               general.type str              = model
+llama_model_loader: - kv   2:                               general.name str              = Gemma 2.0 2b It Transformers
+llama_model_loader: - kv   3:                           general.finetune str              = it-transformers
+llama_model_loader: - kv   4:                           general.basename str              = gemma-2.0
+llama_model_loader: - kv   5:                         general.size_label str              = 2B
+llama_model_loader: - kv   6:                            general.license str              = gemma
+llama_model_loader: - kv   7:                      gemma2.context_length u32              = 8192
+llama_model_loader: - kv   8:                    gemma2.embedding_length u32              = 2304
+llama_model_loader: - kv   9:                         gemma2.block_count u32              = 26
+llama_model_loader: - kv  10:                 gemma2.feed_forward_length u32              = 9216
+llama_model_loader: - kv  11:                gemma2.attention.head_count u32              = 8
+llama_model_loader: - kv  12:             gemma2.attention.head_count_kv u32              = 4
+llama_model_loader: - kv  13:    gemma2.attention.layer_norm_rms_epsilon f32              = 0.000001
+llama_model_loader: - kv  14:                gemma2.attention.key_length u32              = 256
+llama_model_loader: - kv  15:              gemma2.attention.value_length u32              = 256
+llama_model_loader: - kv  16:                          general.file_type u32              = 2
+llama_model_loader: - kv  17:              gemma2.attn_logit_softcapping f32              = 50.000000
+llama_model_loader: - kv  18:             gemma2.final_logit_softcapping f32              = 30.000000
+llama_model_loader: - kv  19:            gemma2.attention.sliding_window u32              = 4096
+llama_model_loader: - kv  20:                       tokenizer.ggml.model str              = llama
+llama_model_loader: - kv  21:                         tokenizer.ggml.pre str              = default
+llama_model_loader: - kv  22:                      tokenizer.ggml.tokens arr[str,256000]  = ["<pad>", "<eos>", "<bos>", "<unk>", ...
+llama_model_loader: - kv  23:                      tokenizer.ggml.scores arr[f32,256000]  = [-1000.000000, -1000.000000, -1000.00...
+llama_model_loader: - kv  24:                  tokenizer.ggml.token_type arr[i32,256000]  = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...
+llama_model_loader: - kv  25:                tokenizer.ggml.bos_token_id u32              = 2
+llama_model_loader: - kv  26:                tokenizer.ggml.eos_token_id u32              = 1
+llama_model_loader: - kv  27:            tokenizer.ggml.unknown_token_id u32              = 3
+llama_model_loader: - kv  28:            tokenizer.ggml.padding_token_id u32              = 0
+llama_model_loader: - kv  29:               tokenizer.ggml.add_bos_token bool             = true
+llama_model_loader: - kv  30:               tokenizer.ggml.add_eos_token bool             = false
+llama_model_loader: - kv  31:                    tokenizer.chat_template str              = {{ bos_token }}{% if messages[0]['rol...
+llama_model_loader: - kv  32:            tokenizer.ggml.add_space_prefix bool             = false
+llama_model_loader: - kv  33:               general.quantization_version u32              = 2
+llama_model_loader: - type  f32:  105 tensors
+llama_model_loader: - type q4_0:  182 tensors
+llama_model_loader: - type q6_K:    1 tensors
+print_info: file format = GGUF V3 (latest)
+print_info: file type   = Q4_0
+print_info: file size   = 1.51 GiB (4.97 BPW) 
+load: control-looking token:    107 '<end_of_turn>' was not control-type; this is probably a bug in the model. its type will be overridden
+load: special_eos_id is not in special_eog_ids - the tokenizer config may be incorrect
+load: printing all EOG tokens:
+load:   - 1 ('<eos>')
+load:   - 107 ('<end_of_turn>')
+load: special tokens cache size = 249
+load: token to piece cache size = 1.6014 MB
+print_info: arch             = gemma2
+print_info: vocab_only       = 0
+print_info: no_alloc         = 0
+print_info: n_ctx_train      = 8192
+print_info: n_embd           = 2304
+print_info: n_embd_inp       = 2304
+print_info: n_layer          = 26
+print_info: n_head           = 8
+print_info: n_head_kv        = 4
+print_info: n_rot            = 256
+print_info: n_swa            = 4096
+print_info: is_swa_any       = 1
+print_info: n_embd_head_k    = 256
+print_info: n_embd_head_v    = 256
+print_info: n_gqa            = 2
+print_info: n_embd_k_gqa     = 1024
+print_info: n_embd_v_gqa     = 1024
+print_info: f_norm_eps       = 0.0e+00
+print_info: f_norm_rms_eps   = 1.0e-06
+print_info: f_clamp_kqv      = 0.0e+00
+print_info: f_max_alibi_bias = 0.0e+00
+print_info: f_logit_scale    = 0.0e+00
+print_info: f_attn_scale     = 6.2e-02
+print_info: n_ff             = 9216
+print_info: n_expert         = 0
+print_info: n_expert_used    = 0
+print_info: n_expert_groups  = 0
+print_info: n_group_used     = 0
+print_info: causal attn      = 1
+print_info: pooling type     = 0
+print_info: rope type        = 2
+print_info: rope scaling     = linear
+print_info: freq_base_train  = 10000.0
+print_info: freq_scale_train = 1
+print_info: n_ctx_orig_yarn  = 8192
+print_info: rope_yarn_log_mul= 0.0000
+print_info: rope_finetuned   = unknown
+print_info: model type       = 2B
+print_info: model params     = 2.61 B
+print_info: general.name     = Gemma 2.0 2b It Transformers
+print_info: vocab type       = SPM
+print_info: n_vocab          = 256000
+print_info: n_merges         = 0
+print_info: BOS token        = 2 '<bos>'
+print_info: EOS token        = 1 '<eos>'
+print_info: EOT token        = 107 '<end_of_turn>'
+print_info: UNK token        = 3 '<unk>'
+print_info: PAD token        = 0 '<pad>'
+print_info: LF token         = 227 '<0x0A>'
+print_info: EOG token        = 1 '<eos>'
+print_info: EOG token        = 107 '<end_of_turn>'
+print_info: max token length = 48
+load_tensors: loading model tensors, this can take a while... (mmap = true)
+load_tensors: offloading 26 repeating layers to GPU
+load_tensors: offloading output layer to GPU
+load_tensors: offloaded 27/27 layers to GPU
+load_tensors:   CPU_Mapped model buffer size =   461.43 MiB
+load_tensors: Metal_Mapped model buffer size =  1548.25 MiB
+llama_context: constructing llama_context
+llama_context: n_seq_max     = 1
+llama_context: n_ctx         = 8192
+llama_context: n_ctx_seq     = 8192
+llama_context: n_batch       = 512
+llama_context: n_ubatch      = 512
+llama_context: causal_attn   = 1
+llama_context: flash_attn    = auto
+llama_context: kv_unified    = false
+llama_context: freq_base     = 10000.0
+llama_context: freq_scale    = 1
+ggml_metal_init: allocating
+ggml_metal_init: picking default device: Apple M2 Max
+ggml_metal_init: use fusion         = true
+ggml_metal_init: use concurrency    = true
+ggml_metal_init: use graph optimize = true
+llama_context:        CPU  output buffer size =     0.99 MiB
+llama_kv_cache_iswa: using full-size SWA cache (ref: https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)
+llama_kv_cache_iswa: creating non-SWA KV cache, size = 8192 cells
+llama_kv_cache:      Metal KV buffer size =   416.00 MiB
+llama_kv_cache: size =  416.00 MiB (  8192 cells,  13 layers,  1/1 seqs), K (f16):  208.00 MiB, V (f16):  208.00 MiB
+llama_kv_cache_iswa: creating     SWA KV cache, size = 8192 cells
+llama_kv_cache:      Metal KV buffer size =   416.00 MiB
+llama_kv_cache: size =  416.00 MiB (  8192 cells,  13 layers,  1/1 seqs), K (f16):  208.00 MiB, V (f16):  208.00 MiB
+llama_context: Flash Attention was auto, set to enabled
+llama_context:      Metal compute buffer size =   504.50 MiB
+llama_context:        CPU compute buffer size =    36.52 MiB
+llama_context: graph nodes  = 948
+llama_context: graph splits = 2
+time=2026-03-23T12:07:13.835-04:00 level=INFO source=server.go:1388 msg="llama runner started in 10.81 seconds"
+time=2026-03-23T12:07:13.835-04:00 level=INFO source=sched.go:561 msg="loaded runners" count=1
+time=2026-03-23T12:07:13.835-04:00 level=INFO source=server.go:1350 msg="waiting for llama runner to start responding"
+time=2026-03-23T12:07:13.835-04:00 level=INFO source=server.go:1388 msg="llama runner started in 10.81 seconds"
+[GIN] 2026/03/23 - 12:07:14 | 200 | 11.637555916s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:14 | 200 |       19.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:07:14 | 200 |   89.651042ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:07:14 | 200 |  2.520353583s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:15 | 200 |  841.206791ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:15 | 200 |  1.334878167s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:16 | 200 |  318.546667ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:16 | 200 |  421.576375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:16 | 200 |  347.605917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:17 | 200 |  332.638792ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:17 | 200 |  332.142125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:17 | 200 |  339.757958ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:18 | 200 |  333.315041ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:18 | 200 |  339.086792ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:19 | 200 |     714.234ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:20 | 200 |  653.747209ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:20 | 200 |  590.831917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:21 | 200 |  674.648583ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:21 | 200 |  323.026042ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:22 | 200 |   402.89725ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:22 | 200 |  344.176125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:22 | 200 |  351.073125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:23 | 200 |  376.836666ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:23 | 200 |  328.866334ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:24 | 200 |  412.680541ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:24 | 200 |  412.351083ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:25 | 200 |  603.582667ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:25 | 200 |  660.160333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:26 | 200 |  579.742833ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:27 | 200 |  648.868417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:27 | 200 |  390.403791ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:27 | 200 |  315.077333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:28 | 200 |  298.938792ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:28 | 200 |  315.733833ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:28 | 200 |  284.373125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:29 | 200 |  299.413667ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:29 | 200 |  335.881917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:29 | 200 |  301.329333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:30 | 200 |  590.801375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:30 | 200 |  546.676209ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:31 | 200 |  549.284208ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:32 | 200 |  729.119459ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:32 | 200 |  400.122833ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:33 | 200 |  415.130542ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:33 | 200 |  395.328917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:33 | 200 |  344.580208ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:34 | 200 |  431.467542ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:34 | 200 |  411.068875ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:35 | 200 |  319.892375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:35 | 200 |  323.439542ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:36 | 200 |  691.450584ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:36 | 200 |  600.864208ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:37 | 200 |  605.420459ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:38 | 200 |  751.883459ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:38 | 200 |  386.925333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:38 | 200 |  399.607417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:39 | 200 |  359.517125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:39 | 200 |  398.548708ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:40 | 200 |  465.393541ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:40 | 200 |  429.176125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:41 | 200 |  437.673667ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:41 | 200 |  362.917291ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:42 | 200 |  631.506458ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:42 | 200 |  648.840083ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:43 | 200 |  658.010916ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:44 | 200 |    699.9385ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:44 | 200 |  414.696709ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:45 | 200 |  336.516333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:45 | 200 |  396.388959ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:45 | 200 |  312.209166ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:46 | 200 |   386.02125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:46 | 200 |  393.455042ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:46 | 200 |  329.301792ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:47 | 200 |  321.043584ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:47 | 200 |  694.055417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:48 | 200 |  650.139291ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:49 | 200 |  646.917417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:50 | 200 |  669.489625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:50 | 200 |  373.449833ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:50 | 200 |  363.056458ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:51 | 200 |  370.223166ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:51 | 200 |  323.820875ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:51 | 200 |  397.183625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:52 | 200 |    383.4015ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:52 | 200 |  464.617667ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:53 | 200 |     365.889ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:53 | 200 |  747.448833ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:54 | 200 |  648.737833ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:55 | 200 |  545.189167ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:56 | 200 |  763.299209ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:56 | 200 |  335.844625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:56 | 200 |  372.601625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:57 | 200 |  388.938167ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:57 | 200 |  256.033375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:57 | 200 |   415.24375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:58 | 200 |  331.834917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:58 | 200 |  388.220833ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:58 | 200 |   384.20875ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:59 | 200 |      18.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:07:59 | 200 |   87.253458ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:07:59 | 200 |  675.806667ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:59 | 200 |  267.372334ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:07:59 | 200 |      15.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:07:59 | 200 |   88.113333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:00 | 200 |  665.069916ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:01 | 200 |   1.12718425s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:01 | 200 |      15.667µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:01 | 200 |   91.162208ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:01 | 200 |     1.333044s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:01 | 200 |   583.55625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:01 | 200 |      16.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:01 | 200 |    89.65275ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:02 | 200 |  678.567458ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:03 | 200 |  1.347047541s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:03 | 200 |      17.416µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:03 | 200 |   99.145041ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:03 | 200 |  1.035982125s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:03 | 200 |  231.002792ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:03 | 200 |      15.292µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:03 | 200 |   87.395417ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:03 | 200 |  419.194583ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:06 | 200 |   2.18710325s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:06 | 200 |      18.042µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:06 | 200 |   88.093917ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:06 | 200 |     2.317499s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:06 | 200 |  265.877167ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:06 | 200 |      17.792µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:06 | 200 |   86.750042ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:06 | 200 |  578.109625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:07 | 200 |  1.134443541s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:07 | 200 |      16.666µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:07 | 200 |   89.310167ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:08 | 200 |  1.140581375s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:08 | 200 |   299.78475ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:08 | 200 |      19.083µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:08 | 200 |      87.421ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:08 | 200 |  414.060542ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:09 | 200 |  1.041616334s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:09 | 200 |      18.417µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:09 | 200 |   88.064625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:09 | 200 |  1.299864792s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:09 | 200 |  387.978333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:09 | 200 |      21.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:10 | 200 |   91.020541ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:10 | 200 |  438.258875ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:11 | 200 |  1.058028208s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:11 | 200 |      18.291µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:11 | 200 |   88.374541ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:11 | 200 |     1.420187s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:11 | 200 |  521.759458ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:11 | 200 |      16.917µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:11 | 200 |   88.140791ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:12 | 200 |  763.859166ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:13 | 200 |  1.188013792s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:13 | 200 |      16.167µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:13 | 200 |     89.8165ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:13 | 200 |  1.252893292s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:13 | 200 |    542.0265ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:13 | 200 |      14.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:13 | 200 |   94.400208ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:14 | 200 |   731.22925ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:15 | 200 |  1.600906292s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:15 | 200 |      18.167µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:15 | 200 |      87.816ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:15 | 200 |  1.198299708s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:15 | 200 |     233.451ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:15 | 200 |      18.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:16 | 200 |   89.429625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:16 | 200 |  421.126209ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:17 | 200 |  982.740041ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:17 | 200 |       17.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:17 | 200 |    88.47125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:17 | 200 |  1.110079083s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:17 | 200 |  246.246333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:17 | 200 |      18.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:17 | 200 |     89.9305ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:17 | 200 |  371.840834ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:18 | 200 |  1.011993125s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:18 | 200 |        16.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:18 | 200 |    88.44075ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:18 | 200 |  1.172040917s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:18 | 200 |  243.412167ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:18 | 200 |      18.791µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:19 | 200 |   90.072666ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:19 | 200 |  522.591875ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:20 | 200 |  1.185963125s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:20 | 200 |      19.042µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:20 | 200 |     100.848ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:20 | 200 |  1.245288458s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:20 | 200 |   287.26325ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:20 | 200 |          20µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:20 | 200 |   92.708375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:20 | 200 |  408.871333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:23 | 200 |  2.296946208s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:23 | 200 |          18µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:23 | 200 |      91.714ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:24 | 200 |  3.016178667s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:24 | 200 |  824.005959ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:24 | 200 |      16.291µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:24 | 200 |   97.011625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:24 | 200 |  705.082833ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:25 | 200 |  1.428457167s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:25 | 200 |       17.75µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:25 | 200 |   87.073583ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:26 | 200 |    1.6465215s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:26 | 200 |  623.921583ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:26 | 200 |      14.584µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:26 | 200 |   98.184459ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:27 | 200 |  655.466291ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:28 | 200 |  1.619322334s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:28 | 200 |      16.417µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:28 | 200 |   87.904625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:28 | 200 |    1.2849245s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:28 | 200 |   243.15575ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:28 | 200 |      16.209µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:28 | 200 |    88.35125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:28 | 200 |  339.552375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:30 | 200 |  2.139416542s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:30 | 200 |      18.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:31 | 200 |   89.407875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:31 | 200 |   2.30903325s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:31 | 200 |  258.379208ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:31 | 200 |      19.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:31 | 200 |   96.869708ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:31 | 200 |  380.871625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:32 | 200 |     877.677ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:32 | 200 |       17.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:32 | 200 |   88.362625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:32 | 200 |  1.009171458s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:32 | 200 |  227.506709ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:32 | 200 |      19.791µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:32 | 200 |   89.806958ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:32 | 200 |  413.640875ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:33 | 200 |  921.439958ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:33 | 200 |      15.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:33 | 200 |   94.790958ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:34 | 200 |  1.079000667s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:34 | 200 |  236.023917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:34 | 200 |        20.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:34 | 200 |   94.117458ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:34 | 200 |  377.627708ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:35 | 200 |  947.192375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:35 | 200 |      15.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:35 | 200 |   91.173125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:35 | 200 |   1.43793325s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:36 | 200 |  556.917125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:36 | 200 |          17µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:36 | 200 |    92.24825ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:36 | 200 |   782.62825ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:37 | 200 |  1.210001833s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:37 | 200 |      19.666µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:37 | 200 |     87.6535ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:37 | 200 |  1.255716334s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:38 | 200 |  541.103167ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:38 | 200 |       18.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:38 | 200 |    98.76025ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:38 | 200 |  760.658625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:41 | 200 |  2.827981125s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:41 | 200 |      22.584µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:41 | 200 |   89.197458ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:41 | 200 |  2.384624541s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:41 | 200 |  236.885417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:41 | 200 |      17.042µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:41 | 200 |   90.329209ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:41 | 200 |  394.697459ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:42 | 200 |  1.044646083s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:42 | 200 |      18.209µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:42 | 200 |  107.328958ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:42 | 200 |    1.2261865s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:43 | 200 |  248.322833ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:43 | 200 |      20.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:43 | 200 |     90.2595ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:43 | 200 |  374.289167ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:45 | 200 |  2.658379125s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:45 | 200 |        17.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:45 | 200 |   89.120875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:46 | 200 |  2.818727833s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:46 | 200 |  261.020542ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:46 | 200 |      17.708µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:08:46 | 200 |   88.963333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:08:46 | 200 |  412.869333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:47 | 200 |  645.451167ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:47 | 200 |  764.643917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:47 | 200 |  341.305375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:48 | 200 |  718.189667ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:48 | 200 |  593.159083ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:49 | 200 |  589.279292ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:50 | 200 |  646.846125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:50 | 200 |  381.637209ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:51 | 200 |  324.593875ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:51 | 200 |  332.481167ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:51 | 200 |  366.919333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:52 | 200 |  316.079917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:52 | 200 |  339.954917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:52 | 200 |  296.716833ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:53 | 200 |  287.486834ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:53 | 200 |  633.212834ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:54 | 200 |  598.518542ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:54 | 200 |  647.978417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:55 | 200 |  689.391875ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:56 | 200 |  449.557791ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:56 | 200 |  292.290666ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:57 | 200 |  447.271083ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:57 | 200 |     353.652ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:57 | 200 |  277.669958ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:57 | 200 |  323.455125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:58 | 200 |  463.571667ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:58 | 200 |  358.043958ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:59 | 200 |  679.803625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:08:59 | 200 |   505.25825ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:00 | 200 |  637.228166ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:01 | 200 |  644.135166ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:01 | 200 |   379.78325ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:02 | 200 |  327.107917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:02 | 200 |  349.874958ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:02 | 200 |  342.550542ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:03 | 200 |  368.003208ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:03 | 200 |  353.621583ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:03 | 200 |  390.491209ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:04 | 200 |  416.974375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:05 | 200 |  723.407584ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:05 | 200 |  633.495375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:06 | 200 |  627.045584ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:06 | 200 |      16.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:06 | 200 |    2.600875ms |       127.0.0.1 | GET      "/api/tags"
+[GIN] 2026/03/23 - 12:09:07 | 200 |  721.362083ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:07 | 200 |      15.083µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:07 | 200 |    91.12675ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:07 | 200 |  339.750041ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:08 | 200 |  491.275792ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:08 | 200 |      16.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:08 | 200 |  100.869417ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:08 | 200 |  675.897917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:08 | 200 |  631.497167ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:09 | 200 |  825.059209ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:09 | 200 |   333.93975ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:09 | 200 |      14.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:09 | 200 |  103.948458ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:09 | 200 |  350.988917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:10 | 200 |     611.779ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:10 | 200 |      21.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:10 | 200 |  710.612875ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:10 | 200 |  102.610667ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:10 | 200 |  346.241584ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:11 | 200 |     903.514ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:11 | 200 |  821.429333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:12 | 200 |      19.583µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:12 | 200 |   94.654666ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:12 | 200 |   724.01425ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:13 | 200 |   785.01925ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:13 | 200 |      30.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:13 | 200 |   99.838417ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:13 | 200 |  1.280768667s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:14 | 200 |  910.190833ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:14 | 200 |  936.849333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:14 | 200 |      16.041µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:15 | 200 |   100.13525ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:15 | 200 |   722.38525ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:16 | 200 |   1.00610675s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:16 | 200 |      18.208µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:16 | 200 |  100.666834ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:16 | 200 |  668.687625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:16 | 200 |  668.022458ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:17 | 200 |  844.328459ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:17 | 200 |  381.191875ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:17 | 200 |      17.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:17 | 200 |   95.865667ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:18 | 200 |     430.081ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:18 | 200 |  673.953458ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:18 | 200 |        16.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:18 | 200 |   93.473625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:18 | 200 |  699.813959ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:19 | 200 |  638.754833ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:19 | 200 |      16.833µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:19 | 200 |   95.794542ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:19 | 200 |   859.73775ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:19 | 200 |      15.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:19 | 200 |    92.07125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:20 | 200 |  491.018042ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:20 | 200 |      19.709µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:20 | 200 |  628.380333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:20 | 200 |   91.465666ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:20 | 200 |  454.247792ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:20 | 200 |      16.083µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:20 | 200 |   89.670916ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:20 | 200 |   472.95975ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:21 | 200 |     962.489ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:21 | 200 |      18.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:21 | 200 |   90.645708ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:22 | 200 |   1.57423675s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:22 | 200 |       18.75µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:22 | 200 |    93.57875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:22 | 200 |  1.927746541s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:23 | 200 |   1.19628125s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:23 | 200 |  975.475417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:23 | 200 |      16.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:23 | 200 |   90.752334ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:23 | 200 |      17.292µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:23 | 200 |   88.889625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:24 | 200 |  1.341155208s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:25 | 200 |  2.024989834s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:25 | 200 |      17.917µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:25 | 200 |   93.015666ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:25 | 200 |  2.163940542s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:26 | 200 |      16.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:26 | 200 |  2.813824916s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:26 | 200 |  112.050375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:26 | 200 |  1.403233667s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:27 | 200 |          15µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:27 | 200 |   99.080542ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:27 | 200 |  736.998083ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:27 | 200 |      16.792µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:27 | 200 |   85.787833ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:28 | 200 |  1.141404208s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:30 | 200 |  3.071978542s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:30 | 200 |       17.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:30 | 200 |   88.030166ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:30 | 200 |  2.901528166s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:30 | 200 |  2.721651291s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:31 | 200 |  698.955417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:31 | 200 |      17.208µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:31 | 200 |   96.692375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:31 | 200 |  408.334333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:31 | 200 |      15.541µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:31 | 200 |   91.826791ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:32 | 200 |   815.80175ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:32 | 200 |      18.167µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:32 | 200 |   93.813917ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:32 | 200 |  913.011584ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:32 | 200 |  1.221559167s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:32 | 200 |      17.667µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:32 | 200 |  623.205708ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:32 | 200 |      17.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:32 | 200 |   87.795666ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:32 | 200 |  101.186125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:33 | 200 |  795.332417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:33 | 200 |  747.743041ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:34 | 200 |      31.792µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:34 | 200 |   100.46725ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:34 | 200 |   1.52935375s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:34 | 200 |      17.667µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:34 | 200 |   94.241417ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:34 | 200 |   1.74476775s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:35 | 200 |  817.538541ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:35 | 200 |      17.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:35 | 200 |  694.478417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:35 | 200 |   91.047542ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:35 | 200 |      16.292µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:35 | 200 |   93.281292ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:35 | 200 |     785.989ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:36 | 200 |  675.729208ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:36 | 200 |          19µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:36 | 200 |   93.586166ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:36 | 200 |  1.420436959s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:36 | 200 |      24.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:37 | 200 |   92.192541ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:37 | 200 |  1.607261125s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:37 | 200 |  1.517901042s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:37 | 200 |      18.708µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:37 | 200 |  838.294583ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:37 | 200 |  137.796583ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:37 | 200 |      13.458µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:38 | 200 |    90.91525ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:38 | 200 |  925.306625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:38 | 200 |  783.816209ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:39 | 200 |  1.553955583s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:39 | 200 |      18.791µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:39 | 200 |   90.186625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:40 | 200 |  2.125764042s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:40 | 200 |  607.809542ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:40 | 200 |      17.292µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:40 | 200 |     88.3305ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:40 | 200 |  719.351917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:41 | 200 |  1.238281625s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:41 | 200 |      17.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:41 | 200 |   87.198125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:42 | 200 |  1.361146416s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:42 | 200 |  560.922375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:42 | 200 |      19.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:42 | 200 |    91.41225ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:43 | 200 |  662.461958ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:44 | 200 |  1.718809334s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:44 | 200 |      17.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:44 | 200 |   87.758333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:44 | 200 |  1.435294417s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:44 | 200 |  285.670584ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:44 | 200 |      17.708µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:44 | 200 |   90.073166ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:44 | 200 |    396.4735ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:45 | 200 |  955.200917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:45 | 200 |      16.167µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:45 | 200 |   90.071541ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:46 | 200 |  1.051733208s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:46 | 200 |  241.367417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:46 | 200 |      15.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:46 | 200 |   88.618792ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:46 | 200 |  415.226333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:47 | 200 |  1.156605792s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:47 | 200 |       15.75µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:47 | 200 |   89.346375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:47 | 200 |  1.289483667s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:47 | 200 |  241.603291ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:47 | 200 |      16.708µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:48 | 200 |   90.028791ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:48 | 200 |  418.193208ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:49 | 200 |   1.00628975s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:49 | 200 |      17.833µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:49 | 200 |   89.485542ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:49 | 200 |  1.193556375s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:49 | 200 |  291.419042ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:49 | 200 |      17.042µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:49 | 200 |   86.435167ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:49 | 200 |  473.440792ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:53 | 200 |   3.46843975s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:53 | 200 |        17.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:53 | 200 |    91.16625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:53 | 200 |  3.804972625s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:53 | 200 |  517.053334ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:53 | 200 |      17.458µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:53 | 200 |   87.507166ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:54 | 200 |  765.828583ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:55 | 200 |  1.336027667s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:55 | 200 |      16.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:55 | 200 |   88.370958ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:55 | 200 |  1.275735167s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:55 | 200 |  421.273291ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:55 | 200 |      15.792µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:55 | 200 |   91.125292ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:56 | 200 |  699.641834ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:57 | 200 |  1.424555042s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:57 | 200 |      15.791µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:57 | 200 |   90.562583ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:57 | 200 |  1.057063708s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:57 | 200 |  234.415166ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:57 | 200 |      16.666µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:57 | 200 |   89.738459ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:58 | 200 |  385.426625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:58 | 200 |    841.9585ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:58 | 200 |      24.666µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:58 | 200 |     89.1595ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:59 | 200 |  1.006713541s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:59 | 200 |  258.438583ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:09:59 | 200 |          15µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:09:59 | 200 |   89.891334ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:09:59 | 200 |  395.176709ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:00 | 200 |  886.875166ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:00 | 200 |      16.083µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:00 | 200 |   88.860709ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:00 | 200 |  1.054631125s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:00 | 200 |  274.408708ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:00 | 200 |       13.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:00 | 200 |   89.910417ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:00 | 200 |  345.968916ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:01 | 200 |  947.840917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:01 | 200 |      17.541µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:01 | 200 |     88.3365ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:01 | 200 |  1.119741584s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:02 | 200 |  241.362375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:02 | 200 |      27.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:02 | 200 |   88.514333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:02 | 200 |  382.776333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:02 | 200 |  731.505084ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:03 | 200 |      17.083µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:03 | 200 |    91.63675ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:03 | 200 |  1.265317625s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:03 | 200 |  611.331458ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:03 | 200 |      16.459µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:03 | 200 |   88.307666ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:04 | 200 |  712.834375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:05 | 200 |  1.289290875s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:05 | 200 |      17.916µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:05 | 200 |   92.871334ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:05 | 200 |  1.465580916s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:05 | 200 |    1.924666ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:05 | 200 |   607.94975ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:05 | 200 |      16.292µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:06 | 200 |   98.743417ms |       127.0.0.1 | POST     "/api/show"
+llama_model_load_from_file_impl: using device Metal (Apple M2 Max) (unknown id) - 49150 MiB free
+llama_model_loader: loaded meta data with 34 key-value pairs and 288 tensors from /Users/tpac/.ollama/models/blobs/sha256-7462734796d67c40ecec2ca98eddf970e171dbb6b370e43fd633ee75b69abe1b (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = gemma2
+llama_model_loader: - kv   1:                               general.type str              = model
+llama_model_loader: - kv   2:                               general.name str              = Gemma 2.0 2b It Transformers
+llama_model_loader: - kv   3:                           general.finetune str              = it-transformers
+llama_model_loader: - kv   4:                           general.basename str              = gemma-2.0
+llama_model_loader: - kv   5:                         general.size_label str              = 2B
+llama_model_loader: - kv   6:                            general.license str              = gemma
+llama_model_loader: - kv   7:                      gemma2.context_length u32              = 8192
+llama_model_loader: - kv   8:                    gemma2.embedding_length u32              = 2304
+llama_model_loader: - kv   9:                         gemma2.block_count u32              = 26
+llama_model_loader: - kv  10:                 gemma2.feed_forward_length u32              = 9216
+llama_model_loader: - kv  11:                gemma2.attention.head_count u32              = 8
+llama_model_loader: - kv  12:             gemma2.attention.head_count_kv u32              = 4
+llama_model_loader: - kv  13:    gemma2.attention.layer_norm_rms_epsilon f32              = 0.000001
+llama_model_loader: - kv  14:                gemma2.attention.key_length u32              = 256
+llama_model_loader: - kv  15:              gemma2.attention.value_length u32              = 256
+llama_model_loader: - kv  16:                          general.file_type u32              = 2
+llama_model_loader: - kv  17:              gemma2.attn_logit_softcapping f32              = 50.000000
+llama_model_loader: - kv  18:             gemma2.final_logit_softcapping f32              = 30.000000
+llama_model_loader: - kv  19:            gemma2.attention.sliding_window u32              = 4096
+llama_model_loader: - kv  20:                       tokenizer.ggml.model str              = llama
+llama_model_loader: - kv  21:                         tokenizer.ggml.pre str              = default
+llama_model_loader: - kv  22:                      tokenizer.ggml.tokens arr[str,256000]  = ["<pad>", "<eos>", "<bos>", "<unk>", ...
+llama_model_loader: - kv  23:                      tokenizer.ggml.scores arr[f32,256000]  = [-1000.000000, -1000.000000, -1000.00...
+llama_model_loader: - kv  24:                  tokenizer.ggml.token_type arr[i32,256000]  = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...
+llama_model_loader: - kv  25:                tokenizer.ggml.bos_token_id u32              = 2
+llama_model_loader: - kv  26:                tokenizer.ggml.eos_token_id u32              = 1
+llama_model_loader: - kv  27:            tokenizer.ggml.unknown_token_id u32              = 3
+llama_model_loader: - kv  28:            tokenizer.ggml.padding_token_id u32              = 0
+llama_model_loader: - kv  29:               tokenizer.ggml.add_bos_token bool             = true
+llama_model_loader: - kv  30:               tokenizer.ggml.add_eos_token bool             = false
+llama_model_loader: - kv  31:                    tokenizer.chat_template str              = {{ bos_token }}{% if messages[0]['rol...
+llama_model_loader: - kv  32:            tokenizer.ggml.add_space_prefix bool             = false
+llama_model_loader: - kv  33:               general.quantization_version u32              = 2
+llama_model_loader: - type  f32:  105 tensors
+llama_model_loader: - type q4_0:  182 tensors
+llama_model_loader: - type q6_K:    1 tensors
+print_info: file format = GGUF V3 (latest)
+print_info: file type   = Q4_0
+print_info: file size   = 1.51 GiB (4.97 BPW) 
+load: control-looking token:    107 '<end_of_turn>' was not control-type; this is probably a bug in the model. its type will be overridden
+load: special_eos_id is not in special_eog_ids - the tokenizer config may be incorrect
+load: printing all EOG tokens:
+load:   - 1 ('<eos>')
+load:   - 107 ('<end_of_turn>')
+load: special tokens cache size = 249
+load: token to piece cache size = 1.6014 MB
+print_info: arch             = gemma2
+print_info: vocab_only       = 1
+print_info: no_alloc         = 0
+print_info: model type       = ?B
+print_info: model params     = 2.61 B
+print_info: general.name     = Gemma 2.0 2b It Transformers
+print_info: vocab type       = SPM
+print_info: n_vocab          = 256000
+print_info: n_merges         = 0
+print_info: BOS token        = 2 '<bos>'
+print_info: EOS token        = 1 '<eos>'
+print_info: EOT token        = 107 '<end_of_turn>'
+print_info: UNK token        = 3 '<unk>'
+print_info: PAD token        = 0 '<pad>'
+print_info: LF token         = 227 '<0x0A>'
+print_info: EOG token        = 1 '<eos>'
+print_info: EOG token        = 107 '<end_of_turn>'
+print_info: max token length = 48
+llama_model_load: vocab only - skipping tensors
+time=2026-03-23T12:10:06.406-04:00 level=WARN source=server.go:168 msg="requested context size too large for model" num_ctx=262144 n_ctx_train=8192
+time=2026-03-23T12:10:06.406-04:00 level=INFO source=server.go:430 msg="starting runner" cmd="/Applications/Ollama.app/Contents/Resources/ollama runner --model /Users/tpac/.ollama/models/blobs/sha256-7462734796d67c40ecec2ca98eddf970e171dbb6b370e43fd633ee75b69abe1b --port 54354"
+time=2026-03-23T12:10:06.411-04:00 level=INFO source=sched.go:484 msg="system memory" total="64.0 GiB" free="33.0 GiB" free_swap="0 B"
+time=2026-03-23T12:10:06.411-04:00 level=INFO source=sched.go:491 msg="gpu memory" id=0 library=Metal available="47.5 GiB" free="48.0 GiB" minimum="512.0 MiB" overhead="0 B"
+time=2026-03-23T12:10:06.411-04:00 level=INFO source=server.go:497 msg="loading model" "model layers"=27 requested=-1
+time=2026-03-23T12:10:06.411-04:00 level=INFO source=device.go:240 msg="model weights" device=Metal size="1.5 GiB"
+time=2026-03-23T12:10:06.411-04:00 level=INFO source=device.go:251 msg="kv cache" device=Metal size="832.0 MiB"
+time=2026-03-23T12:10:06.411-04:00 level=INFO source=device.go:262 msg="compute graph" device=Metal size="504.5 MiB"
+time=2026-03-23T12:10:06.411-04:00 level=INFO source=device.go:272 msg="total memory" size="2.8 GiB"
+time=2026-03-23T12:10:06.458-04:00 level=INFO source=runner.go:965 msg="starting go runner"
+ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices
+ggml_metal_library_init: using embedded metal library
+ggml_metal_library_init: loaded in 0.012 sec
+ggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)
+ggml_metal_device_init: GPU name:   Apple M2 Max
+ggml_metal_device_init: GPU family: MTLGPUFamilyApple8  (1008)
+ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+ggml_metal_device_init: GPU family: MTLGPUFamilyMetal3  (5001)
+ggml_metal_device_init: simdgroup reduction   = true
+ggml_metal_device_init: simdgroup matrix mul. = true
+ggml_metal_device_init: has unified memory    = true
+ggml_metal_device_init: has bfloat            = true
+ggml_metal_device_init: has tensor            = false
+ggml_metal_device_init: use residency sets    = true
+ggml_metal_device_init: use shared buffers    = true
+ggml_metal_device_init: recommendedMaxWorkingSetSize  = 51539.61 MB
+time=2026-03-23T12:10:06.486-04:00 level=INFO source=ggml.go:104 msg=system Metal.0.EMBED_LIBRARY=1 CPU.0.NEON=1 CPU.0.ARM_FMA=1 CPU.0.FP16_VA=1 CPU.0.DOTPROD=1 CPU.0.LLAMAFILE=1 CPU.0.ACCELERATE=1 compiler=cgo(clang)
+time=2026-03-23T12:10:06.544-04:00 level=INFO source=runner.go:1001 msg="Server listening on 127.0.0.1:54354"
+time=2026-03-23T12:10:06.554-04:00 level=INFO source=runner.go:895 msg=load request="{Operation:commit LoraPath:[] Parallel:1 BatchSize:512 FlashAttention:Auto KvSize:8192 KvCacheType: NumThreads:8 GPULayers:27[ID:0 Layers:27(0..26)] MultiUserCache:false ProjectorPath: MainGPU:0 UseMmap:true}"
+llama_model_load_from_file_impl: using device Metal (Apple M2 Max) (unknown id) - 49150 MiB free
+time=2026-03-23T12:10:06.554-04:00 level=INFO source=server.go:1350 msg="waiting for llama runner to start responding"
+time=2026-03-23T12:10:06.555-04:00 level=INFO source=server.go:1384 msg="waiting for server to become available" status="llm server loading model"
+llama_model_loader: loaded meta data with 34 key-value pairs and 288 tensors from /Users/tpac/.ollama/models/blobs/sha256-7462734796d67c40ecec2ca98eddf970e171dbb6b370e43fd633ee75b69abe1b (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = gemma2
+llama_model_loader: - kv   1:                               general.type str              = model
+llama_model_loader: - kv   2:                               general.name str              = Gemma 2.0 2b It Transformers
+llama_model_loader: - kv   3:                           general.finetune str              = it-transformers
+llama_model_loader: - kv   4:                           general.basename str              = gemma-2.0
+llama_model_loader: - kv   5:                         general.size_label str              = 2B
+llama_model_loader: - kv   6:                            general.license str              = gemma
+llama_model_loader: - kv   7:                      gemma2.context_length u32              = 8192
+llama_model_loader: - kv   8:                    gemma2.embedding_length u32              = 2304
+llama_model_loader: - kv   9:                         gemma2.block_count u32              = 26
+llama_model_loader: - kv  10:                 gemma2.feed_forward_length u32              = 9216
+llama_model_loader: - kv  11:                gemma2.attention.head_count u32              = 8
+llama_model_loader: - kv  12:             gemma2.attention.head_count_kv u32              = 4
+llama_model_loader: - kv  13:    gemma2.attention.layer_norm_rms_epsilon f32              = 0.000001
+llama_model_loader: - kv  14:                gemma2.attention.key_length u32              = 256
+llama_model_loader: - kv  15:              gemma2.attention.value_length u32              = 256
+llama_model_loader: - kv  16:                          general.file_type u32              = 2
+llama_model_loader: - kv  17:              gemma2.attn_logit_softcapping f32              = 50.000000
+llama_model_loader: - kv  18:             gemma2.final_logit_softcapping f32              = 30.000000
+llama_model_loader: - kv  19:            gemma2.attention.sliding_window u32              = 4096
+llama_model_loader: - kv  20:                       tokenizer.ggml.model str              = llama
+llama_model_loader: - kv  21:                         tokenizer.ggml.pre str              = default
+llama_model_loader: - kv  22:                      tokenizer.ggml.tokens arr[str,256000]  = ["<pad>", "<eos>", "<bos>", "<unk>", ...
+llama_model_loader: - kv  23:                      tokenizer.ggml.scores arr[f32,256000]  = [-1000.000000, -1000.000000, -1000.00...
+llama_model_loader: - kv  24:                  tokenizer.ggml.token_type arr[i32,256000]  = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...
+llama_model_loader: - kv  25:                tokenizer.ggml.bos_token_id u32              = 2
+llama_model_loader: - kv  26:                tokenizer.ggml.eos_token_id u32              = 1
+llama_model_loader: - kv  27:            tokenizer.ggml.unknown_token_id u32              = 3
+llama_model_loader: - kv  28:            tokenizer.ggml.padding_token_id u32              = 0
+llama_model_loader: - kv  29:               tokenizer.ggml.add_bos_token bool             = true
+llama_model_loader: - kv  30:               tokenizer.ggml.add_eos_token bool             = false
+llama_model_loader: - kv  31:                    tokenizer.chat_template str              = {{ bos_token }}{% if messages[0]['rol...
+llama_model_loader: - kv  32:            tokenizer.ggml.add_space_prefix bool             = false
+llama_model_loader: - kv  33:               general.quantization_version u32              = 2
+llama_model_loader: - type  f32:  105 tensors
+llama_model_loader: - type q4_0:  182 tensors
+llama_model_loader: - type q6_K:    1 tensors
+print_info: file format = GGUF V3 (latest)
+print_info: file type   = Q4_0
+print_info: file size   = 1.51 GiB (4.97 BPW) 
+load: control-looking token:    107 '<end_of_turn>' was not control-type; this is probably a bug in the model. its type will be overridden
+load: special_eos_id is not in special_eog_ids - the tokenizer config may be incorrect
+load: printing all EOG tokens:
+load:   - 1 ('<eos>')
+load:   - 107 ('<end_of_turn>')
+load: special tokens cache size = 249
+load: token to piece cache size = 1.6014 MB
+print_info: arch             = gemma2
+print_info: vocab_only       = 0
+print_info: no_alloc         = 0
+print_info: n_ctx_train      = 8192
+print_info: n_embd           = 2304
+print_info: n_embd_inp       = 2304
+print_info: n_layer          = 26
+print_info: n_head           = 8
+print_info: n_head_kv        = 4
+print_info: n_rot            = 256
+print_info: n_swa            = 4096
+print_info: is_swa_any       = 1
+print_info: n_embd_head_k    = 256
+print_info: n_embd_head_v    = 256
+print_info: n_gqa            = 2
+print_info: n_embd_k_gqa     = 1024
+print_info: n_embd_v_gqa     = 1024
+print_info: f_norm_eps       = 0.0e+00
+print_info: f_norm_rms_eps   = 1.0e-06
+print_info: f_clamp_kqv      = 0.0e+00
+print_info: f_max_alibi_bias = 0.0e+00
+print_info: f_logit_scale    = 0.0e+00
+print_info: f_attn_scale     = 6.2e-02
+print_info: n_ff             = 9216
+print_info: n_expert         = 0
+print_info: n_expert_used    = 0
+print_info: n_expert_groups  = 0
+print_info: n_group_used     = 0
+print_info: causal attn      = 1
+print_info: pooling type     = 0
+print_info: rope type        = 2
+print_info: rope scaling     = linear
+print_info: freq_base_train  = 10000.0
+print_info: freq_scale_train = 1
+print_info: n_ctx_orig_yarn  = 8192
+print_info: rope_yarn_log_mul= 0.0000
+print_info: rope_finetuned   = unknown
+print_info: model type       = 2B
+print_info: model params     = 2.61 B
+print_info: general.name     = Gemma 2.0 2b It Transformers
+print_info: vocab type       = SPM
+print_info: n_vocab          = 256000
+print_info: n_merges         = 0
+print_info: BOS token        = 2 '<bos>'
+print_info: EOS token        = 1 '<eos>'
+print_info: EOT token        = 107 '<end_of_turn>'
+print_info: UNK token        = 3 '<unk>'
+print_info: PAD token        = 0 '<pad>'
+print_info: LF token         = 227 '<0x0A>'
+print_info: EOG token        = 1 '<eos>'
+print_info: EOG token        = 107 '<end_of_turn>'
+print_info: max token length = 48
+load_tensors: loading model tensors, this can take a while... (mmap = true)
+load_tensors: offloading 26 repeating layers to GPU
+load_tensors: offloading output layer to GPU
+load_tensors: offloaded 27/27 layers to GPU
+load_tensors:   CPU_Mapped model buffer size =   461.43 MiB
+load_tensors: Metal_Mapped model buffer size =  1548.25 MiB
+llama_context: constructing llama_context
+llama_context: n_seq_max     = 1
+llama_context: n_ctx         = 8192
+llama_context: n_ctx_seq     = 8192
+llama_context: n_batch       = 512
+llama_context: n_ubatch      = 512
+llama_context: causal_attn   = 1
+llama_context: flash_attn    = auto
+llama_context: kv_unified    = false
+llama_context: freq_base     = 10000.0
+llama_context: freq_scale    = 1
+ggml_metal_init: allocating
+ggml_metal_init: picking default device: Apple M2 Max
+ggml_metal_init: use fusion         = true
+ggml_metal_init: use concurrency    = true
+ggml_metal_init: use graph optimize = true
+llama_context:        CPU  output buffer size =     0.99 MiB
+llama_kv_cache_iswa: using full-size SWA cache (ref: https://github.com/ggml-org/llama.cpp/pull/13194#issuecomment-2868343055)
+llama_kv_cache_iswa: creating non-SWA KV cache, size = 8192 cells
+llama_kv_cache:      Metal KV buffer size =   416.00 MiB
+llama_kv_cache: size =  416.00 MiB (  8192 cells,  13 layers,  1/1 seqs), K (f16):  208.00 MiB, V (f16):  208.00 MiB
+llama_kv_cache_iswa: creating     SWA KV cache, size = 8192 cells
+llama_kv_cache:      Metal KV buffer size =   416.00 MiB
+llama_kv_cache: size =  416.00 MiB (  8192 cells,  13 layers,  1/1 seqs), K (f16):  208.00 MiB, V (f16):  208.00 MiB
+llama_context: Flash Attention was auto, set to enabled
+llama_context:      Metal compute buffer size =   504.50 MiB
+llama_context:        CPU compute buffer size =    36.52 MiB
+llama_context: graph nodes  = 948
+llama_context: graph splits = 2
+time=2026-03-23T12:10:07.057-04:00 level=INFO source=server.go:1388 msg="llama runner started in 0.65 seconds"
+time=2026-03-23T12:10:07.057-04:00 level=INFO source=sched.go:561 msg="loaded runners" count=1
+time=2026-03-23T12:10:07.057-04:00 level=INFO source=server.go:1350 msg="waiting for llama runner to start responding"
+time=2026-03-23T12:10:07.057-04:00 level=INFO source=server.go:1388 msg="llama runner started in 0.65 seconds"
+[GIN] 2026/03/23 - 12:10:09 | 200 |  2.972232583s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:09 | 200 |   1.21965025s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:09 | 200 |      10.667µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:09 | 200 |   94.798042ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:09 | 200 |  164.597167ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:09 | 200 |  228.287375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:09 | 200 |       15.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:09 | 200 |  237.954958ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:09 | 200 |   94.365917ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:09 | 200 |  196.279166ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:10 | 200 |  913.595666ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:10 | 200 |        18.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:10 | 200 |  866.518375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:10 | 200 |   91.635583ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:10 | 200 |   208.39975ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:10 | 200 |  283.418959ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:11 | 200 |      17.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:11 | 200 |   89.752333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:11 | 200 |   867.28375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:12 | 200 |      15.792µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:12 | 200 |   87.997209ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:12 | 200 |  237.850083ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:12 | 200 |      18.959µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:12 | 200 |   87.186084ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:13 | 200 |  1.009262834s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:13 | 200 |      17.417µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:13 | 200 |   85.740542ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:13 | 200 |  231.351834ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:13 | 200 |      20.167µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:14 | 200 |   88.807958ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:14 | 200 |  873.356167ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:14 | 200 |      14.708µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:15 | 200 |   89.437375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:15 | 200 |  236.798292ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:15 | 200 |      15.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:15 | 200 |   92.388375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:16 | 200 |  890.515375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:16 | 200 |      16.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:16 | 200 |     87.8885ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:16 | 200 |  227.081417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:16 | 200 |      16.459µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:16 | 200 |   87.094417ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:17 | 200 |  973.344416ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:17 | 200 |      16.458µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:17 | 200 |   88.480834ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:18 | 200 |  227.493375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:18 | 200 |      14.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:18 | 200 |   86.843459ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:19 | 200 |   1.00141175s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:19 | 200 |      17.208µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:19 | 200 |   87.234333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:19 | 200 |  229.240208ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:19 | 200 |      14.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:19 | 200 |     85.8485ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:20 | 200 |  872.583083ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:20 | 200 |      15.792µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:20 | 200 |   87.443834ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:21 | 200 |  229.935041ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:21 | 200 |      16.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:21 | 200 |   87.627792ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:22 | 200 |  967.536625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:22 | 200 |      16.416µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:22 | 200 |    87.03225ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:22 | 200 |  234.938208ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:22 | 200 |      16.209µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:22 | 200 |   85.441958ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:25 | 200 |  2.665908417s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:25 | 200 |      17.208µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:25 | 200 |   85.698208ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:25 | 200 |  234.568417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:25 | 200 |      17.167µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:25 | 200 |   86.240291ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:27 | 200 |  1.130740791s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:27 | 200 |      15.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:27 | 200 |   88.489459ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:27 | 200 |  239.339875ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:27 | 200 |      19.166µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:27 | 200 |   91.411959ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:28 | 200 |  995.147875ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:28 | 200 |      15.917µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:28 | 200 |   88.138625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:28 | 200 |  236.800416ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:28 | 200 |      15.666µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:29 | 200 |   88.252875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:30 | 200 |    965.3375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:30 | 200 |      17.708µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:30 | 200 |   87.081125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:30 | 200 |  234.291875ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:30 | 200 |      17.291µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:30 | 200 |   87.036458ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:31 | 200 |  1.139673625s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:31 | 200 |      17.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:31 | 200 |   88.782375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:32 | 200 |    237.0635ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:32 | 200 |       16.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:32 | 200 |   87.063667ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:33 | 200 |  906.263041ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:33 | 200 |      16.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:33 | 200 |   87.878458ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:33 | 200 |  239.243458ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:33 | 200 |      14.083µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:33 | 200 |   87.434708ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:34 | 200 |  989.728041ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:34 | 200 |      15.292µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:34 | 200 |   87.037209ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:34 | 200 |  227.130833ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:35 | 200 |      15.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:35 | 200 |   89.358292ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:36 | 200 |  1.338636541s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:36 | 200 |      17.041µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:36 | 200 |   87.947042ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:36 | 200 |  229.602625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:36 | 200 |      22.833µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:36 | 200 |      89.038ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:38 | 200 |  1.677855375s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:38 | 200 |          20µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:38 | 200 |   89.916958ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:39 | 200 |  228.619083ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:39 | 200 |      17.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:39 | 200 |   90.188917ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:40 | 200 |  806.854875ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:40 | 200 |      14.208µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:40 | 200 |   88.964833ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:40 | 200 |  228.705959ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:40 | 200 |       15.75µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:40 | 200 |   87.662084ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:41 | 200 |  901.939292ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:41 | 200 |      18.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:41 | 200 |   87.780208ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:41 | 200 |  225.745042ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:41 | 200 |      16.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:41 | 200 |   88.601292ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:42 | 200 |  914.926333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:42 | 200 |      15.792µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:42 | 200 |   87.773166ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:43 | 200 |  229.615083ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:43 | 200 |      17.166µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:43 | 200 |   87.988666ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:44 | 200 |  996.753708ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:44 | 200 |      17.417µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:44 | 200 |   87.371959ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:44 | 200 |  230.555208ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:44 | 200 |      30.292µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:44 | 200 |    88.13775ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:45 | 200 |  971.017042ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:45 | 200 |      20.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:45 | 200 |   89.991875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:46 | 200 |     232.117ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:46 | 200 |      14.458µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:46 | 200 |   87.393709ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:47 | 200 |  895.155667ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:47 | 200 |      16.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:47 | 200 |   88.625209ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:47 | 200 |  239.014333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:47 | 200 |      16.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:47 | 200 |   87.240834ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:50 | 200 |  2.666335667s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:50 | 200 |      16.584µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:50 | 200 |    89.54325ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:50 | 200 |   243.68525ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:50 | 200 |      21.041µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:50 | 200 |    86.91425ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:52 | 200 |  1.224170916s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:52 | 200 |      17.166µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:52 | 200 |   90.218041ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:52 | 200 |  235.614708ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:52 | 200 |        13.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:52 | 200 |   87.213125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:53 | 200 |  1.035775792s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:53 | 200 |      17.709µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:53 | 200 |   91.873875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:54 | 200 |  244.845166ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:54 | 200 |      15.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:54 | 200 |   88.694083ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:55 | 200 |  961.929042ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:55 | 200 |      19.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:55 | 200 |   94.316042ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:55 | 200 |  224.845292ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:55 | 200 |      18.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:55 | 200 |     86.6385ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:57 | 200 |  2.173677791s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:58 | 200 |      15.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:58 | 200 |   88.510292ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:58 | 200 |     243.766ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:58 | 200 |      17.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:58 | 200 |   94.968625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:59 | 200 |  1.049665291s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:59 | 200 |      20.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:10:59 | 200 |   97.918833ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:10:59 | 200 |  233.940833ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:10:59 | 200 |          17µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:00 | 200 |   91.128459ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:01 | 200 |    1.3631195s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:01 | 200 |      25.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:01 | 200 |  103.872125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:01 | 200 |  258.955333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:01 | 200 |      16.291µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:02 | 200 |    94.15525ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:03 | 200 |  1.093206791s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:03 | 200 |        17.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:03 | 200 |   98.439541ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:03 | 200 |  252.174709ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:03 | 200 |      18.834µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:03 | 200 |     89.3815ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:04 | 200 |  1.313898667s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:05 | 200 |        17.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:05 | 200 |   93.523125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:05 | 200 |  254.641292ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:05 | 200 |      16.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:05 | 200 |      89.213ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:06 | 200 |  1.002869041s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:06 | 200 |      18.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:06 | 200 |  101.755125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:06 | 200 |  242.537334ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:07 | 200 |      16.334µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:07 | 200 |    84.74675ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:08 | 200 |  981.228125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:08 | 200 |      16.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:08 | 200 |    88.94725ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:08 | 200 |  230.336625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:08 | 200 |      17.417µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:08 | 200 |   88.112083ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:10 | 200 |  1.475381333s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:10 | 200 |      18.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:10 | 200 |  102.528666ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:10 | 200 |  245.129209ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:10 | 200 |        17.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:10 | 200 |   99.441375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:11 | 200 |  1.227182375s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:11 | 200 |      29.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:12 | 200 |   110.59575ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:12 | 200 |  253.242292ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:12 | 200 |      20.791µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:12 | 200 |     97.4505ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:13 | 200 |    1.1834605s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:13 | 200 |      19.208µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:13 | 200 |   86.164833ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:14 | 200 |   245.16475ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:14 | 200 |      16.291µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:14 | 200 |   86.094208ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:15 | 200 |  1.176344042s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:15 | 200 |       17.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:15 | 200 |   88.856709ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:15 | 200 |  235.668666ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:15 | 200 |      16.709µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:15 | 200 |   86.722625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:16 | 200 |  894.145208ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:16 | 200 |      16.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:16 | 200 |   93.519416ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:17 | 200 |  243.234958ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:17 | 200 |          20µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:17 | 200 |  103.314042ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:18 | 200 |  816.970917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:18 | 200 |      15.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:18 | 200 |   87.534167ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:18 | 200 |  239.638041ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:18 | 200 |      18.791µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:18 | 200 |   91.757375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:19 | 200 |  976.975166ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:19 | 200 |      19.083µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:19 | 200 |   91.757333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:20 | 200 |  233.698625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:20 | 200 |      17.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:20 | 200 |   89.456542ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:21 | 200 |  1.621199959s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:21 | 200 |      22.042µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:21 | 200 |   91.585125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:22 | 200 |  271.208291ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:22 | 200 |      15.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:22 | 200 |      87.201ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:24 | 200 |  1.777899333s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:24 | 200 |      19.959µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:24 | 200 |   103.58325ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:24 | 200 |  253.598958ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:24 | 200 |      15.292µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:24 | 200 |   87.086375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:25 | 200 |  1.228048834s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:26 | 200 |      17.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:26 | 200 |   97.235083ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:26 | 200 |  256.146542ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:26 | 200 |      19.167µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:26 | 200 |   94.417125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:28 | 200 |  2.140999334s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:28 | 200 |      19.083µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:28 | 200 |  105.668917ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:29 | 200 |  273.057917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:29 | 200 |      16.459µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:29 | 200 |     89.1605ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:30 | 200 |  1.081404542s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:30 | 200 |      18.917µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:30 | 200 |   94.595166ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:30 | 200 |  260.698834ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:30 | 200 |      18.042µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:30 | 200 |   98.149459ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:31 | 200 |  1.001633208s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:31 | 200 |      16.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:32 | 200 |   88.017458ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:32 | 200 |  251.039875ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:32 | 200 |      21.417µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:32 | 200 |   87.823042ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:33 | 200 |  1.296785041s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:33 | 200 |      17.458µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:33 | 200 |   85.918417ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:34 | 200 |  236.082917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:34 | 200 |      16.291µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:34 | 200 |   86.045417ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:35 | 200 |  881.102833ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:35 | 200 |      17.083µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:35 | 200 |   87.152959ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:35 | 200 |  233.058458ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:35 | 200 |      17.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:35 | 200 |   88.699375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:36 | 200 |  907.087375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:36 | 200 |      16.708µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:36 | 200 |   91.052791ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:36 | 200 |  249.284209ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:36 | 200 |      17.916µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:37 | 200 |   95.800125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:38 | 200 |  1.031358792s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:38 | 200 |       18.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:38 | 200 |   88.273625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:38 | 200 |  238.561708ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:38 | 200 |      18.084µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:38 | 200 |   90.916167ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:39 | 200 |  992.566125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:39 | 200 |      19.667µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:39 | 200 |   89.816292ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:40 | 200 |   237.61825ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:40 | 200 |      20.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:40 | 200 |   97.318916ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:41 | 200 |  1.204355375s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:41 | 200 |      22.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:41 | 200 |   96.283792ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:41 | 200 |  258.278458ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:41 | 200 |      19.083µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:41 | 200 |  103.302791ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:43 | 200 |  1.068196208s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:43 | 200 |      17.458µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:43 | 200 |   88.444916ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:43 | 200 |  243.181542ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:43 | 200 |      14.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:43 | 200 |   98.035542ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:44 | 200 |  953.246417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:44 | 200 |      15.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:44 | 200 |   95.812791ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:44 | 200 |  251.763792ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:44 | 200 |      19.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:45 | 200 |   97.939666ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:46 | 200 |  1.061353917s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:46 | 200 |      19.083µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:46 | 200 |  105.612333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:46 | 200 |      274.57ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:46 | 200 |          18µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:46 | 200 |  103.300333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:48 | 200 |  1.250783666s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:48 | 200 |       22.75µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:48 | 200 |  106.271292ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:48 | 200 |     265.047ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:48 | 200 |          19µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:48 | 200 |   92.652875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:49 | 200 |  1.064398583s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:49 | 200 |      15.292µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:49 | 200 |   87.719875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:50 | 200 |  245.105791ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:50 | 200 |      16.042µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:50 | 200 |    87.91625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:51 | 200 |     983.902ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:51 | 200 |       17.75µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:51 | 200 |   86.725292ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:51 | 200 |  261.148625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:51 | 200 |      19.583µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:51 | 200 |       96.72ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:52 | 200 |  1.199028166s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:52 | 200 |      18.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:53 | 200 |  104.978958ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:53 | 200 |  270.182458ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:53 | 200 |      17.917µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:53 | 200 |   94.793875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:54 | 200 |     1.110615s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:54 | 200 |      15.917µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:54 | 200 |   89.681917ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:55 | 200 |  257.161959ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:55 | 200 |       19.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:55 | 200 |   92.231708ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:57 | 200 |  2.614291209s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:57 | 200 |      23.084µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:57 | 200 |   85.419416ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:58 | 200 |  245.059333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:58 | 200 |      19.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:58 | 200 |   88.896833ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:11:59 | 200 |    1.3067925s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:11:59 | 200 |      16.083µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:11:59 | 200 |   86.358333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:00 | 200 |  241.564625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:00 | 200 |      18.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:00 | 200 |   84.773833ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:01 | 200 |  1.412807083s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:01 | 200 |      24.417µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:01 | 200 |   89.787042ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:02 | 200 |  244.803833ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:02 | 200 |      16.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:02 | 200 |    86.62275ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:02 | 200 |  826.795416ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:03 | 200 |      26.166µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:03 | 200 |     90.0085ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:03 | 200 |     232.951ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:03 | 200 |      28.708µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:03 | 200 |    90.78025ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:04 | 200 |  1.039136708s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:04 | 200 |      15.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:04 | 200 |   88.152833ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:04 | 200 |    242.0105ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:05 | 200 |      16.416µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:05 | 200 |   90.212625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:06 | 200 |  1.354211583s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:06 | 200 |      20.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:06 | 200 |   87.116125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:06 | 200 |  238.198166ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:06 | 200 |      16.834µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:06 | 200 |   85.615959ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:08 | 200 |   1.04958325s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:08 | 200 |      18.209µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:08 | 200 |   92.383208ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:08 | 200 |  246.684084ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:08 | 200 |       17.75µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:08 | 200 |   90.155667ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:10 | 200 |  1.659028583s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:10 | 200 |      20.792µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:10 | 200 |   91.153208ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:10 | 200 |  253.093208ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:10 | 200 |        19.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:10 | 200 |    88.68375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:11 | 200 |  1.040928583s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:11 | 200 |      18.916µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:12 | 200 |   94.183625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:12 | 200 |  240.107625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:12 | 200 |      16.416µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:12 | 200 |   85.956333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:13 | 200 |  898.111541ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:13 | 200 |      21.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:13 | 200 |      84.516ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:13 | 200 |  244.802917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:13 | 200 |       15.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:13 | 200 |   84.736416ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:14 | 200 |  1.180587084s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:15 | 200 |      14.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:15 | 200 |   85.226208ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:15 | 200 |   243.37525ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:15 | 200 |        21.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:15 | 200 |   84.354625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:16 | 200 |  1.102269417s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:16 | 200 |      15.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:16 | 200 |   84.972625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:16 | 200 |  241.875959ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:17 | 200 |      18.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:17 | 200 |   85.076959ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:18 | 200 |  1.113086917s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:18 | 200 |      15.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:18 | 200 |   84.966041ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:18 | 200 |  240.689666ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:18 | 200 |      17.583µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:18 | 200 |   85.350375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:19 | 200 |  1.026495375s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:19 | 200 |      14.833µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:19 | 200 |   85.339708ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:20 | 200 |  240.590583ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:20 | 200 |       16.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:20 | 200 |   86.108958ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:21 | 200 |  1.446415958s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:21 | 200 |      23.291µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:21 | 200 |   108.93825ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:22 | 200 |  269.710625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:22 | 200 |      17.583µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:22 | 200 |  102.658792ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:23 | 200 |  984.226292ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:23 | 200 |      18.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:23 | 200 |  107.997417ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:23 | 200 |  281.388791ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:12:23 | 200 |      17.583µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:12:24 | 200 |  101.787625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:12:24 | 200 |  719.932125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:08 | 200 |      16.167µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:08 | 200 |   94.282958ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:08 | 200 |  329.121541ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:08 | 200 |      21.709µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:09 | 200 |    87.05475ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:09 | 200 |  902.897542ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:10 | 200 |      20.458µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:10 | 200 |   86.719417ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:10 | 200 |  240.071334ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:10 | 200 |      19.166µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:10 | 200 |   87.774334ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:11 | 200 |  1.022233959s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:11 | 200 |       16.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:11 | 200 |   87.466791ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:11 | 200 |  246.491375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:12 | 200 |      15.792µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:12 | 200 |   85.966875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:12 | 200 |  813.908083ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:12 | 200 |      22.166µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:13 | 200 |   86.129792ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:13 | 200 |  237.673084ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:13 | 200 |      17.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:13 | 200 |   86.298917ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:14 | 200 |  902.596417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:14 | 200 |      17.792µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:14 | 200 |   85.474375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:14 | 200 |  239.846709ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:14 | 200 |      17.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:14 | 200 |    87.83325ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:17 | 200 |  2.553198375s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:17 | 200 |      17.166µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:17 | 200 |   88.069667ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:17 | 200 |  243.332625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:17 | 200 |      16.667µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:18 | 200 |   86.575333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:18 | 200 |  831.618042ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:18 | 200 |      16.458µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:19 | 200 |   87.599209ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:19 | 200 |  225.560834ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:19 | 200 |      18.167µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:19 | 200 |   86.849125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:20 | 200 |  982.245417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:20 | 200 |      14.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:20 | 200 |   86.400167ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:20 | 200 |   235.90375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:20 | 200 |      18.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:20 | 200 |   83.037834ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:22 | 200 |  1.034989917s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:22 | 200 |      17.916µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:22 | 200 |     89.3125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:22 | 200 |     234.445ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:22 | 200 |      22.042µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:22 | 200 |   84.952708ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:25 | 200 |  2.465923875s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:25 | 200 |      16.166µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:25 | 200 |   86.706125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:25 | 200 |  234.337167ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:25 | 200 |      16.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:25 | 200 |   85.338833ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:27 | 200 |  1.475469125s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:27 | 200 |      18.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:27 | 200 |   86.656958ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:27 | 200 |     236.185ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:27 | 200 |      14.458µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:27 | 200 |   87.120292ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:29 | 200 |  2.020107875s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:29 | 200 |      15.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:29 | 200 |   84.900542ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:30 | 200 |  223.851333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:30 | 200 |      15.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:30 | 200 |    86.45075ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:31 | 200 |   1.25091325s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:31 | 200 |      16.708µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:31 | 200 |   85.830292ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:31 | 200 |  225.349375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:31 | 200 |      19.833µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:32 | 200 |   83.980209ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:33 | 200 |  1.016879084s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:33 | 200 |      16.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:33 | 200 |   87.123209ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:33 | 200 |  228.759334ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:33 | 200 |      17.208µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:33 | 200 |   85.354125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:34 | 200 |  1.101819459s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:34 | 200 |      15.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:34 | 200 |   86.504625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:35 | 200 |     233.701ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:35 | 200 |      22.167µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:35 | 200 |   86.529958ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:36 | 200 |  909.073417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:36 | 200 |      18.042µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:36 | 200 |   86.844333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:36 | 200 |  226.509875ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:36 | 200 |      15.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:36 | 200 |   85.067666ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:37 | 200 |    973.4015ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:37 | 200 |      16.292µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:37 | 200 |   86.568916ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:38 | 200 |  234.687375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:38 | 200 |      15.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:38 | 200 |    85.92575ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:39 | 200 |  1.206432958s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:39 | 200 |          16µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:39 | 200 |     86.1005ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:39 | 200 |  228.174667ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:39 | 200 |      14.833µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:39 | 200 |     84.8945ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:42 | 200 |  2.411965458s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:42 | 200 |      15.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:42 | 200 |    86.98625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:42 | 200 |  236.463917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:42 | 200 |      16.709µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:42 | 200 |   85.251042ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:44 | 200 |  1.040502625s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:44 | 200 |      20.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:44 | 200 |   85.483958ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:44 | 200 |  236.556166ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:44 | 200 |      19.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:44 | 200 |   87.634042ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:46 | 200 |    2.3917545s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:47 | 200 |      19.792µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:47 | 200 |   89.881292ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:47 | 200 |  235.804333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:47 | 200 |      14.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:47 | 200 |   85.513458ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:49 | 200 |     1.943356s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:49 | 200 |      20.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:49 | 200 |   87.913916ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:49 | 200 |  231.894875ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:49 | 200 |      15.084µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:50 | 200 |   85.196875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:52 | 200 |  2.400395541s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:52 | 200 |      18.583µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:52 | 200 |   85.550583ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:52 | 200 |  234.483958ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:52 | 200 |      14.416µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:53 | 200 |   85.645083ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:54 | 200 |  1.019271792s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:54 | 200 |      17.666µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:54 | 200 |   88.553833ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:54 | 200 |   233.73225ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:54 | 200 |        16.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:54 | 200 |   83.546416ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:55 | 200 |  917.800333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:55 | 200 |      17.583µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:55 | 200 |   84.721042ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:55 | 200 |  235.048042ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:56 | 200 |      16.583µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:56 | 200 |   85.814208ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:57 | 200 |  1.006207125s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:57 | 200 |      16.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:57 | 200 |      87.494ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:57 | 200 |  240.227125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:57 | 200 |      17.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:57 | 200 |   85.985708ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:58 | 200 |  1.135603541s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:58 | 200 |      20.584µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:59 | 200 |   85.853666ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:14:59 | 200 |  235.455916ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:14:59 | 200 |      12.667µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:14:59 | 200 |   84.729709ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:00 | 200 |  965.072542ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:00 | 200 |          15µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:00 | 200 |    83.92775ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:00 | 200 |  243.832125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:00 | 200 |      15.709µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:00 | 200 |   83.532875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:01 | 200 |  903.555834ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:01 | 200 |       16.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:02 | 200 |   86.944209ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:02 | 200 |  237.218334ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:02 | 200 |      17.042µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:02 | 200 |   86.330625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:03 | 200 |  1.004757708s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:03 | 200 |      16.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:03 | 200 |   83.045084ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:03 | 200 |  245.896375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:03 | 200 |        18.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:03 | 200 |     85.4945ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:04 | 200 |  869.369166ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:04 | 200 |          21µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:05 | 200 |   84.073708ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:05 | 200 |  238.200584ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:05 | 200 |      14.459µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:05 | 200 |   86.524459ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:06 | 200 |  1.087460584s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:06 | 200 |      16.416µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:06 | 200 |   88.031333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:06 | 200 |  248.891792ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:06 | 200 |       18.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:07 | 200 |   86.403167ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:08 | 200 |  1.104204083s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:08 | 200 |      16.834µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:08 | 200 |   86.289042ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:08 | 200 |  236.106375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:08 | 200 |      16.666µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:08 | 200 |   84.999625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:10 | 200 |  1.417120875s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:10 | 200 |      17.041µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:10 | 200 |   97.388416ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:10 | 200 |    244.2335ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:10 | 200 |       15.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:10 | 200 |   84.207208ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:11 | 200 |   813.06575ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:11 | 200 |          21µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:11 | 200 |   85.659834ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:11 | 200 |  237.315583ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:12 | 200 |          16µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:12 | 200 |   87.365791ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:13 | 200 |  931.888625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:13 | 200 |      16.708µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:13 | 200 |   86.789625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:13 | 200 |  228.757083ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:13 | 200 |      16.583µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:13 | 200 |   86.546083ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:14 | 200 |    994.2685ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:14 | 200 |      17.208µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:14 | 200 |   85.490416ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:14 | 200 |  229.865541ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:15 | 200 |      14.709µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:15 | 200 |   86.033792ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:16 | 200 |  953.360125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:16 | 200 |      20.208µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:16 | 200 |   86.703667ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:16 | 200 |  240.777459ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:16 | 200 |      15.541µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:16 | 200 |   85.732084ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:17 | 200 |  1.172181375s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:17 | 200 |          20µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:18 | 200 |   86.935916ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:18 | 200 |   242.66575ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:18 | 200 |      20.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:18 | 200 |   85.337833ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:19 | 200 |  1.348987625s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:19 | 200 |          16µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:19 | 200 |    86.64775ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:20 | 200 |  238.453666ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:20 | 200 |      15.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:20 | 200 |   85.970292ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:21 | 200 |  964.437375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:21 | 200 |      20.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:21 | 200 |   85.303167ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:21 | 200 |  237.272917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:21 | 200 |      20.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:21 | 200 |   92.196333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:22 | 200 |  952.810834ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:22 | 200 |      15.834µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:22 | 200 |   86.655375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:23 | 200 |  239.532834ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:23 | 200 |      18.667µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:23 | 200 |   86.791917ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:24 | 200 |  989.830375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:24 | 200 |      16.791µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:24 | 200 |   86.748458ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:24 | 200 |  247.584667ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:24 | 200 |        17.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:24 | 200 |   86.567583ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:25 | 200 |  1.021306708s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:26 | 200 |      17.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:26 | 200 |   88.680542ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:26 | 200 |  235.797583ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:26 | 200 |      15.042µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:26 | 200 |   86.352625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:28 | 200 |  2.489397542s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:29 | 200 |      18.167µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:29 | 200 |    86.49875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:29 | 200 |  239.568125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:29 | 200 |      18.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:29 | 200 |   86.361584ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:30 | 200 |  1.093182083s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:30 | 200 |       19.75µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:30 | 200 |   86.432458ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:31 | 200 |  237.302209ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:31 | 200 |      21.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:31 | 200 |    85.41825ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:33 | 200 |     2.115077s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:33 | 200 |      16.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:33 | 200 |   86.769375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:33 | 200 |   232.57175ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:33 | 200 |       16.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:33 | 200 |   90.529584ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:36 | 200 |  2.248623125s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:36 | 200 |        17.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:36 | 200 |    86.66175ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:36 | 200 |  226.577708ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:36 | 200 |      24.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:36 | 200 |    84.11475ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:37 | 200 |   1.20320225s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:37 | 200 |      14.583µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:38 | 200 |     84.9165ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:38 | 200 |  236.150334ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:38 | 200 |        14.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:38 | 200 |   86.246208ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:40 | 200 |    2.3077725s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:40 | 200 |      16.041µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:40 | 200 |   85.720542ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:41 | 200 |  232.063667ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:41 | 200 |      19.959µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:41 | 200 |   88.625209ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:42 | 200 |  1.024795083s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:42 | 200 |      19.583µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:42 | 200 |   86.972958ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:42 | 200 |  229.306542ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:42 | 200 |       20.75µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:42 | 200 |   87.284875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:45 | 200 |  2.472928333s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:45 | 200 |      16.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:45 | 200 |   86.034041ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:45 | 200 |  229.928291ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:45 | 200 |      19.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:45 | 200 |   84.103041ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:46 | 200 |  986.322375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:46 | 200 |      17.584µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:47 | 200 |   88.420709ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:47 | 200 |  245.134791ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:47 | 200 |      21.083µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:47 | 200 |   91.954416ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:48 | 200 |  1.124838959s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:48 | 200 |      15.583µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:48 | 200 |   91.574458ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:49 | 200 |  247.536084ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:49 | 200 |       18.75µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:49 | 200 |   88.807792ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:51 | 200 |  1.862010041s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:51 | 200 |      17.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:51 | 200 |   89.202125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:51 | 200 |  233.125834ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:51 | 200 |      13.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:51 | 200 |   85.768083ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:52 | 200 |  943.496084ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:52 | 200 |      20.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:52 | 200 |  110.365333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:52 | 200 |  232.032541ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:52 | 200 |      15.291µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:53 | 200 |   83.418375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:54 | 200 |     1.154543s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:54 | 200 |      14.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:54 | 200 |     83.1965ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:54 | 200 |  228.094375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:54 | 200 |      16.041µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:54 | 200 |   86.223542ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:55 | 200 |  959.309459ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:55 | 200 |      17.209µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:55 | 200 |   84.490334ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:56 | 200 |  226.028125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:56 | 200 |      16.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:56 | 200 |   89.360792ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:57 | 200 |  1.099796292s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:57 | 200 |      19.292µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:57 | 200 |   86.985375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:15:57 | 200 |  232.765041ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:15:57 | 200 |      13.084µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:15:57 | 200 |   86.000541ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:00 | 200 |  2.325922875s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:00 | 200 |      19.709µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:00 | 200 |   85.804916ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:00 | 200 |  225.545417ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:00 | 200 |      16.208µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:00 | 200 |   86.047458ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:01 | 200 |   1.06231825s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:01 | 200 |      14.916µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:02 | 200 |   87.910166ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:02 | 200 |   235.31725ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:02 | 200 |        22.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:02 | 200 |   87.217375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:03 | 200 |  1.030224292s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:03 | 200 |      17.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:03 | 200 |   88.191125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:03 | 200 |  229.703291ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:03 | 200 |      20.291µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:04 | 200 |   85.763708ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:04 | 200 |  869.846167ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:05 | 200 |      19.334µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:05 | 200 |   87.460583ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:05 | 200 |  230.710958ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:05 | 200 |      24.292µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:05 | 200 |   86.025583ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:06 | 200 |   879.40625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:06 | 200 |      19.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:06 | 200 |   86.523167ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:06 | 200 |  223.413333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:06 | 200 |      20.292µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:06 | 200 |   85.797042ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:08 | 200 |  1.188250375s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:08 | 200 |      19.125µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:08 | 200 |   89.597875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:08 | 200 |  233.924792ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:08 | 200 |      17.959µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:08 | 200 |   86.434459ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:09 | 200 |   855.06075ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:09 | 200 |      17.084µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:09 | 200 |   89.134625ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:09 | 200 |  245.367125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:10 | 200 |       16.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:10 | 200 |    88.92875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:10 | 200 |  900.620833ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:11 | 200 |      18.917µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:11 | 200 |   89.135667ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:11 | 200 |  246.572667ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:11 | 200 |      20.041µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:11 | 200 |   89.637709ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:12 | 200 |  1.081414416s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:12 | 200 |      17.292µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:12 | 200 |   85.015958ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:13 | 200 |  240.074458ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:13 | 200 |      19.708µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:13 | 200 |   84.303459ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:14 | 200 |  1.167465917s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:14 | 200 |      17.708µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:14 | 200 |   83.752291ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:14 | 200 |  240.008791ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:14 | 200 |      16.083µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:14 | 200 |   83.482959ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:15 | 200 |   914.90675ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:15 | 200 |      15.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:16 | 200 |   84.537834ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:16 | 200 |  244.874584ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:16 | 200 |      16.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:16 | 200 |   86.412167ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:17 | 200 |  1.252346583s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:17 | 200 |      22.417µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:17 | 200 |   86.458875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:18 | 200 |  236.561083ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:18 | 200 |      16.917µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:18 | 200 |   84.455208ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:19 | 200 |  1.027627542s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:19 | 200 |      20.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:19 | 200 |   84.949375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:19 | 200 |     237.489ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:19 | 200 |      19.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:19 | 200 |    82.99975ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:20 | 200 |  866.826375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:20 | 200 |      17.334µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:20 | 200 |   85.636208ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:21 | 200 |  240.232958ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:21 | 200 |      16.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:21 | 200 |   83.451458ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:22 | 200 |  961.031333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:22 | 200 |      18.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:22 | 200 |   86.150666ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:22 | 200 |  240.440666ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:22 | 200 |          15µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:22 | 200 |   85.295417ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:24 | 200 |  1.251882291s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:24 | 200 |      19.667µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:24 | 200 |   89.096125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:24 | 200 |  242.384458ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:24 | 200 |      16.916µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:24 | 200 |   90.379375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:25 | 200 |  1.117900292s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:25 | 200 |      15.416µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:25 | 200 |   85.077084ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:26 | 200 |  241.018625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:26 | 200 |      19.792µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:26 | 200 |    90.53975ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:27 | 200 |  1.494854375s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:27 | 200 |      16.834µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:27 | 200 |   89.117958ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:28 | 200 |  238.910542ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:28 | 200 |      23.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:28 | 200 |     89.7975ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:29 | 200 |  924.105666ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:29 | 200 |      21.084µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:29 | 200 |   86.957125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:29 | 200 |  240.226375ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:29 | 200 |      16.416µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:29 | 200 |   86.064209ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:30 | 200 |  975.471208ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:30 | 200 |      15.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:30 | 200 |   86.021792ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:31 | 200 |  242.965792ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:31 | 200 |      17.208µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:31 | 200 |   86.265416ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:32 | 200 |  1.305897375s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:32 | 200 |      18.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:32 | 200 |   83.800292ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:33 | 200 |   238.81325ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:33 | 200 |      17.666µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:33 | 200 |    82.85075ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:34 | 200 |  1.108539333s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:34 | 200 |      16.834µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:34 | 200 |    85.32325ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:34 | 200 |  227.310792ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:34 | 200 |      21.875µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:34 | 200 |   85.021834ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:35 | 200 |  1.065284917s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:36 | 200 |      14.792µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:36 | 200 |    86.24325ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:36 | 200 |  238.128958ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:36 | 200 |      21.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:36 | 200 |   87.053208ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:37 | 200 |  1.209470833s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:37 | 200 |      19.334µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:37 | 200 |   86.724375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:38 | 200 |  227.539167ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:38 | 200 |      16.042µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:38 | 200 |   85.348916ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:39 | 200 |  837.852084ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:39 | 200 |      16.208µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:39 | 200 |   86.342417ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:39 | 200 |  225.194125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:39 | 200 |      15.042µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:39 | 200 |   86.290709ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:40 | 200 |  1.035898417s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:40 | 200 |      16.166µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:40 | 200 |   86.991042ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:41 | 200 |   228.38225ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:41 | 200 |      20.208µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:41 | 200 |   87.398125ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:42 | 200 |  1.065960333s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:42 | 200 |      15.917µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:42 | 200 |   84.573292ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:42 | 200 |  213.508291ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:42 | 200 |      15.708µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:42 | 200 |   84.308959ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:44 | 200 |  1.129177333s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:44 | 200 |        15.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:44 | 200 |      86.447ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:44 | 200 |  209.765583ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:44 | 200 |      18.333µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:44 | 200 |   84.814083ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:45 | 200 |  1.097439167s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:45 | 200 |      15.833µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:45 | 200 |   85.591583ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:46 | 200 |  219.378708ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:46 | 200 |      16.625µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:46 | 200 |   87.466959ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:47 | 200 |  1.306512625s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:47 | 200 |      17.083µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:47 | 200 |    84.37475ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:47 | 200 |  209.239125ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:47 | 200 |       13.25µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:47 | 200 |    86.21825ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:48 | 200 |  885.996959ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:49 | 200 |      17.459µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:49 | 200 |   88.593333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:49 | 200 |  217.755583ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:49 | 200 |      17.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:49 | 200 |     87.0675ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:50 | 200 |  990.147416ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:50 | 200 |      14.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:50 | 200 |   85.913375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:50 | 200 |  239.785167ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:50 | 200 |      20.958µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:51 | 200 |   85.436916ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:52 | 200 |  1.073095875s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:52 | 200 |      18.792µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:52 | 200 |   87.538459ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:52 | 200 |  225.651917ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:52 | 200 |      16.083µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:52 | 200 |   88.236084ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:53 | 200 |  931.312625ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:53 | 200 |       16.75µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:53 | 200 |   87.217208ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:54 | 200 |     226.292ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:54 | 200 |      20.666µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:54 | 200 |    86.21875ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:55 | 200 |  918.745334ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:55 | 200 |       16.75µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:55 | 200 |   85.836667ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:55 | 200 |  242.999167ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:55 | 200 |      22.917µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:55 | 200 |   86.994292ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:56 | 200 |     1.137155s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:56 | 200 |      21.584µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:56 | 200 |    91.09025ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:57 | 200 |     229.091ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:57 | 200 |      15.542µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:57 | 200 |   88.703375ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:58 | 200 |  1.089263875s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:58 | 200 |      25.667µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:58 | 200 |   87.658792ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:16:58 | 200 |      238.88ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:16:58 | 200 |      14.417µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:16:59 | 200 |   93.616792ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:17:00 | 200 |  975.977083ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:17:00 | 200 |          18µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:17:00 | 200 |   87.477583ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:17:00 | 200 |   227.24475ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:17:00 | 200 |      15.417µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:17:00 | 200 |   85.147166ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:17:02 | 200 |  1.515155042s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:17:02 | 200 |      16.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:17:02 | 200 |   85.880291ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:17:02 | 200 |  227.826291ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:17:02 | 200 |        19.5µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:17:02 | 200 |   84.292042ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:17:03 | 200 |  1.135162291s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:17:03 | 200 |      19.166µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:17:04 | 200 |   89.888292ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:17:04 | 200 |  233.976333ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:17:04 | 200 |      16.334µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:17:04 | 200 |   88.757542ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:17:05 | 200 |  1.159187542s |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:17:05 | 200 |      16.042µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:17:05 | 200 |    86.44275ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:17:05 | 200 |  239.072958ms |       127.0.0.1 | POST     "/api/generate"
+[GIN] 2026/03/23 - 12:17:05 | 200 |      14.375µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/03/23 - 12:17:06 | 200 |   87.024333ms |       127.0.0.1 | POST     "/api/show"
+[GIN] 2026/03/23 - 12:17:07 | 200 |  926.625417ms |       127.0.0.1 | POST     "/api/generate"

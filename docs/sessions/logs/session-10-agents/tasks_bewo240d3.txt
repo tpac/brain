@@ -1,0 +1,45 @@
+
+  Encode Eval v2
+  Model: claude-sonnet-4-20250514
+  Variant: Just tools, no CLAUDE.md, no SKILL.md, no boot
+  Segments: 1
+  System prompt: 34 chars
+
+  Running: conv_007 (engineering_debug_long)... ✅ 1 nodes, 0 edges, ExpMatch=20%, Aha=100%, Types=1
+
+================================================================================
+  BRAIN INSPECTION — What was encoded
+================================================================================
+
+  Nodes: 1 | Connections: 0 | Enrichments: 1 | Eval calls: 0
+
+  ── Node 1 ──
+  Type: arch_constraint
+  Title: Concurrent read/write on shared state creates invisible writes
+  Locked: True
+  Keywords: concurrency race condition WAL snapshot isolation threading shared state system boundaries
+    In systems with concurrent threads accessing shared persistent state (like SQLite WAL mode), write transactions committed after a read transaction starts are invisible to that reader due to snapshot isolation. This manifests as:
+    
+    - remember() succeeds but immediate recall() returns empty
+    - connect() creates edge but spread_activation() doesn't see it  
+    - enrich() stores vectors but _enrich_scan() misses them
+    
+    The bug doesn't live in any single function - both reads and writes work correctly in isolation. It lives in the SPACE BETWEEN components - the threading model, transaction isolation, timing windows.
+    
+    Pattern: When systems work in isolation but fail in composition, stop debugging individual functions. Debug the interactions, the boundaries, the "arrows" in the architecture diagram.
+    
+    ... (1113 chars total)
+
+================================================================================
+
+================================================================================
+  SUMMARY: Just tools, no CLAUDE.md, no SKILL.md, no boot
+================================================================================
+
+  Segment                        | Nodes | Edges | Types | AvgLen |  ExpM |  Aha | Quote | Unc
+  -----------------------------------------------------------------------------------------------
+  conv_007                       |     1 |     0 |     1 |   1113 |   20% | 100% |     0 |   0
+  -----------------------------------------------------------------------------------------------
+  AVERAGE                        |   1.0 |   0.0 |   1.0 |   1113 |   20% | 100% |   0.0 | 0.0
+
+  💾 Saved to /Users/tpac/brain/eval/results/encode_v2_naked_20260323_213552.json

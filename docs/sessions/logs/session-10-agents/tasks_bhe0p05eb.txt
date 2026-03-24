@@ -1,0 +1,60 @@
+
+  Encode Eval v2
+  Model: claude-sonnet-4-20250514
+  Variant: Live boot context only (brain as identity, no SKILL.md, no CLAUDE.md)
+  Segments: 1
+  System prompt: 9960 chars
+
+  Running: conv_007 (engineering_debug_long)... ✅ 2 nodes, 0 edges, ExpMatch=40%, Aha=50%, Types=2
+
+================================================================================
+  BRAIN INSPECTION — What was encoded
+================================================================================
+
+  Nodes: 2 | Connections: 0 | Enrichments: 0 | Eval calls: 0
+
+  ── Node 1 ──
+  Type: bug_lesson
+  Title: Intermittent recall failures: WAL snapshot isolation in daemon threads
+  Locked: True
+  Keywords: SQLite WAL snapshot isolation concurrent threading daemon system boundary bug composition
+    SYMPTOM: remember() returns success but recall() immediately returns empty results for the same node. Happens ~5% of the time, not timing-dependent.
+    
+    ROOT CAUSE: SQLite WAL mode + concurrent daemon threads. When Thread A calls recall(), it starts a read transaction that captures a snapshot. If Thread B commits a remember() after A's transaction started but before A scans, Thread A's snapshot doesn't include the new node. The node exists in the database but is invisible to the concurrent reader.
+    
+    ARCHITECTURE LESSON: This bug couldn't be found by reading individual functions. remember() worked correctly, recall() worked correctly. The bug lived in their COMPOSITION — the threading model, transaction isolation, timing windows. System-level bugs require holding the entire data flow in your head simultaneously.
+    
+    DEBUGGING PATTERN: When components work in isolation but fail in composition, stop looking at the boxes and look at the arrows. The bug is in how things interact, not what they do individually.
+    
+    SOLUTION OPTIONS: 1) Serialize read/write operations 2) Have reads start fresh transactions after detecting recent writes 3) Use immediate reads in WAL mode 4) Redesign to avoid shared mutable state
+
+  ── Node 2 ──
+  Type: arch_constraint
+  Title: System-level bugs live in component interactions, not implementations
+  Locked: True
+  Keywords: system architecture component interaction concurrency debugging race conditions WAL
+    PRINCIPLE: Complex system bugs often can't be found by reading individual functions or modules. Each component works correctly in isolation, but they fail when composed together.
+    
+    EXAMPLES: 
+    - WAL snapshot isolation: remember() and recall() both work perfectly, but concurrent execution creates invisible windows
+    - Race conditions: Writer commits between reader's transaction start and scan
+    - Cache invalidation: Component A updates state, Component B reads stale cached version
+    - Transaction boundaries: Operations that should be atomic span multiple commits
+    
+    DIAGNOSTIC APPROACH: When symptoms suggest one component but investigation shows it's working correctly, shift focus to:
+    1. Timing and sequencing between components
+    ... (1123 chars total)
+
+================================================================================
+
+================================================================================
+  SUMMARY: Live boot context only (brain as identity, no SKILL.md, no CLAUDE.md)
+================================================================================
+
+  Segment                        | Nodes | Edges | Types | AvgLen |  ExpM |  Aha | Quote | Unc
+  -----------------------------------------------------------------------------------------------
+  conv_007                       |     2 |     0 |     2 |   1168 |   40% |  50% |     0 |   0
+  -----------------------------------------------------------------------------------------------
+  AVERAGE                        |   2.0 |   0.0 |   2.0 |   1168 |   40% |  50% |   0.0 | 0.0
+
+  💾 Saved to /Users/tpac/brain/eval/results/encode_v2_identity_20260323_214907.json

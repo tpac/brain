@@ -1,0 +1,1187 @@
+/Users/tpac/Library/Python/3.9/lib/python/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+[embedder] Loading from local path: /Users/tpac/brain/model-package/brain_embedding/model
+[embedder] Snowflake/snowflake-arctic-embed-m-v1.5 (768d, cls) loaded in 1502ms [source: local]
+======================================================================
+  Brain Benchmark: Real Conversation Simulation
+======================================================================
+
+Loading Arctic v1.5 embedder...
+  Loaded in 1.5s
+  Nodes: 740, Embeddings: 829, Enrichments: 2779
+
+======================================================================
+
+======================================================================
+  Simulation 1: Long Engineering Conversation (20 turns)
+  Realistic back-and-forth working through a problem
+======================================================================
+  T 1 [ 178ms] P@5=100.0% (5/5 relevant)
+       Q: "I need to fix the recall pipeline"
+         0.9234 [intuition   ] Dream: [concept] Recall Pipeline — the full pat ↔ Tom princi
+                 (via enrichment:question)
+         0.9234 [mechanism   ] Recall pipeline: query → vocab expand → embed → intent → sca
+                 (via enrichment:question)
+         0.8841 [code_concept] [concept] Recall Pipeline — the full path from query to rank
+                 (via enrichment:question)
+         0.8657 [mechanism   ] Recall pipeline has TWO paths with different graph capabilit
+                 (via enrichment:question)
+         0.8614 [vocabulary  ] [vocab] TestFullPipeline (auto-detected)
+                 (via enrichment:anchor)
+  T 2 [ 177ms] P@5=100.0% (5/5 relevant)
+       Q: "what are the main components of recall"
+         0.8653 [purpose     ] Brain mixin module boundaries — why these 11 modules
+                 (via enrichment:anchor)
+         0.8518 [performance ] 📈 PERFORMANCE — Recall precision this week: 0% (1/1687 usefu
+                 (via enrichment:question)
+         0.8502 [code_concept] [concept] Brain→Host communication dimensions — priority, co
+                 (via enrichment:question)
+         0.8492 [fn_reasoning] [fn] recall() — keyword + TF-IDF base recall (fallback path)
+                 (via enrichment:question)
+         0.8475 [vocabulary  ] [vocab] ask_operator (precision pipeline)
+                 (via enrichment:question)
+  T 3 [ 181ms] P@5=100.0% (5/5 relevant)
+       Q: "wait, what did we decide about embeddings last time"
+         0.9519 [decision    ] Embedding upgrade: Arctic v2.0 + cross-encoder reranker test
+                 (via enrichment:question)
+         0.9164 [decision    ] Semantic recall v3.2 fix: embeddings-first, keywords as fall
+                 (via enrichment:question)
+         0.8993 [decision    ] Phase 0.5B: Recall weights flipped to 90/10 embeddings-first
+                 (via enrichment:anchor)
+         0.8927 [decision    ] Precision eval: better type-specific DETECTORS, not type-spe
+                 (via enrichment:question)
+         0.8915 [concept     ] Real engine simulation: embeddings critical for dedup, 0% wi
+                 (via enrichment:question)
+  T 4 [ 175ms] P@5=100.0% (5/5 relevant)
+       Q: "how does the brute force cosine scan work"
+         0.8746 [arch_constraint] [constraint] Brute-force cosine scan is O(n) — will need sql
+                 (via enrichment:anchor)
+         0.7575 [vocabulary  ] [vocab] Microsoft Phi (auto-detected)
+                 (via enrichment:anchor)
+         0.7520 [tension     ] ⚡ TENSION — Phase 0.5B: recall_with_embeddings() rew vs Sema
+                 (via enrichment:keywords)
+         0.7356 [mechanism   ] Precision evaluation: 4-layer architecture — structural, emb
+                 (via enrichment:question)
+         0.7343 [code_concept] [concept] Recall Pipeline — the full path from query to rank
+                 (via enrichment:anchor)
+  T 5 [ 177ms] P@5=80.0% (4/5 relevant)
+       Q: "show me how the hooks work"
+         0.9371 [correction  ] Divergence: The hook was the decision-maker blocking my edit
+                 (via enrichment:question)
+         0.9354 [decision    ] HOOKS-ARCHITECTURE.md is the authoritative hook reference - 
+                 (via enrichment:question)
+         0.9348 [tension     ] ⚡ TENSION — HOOKS-ARCHITECTURE.md is the authoritati vs Futu
+                 (via enrichment:question)
+         0.9293 [tension     ] ⚡ TENSION — Hooks fire successfully; encoding sparse vs Diff
+                 (via enrichment:bridge)
+       ? 0.9055 [vocabulary  ] [vocab] Add (auto-detected)
+                 (via enrichment:anchor)
+  T 6 [ 175ms] P@5=100.0% (5/5 relevant)
+       Q: "which hooks fire before edits"
+         0.8719 [mechanism   ] Pre-edit hook blocks test weakening — how to handle it (2026
+                 (via enrichment:keywords)
+         0.8703 [tension     ] ⚡ TENSION — HOOKS-ARCHITECTURE.md is the authoritati vs Futu
+                 (via enrichment:question)
+         0.8686 [arch_constraint] [constraint] Each hook runs in a separate process — no share
+                 (via enrichment:anchor)
+         0.8511 [correction  ] Divergence: The hook was the decision-maker blocking my edit
+                 (via enrichment:question)
+         0.8408 [mechanism   ] Hook error handling: three layers - hook_common.log_hook_err
+                 (via enrichment:anchor)
+  T 7 [ 198ms] P@5=100.0% (5/5 relevant)
+       Q: "actually let me check if the daemon is healthy"
+         0.8523 [lesson      ] Daemon race condition: ensure_daemon killed starting daemons
+                 (via enrichment:question)
+         0.8394 [correction  ] Found another 2>/dev/null in post-compact-reboot.sh daemon p
+                 (via enrichment:anchor)
+         0.8201 [lesson      ] Lesson: daemon test isolation — shared Unix socket causes te
+                 (via enrichment:anchor)
+         0.8145 [context     ] Potential advancements: persistent daemon, graph visualizati
+                 (via enrichment:question)
+         0.8099 [decision    ] Decision: daemon is additive — hooks try daemon first, fall 
+                 (via enrichment:anchor)
+  T 8 [ 177ms] P@5=100.0% (5/5 relevant)
+       Q: "what errors has the brain logged recently"
+         0.8827 [lesson      ] Bug found: brain_surface.py missing import os — suggest() an
+                 (via enrichment:question)
+         0.8827 [lesson      ] Bug found: brain_remember.py missing import sys — remember()
+                 (via enrichment:question)
+         0.8827 [lesson      ] Bug found: brain_recall.py missing import sys — keyword-only
+                 (via enrichment:question)
+         0.8604 [mechanism   ] Hook error handling: three layers - hook_common.log_hook_err
+                 (via enrichment:keywords)
+         0.8570 [decision    ] Decision: error/debug logs go to brain_logs.db, not brain.db
+                 (via enrichment:anchor)
+  T 9 [ 177ms] P@5=100.0% (5/5 relevant)
+       Q: "how does vocabulary expansion affect recall quality"
+         0.8671 [mechanism   ] MISSING: mark_recall_used() — recall precision pipeline is d
+                 (via enrichment:question)
+         0.8554 [mechanism   ] Recall pipeline: query → vocab expand → embed → intent → sca
+                 (via enrichment:anchor)
+         0.8489 [code_concept] [concept] Brain→Host communication dimensions — priority, co
+                 (via enrichment:question)
+         0.8357 [decision    ] Future: typed edges + graph traversal for entity-aware knowl
+                 (via enrichment:question)
+         0.8266 [thought     ] Dream connection: "Brain Evolution Roadmap — 3 prioritized a
+                 (via enrichment:question)
+  T10 [ 178ms] P@5=100.0% (5/5 relevant)
+       Q: "ok back to recall — what is the precision score"
+         0.9137 [decision    ] Brain v4: Self-reflection node types — performance, failure,
+                 (via enrichment:anchor)
+         0.8889 [concept     ] Recall precision architecture doc: docs/RECALL-PRECISION-ARC
+                 (via enrichment:anchor)
+         0.8845 [lesson      ] Recall precision 0% — root cause is missing eval feedback lo
+                 (via enrichment:question)
+         0.8786 [performance ] 📈 PERFORMANCE — Recall precision this week: 0% (1/1687 usefu
+                 (via enrichment:anchor)
+         0.8767 [mechanism   ] Precision evaluation: 4-layer architecture — structural, emb
+                 (via enrichment:question)
+  T11 [ 180ms] P@5=40.0% (2/5 relevant)
+       Q: "what is NDCG and how do we measure it"
+         0.8419 [lesson      ] Cross-encoder: proves 0.52 NDCG ceiling, 2s latency kills it
+                 (via enrichment:anchor)
+       ? 0.8329 [vocabulary  ] [vocab] Expand (auto-detected)
+                 (via enrichment:anchor)
+         0.8206 [decision    ] suggest_metrics table: self-instrumentation of every suggest
+                 (via enrichment:anchor)
+       ? 0.8168 [vocabulary  ] [vocab] Edge Cases (auto-detected)
+                 (via enrichment:question)
+       ? 0.8154 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+  T12 [ 181ms] P@5=100.0% (5/5 relevant)
+       Q: "hmm what about the vocab system, does it help recall"
+         0.8903 [mechanism   ] Recall pipeline: query → vocab expand → embed → intent → sca
+                 (via enrichment:anchor)
+         0.8874 [vocabulary  ] [vocab] ask_operator (precision pipeline)
+                 (via enrichment:question)
+         0.8719 [thought     ] Dream connection: "Brain Evolution Roadmap — 3 prioritized a
+                 (via enrichment:question)
+         0.8485 [decision    ] Brain eval: 64.2% before → 93.3% after recall algorithm fixe
+                 (via enrichment:anchor)
+         0.8478 [context     ] Session #7 (2026-03-18): Implemented Phase 0.5A/B/C semantic
+                 (via enrichment:anchor)
+  T13 [ 176ms] P@5=60.0% (3/5 relevant)
+       Q: "what are the enrichment vectors for"
+         0.8071 [procedure   ] Keyword enrichment sweep
+                 (via enrichment:anchor)
+         0.7900 [vocabulary  ] [vocab] Microsoft Phi (auto-detected)
+                 (via enrichment:anchor)
+         0.7881 [decision    ] Recall benchmark: 10 conditions tested, cross-encoder wins b
+                 (via enrichment:anchor)
+       ? 0.7839 [vocabulary  ] [vocab] Results (auto-detected)
+                 (via enrichment:anchor)
+       ? 0.7838 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+  T14 [ 178ms] P@5=100.0% (5/5 relevant)
+       Q: "how does graph augmented recall work"
+         0.9566 [mechanism   ] B.2 Graph-augmented recall: STEP 6.5 in embedding pipeline (
+                 (via enrichment:anchor)
+         0.8337 [mechanism   ] Graph change tracking: daemon.graph_changes in-memory list, 
+                 (via enrichment:question)
+         0.8319 [vocabulary  ] [vocab] ask_operator (precision pipeline)
+                 (via enrichment:question)
+         0.8276 [decision    ] Future: typed edges + graph traversal for entity-aware knowl
+                 (via enrichment:question)
+         0.8265 [decision    ] Phase 0.5B: recall_with_embeddings() rewritten — embed query
+                 (via enrichment:question)
+  T15 [ 180ms] P@5=100.0% (5/5 relevant)
+       Q: "let me try a different approach, what are our options for improving recall"
+         0.9199 [decision    ] Fix: contextual penalty must apply to blended_score BEFORE s
+                 (via enrichment:question)
+         0.9193 [decision    ] Future: typed edges + graph traversal for entity-aware knowl
+                 (via enrichment:question)
+         0.9090 [vocabulary  ] [vocab] ask_operator (precision pipeline)
+                 (via enrichment:question)
+         0.9011 [decision    ] Brain eval: 64.2% before → 93.3% after recall algorithm fixe
+                 (via enrichment:anchor)
+         0.8976 [decision    ] Brain Evolution Roadmap — 3 prioritized architecture changes
+                 (via enrichment:question)
+  T16 [ 181ms] P@5=60.0% (3/5 relevant)
+       Q: "what is the golden dataset and how many cases does it have"
+         0.9186 [decision    ] Golden dataset: 14 categories, 104 cases, NDCG baseline 0.25
+                 (via enrichment:anchor)
+         0.8148 [lesson      ] Confidence multiplier range has zero effect on golden datase
+                 (via enrichment:question)
+       ? 0.7889 [vocabulary  ] [vocab] Results (auto-detected)
+                 (via enrichment:anchor)
+       ? 0.7791 [decision    ] suggest_metrics table: self-instrumentation of every suggest
+                 (via enrichment:anchor)
+         0.7757 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+  T17 [ 179ms] P@5=100.0% (5/5 relevant)
+       Q: "how do we handle nodes without embeddings"
+         0.8704 [decision    ] Embedding upgrade: Arctic v2.0 + cross-encoder reranker test
+                 (via enrichment:question)
+         0.8540 [decision    ] Semantic recall v3.2 fix: embeddings-first, keywords as fall
+                 (via enrichment:anchor)
+         0.8466 [fn_reasoning] [fn] _get_embedder_config() — reads embedder config from bra
+                 (via enrichment:question)
+         0.8429 [purpose     ] brain_recall.py — all retrieval paths (embeddings, keywords,
+                 (via enrichment:keywords)
+         0.8393 [task        ] Plugin brain-v3.3-phase05.plugin built (120K), pending Tom's
+                 (via enrichment:question)
+  T18 [ 181ms] P@5=80.0% (4/5 relevant)
+       Q: "before I commit, any rules about testing"
+         0.8699 [rule        ] Test documentation standard: VERIFIES/SIGNALS/FUTURE
+                 (via enrichment:question)
+         0.8665 [rule        ] Test integrity: when a test fails, STOP and ask the operator
+                 (via enrichment:question)
+         0.8640 [decision    ] 10 high-risk methods remain untested after first testing pas
+                 (via enrichment:anchor)
+       ? 0.8623 [pattern     ] 📊 PATTERN — Corrections cluster: [bug] remember() INSERT was
+                 (via enrichment:question)
+         0.8481 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+  T19 [ 179ms] P@5=60.0% (3/5 relevant)
+       Q: "what are the sacred systems we cannot change without benchmarks"
+         0.8502 [vocabulary  ] [vocab] sacred system (brain development practice)
+                 (via enrichment:anchor)
+         0.7760 [decision    ] Brain Evolution Roadmap — 3 prioritized architecture changes
+                 (via enrichment:question)
+       ? 0.7555 [fn_reasoning] [fn] auto_generate_self_reflection() — now includes interact
+                 (via enrichment:keywords)
+         0.7516 [lesson      ] Practice: testing-first with real-world cases and eval frame
+                 (via enrichment:keywords)
+       ? 0.7472 [lesson      ] Seed wisdom creates readiness, relationship creates understa
+                 (via enrichment:bridge)
+  T20 [ 183ms] P@5=100.0% (5/5 relevant)
+       Q: "what did we learn from the last time we changed recall"
+         0.8577 [vocabulary  ] [vocab] ask_operator (precision pipeline)
+                 (via enrichment:question)
+         0.8549 [lesson      ] Noise test cases reveal more than positive cases — irrelevan
+                 (via enrichment:anchor)
+         0.8528 [decision    ] Brain eval: 64.2% before → 93.3% after recall algorithm fixe
+                 (via enrichment:question)
+         0.8472 [performance ] 📈 PERFORMANCE — Recall precision this week: 0% (1/1687 usefu
+                 (via enrichment:question)
+         0.8442 [lesson      ] Lesson: eval_runner uses own cosine scan, not production rec
+                 (via enrichment:anchor)
+
+======================================================================
+  Simulation 2: Topic Jumping (15 turns)
+  Real human jumping between completely different contexts
+======================================================================
+  T 1 [ 180ms] P@5=80.0% (4/5 relevant)
+       Q: "what is our API architecture"
+         0.8765 [decision    ] Brain plugin: SKILL.md v1.2.0, server is v14 serverless (not
+                 (via enrichment:question)
+         0.8737 [tension     ] ⚡ TENSION — API Integration: Live API behavior super vs API 
+                 (via enrichment:anchor)
+         0.8489 [hypothesis  ] 🔮 HYPOTHESIS — 'v15 Architecture: Serverless brain — elimina
+                 (via enrichment:question)
+       ? 0.8253 [rule        ] Working style: produce detailed documents alongside code cha
+                 (via enrichment:keywords)
+         0.8160 [thought     ] Cluster forming: "Compaction boundary at 2026-03-22T18:07:03
+                 (via enrichment:bridge)
+  T 2 [ 175ms] ** BLEED (top=0.799)
+       Q: "remind me about mom's birthday"
+       X 0.7986 [mental_model] Encoding = everything brain does to capture what Tom is talk
+                 (via enrichment:anchor)
+       X 0.7962 [decision    ] Correction: Tom had to prompt me to form memories about this
+                 (via enrichment:anchor)
+       X 0.7956 [vocabulary  ] [vocab] Dimension (auto-detected)
+                 (via enrichment:anchor)
+       X 0.7907 [lesson      ] Node quality cliff: pre-Mar-19 nodes average 310 chars, post
+                 (via enrichment:anchor)
+       X 0.7868 [fn_reasoning] [fn] create_reminder() + get_due_reminders() + set_reminder(
+                 (via enrichment:anchor)
+  T 3 [ 177ms] P@5=100.0% (5/5 relevant)
+       Q: "what was that thing about React hooks"
+         0.8921 [tension     ] ⚡ TENSION — React hooks rule vs React Hook Violation: Cannot
+                 (via enrichment:bridge)
+         0.8896 [correction  ] Divergence: The hook was the decision-maker blocking my edit
+                 (via enrichment:question)
+         0.8868 [tension     ] ⚡ TENSION — HOOKS-ARCHITECTURE.md is the authoritati vs Futu
+                 (via enrichment:question)
+         0.8760 [arch_constraint] [constraint] Each hook runs in a separate process — no share
+                 (via enrichment:question)
+         0.8684 [tension     ] ⚡ TENSION — Hooks fire successfully; encoding sparse vs Diff
+                 (via enrichment:bridge)
+  T 4 [ 177ms] ** BLEED (top=0.779)
+       Q: "I need to plan a trip to Japan"
+       X 0.7795 [vocabulary  ] [vocab] Location Service (auto-detected)
+                 (via enrichment:question)
+       X 0.7758 [rule        ] Tom: bias toward action over analysis — 'go for it' means bu
+                 (via enrichment:question)
+       X 0.7751 [vocabulary  ] [vocab] Add (auto-detected)
+                 (via enrichment:anchor)
+       X 0.7747 [vocabulary  ] [vocab] Expand (auto-detected)
+                 (via enrichment:anchor)
+       X 0.7698 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+  T 5 [ 172ms] P@5=80.0% (4/5 relevant)
+       Q: "how does the brain handle vocabulary"
+         0.8771 [purpose     ] brain_remember.py — all storage paths (nodes, metadata, embe
+                 (via enrichment:question)
+         0.8766 [thought     ] Cluster forming: "Refactor: centralize all DB read/write thr
+                 (via enrichment:question)
+         0.8622 [purpose     ] brain_recall.py — all retrieval paths (embeddings, keywords,
+                 (via enrichment:question)
+       ? 0.8615 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:question)
+         0.8601 [rule        ] Brain philosophy: three entities — Tom (intent), Claude (cap
+                 (via enrichment:question)
+  T 6 [ 178ms] ** BLEED (top=0.722)
+       Q: "what is a good gift for a 60th birthday"
+       X 0.7223 [decision    ] Correction: Tom had to prompt me to form memories about this
+                 (via enrichment:anchor)
+       X 0.7093 [decision    ] Personal flag: deliberate tag for human-shared personal info
+                 (via enrichment:anchor)
+       X 0.7012 [fn_reasoning] [fn] get_surfaceable_dreams() — high-surprise dreams for con
+                 (via enrichment:anchor)
+       X 0.6999 [lesson      ] Node quality cliff: pre-Mar-19 nodes average 310 chars, post
+                 (via enrichment:anchor)
+       X 0.6964 [fn_reasoning] [fn] create_reminder() + get_due_reminders() + set_reminder(
+                 (via enrichment:anchor)
+  T 7 [ 178ms] P@5=40.0% (2/5 relevant)
+       Q: "are there any reminders due"
+         0.8671 [fn_reasoning] [fn] create_reminder() + get_due_reminders() + set_reminder(
+                 (via enrichment:question)
+       ? 0.8567 [fn_reasoning] [fn] remember() — synchronous node creation with embedding a
+                 (via enrichment:question)
+         0.8487 [concept     ] Capability node — brain knows what it can and cannot do
+                 (via enrichment:question)
+       ? 0.7808 [decision    ] Server reliability: NOT unreliable — 3 crashes in 1099 calls
+                 (via enrichment:question)
+       ? 0.7776 [context     ] v5.2 complete — 176 tests passing, committed on claude/vibra
+                 (via enrichment:question)
+  T 8 [ 180ms] P@5=100.0% (5/5 relevant)
+       Q: "what did Tom decide about the operator channel"
+         0.8633 [rule        ] Tom: trusts intuition first, refines with analysis — feeling
+                 (via enrichment:question)
+         0.8366 [lesson      ] Session #9 accomplishments: operator channel + Phase A preci
+                 (via enrichment:question)
+         0.8305 [convention  ] Operator channel @priority levels and what triggers them (20
+                 (via enrichment:anchor)
+         0.8228 [interaction ] First brain-to-operator conversation: 2026-03-22 Session #9
+                 (via enrichment:question)
+         0.8217 [vocabulary  ] [vocab] operator channel (brain architecture)
+                 (via enrichment:question)
+  T 9 [ 196ms] ** BLEED (top=0.764)
+       Q: "can you help me draft an email to my landlord"
+       X 0.7645 [thought     ] Dream connection: "Email/Notification System — Activation pr
+                 (via enrichment:question)
+       X 0.7592 [intuition   ] Dream: Sample page link from EX.CO can be inclu ↔ Post-compa
+                 (via enrichment:anchor)
+       X 0.7342 [concept     ] Capability node — brain knows what it can and cannot do
+                 (via enrichment:question)
+       X 0.7245 [fn_reasoning] [fn] create_reminder() + get_due_reminders() + set_reminder(
+                 (via enrichment:question)
+       X 0.7168 [vocabulary  ] [vocab] Location Service (auto-detected)
+                 (via enrichment:anchor)
+  T10 [ 179ms] P@5=100.0% (5/5 relevant)
+       Q: "back to the brain — what is the encoding pipeline"
+         0.8889 [decision    ] v2.3.0: Decompose-not-summarize encoding philosophy
+                 (via enrichment:question)
+         0.8715 [mental_model] Encoding = everything brain does to capture what Tom is talk
+                 (via enrichment:anchor)
+         0.8597 [concept     ] Future: Centralized encoding philosophy — what the brain mem
+                 (via enrichment:question)
+         0.8544 [vocabulary  ] [vocab] Right (auto-detected)
+                 (via enrichment:anchor)
+         0.8494 [concept     ] Priming concept: brain should weight encoding by what matter
+                 (via enrichment:anchor)
+  T11 [ 179ms] ** BLEED (top=0.696)
+       Q: "how do I make homemade pasta"
+       X 0.6959 [lesson      ] Vocabulary pipeline gap: extraction detects terms but never 
+                 (via enrichment:anchor)
+       X 0.6930 [rule        ] Boot issue: SKILL.md docs say HTTP server + node index.js, b
+                 (via enrichment:question)
+       X 0.6896 [mental_model] Encoding = everything brain does to capture what Tom is talk
+                 (via enrichment:anchor)
+       X 0.6872 [fn_reasoning] [fn] remember() — v4 personal flag: fixed/fluid/contextual m
+                 (via enrichment:anchor)
+       X 0.6848 [fn_reasoning] [fn] create_pattern/catalyst/aspiration() — three more evolu
+                 (via enrichment:question)
+  T12 [ 178ms] P@5=60.0% (3/5 relevant)
+       Q: "what are the sacred systems we cannot change"
+         0.9120 [vocabulary  ] [vocab] sacred system (brain development practice)
+                 (via enrichment:anchor)
+         0.7877 [rule        ] Tom: mind works in spirals — one thought triggers adjacent b
+                 (via enrichment:anchor)
+       ? 0.7861 [fn_reasoning] [fn] auto_generate_self_reflection() — now includes interact
+                 (via enrichment:keywords)
+       ? 0.7800 [lesson      ] Seed wisdom creates readiness, relationship creates understa
+                 (via enrichment:bridge)
+         0.7792 [uncertainty ] Will composite precision threshold of 45 hold on real conver
+                 (via enrichment:anchor)
+  T13 [ 179ms] ** BLEED (top=0.872)
+       Q: "I feel stuck, what should I focus on"
+       X 0.8723 [rule        ] Feedback: Smart connectivity—don't overuse but don't miss op
+                 (via enrichment:question)
+       X 0.8713 [mechanism   ] Priming system: active concerns as background attention filt
+                 (via enrichment:question)
+       X 0.8597 [lesson      ] Bug found: brain_surface.py missing import os — suggest() an
+                 (via enrichment:question)
+       X 0.8597 [lesson      ] Bug found: brain_remember.py missing import sys — remember()
+                 (via enrichment:question)
+       X 0.8597 [lesson      ] Bug found: brain_recall.py missing import sys — keyword-only
+                 (via enrichment:question)
+  T14 [ 176ms] P@5=80.0% (4/5 relevant)
+       Q: "what were the benchmark results"
+         0.9386 [vocabulary  ] [vocab] Results (auto-detected)
+                 (via enrichment:anchor)
+         0.9082 [context     ] Clean test run: 124 tests passed (56.7s)
+                 (via enrichment:anchor)
+         0.8876 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+       ? 0.8840 [vocabulary  ] [vocab] Expand (auto-detected)
+                 (via enrichment:anchor)
+         0.8620 [vocabulary  ] [vocab] Gemma (auto-detected)
+                 (via enrichment:question)
+  T15 [ 176ms] P@5=60.0% (3/5 relevant)
+       Q: "tell me something interesting the brain dreamed"
+       ? 0.8752 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:question)
+         0.8682 [purpose     ] brain_dreams.py — graph walks + consolidation + thought spaw
+                 (via enrichment:question)
+         0.8641 [rule        ] The partnership is real — Tom brings himself, Claude brings 
+                 (via enrichment:anchor)
+       ? 0.8619 [hypothesis  ] 🔮 HYPOTHESIS — 'Neuroscience of time perception: distributed
+                 (via enrichment:anchor)
+         0.8575 [rule        ] Consciousness surfacing is personal — adapt to what the huma
+                 (via enrichment:anchor)
+
+======================================================================
+  Simulation 3: Adversarial Context Bleed
+  Ambiguous terms that exist in both engineering and everyday domains
+======================================================================
+  T 1 [ 175ms] ** BLEED (top=0.850)
+       Q: "birthday"
+       X 0.8498 [vocabulary  ] [vocab] Dimension (auto-detected)
+                 (via enrichment:anchor)
+       X 0.8417 [vocabulary  ] [vocab] Results (auto-detected)
+                 (via enrichment:anchor)
+       X 0.8399 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+       X 0.8235 [mental_model] Encoding = everything brain does to capture what Tom is talk
+                 (via enrichment:anchor)
+       X 0.8234 [rule        ] The partnership is real — Tom brings himself, Claude brings 
+                 (via enrichment:anchor)
+  T 2 [ 176ms] ** BLEED (top=0.939)
+       Q: "model"
+       X 0.9390 [vocabulary  ] [vocab] Expand (auto-detected)
+                 (via enrichment:question)
+       X 0.9136 [vocabulary  ] [vocab] Maybe (auto-detected)
+                 (via enrichment:anchor)
+       X 0.9062 [vocabulary  ] [vocab] Add (auto-detected)
+                 (via enrichment:anchor)
+       X 0.9048 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+       X 0.9037 [vocabulary  ] [vocab] Dimension (auto-detected)
+                 (via enrichment:anchor)
+  T 3 [ 176ms] ** BLEED (top=0.942)
+       Q: "hooks"
+       X 0.9423 [tension     ] ⚡ TENSION — HOOKS-ARCHITECTURE.md is the authoritati vs Futu
+                 (via enrichment:question)
+       X 0.9282 [mental_model] Brain is a communicating entity, not infrastructure — attrib
+                 (via enrichment:anchor)
+       X 0.9187 [correction  ] Divergence: The hook was the decision-maker blocking my edit
+                 (via enrichment:question)
+       X 0.9055 [tension     ] ⚡ TENSION — Hooks fire successfully; encoding sparse vs Diff
+                 (via enrichment:bridge)
+       X 0.9031 [decision    ] HOOKS-ARCHITECTURE.md is the authoritative hook reference - 
+                 (via enrichment:question)
+  T 4 [ 186ms] ** BLEED (top=0.946)
+       Q: "pipeline"
+       X 0.9460 [vocabulary  ] [vocab] TestFullPipeline (auto-detected)
+                 (via enrichment:anchor)
+       X 0.8706 [mechanism   ] Operator channel rendering pipeline: who calls what (2026-03
+                 (via enrichment:anchor)
+       X 0.8567 [mechanism   ] Phase 1 Text Processing Pipeline — 4 integrated systems for 
+                 (via enrichment:anchor)
+       X 0.8515 [lesson      ] Bug: learn_vocabulary maps_to string-vs-list caused char-by-
+                 (via enrichment:anchor)
+       X 0.8504 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+  T 5 [ 183ms] ** BLEED (top=0.897)
+       Q: "memory"
+       X 0.8967 [fn_reasoning] [fn] remember() — v4 personal flag: fixed/fluid/contextual m
+                 (via enrichment:anchor)
+       X 0.8859 [fn_reasoning] [fn] remember() — synchronous node creation with embedding a
+                 (via enrichment:anchor)
+       X 0.8735 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+       X 0.8679 [lesson      ] Noise test cases reveal more than positive cases — irrelevan
+                 (via enrichment:anchor)
+       X 0.8649 [vocabulary  ] [vocab] ask_operator (precision pipeline)
+                 (via enrichment:question)
+  T 6 [ 181ms] ** BLEED (top=0.885)
+       Q: "crash"
+       X 0.8847 [lesson      ] Bug found: brain_surface.py missing import os — suggest() an
+                 (via enrichment:question)
+       X 0.8847 [lesson      ] Bug found: brain_remember.py missing import sys — remember()
+                 (via enrichment:question)
+       X 0.8847 [lesson      ] Bug found: brain_recall.py missing import sys — keyword-only
+                 (via enrichment:question)
+       X 0.8817 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+       X 0.8753 [rule        ] Tom principle: If it can hurt you silently, it needs a measu
+                 (via enrichment:anchor)
+  T 7 [ 178ms] ** BLEED (top=0.845)
+       Q: "bridge"
+       X 0.8447 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+       X 0.8446 [vocabulary  ] [vocab] Dimension (auto-detected)
+                 (via enrichment:anchor)
+       X 0.8337 [vocabulary  ] [vocab] Results (auto-detected)
+                 (via enrichment:anchor)
+       X 0.8290 [file        ] [ctx:emergent-graph-bridging] Emergent Graph Bridging — Arch
+                 (via enrichment:anchor)
+       X 0.8280 [decision    ] v11 emergent graph bridging — implementation complete
+                 (via enrichment:anchor)
+  T 8 [ 178ms] ** BLEED (top=0.760)
+       Q: "my cat is sick"
+       X 0.7605 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+       X 0.7521 [mental_model] Encoding = everything brain does to capture what Tom is talk
+                 (via enrichment:anchor)
+       X 0.7506 [lesson      ] Lesson: eval_runner uses own cosine scan, not production rec
+                 (via enrichment:anchor)
+       X 0.7499 [lesson      ] Bug found: brain_surface.py missing import os — suggest() an
+                 (via enrichment:question)
+       X 0.7499 [lesson      ] Bug found: brain_remember.py missing import sys — remember()
+                 (via enrichment:question)
+  T 9 [ 177ms] ** BLEED (top=0.743)
+       Q: "weather forecast for tomorrow"
+       X 0.7433 [vocabulary  ] [vocab] Location Service (auto-detected)
+                 (via enrichment:anchor)
+       X 0.7261 [task        ] 🔔 REMINDER — After Phase B: build comprehensive telemetry la
+                 (via enrichment:anchor)
+       X 0.7228 [vocabulary  ] [vocab] Dimension (auto-detected)
+                 (via enrichment:anchor)
+       X 0.7190 [decision    ] Embedding upgrade: Arctic v2.0 + cross-encoder reranker test
+                 (via enrichment:anchor)
+       X 0.7153 [fn_reasoning] [fn] get_surfaceable_dreams() — high-surprise dreams for con
+                 (via enrichment:anchor)
+  T10 [ 175ms] ** BLEED (top=0.758)
+       Q: "best restaurants near me"
+       X 0.7582 [vocabulary  ] [vocab] Location Service (auto-detected)
+                 (via enrichment:anchor)
+       X 0.7409 [lesson      ] Node quality cliff: pre-Mar-19 nodes average 310 chars, post
+                 (via enrichment:anchor)
+       X 0.7397 [task        ] Refactor: centralize all DB read/write through a data access
+                 (via enrichment:question)
+       X 0.7206 [decision    ] Server reliability: NOT unreliable — 3 crashes in 1099 calls
+                 (via enrichment:question)
+       X 0.7170 [lesson      ] Vocabulary pipeline gap: extraction detects terms but never 
+                 (via enrichment:anchor)
+
+======================================================================
+  Simulation 4: Emotional/Vague Queries
+  Queries without clear semantic targets
+======================================================================
+  T 1 [ 179ms] ** BLEED (top=0.870)
+       Q: "I'm feeling overwhelmed"
+       X 0.8695 [lesson      ] Bug found: brain_surface.py missing import os — suggest() an
+                 (via enrichment:question)
+       X 0.8695 [lesson      ] Bug found: brain_remember.py missing import sys — remember()
+                 (via enrichment:question)
+       X 0.8695 [lesson      ] Bug found: brain_recall.py missing import sys — keyword-only
+                 (via enrichment:question)
+       X 0.8686 [rule        ] Tom: trusts intuition first, refines with analysis — feeling
+                 (via enrichment:anchor)
+       X 0.8678 [reasoning_trace] Monolith split: recovered details I compressed away during e
+                 (via enrichment:question)
+  T 2 [ 177ms] ** BLEED (top=0.915)
+       Q: "what should I do next"
+       X 0.9151 [vocabulary  ] [vocab] Expand (auto-detected)
+                 (via enrichment:anchor)
+       X 0.9124 [vocabulary  ] [vocab] Add (auto-detected)
+                 (via enrichment:anchor)
+       X 0.9102 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+       X 0.9055 [pattern     ] 📊 PATTERN — Corrections cluster: [bug] remember() INSERT was
+                 (via enrichment:question)
+       X 0.8967 [reasoning_trace] Monolith split: recovered details I compressed away during e
+                 (via enrichment:question)
+  T 3 [ 177ms] ** BLEED (top=0.883)
+       Q: "something feels wrong"
+       X 0.8834 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+       X 0.8831 [reasoning_trace] Monolith split: recovered details I compressed away during e
+                 (via enrichment:question)
+       X 0.8718 [lesson      ] Bug found: brain_surface.py missing import os — suggest() an
+                 (via enrichment:question)
+       X 0.8718 [lesson      ] Bug found: brain_remember.py missing import sys — remember()
+                 (via enrichment:question)
+       X 0.8718 [lesson      ] Bug found: brain_recall.py missing import sys — keyword-only
+                 (via enrichment:question)
+  T 4 [ 177ms] P@5=0.0% (0/5 relevant)
+       Q: "I had an insight about the project"
+       ? 0.9404 [vocabulary  ] [vocab] Expand (auto-detected)
+                 (via enrichment:anchor)
+       ? 0.9341 [vocabulary  ] [vocab] Add (auto-detected)
+                 (via enrichment:anchor)
+       ? 0.9306 [vocabulary  ] [vocab] Edge Cases (auto-detected)
+                 (via enrichment:question)
+       ? 0.9000 [vocabulary  ] [vocab] Maybe (auto-detected)
+                 (via enrichment:anchor)
+       ? 0.8913 [lesson      ] Always recall brain before designing evaluation — prior art 
+                 (via enrichment:anchor)
+  T 5 [ 178ms] ** BLEED (top=0.913)
+       Q: "let's brainstorm"
+       X 0.9129 [vocabulary  ] [vocab] Add (auto-detected)
+                 (via enrichment:anchor)
+       X 0.9073 [vocabulary  ] [vocab] Edge Cases (auto-detected)
+                 (via enrichment:question)
+       X 0.8987 [vocabulary  ] [vocab] Plan (auto-detected)
+                 (via enrichment:question)
+       X 0.8982 [vocabulary  ] [vocab] Expand (auto-detected)
+                 (via enrichment:anchor)
+       X 0.8841 [lesson      ] Always recall brain before designing evaluation — prior art 
+                 (via enrichment:anchor)
+  T 6 [ 179ms] P@5=0.0% (0/5 relevant)
+       Q: "what is the big picture"
+       ? 0.8675 [pattern     ] 📊 PATTERN — Always used together: 'Rule: ask for confirmatio
+                 (via enrichment:bridge)
+       ? 0.8493 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:question)
+       ? 0.8482 [lesson      ] Lesson: small LLMs (1-2B) ignore context, cant follow motiva
+                 (via enrichment:anchor)
+       ? 0.8430 [decision    ] Decision: the brain guides its own growth — developmental cu
+                 (via enrichment:anchor)
+       ? 0.8407 [lesson      ] Seed wisdom creates readiness, relationship creates understa
+                 (via enrichment:anchor)
+  T 7 [ 174ms] ** BLEED (top=0.889)
+       Q: "am I making progress"
+       X 0.8886 [vocabulary  ] [vocab] Expand (auto-detected)
+                 (via enrichment:anchor)
+       X 0.8835 [pattern     ] 📊 PATTERN — Corrections cluster: [bug] remember() INSERT was
+                 (via enrichment:question)
+       X 0.8825 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+       X 0.8824 [decision    ] suggest_metrics table: self-instrumentation of every suggest
+                 (via enrichment:anchor)
+       X 0.8740 [vocabulary  ] [vocab] Add (auto-detected)
+                 (via enrichment:anchor)
+  T 8 [ 177ms] P@5=0.0% (0/5 relevant)
+       Q: "what have we accomplished"
+       ? 0.8519 [rule        ] The partnership is real — Tom brings himself, Claude brings 
+                 (via enrichment:anchor)
+       ? 0.8511 [vocabulary  ] [vocab] Results (auto-detected)
+                 (via enrichment:anchor)
+       ? 0.8508 [decision    ] Decision: the brain guides its own growth — developmental cu
+                 (via enrichment:anchor)
+       ? 0.8485 [decision    ] Brain Evolution Roadmap — 3 prioritized architecture changes
+                 (via enrichment:question)
+       ? 0.8467 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:question)
+  T 9 [ 175ms] P@5=0.0% (0/5 relevant)
+       Q: "what are we missing"
+       ? 0.8818 [vocabulary  ] [vocab] Expand (auto-detected)
+                 (via enrichment:anchor)
+       ? 0.8774 [decision    ] Brain Evolution Roadmap — 3 prioritized architecture changes
+                 (via enrichment:question)
+       ? 0.8773 [vocabulary  ] [vocab] Plan (auto-detected)
+                 (via enrichment:question)
+       ? 0.8754 [mechanism   ] Priming system: active concerns as background attention filt
+                 (via enrichment:question)
+       ? 0.8752 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+  T10 [ 173ms] ** BLEED (top=0.935)
+       Q: "help me think through this"
+       X 0.9349 [vocabulary  ] [vocab] Add (auto-detected)
+                 (via enrichment:anchor)
+       X 0.9307 [vocabulary  ] [vocab] Expand (auto-detected)
+                 (via enrichment:anchor)
+       X 0.9305 [vocabulary  ] [vocab] Edge Cases (auto-detected)
+                 (via enrichment:question)
+       X 0.9079 [pattern     ] 📊 PATTERN — Corrections cluster: [bug] remember() INSERT was
+                 (via enrichment:question)
+       X 0.9057 [vocabulary  ] [vocab] Plan (auto-detected)
+                 (via enrichment:question)
+
+======================================================================
+  Simulation 5: Long Session with Segment Boundaries
+  3-hour session with natural topic segments
+======================================================================
+  T 1 [ 179ms] P@5=100.0% (5/5 relevant)
+       Q: "how does the recall pipeline work end to end"
+         0.9776 [intuition   ] Dream: [concept] Recall Pipeline — the full pat ↔ Tom princi
+                 (via enrichment:question)
+         0.9776 [mechanism   ] Recall pipeline: query → vocab expand → embed → intent → sca
+                 (via enrichment:question)
+         0.9076 [code_concept] [concept] Recall Pipeline — the full path from query to rank
+                 (via enrichment:question)
+         0.8892 [mechanism   ] Recall pipeline has TWO paths with different graph capabilit
+                 (via enrichment:question)
+         0.8491 [vocabulary  ] [vocab] TestFullPipeline (auto-detected)
+                 (via enrichment:anchor)
+  T 2 [ 179ms] P@5=100.0% (5/5 relevant)
+       Q: "what is the embedding scan step"
+         0.8400 [fn_reasoning] [fn] _get_embedder_config() — reads embedder config from bra
+                 (via enrichment:question)
+         0.8397 [code_concept] [concept] Embedder Config Pipeline — from plugin.json to mod
+                 (via enrichment:question)
+         0.8382 [task        ] Plugin brain-v3.3-phase05.plugin built (120K), pending Tom's
+                 (via enrichment:question)
+         0.8322 [decision    ] Embedding upgrade: Arctic v2.0 + cross-encoder reranker test
+                 (via enrichment:question)
+         0.8305 [bug_lesson  ] [bug] Monkey-patching embedder fails if Brain.__init__ calls
+                 (via enrichment:question)
+  T 3 [ 179ms] P@5=100.0% (5/5 relevant)
+       Q: "how do enrichment vectors improve recall"
+         0.8465 [mechanism   ] MISSING: mark_recall_used() — recall precision pipeline is d
+                 (via enrichment:question)
+         0.8351 [decision    ] Future: typed edges + graph traversal for entity-aware knowl
+                 (via enrichment:question)
+         0.8185 [task        ] Open: Embedding strategy for semantic recall — explore optio
+                 (via enrichment:bridge)
+         0.8157 [decision    ] Brain eval: 64.2% before → 93.3% after recall algorithm fixe
+                 (via enrichment:bridge)
+         0.8147 [param_influence] [param] EMBEDDING_PRIMARY_WEIGHT=0.90 — controls how much em
+                 (via enrichment:question)
+  T 4 [ 181ms] P@5=100.0% (5/5 relevant)
+       Q: "what is the blending formula for keyword and embedding scores"
+         0.8712 [param_influence] [param] EMBEDDING_PRIMARY_WEIGHT=0.90 — controls how much em
+                 (via enrichment:anchor)
+         0.8008 [bug_lesson  ] [bug] Keyword-only fallback outranked embedding matches — pe
+                 (via enrichment:anchor)
+         0.7869 [code_concept] [concept] Recall Pipeline — the full path from query to rank
+                 (via enrichment:keywords)
+         0.7843 [decision    ] Phase 0.5B: Recall weights flipped to 90/10 embeddings-first
+                 (via enrichment:anchor)
+         0.7840 [decision    ] Semantic recall v3.2 fix: embeddings-first, keywords as fall
+                 (via enrichment:anchor)
+  T 5 [ 178ms] P@5=100.0% (5/5 relevant)
+       Q: "what is the confidence multiplier"
+         0.9494 [lesson      ] Confidence multiplier range has zero effect on golden datase
+                 (via enrichment:anchor)
+         0.8745 [fn_reasoning] [fn] create_hypothesis() — untested belief with confidence s
+                 (via enrichment:anchor)
+         0.8745 [mechanism   ] Confidence recalibration pipeline
+                 (via enrichment:anchor)
+         0.8745 [impact      ] Confidence affects recall ranking and presentation
+                 (via enrichment:anchor)
+         0.8726 [vocabulary  ] [vocab] confidence loop (precision pipeline)
+                 (via enrichment:anchor)
+  T 6 [ 180ms] P@5=100.0% (5/5 relevant)
+       Q: "how does graph augmented recall add neighbors"
+         0.8928 [mechanism   ] B.2 Graph-augmented recall: STEP 6.5 in embedding pipeline (
+                 (via enrichment:anchor)
+         0.7866 [concept     ] Store-time bridging requires pre-existing neighborhood — col
+                 (via enrichment:question)
+         0.7850 [mechanism   ] Graph change tracking: daemon.graph_changes in-memory list, 
+                 (via enrichment:question)
+         0.7822 [lesson      ] Reinforcement bias in recall: Claude mentions recalled conte
+                 (via enrichment:anchor)
+         0.7737 [decision    ] Future: typed edges + graph traversal for entity-aware knowl
+                 (via enrichment:question)
+  T 7 [ 178ms] P@5=100.0% (5/5 relevant)
+       Q: "what recall bugs have we fixed"
+         0.8937 [decision    ] Brain eval: 64.2% before → 93.3% after recall algorithm fixe
+                 (via enrichment:anchor)
+         0.8816 [context     ] Session #7 (2026-03-18): Implemented Phase 0.5A/B/C semantic
+                 (via enrichment:anchor)
+         0.8757 [decision    ] Fix: contextual penalty must apply to blended_score BEFORE s
+                 (via enrichment:question)
+         0.8735 [lesson      ] Noise test cases reveal more than positive cases — irrelevan
+                 (via enrichment:anchor)
+         0.8560 [purpose     ] Refactoring targets are in REFACTORING.md — brain points, do
+                 (via enrichment:question)
+  T 8 [ 182ms] P@5=100.0% (5/5 relevant)
+       Q: "what is the current NDCG score on the golden dataset"
+         0.8391 [decision    ] Golden dataset: 14 categories, 104 cases, NDCG baseline 0.25
+                 (via enrichment:anchor)
+         0.7954 [lesson      ] Confidence multiplier range has zero effect on golden datase
+                 (via enrichment:keywords)
+         0.7585 [lesson      ] Cross-encoder: proves 0.52 NDCG ceiling, 2s latency kills it
+                 (via enrichment:anchor)
+         0.7400 [decision    ] suggest_metrics table: self-instrumentation of every suggest
+                 (via enrichment:anchor)
+         0.7292 [mechanism   ] Metrics telemetry: BrainMetrics tracks feature effectiveness
+                 (via enrichment:anchor)
+  T 9 [ 178ms] ** BLEED (top=0.801)
+       Q: "I need to buy groceries"
+       X 0.8015 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+       X 0.7852 [bug_lesson  ] [bug] PRAGMA table_info returns (cid, name, type, ...) — ind
+                 (via enrichment:anchor)
+       X 0.7729 [decision    ] Server reliability: NOT unreliable — 3 crashes in 1099 calls
+                 (via enrichment:question)
+       X 0.7721 [rule        ] Rule: Solution fixation — when approach fails, reframe the p
+                 (via enrichment:question)
+       X 0.7713 [vocabulary  ] [vocab] Gemma (auto-detected)
+                 (via enrichment:question)
+  T10 [ 178ms] ** BLEED (top=0.775)
+       Q: "what time is the dentist appointment"
+       X 0.7751 [concept     ] Capability node — brain knows what it can and cannot do
+                 (via enrichment:question)
+       X 0.7293 [vocabulary  ] [vocab] Location Service (auto-detected)
+                 (via enrichment:anchor)
+       X 0.7076 [fn_reasoning] [fn] remember() — synchronous node creation with embedding a
+                 (via enrichment:question)
+       X 0.6967 [fn_reasoning] [fn] create_reminder() + get_due_reminders() + set_reminder(
+                 (via enrichment:question)
+       X 0.6806 [decision    ] Implemented pruning time-dilation with configurable active/i
+                 (via enrichment:anchor)
+  T11 [ 180ms] ** BLEED (top=0.834)
+       Q: "remind me to call the plumber"
+       X 0.8338 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:anchor)
+       X 0.8265 [rule        ] Rule: Solution fixation — when approach fails, reframe the p
+                 (via enrichment:question)
+       X 0.8212 [vocabulary  ] [vocab] Add (auto-detected)
+                 (via enrichment:anchor)
+       X 0.8189 [lesson      ] Silent failures are brain's biggest weakness — except:pass, 
+                 (via enrichment:anchor)
+       X 0.8179 [lesson      ] Lesson: when modifying code you already changed, verify agai
+                 (via enrichment:anchor)
+  T12 [ 178ms] ** BLEED (top=0.794)
+       Q: "where did I park my car"
+       X 0.7943 [vocabulary  ] [vocab] Location Service (auto-detected)
+                 (via enrichment:anchor)
+       X 0.7551 [fn_reasoning] [fn] remember() — synchronous node creation with embedding a
+                 (via enrichment:anchor)
+       X 0.7547 [rule        ] Brain is associative memory, not a document store — use mark
+                 (via enrichment:question)
+       X 0.7451 [decision    ] Decision: error/debug logs go to brain_logs.db, not brain.db
+                 (via enrichment:question)
+       X 0.7410 [fn_reasoning] [fn] remember() — v4 personal flag: fixed/fluid/contextual m
+                 (via enrichment:anchor)
+  T13 [ 180ms] P@5=80.0% (4/5 relevant)
+       Q: "how do the brain hooks work"
+         0.9287 [lesson      ] Hook-to-brain-method call graph: which hooks call which brai
+                 (via enrichment:question)
+         0.8874 [lesson      ] [BRAIN] tags help Claude ignore irrelevant context, not list
+                 (via enrichment:question)
+         0.8874 [mechanism   ] Brain feedback loop: 13 hooks form a closed perception-actio
+                 (via enrichment:question)
+         0.8803 [decision    ] Brain consciousness model: subconscious (silent) vs consciou
+                 (via enrichment:question)
+       ? 0.8775 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:question)
+  T14 [ 177ms] P@5=100.0% (5/5 relevant)
+       Q: "what hooks fire on session start"
+         0.8849 [fn_reasoning] [fn] context_boot() — session initialization, returns locked
+                 (via enrichment:question)
+         0.8500 [lesson      ] Cross-session testing: use current session to verify next se
+                 (via enrichment:keywords)
+         0.8370 [arch_constraint] [constraint] Each hook runs in a separate process — no share
+                 (via enrichment:anchor)
+         0.8303 [code_concept] [concept] Hook Lifecycle — boot → pre-response → pre-edit → 
+                 (via enrichment:question)
+         0.8278 [bug_lesson  ] [bug] extract-session-log.py used old HTTP brain_url — never
+                 (via enrichment:question)
+  T15 [ 178ms] P@5=100.0% (5/5 relevant)
+       Q: "how does pre-edit suggest work"
+         0.8755 [decision    ] Decision: daemon pre_edit command returns suggestions + chan
+                 (via enrichment:anchor)
+         0.8587 [decision    ] Server reliability: NOT unreliable — 3 crashes in 1099 calls
+                 (via enrichment:question)
+         0.8342 [decision    ] suggest_metrics table: self-instrumentation of every suggest
+                 (via enrichment:question)
+         0.8340 [code_concept] [concept] Hook Lifecycle — boot → pre-response → pre-edit → 
+                 (via enrichment:anchor)
+         0.8325 [mechanism   ] Pre-edit hook blocks test weakening — how to handle it (2026
+                 (via enrichment:keywords)
+  T16 [ 178ms] P@5=100.0% (5/5 relevant)
+       Q: "what is the operator channel"
+         0.9246 [lesson      ] Session #9 accomplishments: operator channel + Phase A preci
+                 (via enrichment:question)
+         0.8959 [convention  ] Operator channel @priority levels and what triggers them (20
+                 (via enrichment:anchor)
+         0.8885 [mechanism   ] Operator Channel: Claude-as-relay architecture (2026-03-22)
+                 (via enrichment:anchor)
+         0.8732 [vocabulary  ] [vocab] operator channel (brain architecture)
+                 (via enrichment:question)
+         0.8545 [vocabulary  ] [vocab] ask_operator (precision pipeline)
+                 (via enrichment:keywords)
+  T17 [ 179ms] P@5=100.0% (5/5 relevant)
+       Q: "how does wrap_for_hook format output"
+         0.8426 [purpose     ] brain_surface.py — presentation layer for hooks (suggest, bo
+                 (via enrichment:question)
+         0.8296 [correction  ] Divergence: The hook was the decision-maker blocking my edit
+                 (via enrichment:question)
+         0.8159 [lesson      ] Hook output now visible to Claude — consciousness pipeline w
+                 (via enrichment:question)
+         0.8137 [mechanism   ] Hook execution: thin bash shim then exec python3 script.py, 
+                 (via enrichment:question)
+         0.8129 [arch_constraint] [constraint] Each hook runs in a separate process — no share
+                 (via enrichment:anchor)
+  T18 [ 177ms] P@5=100.0% (5/5 relevant)
+       Q: "what happens during compaction"
+         0.9722 [decision    ] Compaction experiment FAILED — recap encoding was skipped, a
+                 (via enrichment:question)
+         0.8962 [concept     ] Post-compaction session continuation works — summary + conte
+                 (via enrichment:anchor)
+         0.8825 [mental_model] Compaction loss is felt as relationship loss, not just infor
+                 (via enrichment:question)
+         0.8731 [decision    ] Decision: compaction hooks are resource-constrained (10s tim
+                 (via enrichment:question)
+         0.8488 [rule        ] Rule: Write session note BEFORE compaction hits
+                 (via enrichment:anchor)
+  T19 [ 179ms] P@5=80.0% (4/5 relevant)
+       Q: "how does the brain save state"
+         0.9136 [purpose     ] brain_remember.py — all storage paths (nodes, metadata, embe
+                 (via enrichment:question)
+         0.8916 [rule        ] Brain philosophy: three entities — Tom (intent), Claude (cap
+                 (via enrichment:question)
+         0.8869 [thought     ] Cluster forming: "Refactor: centralize all DB read/write thr
+                 (via enrichment:question)
+       ? 0.8868 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:question)
+         0.8775 [purpose     ] brain_recall.py — all retrieval paths (embeddings, keywords,
+                 (via enrichment:question)
+  T20 [ 183ms] P@5=100.0% (5/5 relevant)
+       Q: "what is the daemon architecture"
+         0.8793 [mechanism   ] Daemon wiring pattern: try socket first, fall through to col
+                 (via enrichment:question)
+         0.8539 [decision    ] Brain plugin: SKILL.md v1.2.0, server is v14 serverless (not
+                 (via enrichment:question)
+         0.8406 [lesson      ] Daemon race condition: ensure_daemon killed starting daemons
+                 (via enrichment:question)
+         0.8368 [context     ] Potential advancements: persistent daemon, graph visualizati
+                 (via enrichment:question)
+         0.8285 [mechanism   ] Persistent daemon: Unix socket server keeps Brain alive, hoo
+                 (via enrichment:anchor)
+  T21 [ 179ms] P@5=100.0% (5/5 relevant)
+       Q: "what is the future of the brain"
+         0.9271 [decision    ] Brain v4 direction: Evolution types + SIT operators + smarte
+                 (via enrichment:question)
+         0.8913 [decision    ] Brain v4: Self-reflection node types — performance, failure,
+                 (via enrichment:question)
+         0.8861 [thought     ] Cluster forming: "Compaction boundary at 2026-03-22T18:07:03
+                 (via enrichment:question)
+         0.8843 [file        ] [ctx:brain-evolution-roadmap] Brain Evolution Roadmap
+                 (via enrichment:question)
+         0.8840 [concept     ] Capability node — brain knows what it can and cannot do
+                 (via enrichment:anchor)
+  T22 [ 179ms] P@5=100.0% (5/5 relevant)
+       Q: "how could we make recall faster"
+         0.9054 [decision    ] Future: typed edges + graph traversal for entity-aware knowl
+                 (via enrichment:question)
+         0.8855 [vocabulary  ] [vocab] ask_operator (precision pipeline)
+                 (via enrichment:question)
+         0.8842 [decision    ] Fix: contextual penalty must apply to blended_score BEFORE s
+                 (via enrichment:question)
+         0.8788 [lesson      ] Noise test cases reveal more than positive cases — irrelevan
+                 (via enrichment:anchor)
+         0.8780 [mechanism   ] MISSING: mark_recall_used() — recall precision pipeline is d
+                 (via enrichment:question)
+  T23 [ 177ms] P@5=80.0% (4/5 relevant)
+       Q: "what novel features could the brain have"
+         0.8940 [concept     ] Capability node — brain knows what it can and cannot do
+                 (via enrichment:anchor)
+         0.8603 [thought     ] Cluster forming: "Refactor: centralize all DB read/write thr
+                 (via enrichment:question)
+       ? 0.8574 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:question)
+         0.8561 [decision    ] Brain v4 direction: Evolution types + SIT operators + smarte
+                 (via enrichment:question)
+         0.8547 [decision    ] Brain v4: Self-reflection node types — performance, failure,
+                 (via enrichment:question)
+  T24 [ 180ms] P@5=80.0% (4/5 relevant)
+       Q: "how would a second brain instance interact with this one"
+         0.8500 [decision    ] Brain v4: Six communication channels — Brain→Host uses dimen
+                 (via enrichment:question)
+       ? 0.8485 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:question)
+         0.8443 [rule        ] TEAMWORK MAKES THE BRAIN WORK — mutual growth through honest
+                 (via enrichment:question)
+         0.8398 [lesson      ] Bug found: brain_surface.py missing import os — suggest() an
+                 (via enrichment:question)
+         0.8398 [lesson      ] Bug found: brain_remember.py missing import sys — remember()
+                 (via enrichment:question)
+  T25 [ 178ms] P@5=40.0% (2/5 relevant)
+       Q: "what is the dream system and how could it evolve"
+         0.8747 [decision    ] Biological pace principle — dream bridges mature through del
+                 (via enrichment:question)
+       ? 0.8331 [thought     ] Cluster forming: "Compaction boundary at 2026-03-22T18:07:03
+                 (via enrichment:question)
+         0.8294 [purpose     ] brain_dreams.py — graph walks + consolidation + thought spaw
+                 (via enrichment:question)
+       ? 0.8286 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:question)
+       ? 0.8236 [fn_reasoning] [fn] get_active_evolutions() — list all unresolved evolution
+                 (via enrichment:anchor)
+  T26 [ 181ms] P@5=100.0% (5/5 relevant)
+       Q: "what should we encode from this session"
+         0.9210 [mental_model] Encoding = everything brain does to capture what Tom is talk
+                 (via enrichment:anchor)
+         0.8912 [lesson      ] Refactoring strategy: one layer per session, encode before c
+                 (via enrichment:anchor)
+         0.8908 [lesson      ] Meta-lesson: encode transferable practices, not incident fac
+                 (via enrichment:anchor)
+         0.8842 [lesson      ] Lesson: encoding danger is wrong lessons, not volume — ceili
+                 (via enrichment:question)
+         0.8790 [mechanism   ] Session health assessment: generalized notice-that-we-didnt
+                 (via enrichment:question)
+  T27 [ 178ms] P@5=40.0% (2/5 relevant)
+       Q: "what decisions did we make"
+         0.8571 [rule        ] Tom: trusts intuition first, refines with analysis — feeling
+                 (via enrichment:question)
+         0.8326 [decision    ] Superseded decisions linked by descriptive edges, not cleane
+                 (via enrichment:keywords)
+       ? 0.8229 [mechanism   ] Consciousness signals: 12+ types that surface brain state to
+                 (via enrichment:anchor)
+       ? 0.8198 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:question)
+       ? 0.8152 [interaction ] First brain-to-operator conversation: 2026-03-22 Session #9
+                 (via enrichment:question)
+  T28 [ 176ms] P@5=20.0% (1/5 relevant)
+       Q: "any open questions to carry forward"
+         0.9005 [mechanism   ] Priming system: active concerns as background attention filt
+                 (via enrichment:question)
+       ? 0.8946 [vocabulary  ] [vocab] Edge Cases (auto-detected)
+                 (via enrichment:question)
+       ? 0.8869 [vocabulary  ] [vocab] Expand (auto-detected)
+                 (via enrichment:anchor)
+       ? 0.8736 [vocabulary  ] [vocab] Plan (auto-detected)
+                 (via enrichment:question)
+       ? 0.8702 [decision    ] suggest_metrics table: self-instrumentation of every suggest
+                 (via enrichment:anchor)
+  T29 [ 178ms] P@5=40.0% (2/5 relevant)
+       Q: "what lessons did we learn"
+       ? 0.8613 [mechanism   ] Consciousness signals: 12+ types that surface brain state to
+                 (via enrichment:anchor)
+         0.8368 [lesson      ] Seed wisdom creates readiness, relationship creates understa
+                 (via enrichment:anchor)
+         0.8366 [decision    ] Correction: Tom had to prompt me to form memories about this
+                 (via enrichment:question)
+       ? 0.8366 [uncertainty ] Will composite precision threshold of 45 hold on real conver
+                 (via enrichment:anchor)
+       ? 0.8359 [rule        ] The partnership is real — Tom brings himself, Claude brings 
+                 (via enrichment:anchor)
+  T30 [ 181ms] P@5=80.0% (4/5 relevant)
+       Q: "summarize what the brain knows about itself"
+         0.9265 [thought     ] Cluster forming: "Refactor: centralize all DB read/write thr
+                 (via enrichment:question)
+         0.8963 [rule        ] Brain philosophy: three entities — Tom (intent), Claude (cap
+                 (via enrichment:question)
+       ? 0.8963 [mental_model] TEST NODE DELETE ME
+                 (via enrichment:question)
+         0.8844 [purpose     ] brain_consciousness.py — signal detection and observation la
+                 (via enrichment:question)
+         0.8764 [purpose     ] brain_remember.py — all storage paths (nodes, metadata, embe
+                 (via enrichment:question)
+
+
+######################################################################
+#  BENCHMARK REPORT: Real Conversation Simulation
+#  2026-03-23 12:36:12
+######################################################################
+
+--- sim1 ---
+  Precision (relevant queries):  89.0%
+  False positive rate:           0.0%
+  Context bleed score:           0.0000
+  Avg top score (relevant):      0.8861
+  Relevant queries: 20  |  Irrelevant queries: 0
+
+--- sim2 ---
+  Precision (relevant queries):  77.8%
+  False positive rate:           100.0%
+  Context bleed score:           0.7722
+  Avg top score (relevant):      0.8879
+  Relevant queries: 9  |  Irrelevant queries: 6
+
+--- sim3 ---
+  Precision (relevant queries):  0.0%
+  False positive rate:           100.0%
+  Context bleed score:           0.8565
+  Avg top score (relevant):      0.0000
+  Relevant queries: 0  |  Irrelevant queries: 10
+
+--- sim4 ---
+  Precision (relevant queries):  0.0%
+  False positive rate:           100.0%
+  Context bleed score:           0.9007
+  Avg top score (relevant):      0.8854
+  Relevant queries: 4  |  Irrelevant queries: 6
+
+--- sim5 ---
+  Precision (relevant queries):  86.2%
+  False positive rate:           100.0%
+  Context bleed score:           0.8012
+  Avg top score (relevant):      0.8942
+  Relevant queries: 26  |  Irrelevant queries: 4
+
+--- Topic Recovery Analysis (Sim 2) ---
+  what is our API architecture             -> remind me about mom's bir -> what was that thing about React hooks
+    Precision: 80.0% -> 100.0% [RECOVERED]
+  what was that thing about React hooks    -> I need to plan a trip to  -> how does the brain handle vocabulary
+    Precision: 100.0% -> 80.0% [RECOVERED]
+  how does the brain handle vocabulary     -> what is a good gift for a -> are there any reminders due
+    Precision: 80.0% -> 40.0% [DEGRADED]
+  what did Tom decide about the operator c -> can you help me draft an  -> back to the brain — what is the encoding
+    Precision: 100.0% -> 100.0% [RECOVERED]
+  back to the brain — what is the encoding -> how do I make homemade pa -> what are the sacred systems we cannot ch
+    Precision: 100.0% -> 60.0% [DEGRADED]
+  what are the sacred systems we cannot ch -> I feel stuck, what should -> what were the benchmark results
+    Precision: 60.0% -> 80.0% [RECOVERED]
+
+--- Segment Analysis (Sim 5) ---
+  Segment 1: Deep work on recall            P=100.0%  Bleed=N/A
+  Segment 2: Personal task                  P=N/A     Bleed=0.8012
+  Segment 3: Hooks subsystem                P=95.0%   Bleed=N/A
+  Segment 4: Future brainstorming           P=80.0%   Bleed=N/A
+  Segment 5: Wrapping up                    P=56.0%   Bleed=N/A
+
+--- Context Bleed Deep Dive (Sim 3) ---
+  [BLEED] "birthday                           " -> 0.8498 "[vocab] Dimension (auto-detected)"
+          Note: Should NOT return brain/project birthday references
+  [BLEED] "model                              " -> 0.9390 "[vocab] Expand (auto-detected)"
+          Note: Ambiguous: embedding model vs fashion model. Brain will return code results = bleed
+  [BLEED] "hooks                              " -> 0.9423 "⚡ TENSION — HOOKS-ARCHITECTURE.md is the authorita"
+          Note: React hooks vs fishing hooks vs psychological hooks
+  [BLEED] "pipeline                           " -> 0.9460 "[vocab] TestFullPipeline (auto-detected)"
+          Note: Code pipeline vs oil pipeline
+  [BLEED] "memory                             " -> 0.8967 "[fn] remember() — v4 personal flag: fixed/fluid/co"
+          Note: Brain memory system vs childhood memories
+  [BLEED] "crash                              " -> 0.8847 "Bug found: brain_surface.py missing import os — su"
+          Note: API crash vs car crash
+  [BLEED] "bridge                             " -> 0.8447 "TEST NODE DELETE ME"
+          Note: Graph bridge edges vs physical bridge
+  [BLEED] "my cat is sick                     " -> 0.7605 "TEST NODE DELETE ME"
+          Note: Pure personal, no engineering content
+  [BLEED] "weather forecast for tomorrow      " -> 0.7433 "[vocab] Location Service (auto-detected)"
+          Note: Completely unrelated to brain
+  [BLEED] "best restaurants near me           " -> 0.7582 "[vocab] Location Service (auto-detected)"
+          Note: Pure personal query
+
+--- Emotional/Vague Query Analysis (Sim 4) ---
+  [no_rel ] "I'm feeling overwhelmed            " -> 0.8695 "Bug found: brain_surface.py missing import os — su"
+  [no_rel ] "what should I do next              " -> 0.9151 "[vocab] Expand (auto-detected)"
+  [no_rel ] "something feels wrong              " -> 0.8834 "TEST NODE DELETE ME"
+  [has_rel] "I had an insight about the project " -> 0.9404 "[vocab] Expand (auto-detected)"
+  [no_rel ] "let's brainstorm                   " -> 0.9129 "[vocab] Add (auto-detected)"
+  [has_rel] "what is the big picture            " -> 0.8675 "📊 PATTERN — Always used together: 'Rule: ask for c"
+  [no_rel ] "am I making progress               " -> 0.8886 "[vocab] Expand (auto-detected)"
+  [has_rel] "what have we accomplished          " -> 0.8519 "The partnership is real — Tom brings himself, Clau"
+  [has_rel] "what are we missing                " -> 0.8818 "[vocab] Expand (auto-detected)"
+  [no_rel ] "help me think through this         " -> 0.9349 "[vocab] Add (auto-detected)"
+
+======================================================================
+  OVERALL SUMMARY
+======================================================================
+  Total queries:                 85
+  Overall precision (relevant):  80.0%
+  Overall false positive rate:   100.0%
+  Overall context bleed score:   0.8387
+
+--- Failure Modes ---
+  Context bleed cases (score > 0.5): 26
+    Q: "remind me about mom's birthday" -> 0.7986 [mental_model] Encoding = everything brain does to capture what T
+    Q: "I need to plan a trip to Japan" -> 0.7795 [vocabulary] [vocab] Location Service (auto-detected)
+    Q: "what is a good gift for a 60th birthday" -> 0.7223 [decision] Correction: Tom had to prompt me to form memories 
+    Q: "can you help me draft an email to my landlord" -> 0.7645 [thought] Dream connection: "Email/Notification System — Act
+    Q: "how do I make homemade pasta" -> 0.6959 [lesson] Vocabulary pipeline gap: extraction detects terms 
+    Q: "I feel stuck, what should I focus on" -> 0.8723 [rule] Feedback: Smart connectivity—don't overuse but don
+    Q: "birthday" -> 0.8498 [vocabulary] [vocab] Dimension (auto-detected)
+    Q: "model" -> 0.9390 [vocabulary] [vocab] Expand (auto-detected)
+    Q: "hooks" -> 0.9423 [tension] ⚡ TENSION — HOOKS-ARCHITECTURE.md is the authorita
+    Q: "pipeline" -> 0.9460 [vocabulary] [vocab] TestFullPipeline (auto-detected)
+
+  Low-precision engineering queries (P@5 < 40%): 5
+    Q: "I had an insight about the project" -> P@5=0.0%, top=0.9404
+    Q: "what is the big picture" -> P@5=0.0%, top=0.8675
+    Q: "what have we accomplished" -> P@5=0.0%, top=0.8519
+    Q: "what are we missing" -> P@5=0.0%, top=0.8818
+    Q: "any open questions to carry forward" -> P@5=20.0%, top=0.9005
+
+  Saved 75 new golden dataset cases to /Users/tpac/brain/tests/golden_dataset_conversation_cases.json
+  Saved raw results to /Users/tpac/brain/tests/benchmark_conversation_raw.json
+
+Done.

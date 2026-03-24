@@ -1,0 +1,56 @@
+
+  Encode Eval v2
+  Model: claude-sonnet-4-20250514
+  Variant: Full production environment (CLAUDE.md + SKILL.md + boot)
+  Segments: 1
+  System prompt: 24527 chars
+
+  Running: conv_004 (philosophical_insight)... ✅ 2 nodes, 1 edges, ExpMatch=67%, Aha=100%, Types=2
+
+================================================================================
+  BRAIN INSPECTION — What was encoded
+================================================================================
+
+  Nodes: 2 | Connections: 1 | Enrichments: 2 | Eval calls: 0
+
+  ── Node 1 ──
+  Type: mechanism
+  Title: Testing architecture: encoding non-deterministic, decoding deterministic
+  Locked: False
+  Keywords: testing encoding decoding deterministic non-deterministic frozen-snapshots roundtrip
+    PROBLEM: Testing encoding and decoding separately gives wrong results because they're coupled through embeddings. Claude's encoding text must be findable by Arctic embeddings, but existing tests don't verify the roundtrip.
+    
+    SOLUTION: Separate non-deterministic (encoding) from deterministic (decoding) testing:
+    1. ENCODING TESTS: Run N times with real API calls, measure statistics (mean richness, connection density, tool usage). Use confidence intervals, not exact matching.
+    2. FROZEN DB SNAPSHOTS: After encoding, freeze database → versioned fixtures (brain_v5_snapshot.db). Deterministic decode testing uses these.
+    3. DECODE TESTS: Run against frozen snapshots. Exact NDCG reproducibility. Compare snapshots directly.
+    4. ROUNDTRIP TESTS: Full encode→freeze→decode pipeline. Expensive but captures reality.
+    
+    Benefits: Separates variance sources, enables version comparison, solves migration problem (don't re-encode 760 nodes on V6 ship).
+
+  ── Node 2 ──
+  Type: impact
+  Title: V6 enrichment testing: need Claude generation validation
+  Locked: False
+  Keywords: V6-enrichment golden-dataset validation generation
+    IF_CHANGED: V6 enrichment prompts (N/R/W/D format)
+    MUST_CHECK: Does Claude actually generate good V6 enrichments when prompted? Golden dataset only tested V6 vectors on V5-enriched nodes.
+    BECAUSE: V6 prompts may produce different text patterns that embed differently. Encoding quality measured on fake tools != real embedding quality.
+    TESTING APPROACH: Encode same conversation with V5 and V6 prompts, compare retrieval success on both versions.
+
+  ── Connection 1 ──
+  bd384720c92d1dae --example_of--> 4a994399e48727e4 (w=0.8)
+
+================================================================================
+
+================================================================================
+  SUMMARY: Full production environment (CLAUDE.md + SKILL.md + boot)
+================================================================================
+
+  Segment                        | Nodes | Edges | Types | AvgLen |  ExpM |  Aha | Quote | Unc
+  -----------------------------------------------------------------------------------------------
+  conv_004                       |     2 |     1 |     2 |    693 |   67% | 100% |     0 |   0
+  -----------------------------------------------------------------------------------------------
+  AVERAGE                        |   2.0 |   1.0 |   2.0 |    693 |   67% | 100% |   0.0 | 0.0
+
+  💾 Saved to /Users/tpac/brain/eval/results/encode_v2_current_20260323_211600.json

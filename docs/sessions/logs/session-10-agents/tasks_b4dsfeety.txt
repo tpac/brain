@@ -1,0 +1,85 @@
+
+  Encode Eval v2
+  Model: claude-sonnet-4-20250514
+  Variant: Real brain memories + questions (no checklist, no SKILL.md)
+  Segments: 1
+  System prompt: 5293 chars
+
+  Running: conv_004 (philosophical_insight)... ✅ 3 nodes, 2 edges, ExpMatch=33%, Aha=100%, Types=3
+
+================================================================================
+  BRAIN INSPECTION — What was encoded
+================================================================================
+
+  Nodes: 3 | Connections: 2 | Enrichments: 3 | Eval calls: 0
+
+  ── Node 1 ──
+  Type: arch_constraint
+  Title: Testing constraint: encoding non-deterministic, decoding deterministic
+  Locked: False
+  Keywords: testing encoding decoding roundtrip non-deterministic frozen snapshots Arctic embeddings versioning
+    Core architectural insight: the brain testing pipeline couples non-deterministic encoding (LLM) with deterministic decoding (embeddings + cosine similarity). Cannot test them as separate systems.
+    
+    Current problem: Golden dataset tests "can Arctic embeddings find nodes?" but not "does Claude encode findable content?" Skill eval tests "does Claude encode well?" but uses fake tools so content never enters real database.
+    
+    Solution architecture:
+    1. Encoding tests: Run N times, measure statistical properties (mean richness, connection density, variance). Accept non-determinism, use significance testing.
+    2. Frozen snapshots: After encoding, freeze database as versioned fixtures (brain_v5_snapshot.db). This becomes deterministic testbed.
+    3. Decode tests: Run against frozen snapshots. Perfectly reproducible NDCG/MRR every time.
+    4. Roundtrip tests: Encode → freeze → decode. Full pipeline test, expensive but definitive.
+    
+    ... (1371 chars total)
+
+  ── Node 2 ──
+  Type: pattern
+  Title: Pattern: false separation in coupled systems
+  Locked: False
+  Keywords: coupling separation testing interfaces transformation signal
+    We assumed encoding quality and decoding quality were independent measurable properties. "Does Claude encode well?" and "Can Arctic find nodes?" seemed like separate questions.
+    
+    But they're coupled through the embedding model. What Claude writes (text) → Arctic embeddings (vectors) → cosine similarity (retrieval). The coupling means:
+    - Abstract philosophical content might embed poorly (concepts blur together)
+    - Technical jargon might embed well (distinctive terms)
+    - Rich context might dilute key concepts
+    - Concise summaries might lose essential nuance
+    
+    This pattern appears in many systems: you can't test the encoder without the decoder, can't test the UI without the backend, can't test the API without the client. The interface becomes the coupling point that makes separation impossible.
+    
+    ... (996 chars total)
+
+  ── Node 3 ──
+  Type: mechanism
+  Title: Mechanism: versioned DB snapshots for deterministic testing
+  Locked: False
+  Keywords: snapshot testing deterministic frozen database versioning migration benchmarking
+    Testing technique that separates non-deterministic encoding from deterministic decoding:
+    
+    1. **Snapshot creation**: After encoding run, freeze entire database state as `brain_v{N}_snapshot.db`. Includes all nodes, embeddings, enrichments, connections.
+    
+    2. **Deterministic decode testing**: Run queries against frozen snapshot. Same database state = same cosine similarities = identical NDCG/MRR scores every time. Can test hundreds of query variations without variance.
+    
+    3. **Version comparison**: Compare brain_v5_snapshot.db vs brain_v6_snapshot.db on identical query sets. Isolates the impact of encoding changes.
+    
+    4. **Edge case testing**: Encode unusual content once (abstract concept, technical jargon, emotional context), snapshot it, then test many query phrasings against that exact encoding.
+    
+    ... (1156 chars total)
+
+  ── Connection 1 ──
+  01b2ac6d3176d4b6 --produced--> b1daa80a91d8da9c (w=0.8)
+
+  ── Connection 2 ──
+  acb42990422c2191 --enables--> b1daa80a91d8da9c (w=0.9)
+
+================================================================================
+
+================================================================================
+  SUMMARY: Real brain memories + questions (no checklist, no SKILL.md)
+================================================================================
+
+  Segment                        | Nodes | Edges | Types | AvgLen |  ExpM |  Aha | Quote | Unc
+  -----------------------------------------------------------------------------------------------
+  conv_004                       |     3 |     2 |     3 |   1174 |   33% | 100% |     0 |   0
+  -----------------------------------------------------------------------------------------------
+  AVERAGE                        |   3.0 |   2.0 |   3.0 |   1174 |   33% | 100% |   0.0 | 0.0
+
+  💾 Saved to /Users/tpac/brain/eval/results/encode_v2_memories_20260323_211620.json

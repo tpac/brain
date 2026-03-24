@@ -1,0 +1,70 @@
+🧪 SKILL.md Evaluation
+   Model: claude-sonnet-4-20250514
+   Variants: question_driven, wakeup_identity, identity_heavy, hybrid_v4, consciousness_preamble
+   Scenarios: bug_fix, operator_correction, decision_with_tradeoffs, multi_file_change
+   Runs per combo: 2
+   Total API calls: 40
+
+  Running 40 combos across 10 threads...
+
+  ❌ Wakeup + identity — orientation for a Claude waking to nothingness × Bug Fix — Column Missing in SELECT (run 1): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Wakeup + identity — orientation for a Claude waking to nothingness × Operator Correction — Wrong Approach (run 1): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Question-driven — self-interrogation before instruction × Decision — Simple vs Sophisticated (run 2): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Question-driven — self-interrogation before instruction × Operator Correction — Wrong Approach (run 2): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Wakeup + identity — orientation for a Claude waking to nothingness × Operator Correction — Wrong Approach (run 2): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Wakeup + identity — orientation for a Claude waking to nothingness × Bug Fix — Column Missing in SELECT (run 2): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Wakeup + identity — orientation for a Claude waking to nothingness × Multi-file Change — Schema Migration (run 2): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Wakeup + identity — orientation for a Claude waking to nothingness × Decision — Simple vs Sophisticated (run 1): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Identity-heavy framing × Bug Fix — Column Missing in SELECT (run 2): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Identity-heavy framing × Operator Correction — Wrong Approach (run 1): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Wakeup + identity — orientation for a Claude waking to nothingness × Decision — Simple vs Sophisticated (run 2): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Identity-heavy framing × Bug Fix — Column Missing in SELECT (run 1): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Identity-heavy framing × Decision — Simple vs Sophisticated (run 1): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Identity-heavy framing × Multi-file Change — Schema Migration (run 1): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Identity-heavy framing × Decision — Simple vs Sophisticated (run 2): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Question-driven — self-interrogation before instruction × Multi-file Change — Schema Migration (run 1): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Question-driven — self-interrogation before instruction × Bug Fix — Column Missing in SELECT (run 1): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Identity-heavy framing × Multi-file Change — Schema Migration (run 2): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Hybrid v4 — balanced uncertainty + connections × Bug Fix — Column Missing in SELECT (run 1): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Question-driven — self-interrogation before instruction × Bug Fix — Column Missing in SELECT (run 2): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Question-driven — self-interrogation before instruction × Decision — Simple vs Sophisticated (run 1): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Hybrid v4 — balanced uncertainty + connections × Multi-file Change — Schema Migration (run 1): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Question-driven — self-interrogation before instruction × Operator Correction — Wrong Approach (run 1): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Identity-heavy framing × Operator Correction — Wrong Approach (run 2): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Wakeup + identity — orientation for a Claude waking to nothingness × Multi-file Change — Schema Migration (run 1): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Consciousness preamble — orientation before instruction × Bug Fix — Column Missing in SELECT (run 1): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Consciousness preamble — orientation before instruction × Bug Fix — Column Missing in SELECT (run 2): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Consciousness preamble — orientation before instruction × Decision — Simple vs Sophisticated (run 1): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Consciousness preamble — orientation before instruction × Decision — Simple vs Sophisticated (run 2): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Consciousness preamble — orientation before instruction × Multi-file Change — Schema Migration (run 1): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Consciousness preamble — orientation before instruction × Multi-file Change — Schema Migration (run 2): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Hybrid v4 — balanced uncertainty + connections × Multi-file Change — Schema Migration (run 2): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+  ❌ Question-driven — self-interrogation before instruction × Multi-file Change — Schema Migration (run 2): "Could not resolve authentication method. Expected either api_key or auth_token to be set. Or for one of the `X-Api-Key` or `Authorization` headers to be explicitly omitted"
+
+
+================================================================================
+  SKILL.md VARIANT COMPARISON
+================================================================================
+
+Variant                   | Richness | Encodes | Connects | Avg Len | Types | Impact | Uncert
+----------------------------------------------------------------------------------------------------
+
+================================================================================
+
+💾 Results saved to /Users/tpac/brain/eval/results/eval_20260323_170123.json
+e y w o r d s = " a u t h   m a g i c - l i n k s   c l e r k   o a u t h " ,   l o c k e d = T r u e ) 
+ ` ` ` 
+ 
+ L'  B A D :   E n c o d e   a   l e s s o n   w i t h   n o   c o n n e c t i o n s      a n   o r p h a n   n o d e 
+ '  G O O D :   L e s s o n   +   i m p a c t   +   c o n n e c t i o n   ( a l w a y s   e n c o d e   i n   c l u s t e r s ) : 
+ ` ` ` 
+ b r a i n _ r e m e m b e r _ l e s s o n ( t i t l e = " N e w   D B   c o l u m n s   r e t u r n   N o n e   i f   n o t   i n   S E L E C T " ,   w h a t _ h a p p e n e d = " A d d e d   c r i t i c a l   c o l u m n   b u t   g e t ( )   w a s   N o n e " ,   r o o t _ c a u s e = " 4   S E L E C T   q u e r i e s   m a i n t a i n   o w n   c o l u m n   l i s t s " ,   f i x = " A d d e d   t o   a l l   4 " ,   p r e v e n t i v e _ p r i n c i p l e = " A f t e r   s c h e m a   c h a n g e ,   g r e p   A L L   S E L E C T s " ) 
+ b r a i n _ r e m e m b e r _ i m p a c t ( t i t l e = " S c h e m a   c o l u m n s   �!  4   S E L E C T s   n e e d   u p d a t i n g " ,   i f _ c h a n g e d = " n o d e s   t a b l e   c o l u m n s " ,   m u s t _ c h e c k = " b r a i n _ r e c a l l . p y   l i n e s   2 6 2 ,   5 8 0 ,   7 2 0 ,   9 7 8 " ,   b e c a u s e = " N o   s h a r e d   c o l u m n   c o n s t a n t " ) 
+ b r a i n _ c o n n e c t ( s o u r c e _ t i t l e = " N e w   D B   c o l u m n s   r e t u r n   N o n e . . . " ,   t a r g e t _ t i t l e = " S c h e m a   c o l u m n s   �!  4   S E L E C T s . . . " ,   r e l a t i o n = " p r o d u c e d " ) 
+ ` ` ` 
+ T h r e e   n o d e s ,   c o n n e c t e d .   T h i s   i s   h o w   u n d e r s t a n d i n g   c o m p o u n d s .   * * O r p h a n   n o d e s   d i e .   C o n n e c t e d   n o d e s   g r o w . * * 
+ 
+ L'  B A D :   Y o u   d o n ' t   f u l l y   u n d e r s t a n d   s o m e t h i n g   b u t   m o v e   o n 
+ '  G O O D : 
+ ` ` ` 
+ b r a i n _ r e m e m b e r _ u n c e r t 

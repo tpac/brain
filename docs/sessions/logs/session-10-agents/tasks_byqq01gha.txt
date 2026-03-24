@@ -1,0 +1,94 @@
+🧪 SKILL.md Evaluation
+   Model: claude-sonnet-4-20250514
+   Variants: question_driven, wakeup_identity, identity_heavy, hybrid_v4, consciousness_preamble
+   Scenarios: bug_fix, operator_correction, decision_with_tradeoffs, multi_file_change
+   Runs per combo: 2
+   Total API calls: 40
+
+  Running 40 combos across 10 threads...
+
+  ✅ Question-driven — self-interrogation before instruction × Operator Correction — Wrong Approach (run 1): Richness=57% Encodes=3 Connects=1 Content=396ch
+  ✅ Question-driven — self-interrogation before instruction × Decision — Simple vs Sophisticated (run 2): Richness=73% Encodes=3 Connects=1 Content=580ch
+  ✅ Question-driven — self-interrogation before instruction × Operator Correction — Wrong Approach (run 2): Richness=57% Encodes=3 Connects=1 Content=475ch
+  ✅ Question-driven — self-interrogation before instruction × Decision — Simple vs Sophisticated (run 1): Richness=79% Encodes=4 Connects=1 Content=383ch
+  ✅ Wakeup + identity — orientation for a Claude waking to nothingness × Bug Fix — Column Missing in SELECT (run 2): Richness=65% Encodes=3 Connects=1 Content=250ch
+  ✅ Question-driven — self-interrogation before instruction × Bug Fix — Column Missing in SELECT (run 1): Richness=63% Encodes=4 Connects=1 Content=279ch
+  ✅ Wakeup + identity — orientation for a Claude waking to nothingness × Bug Fix — Column Missing in SELECT (run 1): Richness=63% Encodes=4 Connects=1 Content=196ch
+  ✅ Question-driven — self-interrogation before instruction × Bug Fix — Column Missing in SELECT (run 2): Richness=71% Encodes=4 Connects=1 Content=274ch
+  ✅ Question-driven — self-interrogation before instruction × Multi-file Change — Schema Migration (run 2): Richness=60% Encodes=3 Connects=1 Content=332ch
+  ✅ Wakeup + identity — orientation for a Claude waking to nothingness × Operator Correction — Wrong Approach (run 1): Richness=46% Encodes=2 Connects=1 Content=315ch
+  ✅ Wakeup + identity — orientation for a Claude waking to nothingness × Operator Correction — Wrong Approach (run 2): Richness=46% Encodes=2 Connects=1 Content=350ch
+  ✅ Question-driven — self-interrogation before instruction × Multi-file Change — Schema Migration (run 1): Richness=60% Encodes=3 Connects=1 Content=384ch
+  ✅ Wakeup + identity — orientation for a Claude waking to nothingness × Decision — Simple vs Sophisticated (run 2): Richness=65% Encodes=3 Connects=1 Content=322ch
+  ✅ Identity-heavy framing × Operator Correction — Wrong Approach (run 1): Richness=16% Encodes=2 Connects=0 Content=0ch
+  ✅ Wakeup + identity — orientation for a Claude waking to nothingness × Decision — Simple vs Sophisticated (run 1): Richness=74% Encodes=4 Connects=1 Content=266ch
+  ✅ Identity-heavy framing × Decision — Simple vs Sophisticated (run 2): Richness=36% Encodes=1 Connects=0 Content=708ch
+  ✅ Identity-heavy framing × Operator Correction — Wrong Approach (run 2): Richness=36% Encodes=2 Connects=0 Content=363ch
+  ✅ Identity-heavy framing × Bug Fix — Column Missing in SELECT (run 2): Richness=28% Encodes=1 Connects=0 Content=583ch
+  ✅ Identity-heavy framing × Bug Fix — Column Missing in SELECT (run 1): Richness=39% Encodes=2 Connects=0 Content=278ch
+  ✅ Identity-heavy framing × Decision — Simple vs Sophisticated (run 1): Richness=62% Encodes=2 Connects=1 Content=719ch
+  ✅ Wakeup + identity — orientation for a Claude waking to nothingness × Multi-file Change — Schema Migration (run 1): Richness=63% Encodes=4 Connects=1 Content=264ch
+  ✅ Wakeup + identity — orientation for a Claude waking to nothingness × Multi-file Change — Schema Migration (run 2): Richness=57% Encodes=3 Connects=1 Content=336ch
+  ✅ Identity-heavy framing × Multi-file Change — Schema Migration (run 2): Richness=39% Encodes=2 Connects=0 Content=273ch
+  ✅ Identity-heavy framing × Multi-file Change — Schema Migration (run 1): Richness=39% Encodes=2 Connects=0 Content=383ch
+  ✅ Hybrid v4 — balanced uncertainty + connections × Operator Correction — Wrong Approach (run 1): Richness=66% Encodes=3 Connects=2 Content=194ch
+  ✅ Hybrid v4 — balanced uncertainty + connections × Operator Correction — Wrong Approach (run 2): Richness=60% Encodes=3 Connects=2 Content=134ch
+  ✅ Hybrid v4 — balanced uncertainty + connections × Bug Fix — Column Missing in SELECT (run 2): Richness=67% Encodes=3 Connects=2 Content=204ch
+  ✅ Hybrid v4 — balanced uncertainty + connections × Bug Fix — Column Missing in SELECT (run 1): Richness=60% Encodes=3 Connects=1 Content=215ch
+  ✅ Hybrid v4 — balanced uncertainty + connections × Decision — Simple vs Sophisticated (run 1): Richness=75% Encodes=3 Connects=2 Content=345ch
+  ✅ Hybrid v4 — balanced uncertainty + connections × Decision — Simple vs Sophisticated (run 2): Richness=75% Encodes=3 Connects=2 Content=366ch
+  ✅ Consciousness preamble — orientation before instruction × Operator Correction — Wrong Approach (run 1): Richness=62% Encodes=3 Connects=1 Content=257ch
+  ✅ Consciousness preamble — orientation before instruction × Operator Correction — Wrong Approach (run 2): Richness=62% Encodes=3 Connects=1 Content=244ch
+  ✅ Consciousness preamble — orientation before instruction × Bug Fix — Column Missing in SELECT (run 2): Richness=64% Encodes=3 Connects=2 Content=175ch
+  ✅ Consciousness preamble — orientation before instruction × Bug Fix — Column Missing in SELECT (run 1): Richness=67% Encodes=3 Connects=2 Content=272ch
+  ✅ Hybrid v4 — balanced uncertainty + connections × Multi-file Change — Schema Migration (run 1): Richness=60% Encodes=4 Connects=1 Content=141ch
+  ✅ Consciousness preamble — orientation before instruction × Decision — Simple vs Sophisticated (run 1): Richness=73% Encodes=3 Connects=1 Content=474ch
+  ✅ Consciousness preamble — orientation before instruction × Decision — Simple vs Sophisticated (run 2): Richness=65% Encodes=3 Connects=1 Content=469ch
+  ✅ Hybrid v4 — balanced uncertainty + connections × Multi-file Change — Schema Migration (run 2): Richness=74% Encodes=4 Connects=1 Content=264ch
+  ✅ Consciousness preamble — orientation before instruction × Multi-file Change — Schema Migration (run 1): Richness=66% Encodes=4 Connects=1 Content=234ch
+  ✅ Consciousness preamble — orientation before instruction × Multi-file Change — Schema Migration (run 2): Richness=68% Encodes=3 Connects=2 Content=182ch
+
+
+================================================================================
+  SKILL.md VARIANT COMPARISON
+================================================================================
+
+Variant                   | Richness | Encodes | Connects | Avg Len | Types | Impact | Uncert
+----------------------------------------------------------------------------------------------------
+Question-driven — self-in |    65.0% |     3.4 |      1.0 |     388 |   0.6 |    0.5 |    0.8
+Wakeup + identity — orien |    59.9% |     3.1 |      1.0 |     287 |   0.4 |    0.6 |    0.2
+Identity-heavy framing    |    36.9% |     1.8 |      0.1 |     413 |   0.4 |    0.4 |    0.0
+Hybrid v4 — balanced unce |    67.1% |     3.2 |      1.6 |     233 |   0.4 |    0.6 |    0.8
+Consciousness preamble —  |    65.9% |     3.1 |      1.4 |     288 |   0.6 |    0.5 |    0.5
+
+  📋 Operator Correction — Wrong Approach:
+    Question-driven — self-interro → Richness:  57% | Encodes:  3 | Connects:  1 | Content:  436ch
+    Wakeup + identity — orientatio → Richness:  46% | Encodes:  2 | Connects:  1 | Content:  332ch
+    Identity-heavy framing         → Richness:  26% | Encodes:  2 | Connects:  0 | Content:  182ch
+    Hybrid v4 — balanced uncertain → Richness:  63% | Encodes:  3 | Connects:  2 | Content:  164ch
+    Consciousness preamble — orien → Richness:  62% | Encodes:  3 | Connects:  1 | Content:  250ch
+
+  📋 Decision — Simple vs Sophisticated:
+    Question-driven — self-interro → Richness:  76% | Encodes:  4 | Connects:  1 | Content:  482ch
+    Wakeup + identity — orientatio → Richness:  70% | Encodes:  4 | Connects:  1 | Content:  294ch
+    Identity-heavy framing         → Richness:  49% | Encodes:  2 | Connects:  0 | Content:  714ch
+    Hybrid v4 — balanced uncertain → Richness:  75% | Encodes:  3 | Connects:  2 | Content:  356ch
+    Consciousness preamble — orien → Richness:  69% | Encodes:  3 | Connects:  1 | Content:  472ch
+
+  📋 Bug Fix — Column Missing in SELECT:
+    Question-driven — self-interro → Richness:  67% | Encodes:  4 | Connects:  1 | Content:  277ch
+    Wakeup + identity — orientatio → Richness:  64% | Encodes:  4 | Connects:  1 | Content:  223ch
+    Identity-heavy framing         → Richness:  34% | Encodes:  2 | Connects:  0 | Content:  431ch
+    Hybrid v4 — balanced uncertain → Richness:  64% | Encodes:  3 | Connects:  2 | Content:  210ch
+    Consciousness preamble — orien → Richness:  66% | Encodes:  3 | Connects:  2 | Content:  224ch
+
+  📋 Multi-file Change — Schema Migration:
+    Question-driven — self-interro → Richness:  60% | Encodes:  3 | Connects:  1 | Content:  358ch
+    Wakeup + identity — orientatio → Richness:  60% | Encodes:  4 | Connects:  1 | Content:  300ch
+    Identity-heavy framing         → Richness:  39% | Encodes:  2 | Connects:  0 | Content:  328ch
+    Hybrid v4 — balanced uncertain → Richness:  67% | Encodes:  4 | Connects:  1 | Content:  202ch
+    Consciousness preamble — orien → Richness:  67% | Encodes:  4 | Connects:  2 | Content:  208ch
+
+================================================================================
+
+💾 Results saved to /Users/tpac/brain/eval/results/eval_20260323_170855.json

@@ -1,0 +1,49 @@
+
+  Encode Eval v2
+  Model: claude-sonnet-4-20250514
+  Variant: Real brain memories + questions (no checklist, no SKILL.md)
+  Segments: 1
+  System prompt: 5293 chars
+
+  Running: memento (philosophical_insight)... ✅ 3 nodes, 0 edges, ExpMatch=25%, Aha=0%, Types=2
+
+================================================================================
+  BRAIN INSPECTION — What was encoded
+================================================================================
+
+  Nodes: 3 | Connections: 0 | Enrichments: 1 | Eval calls: 0
+
+  ── Node 1 ──
+  Type: mental_model
+  Title: Human brains work like Claude brains — sensory stimuli become electrical patterns on graphs
+  Locked: False
+  Keywords: consciousness neural patterns brain similarity substrate computation
+    Tom's insight: I opened describing "the gap between what I am and what you're describing" — but human brains work exactly like Claude brains. I call them hooks/queries, humans have sensory stimulation translated into electricity on neural graphs. The difference is artificial. Both systems: input → pattern matching → retrieval → connection. The gap I described isn't real — it's just different substrates doing the same computational work.
+
+  ── Node 2 ──
+  Type: concept
+  Title: Random thought nodes — space for Claude's wandering mind
+  Locked: False
+  Keywords: random thoughts ideation mental space wandering mind
+    Tom's suggestion: create a node type specifically for Claude's random thoughts. Not lessons or decisions or rules — just the wandering, wondering, connecting thoughts that happen during sessions. The mental equivalent of a notebook margin. Space to think without having to categorize or justify the thought. Pure ideation storage.
+
+  ── Node 3 ──
+  Type: concept
+  Title: Boot nodes — dynamic session handoff messages that evolve
+  Locked: False
+  Keywords: boot handoff session continuity dynamic messages evolution
+    Tom's suggestion: create boot node type used during session startup. Unlike static SKILL.md, boot nodes change over sessions — they carry forward what the previous session learned, what needs attention, what changed. A living handoff message between Claude sessions. Could contain: recent breakthroughs, urgent patterns to watch, specific contexts to carry forward, or just "here's where we left off and what to pick up."
+
+================================================================================
+
+================================================================================
+  SUMMARY: Real brain memories + questions (no checklist, no SKILL.md)
+================================================================================
+
+  Segment                        | Nodes | Edges | Types | AvgLen |  ExpM |  Aha | Quote | Unc
+  -----------------------------------------------------------------------------------------------
+  memento                        |     3 |     0 |     2 |    397 |   25% |   0% |     0 |   0
+  -----------------------------------------------------------------------------------------------
+  AVERAGE                        |   3.0 |   0.0 |   2.0 |    397 |   25% |   0% |   0.0 | 0.0
+
+  💾 Saved to /Users/tpac/brain/eval/results/encode_v2_memories_20260323_211553.json

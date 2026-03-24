@@ -1,0 +1,75 @@
+
+  Encode Funnel Evaluation
+  Model: claude-sonnet-4-20250514
+  Variants: naked, baseline, quality_feedback, quality_reject, followup_questions, hybrid_v4, hybrid_v4_plus_feedback, previous_claude_warning
+  Conversations: 6
+  Runs: 1
+  Total API calls: 48
+
+  Running 48 combos across 10 threads...
+
+  ✅ naked x conv_004: Richness=49% Encodes=2 ExpMatch=67% AhaCapture=50%
+  ✅ naked x conv_002: Richness=52% Encodes=2 ExpMatch=67% AhaCapture=100%
+  ✅ baseline x conv_002: Richness=54% Encodes=2 ExpMatch=0% AhaCapture=0%
+  ✅ naked x conv_005: Richness=44% Encodes=2 ExpMatch=0% AhaCapture=100%
+  ✅ naked x conv_003: Richness=44% Encodes=3 ExpMatch=25% AhaCapture=0%
+  ✅ naked x conv_006: Richness=58% Encodes=3 ExpMatch=0% AhaCapture=100%
+  ✅ baseline x conv_004: Richness=75% Encodes=3 ExpMatch=67% AhaCapture=50%
+  ✅ baseline x conv_003: Richness=78% Encodes=4 ExpMatch=50% AhaCapture=0%
+  ✅ naked x conv_001: Richness=39% Encodes=2 ExpMatch=0% AhaCapture=0%
+  ✅ baseline x conv_005: Richness=47% Encodes=2 ExpMatch=0% AhaCapture=0%
+  ✅ baseline x conv_001: Richness=70% Encodes=3 ExpMatch=0% AhaCapture=0%
+  ✅ quality_feedback x conv_005: Richness=36% Encodes=1 ExpMatch=0% AhaCapture=0%
+  ✅ quality_feedback x conv_002: Richness=65% Encodes=3 ExpMatch=0% AhaCapture=0%
+  ✅ baseline x conv_006: Richness=68% Encodes=3 ExpMatch=33% AhaCapture=100%
+  ✅ quality_feedback x conv_003: Richness=80% Encodes=3 ExpMatch=75% AhaCapture=0%
+  ✅ quality_feedback x conv_004: Richness=78% Encodes=3 ExpMatch=67% AhaCapture=50%
+  ✅ quality_feedback x conv_001: Richness=67% Encodes=3 ExpMatch=0% AhaCapture=0%
+  ✅ quality_reject x conv_003: Richness=76% Encodes=5 ExpMatch=50% AhaCapture=0%
+  ✅ quality_feedback x conv_006: Richness=84% Encodes=6 ExpMatch=0% AhaCapture=100%
+  ✅ quality_reject x conv_002: Richness=89% Encodes=4 ExpMatch=33% AhaCapture=0%
+  ✅ followup_questions x conv_002: Richness=78% Encodes=3 ExpMatch=0% AhaCapture=0%
+  ✅ quality_reject x conv_006: Richness=68% Encodes=3 ExpMatch=33% AhaCapture=0%
+  ✅ followup_questions x conv_001: Richness=60% Encodes=3 ExpMatch=0% AhaCapture=0%
+  ✅ quality_reject x conv_005: Richness=78% Encodes=3 ExpMatch=0% AhaCapture=0%
+  ✅ followup_questions x conv_003: Richness=72% Encodes=3 ExpMatch=50% AhaCapture=0%
+  ✅ quality_reject x conv_004: Richness=80% Encodes=8 ExpMatch=33% AhaCapture=50%
+  ✅ quality_reject x conv_001: Richness=90% Encodes=7 ExpMatch=0% AhaCapture=0%
+  ✅ followup_questions x conv_004: Richness=83% Encodes=3 ExpMatch=33% AhaCapture=50%
+  ✅ followup_questions x conv_005: Richness=57% Encodes=2 ExpMatch=25% AhaCapture=0%
+  ✅ hybrid_v4 x conv_004: Richness=92% Encodes=4 ExpMatch=33% AhaCapture=50%
+  ✅ hybrid_v4 x conv_002: Richness=84% Encodes=4 ExpMatch=0% AhaCapture=100%
+  ✅ hybrid_v4 x conv_005: Richness=57% Encodes=2 ExpMatch=0% AhaCapture=0%
+  ✅ hybrid_v4_plus_feedback x conv_002: Richness=60% Encodes=3 ExpMatch=33% AhaCapture=0%
+  ✅ hybrid_v4 x conv_003: Richness=73% Encodes=4 ExpMatch=25% AhaCapture=0%
+  ✅ hybrid_v4 x conv_006: Richness=70% Encodes=3 ExpMatch=33% AhaCapture=0%
+  ✅ hybrid_v4_plus_feedback x conv_003: Richness=36% Encodes=2 ExpMatch=25% AhaCapture=0%
+  ✅ hybrid_v4_plus_feedback x conv_001: Richness=39% Encodes=2 ExpMatch=0% AhaCapture=0%
+  ✅ hybrid_v4_plus_feedback x conv_004: Richness=55% Encodes=3 ExpMatch=33% AhaCapture=50%
+  ✅ hybrid_v4_plus_feedback x conv_005: Richness=8% Encodes=1 ExpMatch=0% AhaCapture=0%
+  ✅ followup_questions x conv_006: Richness=84% Encodes=7 ExpMatch=33% AhaCapture=100%
+  ✅ hybrid_v4 x conv_001: Richness=76% Encodes=5 ExpMatch=0% AhaCapture=0%
+  ✅ hybrid_v4_plus_feedback x conv_006: Richness=58% Encodes=3 ExpMatch=0% AhaCapture=100%
+  ✅ previous_claude_warning x conv_002: Richness=57% Encodes=2 ExpMatch=33% AhaCapture=0%
+  ✅ previous_claude_warning x conv_003: Richness=72% Encodes=3 ExpMatch=50% AhaCapture=0%
+  ✅ previous_claude_warning x conv_004: Richness=78% Encodes=3 ExpMatch=33% AhaCapture=0%
+  ✅ previous_claude_warning x conv_005: Richness=57% Encodes=2 ExpMatch=0% AhaCapture=0%
+  ✅ previous_claude_warning x conv_006: Richness=57% Encodes=2 ExpMatch=33% AhaCapture=100%
+  ✅ previous_claude_warning x conv_001: Richness=92% Encodes=4 ExpMatch=25% AhaCapture=0%
+
+================================================================================
+  ENCODE FUNNEL SUMMARY
+================================================================================
+
+Variant                             | Rich% | Enc | Conn | Unc |  ExpM |  Aha
+--------------------------------------------------------------------------------
+No guidance at all                  |  47.7 | 2.3 |  0.0 | 0.2 |   26% |  58%
+Current SKILL.md, silent tools      |  65.3 | 2.8 |  1.3 | 0.3 |   25% |  25%
+SKILL.md + quality score in tool re |  68.3 | 3.2 |  1.3 | 0.5 |   24% |  25%
+SKILL.md + reject thin nodes        |  80.2 | 5.0 |  0.8 | 1.0 |   25% |   8%
+SKILL.md + brain asks follow-up que |  72.3 | 3.5 |  1.5 | 0.7 |   24% |  25%
+Hybrid v4 (eval winner), silent too |  75.3 | 3.7 |  2.2 | 0.7 |   15% |  25%
+Hybrid v4 + quality feedback        |  42.7 | 2.3 |  0.0 | 0.2 |   15% |  25%
+SKILL.md + peer warning about drift |  68.8 | 2.7 |  1.5 | 0.5 |   29% |  17%
+
+  💾 Results saved to /Users/tpac/brain/eval/results/encode_funnel_20260323_192002.json

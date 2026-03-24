@@ -1,0 +1,65 @@
+
+  Encode Eval v2
+  Model: claude-sonnet-4-20250514
+  Variant: Questions prompt only (no memories, no SKILL.md, no CLAUDE.md)
+  Segments: 1
+  System prompt: 715 chars
+
+  Running: conv_004 (philosophical_insight)... ✅ 2 nodes, 1 edges, ExpMatch=33%, Aha=100%, Types=2
+
+================================================================================
+  BRAIN INSPECTION — What was encoded
+================================================================================
+
+  Nodes: 2 | Connections: 1 | Enrichments: 2 | Eval calls: 0
+
+  ── Node 1 ──
+  Type: arch_constraint
+  Title: Testing Pipeline Architecture: Deterministic Decode vs Non-Deterministic Encode
+  Locked: False
+  Keywords: testing architecture encoding decoding deterministic non-deterministic frozen snapshots statistical measures roundtrip coupling
+    The brain's testing pipeline has two fundamentally different components:
+    
+    ENCODING (Non-deterministic):
+    - Claude's tool usage varies between runs
+    - Enrichment text is LLM-generated and varies
+    - Connection decisions depend on existing brain state
+    - Must be tested statistically: N runs, mean+variance measures
+    - Tests: tool usage, content richness, connection density, uncertainty capture
+    
+    DECODING (Deterministic):
+    ... (1104 chars total)
+
+  ── Node 2 ──
+  Type: failure_mode
+  Title: Testing Coupling Failure: Measuring Components in Isolation
+  Locked: False
+  Keywords: testing coupling encoding decoding embedding independence roundtrip validation
+    FAILURE: Testing encoding and decoding as independent systems when they're coupled through the embedding model.
+    
+    MANIFESTATION:
+    - Golden dataset tests "can Arctic find node X?" using existing embeddings
+    - Skill eval tests "does Claude encode richly?" using fake brain tools
+    - Results don't predict real performance because:
+      - Claude might encode beautifully but in ways Arctic can't distinguish
+      - Arctic might find nodes perfectly but Claude's encoding is too thin to be useful
+      - V6 enrichment tests showed +0.010 NDCG on V5-encoded nodes, not V6-encoded
+    
+    ... (1043 chars total)
+
+  ── Connection 1 ──
+  5d290953e575ccaa --caused_by--> c8663b8c377b57aa (w=0.8)
+
+================================================================================
+
+================================================================================
+  SUMMARY: Questions prompt only (no memories, no SKILL.md, no CLAUDE.md)
+================================================================================
+
+  Segment                        | Nodes | Edges | Types | AvgLen |  ExpM |  Aha | Quote | Unc
+  -----------------------------------------------------------------------------------------------
+  conv_004                       |     2 |     1 |     2 |   1074 |   33% | 100% |     0 |   0
+  -----------------------------------------------------------------------------------------------
+  AVERAGE                        |   2.0 |   1.0 |   2.0 |   1074 |   33% | 100% |   0.0 | 0.0
+
+  💾 Saved to /Users/tpac/brain/eval/results/encode_v2_questions_only_20260323_211601.json

@@ -1,0 +1,45 @@
+
+  Encode Eval v2
+  Model: claude-sonnet-4-20250514
+  Variant: Live boot context only (brain as identity, no SKILL.md, no CLAUDE.md)
+  Segments: 1
+  System prompt: 9960 chars
+
+  Running: conv_004 (philosophical_insight)... ✅ 1 nodes, 0 edges, ExpMatch=33%, Aha=100%, Types=1
+
+================================================================================
+  BRAIN INSPECTION — What was encoded
+================================================================================
+
+  Nodes: 1 | Connections: 0 | Enrichments: 1 | Eval calls: 0
+
+  ── Node 1 ──
+  Type: mechanism
+  Title: Test architecture: encode/decode coupling solution
+  Locked: False
+  Keywords: testing architecture encoding decoding coupling embeddings reproducibility snapshots roundtrip
+    Problem: Testing encoding quality disconnected from decoding quality gives misleading results. Encoding tests use fake brain tools (no real database), decode tests assume perfect encoding. Neither tests the roundtrip: Claude encodes → Arctic embeds → different Claude recalls.
+    
+    Solution architecture:
+    1. Encoding tests: Non-deterministic by nature (LLM variance). Run N times, measure statistical distribution of richness, tool usage, connection patterns
+    2. Frozen DB snapshots: After encoding, freeze database state as versioned fixture (brain_v5_snapshot.db). Deterministic foundation for decode testing
+    3. Decode tests: Run against frozen snapshots. Exact reproducibility - same NDCG every time. Direct comparison across snapshot versions
+    4. Roundtrip tests: Full encode→freeze→decode pipeline. Expensive (API calls) so only run when encoding changes
+    
+    Benefits:
+    - Separates deterministic (decode) from non-deterministic (encode) testing
+    ... (1175 chars total)
+
+================================================================================
+
+================================================================================
+  SUMMARY: Live boot context only (brain as identity, no SKILL.md, no CLAUDE.md)
+================================================================================
+
+  Segment                        | Nodes | Edges | Types | AvgLen |  ExpM |  Aha | Quote | Unc
+  -----------------------------------------------------------------------------------------------
+  conv_004                       |     1 |     0 |     1 |   1175 |   33% | 100% |     0 |   0
+  -----------------------------------------------------------------------------------------------
+  AVERAGE                        |   1.0 |   0.0 |   1.0 |   1175 |   33% | 100% |   0.0 | 0.0
+
+  💾 Saved to /Users/tpac/brain/eval/results/encode_v2_identity_20260323_214904.json

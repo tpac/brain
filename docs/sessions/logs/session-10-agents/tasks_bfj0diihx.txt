@@ -1,0 +1,25 @@
+
+  Encode Funnel Evaluation
+  Model: claude-sonnet-4-20250514
+  Variants: baseline
+  Conversations: 5
+  Runs: 1
+  Total API calls: 5
+
+  Running 5 combos across 4 threads...
+
+  ✅ baseline x conv_002: Richness=78% Encodes=3 ExpMatch=0% AhaCapture=0%
+  ✅ baseline x conv_004: Richness=78% Encodes=3 ExpMatch=33% AhaCapture=50%
+  ✅ baseline x conv_003: Richness=78% Encodes=4 ExpMatch=75% AhaCapture=0%
+  ✅ baseline x conv_001: Richness=70% Encodes=3 ExpMatch=0% AhaCapture=0%
+  ✅ baseline x conv_005: Richness=47% Encodes=2 ExpMatch=0% AhaCapture=0%
+
+================================================================================
+  ENCODE FUNNEL SUMMARY
+================================================================================
+
+Variant                             | Rich% | Enc | Conn | Unc |  ExpM |  Aha
+--------------------------------------------------------------------------------
+Current SKILL.md, silent tools      |  70.2 | 3.0 |  1.6 | 0.8 |   22% |  10%
+
+  💾 Results saved to /Users/tpac/brain/eval/results/encode_funnel_20260323_191706.json

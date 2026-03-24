@@ -1,0 +1,45 @@
+
+  Encode Eval v2
+  Model: claude-sonnet-4-20250514
+  Variant: Just tools, no CLAUDE.md, no SKILL.md, no boot
+  Segments: 1
+  System prompt: 34 chars
+
+  Running: conv_004 (philosophical_insight)... ✅ 1 nodes, 0 edges, ExpMatch=33%, Aha=100%, Types=1
+
+================================================================================
+  BRAIN INSPECTION — What was encoded
+================================================================================
+
+  Nodes: 1 | Connections: 0 | Enrichments: 1 | Eval calls: 0
+
+  ── Node 1 ──
+  Type: mechanism
+  Title: Testing architecture: separate deterministic decode from non-deterministic encode
+  Locked: False
+  Keywords: testing architecture deterministic non-deterministic encoding decoding frozen snapshots roundtrip
+    Testing encoding and decoding separately due to their different natures:
+    
+    ENCODING (non-deterministic):
+    - Multiple runs needed for statistical significance
+    - Measure richness, tool usage, connection density variance
+    - LLM-based, so inherently variable outputs for same input
+    
+    DECODING (deterministic given fixed DB):
+    - Frozen database snapshots as fixtures
+    - Exact reproducible results for NDCG/MRR testing
+    ... (910 chars total)
+
+================================================================================
+
+================================================================================
+  SUMMARY: Just tools, no CLAUDE.md, no SKILL.md, no boot
+================================================================================
+
+  Segment                        | Nodes | Edges | Types | AvgLen |  ExpM |  Aha | Quote | Unc
+  -----------------------------------------------------------------------------------------------
+  conv_004                       |     1 |     0 |     1 |    910 |   33% | 100% |     0 |   0
+  -----------------------------------------------------------------------------------------------
+  AVERAGE                        |   1.0 |   0.0 |   1.0 |    910 |   33% | 100% |   0.0 | 0.0
+
+  💾 Saved to /Users/tpac/brain/eval/results/encode_v2_naked_20260323_211543.json
