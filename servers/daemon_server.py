@@ -204,21 +204,27 @@ class BrainDaemon:
             except Exception:
                 pass
 
+    def _observe_command(self, cmd, args):
+        """Emit command to observer channel. One place, all observation."""
+        try:
+            from servers.brain_observer import emit, has_listeners
+            if not has_listeners():
+                return
+            obs_args = {}
+            for k, v in (args or {}).items():
+                s = str(v)
+                obs_args[k] = s[:120] + "..." if len(s) > 120 else s
+            emit("command", command=cmd, args=obs_args)
+        except Exception:
+            pass
+
     def _dispatch(self, cmd: str, args: Dict[str, Any]) -> Dict[str, Any]:
         """Route command to handler with appropriate locking."""
         try:
-            # Emit to observer channel — Tom sees all brain activity
-            try:
-                from servers.brain_observer import emit, has_listeners
-                if has_listeners():
-                    # Summarize args (avoid sending huge blobs)
-                    obs_args = {}
-                    for k, v in (args or {}).items():
-                        s = str(v)
-                        obs_args[k] = s[:120] + "..." if len(s) > 120 else s
-                    emit("command", command=cmd, args=obs_args)
-            except Exception:
-                pass
+            # Emit to observer channel — Tom sees all brain activity.
+            # This is the ONLY place observer events are emitted.
+            # All observation logic lives in brain_observer.py.
+            self._observe_command(cmd, args)
 
             # Shutdown — async, signals main thread immediately
             if cmd == "shutdown":

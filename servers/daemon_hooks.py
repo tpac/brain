@@ -13,15 +13,6 @@ Returns: {"output": str} for text hooks, or {"output": str, "json": dict}
 for hooks that need structured JSON output (recall, pre-edit, pre-bash, pre-compact).
 """
 
-# Observer channel — emits events to connected listeners (Tom's visibility).
-# If nobody's listening, emit() is a no-op.
-def _observe(event_type, **kwargs):
-    try:
-        from servers.brain_observer import emit
-        emit(event_type, **kwargs)
-    except Exception:
-        pass
-
 import json
 import os
 import re
@@ -511,15 +502,6 @@ def hook_recall(brain, args, graph_changes):
     merged = voice.wrap_for_hook(rendered['for_claude'], rendered.get('for_operator'))
     result_json = {"additionalContext": merged}
 
-    # Emit recall to observer channel (Tom's visibility)
-    try:
-        recall_titles = [n.get('title', '')[:60] for n in (results or [])[:5]]
-        _observe("recall", query=user_message[:80],
-                 results_count=len(results or []),
-                 titles=recall_titles)
-    except Exception:
-        pass
-
     return {"json": result_json}
 
 
@@ -786,10 +768,6 @@ def hook_post_response_track(brain, args, graph_changes):
                 checkpoint_lines.append(mirror_text)
             checkpoint_lines.append("[/BRAIN]")
             checkpoint_text = "\n".join(checkpoint_lines)
-
-            # Emit to observer channel (Tom's visibility)
-            _observe("checkpoint", message=msg, stats=stats,
-                     question=focus, mirror=mirror_text or None)
 
             if is_user_prompt:
                 output = "\n" + checkpoint_text + "\n"
