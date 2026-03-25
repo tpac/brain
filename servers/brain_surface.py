@@ -344,26 +344,6 @@ class BrainSurfaceMixin:
             'SELECT COUNT(*) FROM nodes WHERE locked = 1 AND archived = 0'
         ).fetchone()[0]
 
-        # Find last session note
-        session_logs = self.conn.execute('''
-            SELECT id, title, content, created_at FROM nodes
-            WHERE title LIKE '%Session%Log%Reset%' AND archived = 0
-            ORDER BY created_at DESC LIMIT 1
-        ''').fetchone()
-
-        last_session_note = None
-        reset_count = 0
-        if session_logs:
-            last_session_note = {
-                'id': session_logs[0],
-                'title': session_logs[1],
-                'content': session_logs[2],
-                'created_at': session_logs[3]
-            }
-            # Parse reset number
-            match = re.search(r'Reset #(\d+)', session_logs[1])
-            reset_count = int(match.group(1)) if match else 0
-
         return {
             'brain_version': BRAIN_VERSION,
             'total_nodes': self._get_node_count(),
@@ -371,8 +351,6 @@ class BrainSurfaceMixin:
             'total_locked': total_locked,
             'locked_shown': len(results['locked']),
             'has_more_locked': total_locked > max_locked,
-            'reset_count': reset_count,
-            'last_session_note': last_session_note,
             **results
         }
 
@@ -974,3 +952,250 @@ class BrainSurfaceMixin:
         voice = BrainVoice(self)
         rendered = voice.render_boot_v2(user, project, db_dir)
         return voice.wrap_for_hook(rendered['for_claude'], rendered.get('for_operator'))
+
+    # ══════════════════════════════════════════════════════════════════════
+    # Stop-event methods — called by flat hook_stop dispatcher
+    # Each method has ONE responsibility.
+    # ══════════════════════════════════════════════════════════════════════
+
+    def auto_encode(self, user_message: str, assistant_response: str) -> Optional[Dict]:
+        """Encoding instinct — detect what's worth remembering from an exchange.
+
+        Fires on every Stop event. Lightweight signal detection.
+        Returns the encoded node dict, or None if nothing worth encoding.
+
+        This is the safety net — catches what Claude's efficiency bias drops.
+        Claude's conscious encoding is richer. This catches what's missed.
+        """
+        from . import embedder
+
+        if not user_message or len(user_message) < 20:
+            return None
+        if not assistant_response or len(assistant_response) < 100:
+            return None
+
+        # Don't encode meta-conversations about encoding
+        user_lower = user_message.lower()
+        if any(t in user_lower for t in ('encode', 'remember', 'brain node', 'encode_cluster')):
+            return None
+
+        # Detect signals
+        signals = []
+
+        correction_patterns = [
+            'no,', 'no.', 'wrong', 'not what', 'actually,', 'actually ',
+            'you misunderstood', "that's not", "thats not", 'i meant',
+            'listen,', 'listen ', 'stop.', 'stop,', 'wait,', 'wait.',
+        ]
+        if any(p in user_lower for p in correction_patterns):
+            signals.append('correction')
+
+        decision_patterns = [
+            "let's do", "lets do", "go with", "use that", "yes let",
+            "yes,", "yes.", "perfect", "exactly", "that's it", "thats it",
+            "agreed", "go for it", "do it", "ship it", "build it",
+        ]
+        if any(p in user_lower for p in decision_patterns):
+            signals.append('decision')
+
+        insight_patterns = [
+            'the reason', 'because', 'the key', 'the trick', 'the point',
+            'think about', 'imagine', 'the real', 'what matters', 'important',
+            'the way i see', 'my experience', 'i learned', 'lesson',
+        ]
+        if any(p in user_lower for p in insight_patterns):
+            signals.append('insight')
+
+        if '?' in user_message and len(assistant_response) > 500:
+            signals.append('exploration')
+
+        if not signals:
+            return None
+
+        # Build node
+        type_map = {
+            'correction': 'correction', 'decision': 'decision',
+            'insight': 'lesson', 'exploration': 'context',
+        }
+        node_type = type_map.get(signals[0], 'context')
+
+        title_text = user_message.split('.')[0].split('?')[0].split('!')[0].strip()
+        if len(title_text) > 80:
+            title_text = title_text[:77] + '...'
+        if len(title_text) < 10:
+            title_text = user_message[:80].strip()
+        title = '[auto] %s' % title_text
+
+        content = 'Tom: %s\n\nClaude: %s\n\n[auto-encoded from %s signal]' % (
+            user_message[:500], assistant_response[:800], signals[0])
+
+        # Dedup check
+        if embedder.is_ready():
+            try:
+                match = self.find_node_by_title(title, threshold=0.90)
+                if match:
+                    return None
+            except Exception:
+                pass
+
+        # Encode
+        result = self.remember(
+            type=node_type,
+            title=title,
+            content=content,
+            keywords='auto-encode %s session exchange' % signals[0],
+            locked=False,
+            confidence=0.5,
+            encoding_source='auto',
+        )
+
+        # Store for feedback on next UserPromptSubmit
+        self.set_config('last_auto_encoded', json.dumps({
+            'title': title,
+            'type': node_type,
+            'signal': signals[0],
+        }))
+
+        return result
+
+    def track_response(self, user_message: str, assistant_response: str,
+                       session_id: str = '') -> None:
+        """Track Claude's response for precision evaluation.
+
+        Stores the response on the most recent recall_log row (Stage 2).
+        """
+        if not assistant_response or len(assistant_response) < 20:
+            return
+
+        if not session_id:
+            session_id = self.get_config('session_id', 'ses_unknown')
+            if not session_id.startswith('ses_'):
+                session_id = 'ses_%s' % session_id
+
+        # Find pending recall awaiting response
+        recall_log_id = None
+        try:
+            dal = getattr(self, '_logs_dal', None)
+            if dal:
+                recall_log_id = dal.get_pending_response(session_id)
+            else:
+                recall_log_id = self.get_config('last_recall_log_id', '')
+                if recall_log_id:
+                    recall_log_id = int(recall_log_id)
+        except Exception:
+            pass
+
+        if recall_log_id:
+            try:
+                from .brain_precision import RecallPrecision
+                precision = self._get_or_create_precision()
+                precision.evaluate_response(int(recall_log_id), assistant_response[:4000])
+            except Exception as e:
+                self._log_error('track_response', e, 'recall_log_id=%s' % recall_log_id)
+
+    def detect_vocab_gaps(self, user_message: str) -> None:
+        """Detect vocabulary gaps from user message and store them.
+
+        Scans for domain terms the brain doesn't know about.
+        """
+        if not user_message or len(user_message) < 10:
+            return
+
+        try:
+            from .text_processing import filter_domain_terms
+        except ImportError:
+            return
+
+        import re as _re
+
+        # Extract candidate terms
+        raw_candidates = set()
+
+        # Quoted terms
+        for t in _re.findall(r'["]([\w\s-]{3,30})["]', user_message):
+            raw_candidates.add(t.strip())
+
+        # "the X" patterns
+        for t in _re.findall(
+            r'\b(?:the|a|an|this|that|our|my|your)\s+'
+            r'([\w][\w\s-]{2,25}(?:hook|script|table|file|function|method|class|'
+            r'module|layer|loop|pipeline|system|engine|server|db|database|'
+            r'config|schema|node|graph|cache|log|test|daemon|mixin|handler))\b',
+            user_message, _re.IGNORECASE,
+        ):
+            raw_candidates.add(t.strip())
+
+        # Hyphenated compounds
+        for t in _re.findall(r'\b([\w]+-[\w]+(?:-[\w]+)?)\b', user_message):
+            if len(t) > 4:
+                raw_candidates.add(t)
+
+        # Backtick code terms
+        for t in _re.findall(r'`([^`]{2,40})`', user_message):
+            raw_candidates.add(t.strip())
+
+        if not raw_candidates:
+            return
+
+        # Filter to domain-specific terms
+        candidates = set(filter_domain_terms(list(raw_candidates)))
+        if not candidates:
+            return
+
+        # Check against known vocabulary
+        try:
+            vocab_rows = self.conn.execute(
+                "SELECT LOWER(title) FROM nodes WHERE type = 'vocabulary' AND archived = 0"
+            ).fetchall()
+            known = {r[0].split(' \u2192 ')[0].strip() if ' \u2192 ' in r[0] else r[0].strip()
+                     for r in vocab_rows}
+        except Exception:
+            known = set()
+
+        unmapped = [t for t in candidates if t.lower() not in known]
+        if not unmapped:
+            return
+
+        # Store gaps
+        existing = self.get_config('vocabulary_gaps', '[]')
+        try:
+            gaps = json.loads(existing)
+        except Exception:
+            gaps = []
+        existing_terms = {g.get('term') if isinstance(g, dict) else g for g in gaps}
+
+        for term in unmapped[:5]:
+            if term not in existing_terms:
+                gaps.append({'term': term, 'message_preview': user_message[:80]})
+        gaps = gaps[-20:]
+        self.set_config('vocabulary_gaps', json.dumps(gaps))
+
+    def surface_encoding_feedback(self) -> Optional[str]:
+        """Surface what was auto-encoded from last exchange.
+
+        Called during UserPromptSubmit recall. Returns a string for
+        additionalContext, or None.
+        """
+        try:
+            raw = self.get_config('last_auto_encoded', '')
+            if not raw:
+                # Check if anything was encoded at all this message cycle
+                return '[BRAIN] Nothing was encoded from the last exchange. [/BRAIN]'
+
+            info = json.loads(raw)
+            # Clear so it doesn't repeat
+            self.set_config('last_auto_encoded', '')
+
+            return '[BRAIN] Auto-encoded from last exchange: [%s] "%s" (signal: %s) [/BRAIN]' % (
+                info.get('type', '?'), info.get('title', '?'), info.get('signal', '?'))
+        except Exception:
+            return None
+
+    def _get_or_create_precision(self):
+        """Get cached RecallPrecision instance."""
+        if not hasattr(self, '_precision') or self._precision is None:
+            from .brain_precision import RecallPrecision
+            self._precision = RecallPrecision(
+                self.logs_conn, self.conn,
+                logs_dal=getattr(self, '_logs_dal', None))
+        return self._precision

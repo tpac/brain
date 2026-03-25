@@ -80,6 +80,83 @@ def _direct_query(sql, args=(), db_path=None):
         return []
 
 
+# ── Event Poller — detects changes in brain.db for Live tab SSE ──
+
+class EventPoller:
+    """Polls SQLite for new/changed nodes to produce live events.
+
+    Separated from HTTP layer — knows about DB, not about SSE.
+    Each call to poll() returns new events since last check.
+    """
+
+    def __init__(self, db_path):
+        self.db_path = db_path
+        self.last_node_created = ""
+        self.last_access_ts = ""
+        # Initialize high-water marks
+        try:
+            row = _direct_query(
+                "SELECT created_at FROM nodes ORDER BY created_at DESC LIMIT 1",
+                db_path=db_path)
+            if row:
+                self.last_node_created = row[0][0]
+            row = _direct_query(
+                "SELECT last_accessed FROM nodes ORDER BY last_accessed DESC LIMIT 1",
+                db_path=db_path)
+            if row:
+                self.last_access_ts = row[0][0]
+        except Exception:
+            pass
+
+    def poll(self):
+        """Check for new events. Returns list of event dicts."""
+        events = []
+
+        # New nodes (encodes)
+        try:
+            if self.last_node_created:
+                rows = _direct_query(
+                    "SELECT type, title, created_at FROM nodes "
+                    "WHERE created_at > ? ORDER BY created_at LIMIT 10",
+                    args=(self.last_node_created,), db_path=self.db_path)
+            else:
+                rows = _direct_query(
+                    "SELECT type, title, created_at FROM nodes "
+                    "ORDER BY created_at DESC LIMIT 3",
+                    db_path=self.db_path)
+            for ntype, title, ts in rows:
+                events.append({
+                    "type": "remember", "time": ts,
+                    "command": "remember",
+                    "detail": "[%s] %s" % (ntype, (title or "")[:80]),
+                })
+                self.last_node_created = ts
+        except Exception:
+            pass
+
+        # Recent accesses (recalls)
+        try:
+            if self.last_access_ts:
+                rows = _direct_query(
+                    "SELECT type, title, last_accessed FROM nodes "
+                    "WHERE last_accessed > ? "
+                    "AND last_accessed > datetime('now', '-30 seconds') "
+                    "ORDER BY last_accessed DESC LIMIT 5",
+                    args=(self.last_access_ts,), db_path=self.db_path)
+                for ntype, title, ts in rows:
+                    events.append({
+                        "type": "recall", "time": ts,
+                        "command": "recall",
+                        "detail": "[%s] %s" % (ntype, (title or "")[:80]),
+                    })
+                if rows:
+                    self.last_access_ts = rows[0][2]
+        except Exception:
+            pass
+
+        return events
+
+
 # ── HTTP Server ──
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
@@ -108,6 +185,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_insights()
         elif path == "/api/status":
             self._serve_status()
+        elif path == "/api/events":
+            self._serve_events_sse()
+        elif path.startswith("/api/node/"):
+            node_id = path.split("/api/node/")[1]
+            self._serve_node_detail(node_id)
         else:
             self._json_response(404, {"error": "Not found"})
 
@@ -127,6 +209,66 @@ class DashboardHandler(BaseHTTPRequestHandler):
             "dashboard": "running",
             "daemon_port": DAEMON_PORT,
         })
+
+    def _serve_events_sse(self):
+        """SSE stream — thin transport layer. Polls EventPoller for changes."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+
+        self.wfile.write(b"data: {\"type\":\"connected\"}\n\n")
+        self.wfile.flush()
+
+        poller = EventPoller(_get_db_path())
+        try:
+            while True:
+                events = poller.poll()
+                for evt in events:
+                    data = json.dumps(evt, default=str, ensure_ascii=False)
+                    self.wfile.write(("data: %s\n\n" % data).encode("utf-8"))
+                    self.wfile.flush()
+                if not events:
+                    self.wfile.write(b": keepalive\n\n")
+                    self.wfile.flush()
+                time.sleep(2)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def _serve_node_detail(self, node_id):
+        """Lazy-loaded node detail: full content + connected nodes."""
+        try:
+            db = _get_db_path()
+            # Node data
+            row = _direct_query(
+                "SELECT id, type, title, content, keywords, locked, emotion, "
+                "access_count, confidence, encoding_source, created_at, last_accessed "
+                "FROM nodes WHERE id = ?",
+                args=(node_id,), db_path=db)
+            if not row:
+                return self._json_response(404, {"error": "Node not found"})
+            r = row[0]
+            node = {
+                "id": r[0], "type": r[1], "title": r[2], "content": r[3],
+                "keywords": r[4], "locked": bool(r[5]), "emotion": r[6],
+                "access_count": r[7], "confidence": r[8], "encoding_source": r[9],
+                "created_at": r[10], "last_accessed": r[11],
+            }
+            # Connected nodes
+            edges = _direct_query(
+                "SELECT e.target_id, e.relation, e.weight, n.type, n.title "
+                "FROM edges e JOIN nodes n ON n.id = e.target_id "
+                "WHERE e.source_id = ? ORDER BY e.weight DESC LIMIT 20",
+                args=(node_id,), db_path=db)
+            connections = [
+                {"id": e[0], "relation": e[1], "weight": e[2],
+                 "type": e[3], "title": e[4]}
+                for e in edges
+            ]
+            self._json_response(200, {"node": node, "connections": connections})
+        except Exception as e:
+            self._json_response(500, {"error": str(e)})
 
     def _serve_stats(self):
         # Try direct SQLite read — works whether daemon is up or not
@@ -196,15 +338,26 @@ class DashboardHandler(BaseHTTPRequestHandler):
         try:
             db = _get_db_path()
             limit = int(params.get("limit", [80])[0])
-            days = int(params.get("days", [30])[0])
+            days = float(params.get("days", [30])[0])
+            source = params.get("source", [None])[0]
 
+            # Convert fractional days to minutes for SQLite
+            minutes = int(days * 24 * 60)
+            if minutes < 1:
+                minutes = 5
+
+            args = []
             nodes_sql = """
                 SELECT id, type, title, locked, emotion, access_count, created_at
                 FROM nodes WHERE archived = 0
-                AND created_at > datetime('now', '-%d days')
-                ORDER BY access_count DESC LIMIT ?
-            """ % days
-            rows = _direct_query(nodes_sql, (limit,), db_path=db)
+                AND REPLACE(REPLACE(created_at, 'T', ' '), 'Z', '') > datetime('now', '-%d minutes')
+            """ % minutes
+            if source:
+                nodes_sql += " AND encoding_source = ?"
+                args.append(source)
+            nodes_sql += " ORDER BY access_count DESC LIMIT ?"
+            args.append(limit)
+            rows = _direct_query(nodes_sql, tuple(args), db_path=db)
             node_ids = set()
             nodes = []
             for r in rows:
@@ -383,6 +536,17 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: 'SF Mono', 'Fira Code',
 .graph-controls button:hover { background: #2a2a4a; }
 canvas { width: 100%; height: 100%; }
 .node-tooltip { position: absolute; background: #1a1a2aee; border: 1px solid #3a3a5a; padding: 10px; border-radius: 6px; max-width: 300px; font-size: 11px; pointer-events: none; display: none; z-index: 20; backdrop-filter: blur(8px); }
+.node-detail { position: absolute; top: 0; right: 0; width: 380px; height: 100%; background: #0d0d15f0; border-left: 1px solid #2a2a3a; padding: 16px; overflow-y: auto; z-index: 15; backdrop-filter: blur(12px); font-size: 12px; }
+.node-detail .nd-close { position: absolute; top: 8px; right: 12px; cursor: pointer; color: #666; font-size: 18px; }
+.node-detail .nd-close:hover { color: #fff; }
+.node-detail .nd-title { font-weight: bold; color: #fff; font-size: 14px; margin-bottom: 8px; padding-right: 24px; }
+.node-detail .nd-meta { color: #666; font-size: 11px; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+.node-detail .nd-content { color: #bbb; white-space: pre-wrap; margin-bottom: 16px; line-height: 1.5; max-height: 300px; overflow-y: auto; border: 1px solid #1a1a2a; border-radius: 4px; padding: 10px; background: #0a0a12; }
+.node-detail .nd-section { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin: 12px 0 6px; }
+.node-detail .nd-conn { padding: 6px 8px; margin: 3px 0; background: #111118; border-radius: 4px; border-left: 2px solid #333; cursor: pointer; }
+.node-detail .nd-conn:hover { background: #1a1a2a; }
+.node-detail .nd-conn-title { color: #ccc; font-size: 11px; }
+.node-detail .nd-conn-meta { color: #555; font-size: 10px; }
 .node-tooltip .tt-title { font-weight: bold; color: #fff; margin-bottom: 4px; }
 .node-tooltip .tt-type { font-size: 10px; color: #888; }
 .health { padding: 12px; }
@@ -415,9 +579,14 @@ canvas { width: 100%; height: 100%; }
   <div class="graph-container">
     <div class="graph-controls">
       <select id="graph-days" onchange="loadGraph()">
+        <option value="0.003" selected>Last 5 min</option>
+        <option value="0.02">Last 30 min</option>
+        <option value="0.04">Last 1 hour</option>
+        <option value="0.25">Last 6 hours</option>
+        <option value="0.5">Last 12 hours</option>
+        <option value="1">Last 1 day</option>
         <option value="7">Last 7 days</option>
-        <option value="30" selected>Last 30 days</option>
-        <option value="90">Last 90 days</option>
+        <option value="30">Last 30 days</option>
         <option value="365">All time</option>
       </select>
       <select id="graph-limit" onchange="loadGraph()">
@@ -426,10 +595,18 @@ canvas { width: 100%; height: 100%; }
         <option value="150">150 nodes</option>
         <option value="300">300 nodes</option>
       </select>
+      <select id="graph-source" onchange="loadGraph()">
+        <option value="">All sources</option>
+        <option value="manual">Manual (Claude)</option>
+        <option value="auto">Auto-encode (Stop)</option>
+        <option value="idle">Idle (dreams/consolidate)</option>
+        <option value="hook">Hook (compaction/boot)</option>
+      </select>
       <button onclick="loadGraph()">Refresh</button>
     </div>
     <canvas id="graph-canvas"></canvas>
     <div class="node-tooltip" id="tooltip"></div>
+    <div class="node-detail" id="node-detail" style="display:none"></div>
   </div>
 </div>
 
@@ -497,17 +674,41 @@ async function loadStats() {
 loadStats();
 setInterval(loadStats, 30000);
 
-// Live feed — only connect SSE if daemon is alive
+// Live feed — SSE stream from dashboard server (polls SQLite for changes)
 let evtSource = null;
+let eventCount = 0;
+const MAX_EVENTS = 200;
+
 function connectSSE() {
-  // SSE not available in standalone mode (daemon served it internally)
-  // Show message instead
   const feed = document.getElementById('feed');
-  if (!feed.children.length) {
-    feed.innerHTML = '<div style="color:#666;padding:20px;text-align:center">Live events stream available when daemon serves dashboard internally.<br>This standalone dashboard shows read-only data from the database.</div>';
-  }
+  if (evtSource) evtSource.close();
+  evtSource = new EventSource('/api/events');
+  evtSource.onmessage = handleSSE;
+  evtSource.onerror = () => {
+    if (!feed.children.length) {
+      feed.innerHTML = '<div style="color:#666;padding:20px;text-align:center">Connecting to event stream...</div>';
+    }
+  };
 }
-connectSSE();
+setTimeout(connectSSE, 500);
+
+function handleSSE(e) {
+  try {
+    const evt = JSON.parse(e.data);
+    if (evt.type === 'connected') return;
+    const feed = document.getElementById('feed');
+    // Clear placeholder
+    if (feed.querySelector('div[style]') && eventCount === 0) feed.innerHTML = '';
+    const div = document.createElement('div');
+    const cls = evt.type || evt.command || 'command';
+    div.className = 'event ' + cls;
+    const t = evt.time ? evt.time.substring(11, 19) : '';
+    div.innerHTML = '<span class="time">' + t + '</span><span class="cmd">' + (evt.command||evt.type||'') + '</span> ' + (evt.detail||'');
+    feed.prepend(div);
+    eventCount++;
+    while (feed.children.length > MAX_EVENTS) feed.removeChild(feed.lastChild);
+  } catch(err) {}
+}
 
 // Explorer
 let expandedNode = null;
@@ -600,11 +801,50 @@ const TYPE_COLORS = {
   impact: '#ff6644', convention: '#66aaff',
 };
 
+async function loadNodeDetail(nodeId) {
+  const panel = document.getElementById('node-detail');
+  panel.style.display = 'block';
+  panel.innerHTML = '<div style="color:#666;padding:20px">Loading...</div>';
+  try {
+    const r = await fetch('/api/node/' + nodeId);
+    const d = await r.json();
+    const n = d.node;
+    const conns = d.connections || [];
+    panel.innerHTML = `
+      <div class="nd-close" onclick="document.getElementById('node-detail').style.display='none'">&times;</div>
+      <div class="nd-title"><span class="type-badge type-${n.type}">${n.type}</span> ${n.locked ? '&#x1f512;' : ''} ${(n.title||'').replace(/</g,'&lt;')}</div>
+      <div class="nd-meta">
+        <span>accessed: ${n.access_count}x</span>
+        <span>confidence: ${(n.confidence||0).toFixed(2)}</span>
+        <span>source: ${n.encoding_source||'?'}</span>
+        <span>emotion: ${(n.emotion||0).toFixed(1)}</span>
+        <span>${n.created_at ? n.created_at.substring(0,16) : ''}</span>
+      </div>
+      ${n.keywords ? '<div style="color:#555;font-size:10px;margin-bottom:8px">'+n.keywords+'</div>' : ''}
+      <div class="nd-section">Content</div>
+      <div class="nd-content">${(n.content||'(empty)').replace(/</g,'&lt;')}</div>
+      <div class="nd-section">Connections (${conns.length})</div>
+      ${conns.map(c => `
+        <div class="nd-conn" onclick="loadNodeDetail('${c.id}')">
+          <div class="nd-conn-title"><span class="type-badge type-${c.type}">${c.type}</span> ${(c.title||'').replace(/</g,'&lt;').substring(0,60)}</div>
+          <div class="nd-conn-meta">${c.relation} · weight ${(c.weight||0).toFixed(2)}</div>
+        </div>
+      `).join('')}
+      ${conns.length === 0 ? '<div style="color:#555;padding:8px">No connections</div>' : ''}
+    `;
+  } catch(e) {
+    panel.innerHTML = '<div style="color:#ff6666;padding:20px">Failed to load: ' + e.message + '</div>';
+  }
+}
+
 async function loadGraph() {
   const days = document.getElementById('graph-days').value;
   const limit = document.getElementById('graph-limit').value;
+  const source = document.getElementById('graph-source').value;
+  let url = `/api/graph?days=${days}&limit=${limit}`;
+  if (source) url += `&source=${source}`;
   try {
-    const r = await fetch(`/api/graph?days=${days}&limit=${limit}`);
+    const r = await fetch(url);
     graphData = await r.json();
     initForce();
   } catch(e) {}
@@ -750,7 +990,16 @@ function onMouseMove(e) {
     }
   }
 }
-function onMouseUp() { dragNode = null; }
+function onMouseUp(e) {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const moved = Math.abs(mx - dragStartX) + Math.abs(my - dragStartY);
+  if (dragNode && moved < 5) {
+    // Click, not drag — load node detail
+    loadNodeDetail(dragNode.id);
+  }
+  dragNode = null;
+}
 function onWheel(e) {
   e.preventDefault();
   const rect = canvas.getBoundingClientRect();

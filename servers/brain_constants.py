@@ -255,10 +255,13 @@ EDGE_TYPES = {
     'exemplifies': {'defaultWeight': 0.8, 'decays': True, 'halfLife': 720, 'description': 'Decision to Rule'},
     'part_of': {'defaultWeight': 0.7, 'decays': False, 'description': 'Node to parent'},
     'depends_on': {'defaultWeight': 0.7, 'decays': False, 'description': 'Node requires another'},
-    'related': {'defaultWeight': 0.5, 'decays': True, 'halfLife': 336, 'description': 'Manual or inferred'},
-    'co_accessed': {'defaultWeight': 0.3, 'decays': True, 'halfLife': 168, 'description': 'Hebbian co-recall'},
-    'emergent_bridge': {'defaultWeight': 0.15, 'decays': True, 'halfLife': 72, 'description': 'Auto-discovered bridge'},
+    'related': {'defaultWeight': 0.5, 'decays': False, 'description': 'Manual or inferred — intentional, no decay'},
+    'co_accessed': {'defaultWeight': 0.3, 'decays': True, 'halfLife': 336, 'description': 'Hebbian co-recall — 14d half-life (v2: up from 7d)'},
+    'emergent_bridge': {'defaultWeight': 0.15, 'decays': True, 'halfLife': 720, 'description': 'Auto-discovered bridge — 30d half-life (v2: up from 3d, high quality conceptual links)'},
 }
+
+# Edge decay
+EDGE_PRUNE_THRESHOLD = 0.1  # Edges below this weight after decay are deleted
 
 # Critical node safety
 CRITICAL_BOOST = 3.0              # Recall score multiplier for critical=1 nodes

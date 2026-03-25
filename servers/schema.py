@@ -42,7 +42,7 @@ import shutil
 import sqlite3
 from datetime import datetime, timezone
 
-BRAIN_VERSION = 18
+BRAIN_VERSION = 19
 BRAIN_VERSION_KEY = 'brain_schema_version'
 
 # ─── Allowed node types ───
@@ -123,6 +123,7 @@ TABLES = {
             source_attribution TEXT DEFAULT NULL,
             scope TEXT DEFAULT NULL,
             encoding_version TEXT DEFAULT NULL,
+            encoding_source TEXT DEFAULT NULL,
             last_accessed TEXT,
             created_at TEXT,
             updated_at TEXT
@@ -145,6 +146,7 @@ TABLES = {
             'source_attribution': 'NULL',    # v5: user_stated | claude_inferred | session_synthesis | correction | code_reading
             'scope': 'NULL',                 # v5: system | module | file | function | cross-system | cross-file | cross-function
             'encoding_version': 'NULL',      # v6: encoding pipeline version (v5, v6, etc.) — floor adapts to quality
+            'encoding_source': 'NULL',       # v7: how this node was created: 'manual' | 'auto' | 'idle' | 'hook'
             'last_accessed': 'NULL',
             'created_at': 'NULL', 'updated_at': 'NULL',
         }

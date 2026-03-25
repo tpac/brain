@@ -1722,7 +1722,8 @@ class BrainEvolutionMixin:
             keywords=kwargs.get('keywords', ''),
             locked=True,  # Tensions never decay until resolved
             emotion=0.6, emotion_label='concern',
-            project=project, **{k: v for k, v in kwargs.items() if k not in ('keywords',)}
+            project=project, encoding_source=kwargs.pop('encoding_source', 'idle'),
+            **{k: v for k, v in kwargs.items() if k not in ('keywords',)}
         )
         node_id = result['id']
 
@@ -1758,7 +1759,8 @@ class BrainEvolutionMixin:
             keywords=kwargs.get('keywords', ''),
             confidence=max(0.0, min(1.0, confidence)),
             emotion=0.4, emotion_label='curiosity',
-            project=project, **{k: v for k, v in kwargs.items() if k not in ('keywords',)}
+            project=project, encoding_source=kwargs.pop('encoding_source', 'idle'),
+            **{k: v for k, v in kwargs.items() if k not in ('keywords',)}
         )
         node_id = result['id']
 
@@ -1793,7 +1795,8 @@ class BrainEvolutionMixin:
             keywords=kwargs.get('keywords', ''),
             confidence=0.3,  # Patterns start low — need confirmation
             emotion=0.3, emotion_label='curiosity',
-            project=project, **{k: v for k, v in kwargs.items() if k not in ('keywords',)}
+            project=project, encoding_source=kwargs.pop('encoding_source', 'idle'),
+            **{k: v for k, v in kwargs.items() if k not in ('keywords',)}
         )
         node_id = result['id']
 
@@ -1823,7 +1826,8 @@ class BrainEvolutionMixin:
             keywords=kwargs.get('keywords', ''),
             locked=True,  # Catalysts are permanent
             emotion=0.8, emotion_label='emphasis',
-            project=project, **{k: v for k, v in kwargs.items() if k not in ('keywords',)}
+            project=project, encoding_source=kwargs.pop('encoding_source', 'idle'),
+            **{k: v for k, v in kwargs.items() if k not in ('keywords',)}
         )
         node_id = result['id']
 
@@ -1856,7 +1860,8 @@ class BrainEvolutionMixin:
             type='aspiration', title=f'🌱 ASPIRATION — {title}', content=content,
             keywords=kwargs.get('keywords', ''),
             emotion=0.5, emotion_label='excitement',
-            project=project, **{k: v for k, v in kwargs.items() if k not in ('keywords',)}
+            project=project, encoding_source=kwargs.pop('encoding_source', 'idle'),
+            **{k: v for k, v in kwargs.items() if k not in ('keywords',)}
         )
         node_id = result['id']
 

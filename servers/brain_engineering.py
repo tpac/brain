@@ -1694,10 +1694,8 @@ class BrainEngineeringMixin:
         from .brain_constants import CURRENT_ENCODING_VERSION
 
         # Gather session stats
-        try:
-            session_num = int(self.get_config("reset_count", "0")) + 1
-        except Exception:
-            session_num = 0
+        from datetime import datetime
+        session_date = datetime.now().strftime("%Y-%m-%d")
 
         # What was encoded this session?
         recent_nodes = self.conn.execute(
@@ -1739,7 +1737,7 @@ class BrainEngineeringMixin:
         except Exception:
             pass
 
-        title = "Session #%d handoff" % session_num
+        title = "Session %s handoff" % session_date
 
         # Create boot node
         try:
@@ -1747,8 +1745,8 @@ class BrainEngineeringMixin:
                 type='boot',
                 title=title,
                 content=content.strip(),
-                keywords='boot handoff session-%d encoding-version-%s' % (
-                    session_num, CURRENT_ENCODING_VERSION),
+                keywords='boot handoff session-%s encoding-version-%s' % (
+                    session_date, CURRENT_ENCODING_VERSION),
                 locked=False,
                 confidence=0.90,
             )

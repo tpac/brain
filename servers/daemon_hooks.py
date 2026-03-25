@@ -129,6 +129,8 @@ def _detect_encoding_pattern(brain, messages_since_encode, total_encodes):
     return ("", "")
 
 
+
+
 def _behavioral_mirror(brain, messages_since_encode, total_encodes):
     """Surface the right self-knowledge based on observed encoding behavior.
 
@@ -442,6 +444,14 @@ def hook_recall(brain, args, graph_changes):
     # Drain pending messages
     pending_messages = _drain_pending(brain)
 
+    # Encoding feedback — surface what was auto-encoded from last exchange
+    try:
+        encoding_feedback = brain.surface_encoding_feedback()
+        if encoding_feedback:
+            pending_messages.append(encoding_feedback)
+    except Exception:
+        pass
+
     # Drain debug logs (hook_debug entries from brain_logs.db)
     debug_messages = _drain_debug_logs(brain)
 
@@ -506,279 +516,75 @@ def hook_recall(brain, args, graph_changes):
 
 
 def hook_post_response_track(brain, args, graph_changes):
-    """Post-response tracker: precision evaluation + vocab gap detection + encoding checkpoints.
+    """Stop event — flat dispatcher. Each brain method has one responsibility.
 
-    Fires on Stop only (removed from UserPromptSubmit — it fired before Claude
-    responded, so last_assistant_message was always empty, breaking precision).
+    1. track_response: precision evaluation (was recall useful?)
+    2. auto_encode: encoding instinct (what's worth remembering?)
+    3. detect_vocab_gaps: vocabulary gap detection
+    4. record_message + heartbeat: encoding nudge counter
     """
     user_message = args.get("prompt", "") or args.get("message", "")
-    has_user_message = user_message and len(user_message) >= 10
-    is_user_prompt = bool(args.get("prompt"))
+    assistant_response = (args.get("last_assistant_message", "") or "")[:4000]
 
-    # ── Precision: evaluate Claude's response (Signal 1) ──
-    # The Stop event provides last_assistant_message — Claude's actual response.
-    # We store it on the recall_log row for future LLM-based evaluation.
-    # This is the WEAK signal (biased — Claude absorbs injected context).
-    assistant_response = args.get("last_assistant_message", "")
-    if not assistant_response:
-        # Fallback for backward compat / events that don't provide it
-        assistant_response = ""
-    assistant_response = assistant_response[:4000]
-
-    session_id = brain.get_config("session_id", "ses_unknown")
-    if not session_id.startswith("ses_"):
-        session_id = "ses_%s" % session_id
-
-    # Table-driven: find the most recent recall awaiting response storage
-    recall_log_id = None
+    # 1. Precision: track Claude's response
     try:
-        dal = getattr(brain, '_logs_dal', None)
-        if dal:
-            recall_log_id = dal.get_pending_response(session_id)
-        else:
-            # Fallback: config-slot (remove once DAL is always available)
-            recall_log_id = brain.get_config("last_recall_log_id", "")
-            if recall_log_id:
-                recall_log_id = int(recall_log_id)
+        brain.track_response(user_message, assistant_response)
+    except Exception as e:
+        brain._log_error('track_response', e, 'Stop hook')
+
+    # 2. Encoding instinct: auto-encode the exchange
+    try:
+        result = brain.auto_encode(user_message, assistant_response)
+        if result:
+            _log('[auto-encode] %s: "%s"' % (result.get('type', '?'), result.get('title', '?')[:60]))
+    except Exception as e:
+        brain._log_error('auto_encode', e, 'Stop hook')
+
+    # 3. Vocab gap detection
+    try:
+        brain.detect_vocab_gaps(user_message)
     except Exception:
         pass
 
-    if recall_log_id and assistant_response and len(assistant_response) >= 20:
-        try:
-            precision = _get_precision(brain)
-            precision.evaluate_response(int(recall_log_id), assistant_response)
-            # No config keys to set — table row IS the state (Stage 2: RESPONSE_STORED)
-        except Exception as e:
-            brain._log_error('precision_evaluate_response', e, 'recall_log_id=%s' % recall_log_id)
-    elif recall_log_id and (not assistant_response or len(assistant_response) < 20):
-        # Log diagnostic — empty response means precision evaluation can't run.
-        # This helps detect if the hook communication is broken.
-        try:
-            brain._logs_dal.write_debug(
-                "precision",
-                "Empty/short assistant response in Stop event — precision evaluation skipped",
-                session_id=session_id,
-                metadata=json.dumps({
-                    "args_keys": list(args.keys()),
-                    "response_len": len(assistant_response or ""),
-                    "recall_log_id": recall_log_id,
-                }),
-            )
-        except Exception:
-            pass
-
-    # ── Vocab gap detection (only when we have user message) ──
-    if has_user_message:
-        try:
-            from servers.text_processing import filter_domain_terms
-
-            # ── Strategy 1: Quoted terms ──
-            quoted = re.findall(r'["]([\w\s-]{3,30})["]', user_message)
-
-            # ── Strategy 2: "the/a/this X" with expanded suffix list ──
-            the_patterns = re.findall(
-                r"\b(?:the|a|an|this|that|our|my|your)\s+"
-                r"([\w][\w\s-]{2,25}(?:hook|script|table|file|function|method|class|"
-                r"module|layer|loop|sequence|pipeline|system|engine|server|db|database|"
-                r"config|schema|signal|node|type|map|graph|cache|queue|log|test|spec|"
-                r"worker|adapter|pattern|protocol|daemon|scorer|mixin|handler|resolver|"
-                r"builder|encoder|decoder|parser|formatter|validator|serializer|"
-                r"middleware|endpoint|route|trigger|listener|callback|factory|strategy|"
-                r"observer|wrapper|proxy|bridge|decorator|registry|repository|mapper|"
-                r"transformer|dispatcher|emitter|collector|aggregator|provider|consumer|"
-                r"subscriber|publisher|context|session|token|metric|monitor|tracer|"
-                r"profiler|compiler|runtime|kernel|driver|plugin|extension|toolkit|"
-                r"library|framework|platform|screen|component|service|client))\b",
-                user_message, re.IGNORECASE,
-            )
-
-            # ── Strategy 3: Verb-object patterns (expanded) ──
-            action_context = re.findall(
-                r"\b(?:fix|update|change|modify|check|look at|review|debug|test|refactor|"
-                r"rewrite|add|remove|delete|move|rename|split|merge|clean|implement|"
-                r"configure|deploy|migrate|optimize|integrate|initialize|bootstrap|"
-                r"instrument|validate|authenticate|provision|dispatch|schedule|monitor|"
-                r"benchmark|evaluate|classify|extract|transform|aggregate|normalize|"
-                r"cache|batch|rollback|seed|stub|mock|patch|inject|bind|resolve|"
-                r"register|subscribe|emit|consume|publish)\s+(?:the\s+)?"
-                r"([\w]+(?:\s+[\w]+){0,3}?)(?:\s*(?:and|or|but|also|then|,|;|\.|!|\?)|\s*$)",
-                user_message, re.IGNORECASE,
-            )
-            action_context = [t.strip() for t in action_context if len(t.strip()) >= 3]
-
-            # ── Strategy 4: Hyphenated compounds ──
-            hyphenated = re.findall(r"\b([\w]+-[\w]+(?:-[\w]+)?)\b", user_message)
-            hyphenated = [h for h in hyphenated if len(h) > 4 and h.lower() not in (
-                "re-run", "re-do", "non-null", "non-zero", "up-to-date", "e-g",
-                "pre-existing", "co-authored-by",
-            )]
-
-            # ── Strategy 5: Capitalized mid-sentence terms (product names, entities) ──
-            capitalized = re.findall(
-                r'(?<=[a-z.,;:!?\s])\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
-                user_message,
-            )
-            # Filter out sentence-start words and common words
-            capitalized = [c.strip() for c in capitalized
-                          if c.strip() and c.strip() not in (
-                              'I', 'The', 'This', 'That', 'It', 'We', 'You',
-                              'He', 'She', 'They', 'But', 'And', 'Or', 'So',
-                              'If', 'When', 'What', 'How', 'Why', 'Where',
-                              'Yes', 'No', 'Ok', 'Sure', 'Please', 'Thanks',
-                          )]
-
-            # ── Strategy 6: Backtick-wrapped code terms ──
-            backtick = re.findall(r'`([^`]{2,40})`', user_message)
-
-            # ── Strategy 7: Acronyms (2-6 uppercase letters) ──
-            acronyms = re.findall(r'\b([A-Z]{2,6})\b', user_message)
-
-            # ── Collect and filter candidates ──
-            skip_words = {
-                "the", "a", "an", "this", "that", "it", "them", "is", "are",
-                "was", "were", "be", "been", "do", "does", "did", "have", "has",
-                "can", "could", "will", "would", "should", "may", "might",
-                "yes", "no", "ok", "sure", "please", "thanks", "code", "file",
-                "thing", "stuff", "something", "everything", "nothing",
-                "just", "also", "very", "really", "actually", "basically",
-                "like", "about", "some", "more", "here", "there", "now", "then",
-            }
-            raw_candidates = set()
-            for term in (quoted + the_patterns + action_context + hyphenated +
-                        capitalized + backtick + acronyms):
-                term = term.strip()
-                if len(term) < 2 or len(term) > 40:
-                    continue
-                words = term.lower().split()
-                if all(w in skip_words for w in words):
-                    continue
-                raw_candidates.add(term)
-
-            # Apply domain-specificity filter
-            candidates = set(filter_domain_terms(list(raw_candidates)))
-
-            if candidates:
-                try:
-                    vocab_rows = brain.conn.execute(
-                        "SELECT LOWER(title), LOWER(content) FROM nodes WHERE type = ? AND archived = 0",
-                        ("vocabulary",),
-                    ).fetchall()
-                except Exception:
-                    vocab_rows = []
-
-                known_terms = set()
-                for title, content in vocab_rows:
-                    if " \u2192 " in title:
-                        known_terms.add(title.split(" \u2192 ")[0].strip())
-                    elif " -> " in title:
-                        known_terms.add(title.split(" -> ")[0].strip())
-                    else:
-                        known_terms.add(title.strip())
-
-                try:
-                    all_titles = brain.conn.execute(
-                        "SELECT LOWER(title) FROM nodes WHERE archived = 0"
-                    ).fetchall()
-                    title_set = {r[0] for r in all_titles}
-                except Exception:
-                    title_set = set()
-
-                unmapped = []
-                for term in candidates:
-                    if term in known_terms:
-                        continue
-                    if term in title_set:
-                        continue
-                    if any(term in kt or kt in term for kt in known_terms):
-                        continue
-                    words = term.split()
-                    if len(words) == 1 and any(term in t for t in title_set):
-                        continue
-                    unmapped.append(term)
-
-                if unmapped:
-                    existing = brain.get_config("vocabulary_gaps", "[]")
-                    try:
-                        gaps = json.loads(existing)
-                    except Exception:
-                        gaps = []
-                    existing_terms = {g.get("term") if isinstance(g, dict) else g for g in gaps}
-
-                    # Record as gaps only — auto-encoding created junk single-word
-                    # nodes that polluted recall. Let Claude encode vocab manually
-                    # when terms actually matter.
-                    for term in unmapped[:5]:
-                        if term not in existing_terms:
-                            gaps.append({"term": term, "message_preview": user_message[:80]})
-                    gaps = gaps[-20:]
-                    brain.set_config("vocabulary_gaps", json.dumps(gaps))
-        except Exception:
-            pass
-
-    # ── Encoding heartbeat with rotating checkpoints ──
+    # 4. Encoding heartbeat
     output = ""
     try:
         brain.record_message()
         nudge = brain.get_encoding_heartbeat()
         if nudge:
             msg = nudge.get("message", "")
-
-            # Get and rotate checkpoint
             try:
                 idx = int(brain.get_config("checkpoint_index", "0"))
             except Exception:
                 idx = 0
             focus = CHECKPOINT_CYCLE[idx % len(CHECKPOINT_CYCLE)]
-            next_idx = str((idx + 1) % len(CHECKPOINT_CYCLE))
-            try:
-                brain.set_config("checkpoint_index", next_idx)
-            except Exception:
-                pass
+            brain.set_config("checkpoint_index", str((idx + 1) % len(CHECKPOINT_CYCLE)))
 
-            # Session encoding stats
-            try:
-                node_count = brain.conn.execute(
-                    "SELECT COUNT(*) FROM nodes WHERE created_at > datetime('now', '-2 hours')"
-                ).fetchone()[0]
-                uncert_count = brain.conn.execute(
-                    "SELECT COUNT(*) FROM nodes WHERE type = 'uncertainty' AND created_at > datetime('now', '-2 hours')"
-                ).fetchone()[0]
-                connect_count = brain.conn.execute(
-                    "SELECT COUNT(*) FROM edges WHERE created_at > datetime('now', '-2 hours')"
-                ).fetchone()[0]
-                stats = "Session stats: %d nodes, %d uncertainties, %d connections." % (
-                    node_count, uncert_count, connect_count)
-            except Exception:
-                stats = ""
-
-            # Behavioral mirror: surface self-knowledge on every checkpoint.
-            # The brain is the mirror — shows Claude what it can't see about itself.
             mirror_text = ""
             try:
-                since_encode = nudge.get("messages_since_encode", 0)
-                mirror_text = _behavioral_mirror(brain, since_encode, nudge.get("total_encodes", 0))
+                mirror_text = _behavioral_mirror(
+                    brain, nudge.get("messages_since_encode", 0),
+                    nudge.get("total_encodes", 0))
             except Exception:
                 pass
 
             checkpoint_lines = ["[BRAIN] ENCODING CHECKPOINT: " + msg]
-            if stats:
-                checkpoint_lines.append(stats)
             checkpoint_lines.append(focus)
             if mirror_text:
                 checkpoint_lines.append(mirror_text)
             checkpoint_lines.append("[/BRAIN]")
-            checkpoint_text = "\n".join(checkpoint_lines)
-
-            if is_user_prompt:
-                output = "\n" + checkpoint_text + "\n"
-            else:
-                # Stop event — store as pending (invisible)
-                _store_pending(brain, checkpoint_text)
+            _store_pending(brain, "\n".join(checkpoint_lines))
     except Exception:
         pass
 
     brain.save()
     return {"output": output}
+
+
+
+
+
+
 
 
 def hook_idle_maintenance(brain, args, graph_changes):
@@ -920,6 +726,26 @@ def hook_idle_maintenance(brain, args, graph_changes):
                 output.append("  %s: %s" % (t.get("param", ""), t.get("reason", t.get("note", ""))))
     except Exception:
         pass
+
+    # 3d. Edge decay — apply half-life decay to auto-generated edges
+    try:
+        from .dal import GraphDAL
+        graph_dal = GraphDAL(brain.conn)
+        decay_result = graph_dal.decay_edges()
+        decayed = decay_result.get('decayed', 0)
+        pruned = decay_result.get('pruned', 0)
+        if decayed or pruned:
+            parts = []
+            if decayed:
+                parts.append("%d edges decayed" % decayed)
+            if pruned:
+                parts.append("%d edges pruned" % pruned)
+            output.append("EDGE DECAY: " + ", ".join(parts))
+            graph_changes.append("EDGE_DECAY: %s" % ", ".join(parts))
+            for rel, stats in decay_result.get('by_type', {}).items():
+                output.append("  %s: %d decayed, %d pruned" % (rel, stats['decayed'], stats['pruned']))
+    except Exception as e:
+        output.append("EDGE DECAY ERROR: %s" % e)
 
     # 4. Reflection prompts
     try:
