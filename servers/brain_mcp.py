@@ -93,9 +93,11 @@ TOOLS = [
     # ── Core memory operations ──
     {"name": "recall",
      "description": "Semantic recall from brain — searches nodes by meaning using embeddings. Returns ranked results with titles, content, types, confidence.",
-     "inputSchema": {"type": "object", "required": ["query"], "properties": {
+     "inputSchema": {"type": "object", "properties": {
          "query": {"type": "string", "description": "Search query (semantic, not keyword)"},
-         "limit": {"type": "integer", "description": "Max results (default 8)", "default": 8}}}},
+         "node_id": {"type": "string", "description": "Look up a specific node by ID (skip search)"},
+         "limit": {"type": "integer", "description": "Max results (default 8)", "default": 8},
+         "neighbor_limit": {"type": "integer", "description": "Max neighbor nodes to include (default 3)", "default": 3}}}},
     {"name": "remember",
      "description": "Store a new node in the brain. Types: decision, rule, lesson, concept, context, pattern, convention, mechanism, impact, constraint, purpose, mental_model, uncertainty, vocabulary, hypothesis, tension, aspiration, catalyst, interaction, meta_learning, failure_mode, performance, capability, arch_constraint, code_concept, fn_reasoning, param_influence, comment_anchor, bug_lesson.",
      "inputSchema": {"type": "object", "required": ["type", "title", "content"], "properties": {
@@ -239,6 +241,39 @@ def handle_tools_list(request_id):
     return make_response(request_id, {"tools": TOOLS})
 
 
+def _format_result(tool_name, result):
+    """Format tool result for MCP output.
+
+    Recall gets structured text (same format as hooks) for readability.
+    All other tools get JSON.
+    """
+    if tool_name == "recall" and isinstance(result, dict):
+        from servers.brain_voice import BrainVoice
+        results = result.get("results", [])
+        # Strip _query_embedding — internal debug data, not for output
+        result.pop("_query_embedding", None)
+
+        lines = []
+        if results:
+            BrainVoice.format_recall_results(results, lines)
+        else:
+            lines.append("No results found.")
+
+        # Append recall stats
+        stats = result.get("_embedding_stats", {})
+        if stats:
+            lines.append("---")
+            lines.append("recall: %dms | mode: %s | sources: %s" % (
+                stats.get("recall_ms", 0),
+                result.get("_recall_mode", "?"),
+                ", ".join("%s:%d" % (k, v) for k, v in
+                          stats.get("results_by_source", {}).items() if v > 0)
+            ))
+        return "\n".join(lines)
+
+    return json.dumps(result, indent=2, default=str)
+
+
 def handle_tools_call(request_id, params):
     import time as _time
     tool_name = params.get("name", "")
@@ -253,7 +288,7 @@ def handle_tools_call(request_id, params):
 
         resp = daemon_send(tool_name, arguments)
         if resp.get("ok"):
-            result_text = json.dumps(resp["result"], indent=2, default=str)
+            result_text = _format_result(tool_name, resp["result"])
             return make_response(request_id, {
                 "content": [{"type": "text", "text": result_text}]
             })

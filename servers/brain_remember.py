@@ -334,7 +334,8 @@ class BrainRememberMixin:
                  confidence: float = 1.0,
                  personal: Optional[str] = None,
                  personal_context: Optional[str] = None,
-                 critical: bool = False) -> Dict[str, Any]:
+                 critical: bool = False,
+                 encoding_source: Optional[str] = None) -> Dict[str, Any]:
         """
         Store a new memory node with semantic indexing and connections.
 
@@ -393,13 +394,14 @@ class BrainRememberMixin:
                (id, type, title, content, content_summary, keywords,
                 activation, stability, locked, confidence,
                 recency_score, emotion, emotion_label, emotion_source, project,
-                personal, personal_context, encoding_version,
+                personal, personal_context, encoding_version, encoding_source,
                 last_accessed, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, 1.0, 1.0, ?, ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+               VALUES (?, ?, ?, ?, ?, ?, 1.0, 1.0, ?, ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (node_id, type, title, content, content_summary, keywords,
              1 if locked else 0, confidence,
              emotion, emotion_label, emotion_source, project,
              personal, personal_context, CURRENT_ENCODING_VERSION,
+             encoding_source or 'manual',
              ts, ts, ts)
         )
         self.conn.commit()
@@ -445,25 +447,52 @@ class BrainRememberMixin:
                 if target_id:
                     self.connect(node_id, target_id, relation, weight)
 
-        # v6: Auto-connect to conversation context
-        # New nodes should be connected to recently accessed nodes — this is the
-        # "conversation context" connection. Eliminates orphan nodes.
+        # v6→v7: Auto-connect to conversation context (Machine 1)
+        # Connect new node to top 3 most semantically similar recently-accessed nodes.
+        # v6 connected to ALL recent nodes — created massive co_accessed noise.
+        # v7 uses embedding similarity to pick only relevant connections.
         try:
-            recent = self.conn.execute('''
-                SELECT id FROM nodes
-                WHERE id != ? AND archived = 0
-                  AND last_accessed > datetime('now', '-1 hour')
-                  AND type NOT IN ('thought', 'intuition')
-                ORDER BY last_accessed DESC LIMIT 3
-            ''', (node_id,)).fetchall()
-            for (recent_id,) in recent:
-                # Only create if no edge already exists
-                existing = self.conn.execute(
-                    'SELECT 1 FROM edges WHERE source_id = ? AND target_id = ?',
-                    (node_id, recent_id)
+            new_node_emb = None
+            if embedding_stored:
+                row = self.conn.execute(
+                    'SELECT embedding FROM node_embeddings WHERE node_id = ?',
+                    (node_id,)
                 ).fetchone()
-                if not existing:
-                    self.connect(node_id, recent_id, 'co_accessed', 0.2)
+                if row:
+                    new_node_emb = row[0]
+
+            recent = self.conn.execute('''
+                SELECT n.id, ne.embedding FROM nodes n
+                LEFT JOIN node_embeddings ne ON ne.node_id = n.id
+                WHERE n.id != ? AND n.archived = 0
+                  AND n.last_accessed > datetime('now', '-1 hour')
+                  AND n.type NOT IN ('thought', 'intuition')
+                ORDER BY n.last_accessed DESC LIMIT 10
+            ''', (node_id,)).fetchall()
+
+            if new_node_emb and recent:
+                # Rank by similarity, pick top 3
+                scored = []
+                for (recent_id, recent_emb) in recent:
+                    if recent_emb:
+                        sim = embedder.cosine_similarity(new_node_emb, recent_emb)
+                        scored.append((recent_id, sim))
+                    else:
+                        scored.append((recent_id, 0.0))
+                scored.sort(key=lambda x: x[1], reverse=True)
+                for recent_id, sim in scored[:3]:
+                    if sim > 0.3:  # Only connect if meaningfully similar
+                        from .dal import GraphDAL
+                        graph_dal = GraphDAL(self.conn)
+                        if not graph_dal.edge_exists(node_id, recent_id):
+                            self.connect(node_id, recent_id, 'co_accessed', max(0.2, sim * 0.5))
+            elif recent:
+                # Fallback if no embedding: connect to top 3 by recency (old behavior)
+                for (recent_id, _) in recent[:3]:
+                    from .dal import GraphDAL
+                    graph_dal = GraphDAL(self.conn)
+                    if not graph_dal.edge_exists(node_id, recent_id):
+                        self.connect(node_id, recent_id, 'co_accessed', 0.2)
         except Exception:
             pass  # Non-critical
 
@@ -509,31 +538,6 @@ class BrainRememberMixin:
             'enrichment_prompt': enrichment_prompt,  # v6: for Claude to fill in
             'enrichment_stored': enrichment_stored,  # v6: count of stored enrichments
         }
-
-    def recall_expand(self, node_id: str) -> Dict[str, Any]:
-        """Return full content + metadata for a specific node (on-demand expansion).
-
-        Used when tiered recall returned a summary and the caller needs the full content.
-        """
-        cur = self.conn.execute(
-            'SELECT * FROM nodes WHERE id = ?', (node_id,)
-        )
-        row = cur.fetchone()
-        if not row:
-            return {'error': f'Node {node_id} not found'}
-        cols = [d[0] for d in cur.description]
-        node = dict(zip(cols, row))
-
-        # Attach metadata if it exists
-        meta_cur = self.conn.execute(
-            'SELECT * FROM node_metadata WHERE node_id = ?', (node_id,)
-        )
-        meta_row = meta_cur.fetchone()
-        if meta_row:
-            meta_cols = [d[0] for d in meta_cur.description]
-            node['_metadata'] = dict(zip(meta_cols, meta_row))
-
-        return node
 
     # ═══════════════════════════════════════════════════════════════
     # v5.2: Critical node approval flow
@@ -790,32 +794,6 @@ class BrainRememberMixin:
         )
         self.conn.commit()
         return {'node_id': node_id, 'last_validated': ts, 'context': context}
-
-    def get_node_with_metadata(self, node_id: str) -> Dict[str, Any]:
-        """Return full node data joined with metadata sidecar."""
-        cur = self.conn.execute('SELECT * FROM nodes WHERE id = ?', (node_id,))
-        row = cur.fetchone()
-        if not row:
-            return {'error': f'Node {node_id} not found'}
-        cols = [d[0] for d in cur.description]
-        node = dict(zip(cols, row))
-
-        meta_cur = self.conn.execute(
-            'SELECT * FROM node_metadata WHERE node_id = ?', (node_id,)
-        )
-        meta_row = meta_cur.fetchone()
-        if meta_row:
-            meta_cols = [d[0] for d in meta_cur.description]
-            meta = dict(zip(meta_cols, meta_row))
-            # Parse JSON fields
-            for json_field in ('alternatives', 'change_impacts'):
-                if meta.get(json_field):
-                    try:
-                        meta[json_field] = json.loads(meta[json_field])
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-            node['_metadata'] = meta
-        return node
 
     def _generate_summary(self, title: str, content: Optional[str] = None) -> Optional[str]:
         """Generate a content_summary (max 200 chars) for tiered recall.

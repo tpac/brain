@@ -41,6 +41,14 @@ def _handle_context_boot(brain, args, graph_changes):
 
 
 def _handle_recall(brain, args, graph_changes):
+    # By-ID recall: returns single enriched node
+    node_id = args.get("node_id")
+    if node_id:
+        result = brain.recall_node(
+            node_id, neighbor_limit=args.get("neighbor_limit", 3))
+        return {"ok": True, "result": result}
+
+    # By-query recall: semantic search with keyword fallback
     try:
         result = brain.recall_with_embeddings(
             query=args.get("query", ""), limit=args.get("limit", 8))

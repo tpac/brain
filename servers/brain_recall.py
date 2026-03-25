@@ -994,36 +994,10 @@ class BrainRecallMixin:
 
                 final_results.append(node)
 
-        # STEP 7.5: v5 Tiered recall — top 3 get full content + metadata, rest get summary
-        TIERED_FULL_COUNT = 3
-        for i, node in enumerate(final_results):
-            if i >= TIERED_FULL_COUNT:
-                # Replace full content with summary for lower-ranked results
-                summary = node.get('content_summary')
-                if summary:
-                    node['content'] = summary
-                    node['_tiered'] = 'summary'
-                elif node.get('content') and len(node['content']) > 200:
-                    node['content'] = node['content'][:197] + '...'
-                    node['_tiered'] = 'truncated'
-            else:
-                node['_tiered'] = 'full'
-                # Attach metadata for top results
-                try:
-                    meta_cur = self.conn.execute(
-                        'SELECT reasoning, user_raw_quote, correction_of, last_validated FROM node_metadata WHERE node_id = ?',
-                        (node['id'],)
-                    )
-                    meta_row = meta_cur.fetchone()
-                    if meta_row and any(meta_row):
-                        node['_metadata'] = {
-                            'reasoning': meta_row[0],
-                            'user_raw_quote': meta_row[1],
-                            'correction_of': meta_row[2],
-                            'last_validated': meta_row[3],
-                        }
-                except Exception as _e:
-                    self._log_error("recall_with_embeddings", _e, "attaching node metadata from node_metadata table")
+        # STEP 7.5: Enrich top 3 results with metadata + neighbors
+        # All results keep full content (no truncation). Top 3 also get
+        # metadata and neighbor context for richer understanding.
+        self._enrich_results(final_results[:3])
 
         # STEP 8: Mark accessed (for Hebbian learning)
         sid = session_id or ('ses_%d' % int(time.time() * 1000))
@@ -1070,6 +1044,81 @@ class BrainRecallMixin:
         result['_query_embedding'] = query_vec
 
         return result
+
+    def _enrich_results(self, results: List[Dict[str, Any]], neighbor_limit: int = 3) -> None:
+        """Enrich recall results with metadata and neighbor context.
+
+        This is the ONE place that makes a node result 'complete'.
+        Called by both recall_with_embeddings (text search) and recall_node (ID lookup).
+        The caller decides WHICH results to enrich — this method enriches all it receives.
+        Mutates results in place.
+        """
+        graph_dal = GraphDAL(self.conn)
+        for node in results:
+            nid = node.get('id')
+            if not nid:
+                continue
+
+            # Attach metadata from node_metadata table
+            try:
+                meta_cur = self.conn.execute(
+                    'SELECT reasoning, user_raw_quote, correction_of, last_validated '
+                    'FROM node_metadata WHERE node_id = ?',
+                    (nid,)
+                )
+                meta_row = meta_cur.fetchone()
+                if meta_row and any(meta_row):
+                    node['_metadata'] = {
+                        'reasoning': meta_row[0],
+                        'user_raw_quote': meta_row[1],
+                        'correction_of': meta_row[2],
+                        'last_validated': meta_row[3],
+                    }
+            except Exception:
+                pass
+
+            # Attach neighbor context — reuse existing get_neighbors_with_context,
+            # filter to intentional edges in Python
+            if neighbor_limit > 0:
+                try:
+                    all_neighbors = graph_dal.get_neighbors_with_context(
+                        nid, limit=neighbor_limit * 3  # fetch extra, filter down
+                    )
+                    node['_neighbors'] = [
+                        {'id': nb['id'], 'type': nb['type'], 'title': nb['title'],
+                         'relation': nb['relation'], 'weight': nb['weight']}
+                        for nb in all_neighbors
+                        if nb.get('relation') in INTENTIONAL_EDGE_TYPES
+                    ][:neighbor_limit]
+                except Exception:
+                    node['_neighbors'] = []
+
+    def recall_node(self, node_id: str, neighbor_limit: int = 3) -> Dict[str, Any]:
+        """Recall a specific node by ID with full enrichment.
+
+        Returns same shape as recall_with_embeddings() so callers get a
+        consistent interface regardless of how the node was found.
+        """
+        from .dal import NodeDAL
+        node_dal = NodeDAL(self.conn)
+        node = node_dal.get_node(node_id)
+        if not node:
+            return {'results': [], 'intent': 'direct_lookup'}
+
+        # Set display fields for format compatibility
+        node['effective_activation'] = node.get('activation', 0)
+        node['embedding_similarity'] = None
+        node['_keyword_score'] = None
+        node['_source'] = 'direct_lookup'
+
+        results = [node]
+        self._enrich_results(results, neighbor_limit=neighbor_limit)
+
+        return {
+            'results': results,
+            'intent': 'direct_lookup',
+            '_recall_mode': 'by_id',
+        }
 
     def spread_activation(self, seed_ids: List[str], types: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """

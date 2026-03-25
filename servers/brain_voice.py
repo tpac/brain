@@ -80,31 +80,36 @@ class BrainVoice:
 
     @staticmethod
     def format_recall_results(results, lines):
-        """Format recall results into output lines."""
-        evolution_results = [r for r in results if r.get("type") in EVOLUTION_TYPES]
-        regular_results = [r for r in results if r.get("type") not in EVOLUTION_TYPES]
+        """Format recall results into output lines.
 
-        if evolution_results:
-            lines.append("ACTIVE EVOLUTION (brain is tracking these):")
-            for r in evolution_results[:3]:
-                title = r.get("title", "")[:80]
-                content = r.get("content", "")
-                if len(content) > 150:
-                    content = content[:150] + "..."
-                lines.append("  " + title)
-                lines.append("    " + content)
-                lines.append("")
-
-        for r in regular_results[:5]:
+        Unified format — no truncation, no separate evolution section.
+        Top results include neighbors (if enriched by _enrich_results).
+        """
+        for r in results:
             typ = r.get("type", "?")
-            title = r.get("title", "")[:60]
+            title = r.get("title", "")
             content = r.get("content", "")
             locked = "LOCKED " if r.get("locked") else ""
             score = r.get("effective_activation", 0)
-            if len(content) > 300:
-                content = content[:300] + "..."
-            lines.append("  [%s] %s%s (score: %.2f)" % (typ, locked, title, score))
-            lines.append("    " + content)
+            short_id = r.get("id", "")[:8]
+            created = str(r.get("created_at", ""))[:10]
+            access_count = r.get("access_count", 0)
+
+            lines.append("[%s] %s%s" % (typ, locked, title))
+            lines.append("id:%s | score:%.2f | created:%s | accessed:%dx" % (
+                short_id, score, created, access_count))
+            lines.append(content)
+
+            # Neighbor context (attached by _enrich_results for top results)
+            neighbors = r.get("_neighbors", [])
+            for nb in neighbors:
+                nb_id = nb.get("id", "")[:8]
+                lines.append("  ↳ %s: \"%s\" (%s, id:%s)" % (
+                    nb.get("relation", "related"),
+                    nb.get("title", ""),
+                    nb.get("type", "?"),
+                    nb_id))
+
             lines.append("")
 
     @staticmethod
@@ -812,11 +817,10 @@ class BrainVoice:
         brain.auto_promote_staged(revisit_threshold=3)
         brain.save()
 
-        session_num = ctx.get("reset_count", 0) + 1
         debug_enabled = brain.get_config("debug_enabled", "0") == "1"
 
         # ── Identity ──
-        out.append("[BRAIN] Session #%d" % session_num)
+        out.append("[BRAIN]")
         if debug_enabled:
             out.append("[BRAIN] DEBUG MODE ON")
         out.append("")
@@ -964,7 +968,7 @@ class BrainVoice:
         staged = brain.list_staged(status="pending", limit=10)
         brain.auto_promote_staged(revisit_threshold=3)
         metrics = brain.get_suggest_metrics(period_days=7)
-        procs = brain.procedure_trigger("session_start", {"session_count": ctx.get("reset_count", 0)})
+        procs = brain.procedure_trigger("session_start", {})
         cs = brain.get_consciousness_signals()
         dev_stage = brain.assess_developmental_stage()
         host_result = brain.scan_host_environment()
@@ -980,7 +984,6 @@ class BrainVoice:
         if debug_enabled:
             out.append("[BRAIN] DEBUG MODE ON")
         out.append("")
-        out.append("Session #%d" % (ctx.get("reset_count", 0) + 1))
         out.append("")
 
         # ── Boot nodes (messages from previous Claude) ─────────────
