@@ -45,7 +45,7 @@ def start(brain=None):
         class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
             daemon_threads = True
             allow_reuse_address = True
-        _server = ThreadedHTTPServer((DAEMON_HOST, DASHBOARD_PORT), DashboardHandler)
+        _server = ThreadedHTTPServer(("127.0.0.1", DASHBOARD_PORT), DashboardHandler)
         _server.timeout = 1
         _running = True
         t = threading.Thread(target=_serve_loop, daemon=True, name="dashboard-http")

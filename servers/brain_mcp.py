@@ -304,6 +304,16 @@ def check_daemon_fingerprint():
     _last_daemon_fingerprint = fp
 
 
+def _read_stdin():
+    """Read lines from stdin, surviving EOF and IO errors gracefully."""
+    try:
+        for line in sys.stdin:
+            yield line
+    except (IOError, BrokenPipeError, KeyboardInterrupt):
+        pass
+    sys.stderr.write("[brain-mcp] stdin closed — shutting down cleanly.\n")
+
+
 def main():
     # Ensure daemon is running — retry a few times since boot hook may be starting it concurrently
     sys.stderr.write("[brain-mcp] Starting MCP server...\n")
@@ -323,7 +333,8 @@ def main():
         sys.stderr.write("[brain-mcp] WARNING: Daemon not available at startup. Will retry on each tool call.\n")
 
     # Main loop — read JSON-RPC from stdin
-    for line in sys.stdin:
+    # Never crash: daemon going down/up is normal. Surface errors, keep serving.
+    for line in _read_stdin():
         line = line.strip()
         if not line:
             continue
@@ -344,16 +355,23 @@ def main():
                 pass  # Client acknowledged init
             continue
 
-        if method == "initialize":
-            send(handle_initialize(request_id))
-        elif method == "tools/list":
-            send(handle_tools_list(request_id))
-        elif method == "tools/call":
-            send(handle_tools_call(request_id, params))
-        elif method == "ping":
-            send(handle_ping(request_id))
-        else:
-            send(make_error(request_id, -32601, "Method not found: {}".format(method)))
+        try:
+            if method == "initialize":
+                send(handle_initialize(request_id))
+            elif method == "tools/list":
+                send(handle_tools_list(request_id))
+            elif method == "tools/call":
+                send(handle_tools_call(request_id, params))
+            elif method == "ping":
+                send(handle_ping(request_id))
+            else:
+                send(make_error(request_id, -32601, "Method not found: {}".format(method)))
+        except Exception as e:
+            sys.stderr.write("[brain-mcp] Unhandled error in {}: {}\n".format(method, e))
+            try:
+                send(make_error(request_id, -32603, "Internal MCP error: {}".format(e)))
+            except Exception:
+                pass  # stdout broken — nothing we can do
 
 
 if __name__ == "__main__":

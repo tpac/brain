@@ -640,8 +640,8 @@ function initForce() {
   const w = canvas.width / devicePixelRatio;
   const h = canvas.height / devicePixelRatio;
   graphNodes = graphData.nodes.map(n => ({
-    ...n, x: w/2 + (Math.random()-0.5)*300,
-    y: h/2 + (Math.random()-0.5)*300, vx: 0, vy: 0,
+    ...n, x: w/2 + (Math.random()-0.5)*20,
+    y: h/2 + (Math.random()-0.5)*20, vx: 0, vy: 0,
     radius: Math.max(4, Math.min(16, Math.sqrt(n.access_count || 1) * 2)),
   }));
   const idMap = {};
@@ -768,7 +768,7 @@ function onWheel(e) {
 
 
 if __name__ == "__main__":
-    server = ThreadedHTTPServer((DASHBOARD_HOST if 'DASHBOARD_HOST' not in dir() else "127.0.0.1", DASHBOARD_PORT), DashboardHandler)
+    server = ThreadedHTTPServer(("127.0.0.1", DASHBOARD_PORT), DashboardHandler)
     print("Brain Dashboard listening on http://127.0.0.1:%d" % DASHBOARD_PORT, flush=True)
     print("Daemon port: %d" % DAEMON_PORT, flush=True)
     try:

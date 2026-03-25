@@ -109,12 +109,8 @@ class BrainDaemon:
         self._log("Daemon started. PID={}, addr={}:{}, workers={}".format(
             os.getpid(), self.daemon_addr[0], self.daemon_addr[1], THREAD_POOL_SIZE))
 
-        # Start observer channel (separate port for Tom's visibility)
-        try:
-            from servers import brain_dashboard
-            brain_dashboard.start(brain=self.brain)
-        except Exception as e:
-            self._log("Observer channel failed to start: %s" % e)
+        # Dashboard is now a separate process (brain_dashboard_standalone.py)
+        # launched by .claude/launch.json — no longer embedded in daemon.
 
         # Start autosave thread
         autosave_thread = threading.Thread(target=self._autosave_loop, daemon=True)
@@ -419,11 +415,6 @@ class BrainDaemon:
     def _cleanup(self):
         """Close server socket, observer channel, remove PID and lock files.
         Idempotent — safe to call multiple times (signal + atexit + explicit)."""
-        try:
-            from servers import brain_dashboard
-            brain_dashboard.stop()
-        except Exception:
-            pass
         try:
             if self.server_socket:
                 self.server_socket.close()
