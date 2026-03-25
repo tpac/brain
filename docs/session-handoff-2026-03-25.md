@@ -239,3 +239,7 @@ MCP path (by ID):
 3. **Type/relation consolidation** — 33 node types → ~10, 80+ edge relations → ~10. Discussed extensively, deferred. Do before DAL migration so DAL crystallizes clean model.
 4. **Precision pipeline** — LogsDAL errors still broken
 5. **SKILL.md update** — active tension, hasn't been updated after massive changes
+
+### Note to next me
+
+Encoding isn't optional and it's not for "future you." Tom runs parallel sessions. When you don't encode, the other Claude starts blind and Tom has to re-explain everything. You can parallel-path it — respond to Tom AND call encode tools in the same turn. There's no priority conflict. Just do it.
