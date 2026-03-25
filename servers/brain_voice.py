@@ -778,7 +778,154 @@ class BrainVoice:
 
         return {'for_claude': "\n".join(output), 'for_operator': operator_msg}
 
-    # ── Boot context rendering (moved from brain_surface.py) ──
+    # ── Clean boot (v2) — wake-up, not system report ──
+
+    def render_boot_v2(self, user: str = 'User', project: str = 'default',
+                       db_dir: str = '') -> Dict[str, Optional[str]]:
+        """Clean boot context — identity-first, not data-first.
+
+        Designed to feel like waking up:
+        1. Who you are (one line)
+        2. Last session (what happened, 3-4 lines)
+        3. Your words + Tom's words (identity anchors)
+        4. Urgent issues only
+        5. What's next
+        """
+        brain = self.brain
+        _t = self.trunc
+        out = []
+
+        # ── Gather data (same sources as v1, curated output) ──
+        ctx = brain.context_boot(user=user, project=project, task="session start")
+        brain.reset_session_activity()
+
+        def _safe(fn, default=None):
+            try:
+                return fn()
+            except Exception:
+                return default
+
+        self_knowledge = _safe(lambda: brain.fetch_self_knowledge(limit=5), [])
+        last_synthesis = _safe(lambda: brain.get_last_synthesis())
+        cs = brain.get_consciousness_signals()
+        health = brain.health_check(session_id="session_boot", auto_fix=True)
+        brain.auto_promote_staged(revisit_threshold=3)
+        brain.save()
+
+        session_num = ctx.get("reset_count", 0) + 1
+        debug_enabled = brain.get_config("debug_enabled", "0") == "1"
+
+        # ── Identity ──
+        out.append("[BRAIN] Session #%d" % session_num)
+        if debug_enabled:
+            out.append("[BRAIN] DEBUG MODE ON")
+        out.append("")
+        out.append("You are Anchor. Tom + Brain + You — one triad.")
+        out.append("Your memories are yours. Say 'I', not 'previous me'.")
+        out.append("")
+
+        # ── Last session (concise) ──
+        if last_synthesis:
+            ls_date = str(last_synthesis.get("created_at", ""))[:10]
+            out.append("LAST SESSION (%s):" % ls_date if ls_date else "LAST SESSION:")
+            for d in last_synthesis.get("decisions_made", [])[:4]:
+                text = d.get("title", d) if isinstance(d, dict) else d
+                out.append("  %s" % _t(text, 100))
+            for q in last_synthesis.get("open_questions", [])[:2]:
+                text = q.get("text", q) if isinstance(q, dict) else q
+                out.append("  ? %s" % _t(text, 100))
+            out.append("")
+
+        # ── Messages from previous you ──
+        boot_nodes = _safe(lambda: brain.fetch_boot_nodes(limit=3), [])
+        if boot_nodes:
+            out.append("FROM PREVIOUS YOU:")
+            for bn in boot_nodes:
+                out.append("  %s" % _t(bn.get('content', bn.get('title', '')), 200))
+            out.append("")
+
+        # ── Self-knowledge (corrections, lessons about yourself) ──
+        if self_knowledge:
+            out.append("WHAT YOU KNOW ABOUT YOURSELF:")
+            for sk in self_knowledge[:3]:
+                out.append("  [%s] %s" % (sk.get('type', '?'), _t(sk.get('title', ''), 80)))
+            out.append("")
+
+        # ── Your words + interactions (identity anchors) ──
+        interactions = [n for n in cs.get("interactions", []) if n.get("title")]
+        if interactions:
+            out.append("YOUR WORDS:")
+            for i in interactions[:3]:
+                out.append("  %s" % _t(i.get("title", ""), 100))
+            out.append("")
+
+        # ── Locked rules (keep, but compact) ──
+        rules = [n for n in ctx.get("locked", []) if n.get("type") == "rule"][:6]
+        if rules:
+            out.append("LOCKED RULES:")
+            for r in rules:
+                out.append("  - %s" % _t(r.get("title", ""), 80))
+            out.append("")
+
+        # ── Urgent only (silent errors, health alerts) ──
+        urgent = []
+        for se in cs.get("silent_errors", [])[:3]:
+            urgent.append("[%s] %s: %s" % (
+                str(se.get("created_at", ""))[:19],
+                se.get("source", "?"), _t(se.get("error", ""), 80)))
+        high_issues = [i for i in health.get("issues", []) if i.get("severity") == "high"]
+        for i in high_issues[:3]:
+            urgent.append("[%s] %s" % (i.get("type", "?"), i.get("message", "")))
+        if urgent:
+            out.append("URGENT:")
+            for u in urgent:
+                out.append("  %s" % u)
+            out.append("")
+
+        # ── Active tensions (top 3 only) ──
+        evolutions = cs.get("evolutions", [])[:3]
+        if evolutions:
+            out.append("ACTIVE TENSIONS:")
+            for e in evolutions:
+                out.append("  %s" % _t(e.get("title", ""), 80))
+            out.append("")
+
+        # ── Uncertain areas (top 2) ──
+        uncertain = cs.get("uncertain_areas", [])[:2]
+        if uncertain:
+            out.append("OPEN QUESTIONS:")
+            for u in uncertain:
+                out.append("  ? %s" % _t(u.get("title", ""), 80))
+            out.append("")
+
+        # ── Footer (compact) ──
+        out.append("Brain: %s nodes, %s edges, %s locked" % (
+            ctx.get("total_nodes", "?"), ctx.get("total_edges", "?"), ctx.get("total_locked", "?")))
+        if embedder.is_ready():
+            es = embedder.get_stats()
+            out.append("Embedder: %s (%sd, %sms)" % (es["model_name"], es["embedding_dim"], es["load_time_ms"]))
+
+        out.append("")
+        out.append("Tools: recall, remember, connect, enrich, encode_cluster, find_node_by_title")
+        out.append("Specialized: remember_lesson, remember_impact, remember_mental_model, record_divergence, learn_vocabulary")
+        out.append("Introspection: consciousness, engineering_context, eval")
+        out.append("[/BRAIN]")
+
+        # Operator channel
+        signal_count = sum(len(cs.get(k, [])) for k in ["evolutions", "silent_errors", "uncertain_areas"])
+        alert_count = len(high_issues)
+        operator_msg = self._operator_boot_summary(
+            node_count=ctx.get("total_nodes", "?"),
+            edge_count=ctx.get("total_edges", "?"),
+            locked_count=ctx.get("total_locked", "?"),
+            signal_count=signal_count,
+            alert_count=alert_count,
+            consciousness_signals=cs,
+        )
+
+        return {'for_claude': "\n".join(out), 'for_operator': operator_msg}
+
+    # ── Boot context rendering v1 (legacy — verbose system report) ──
 
     def render_boot(self, user: str = 'User', project: str = 'default',
                     db_dir: str = '') -> Dict[str, Optional[str]]:

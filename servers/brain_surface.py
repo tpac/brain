@@ -972,5 +972,5 @@ class BrainSurfaceMixin:
         """
         from .brain_voice import BrainVoice
         voice = BrainVoice(self)
-        rendered = voice.render_boot(user, project, db_dir)
+        rendered = voice.render_boot_v2(user, project, db_dir)
         return voice.wrap_for_hook(rendered['for_claude'], rendered.get('for_operator'))
