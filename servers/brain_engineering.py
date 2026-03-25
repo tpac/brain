@@ -1707,9 +1707,9 @@ class BrainEngineeringMixin:
         if encode_count == 0:
             # Nothing encoded — that's itself worth noting
             content = (
-                "Session #%d: nothing was encoded. Either the session was short "
+                "Session %s: nothing was encoded. Either the session was short "
                 "or encoding drifted. If you find yourself building without encoding, "
-                "stop and encode the decision you just made. Don't batch." % session_num
+                "stop and encode the decision you just made. Don't batch." % session_date
             )
         else:
             # Summarize what was done
@@ -1720,8 +1720,8 @@ class BrainEngineeringMixin:
                                      sorted(type_counts.items(), key=lambda x: -x[1]))
             titles = [t for _, t in recent_nodes[:5]]
             content = (
-                "Session #%d: encoded %d nodes (%s). Key topics: %s. "
-                % (session_num, encode_count, type_summary,
+                "Session %s: encoded %d nodes (%s). Key topics: %s. "
+                % (session_date, encode_count, type_summary,
                    "; ".join(t[:50] for t in titles))
             )
 

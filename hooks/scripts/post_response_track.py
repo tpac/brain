@@ -31,7 +31,7 @@ try:
             "message": hook_input.get("message", ""),
             "hook_event_name": event_name,
             "last_assistant_message": last_msg,
-        }, timeout=3.0)
+        })
         latency = (time.time() - t0) * 1000
         if resp.get("ok"):
             output = resp.get("result", {}).get("output", "")
