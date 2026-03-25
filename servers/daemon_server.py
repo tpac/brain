@@ -374,11 +374,12 @@ class BrainDaemon:
                         self._log("Autosave error: {}".format(e))
                     finally:
                         self._write_lock.release()
-            # Internal health check — verify SQLite and embedder
-            try:
-                self.brain.conn.execute("SELECT 1").fetchone()
-            except Exception as e:
-                self._log("HEALTH: SQLite check failed: {}".format(e))
+            # Internal health check — verify SQLite alive (skip during shutdown)
+            if self.running and self.brain:
+                try:
+                    self.brain.conn.execute("SELECT 1").fetchone()
+                except Exception as e:
+                    self._log("HEALTH: SQLite check failed: {}".format(e))
             self._write_status()
 
     def _handle_signal(self, signum, frame):

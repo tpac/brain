@@ -44,6 +44,7 @@ def start(brain=None):
     try:
         class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
             daemon_threads = True
+            allow_reuse_address = True
         _server = ThreadedHTTPServer((DAEMON_HOST, DASHBOARD_PORT), DashboardHandler)
         _server.timeout = 1
         _running = True
@@ -614,10 +615,16 @@ async function loadStats() {
 loadStats();
 setInterval(loadStats, 30000);
 
-// ── Live feed (SSE) ──
+// ── Live feed (SSE) — connect lazily after page load ──
 const feed = document.getElementById('feed');
-const evtSource = new EventSource('/api/events');
-evtSource.onmessage = function(e) {
+let evtSource = null;
+function connectSSE() {
+  if (evtSource) return;
+  evtSource = new EventSource('/api/events');
+  evtSource.onmessage = handleSSE;
+}
+setTimeout(connectSSE, 500);  // Delay SSE so page load completes first
+function handleSSE(e) {
   try {
     const ev = JSON.parse(e.data);
     if (ev.type === 'connected') return;
