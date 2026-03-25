@@ -833,6 +833,9 @@ class BrainVoice:
                 out.append("  %s" % _t(text, 100))
             for q in last_synthesis.get("open_questions", [])[:2]:
                 text = q.get("text", q) if isinstance(q, dict) else q
+                # Skip file-access telemetry masquerading as questions
+                if text.startswith("FILE ") or text.startswith("[ctx:"):
+                    continue
                 out.append("  ? %s" % _t(text, 100))
             out.append("")
 
