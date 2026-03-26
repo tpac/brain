@@ -144,7 +144,8 @@ class TestRealBrainRecall(unittest.TestCase):
             prompt_signals={},
             gap=result.get('_gap'),
             pending_tom_messages=[
-                {'content': 'test message from Tom', 'timestamp': '2026-03-25'},
+                {'content': 'test message from Tom', 'timestamp': '2026-03-25',
+                 'escalation_level': 'pending', 'surfaced_count': 1},
             ])
 
         output = rendered['for_claude']
@@ -152,6 +153,8 @@ class TestRealBrainRecall(unittest.TestCase):
         if results:
             self.assertIn('ACTIVE RECALL', output)
             self.assertIn('revise(', output)
+            # Action menu
+            self.assertIn('Agree', output)
 
         self.assertIn('PENDING', output)
         self.assertIn('test message from Tom', output)

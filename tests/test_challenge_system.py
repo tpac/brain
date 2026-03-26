@@ -48,18 +48,19 @@ class TestMessageStream(BrainTestBase):
         self.assertTrue(all(p.get('content', '').startswith('msg') for p in pending))
         self.assertEqual(len(pending), 2)
 
-    def test_get_pending_ordered_newest_first(self):
-        """KPI: First result has latest timestamp."""
+    def test_get_actionable_chronological_order(self):
+        """KPI: Messages returned oldest first (chronological — journey reads top-to-bottom)."""
         self.brain.store_exchange("first", "r1", "s1")
         time.sleep(0.05)  # Ensure different timestamps
         self.brain.store_exchange("second", "r2", "s1")
 
         from servers.dal_message_stream import MessageStreamDAL
         dal = MessageStreamDAL(self.brain.logs_conn)
-        pending = dal.get_pending(limit=10)
+        pending = dal.get_actionable(limit=10)
 
-        self.assertEqual(pending[0]['content'], 'second')
-        self.assertEqual(pending[1]['content'], 'first')
+        # Chronological: first message appears first (ASC order)
+        self.assertEqual(pending[0]['content'], 'first')
+        self.assertEqual(pending[1]['content'], 'second')
 
     def test_mark_encoded_removes_from_pending(self):
         """KPI: Marked message not in get_pending() results."""
@@ -350,6 +351,11 @@ class TestChallengeOutput(BrainTestBase):
         output = rendered['for_claude']
         self.assertIn('ACTIVE RECALL', output)
         self.assertIn('revise(', output)
+        # Action menu with 4 explicit options
+        self.assertIn('Agree', output)
+        self.assertIn('Revise', output)
+        self.assertIn('Disagree', output)
+        self.assertIn('Encode new', output)
 
     def test_gap_in_output(self):
         """KPI: Gap section appears when gap dict passed."""
@@ -395,19 +401,51 @@ class TestChallengeOutput(BrainTestBase):
         self.assertIn('CONSOLIDATION', rendered_none['for_claude'])
 
     def test_pending_tom_messages_in_output(self):
-        """KPI: Tom's messages appear in output."""
+        """KPI: Tom's messages appear in output at correct escalation tier."""
         from servers.brain_voice import BrainVoice
         voice = BrainVoice(self.brain)
         rendered = voice.render_prompt(
             results=[], prompt_signals={},
             pending_tom_messages=[
-                {'content': 'build the in-memory graph', 'timestamp': '2026-03-25T10:00:00'},
-                {'content': 'old patterns scare me', 'timestamp': '2026-03-25T11:00:00'},
+                {'content': 'build the in-memory graph', 'timestamp': '2026-03-25T10:00:00',
+                 'escalation_level': 'pending', 'surfaced_count': 1},
+                {'content': 'old patterns scare me', 'timestamp': '2026-03-25T11:00:00',
+                 'escalation_level': 'pending', 'surfaced_count': 1},
             ])
         output = rendered['for_claude']
         self.assertIn('PENDING', output)
         self.assertIn('build the in-memory graph', output)
         self.assertIn('old patterns scare me', output)
+
+    def test_urgent_escalation_in_output(self):
+        """KPI: Urgent messages get 🔴 NEEDS IMMEDIATE ATTENTION."""
+        from servers.brain_voice import BrainVoice
+        voice = BrainVoice(self.brain)
+        rendered = voice.render_prompt(
+            results=[], prompt_signals={},
+            pending_tom_messages=[
+                {'content': 'ship it', 'timestamp': '2026-03-25T10:00:00',
+                 'escalation_level': 'urgent', 'signal_type': 'decision',
+                 'surfaced_count': 6},
+            ])
+        output = rendered['for_claude']
+        self.assertIn('NEEDS IMMEDIATE ATTENTION', output)
+        self.assertIn('ship it', output)
+        self.assertIn('DECISION', output)
+
+    def test_attention_escalation_in_output(self):
+        """KPI: Attention messages get ⚠️ ATTENTION."""
+        from servers.brain_voice import BrainVoice
+        voice = BrainVoice(self.brain)
+        rendered = voice.render_prompt(
+            results=[], prompt_signals={},
+            pending_tom_messages=[
+                {'content': 'think about this', 'timestamp': '2026-03-25T10:00:00',
+                 'escalation_level': 'attention', 'surfaced_count': 4},
+            ])
+        output = rendered['for_claude']
+        self.assertIn('ATTENTION', output)
+        self.assertIn('think about this', output)
 
     def test_render_prompt_existing_callers_unaffected(self):
         """KPI: Call with only original params works — no error."""
