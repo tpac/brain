@@ -546,6 +546,98 @@ class BrainRememberMixin:
         }
 
     # ═══════════════════════════════════════════════════════════════
+    # v8: revise() — Encoding IS updating existing knowledge
+    # ═══════════════════════════════════════════════════════════════
+
+    def revise(self, node_id: str, content: str, reason: str) -> Dict[str, Any]:
+        """Update an existing node's content. Encoding IS updating knowledge.
+
+        Appends new content with a revision divider, re-embeds the combined
+        text for better retrieval, re-indexes TF-IDF, and regenerates the
+        content summary. Auto-resolves any pending consolidation pairs
+        involving this node.
+
+        Args:
+            node_id: full 32-char node ID
+            content: new content to append
+            reason: why this revision is being made
+
+        Returns:
+            Dict with id, type, title, revised_at, content_length on success.
+            Dict with 'error' key on failure.
+        """
+        # Fetch existing node
+        row = self.conn.execute(
+            'SELECT id, type, title, content, archived FROM nodes WHERE id = ?',
+            (node_id,)).fetchone()
+        if not row:
+            return {'error': 'Node not found', 'node_id': node_id}
+        if row[4] == 1:
+            return {'error': 'Cannot revise archived node', 'node_id': node_id}
+
+        existing_id, node_type, title, old_content, _ = row
+        old_content = old_content or ''
+
+        # Build revised content with divider
+        ts = self.now()
+        divider = "\n\n--- Revised %s: %s ---\n" % (ts[:10], reason)
+        new_content = old_content + divider + content
+
+        # UPDATE node content + timestamps
+        self.conn.execute(
+            'UPDATE nodes SET content = ?, content_summary = ?, '
+            'updated_at = ?, revised_at = ? WHERE id = ?',
+            (new_content, self._generate_summary(title, new_content),
+             ts, ts, node_id))
+        self.conn.commit()
+
+        # Re-embed combined content for better retrieval
+        # Matches remember() pattern (line 431-442): raw SQL INSERT OR REPLACE
+        embedding_updated = False
+        try:
+            from . import embedder
+            if embedder.is_ready():
+                embed_text = '%s %s' % (title, new_content)
+                blob = embedder.embed(embed_text)
+                if blob:
+                    self.conn.execute(
+                        'INSERT OR REPLACE INTO node_embeddings '
+                        '(node_id, embedding, model, created_at) VALUES (?, ?, ?, ?)',
+                        (node_id, blob, embedder.stats.get('model_name', ''), ts))
+                    self.conn.commit()
+                    embedding_updated = True
+        except Exception as e:
+            self._log_error("revise_embed", e, "Failed to re-embed node %s" % node_id[:8])
+
+        # Re-index TF-IDF with updated content
+        # Fetch current keywords for the node
+        try:
+            kw_row = self.conn.execute(
+                'SELECT keywords FROM nodes WHERE id = ?', (node_id,)).fetchone()
+            current_keywords = kw_row[0] if kw_row else None
+            self._store_tfidf_vector(node_id, title, new_content, current_keywords)
+        except Exception as e:
+            self._log_error("revise_tfidf", e, "Failed to re-index TF-IDF for %s" % node_id[:8])
+
+        # Auto-resolve consolidation pairs involving this node
+        resolved_count = 0
+        try:
+            from .dal import LogsDAL
+            resolved_count = LogsDAL(self.logs_conn).resolve_consolidation_for_node(node_id)
+        except Exception as e:
+            self._log_error("revise_consolidation_resolve", e,
+                            "Failed to auto-resolve consolidation pair for %s" % node_id[:8])
+
+        return {
+            'id': node_id,
+            'type': node_type,
+            'title': title,
+            'revised_at': ts,
+            'content_length': len(new_content),
+            'embedding_updated': embedding_updated,
+        }
+
+    # ═══════════════════════════════════════════════════════════════
     # v5.2: Critical node approval flow
     # Critical nodes get force-surfaced at boot and boosted in recall.
     # Setting critical=1 requires explicit operator approval.

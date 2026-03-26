@@ -416,6 +416,68 @@ class LogsDAL:
         ]
 
 
+    # ── recall_gaps ──
+    # Schema: id, timestamp, query, top_score, session_id
+
+    def log_gap(self, query: str, top_score: float, session_id: str = '') -> None:
+        """Log a recall gap — a query where the brain had no relevant results."""
+        self.conn.execute(
+            'INSERT INTO recall_gaps (timestamp, query, top_score, session_id) VALUES (?, ?, ?, ?)',
+            (_now(), query, top_score, session_id))
+        self.conn.commit()
+
+    # ── pending_consolidation ──
+    # Schema: id, node_id_a, node_id_b, similarity, detected_at, resolved
+    # UNIQUE(node_id_a, node_id_b)
+
+    def queue_consolidation(self, node_id_a: str, node_id_b: str,
+                            similarity: float) -> bool:
+        """Queue a consolidation pair. Returns True if new, False if already existed."""
+        cursor = self.conn.execute(
+            'INSERT OR IGNORE INTO pending_consolidation '
+            '(node_id_a, node_id_b, similarity, detected_at) VALUES (?, ?, ?, ?)',
+            (node_id_a, node_id_b, similarity, _now()))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def get_pending_consolidation(self, limit: int = 2) -> List[Dict[str, Any]]:
+        """Get unresolved consolidation pairs, highest similarity first."""
+        rows = self.conn.execute(
+            'SELECT id, node_id_a, node_id_b, similarity '
+            'FROM pending_consolidation WHERE resolved = 0 '
+            'ORDER BY similarity DESC LIMIT ?',
+            (limit,)).fetchall()
+        return [
+            {'id': r[0], 'node_id_a': r[1], 'node_id_b': r[2], 'similarity': r[3]}
+            for r in rows
+        ]
+
+    def resolve_consolidation(self, pair_id: int) -> None:
+        """Mark a consolidation pair as resolved (merged or dismissed)."""
+        self.conn.execute(
+            'UPDATE pending_consolidation SET resolved = 1 WHERE id = ?',
+            (pair_id,))
+        self.conn.commit()
+
+    def resolve_consolidation_for_node(self, node_id: str) -> int:
+        """Auto-resolve all pending pairs involving a specific node.
+        Called by revise() to clean up after a node is updated.
+        Returns count of pairs resolved."""
+        cursor = self.conn.execute(
+            'UPDATE pending_consolidation SET resolved = 1 '
+            'WHERE (node_id_a = ? OR node_id_b = ?) AND resolved = 0',
+            (node_id, node_id))
+        self.conn.commit()
+        return cursor.rowcount
+
+    def count_pending_consolidation(self) -> int:
+        """Count unresolved consolidation pairs."""
+        row = self.conn.execute(
+            'SELECT COUNT(*) FROM pending_consolidation WHERE resolved = 0'
+        ).fetchone()
+        return row[0] if row else 0
+
+
 class MetaDAL:
     """Access layer for brain_meta table — key-value config store."""
 
@@ -574,6 +636,23 @@ class NodeDAL:
         ]
 
     # --- Writes ---
+
+    # Allowed columns for update_field — whitelist prevents SQL injection
+    _UPDATABLE_FIELDS = frozenset({
+        'content', 'content_summary', 'confidence', 'locked', 'archived',
+        'critical', 'keywords', 'revised_at', 'updated_at', 'encoding_source',
+        'encoding_version', 'evolution_status', 'resolved_at', 'resolved_by',
+    })
+
+    def update_field(self, node_id: str, field: str, value) -> None:
+        """Update a single field on a node. Field must be in whitelist.
+        Automatically sets updated_at."""
+        if field not in self._UPDATABLE_FIELDS:
+            raise ValueError("Cannot update field '%s' — not in whitelist" % field)
+        self.conn.execute(
+            'UPDATE nodes SET %s = ?, updated_at = ? WHERE id = ?' % field,
+            (value, _now(), node_id))
+        self.conn.commit()
 
     def update_confidence(self, node_id: str, confidence: float) -> None:
         """Update a node's confidence score."""

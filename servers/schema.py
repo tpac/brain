@@ -147,6 +147,7 @@ TABLES = {
             'scope': 'NULL',                 # v5: system | module | file | function | cross-system | cross-file | cross-function
             'encoding_version': 'NULL',      # v6: encoding pipeline version (v5, v6, etc.) — floor adapts to quality
             'encoding_source': 'NULL',       # v7: how this node was created: 'manual' | 'auto' | 'idle' | 'hook'
+            'revised_at': 'NULL',            # v8: when this node was last revised via revise()
             'last_accessed': 'NULL',
             'created_at': 'NULL', 'updated_at': 'NULL',
         }
@@ -914,6 +915,45 @@ LOG_TABLES = {
         )""",
     },
 
+    # v8: Message stream — raw conversation capture for invisible encoding.
+    # Tom's messages stored on every Stop event. Surfaced as pending encoding material.
+    'message_stream': {
+        'create': """CREATE TABLE IF NOT EXISTS message_stream (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            session_id TEXT DEFAULT '',
+            encoded INTEGER DEFAULT 0
+        )""",
+    },
+
+    # v8: Recall gaps — queries where the brain had no relevant knowledge.
+    # Logged for trend analysis and gap-driven encoding prompts.
+    'recall_gaps': {
+        'create': """CREATE TABLE IF NOT EXISTS recall_gaps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            query TEXT NOT NULL,
+            top_score REAL,
+            session_id TEXT DEFAULT ''
+        )""",
+    },
+
+    # v8: Pending consolidation — duplicate/overlapping node pairs detected by idle.
+    # Surfaced 1-2 per turn when recall has empty slots. LLM decides to merge or keep.
+    'pending_consolidation': {
+        'create': """CREATE TABLE IF NOT EXISTS pending_consolidation (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            node_id_a TEXT NOT NULL,
+            node_id_b TEXT NOT NULL,
+            similarity REAL,
+            detected_at TEXT NOT NULL,
+            resolved INTEGER DEFAULT 0,
+            UNIQUE(node_id_a, node_id_b)
+        )""",
+    },
+
     # v6: Brain telemetry — every critical operation logs timing, success/failure.
     # No silent failures. Surfaced via consciousness signals and health_check.
     # Lives in brain_logs.db to avoid lock contention with brain.db.
@@ -950,6 +990,14 @@ LOG_INDEXES = [
     # v6: brain_telemetry
     'CREATE INDEX IF NOT EXISTS idx_telemetry_op ON brain_telemetry(operation, timestamp)',
     'CREATE INDEX IF NOT EXISTS idx_telemetry_fail ON brain_telemetry(success)',
+    # v8: message_stream
+    'CREATE INDEX IF NOT EXISTS idx_stream_role_encoded ON message_stream(role, encoded)',
+    'CREATE INDEX IF NOT EXISTS idx_stream_session ON message_stream(session_id)',
+    'CREATE INDEX IF NOT EXISTS idx_stream_timestamp ON message_stream(timestamp)',
+    # v8: recall_gaps
+    'CREATE INDEX IF NOT EXISTS idx_gaps_timestamp ON recall_gaps(timestamp)',
+    # v8: pending_consolidation
+    'CREATE INDEX IF NOT EXISTS idx_consolidation_resolved ON pending_consolidation(resolved)',
 ]
 
 
