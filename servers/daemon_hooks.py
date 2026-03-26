@@ -565,9 +565,118 @@ def hook_recall(brain, args, graph_changes):
 
     brain.save()
     merged = voice.wrap_for_hook(rendered['for_claude'], rendered.get('for_operator'))
+
+    # ── SHADOW: Signal Queue + Assembler (Phase 1 — log only, don't use) ──
+    try:
+        from .dal_signal_queue import SignalQueueDAL
+        from .surface_assembler import SurfaceAssembler
+
+        sq_dal = SignalQueueDAL(brain.logs_conn)
+
+        # Seed queue from existing data (temporary shim — Phase 2 replaces with proper producers)
+        _seed_signal_queue(sq_dal, urgent_signals, prompt_signals, pending_tom_messages)
+
+        # Run assembler in shadow mode
+        assembler = SurfaceAssembler(sq_dal, budget_chars=6000)
+        assembled = assembler.assemble(results, segment_note, priming_note, gap)
+
+        # Log comparison to dashboard DB
+        _log_assembler_comparison(brain, merged, assembled, user_message)
+    except Exception as e:
+        brain._log_error('hook_recall_assembler_shadow', e, 'Signal queue shadow mode failed')
+
     result_json = {"additionalContext": merged}
 
     return {"json": result_json}
+
+
+def _seed_signal_queue(sq_dal, urgent_signals, prompt_signals, pending_tom_messages):
+    """Temporary shim: re-enqueue existing signals into the queue.
+
+    Phase 2 replaces this with proper producers that own their lifecycle.
+    Deterministic IDs prevent duplicates even though this runs every turn.
+    """
+    # Urgent signals (consciousness layer)
+    for i, sig in enumerate(urgent_signals or []):
+        sq_dal.enqueue(
+            id="urgent:%d" % (hash(sig) % 100000),
+            producer="consciousness", signal_type="urgent",
+            priority=0.9, content=sig, max_surfaces=5)
+
+    # Tensions
+    for t in (prompt_signals or {}).get('tensions', []):
+        tid = t.get('id', t.get('title', ''))[:30]
+        sq_dal.enqueue(
+            id="tension:%s" % tid,
+            producer="tension", signal_type="active_tension",
+            priority=0.6, content=t.get('title', ''),
+            cooldown_seconds=300)  # 5 min cooldown
+
+    # Aspirations
+    for a in (prompt_signals or {}).get('aspirations', []):
+        sq_dal.enqueue(
+            id="aspiration:%s" % a.get('title', '')[:30],
+            producer="aspiration", signal_type="aspiration",
+            priority=0.3, content=a.get('title', ''),
+            cooldown_seconds=600)  # 10 min cooldown
+
+    # Instinct nudge
+    nudge = (prompt_signals or {}).get('instinct_nudge')
+    if nudge:
+        sq_dal.enqueue(
+            id="instinct:current",
+            producer="instinct", signal_type="instinct_check",
+            priority=0.5, content=nudge,
+            max_surfaces=3)
+
+    # Pending Tom messages (escalated)
+    for msg in (pending_tom_messages or []):
+        esc = msg.get('escalation_level', 'pending')
+        pri = {'urgent': 0.85, 'attention': 0.7, 'pending': 0.4}.get(esc, 0.4)
+        sq_dal.enqueue(
+            id="tom_msg:%s" % msg.get('id', ''),
+            producer="message_stream", signal_type="pending_encoding",
+            priority=pri,
+            content='Tom: "%s"' % (msg.get('content', '')[:150]),
+            max_surfaces=10)
+
+    # Expire stale signals
+    sq_dal.expire_stale()
+
+
+def _log_assembler_comparison(brain, old_merged, assembled, user_message):
+    """Log both old and new output to dashboard DB for side-by-side comparison."""
+    import sqlite3 as _sqlite3
+    db_dir = os.environ.get("BRAIN_DB_DIR", "")
+    if not db_dir:
+        return
+    dashboard_db = os.path.join(db_dir, "brain_dashboard.db")
+    try:
+        from datetime import datetime as _dt, timezone as _tz
+        ts = _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        conn = _sqlite3.connect(dashboard_db, timeout=5)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS assembler_comparison ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, "
+            "user_prompt TEXT, old_chars INTEGER, new_chars INTEGER, "
+            "new_output TEXT, stats TEXT)")
+        import json as _json
+        conn.execute(
+            "INSERT INTO assembler_comparison "
+            "(timestamp, user_prompt, old_chars, new_chars, new_output, stats) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (ts, user_message[:500], len(old_merged),
+             len(assembled.get('for_claude', '')),
+             assembled.get('for_claude', ''),
+             _json.dumps(assembled.get('stats', {}))))
+        conn.execute("DELETE FROM assembler_comparison WHERE id NOT IN "
+                     "(SELECT id FROM assembler_comparison ORDER BY id DESC LIMIT 200)")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("assembler_comparison log failed: %s", e)
 
 
 def hook_post_response_track(brain, args, graph_changes):

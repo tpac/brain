@@ -182,6 +182,59 @@ def _query_encoding_activity(since_ts="", limit=30):
         return []
 
 
+def _get_logs_db_path():
+    db_dir = os.environ.get("BRAIN_DB_DIR", os.path.join(os.path.expanduser("~"), "AgentsContext", "brain"))
+    return os.path.join(db_dir, "brain_logs.db")
+
+
+def _query_signal_queue():
+    """Read signal_queue from brain_logs.db — all non-dismissed signals."""
+    path = _get_logs_db_path()
+    if not os.path.exists(path):
+        return []
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=3)
+        rows = conn.execute(
+            "SELECT id, producer, signal_type, priority, content, content_chars, "
+            "metadata, created_at, updated_at, ttl_seconds, times_surfaced, "
+            "max_surfaces, last_surfaced_at, cooldown_seconds, preempt "
+            "FROM signal_queue WHERE dismissed = 0 ORDER BY priority DESC"
+        ).fetchall()
+        conn.close()
+        return [{
+            'id': r[0], 'producer': r[1], 'signal_type': r[2],
+            'priority': r[3], 'content': r[4], 'content_chars': r[5],
+            'metadata': r[6], 'created_at': r[7], 'updated_at': r[8],
+            'ttl_seconds': r[9], 'times_surfaced': r[10],
+            'max_surfaces': r[11], 'last_surfaced_at': r[12],
+            'cooldown_seconds': r[13], 'preempt': bool(r[14]),
+        } for r in rows]
+    except Exception:
+        return []
+
+
+def _query_assembler_comparison(limit=20):
+    """Read assembler comparison log from brain_dashboard.db."""
+    path = _get_dashboard_db_path()
+    if not os.path.exists(path):
+        return []
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=3)
+        rows = conn.execute(
+            "SELECT id, timestamp, user_prompt, old_chars, new_chars, new_output, stats "
+            "FROM assembler_comparison ORDER BY id DESC LIMIT ?",
+            (limit,)
+        ).fetchall()
+        conn.close()
+        return [{
+            'id': r[0], 'timestamp': r[1], 'user_prompt': r[2],
+            'old_chars': r[3], 'new_chars': r[4],
+            'new_output': r[5], 'stats': r[6],
+        } for r in rows]
+    except Exception:
+        return []
+
+
 # ── HTTP Server ──
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
@@ -214,6 +267,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_hook_log(params)
         elif path == "/api/encoding-activity":
             self._serve_encoding_activity(params)
+        elif path == "/api/signal-queue":
+            self._serve_signal_queue()
+        elif path == "/api/assembler-comparison":
+            self._serve_assembler_comparison(params)
         elif path.startswith("/api/node/"):
             node_id = path.split("/api/node/")[1]
             self._serve_node_detail(node_id)
@@ -251,6 +308,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
         limit = int(params.get("limit", [30])[0])
         events = _query_encoding_activity(since_ts=since_ts, limit=limit)
         self._json_response(200, {"events": events})
+
+    def _serve_signal_queue(self):
+        """Return current signal queue state."""
+        signals = _query_signal_queue()
+        self._json_response(200, {"signals": signals})
+
+    def _serve_assembler_comparison(self, params):
+        """Return assembler vs old output comparison."""
+        limit = int(params.get("limit", [20])[0])
+        comparisons = _query_assembler_comparison(limit=limit)
+        self._json_response(200, {"comparisons": comparisons})
 
     def _serve_node_detail(self, node_id):
         """Lazy-loaded node detail: full content + connected nodes."""
@@ -615,11 +683,13 @@ canvas { width: 100%; height: 100%; }
   <div class="stats-bar" id="stats-bar"></div>
   <div id="daemon-banner"></div>
   <div class="feed-toggle">
-    <button class="feed-btn active" onclick="switchFeed('surface')">Surface (what Claude sees)</button>
-    <button class="feed-btn" onclick="switchFeed('encoding')">Encoding (what gets stored)</button>
+    <button class="feed-btn active" onclick="switchFeed('surface')">Surface</button>
+    <button class="feed-btn" onclick="switchFeed('encoding')">Encoding</button>
+    <button class="feed-btn" onclick="switchFeed('queue')">Queue</button>
   </div>
   <div class="feed" id="feed"></div>
   <div class="feed" id="feed-encoding" style="display:none"></div>
+  <div class="feed" id="feed-queue" style="display:none"></div>
 </div>
 
 <div id="tab-graph" class="tab-content">
@@ -788,10 +858,15 @@ setInterval(pollHookLog, 2000);
 let activeFeed = 'surface';
 function switchFeed(name) {
   activeFeed = name;
-  document.querySelectorAll('.feed-btn').forEach(b => b.classList.toggle('active', b.textContent.toLowerCase().includes(name === 'surface' ? 'surface' : 'encoding')));
+  document.querySelectorAll('.feed-btn').forEach(b => {
+    const label = b.textContent.toLowerCase();
+    b.classList.toggle('active', label.includes(name));
+  });
   document.getElementById('feed').style.display = name === 'surface' ? 'block' : 'none';
   document.getElementById('feed-encoding').style.display = name === 'encoding' ? 'block' : 'none';
+  document.getElementById('feed-queue').style.display = name === 'queue' ? 'block' : 'none';
   if (name === 'encoding' && !encodingLoaded) loadEncodingActivity();
+  if (name === 'queue') loadSignalQueue();
 }
 
 // Encoding activity feed
@@ -855,6 +930,63 @@ async function loadEncodingActivity() {
 }
 
 setInterval(() => { if (activeFeed === 'encoding') loadEncodingActivity(); }, 3000);
+
+// Signal Queue feed
+async function loadSignalQueue() {
+  try {
+    const [queueR, compR] = await Promise.all([
+      fetch('/api/signal-queue'),
+      fetch('/api/assembler-comparison?limit=10')
+    ]);
+    const queueD = await queueR.json();
+    const compD = await compR.json();
+    const container = document.getElementById('feed-queue');
+
+    let html = '';
+
+    // Comparison banner
+    if (compD.comparisons && compD.comparisons.length) {
+      const latest = compD.comparisons[0];
+      const pct = latest.old_chars ? Math.round((1 - latest.new_chars / latest.old_chars) * 100) : 0;
+      html += '<div style="padding:10px 12px;background:#1a1a2a;border-radius:6px;margin:4px 0;font-size:12px">';
+      html += '<span style="color:#888">Latest:</span> ';
+      html += '<span style="color:#ff6666">' + latest.old_chars + ' chars (old)</span>';
+      html += ' → <span style="color:#33ff88">' + latest.new_chars + ' chars (new)</span>';
+      html += ' <span style="color:#7eb8ff">(' + pct + '% reduction)</span>';
+      if (latest.user_prompt) html += '<div style="color:#58a6ff;font-style:italic;margin-top:4px">' + escapeHtml(latest.user_prompt) + '</div>';
+      html += '</div>';
+    }
+
+    // Queue items
+    if (!queueD.signals || !queueD.signals.length) {
+      html += '<div style="color:#666;padding:20px;text-align:center">Queue empty — no pending signals</div>';
+    } else {
+      html += '<div style="color:#888;font-size:11px;padding:4px 8px">' + queueD.signals.length + ' signals in queue</div>';
+      for (const sig of queueD.signals) {
+        const priColor = sig.priority > 0.9 ? '#ff4444' : sig.priority > 0.7 ? '#ffaa33' : sig.priority > 0.5 ? '#ffff66' : '#666';
+        const priBar = '<span style="display:inline-block;width:' + Math.round(sig.priority * 60) + 'px;height:4px;background:' + priColor + ';border-radius:2px;vertical-align:middle;margin-right:6px"></span>';
+        const surfaced = sig.times_surfaced + (sig.max_surfaces ? '/' + sig.max_surfaces : '');
+        const preemptBadge = sig.preempt ? ' <span style="color:#ff4444;font-size:9px;font-weight:bold">PREEMPT</span>' : '';
+
+        html += '<div class="enc-entry" style="border-left-color:' + priColor + '">';
+        html += priBar;
+        html += '<span class="enc-kind" style="background:#1a1a2a;color:' + priColor + '">' + escapeHtml(sig.producer) + '</span> ';
+        html += '<span class="enc-title">' + escapeHtml(sig.content).substring(0, 120) + '</span>' + preemptBadge;
+        html += '<div class="enc-meta">';
+        html += 'pri: ' + sig.priority.toFixed(2) + ' · surfaced: ' + surfaced + ' · type: ' + sig.signal_type;
+        html += ' · ' + localTime(sig.created_at);
+        if (sig.cooldown_seconds) html += ' · cooldown: ' + sig.cooldown_seconds + 's';
+        html += '</div></div>';
+      }
+    }
+
+    container.innerHTML = html;
+  } catch(e) {
+    document.getElementById('feed-queue').innerHTML = '<div style="color:#ff4444;padding:20px">Error loading queue: ' + e.message + '</div>';
+  }
+}
+
+setInterval(() => { if (activeFeed === 'queue') loadSignalQueue(); }, 3000);
 
 // Explorer
 let expandedNode = null;
