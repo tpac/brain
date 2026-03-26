@@ -124,6 +124,7 @@ TABLES = {
             scope TEXT DEFAULT NULL,
             encoding_version TEXT DEFAULT NULL,
             encoding_source TEXT DEFAULT NULL,
+            revised_at TEXT DEFAULT NULL,
             last_accessed TEXT,
             created_at TEXT,
             updated_at TEXT
