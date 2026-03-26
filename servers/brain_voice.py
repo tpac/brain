@@ -79,38 +79,48 @@ class BrainVoice:
     # ── Recall formatting (moved from daemon_hooks.py) ──
 
     @staticmethod
-    def format_recall_results(results, lines):
-        """Format recall results into output lines.
+    def format_node(node, lines):
+        """Standard node display. Used by ALL formatters — recall, consolidation, MCP.
 
-        Unified format — no truncation, no separate evolution section.
-        Top results include neighbors (if enriched by _enrich_results).
+        Format:
+        [type] LOCKED Title
+        id:{full_id} | revised:{never|date} | conf:{score} | created:{date}
+        Full content, no truncation.
+          ↳ relation: "Neighbor title" (type, id:{full_id})
         """
+        typ = node.get("type", "?")
+        title = node.get("title", "")
+        locked = "LOCKED " if node.get("locked") else ""
+        node_id = node.get("id", "")
+        created = str(node.get("created_at", ""))[:10]
+
+        # Revised status: show date or "never"
+        revised_at = node.get("revised_at")
+        revised_str = str(revised_at)[:10] if revised_at else "never"
+
+        # Confidence: prefer explicit confidence, fall back to effective_activation
+        conf = node.get("confidence") or node.get("effective_activation", 0) or 0
+
+        lines.append("[%s] %s%s" % (typ, locked, title))
+        lines.append("id:%s | revised:%s | conf:%.2f | created:%s" % (
+            node_id, revised_str, conf, created))
+        lines.append(node.get("content", ""))
+
+        # Neighbor context (attached by _enrich_results for top results)
+        for nb in node.get("_neighbors", []):
+            lines.append("  ↳ %s: \"%s\" (%s, id:%s)" % (
+                nb.get("relation", "related"),
+                nb.get("title", ""),
+                nb.get("type", "?"),
+                nb.get("id", "")))
+
+        lines.append("")
+
+    @staticmethod
+    def format_recall_results(results, lines):
+        """Format recall results using standardized node display."""
         for r in results:
-            typ = r.get("type", "?")
-            title = r.get("title", "")
-            content = r.get("content", "")
-            locked = "LOCKED " if r.get("locked") else ""
-            score = r.get("effective_activation", 0)
-            short_id = r.get("id", "")[:8]
-            created = str(r.get("created_at", ""))[:10]
-            access_count = r.get("access_count", 0)
-
-            lines.append("[%s] %s%s" % (typ, locked, title))
-            lines.append("id:%s | score:%.2f | created:%s | accessed:%dx" % (
-                short_id, score, created, access_count))
-            lines.append(content)
-
-            # Neighbor context (attached by _enrich_results for top results)
-            neighbors = r.get("_neighbors", [])
-            for nb in neighbors:
-                nb_id = nb.get("id", "")[:8]
-                lines.append("  ↳ %s: \"%s\" (%s, id:%s)" % (
-                    nb.get("relation", "related"),
-                    nb.get("title", ""),
-                    nb.get("type", "?"),
-                    nb_id))
-
-            lines.append("")
+            BrainVoice.format_node(r, lines)
 
     @staticmethod
     def format_encoding_warning(encoding):
@@ -560,7 +570,13 @@ class BrainVoice:
                       graph_changes: List[str] = None,
                       pending_messages: List[str] = None,
                       debug_messages: List[str] = None,
-                      precision_feedback: str = None) -> Dict[str, Optional[str]]:
+                      precision_feedback: str = None,
+                      # v8: Challenge system parameters
+                      gap: Dict = None,
+                      consolidation: List[Dict] = None,
+                      consolidation_total: int = 0,
+                      pending_tom_messages: List[Dict] = None,
+                      ) -> Dict[str, Optional[str]]:
         """Format recall output for both channels.
 
         Takes pre-gathered data (from hook_recall's COMPUTE phase) and
@@ -585,8 +601,12 @@ class BrainVoice:
                 lines.append("  " + change)
             lines.append("")
 
+        # Section 6: Recall as challenge
         if results:
-            lines.append("[BRAIN] RECALL (auto-surfaced for this conversation):")
+            lines.append("⚠️ ACTIVE RECALL — Review required:")
+            lines.append("Revise outdated nodes in parallel with your response.")
+            lines.append('  Outdated? → revise(node_id="...", content="...", reason="...")')
+            lines.append("  Gap below? → remember() the new topic.")
             lines.append("")
 
         if segment_note:
@@ -598,6 +618,38 @@ class BrainVoice:
             lines.append("")
 
         self.format_recall_results(results, lines)
+
+        # Section 6b: Gap detection
+        if gap:
+            lines.append('🔴 UNKNOWN TOPIC: "%s"' % gap.get('query', ''))
+            lines.append("The brain has NO knowledge on this. If discussed,")
+            lines.append("encoding is REQUIRED — the brain cannot learn without it.")
+            lines.append("")
+
+        # Section 6c: Consolidation (only when few/no recall results)
+        if consolidation and len(results) < 2:
+            total_pending = consolidation_total or len(consolidation)
+            for i, pair in enumerate(consolidation):
+                lines.append("🔄 CONSOLIDATION (%d of %d pending):" % (i + 1, total_pending))
+                lines.append("These nodes discuss the same topic at different times:")
+                lines.append("")
+                lines.append("  OLD:")
+                self.format_node(pair.get('node_a', {}), lines)
+                lines.append("  NEW:")
+                self.format_node(pair.get('node_b', {}), lines)
+                old_id = pair.get('node_a', {}).get('id', '')
+                lines.append('→ Merge with revise(node_id="%s", ...) or keep both.' % old_id)
+                lines.append("")
+
+        # Section 6d: Pending Tom messages
+        pending_tom = pending_tom_messages or []
+        if pending_tom:
+            lines.append("[BRAIN] PENDING — Tom's recent messages (not yet encoded):")
+            for msg in pending_tom:
+                content_preview = msg.get('content', '')[:200]
+                ts = str(msg.get('timestamp', ''))[:10]
+                lines.append('  "%s" (%s)' % (content_preview, ts))
+            lines.append("")
 
         # Aspiration compass
         aspirations = prompt_signals.get('aspirations', [])

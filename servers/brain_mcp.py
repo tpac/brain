@@ -259,6 +259,11 @@ def _format_result(tool_name, result):
         else:
             lines.append("No results found.")
 
+        # Show gap info if present
+        gap = result.get("_gap")
+        if gap:
+            lines.append('No results above relevance threshold for: "%s"' % gap.get("query", ""))
+
         # Append recall stats
         stats = result.get("_embedding_stats", {})
         if stats:
