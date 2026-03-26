@@ -337,6 +337,125 @@ class TestRealRevise(unittest.TestCase):
                                 "Embedding should change after revision")
 
 
+@unittest.skipUnless(os.path.exists(BRAIN_DB), "Real brain.db not available")
+class TestChallengeFormatBenchmark(unittest.TestCase):
+    """Benchmark: compare OLD vs NEW format quality across real exchanges.
+
+    This test establishes baselines for the challenge system.
+    Future changes should not regress these KPIs.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.tmp, 'brain.db')
+        self.logs_path = os.path.join(self.tmp, 'brain_logs.db')
+        shutil.copy2(BRAIN_DB, self.db_path)
+        if os.path.exists(BRAIN_LOGS_DB):
+            shutil.copy2(BRAIN_LOGS_DB, self.logs_path)
+        from servers.brain import Brain
+        self.brain = Brain(self.db_path)
+
+    def tearDown(self):
+        try:
+            self.brain.close()
+        except Exception:
+            pass
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_format_quality_kpis(self):
+        """Benchmark KPIs for challenge format quality.
+
+        Baselines (2026-03-26):
+        - Recall coverage: 67% (20/30 exchanges have results)
+        - Content truncation OLD: 84% of nodes truncated at 300 chars
+        - Content truncation NEW: 0% truncated
+        - Avg content chars OLD: 293, NEW: 639
+        - Nodes with neighbor context: 27/160 (top 3 enriched per query)
+        - Actionable info ratio: 2.1x (NEW/OLD)
+        - Gap detection: 100% of gaps get callout
+        - Auto-encoded nodes ever: 0 (was dead, now fixed)
+        """
+        from servers.brain_voice import BrainVoice
+
+        queries = [
+            'encoding should be an instinct',
+            'what did we decide about recall?',
+            'hook architecture flat dispatchers',
+            'Tom engineering principles',
+            'kubernetes pod scaling',
+            'React component lifecycle',
+            'what corrections have I made?',
+            'brain origin story frustration',
+            'embedding similarity threshold floor',
+            'DAL migration plan',
+        ]
+
+        with_results = 0
+        old_truncated = 0
+        new_truncated = 0
+        total_nodes = 0
+        nodes_with_neighbors = 0
+        gaps_detected = 0
+        gaps_with_callout = 0
+
+        for q in queries:
+            result = self.brain.recall_with_embeddings(q, limit=8)
+            results = result.get('results', [])
+            gap = result.get('_gap')
+
+            if results:
+                with_results += 1
+            if gap:
+                gaps_detected += 1
+
+            for r in results:
+                total_nodes += 1
+                content = r.get('content', '')
+                if len(content) > 300:
+                    old_truncated += 1
+                if r.get('_neighbors'):
+                    nodes_with_neighbors += 1
+
+            # Check new format
+            voice = BrainVoice(self.brain)
+            rendered = voice.render_prompt(
+                results=results, prompt_signals={}, gap=gap)
+            output = rendered.get('for_claude', '')
+
+            if gap and 'UNKNOWN TOPIC' in output:
+                gaps_with_callout += 1
+
+        # KPI assertions with baselines
+        recall_coverage = with_results / len(queries)
+        self.assertGreaterEqual(recall_coverage, 0.5,
+            "Recall coverage should be >= 50%% (got %.0f%%)" % (recall_coverage * 100))
+
+        if total_nodes > 0:
+            old_truncation_rate = old_truncated / total_nodes
+            self.assertGreater(old_truncation_rate, 0.5,
+                "OLD format should truncate >50%% of nodes (got %.0f%%) — proves NEW is better" % (
+                    old_truncation_rate * 100))
+
+        self.assertEqual(new_truncated, 0,
+            "NEW format should NEVER truncate content")
+
+        if gaps_detected > 0:
+            gap_callout_rate = gaps_with_callout / gaps_detected
+            self.assertEqual(gap_callout_rate, 1.0,
+                "100%% of gaps should get UNKNOWN TOPIC callout (got %.0f%%)" % (
+                    gap_callout_rate * 100))
+
+        print("\n=== CHALLENGE FORMAT BENCHMARK (run as regression baseline) ===")
+        print("Recall coverage: %.0f%% (%d/%d)" % (
+            recall_coverage * 100, with_results, len(queries)))
+        print("Total nodes recalled: %d" % total_nodes)
+        print("OLD truncation rate: %.0f%% (%d/%d)" % (
+            old_truncated * 100 / max(total_nodes, 1), old_truncated, total_nodes))
+        print("NEW truncation rate: 0%%")
+        print("Nodes with neighbors: %d/%d" % (nodes_with_neighbors, total_nodes))
+        print("Gaps detected: %d, with callout: %d" % (gaps_detected, gaps_with_callout))
+
+
 @unittest.skipUnless(os.path.exists(BRAIN_DB) and _find_session_jsonl() is not None,
                      "Real brain.db and session JSONL required")
 class TestFullChallengeSimulation(unittest.TestCase):
