@@ -275,6 +275,26 @@ def _handle_remember(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
+def _handle_revise(brain, args, graph_changes):
+    """Update an existing node's content via revise()."""
+    node_id = args.get("node_id", "")
+    content = args.get("content", "")
+    reason = args.get("reason", "")
+    if not node_id:
+        return {"ok": False, "error": "node_id is required"}
+    if not content:
+        return {"ok": False, "error": "content is required"}
+    if not reason:
+        return {"ok": False, "error": "reason is required"}
+
+    result = brain.revise(node_id=node_id, content=content, reason=reason)
+    if result.get('error'):
+        return {"ok": False, "error": result['error']}
+    graph_changes.append("REVISE: [%s] %s" % (
+        result.get("type", "?"), result.get("title", "")[:50]))
+    return {"ok": True, "result": result}
+
+
 def _handle_remember_lesson(brain, args, graph_changes):
     result = brain.remember_lesson(
         title=args.get("title", ""),
@@ -473,6 +493,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "backfill_summaries":  CmdEntry(_handle_backfill_summaries, is_write=True, marks_dirty=True),
     "synthesize_session":  CmdEntry(_handle_synthesize_session, is_write=True, marks_dirty=True),
     "remember":              CmdEntry(_handle_remember,             is_write=True, marks_dirty=True),
+    "revise":                CmdEntry(_handle_revise,               is_write=True, marks_dirty=True),
     "remember_lesson":       CmdEntry(_handle_remember_lesson,     is_write=True, marks_dirty=True),
     "remember_impact":       CmdEntry(_handle_remember_impact,     is_write=True, marks_dirty=True),
     "remember_mechanism":    CmdEntry(_handle_remember_mechanism,  is_write=True, marks_dirty=True),

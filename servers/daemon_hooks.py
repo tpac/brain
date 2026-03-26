@@ -449,8 +449,8 @@ def hook_recall(brain, args, graph_changes):
         encoding_feedback = brain.surface_encoding_feedback()
         if encoding_feedback:
             pending_messages.append(encoding_feedback)
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('encoding_feedback', e, 'hook_recall')
 
     # Drain debug logs (hook_debug entries from brain_logs.db)
     debug_messages = _drain_debug_logs(brain)
@@ -462,8 +462,8 @@ def hook_recall(brain, args, graph_changes):
     urgent_signals = []
     try:
         urgent_signals = brain.get_urgent_signals()
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('urgent_signals', e, 'hook_recall')
 
     if not results and not pending_messages and not urgent_signals and not recent_graph_changes and not debug_messages:
         brain.save()
@@ -480,8 +480,8 @@ def hook_recall(brain, args, graph_changes):
                     'PRIMED TOPIC: "%s" (source: %s, sim: %.2f) '
                     '— this conversation touches an active concern.' % (
                         match["topic"][:80], match["source"], match["similarity"]))
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('priming_check', e, 'hook_recall')
 
     # ── Precision: request feedback if uncertain about previous recall ──
     precision_feedback = None
@@ -490,8 +490,53 @@ def hook_recall(brain, args, graph_changes):
         if prev_eval_id:
             precision = _get_precision(brain)
             precision_feedback = precision.request_feedback(int(prev_eval_id))
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('precision_feedback', e, 'hook_recall')
+
+    # ── v8: Challenge system components ──
+
+    # Gap detection: log gaps for trend analysis
+    gap = result.get('_gap') if isinstance(result, dict) else None
+    if gap:
+        try:
+            from .dal import LogsDAL
+            session_id = brain.get_config('session_id', '')
+            LogsDAL(brain.logs_conn).log_gap(gap['query'], gap.get('top_score', 0), session_id)
+        except Exception as e:
+            brain._log_error('hook_recall_gap_log', e, 'Failed to log recall gap')
+
+    # Pending Tom messages from conversation stream
+    pending_tom_messages = []
+    try:
+        from .dal_message_stream import MessageStreamDAL
+        msg_dal = MessageStreamDAL(brain.logs_conn)
+        pending_tom_messages = msg_dal.get_pending(limit=3)
+    except Exception as e:
+        brain._log_error('hook_recall_pending_messages', e, 'Failed to get pending Tom messages')
+
+    # Consolidation candidates (only when recall returned few results)
+    consolidation = []
+    consolidation_total = 0
+    if len(results) < 2:
+        try:
+            from .dal import LogsDAL as _LogsDAL
+            logs_dal = _LogsDAL(brain.logs_conn)
+            consolidation_total = logs_dal.count_pending_consolidation()
+            if consolidation_total:
+                raw_pairs = logs_dal.get_pending_consolidation(limit=2)
+                for pair in raw_pairs:
+                    # Hydrate both nodes with full enrichment (neighbors, metadata)
+                    node_a_result = brain.recall_node(pair['node_id_a'], neighbor_limit=2)
+                    node_b_result = brain.recall_node(pair['node_id_b'], neighbor_limit=2)
+                    if node_a_result.get('results') and node_b_result.get('results'):
+                        consolidation.append({
+                            'node_a': node_a_result['results'][0],
+                            'node_b': node_b_result['results'][0],
+                            'pair_id': pair['id'],
+                            'similarity': pair['similarity'],
+                        })
+        except Exception as e:
+            brain._log_error('hook_recall_consolidation', e, 'Failed to get consolidation pairs')
 
     # ── DECIDE + FORMAT via BrainVoice ──
     voice = BrainVoice(brain)
@@ -506,6 +551,11 @@ def hook_recall(brain, args, graph_changes):
         pending_messages=pending_messages,
         debug_messages=debug_messages,
         precision_feedback=precision_feedback,
+        # v8: Challenge system
+        gap=gap,
+        consolidation=consolidation,
+        consolidation_total=consolidation_total,
+        pending_tom_messages=pending_tom_messages,
     )
 
     brain.save()
@@ -543,10 +593,19 @@ def hook_post_response_track(brain, args, graph_changes):
     # 3. Vocab gap detection
     try:
         brain.detect_vocab_gaps(user_message)
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('detect_vocab_gaps', e, 'Stop hook')
 
-    # 4. Encoding heartbeat
+    # 4. Invisible capture: store conversation to message stream
+    try:
+        session_id = brain.get_config('session_id', '')
+        brain.store_exchange(user_message, assistant_response, session_id)
+    except Exception as e:
+        brain._log_error('store_exchange', e, 'Stop hook: failed to store exchange to message stream')
+
+    # 5. Encoding heartbeat
+    # DEPRECATED (pending removal): Challenge system in recall framing replaces
+    # generic checkpoint questions. Keeping until challenge system validated.
     output = ""
     try:
         brain.record_message()
@@ -555,7 +614,7 @@ def hook_post_response_track(brain, args, graph_changes):
             msg = nudge.get("message", "")
             try:
                 idx = int(brain.get_config("checkpoint_index", "0"))
-            except Exception:
+            except (ValueError, TypeError):
                 idx = 0
             focus = CHECKPOINT_CYCLE[idx % len(CHECKPOINT_CYCLE)]
             brain.set_config("checkpoint_index", str((idx + 1) % len(CHECKPOINT_CYCLE)))
@@ -565,8 +624,8 @@ def hook_post_response_track(brain, args, graph_changes):
                 mirror_text = _behavioral_mirror(
                     brain, nudge.get("messages_since_encode", 0),
                     nudge.get("total_encodes", 0))
-            except Exception:
-                pass
+            except Exception as e:
+                brain._log_error('behavioral_mirror', e, 'Stop hook')
 
             checkpoint_lines = ["[BRAIN] ENCODING CHECKPOINT: " + msg]
             checkpoint_lines.append(focus)
@@ -574,8 +633,8 @@ def hook_post_response_track(brain, args, graph_changes):
                 checkpoint_lines.append(mirror_text)
             checkpoint_lines.append("[/BRAIN]")
             _store_pending(brain, "\n".join(checkpoint_lines))
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('encoding_heartbeat', e, 'Stop hook')
 
     brain.save()
     return {"output": output}
@@ -724,8 +783,8 @@ def hook_idle_maintenance(brain, args, graph_changes):
             graph_changes.append("TUNED: %d parameter(s)" % len(tuned))
             for t in tuned[:5]:
                 output.append("  %s: %s" % (t.get("param", ""), t.get("reason", t.get("note", ""))))
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('auto_tune', e, 'idle_maintenance')
 
     # 3d. Edge decay — apply half-life decay to auto-generated edges
     try:
@@ -747,6 +806,16 @@ def hook_idle_maintenance(brain, args, graph_changes):
     except Exception as e:
         output.append("EDGE DECAY ERROR: %s" % e)
 
+    # 3e. Consolidation detection — find overlapping nodes for LLM-driven merging
+    try:
+        consolidation_count = brain.detect_consolidation_candidates()
+        if consolidation_count:
+            output.append("CONSOLIDATION: %d new candidate pair(s) queued" % consolidation_count)
+            graph_changes.append("CONSOLIDATION: %d pair(s) detected" % consolidation_count)
+    except Exception as e:
+        brain._log_error('idle_consolidation', e, 'Consolidation detection failed')
+        output.append("CONSOLIDATION ERROR: %s" % e)
+
     # 4. Reflection prompts
     try:
         reflections = brain.prompt_reflection()
@@ -756,8 +825,8 @@ def hook_idle_maintenance(brain, args, graph_changes):
             for r in reflections[:3]:
                 output.append("  " + r)
             output.append("")
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('prompt_reflection', e, 'idle_maintenance')
 
     # 5. Self-reflection
     try:
