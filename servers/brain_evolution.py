@@ -1720,7 +1720,7 @@ class BrainEvolutionMixin:
         result = self.remember(
             type='tension', title=f'⚡ TENSION — {title}', content=content,
             keywords=kwargs.get('keywords', ''),
-            locked=True,  # Tensions never decay until resolved
+            locked=False,  # Tensions decay naturally; valuable ones get reinforced
             emotion=0.6, emotion_label='concern',
             project=project, encoding_source=kwargs.pop('encoding_source', 'idle'),
             **{k: v for k, v in kwargs.items() if k not in ('keywords',)}

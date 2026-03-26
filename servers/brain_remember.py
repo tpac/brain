@@ -362,6 +362,12 @@ class BrainRememberMixin:
         # Validate personal flag
         if personal and personal not in ('fixed', 'fluid', 'contextual'):
             personal = None
+
+        # Constitution: auto-generated content must earn permanence
+        # Anything from idle_maintenance or hooks starts unlocked regardless of request
+        if encoding_source in ('idle', 'hook') and locked:
+            locked = False
+
         node_id = self._generate_id(type)
         ts = self.now()
 

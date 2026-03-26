@@ -698,7 +698,7 @@ class BrainRecallMixin:
                     if e_node_id not in node_confidence and e_node_id not in embedding_scores:
                         # Check if node passes filters
                         check = self.conn.execute(
-                            f'''SELECT 1 FROM nodes WHERE id = ? {archive_filter} {type_filter} {project_filter}''',
+                            f'''SELECT 1 FROM nodes n WHERE n.id = ? {archive_filter} {type_filter} {project_filter}''',
                             [e_node_id] + type_params + project_params
                         ).fetchone()
                         if not check:

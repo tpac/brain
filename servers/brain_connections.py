@@ -250,7 +250,7 @@ class BrainConnectionsMixin:
         max_bridges = self.get_config('bridge_max_per_consolidation', 5)
         scan_size = 20
         created = []
-        max_thoughts = 2
+        max_thoughts = 0  # Disabled: cluster-forming thoughts were noise (73 archived in audit)
 
         # Recency-biased node selection
         recent = self.conn.execute('''
