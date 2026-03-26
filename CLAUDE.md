@@ -4,12 +4,12 @@
 
 Use the **MCP tools**. They are your primary interface. The boot hook starts the daemon automatically.
 
-**Core tools:** `recall`, `remember`, `connect`, `eval`, `consciousness`, `context_boot`, `save`, `ping`, `health_check`, `engineering_context`, `enrich`, `set_config`, `get_config`
+**Core tools:** `recall`, `remember`, `revise`, `connect`, `enrich`, `encode_cluster`, `find_node_by_title`, `eval`, `consciousness`, `engineering_context`
 
-**For specialized methods**, use the `eval` tool:
-```
-eval: brain.remember_lesson(title="...", what_happened="...", root_cause="...", fix="...", preventive_principle="...")
-```
+**Specialized remember tools** (first-class MCP, not eval wrappers):
+`remember_lesson`, `remember_impact`, `remember_mechanism`, `remember_convention`, `remember_uncertainty`, `remember_mental_model`, `record_divergence`, `learn_vocabulary`
+
+**`revise`** — update existing nodes: `revise(node_id="...", content="...", reason="...")`. Use when recalled knowledge is outdated. Appends content, re-embeds, preserves history.
 
 **Do NOT:** write Python scripts to call brain methods, import Brain, construct DB paths, or use curl.
 
@@ -21,7 +21,7 @@ eval: brain.remember_lesson(title="...", what_happened="...", root_cause="...", 
 - `PreToolUse(Edit|Write)` → surfaces rules before file edits
 - `PreCompact` → saves brain before context loss
 - `PostCompact` → re-boots context after compaction
-- `Stop` → captures session activity + stores response for precision evaluation
+- `Stop` → precision evaluation + auto-encode signals + stores conversation to message stream
 - `SessionEnd` → session synthesis + save
 
 **Important:** `post-response-track` fires ONLY on `Stop` (not UserPromptSubmit). It needs Claude's response to evaluate precision. See Session #9 handoff.
