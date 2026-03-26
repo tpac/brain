@@ -902,7 +902,7 @@ class BrainRecallMixin:
                         '''SELECT id, type, title, content, keywords, activation, stability,
                                   access_count, locked, archived, last_accessed, created_at,
                                   emotion, emotion_label, project, personal, personal_context,
-                                  content_summary
+                                  content_summary, confidence, updated_at, revised_at
                            FROM nodes WHERE id = ?''',
                         (nid,)
                     )
@@ -918,8 +918,12 @@ class BrainRecallMixin:
                             'emotion_label': row[13], 'project': row[14],
                             'personal': row[15], 'personal_context': row[16],
                             'content_summary': row[17],
+                            'confidence': row[18],
+                            'updated_at': row[19],
+                            'revised_at': row[20],
                         }
-                except Exception:
+                except Exception as e:
+                    self._log_error("recall_hydrate", e, "Failed to hydrate node %s" % nid[:8])
                     continue
 
             if node:
@@ -1034,6 +1038,14 @@ class BrainRecallMixin:
                 'results_via_enrichment': sum(1 for r in final_results if enrichment_hits.get(r.get('id', ''), 'primary') != 'primary'),
             },
         }
+
+        # Gap detection: when no results pass the relevance floor,
+        # flag it so the voice layer can prompt encoding
+        if not final_results and query:
+            result['_gap'] = {
+                'query': query,
+                'top_score': max_score if 'max_score' in locals() else 0,
+            }
 
         # Carry over reasoning chains from keyword result
         if keyword_result.get('reasoning_chains'):
