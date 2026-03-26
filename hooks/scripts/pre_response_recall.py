@@ -55,10 +55,13 @@ try:
             else:
                 print(APPROVE)
         else:
+            log_hook_output("recall", output_text="(daemon returned not-ok)", user_prompt=user_message)
             print(APPROVE)
     else:
         # Daemon unavailable — surface error, don't load separate model
         err = daemon_unavailable_error("recall")
+        log_hook_output("recall", output_text="(daemon unavailable) " + err, user_prompt=user_message)
         print(json.dumps({"additionalContext": err}))
-except Exception:
+except Exception as e:
+    log_hook_output("recall", output_text="(exception) %s" % e, user_prompt=user_message)
     print(APPROVE)
