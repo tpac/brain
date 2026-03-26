@@ -1191,6 +1191,119 @@ class BrainSurfaceMixin:
         except Exception:
             return None
 
+    # ═══════════════════════════════════════════════════════════════
+    # v8: Invisible encoding — conversation stream
+    # ═══════════════════════════════════════════════════════════════
+
+    def store_exchange(self, user_message: str, assistant_response: str,
+                       session_id: str = '') -> Dict[str, Any]:
+        """Store both messages to the conversation stream.
+
+        Called by hook_post_response_track on every Stop event.
+        Tom's messages become pending encoding material.
+        Returns dict with user_id and assistant_id row IDs.
+        """
+        from .dal_message_stream import MessageStreamDAL
+        dal = MessageStreamDAL(self.logs_conn)
+        user_id = dal.store('user', user_message, session_id)
+        assistant_id = dal.store('assistant', assistant_response, session_id)
+        return {'user_id': user_id, 'assistant_id': assistant_id}
+
+    # ═══════════════════════════════════════════════════════════════
+    # v8: Consolidation detection — find overlapping nodes
+    # ═══════════════════════════════════════════════════════════════
+
+    def detect_consolidation_candidates(self, similarity_threshold: float = 0.85,
+                                         min_age_hours: int = 24,
+                                         max_pairs: int = 10) -> int:
+        """Scan for duplicate/overlapping nodes. Queue for LLM consolidation.
+
+        Called by idle_maintenance. Returns count of new pairs found.
+
+        Scoping rules:
+        - Only compare nodes of the same type (reduces O(n²))
+        - Skip pairs where both nodes were created within min_age_hours
+        - Skip archived nodes
+        - Skip pairs already in pending_consolidation
+        """
+        from . import embedder
+        from .dal import EmbeddingDAL, LogsDAL
+        from datetime import datetime, timezone, timedelta
+
+        if not embedder.is_ready():
+            self._log_error("consolidation_detect", Exception("Embedder not ready"),
+                            "Cannot detect consolidation without embedder")
+            return 0
+
+        # Get all embeddings
+        emb_dal = EmbeddingDAL(self.conn)
+        all_embeddings = emb_dal.get_all_embeddings(exclude_archived=True)
+        if not all_embeddings:
+            return 0
+
+        # Build node_id → embedding map
+        emb_map = {}
+        for item in all_embeddings:
+            emb_map[item['node_id']] = item['embedding']
+
+        # Get node types and creation dates
+        rows = self.conn.execute(
+            'SELECT id, type, created_at FROM nodes WHERE archived = 0'
+        ).fetchall()
+
+        # Group by type
+        type_groups = {}
+        node_dates = {}
+        for nid, ntype, created_at in rows:
+            if nid not in emb_map:
+                continue  # no embedding, skip
+            type_groups.setdefault(ntype, []).append(nid)
+            node_dates[nid] = created_at
+
+        # Compare within each type group
+        logs_dal = LogsDAL(self.logs_conn)
+        new_pairs = 0
+        cutoff_hours = min_age_hours
+
+        for ntype, node_ids in type_groups.items():
+            if len(node_ids) < 2:
+                continue
+
+            for i in range(len(node_ids)):
+                if new_pairs >= max_pairs:
+                    break
+                for j in range(i + 1, len(node_ids)):
+                    if new_pairs >= max_pairs:
+                        break
+
+                    nid_a, nid_b = node_ids[i], node_ids[j]
+
+                    # Skip if created too close together (same session)
+                    date_a = node_dates.get(nid_a, '')
+                    date_b = node_dates.get(nid_b, '')
+                    if date_a and date_b:
+                        try:
+                            dt_a = datetime.fromisoformat(date_a.replace('Z', '+00:00'))
+                            dt_b = datetime.fromisoformat(date_b.replace('Z', '+00:00'))
+                            if abs((dt_a - dt_b).total_seconds()) < cutoff_hours * 3600:
+                                continue
+                        except (ValueError, TypeError):
+                            pass  # Can't parse dates, proceed with comparison
+
+                    # Compute similarity
+                    emb_a = emb_map[nid_a]
+                    emb_b = emb_map[nid_b]
+                    sim = embedder.cosine_similarity(emb_a, emb_b)
+
+                    if sim >= similarity_threshold:
+                        # Order by creation date (older = a, newer = b)
+                        if date_a > date_b:
+                            nid_a, nid_b = nid_b, nid_a
+                        if logs_dal.queue_consolidation(nid_a, nid_b, sim):
+                            new_pairs += 1
+
+        return new_pairs
+
     def _get_or_create_precision(self):
         """Get cached RecallPrecision instance."""
         if not hasattr(self, '_precision') or self._precision is None:
