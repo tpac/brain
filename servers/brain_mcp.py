@@ -15,6 +15,12 @@ import os
 import sys
 import socket
 
+# Ensure parent dir is on sys.path so `from servers.X` works
+# even when this file is run as a standalone script (not -m servers.brain_mcp)
+_parent = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _parent not in sys.path:
+    sys.path.insert(0, _parent)
+
 # ── Daemon communication ──
 
 DAEMON_HOST = "127.0.0.1"  # Client connects via IPv4 loopback
