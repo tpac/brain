@@ -1179,8 +1179,8 @@ class BrainSurfaceMixin:
         try:
             raw = self.get_config('last_auto_encoded', '')
             if not raw:
-                # Check if anything was encoded at all this message cycle
-                return '[BRAIN] Nothing was encoded from the last exchange. [/BRAIN]'
+                # Challenge system handles encoding prompts now — no noise
+                return None
 
             info = json.loads(raw)
             # Clear so it doesn't repeat
@@ -1188,7 +1188,8 @@ class BrainSurfaceMixin:
 
             return '[BRAIN] Auto-encoded from last exchange: [%s] "%s" (signal: %s) [/BRAIN]' % (
                 info.get('type', '?'), info.get('title', '?'), info.get('signal', '?'))
-        except Exception:
+        except Exception as e:
+            self._log_error('surface_encoding_feedback', e, 'Failed to read encoding feedback')
             return None
 
     # ═══════════════════════════════════════════════════════════════

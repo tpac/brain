@@ -33,6 +33,10 @@ _format_recall_results = BrainVoice.format_recall_results
 _format_encoding_warning = BrainVoice.format_encoding_warning
 _format_suggestions = BrainVoice.format_suggestions
 
+# DEPRECATED (pending removal): Challenge system in recall framing replaces
+# generic checkpoint questions. Keeping temporarily until challenge system
+# is validated across 5+ sessions. Track: if challenge-driven encoding rate
+# exceeds checkpoint-driven rate, remove this + _behavioral_mirror.
 CHECKPOINT_CYCLE = [
     "What surprised you in the last few exchanges? What did Tom say that "
     "shifted how you think about something?",
