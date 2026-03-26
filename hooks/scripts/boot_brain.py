@@ -6,7 +6,7 @@ Falls back to direct Brain() ONLY if daemon is completely unavailable.
 import sys, os, json
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import db_path, daemon_available, daemon_call, daemon_call_raw
+from hook_common import db_path, daemon_available, daemon_call, daemon_call_raw, log_hook_output
 
 db_dir = os.environ.get("BRAIN_DB_DIR", "")
 
@@ -44,9 +44,11 @@ def _boot_via_daemon():
     if isinstance(result, dict):
         text = result.get("for_claude", "") or result.get("text", "")
         if text:
+            log_hook_output("boot", output_text=text)
             print(text)
             return True
     elif isinstance(result, str) and result:
+        log_hook_output("boot", output_text=result)
         print(result)
         return True
 

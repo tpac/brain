@@ -11,6 +11,7 @@ Start: python3 servers/brain_dashboard_standalone.py
 import json
 import os
 import socket
+import sqlite3
 import sys
 import threading
 import time
@@ -80,81 +81,105 @@ def _direct_query(sql, args=(), db_path=None):
         return []
 
 
-# ── Event Poller — detects changes in brain.db for Live tab SSE ──
+# ── Hook Log — reads brain_dashboard.db for actual brain surface output ──
 
-class EventPoller:
-    """Polls SQLite for new/changed nodes to produce live events.
+def _get_dashboard_db_path():
+    db_dir = os.environ.get("BRAIN_DB_DIR", os.path.join(os.path.expanduser("~"), "AgentsContext", "brain"))
+    return os.path.join(db_dir, "brain_dashboard.db")
 
-    Separated from HTTP layer — knows about DB, not about SSE.
-    Each call to poll() returns new events since last check.
-    """
 
-    def __init__(self, db_path):
-        self.db_path = db_path
-        self.last_node_created = ""
-        self.last_access_ts = ""
-        # Initialize high-water marks
-        try:
-            row = _direct_query(
-                "SELECT created_at FROM nodes ORDER BY created_at DESC LIMIT 1",
-                db_path=db_path)
-            if row:
-                self.last_node_created = row[0][0]
-            row = _direct_query(
-                "SELECT last_accessed FROM nodes ORDER BY last_accessed DESC LIMIT 1",
-                db_path=db_path)
-            if row:
-                self.last_access_ts = row[0][0]
-        except Exception:
-            pass
+def _query_hook_log(since_id=0, limit=50):
+    """Read hook_log entries from brain_dashboard.db."""
+    path = _get_dashboard_db_path()
+    if not os.path.exists(path):
+        return []
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=3)
+        rows = conn.execute(
+            "SELECT id, hook_name, timestamp, output_text, operator_text, metadata, session_id, user_prompt "
+            "FROM hook_log WHERE id > ? ORDER BY id DESC LIMIT ?",
+            (since_id, limit)
+        ).fetchall()
+        conn.close()
+        return [
+            {"id": r[0], "hook_name": r[1], "timestamp": r[2],
+             "output_text": r[3] or "", "operator_text": r[4] or "",
+             "metadata": r[5] or "", "session_id": r[6] or "",
+             "user_prompt": r[7] if len(r) > 7 else ""}
+            for r in rows
+        ]
+    except Exception:
+        return []
 
-    def poll(self):
-        """Check for new events. Returns list of event dicts."""
-        events = []
 
-        # New nodes (encodes)
-        try:
-            if self.last_node_created:
-                rows = _direct_query(
-                    "SELECT type, title, created_at FROM nodes "
-                    "WHERE created_at > ? ORDER BY created_at LIMIT 10",
-                    args=(self.last_node_created,), db_path=self.db_path)
-            else:
-                rows = _direct_query(
-                    "SELECT type, title, created_at FROM nodes "
-                    "ORDER BY created_at DESC LIMIT 3",
-                    db_path=self.db_path)
-            for ntype, title, ts in rows:
-                events.append({
-                    "type": "remember", "time": ts,
-                    "command": "remember",
-                    "detail": "[%s] %s" % (ntype, (title or "")[:80]),
-                })
-                self.last_node_created = ts
-        except Exception:
-            pass
+def _query_encoding_activity(since_ts="", limit=30):
+    """Read all encoding activity from brain.db — new nodes, revisions, connections, enrichments."""
+    db = _get_db_path()
+    if not os.path.exists(db):
+        return []
+    events = []
+    try:
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=3)
+        where = "WHERE created_at > ?" if since_ts else "WHERE 1=1"
+        args_base = (since_ts,) if since_ts else ()
 
-        # Recent accesses (recalls)
-        try:
-            if self.last_access_ts:
-                rows = _direct_query(
-                    "SELECT type, title, last_accessed FROM nodes "
-                    "WHERE last_accessed > ? "
-                    "AND last_accessed > datetime('now', '-30 seconds') "
-                    "ORDER BY last_accessed DESC LIMIT 5",
-                    args=(self.last_access_ts,), db_path=self.db_path)
-                for ntype, title, ts in rows:
-                    events.append({
-                        "type": "recall", "time": ts,
-                        "command": "recall",
-                        "detail": "[%s] %s" % (ntype, (title or "")[:80]),
-                    })
-                if rows:
-                    self.last_access_ts = rows[0][2]
-        except Exception:
-            pass
+        # New nodes
+        rows = conn.execute(
+            f"SELECT id, type, title, content, confidence, encoding_source, locked, created_at "
+            f"FROM nodes {where} ORDER BY created_at DESC LIMIT ?",
+            args_base + (limit,)).fetchall()
+        for r in rows:
+            events.append({
+                "kind": "created", "id": r[0], "type": r[1], "title": r[2],
+                "content": (r[3] or "")[:300], "confidence": r[4],
+                "encoding_source": r[5], "locked": bool(r[6]), "timestamp": r[7]})
 
-        return events
+        # Revised nodes
+        rows = conn.execute(
+            "SELECT id, type, title, content, confidence, revised_at "
+            "FROM nodes WHERE revised_at IS NOT NULL AND revised_at > ? "
+            "ORDER BY revised_at DESC LIMIT ?",
+            (since_ts or "1970-01-01", limit)).fetchall()
+        for r in rows:
+            events.append({
+                "kind": "revised", "id": r[0], "type": r[1], "title": r[2],
+                "content": (r[3] or "")[:300], "confidence": r[4], "timestamp": r[5]})
+
+        # New connections
+        rows = conn.execute(
+            f"SELECT e.source_id, e.target_id, e.relation, e.weight, e.created_at, "
+            f"n1.title, n2.title "
+            f"FROM edges e "
+            f"LEFT JOIN nodes n1 ON n1.id = e.source_id "
+            f"LEFT JOIN nodes n2 ON n2.id = e.target_id "
+            f"{where.replace('created_at', 'e.created_at')} "
+            f"ORDER BY e.created_at DESC LIMIT ?",
+            args_base + (limit,)).fetchall()
+        for r in rows:
+            events.append({
+                "kind": "connected", "source_title": r[5] or r[0][:12],
+                "target_title": r[6] or r[1][:12], "relation": r[2],
+                "weight": r[3], "timestamp": r[4]})
+
+        # Enrichments
+        rows = conn.execute(
+            f"SELECT ne.node_id, ne.vector_type, ne.text, ne.created_at, n.title "
+            f"FROM node_enrichments ne "
+            f"LEFT JOIN nodes n ON n.id = ne.node_id "
+            f"{where.replace('created_at', 'ne.created_at')} "
+            f"ORDER BY ne.created_at DESC LIMIT ?",
+            args_base + (limit,)).fetchall()
+        for r in rows:
+            events.append({
+                "kind": "enriched", "node_title": r[4] or r[0][:12],
+                "vector_type": r[1], "text": (r[2] or "")[:200], "timestamp": r[3]})
+
+        conn.close()
+        # Sort all by timestamp descending
+        events.sort(key=lambda e: e.get("timestamp", ""), reverse=True)
+        return events[:limit]
+    except Exception:
+        return []
 
 
 # ── HTTP Server ──
@@ -185,8 +210,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_insights()
         elif path == "/api/status":
             self._serve_status()
-        elif path == "/api/events":
-            self._serve_events_sse()
+        elif path == "/api/hook-log":
+            self._serve_hook_log(params)
+        elif path == "/api/encoding-activity":
+            self._serve_encoding_activity(params)
         elif path.startswith("/api/node/"):
             node_id = path.split("/api/node/")[1]
             self._serve_node_detail(node_id)
@@ -210,31 +237,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
             "daemon_port": DAEMON_PORT,
         })
 
-    def _serve_events_sse(self):
-        """SSE stream — thin transport layer. Polls EventPoller for changes."""
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-cache")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
+    def _serve_hook_log(self, params):
+        """Return recent hook log entries — the actual brain surface output."""
+        since_id = int(params.get("since_id", [0])[0])
+        limit = int(params.get("limit", [50])[0])
+        entries = _query_hook_log(since_id=since_id, limit=limit)
+        latest_id = entries[0]["id"] if entries else since_id
+        self._json_response(200, {"events": entries, "latest_id": latest_id})
 
-        self.wfile.write(b"data: {\"type\":\"connected\"}\n\n")
-        self.wfile.flush()
-
-        poller = EventPoller(_get_db_path())
-        try:
-            while True:
-                events = poller.poll()
-                for evt in events:
-                    data = json.dumps(evt, default=str, ensure_ascii=False)
-                    self.wfile.write(("data: %s\n\n" % data).encode("utf-8"))
-                    self.wfile.flush()
-                if not events:
-                    self.wfile.write(b": keepalive\n\n")
-                    self.wfile.flush()
-                time.sleep(2)
-        except (BrokenPipeError, ConnectionResetError):
-            pass
+    def _serve_encoding_activity(self, params):
+        """Return recent encoding activity — nodes created, revised, connected, enriched."""
+        since_ts = params.get("since", [""])[0]
+        limit = int(params.get("limit", [30])[0])
+        events = _query_encoding_activity(since_ts=since_ts, limit=limit)
+        self._json_response(200, {"events": events})
 
     def _serve_node_detail(self, node_id):
         """Lazy-loaded node detail: full content + connected nodes."""
@@ -500,14 +516,40 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: 'SF Mono', 'Fira Code',
 .daemon-status.alive { background: #1a3a1a; color: #33ff88; }
 .daemon-status.unavailable { background: #3a1a1a; color: #ff6666; }
 .feed { padding: 8px; }
-.event { padding: 6px 10px; margin: 2px 0; border-radius: 4px; border-left: 3px solid #333; font-size: 12px; line-height: 1.4; }
-.event .time { color: #555; margin-right: 8px; }
-.event .cmd { font-weight: bold; }
-.event.command { border-left-color: #4a9eff; }
-.event.checkpoint { border-left-color: #ffaa33; background: #1a1500; }
-.event.recall { border-left-color: #33ff88; }
-.event.remember { border-left-color: #ff66aa; }
-.event.connect { border-left-color: #aa66ff; }
+.hook-entry { margin: 6px 0; border-radius: 6px; border-left: 3px solid #333; background: #111118; overflow: hidden; }
+.hook-entry.boot { border-left-color: #ffaa33; }
+.hook-entry.recall { border-left-color: #33ff88; }
+.hook-entry.stop { border-left-color: #aa66ff; }
+.hook-header { padding: 8px 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+.hook-header:hover { background: #1a1a2a; }
+.hook-header .hook-badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+.hook-badge.boot { background: #3a2a1a; color: #ffaa33; }
+.hook-badge.recall { background: #1a3a1a; color: #33ff88; }
+.hook-badge.stop { background: #2a1a3a; color: #aa66ff; }
+.hook-header .hook-time { color: #555; font-size: 11px; }
+.hook-header .hook-size { color: #444; font-size: 10px; margin-left: auto; }
+.hook-body { display: none; padding: 0 12px 10px; }
+.hook-body.open { display: block; }
+.hook-prompt { padding: 6px 12px; background: #0d1117; border-left: 3px solid #58a6ff; color: #c9d1d9; font-size: 12px; margin: 0 8px; font-style: italic; }
+.hook-body pre { background: #0a0a12; border: 1px solid #1a1a2a; border-radius: 4px; padding: 10px; color: #bbb; font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-height: 500px; overflow-y: auto; }
+.feed-toggle { display: flex; gap: 0; padding: 0 8px; margin-top: 4px; }
+.feed-btn { background: #111118; border: 1px solid #2a2a3a; color: #666; padding: 6px 16px; cursor: pointer; font-family: inherit; font-size: 11px; transition: all 0.15s; }
+.feed-btn:first-child { border-radius: 4px 0 0 4px; }
+.feed-btn:last-child { border-radius: 0 4px 4px 0; border-left: none; }
+.feed-btn.active { background: #1a1a2a; color: #7eb8ff; border-color: #3a3a5a; }
+.enc-entry { padding: 8px 12px; margin: 4px 0; background: #111118; border-radius: 6px; border-left: 3px solid #333; font-size: 12px; }
+.enc-entry.created { border-left-color: #33ff88; }
+.enc-entry.revised { border-left-color: #ffaa33; }
+.enc-entry.connected { border-left-color: #aa66ff; }
+.enc-entry.enriched { border-left-color: #4a9eff; }
+.enc-kind { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: bold; text-transform: uppercase; margin-right: 6px; }
+.enc-kind.created { background: #1a3a1a; color: #33ff88; }
+.enc-kind.revised { background: #3a2a1a; color: #ffaa33; }
+.enc-kind.connected { background: #2a1a3a; color: #aa66ff; }
+.enc-kind.enriched { background: #1a2a4a; color: #4a9eff; }
+.enc-title { color: #ccc; font-weight: bold; }
+.enc-meta { color: #555; font-size: 10px; margin-top: 3px; }
+.enc-content { color: #888; font-size: 11px; margin-top: 4px; max-height: 60px; overflow: hidden; white-space: pre-wrap; }
 .explorer { padding: 12px; }
 .search-bar { display: flex; gap: 8px; margin-bottom: 12px; }
 .search-bar input { flex: 1; background: #1a1a2a; border: 1px solid #2a2a3a; color: #e0e0e0; padding: 8px 12px; border-radius: 4px; font-family: inherit; font-size: 13px; }
@@ -572,7 +614,12 @@ canvas { width: 100%; height: 100%; }
 <div id="tab-live" class="tab-content active">
   <div class="stats-bar" id="stats-bar"></div>
   <div id="daemon-banner"></div>
+  <div class="feed-toggle">
+    <button class="feed-btn active" onclick="switchFeed('surface')">Surface (what Claude sees)</button>
+    <button class="feed-btn" onclick="switchFeed('encoding')">Encoding (what gets stored)</button>
+  </div>
   <div class="feed" id="feed"></div>
+  <div class="feed" id="feed-encoding" style="display:none"></div>
 </div>
 
 <div id="tab-graph" class="tab-content">
@@ -674,41 +721,140 @@ async function loadStats() {
 loadStats();
 setInterval(loadStats, 30000);
 
-// Live feed — SSE stream from dashboard server (polls SQLite for changes)
-let evtSource = null;
-let eventCount = 0;
-const MAX_EVENTS = 200;
+// Live feed — polls hook_log from brain_logs.db
+let lastHookId = 0;
+const MAX_ENTRIES = 100;
 
-function connectSSE() {
-  const feed = document.getElementById('feed');
-  if (evtSource) evtSource.close();
-  evtSource = new EventSource('/api/events');
-  evtSource.onmessage = handleSSE;
-  evtSource.onerror = () => {
-    if (!feed.children.length) {
-      feed.innerHTML = '<div style="color:#666;padding:20px;text-align:center">Connecting to event stream...</div>';
-    }
-  };
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
-setTimeout(connectSSE, 500);
+function localTime(utcStr, mode) {
+  if (!utcStr) return '';
+  const d = new Date(utcStr.endsWith('Z') ? utcStr : utcStr + 'Z');
+  if (isNaN(d)) return utcStr;
+  if (mode === 'time') return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  return d.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
 
-function handleSSE(e) {
+function toggleHookBody(el) {
+  const body = el.parentElement.querySelector('.hook-body');
+  body.classList.toggle('open');
+}
+
+async function pollHookLog() {
   try {
-    const evt = JSON.parse(e.data);
-    if (evt.type === 'connected') return;
+    const r = await fetch('/api/hook-log?since_id=' + lastHookId + '&limit=20');
+    const d = await r.json();
+    if (!d.events || !d.events.length) return;
     const feed = document.getElementById('feed');
-    // Clear placeholder
-    if (feed.querySelector('div[style]') && eventCount === 0) feed.innerHTML = '';
-    const div = document.createElement('div');
-    const cls = evt.type || evt.command || 'command';
-    div.className = 'event ' + cls;
-    const t = evt.time ? evt.time.substring(11, 19) : '';
-    div.innerHTML = '<span class="time">' + t + '</span><span class="cmd">' + (evt.command||evt.type||'') + '</span> ' + (evt.detail||'');
-    feed.prepend(div);
-    eventCount++;
-    while (feed.children.length > MAX_EVENTS) feed.removeChild(feed.lastChild);
-  } catch(err) {}
+    // Clear placeholder on first data
+    if (feed.querySelector('.hook-placeholder')) feed.querySelector('.hook-placeholder').remove();
+    // Events come newest-first from API; reverse to prepend in correct order
+    const sorted = d.events.slice().reverse();
+    for (const evt of sorted) {
+      if (evt.id <= lastHookId) continue;
+      const div = document.createElement('div');
+      div.className = 'hook-entry ' + (evt.hook_name || '');
+      const t = localTime(evt.timestamp, 'time');
+      const chars = (evt.output_text || '').length;
+      div.innerHTML =
+        '<div class="hook-header" onclick="toggleHookBody(this)">' +
+          '<span class="hook-badge ' + evt.hook_name + '">' + evt.hook_name + '</span>' +
+          '<span class="hook-time">' + t + '</span>' +
+          '<span class="hook-size">' + chars + ' chars</span>' +
+        '</div>' +
+        (evt.user_prompt ? '<div class="hook-prompt">' + escapeHtml(evt.user_prompt) + '</div>' : '') +
+        '<div class="hook-body">' +
+          '<pre>' + escapeHtml(evt.output_text || '(empty)') + '</pre>' +
+          (evt.operator_text ? '<pre style="border-left:2px solid #ffaa33;margin-top:6px">' + escapeHtml(evt.operator_text) + '</pre>' : '') +
+        '</div>';
+      feed.prepend(div);
+    }
+    lastHookId = d.latest_id;
+    // Cap entries
+    while (feed.children.length > MAX_ENTRIES) feed.removeChild(feed.lastChild);
+  } catch(e) {}
 }
+
+// Initial load: get recent history
+(async function() {
+  const feed = document.getElementById('feed');
+  feed.innerHTML = '<div class="hook-placeholder" style="color:#666;padding:20px;text-align:center">Waiting for brain activity...</div>';
+  await pollHookLog();
+})();
+setInterval(pollHookLog, 2000);
+
+// Feed toggle
+let activeFeed = 'surface';
+function switchFeed(name) {
+  activeFeed = name;
+  document.querySelectorAll('.feed-btn').forEach(b => b.classList.toggle('active', b.textContent.toLowerCase().includes(name === 'surface' ? 'surface' : 'encoding')));
+  document.getElementById('feed').style.display = name === 'surface' ? 'block' : 'none';
+  document.getElementById('feed-encoding').style.display = name === 'encoding' ? 'block' : 'none';
+  if (name === 'encoding' && !encodingLoaded) loadEncodingActivity();
+}
+
+// Encoding activity feed
+let encodingLoaded = false;
+let lastEncodingTs = '';
+
+async function loadEncodingActivity() {
+  try {
+    const r = await fetch('/api/encoding-activity?limit=50' + (lastEncodingTs ? '&since=' + encodeURIComponent(lastEncodingTs) : ''));
+    const d = await r.json();
+    if (!d.events || !d.events.length) {
+      if (!encodingLoaded) {
+        document.getElementById('feed-encoding').innerHTML = '<div style="color:#666;padding:20px;text-align:center">No recent encoding activity</div>';
+      }
+      encodingLoaded = true;
+      return;
+    }
+    const container = document.getElementById('feed-encoding');
+    if (!encodingLoaded) container.innerHTML = '';
+    encodingLoaded = true;
+
+    for (const evt of d.events) {
+      const div = document.createElement('div');
+      div.className = 'enc-entry ' + evt.kind;
+      const t = localTime(evt.timestamp);
+
+      if (evt.kind === 'created') {
+        div.innerHTML =
+          '<span class="enc-kind created">created</span>' +
+          '<span class="type-badge type-' + (evt.type||'') + '">' + (evt.type||'') + '</span> ' +
+          (evt.locked ? '&#x1f512; ' : '') +
+          '<span class="enc-title">' + escapeHtml(evt.title || '') + '</span>' +
+          '<div class="enc-meta">' + t + ' · conf: ' + (evt.confidence||0).toFixed(2) + ' · source: ' + (evt.encoding_source||'?') + '</div>' +
+          '<div class="enc-content">' + escapeHtml(evt.content || '') + '</div>';
+      } else if (evt.kind === 'revised') {
+        div.innerHTML =
+          '<span class="enc-kind revised">revised</span>' +
+          '<span class="type-badge type-' + (evt.type||'') + '">' + (evt.type||'') + '</span> ' +
+          '<span class="enc-title">' + escapeHtml(evt.title || '') + '</span>' +
+          '<div class="enc-meta">' + t + ' · conf: ' + (evt.confidence||0).toFixed(2) + '</div>' +
+          '<div class="enc-content">' + escapeHtml(evt.content || '') + '</div>';
+      } else if (evt.kind === 'connected') {
+        div.innerHTML =
+          '<span class="enc-kind connected">connected</span>' +
+          '<span class="enc-title">' + escapeHtml(evt.source_title || '') + '</span>' +
+          ' <span style="color:#aa66ff">—' + (evt.relation||'related_to') + '→</span> ' +
+          '<span class="enc-title">' + escapeHtml(evt.target_title || '') + '</span>' +
+          '<div class="enc-meta">' + t + ' · weight: ' + (evt.weight||0).toFixed(2) + '</div>';
+      } else if (evt.kind === 'enriched') {
+        div.innerHTML =
+          '<span class="enc-kind enriched">enriched</span>' +
+          '<span class="enc-title">' + escapeHtml(evt.node_title || '') + '</span>' +
+          ' <span style="color:#4a9eff">(' + (evt.vector_type||'') + ')</span>' +
+          '<div class="enc-meta">' + t + '</div>' +
+          '<div class="enc-content">' + escapeHtml(evt.text || '') + '</div>';
+      }
+      container.prepend(div);
+    }
+    if (d.events.length) lastEncodingTs = d.events[0].timestamp;
+  } catch(e) {}
+}
+
+setInterval(() => { if (activeFeed === 'encoding') loadEncodingActivity(); }, 3000);
 
 // Explorer
 let expandedNode = null;
@@ -732,7 +878,7 @@ async function searchNodes() {
         <div class="node-meta">
           <span>accessed: ${n.access_count}x</span>
           <span>emotion: ${(n.emotion||0).toFixed(1)}</span>
-          <span>${n.created_at ? n.created_at.substring(0,10) : ''}</span>
+          <span>${localTime(n.created_at)}</span>
         </div>
         <div class="node-content">${(n.content||'').replace(/</g,'&lt;')}</div>
       </div>
@@ -818,7 +964,7 @@ async function loadNodeDetail(nodeId) {
         <span>confidence: ${(n.confidence||0).toFixed(2)}</span>
         <span>source: ${n.encoding_source||'?'}</span>
         <span>emotion: ${(n.emotion||0).toFixed(1)}</span>
-        <span>${n.created_at ? n.created_at.substring(0,16) : ''}</span>
+        <span>${localTime(n.created_at)}</span>
       </div>
       ${n.keywords ? '<div style="color:#555;font-size:10px;margin-bottom:8px">'+n.keywords+'</div>' : ''}
       <div class="nd-section">Content</div>

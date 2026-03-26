@@ -974,6 +974,28 @@ LOG_TABLES = {
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )""",
     },
+
+    'signal_queue': {
+        'create': """CREATE TABLE IF NOT EXISTS signal_queue (
+            id TEXT PRIMARY KEY,
+            producer TEXT NOT NULL,
+            signal_type TEXT NOT NULL,
+            priority REAL DEFAULT 0.5,
+            content TEXT NOT NULL,
+            content_chars INTEGER DEFAULT 0,
+            metadata TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT,
+            ttl_seconds INTEGER,
+            times_surfaced INTEGER DEFAULT 0,
+            max_surfaces INTEGER,
+            last_surfaced_at TEXT,
+            cooldown_seconds INTEGER,
+            dismissed INTEGER DEFAULT 0,
+            preempt INTEGER DEFAULT 0
+        )""",
+    },
+
 }
 
 LOG_INDEXES = [
@@ -1003,6 +1025,9 @@ LOG_INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_gaps_timestamp ON recall_gaps(timestamp)',
     # v8: pending_consolidation
     'CREATE INDEX IF NOT EXISTS idx_consolidation_resolved ON pending_consolidation(resolved)',
+    # signal_queue
+    'CREATE INDEX IF NOT EXISTS idx_sq_priority ON signal_queue(dismissed, priority DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_sq_producer ON signal_queue(producer)',
 ]
 
 

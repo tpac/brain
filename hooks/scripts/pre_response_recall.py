@@ -5,7 +5,7 @@ Thin client: sends hook_recall to daemon, falls back to direct Python.
 import sys, os, json, time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, is_debug_mode
+from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, is_debug_mode, log_hook_output
 
 APPROVE = json.dumps({"decision": "approve"})
 
@@ -45,6 +45,9 @@ try:
         if resp.get("ok"):
             result = resp.get("result", {})
             _debug_recall_result(result, latency)
+            # Dashboard: log the actual brain surface
+            ctx = result.get("json", {}).get("additionalContext", "") if "json" in result else result.get("output", "")
+            log_hook_output("recall", output_text=ctx, user_prompt=user_message)
             if "json" in result:
                 print(json.dumps(result["json"]))
             elif "output" in result:

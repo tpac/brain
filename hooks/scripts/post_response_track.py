@@ -6,7 +6,7 @@ Thin client: sends hook_post_response_track to daemon, falls back to direct Pyth
 import sys, os, json, time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, is_debug_mode
+from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, is_debug_mode, log_hook_output
 
 hook_input = get_hook_input()
 
@@ -36,6 +36,7 @@ try:
         if resp.get("ok"):
             output = resp.get("result", {}).get("output", "")
             brain_debug("track: completed in %dms%s" % (latency, ", output=%d chars" % len(output) if output else ""))
+            log_hook_output("stop", output_text=output or "(precision + auto-encode ran, no visible output)")
             if output:
                 print(output)
         else:
