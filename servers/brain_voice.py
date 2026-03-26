@@ -601,12 +601,17 @@ class BrainVoice:
                 lines.append("  " + change)
             lines.append("")
 
-        # Section 6: Recall as challenge
+        # Section 6: Recall as challenge — action menu drives encoding behavior
+        # WHY this exact format: Agent A/B experiments (2026-03-26) proved the
+        # 4-option menu was THE single biggest driver of revision behavior.
+        # Without it, every agent defaulted to AGREE on everything.
         if results:
             lines.append("⚠️ ACTIVE RECALL — Review required:")
-            lines.append("Revise outdated nodes in parallel with your response.")
-            lines.append('  Outdated? → revise(node_id="...", content="...", reason="...")')
-            lines.append("  Gap below? → remember() the new topic.")
+            lines.append("For each recalled node, choose an action:")
+            lines.append('  ✅ Agree — still accurate, no changes needed')
+            lines.append('  ✏️ Revise — update: revise(node_id="...", content="...", reason="...")')
+            lines.append('  ❌ Disagree — wrong/outdated, needs correction')
+            lines.append('  📝 Encode new — topic not covered: remember(type="...", title="...", content="...")')
             lines.append("")
 
         if segment_note:
@@ -641,15 +646,45 @@ class BrainVoice:
                 lines.append('→ Merge with revise(node_id="%s", ...) or keep both.' % old_id)
                 lines.append("")
 
-        # Section 6d: Pending Tom messages
+        # Section 6d: Pending Tom messages — 3-tier escalation display
+        # WHY 3 tiers: Agent experiment proved escalation changes behavior from
+        # "I'll encode later" to "I encoded NOW." Progressive pressure, not sudden alarm.
         pending_tom = pending_tom_messages or []
         if pending_tom:
-            lines.append("[BRAIN] PENDING — Tom's recent messages (not yet encoded):")
-            for msg in pending_tom:
-                content_preview = msg.get('content', '')[:200]
-                ts = str(msg.get('timestamp', ''))[:10]
-                lines.append('  "%s" (%s)' % (content_preview, ts))
-            lines.append("")
+            urgent = [m for m in pending_tom if m.get('escalation_level') == 'urgent']
+            attention = [m for m in pending_tom if m.get('escalation_level') == 'attention']
+            pending_normal = [m for m in pending_tom if m.get('escalation_level') == 'pending']
+
+            if urgent:
+                lines.append("🔴 NEEDS IMMEDIATE ATTENTION:")
+                lines.append("These messages contain decisions/corrections NOT yet encoded.")
+                lines.append("Another Claude in a parallel session has NO knowledge of this.")
+                for msg in urgent:
+                    signal_tag = " ⚡%s" % msg['signal_type'].upper() if msg.get('signal_type') else ""
+                    lines.append('  "%s"%s (%s, surfaced %dx)' % (
+                        msg.get('content', '')[:200], signal_tag,
+                        str(msg.get('timestamp', ''))[:10],
+                        msg.get('surfaced_count', 0)))
+                lines.append("Encode or explicitly dismiss. Do not ignore.")
+                lines.append("")
+
+            if attention:
+                lines.append("⚠️ ATTENTION — Tom's messages pending encoding (%d+ turns):" %
+                             attention[0].get('surfaced_count', 3))
+                for msg in attention:
+                    signal_tag = " ⚡%s" % msg['signal_type'].upper() if msg.get('signal_type') else ""
+                    lines.append('  "%s"%s (%s)' % (
+                        msg.get('content', '')[:200], signal_tag,
+                        str(msg.get('timestamp', ''))[:10]))
+                lines.append("")
+
+            if pending_normal:
+                lines.append("[BRAIN] PENDING — Tom's recent messages (not yet encoded):")
+                for msg in pending_normal:
+                    lines.append('  "%s" (%s)' % (
+                        msg.get('content', '')[:200],
+                        str(msg.get('timestamp', ''))[:10]))
+                lines.append("")
 
         # Aspiration compass
         aspirations = prompt_signals.get('aspirations', [])

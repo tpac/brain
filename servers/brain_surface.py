@@ -1197,18 +1197,60 @@ class BrainSurfaceMixin:
     # ═══════════════════════════════════════════════════════════════
 
     def store_exchange(self, user_message: str, assistant_response: str,
-                       session_id: str = '') -> Dict[str, Any]:
+                       session_id: str = '',
+                       signal_type: Optional[str] = None) -> Dict[str, Any]:
         """Store both messages to the conversation stream.
 
         Called by hook_post_response_track on every Stop event.
         Tom's messages become pending encoding material.
-        Returns dict with user_id and assistant_id row IDs.
+
+        Args:
+            user_message: Tom's raw message
+            assistant_response: Claude's response
+            session_id: current session ID
+            signal_type: from auto_encode() — 'decision', 'correction',
+                         'insight', 'exploration', or None. Stored on the
+                         user message for escalation in get_actionable().
+
+        Returns:
+            Dict with user_id, assistant_id, signal_type.
         """
         from .dal_message_stream import MessageStreamDAL
         dal = MessageStreamDAL(self.logs_conn)
-        user_id = dal.store('user', user_message, session_id)
+        # Signal annotates the USER message (Tom's words), not the assistant response
+        user_id = dal.store('user', user_message, session_id, signal_type=signal_type)
         assistant_id = dal.store('assistant', assistant_response, session_id)
-        return {'user_id': user_id, 'assistant_id': assistant_id}
+        return {'user_id': user_id, 'assistant_id': assistant_id, 'signal_type': signal_type}
+
+    def resolve_recent_pending(self, reason: str = 'encoded',
+                                max_age_hours: int = 1,
+                                limit: int = 5) -> int:
+        """Mark recent pending messages as resolved.
+
+        Called after any encoding action (remember, revise, vocabulary, etc.)
+        to close the loop: message → surfaced → encoded → resolved.
+
+        This is the SINGLE ENTRY POINT for resolving pending messages.
+        Any future encoding path (vocabulary, corrections, etc.) calls this
+        same method — no need to rewire for each new encoding type.
+
+        Args:
+            reason: 'encoded' (stored to brain), 'dismissed' (explicitly skipped)
+            max_age_hours: only mark messages within this window.
+                WHY 1 hour default: if Claude encodes, the recent messages
+                are the likely prompt. Don't mark 24h-old messages.
+            limit: max messages to resolve per call.
+
+        Returns:
+            Count of messages resolved.
+        """
+        from .dal_message_stream import MessageStreamDAL
+        msg_dal = MessageStreamDAL(self.logs_conn)
+        pending = msg_dal.get_actionable(limit=limit, max_age_hours=max_age_hours)
+        if not pending:
+            return 0
+        count = msg_dal.mark_resolved([m['id'] for m in pending], reason=reason)
+        return count
 
     # ═══════════════════════════════════════════════════════════════
     # v8: Consolidation detection — find overlapping nodes

@@ -509,12 +509,13 @@ def hook_recall(brain, args, graph_changes):
         except Exception as e:
             brain._log_error('hook_recall_gap_log', e, 'Failed to log recall gap')
 
-    # Pending Tom messages from conversation stream
+    # Pending Tom messages from conversation stream (with escalation)
+    # get_actionable() returns chronological order + escalation_level + increments surfaced_count
     pending_tom_messages = []
     try:
         from .dal_message_stream import MessageStreamDAL
         msg_dal = MessageStreamDAL(brain.logs_conn)
-        pending_tom_messages = msg_dal.get_pending(limit=3)
+        pending_tom_messages = msg_dal.get_actionable(limit=5, max_age_hours=48)
     except Exception as e:
         brain._log_error('hook_recall_pending_messages', e, 'Failed to get pending Tom messages')
 
@@ -586,11 +587,14 @@ def hook_post_response_track(brain, args, graph_changes):
     except Exception as e:
         brain._log_error('track_response', e, 'Stop hook')
 
-    # 2. Encoding instinct: auto-encode the exchange
+    # 2. Encoding instinct: auto-encode the exchange + capture signal type
+    auto_signal = None
     try:
-        result = brain.auto_encode(user_message, assistant_response)
-        if result:
-            _log('[auto-encode] %s: "%s"' % (result.get('type', '?'), result.get('title', '?')[:60]))
+        auto_result = brain.auto_encode(user_message, assistant_response)
+        if auto_result:
+            auto_signal = auto_result.get('signal')
+            _log('[auto-encode] %s: "%s" (signal: %s)' % (
+                auto_result.get('type', '?'), auto_result.get('title', '?')[:60], auto_signal))
     except Exception as e:
         brain._log_error('auto_encode', e, 'Stop hook')
 
@@ -600,10 +604,12 @@ def hook_post_response_track(brain, args, graph_changes):
     except Exception as e:
         brain._log_error('detect_vocab_gaps', e, 'Stop hook')
 
-    # 4. Invisible capture: store conversation to message stream
+    # 4. Invisible capture: store conversation WITH signal from auto_encode
+    # Signal flows: auto_encode detects → store_exchange annotates → get_actionable escalates
     try:
         session_id = brain.get_config('session_id', '')
-        brain.store_exchange(user_message, assistant_response, session_id)
+        brain.store_exchange(user_message, assistant_response, session_id,
+                             signal_type=auto_signal)
     except Exception as e:
         brain._log_error('store_exchange', e, 'Stop hook: failed to store exchange to message stream')
 
@@ -819,6 +825,16 @@ def hook_idle_maintenance(brain, args, graph_changes):
     except Exception as e:
         brain._log_error('idle_consolidation', e, 'Consolidation detection failed')
         output.append("CONSOLIDATION ERROR: %s" % e)
+
+    # 3f. Expire old pending messages (> 48h = stale, resolve silently)
+    try:
+        from .dal_message_stream import MessageStreamDAL
+        msg_dal = MessageStreamDAL(brain.logs_conn)
+        expired = msg_dal.expire_old(max_age_hours=48)
+        if expired:
+            output.append("MSG_STREAM: expired %d old pending messages" % expired)
+    except Exception as e:
+        brain._log_error('idle_expire_messages', e, 'Failed to expire old messages')
 
     # 4. Reflection prompts
     try:

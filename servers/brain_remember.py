@@ -532,6 +532,15 @@ class BrainRememberMixin:
         except Exception as e:
             print(f'[brain] V5 enrichment prompt failed for {node_id}: {e}', file=sys.stderr)
 
+        # v8: Mark recent pending messages as resolved (encoding closes the loop)
+        # Uses resolve_recent_pending() — the single entry point for ALL encoding paths
+        resolved_count = 0
+        try:
+            resolved_count = self.resolve_recent_pending(reason='encoded')
+        except Exception as e:
+            self._log_error('remember_resolve_pending', e,
+                            'Failed to resolve pending messages after encoding %s' % node_id[:8])
+
         return {
             'id': node_id,
             'type': type,
@@ -543,6 +552,7 @@ class BrainRememberMixin:
             'personal': personal,  # v4
             'enrichment_prompt': enrichment_prompt,  # v6: for Claude to fill in
             'enrichment_stored': enrichment_stored,  # v6: count of stored enrichments
+            'pending_resolved': resolved_count,  # v8: how many pending messages were resolved
         }
 
     # ═══════════════════════════════════════════════════════════════
@@ -628,6 +638,14 @@ class BrainRememberMixin:
             self._log_error("revise_consolidation_resolve", e,
                             "Failed to auto-resolve consolidation pair for %s" % node_id[:8])
 
+        # v8: Mark recent pending messages as resolved (revision closes the loop)
+        pending_resolved = 0
+        try:
+            pending_resolved = self.resolve_recent_pending(reason='encoded')
+        except Exception as e:
+            self._log_error('revise_resolve_pending', e,
+                            'Failed to resolve pending messages after revising %s' % node_id[:8])
+
         return {
             'id': node_id,
             'type': node_type,
@@ -635,6 +653,7 @@ class BrainRememberMixin:
             'revised_at': ts,
             'content_length': len(new_content),
             'embedding_updated': embedding_updated,
+            'pending_resolved': pending_resolved,
         }
 
     # ═══════════════════════════════════════════════════════════════
