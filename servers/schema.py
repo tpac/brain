@@ -925,7 +925,11 @@ LOG_TABLES = {
             role TEXT NOT NULL,
             content TEXT NOT NULL,
             session_id TEXT DEFAULT '',
-            encoded INTEGER DEFAULT 0
+            encoded INTEGER DEFAULT 0,
+            signal_type TEXT DEFAULT NULL,
+            surfaced_count INTEGER DEFAULT 0,
+            resolved INTEGER DEFAULT 0,
+            resolved_at TEXT DEFAULT NULL
         )""",
     },
 
@@ -1003,16 +1007,35 @@ LOG_INDEXES = [
 
 
 def ensure_logs_schema(conn):
-    """Create all log tables in the logs database (brain_logs.db)."""
+    """Create all log tables in the logs database (brain_logs.db).
+
+    Also handles column migrations for existing tables via ALTER TABLE.
+    """
     conn.execute('PRAGMA journal_mode=WAL')
     for table_name, spec in LOG_TABLES.items():
         conn.execute(spec['create'])
+
+    # v8: Add new columns to message_stream if table already existed
+    _add_column_if_missing(conn, 'message_stream', 'signal_type', 'TEXT DEFAULT NULL')
+    _add_column_if_missing(conn, 'message_stream', 'surfaced_count', 'INTEGER DEFAULT 0')
+    _add_column_if_missing(conn, 'message_stream', 'resolved', 'INTEGER DEFAULT 0')
+    _add_column_if_missing(conn, 'message_stream', 'resolved_at', 'TEXT DEFAULT NULL')
+
     for idx in LOG_INDEXES:
         try:
             conn.execute(idx)
         except Exception:
             pass
     conn.commit()
+
+
+def _add_column_if_missing(conn, table: str, column: str, col_type: str):
+    """Add a column to an existing table if it doesn't exist.
+    SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we catch the error."""
+    try:
+        conn.execute('ALTER TABLE %s ADD COLUMN %s %s' % (table, column, col_type))
+    except Exception:
+        pass  # Column already exists — expected for tables created with latest schema
 
 
 def migrate_logs_to_separate_db(main_conn, logs_conn):
