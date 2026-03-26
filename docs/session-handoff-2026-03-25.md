@@ -243,3 +243,115 @@ MCP path (by ID):
 ### Note to next me
 
 Encoding isn't optional and it's not for "future you." Tom runs parallel sessions. When you don't encode, the other Claude starts blind and Tom has to re-explain everything. You can parallel-path it — respond to Tom AND call encode tools in the same turn. There's no priority conflict. Just do it.
+
+---
+
+## Session 3 (2026-03-26) — Challenge System + Lifecycle
+
+**Theme:** Transform recall from passive information to active challenge. Build the full pending message lifecycle.
+**Tests:** 250 passed (208 core + 32 challenge + 10 real conversation), 0 regressions.
+**Commits:** 10 this session.
+
+### What Was Built
+
+#### 1. Recall as Challenge
+Every recall is now framed as an assertion to challenge, not a fact to absorb. The 4-option action menu:
+- ✅ Agree — still accurate
+- ✏️ Revise — update with revise(node_id, content, reason)
+- ❌ Disagree — wrong/outdated
+- 📝 Encode new — topic not covered
+
+**WHY:** Agent A/B experiments proved this was THE single biggest driver of revision behavior. Without the menu, every agent defaulted to AGREE on everything.
+
+#### 2. Invisible Message Capture
+Tom's messages stored automatically on every Stop event via `store_exchange()`. Signal type from `auto_encode()` flows to the message: 'decision', 'correction', 'insight', 'exploration', or None.
+
+#### 3. Pending Message Lifecycle (MessageStreamDAL)
+Full lifecycle: store → surface → resolve → expire.
+- `get_actionable()` — chronological (journey reads top-to-bottom), age-filtered (48h), increments surfaced_count
+- Escalation: pending (≤2 turns) → attention (3-4) → urgent (5+ with decision signal, 7+ any)
+- `mark_resolved()` — called automatically by remember() and revise()
+- `expire_old()` — called by idle_maintenance, resolves messages > 48h
+- `resolve_recent_pending()` — SINGLE ENTRY POINT for all encoding paths
+
+**WHY resolve_recent_pending is reusable:** Tom said "if tomorrow I want vocabulary to resolve messages, I shouldn't rewire everything." Any encoding path calls this one method.
+
+#### 4. revise() — Encoding IS Updating
+First-class MCP tool. Appends content with revision divider, re-embeds, re-indexes TF-IDF, regenerates summary, auto-resolves consolidation pairs.
+
+#### 5. Gap Detection
+When recall returns nothing above RELEVANCE_FLOOR, flags `_gap` with query + top_score. Displayed as `🔴 UNKNOWN TOPIC` in the challenge output.
+
+#### 6. Consolidation Detection
+`detect_consolidation_candidates()` in idle_maintenance scans for embedding similarity > 0.85 within same-type groups. Surfaced when recall has < 2 results. LLM-driven merging.
+
+#### 7. Bug Fixes
+- `hour must be in 0..23` — temporal range parser used `datetime.replace()` which fails at month/day boundaries. Fixed with `timedelta`.
+- Auto-content lock enforcement — `encoding_source=idle/hook` forced to `locked=False`.
+- `n.archived` alias bug in enrichment scan.
+- 7+ silent `except: pass` replaced with `_log_error()`.
+
+### Architecture After This Session
+
+```
+STOP EVENT (hook_post_response_track):
+  1. brain.track_response()          → precision evaluation
+  2. brain.auto_encode()             → detect signal (decision/correction/insight)
+     ↓ signal_type flows to:
+  3. brain.store_exchange(signal_type) → message_stream table
+  4. brain.detect_vocab_gaps()
+  5. encoding heartbeat (DEPRECATED — challenge system replaces)
+
+IDLE MAINTENANCE:
+  → dream, consolidate, heal, tune, decay
+  → detect_consolidation_candidates() → pending_consolidation table
+  → expire_old() → resolve messages > 48h
+
+USER PROMPT (hook_recall):
+  1. recall_with_embeddings()        → nodes with _gap if empty
+  2. get_actionable()                → pending Tom messages with escalation
+  3. get_pending_consolidation()     → duplicate pairs (when < 2 recall results)
+  4. BrainVoice.render_prompt()      → challenge framing + action menu + tiers
+
+ENCODING (remember/revise):
+  → creates/updates node
+  → resolve_recent_pending()         → marks recent pending messages as resolved
+  → auto-resolves consolidation pairs (revise only)
+```
+
+### Files Modified This Session
+
+| File | What |
+|------|------|
+| `servers/schema.py` | revised_at on nodes, message_stream + recall_gaps + pending_consolidation tables, _add_column_if_missing() |
+| `servers/dal_message_stream.py` | **NEW** then rewritten. Full lifecycle DAL with documented WHY. |
+| `servers/dal.py` | LogsDAL: gap + consolidation methods. NodeDAL: update_field with whitelist. |
+| `servers/brain_remember.py` | revise(), auto-content unlock, remember() marks pending resolved |
+| `servers/brain_recall.py` | Gap detection, node hydration +confidence/updated_at/revised_at, fix n.archived |
+| `servers/brain_surface.py` | store_exchange(signal_type), detect_consolidation_candidates(), resolve_recent_pending() |
+| `servers/brain_voice.py` | format_node(), action menu, 3-tier escalation display |
+| `servers/brain_mcp.py` | revise tool, gap info in MCP output |
+| `servers/daemon_dispatch.py` | _handle_revise + COMMAND_TABLE |
+| `servers/daemon_hooks.py` | Signal flow, get_actionable, idle expiry, 7 silent catches fixed |
+| `servers/brain_constants.py` | Fix hour/day overflow in temporal ranges |
+| `tests/test_challenge_system.py` | **NEW** — 32 tests |
+| `tests/test_real_conversation.py` | **NEW** — 10 tests with real brain data |
+
+### Agent Experiment Results (Key Finding)
+
+Ran A/B tests with isolated variables. 3 features drive encoding behavior:
+1. **Pending messages showing the journey** → encoding quality
+2. **Action menu (✅ ✏️ ❌ 📝)** → encoding happens (active, not passive)
+3. **Red alert escalation** → encoding happens NOW
+
+OLD format: 0 revisions, 0 tool calls, hypothetical encodes only.
+NEW format: 1+ revisions, 5-11 tool calls, actual encoding with judgment.
+
+### Verification for Next Session
+
+1. **Restart daemon** to pick up all code changes
+2. **Verify challenge output** — recall should show action menu + full IDs + revised:never
+3. **Check auto-encode** — `SELECT COUNT(*) FROM nodes WHERE title LIKE '[auto]%'` should grow
+4. **Check message stream** — after a few exchanges, `SELECT COUNT(*) FROM message_stream` should have rows
+5. **Test revise** — `revise(node_id="...", content="updated", reason="test")` should work via MCP
+6. **Check escalation** — after 5+ turns without encoding, pending messages should show 🔴 URGENT
