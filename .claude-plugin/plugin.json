@@ -1,7 +1,7 @@
 {
   "name": "brain",
-  "version": "6.0.0",
-  "description": "Shared cognitive space for Claude + operator. v6.0: Anchor (identity-first SKILL.md), Continuity Benchmark (13 encoding variants), decode funnel (50 queries, 51% top-3), recency boost (1.5x/1.2x), precision loop fix, TCP daemon, vocab auto-cleanup. Identity drives encoding — brain IS the prompt.",
+  "version": "7.0.0",
+  "description": "Shared cognitive space for Claude + operator. v7.0: Recall as challenge (4-option action menu), revise() for updating nodes, invisible message capture, 3-tier escalation (pending/attention/urgent), consolidation detection, gap detection. Agent-experiment-validated: pending journey + action menu + escalation = encoding happens.",
   "author": {
     "name": "Tom Pachys"
   },

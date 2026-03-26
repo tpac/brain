@@ -10,8 +10,8 @@
     {
       "name": "brain",
       "source": "./",
-      "description": "Shared cognitive space for Claude + operator. v5.4: conflict protocol, identity tags, precision evaluation, telemetry, seed brain, consciousness signals, engineering memory, self-correction traces, session synthesis, vocabulary system. 301 tests.",
-      "version": "5.4.0",
+      "description": "Shared cognitive space for Claude + operator. v7.0: Challenge system (recall as active evaluation), revise(), invisible message capture, escalation, consolidation detection, gap detection. 250 tests. Agent-validated.",
+      "version": "7.0.0",
       "author": {
         "name": "Tom Pachys"
       }
