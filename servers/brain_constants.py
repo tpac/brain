@@ -6,7 +6,7 @@ Extracted to avoid circular imports (mixins can't import from brain.py).
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ═══════════════════════════════════════════════════════════════
 # CONSTANTS: Decay rates by node type (hours until weight halves)
@@ -236,13 +236,13 @@ TEMPORAL_PATTERNS = [
     {
         'pattern': re.compile(r'\brecently\b', re.IGNORECASE),
         'range_fn': lambda: {
-            'after': datetime.utcnow().replace(day=datetime.utcnow().day - 3).isoformat() + 'Z'
+            'after': (datetime.utcnow() - timedelta(days=3)).isoformat() + 'Z'
         }
     },
     {
         'pattern': re.compile(r'\blast session\b', re.IGNORECASE),
         'range_fn': lambda: {
-            'after': datetime.utcnow().replace(hour=datetime.utcnow().hour - 6).isoformat() + 'Z'
+            'after': (datetime.utcnow() - timedelta(hours=6)).isoformat() + 'Z'
         }
     },
 ]
