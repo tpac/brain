@@ -1,7 +1,7 @@
 {
   "name": "brain",
-  "version": "7.0.0",
-  "description": "Shared cognitive space for Claude + operator. v7.0: Recall as challenge (4-option action menu), revise() for updating nodes, invisible message capture, 3-tier escalation (pending/attention/urgent), consolidation detection, gap detection. Agent-experiment-validated: pending journey + action menu + escalation = encoding happens.",
+  "version": "8.0.0",
+  "description": "Shared cognitive space for Claude + operator. v8.0: Signal queue replaces consciousness (31→4 signals), surface assembler with priority+budget, daemon supervisor with self-heal+embed lock, dashboard hook logging (Surface/Encoding/Queue tabs), delete daemon facade, stale lock cleanup, MCP health monitor, hook fallback for daemon-down visibility.",
   "author": {
     "name": "Tom Pachys"
   },

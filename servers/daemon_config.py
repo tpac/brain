@@ -18,7 +18,7 @@ os.environ.setdefault("PYTORCH_MPS_DISABLE", "1")
 
 # ─── Constants ───
 
-IDLE_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
+IDLE_TIMEOUT_SECONDS = 4 * 60 * 60  # 4 hours
 AUTOSAVE_INTERVAL_SECONDS = 60  # Save every 60 seconds if dirty
 SOCKET_BACKLOG = 5
 MAX_MESSAGE_SIZE = 1024 * 1024  # 1MB max message

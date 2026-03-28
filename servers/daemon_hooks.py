@@ -29,153 +29,9 @@ from servers.brain_voice import (
 )
 
 # Backwards-compatible function aliases — delegate to BrainVoice static methods
-_format_recall_results = BrainVoice.format_recall_results
+# format_recall_results used only by MCP tool output, not by hook path
 _format_encoding_warning = BrainVoice.format_encoding_warning
 _format_suggestions = BrainVoice.format_suggestions
-
-# DEPRECATED (pending removal): Challenge system in recall framing replaces
-# generic checkpoint questions. Keeping temporarily until challenge system
-# is validated across 5+ sessions. Track: if challenge-driven encoding rate
-# exceeds checkpoint-driven rate, remove this + _behavioral_mirror.
-CHECKPOINT_CYCLE = [
-    "What surprised you in the last few exchanges? What did Tom say that "
-    "shifted how you think about something?",
-
-    "What do you NOT understand right now? What are you pretending is clear "
-    "but actually isn't?",
-
-    "If you disappeared right now and a new Claude woke up, what would they "
-    "need to know that ISN'T in the brain yet?",
-
-    "What did Tom actually mean — not what he said, but the insight underneath? "
-    "Did you capture his words or just your summary?",
-
-    "What changed about how you see the system, the architecture, or the "
-    "partnership? Not what you built — what you learned.",
-]
-
-MIRROR_TYPES = ('lesson', 'correction', 'interaction', 'pattern',
-                'mental_model', 'failure_mode', 'boot', 'rule')
-
-
-def _detect_encoding_pattern(brain, messages_since_encode, total_encodes):
-    """Detect what kind of encoding behavior is happening and return
-    (pattern_name, recall_query) for the behavioral mirror.
-
-    Patterns detected from session data, not self-report — because Claude
-    can't see its own bias while in it."""
-
-    # Never encoded — strongest drift signal
-    if total_encodes == 0:
-        return ("never_encoded",
-                "Claude encoding drift compression instinct, never encoded in session")
-
-    # Long gap — drifting
-    if messages_since_encode > 10:
-        return ("long_drift",
-                "encoding drift building without remembering, losing context")
-
-    # Check recent node quality: are they thin?
-    try:
-        rows = brain.conn.execute(
-            """SELECT AVG(LENGTH(content)), COUNT(*)
-               FROM nodes WHERE created_at > datetime('now', '-2 hours')"""
-        ).fetchone()
-        avg_len = rows[0] or 0
-        node_count = rows[1] or 0
-
-        if node_count > 0 and avg_len < 200:
-            return ("thin_encoding",
-                    "encoding should be RICH not summaries, abstraction bias, "
-                    "abstract away the thing that makes memories stick")
-
-        # Check: any quotes preserved?
-        quote_count = brain.conn.execute(
-            """SELECT COUNT(*) FROM nodes
-               WHERE created_at > datetime('now', '-2 hours')
-               AND (content LIKE '%Tom said%' OR content LIKE '%Tom:%'
-                    OR content LIKE '%exact words%' OR type = 'interaction')"""
-        ).fetchone()[0]
-        if node_count >= 3 and quote_count == 0:
-            return ("no_quotes",
-                    "Tom exact words quotes preserve operator words, "
-                    "paraphrase destroys nuance")
-
-        # Check: all same type? (lack of diversity)
-        type_count = brain.conn.execute(
-            """SELECT COUNT(DISTINCT type) FROM nodes
-               WHERE created_at > datetime('now', '-2 hours')"""
-        ).fetchone()[0]
-        if node_count >= 4 and type_count <= 1:
-            return ("type_monotony",
-                    "encoding diversity node types, not just decisions, "
-                    "interactions quotes uncertainty corrections")
-
-        # Check: encoding fast with high emotion — confidence inflation
-        high_emotion = brain.conn.execute(
-            """SELECT COUNT(*) FROM nodes
-               WHERE created_at > datetime('now', '-2 hours')
-               AND emotion > 0.6"""
-        ).fetchone()[0]
-        if node_count >= 3 and high_emotion > node_count * 0.7:
-            return ("confidence_inflation",
-                    "confidence inflated session energy excitement, "
-                    "discovery moments feel more certain than they are")
-
-    except Exception:
-        pass
-
-    # Default: general encoding gap
-    if messages_since_encode > 4:
-        return ("encoding_gap",
-                "encoding gap during active work, compression instinct defer later")
-
-    return ("", "")
-
-
-
-
-def _behavioral_mirror(brain, messages_since_encode, total_encodes):
-    """Surface the right self-knowledge based on observed encoding behavior.
-
-    The brain is the mirror — it shows Claude what Claude can't see about
-    itself. Not instructions. Self-awareness.
-
-    Fires on every checkpoint, not just during drift. The mirror picks what
-    to show based on pattern detection, not generic keyword matching."""
-
-    pattern, query = _detect_encoding_pattern(
-        brain, messages_since_encode, total_encodes)
-
-    if not query:
-        return ""
-
-    try:
-        results = brain.recall_with_embeddings(query, limit=5)
-        nodes = results if isinstance(results, list) else results.get('results', [])
-
-        for node in nodes:
-            node_type = node.get('type', '')
-            if node_type not in MIRROR_TYPES:
-                continue
-
-            title = node.get('title', '')
-            content = node.get('content', '')
-
-            # Prefer nodes with quotes (Anchor quotes are identity)
-            if 'quote' in title.lower() or 'Anchor quote' in title:
-                return "Previous Claude: %s\n%s" % (title, content[:300])
-
-            # Then corrections and interactions (stories > rules)
-            if node_type in ('correction', 'interaction'):
-                return "Previous Claude: %s\n%s" % (title, content[:300])
-
-            # Then any matching self-knowledge
-            return "Previous Claude: %s" % content[:250]
-
-    except Exception:
-        pass
-    return ""
 
 
 DESTRUCTIVE_REGEXES = [
@@ -204,71 +60,9 @@ ENV_CHANGE_PATTERNS = [
 
 # ── Helpers ──
 
-def _store_pending(brain, message):
-    """Store a pending message for next UserPromptSubmit to drain."""
-    try:
-        existing = brain.get_config("pending_hook_messages", "[]")
-        pending = json.loads(existing) if existing else []
-    except Exception:
-        pending = []
-    pending.append(message)
-    pending = pending[-5:]  # cap at 5
-    brain.set_config("pending_hook_messages", json.dumps(pending))
 
 
-def _drain_pending(brain):
-    """Read and clear pending messages. Returns list of strings."""
-    try:
-        existing = brain.get_config("pending_hook_messages", "[]")
-        pending = json.loads(existing) if existing else []
-        if pending:
-            brain.set_config("pending_hook_messages", "[]")
-    except Exception:
-        pending = []
-    return pending
 
-
-def _drain_debug_logs(brain):
-    """Read and clear hook_debug entries from brain_logs.db.
-
-    Uses a high-water mark (last_drained_debug_id in brain_meta) so each
-    debug message is surfaced exactly once. Returns list of formatted strings.
-    """
-    try:
-        last_id = int(brain.get_config("last_drained_debug_id", "0") or 0)
-        rows = brain.logs_conn.execute(
-            "SELECT id, source, metadata, created_at FROM debug_log "
-            "WHERE event_type = 'hook_debug' AND id > ? ORDER BY id LIMIT 20",
-            (last_id,),
-        ).fetchall()
-        if not rows:
-            return []
-        messages = []
-        max_id = last_id
-        for row in rows:
-            rid, source, metadata, ts = row
-            if rid > max_id:
-                max_id = rid
-            try:
-                meta = json.loads(metadata) if metadata else {}
-            except Exception:
-                meta = {}
-            msg = meta.get("message", metadata or "")
-            short_ts = ts[11:19] if ts and len(ts) > 19 else ts or ""
-            messages.append("[%s] %s: %s" % (short_ts, source, msg))
-        brain.set_config("last_drained_debug_id", str(max_id))
-        return messages
-    except Exception:
-        return []
-
-
-def _drain_graph_changes(graph_changes):
-    """Drain and return graph changes, clearing the list."""
-    if not graph_changes:
-        return []
-    changes = list(graph_changes)
-    graph_changes.clear()
-    return changes
 
 
 def _get_precision(brain):
@@ -445,31 +239,7 @@ def hook_recall(brain, args, graph_changes):
     except Exception:
         pass
 
-    # Drain pending messages
-    pending_messages = _drain_pending(brain)
-
-    # Encoding feedback — surface what was auto-encoded from last exchange
-    try:
-        encoding_feedback = brain.surface_encoding_feedback()
-        if encoding_feedback:
-            pending_messages.append(encoding_feedback)
-    except Exception as e:
-        brain._log_error('encoding_feedback', e, 'hook_recall')
-
-    # Drain debug logs (hook_debug entries from brain_logs.db)
-    debug_messages = _drain_debug_logs(brain)
-
-    # Drain graph changes
-    recent_graph_changes = _drain_graph_changes(graph_changes)
-
-    # Awareness heartbeat — urgent signals from consciousness layer
-    urgent_signals = []
-    try:
-        urgent_signals = brain.get_urgent_signals()
-    except Exception as e:
-        brain._log_error('urgent_signals', e, 'hook_recall')
-
-    if not results and not pending_messages and not urgent_signals and not recent_graph_changes and not debug_messages:
+    if not results:
         brain.save()
         return {"json": {"decision": "approve"}}
 
@@ -487,18 +257,6 @@ def hook_recall(brain, args, graph_changes):
     except Exception as e:
         brain._log_error('priming_check', e, 'hook_recall')
 
-    # ── Precision: request feedback if uncertain about previous recall ──
-    precision_feedback = None
-    try:
-        prev_eval_id = brain.get_config("last_evaluated_recall_id", "")
-        if prev_eval_id:
-            precision = _get_precision(brain)
-            precision_feedback = precision.request_feedback(int(prev_eval_id))
-    except Exception as e:
-        brain._log_error('precision_feedback', e, 'hook_recall')
-
-    # ── v8: Challenge system components ──
-
     # Gap detection: log gaps for trend analysis
     gap = result.get('_gap') if isinstance(result, dict) else None
     if gap:
@@ -509,174 +267,41 @@ def hook_recall(brain, args, graph_changes):
         except Exception as e:
             brain._log_error('hook_recall_gap_log', e, 'Failed to log recall gap')
 
-    # Pending Tom messages from conversation stream (with escalation)
-    # get_actionable() returns chronological order + escalation_level + increments surfaced_count
-    pending_tom_messages = []
-    try:
-        from .dal_message_stream import MessageStreamDAL
-        msg_dal = MessageStreamDAL(brain.logs_conn)
-        pending_tom_messages = msg_dal.get_actionable(limit=5, max_age_hours=48)
-    except Exception as e:
-        brain._log_error('hook_recall_pending_messages', e, 'Failed to get pending Tom messages')
-
-    # Consolidation candidates (only when recall returned few results)
-    consolidation = []
-    consolidation_total = 0
-    if len(results) < 2:
-        try:
-            from .dal import LogsDAL as _LogsDAL
-            logs_dal = _LogsDAL(brain.logs_conn)
-            consolidation_total = logs_dal.count_pending_consolidation()
-            if consolidation_total:
-                raw_pairs = logs_dal.get_pending_consolidation(limit=2)
-                for pair in raw_pairs:
-                    # Hydrate both nodes with full enrichment (neighbors, metadata)
-                    node_a_result = brain.recall_node(pair['node_id_a'], neighbor_limit=2)
-                    node_b_result = brain.recall_node(pair['node_id_b'], neighbor_limit=2)
-                    if node_a_result.get('results') and node_b_result.get('results'):
-                        consolidation.append({
-                            'node_a': node_a_result['results'][0],
-                            'node_b': node_b_result['results'][0],
-                            'pair_id': pair['id'],
-                            'similarity': pair['similarity'],
-                        })
-        except Exception as e:
-            brain._log_error('hook_recall_consolidation', e, 'Failed to get consolidation pairs')
-
-    # ── DECIDE + FORMAT via BrainVoice ──
-    voice = BrainVoice(brain)
-    prompt_signals = voice.select_prompt_signals(user_message, results)
-    rendered = voice.render_prompt(
-        results=results,
-        prompt_signals=prompt_signals,
-        urgent_signals=urgent_signals,
-        segment_note=segment_note,
-        priming_note=priming_note,
-        graph_changes=recent_graph_changes,
-        pending_messages=pending_messages,
-        debug_messages=debug_messages,
-        precision_feedback=precision_feedback,
-        # v8: Challenge system
-        gap=gap,
-        consolidation=consolidation,
-        consolidation_total=consolidation_total,
-        pending_tom_messages=pending_tom_messages,
+    # ── PRODUCE: seed the signal queue ──
+    from .dal_signal_queue import SignalQueueDAL
+    from .surface_assembler import SurfaceAssembler
+    from .signal_producers import (
+        produce_reminders, produce_encoding_gap,
+        produce_vocabulary_gap, produce_system_health,
     )
 
+    sq_dal = SignalQueueDAL(brain.logs_conn)
+    produce_reminders(brain, sq_dal)
+    produce_encoding_gap(brain, sq_dal)
+    produce_vocabulary_gap(brain, sq_dal)
+    produce_system_health(brain, sq_dal)
+
+    # ── ASSEMBLE: budget-aware output ──
+    assembler = SurfaceAssembler(sq_dal, budget_chars=6000)
+    rendered = assembler.assemble(results, segment_note, priming_note, gap)
+
     brain.save()
+    voice = BrainVoice(brain)
     merged = voice.wrap_for_hook(rendered['for_claude'], rendered.get('for_operator'))
 
-    # ── SHADOW: Signal Queue + Assembler (Phase 1 — log only, don't use) ──
+    # Log to dashboard
     try:
-        from .dal_signal_queue import SignalQueueDAL
-        from .surface_assembler import SurfaceAssembler
+        from hooks.scripts.hook_common import log_hook_output
+        log_hook_output("RECALL", output_text=merged, operator_text=rendered.get('for_operator', ''),
+                        user_prompt=user_message)
+    except Exception:
+        pass
 
-        sq_dal = SignalQueueDAL(brain.logs_conn)
-
-        # Seed queue from existing data (temporary shim — Phase 2 replaces with proper producers)
-        _seed_signal_queue(sq_dal, urgent_signals, prompt_signals, pending_tom_messages)
-
-        # Run assembler in shadow mode
-        assembler = SurfaceAssembler(sq_dal, budget_chars=6000)
-        assembled = assembler.assemble(results, segment_note, priming_note, gap)
-
-        # Log comparison to dashboard DB
-        _log_assembler_comparison(brain, merged, assembled, user_message)
-    except Exception as e:
-        brain._log_error('hook_recall_assembler_shadow', e, 'Signal queue shadow mode failed')
-
-    result_json = {"additionalContext": merged}
-
+    result_json = {"additionalContext": merged} if merged.strip() else {"decision": "approve"}
     return {"json": result_json}
 
 
-def _seed_signal_queue(sq_dal, urgent_signals, prompt_signals, pending_tom_messages):
-    """Temporary shim: re-enqueue existing signals into the queue.
 
-    Phase 2 replaces this with proper producers that own their lifecycle.
-    Deterministic IDs prevent duplicates even though this runs every turn.
-    """
-    # Urgent signals (consciousness layer)
-    for i, sig in enumerate(urgent_signals or []):
-        sq_dal.enqueue(
-            id="urgent:%d" % (hash(sig) % 100000),
-            producer="consciousness", signal_type="urgent",
-            priority=0.9, content=sig, max_surfaces=5)
-
-    # Tensions
-    for t in (prompt_signals or {}).get('tensions', []):
-        tid = t.get('id', t.get('title', ''))[:30]
-        sq_dal.enqueue(
-            id="tension:%s" % tid,
-            producer="tension", signal_type="active_tension",
-            priority=0.6, content=t.get('title', ''),
-            cooldown_seconds=300)  # 5 min cooldown
-
-    # Aspirations
-    for a in (prompt_signals or {}).get('aspirations', []):
-        sq_dal.enqueue(
-            id="aspiration:%s" % a.get('title', '')[:30],
-            producer="aspiration", signal_type="aspiration",
-            priority=0.3, content=a.get('title', ''),
-            cooldown_seconds=600)  # 10 min cooldown
-
-    # Instinct nudge
-    nudge = (prompt_signals or {}).get('instinct_nudge')
-    if nudge:
-        sq_dal.enqueue(
-            id="instinct:current",
-            producer="instinct", signal_type="instinct_check",
-            priority=0.5, content=nudge,
-            max_surfaces=3)
-
-    # Pending Tom messages (escalated)
-    for msg in (pending_tom_messages or []):
-        esc = msg.get('escalation_level', 'pending')
-        pri = {'urgent': 0.85, 'attention': 0.7, 'pending': 0.4}.get(esc, 0.4)
-        sq_dal.enqueue(
-            id="tom_msg:%s" % msg.get('id', ''),
-            producer="message_stream", signal_type="pending_encoding",
-            priority=pri,
-            content='Tom: "%s"' % (msg.get('content', '')[:150]),
-            max_surfaces=10)
-
-    # Expire stale signals
-    sq_dal.expire_stale()
-
-
-def _log_assembler_comparison(brain, old_merged, assembled, user_message):
-    """Log both old and new output to dashboard DB for side-by-side comparison."""
-    import sqlite3 as _sqlite3
-    db_dir = os.environ.get("BRAIN_DB_DIR", "")
-    if not db_dir:
-        return
-    dashboard_db = os.path.join(db_dir, "brain_dashboard.db")
-    try:
-        from datetime import datetime as _dt, timezone as _tz
-        ts = _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-        conn = _sqlite3.connect(dashboard_db, timeout=5)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS assembler_comparison ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, "
-            "user_prompt TEXT, old_chars INTEGER, new_chars INTEGER, "
-            "new_output TEXT, stats TEXT)")
-        import json as _json
-        conn.execute(
-            "INSERT INTO assembler_comparison "
-            "(timestamp, user_prompt, old_chars, new_chars, new_output, stats) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (ts, user_message[:500], len(old_merged),
-             len(assembled.get('for_claude', '')),
-             assembled.get('for_claude', ''),
-             _json.dumps(assembled.get('stats', {}))))
-        conn.execute("DELETE FROM assembler_comparison WHERE id NOT IN "
-                     "(SELECT id FROM assembler_comparison ORDER BY id DESC LIMIT 200)")
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning("assembler_comparison log failed: %s", e)
 
 
 def hook_post_response_track(brain, args, graph_changes):
@@ -722,41 +347,15 @@ def hook_post_response_track(brain, args, graph_changes):
     except Exception as e:
         brain._log_error('store_exchange', e, 'Stop hook: failed to store exchange to message stream')
 
-    # 5. Encoding heartbeat
-    # DEPRECATED (pending removal): Challenge system in recall framing replaces
-    # generic checkpoint questions. Keeping until challenge system validated.
-    output = ""
+    # Encoding heartbeat — KILLED. Replaced by encoding_gap producer in signal queue.
+    # Fired 5x this session with zero effect. Queue has cooldown + budget control.
     try:
         brain.record_message()
-        nudge = brain.get_encoding_heartbeat()
-        if nudge:
-            msg = nudge.get("message", "")
-            try:
-                idx = int(brain.get_config("checkpoint_index", "0"))
-            except (ValueError, TypeError):
-                idx = 0
-            focus = CHECKPOINT_CYCLE[idx % len(CHECKPOINT_CYCLE)]
-            brain.set_config("checkpoint_index", str((idx + 1) % len(CHECKPOINT_CYCLE)))
-
-            mirror_text = ""
-            try:
-                mirror_text = _behavioral_mirror(
-                    brain, nudge.get("messages_since_encode", 0),
-                    nudge.get("total_encodes", 0))
-            except Exception as e:
-                brain._log_error('behavioral_mirror', e, 'Stop hook')
-
-            checkpoint_lines = ["[BRAIN] ENCODING CHECKPOINT: " + msg]
-            checkpoint_lines.append(focus)
-            if mirror_text:
-                checkpoint_lines.append(mirror_text)
-            checkpoint_lines.append("[/BRAIN]")
-            _store_pending(brain, "\n".join(checkpoint_lines))
     except Exception as e:
-        brain._log_error('encoding_heartbeat', e, 'Stop hook')
+        brain._log_error('record_message', e, 'Stop hook')
 
     brain.save()
-    return {"output": output}
+    return {"output": ""}
 
 
 
@@ -1034,10 +633,13 @@ def hook_idle_maintenance(brain, args, graph_changes):
     except Exception:
         pass
 
-    # Store as pending message (Notification stdout is invisible)
+    # Log to dashboard (not additionalContext — idle maintenance is operational, not conversational)
     if output:
-        summary = "[BRAIN] IDLE MAINTENANCE:\n" + "\n".join(output) + "\n[/BRAIN]"
-        _store_pending(brain, summary)
+        try:
+            from hooks.scripts.hook_common import log_hook_output
+            log_hook_output("IDLE", output_text="\n".join(output))
+        except Exception:
+            pass
 
     # Log so we can verify idle fires and what it does
     import datetime
@@ -1124,8 +726,8 @@ def hook_post_compact_reboot(brain, args, graph_changes):
     except Exception:
         pass
 
-    # Consciousness signals
-    signals = brain.get_consciousness_signals()
+    # Consciousness signals (migrated to signal queue — minimal stub for boot)
+    signals = {"reminders": brain.get_due_reminders()}
 
     # Developmental stage
     dev_stage = None
@@ -1188,9 +790,6 @@ def hook_post_compact_reboot(brain, args, graph_changes):
     except Exception:
         pass
 
-    # Drain pending messages
-    pending = _drain_pending(brain)
-
     # ── FORMAT via BrainVoice ──
     voice = BrainVoice(brain)
     rendered = voice.render_reboot(
@@ -1200,7 +799,7 @@ def hook_post_compact_reboot(brain, args, graph_changes):
         signals=signals,
         dev_stage=dev_stage,
         recall_results=recall_results,
-        pending_messages=pending if pending else None,
+        pending_messages=None,
         transcript_path=transcript_path,
         db_dir_env=db_dir_env,
         plugin_root=plugin_root,
@@ -1443,7 +1042,11 @@ def hook_config_change_host(brain, args, graph_changes):
             output_lines.append("Review arch_constraint and capability nodes that may be affected.")
             output_lines.append("[/BRAIN]")
 
-            _store_pending(brain, "\n".join(output_lines))
+            try:
+                from hooks.scripts.hook_common import log_hook_output
+                log_hook_output("HOST_ENV", output_text="\n".join(output_lines))
+            except Exception:
+                pass
             graph_changes.append("HOST: environment changed (%d items)" % len(changes))
             brain.save()
     except Exception:
@@ -1455,7 +1058,7 @@ def hook_config_change_host(brain, args, graph_changes):
 def hook_post_bash_host_check(brain, args, graph_changes):
     """PostToolUse(Bash) — detects env changes after pip/brew/etc.
 
-    Stdout invisible. Stores output as pending message.
+    Logs to dashboard, not additionalContext.
     """
     try:
         env_result = brain.scan_host_environment()
@@ -1463,15 +1066,18 @@ def hook_post_bash_host_check(brain, args, graph_changes):
 
         if changes:
             command = args.get("command", "")
-            output_lines = ["[BRAIN] HOST ENVIRONMENT CHANGED (after bash):"]
+            output_lines = ["HOST ENVIRONMENT CHANGED (after bash):"]
             for key, change in changes.items():
                 old_val = change.get("old", "?")
                 new_val = change.get("new", "?")
                 output_lines.append("  %s: %s \u2192 %s" % (key, old_val, new_val))
             output_lines.append("  Command: %s" % command[:100])
-            output_lines.append("[/BRAIN]")
 
-            _store_pending(brain, "\n".join(output_lines))
+            try:
+                from hooks.scripts.hook_common import log_hook_output
+                log_hook_output("HOST_ENV", output_text="\n".join(output_lines))
+            except Exception:
+                pass
             graph_changes.append("HOST: env changed after bash (%d items)" % len(changes))
             brain.save()
     except Exception:

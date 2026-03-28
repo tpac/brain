@@ -1990,7 +1990,7 @@ class BrainEvolutionMixin:
                               (f'\n\nHuman feedback: {feedback}', node_id))
 
         self.conn.commit()
-        self.log_consciousness_response(ntype, True)
+        # log_consciousness_response removed — signal queue tracks engagement now
         return result
 
     def dismiss_evolution(self, node_id: str, reason: Optional[str] = None) -> Dict[str, Any]:
@@ -2027,7 +2027,7 @@ class BrainEvolutionMixin:
                               (f'\n\nDismissed: {reason}', node_id))
 
         self.conn.commit()
-        self.log_consciousness_response(ntype, False)
+        # log_consciousness_response removed — signal queue tracks engagement now
         return result
 
     def get_relevant_aspirations(self, query: str, limit: int = 2) -> List[Dict[str, Any]]:

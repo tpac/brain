@@ -195,130 +195,9 @@ def _seed_rich_brain(brain, node_count=20):
 # 1. CONSCIOUSNESS SIGNALS — individual signal correctness
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestConsciousnessSignals(BrainTestBase):
-    """Test that each consciousness signal generates correct data."""
-
-    def setUp(self):
-        super().setUp()
-        self.nodes = _seed_rich_brain(self.brain)
-
-    def test_signals_returns_dict_with_expected_keys(self):
-        """get_consciousness_signals() returns dict with all signal categories."""
-        signals = self.brain.get_consciousness_signals()
-        self.assertIsInstance(signals, dict)
-        # These 10 signal categories are always present in the return dict
-        # (values may be empty lists/None, but keys must exist).
-        # Source: brain_consciousness.py ConsciousnessMixin.get_consciousness_signals()
-        # Each category maps to a specific SQL query in that method.
-        expected_keys = [
-            'reminders', 'evolutions', 'fading', 'stale_context_count',
-            'failure_modes', 'performance', 'capabilities', 'interactions',
-            'novelty', 'miss_trends', 'brain_claude_conflicts',
-        ]
-        for key in expected_keys:
-            self.assertIn(key, signals, f"Missing signal category: {key}")
-
-    def test_failure_modes_surfaces_active_evolutions(self):
-        """Active failure_mode nodes appear in consciousness signals."""
-        signals = self.brain.get_consciousness_signals()
-        failure_modes = signals.get('failure_modes', [])
-        self.assertGreater(len(failure_modes), 0,
-                           "Active failure_mode node should surface")
-        titles = [f['title'] for f in failure_modes]
-        self.assertTrue(any('Silent hook' in t for t in titles))
-
-    def test_fading_knowledge_requires_age_and_access(self):
-        """Fading signal only fires for old, accessed, unlocked nodes."""
-        signals = self.brain.get_consciousness_signals()
-        fading = signals.get('fading', [])
-        # Fading requires: unlocked, access_count >= 3, last_accessed > 14 days ago,
-        # type NOT IN (context, thought, intuition). Fresh nodes fail the age check.
-        # Source: brain_consciousness.py line ~50, SQL WHERE clause.
-        self.assertEqual(len(fading), 0,
-                         "Fresh nodes should not appear as fading knowledge")
-
-    def test_fading_knowledge_fires_for_old_accessed_nodes(self):
-        """Nodes with high access but old last_accessed should trigger fading."""
-        # Create an old, frequently-accessed, unlocked node
-        n = self.brain.remember(type='lesson', title='Old important lesson',
-                                content='This was accessed many times but not recently.',
-                                keywords='old lesson fading')
-        node_id = n['id']
-        # Fake old last_accessed and high access_count
-        self.brain.conn.execute(
-            "UPDATE nodes SET last_accessed = datetime('now', '-30 days'), access_count = 10 WHERE id = ?",
-            (node_id,))
-        self.brain.conn.commit()
-
-        signals = self.brain.get_consciousness_signals()
-        fading = signals.get('fading', [])
-        fading_ids = [f['id'] for f in fading]
-        self.assertIn(node_id, fading_ids, "Old frequently-accessed node should appear as fading")
-
-    def test_stale_context_count_accurate(self):
-        """Stale context count matches actual old context nodes."""
-        # Create old context nodes
-        for i in range(3):
-            n = self.brain.remember(type='context', title=f'Old context {i}',
-                                    content=f'Stale context {i}', keywords='stale')
-            self.brain.conn.execute(
-                "UPDATE nodes SET created_at = datetime('now', '-14 days') WHERE id = ?",
-                (n['id'],))
-        self.brain.conn.commit()
-
-        signals = self.brain.get_consciousness_signals()
-        self.assertGreaterEqual(signals['stale_context_count'], 3)
-
-    def test_encoding_gap_fires_when_no_encodes_in_long_session(self):
-        """encoding_gap signal fires when 20+ minutes with zero encodes."""
-        # Simulate a long session with no encoding — need a fresh brain
-        # that hasn't had _seed_rich_brain's remembers counted
-        fresh_brain = Brain(os.path.join(self.tmp, 'gap_test.db'))
-        try:
-            boot_time = (datetime.utcnow() - timedelta(minutes=30)).isoformat() + 'Z'
-            fresh_brain.set_config('boot_time', boot_time)
-            fresh_brain.set_config('session_start_at', boot_time)
-            fresh_brain.conn.execute(
-                "INSERT OR REPLACE INTO session_activity (key, value, updated_at) VALUES (?, ?, datetime('now'))",
-                ('boot_time', boot_time))
-            fresh_brain.conn.execute(
-                "INSERT OR REPLACE INTO session_activity (key, value, updated_at) VALUES (?, ?, datetime('now'))",
-                ('message_count', '25'))
-            fresh_brain.conn.execute(
-                "INSERT OR REPLACE INTO session_activity (key, value, updated_at) VALUES (?, ?, datetime('now'))",
-                ('remember_count', '0'))
-            fresh_brain.conn.commit()
-
-            signals = fresh_brain.get_consciousness_signals()
-            gap = signals.get('encoding_gap')
-            self.assertIsNotNone(gap, "encoding_gap should fire after 30 minutes with 0 encodes")
-            self.assertIn('warning', gap)
-        finally:
-            fresh_brain.close()
-
-    def test_novelty_detects_recent_concepts(self):
-        """Novelty signal surfaces concept nodes created in last 2 hours."""
-        self.brain.remember(type='concept', title='New concept: temporal graphs',
-                            content='Graphs with time-aware edges.', keywords='concept temporal')
-        signals = self.brain.get_consciousness_signals()
-        novelty = signals.get('novelty', [])
-        self.assertGreater(len(novelty), 0, "Recent concept node should appear as novelty")
-
-    def test_performance_signal_empty_when_no_perf_nodes(self):
-        """Performance signal is empty list when no performance nodes exist."""
-        signals = self.brain.get_consciousness_signals()
-        perf = signals.get('performance', [])
-        # We didn't create any performance nodes
-        self.assertEqual(len(perf), 0)
-
-    def test_signals_survive_empty_brain(self):
-        """Consciousness signals don't crash on a completely empty brain."""
-        empty_brain = Brain(os.path.join(self.tmp, 'empty.db'))
-        try:
-            signals = empty_brain.get_consciousness_signals()
-            self.assertIsInstance(signals, dict)
-        finally:
-            empty_brain.close()
+# TestConsciousnessSignals removed — get_consciousness_signals() deleted.
+# Signals migrated to signal_producers.py + signal queue.
+# Coverage: test_surface_assembler.py (TODO)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1397,29 +1276,8 @@ class TestRememberRich(BrainTestBase):
 # 21. URGENT SIGNALS
 # ═══════════════════════════════════════════════════════════════════════
 
-class TestUrgentSignals(BrainTestBase):
-    """Test get_urgent_signals() for priority alerting."""
-
-    def test_urgent_signals_returns_list(self):
-        """get_urgent_signals() returns list of strings."""
-        signals = self.brain.get_urgent_signals()
-        self.assertIsInstance(signals, list)
-        for s in signals:
-            self.assertIsInstance(s, str)
-
-    def test_overdue_tasks_are_urgent(self):
-        """Overdue task nodes appear in urgent signals."""
-        # 'reminder' is not a valid node type — use 'task' with due_date
-        n = self.brain.remember(type='task', title='Overdue: deploy to staging',
-                                content='Deploy was due yesterday.',
-                                keywords='task deploy staging')
-        self.brain.conn.execute(
-            "UPDATE nodes SET due_date = datetime('now', '-2 days') WHERE id = ?",
-            (n['id'],))
-        self.brain.conn.commit()
-
-        signals = self.brain.get_urgent_signals()
-        self.assertIsInstance(signals, list)
+# TestUrgentSignals removed — get_urgent_signals() deleted.
+# Urgent signals migrated to signal_producers.py (system_health producer).
 
 
 # ═══════════════════════════════════════════════════════════════════════

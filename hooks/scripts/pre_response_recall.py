@@ -55,8 +55,11 @@ try:
             else:
                 print(APPROVE)
         else:
-            log_hook_output("recall", output_text="(daemon returned not-ok)", user_prompt=user_message)
-            print(APPROVE)
+            err_msg = resp.get("error", "unknown error")
+            log_hook_output("recall", output_text="(daemon error: %s)" % err_msg, user_prompt=user_message)
+            # Surface the error to Claude — don't silently approve
+            print(json.dumps({"additionalContext":
+                "[BRAIN ERROR] Recall failed: %s. Brain may need restart." % err_msg}))
     else:
         # Daemon unavailable — surface error, don't load separate model
         err = daemon_unavailable_error("recall")

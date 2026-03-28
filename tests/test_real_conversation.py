@@ -132,32 +132,7 @@ class TestRealBrainRecall(unittest.TestCase):
             # confidence may be None for old nodes, but field should exist
             self.assertIn('confidence', first, "Node should have confidence field")
 
-    def test_real_challenge_output_assembly(self):
-        """KPI: render_prompt produces valid challenge output with real data."""
-        result = self.brain.recall_with_embeddings("recall pipeline scoring", limit=5)
-        results = result.get('results', [])
-
-        from servers.brain_voice import BrainVoice
-        voice = BrainVoice(self.brain)
-        rendered = voice.render_prompt(
-            results=results,
-            prompt_signals={},
-            gap=result.get('_gap'),
-            pending_tom_messages=[
-                {'content': 'test message from Tom', 'timestamp': '2026-03-25',
-                 'escalation_level': 'pending', 'surfaced_count': 1},
-            ])
-
-        output = rendered['for_claude']
-
-        if results:
-            self.assertIn('ACTIVE RECALL', output)
-            self.assertIn('revise(', output)
-            # Action menu
-            self.assertIn('Agree', output)
-
-        self.assertIn('PENDING', output)
-        self.assertIn('test message from Tom', output)
+    # test_real_challenge_output_assembly: DELETED — render_prompt replaced by SurfaceAssembler (2026-03-27)
 
 
 @unittest.skipUnless(os.path.exists(BRAIN_DB), "Real brain.db not available")
@@ -366,18 +341,8 @@ class TestChallengeFormatBenchmark(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_format_quality_kpis(self):
-        """Benchmark KPIs for challenge format quality.
-
-        Baselines (2026-03-26):
-        - Recall coverage: 67% (20/30 exchanges have results)
-        - Content truncation OLD: 84% of nodes truncated at 300 chars
-        - Content truncation NEW: 0% truncated
-        - Avg content chars OLD: 293, NEW: 639
-        - Nodes with neighbor context: 27/160 (top 3 enriched per query)
-        - Actionable info ratio: 2.1x (NEW/OLD)
-        - Gap detection: 100% of gaps get callout
-        - Auto-encoded nodes ever: 0 (was dead, now fixed)
-        """
+        """DISABLED — render_prompt deleted, pending assembler rewrite (2026-03-28)."""
+        self.skipTest('render_prompt deleted — rewrite against SurfaceAssembler')
         from servers.brain_voice import BrainVoice
 
         queries = [
@@ -570,6 +535,7 @@ class TestFullChallengeSimulation(unittest.TestCase):
         - Pending Tom messages appear after store_exchange
         - No crashes across all exchanges
         """
+        self.skipTest("render_prompt deleted — rewrite against SurfaceAssembler")
         # Collect messages from ALL available session files
         all_messages = []
         if os.path.isdir(SESSION_JSONL):

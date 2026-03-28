@@ -141,7 +141,7 @@ def ensure_daemon(db_path: str) -> bool:
         subprocess.Popen(
             [sys.executable, '-c',
              'import sys, os; sys.path.insert(0, %r); '
-             'from servers.daemon import BrainDaemon; '
+             'from servers.daemon_server import BrainDaemon; '
              'd = BrainDaemon(%r); d.start()' % (parent_dir, db_path)],
             stdin=devnull,
             stdout=log_fd,
@@ -169,14 +169,31 @@ def ensure_daemon(db_path: str) -> bool:
 
 
 def _kill_daemon():
-    """Kill a running daemon."""
+    """Kill a running daemon. Escalates SIGTERM → SIGKILL if needed."""
     pid_path = get_pid_path()
     try:
         with open(pid_path) as f:
             pid = int(f.read().strip())
         sys.stderr.write("[brain-daemon] Killing daemon PID={}\n".format(pid))
+
+        # Try SIGTERM first (graceful)
         os.kill(pid, signal.SIGTERM)
-        time.sleep(0.5)
+
+        # Wait up to 3s for process to die
+        for _ in range(15):
+            time.sleep(0.2)
+            try:
+                os.kill(pid, 0)  # Check if still alive
+            except OSError:
+                break  # Dead — good
+        else:
+            # Still alive after 3s — SIGKILL (force)
+            sys.stderr.write("[brain-daemon] SIGTERM failed, sending SIGKILL to PID={}\n".format(pid))
+            try:
+                os.kill(pid, signal.SIGKILL)
+                time.sleep(0.5)
+            except OSError:
+                pass  # Already dead
     except Exception as e:
         sys.stderr.write("[brain-daemon] Kill failed: {}\n".format(e))
     # Clean up files (PID and lock)
@@ -201,6 +218,16 @@ def stop_daemon():
         time.sleep(0.1)
     # Didn't exit cleanly — force kill
     _kill_daemon()
+
+
+def restart_daemon(db_path: str = None) -> bool:
+    """Stop + start daemon. Returns True if new daemon is ready."""
+    stop_daemon()
+    time.sleep(1)
+    if not db_path:
+        db_dir = os.environ.get("BRAIN_DB_DIR", os.path.join(os.path.expanduser("~"), "AgentsContext", "brain"))
+        db_path = os.path.join(db_dir, "brain.db")
+    return ensure_daemon(db_path)
 
 
 # ─── Agent DB Isolation ───

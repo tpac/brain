@@ -235,6 +235,210 @@ def _query_assembler_comparison(limit=20):
         return []
 
 
+# ── Unified Errors — aggregates errors from all system components ──
+
+def _query_all_errors(limit=50, hours=24):
+    """Read errors from all sources into a unified list."""
+    errors = []
+    logs_path = _get_logs_db_path()
+    dash_path = _get_dashboard_db_path()
+    since = "datetime('now', '-%d hours')" % hours
+
+    # 1. Brain internal errors (debug_log where event_type='error')
+    if os.path.exists(logs_path):
+        try:
+            conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=3)
+            rows = conn.execute(
+                "SELECT id, created_at, source, metadata FROM debug_log "
+                "WHERE event_type='error' AND created_at > %s "
+                "ORDER BY created_at DESC LIMIT ?" % since, (limit,)).fetchall()
+            for r in rows:
+                meta = {}
+                try:
+                    meta = json.loads(r[3]) if r[3] else {}
+                except Exception:
+                    pass
+                errors.append({
+                    'source': 'brain', 'component': r[2], 'timestamp': r[1],
+                    'error': meta.get('error', r[3] or '')[:200],
+                    'context': meta.get('context', '')[:100],
+                    'level': 'error'})
+            conn.close()
+        except Exception:
+            pass
+
+    # 2. Hook errors
+    if os.path.exists(logs_path):
+        try:
+            conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=3)
+            rows = conn.execute(
+                "SELECT id, created_at, hook_name, level, error, context FROM hook_errors "
+                "WHERE created_at > %s ORDER BY created_at DESC LIMIT ?" % since,
+                (limit,)).fetchall()
+            for r in rows:
+                errors.append({
+                    'source': 'hook', 'component': r[2], 'timestamp': r[1],
+                    'error': (r[4] or '')[:200], 'context': (r[5] or '')[:100],
+                    'level': r[3] or 'error'})
+            conn.close()
+        except Exception:
+            pass
+
+    # 3. Conflicts
+    if os.path.exists(logs_path):
+        try:
+            conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=3)
+            rows = conn.execute(
+                "SELECT id, created_at, hook_name, rule_title, brain_decision, resolution "
+                "FROM conflict_log WHERE created_at > %s "
+                "ORDER BY created_at DESC LIMIT ?" % since, (limit,)).fetchall()
+            for r in rows:
+                errors.append({
+                    'source': 'conflict', 'component': r[2], 'timestamp': r[1],
+                    'error': 'Rule: %s — Decision: %s' % (r[3] or '?', r[4] or '?'),
+                    'context': 'Resolution: %s' % (r[5] or 'pending'),
+                    'level': 'warning'})
+            conn.close()
+        except Exception:
+            pass
+
+    # 4. Daemon down events (from dashboard)
+    if os.path.exists(dash_path):
+        try:
+            conn = sqlite3.connect(f"file:{dash_path}?mode=ro", uri=True, timeout=3)
+            rows = conn.execute(
+                "SELECT id, timestamp, output_text FROM hook_log "
+                "WHERE hook_name='DAEMON_DOWN' ORDER BY id DESC LIMIT ?",
+                (limit,)).fetchall()
+            for r in rows:
+                errors.append({
+                    'source': 'daemon', 'component': 'daemon_down', 'timestamp': r[1],
+                    'error': (r[2] or '')[:200], 'context': '',
+                    'level': 'critical'})
+            conn.close()
+        except Exception:
+            pass
+
+    # 5. Telemetry failures
+    if os.path.exists(logs_path):
+        try:
+            conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=3)
+            rows = conn.execute(
+                "SELECT id, timestamp, operation, error_message FROM brain_telemetry "
+                "WHERE success=0 AND timestamp > %s "
+                "ORDER BY timestamp DESC LIMIT ?" % since, (limit,)).fetchall()
+            for r in rows:
+                errors.append({
+                    'source': 'telemetry', 'component': r[2], 'timestamp': r[1],
+                    'error': (r[3] or '')[:200], 'context': '',
+                    'level': 'warning'})
+            conn.close()
+        except Exception:
+            pass
+
+    # Sort by timestamp descending
+    errors.sort(key=lambda e: e.get('timestamp', ''), reverse=True)
+    return errors[:limit]
+
+
+# ── System Status — live/dead check for all components ──
+
+def _check_system_status():
+    """Check health of all system components."""
+    import socket as _socket
+    status = {}
+
+    # 1. Daemon — TCP ping
+    try:
+        sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        sock.settimeout(2.0)
+        port = 47200 + (os.getuid() % 100)
+        sock.connect(("127.0.0.1", port))
+        sock.sendall(b'{"cmd":"ping","args":{}}\n')
+        data = sock.recv(4096)
+        sock.close()
+        resp = json.loads(data.decode().strip()) if data else {}
+        if resp.get("ok"):
+            result = resp.get("result", {})
+            status['daemon'] = {
+                'alive': True, 'pid': result.get('pid', '?'),
+                'uptime': result.get('uptime_seconds', 0),
+                'code_fingerprint': result.get('code_fingerprint', '')[:12]}
+        else:
+            status['daemon'] = {'alive': False, 'error': resp.get('error', 'bad response')}
+    except Exception as e:
+        status['daemon'] = {'alive': False, 'error': str(e)[:100]}
+
+    # 2. Brain DB — file exists and readable
+    brain_path = _get_db_path()
+    try:
+        if os.path.exists(brain_path):
+            conn = sqlite3.connect(f"file:{brain_path}?mode=ro", uri=True, timeout=2)
+            count = conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+            conn.close()
+            status['brain_db'] = {'alive': True, 'nodes': count, 'path': brain_path}
+        else:
+            status['brain_db'] = {'alive': False, 'error': 'File not found'}
+    except Exception as e:
+        status['brain_db'] = {'alive': False, 'error': str(e)[:100]}
+
+    # 3. Logs DB
+    logs_path = _get_logs_db_path()
+    try:
+        if os.path.exists(logs_path):
+            conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=2)
+            conn.execute("SELECT 1").fetchone()
+            conn.close()
+            status['logs_db'] = {'alive': True, 'path': logs_path}
+        else:
+            status['logs_db'] = {'alive': False, 'error': 'File not found'}
+    except Exception as e:
+        status['logs_db'] = {'alive': False, 'error': str(e)[:100]}
+
+    # 4. Dashboard DB
+    dash_path = _get_dashboard_db_path()
+    try:
+        if os.path.exists(dash_path):
+            conn = sqlite3.connect(f"file:{dash_path}?mode=ro", uri=True, timeout=2)
+            last_entry = conn.execute("SELECT timestamp FROM hook_log ORDER BY id DESC LIMIT 1").fetchone()
+            conn.close()
+            status['dashboard_db'] = {
+                'alive': True, 'path': dash_path,
+                'last_entry': last_entry[0] if last_entry else 'empty'}
+        else:
+            status['dashboard_db'] = {'alive': False, 'error': 'File not found'}
+    except Exception as e:
+        status['dashboard_db'] = {'alive': False, 'error': str(e)[:100]}
+
+    # 5. Embedder — check via daemon status file
+    try:
+        status_path = "/tmp/brain-status-%d.json" % os.getuid()
+        if os.path.exists(status_path):
+            with open(status_path) as f:
+                ds = json.load(f)
+            status['embedder'] = {
+                'alive': ds.get('embedder_ready', False),
+                'model': ds.get('model_name', '?')}
+        else:
+            status['embedder'] = {'alive': False, 'error': 'No status file'}
+    except Exception as e:
+        status['embedder'] = {'alive': False, 'error': str(e)[:100]}
+
+    # 6. Signal queue — count pending
+    try:
+        conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=2)
+        pending = conn.execute(
+            "SELECT COUNT(*) FROM signal_queue WHERE dismissed=0").fetchone()[0]
+        preempt = conn.execute(
+            "SELECT COUNT(*) FROM signal_queue WHERE dismissed=0 AND preempt=1").fetchone()[0]
+        conn.close()
+        status['signal_queue'] = {'alive': True, 'pending': pending, 'preempt': preempt}
+    except Exception as e:
+        status['signal_queue'] = {'alive': False, 'error': str(e)[:100]}
+
+    return status
+
+
 # ── HTTP Server ──
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
@@ -271,6 +475,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_signal_queue()
         elif path == "/api/assembler-comparison":
             self._serve_assembler_comparison(params)
+        elif path == "/api/errors":
+            self._serve_errors(params)
+        elif path == "/api/system-status":
+            self._serve_system_status()
         elif path.startswith("/api/node/"):
             node_id = path.split("/api/node/")[1]
             self._serve_node_detail(node_id)
@@ -319,6 +527,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
         limit = int(params.get("limit", [20])[0])
         comparisons = _query_assembler_comparison(limit=limit)
         self._json_response(200, {"comparisons": comparisons})
+
+    def _serve_errors(self, params):
+        """Return unified errors from all system components."""
+        hours = int(params.get("hours", [24])[0])
+        limit = int(params.get("limit", [50])[0])
+        errors = _query_all_errors(limit=limit, hours=hours)
+        self._json_response(200, {"errors": errors, "count": len(errors)})
+
+    def _serve_system_status(self):
+        """Return live/dead status of all system components."""
+        status = _check_system_status()
+        self._json_response(200, {"status": status})
 
     def _serve_node_detail(self, node_id):
         """Lazy-loaded node detail: full content + connected nodes."""
@@ -676,6 +896,8 @@ canvas { width: 100%; height: 100%; }
   <div class="tab active" onclick="switchTab('live')">Live</div>
   <div class="tab" onclick="switchTab('graph')">Graph</div>
   <div class="tab" onclick="switchTab('explorer')">Explorer</div>
+  <div class="tab" onclick="switchTab('errors')">Errors</div>
+  <div class="tab" onclick="switchTab('status')">Status</div>
   <div class="tab" onclick="switchTab('health')">Health</div>
 </div>
 
@@ -739,6 +961,28 @@ canvas { width: 100%; height: 100%; }
   </div>
 </div>
 
+<div id="tab-errors" class="tab-content">
+  <div style="padding:8px;display:flex;gap:8px;align-items:center">
+    <span style="color:#888;font-size:12px">Last</span>
+    <select id="error-hours" onchange="loadErrors()" style="background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px">
+      <option value="1">1h</option>
+      <option value="6">6h</option>
+      <option value="24" selected>24h</option>
+      <option value="168">7d</option>
+    </select>
+    <button onclick="loadErrors()" style="background:#1a1a2a;color:#7eb8ff;border:1px solid #3a3a5a;padding:3px 12px;border-radius:4px;cursor:pointer">Refresh</button>
+    <span id="error-count" style="color:#666;font-size:11px;margin-left:auto"></span>
+  </div>
+  <div class="feed" id="errors-feed"></div>
+</div>
+
+<div id="tab-status" class="tab-content">
+  <div style="padding:8px">
+    <button onclick="loadSystemStatus()" style="background:#1a1a2a;color:#7eb8ff;border:1px solid #3a3a5a;padding:4px 16px;border-radius:4px;cursor:pointer">Refresh</button>
+  </div>
+  <div id="status-grid" style="padding:0 8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px"></div>
+</div>
+
 <div id="tab-health" class="tab-content">
   <div class="health" id="health-content"></div>
 </div>
@@ -748,13 +992,15 @@ let daemonAlive = false;
 
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t, i) => {
-    const tabs = ['live','graph','explorer','health'];
+    const tabs = ['live','graph','explorer','errors','status','health'];
     t.classList.toggle('active', tabs[i] === name);
   });
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   if (name === 'graph') { setTimeout(() => { initGraph(); resizeCanvas(); if (graphNodes.length) render(); else loadGraph(); }, 50); }
   if (name === 'explorer') searchNodes();
+  if (name === 'errors') loadErrors();
+  if (name === 'status') loadSystemStatus();
   if (name === 'health') loadHealth();
 }
 
@@ -1021,6 +1267,107 @@ function toggleNode(id, el) {
   expandedNode = expandedNode === id ? null : id;
   el.classList.toggle('expanded');
 }
+
+// Errors
+async function loadErrors() {
+  const hours = document.getElementById('error-hours').value;
+  try {
+    const r = await fetch('/api/errors?hours=' + hours + '&limit=100');
+    const d = await r.json();
+    const feed = document.getElementById('errors-feed');
+    document.getElementById('error-count').textContent = d.count + ' errors';
+
+    if (!d.errors || !d.errors.length) {
+      feed.innerHTML = '<div style="color:#4a4;padding:20px;text-align:center">✅ No errors in the last ' + hours + 'h</div>';
+      return;
+    }
+    feed.innerHTML = '';
+    for (const e of d.errors) {
+      const div = document.createElement('div');
+      const levelColor = {critical:'#ff4444',error:'#ff6644',warning:'#ffaa33',info:'#4a9eff'}[e.level] || '#888';
+      div.style.cssText = 'padding:8px 12px;margin:4px 0;background:#111118;border-radius:6px;border-left:3px solid ' + levelColor + ';font-size:12px';
+      const t = (e.timestamp || '').substring(0, 19).replace('T', ' ');
+      div.innerHTML =
+        '<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:bold;text-transform:uppercase;background:' + levelColor + '22;color:' + levelColor + '">' + (e.level || 'error') + '</span> ' +
+        '<span style="color:#888;font-size:10px">' + (e.source || '') + '</span> ' +
+        '<span style="color:#aaa;font-weight:bold">' + escapeHtml(e.component || '') + '</span>' +
+        '<div style="color:#ccc;margin-top:3px">' + escapeHtml(e.error || '') + '</div>' +
+        (e.context ? '<div style="color:#666;font-size:10px;margin-top:2px">' + escapeHtml(e.context) + '</div>' : '') +
+        '<div style="color:#555;font-size:10px;margin-top:2px">' + t + '</div>';
+      feed.appendChild(div);
+    }
+  } catch(e) {
+    document.getElementById('errors-feed').innerHTML = '<div style="color:#f66;padding:20px">Failed to load errors: ' + e + '</div>';
+  }
+}
+
+// System Status
+async function loadSystemStatus() {
+  try {
+    const r = await fetch('/api/system-status');
+    const d = await r.json();
+    const grid = document.getElementById('status-grid');
+    grid.innerHTML = '';
+
+    const components = [
+      {key: 'daemon', label: 'Brain Daemon', icon: '🧠'},
+      {key: 'brain_db', label: 'Brain DB', icon: '💾'},
+      {key: 'logs_db', label: 'Logs DB', icon: '📋'},
+      {key: 'dashboard_db', label: 'Dashboard DB', icon: '📊'},
+      {key: 'embedder', label: 'Embedder', icon: '🔮'},
+      {key: 'signal_queue', label: 'Signal Queue', icon: '📡'},
+    ];
+
+    for (const comp of components) {
+      const s = d.status[comp.key] || {alive: false, error: 'unknown'};
+      const alive = s.alive;
+      const card = document.createElement('div');
+      card.style.cssText = 'background:#111118;border-radius:8px;padding:12px 16px;border:1px solid ' + (alive ? '#1a3a1a' : '#3a1a1a');
+
+      let details = '';
+      if (comp.key === 'daemon' && alive) {
+        details = 'PID: ' + (s.pid || '?') + ' · Uptime: ' + Math.round((s.uptime || 0) / 60) + 'min';
+      } else if (comp.key === 'brain_db' && alive) {
+        details = s.nodes + ' nodes';
+      } else if (comp.key === 'dashboard_db' && alive) {
+        details = 'Last: ' + (s.last_entry || '?').substring(0, 19);
+      } else if (comp.key === 'embedder' && alive) {
+        details = s.model || '?';
+      } else if (comp.key === 'signal_queue' && alive) {
+        details = s.pending + ' pending' + (s.preempt > 0 ? ' · ⚠️ ' + s.preempt + ' PREEMPT' : '');
+      } else if (!alive) {
+        details = s.error || 'unreachable';
+      }
+
+      card.innerHTML =
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          '<span style="font-size:20px">' + comp.icon + '</span>' +
+          '<div>' +
+            '<div style="color:#ccc;font-weight:bold;font-size:13px">' + comp.label + '</div>' +
+            '<div style="font-size:11px;margin-top:2px;color:' + (alive ? '#4a4' : '#f44') + '">' +
+              (alive ? '● Live' : '● Down') +
+            '</div>' +
+          '</div>' +
+          '<div style="margin-left:auto;font-size:10px;color:#666;text-align:right;max-width:160px;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(details) + '</div>' +
+        '</div>';
+      grid.appendChild(card);
+    }
+  } catch(e) {
+    document.getElementById('status-grid').innerHTML = '<div style="color:#f66;padding:20px">Failed to load status: ' + e + '</div>';
+  }
+}
+
+// Auto-refresh status every 5s when tab is active
+setInterval(() => {
+  const statusTab = document.getElementById('tab-status');
+  if (statusTab && statusTab.classList.contains('active')) loadSystemStatus();
+}, 5000);
+
+// Auto-refresh errors every 10s when tab is active
+setInterval(() => {
+  const errTab = document.getElementById('tab-errors');
+  if (errTab && errTab.classList.contains('active')) loadErrors();
+}, 10000);
 
 // Health
 async function loadHealth() {

@@ -1170,27 +1170,7 @@ class BrainSurfaceMixin:
         gaps = gaps[-20:]
         self.set_config('vocabulary_gaps', json.dumps(gaps))
 
-    def surface_encoding_feedback(self) -> Optional[str]:
-        """Surface what was auto-encoded from last exchange.
-
-        Called during UserPromptSubmit recall. Returns a string for
-        additionalContext, or None.
-        """
-        try:
-            raw = self.get_config('last_auto_encoded', '')
-            if not raw:
-                # Challenge system handles encoding prompts now — no noise
-                return None
-
-            info = json.loads(raw)
-            # Clear so it doesn't repeat
-            self.set_config('last_auto_encoded', '')
-
-            return '[BRAIN] Auto-encoded from last exchange: [%s] "%s" (signal: %s) [/BRAIN]' % (
-                info.get('type', '?'), info.get('title', '?'), info.get('signal', '?'))
-        except Exception as e:
-            self._log_error('surface_encoding_feedback', e, 'Failed to read encoding feedback')
-            return None
+    # surface_encoding_feedback: DELETED — encoding feedback moved to signal queue (2026-03-27)
 
     # ═══════════════════════════════════════════════════════════════
     # v8: Invisible encoding — conversation stream

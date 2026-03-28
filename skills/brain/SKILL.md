@@ -204,8 +204,10 @@ find_node_by_title(title_query, threshold, top_k) — fuzzy search with context 
 
 ### Introspection
 ```
-consciousness() — brain signals (tensions, fading knowledge, vocabulary gaps)
+consciousness() — reminders only (most signals migrated to signal queue)
 engineering_context(project) — mechanisms, impacts, constraints for a project
+queue_state() — all pending signals with priorities, surface counts
+dismiss_signal(signal_id) — dismiss a signal from the queue
 ```
 
 ### Escape Hatch

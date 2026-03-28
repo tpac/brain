@@ -17,6 +17,7 @@ import struct
 import time
 import sys
 import os
+import threading
 from typing import Optional, List, Dict, Any
 
 # Force ONNX Runtime to CPU-only BEFORE any import of onnxruntime.
@@ -29,6 +30,7 @@ os.environ.setdefault("ONNX_PROVIDERS", "CPUExecutionProvider")
 # ─── Runtime State (set by load_model) ───
 _model = None
 _config = {}   # Current model config
+_embed_lock = threading.Lock()  # Serialize ONNX inference — prevents CPU explosion from concurrent calls
 
 stats = {
     'model_loaded': False,
@@ -235,53 +237,58 @@ def embed(text: str) -> Optional[bytes]:
     """
     Embed a single text → bytes (serialized float32 array).
     Returns None if model not loaded — callers MUST handle None gracefully.
+    Thread-safe: serialized via _embed_lock to prevent CPU explosion.
     """
     if not _model:
         stats['errors'] += 1
         return None
 
-    t0 = time.time()
-    try:
-        embeddings = list(_model.embed([text]))
-        vec = embeddings[0]
+    with _embed_lock:
+        t0 = time.time()
+        try:
+            embeddings = list(_model.embed([text]))
+            vec = embeddings[0]
 
-        elapsed_ms = round((time.time() - t0) * 1000)
-        stats['total_embeddings'] += 1
-        stats['total_embed_time_ms'] += elapsed_ms
-        stats['last_embed_ms'] = elapsed_ms
-        if elapsed_ms > stats['peak_embed_ms']:
-            stats['peak_embed_ms'] = elapsed_ms
+            elapsed_ms = round((time.time() - t0) * 1000)
+            stats['total_embeddings'] += 1
+            stats['total_embed_time_ms'] += elapsed_ms
+            stats['last_embed_ms'] = elapsed_ms
+            if elapsed_ms > stats['peak_embed_ms']:
+                stats['peak_embed_ms'] = elapsed_ms
 
-        return _vec_to_blob(vec)
-    except Exception as e:
-        stats['errors'] += 1
-        print(f"[embedder] Embed error: {e}", file=sys.stderr)
-        return None
+            return _vec_to_blob(vec)
+        except Exception as e:
+            stats['errors'] += 1
+            print(f"[embedder] Embed error: {e}", file=sys.stderr)
+            return None
 
 
 def embed_batch(texts: List[str]) -> List[Optional[bytes]]:
-    """Batch-embed multiple texts → list of bytes."""
+    """Batch-embed multiple texts → list of bytes.
+    Thread-safe: serialized via _embed_lock to prevent CPU explosion.
+    """
     if not _model or not texts:
         return []
 
-    t0 = time.time()
-    results = []
-    try:
-        embeddings = list(_model.embed(texts))
-        for vec in embeddings:
-            results.append(_vec_to_blob(vec))
+    with _embed_lock:
+        t0 = time.time()
+        results = []
+        try:
+            embeddings = list(_model.embed(texts))
+            for vec in embeddings:
+                results.append(_vec_to_blob(vec))
 
-        elapsed_ms = round((time.time() - t0) * 1000)
-        stats['total_embeddings'] += len(texts)
-        stats['total_embed_time_ms'] += elapsed_ms
-        stats['last_embed_ms'] = round(elapsed_ms / len(texts)) if texts else 0
-        if elapsed_ms > stats['peak_embed_ms']:
-            stats['peak_embed_ms'] = elapsed_ms
-    except Exception as e:
-        stats['errors'] += 1
-        print(f"[embedder] Batch embed error: {e}", file=sys.stderr)
+            elapsed_ms = round((time.time() - t0) * 1000)
+            stats['total_embeddings'] += len(texts)
+            stats['total_embed_time_ms'] += elapsed_ms
+            stats['last_embed_ms'] = round(elapsed_ms / len(texts)) if texts else 0
+            if elapsed_ms > stats['peak_embed_ms']:
+                stats['peak_embed_ms'] = elapsed_ms
+        except Exception as e:
+            stats['errors'] += 1
+            print(f"[embedder] Batch embed error: {e}", file=sys.stderr)
 
-    return results
+        return results
 
 
 def cosine_similarity(a: bytes, b: bytes) -> float:

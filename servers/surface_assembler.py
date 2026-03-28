@@ -32,7 +32,7 @@ from .dal_signal_queue import SignalQueueDAL
 log = logging.getLogger(__name__)
 
 # Truncation limits
-_NODE_CONTENT_MAX = 150
+_NODE_CONTENT_MAX = 200
 _NODE_NEIGHBOR_MAX = 2
 
 
@@ -99,7 +99,7 @@ class SurfaceAssembler:
         if proactive_items:
             lines.append("SIGNALS:")
             for item in proactive_items:
-                lines.append("  [%s] %s" % (item['producer'], item['content']))
+                lines.append("  [%s] %s (dismiss: %s)" % (item['producer'], item['content'], item['id']))
             lines.append("")
 
         lines.append("[/BRAIN]")
@@ -128,17 +128,26 @@ class SurfaceAssembler:
 
     def _format_preempt(self, preempts: List[Dict]) -> Dict[str, Optional[str]]:
         """Format preempt-level signals. These replace ALL other output."""
-        lines = ["[BRAIN] CRITICAL:"]
+        lines = ["[CRITICAL — RELAY TO USER IMMEDIATELY]"]
         for p in preempts:
-            lines.append("  [%s] %s" % (p['producer'], p['content']))
-        lines.append("[/BRAIN]")
+            lines.append("  [%s] %s (dismiss: %s)" % (p['producer'], p['content'], p['id']))
+        lines.append("DO NOT continue without informing the user.")
+        lines.append("Dismiss with: dismiss_signal(signal_id=\"...\")")
+        lines.append("[/CRITICAL]")
         assembled = "\n".join(lines)
+
+        # Operator channel — make sure Tom sees it directly
+        operator_lines = ["@priority: high"]
+        for p in preempts:
+            lines_op = "⚠️ %s" % p['content']
+            operator_lines.append(lines_op)
+        operator_msg = "\n".join(operator_lines)
 
         log.warning("assembler: PREEMPT — %d critical signals, skipping recall", len(preempts))
 
         return {
             'for_claude': assembled,
-            'for_operator': None,
+            'for_operator': operator_msg,
             'stats': {
                 'reactive_chars': 0, 'proactive_items': len(preempts),
                 'proactive_chars': len(assembled), 'total_chars': len(assembled),
@@ -150,30 +159,41 @@ class SurfaceAssembler:
 
     @staticmethod
     def _format_node_compact(node: Dict, lines: List[str]):
-        """Format a recalled node — compact, with truncated content.
+        """Format a recalled node — unified format matching format_recall_results().
 
         Format:
-          [type] LOCKED Title (id:abc123, conf:0.90)
-          First 150 chars of content...
-            ↳ relation: "Neighbor title"
+          [type] LOCKED Title
+          id:abc123 | revised:never | conf:0.95 | created:2026-03-21
+          First 200 chars of content...
+            ↳ relation: "Neighbor title" (type, id:...)
         """
         typ = node.get("type", "?")
         title = node.get("title", "")
         locked = "LOCKED " if node.get("locked") else ""
-        node_id = node.get("id", "")[:12]
-        conf = node.get("confidence") or node.get("effective_activation", 0) or 0
 
-        lines.append("  [%s] %s%s (id:%s, conf:%.2f)" % (typ, locked, title, node_id, conf))
+        lines.append("[%s] %s%s" % (typ, locked, title))
+
+        # Metadata line — matches proven format used by challenge system
+        node_id = node.get("id", "")
+        conf = node.get("confidence") or node.get("effective_activation", 0) or 0
+        revised = node.get("revised_at") or "never"
+        created = (node.get("created_at") or "")[:10]
+        lines.append("id:%s | revised:%s | conf:%.2f | created:%s" % (
+            node_id, revised, conf, created))
 
         content = node.get("content", "")
         if content:
             truncated = content[:_NODE_CONTENT_MAX]
             if len(content) > _NODE_CONTENT_MAX:
                 truncated += "..."
-            lines.append("  %s" % truncated)
+            lines.append(truncated)
 
         # Limited neighbors
         for nb in node.get("_neighbors", [])[:_NODE_NEIGHBOR_MAX]:
-            lines.append("    ↳ %s: \"%s\"" % (
+            nb_type = nb.get("type", "")
+            nb_id = nb.get("id", "")[:12]
+            lines.append("  ↳ %s: \"%s\" (%s, id:%s)" % (
                 nb.get("relation", "related"),
-                nb.get("title", "")))
+                nb.get("title", ""),
+                nb_type, nb_id))
+        lines.append("")

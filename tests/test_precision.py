@@ -1034,45 +1034,10 @@ class ConflictProtocolTests(BrainTestBase):
         self.assertEqual(row[0], "claude_correct")
         self.assertIn("Tom said", row[1])
 
-    def test_conflict_surfaces_in_consciousness(self):
-        """Unsurfaced conflicts appear in get_consciousness_signals().
+    # test_conflict_surfaces_in_consciousness: DELETED — get_consciousness_signals() removed (2026-03-27)
+    # Conflicts now surface via signal queue system_health producer.
 
-        VERIFIES: The consciousness query finds pending conflicts.
-        SIGNALS: If empty, the conflict_log query in brain_consciousness.py is broken.
-        """
-        self.brain.log_conflict(
-            hook_name="pre_bash_safety",
-            brain_decision="block",
-            rule_title="Safety rule: never rm production",
-            claude_action="rm -rf /prod",
-        )
-
-        signals = self.brain.get_consciousness_signals()
-        conflicts = signals.get("brain_claude_conflicts", [])
-        self.assertGreater(len(conflicts), 0, "Conflict should appear in consciousness")
-        self.assertEqual(conflicts[0]["hook_name"], "pre_bash_safety")
-        self.assertEqual(conflicts[0]["brain_decision"], "block")
-        self.assertEqual(conflicts[0]["resolution"], "pending")
-
-    def test_conflict_marked_surfaced_after_consciousness(self):
-        """After get_consciousness_signals(), conflicts are marked surfaced.
-
-        VERIFIES: Conflicts don't appear twice in consecutive boot outputs.
-        SIGNALS: If still returned, the UPDATE surfaced=1 query is broken.
-        """
-        self.brain.log_conflict(
-            hook_name="pre_edit",
-            brain_decision="warn",
-            rule_title="Test rule",
-        )
-
-        # First call surfaces it
-        signals1 = self.brain.get_consciousness_signals()
-        self.assertGreater(len(signals1.get("brain_claude_conflicts", [])), 0)
-
-        # Second call should be empty (already surfaced)
-        signals2 = self.brain.get_consciousness_signals()
-        self.assertEqual(len(signals2.get("brain_claude_conflicts", [])), 0)
+    # test_conflict_marked_surfaced_after_consciousness: DELETED — same reason.
 
     def test_log_conflict_with_warn_decision(self):
         """warn-type conflicts also get logged correctly.

@@ -102,11 +102,35 @@ def _handle_health_check(brain, args, graph_changes):
 
 
 def _handle_consciousness(brain, args, graph_changes):
-    return {"ok": True, "result": brain.get_consciousness_signals()}
+    """Migrated to signal_producers + signal queue. Returns reminders only."""
+    return {"ok": True, "result": {"reminders": brain.get_due_reminders()}}
 
 
 def _handle_urgent_signals(brain, args, graph_changes):
-    return {"ok": True, "result": brain.get_urgent_signals()}
+    """Migrated to signal_producers. Returns empty."""
+    return {"ok": True, "result": []}
+
+
+def _handle_dismiss_signal(brain, args, graph_changes):
+    """Dismiss a signal from the queue by ID or producer."""
+    from .dal_signal_queue import SignalQueueDAL
+    sq_dal = SignalQueueDAL(brain.logs_conn)
+    signal_id = args.get("signal_id", "")
+    producer = args.get("producer", "")
+    if signal_id:
+        ok = sq_dal.dismiss(signal_id)
+        return {"ok": True, "result": {"dismissed": signal_id, "found": ok}}
+    elif producer:
+        count = sq_dal.dismiss_by_producer(producer)
+        return {"ok": True, "result": {"dismissed_producer": producer, "count": count}}
+    return {"ok": False, "error": "Provide signal_id or producer"}
+
+
+def _handle_queue_state(brain, args, graph_changes):
+    """Return current signal queue state."""
+    from .dal_signal_queue import SignalQueueDAL
+    sq_dal = SignalQueueDAL(brain.logs_conn)
+    return {"ok": True, "result": sq_dal.get_queue_state()}
 
 
 def _handle_engineering_context(brain, args, graph_changes):
@@ -461,6 +485,8 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "health_check":             CmdEntry(_handle_health_check,         is_write=False),
     "consciousness":            CmdEntry(_handle_consciousness,        is_write=False),
     "urgent_signals":           CmdEntry(_handle_urgent_signals,       is_write=False),
+    "dismiss_signal":           CmdEntry(_handle_dismiss_signal,       is_write=True),
+    "queue_state":              CmdEntry(_handle_queue_state,          is_write=False),
     "engineering_context":      CmdEntry(_handle_engineering_context,   is_write=False),
     "correction_patterns":      CmdEntry(_handle_correction_patterns,  is_write=False),
     "last_synthesis":           CmdEntry(_handle_last_synthesis,       is_write=False),

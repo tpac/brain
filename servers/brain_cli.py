@@ -11,7 +11,7 @@ Usage:
     brain connect <source_id> <target_id> --relation validates
     brain ping
     brain status
-    brain eval "brain.get_consciousness_signals()"
+    brain eval "brain.get_due_reminders()"
 
 With agent DB isolation:
     brain recall "query" --db /tmp/brain-agent-123.db

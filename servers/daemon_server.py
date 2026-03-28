@@ -33,6 +33,11 @@ from .daemon_dispatch import COMMAND_TABLE
 class BrainDaemon:
     """Persistent Brain daemon that listens on TCP localhost."""
 
+    MAX_SUPERVISOR_RESTARTS = 5      # Max restarts before giving up
+    SUPERVISOR_RESTART_COOLDOWN = 2   # Seconds between restart attempts
+    SOCKET_BIND_RETRIES = 10          # Retries for port binding after crash
+    SOCKET_BIND_RETRY_DELAY = 1.0     # Seconds between bind retries
+
     def __init__(self, db_path: str, socket_path: Optional[str] = None):
         self.db_path = db_path
         self.socket_path = socket_path or get_socket_path()  # kept for stale cleanup
@@ -45,7 +50,9 @@ class BrainDaemon:
         self.dirty = False
         self.graph_changes = []  # In-memory graph mutation log
         self._write_lock = threading.Lock()
+        self._embed_lock = threading.Lock()  # Serialize embedder calls (prevent CPU explosion)
         self._pool = ThreadPoolExecutor(max_workers=THREAD_POOL_SIZE)
+        self._restart_count = 0
 
     # Hook dispatch table: hook_name → (module_attr, marks_dirty)
     HOOK_TABLE = {
@@ -65,58 +72,158 @@ class BrainDaemon:
     }
 
     def start(self):
-        """Start the daemon — load brain, bind socket, serve."""
-        # Acquire exclusive lock with retry (handles stale locks from crashes)
+        """Supervisor loop — start daemon and restart on internal crashes.
+
+        Handles: brain errors, socket errors, thread pool crashes.
+        Does NOT handle: SIGKILL, OOM (external watchdog needed — MCP plugin).
+        Gives up after MAX_SUPERVISOR_RESTARTS consecutive crashes.
+        """
+        # Acquire exclusive lock (one daemon per user)
         lock_path = get_lock_path()
         self._lock_fd = open(lock_path, 'w')
-        for _ in range(50):  # 5s total
-            try:
-                fcntl.flock(self._lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except (IOError, OSError):
-                time.sleep(0.1)
-        else:
-            self._lock_fd.close()
-            self._log("Another daemon is starting — exiting duplicate (waited 5s)")
-            return
+        try:
+            fcntl.flock(self._lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (IOError, OSError):
+            # Lock held — check if the holder is actually alive
+            pid_path = get_pid_path()
+            stale = False
+            if os.path.exists(pid_path):
+                try:
+                    old_pid = int(open(pid_path).read().strip())
+                    os.kill(old_pid, 0)  # signal 0 = check if alive
+                    # Process exists — real duplicate
+                    self._lock_fd.close()
+                    self._log("Another daemon running (PID {}). Exiting duplicate.".format(old_pid))
+                    return
+                except (ProcessLookupError, ValueError):
+                    stale = True
+                    self._log("Stale PID file (PID {} dead). Cleaning up.".format(old_pid if 'old_pid' in dir() else '?'))
+                except PermissionError:
+                    # Process exists but we can't signal it — assume alive
+                    self._lock_fd.close()
+                    self._log("Another daemon running (PID {}, permission denied). Exiting.".format(old_pid))
+                    return
 
-        # Write PID file
+            if stale or not os.path.exists(pid_path):
+                # Stale lock — clean up and retry
+                try:
+                    os.unlink(lock_path)
+                    os.unlink(pid_path)
+                except OSError:
+                    pass
+                self._lock_fd = open(lock_path, 'w')
+                try:
+                    fcntl.flock(self._lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    self._log("Acquired lock after cleaning stale files.")
+                except (IOError, OSError):
+                    self._lock_fd.close()
+                    self._log("Cannot acquire lock even after cleanup. Exiting.")
+                    return
+
+        # Write PID, register cleanup, install signal handlers (once)
         with open(self.pid_path, 'w') as f:
             f.write(str(os.getpid()))
-
-        # Clean up stale Unix socket if it exists (migration from old protocol)
-        if os.path.exists(self.socket_path):
-            os.unlink(self.socket_path)
-
-        # Load brain (expensive — done once)
-        self._load_brain()
-
-        # Bind TCP socket on localhost
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.bind(self.daemon_addr)
-        self.server_socket.listen(SOCKET_BACKLOG)
-        self.server_socket.setblocking(False)
-
-        # Signal handlers
         signal.signal(signal.SIGTERM, self._handle_signal)
         signal.signal(signal.SIGINT, self._handle_signal)
         signal.signal(signal.SIGHUP, self._handle_signal)
-
         atexit.register(self._cleanup)
 
-        self.running = True
-        self._log("Daemon started. PID={}, addr={}:{}, workers={}".format(
-            os.getpid(), self.daemon_addr[0], self.daemon_addr[1], THREAD_POOL_SIZE))
+        # Clean up stale Unix socket (migration from old protocol)
+        if os.path.exists(self.socket_path):
+            os.unlink(self.socket_path)
 
-        # Dashboard is now a separate process (brain_dashboard_standalone.py)
-        # launched by .claude/launch.json — no longer embedded in daemon.
+        # ── Supervisor loop ──
+        while self._restart_count <= self.MAX_SUPERVISOR_RESTARTS:
+            try:
+                self._run()
+                # _run() returns normally on clean shutdown (signal or idle timeout)
+                break
+            except Exception as e:
+                self._restart_count += 1
+                self._log_crash(e)
+
+                if self._restart_count > self.MAX_SUPERVISOR_RESTARTS:
+                    self._log("FATAL: %d consecutive crashes. Giving up." % self._restart_count)
+                    break
+
+                self._log("SUPERVISOR: Restart %d/%d in %ds..." % (
+                    self._restart_count, self.MAX_SUPERVISOR_RESTARTS,
+                    self.SUPERVISOR_RESTART_COOLDOWN))
+
+                # Clean up before restart
+                self._close_socket()
+                time.sleep(self.SUPERVISOR_RESTART_COOLDOWN)
+
+        self._shutdown()
+
+    def _run(self):
+        """Single daemon lifecycle — load brain, bind socket, serve until stopped.
+
+        Raises on fatal errors so the supervisor can restart.
+        Normal shutdown (signal/idle) returns cleanly.
+        """
+        # Load brain if not loaded (first run or after crash that corrupted it)
+        if not self.brain:
+            self._load_brain()
+
+        # Bind socket with retry (handles TIME_WAIT after crash)
+        self._bind_socket()
+
+        self.running = True
+        self._restart_count = 0  # Reset on successful start
+        self._log("Daemon started. PID={}, addr={}:{}, workers={}, restarts={}".format(
+            os.getpid(), self.daemon_addr[0], self.daemon_addr[1],
+            THREAD_POOL_SIZE, self._restart_count))
 
         # Start autosave thread
         autosave_thread = threading.Thread(target=self._autosave_loop, daemon=True)
         autosave_thread.start()
 
         self._serve()
+
+    def _bind_socket(self):
+        """Bind TCP socket with retry for TIME_WAIT recovery."""
+        for attempt in range(self.SOCKET_BIND_RETRIES):
+            try:
+                self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                except (AttributeError, OSError):
+                    pass
+                self.server_socket.bind(self.daemon_addr)
+                self.server_socket.listen(SOCKET_BACKLOG)
+                self.server_socket.setblocking(False)
+                return  # Success
+            except OSError as e:
+                self._close_socket()
+                if attempt < self.SOCKET_BIND_RETRIES - 1:
+                    self._log("BIND: Port %d busy (attempt %d/%d): %s" % (
+                        self.daemon_addr[1], attempt + 1, self.SOCKET_BIND_RETRIES, e))
+                    time.sleep(self.SOCKET_BIND_RETRY_DELAY)
+                else:
+                    raise  # Give up — supervisor will handle
+
+    def _close_socket(self):
+        """Close the server socket safely."""
+        try:
+            if self.server_socket:
+                self.server_socket.close()
+                self.server_socket = None
+        except Exception:
+            pass
+
+    def _log_crash(self, error: Exception):
+        """Log crash details to daemon.log and brain error log."""
+        tb = traceback.format_exc()
+        self._log("CRASH: %s\n%s" % (error, tb))
+        # Also log to brain's error table if brain is alive
+        try:
+            if self.brain:
+                self.brain._log_error('daemon_crash', error,
+                                       'restart_count=%d' % self._restart_count)
+        except Exception:
+            pass
 
     def _load_brain(self):
         """Load the Brain instance + embedder."""
@@ -143,10 +250,11 @@ class BrainDaemon:
             now = time.time()
             if now - last_idle_check > 5.0:
                 last_idle_check = now
-                idle = now - self.last_activity
-                if idle > IDLE_TIMEOUT_SECONDS:
-                    self._log("Idle timeout ({}s). Shutting down.".format(int(idle)))
-                    break
+                if IDLE_TIMEOUT_SECONDS > 0:
+                    idle = now - self.last_activity
+                    if idle > IDLE_TIMEOUT_SECONDS:
+                        self._log("Idle timeout ({}s). Shutting down.".format(int(idle)))
+                        break
 
             try:
                 # 0.5s select — balances responsiveness to shutdown vs CPU usage
@@ -168,6 +276,8 @@ class BrainDaemon:
     def _handle_client(self, client: socket.socket):
         """Handle a single client connection (runs in thread pool)."""
         try:
+            # Update activity immediately — even if parsing fails, someone is talking to us
+            self.last_activity = time.time()
             data = b""
             while True:
                 chunk = client.recv(4096)
@@ -186,11 +296,55 @@ class BrainDaemon:
                 self._send_error(client, "Invalid JSON: {}".format(e))
                 return
 
-            cmd = msg.get("cmd", "")
+            if not isinstance(msg, dict):
+                self._send_error(client, "Message must be a JSON object, got: {}".format(type(msg).__name__))
+                return
+
+            cmd = msg.get("cmd")
+            if cmd is None:
+                # Common mistake: using "command" instead of "cmd"
+                alt_cmd = msg.get("command")
+                if alt_cmd:
+                    self._send_error(client, "Wrong key: use 'cmd' not 'command'. Got: {}".format(alt_cmd))
+                else:
+                    self._send_error(client, "Missing 'cmd' field. Message keys: {}".format(list(msg.keys())))
+                return
+
+            if not isinstance(cmd, str):
+                self._send_error(client, "Field 'cmd' must be a string, got: {} ({})".format(type(cmd).__name__, str(cmd)[:100]))
+                return
+
             args = msg.get("args", {})
 
             self.last_activity = time.time()
-            result = self._dispatch(cmd, args)
+
+            # Watchdog: kill hung requests after 20s
+            import threading as _threading
+            dispatch_result = [None]
+            dispatch_error = [None]
+
+            def _run_dispatch():
+                try:
+                    dispatch_result[0] = self._dispatch(cmd, args)
+                except Exception as _e:
+                    dispatch_error[0] = _e
+
+            worker = _threading.Thread(target=_run_dispatch, daemon=True)
+            worker.start()
+            worker.join(timeout=20.0)
+
+            if worker.is_alive():
+                # Request hung — log and return timeout error
+                self.brain._log_error('daemon_watchdog',
+                    Exception('Request timed out after 20s: %s' % cmd),
+                    'cmd=%s' % cmd)
+                self._send_error(client, "timeout: %s took >20s" % cmd)
+                return
+            elif dispatch_error[0]:
+                raise dispatch_error[0]
+            else:
+                result = dispatch_result[0]
+
             self._send_response(client, result)
 
         except Exception as e:
@@ -397,6 +551,7 @@ class BrainDaemon:
             if self.brain:
                 self.brain.save()
                 self.brain.close()
+                self.brain = None
         except Exception as e:
             self._log("Save error during shutdown: {}".format(e))
         self._cleanup()
@@ -415,12 +570,7 @@ class BrainDaemon:
     def _cleanup(self):
         """Close server socket, observer channel, remove PID and lock files.
         Idempotent — safe to call multiple times (signal + atexit + explicit)."""
-        try:
-            if self.server_socket:
-                self.server_socket.close()
-                self.server_socket = None
-        except Exception:
-            pass
+        self._close_socket()
         for path in [self.pid_path, get_status_path()]:
             try:
                 if os.path.exists(path):

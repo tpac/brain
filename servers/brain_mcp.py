@@ -68,7 +68,7 @@ def ensure_daemon_running():
         sys.path.insert(0, parent)
 
     try:
-        from servers.daemon import ensure_daemon
+        from servers.daemon_client import ensure_daemon
         db_dir = os.environ.get("BRAIN_DB_DIR", "")
         if not db_dir:
             # Resolve DB path
@@ -216,7 +216,15 @@ TOOLS = [
 
     # ── Introspection ──
     {"name": "consciousness",
-     "description": "Get brain consciousness signals — fading knowledge, tensions, vocabulary gaps, encoding health, errors, mental model drift, uncertainties, dream insights, reminders.",
+     "description": "Get brain consciousness signals. Most signals migrated to signal queue — returns reminders only. Use queue_state for full signal view.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "dismiss_signal",
+     "description": "Dismiss a signal from the brain's signal queue. Use when a signal has been acknowledged or is no longer relevant.",
+     "inputSchema": {"type": "object", "properties": {
+         "signal_id": {"type": "string", "description": "Signal ID to dismiss"},
+         "producer": {"type": "string", "description": "Dismiss all signals from this producer"}}}},
+    {"name": "queue_state",
+     "description": "Get current signal queue state — all pending signals with priorities, surface counts, producers.",
      "inputSchema": {"type": "object", "properties": {}}},
     {"name": "engineering_context",
      "description": "Get engineering memory context — mechanisms, impacts, constraints, conventions for a project.",
@@ -366,10 +374,102 @@ def _read_stdin():
     sys.stderr.write("[brain-mcp] stdin closed — shutting down cleanly.\n")
 
 
+def _health_monitor():
+    """Background health monitor — pings daemon every 2s.
+
+    If daemon dies:
+    1. Attempts restart via ensure_daemon_running()
+    2. Writes PREEMPT signal directly to signal queue (SQLite, no daemon)
+    3. Logs to dashboard DB
+
+    Runs as daemon thread — dies when MCP process exits.
+    """
+    import time
+    import sqlite3
+
+    consecutive_failures = 0
+    PING_INTERVAL = 2.0
+    FAILURE_THRESHOLD = 3  # Alert after 3 consecutive failures (6s)
+
+    while True:
+        time.sleep(PING_INTERVAL)
+        try:
+            resp = daemon_send("ping", timeout=2.0)
+            if resp.get("ok"):
+                if consecutive_failures > 0:
+                    sys.stderr.write("[brain-mcp] Daemon recovered after %d failures\n" % consecutive_failures)
+                consecutive_failures = 0
+                continue
+        except Exception:
+            pass
+
+        consecutive_failures += 1
+
+        if consecutive_failures == FAILURE_THRESHOLD:
+            sys.stderr.write("[brain-mcp] ALERT: Daemon unreachable for %ds — attempting restart\n" % (
+                int(consecutive_failures * PING_INTERVAL)))
+
+            # Write PREEMPT signal directly to signal queue (brain_logs.db)
+            try:
+                db_dir = os.environ.get("BRAIN_DB_DIR", "")
+                if not db_dir:
+                    home = os.path.expanduser("~")
+                    candidate = os.path.join(home, "AgentsContext", "brain")
+                    if os.path.isdir(candidate):
+                        db_dir = candidate
+                if db_dir:
+                    logs_db = os.path.join(db_dir, "brain_logs.db")
+                    conn = sqlite3.connect(logs_db, timeout=3)
+                    conn.execute(
+                        """INSERT OR REPLACE INTO signal_queue
+                           (id, producer, signal_type, priority, content, preempt, created_at,
+                            times_surfaced, dismissed, cooldown_seconds)
+                           VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 0, 0, 60)""",
+                        ("health:daemon_down", "system_health", "daemon_down", 0.99,
+                         "⚠️ Brain daemon is DOWN. Recall and encoding disabled. Automatic restart attempted.",
+                         1))
+                    conn.commit()
+                    conn.close()
+            except Exception as e:
+                sys.stderr.write("[brain-mcp] Failed to write PREEMPT signal: %s\n" % e)
+
+            # Log to dashboard
+            try:
+                if db_dir:
+                    dash_db = os.path.join(db_dir, "brain_dashboard.db")
+                    conn = sqlite3.connect(dash_db, timeout=3)
+                    conn.execute(
+                        """INSERT INTO hook_log (hook_name, timestamp, output_text, operator_text, session_id)
+                           VALUES (?, datetime('now'), ?, ?, ?)""",
+                        ("DAEMON_DOWN",
+                         "⚠️ Daemon unreachable — MCP health monitor detected failure",
+                         "⚠️ DAEMON DOWN",
+                         "mcp_health_monitor"))
+                    conn.commit()
+                    conn.close()
+            except Exception:
+                pass
+
+            # Attempt restart
+            try:
+                ensure_daemon_running()
+            except Exception as e:
+                sys.stderr.write("[brain-mcp] Restart failed: %s\n" % e)
+
+        elif consecutive_failures > FAILURE_THRESHOLD and consecutive_failures % 10 == 0:
+            # Retry restart every 20 seconds
+            sys.stderr.write("[brain-mcp] Still down after %ds — retrying restart\n" % (
+                int(consecutive_failures * PING_INTERVAL)))
+            try:
+                ensure_daemon_running()
+            except Exception:
+                pass
+
+
 def main():
     # Ensure daemon is running — retry a few times since boot hook may be starting it concurrently
     sys.stderr.write("[brain-mcp] Starting MCP server...\n")
-    import time
+    import time, threading
     daemon_ready = False
     for attempt in range(4):
         if ensure_daemon_running():
@@ -383,6 +483,11 @@ def main():
         sys.stderr.write("[brain-mcp] Daemon connected. Serving {} tools.\n".format(len(TOOLS)))
     else:
         sys.stderr.write("[brain-mcp] WARNING: Daemon not available at startup. Will retry on each tool call.\n")
+
+    # Start health monitor (daemon thread — dies with MCP process)
+    health_thread = threading.Thread(target=_health_monitor, daemon=True)
+    health_thread.start()
+    sys.stderr.write("[brain-mcp] Health monitor started (2s interval).\n")
 
     # Main loop — read JSON-RPC from stdin
     # Never crash: daemon going down/up is normal. Surface errors, keep serving.

@@ -67,12 +67,9 @@ Early prototype for transcript replay. Duplicates hook logic that now lives in `
 
 ## Medium — architectural debt
 
-### 6. `log_consciousness_response()` possibly vestigial
+### 6. ~~`log_consciousness_response()` possibly vestigial~~ DONE
 
-**Status:** Needs investigation
-**File:** `servers/brain_consciousness.py`
-
-Only called in 2 places in `brain_evolution.py`. May not be active in current architecture.
+**Status:** Deleted (2026-03-26). Signal queue tracks engagement via `times_surfaced`.
 
 ### 7. `embedder.py` auto-install workaround
 

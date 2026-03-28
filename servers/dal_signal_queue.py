@@ -184,11 +184,13 @@ class SignalQueueDAL:
         """Get preempt-level signals. These skip recall entirely.
 
         No budget constraint — if something is preempt-level, it surfaces.
+        Respects max_surfaces and cooldown to prevent stale preempts.
         """
         now = _now()
+        now_dt = datetime.now(timezone.utc)
         rows = self.conn.execute(
             'SELECT id, producer, signal_type, priority, content, content_chars, '
-            'metadata, created_at, times_surfaced '
+            'metadata, created_at, times_surfaced, max_surfaces, last_surfaced_at, cooldown_seconds '
             'FROM signal_queue '
             'WHERE dismissed = 0 AND preempt = 1 '
             'ORDER BY priority DESC',
@@ -196,15 +198,31 @@ class SignalQueueDAL:
 
         results = []
         for r in rows:
+            sid, producer, signal_type, priority, content, content_chars, \
+                metadata, created_at, times_surfaced, max_surfaces, last_surfaced_at, cooldown_seconds = r
+
+            # Respect max_surfaces
+            if max_surfaces is not None and times_surfaced >= max_surfaces:
+                continue
+
+            # Respect cooldown
+            if cooldown_seconds and last_surfaced_at:
+                try:
+                    last_dt = datetime.fromisoformat(last_surfaced_at)
+                    if (now_dt - last_dt).total_seconds() < cooldown_seconds:
+                        continue
+                except (ValueError, TypeError):
+                    pass
+
             self.conn.execute(
                 'UPDATE signal_queue SET times_surfaced = times_surfaced + 1, '
                 'last_surfaced_at = ? WHERE id = ?',
-                (now, r[0]))
+                (now, sid))
             results.append({
-                'id': r[0], 'producer': r[1], 'signal_type': r[2],
-                'priority': r[3], 'content': r[4], 'content_chars': r[5],
-                'metadata': r[6], 'created_at': r[7],
-                'times_surfaced': r[8] + 1,
+                'id': sid, 'producer': producer, 'signal_type': signal_type,
+                'priority': priority, 'content': content, 'content_chars': content_chars,
+                'metadata': metadata, 'created_at': created_at,
+                'times_surfaced': times_surfaced + 1,
             })
 
         if results:

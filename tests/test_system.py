@@ -42,10 +42,9 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, PROJECT_ROOT)
 
 from servers.brain import Brain
-from servers.daemon import (
-    BrainDaemon, send_command, get_socket_path, get_pid_path,
-    is_daemon_running, ensure_daemon, stop_daemon,
-)
+from servers.daemon_server import BrainDaemon
+from servers.daemon_client import send_command, is_daemon_running, ensure_daemon, stop_daemon
+from servers.daemon_config import get_socket_path, get_pid_path
 from servers.daemon_hooks import (
     hook_recall, hook_post_response_track, hook_idle_maintenance,
     hook_post_compact_reboot, hook_pre_edit, hook_pre_bash_safety,

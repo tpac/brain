@@ -236,16 +236,43 @@ def get_hook_input():
 
 
 def daemon_unavailable_error(hook_name=None):
-    """Return an error message when daemon is not available.
+    """Return a CRITICAL error when daemon is unreachable.
 
-    Use this instead of get_brain() fallback. The daemon should always be
-    running after boot. If it's not, surface the error — don't silently
-    load a separate model copy.
+    Does three things:
+    1. Returns CRITICAL additionalContext that Claude MUST relay to user
+    2. Logs to dashboard DB directly (no daemon needed)
+    3. Attempts to restart daemon via ensure_daemon()
     """
     name = hook_name or _get_hook_name()
-    msg = "[BRAIN ERROR] Daemon unavailable — %s cannot access brain. " \
-          "Memories not lost. Restart session to reconnect." % name
-    print("[brain] %s: daemon unavailable" % name, file=sys.stderr)
+
+    # 1. Format CRITICAL message for Claude
+    msg = (
+        "[CRITICAL — RELAY TO USER IMMEDIATELY]\n"
+        "⚠️ Brain daemon is unreachable. Hook: %s.\n"
+        "Brain memories are safe (on disk). Recall and encoding are disabled.\n"
+        "Attempting automatic restart.\n"
+        "DO NOT continue without informing the user.\n"
+        "[/CRITICAL]"
+    ) % name
+
+    print("[brain] CRITICAL: %s — daemon unavailable" % name, file=sys.stderr)
+
+    # 2. Log to dashboard DB directly (SQLite, no daemon needed)
+    try:
+        log_hook_output("DAEMON_DOWN", output_text=msg,
+                        operator_text="⚠️ Daemon down during %s" % name)
+    except Exception:
+        pass
+
+    # 3. Attempt restart
+    try:
+        if db_path:
+            from servers.daemon_client import ensure_daemon
+            ensure_daemon(db_path)
+            print("[brain] Daemon restart attempted", file=sys.stderr)
+    except Exception as e:
+        print("[brain] Daemon restart failed: %s" % e, file=sys.stderr)
+
     return msg
 
 

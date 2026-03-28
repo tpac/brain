@@ -4,14 +4,22 @@
 
 Use the **MCP tools**. They are your primary interface. The boot hook starts the daemon automatically.
 
-**Core tools:** `recall`, `remember`, `revise`, `connect`, `enrich`, `encode_cluster`, `find_node_by_title`, `eval`, `consciousness`, `engineering_context`
+**Core tools:** `recall`, `remember`, `revise`, `connect`, `enrich`, `encode_cluster`, `find_node_by_title`, `eval`, `consciousness`, `engineering_context`, `dismiss_signal`, `queue_state`
 
 **Specialized remember tools** (first-class MCP, not eval wrappers):
 `remember_lesson`, `remember_impact`, `remember_mechanism`, `remember_convention`, `remember_uncertainty`, `remember_mental_model`, `record_divergence`, `learn_vocabulary`
 
 **`revise`** — update existing nodes: `revise(node_id="...", content="...", reason="...")`. Use when recalled knowledge is outdated. Appends content, re-embeds, preserves history.
 
+**`dismiss_signal`** — dismiss a signal from the queue: `dismiss_signal(signal_id="...")`. Use when a signal has been acknowledged or is no longer relevant. Signal IDs appear in the injection next to each signal.
+
+**`queue_state`** — view all pending signals with priorities, surface counts, producers.
+
 **Do NOT:** write Python scripts to call brain methods, import Brain, construct DB paths, or use curl.
+
+## Signal Queue
+
+Brain signals (reminders, errors, encoding alerts, vocab gaps) flow through a **priority queue** with budget-aware assembly. Producers write signals, the assembler pulls by priority within a 6000 char budget. Signals with priority ≥ 0.95 are **PREEMPT** — they skip recall and surface alone. When you see `[CRITICAL]`, relay to the user immediately and dismiss after.
 
 ## Hooks Handle Everything
 

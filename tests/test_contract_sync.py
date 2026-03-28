@@ -308,10 +308,10 @@ class TestSKILLMDSync(unittest.TestCase):
                             all_methods.add(mname)
 
         # Also include non-class methods and common brain methods
-        all_methods.update(['recall', 'save', 'health_check', 'get_consciousness_signals',
+        all_methods.update(['recall', 'save', 'health_check',
                             'format_boot_context', 'set_config', 'get_config',
                             'recall_with_embeddings', 'get_engineering_context',
-                            'get_urgent_signals', 'synthesize_session',
+                            'synthesize_session',
                             'record_message', 'get_encoding_heartbeat'])
 
         phantom = method_refs - all_methods
