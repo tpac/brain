@@ -389,8 +389,18 @@ class BrainDaemon:
                 self.running = False
                 return {"ok": True, "result": {"status": "shutting_down"}}
 
-            # Hook commands — always write-locked
+            # Hook commands — read hooks run without lock, write hooks serialize
             if cmd.startswith("hook_"):
+                # Read-only hooks run without lock — safe to run concurrently
+                read_hooks = (
+                    "hook_recall",             # cosine scan, candidates file
+                    "hook_pre_edit",           # reads rules, returns context
+                    "hook_pre_bash_safety",    # reads rules, returns context
+                    "hook_post_bash_host_check",  # checks env, returns context
+                    "hook_worktree_context",   # returns context
+                )
+                if cmd in read_hooks:
+                    return self._dispatch_hook(cmd, args)
                 return self._locked_exec(lambda: self._dispatch_hook(cmd, args), cmd, args)
 
             # Table-driven dispatch

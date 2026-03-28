@@ -39,13 +39,7 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/pre-response-recall.sh",
-            "timeout": 10
-          },
-          {
-            "type": "agent",
-            "model": "haiku",
-            "prompt": "This is a test. Read the most recently modified file matching /tmp/brain-*-recall-candidates.json using Bash: ls -t /tmp/brain-*-recall-candidates.json 2>/dev/null | head -1. Then read that file. Summarize the candidates in 2 sentences. Return your summary as plain text.",
-            "timeout": 10
+            "timeout": 15
           }
         ]
       }

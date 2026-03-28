@@ -197,7 +197,9 @@ def log_hook_output(hook_name, output_text="", operator_text="", metadata="", us
     """
     if not db_dir or not os.path.isdir(db_dir):
         return
-    if not output_text and not operator_text:
+    # Always log if there's a user_prompt — even empty output is useful
+    # to see that the hook fired and what the user said
+    if not output_text and not operator_text and not user_prompt:
         return
 
     # Resolve session_id from hook input if not provided

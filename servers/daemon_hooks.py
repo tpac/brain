@@ -322,11 +322,12 @@ def hook_recall(brain, args, graph_changes):
 
     # ── ASSEMBLE: budget-aware output ──
     assembler = SurfaceAssembler(sq_dal, budget_chars=6000)
-    # Command hook: write candidates file for agent hook, return approve (no context).
-    # Dashboard logging happens in the thin client (pre_response_recall.py),
-    # NOT here. One logging point = one source of truth.
+    # Command hook: write candidates file, return approve + session_id.
+    # The thin client reads the file, calls LLM to distill, returns context.
+    # Dashboard logging happens in the thin client — one source of truth.
     brain.save()
-    return {"json": {"decision": "approve"}}
+    session_id = brain.get_config('session_id', '')
+    return {"json": {"decision": "approve"}, "session_id": session_id}
 
 
 
