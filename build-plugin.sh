@@ -36,12 +36,14 @@ FILES=(
   servers/embedder.py
   servers/migrate.py
   servers/dal.py
-  servers/daemon.py
   servers/daemon_config.py
   servers/daemon_server.py
   servers/daemon_client.py
   servers/daemon_dispatch.py
   servers/daemon_hooks.py
+  servers/signal_producers.py
+  servers/surface_assembler.py
+  servers/dal_signal_queue.py
   servers/brain_mcp.py
   servers/metrics.py
   # Hook scripts — bash shims (thin wrappers)
