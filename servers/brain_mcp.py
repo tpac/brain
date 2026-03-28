@@ -56,34 +56,18 @@ def daemon_send(cmd, args=None, timeout=30.0):
 
 
 def ensure_daemon_running():
-    """Start daemon if not running. Returns True if ready."""
-    # Try ping first — fast path
-    resp = daemon_send("ping", timeout=2.0)
+    """Check if daemon is alive. Does NOT start it.
+
+    Daemon lifecycle is managed by launchd (com.brain.daemon).
+    The MCP plugin only connects — it never spawns the daemon.
+    This prevents race conditions from multiple sessions/hooks competing.
+    """
+    resp = daemon_send("ping", timeout=3.0)
     if resp.get("ok"):
         return True
 
-    # Daemon not running — try to start it
-    parent = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if parent not in sys.path:
-        sys.path.insert(0, parent)
-
-    try:
-        from servers.daemon_client import ensure_daemon
-        db_dir = os.environ.get("BRAIN_DB_DIR", "")
-        if not db_dir:
-            # Resolve DB path
-            home = os.path.expanduser("~")
-            candidate = os.path.join(home, "AgentsContext", "brain")
-            if os.path.isfile(os.path.join(candidate, "brain.db")):
-                db_dir = candidate
-
-        if not db_dir:
-            return False
-
-        return ensure_daemon(os.path.join(db_dir, "brain.db"))
-    except Exception as e:
-        sys.stderr.write("[brain-mcp] Failed to start daemon: {}\n".format(e))
-        return False
+    sys.stderr.write("[brain-mcp] Daemon not responding. Managed by launchd — check: launchctl list | grep brain\n")
+    return False
 
 
 # ── MCP Protocol ──
@@ -213,6 +197,11 @@ TOOLS = [
          "title_query": {"type": "string", "description": "Title to search for (fuzzy match)"},
          "threshold": {"type": "number", "description": "Minimum similarity (0.0-1.0, default 0.75)", "default": 0.75},
          "top_k": {"type": "integer", "description": "Return top K matches (default 1)", "default": 1}}}},
+
+    {"name": "get_node",
+     "description": "Get a node by its exact ID. Returns full content, type, title, confidence, connections, metadata. Use when you already have a node ID from recall or find_node_by_title.",
+     "inputSchema": {"type": "object", "required": ["node_id"], "properties": {
+         "node_id": {"type": "string", "description": "Full node ID"}}}},
 
     # ── Introspection ──
     {"name": "consciousness",
@@ -420,14 +409,19 @@ def _health_monitor():
                 if db_dir:
                     logs_db = os.path.join(db_dir, "brain_logs.db")
                     conn = sqlite3.connect(logs_db, timeout=3)
-                    conn.execute(
-                        """INSERT OR REPLACE INTO signal_queue
-                           (id, producer, signal_type, priority, content, preempt, created_at,
-                            times_surfaced, dismissed, cooldown_seconds)
-                           VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 0, 0, 60)""",
-                        ("health:daemon_down", "system_health", "daemon_down", 0.99,
-                         "⚠️ Brain daemon is DOWN. Recall and encoding disabled. Automatic restart attempted.",
-                         1))
+                    # Only write daemon_down if not already dismissed
+                    existing = conn.execute(
+                        "SELECT dismissed FROM signal_queue WHERE id = 'health:daemon_down'"
+                    ).fetchone()
+                    if not existing or not existing[0]:
+                        conn.execute(
+                            """INSERT OR REPLACE INTO signal_queue
+                               (id, producer, signal_type, priority, content, preempt, created_at,
+                                times_surfaced, dismissed, cooldown_seconds)
+                               VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 0, 0, 300)""",
+                            ("health:daemon_down", "system_health", "daemon_down", 0.85,
+                             "⚠️ Brain daemon is DOWN. Recall and encoding disabled.",
+                             0))  # NOT preempt — don't block recall for a restart blip
                     conn.commit()
                     conn.close()
             except Exception as e:

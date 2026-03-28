@@ -4,7 +4,7 @@
 
 Use the **MCP tools**. They are your primary interface. The boot hook starts the daemon automatically.
 
-**Core tools:** `recall`, `remember`, `revise`, `connect`, `enrich`, `encode_cluster`, `find_node_by_title`, `eval`, `consciousness`, `engineering_context`, `dismiss_signal`, `queue_state`
+**Core tools:** `recall`, `remember`, `revise`, `connect`, `enrich`, `encode_cluster`, `find_node_by_title`, `get_node`, `eval`, `consciousness`, `engineering_context`, `dismiss_signal`, `queue_state`
 
 **Specialized remember tools** (first-class MCP, not eval wrappers):
 `remember_lesson`, `remember_impact`, `remember_mechanism`, `remember_convention`, `remember_uncertainty`, `remember_mental_model`, `record_divergence`, `learn_vocabulary`

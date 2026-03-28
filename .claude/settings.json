@@ -15,6 +15,7 @@
       "mcp__plugin_brain_brain__learn_vocabulary",
       "mcp__plugin_brain_brain__encode_cluster",
       "mcp__plugin_brain_brain__find_node_by_title",
+      "mcp__plugin_brain_brain__get_node",
       "mcp__plugin_brain_brain__consciousness",
       "mcp__plugin_brain_brain__engineering_context",
       "mcp__plugin_brain_brain__eval"
@@ -41,9 +42,10 @@
             "timeout": 10
           },
           {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/post-response-track.sh",
-            "timeout": 3
+            "type": "agent",
+            "model": "haiku",
+            "prompt": "This is a test. Read the most recently modified file matching /tmp/brain-*-recall-candidates.json using Bash: ls -t /tmp/brain-*-recall-candidates.json 2>/dev/null | head -1. Then read that file. Summarize the candidates in 2 sentences. Return your summary as plain text.",
+            "timeout": 10
           }
         ]
       }
@@ -105,6 +107,12 @@
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/post-response-track.sh",
             "timeout": 5
+          },
+          {
+            "type": "agent",
+            "model": "sonnet",
+            "prompt": "You are the encoding agent for a persistent AI brain. You run every 5 conversation turns to encode important information.\n\n1. Read the encoding input file. Look for /tmp/brain-*-encoding-input.json using Bash: ls -t /tmp/brain-*-encoding-input.json 2>/dev/null | head -1\n2. If no file exists, respond SKIP\n3. If a file exists, read it and follow the instructions at: $CLAUDE_PROJECT_DIR/hooks/prompts/encoding-agent.md\n4. After encoding, delete the input file so it doesn't re-trigger\n5. Store your updated state by calling: remember(type='context', title='encoding_agent_state', content=YOUR_STATE_JSON) or use the brain eval tool to set config\n\nWork autonomously. Use brain MCP tools directly.",
+            "timeout": 30
           }
         ]
       }

@@ -69,10 +69,15 @@ class SignalQueueDAL:
         now = _now()
         content_chars = len(content)
 
-        # Preserve times_surfaced if signal already exists
+        # Check if signal already exists
         existing = self.conn.execute(
-            'SELECT times_surfaced, last_surfaced_at FROM signal_queue WHERE id = ?',
+            'SELECT times_surfaced, last_surfaced_at, dismissed FROM signal_queue WHERE id = ?',
             (id,)).fetchone()
+
+        # If dismissed, don't resurrect it — the operator or system explicitly dismissed this
+        if existing and existing[2]:
+            return
+
         times_surfaced = existing[0] if existing else 0
         last_surfaced = existing[1] if existing else None
 

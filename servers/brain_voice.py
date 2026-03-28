@@ -272,21 +272,13 @@ class BrainVoice:
         return "\n".join(items)
 
     def wrap_for_hook(self, for_claude: str, for_operator: str = None) -> str:
-        """Single wrapping point — merges both channels into tagged output.
+        """Wrap brain output for hook injection.
 
-        Everything Brain wants to tell Claude goes in [BRAIN]...[/BRAIN].
-        Everything Brain wants to tell the operator goes in [BRAIN-To-{name}]...[/BRAIN-To-{name}].
-        Claude relays the operator section faithfully, respecting @priority directives.
+        OLD: merged [BRAIN-To-Operator] channel with Claude channel.
+        NEW (2026-03-28): operator channel killed. Signal queue handles alerts.
+        This function just returns the Claude content.
         """
-        # Operator section goes FIRST — if hook times out, Claude content is cut,
-        # not the operator's messages. The human's reminders and alerts matter more
-        # than Claude's reasoning context.
-        parts = []
-        if for_operator and for_operator.strip():
-            host = self.brain.get_config("host_name") or "Operator"
-            parts.append("[BRAIN-To-%s]\n%s\n[/BRAIN-To-%s]" % (host, for_operator, host))
-        parts.append(for_claude)  # for_claude already has [BRAIN]...[/BRAIN] wrapping
-        return "\n\n".join(parts)
+        return for_claude
 
     # render_operator_prompt: DELETED — migrated to signal queue + assembler (2026-03-27)
 

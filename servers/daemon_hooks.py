@@ -239,6 +239,46 @@ def hook_recall(brain, args, graph_changes):
     except Exception:
         pass
 
+    # Gap detection (needed by candidates file + later logging)
+    gap = result.get('_gap') if isinstance(result, dict) else None
+
+    # Write candidates to file for recall agent hook (LLM distillation)
+    try:
+        session_id = brain.get_config('session_id', 'unknown')
+        candidates_path = '/tmp/brain-{}-recall-candidates.json'.format(session_id)
+        import json as _json
+        candidates_data = []
+        for r in results:
+            node_data = {
+                "id": r.get("id", ""),
+                "type": r.get("type", ""),
+                "title": r.get("title", ""),
+                "content": (r.get("content") or "")[:500],
+                "confidence": r.get("confidence", 0),
+                "locked": r.get("locked", False),
+                "score": r.get("_score", 0),
+                "revised_at": r.get("revised_at"),
+                "created_at": r.get("created_at"),
+            }
+            # Include neighbors if available
+            neighbors = r.get("_neighbors") or r.get("neighbors") or []
+            if neighbors:
+                node_data["neighbors"] = [
+                    {"id": n.get("id", ""), "title": n.get("title", ""),
+                     "type": n.get("type", ""), "relation": n.get("_edge_type", "")}
+                    for n in neighbors[:5]
+                ]
+            candidates_data.append(node_data)
+        with open(candidates_path, 'w') as f:
+            _json.dump({
+                "user_message": user_message,
+                "candidates": candidates_data,
+                "segment_note": segment_note,
+                "gap": gap.get("query") if gap else None,
+            }, f, default=str)
+    except Exception as e:
+        brain._log_error('recall_candidates_write', e, 'Failed to write candidates file')
+
     if not results:
         brain.save()
         return {"json": {"decision": "approve"}}
@@ -258,7 +298,6 @@ def hook_recall(brain, args, graph_changes):
         brain._log_error('priming_check', e, 'hook_recall')
 
     # Gap detection: log gaps for trend analysis
-    gap = result.get('_gap') if isinstance(result, dict) else None
     if gap:
         try:
             from .dal import LogsDAL
@@ -283,22 +322,11 @@ def hook_recall(brain, args, graph_changes):
 
     # ── ASSEMBLE: budget-aware output ──
     assembler = SurfaceAssembler(sq_dal, budget_chars=6000)
-    rendered = assembler.assemble(results, segment_note, priming_note, gap)
-
+    # Command hook: write candidates file for agent hook, return approve (no context).
+    # Dashboard logging happens in the thin client (pre_response_recall.py),
+    # NOT here. One logging point = one source of truth.
     brain.save()
-    voice = BrainVoice(brain)
-    merged = voice.wrap_for_hook(rendered['for_claude'], rendered.get('for_operator'))
-
-    # Log to dashboard
-    try:
-        from hooks.scripts.hook_common import log_hook_output
-        log_hook_output("RECALL", output_text=merged, operator_text=rendered.get('for_operator', ''),
-                        user_prompt=user_message)
-    except Exception:
-        pass
-
-    result_json = {"additionalContext": merged} if merged.strip() else {"decision": "approve"}
-    return {"json": result_json}
+    return {"json": {"decision": "approve"}}
 
 
 
@@ -315,40 +343,118 @@ def hook_post_response_track(brain, args, graph_changes):
     user_message = args.get("prompt", "") or args.get("message", "")
     assistant_response = (args.get("last_assistant_message", "") or "")[:4000]
 
-    # 1. Precision: track Claude's response
-    try:
-        brain.track_response(user_message, assistant_response)
-    except Exception as e:
-        brain._log_error('track_response', e, 'Stop hook')
+    # OLD SYSTEM (replaced by encoding agent — agent hook on Stop, every 5 turns):
+    # 1. track_response (precision eval) — broken, will be replaced by LLM-based eval
+    # 2. auto_encode (regex signal detection) — replaced by Sonnet encoding agent
+    # 3. detect_vocab_gaps — replaced by encoding agent's vocabulary detection
+    # These remain commented until encoding agent is proven, then delete.
+    #
+    # try:
+    #     brain.track_response(user_message, assistant_response)
+    # except Exception as e:
+    #     brain._log_error('track_response', e, 'Stop hook')
+    #
+    # auto_signal = None
+    # try:
+    #     auto_result = brain.auto_encode(user_message, assistant_response)
+    #     if auto_result:
+    #         auto_signal = auto_result.get('signal')
+    # except Exception as e:
+    #     brain._log_error('auto_encode', e, 'Stop hook')
+    #
+    # try:
+    #     brain.detect_vocab_gaps(user_message)
+    # except Exception as e:
+    #     brain._log_error('detect_vocab_gaps', e, 'Stop hook')
 
-    # 2. Encoding instinct: auto-encode the exchange + capture signal type
-    auto_signal = None
-    try:
-        auto_result = brain.auto_encode(user_message, assistant_response)
-        if auto_result:
-            auto_signal = auto_result.get('signal')
-            _log('[auto-encode] %s: "%s" (signal: %s)' % (
-                auto_result.get('type', '?'), auto_result.get('title', '?')[:60], auto_signal))
-    except Exception as e:
-        brain._log_error('auto_encode', e, 'Stop hook')
-
-    # 3. Vocab gap detection
-    try:
-        brain.detect_vocab_gaps(user_message)
-    except Exception as e:
-        brain._log_error('detect_vocab_gaps', e, 'Stop hook')
-
-    # 4. Invisible capture: store conversation WITH signal from auto_encode
-    # Signal flows: auto_encode detects → store_exchange annotates → get_actionable escalates
+    # Store conversation in message stream (kept — encoding agent reads from this)
     try:
         session_id = brain.get_config('session_id', '')
-        brain.store_exchange(user_message, assistant_response, session_id,
-                             signal_type=auto_signal)
+        brain.store_exchange(user_message, assistant_response, session_id)
     except Exception as e:
-        brain._log_error('store_exchange', e, 'Stop hook: failed to store exchange to message stream')
+        brain._log_error('store_exchange', e, 'Stop hook: failed to store exchange')
 
-    # Encoding heartbeat — KILLED. Replaced by encoding_gap producer in signal queue.
-    # Fired 5x this session with zero effect. Queue has cooldown + budget control.
+    # 5. Encoding agent preparation — every Y=5 stops, write input file for agent hook
+    try:
+        counter = int(brain.get_config('stop_counter', '0') or '0') + 1
+        brain.set_config('stop_counter', str(counter))
+
+        if counter % 5 == 0:
+            session_id = brain.get_config('session_id', 'unknown')
+            input_path = '/tmp/brain-{}-encoding-input.json'.format(session_id)
+
+            # Gather last 10 messages from message stream
+            messages = []
+            try:
+                rows = brain.logs_conn.execute(
+                    "SELECT role, content, signal_type, created_at "
+                    "FROM message_stream WHERE session_id = ? "
+                    "ORDER BY created_at DESC LIMIT 10",
+                    (session_id,)
+                ).fetchall()
+                messages = [
+                    {"role": r[0], "content": (r[1] or "")[:2000],
+                     "signal": r[2], "timestamp": r[3]}
+                    for r in reversed(rows)
+                ]
+            except Exception:
+                pass
+
+            # Gather recall summaries from dashboard log (what was surfaced)
+            recall_summaries = []
+            try:
+                from .dal_signal_queue import SignalQueueDAL
+                dash_db_path = os.path.join(os.path.dirname(brain.db_path), 'brain_dashboard.db')
+                if os.path.exists(dash_db_path):
+                    import sqlite3 as _sql
+                    dconn = _sql.connect(dash_db_path, timeout=3)
+                    rows = dconn.execute(
+                        "SELECT user_prompt, output_text FROM hook_log "
+                        "WHERE hook_name = 'RECALL' AND session_id = ? "
+                        "ORDER BY id DESC LIMIT 5", (session_id,)
+                    ).fetchall()
+                    recall_summaries = [
+                        {"user_prompt": (r[0] or "")[:500], "brain_output": (r[1] or "")[:1000]}
+                        for r in reversed(rows)
+                    ]
+                    dconn.close()
+            except Exception:
+                pass
+
+            # Gather correction traces
+            corrections = []
+            try:
+                rows = brain.conn.execute(
+                    "SELECT claude_assumed, reality, underlying_pattern, "
+                    "COUNT(*) as cnt FROM correction_traces "
+                    "GROUP BY underlying_pattern ORDER BY cnt DESC LIMIT 10"
+                ).fetchall()
+                corrections = [
+                    {"assumed": r[0], "reality": r[1], "pattern": r[2], "count": r[3]}
+                    for r in rows
+                ]
+            except Exception:
+                pass
+
+            # Get previous encoding agent state
+            previous_state = brain.get_config('encoding_agent_state', '{}') or '{}'
+
+            # Write input file
+            import json as _json
+            with open(input_path, 'w') as f:
+                _json.dump({
+                    "messages": messages,
+                    "recall_summaries": recall_summaries,
+                    "corrections": corrections,
+                    "previous_state": previous_state,
+                    "session_id": session_id,
+                    "stop_number": counter,
+                }, f, default=str)
+            _log('[encoding-agent] Prepared input file: %d messages, %d recalls, stop #%d' % (
+                len(messages), len(recall_summaries), counter))
+    except Exception as e:
+        brain._log_error('encoding_agent_prep', e, 'Stop hook')
+
     try:
         brain.record_message()
     except Exception as e:

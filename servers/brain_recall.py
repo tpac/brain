@@ -52,6 +52,38 @@ from .dal import GraphDAL
 class BrainRecallMixin:
     """Recall methods for Brain."""
 
+    def get_node(self, node_id: str) -> Optional[Dict[str, Any]]:
+        """Get a single node by ID with full content and connections."""
+        row = self.conn.execute(
+            "SELECT id, type, title, content, keywords, confidence, locked, "
+            "created_at, updated_at, revised_at, access_count, emotion, "
+            "emotion_label, project, encoding_source, content_summary "
+            "FROM nodes WHERE id = ?", (node_id,)
+        ).fetchone()
+        if not row:
+            return None
+        node = {
+            "id": row[0], "type": row[1], "title": row[2], "content": row[3],
+            "keywords": row[4], "confidence": row[5], "locked": bool(row[6]),
+            "created_at": row[7], "updated_at": row[8], "revised_at": row[9],
+            "access_count": row[10], "emotion": row[11],
+            "emotion_label": row[12] or "neutral", "project": row[13],
+            "encoding_source": row[14], "content_summary": row[15],
+        }
+        # Attach connections
+        edges = self.conn.execute(
+            "SELECT e.target_id, e.relation, e.weight, n.title, n.type "
+            "FROM edges e LEFT JOIN nodes n ON n.id = e.target_id "
+            "WHERE e.source_id = ? ORDER BY e.weight DESC LIMIT 10",
+            (node_id,)
+        ).fetchall()
+        node["connections"] = [
+            {"target_id": e[0], "relation": e[1], "weight": e[2],
+             "title": e[3] or "", "type": e[4] or ""}
+            for e in edges
+        ]
+        return node
+
     def semantic_recall(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """
         Pure embedding-based search (brute-force cosine scan).

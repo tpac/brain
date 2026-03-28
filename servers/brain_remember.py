@@ -1181,36 +1181,50 @@ class BrainRememberMixin:
         Returns: {id, title, type, similarity, content_snippet, keywords} or None.
                  If top_k > 1, returns list of matches.
         """
-        if not embedder.is_ready():
-            return None
-        query_vec = embedder.embed(title_query)
-        if not query_vec:
-            return None
+        scored = {}  # id → result dict, dedup by node
 
-        rows = self.conn.execute(
-            "SELECT ne.node_id, ne.embedding, n.title, n.type, "
-            "SUBSTR(n.content, 1, 200) as snippet, n.keywords "
-            "FROM node_embeddings ne JOIN nodes n ON ne.node_id = n.id "
-            "WHERE n.archived = 0"
+        # Path 1: Text matching — fast SQL LIKE on title
+        query_lower = title_query.lower()
+        text_rows = self.conn.execute(
+            "SELECT id, title, type, SUBSTR(content, 1, 200), keywords "
+            "FROM nodes WHERE archived = 0 AND LOWER(title) LIKE ?",
+            ("%" + query_lower.replace(" ", "%") + "%",)
         ).fetchall()
+        for nid, title, ntype, snippet, keywords in text_rows:
+            scored[nid] = {
+                "id": nid, "title": title, "type": ntype,
+                "similarity": 0.95,  # text match = high confidence
+                "content_snippet": snippet or "",
+                "keywords": keywords or "",
+            }
 
-        scored = []
-        for node_id, emb_blob, title, ntype, snippet, keywords in rows:
-            if not emb_blob:
-                continue
-            sim = embedder.cosine_similarity(query_vec, emb_blob)
-            if sim >= threshold:
-                scored.append({
-                    "id": node_id, "title": title, "type": ntype,
-                    "similarity": round(sim, 3),
-                    "content_snippet": snippet or "",
-                    "keywords": keywords or "",
-                })
-        scored.sort(key=lambda x: x["similarity"], reverse=True)
+        # Path 2: Embedding similarity — semantic fallback
+        if embedder.is_ready() and len(scored) < top_k:
+            query_vec = embedder.embed(title_query)
+            if query_vec:
+                rows = self.conn.execute(
+                    "SELECT ne.node_id, ne.embedding, n.title, n.type, "
+                    "SUBSTR(n.content, 1, 200) as snippet, n.keywords "
+                    "FROM node_embeddings ne JOIN nodes n ON ne.node_id = n.id "
+                    "WHERE n.archived = 0"
+                ).fetchall()
+                for node_id, emb_blob, title, ntype, snippet, keywords in rows:
+                    if not emb_blob or node_id in scored:
+                        continue
+                    sim = embedder.cosine_similarity(query_vec, emb_blob)
+                    if sim >= threshold:
+                        scored[node_id] = {
+                            "id": node_id, "title": title, "type": ntype,
+                            "similarity": round(sim, 3),
+                            "content_snippet": snippet or "",
+                            "keywords": keywords or "",
+                        }
+
+        results = sorted(scored.values(), key=lambda x: x["similarity"], reverse=True)
 
         if top_k == 1:
-            return scored[0] if scored else None
-        return scored[:top_k]
+            return results[0] if results else None
+        return results[:top_k]
 
     def encode_cluster(self, nodes: List[Dict], connect_to: Optional[List[str]] = None,
                        auto_connect: bool = True) -> Dict[str, Any]:

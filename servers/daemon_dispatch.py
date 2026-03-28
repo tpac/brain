@@ -420,6 +420,31 @@ def _handle_find_node_by_title(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
+def _handle_get_node(brain, args, graph_changes):
+    node_id = args.get("node_id", "")
+    if not node_id:
+        return {"ok": False, "error": "node_id is required"}
+    node = brain.get_node(node_id)
+    if not node:
+        return {"ok": False, "error": "Node not found: {}".format(node_id)}
+    # Add connections
+    try:
+        edges = brain.conn.execute(
+            "SELECT e.target_id, e.relation, e.weight, n.title, n.type "
+            "FROM edges e LEFT JOIN nodes n ON n.id = e.target_id "
+            "WHERE e.source_id = ? ORDER BY e.weight DESC LIMIT 10",
+            (node_id,)
+        ).fetchall()
+        node["connections"] = [
+            {"target_id": e[0], "relation": e[1], "weight": e[2],
+             "title": e[3] or "", "type": e[4] or ""}
+            for e in edges
+        ]
+    except Exception:
+        node["connections"] = []
+    return {"ok": True, "result": node}
+
+
 def _handle_encode_cluster(brain, args, graph_changes):
     result = brain.encode_cluster(
         nodes=args.get("nodes", []),
@@ -529,6 +554,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "record_divergence":     CmdEntry(_handle_record_divergence,   is_write=True, marks_dirty=True),
     "learn_vocabulary":      CmdEntry(_handle_learn_vocabulary,    is_write=True, marks_dirty=True),
     "find_node_by_title":    CmdEntry(_handle_find_node_by_title,  is_write=False, marks_dirty=False),
+    "get_node":              CmdEntry(_handle_get_node,             is_write=False, marks_dirty=False),
     "encode_cluster":        CmdEntry(_handle_encode_cluster,      is_write=True, marks_dirty=True),
     "connect":               CmdEntry(_handle_connect,             is_write=True, marks_dirty=True),
     "enrich":                CmdEntry(_handle_enrich,              is_write=True, marks_dirty=True),

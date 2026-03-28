@@ -815,6 +815,8 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: 'SF Mono', 'Fira Code',
 .hook-badge.recall { background: #1a3a1a; color: #33ff88; }
 .hook-badge.stop { background: #2a1a3a; color: #aa66ff; }
 .hook-header .hook-time { color: #555; font-size: 11px; }
+.hook-header .hook-session { color: #7eb8ff; font-size: 10px; font-family: monospace; background: #1a1a2a; padding: 1px 4px; border-radius: 3px; }
+.hook-header .hook-id { color: #555; font-size: 10px; font-family: monospace; }
 .hook-header .hook-size { color: #444; font-size: 10px; margin-left: auto; }
 .hook-body { display: none; padding: 0 12px 10px; }
 .hook-body.open { display: block; }
@@ -1073,10 +1075,13 @@ async function pollHookLog() {
       div.className = 'hook-entry ' + (evt.hook_name || '');
       const t = localTime(evt.timestamp, 'time');
       const chars = (evt.output_text || '').length;
+      const sid = evt.session_id ? evt.session_id.substring(0, 8) : '';
       div.innerHTML =
         '<div class="hook-header" onclick="toggleHookBody(this)">' +
           '<span class="hook-badge ' + evt.hook_name + '">' + evt.hook_name + '</span>' +
           '<span class="hook-time">' + t + '</span>' +
+          (sid ? '<span class="hook-session" title="' + escapeHtml(evt.session_id) + '">' + sid + '</span>' : '') +
+          '<span class="hook-id">#' + evt.id + '</span>' +
           '<span class="hook-size">' + chars + ' chars</span>' +
         '</div>' +
         (evt.user_prompt ? '<div class="hook-prompt">' + escapeHtml(evt.user_prompt) + '</div>' : '') +

@@ -188,7 +188,7 @@ def mark_hook_errors_surfaced(error_ids):
         pass
 
 
-def log_hook_output(hook_name, output_text="", operator_text="", metadata="", user_prompt=""):
+def log_hook_output(hook_name, output_text="", operator_text="", metadata="", user_prompt="", session_id=""):
     """Log hook output to brain_dashboard.db for dashboard visibility.
 
     Uses a separate DB from brain.db and brain_logs.db — clean isolation.
@@ -199,6 +199,15 @@ def log_hook_output(hook_name, output_text="", operator_text="", metadata="", us
         return
     if not output_text and not operator_text:
         return
+
+    # Resolve session_id from hook input if not provided
+    if not session_id:
+        try:
+            hi = json.loads(os.environ.get("HOOK_INPUT", "{}"))
+            session_id = hi.get("session_id", "")
+        except Exception:
+            session_id = ""
+
     dashboard_db = os.path.join(db_dir, "brain_dashboard.db")
     try:
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
@@ -209,15 +218,10 @@ def log_hook_output(hook_name, output_text="", operator_text="", metadata="", us
             "id INTEGER PRIMARY KEY AUTOINCREMENT, hook_name TEXT NOT NULL, "
             "timestamp TEXT NOT NULL, output_text TEXT, operator_text TEXT, "
             "metadata TEXT, session_id TEXT, user_prompt TEXT)")
-        # Add user_prompt column if missing (migration for existing DBs)
-        try:
-            conn.execute("ALTER TABLE hook_log ADD COLUMN user_prompt TEXT")
-        except Exception:
-            pass  # Column already exists
         conn.execute(
             "INSERT INTO hook_log (hook_name, timestamp, output_text, operator_text, metadata, session_id, user_prompt) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (hook_name, ts, output_text, operator_text, metadata, "", user_prompt))
+            (hook_name, ts, output_text, operator_text, metadata, session_id, user_prompt))
         # Keep last 500 entries
         conn.execute("DELETE FROM hook_log WHERE id NOT IN (SELECT id FROM hook_log ORDER BY id DESC LIMIT 500)")
         conn.commit()
@@ -264,14 +268,10 @@ def daemon_unavailable_error(hook_name=None):
     except Exception:
         pass
 
-    # 3. Attempt restart
-    try:
-        if db_path:
-            from servers.daemon_client import ensure_daemon
-            ensure_daemon(db_path)
-            print("[brain] Daemon restart attempted", file=sys.stderr)
-    except Exception as e:
-        print("[brain] Daemon restart failed: %s" % e, file=sys.stderr)
+    # 3. Daemon restart is handled by launchd (com.brain.daemon).
+    # Hooks do NOT restart the daemon — that caused race conditions
+    # with multiple sessions spawning competing daemons.
+    # If launchd is not configured, the MCP plugin health monitor restarts it.
 
     return msg
 

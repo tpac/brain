@@ -77,62 +77,100 @@ def is_daemon_running() -> bool:
         return False
 
 
+def _can_connect(timeout: float = 2.0) -> dict:
+    """Try to ping the daemon. Returns ping response or empty dict."""
+    try:
+        return send_command("ping", timeout=timeout)
+    except Exception:
+        return {}
+
+
+def _is_starting() -> bool:
+    """Check if another caller recently spawned a daemon (within 15s)."""
+    marker = get_pid_path() + ".starting"
+    if os.path.exists(marker):
+        try:
+            age = time.time() - os.path.getmtime(marker)
+            return age < 15
+        except Exception:
+            pass
+    return False
+
+
+def _mark_starting():
+    """Mark that we're about to spawn a daemon."""
+    marker = get_pid_path() + ".starting"
+    try:
+        with open(marker, 'w') as f:
+            f.write(str(os.getpid()))
+    except Exception:
+        pass
+
+
+def _clear_starting():
+    """Clear the starting marker."""
+    marker = get_pid_path() + ".starting"
+    try:
+        os.unlink(marker)
+    except Exception:
+        pass
+
+
+def _port_is_occupied() -> bool:
+    """Check if something is holding our daemon port."""
+    import socket as _socket
+    addr = get_daemon_addr()
+    s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+    try:
+        s.bind(addr)
+        s.close()
+        return False  # Port is free
+    except OSError:
+        s.close()
+        return True  # Something is holding it
+
+
 def ensure_daemon(db_path: str) -> bool:
     """Start the daemon if not running. Returns True if daemon is ready.
 
-    PID file is written before the socket is bound (brain+embedder loading
-    takes ~1-2s). We retry pings before declaring zombie.
+    Design: TCP connection is the health check and the mutex.
+    1. Try to connect — if alive and responsive, done.
+    2. If port occupied but unresponsive — zombie, kill it.
+    3. If another caller is already starting one — wait for it.
+    4. Otherwise — spawn and wait.
     """
-    # Clean stale lock: lock exists but no live process
-    lock_path = get_lock_path()
-    pid_path = get_pid_path()
-    if os.path.exists(lock_path) and not os.path.exists(pid_path):
-        sys.stderr.write("[brain-daemon] Removing stale lock (no PID file)\n")
-        try:
-            os.unlink(lock_path)
-        except Exception:
-            pass
-    elif os.path.exists(lock_path) and os.path.exists(pid_path):
-        try:
-            with open(pid_path) as f:
-                pid = int(f.read().strip())
-            os.kill(pid, 0)  # Check if process is alive
-        except (OSError, ValueError):
-            sys.stderr.write("[brain-daemon] Removing stale lock (PID {} not alive)\n".format(
-                pid if 'pid' in dir() else '?'))
-            for p in [lock_path, pid_path]:
-                try:
-                    if os.path.exists(p):
-                        os.unlink(p)
-                except Exception:
-                    pass
-
-    if is_daemon_running():
-        # Daemon process exists — wait for socket to be ready
-        for attempt in range(25):  # 5 seconds total
-            resp = send_command("ping", timeout=2.0)
-            if resp.get("ok"):
-                # Check if code has been updated since daemon loaded
-                daemon_fp = resp.get("result", {}).get("code_fingerprint", "")
-                current_fp = _code_fingerprint()
-                if current_fp != "unknown" and daemon_fp != current_fp:
-                    sys.stderr.write(
-                        "[brain-daemon] Code changed (daemon={}, current={}) — restarting\n"
-                        .format(daemon_fp[:12] or "none", current_fp[:12]))
-                    _kill_daemon()
-                    break  # Fall through to start below
-                return True
-            time.sleep(0.2)
-        else:
-            # Still not responding after 5s — truly zombie, kill and restart
+    # Step 1: Already alive and responsive?
+    resp = _can_connect()
+    if resp.get("ok"):
+        daemon_fp = resp.get("result", {}).get("code_fingerprint", "")
+        current_fp = _code_fingerprint()
+        if current_fp != "unknown" and daemon_fp and daemon_fp != current_fp:
             sys.stderr.write(
-                "[brain-daemon] Killing zombie daemon (PID alive but unresponsive for 5s)\n")
+                "[brain-daemon] Code changed ({} → {}) — restarting\n"
+                .format(daemon_fp[:12], current_fp[:12]))
             _kill_daemon()
+            time.sleep(1)
+        else:
+            return True
 
-    # Spawn daemon as a detached subprocess.
-    # subprocess.Popen (not fork) — macOS Accelerate/Metal uses XPC connections
-    # that are invalid in forked children, causing SIGABRT. A clean subprocess
-    # with CPU-only env vars avoids this entirely.
+    # Step 2: Port occupied but not responding? Zombie — kill it.
+    if _port_is_occupied():
+        sys.stderr.write("[brain-daemon] Port occupied but unresponsive — killing zombie\n")
+        _kill_daemon()
+        time.sleep(1)
+
+    # Step 3: Someone else already starting?
+    if _is_starting():
+        sys.stderr.write("[brain-daemon] Another caller is starting daemon — waiting\n")
+        for _ in range(20):
+            time.sleep(0.5)
+            if _can_connect().get("ok"):
+                return True
+        # Timed out — stale marker, proceed to spawn
+        _clear_starting()
+
+    # Step 4: Spawn daemon
+    _mark_starting()
     import subprocess
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     log_path = os.path.join(os.path.dirname(db_path), "daemon.log")
@@ -157,13 +195,15 @@ def ensure_daemon(db_path: str) -> bool:
             },
         )
 
-    # Wait for daemon to become ready
-    for attempt in range(50):  # 10 seconds total
-        resp = send_command("ping", timeout=2.0)
+    # Step 5: Wait for it to respond
+    for _ in range(20):  # 10 seconds max
+        time.sleep(0.5)
+        resp = _can_connect()
         if resp.get("ok"):
+            _clear_starting()
             return True
-        time.sleep(0.2)
 
+    _clear_starting()
     sys.stderr.write("[brain-daemon] Daemon failed to start within 10s\n")
     return False
 

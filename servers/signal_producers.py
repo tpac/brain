@@ -164,10 +164,11 @@ def _produce_hook_errors(brain, sq_dal):
                 id="system_health:hook_error:%s" % r[0],
                 producer="system_health",
                 signal_type="hook_error",
-                priority=0.96,
-                preempt=True,
+                priority=0.80,
+                preempt=False,  # Hook errors are NOT critical enough to block recall
                 content="⚠️ Hook error [%s]: %s" % (r[1], (r[2] or '')[:100]),
                 max_surfaces=1,
+                ttl_seconds=3600,  # Expire after 1 hour
             )
     except Exception as e:
         log.warning("_produce_hook_errors failed: %s", e)
