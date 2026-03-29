@@ -145,7 +145,7 @@ def _query_encoding_activity(since_ts="", limit=30):
                 "kind": "revised", "id": r[0], "type": r[1], "title": r[2],
                 "content": (r[3] or "")[:300], "confidence": r[4], "timestamp": r[5]})
 
-        # New connections
+        # New connections (exclude co_accessed and emergent_bridge — organic noise)
         rows = conn.execute(
             f"SELECT e.source_id, e.target_id, e.relation, e.weight, e.created_at, "
             f"n1.title, n2.title "
@@ -153,6 +153,7 @@ def _query_encoding_activity(since_ts="", limit=30):
             f"LEFT JOIN nodes n1 ON n1.id = e.source_id "
             f"LEFT JOIN nodes n2 ON n2.id = e.target_id "
             f"{where.replace('created_at', 'e.created_at')} "
+            f"AND e.relation NOT IN ('co_accessed', 'emergent_bridge') "
             f"ORDER BY e.created_at DESC LIMIT ?",
             args_base + (limit,)).fetchall()
         for r in rows:
@@ -1321,7 +1322,7 @@ async function loadErrors() {
       const div = document.createElement('div');
       const levelColor = {critical:'#ff4444',error:'#ff6644',warning:'#ffaa33',info:'#4a9eff'}[e.level] || '#888';
       div.style.cssText = 'padding:8px 12px;margin:4px 0;background:#111118;border-radius:6px;border-left:3px solid ' + levelColor + ';font-size:12px';
-      const t = (e.timestamp || '').substring(0, 19).replace('T', ' ');
+      const t = localTime(e.timestamp);
       div.innerHTML =
         '<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:bold;text-transform:uppercase;background:' + levelColor + '22;color:' + levelColor + '">' + (e.level || 'error') + '</span> ' +
         '<span style="color:#888;font-size:10px">' + (e.source || '') + '</span> ' +
