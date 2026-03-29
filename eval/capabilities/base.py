@@ -92,7 +92,7 @@ class InstrumentedBrain:
 
     def recall(self, query, **kwargs):
         args = {"query": query, **kwargs}
-        return self._capture("recall", args, self._brain.recall, query, **kwargs)
+        return self._capture("recall", args, self._brain.recall_with_embeddings, query, **kwargs)
 
     def find_node_by_title(self, title_query, **kwargs):
         args = {"title_query": title_query, **kwargs}
@@ -199,7 +199,7 @@ def dispatch_tool(brain: InstrumentedBrain, tool_name: str, tool_input: Dict) ->
     """Route a tool call from the LLM to the InstrumentedBrain."""
     try:
         if tool_name == "recall":
-            result = brain.recall(tool_input["query"], limit=tool_input.get("limit", 8))
+            result = brain.recall_with_embeddings(tool_input["query"], limit=tool_input.get("limit", 8))
             nodes = result.get("results", []) or result.get("nodes", [])
             summary = []
             for n in nodes[:5]:
