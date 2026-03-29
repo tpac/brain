@@ -283,6 +283,14 @@ def _handle_synthesize_session(brain, args, graph_changes):
 
 
 def _handle_remember(brain, args, graph_changes):
+    from .contract import validate_field, ALL_FIELDS
+
+    # Validate all provided fields against contract
+    for field, value in args.items():
+        ok, err = validate_field(field, value)
+        if not ok:
+            return {"ok": False, "error": err}
+
     result = brain.remember(
         type=args.get("type", "context"),
         title=args.get("title", ""),
@@ -302,6 +310,8 @@ def _handle_remember(brain, args, graph_changes):
 
 def _handle_revise(brain, args, graph_changes):
     """Update any field(s) on an existing node via revise()."""
+    from .contract import validate_field, ALL_FIELDS
+
     node_id = args.get("node_id", "")
     reason = args.get("reason", "")
     if not node_id:
@@ -309,10 +319,14 @@ def _handle_revise(brain, args, graph_changes):
     if not reason:
         return {"ok": False, "error": "reason is required"}
 
-    # Pass all fields through — revise() handles what's valid
+    # Validate all update fields against contract
     updates = {k: v for k, v in args.items() if k not in ("node_id", "reason")}
-    content = updates.pop("content", None)
+    for field, value in updates.items():
+        ok, err = validate_field(field, value)
+        if not ok:
+            return {"ok": False, "error": err}
 
+    content = updates.pop("content", None)
     result = brain.revise(node_id=node_id, content=content, reason=reason, updates=updates)
     if result.get('error'):
         return {"ok": False, "error": result['error']}
