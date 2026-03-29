@@ -127,6 +127,10 @@ class InstrumentedBrain:
         return self._capture("remember_impact", kwargs,
                              self._brain.remember_impact, **kwargs)
 
+    def remember_mental_model(self, **kwargs):
+        return self._capture("remember_mental_model", kwargs,
+                             self._brain.remember_mental_model, **kwargs)
+
     def save(self):
         self._brain.save()
 
@@ -140,49 +144,94 @@ class InstrumentedBrain:
 
 # ── MCP-style tools that route to InstrumentedBrain ──
 
-CAPABILITY_TOOLS = [
-    {"name": "recall", "description": "Search brain for existing knowledge.",
-     "input_schema": {"type": "object", "required": ["query"],
-                      "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "default": 8}}}},
-    {"name": "find_node_by_title", "description": "Find an existing node by fuzzy title match.",
-     "input_schema": {"type": "object", "required": ["title_query"],
-                      "properties": {"title_query": {"type": "string"}, "threshold": {"type": "number", "default": 0.75}}}},
-    {"name": "get_node", "description": "Get a node by its exact ID.",
-     "input_schema": {"type": "object", "required": ["node_id"],
-                      "properties": {"node_id": {"type": "string"}}}},
-    {"name": "remember", "description": "Store a new memory node.",
-     "input_schema": {"type": "object", "required": ["type", "title", "content"],
-                      "properties": {"type": {"type": "string"}, "title": {"type": "string"},
-                                     "content": {"type": "string"}, "keywords": {"type": "string"},
-                                     "locked": {"type": "boolean"},
-                                     "situation": {"type": "string", "description": "When is this knowledge relevant? One sentence."}}}},
-    {"name": "revise", "description": "Update an existing node with new content.",
-     "input_schema": {"type": "object", "required": ["node_id", "content", "reason"],
-                      "properties": {"node_id": {"type": "string"}, "content": {"type": "string"},
-                                     "reason": {"type": "string"}}}},
-    {"name": "connect", "description": "Create a link between two nodes.",
-     "input_schema": {"type": "object", "required": ["source_id", "target_id"],
-                      "properties": {"source_id": {"type": "string"}, "target_id": {"type": "string"},
-                                     "relation": {"type": "string", "default": "related_to"},
-                                     "weight": {"type": "number", "default": 0.5}}}},
-    {"name": "record_divergence", "description": "Record where the AI diverged from reality.",
-     "input_schema": {"type": "object", "required": ["claude_assumed", "reality", "underlying_pattern"],
-                      "properties": {"claude_assumed": {"type": "string"}, "reality": {"type": "string"},
-                                     "underlying_pattern": {"type": "string"}}}},
-    {"name": "learn_vocabulary", "description": "Map an operator term to its meaning.",
-     "input_schema": {"type": "object", "required": ["term", "maps_to", "context"],
-                      "properties": {"term": {"type": "string"}, "maps_to": {"type": "string"},
-                                     "context": {"type": "string"}}}},
-    {"name": "remember_lesson", "description": "Store a lesson learned.",
-     "input_schema": {"type": "object", "required": ["title", "what_happened", "root_cause", "fix", "preventive_principle"],
-                      "properties": {"title": {"type": "string"}, "what_happened": {"type": "string"},
-                                     "root_cause": {"type": "string"}, "fix": {"type": "string"},
-                                     "preventive_principle": {"type": "string"}}}},
-    {"name": "remember_mechanism", "description": "Store how something works.",
-     "input_schema": {"type": "object", "required": ["title", "content"],
-                      "properties": {"title": {"type": "string"}, "content": {"type": "string"},
-                                     "steps": {"type": "array", "items": {"type": "string"}}}}},
-]
+def _build_capability_tools():
+    """Build tool schemas from contract — single source of truth.
+    Matches production MCP schemas so eval tests simulate real behavior.
+    """
+    from servers.contract import get_remember_fields
+
+    # Build remember properties from contract
+    remember_props = {"type": {"type": "string"}, "title": {"type": "string"}, "content": {"type": "string"}}
+    for name, spec in get_remember_fields().items():
+        if name in ("type", "title", "content", "id", "archived"):
+            continue
+        prop = {"type": {"str": "string", "float": "number", "bool": "boolean"}.get(spec.get("type", "str"), "string")}
+        if spec.get("description"):
+            prop["description"] = spec["description"]
+        remember_props[name] = prop
+
+    # Build revise properties from contract
+    revise_props = {"node_id": {"type": "string"}, "reason": {"type": "string"}}
+    for name, spec in get_remember_fields().items():
+        if name in ("type", "title", "id", "archived"):
+            continue
+        prop = {"type": {"str": "string", "float": "number", "bool": "boolean"}.get(spec.get("type", "str"), "string")}
+        desc = spec.get("description", "")
+        if spec.get("append_on_revise"):
+            desc = (desc + " " if desc else "") + "(appended on revise)"
+        else:
+            desc = (desc + " " if desc else "") + "(replaces existing value)"
+        prop["description"] = desc.strip()
+        revise_props[name] = prop
+
+    return [
+        {"name": "recall", "description": "Search brain for existing knowledge. Use types to filter by node type.",
+         "input_schema": {"type": "object", "required": ["query"],
+                          "properties": {"query": {"type": "string"},
+                                         "limit": {"type": "integer", "default": 8},
+                                         "types": {"type": "array", "items": {"type": "string"},
+                                                   "description": "Filter by node types, e.g. ['correction', 'rule']"}}}},
+        {"name": "find_node_by_title", "description": "Find an existing node by fuzzy title match.",
+         "input_schema": {"type": "object", "required": ["title_query"],
+                          "properties": {"title_query": {"type": "string"}, "threshold": {"type": "number", "default": 0.75}}}},
+        {"name": "get_node", "description": "Get a node by its exact ID with full content and connections.",
+         "input_schema": {"type": "object", "required": ["node_id"],
+                          "properties": {"node_id": {"type": "string"}}}},
+        {"name": "remember", "description": "Store a new memory node. Include situation for WHEN-relevance.",
+         "input_schema": {"type": "object", "required": ["type", "title", "content"],
+                          "properties": remember_props}},
+        {"name": "revise", "description": "Update any field(s) on an existing node. Content is appended with revision history. All other fields are replaced.",
+         "input_schema": {"type": "object", "required": ["node_id", "reason"],
+                          "properties": revise_props}},
+        {"name": "connect", "description": "Create a link between two nodes.",
+         "input_schema": {"type": "object", "required": ["source_id", "target_id"],
+                          "properties": {"source_id": {"type": "string"}, "target_id": {"type": "string"},
+                                         "relation": {"type": "string", "default": "related_to"},
+                                         "weight": {"type": "number", "default": 0.5}}}},
+        {"name": "record_divergence", "description": "Record where the AI diverged from reality.",
+         "input_schema": {"type": "object", "required": ["claude_assumed", "reality", "underlying_pattern"],
+                          "properties": {"claude_assumed": {"type": "string"}, "reality": {"type": "string"},
+                                         "underlying_pattern": {"type": "string"}}}},
+        {"name": "learn_vocabulary", "description": "Map an operator term to its meaning.",
+         "input_schema": {"type": "object", "required": ["term", "maps_to", "context"],
+                          "properties": {"term": {"type": "string"}, "maps_to": {"type": "string"},
+                                         "context": {"type": "string"}}}},
+        {"name": "remember_lesson", "description": "Store a lesson learned from a mistake or discovery.",
+         "input_schema": {"type": "object", "required": ["title", "what_happened", "root_cause", "fix", "preventive_principle"],
+                          "properties": {"title": {"type": "string"}, "what_happened": {"type": "string"},
+                                         "root_cause": {"type": "string"}, "fix": {"type": "string"},
+                                         "preventive_principle": {"type": "string"}}}},
+        {"name": "remember_mechanism", "description": "Store how something works — steps, data flow.",
+         "input_schema": {"type": "object", "required": ["title", "content"],
+                          "properties": {"title": {"type": "string"}, "content": {"type": "string"},
+                                         "steps": {"type": "array", "items": {"type": "string"}}}}},
+        {"name": "remember_mental_model", "description": "Store a mental model or framework for thinking about something.",
+         "input_schema": {"type": "object", "required": ["title", "model_description", "applies_to"],
+                          "properties": {"title": {"type": "string"}, "model_description": {"type": "string"},
+                                         "applies_to": {"type": "string"},
+                                         "confidence": {"type": "number", "default": 0.6}}}},
+        {"name": "remember_impact", "description": "Record a dependency — if X changes, check Y.",
+         "input_schema": {"type": "object", "required": ["title", "if_changed", "must_check", "because"],
+                          "properties": {"title": {"type": "string"}, "if_changed": {"type": "string"},
+                                         "must_check": {"type": "string"}, "because": {"type": "string"}}}},
+        {"name": "remember_convention", "description": "Store a coding convention — pattern and anti-pattern.",
+         "input_schema": {"type": "object", "required": ["title", "content", "pattern", "anti_pattern"],
+                          "properties": {"title": {"type": "string"}, "content": {"type": "string"},
+                                         "pattern": {"type": "string"}, "anti_pattern": {"type": "string"}}}},
+    ]
+
+
+CAPABILITY_TOOLS = _build_capability_tools()
 
 def _load_encoding_system():
     """Load the encoding agent prompt from the canonical file."""
@@ -197,19 +246,25 @@ ENCODING_SYSTEM = _load_encoding_system()
 
 
 def dispatch_tool(brain: InstrumentedBrain, tool_name: str, tool_input: Dict) -> str:
-    """Route a tool call from the LLM to the InstrumentedBrain."""
+    """Route a tool call from the LLM to the InstrumentedBrain.
+    Recall output uses pipeline_contract formatters for consistency with production.
+    """
     try:
         if tool_name == "recall":
-            result = brain.recall(tool_input["query"], limit=tool_input.get("limit", 8))
+            kwargs = {"limit": tool_input.get("limit", 8)}
+            if tool_input.get("types"):
+                kwargs["types"] = tool_input["types"]
+            result = brain.recall(tool_input["query"], **kwargs)
             nodes = result.get("results", []) or result.get("nodes", [])
+            # Return structured JSON (agent needs IDs for connect) + formatted text
+            from servers.brain_voice import BrainVoice
             summary = []
-            for n in nodes[:5]:
-                node_summary = {
+            for n in nodes[:8]:
+                entry = {
                     "id": n.get("id", ""),
                     "type": n.get("type", ""),
-                    "title": n.get("title", "")[:80],
-                    "content_preview": (n.get("content", "") or "")[:200],
-                    "score": round(n.get("semantic_score", n.get("score", 0)), 3),
+                    "title": n.get("title", ""),
+                    "content": (n.get("content", "") or "")[:500],
                     "confidence": n.get("confidence", 0),
                     "locked": n.get("locked", False),
                     "created_at": str(n.get("created_at", ""))[:10],
@@ -217,11 +272,13 @@ def dispatch_tool(brain: InstrumentedBrain, tool_name: str, tool_input: Dict) ->
                 }
                 neighbors = n.get("_neighbors") or []
                 if neighbors:
-                    node_summary["neighbors"] = [
-                        {"title": nb.get("title", "")[:40], "relation": nb.get("relation", "")}
+                    entry["neighbors"] = [
+                        {"id": nb.get("id", ""), "title": nb.get("title", "")[:50],
+                         "type": nb.get("type", ""), "relation": nb.get("relation", ""),
+                         "confidence": nb.get("confidence", 0)}
                         for nb in neighbors[:3]
                     ]
-                summary.append(node_summary)
+                summary.append(entry)
             return json.dumps({"ok": True, "results": summary})
 
         elif tool_name == "find_node_by_title":
@@ -235,24 +292,24 @@ def dispatch_tool(brain: InstrumentedBrain, tool_name: str, tool_input: Dict) ->
         elif tool_name == "get_node":
             result = brain.get_node(tool_input["node_id"])
             if result:
-                # Include full metadata so the agent can assess staleness
-                neighbors = result.get("_neighbors") or []
-                neighbor_summary = [
-                    {"id": n.get("id", ""), "title": n.get("title", "")[:60],
-                     "type": n.get("type", ""), "relation": n.get("relation", "")}
-                    for n in neighbors[:5]
-                ]
+                connections = result.get("connections") or result.get("_neighbors") or []
                 return json.dumps({"ok": True, "node": {
                     "id": result.get("id", ""),
                     "type": result.get("type", ""),
                     "title": result.get("title", ""),
-                    "content": (result.get("content", "") or "")[:500],
+                    "content": result.get("content", ""),
                     "confidence": result.get("confidence", 0),
                     "locked": result.get("locked", False),
                     "created_at": str(result.get("created_at", ""))[:10],
                     "revised_at": result.get("revised_at") or "never",
                     "access_count": result.get("access_count", 0),
-                    "neighbors": neighbor_summary,
+                    "connections": [
+                        {"target_id": c.get("target_id", c.get("id", "")),
+                         "title": c.get("title", "")[:60],
+                         "type": c.get("type", ""),
+                         "relation": c.get("relation", "")}
+                        for c in connections[:8]
+                    ],
                 }})
             return json.dumps({"ok": True, "node": None})
 
@@ -262,7 +319,8 @@ def dispatch_tool(brain: InstrumentedBrain, tool_name: str, tool_input: Dict) ->
 
         elif tool_name == "revise":
             result = brain.revise(**tool_input)
-            return json.dumps({"ok": True, "revised": True})
+            verified = result.get("verified", False) if isinstance(result, dict) else False
+            return json.dumps({"ok": True, "revised": True, "verified": verified})
 
         elif tool_name == "connect":
             result = brain.connect(**tool_input)
@@ -282,6 +340,18 @@ def dispatch_tool(brain: InstrumentedBrain, tool_name: str, tool_input: Dict) ->
 
         elif tool_name == "remember_mechanism":
             result = brain.remember_mechanism(**tool_input)
+            return json.dumps({"ok": True, "id": result.get("id", "") if result else "ok"})
+
+        elif tool_name == "remember_mental_model":
+            result = brain.remember_mental_model(**tool_input)
+            return json.dumps({"ok": True, "id": result.get("id", "") if result else "ok"})
+
+        elif tool_name == "remember_impact":
+            result = brain.remember_impact(**tool_input)
+            return json.dumps({"ok": True, "id": result.get("id", "") if result else "ok"})
+
+        elif tool_name == "remember_convention":
+            result = brain.remember_convention(**tool_input)
             return json.dumps({"ok": True, "id": result.get("id", "") if result else "ok"})
 
         else:

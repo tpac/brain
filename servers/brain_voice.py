@@ -81,76 +81,45 @@ class BrainVoice:
 
     @staticmethod
     def format_node(node, lines):
-        """Standard node display. Used by ALL formatters — recall, consolidation, MCP.
-
-        Format:
-        [type] LOCKED Title
-        id:{full_id} | revised:{never|date} | conf:{score} | created:{date}
-        Full content, no truncation.
-          ↳ relation: "Neighbor title" (type, id:{full_id})
+        """Standard node display. Used by recall, consolidation, MCP.
+        Reads formatting from pipeline_contract.
         """
-        typ = node.get("type", "?")
-        title = node.get("title", "")
-        locked = "LOCKED " if node.get("locked") else ""
-        node_id = node.get("id", "")
-        created = str(node.get("created_at", ""))[:10]
+        from .pipeline_contract import format_node_header, format_neighbor_d1
 
-        # Revised status: show date or "never"
-        revised_at = node.get("revised_at")
-        revised_str = str(revised_at)[:10] if revised_at else "never"
-
-        # Confidence: prefer explicit confidence, fall back to effective_activation
-        conf = node.get("confidence") or node.get("effective_activation", 0) or 0
-
-        lines.append("[%s] %s%s" % (typ, locked, title))
-        lines.append("id:%s | revised:%s | conf:%.2f | created:%s" % (
-            node_id, revised_str, conf, created))
+        lines.append(format_node_header(node))
         lines.append(node.get("content", ""))
 
-        # Neighbor context (attached by _enrich_results for top results)
         for nb in node.get("_neighbors", []):
-            lines.append("  ↳ %s: \"%s\" (%s, id:%s)" % (
-                nb.get("relation", "related"),
-                nb.get("title", ""),
-                nb.get("type", "?"),
-                nb.get("id", "")))
+            lines.append(format_neighbor_d1(nb))
 
         lines.append("")
 
     @staticmethod
     def format_node_deep(node, lines, conn=None, max_d1=3, max_d2=3, max_d3=3):
         """3-degree node display for encoding agent context.
+        Reads field selection and truncation from pipeline_contract.
 
-        Degree 0: Full node — type, id, revised, conf, created, full content
-        Degree 1: Title, type, id — enough to revise or get_node
-        Degree 2: Title, id only — breadcrumbs showing graph shape
-
-        Args:
-            node: Node dict with _neighbors already attached (degree 1)
-            conn: SQLite connection for fetching degree 2 and 3
-            max_d1/d2/d3: Max neighbors at each degree
+        Degree 0: Full node header + content
+        Degree 1: Rich — header, content_summary, relation, confidence
+        Degree 2: Title, type, relation
+        Degree 3: Title, id only
         """
         from .dal import GraphDAL
+        from .pipeline_contract import (
+            format_node_header, format_neighbor_d1, format_neighbor_d2,
+            NEIGHBOR_TRUNCATION,
+        )
 
-        typ = node.get("type", "?")
-        title = node.get("title", "")
-        locked = "LOCKED " if node.get("locked") else ""
         node_id = node.get("id", "")
-        created = str(node.get("created_at", ""))[:10]
-
-        revised_at = node.get("revised_at")
-        revised_str = str(revised_at)[:10] if revised_at else "never"
-        conf = node.get("confidence") or node.get("effective_activation", 0) or 0
 
         # Degree 0: full node
-        lines.append("[%s] %s%s" % (typ, locked, title))
-        lines.append("id:%s | revised:%s | conf:%.2f | created:%s" % (
-            node_id, revised_str, conf, created))
+        lines.append(format_node_header(node))
         lines.append(node.get("content", ""))
 
-        # Degree 1: neighbors with type + id
-        # Use pre-attached _neighbors, or fetch via rich query if missing
-        d1_neighbors = (node.get("_neighbors") or [])[:max_d1]
+        # Degree 1: rich neighbor display
+        # Use pre-attached graph data, or fetch via rich query
+        graph = node.get("_graph", {})
+        d1_neighbors = graph.get("degree_1", node.get("_neighbors") or [])[:max_d1]
         seen_ids = {node_id}
         if not d1_neighbors and conn and node_id:
             try:
@@ -163,42 +132,44 @@ class BrainVoice:
         for nb in d1_neighbors:
             nb_id = nb.get("id", "")
             seen_ids.add(nb_id)
-            lines.append("  \u21b3 %s: \"%s\" (%s, id:%s)" % (
-                nb.get("relation", "related"),
-                nb.get("title", ""),
-                nb.get("type", "?"),
-                nb_id))
+            lines.append(format_neighbor_d1(nb))
 
-            # Degree 2: skip visited in SQL — no wasted rows
-            if conn and nb_id:
+            # Degree 2
+            d2_neighbors = []
+            d2_from_graph = graph.get("degree_2", [])
+            if d2_from_graph:
+                d2_neighbors = [n for n in d2_from_graph if n.get("id") not in seen_ids][:max_d2]
+            elif conn and nb_id:
                 try:
                     graph_dal = GraphDAL(conn)
                     d2_neighbors = graph_dal.get_neighbors_rich(
                         nb_id, limit=max_d2, exclude_node_ids=seen_ids)
-
-                    for nb2 in d2_neighbors:
-                        nb2_id = nb2.get("id", "")
-                        seen_ids.add(nb2_id)
-                        lines.append("     \u21b3 \"%s\" (%s, id:%s)" % (
-                            nb2.get("title", ""),
-                            nb2.get("type", "?"),
-                            nb2_id))
-
-                        # Degree 3: skip visited in SQL
-                        if conn and nb2_id:
-                            try:
-                                d3_neighbors = graph_dal.get_neighbors_rich(
-                                    nb2_id, limit=max_d3, exclude_node_ids=seen_ids)
-                                for nb3 in d3_neighbors:
-                                    nb3_id = nb3.get("id", "")
-                                    seen_ids.add(nb3_id)
-                                    lines.append("        \u21b3 \"%s\" (id:%s)" % (
-                                        nb3.get("title", ""),
-                                        nb3_id))
-                            except Exception as e:
-                                print('[brain_voice] ERROR format_node_deep d3_neighbors: %s' % e, file=sys.stderr)
                 except Exception as e:
                     print('[brain_voice] ERROR format_node_deep d2_neighbors: %s' % e, file=sys.stderr)
+
+            for nb2 in d2_neighbors:
+                nb2_id = nb2.get("id", "")
+                seen_ids.add(nb2_id)
+                lines.append("     ↳ %s" % format_neighbor_d2(nb2))
+
+                # Degree 3
+                d3_neighbors = []
+                d3_from_graph = graph.get("degree_3", [])
+                if d3_from_graph:
+                    d3_neighbors = [n for n in d3_from_graph if n.get("id") not in seen_ids][:max_d3]
+                elif conn and nb2_id:
+                    try:
+                        d3_neighbors = GraphDAL(conn).get_neighbors_rich(
+                            nb2_id, limit=max_d3, exclude_node_ids=seen_ids)
+                    except Exception as e:
+                        print('[brain_voice] ERROR format_node_deep d3_neighbors: %s' % e, file=sys.stderr)
+
+                t = NEIGHBOR_TRUNCATION
+                for nb3 in d3_neighbors:
+                    nb3_id = nb3.get("id", "")
+                    seen_ids.add(nb3_id)
+                    lines.append("        ↳ \"%s\" (id:%s)" % (
+                        str(nb3.get("title", ""))[:t['d3_title']], nb3_id[:t['d3_id']]))
 
         lines.append("")
 
