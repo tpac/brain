@@ -424,6 +424,34 @@ class TestTraversalConstants(unittest.TestCase):
         self.assertGreater(TRAVERSE_DAMPEN[1], TRAVERSE_DAMPEN[2])
 
 
+# ── 8.5. EVAL SANDBOX ──
+
+class TestEvalSandbox(PipeTestBase):
+    """Test that eval sandbox has necessary builtins for the Stop agent."""
+
+    def test_str_available(self):
+        """The Stop agent wraps get_config in str() — must work."""
+        from servers.daemon_dispatch import _handle_eval
+        result = _handle_eval(self.brain, {"code": "str(brain.get_config('stop_counter'))"}, [])
+        self.assertTrue(result.get("ok"), "eval with str() should work: %s" % result.get("error"))
+
+    def test_get_config_works(self):
+        from servers.daemon_dispatch import _handle_eval
+        result = _handle_eval(self.brain, {"code": "brain.get_config('stop_counter')"}, [])
+        self.assertTrue(result.get("ok"))
+
+    def test_set_config_works(self):
+        from servers.daemon_dispatch import _handle_eval
+        result = _handle_eval(self.brain, {"code": "brain.set_config('test_key', 'test_val')"}, [])
+        self.assertTrue(result.get("ok"))
+
+    def test_dangerous_builtins_blocked(self):
+        """__import__ should raise NameError, caught as an exception."""
+        from servers.daemon_dispatch import _handle_eval
+        with self.assertRaises(NameError):
+            _handle_eval(self.brain, {"code": "__import__('os').system('echo pwned')"}, [])
+
+
 # ── 9. SANITY: production brain ──
 
 @unittest.skipUnless(

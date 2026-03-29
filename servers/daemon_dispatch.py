@@ -486,8 +486,14 @@ def _handle_eval(brain, args, graph_changes):
     code = args.get("code", "")
     if not code:
         return {"ok": False, "error": "No code provided"}
+    safe_builtins = {"str": str, "int": int, "len": len, "list": list, "dict": dict,
+                     "bool": bool, "float": float, "round": round, "sorted": sorted,
+                     "min": min, "max": max, "sum": sum, "abs": abs, "type": type,
+                     "isinstance": isinstance, "range": range, "enumerate": enumerate,
+                     "zip": zip, "map": map, "filter": filter, "print": print,
+                     "True": True, "False": False, "None": None}
     local_vars = {"brain": brain, "json": json}
-    result = eval(code, {"__builtins__": {}}, local_vars)
+    result = eval(code, {"__builtins__": safe_builtins}, local_vars)
     try:
         json.dumps(result)
     except (TypeError, ValueError):
