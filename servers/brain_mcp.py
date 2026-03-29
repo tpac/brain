@@ -108,11 +108,17 @@ TOOLS = [
          "relation": {"type": "string", "description": "Edge relation type", "default": "related_to"},
          "weight": {"type": "number", "description": "Edge weight 0.0-1.0", "default": 0.5}}}},
     {"name": "revise",
-     "description": "Update an existing brain node with new content. Use when recalled knowledge is outdated or incomplete. Appends content with revision history, re-embeds for better retrieval.",
-     "inputSchema": {"type": "object", "required": ["node_id", "content", "reason"], "properties": {
+     "description": "Update any field(s) on an existing brain node. Content is appended with revision history. All other fields are replaced. Pass fields to update as top-level parameters.",
+     "inputSchema": {"type": "object", "required": ["node_id", "reason"], "properties": {
          "node_id": {"type": "string", "description": "Full node ID to revise"},
-         "content": {"type": "string", "description": "New/updated content to append"},
-         "reason": {"type": "string", "description": "Why this revision (e.g. 'architecture changed')"}}}},
+         "reason": {"type": "string", "description": "Why this revision"},
+         "content": {"type": "string", "description": "New content to append (preserves history)"},
+         "title": {"type": "string", "description": "New title (replaces)"},
+         "type": {"type": "string", "description": "New type (replaces)"},
+         "keywords": {"type": "string", "description": "New keywords (replaces)"},
+         "confidence": {"type": "number", "description": "New confidence 0.0-1.0 (replaces)"},
+         "situation": {"type": "string", "description": "When is this knowledge relevant? (replaces)"},
+         "locked": {"type": "boolean", "description": "Lock/unlock node"}}}},
     {"name": "enrich",
      "description": "Store V5 enrichment vectors for a node (after filling in the enrichment_prompt from remember()). Pass the generated question, anchor phrase, bridge sentence, and/or keywords. Each is embedded and stored for improved recall.",
      "inputSchema": {"type": "object", "required": ["node_id"], "properties": {

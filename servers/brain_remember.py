@@ -571,23 +571,29 @@ class BrainRememberMixin:
     # v8: revise() — Encoding IS updating existing knowledge
     # ═══════════════════════════════════════════════════════════════
 
-    def revise(self, node_id: str, content: str, reason: str) -> Dict[str, Any]:
-        """Update an existing node's content. Encoding IS updating knowledge.
+    def revise(self, node_id: str, content: str = None, reason: str = '',
+               updates: Dict[str, Any] = None, **kwargs) -> Dict[str, Any]:
+        """Update any field(s) on an existing node. Generic revision.
 
-        Appends new content with a revision divider, re-embeds the combined
-        text for better retrieval, re-indexes TF-IDF, and regenerates the
-        content summary. Auto-resolves any pending consolidation pairs
-        involving this node.
+        Three ways to call:
+          revise(node_id, content="new text", reason="why")  — append content (legacy)
+          revise(node_id, updates={"confidence": 0.9, "keywords": "new kw"}, reason="why")
+          revise(node_id, situation="When debugging", reason="adding situation")  — kwargs
 
-        Args:
-            node_id: full 32-char node ID
-            content: new content to append
-            reason: why this revision is being made
+        Content is special: it APPENDS with a revision divider (preserves history).
+        All other fields REPLACE the existing value.
 
-        Returns:
-            Dict with id, type, title, revised_at, content_length on success.
-            Dict with 'error' key on failure.
+        After any revision: re-embeds, re-indexes TF-IDF, updates timestamps.
         """
+        # Merge updates from all sources
+        all_updates = dict(updates or {})
+        all_updates.update(kwargs)
+        if content:
+            all_updates['content'] = content
+
+        if not all_updates:
+            return {'error': 'No updates provided', 'node_id': node_id}
+
         # Fetch existing node
         row = self.conn.execute(
             'SELECT id, type, title, content, archived FROM nodes WHERE id = ?',
@@ -599,22 +605,52 @@ class BrainRememberMixin:
 
         existing_id, node_type, title, old_content, _ = row
         old_content = old_content or ''
-
-        # Build revised content with divider
         ts = self.now()
-        divider = "\n\n--- Revised %s: %s ---\n" % (ts[:10], reason)
-        new_content = old_content + divider + content
 
-        # UPDATE node content + timestamps
+        # Content is special — append with revision divider
+        new_content = old_content
+        if 'content' in all_updates:
+            divider = "\n\n--- Revised %s: %s ---\n" % (ts[:10], reason)
+            new_content = old_content + divider + all_updates.pop('content')
+
+        # Build SQL UPDATE for all fields
+        # Always update: content, content_summary, updated_at, revised_at
+        set_parts = ['content = ?', 'content_summary = ?', 'updated_at = ?', 'revised_at = ?']
+        params = [new_content, self._generate_summary(title, new_content), ts, ts]
+
+        # Safe fields that can be updated via revise
+        SAFE_FIELDS = {
+            'title', 'type', 'keywords', 'locked', 'confidence', 'emotion',
+            'emotion_label', 'project', 'personal', 'personal_context',
+            'critical', 'evolution_status',
+        }
+
+        for field, value in all_updates.items():
+            if field in SAFE_FIELDS:
+                set_parts.append('%s = ?' % field)
+                params.append(value)
+                if field == 'title':
+                    title = value  # track for re-embed
+
+        params.append(node_id)
         self.conn.execute(
-            'UPDATE nodes SET content = ?, content_summary = ?, '
-            'updated_at = ?, revised_at = ? WHERE id = ?',
-            (new_content, self._generate_summary(title, new_content),
-             ts, ts, node_id))
+            'UPDATE nodes SET %s WHERE id = ?' % ', '.join(set_parts), params)
         self.conn.commit()
 
+        # Handle situation embedding separately (lives in node_embeddings, not nodes)
+        if 'situation' in all_updates:
+            try:
+                from . import embedder
+                from .dal import EmbeddingDAL
+                sit_text = all_updates['situation']
+                sit_blob = embedder.embed(sit_text)
+                if sit_blob:
+                    EmbeddingDAL(self.conn).store_situation(node_id, sit_text, sit_blob)
+            except Exception as e:
+                self._log_error("revise_situation", e,
+                                "Failed to update situation for %s" % node_id[:8])
+
         # Re-embed combined content for better retrieval
-        # Matches remember() pattern (line 431-442): raw SQL INSERT OR REPLACE
         embedding_updated = False
         try:
             from . import embedder
@@ -631,8 +667,7 @@ class BrainRememberMixin:
         except Exception as e:
             self._log_error("revise_embed", e, "Failed to re-embed node %s" % node_id[:8])
 
-        # Re-index TF-IDF with updated content
-        # Fetch current keywords for the node
+        # Re-index TF-IDF
         try:
             kw_row = self.conn.execute(
                 'SELECT keywords FROM nodes WHERE id = ?', (node_id,)).fetchone()
@@ -641,16 +676,15 @@ class BrainRememberMixin:
         except Exception as e:
             self._log_error("revise_tfidf", e, "Failed to re-index TF-IDF for %s" % node_id[:8])
 
-        # Auto-resolve consolidation pairs involving this node
-        resolved_count = 0
+        # Auto-resolve consolidation pairs
         try:
             from .dal import LogsDAL
-            resolved_count = LogsDAL(self.logs_conn).resolve_consolidation_for_node(node_id)
+            LogsDAL(self.logs_conn).resolve_consolidation_for_node(node_id)
         except Exception as e:
             self._log_error("revise_consolidation_resolve", e,
                             "Failed to auto-resolve consolidation pair for %s" % node_id[:8])
 
-        # v8: Mark recent pending messages as resolved (revision closes the loop)
+        # Mark pending messages as resolved
         pending_resolved = 0
         try:
             pending_resolved = self.resolve_recent_pending(reason='encoded')
@@ -660,11 +694,12 @@ class BrainRememberMixin:
 
         return {
             'id': node_id,
-            'type': node_type,
+            'type': all_updates.get('type', node_type),
             'title': title,
             'revised_at': ts,
             'content_length': len(new_content),
             'embedding_updated': embedding_updated,
+            'fields_updated': list(all_updates.keys()),
             'pending_resolved': pending_resolved,
         }
 

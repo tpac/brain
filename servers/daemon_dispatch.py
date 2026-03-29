@@ -301,18 +301,19 @@ def _handle_remember(brain, args, graph_changes):
 
 
 def _handle_revise(brain, args, graph_changes):
-    """Update an existing node's content via revise()."""
+    """Update any field(s) on an existing node via revise()."""
     node_id = args.get("node_id", "")
-    content = args.get("content", "")
     reason = args.get("reason", "")
     if not node_id:
         return {"ok": False, "error": "node_id is required"}
-    if not content:
-        return {"ok": False, "error": "content is required"}
     if not reason:
         return {"ok": False, "error": "reason is required"}
 
-    result = brain.revise(node_id=node_id, content=content, reason=reason)
+    # Pass all fields through — revise() handles what's valid
+    updates = {k: v for k, v in args.items() if k not in ("node_id", "reason")}
+    content = updates.pop("content", None)
+
+    result = brain.revise(node_id=node_id, content=content, reason=reason, updates=updates)
     if result.get('error'):
         return {"ok": False, "error": result['error']}
     graph_changes.append("REVISE: [%s] %s" % (
