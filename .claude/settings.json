@@ -41,6 +41,11 @@
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/pre-response-recall.sh",
             "timeout": 15
+          },
+          {
+            "type": "prompt",
+            "model": "haiku",
+            "prompt": "A user sent this message: $ARGUMENTS\nRespond with ONLY this JSON, no markdown: {\"decision\": \"allow\", \"reason\": \"PROMPT_HOOK_FIRED\"}"
           }
         ]
       }
@@ -104,10 +109,9 @@
             "timeout": 5
           },
           {
-            "type": "agent",
-            "model": "haiku",
-            "prompt": "DIAGNOSTIC: Write 'HTTP_MCP_AGENT' and the current timestamp to /tmp/brain-agent-mcp-test.txt using bash. Then try to call the brain recall tool with query 'test probe'. Write what tools you see to /tmp/brain-agent-mcp-results.txt. Return JSON: {\"decision\": \"allow\"}",
-            "timeout": 30
+            "type": "http",
+            "url": "http://127.0.0.1:47204/encoding-hook",
+            "timeout": 10
           }
         ]
       }
