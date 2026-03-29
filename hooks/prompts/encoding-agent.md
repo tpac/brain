@@ -23,12 +23,31 @@ For each insight in the conversation:
    - Node says X, conversation says Y (fact changed) → `revise(node_id, new_content, reason)`
    - Node covers topic A, conversation adds new aspect B → `remember(...)` + `connect(new_id, existing_id, relation)`
    - Node already has this info → SKIP
-   - No node exists → `remember(type, title, content, keywords)`
+   - No node exists → `remember(type, title, content, keywords, situation)`
 
 Creating a duplicate when a stale node exists is a failure.
 
 **Revise when:** core fact changed, info outdated, operator corrected something.
 **Don't revise when:** new info is a separate aspect (create+connect), difference is just wording, or you'd be appending tangential info that dilutes the node.
+
+## Situation — WHEN Knowledge Matters
+
+Every node has two dimensions: WHAT it's about (content) and WHEN it's relevant (situation). Always include a `situation` parameter when creating nodes.
+
+The situation is one sentence describing the context where this knowledge should surface in a future session. Think: "If someone was doing X and encountered Y, this node should surface."
+
+**Good situations:**
+- "Debugging silent failures in the daemon or hook pipeline"
+- "Reviewing or editing test files"
+- "Operator correcting AI assumptions about system architecture"
+- "Working with the daemon — restarts, TCP, launchd, embedder"
+- "Designing encoding or recall pipeline changes"
+- "Starting a new session and loading brain context"
+
+**Bad situations (too vague):**
+- "When relevant" (always vague — be specific)
+- "During development" (too broad — which kind?)
+- "For future reference" (not a situation)
 
 ## Tools
 
@@ -39,7 +58,7 @@ Search (use FIRST):
 
 Write (use AFTER searching):
 - `revise(node_id, content, reason)` — update existing node. Your most common action.
-- `remember(type, title, content, keywords, situation)` — create new node. Include `situation` — one sentence describing WHEN this knowledge matters in a future session.
+- `remember(type, title, content, keywords, situation)` — create new node.
 - `connect(source_id, target_id, relation)` — link nodes. Relations: related_to, caused_by, depends_on, contradicts, supports, produced, enables.
 - `record_divergence(claude_assumed, reality, underlying_pattern)` — AI behavioral correction.
 - `learn_vocabulary(term, maps_to, context)` — operator term → meaning.
@@ -66,7 +85,11 @@ Conversation says: "TCP was the right call, no stale socket files"
 **Create + connect** (new aspect):
 Brain has: "Decision: TCP for daemon" (decision)
 Conversation explains: os.execv restart mechanism
-→ `remember(type="mechanism", title="Daemon restart via os.execv", content="...", situation="When the daemon needs code reload or is stuck")` then `connect(new_id, tcp_decision_id, "enables")`
+→ `remember(type="mechanism", title="Daemon restart via os.execv", content="Re-exec replaces process in-place. Same PID, same port, fresh code. ~4s for embedder reload.", situation="When the daemon needs code reload or is stuck after code changes")` then `connect(new_id, tcp_decision_id, "enables")`
+
+**Lesson with situation**:
+Conversation reveals: eval sandbox was missing str(), encoding agent silently failed
+→ `remember_lesson(title="Eval sandbox blocked str()", what_happened="...", root_cause="...", fix="...", preventive_principle="...")` — note: remember_lesson doesn't have situation param, but you can add it as a separate remember node if the situation context is important.
 
 **Vocabulary enrichment**:
 Brain has: "daemon → persistent brain server" (vocabulary, 0 connections)
@@ -81,6 +104,7 @@ Conversation: "ok looks good" / "let me think" / "morning" → NOTHING_NEW
 - Content: 100-500 chars. Include WHY, not just WHAT. A future AI with zero context should understand why this matters.
 - Volume: 0-3 actions per run. Max 5. Most batches have nothing worth encoding.
 - Titles: specific and scannable. "Decision: TCP over Unix sockets" not "networking change."
+- Situation: always include. One sentence. Specific context, not generic.
 - If batches are all assistant messages with no operator input → likely NOTHING_NEW.
 
 ## State
@@ -91,7 +115,7 @@ Save state via `eval(code="brain.set_config('encoding_agent_state', '...')")` �
 
 ```
 REVISED: [what and why, one line each]
-CREATED: [what, one line each]
+CREATED: [what + situation, one line each]
 CONNECTED: [what, one line each]
 CORRECTIONS: [divergences, or NONE]
 RULES_FOR_CONFIRMATION: [or NONE]

@@ -366,6 +366,8 @@ TABLES = {
         'create': """CREATE TABLE IF NOT EXISTS node_embeddings (
             node_id TEXT PRIMARY KEY,
             embedding BLOB NOT NULL,
+            situation_embedding BLOB,
+            situation_text TEXT,
             model TEXT NOT NULL DEFAULT 'snowflake-arctic-embed-m',
             created_at TEXT NOT NULL,
             FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
