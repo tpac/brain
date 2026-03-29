@@ -370,9 +370,9 @@ def hook_post_response_track(brain, args, graph_changes):
             messages = []
             try:
                 rows = brain.logs_conn.execute(
-                    "SELECT role, content, signal_type, created_at "
+                    "SELECT role, content, signal_type, timestamp "
                     "FROM message_stream WHERE session_id = ? "
-                    "ORDER BY created_at DESC LIMIT ?",
+                    "ORDER BY timestamp DESC LIMIT ?",
                     (session_id, ENCODING_AGENT['max_messages'])
                 ).fetchall()
                 messages = [
