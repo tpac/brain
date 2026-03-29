@@ -11,7 +11,6 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 import json
 import math
-import re
 import struct
 import sys
 import time
@@ -22,17 +21,13 @@ from .brain_constants import (
     EDGE_TYPES,
     EMBEDDING_PRIMARY_WEIGHT,
     GRAPH_AUGMENT_TOP_N,
-    GRAPH_NEIGHBOR_LIMIT,
     INTENTIONAL_EDGE_TYPES,
-    INTENT_PATTERNS,
-    INTENT_TYPE_BOOSTS,
     KEYWORD_FALLBACK_WEIGHT,
     LEARNING_RATE,
     MAX_HOPS,
     MAX_NEIGHBORS,
     MAX_PAGE_SIZE,
     MAX_WEIGHT,
-    NEIGHBOR_DAMPEN,
     PRUNE_THRESHOLD,
     RELEVANCE_FLOOR_ENRICHED,
     RELEVANCE_FLOOR_PRIMARY,
@@ -40,12 +35,7 @@ from .brain_constants import (
     STABILITY_BOOST,
     STABILITY_FLOOR_ACCESS_THRESHOLD,
     STABILITY_FLOOR_RETENTION,
-    TEMPORAL_PATTERNS,
-    TFIDF_KEYWORD_WEIGHT,
-    TFIDF_SEMANTIC_WEIGHT,
-    TFIDF_STOP_WORDS,
     VOCAB_EXPANSION_MAX,
-    TRAVERSE_DEPTH,
     TRAVERSE_DAMPEN,
     TRAVERSE_LIMITS,
     TRAVERSE_SEMANTIC_BONUS,

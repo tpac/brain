@@ -22,17 +22,15 @@ warnings.filterwarnings("ignore", message=".*urllib3.*OpenSSL.*")
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="urllib3")
 import sqlite3
 import math
-import re
 import uuid
 import json
 import time
 import os
 import struct
 import threading
-import random
 from datetime import datetime
-from typing import Dict, List, Tuple, Optional, Any, Set
-from .schema import ensure_schema, ensure_logs_schema, migrate_logs_to_separate_db, BRAIN_VERSION, BRAIN_VERSION_KEY, NODE_TYPES
+from typing import Dict, List, Optional, Any
+from .schema import ensure_schema, ensure_logs_schema, migrate_logs_to_separate_db
 from .dal import LogsDAL, MetaDAL
 from .brain_consciousness import ConsciousnessMixin
 from .brain_recall import BrainRecallMixin
@@ -48,19 +46,11 @@ from . import embedder
 
 
 from .brain_constants import (
-    DECAY_HALF_LIFE, STABILITY_FLOOR_ACCESS_THRESHOLD, STABILITY_FLOOR_RETENTION,
-    LEARNING_RATE, MAX_WEIGHT, PRUNE_THRESHOLD,
+    DECAY_HALF_LIFE,
     RECENCY_WEIGHT, RELEVANCE_WEIGHT, FREQUENCY_WEIGHT, EMOTION_WEIGHT,
-    EMOTION_FLOOR, EMOTION_DECAY_RATE,
-    RECENCY_BANDS, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE,
-    CONTEXT_BOOT_LOCKED_LIMIT, CONTEXT_BOOT_RECALL_LIMIT, CONTEXT_BOOT_RECENT_LIMIT,
-    EMBEDDING_PRIMARY_WEIGHT, KEYWORD_FALLBACK_WEIGHT,
-    TFIDF_SEMANTIC_WEIGHT, TFIDF_KEYWORD_WEIGHT, TFIDF_STOP_WORDS,
+    EMOTION_FLOOR,
+    RECENCY_BANDS,
     INTENT_PATTERNS, INTENT_TYPE_BOOSTS, TEMPORAL_PATTERNS,
-    EDGE_TYPES, SPREAD_DECAY, MAX_HOPS, MAX_NEIGHBORS, STABILITY_BOOST,
-    DREAM_WALK_LENGTH, DREAM_COUNT, DREAM_MIN_NOVELTY,
-    REASONING_STEP_TYPES, CURIOSITY_MAX_PROMPTS,
-    CURIOSITY_CHAIN_GAP_THRESHOLD, CURIOSITY_DECAY_WARNING_HOURS,
 )
 
 
