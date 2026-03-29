@@ -148,16 +148,16 @@ class BrainVoice:
         lines.append(node.get("content", ""))
 
         # Degree 1: neighbors with type + id
-        # Use pre-attached _neighbors, or fetch directly if missing
+        # Use pre-attached _neighbors, or fetch via rich query if missing
         d1_neighbors = (node.get("_neighbors") or [])[:max_d1]
+        seen_ids = {node_id}
         if not d1_neighbors and conn and node_id:
             try:
                 graph_dal = GraphDAL(conn)
-                fetched = graph_dal.get_neighbors_with_context(node_id, limit=max_d1 * 2)
-                d1_neighbors = fetched[:max_d1]
+                d1_neighbors = graph_dal.get_neighbors_rich(
+                    node_id, limit=max_d1, exclude_node_ids=seen_ids)
             except Exception:
                 pass
-        seen_ids = {node_id}
 
         for nb in d1_neighbors:
             nb_id = nb.get("id", "")
@@ -168,34 +168,29 @@ class BrainVoice:
                 nb.get("type", "?"),
                 nb_id))
 
-            # Degree 2: neighbors of neighbors — title, type, id
+            # Degree 2: skip visited in SQL — no wasted rows
             if conn and nb_id:
                 try:
                     graph_dal = GraphDAL(conn)
-                    d2_neighbors = graph_dal.get_neighbors_with_context(nb_id, limit=max_d2 * 2)
-                    d2_count = 0
+                    d2_neighbors = graph_dal.get_neighbors_rich(
+                        nb_id, limit=max_d2, exclude_node_ids=seen_ids)
+
                     for nb2 in d2_neighbors:
                         nb2_id = nb2.get("id", "")
-                        if nb2_id in seen_ids or d2_count >= max_d2:
-                            continue
                         seen_ids.add(nb2_id)
-                        d2_count += 1
                         lines.append("     \u21b3 \"%s\" (%s, id:%s)" % (
                             nb2.get("title", ""),
                             nb2.get("type", "?"),
                             nb2_id))
 
-                        # Degree 3: just title + id
+                        # Degree 3: skip visited in SQL
                         if conn and nb2_id:
                             try:
-                                d3_neighbors = graph_dal.get_neighbors_with_context(nb2_id, limit=max_d3 * 2)
-                                d3_count = 0
+                                d3_neighbors = graph_dal.get_neighbors_rich(
+                                    nb2_id, limit=max_d3, exclude_node_ids=seen_ids)
                                 for nb3 in d3_neighbors:
                                     nb3_id = nb3.get("id", "")
-                                    if nb3_id in seen_ids or d3_count >= max_d3:
-                                        continue
                                     seen_ids.add(nb3_id)
-                                    d3_count += 1
                                     lines.append("        \u21b3 \"%s\" (id:%s)" % (
                                         nb3.get("title", ""),
                                         nb3_id))

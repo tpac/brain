@@ -1189,10 +1189,15 @@ class BrainRecallMixin:
             parent_score = seed['blended_score']
             neighborhoods[seed_id] = {'degree_1': [], 'degree_2': [], 'degree_3': []}
 
-            # ── Degree 1: intentional edges only ──
+            # Compute non-intentional relations for degree-1 exclusion
+            # Degree 1: intentional only → exclude everything NOT intentional + co_accessed
+            d1_exclude_relations = EXCLUDED_EDGE_TYPES  # will be filtered post-query for intentional
+
+            # ── Degree 1: intentional edges only, skip visited nodes in SQL ──
             d1_neighbors = graph_dal.get_neighbors_rich(
-                seed_id, limit=TRAVERSE_LIMITS[0],
-                exclude_relations=EXCLUDED_EDGE_TYPES)
+                seed_id, limit=TRAVERSE_LIMITS[0] * 2,  # fetch extra, filter intentional
+                exclude_relations=EXCLUDED_EDGE_TYPES,
+                exclude_node_ids=seen_ids)
             # Filter to intentional at degree 1
             d1_neighbors = [n for n in d1_neighbors
                             if n.get('relation') in INTENTIONAL_EDGE_TYPES][:TRAVERSE_LIMITS[0]]
@@ -1204,23 +1209,22 @@ class BrainRecallMixin:
                 d1_score += _semantic_bonus(nid)
 
                 neighborhoods[seed_id]['degree_1'].append(nb)
+                seen_ids.add(nid)
 
                 if nid not in existing_ids:
                     if nid not in candidate_hits:
                         candidate_hits[nid] = []
                     candidate_hits[nid].append((d1_score, seed_id, 1))
-                    seen_ids.add(nid)
 
-                # ── Degree 2: all edges except co_accessed ──
+                # ── Degree 2: all edges except co_accessed, skip visited in SQL ──
                 if len(neighborhoods[seed_id]['degree_2']) < TRAVERSE_LIMITS[1] * 3:
                     d2_neighbors = graph_dal.get_neighbors_rich(
                         nid, limit=TRAVERSE_LIMITS[1],
-                        exclude_relations=EXCLUDED_EDGE_TYPES)
+                        exclude_relations=EXCLUDED_EDGE_TYPES,
+                        exclude_node_ids=seen_ids)
 
                     for nb2 in d2_neighbors:
                         nid2 = nb2['id']
-                        if nid2 in seen_ids:
-                            continue
                         freshness2 = _freshness(nb2)
                         d2_score = d1_score * TRAVERSE_DAMPEN[1] / TRAVERSE_DAMPEN[0] * (nb2.get('weight') or 0.5) * freshness2
                         d2_score += _semantic_bonus(nid2)
@@ -1233,18 +1237,16 @@ class BrainRecallMixin:
                                 candidate_hits[nid2] = []
                             candidate_hits[nid2].append((d2_score, seed_id, 2))
 
-                        # ── Degree 3: all edges except co_accessed ──
+                        # ── Degree 3: all edges except co_accessed, skip visited in SQL ──
                         if len(neighborhoods[seed_id]['degree_3']) < TRAVERSE_LIMITS[2] * 3:
                             d3_neighbors = graph_dal.get_neighbors_rich(
                                 nid2, limit=TRAVERSE_LIMITS[2],
-                                exclude_relations=EXCLUDED_EDGE_TYPES)
+                                exclude_relations=EXCLUDED_EDGE_TYPES,
+                                exclude_node_ids=seen_ids)
 
                             for nb3 in d3_neighbors:
                                 nid3 = nb3['id']
-                                if nid3 in seen_ids:
-                                    continue
                                 d3_score = d2_score * TRAVERSE_DAMPEN[2] / TRAVERSE_DAMPEN[1] * (nb3.get('weight') or 0.5)
-                                # No semantic bonus at degree 3 — too expensive
                                 neighborhoods[seed_id]['degree_3'].append(
                                     {'id': nid3, 'title': nb3.get('title', '')})
                                 seen_ids.add(nid3)

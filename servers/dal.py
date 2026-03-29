@@ -979,17 +979,35 @@ class GraphDAL:
         ]
 
     def get_neighbors_rich(self, node_id: str, limit: int = 8,
-                           exclude_relations: set = None) -> List[Dict[str, Any]]:
+                           exclude_relations: set = None,
+                           exclude_node_ids: set = None) -> List[Dict[str, Any]]:
         """Get neighbors with full node + edge + metadata in one query.
 
-        Returns everything needed for 3-degree traversal rendering:
-        - Node: id, type, title, content_summary, confidence, revised_at, created_at,
-                last_accessed, access_count, locked, emotion, emotion_label
-        - Edge: relation, weight, description, last_strengthened, co_access_count
-        - Metadata: reasoning, user_raw_quote, correction_of, correction_pattern,
-                    source_context, validation_count
+        Filters happen in SQL — no wasted rows from back-edges or visited nodes.
+
+        Args:
+            node_id: Source node to find neighbors of
+            limit: Max neighbors to return
+            exclude_relations: Edge types to skip (e.g. {'co_accessed'})
+            exclude_node_ids: Node IDs to skip (already visited in traversal)
         """
-        exclude = exclude_relations or set()
+        # Build dynamic WHERE clauses
+        where_parts = ["n.archived = 0"]
+        params = [node_id, node_id]
+
+        if exclude_node_ids:
+            placeholders = ",".join("?" * len(exclude_node_ids))
+            where_parts.append("n.id NOT IN (%s)" % placeholders)
+            params.extend(exclude_node_ids)
+
+        if exclude_relations:
+            placeholders = ",".join("?" * len(exclude_relations))
+            where_parts.append("e.relation NOT IN (%s)" % placeholders)
+            params.extend(exclude_relations)
+
+        params.append(limit)
+        where_clause = " AND ".join(where_parts)
+
         rows = self.conn.execute("""
             SELECT
                 n.id, n.type, n.title, n.content_summary, n.confidence,
@@ -1008,34 +1026,23 @@ class GraphDAL:
             ) e
             JOIN nodes n ON n.id = e.nid
             LEFT JOIN node_metadata m ON m.node_id = n.id
-            WHERE n.archived = 0
+            WHERE %s
             ORDER BY e.weight DESC
             LIMIT ?
-        """, (node_id, node_id, limit * 2)).fetchall()
+        """ % where_clause, params).fetchall()
 
-        results = []
-        for r in rows:
-            relation = r[12] or ''
-            if relation in exclude:
-                continue
-            if len(results) >= limit:
-                break
-            results.append({
-                # Node
-                'id': r[0], 'type': r[1], 'title': r[2], 'content_summary': r[3],
-                'confidence': r[4], 'revised_at': r[5], 'created_at': r[6],
-                'last_accessed': r[7], 'access_count': r[8], 'locked': r[9],
-                'emotion': r[10], 'emotion_label': r[11],
-                # Edge
-                'relation': relation, 'weight': r[13],
-                'edge_description': r[14], 'last_strengthened': r[15],
-                'co_access_count': r[16],
-                # Metadata
-                'reasoning': r[17], 'user_raw_quote': r[18],
-                'correction_of': r[19], 'correction_pattern': r[20],
-                'source_context': r[21], 'validation_count': r[22],
-            })
-        return results
+        return [{
+            'id': r[0], 'type': r[1], 'title': r[2], 'content_summary': r[3],
+            'confidence': r[4], 'revised_at': r[5], 'created_at': r[6],
+            'last_accessed': r[7], 'access_count': r[8], 'locked': r[9],
+            'emotion': r[10], 'emotion_label': r[11],
+            'relation': r[12] or '', 'weight': r[13],
+            'edge_description': r[14], 'last_strengthened': r[15],
+            'co_access_count': r[16],
+            'reasoning': r[17], 'user_raw_quote': r[18],
+            'correction_of': r[19], 'correction_pattern': r[20],
+            'source_context': r[21], 'validation_count': r[22],
+        } for r in rows]
 
     def count_node_edges(self, node_id: str, min_weight: float = 0.1) -> int:
         """Count edges from a node (used by dreams, surface)."""
