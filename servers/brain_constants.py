@@ -287,6 +287,10 @@ INTENTIONAL_EDGE_TYPES = {
 }
 EXCLUDED_EDGE_TYPES = {'co_accessed'}  # Usage noise — excluded at all degrees
 
+# Situation embeddings — WHEN knowledge matters (second vector dimension)
+SITUATION_WEIGHT = 0.2          # Additive boost for situation match during recall
+SITUATION_THRESHOLD = 0.30      # Min cosine similarity to count as situation match
+
 # 3-degree traversal settings
 TRAVERSE_DEPTH = 3
 TRAVERSE_DAMPEN = [0.6, 0.3, 0.12]       # Score dampening per degree

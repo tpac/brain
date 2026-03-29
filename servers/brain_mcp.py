@@ -98,7 +98,8 @@ TOOLS = [
          "confidence": {"type": "number", "description": "Confidence 0.0-1.0", "default": 1.0},
          "keywords": {"type": "string", "description": "Space-separated keywords for search"},
          "project": {"type": "string", "description": "Project scope"},
-         "emotion": {"type": "number", "description": "Emotional valence -1.0 to 1.0"}}}},
+         "emotion": {"type": "number", "description": "Emotional valence -1.0 to 1.0"},
+         "situation": {"type": "string", "description": "When is this knowledge relevant? One sentence describing the situation."}}}},
     {"name": "connect",
      "description": "Create a weighted edge between two brain nodes. Relations: related_to, caused_by, depends_on, contradicts, supports, produced, evolved_from, blocks, enables, example_of.",
      "inputSchema": {"type": "object", "required": ["source_id", "target_id"], "properties": {

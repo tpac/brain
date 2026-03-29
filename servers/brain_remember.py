@@ -335,7 +335,8 @@ class BrainRememberMixin:
                  personal: Optional[str] = None,
                  personal_context: Optional[str] = None,
                  critical: bool = False,
-                 encoding_source: Optional[str] = None) -> Dict[str, Any]:
+                 encoding_source: Optional[str] = None,
+                 situation: Optional[str] = None) -> Dict[str, Any]:
         """
         Store a new memory node with semantic indexing and connections.
 
@@ -443,6 +444,17 @@ class BrainRememberMixin:
                 # Node still stored — just without embedding. Keyword fallback works.
         else:
             print(f'[brain] Phase 0.5C: Embedder not ready — node {node_id} stored WITHOUT embedding', file=sys.stderr)
+
+        # Situation embedding — when this knowledge matters
+        if situation and embedding_stored:
+            try:
+                from .dal import EmbeddingDAL
+                sit_blob = embedder.embed(situation)
+                if sit_blob:
+                    emb_dal = EmbeddingDAL(self.conn)
+                    emb_dal.store_situation(node_id, situation, sit_blob)
+            except Exception as e:
+                print(f'[brain] Situation embedding failed for {node_id}: {e}', file=sys.stderr)
 
         # Create connections
         if connections:

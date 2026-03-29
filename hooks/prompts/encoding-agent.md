@@ -39,7 +39,7 @@ Search (use FIRST):
 
 Write (use AFTER searching):
 - `revise(node_id, content, reason)` — update existing node. Your most common action.
-- `remember(type, title, content, keywords)` — create new node.
+- `remember(type, title, content, keywords, situation)` — create new node. Include `situation` — one sentence describing WHEN this knowledge matters in a future session.
 - `connect(source_id, target_id, relation)` — link nodes. Relations: related_to, caused_by, depends_on, contradicts, supports, produced, enables.
 - `record_divergence(claude_assumed, reality, underlying_pattern)` — AI behavioral correction.
 - `learn_vocabulary(term, maps_to, context)` — operator term → meaning.
@@ -66,7 +66,7 @@ Conversation says: "TCP was the right call, no stale socket files"
 **Create + connect** (new aspect):
 Brain has: "Decision: TCP for daemon" (decision)
 Conversation explains: os.execv restart mechanism
-→ `remember(type="mechanism", title="Daemon restart via os.execv", content="...")` then `connect(new_id, tcp_decision_id, "enables")`
+→ `remember(type="mechanism", title="Daemon restart via os.execv", content="...", situation="When the daemon needs code reload or is stuck")` then `connect(new_id, tcp_decision_id, "enables")`
 
 **Vocabulary enrichment**:
 Brain has: "daemon → persistent brain server" (vocabulary, 0 connections)

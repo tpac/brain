@@ -371,6 +371,7 @@ TABLES = {
             FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
         )""",
         'columns': {'node_id': None, 'embedding': None,
+                    'situation_embedding': None, 'situation_text': None,
                     'model': "'snowflake-arctic-embed-m'", 'created_at': None}
     },
 

@@ -772,6 +772,31 @@ class EmbeddingDAL:
         row = self.conn.execute('SELECT COUNT(*) FROM node_embeddings').fetchone()
         return row[0] if row else 0
 
+    # --- situation embeddings ---
+
+    def store_situation(self, node_id: str, situation_text: str, situation_blob: bytes) -> None:
+        """Store situation embedding + text for a node. Node must already have a content embedding."""
+        self.conn.execute(
+            'UPDATE node_embeddings SET situation_embedding=?, situation_text=? WHERE node_id=?',
+            (situation_blob, situation_text, node_id))
+        self.conn.commit()
+
+    def get_all_situations(self) -> List[Dict[str, Any]]:
+        """Get all situation embeddings for cosine scan. Skips nodes without situation."""
+        rows = self.conn.execute(
+            'SELECT ne.node_id, ne.situation_embedding '
+            'FROM node_embeddings ne JOIN nodes n ON n.id = ne.node_id '
+            'WHERE n.archived = 0 AND ne.situation_embedding IS NOT NULL'
+        ).fetchall()
+        return [{'node_id': r[0], 'situation_embedding': r[1]} for r in rows]
+
+    def get_situation_text(self, node_id: str) -> Optional[str]:
+        """Get the raw situation text for a node."""
+        row = self.conn.execute(
+            'SELECT situation_text FROM node_embeddings WHERE node_id = ?', (node_id,)
+        ).fetchone()
+        return row[0] if row else None
+
     # --- node_enrichments ---
 
     def get_all_enrichments(self) -> List[Dict[str, Any]]:

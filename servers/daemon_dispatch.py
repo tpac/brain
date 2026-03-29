@@ -291,7 +291,8 @@ def _handle_remember(brain, args, graph_changes):
         confidence=args.get("confidence", 1.0),
         emotion=args.get("emotion"),
         keywords=args.get("keywords"),
-        project=args.get("project"))
+        project=args.get("project"),
+        situation=args.get("situation"))
     node_id = result.get("id", "?")[:8] if isinstance(result, dict) else "?"
     graph_changes.append(
         "REMEMBER: [%s] %s (%s...)" % (

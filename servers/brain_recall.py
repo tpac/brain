@@ -53,6 +53,8 @@ from .brain_constants import (
     TRAVERSE_CONVERGENCE_BOOST,
     FRESHNESS_MULTIPLIERS,
     EXCLUDED_EDGE_TYPES,
+    SITUATION_WEIGHT,
+    SITUATION_THRESHOLD,
 )
 from .dal import GraphDAL
 
@@ -607,8 +609,9 @@ class BrainRecallMixin:
                limit: int = 20, offset: int = 0,
                include_archived: bool = False,
                min_recency: float = 0, project: Optional[str] = None,
-               session_id: Optional[str] = None) -> Dict[str, Any]:
-        """Recall: embeddings + 3-degree graph traversal + keyword blending.
+               session_id: Optional[str] = None,
+               situation_vec=None) -> Dict[str, Any]:
+        """Recall: embeddings + 3-degree graph traversal + keyword blending + situation matching.
 
         OLD approach: Run keyword recall first, sprinkle embedding scores on top.
         NEW approach: Embed the query, scan ALL nodes by embedding similarity,
@@ -757,6 +760,28 @@ class BrainRecallMixin:
         except Exception as e:
             print(f'[brain] Embedding scan error: {e}', file=sys.stderr)
 
+        # STEP 3.5: Situation scan — boost nodes whose situation matches current context
+        situation_scores = {}
+        if situation_vec:
+            try:
+                from .dal import EmbeddingDAL
+                emb_dal = EmbeddingDAL(self.conn)
+                sit_rows = emb_dal.get_all_situations()
+                for row in sit_rows:
+                    nid = row['node_id']
+                    svec = struct.unpack('%df' % (len(row['situation_embedding']) // 4),
+                                         row['situation_embedding'])
+                    # Cosine similarity
+                    dot = sum(a * b for a, b in zip(situation_vec, svec))
+                    mag_a = sum(a * a for a in situation_vec) ** 0.5
+                    mag_b = sum(b * b for b in svec) ** 0.5
+                    if mag_a > 0 and mag_b > 0:
+                        sim = dot / (mag_a * mag_b)
+                        if sim >= SITUATION_THRESHOLD:
+                            situation_scores[nid] = sim
+            except Exception as e:
+                self._log_error("recall_situation_scan", e, "situation scan failed")
+
         # STEP 4: Also run keyword recall to catch nodes WITHOUT embeddings
         # and to get keyword precision scores for exact-match tiebreaking
         # _skip_log=True: precision module handles logging via hooks, not here.
@@ -843,6 +868,11 @@ class BrainRecallMixin:
                     if not overlap:
                         blended *= 0.7
                         _context_mismatch = True
+
+            # Situation boost — additive, never subtractive
+            sit_score = situation_scores.get(nid, 0)
+            if sit_score > 0:
+                blended += SITUATION_WEIGHT * sit_score
 
             # Minimum threshold — don't return noise
             # v5.2: Critical nodes get a much lower threshold
