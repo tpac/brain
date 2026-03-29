@@ -203,8 +203,9 @@ def hook_recall(brain, args, graph_changes):
     if results:
         try:
             precision = _get_precision(brain)
-            recalled_titles = {r.get("id"): r.get("title", "")[:100] for r in results}
-            recalled_snippets = {r.get("id"): (r.get("content") or "")[:150] for r in results}
+            from .pipeline_contract import PRECISION
+            recalled_titles = {r.get("id"): r.get("title", "")[:PRECISION['title_limit']] for r in results}
+            recalled_snippets = {r.get("id"): (r.get("content") or "")[:PRECISION['snippet_limit']] for r in results}
             embeddings_used = result.get("_recall_mode") != "keyword_only_DEGRADED"
             recall_log_id = precision.log_recall(
                 session_id=session_id,
@@ -238,18 +239,22 @@ def hook_recall(brain, args, graph_changes):
     # Gap detection (needed by candidates file + later logging)
     gap = result.get('_gap') if isinstance(result, dict) else None
 
-    # Write candidates to file for recall agent hook (LLM distillation)
+    # Write candidates to file for recall agent hook (LLM distillation + encoding agent)
+    # Encoding agent needs ALL candidates (including previously surfaced) for revision.
+    # Session dedup happens only at distiller stage, not here.
     try:
+        from .pipeline_contract import CANDIDATES_FILE
         session_id = brain.get_config('session_id', 'unknown')
         candidates_path = '/tmp/brain-{}-recall-candidates.json'.format(session_id)
         import json as _json
+        content_limit = CANDIDATES_FILE['content_limit']
         candidates_data = []
-        for r in results:
+        for r in results[:CANDIDATES_FILE['max_candidates']]:
             node_data = {
                 "id": r.get("id", ""),
                 "type": r.get("type", ""),
                 "title": r.get("title", ""),
-                "content": (r.get("content") or "")[:1000],
+                "content": (r.get("content") or "")[:content_limit],
                 "confidence": r.get("confidence", 0),
                 "locked": r.get("locked", False),
                 "score": r.get("effective_activation", 0),
@@ -257,11 +262,10 @@ def hook_recall(brain, args, graph_changes):
                 "created_at": r.get("created_at"),
                 "discovery": r.get("_discovery", "embedding"),
             }
-            # Include 3-degree graph neighborhood
+            # Include 3-degree graph neighborhood (full — encoding agent needs it)
             graph = r.get("_graph", {})
             if graph:
                 node_data["_graph"] = graph
-            # Fallback: legacy _neighbors for compatibility
             elif r.get("_neighbors"):
                 node_data["_graph"] = {"degree_1": r["_neighbors"], "degree_2": [], "degree_3": []}
             candidates_data.append(node_data)
@@ -361,24 +365,27 @@ def hook_post_response_track(brain, args, graph_changes):
             session_id = brain.get_config('session_id', 'unknown')
             input_path = '/tmp/brain-{}-encoding-input.json'.format(session_id)
 
-            # Gather last 10 messages from message stream
+            # Gather messages from message stream (encoding agent reads from DB)
+            from .pipeline_contract import ENCODING_AGENT
             messages = []
             try:
                 rows = brain.logs_conn.execute(
                     "SELECT role, content, signal_type, created_at "
                     "FROM message_stream WHERE session_id = ? "
-                    "ORDER BY created_at DESC LIMIT 10",
-                    (session_id,)
+                    "ORDER BY created_at DESC LIMIT ?",
+                    (session_id, ENCODING_AGENT['max_messages'])
                 ).fetchall()
                 messages = [
-                    {"role": r[0], "content": (r[1] or "")[:2000],
+                    {"role": r[0], "content": (r[1] or "")[:ENCODING_AGENT['message_content_limit']],
                      "signal": r[2], "timestamp": r[3]}
                     for r in reversed(rows)
                 ]
             except Exception:
                 pass
 
-            # Gather RICH recall context — 3-degree node rendering
+            # Gather brain context — encoding agent needs rich graph rendering
+            # Primary: candidates file (written by hook_recall on every prompt)
+            # Fallback: dashboard hook_log
             recall_context_rich = ""
             try:
                 candidates_path = '/tmp/brain-{}-recall-candidates.json'.format(session_id)
@@ -390,10 +397,12 @@ def hook_post_response_track(brain, args, graph_changes):
                     if candidates:
                         from .brain_voice import BrainVoice
                         lines = []
-                        for c in candidates[:5]:
+                        for c in candidates[:ENCODING_AGENT['recall_candidates_limit']]:
                             BrainVoice.format_node_deep(
                                 c, lines, conn=brain.conn,
-                                max_d1=3, max_d2=3, max_d3=3)
+                                max_d1=ENCODING_AGENT['max_d1'],
+                                max_d2=ENCODING_AGENT['max_d2'],
+                                max_d3=ENCODING_AGENT['max_d3'])
                         recall_context_rich = "\n".join(lines)
             except Exception:
                 pass
@@ -440,11 +449,11 @@ def hook_post_response_track(brain, args, graph_changes):
             # Build inline context for the encoding agent
             import json as _json
 
-            # Format messages
+            # Format messages (limit from pipeline contract)
             msg_text = ""
             for m in messages:
                 role = (m.get("role") or "?").upper()
-                content = (m.get("content") or "")[:600]
+                content = (m.get("content") or "")[:ENCODING_AGENT['message_display_limit']]
                 msg_text += "[%s]: %s\n\n" % (role, content)
 
             # Brain context is already built above as recall_context_rich

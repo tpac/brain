@@ -91,68 +91,12 @@ try:
         import anthropic
         client = anthropic.Anthropic()
 
-        # Build rich candidate text with graph neighborhoods
-        candidates_text = ""
-        relevant_count = 0
-        for c in candidates[:8]:
-            # Core node info
-            locked = "LOCKED " if c.get("locked") else ""
-            candidates_text += "[%s] %s%s (id:%s, conf:%.2f, revised:%s, created:%s)\n" % (
-                c.get("type", "?"), locked, c.get("title", "?"),
-                c.get("id", "")[:16], c.get("confidence") or 0,
-                c.get("revised_at") or "never",
-                str(c.get("created_at") or "")[:10])
-            candidates_text += "  %s\n" % (c.get("content") or "")[:500]
-
-            # Graph neighborhood (degree 1 — rich fields)
-            graph = c.get("_graph", {})
-            d1 = graph.get("degree_1", [])
-            for nb in d1[:3]:
-                locked_nb = "LOCKED " if nb.get("locked") else ""
-                summary_nb = nb.get("content_summary") or ""
-                candidates_text += "  → %s: %s\"%s\" (%s, id:%s, conf:%.2f, revised:%s)" % (
-                    nb.get("relation", "related"), locked_nb,
-                    nb.get("title", "")[:60],
-                    nb.get("type", "?"), nb.get("id", "")[:12],
-                    nb.get("confidence") or 0,
-                    nb.get("revised_at") or "never")
-                if summary_nb:
-                    candidates_text += "\n      %s" % summary_nb[:150]
-                candidates_text += "\n"
-
-            # Degree 2 as breadcrumbs with type
-            d2 = graph.get("degree_2", [])
-            if d2:
-                d2_items = ", ".join("\"%s\" (%s, id:%s)" % (
-                    n.get("title", "")[:35], n.get("type", "?"), n.get("id", "")[:8]) for n in d2[:3])
-                candidates_text += "  →→ %s\n" % d2_items
-
-            candidates_text += "\n"
-            if (c.get("confidence") or 0) > 0.3:
-                relevant_count += 1
-
-        # Dynamic budget based on query complexity
-        query_len = len(user_message)
-        budget = 400 + min(800, relevant_count * 100 + (100 if query_len > 100 else 0))
-        max_tokens = min(500, budget // 2)
-
-        distill_prompt = """You are the awareness layer of a persistent AI brain.
-Distill these memory candidates into focused context for the main AI.
-
-USER MESSAGE: %s
-
-CANDIDATES:
-%s
-
-Rules:
-- Only include what's DIRECTLY relevant to the user's message
-- Preserve node IDs like (id:abc123) so the AI can pull full details
-- Include graph connections when they add context (→ related nodes)
-- If a correction or rule applies, lead with it
-- If nothing is relevant, return just the word EMPTY. No explanation.
-- Max %d characters. Be surgical, like a colleague whispering context.
-- If this seems like the start of a conversation, be more generous.
-- NEVER add your own opinions or analysis. You are a filter, not an advisor.""" % (user_message[:500], candidates_text, budget)
+        # Build distiller prompt from pipeline contract (single source of truth)
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__)))), 'servers'))
+        from pipeline_contract import build_distiller_prompt
+        distill_prompt, budget, max_tokens = build_distiller_prompt(
+            candidates, user_message)
 
         api_resp = client.messages.create(
             model="claude-haiku-4-5",
