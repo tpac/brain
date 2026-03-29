@@ -249,7 +249,7 @@ def hook_recall(brain, args, graph_changes):
                 "id": r.get("id", ""),
                 "type": r.get("type", ""),
                 "title": r.get("title", ""),
-                "content": (r.get("content") or "")[:500],
+                "content": (r.get("content") or "")[:1000],
                 "confidence": r.get("confidence", 0),
                 "locked": r.get("locked", False),
                 "score": r.get("effective_activation", 0),

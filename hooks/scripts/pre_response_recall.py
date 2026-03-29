@@ -102,22 +102,30 @@ try:
                 c.get("id", "")[:16], c.get("confidence") or 0,
                 c.get("revised_at") or "never",
                 str(c.get("created_at") or "")[:10])
-            candidates_text += "  %s\n" % (c.get("content") or "")[:300]
+            candidates_text += "  %s\n" % (c.get("content") or "")[:500]
 
-            # Graph neighborhood (degree 1 with relation + type)
+            # Graph neighborhood (degree 1 — rich fields)
             graph = c.get("_graph", {})
             d1 = graph.get("degree_1", [])
             for nb in d1[:3]:
-                candidates_text += "  → %s: \"%s\" (%s, id:%s, revised:%s)\n" % (
-                    nb.get("relation", "related"), nb.get("title", "")[:50],
+                locked_nb = "LOCKED " if nb.get("locked") else ""
+                summary_nb = nb.get("content_summary") or ""
+                candidates_text += "  → %s: %s\"%s\" (%s, id:%s, conf:%.2f, revised:%s)" % (
+                    nb.get("relation", "related"), locked_nb,
+                    nb.get("title", "")[:60],
                     nb.get("type", "?"), nb.get("id", "")[:12],
+                    nb.get("confidence") or 0,
                     nb.get("revised_at") or "never")
+                if summary_nb:
+                    candidates_text += "\n      %s" % summary_nb[:150]
+                candidates_text += "\n"
 
-            # Degree 2-3 as breadcrumbs
+            # Degree 2 as breadcrumbs with type
             d2 = graph.get("degree_2", [])
             if d2:
-                d2_titles = ", ".join("\"%s\" (id:%s)" % (n.get("title", "")[:30], n.get("id", "")[:8]) for n in d2[:3])
-                candidates_text += "  →→ %s\n" % d2_titles
+                d2_items = ", ".join("\"%s\" (%s, id:%s)" % (
+                    n.get("title", "")[:35], n.get("type", "?"), n.get("id", "")[:8]) for n in d2[:3])
+                candidates_text += "  →→ %s\n" % d2_items
 
             candidates_text += "\n"
             if (c.get("confidence") or 0) > 0.3:

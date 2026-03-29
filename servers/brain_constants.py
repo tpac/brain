@@ -146,11 +146,19 @@ TFIDF_STOP_WORDS = {
 # Stored on each node so recall knows encoding quality.
 CURRENT_ENCODING_VERSION = "v5"
 
-# Relevance floor — version-aware. Enriched nodes get higher bar.
-# Sweep data (214 enriched cases): 0.80 → 87/89 pos, 32/54 neg blocked.
-# Bare nodes (no enrichments) use lower bar to stay visible.
-RELEVANCE_FLOOR_ENRICHED = 0.80   # top result won via enrichment vector
-RELEVANCE_FLOOR_PRIMARY = 0.50    # top result won via primary embedding only
+# Relevance floor — per-result minimum score.
+# v8.7: Lowered from 0.80/0.50 and changed from all-or-nothing to per-result.
+# Previous sweep data (214 enriched cases) was pre-enrichment-cap, no longer applies.
+# The Haiku distiller is the primary quality gate; this floor catches obvious noise.
+RELEVANCE_FLOOR_ENRICHED = 0.45   # result won via enrichment vector
+RELEVANCE_FLOOR_PRIMARY = 0.25    # result won via primary embedding only
+
+# Enrichment cap — enrichments boost primary score, don't replace it.
+# v8.7: Enrichment vectors (question, anchor, bridge, keywords) were overriding
+# primary content similarity, causing broad nodes to win every query.
+# Cap means: enrichment can add at most 30% of gap above primary.
+# Example: primary=0.45, enrichment=0.82 → 0.45 + 0.3*(0.82-0.45) = 0.561
+ENRICHMENT_CAP = 0.30
 
 # Vocabulary expansion
 VOCAB_EXPANSION_MAX = 3  # Max terms added per query via vocabulary expansion

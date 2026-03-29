@@ -668,8 +668,9 @@ class BrainRecallMixin:
         # STEP 3: Brute-force cosine similarity against ALL stored embeddings
         # This is the core change: embeddings drive retrieval, not keywords.
         # For 600 nodes this is fast (<50ms). At 10k+ nodes, switch to sqlite-vec.
-        # v6: Also scans enrichment embeddings (question, anchor, bridge, keywords vectors).
-        embedding_scores = {}  # node_id → cosine_similarity (best across primary + enrichments)
+        # v8.7: Primary scores stored separately. Enrichments boost but don't replace (ENRICHMENT_CAP).
+        embedding_scores = {}  # node_id → final cosine score (primary + capped enrichment)
+        primary_scores = {}    # node_id → primary embedding similarity (content match)
         enrichment_hits = {}   # node_id → vector_type that matched best (for telemetry)
         node_personal_data = {}  # node_id → (personal, personal_context) for pre-sort penalty
         node_confidence = {}    # node_id → confidence (0-1, None=default)
@@ -710,14 +711,18 @@ class BrainRecallMixin:
                 if blob:
                     sim = embedder.cosine_similarity(query_vec, blob)
                     embedding_scores[node_id] = sim
+                    primary_scores[node_id] = sim  # v8.7: preserve primary for enrichment cap
                     enrichment_hits[node_id] = 'primary'
                     nodes_with_embeddings += 1
 
-            # v6 STEP 3.5: Scan enrichment embeddings (V5 multi-vector encoding)
-            # Each node may have up to 4 enrichment vectors. Take the BEST score
-            # across primary + all enrichments for each node.
+            # v8.7 STEP 3.5: Scan enrichment embeddings (V5 multi-vector encoding)
+            # Each node may have up to 4 enrichment vectors.
+            # Enrichments BOOST primary score but don't REPLACE it (ENRICHMENT_CAP).
+            # This prevents broad enrichment vectors from overriding content relevance.
+            from .brain_constants import ENRICHMENT_CAP
             enrichment_count = 0
             enrichment_used = 0
+            best_enrichment_per_node = {}  # node_id → (best_sim, vector_type)
             try:
                 enrich_cursor = self.conn.execute(
                     'SELECT node_id, vector_type, embedding FROM node_enrichments WHERE embedding IS NOT NULL'
@@ -729,7 +734,6 @@ class BrainRecallMixin:
                     enrichment_count += 1
                     # Skip if node is filtered out by type/project/archive
                     if e_node_id not in node_confidence and e_node_id not in embedding_scores:
-                        # Check if node passes filters
                         check = self.conn.execute(
                             f'''SELECT 1 FROM nodes n WHERE n.id = ? {archive_filter} {type_filter} {project_filter}''',
                             [e_node_id] + type_params + project_params
@@ -737,11 +741,19 @@ class BrainRecallMixin:
                         if not check:
                             continue
                     e_sim = embedder.cosine_similarity(query_vec, e_blob)
-                    current_best = embedding_scores.get(e_node_id, 0)
-                    if e_sim > current_best:
-                        embedding_scores[e_node_id] = e_sim
-                        enrichment_hits[e_node_id] = e_type
-                        enrichment_used += 1
+                    prev_best = best_enrichment_per_node.get(e_node_id, (0, None))[0]
+                    if e_sim > prev_best:
+                        best_enrichment_per_node[e_node_id] = (e_sim, e_type)
+
+                # Apply enrichment cap: primary + CAP * (enrichment - primary)
+                for e_node_id, (best_esim, best_etype) in best_enrichment_per_node.items():
+                    prim = primary_scores.get(e_node_id, 0)
+                    if best_esim > prim:
+                        capped = prim + ENRICHMENT_CAP * (best_esim - prim)
+                        if capped > embedding_scores.get(e_node_id, 0):
+                            embedding_scores[e_node_id] = capped
+                            enrichment_hits[e_node_id] = best_etype
+                            enrichment_used += 1
             except Exception as e:
                 # Table might not exist yet during migration
                 if 'no such table' not in str(e):
@@ -909,17 +921,18 @@ class BrainRecallMixin:
         except Exception as e:
             self._log_error("recall", e, "STEP 6.5 graph traversal")
 
-        # STEP 6.9: Version-aware relevance floor.
-        # Enriched nodes (V5+) get a higher bar — their scores are more meaningful.
-        # Bare nodes (primary embedding only) get a lower bar — one vector, one chance.
-        # If best result is below applicable floor, return empty.
-        if scored_results:
-            top_id = scored_results[0]['node_id']
-            max_score = scored_results[0]['blended_score']
-            top_source = enrichment_hits.get(top_id, 'primary')
-            floor = RELEVANCE_FLOOR_ENRICHED if top_source != 'primary' else RELEVANCE_FLOOR_PRIMARY
-            if max_score < floor:
-                scored_results = []
+        # STEP 6.9: Per-result relevance floor.
+        # v8.7: Changed from all-or-nothing (top result gates everything) to per-result.
+        # Each result must meet its own floor based on how it was discovered.
+        # Floors lowered (0.25/0.45) since enrichment cap now prevents inflated scores.
+        scored_results = [
+            sr for sr in scored_results
+            if sr['blended_score'] >= (
+                RELEVANCE_FLOOR_ENRICHED
+                if enrichment_hits.get(sr['node_id'], 'primary') != 'primary'
+                else RELEVANCE_FLOOR_PRIMARY
+            )
+        ]
 
         # STEP 7: Hydrate full node data for top results
         final_results = []
