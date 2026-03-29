@@ -256,18 +256,18 @@ def hook_recall(brain, args, graph_changes):
                 "content": (r.get("content") or "")[:500],
                 "confidence": r.get("confidence", 0),
                 "locked": r.get("locked", False),
-                "score": r.get("_score", 0),
+                "score": r.get("effective_activation", 0),
                 "revised_at": r.get("revised_at"),
                 "created_at": r.get("created_at"),
+                "discovery": r.get("_discovery", "embedding"),
             }
-            # Include neighbors if available
-            neighbors = r.get("_neighbors") or r.get("neighbors") or []
-            if neighbors:
-                node_data["neighbors"] = [
-                    {"id": n.get("id", ""), "title": n.get("title", ""),
-                     "type": n.get("type", ""), "relation": n.get("_edge_type", "")}
-                    for n in neighbors[:5]
-                ]
+            # Include 3-degree graph neighborhood
+            graph = r.get("_graph", {})
+            if graph:
+                node_data["_graph"] = graph
+            # Fallback: legacy _neighbors for compatibility
+            elif r.get("_neighbors"):
+                node_data["_graph"] = {"degree_1": r["_neighbors"], "degree_2": [], "degree_3": []}
             candidates_data.append(node_data)
         with open(candidates_path, 'w') as f:
             _json.dump({

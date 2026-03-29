@@ -45,6 +45,14 @@ from .brain_constants import (
     TFIDF_SEMANTIC_WEIGHT,
     TFIDF_STOP_WORDS,
     VOCAB_EXPANSION_MAX,
+    TRAVERSE_DEPTH,
+    TRAVERSE_DAMPEN,
+    TRAVERSE_LIMITS,
+    TRAVERSE_SEMANTIC_BONUS,
+    TRAVERSE_SEMANTIC_THRESHOLD,
+    TRAVERSE_CONVERGENCE_BOOST,
+    FRESHNESS_MULTIPLIERS,
+    EXCLUDED_EDGE_TYPES,
 )
 from .dal import GraphDAL
 
@@ -855,60 +863,31 @@ class BrainRecallMixin:
         scored_results.sort(key=lambda x: -x['blended_score'])
         scored_results = scored_results[:limit]
 
-        # STEP 6.5: Graph-augmented recall — pull 1-hop typed neighbors
-        # For top N results, find neighbors via intentional edges and add
-        # them as candidates with dampened scores. Re-sort and re-limit.
+        # STEP 6.5: 3-degree graph traversal from top seed nodes.
+        # Walks intentional edges at degree 1, all edges (except co_accessed)
+        # at degree 2-3. Semantic bonus when graph + embedding converge.
+        graph_neighborhoods = {}
         try:
-            graph_dal = GraphDAL(self.conn)
-            existing_ids = {sr['node_id'] for sr in scored_results}
-            # Track: neighbor_id -> list of (dampened_score, parent_id)
-            neighbor_hits = {}
+            seeds = scored_results[:GRAPH_AUGMENT_TOP_N]
+            graph_candidates, graph_neighborhoods = self._traverse_graph(
+                seeds, query_vec=query_vec)
 
-            for sr in scored_results[:GRAPH_AUGMENT_TOP_N]:
-                parent_id = sr['node_id']
-                parent_score = sr['blended_score']
-                neighbors = graph_dal.get_typed_neighbors(
-                    parent_id, INTENTIONAL_EDGE_TYPES, limit=GRAPH_NEIGHBOR_LIMIT
-                )
-                for nb in neighbors:
-                    nid = nb['neighbor_id']
-                    if nid in existing_ids:
-                        continue
-                    archived_check = self.conn.execute(
-                        'SELECT archived FROM nodes WHERE id = ?', (nid,)
-                    ).fetchone()
-                    if not archived_check or archived_check[0] == 1:
-                        continue
-                    dampened = parent_score * NEIGHBOR_DAMPEN * nb['weight']
-                    if nid not in neighbor_hits:
-                        neighbor_hits[nid] = []
-                    neighbor_hits[nid].append((dampened, parent_id))
-
-            # Convergence: neighbors connected to multiple parents get boosted
-            neighbor_candidates = {}
-            for nid, hits in neighbor_hits.items():
-                base_score = max(h[0] for h in hits)
-                num_parents = len(set(h[1] for h in hits))
-                # 30% boost per additional parent connection
-                convergence_multiplier = 1.0 + 0.3 * (num_parents - 1)
-                neighbor_candidates[nid] = base_score * convergence_multiplier
-
-            # Add graph neighbors to scored results
-            for nid, score in neighbor_candidates.items():
+            # Add graph-discovered nodes to scored results
+            for nid, info in graph_candidates.items():
                 scored_results.append({
                     'node_id': nid,
-                    'blended_score': score,
+                    'blended_score': info['score'],
                     'embedding_similarity': None,
                     'keyword_score': None,
-                    '_source': 'graph_neighbor',
+                    '_source': info['discovery'],
                     '_context_mismatch': False,
                 })
 
-            if neighbor_candidates:
+            if graph_candidates:
                 scored_results.sort(key=lambda x: -x['blended_score'])
                 scored_results = scored_results[:limit]
         except Exception as e:
-            self._log_error("recall_with_embeddings", e, "STEP 6.5 graph-augmented recall")
+            self._log_error("recall_with_embeddings", e, "STEP 6.5 graph traversal")
 
         # STEP 6.9: Version-aware relevance floor.
         # Enriched nodes (V5+) get a higher bar — their scores are more meaningful.
@@ -1012,6 +991,10 @@ class BrainRecallMixin:
                     'freshness': _freshness,
                 }
 
+                # Attach graph neighborhood from traversal
+                node['_graph'] = graph_neighborhoods.get(nid, {})
+                node['_discovery'] = sr.get('_source', 'embedding')
+
                 # v4: Contextual qualifier matching.
                 # Penalty is applied to blended_score BEFORE sorting in STEP 6.
                 # Here we only apply confidence reduction and set the qualifier label.
@@ -1059,10 +1042,13 @@ class BrainRecallMixin:
                 'keyword_fallback_weight': KEYWORD_FALLBACK_WEIGHT,
                 'recall_ms': round(recall_ms, 1),
                 'results_by_source': {
-                    'embedding+keyword': sum(1 for r in final_results if r.get('_source') == 'embedding+keyword'),
-                    'embedding_only': sum(1 for r in final_results if r.get('_source') == 'embedding_only'),
-                    'keyword_only_fallback': sum(1 for r in final_results if r.get('_source') == 'keyword_only_fallback'),
-                    'graph_neighbor': sum(1 for r in final_results if r.get('_source') == 'graph_neighbor'),
+                    'embedding+keyword': sum(1 for r in final_results if r.get('_discovery') == 'embedding+keyword'),
+                    'embedding_only': sum(1 for r in final_results if r.get('_discovery') == 'embedding_only'),
+                    'keyword_only_fallback': sum(1 for r in final_results if r.get('_discovery') == 'keyword_only_fallback'),
+                    'graph_d1': sum(1 for r in final_results if r.get('_discovery') == 'graph_d1'),
+                    'graph_d2': sum(1 for r in final_results if r.get('_discovery') == 'graph_d2'),
+                    'graph_d3': sum(1 for r in final_results if r.get('_discovery') == 'graph_d3'),
+                    'convergence': sum(1 for r in final_results if r.get('_discovery') == 'convergence'),
                 },
                 # v6: Enrichment scan stats
                 'enrichment_vectors_scanned': enrichment_count if 'enrichment_count' in dir() else 0,
@@ -1136,6 +1122,154 @@ class BrainRecallMixin:
                     ][:neighbor_limit]
                 except Exception:
                     node['_neighbors'] = []
+
+    def _traverse_graph(self, seeds: List[Dict], query_vec=None) -> tuple:
+        """3-degree graph traversal from seed nodes.
+
+        Walks the graph outward from embedding hits:
+        - Degree 1: INTENTIONAL edges only (strong signal)
+        - Degree 2-3: All edges except co_accessed (wider net)
+
+        Returns:
+            (graph_candidates, graph_neighborhoods)
+            - graph_candidates: dict of node_id → {'score': float, 'discovery': str}
+            - graph_neighborhoods: dict of seed_id → {'degree_1': [...], 'degree_2': [...], 'degree_3': [...]}
+        """
+        graph_dal = GraphDAL(self.conn)
+        existing_ids = {s['node_id'] for s in seeds}
+        seen_ids = set(existing_ids)  # Track all visited to avoid cycles
+
+        # Track: node_id → [(score, parent_id, degree)]
+        candidate_hits = {}
+        # Track: seed_id → {degree_1: [...], degree_2: [...], degree_3: [...]}
+        neighborhoods = {}
+
+        def _freshness(node_data):
+            """Compute freshness multiplier from revised_at or created_at."""
+            ts = node_data.get('revised_at') or node_data.get('created_at') or ''
+            if not ts:
+                return FRESHNESS_MULTIPLIERS.get('older', 0.6)
+            try:
+                dt = datetime.fromisoformat(str(ts).replace('Z', '+00:00'))
+                hours = (datetime.now(dt.tzinfo) - dt).total_seconds() / 3600
+            except Exception:
+                return FRESHNESS_MULTIPLIERS.get('older', 0.6)
+            if hours < 24:
+                return FRESHNESS_MULTIPLIERS.get('today', 1.2)
+            elif hours < 168:
+                return FRESHNESS_MULTIPLIERS.get('this_week', 1.0)
+            elif hours < 720:
+                return FRESHNESS_MULTIPLIERS.get('this_month', 0.8)
+            return FRESHNESS_MULTIPLIERS.get('older', 0.6)
+
+        def _semantic_bonus(node_id):
+            """Compute additive semantic bonus if query_vec available."""
+            if query_vec is None:
+                return 0.0
+            try:
+                row = self.conn.execute(
+                    'SELECT embedding FROM node_embeddings WHERE node_id = ?', (node_id,)
+                ).fetchone()
+                if row and row[0]:
+                    node_vec = struct.unpack('%df' % (len(row[0]) // 4), row[0])
+                    # Cosine similarity
+                    dot = sum(a * b for a, b in zip(query_vec, node_vec))
+                    mag_a = sum(a * a for a in query_vec) ** 0.5
+                    mag_b = sum(b * b for b in node_vec) ** 0.5
+                    if mag_a > 0 and mag_b > 0:
+                        sim = dot / (mag_a * mag_b)
+                        if sim >= TRAVERSE_SEMANTIC_THRESHOLD:
+                            return TRAVERSE_SEMANTIC_BONUS * sim
+            except Exception:
+                pass
+            return 0.0
+
+        for seed in seeds:
+            seed_id = seed['node_id']
+            parent_score = seed['blended_score']
+            neighborhoods[seed_id] = {'degree_1': [], 'degree_2': [], 'degree_3': []}
+
+            # ── Degree 1: intentional edges only ──
+            d1_neighbors = graph_dal.get_neighbors_rich(
+                seed_id, limit=TRAVERSE_LIMITS[0],
+                exclude_relations=EXCLUDED_EDGE_TYPES)
+            # Filter to intentional at degree 1
+            d1_neighbors = [n for n in d1_neighbors
+                            if n.get('relation') in INTENTIONAL_EDGE_TYPES][:TRAVERSE_LIMITS[0]]
+
+            for nb in d1_neighbors:
+                nid = nb['id']
+                freshness = _freshness(nb)
+                d1_score = parent_score * TRAVERSE_DAMPEN[0] * (nb.get('weight') or 0.5) * freshness
+                d1_score += _semantic_bonus(nid)
+
+                neighborhoods[seed_id]['degree_1'].append(nb)
+
+                if nid not in existing_ids:
+                    if nid not in candidate_hits:
+                        candidate_hits[nid] = []
+                    candidate_hits[nid].append((d1_score, seed_id, 1))
+                    seen_ids.add(nid)
+
+                # ── Degree 2: all edges except co_accessed ──
+                if len(neighborhoods[seed_id]['degree_2']) < TRAVERSE_LIMITS[1] * 3:
+                    d2_neighbors = graph_dal.get_neighbors_rich(
+                        nid, limit=TRAVERSE_LIMITS[1],
+                        exclude_relations=EXCLUDED_EDGE_TYPES)
+
+                    for nb2 in d2_neighbors:
+                        nid2 = nb2['id']
+                        if nid2 in seen_ids:
+                            continue
+                        freshness2 = _freshness(nb2)
+                        d2_score = d1_score * TRAVERSE_DAMPEN[1] / TRAVERSE_DAMPEN[0] * (nb2.get('weight') or 0.5) * freshness2
+                        d2_score += _semantic_bonus(nid2)
+
+                        neighborhoods[seed_id]['degree_2'].append(nb2)
+                        seen_ids.add(nid2)
+
+                        if nid2 not in existing_ids:
+                            if nid2 not in candidate_hits:
+                                candidate_hits[nid2] = []
+                            candidate_hits[nid2].append((d2_score, seed_id, 2))
+
+                        # ── Degree 3: all edges except co_accessed ──
+                        if len(neighborhoods[seed_id]['degree_3']) < TRAVERSE_LIMITS[2] * 3:
+                            d3_neighbors = graph_dal.get_neighbors_rich(
+                                nid2, limit=TRAVERSE_LIMITS[2],
+                                exclude_relations=EXCLUDED_EDGE_TYPES)
+
+                            for nb3 in d3_neighbors:
+                                nid3 = nb3['id']
+                                if nid3 in seen_ids:
+                                    continue
+                                d3_score = d2_score * TRAVERSE_DAMPEN[2] / TRAVERSE_DAMPEN[1] * (nb3.get('weight') or 0.5)
+                                # No semantic bonus at degree 3 — too expensive
+                                neighborhoods[seed_id]['degree_3'].append(
+                                    {'id': nid3, 'title': nb3.get('title', '')})
+                                seen_ids.add(nid3)
+
+                                if nid3 not in existing_ids:
+                                    if nid3 not in candidate_hits:
+                                        candidate_hits[nid3] = []
+                                    candidate_hits[nid3].append((d3_score, seed_id, 3))
+
+        # ── Convergence boost ──
+        graph_candidates = {}
+        for nid, hits in candidate_hits.items():
+            base_score = max(h[0] for h in hits)
+            num_parents = len(set(h[1] for h in hits))
+            min_degree = min(h[2] for h in hits)
+            convergence = 1.0 + TRAVERSE_CONVERGENCE_BOOST * (num_parents - 1)
+            final_score = base_score * convergence
+
+            discovery = 'graph_d%d' % min_degree
+            if num_parents > 1:
+                discovery = 'convergence'
+
+            graph_candidates[nid] = {'score': final_score, 'discovery': discovery}
+
+        return graph_candidates, neighborhoods
 
     def recall_node(self, node_id: str, neighbor_limit: int = 3) -> Dict[str, Any]:
         """Recall a specific node by ID with full enrichment.

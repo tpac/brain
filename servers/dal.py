@@ -978,6 +978,65 @@ class GraphDAL:
             for r in rows
         ]
 
+    def get_neighbors_rich(self, node_id: str, limit: int = 8,
+                           exclude_relations: set = None) -> List[Dict[str, Any]]:
+        """Get neighbors with full node + edge + metadata in one query.
+
+        Returns everything needed for 3-degree traversal rendering:
+        - Node: id, type, title, content_summary, confidence, revised_at, created_at,
+                last_accessed, access_count, locked, emotion, emotion_label
+        - Edge: relation, weight, description, last_strengthened, co_access_count
+        - Metadata: reasoning, user_raw_quote, correction_of, correction_pattern,
+                    source_context, validation_count
+        """
+        exclude = exclude_relations or set()
+        rows = self.conn.execute("""
+            SELECT
+                n.id, n.type, n.title, n.content_summary, n.confidence,
+                n.revised_at, n.created_at, n.last_accessed, n.access_count,
+                n.locked, n.emotion, n.emotion_label,
+                e.relation, e.weight, e.description,
+                e.last_strengthened, e.co_access_count,
+                m.reasoning, m.user_raw_quote, m.correction_of, m.correction_pattern,
+                m.source_context, m.validation_count
+            FROM (
+                SELECT target_id AS nid, relation, weight, description,
+                       last_strengthened, co_access_count FROM edges WHERE source_id = ?
+                UNION
+                SELECT source_id AS nid, relation, weight, description,
+                       last_strengthened, co_access_count FROM edges WHERE target_id = ?
+            ) e
+            JOIN nodes n ON n.id = e.nid
+            LEFT JOIN node_metadata m ON m.node_id = n.id
+            WHERE n.archived = 0
+            ORDER BY e.weight DESC
+            LIMIT ?
+        """, (node_id, node_id, limit * 2)).fetchall()
+
+        results = []
+        for r in rows:
+            relation = r[12] or ''
+            if relation in exclude:
+                continue
+            if len(results) >= limit:
+                break
+            results.append({
+                # Node
+                'id': r[0], 'type': r[1], 'title': r[2], 'content_summary': r[3],
+                'confidence': r[4], 'revised_at': r[5], 'created_at': r[6],
+                'last_accessed': r[7], 'access_count': r[8], 'locked': r[9],
+                'emotion': r[10], 'emotion_label': r[11],
+                # Edge
+                'relation': relation, 'weight': r[13],
+                'edge_description': r[14], 'last_strengthened': r[15],
+                'co_access_count': r[16],
+                # Metadata
+                'reasoning': r[17], 'user_raw_quote': r[18],
+                'correction_of': r[19], 'correction_pattern': r[20],
+                'source_context': r[21], 'validation_count': r[22],
+            })
+        return results
+
     def count_node_edges(self, node_id: str, min_weight: float = 0.1) -> int:
         """Count edges from a node (used by dreams, surface)."""
         row = self.conn.execute(

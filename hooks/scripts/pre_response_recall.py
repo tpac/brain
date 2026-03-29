@@ -91,18 +91,42 @@ try:
         import anthropic
         client = anthropic.Anthropic()
 
-        # Build the distillation prompt
+        # Build rich candidate text with graph neighborhoods
         candidates_text = ""
+        relevant_count = 0
         for c in candidates[:8]:
-            neighbors_text = ""
-            if c.get("neighbors"):
-                neighbors_text = " | neighbors: " + ", ".join(
-                    n.get("title", "")[:40] for n in c["neighbors"][:3])
-            candidates_text += "[%s] %s (id:%s, conf:%.2f)%s\n  %s\n\n" % (
-                c.get("type", "?"), c.get("title", "?"),
-                c.get("id", "")[:12], c.get("confidence", 0),
-                neighbors_text,
-                (c.get("content") or "")[:300])
+            # Core node info
+            locked = "LOCKED " if c.get("locked") else ""
+            candidates_text += "[%s] %s%s (id:%s, conf:%.2f, revised:%s, created:%s)\n" % (
+                c.get("type", "?"), locked, c.get("title", "?"),
+                c.get("id", "")[:16], c.get("confidence", 0),
+                c.get("revised_at") or "never",
+                str(c.get("created_at", ""))[:10])
+            candidates_text += "  %s\n" % (c.get("content") or "")[:300]
+
+            # Graph neighborhood (degree 1 with relation + type)
+            graph = c.get("_graph", {})
+            d1 = graph.get("degree_1", [])
+            for nb in d1[:3]:
+                candidates_text += "  → %s: \"%s\" (%s, id:%s, revised:%s)\n" % (
+                    nb.get("relation", "related"), nb.get("title", "")[:50],
+                    nb.get("type", "?"), nb.get("id", "")[:12],
+                    nb.get("revised_at") or "never")
+
+            # Degree 2-3 as breadcrumbs
+            d2 = graph.get("degree_2", [])
+            if d2:
+                d2_titles = ", ".join("\"%s\" (id:%s)" % (n.get("title", "")[:30], n.get("id", "")[:8]) for n in d2[:3])
+                candidates_text += "  →→ %s\n" % d2_titles
+
+            candidates_text += "\n"
+            if c.get("confidence", 0) > 0.3:
+                relevant_count += 1
+
+        # Dynamic budget based on query complexity
+        query_len = len(user_message)
+        budget = 400 + min(800, relevant_count * 100 + (100 if query_len > 100 else 0))
+        max_tokens = min(500, budget // 2)
 
         distill_prompt = """You are the awareness layer of a persistent AI brain.
 Distill these memory candidates into focused context for the main AI.
@@ -114,16 +138,17 @@ CANDIDATES:
 
 Rules:
 - Only include what's DIRECTLY relevant to the user's message
-- Preserve node IDs like (id:abc123) so the AI can reference them
+- Preserve node IDs like (id:abc123) so the AI can pull full details
+- Include graph connections when they add context (→ related nodes)
 - If a correction or rule applies, lead with it
-- If nothing is relevant, return just the word EMPTY — no explanation, no commentary, no suggestions about what you'd need. Just EMPTY.
-- Max 600 characters. Be surgical, like a colleague whispering context.
-- If this seems like the start of a conversation, be more generous with context.
-- NEVER add your own opinions or analysis. You are a filter, not an advisor.""" % (user_message[:500], candidates_text)
+- If nothing is relevant, return just the word EMPTY. No explanation.
+- Max %d characters. Be surgical, like a colleague whispering context.
+- If this seems like the start of a conversation, be more generous.
+- NEVER add your own opinions or analysis. You are a filter, not an advisor.""" % (user_message[:500], candidates_text, budget)
 
         api_resp = client.messages.create(
             model="claude-haiku-4-5",
-            max_tokens=300,
+            max_tokens=max_tokens,
             messages=[{"role": "user", "content": distill_prompt}]
         )
         distilled = api_resp.content[0].text.strip()

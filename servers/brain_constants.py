@@ -273,16 +273,39 @@ MAX_HOPS = 3
 MAX_NEIGHBORS = 50
 STABILITY_BOOST = 1.5
 
-# B.2: Graph-augmented recall (1-hop typed neighbors)
-GRAPH_AUGMENT_TOP_N = 5       # Augment from top N embedding results
-NEIGHBOR_DAMPEN = 0.6          # Neighbors score at 60% of parent
+# B.2: Graph-augmented recall — 3-degree traversal
+GRAPH_AUGMENT_TOP_N = 5       # Seed traversal from top N embedding results
+
+# Edge type sets
 INTENTIONAL_EDGE_TYPES = {
     'related', 'about', 'part_of', 'depends_on', 'implements', 'contains',
     'enables', 'constrains', 'governs', 'extends', 'describes', 'corrected_by',
     'produced', 'addresses', 'elaborates', 'informed_by', 'exemplifies',
     'evolved', 'questions', 'traced', 'tests', 'foundation_for',
+    'related_to', 'caused_by', 'supports', 'blocks', 'example_of', 'evolved_from',
+    'contradicts', 'refers_to',
 }
-GRAPH_NEIGHBOR_LIMIT = 10      # Max neighbors per parent node
+EXCLUDED_EDGE_TYPES = {'co_accessed'}  # Usage noise — excluded at all degrees
+
+# 3-degree traversal settings
+TRAVERSE_DEPTH = 3
+TRAVERSE_DAMPEN = [0.6, 0.3, 0.12]       # Score dampening per degree
+TRAVERSE_LIMITS = [8, 6, 4]               # Max neighbors fetched per degree
+TRAVERSE_SEMANTIC_BONUS = 0.15            # Additive bonus when graph + embedding converge
+TRAVERSE_SEMANTIC_THRESHOLD = 0.30        # Min cosine sim to earn semantic bonus
+TRAVERSE_CONVERGENCE_BOOST = 0.3          # Per additional parent: score *= 1.0 + N * this
+
+# Temporal freshness multipliers for graph-discovered nodes
+FRESHNESS_MULTIPLIERS = {
+    'today': 1.2,       # revised/created in last 24h
+    'this_week': 1.0,   # last 7 days
+    'this_month': 0.8,  # last 30 days
+    'older': 0.6,       # 30+ days
+}
+
+# Backward compat alias
+NEIGHBOR_DAMPEN = TRAVERSE_DAMPEN[0]
+GRAPH_NEIGHBOR_LIMIT = TRAVERSE_LIMITS[0]
 
 # V5 Multi-vector enrichment (Embedding Migration to LLM)
 # At encode time, an LLM generates enrichment vectors for each node:
