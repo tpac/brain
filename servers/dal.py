@@ -555,26 +555,30 @@ class NodeDAL:
     # --- Reads ---
 
     def get_node(self, node_id: str) -> Optional[Dict[str, Any]]:
-        """Get a single node by ID."""
+        """Get a single node by ID. Returns all columns as a dict.
+
+        Uses PRAGMA table_info to get column names dynamically,
+        then SELECT * to get all values. New columns automatically included.
+        Boolean fields (locked, archived, critical) coerced to Python bool.
+        """
         row = self.conn.execute(
-            'SELECT id, type, title, content, keywords, activation, stability, '
-            'access_count, locked, archived, last_accessed, created_at, '
-            'emotion, emotion_label, project, critical, confidence, '
-            'personal, personal_context, content_summary '
-            'FROM nodes WHERE id = ?', (node_id,)
+            'SELECT * FROM nodes WHERE id = ?', (node_id,)
         ).fetchone()
         if not row:
             return None
-        return {
-            'id': row[0], 'type': row[1], 'title': row[2], 'content': row[3],
-            'keywords': row[4], 'activation': row[5], 'stability': row[6],
-            'access_count': row[7], 'locked': row[8] == 1, 'archived': row[9] == 1,
-            'last_accessed': row[10], 'created_at': row[11],
-            'emotion': row[12] or 0, 'emotion_label': row[13] or 'neutral',
-            'project': row[14], 'critical': row[15] == 1 if row[15] is not None else False,
-            'confidence': row[16], 'personal': row[17], 'personal_context': row[18],
-            'content_summary': row[19],
-        }
+
+        # Get column names from cursor description
+        cols = [desc[0] for desc in self.conn.execute(
+            'SELECT * FROM nodes LIMIT 0').description]
+        d = dict(zip(cols, row))
+
+        # Coerce booleans (SQLite stores as 0/1 or NULL)
+        for bool_field in ('locked', 'archived', 'critical'):
+            d[bool_field] = d.get(bool_field) == 1
+        # Defaults for nullable fields
+        d['emotion'] = d.get('emotion') or 0
+        d['emotion_label'] = d.get('emotion_label') or 'neutral'
+        return d
 
     def get_title(self, node_id: str) -> Optional[str]:
         """Get just the title of a node."""
