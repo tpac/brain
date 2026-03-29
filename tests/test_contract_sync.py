@@ -310,7 +310,7 @@ class TestSKILLMDSync(unittest.TestCase):
         # Also include non-class methods and common brain methods
         all_methods.update(['recall', 'save', 'health_check',
                             'format_boot_context', 'set_config', 'get_config',
-                            'recall_with_embeddings', 'get_engineering_context',
+                            'recall', 'get_engineering_context',
                             'synthesize_session',
                             'record_message', 'get_encoding_heartbeat'])
 

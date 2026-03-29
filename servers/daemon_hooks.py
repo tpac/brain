@@ -194,14 +194,14 @@ def hook_recall(brain, args, graph_changes):
 
     # Recall
     try:
-        result = brain.recall_with_embeddings(query=enriched, limit=8)
+        result = brain.recall(query=enriched, limit=8)
     except Exception:
         result = brain.recall(query=enriched, limit=8)
 
     results = result.get("results", [])
 
     # ── Precision: log recall through the precision module ──
-    # Previously, logging was buried inside recall_with_embeddings() via _log_recall().
+    # Previously, logging was buried inside recall() via _log_recall().
     # Now the hook calls precision.log_recall() explicitly, storing full context
     # (titles, snippets, embeddings_used flag) for future evaluation.
     if results:
@@ -899,7 +899,7 @@ def hook_post_compact_reboot(brain, args, graph_changes):
         if recall_query_parts:
             recall_query = " ".join(recall_query_parts)[:500]
             try:
-                result = brain.recall_with_embeddings(query=recall_query, limit=8)
+                result = brain.recall(query=recall_query, limit=8)
             except Exception:
                 result = brain.recall(query=recall_query, limit=8)
 

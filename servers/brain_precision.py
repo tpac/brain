@@ -154,7 +154,7 @@ class RecallPrecision:
         """Record a recall event with full context for future evaluation.
 
         This is the entry point for the precision lifecycle. Called by
-        hook_recall() after brain.recall_with_embeddings() returns results.
+        hook_recall() after brain.recall() returns results.
 
         We store titles and snippets redundantly so the recall_log is
         self-contained for auditing — nodes may change or be deleted

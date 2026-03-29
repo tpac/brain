@@ -50,7 +50,7 @@ def _handle_recall(brain, args, graph_changes):
 
     # By-query recall: semantic search with keyword fallback
     try:
-        result = brain.recall_with_embeddings(
+        result = brain.recall(
             query=args.get("query", ""), limit=args.get("limit", 8))
         return {"ok": True, "result": result}
     except Exception as e:

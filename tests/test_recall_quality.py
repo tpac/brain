@@ -65,7 +65,7 @@ class TestScoringWeights(BrainTestBase):
         )
         self.brain.save()
 
-        results = self.brain.recall_with_embeddings('auth login clerk', limit=5)
+        results = self.brain.recall('auth login clerk', limit=5)
         result_list = results.get('results', [])
         self.assertTrue(len(result_list) >= 1, 'Should find at least one result')
         self.assertIn('Clerk', result_list[0]['title'],
@@ -98,11 +98,11 @@ class TestScoringWeights(BrainTestBase):
 
         # Access n1 ten times to boost its frequency score
         for _ in range(10):
-            self.brain.recall_with_embeddings('react component lifecycle patterns', limit=5)
+            self.brain.recall('react component lifecycle patterns', limit=5)
             # Each recall marks accessed nodes, so n1 gets frequency bumps
 
         # Now query again — the one that was accessed more should rank higher
-        results = self.brain.recall_with_embeddings('react lifecycle useEffect', limit=5)
+        results = self.brain.recall('react lifecycle useEffect', limit=5)
         result_list = results.get('results', [])
         self.assertTrue(len(result_list) >= 2,
                         f'Should find at least 2 results, got {len(result_list)}')
@@ -142,7 +142,7 @@ class TestScoringWeights(BrainTestBase):
         )
         self.brain.save()
 
-        results = self.brain.recall_with_embeddings('rate limiting strategy api', limit=5)
+        results = self.brain.recall('rate limiting strategy api', limit=5)
         result_list = results.get('results', [])
         self.assertTrue(len(result_list) >= 2,
                         f'Should find at least 2 results, got {len(result_list)}')
@@ -183,7 +183,7 @@ class TestScoringWeights(BrainTestBase):
         )
         self.brain.conn.commit()
 
-        results = self.brain.recall_with_embeddings('secrets credentials api keys security', limit=10)
+        results = self.brain.recall('secrets credentials api keys security', limit=10)
         result_list = results.get('results', [])
         found_ids = [n['id'] for n in result_list]
         self.assertIn(r['id'], found_ids,
@@ -385,7 +385,7 @@ class TestDampening(BrainTestBase):
         )
         self.brain.save()
 
-        results = self.brain.recall_with_embeddings('deployment strategy production releases', limit=5)
+        results = self.brain.recall('deployment strategy production releases', limit=5)
         result_list = results.get('results', [])
         self.assertTrue(len(result_list) >= 2,
                         f'Should find at least 2 results, got {len(result_list)}')
@@ -419,7 +419,7 @@ class TestDampening(BrainTestBase):
         )
         self.brain.save()
 
-        results = self.brain.recall_with_embeddings('API design decisions', limit=5, project='alpha')
+        results = self.brain.recall('API design decisions', limit=5, project='alpha')
         result_list = results.get('results', [])
         self.assertTrue(len(result_list) >= 1,
                         f'Should find at least 1 result, got {len(result_list)}')
@@ -624,7 +624,7 @@ class TestTFIDFRecall(BrainTestBase):
             )
             self.brain.save()
 
-            results = self.brain.recall_with_embeddings('tailwind css utility classes', limit=5)
+            results = self.brain.recall('tailwind css utility classes', limit=5)
             result_list = results.get('results', [])
             self.assertTrue(len(result_list) >= 1,
                             'Should find results via TF-IDF keyword fallback')

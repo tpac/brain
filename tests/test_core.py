@@ -45,7 +45,7 @@ class TestRememberRecall(BrainTestBase):
         self.brain.remember(type='decision', title='Auth: use Clerk',
                            content='Passwordless login via magic links',
                            keywords='auth clerk login passwordless')
-        results = self.brain.recall_with_embeddings('auth login', limit=5)
+        results = self.brain.recall('auth login', limit=5)
         titles = [r['title'] for r in results.get('results', [])]
         self.assertTrue(any('Clerk' in t for t in titles),
                        'Expected to find Clerk node in recall results: %s' % titles)
@@ -178,7 +178,7 @@ class TestConfidenceScoring(BrainTestBase):
                            keywords='api design rest user', confidence=1.0)
         self.brain.save()
 
-        results = self.brain.recall_with_embeddings('API design for user service', limit=5)
+        results = self.brain.recall('API design for user service', limit=5)
         result_list = results.get('results', [])
         if len(result_list) >= 2:
             # Higher confidence should generally rank higher
@@ -1057,7 +1057,7 @@ class TestEngineeringMemory(BrainTestBase):
         """Impact nodes should be locked with change_impacts metadata."""
         result = self.brain.remember_impact(
             title='Impact: recall output format changes ripple to hooks',
-            if_changed='recall_with_embeddings() output format',
+            if_changed='recall() output format',
             must_check='pre-response-recall.sh, boot-brain.sh',
             because='they parse its return structure')
         self.assertIn('id', result)
@@ -1620,7 +1620,7 @@ class TestCriticalFlag(BrainTestBase):
         results = self.brain.recall('git branch cleanup procedures')
         result_ids = [r['id'] for r in results.get('results', results)]
         # We just verify the recall doesn't crash with critical nodes
-        # (The actual low-threshold behavior is in recall_with_embeddings which needs the embedder)
+        # (The actual low-threshold behavior is in recall which needs the embedder)
         self.assertIsInstance(results, dict)
 
     def test_remember_critical_only_pending(self):

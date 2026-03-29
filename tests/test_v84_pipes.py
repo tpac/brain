@@ -3,7 +3,7 @@ Pipe tests for v8.3–v8.4 changes.
 
 Tests every function touched in the encoding overhaul + graph traversal:
 - dal.py: get_neighbors_rich
-- brain_recall.py: _traverse_graph, recall_with_embeddings graph augmentation
+- brain_recall.py: _traverse_graph, recall graph augmentation
 - brain_voice.py: format_node_deep
 - daemon_hooks.py: encoding gating, candidates file format
 - signal_producers.py: produce_integrity, deep_integrity_audit
@@ -206,24 +206,24 @@ class TestTraverseGraph(PipeTestBase):
                 all_ids.add(nid)
 
 
-# ── 3. RECALL: recall_with_embeddings integration ──
+# ── 3. RECALL: recall integration ──
 
 class TestRecallWithTraversal(PipeTestBase):
-    """Test that recall_with_embeddings includes _graph and _discovery."""
+    """Test that recall includes _graph and _discovery."""
 
     def test_results_have_graph(self):
-        result = self.brain.recall_with_embeddings("daemon communication", limit=3)
+        result = self.brain.recall("daemon communication", limit=3)
         for r in result.get("results", []):
             self.assertIn("_graph", r, "Result missing _graph field")
             self.assertIsInstance(r["_graph"], dict)
 
     def test_results_have_discovery(self):
-        result = self.brain.recall_with_embeddings("daemon communication", limit=3)
+        result = self.brain.recall("daemon communication", limit=3)
         for r in result.get("results", []):
             self.assertIn("_discovery", r, "Result missing _discovery field")
 
     def test_stats_include_graph_sources(self):
-        result = self.brain.recall_with_embeddings("daemon communication", limit=3)
+        result = self.brain.recall("daemon communication", limit=3)
         stats = result.get("_embedding_stats", {})
         sources = stats.get("results_by_source", {})
         expected_keys = {"embedding+keyword", "embedding_only", "keyword_only_fallback",
@@ -442,23 +442,23 @@ class TestProductionSanity(unittest.TestCase):
         cls.brain.close()
 
     def test_recall_returns_results(self):
-        result = self.brain.recall_with_embeddings("daemon TCP", limit=3)
+        result = self.brain.recall("daemon TCP", limit=3)
         self.assertIn("results", result)
         self.assertGreater(len(result["results"]), 0)
 
     def test_recall_results_have_graph(self):
-        result = self.brain.recall_with_embeddings("daemon TCP", limit=3)
+        result = self.brain.recall("daemon TCP", limit=3)
         for r in result["results"]:
             self.assertIn("_graph", r)
 
     def test_recall_latency_reasonable(self):
         t0 = time.time()
-        self.brain.recall_with_embeddings("encoding agent stop hook", limit=5)
+        self.brain.recall("encoding agent stop hook", limit=5)
         ms = (time.time() - t0) * 1000
         self.assertLess(ms, 2000, "Recall took %.0fms — should be < 2000ms" % ms)
 
     def test_graph_traversal_finds_neighbors(self):
-        result = self.brain.recall_with_embeddings("daemon communication", limit=3)
+        result = self.brain.recall("daemon communication", limit=3)
         graphs = [r["_graph"] for r in result["results"] if r.get("_graph")]
         self.assertGreater(len(graphs), 0, "At least one result should have graph neighbors")
         # Check at least one has degree_1
@@ -467,7 +467,7 @@ class TestProductionSanity(unittest.TestCase):
 
     def test_format_node_deep_on_real_node(self):
         from servers.brain_voice import BrainVoice
-        result = self.brain.recall_with_embeddings("daemon", limit=1)
+        result = self.brain.recall("daemon", limit=1)
         node = result["results"][0]
         lines = []
         BrainVoice.format_node_deep(node, lines, conn=self.brain.conn)

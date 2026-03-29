@@ -21,8 +21,8 @@ print(f'Existing v1.5 embeddings: {count}')
 from sentence_transformers import CrossEncoder
 from tests.eval_runner import GoldenEvaluator
 
-# Monkey-patch recall_with_embeddings to add reranking AFTER the normal pipeline
-original_recall = brain.recall_with_embeddings.__func__
+# Monkey-patch recall to add reranking AFTER the normal pipeline
+original_recall = brain.recall.__func__
 
 def make_reranked_recall(reranker_model_name):
     """Create a patched recall function that adds cross-encoder reranking."""
@@ -76,7 +76,7 @@ for model_name, label in models:
 
     try:
         patched = make_reranked_recall(model_name)
-        brain.recall_with_embeddings = patched.__get__(brain, type(brain))
+        brain.recall = patched.__get__(brain, type(brain))
 
         evaluator = GoldenEvaluator(brain)
         t0 = time.time()
@@ -105,7 +105,7 @@ for model_name, label in models:
         traceback.print_exc()
 
     # Restore original for next iteration
-    brain.recall_with_embeddings = original_recall.__get__(brain, type(brain))
+    brain.recall = original_recall.__get__(brain, type(brain))
 
 brain.close()
 shutil.rmtree(tmp_dir, ignore_errors=True)

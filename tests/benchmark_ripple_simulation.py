@@ -210,7 +210,7 @@ def recall_multivec(
     limit: int = 20,
 ) -> List[Dict]:
     """
-    Multi-vector recall matching production recall_with_embeddings logic.
+    Multi-vector recall matching production recall logic.
     For each node: max(primary_sim, enrichment_sims...) * confidence_multiplier.
     Returns list of {node_id, score, best_vector_type}.
     """

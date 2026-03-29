@@ -250,11 +250,12 @@ class BrainRecallMixin:
         except Exception:
             return query  # Never break recall due to vocab expansion failure
 
-    def recall(self, query: str, types: Optional[List[str]] = None, limit: int = 20,
-               offset: int = 0, include_archived: bool = False, min_recency: float = 0,
-               project: Optional[str] = None, session_id: Optional[str] = None,
-               _skip_log: bool = False) -> Dict[str, Any]:
-        """
+    def _keyword_recall(self, query: str, types: Optional[List[str]] = None, limit: int = 20,
+                        offset: int = 0, include_archived: bool = False, min_recency: float = 0,
+                        project: Optional[str] = None, session_id: Optional[str] = None,
+                        _skip_log: bool = False) -> Dict[str, Any]:
+        """INTERNAL: TF-IDF keyword recall. Used by recall() for keyword blending.
+        Do NOT call directly — use recall() (embeddings + graph traversal) instead.
         Retrieve relevant nodes with TF-IDF scoring, spreading activation, and decay.
 
         Args:
@@ -568,7 +569,7 @@ class BrainRecallMixin:
 
         self._hebbian_strengthen([n['id'] for n in page])
 
-        # v4: Auto-instrument (skipped when called from recall_with_embeddings
+        # v4: Auto-instrument (skipped when called from recall
         # or hooks — they log via the precision module instead)
         returned_ids = [n['id'] for n in page]
         recall_log_id = None
@@ -602,20 +603,19 @@ class BrainRecallMixin:
 
         return result
 
-    def recall_with_embeddings(self, query: str, types: Optional[List[str]] = None,
-                                     limit: int = 20, offset: int = 0,
-                                     include_archived: bool = False,
-                                     min_recency: float = 0, project: Optional[str] = None,
-                                     session_id: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Phase 0.5B: Embeddings-first recall.
+    def recall(self, query: str, types: Optional[List[str]] = None,
+               limit: int = 20, offset: int = 0,
+               include_archived: bool = False,
+               min_recency: float = 0, project: Optional[str] = None,
+               session_id: Optional[str] = None) -> Dict[str, Any]:
+        """Recall: embeddings + 3-degree graph traversal + keyword blending.
 
         OLD approach: Run keyword recall first, sprinkle embedding scores on top.
         NEW approach: Embed the query, scan ALL nodes by embedding similarity,
         use keywords only as a tiebreaker for exact matches (proper nouns, versions).
 
         Graceful degradation: if embedder isn't ready, falls back to keyword-only
-        recall via self.recall() — but logs a LOUD warning because keyword-only
+        recall via self._keyword_recall() — but logs a LOUD warning because keyword-only
         recall is fundamentally broken for semantic understanding.
 
         Args:
@@ -636,7 +636,7 @@ class BrainRecallMixin:
 
         # ── FALLBACK: If embedder not ready, degrade to keyword-only ──
         if not embedder.is_ready():
-            result = self.recall(query, types, limit, offset, include_archived,
+            result = self._keyword_recall(query, types, limit, offset, include_archived,
                                min_recency, project, session_id, _skip_log=True)
             result['_recall_mode'] = 'keyword_only_DEGRADED'
             result['_embedding_stats'] = {
@@ -657,12 +657,12 @@ class BrainRecallMixin:
             query_vec = embedder.embed(expanded_query)
             if not query_vec:
                 # Embedding failed for this query — fall back
-                result = self.recall(query, types, limit, offset, include_archived,
+                result = self._keyword_recall(query, types, limit, offset, include_archived,
                                    min_recency, project, session_id)
                 result['_recall_mode'] = 'keyword_only_DEGRADED'
                 return result
         except Exception as e:
-            result = self.recall(query, types, limit, offset, include_archived,
+            result = self._keyword_recall(query, types, limit, offset, include_archived,
                                min_recency, project, session_id)
             result['_recall_mode'] = 'keyword_only_DEGRADED'
             return result
@@ -760,7 +760,7 @@ class BrainRecallMixin:
         # STEP 4: Also run keyword recall to catch nodes WITHOUT embeddings
         # and to get keyword precision scores for exact-match tiebreaking
         # _skip_log=True: precision module handles logging via hooks, not here.
-        keyword_result = self.recall(query, types, limit * 3, offset, include_archived,
+        keyword_result = self._keyword_recall(query, types, limit * 3, offset, include_archived,
                                     min_recency, project, session_id, _skip_log=True)
         keyword_scores = {}  # node_id → keyword_effective_activation
         keyword_nodes = {}   # node_id → full node dict
@@ -887,7 +887,7 @@ class BrainRecallMixin:
                 scored_results.sort(key=lambda x: -x['blended_score'])
                 scored_results = scored_results[:limit]
         except Exception as e:
-            self._log_error("recall_with_embeddings", e, "STEP 6.5 graph traversal")
+            self._log_error("recall", e, "STEP 6.5 graph traversal")
 
         # STEP 6.9: Version-aware relevance floor.
         # Enriched nodes (V5+) get a higher bar — their scores are more meaningful.
@@ -1024,7 +1024,7 @@ class BrainRecallMixin:
             try:
                 self._mark_accessed(node['id'], sid)
             except Exception as _e:
-                self._log_error("recall_with_embeddings", _e, "marking node as accessed for Hebbian learning")
+                self._log_error("recall", _e, "marking node as accessed for Hebbian learning")
 
         # STEP 9: Build result
         recall_ms = (time.time() - t0) * 1000
@@ -1079,7 +1079,7 @@ class BrainRecallMixin:
         """Enrich recall results with metadata and neighbor context.
 
         This is the ONE place that makes a node result 'complete'.
-        Called by both recall_with_embeddings (text search) and recall_node (ID lookup).
+        Called by both recall (text search) and recall_node (ID lookup).
         The caller decides WHICH results to enrich — this method enriches all it receives.
         Mutates results in place.
         """
@@ -1276,7 +1276,7 @@ class BrainRecallMixin:
     def recall_node(self, node_id: str, neighbor_limit: int = 3) -> Dict[str, Any]:
         """Recall a specific node by ID with full enrichment.
 
-        Returns same shape as recall_with_embeddings() so callers get a
+        Returns same shape as recall() so callers get a
         consistent interface regardless of how the node was found.
         """
         from .dal import NodeDAL

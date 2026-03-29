@@ -935,7 +935,7 @@ class ReplayEngine:
         files = turn.get('files_edited', [])
         recall_result = None
 
-        # ── 1. Pre-response recall (production: recall_with_embeddings) ──
+        # ── 1. Pre-response recall (production: recall) ──
         if user_msg and len(user_msg) > 10:
             try:
                 recall_result = self.brain.recall(user_msg, limit=10, session_id=session_id)

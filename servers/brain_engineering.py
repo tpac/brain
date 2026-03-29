@@ -27,7 +27,7 @@ class BrainEngineeringMixin:
         Examples:
           system: "brain is a Claude Code plugin for persistent AI memory"
           file: "brain.py (5500 lines) — core engine: schema, remember(), recall(), consciousness"
-          function: "recall_with_embeddings() — 90/10 embedding/keyword blend, returns ranked nodes"
+          function: "recall() — 90/10 embedding/keyword blend, returns ranked nodes"
         """
         return self.remember_rich(
             type='purpose', title=title, content=content,
@@ -60,7 +60,7 @@ class BrainEngineeringMixin:
                         project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
         """What changes ripple where — the connectivity layer.
 
-        Example: if_changed="recall_with_embeddings() output format"
+        Example: if_changed="recall() output format"
                  must_check="pre-response-recall.sh, boot-brain.sh"
                  because="they parse its return structure"
         """

@@ -210,7 +210,7 @@ def run_benchmark(model: str, brain, system_prompt: str, golden_path: str):
     from tests.eval_runner import GoldenEvaluator
 
     # Monkey-patch recall to use HyDE-expanded embeddings
-    original_recall = brain.recall_with_embeddings.__func__
+    original_recall = brain.recall.__func__
 
     hyde_cache = {}  # Cache expansions to avoid re-generating for examples
 
@@ -244,7 +244,7 @@ def run_benchmark(model: str, brain, system_prompt: str, golden_path: str):
         return result
 
     # Apply patch
-    brain.recall_with_embeddings = hyde_recall.__get__(brain, type(brain))
+    brain.recall = hyde_recall.__get__(brain, type(brain))
 
     # Run eval
     evaluator = GoldenEvaluator(brain)
@@ -253,7 +253,7 @@ def run_benchmark(model: str, brain, system_prompt: str, golden_path: str):
     elapsed = time.time() - t0
 
     # Restore original
-    brain.recall_with_embeddings = original_recall.__get__(brain, type(brain))
+    brain.recall = original_recall.__get__(brain, type(brain))
 
     return result, hyde_cache, elapsed
 

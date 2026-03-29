@@ -225,7 +225,7 @@ class TestGapDetection(BrainTestBase):
     def test_gap_flagged_when_no_results(self):
         """KPI: Result dict has '_gap' key when recall returns empty."""
         # Empty brain — any query should gap
-        result = self.brain.recall_with_embeddings("quantum computing in healthcare", limit=5)
+        result = self.brain.recall("quantum computing in healthcare", limit=5)
         # With no nodes at all, results should be empty and gap should be flagged
         if not result.get('results'):
             self.assertIn('_gap', result)
@@ -235,13 +235,13 @@ class TestGapDetection(BrainTestBase):
         self.brain.remember(type='decision', title='Auth: use Clerk',
                            content='Passwordless login via magic links',
                            keywords='auth clerk login')
-        result = self.brain.recall_with_embeddings("auth login", limit=5)
+        result = self.brain.recall("auth login", limit=5)
         if result.get('results'):
             self.assertNotIn('_gap', result)
 
     def test_gap_contains_query_and_score(self):
         """KPI: _gap has query and top_score keys."""
-        result = self.brain.recall_with_embeddings("completely unknown topic xyz", limit=5)
+        result = self.brain.recall("completely unknown topic xyz", limit=5)
         gap = result.get('_gap')
         if gap:
             self.assertIn('query', gap)

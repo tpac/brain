@@ -57,7 +57,7 @@ class BrainVocabularyMixin:
                  term="the hook", maps_to=["pre-edit-suggest.sh"], context="editing files"
 
         Example: term="the recall hook"
-                 maps_to=["pre-response-recall.sh", "recall_with_embeddings()"]
+                 maps_to=["pre-response-recall.sh", "recall()"]
         """
         # Admission guard: reject common/generic terms
         is_valid, reason = self._validate_vocabulary_term(term)
@@ -109,7 +109,7 @@ class BrainVocabularyMixin:
         try:
             connected = set()
             for target in maps_to:
-                # Clean target — strip parens from function names like "recall_with_embeddings()"
+                # Clean target — strip parens from function names like "recall()"
                 clean = target.strip().rstrip('()')
                 if not clean or len(clean) < 3:
                     continue

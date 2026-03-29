@@ -109,7 +109,7 @@ def _seed_rich_brain(brain, node_count=20):
     nodes['mechanism'] = n['id']
 
     n = brain.remember(type='impact', title='Changing recall output format breaks 3 hooks',
-                       content='If recall_with_embeddings() return structure changes → must check '
+                       content='If recall() return structure changes → must check '
                                'pre-response-recall.sh, boot-brain.sh, daemon_hooks.py because they parse it.',
                        keywords='impact recall format hooks breaking change')
     nodes['impact'] = n['id']
@@ -406,7 +406,7 @@ class TestEngineeringMemoryTypes(BrainTestBase):
         """remember_impact() creates locked impact with change_impacts metadata."""
         n = self.brain.remember_impact(
             title='Recall format change breaks hooks',
-            if_changed='recall_with_embeddings() output',
+            if_changed='recall() output',
             must_check='pre-response-recall.sh, daemon_hooks.py',
             because='they parse the return structure')
         self.assertEqual(n['type'], 'impact')
@@ -450,7 +450,7 @@ class TestEngineeringMemoryTypes(BrainTestBase):
             fix='Did B.',
             preventive_principle='Always do B.')
 
-        results = self.brain.recall_with_embeddings('how does X work', limit=10)
+        results = self.brain.recall('how does X work', limit=10)
         titles = [r['title'] for r in results.get('results', [])]
         # At least one engineering type should surface
         self.assertTrue(len(titles) > 0, "Engineering memory should be recallable")
@@ -710,8 +710,8 @@ class TestEdgeSemantics(BrainTestBase):
         """Accessing nodes together should increment co_access_count."""
         nodes = _seed_rich_brain(self.brain)
         # Recall should touch multiple nodes, incrementing co-access
-        self.brain.recall_with_embeddings("auth clerk adapter", limit=5)
-        self.brain.recall_with_embeddings("auth clerk adapter", limit=5)
+        self.brain.recall("auth clerk adapter", limit=5)
+        self.brain.recall("auth clerk adapter", limit=5)
 
         # Check if any co_access_count > 0
         co_access = self.brain.conn.execute(
@@ -724,7 +724,7 @@ class TestEdgeSemantics(BrainTestBase):
         """Spreading activation scores decay with hop distance."""
         nodes = _seed_rich_brain(self.brain)
         # The mechanism is connected to purpose (1 hop) and adapter_dec (2 hops via mechanism)
-        results = self.brain.recall_with_embeddings("recall pipeline embedding", limit=10)
+        results = self.brain.recall("recall pipeline embedding", limit=10)
         # Mechanism should rank higher than distantly connected nodes
         result_ids = [r['id'] for r in results.get('results', [])]
         if nodes['mechanism'] in result_ids:
@@ -833,7 +833,7 @@ class TestCrossSessionPersistence(unittest.TestCase):
             brain2.close()
 
     def test_recall_works_after_reopen(self):
-        """recall_with_embeddings() works after close + reopen."""
+        """recall() works after close + reopen."""
         brain1 = Brain(self.db_path)
         brain1.remember(type='rule', title='Auth uses Clerk magic links',
                         content='Clerk handles auth flow.', keywords='auth clerk',
@@ -843,7 +843,7 @@ class TestCrossSessionPersistence(unittest.TestCase):
 
         brain2 = Brain(self.db_path)
         try:
-            results = brain2.recall_with_embeddings("authentication", limit=5)
+            results = brain2.recall("authentication", limit=5)
             titles = [r['title'] for r in results.get('results', [])]
             self.assertTrue(any('Clerk' in t or 'Auth' in t or 'auth' in t for t in titles),
                             f"Should find auth node after reopen. Got: {titles}")
@@ -873,7 +873,7 @@ class TestEmbedderFailures(BrainTestBase):
         self.brain.remember(type='rule', title='TF-IDF test: authentication clerk',
                             content='Clerk handles auth.', keywords='auth clerk tfidf')
         # Even without embeddings, keyword search should work
-        results = self.brain.recall_with_embeddings("auth clerk", limit=5)
+        results = self.brain.recall("auth clerk", limit=5)
         self.assertIsInstance(results, dict)
         self.assertIn('results', results)
 
@@ -972,12 +972,12 @@ class TestLargeScaleRecall(BrainTestBase):
     def test_recall_returns_within_limit(self):
         """recall always respects the limit parameter."""
         for limit in [1, 5, 10, 20]:
-            results = self.brain.recall_with_embeddings("auth", limit=limit)
+            results = self.brain.recall("auth", limit=limit)
             self.assertLessEqual(len(results.get('results', [])), limit)
 
     def test_locked_rules_surface_above_noise(self):
         """Locked rules rank above generic filler nodes."""
-        results = self.brain.recall_with_embeddings(
+        results = self.brain.recall(
             "authentication clerk login", limit=10)
         titles = [r['title'] for r in results.get('results', [])]
         # Auth rule should be in top results, not buried under filler
@@ -988,7 +988,7 @@ class TestLargeScaleRecall(BrainTestBase):
 
     def test_intent_detection_boosts_decisions(self):
         """'what did we decide about' queries boost decision nodes."""
-        results = self.brain.recall_with_embeddings(
+        results = self.brain.recall(
             "what did we decide about ad delivery", limit=10)
         top_types = [r['type'] for r in results.get('results', [])[:5]]
         # Decisions should be present in top results
@@ -997,7 +997,7 @@ class TestLargeScaleRecall(BrainTestBase):
 
     def test_recall_with_no_matches_returns_empty(self):
         """Totally irrelevant query returns empty or very low-score results."""
-        results = self.brain.recall_with_embeddings(
+        results = self.brain.recall(
             "quantum entanglement photosynthesis recipe", limit=5)
         result_list = results.get('results', [])
         # Should either be empty or have very low relevance
@@ -1056,7 +1056,7 @@ class TestSelfCorrectionTraces(BrainTestBase):
             content='Tom corrected that encoding was too brief.',
             keywords='correction encoding depth shallow', locked=True)
 
-        results = self.brain.recall_with_embeddings("encoding depth", limit=5)
+        results = self.brain.recall("encoding depth", limit=5)
         titles = [r['title'] for r in results.get('results', [])]
         self.assertTrue(any('encoding' in t.lower() for t in titles),
                         f"Correction should surface for related query. Got: {titles}")
@@ -1085,7 +1085,7 @@ class TestTemporalRecall(BrainTestBase):
 
     def test_intent_detects_temporal(self):
         """Temporal queries detected via intent patterns."""
-        results = self.brain.recall_with_embeddings(
+        results = self.brain.recall(
             "what changed last week in the auth system", limit=5)
         # Intent should be detected
         intent = results.get('intent', 'general')
@@ -1097,7 +1097,7 @@ class TestTemporalRecall(BrainTestBase):
         self.brain.remember(type='decision', title='Today: switched to daemon_hooks.py',
                             content='Consolidated all hooks into single file.',
                             keywords='today daemon hooks consolidation', locked=True)
-        results = self.brain.recall_with_embeddings(
+        results = self.brain.recall(
             "what did we work on today", limit=5)
         titles = [r['title'] for r in results.get('results', [])]
         self.assertTrue(len(titles) > 0, "Temporal query should return something")
@@ -1155,7 +1155,7 @@ class TestFloatEdgeCases(BrainTestBase):
         self.brain.remember(type='rule', title='Zero confidence rule: test',
                             content='This rule has zero confidence.',
                             keywords='zero confidence test', confidence=0.0)
-        results = self.brain.recall_with_embeddings("zero confidence test", limit=5)
+        results = self.brain.recall("zero confidence test", limit=5)
         titles = [r['title'] for r in results.get('results', [])]
         self.assertTrue(any('zero confidence' in t.lower() for t in titles))
 

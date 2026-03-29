@@ -45,7 +45,7 @@ test = hyde_expand("test query")
 print(f"HyDE test: {test[:100]}...")
 
 # Monkey-patch recall
-original_recall = brain.recall_with_embeddings.__func__
+original_recall = brain.recall.__func__
 
 def hyde_recall(self, query, types=None, limit=20, offset=0,
                 include_archived=False, min_recency=0, project=None,
@@ -71,7 +71,7 @@ def hyde_recall(self, query, types=None, limit=20, offset=0,
 
     return result
 
-brain.recall_with_embeddings = hyde_recall.__get__(brain, type(brain))
+brain.recall = hyde_recall.__get__(brain, type(brain))
 
 from tests.eval_runner import GoldenEvaluator
 

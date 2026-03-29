@@ -231,7 +231,7 @@ class TestRecallEnhancement(BrainTestBase):
                                     'and catches bugs at compile time. All new services must use TS.',
                             keywords='typescript type safety compile time services')
 
-        results = self.brain.recall_with_embeddings('typescript type safety', limit=5)
+        results = self.brain.recall('typescript type safety', limit=5)
         titles = [r['title'] for r in results.get('results', [])]
         self.assertTrue(any('TypeScript' in t for t in titles),
                         f'Primary embedding should find TypeScript node: {titles}')
@@ -254,7 +254,7 @@ class TestRecallEnhancement(BrainTestBase):
         )
 
         # Query using the exact question phrasing
-        results = self.brain.recall_with_embeddings(
+        results = self.brain.recall(
             'What happened when our database connection pool ran out during a traffic spike?',
             limit=5
         )
@@ -285,7 +285,7 @@ class TestRecallEnhancement(BrainTestBase):
         )
 
         # Query using neighbor vocabulary that wouldn't match n2's primary embedding
-        results = self.brain.recall_with_embeddings(
+        results = self.brain.recall(
             'redis connection scaling limits', limit=10
         )
         result_ids = [r['id'] for r in results.get('results', [])]
@@ -321,7 +321,7 @@ class TestRecallEnhancement(BrainTestBase):
 
         # Query uses "notification delivery failing" — NOT in the primary embedding
         # which is about "webhook retry exponential backoff"
-        results = self.brain.recall_with_embeddings(
+        results = self.brain.recall(
             'how do we handle notification delivery failures', limit=10
         )
         result_ids = [r['id'] for r in results.get('results', [])]
@@ -355,7 +355,7 @@ class TestRecallEnhancement(BrainTestBase):
         )
 
         # Query specifically about auth tokens
-        results = self.brain.recall_with_embeddings(
+        results = self.brain.recall(
             'how do we handle expired authentication tokens', limit=5
         )
         result_ids = [r['id'] for r in results.get('results', [])]
@@ -604,7 +604,7 @@ class TestFullPipeline(BrainTestBase):
         self.assertEqual(enrich_result['enrichments_stored'], 4)
 
         # Step 3: Recall using a query that matches the enrichment
-        results = self.brain.recall_with_embeddings(
+        results = self.brain.recall(
             'why were authentication emails going to spam', limit=10
         )
         result_ids = [r['id'] for r in results.get('results', [])]
@@ -628,7 +628,7 @@ class TestFullPipeline(BrainTestBase):
 
         # Time the recall
         t0 = time.time()
-        results = self.brain.recall_with_embeddings('caching strategy', limit=10)
+        results = self.brain.recall('caching strategy', limit=10)
         elapsed_ms = (time.time() - t0) * 1000
 
         self.assertLess(elapsed_ms, 5000,
@@ -703,8 +703,8 @@ class TestFullPipeline(BrainTestBase):
                 question='Does concurrent recall work correctly?'
             )
 
-        r1 = self.brain.recall_with_embeddings('concurrent test', limit=5)
-        r2 = self.brain.recall_with_embeddings('independent recall', limit=5)
+        r1 = self.brain.recall('concurrent test', limit=5)
+        r2 = self.brain.recall('independent recall', limit=5)
 
         # Both should return results without error
         self.assertIn('results', r1)
@@ -736,7 +736,7 @@ class TestRegressionGuards(BrainTestBase):
                                     'No destructive column drops without data backup.',
                             keywords='database migration reversible rollback backup')
 
-        results = self.brain.recall_with_embeddings('API request tracing', limit=5)
+        results = self.brain.recall('API request tracing', limit=5)
         self.assertIn('results', results)
         titles = [r['title'] for r in results.get('results', [])]
         self.assertTrue(any('request_id' in t for t in titles),
@@ -754,7 +754,7 @@ class TestRegressionGuards(BrainTestBase):
                             content='This should recall normally.')
 
         # Must not crash
-        results = self.brain.recall_with_embeddings('test node', limit=5)
+        results = self.brain.recall('test node', limit=5)
         self.assertIn('results', results)
 
     def test_malformed_enrichment_blob_doesnt_crash(self):
@@ -772,7 +772,7 @@ class TestRegressionGuards(BrainTestBase):
         self.brain.conn.commit()
 
         # Recall must not crash — it should gracefully skip the malformed blob
-        results = self.brain.recall_with_embeddings('malformed blob test', limit=5)
+        results = self.brain.recall('malformed blob test', limit=5)
         self.assertIn('results', results)
 
     def test_recall_returns_embedding_stats(self):
@@ -780,7 +780,7 @@ class TestRegressionGuards(BrainTestBase):
         self.brain.remember(type='concept', title='Stats test node',
                             content='Testing that stats are reported.')
 
-        results = self.brain.recall_with_embeddings('stats test', limit=5)
+        results = self.brain.recall('stats test', limit=5)
         stats = results.get('_embedding_stats', {})
         # Should at minimum report the scan counts
         self.assertIn('enrichment_vectors_scanned', stats,
@@ -867,7 +867,7 @@ class TestEdgeCases(BrainTestBase):
         self.assertEqual(result['enrichments_stored'], 1)
 
         # The node should still be findable via its enrichment embedding
-        results = self.brain.recall_with_embeddings(
+        results = self.brain.recall(
             'no primary embedding test', limit=10
         )
         # It may or may not appear depending on keyword fallback — the important

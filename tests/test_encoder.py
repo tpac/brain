@@ -11,7 +11,7 @@ findings into the brain as first-class knowledge:
   - Clean runs → validation of prior fixes
 
 The brain can then query its own test health:
-    brain.recall_with_embeddings("test failures consciousness signals")
+    brain.recall("test failures consciousness signals")
     brain.logs_conn.execute("SELECT * FROM debug_log WHERE event_type='test_result'")
 
 Usage:

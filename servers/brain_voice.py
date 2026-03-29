@@ -443,7 +443,7 @@ class BrainVoice:
                 output.append("")
             else:
                 output.append("NOTE: Last synthesis was %.0f hours ago - open questions may be resolved." % (age_min / 60))
-                output.append("  Use brain.recall_with_embeddings() for current context instead.")
+                output.append("  Use brain.recall() for current context instead.")
                 output.append("")
 
         # Consciousness signals (lighter than boot — just reminders + evolutions)
@@ -494,7 +494,7 @@ class BrainVoice:
                 output.append("")
 
         output.append("Brain is live. Context was compacted — you lost conversation history.")
-        output.append("The brain persists. Use brain.recall_with_embeddings() to recover context.")
+        output.append("The brain persists. Use brain.recall() to recover context.")
         output.append("[/BRAIN]")
 
         operator_msg = self._operator_reboot_summary(

@@ -87,7 +87,7 @@ class TestRealBrainRecall(unittest.TestCase):
     def test_real_recall_challenge_format(self):
         """KPI: Real recall produces results with revised status + full IDs."""
         # Use a very specific query that matches known brain content
-        result = self.brain.recall_with_embeddings("encoding should be an instinct", limit=5)
+        result = self.brain.recall("encoding should be an instinct", limit=5)
         results = result.get('results', [])
 
         self.assertGreater(len(results), 0, "Real brain should have encoding-related nodes")
@@ -112,7 +112,7 @@ class TestRealBrainRecall(unittest.TestCase):
 
     def test_real_gap_detection_on_unknown_topic(self):
         """KPI: Brain has no knowledge of 'kubernetes pod scaling' — gap flagged."""
-        result = self.brain.recall_with_embeddings("kubernetes pod scaling strategy", limit=5)
+        result = self.brain.recall("kubernetes pod scaling strategy", limit=5)
 
         # This topic should have no matches in the brain
         if not result.get('results'):
@@ -123,7 +123,7 @@ class TestRealBrainRecall(unittest.TestCase):
 
     def test_real_recall_has_confidence_and_dates(self):
         """KPI: Real recalled nodes have confidence and created_at fields."""
-        result = self.brain.recall_with_embeddings("encoding should be an instinct", limit=3)
+        result = self.brain.recall("encoding should be an instinct", limit=3)
         results = result.get('results', [])
 
         if results:
@@ -281,7 +281,7 @@ class TestRealRevise(unittest.TestCase):
     def test_revise_real_node(self):
         """KPI: Revise a real node — content appended, revised_at set, embedding changed."""
         # Find a real node to revise
-        result = self.brain.recall_with_embeddings("encoding pipeline", limit=1)
+        result = self.brain.recall("encoding pipeline", limit=1)
         results = result.get('results', [])
         self.assertGreater(len(results), 0, "Should find a node to revise")
 
@@ -367,7 +367,7 @@ class TestChallengeFormatBenchmark(unittest.TestCase):
         gaps_with_callout = 0
 
         for q in queries:
-            result = self.brain.recall_with_embeddings(q, limit=8)
+            result = self.brain.recall(q, limit=8)
             results = result.get('results', [])
             gap = result.get('_gap')
 
@@ -458,7 +458,7 @@ class TestFullChallengeSimulation(unittest.TestCase):
         from servers.dal import LogsDAL
 
         # 1. Recall
-        result = self.brain.recall_with_embeddings(user_message, limit=8)
+        result = self.brain.recall(user_message, limit=8)
         results = result.get('results', [])
 
         # 2. Gap detection

@@ -46,8 +46,8 @@ print("Testing Ollama connection...")
 test = hyde_expand("test query")
 print(f"HyDE test: {test[:100]}...")
 
-# Monkey-patch recall_with_embeddings to use HyDE
-original_recall = brain.recall_with_embeddings.__func__
+# Monkey-patch recall to use HyDE
+original_recall = brain.recall.__func__
 
 def hyde_recall(self, query, types=None, limit=20, offset=0,
                 include_archived=False, min_recency=0, project=None,
@@ -56,7 +56,7 @@ def hyde_recall(self, query, types=None, limit=20, offset=0,
     # Expand query via HyDE
     expanded = hyde_expand(query)
 
-    # Replace the query embedding step inside recall_with_embeddings
+    # Replace the query embedding step inside recall
     # We need to intercept at the embedding level, not the recall level
     # Simplest approach: temporarily patch embedder.embed to embed the expanded text
     original_embed = embedder.embed
@@ -80,7 +80,7 @@ def hyde_recall(self, query, types=None, limit=20, offset=0,
 
     return result
 
-brain.recall_with_embeddings = hyde_recall.__get__(brain, type(brain))
+brain.recall = hyde_recall.__get__(brain, type(brain))
 
 # Run eval
 from tests.eval_runner import GoldenEvaluator
