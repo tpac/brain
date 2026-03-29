@@ -18,15 +18,11 @@ import os
 import re
 import subprocess
 import time
-import traceback
 from datetime import datetime, timezone
 
 # ── Constants (canonical definitions in brain_voice.py) ──
 
-from servers.brain_voice import (
-    EVOLUTION_TYPES, ENGINEERING_TYPES, CODE_COGNITION_TYPES,
-    BrainVoice,
-)
+from servers.brain_voice import BrainVoice
 
 # Backwards-compatible function aliases — delegate to BrainVoice static methods
 # format_recall_results used only by MCP tool output, not by hook path
