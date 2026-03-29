@@ -28,6 +28,73 @@ DAEMON_PORT = 47200 + (os.getuid() % 100)
 _last_daemon_fingerprint = None  # Track daemon restarts
 
 
+# ── Contract-driven tool schema generation ──
+
+def _generate_remember_schema():
+    """Generate the 'remember' MCP tool schema from the contract."""
+    from .contract import get_remember_fields as get_writable_fields
+
+    TYPE_MAP = {"str": "string", "float": "number", "bool": "boolean", "int": "integer"}
+
+    properties = {}
+    for name, spec in get_writable_fields().items():
+        prop = {"type": TYPE_MAP.get(spec.get("type", "str"), "string")}
+        if spec.get("description"):
+            prop["description"] = spec["description"]
+        elif name == "type":
+            prop["description"] = "Node type (decision, rule, lesson, mechanism, vocabulary, etc.)"
+        elif name == "title":
+            prop["description"] = "Specific, scannable title"
+        elif name == "content":
+            prop["description"] = "Rich content with reasoning, tradeoffs, specifics"
+        elif name == "keywords":
+            prop["description"] = "Space-separated keywords for search"
+        if spec.get("default") is not None:
+            prop["default"] = spec["default"]
+        properties[name] = prop
+
+    return {
+        "name": "remember",
+        "description": "Store a new node in the brain. Fields defined by contract — add new fields there, they appear here automatically.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["type", "title", "content"],
+            "properties": properties,
+        }
+    }
+
+
+def _generate_revise_schema():
+    """Generate the 'revise' MCP tool schema from the contract."""
+    from .contract import get_writable_fields
+
+    TYPE_MAP = {"str": "string", "float": "number", "bool": "boolean", "int": "integer"}
+
+    properties = {
+        "node_id": {"type": "string", "description": "Full node ID to revise"},
+        "reason": {"type": "string", "description": "Why this revision"},
+    }
+    for name, spec in get_writable_fields().items():
+        prop = {"type": TYPE_MAP.get(spec.get("type", "str"), "string")}
+        desc = spec.get("description", "")
+        if spec.get("append_on_revise"):
+            desc = (desc + " " if desc else "") + "(appended on revise, preserves history)"
+        else:
+            desc = (desc + " " if desc else "") + "(replaces existing value)"
+        prop["description"] = desc.strip()
+        properties[name] = prop
+
+    return {
+        "name": "revise",
+        "description": "Update any field(s) on an existing brain node. Content is appended with revision history. All other fields are replaced.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["node_id", "reason"],
+            "properties": properties,
+        }
+    }
+
+
 def daemon_send(cmd, args=None, timeout=30.0):
     """Send command to brain daemon via TCP, return result dict."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -88,18 +155,7 @@ TOOLS = [
          "node_id": {"type": "string", "description": "Look up a specific node by ID (skip search)"},
          "limit": {"type": "integer", "description": "Max results (default 8)", "default": 8},
          "neighbor_limit": {"type": "integer", "description": "Max neighbor nodes to include (default 3)", "default": 3}}}},
-    {"name": "remember",
-     "description": "Store a new node in the brain. Types: decision, rule, lesson, concept, context, pattern, convention, mechanism, impact, constraint, purpose, mental_model, uncertainty, vocabulary, hypothesis, tension, aspiration, catalyst, interaction, meta_learning, failure_mode, performance, capability, arch_constraint, code_concept, fn_reasoning, param_influence, comment_anchor, bug_lesson.",
-     "inputSchema": {"type": "object", "required": ["type", "title", "content"], "properties": {
-         "type": {"type": "string", "description": "Node type"},
-         "title": {"type": "string", "description": "Specific, scannable title"},
-         "content": {"type": "string", "description": "Rich content with reasoning, tradeoffs, specifics"},
-         "locked": {"type": "boolean", "description": "Lock node (for decisions, rules, lessons)", "default": False},
-         "confidence": {"type": "number", "description": "Confidence 0.0-1.0", "default": 1.0},
-         "keywords": {"type": "string", "description": "Space-separated keywords for search"},
-         "project": {"type": "string", "description": "Project scope"},
-         "emotion": {"type": "number", "description": "Emotional valence -1.0 to 1.0"},
-         "situation": {"type": "string", "description": "When is this knowledge relevant? One sentence describing the situation."}}}},
+    _generate_remember_schema(),
     {"name": "connect",
      "description": "Create a weighted edge between two brain nodes. Relations: related_to, caused_by, depends_on, contradicts, supports, produced, evolved_from, blocks, enables, example_of.",
      "inputSchema": {"type": "object", "required": ["source_id", "target_id"], "properties": {
@@ -107,18 +163,7 @@ TOOLS = [
          "target_id": {"type": "string", "description": "Target node ID"},
          "relation": {"type": "string", "description": "Edge relation type", "default": "related_to"},
          "weight": {"type": "number", "description": "Edge weight 0.0-1.0", "default": 0.5}}}},
-    {"name": "revise",
-     "description": "Update any field(s) on an existing brain node. Content is appended with revision history. All other fields are replaced. Pass fields to update as top-level parameters.",
-     "inputSchema": {"type": "object", "required": ["node_id", "reason"], "properties": {
-         "node_id": {"type": "string", "description": "Full node ID to revise"},
-         "reason": {"type": "string", "description": "Why this revision"},
-         "content": {"type": "string", "description": "New content to append (preserves history)"},
-         "title": {"type": "string", "description": "New title (replaces)"},
-         "type": {"type": "string", "description": "New type (replaces)"},
-         "keywords": {"type": "string", "description": "New keywords (replaces)"},
-         "confidence": {"type": "number", "description": "New confidence 0.0-1.0 (replaces)"},
-         "situation": {"type": "string", "description": "When is this knowledge relevant? (replaces)"},
-         "locked": {"type": "boolean", "description": "Lock/unlock node"}}}},
+    _generate_revise_schema(),
     {"name": "enrich",
      "description": "Store V5 enrichment vectors for a node (after filling in the enrichment_prompt from remember()). Pass the generated question, anchor phrase, bridge sentence, and/or keywords. Each is embedded and stored for improved recall.",
      "inputSchema": {"type": "object", "required": ["node_id"], "properties": {

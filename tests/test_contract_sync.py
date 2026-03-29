@@ -132,25 +132,15 @@ class TestMCPToolSync(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """Parse MCP tool definitions from brain_mcp.py."""
-        mcp_path = ROOT / "servers" / "brain_mcp.py"
-        content = mcp_path.read_text()
+        """Import MCP tool definitions directly (not regex — schemas are now generated)."""
+        from servers.brain_mcp import TOOLS
 
-        # Extract tool names from the TOOLS array
-        cls.mcp_tools = set(re.findall(r'"name":\s*"(\w+)"', content))
-
-        # Extract tool parameter names per tool (rough parse)
+        cls.mcp_tools = set(t["name"] for t in TOOLS)
         cls.mcp_params = {}
-        # Find each tool block and extract properties
-        tool_blocks = re.split(r'\{\s*"name":', content)
-        for block in tool_blocks[1:]:  # skip pre-first
-            name_match = re.match(r'\s*"(\w+)"', block)
-            if name_match:
-                name = name_match.group(1)
-                props = re.findall(r'"(\w+)":\s*\{[^}]*"type"', block)
-                # Filter to actual params (not schema keys)
-                cls.mcp_params[name] = [p for p in props if p not in (
-                    'type', 'properties', 'required', 'inputSchema', 'input_schema')]
+        for t in TOOLS:
+            schema = t.get("inputSchema", {})
+            props = list(schema.get("properties", {}).keys())
+            cls.mcp_params[t["name"]] = props
 
     def test_mcp_tools_have_daemon_commands(self):
         """Every MCP tool must have a matching daemon command."""
@@ -344,12 +334,9 @@ class TestDefaultsSync(unittest.TestCase):
         daemon_match = re.search(r'confidence.*?args\.get\(["\']confidence["\'],?\s*([\d.]+)', dispatch_content)
         daemon_default = float(daemon_match.group(1)) if daemon_match else None
 
-        # MCP default
-        mcp_path = ROOT / "servers" / "brain_mcp.py"
-        mcp_content = mcp_path.read_text()
-        # Find confidence default in MCP
-        mcp_match = re.search(r'"confidence".*?"default":\s*([\d.]+)', mcp_content, re.DOTALL)
-        mcp_default = float(mcp_match.group(1)) if mcp_match else None
+        # MCP default — read from contract (single source of truth)
+        from servers.contract import ALL_FIELDS
+        mcp_default = ALL_FIELDS.get('confidence', {}).get('default')
 
         if brain_default is not None and daemon_default is not None:
             self.assertEqual(brain_default, daemon_default,

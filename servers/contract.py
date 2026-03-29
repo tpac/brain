@@ -103,6 +103,19 @@ def get_writable_fields():
             if not v.get("immutable") and k != "archived"}
 
 
+def get_remember_fields():
+    """Fields that brain.remember() currently accepts as parameters.
+    This is a subset of writable fields — promoted metadata fields will
+    be added here when remember() gets the metadata dict refactor."""
+    # Structural fields that remember() accepts
+    accepted = {
+        'type', 'title', 'content', 'keywords', 'confidence', 'locked',
+        'emotion', 'emotion_label', 'project', 'personal', 'personal_context',
+        'critical', 'situation',
+    }
+    return {k: v for k, v in get_writable_fields().items() if k in accepted}
+
+
 def get_embeddable_fields():
     """Fields that have their own embedding vector."""
     return {k: v for k, v in ALL_FIELDS.items() if v.get("embeds")}
