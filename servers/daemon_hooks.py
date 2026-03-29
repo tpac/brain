@@ -383,50 +383,45 @@ def hook_post_response_track(brain, args, graph_changes):
             except Exception:
                 pass
 
-            # Gather brain context — encoding agent needs rich graph rendering
-            # Primary: candidates file (written by hook_recall on every prompt)
-            # Fallback: dashboard hook_log
+            # Gather brain context — encoding agent does its OWN recall from DB.
+            # Previously read from candidates file (last prompt's recall only).
+            # Now: extract topics from messages, query brain directly.
+            # This ensures the agent has context even when individual recalls failed.
             recall_context_rich = ""
             try:
-                candidates_path = '/tmp/brain-{}-recall-candidates.json'.format(session_id)
-                if os.path.exists(candidates_path):
-                    import json as _cjson
-                    with open(candidates_path) as cf:
-                        cdata = _cjson.load(cf)
-                    candidates = cdata.get("candidates", [])
-                    if candidates:
+                # Build a recall query from user messages in this batch
+                user_msgs = [m.get("content", "") for m in messages if m.get("role") == "user"]
+                if user_msgs:
+                    # Combine last 3 user messages as the recall query (captures topic range)
+                    recall_query = " ".join(msg[:200] for msg in user_msgs[-3:])
+                    enc_recall = brain.recall(
+                        query=recall_query,
+                        limit=ENCODING_AGENT['recall_candidates_limit'])
+                    enc_results = enc_recall.get("results", [])
+                    if enc_results:
                         from .brain_voice import BrainVoice
                         lines = []
-                        for c in candidates[:ENCODING_AGENT['recall_candidates_limit']]:
+                        for r in enc_results:
+                            # Build a candidate dict compatible with format_node_deep
+                            c = {
+                                "id": r.get("id", ""),
+                                "type": r.get("type", ""),
+                                "title": r.get("title", ""),
+                                "content": r.get("content", ""),
+                                "confidence": r.get("confidence", 0),
+                                "locked": r.get("locked", False),
+                                "revised_at": r.get("revised_at"),
+                                "created_at": r.get("created_at"),
+                                "_graph": r.get("_graph", {}),
+                            }
                             BrainVoice.format_node_deep(
                                 c, lines, conn=brain.conn,
                                 max_d1=ENCODING_AGENT['max_d1'],
                                 max_d2=ENCODING_AGENT['max_d2'],
                                 max_d3=ENCODING_AGENT['max_d3'])
                         recall_context_rich = "\n".join(lines)
-            except Exception:
-                pass
-
-            # Fallback: distilled summaries from hook_log if no raw candidates
-            if not recall_context_rich:
-                try:
-                    dash_db_path = os.path.join(os.path.dirname(brain.db_path), 'brain_dashboard.db')
-                    if os.path.exists(dash_db_path):
-                        import sqlite3 as _sql
-                        dconn = _sql.connect(dash_db_path, timeout=3)
-                        rows = dconn.execute(
-                            "SELECT user_prompt, output_text FROM hook_log "
-                            "WHERE hook_name = 'RECALL' AND session_id = ? "
-                            "ORDER BY id DESC LIMIT 5", (session_id,)
-                        ).fetchall()
-                        for r in reversed(rows):
-                            prompt = (r[0] or "")[:200]
-                            output = (r[1] or "")[:1000]
-                            if output and output not in ("(no candidates)", "(distilled: empty)"):
-                                recall_context_rich += "Query: %s\n%s\n\n" % (prompt, output)
-                        dconn.close()
-                except Exception:
-                    pass
+            except Exception as e:
+                brain._log_error('encoding_agent_recall', e, 'Independent recall for encoding agent')
 
             # Gather correction traces
             corrections = []
