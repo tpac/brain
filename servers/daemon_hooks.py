@@ -459,6 +459,14 @@ def hook_post_response_track(brain, args, graph_changes):
             except Exception:
                 encoding_instructions = 'ERROR: Could not read %s' % prompt_path
 
+            # Append contract field summary so the agent knows what fields are available
+            try:
+                from .contract import generate_field_summary
+                field_summary = generate_field_summary()
+                encoding_instructions += "\n\n## Available Fields (from contract)\n\n" + field_summary
+            except Exception:
+                pass
+
             # Assemble the full prompt with all context inline
             full_prompt = encoding_instructions + "\n\n---\n\n"
             full_prompt += "## ENCODING RUN #%d\n\n" % counter
