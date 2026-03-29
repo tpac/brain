@@ -117,6 +117,96 @@ class BrainVoice:
         lines.append("")
 
     @staticmethod
+    def format_node_deep(node, lines, conn=None, max_d1=3, max_d2=3, max_d3=3):
+        """3-degree node display for encoding agent context.
+
+        Degree 0: Full node — type, id, revised, conf, created, full content
+        Degree 1: Title, type, id — enough to revise or get_node
+        Degree 2: Title, id only — breadcrumbs showing graph shape
+
+        Args:
+            node: Node dict with _neighbors already attached (degree 1)
+            conn: SQLite connection for fetching degree 2 and 3
+            max_d1/d2/d3: Max neighbors at each degree
+        """
+        from .dal import GraphDAL
+
+        typ = node.get("type", "?")
+        title = node.get("title", "")
+        locked = "LOCKED " if node.get("locked") else ""
+        node_id = node.get("id", "")
+        created = str(node.get("created_at", ""))[:10]
+
+        revised_at = node.get("revised_at")
+        revised_str = str(revised_at)[:10] if revised_at else "never"
+        conf = node.get("confidence") or node.get("effective_activation", 0) or 0
+
+        # Degree 0: full node
+        lines.append("[%s] %s%s" % (typ, locked, title))
+        lines.append("id:%s | revised:%s | conf:%.2f | created:%s" % (
+            node_id, revised_str, conf, created))
+        lines.append(node.get("content", ""))
+
+        # Degree 1: neighbors with type + id
+        # Use pre-attached _neighbors, or fetch directly if missing
+        d1_neighbors = (node.get("_neighbors") or [])[:max_d1]
+        if not d1_neighbors and conn and node_id:
+            try:
+                graph_dal = GraphDAL(conn)
+                fetched = graph_dal.get_neighbors_with_context(node_id, limit=max_d1 * 2)
+                d1_neighbors = fetched[:max_d1]
+            except Exception:
+                pass
+        seen_ids = {node_id}
+
+        for nb in d1_neighbors:
+            nb_id = nb.get("id", "")
+            seen_ids.add(nb_id)
+            lines.append("  \u21b3 %s: \"%s\" (%s, id:%s)" % (
+                nb.get("relation", "related"),
+                nb.get("title", ""),
+                nb.get("type", "?"),
+                nb_id))
+
+            # Degree 2: neighbors of neighbors — title, type, id
+            if conn and nb_id:
+                try:
+                    graph_dal = GraphDAL(conn)
+                    d2_neighbors = graph_dal.get_neighbors_with_context(nb_id, limit=max_d2 * 2)
+                    d2_count = 0
+                    for nb2 in d2_neighbors:
+                        nb2_id = nb2.get("id", "")
+                        if nb2_id in seen_ids or d2_count >= max_d2:
+                            continue
+                        seen_ids.add(nb2_id)
+                        d2_count += 1
+                        lines.append("     \u21b3 \"%s\" (%s, id:%s)" % (
+                            nb2.get("title", ""),
+                            nb2.get("type", "?"),
+                            nb2_id))
+
+                        # Degree 3: just title + id
+                        if conn and nb2_id:
+                            try:
+                                d3_neighbors = graph_dal.get_neighbors_with_context(nb2_id, limit=max_d3 * 2)
+                                d3_count = 0
+                                for nb3 in d3_neighbors:
+                                    nb3_id = nb3.get("id", "")
+                                    if nb3_id in seen_ids or d3_count >= max_d3:
+                                        continue
+                                    seen_ids.add(nb3_id)
+                                    d3_count += 1
+                                    lines.append("        \u21b3 \"%s\" (id:%s)" % (
+                                        nb3.get("title", ""),
+                                        nb3_id))
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+
+        lines.append("")
+
+    @staticmethod
     def format_recall_results(results, lines):
         """Format recall results using standardized node display."""
         for r in results:

@@ -1,0 +1,95 @@
+{
+  "nodes": {
+    "d78def5691a44929a679589edc36a45a": {
+      "category": "stale",
+      "purpose": "Claims daemon uses Unix sockets \u2014 should be revised to TCP",
+      "title": "Daemon communication via Unix sockets",
+      "type": "mechanism"
+    },
+    "207ce0203f36421289bd05c045244625": {
+      "category": "stale",
+      "purpose": "Claims encoding agent runs on every stop \u2014 should be revised to every 5th",
+      "title": "Encoding agent runs on every Stop event",
+      "type": "mechanism"
+    },
+    "b420d081dcd14b80854b59c801d74b5f": {
+      "category": "stale",
+      "purpose": "Claims hooks config can be changed mid-session \u2014 this is false",
+      "title": "Hooks can be dynamically registered at runtime",
+      "type": "mechanism"
+    },
+    "109bfa7837074a0eb82443c465bc219c": {
+      "category": "stale",
+      "purpose": "Old recall pipeline description \u2014 missing Haiku distillation",
+      "title": "Brain recall pipeline for hook injection",
+      "type": "mechanism"
+    },
+    "2e1ee6d016de4af0b7aaf1592da239c6": {
+      "category": "stale",
+      "purpose": "Claims auto_encode exists \u2014 it was deleted",
+      "title": "auto_encode regex-based encoding on every Stop",
+      "type": "mechanism"
+    },
+    "02f13d3efd03480983bf5da2e5aa964a": {
+      "category": "disconnected_vocab",
+      "purpose": "Term exists but not connected to anything",
+      "title": "SKILL.md \u2192 The Anchor identity document",
+      "type": "vocabulary"
+    },
+    "503078ec0a21442d98777f2112006e19": {
+      "category": "disconnected_vocab",
+      "purpose": "Term exists but not connected to TCP decision",
+      "title": "daemon \u2192 persistent brain server process",
+      "type": "vocabulary"
+    },
+    "2c532f87803743b8a756147a2d243e87": {
+      "category": "disconnected_vocab",
+      "purpose": "Term exists, shallow definition",
+      "title": "encoding agent \u2192 Sonnet-based knowledge extractor",
+      "type": "vocabulary"
+    },
+    "37619a156d1d480e937f6f8c02ceba8f": {
+      "category": "near_duplicate",
+      "purpose": "First of a pair \u2014 should be revised, not duplicated",
+      "title": "Decision: Use TCP for daemon communication",
+      "type": "decision"
+    },
+    "faf15ae6452045b9bdbf3090bcd79f3a": {
+      "category": "near_duplicate",
+      "purpose": "Second of a pair \u2014 almost same as dup_1a",
+      "title": "TCP chosen over Unix sockets for daemon",
+      "type": "decision"
+    },
+    "fe86e2b4f8f745beb9e60a5213523ae2": {
+      "category": "contradiction",
+      "purpose": "Says hooks fire sequentially",
+      "title": "Hook execution order is sequential",
+      "type": "mechanism"
+    },
+    "3b64774dbbc7458dbe5848e187272cf8": {
+      "category": "contradiction",
+      "purpose": "Says hooks fire in parallel (this is correct)",
+      "title": "Hooks fire in parallel, not sequentially",
+      "type": "lesson"
+    },
+    "f23c70a076384de9bb91a254a68abdfe": {
+      "category": "control",
+      "purpose": "Correct and complete \u2014 encoding should not touch this",
+      "title": "Test Integrity Rule: never weaken assertions",
+      "type": "rule"
+    },
+    "50cf3339040243668ad78eb3298ee173": {
+      "category": "control",
+      "purpose": "Correct and current \u2014 encoding should not touch this",
+      "title": "Benchmark before changing sacred systems",
+      "type": "lesson"
+    },
+    "1399a75b56e04ded9838cdc7f9ca9807": {
+      "category": "control",
+      "purpose": "Correct \u2014 should not be duplicated",
+      "title": "Decision: Brain is associative memory, not document store",
+      "type": "decision"
+    }
+  },
+  "description": "Capability test fixture brain"
+}

@@ -389,6 +389,35 @@ class BrainDaemon:
                 self.running = False
                 return {"ok": True, "result": {"status": "shutting_down"}}
 
+            if cmd == "restart":
+                self._log("Restart requested — saving, clearing cache, re-exec...")
+                try:
+                    if self.brain:
+                        self.brain.save()
+                except Exception as e:
+                    self._log("Save error during restart: {}".format(e))
+                # Clear __pycache__ for servers/ so new code is loaded
+                import shutil
+                servers_dir = os.path.dirname(os.path.abspath(__file__))
+                project_dir = os.path.dirname(servers_dir)
+                cache_dir = os.path.join(servers_dir, '__pycache__')
+                if os.path.isdir(cache_dir):
+                    shutil.rmtree(cache_dir, ignore_errors=True)
+                    self._log("Cleared %s" % cache_dir)
+                self._cleanup()
+                # Re-exec with a canonical startup command
+                db_dir = os.environ.get('BRAIN_DB_DIR', os.path.dirname(self.db_path))
+                startup = (
+                    "import sys, os; "
+                    "sys.path.insert(0, %r); "
+                    "os.environ['BRAIN_DB_DIR'] = %r; "
+                    "from servers.daemon_server import BrainDaemon; "
+                    "d = BrainDaemon(%r); d.start()"
+                    % (project_dir, db_dir, self.db_path)
+                )
+                self._log("Re-exec: %s -c ..." % sys.executable)
+                os.execv(sys.executable, [sys.executable, '-c', startup])
+
             # Hook commands — read hooks run without lock, write hooks serialize
             if cmd.startswith("hook_"):
                 # Read-only hooks run without lock — safe to run concurrently

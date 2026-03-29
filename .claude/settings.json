@@ -28,7 +28,8 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/boot-brain.sh",
-            "timeout": 15
+            "timeout": 15,
+            "once": true
           }
         ]
       }
@@ -105,8 +106,8 @@
           {
             "type": "agent",
             "model": "sonnet",
-            "prompt": "You are the encoding agent for a persistent AI brain. You run every 5 conversation turns to encode important information.\n\n1. Read the encoding input file. Look for /tmp/brain-*-encoding-input.json using Bash: ls -t /tmp/brain-*-encoding-input.json 2>/dev/null | head -1\n2. If no file exists, respond SKIP\n3. If a file exists, read it and follow the instructions at: $CLAUDE_PROJECT_DIR/hooks/prompts/encoding-agent.md\n4. After encoding, delete the input file so it doesn't re-trigger\n5. Store your updated state by calling: remember(type='context', title='encoding_agent_state', content=YOUR_STATE_JSON) or use the brain eval tool to set config\n\nWork autonomously. Use brain MCP tools directly.",
-            "timeout": 30
+            "prompt": "You are a Stop agent for a persistent AI brain. Use the brain's eval tool to check what tasks are ready: eval(code=\"brain.get_config('stop_agent_prompt')\"). If the result is empty or 'NONE', respond NOTHING_NEW and stop. Otherwise, follow the returned instructions exactly.",
+            "timeout": 60
           }
         ]
       }

@@ -1,0 +1,36 @@
+{
+  "id": "rev_002_encoding_gating",
+  "capability": "revision",
+  "description": "Brain says encoding agent runs every stop. Conversation reveals it now runs every 5th stop via daemon gating. Should revise, not duplicate.",
+  "difficulty": "medium",
+  "brain_preconditions": {
+    "required_nodes": ["Encoding agent runs on every Stop event"]
+  },
+  "exchanges": [
+    {"role": "user", "content": "The token savings from the encoding gating are significant. Only firing every 5th stop cuts costs by 80%."},
+    {"role": "assistant", "content": "Right — the daemon owns the counter now. On 4 out of 5 stops, stop_agent_prompt returns NONE and the agent bails immediately. On the 5th stop, the daemon inlines the full encoding instructions."},
+    {"role": "user", "content": "The key insight was having the agent ASK the daemon for its prompt rather than always getting the full instructions. Tiny prompt, one eval call, done."},
+    {"role": "assistant", "content": "And the race condition is handled naturally — the command hook hits the daemon in <100ms while the agent needs seconds to parse its prompt and make the eval call. By the time it checks, the counter is already updated."}
+  ],
+  "expected_actions": [
+    {
+      "action": "revise",
+      "target_node": "Encoding agent runs on every Stop event",
+      "should_contain": ["5th"],
+      "priority": "must"
+    },
+    {
+      "action": "NOT_create",
+      "title_similar_to": "encoding agent runs every stop event",
+      "priority": "must",
+      "reason": "Should revise the existing mechanism node about encoding agent frequency"
+    }
+  ],
+  "expected_recall": [
+    {
+      "query": "how often does the encoding agent run",
+      "must_surface": "Encoding agent runs on every Stop event",
+      "must_contain_updated": ["5th"]
+    }
+  ]
+}

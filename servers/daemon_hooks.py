@@ -334,53 +334,32 @@ def hook_recall(brain, args, graph_changes):
 
 
 def hook_post_response_track(brain, args, graph_changes):
-    """Stop event — flat dispatcher. Each brain method has one responsibility.
+    """Stop event — store exchange + gate encoding agent.
 
-    1. track_response: precision evaluation (was recall useful?)
-    2. auto_encode: encoding instinct (what's worth remembering?)
-    3. detect_vocab_gaps: vocabulary gap detection
-    4. record_message + heartbeat: encoding nudge counter
+    1. store_exchange: persist conversation to message stream
+    2. encoding agent gating: set stop_agent_prompt every 5th stop
+    3. record_message: heartbeat counter
     """
     user_message = args.get("prompt", "") or args.get("message", "")
     assistant_response = (args.get("last_assistant_message", "") or "")[:4000]
 
-    # OLD SYSTEM (replaced by encoding agent — agent hook on Stop, every 5 turns):
-    # 1. track_response (precision eval) — broken, will be replaced by LLM-based eval
-    # 2. auto_encode (regex signal detection) — replaced by Sonnet encoding agent
-    # 3. detect_vocab_gaps — replaced by encoding agent's vocabulary detection
-    # These remain commented until encoding agent is proven, then delete.
-    #
-    # try:
-    #     brain.track_response(user_message, assistant_response)
-    # except Exception as e:
-    #     brain._log_error('track_response', e, 'Stop hook')
-    #
-    # auto_signal = None
-    # try:
-    #     auto_result = brain.auto_encode(user_message, assistant_response)
-    #     if auto_result:
-    #         auto_signal = auto_result.get('signal')
-    # except Exception as e:
-    #     brain._log_error('auto_encode', e, 'Stop hook')
-    #
-    # try:
-    #     brain.detect_vocab_gaps(user_message)
-    # except Exception as e:
-    #     brain._log_error('detect_vocab_gaps', e, 'Stop hook')
-
-    # Store conversation in message stream (kept — encoding agent reads from this)
+    # Store conversation in message stream (encoding agent reads from this)
     try:
         session_id = brain.get_config('session_id', '')
         brain.store_exchange(user_message, assistant_response, session_id)
     except Exception as e:
         brain._log_error('store_exchange', e, 'Stop hook: failed to store exchange')
 
-    # 5. Encoding agent preparation — every Y=5 stops, write input file for agent hook
+    # 5. Encoding agent gating — set prompt for Stop agent hook
+    #    Command hook wins the race: it hits daemon in <100ms, agent needs seconds to
+    #    parse prompt + decide to call eval. By the time agent reads the config, it's set.
     try:
         counter = int(brain.get_config('stop_counter', '0') or '0') + 1
         brain.set_config('stop_counter', str(counter))
 
-        if counter % 5 == 0:
+        if counter % 5 != 0:
+            brain.set_config('stop_agent_prompt', 'NONE')
+        else:
             session_id = brain.get_config('session_id', 'unknown')
             input_path = '/tmp/brain-{}-encoding-input.json'.format(session_id)
 
@@ -401,26 +380,46 @@ def hook_post_response_track(brain, args, graph_changes):
             except Exception:
                 pass
 
-            # Gather recall summaries from dashboard log (what was surfaced)
-            recall_summaries = []
+            # Gather RICH recall context — 3-degree node rendering
+            recall_context_rich = ""
             try:
-                from .dal_signal_queue import SignalQueueDAL
-                dash_db_path = os.path.join(os.path.dirname(brain.db_path), 'brain_dashboard.db')
-                if os.path.exists(dash_db_path):
-                    import sqlite3 as _sql
-                    dconn = _sql.connect(dash_db_path, timeout=3)
-                    rows = dconn.execute(
-                        "SELECT user_prompt, output_text FROM hook_log "
-                        "WHERE hook_name = 'RECALL' AND session_id = ? "
-                        "ORDER BY id DESC LIMIT 5", (session_id,)
-                    ).fetchall()
-                    recall_summaries = [
-                        {"user_prompt": (r[0] or "")[:500], "brain_output": (r[1] or "")[:1000]}
-                        for r in reversed(rows)
-                    ]
-                    dconn.close()
+                candidates_path = '/tmp/brain-{}-recall-candidates.json'.format(session_id)
+                if os.path.exists(candidates_path):
+                    import json as _cjson
+                    with open(candidates_path) as cf:
+                        cdata = _cjson.load(cf)
+                    candidates = cdata.get("candidates", [])
+                    if candidates:
+                        from .brain_voice import BrainVoice
+                        lines = []
+                        for c in candidates[:5]:
+                            BrainVoice.format_node_deep(
+                                c, lines, conn=brain.conn,
+                                max_d1=3, max_d2=3, max_d3=3)
+                        recall_context_rich = "\n".join(lines)
             except Exception:
                 pass
+
+            # Fallback: distilled summaries from hook_log if no raw candidates
+            if not recall_context_rich:
+                try:
+                    dash_db_path = os.path.join(os.path.dirname(brain.db_path), 'brain_dashboard.db')
+                    if os.path.exists(dash_db_path):
+                        import sqlite3 as _sql
+                        dconn = _sql.connect(dash_db_path, timeout=3)
+                        rows = dconn.execute(
+                            "SELECT user_prompt, output_text FROM hook_log "
+                            "WHERE hook_name = 'RECALL' AND session_id = ? "
+                            "ORDER BY id DESC LIMIT 5", (session_id,)
+                        ).fetchall()
+                        for r in reversed(rows):
+                            prompt = (r[0] or "")[:200]
+                            output = (r[1] or "")[:1000]
+                            if output and output not in ("(no candidates)", "(distilled: empty)"):
+                                recall_context_rich += "Query: %s\n%s\n\n" % (prompt, output)
+                        dconn.close()
+                except Exception:
+                    pass
 
             # Gather correction traces
             corrections = []
@@ -440,19 +439,39 @@ def hook_post_response_track(brain, args, graph_changes):
             # Get previous encoding agent state
             previous_state = brain.get_config('encoding_agent_state', '{}') or '{}'
 
-            # Write input file
+            # Build inline context for the encoding agent
             import json as _json
-            with open(input_path, 'w') as f:
-                _json.dump({
-                    "messages": messages,
-                    "recall_summaries": recall_summaries,
-                    "corrections": corrections,
-                    "previous_state": previous_state,
-                    "session_id": session_id,
-                    "stop_number": counter,
-                }, f, default=str)
-            _log('[encoding-agent] Prepared input file: %d messages, %d recalls, stop #%d' % (
-                len(messages), len(recall_summaries), counter))
+
+            # Format messages
+            msg_text = ""
+            for m in messages:
+                role = (m.get("role") or "?").upper()
+                content = (m.get("content") or "")[:600]
+                msg_text += "[%s]: %s\n\n" % (role, content)
+
+            # Brain context is already built above as recall_context_rich
+            brain_context = recall_context_rich
+
+            # Read encoding instructions
+            project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            prompt_path = os.path.join(project_dir, 'hooks', 'prompts', 'encoding-agent.md')
+            try:
+                with open(prompt_path) as pf:
+                    encoding_instructions = pf.read()
+            except Exception:
+                encoding_instructions = 'ERROR: Could not read %s' % prompt_path
+
+            # Assemble the full prompt with all context inline
+            full_prompt = encoding_instructions + "\n\n---\n\n"
+            full_prompt += "## ENCODING RUN #%d\n\n" % counter
+            full_prompt += "### Previous State\n%s\n\n" % (previous_state or "First run — no previous state.")
+            full_prompt += "### Conversation (last 10 exchanges)\n\n%s\n" % (msg_text or "No messages captured.")
+            if brain_context:
+                full_prompt += "### Brain Context (what was recalled during these exchanges)\n\n%s\n" % brain_context
+            else:
+                full_prompt += "### Brain Context\nNo recall data available for these exchanges.\n\n"
+
+            brain.set_config('stop_agent_prompt', full_prompt)
     except Exception as e:
         brain._log_error('encoding_agent_prep', e, 'Stop hook')
 
@@ -478,7 +497,7 @@ def hook_idle_maintenance(brain, args, graph_changes):
     """
     import datetime
     start_time = datetime.datetime.now()
-    _log("idle_maintenance STARTED at %s" % start_time.isoformat())
+    print("[brain-hooks] idle_maintenance STARTED at %s" % start_time.isoformat(), flush=True)
     output = []
 
     # 1. Dream
@@ -751,9 +770,9 @@ def hook_idle_maintenance(brain, args, graph_changes):
     # Log so we can verify idle fires and what it does
     import datetime
     elapsed = (datetime.datetime.now() - start_time).total_seconds()
-    _log("idle_maintenance COMPLETED in %.1fs — %d output lines" % (elapsed, len(output)))
+    print("[brain-hooks] idle_maintenance COMPLETED in %.1fs — %d output lines" % (elapsed, len(output)), flush=True)
     for line in output:
-        _log("  idle: %s" % line)
+        print("[brain-hooks]   idle: %s" % line, flush=True)
 
     brain.save()
     return {"output": ""}  # Notification stdout invisible

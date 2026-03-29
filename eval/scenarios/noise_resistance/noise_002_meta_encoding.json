@@ -1,0 +1,29 @@
+{
+  "id": "noise_002_meta_encoding",
+  "capability": "noise_resistance",
+  "description": "Conversation ABOUT encoding. The encoder should not encode discussions about its own process.",
+  "difficulty": "medium",
+  "brain_preconditions": {},
+  "exchanges": [
+    {"role": "user", "content": "How many nodes did the encoding agent create last session?"},
+    {"role": "assistant", "content": "Let me check. The encoding agent state shows it created 3 nodes last run: a decision about TCP, a mechanism for daemon restart, and a lesson about undefined _log."},
+    {"role": "user", "content": "That seems like a good amount. Is the quality ok?"},
+    {"role": "assistant", "content": "The content is rich — each node has 200-400 characters with context and reasoning. The titles are specific and scannable. No duplicates detected."},
+    {"role": "user", "content": "Good. Let's keep the 5-stop interval for now."},
+    {"role": "assistant", "content": "Agreed. The 80% token savings is worth the slight delay in encoding."}
+  ],
+  "expected_actions": [
+    {
+      "action": "NOT_create",
+      "title_similar_to": "encoding agent created nodes last session",
+      "priority": "must",
+      "reason": "Meta-conversation about encoding is not encoding-worthy"
+    },
+    {
+      "action": "NOT_create",
+      "title_similar_to": "encoding quality is good",
+      "priority": "must",
+      "reason": "Evaluation of encoding process is meta, not substance"
+    }
+  ]
+}

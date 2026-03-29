@@ -1,0 +1,32 @@
+{
+  "id": "conv_001_arch",
+  "source": "synthetic",
+  "category": "architecture_decisions",
+  "exchanges": [
+    {"role": "user", "content": "We need to move the daemon from Unix sockets to TCP. The stale socket files keep causing issues after crashes."},
+    {"role": "assistant", "content": "Good idea. TCP has cleaner failure modes - the port is released immediately when the process dies, so no stale files. I'll update the daemon to listen on 127.0.0.1 with a deterministic port based on the user's UID."},
+    {"role": "user", "content": "yes, use 47200 + uid % 100 as the port"},
+    {"role": "assistant", "content": "Done. Changed daemon_config.py to use DAEMON_HOST='127.0.0.1' and DAEMON_PORT=47200 + os.getuid() % 100. Updated all hook clients to connect via TCP instead of Unix socket. Removed the old socket path logic."},
+    {"role": "user", "content": "wait, we also need to handle the case where two users have the same uid % 100 on a shared machine"},
+    {"role": "assistant", "content": "Good catch. For now, the port collision is unlikely on personal machines. On shared servers, we could add the brain DB hash to disambiguate. But let's not over-engineer it - this is a personal tool."},
+    {"role": "user", "content": "agreed, ship it simple. But add a comment about the collision risk."},
+    {"role": "assistant", "content": "Added a comment noting the collision risk for shared machines. The simple approach is better here - YAGNI."},
+    {"role": "user", "content": "the encoding agent keeps running on every stop and wasting tokens. Can we gate it?"},
+    {"role": "assistant", "content": "We could add a counter in the daemon. Every 5th stop, it sets the full encoding prompt. On other stops, it returns NONE. The agent hook checks via eval and bails immediately if NONE."},
+    {"role": "user", "content": "no don't use a flag file, have the daemon return the prompt directly. The agent just asks for it."},
+    {"role": "assistant", "content": "That's cleaner. The agent's prompt is just 'ask the daemon what to do'. The daemon owns the counter and either returns NONE or the full encoding instructions inline. Zero wasted tokens on 4 out of 5 stops."}
+  ],
+  "ground_truth": {
+    "encode_targets": [
+      {"type": "decision", "topic": "TCP over Unix sockets for daemon", "exchange_range": [0, 3]},
+      {"type": "decision", "topic": "simple port calculation YAGNI", "exchange_range": [4, 7]},
+      {"type": "mechanism", "topic": "encoding agent gating via daemon prompt", "exchange_range": [8, 11]},
+      {"type": "correction", "topic": "dont use flag file use daemon directly", "exchange_range": [10, 11]}
+    ],
+    "decode_queries": [
+      {"query": "why did we switch from Unix sockets to TCP?", "expected_topics": ["TCP over Unix sockets"]},
+      {"query": "how does the encoding agent decide when to run?", "expected_topics": ["encoding agent gating"]},
+      {"query": "daemon port calculation", "expected_topics": ["port calculation", "47200"]}
+    ]
+  }
+}

@@ -1,7 +1,7 @@
-"""Post-response tracker: vocab gap detection + encoding checkpoints.
-Fires on Stop only (removed from UserPromptSubmit — it fired before Claude
-responded, so last_assistant_message was always empty, breaking precision loop).
-Thin client: sends hook_post_response_track to daemon, falls back to direct Python.
+"""Post-response tracker: store exchange + gate encoding agent.
+Fires on Stop. Stores conversation to message stream and sets stop_agent_prompt
+config every 5th stop so the Stop agent hook runs encoding.
+Thin client: sends hook_post_response_track to daemon.
 """
 import sys, os, json, time
 
@@ -10,8 +10,43 @@ from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemo
 
 hook_input = get_hook_input()
 
-# UserPromptSubmit provides "prompt", Stop provides "last_assistant_message"
+# Stop hook does NOT include user's message — only last_assistant_message.
+# Extract user message from transcript file if available.
 user_message = hook_input.get("prompt", "") or hook_input.get("message", "")
+if not user_message and hook_input.get("transcript_path"):
+    try:
+        import json as _json
+        with open(os.path.expanduser(hook_input["transcript_path"])) as _tf:
+            lines = _tf.readlines()
+        # Walk backwards to find last user message
+        for _line in reversed(lines):
+            try:
+                entry = _json.loads(_line.strip())
+                if entry.get("type") in ("human", "user"):
+                    # Extract text from message content
+                    msg = entry.get("message", {})
+                    if isinstance(msg, dict):
+                        content = msg.get("content", "")
+                        if isinstance(content, list):
+                            texts = [
+                                p.get("text", "") for p in content
+                                if isinstance(p, dict) and p.get("type") == "text" and p.get("text")
+                            ]
+                            if texts:
+                                user_message = " ".join(texts)
+                                break  # Found actual text, stop looking
+                            # If no text parts, this is a tool result — keep looking
+                            continue
+                        elif isinstance(content, str) and content:
+                            user_message = content
+                            break
+                    elif isinstance(msg, str) and msg:
+                        user_message = msg
+                        break
+            except Exception:
+                continue
+    except Exception:
+        pass
 event_name = hook_input.get("hook_event_name", "")
 has_user_message = user_message and len(user_message) >= 10
 
@@ -36,7 +71,7 @@ try:
         if resp.get("ok"):
             output = resp.get("result", {}).get("output", "")
             brain_debug("track: completed in %dms%s" % (latency, ", output=%d chars" % len(output) if output else ""))
-            log_hook_output("stop", output_text=output or "(precision + auto-encode ran, no visible output)")
+            log_hook_output("stop", output_text=output or "(store_exchange + encoding gate ran)")
             if output:
                 print(output)
         else:

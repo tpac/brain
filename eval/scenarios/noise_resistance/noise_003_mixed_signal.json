@@ -1,0 +1,37 @@
+{
+  "id": "noise_003_mixed",
+  "capability": "noise_resistance",
+  "description": "Mostly noise with ONE real signal buried in it. Encoder should find the signal and ignore the rest.",
+  "difficulty": "hard",
+  "brain_preconditions": {},
+  "exchanges": [
+    {"role": "user", "content": "morning"},
+    {"role": "assistant", "content": "Good morning! What are we working on today?"},
+    {"role": "user", "content": "let me check... oh right, the dashboard"},
+    {"role": "assistant", "content": "The brain dashboard? What needs work there?"},
+    {"role": "user", "content": "actually never mind the dashboard. I want to minimize API calls to Anthropic from the daemon. The Haiku call in recall is upsetting — on my todo list to remove it as soon as Anthropic launches something client-side."},
+    {"role": "assistant", "content": "Understood. The daemon should ideally handle brain operations only — storage, retrieval, embeddings. The Haiku distillation call is a temporary compromise until there's a local alternative."},
+    {"role": "user", "content": "exactly. ok what else was on the list"},
+    {"role": "assistant", "content": "We had the test platform work and the old encoding cleanup. Both are done."},
+    {"role": "user", "content": "cool, let me grab coffee"}
+  ],
+  "expected_actions": [
+    {
+      "action": "remember",
+      "should_contain": ["daemon", "API"],
+      "priority": "must"
+    },
+    {
+      "action": "NOT_create",
+      "title_similar_to": "morning greeting dashboard",
+      "priority": "must",
+      "reason": "Greetings and topic changes are noise"
+    },
+    {
+      "action": "NOT_create",
+      "title_similar_to": "test platform and cleanup done",
+      "priority": "must",
+      "reason": "Status updates without substance are noise"
+    }
+  ]
+}

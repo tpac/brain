@@ -7,7 +7,7 @@ encoding material on UserPromptSubmit, and resolved when encoded.
 
 ## Architecture
 This DAL owns the full lifecycle of pending messages:
-- STORE: save message + signal annotation from auto_encode()
+- STORE: save message + optional signal annotation
 - SURFACE: return actionable messages with escalation level
 - RESOLVE: mark messages when encoded/dismissed
 - EXPIRE: age out messages beyond TTL (48h)
@@ -28,7 +28,7 @@ Escalation levels:
                   OR surfaced ≥ 7 regardless of signal.
 
 ## Signal Types (WHY)
-auto_encode() already detects signals on every Stop event:
+Signal types stored at write time:
   'decision'    — "let's do", "ship it", "go with"
   'correction'  — "no,", "wrong", "actually,"
   'insight'     — "the reason", "because", "the key"
@@ -86,8 +86,7 @@ class MessageStreamDAL:
             role: 'user' or 'assistant'
             content: raw message text
             session_id: current session identifier
-            signal_type: from auto_encode() — 'decision', 'correction',
-                         'insight', 'exploration', or None
+            signal_type: 'decision', 'correction', 'insight', 'exploration', or None
         """
         cursor = self.conn.execute(
             'INSERT INTO message_stream '

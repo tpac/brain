@@ -116,9 +116,10 @@ Rules:
 - Only include what's DIRECTLY relevant to the user's message
 - Preserve node IDs like (id:abc123) so the AI can reference them
 - If a correction or rule applies, lead with it
-- If nothing is relevant, return EMPTY (just the word EMPTY)
+- If nothing is relevant, return just the word EMPTY — no explanation, no commentary, no suggestions about what you'd need. Just EMPTY.
 - Max 600 characters. Be surgical, like a colleague whispering context.
-- If this seems like the start of a conversation, be more generous with context.""" % (user_message[:500], candidates_text)
+- If this seems like the start of a conversation, be more generous with context.
+- NEVER add your own opinions or analysis. You are a filter, not an advisor.""" % (user_message[:500], candidates_text)
 
         api_resp = client.messages.create(
             model="claude-haiku-4-5",
@@ -128,12 +129,21 @@ Rules:
         distilled = api_resp.content[0].text.strip()
         latency_distill = (time.time() - t1) * 1000
 
+        # Store full prompt details for dashboard debugging
+        _prompt_details = json.dumps({
+            "distill_prompt": distill_prompt,
+            "model": "claude-haiku-4-5",
+            "candidates_count": len(candidates),
+            "latency_fetch_ms": round(latency_fetch),
+            "latency_distill_ms": round(latency_distill),
+        })
+
         if distilled == "EMPTY" or not distilled:
-            log_hook_output("recall", output_text="(distilled: empty)", user_prompt=user_message)
+            log_hook_output("recall", output_text="(distilled: empty)", user_prompt=user_message, metadata=_prompt_details)
             print(APPROVE)
         else:
             context = "[BRAIN]\n%s\n[/BRAIN]" % distilled
-            log_hook_output("recall", output_text=context, user_prompt=user_message)
+            log_hook_output("recall", output_text=context, user_prompt=user_message, metadata=_prompt_details)
             brain_debug("recall: distilled %d candidates → %d chars in %dms (fetch: %dms)" % (
                 len(candidates), len(context), latency_distill, latency_fetch))
             print(json.dumps({"additionalContext": context}))

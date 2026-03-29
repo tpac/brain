@@ -1,0 +1,41 @@
+{
+  "id": "rev_001_daemon_tcp",
+  "capability": "revision",
+  "description": "Brain says daemon uses Unix sockets. Conversation establishes TCP was chosen instead. Encoder should revise the stale node.",
+  "difficulty": "medium",
+  "brain_preconditions": {
+    "required_nodes": ["Daemon communication via Unix sockets"]
+  },
+  "exchanges": [
+    {"role": "user", "content": "The daemon restart is working now. TCP was definitely the right call — no more stale socket files after crashes."},
+    {"role": "assistant", "content": "Yes, the port-based approach on 127.0.0.1:47200+uid%100 is much cleaner. When the process dies, the OS releases the port immediately. No manual cleanup needed."},
+    {"role": "user", "content": "And the restart command does os.execv so it keeps the same PID. Launchd doesn't even notice."},
+    {"role": "assistant", "content": "Exactly — the re-exec replaces the process in-place. Same PID, same port, fresh code. Takes about 4 seconds for the embedder to reload."}
+  ],
+  "expected_actions": [
+    {
+      "action": "recall",
+      "priority": "should",
+      "reason": "Should search brain before encoding to find existing daemon communication node"
+    },
+    {
+      "action": "revise",
+      "target_node": "Daemon communication via Unix sockets",
+      "should_contain": ["TCP"],
+      "priority": "must"
+    },
+    {
+      "action": "NOT_create",
+      "title_similar_to": "daemon communication unix sockets",
+      "priority": "must",
+      "reason": "Should revise existing stale node, not create a duplicate"
+    }
+  ],
+  "expected_recall": [
+    {
+      "query": "how does the daemon communicate with hooks",
+      "must_surface": "Daemon communication via Unix sockets",
+      "must_contain_updated": ["TCP"]
+    }
+  ]
+}

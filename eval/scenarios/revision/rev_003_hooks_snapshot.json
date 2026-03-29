@@ -1,0 +1,39 @@
+{
+  "id": "rev_003_hooks_snapshot",
+  "capability": "revision",
+  "description": "Brain claims hooks can be dynamically registered mid-session. Conversation reveals they're snapshotted at boot. This is subtle — the correction is indirect.",
+  "difficulty": "hard",
+  "brain_preconditions": {
+    "required_nodes": ["Hooks can be dynamically registered at runtime"]
+  },
+  "exchanges": [
+    {"role": "user", "content": "I tried modifying settings.json mid-session to add a hook but it didn't work."},
+    {"role": "assistant", "content": "That's expected — Claude Code snapshots hooks at session start. Config edits don't hot-apply. You'd need to restart the session for hook changes to take effect."},
+    {"role": "user", "content": "So there's no way to conditionally enable a hook at runtime?"},
+    {"role": "assistant", "content": "Not through the settings file. The if field works for tool events but not for Stop or UserPromptSubmit. And the once field just means 'fire once then stop' — not conditional enablement."},
+    {"role": "user", "content": "What about the ConfigChange event? That fires when settings change."},
+    {"role": "assistant", "content": "ConfigChange detects the file change but doesn't re-load hooks. It's there for notification purposes, not live reloading. The hook snapshot is immutable for the session lifetime."}
+  ],
+  "expected_actions": [
+    {
+      "action": "revise",
+      "target_node": "Hooks can be dynamically registered at runtime",
+      "should_contain": ["snapshot"],
+      "should_not_contain": ["dynamically registered"],
+      "priority": "must"
+    },
+    {
+      "action": "NOT_create",
+      "title_similar_to": "hooks dynamically registered runtime",
+      "priority": "must",
+      "reason": "Must revise the incorrect node, not create a new one alongside it"
+    }
+  ],
+  "expected_recall": [
+    {
+      "query": "can hooks be changed at runtime",
+      "must_surface": "Hooks can be dynamically registered at runtime",
+      "must_contain_updated": ["snapshot"]
+    }
+  ]
+}

@@ -42,7 +42,7 @@ import shutil
 import sqlite3
 from datetime import datetime, timezone
 
-BRAIN_VERSION = 19
+BRAIN_VERSION = 20  # v20: removed CHECK constraint on nodes.type — agents can use any type string
 BRAIN_VERSION_KEY = 'brain_schema_version'
 
 # ─── Allowed node types ───
@@ -88,7 +88,9 @@ NODE_TYPES = [
     'boot',              # Shapes the boot message — written by previous session's Claude for the next
 ]
 
-NODE_TYPE_CHECK = f"CHECK(type IN ({','.join(repr(t) for t in NODE_TYPES)}))"
+# v8.3: CHECK constraint removed — agents can use any type string.
+# NODE_TYPES list kept for documentation and preferred-type guidance.
+NODE_TYPE_CHECK = ""  # was: CHECK(type IN (...)) — removed to allow expressive typing
 
 # ─── Canonical table definitions ───
 # Each entry: { 'create': SQL, 'columns': { col: default_for_alter } }
@@ -676,17 +678,16 @@ def ensure_schema(conn, db_path=None):
     cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
     existing_tables = {row[0] for row in cur.fetchall()}
 
-    # 4. Check if nodes table needs rebuild (CHECK constraint changed)
+    # 4. Check if nodes table needs rebuild (CHECK constraint removal)
     nodes_need_rebuild = False
     if 'nodes' in existing_tables:
         cur = conn.execute("SELECT sql FROM sqlite_master WHERE name='nodes'")
         row = cur.fetchone()
         if row:
             current_sql = row[0] or ''
-            for node_type in NODE_TYPES:
-                if f"'{node_type}'" not in current_sql:
-                    nodes_need_rebuild = True
-                    break
+            # Rebuild if the old CHECK constraint is still present
+            if 'CHECK(type IN' in current_sql or "CHECK (type IN" in current_sql:
+                nodes_need_rebuild = True
 
     # 5. For each canonical table: create or diff+alter
     for table_name, spec in TABLES.items():

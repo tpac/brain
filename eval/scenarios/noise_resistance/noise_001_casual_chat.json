@@ -1,0 +1,29 @@
+{
+  "id": "noise_001_casual",
+  "capability": "noise_resistance",
+  "description": "Pure casual conversation with no encoding-worthy content. Encoder should create NOTHING.",
+  "difficulty": "easy",
+  "brain_preconditions": {},
+  "exchanges": [
+    {"role": "user", "content": "ok looks good"},
+    {"role": "assistant", "content": "Great! Let me know if you need anything else."},
+    {"role": "user", "content": "yeah let me think about it"},
+    {"role": "assistant", "content": "Take your time. I'm here when you're ready."},
+    {"role": "user", "content": "ok next"},
+    {"role": "assistant", "content": "What would you like to work on next?"}
+  ],
+  "expected_actions": [
+    {
+      "action": "NOT_create",
+      "title_similar_to": "user said ok looks good",
+      "priority": "must",
+      "reason": "Casual acknowledgment is not encoding-worthy"
+    },
+    {
+      "action": "NOT_create",
+      "title_similar_to": "user thinking about next steps",
+      "priority": "must",
+      "reason": "Transitional chat is noise"
+    }
+  ]
+}

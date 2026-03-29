@@ -820,6 +820,11 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: 'SF Mono', 'Fira Code',
 .hook-header .hook-size { color: #444; font-size: 10px; margin-left: auto; }
 .hook-body { display: none; padding: 0 12px 10px; }
 .hook-body.open { display: block; }
+.hook-details-btn { background: #1a1a2a; border: 1px solid #2a2a3a; color: #7eb8ff; padding: 3px 10px; border-radius: 3px; font-size: 10px; cursor: pointer; margin-top: 6px; }
+.hook-details-btn:hover { background: #2a2a4a; }
+.hook-details { display: none; margin-top: 6px; }
+.hook-details.open { display: block; }
+.hook-details pre { background: #050510; border: 1px solid #1a1a3a; border-radius: 4px; padding: 10px; color: #998; font-size: 10px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; max-height: 600px; overflow-y: auto; }
 .hook-prompt { padding: 6px 12px; background: #0d1117; border-left: 3px solid #58a6ff; color: #c9d1d9; font-size: 12px; margin: 0 8px; font-style: italic; }
 .hook-body pre { background: #0a0a12; border: 1px solid #1a1a2a; border-radius: 4px; padding: 10px; color: #bbb; font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-height: 500px; overflow-y: auto; }
 .feed-toggle { display: flex; gap: 0; padding: 0 8px; margin-top: 4px; }
@@ -1054,6 +1059,30 @@ function localTime(utcStr, mode) {
   return d.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit'});
 }
 
+function toggleDetails(btn) {
+  const details = btn.nextElementSibling;
+  details.classList.toggle('open');
+  btn.textContent = details.classList.contains('open') ? 'Hide Details' : 'Full Details';
+}
+
+function formatMetadata(raw) {
+  try {
+    const obj = JSON.parse(raw);
+    if (obj.distill_prompt) {
+      return '=== FULL PROMPT SENT TO HAIKU ===\\n\\n' +
+        obj.distill_prompt + '\\n\\n' +
+        '=== STATS ===\\n' +
+        'Model: ' + (obj.model || '?') + '\\n' +
+        'Candidates: ' + (obj.candidates_count || '?') + '\\n' +
+        'Fetch latency: ' + (obj.latency_fetch_ms || '?') + 'ms\\n' +
+        'Distill latency: ' + (obj.latency_distill_ms || '?') + 'ms';
+    }
+    return JSON.stringify(obj, null, 2);
+  } catch(e) {
+    return raw;
+  }
+}
+
 function toggleHookBody(el) {
   const body = el.parentElement.querySelector('.hook-body');
   body.classList.toggle('open');
@@ -1088,6 +1117,7 @@ async function pollHookLog() {
         '<div class="hook-body">' +
           '<pre>' + escapeHtml(evt.output_text || '(empty)') + '</pre>' +
           (evt.operator_text ? '<pre style="border-left:2px solid #ffaa33;margin-top:6px">' + escapeHtml(evt.operator_text) + '</pre>' : '') +
+          (evt.metadata ? '<button class="hook-details-btn" onclick="toggleDetails(this)">Full Details</button><div class="hook-details"><pre>' + escapeHtml(formatMetadata(evt.metadata)) + '</pre></div>' : '') +
         '</div>';
       feed.prepend(div);
     }
