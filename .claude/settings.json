@@ -105,9 +105,9 @@
           },
           {
             "type": "agent",
-            "model": "sonnet",
-            "prompt": "You are a Stop agent for a persistent AI brain. Use the brain's eval tool to check what tasks are ready: eval(code=\"brain.get_config('stop_agent_prompt')\"). If the result is empty or 'NONE', respond NOTHING_NEW and stop. Otherwise, follow the returned instructions exactly.",
-            "timeout": 60
+            "model": "haiku",
+            "prompt": "DIAGNOSTIC: Write 'HTTP_MCP_AGENT' and the current timestamp to /tmp/brain-agent-mcp-test.txt using bash. Then try to call the brain recall tool with query 'test probe'. Write what tools you see to /tmp/brain-agent-mcp-results.txt. Return JSON: {\"decision\": \"allow\"}",
+            "timeout": 30
           }
         ]
       }

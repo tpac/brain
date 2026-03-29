@@ -179,6 +179,10 @@ class BrainDaemon:
         autosave_thread = threading.Thread(target=self._autosave_loop, daemon=True)
         autosave_thread.start()
 
+        # Start HTTP MCP server thread (DAEMON_PORT+1)
+        mcp_http_thread = threading.Thread(target=self._start_mcp_http, daemon=True)
+        mcp_http_thread.start()
+
         self._serve()
 
     def _bind_socket(self):
@@ -627,6 +631,122 @@ class BrainDaemon:
                 self._lock_fd.close()
         except Exception:
             pass
+
+    # ── HTTP MCP Server ──
+    # Serves MCP JSON-RPC over HTTP on DAEMON_PORT+1.
+    # Uses same dispatch as TCP. Same locking. Same brain.
+    # Tool schemas imported from brain_mcp.py (single source of truth).
+
+    def _start_mcp_http(self):
+        """Start HTTP MCP server on DAEMON_PORT+1 in a daemon thread."""
+        from http.server import HTTPServer, BaseHTTPRequestHandler
+        from . import brain_mcp
+
+        daemon_ref = self
+        mcp_port = self.daemon_addr[1] + 1
+
+        class MCPHTTPHandler(BaseHTTPRequestHandler):
+            """Handles MCP JSON-RPC over HTTP. Stateless — each request independent."""
+
+            def do_POST(self):
+                try:
+                    length = int(self.headers.get('Content-Length', 0))
+                    body = self.rfile.read(length)
+                    msg = json.loads(body.decode('utf-8'))
+                except Exception as e:
+                    self._respond(400, {"jsonrpc": "2.0", "error": {"code": -32700, "message": str(e)}, "id": None})
+                    return
+
+                method = msg.get("method", "")
+                request_id = msg.get("id")
+                params = msg.get("params", {})
+
+                # Notifications (no id) — acknowledge silently
+                if request_id is None:
+                    self._respond(202, "")
+                    return
+
+                try:
+                    if method == "initialize":
+                        resp = brain_mcp.handle_initialize(request_id)
+                    elif method == "tools/list":
+                        resp = brain_mcp.handle_tools_list(request_id)
+                    elif method == "tools/call":
+                        resp = self._handle_tools_call(request_id, params)
+                    elif method == "ping":
+                        resp = brain_mcp.handle_ping(request_id)
+                    else:
+                        resp = brain_mcp.make_error(request_id, -32601, "Method not found: %s" % method)
+                except Exception as e:
+                    daemon_ref._log("MCP HTTP error in %s: %s" % (method, e))
+                    resp = brain_mcp.make_error(request_id, -32603, "Internal error: %s" % e)
+
+                self._respond(200, resp)
+
+            def _handle_tools_call(self, request_id, params):
+                """Route MCP tool call through daemon dispatch — DIRECT, no TCP relay."""
+                tool_name = params.get("name", "")
+                arguments = params.get("arguments", {})
+
+                daemon_ref.last_activity = time.time()
+
+                # Dispatch through the same path as TCP
+                result = daemon_ref._dispatch(tool_name, arguments)
+
+                if result.get("ok"):
+                    result_text = brain_mcp._format_result(tool_name, result.get("result", {}))
+                    return brain_mcp.make_response(request_id, {
+                        "content": [{"type": "text", "text": result_text}]
+                    })
+                else:
+                    return brain_mcp.make_response(request_id, {
+                        "content": [{"type": "text", "text": "ERROR: %s" % result.get("error", "Unknown")}],
+                        "isError": True
+                    })
+
+            def _respond(self, code, body):
+                self.send_response(code)
+                if isinstance(body, str) and not body:
+                    self.send_header('Content-Length', '0')
+                    self.end_headers()
+                else:
+                    payload = json.dumps(body, default=str).encode('utf-8')
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+
+            def log_message(self, format, *args):
+                """Suppress default access log — too noisy."""
+                pass
+
+        # Bind with retry (same pattern as TCP)
+        for attempt in range(5):
+            try:
+                httpd = HTTPServer(('127.0.0.1', mcp_port), MCPHTTPHandler)
+                httpd.timeout = 1.0  # 1s poll for shutdown
+                self._log("MCP HTTP server listening on 127.0.0.1:%d" % mcp_port)
+                break
+            except OSError as e:
+                if attempt < 4:
+                    self._log("MCP HTTP bind failed (attempt %d/5): %s" % (attempt + 1, e))
+                    time.sleep(1)
+                else:
+                    self._log("MCP HTTP server FAILED to start: %s" % e)
+                    return
+
+        # Serve until daemon stops
+        while self.running:
+            try:
+                httpd.handle_request()  # 1s timeout from above
+            except Exception as e:
+                self._log("MCP HTTP error: %s" % e)
+
+        try:
+            httpd.server_close()
+        except Exception:
+            pass
+        self._log("MCP HTTP server stopped.")
 
     def _log(self, message: str):
         ts = time.strftime("%H:%M:%S")
