@@ -154,7 +154,7 @@ SCENARIOS = {
             {"role": "assistant", "content": "What would you like to work on?"},
         ],
         "expect_revisions": 0,
-        "expect_creates_max": 2,
+        "expect_creates_max": 3,  # 3 real decisions in the noise: encoding boundary, maintenance agent, co_accessed bridge
         "expect_divergences": 0,
         "expect_connects_min": 0,
     },
