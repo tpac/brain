@@ -651,6 +651,7 @@ class BrainRememberMixin:
                                 "Failed to update situation for %s" % node_id[:8])
 
         # Re-embed combined content for better retrieval
+        # NOTE: UPDATE not INSERT OR REPLACE — preserve situation_embedding columns
         embedding_updated = False
         try:
             from . import embedder
@@ -659,9 +660,8 @@ class BrainRememberMixin:
                 blob = embedder.embed(embed_text)
                 if blob:
                     self.conn.execute(
-                        'INSERT OR REPLACE INTO node_embeddings '
-                        '(node_id, embedding, model, created_at) VALUES (?, ?, ?, ?)',
-                        (node_id, blob, embedder.stats.get('model_name', ''), ts))
+                        'UPDATE node_embeddings SET embedding=?, model=?, created_at=? WHERE node_id=?',
+                        (blob, embedder.stats.get('model_name', ''), ts, node_id))
                     self.conn.commit()
                     embedding_updated = True
         except Exception as e:
@@ -692,6 +692,34 @@ class BrainRememberMixin:
             self._log_error('revise_resolve_pending', e,
                             'Failed to resolve pending messages after revising %s' % node_id[:8])
 
+        # ── VERIFICATION: read-back to confirm writes landed ──
+        verification_failures = []
+
+        # Verify nodes table fields
+        from .dal import NodeDAL
+        readback = NodeDAL(self.conn).get_node(node_id)
+        if readback:
+            for field in list(all_updates.keys()):
+                if field in readback:
+                    # Content is appended, not replaced — check it contains the new text
+                    if field == 'content' and content:
+                        if content not in (readback.get('content') or ''):
+                            verification_failures.append(field)
+                    else:
+                        expected = all_updates[field]
+                        actual = readback.get(field)
+                        if actual != expected and str(actual) != str(expected):
+                            verification_failures.append(field)
+
+        # Verify situation embedding (stored in node_embeddings, not nodes)
+        if 'situation' in all_updates:
+            from .dal import EmbeddingDAL
+            sit_text = EmbeddingDAL(self.conn).get_situation_text(node_id)
+            if not sit_text:
+                verification_failures.append('situation')
+
+        verified = len(verification_failures) == 0
+
         return {
             'id': node_id,
             'type': all_updates.get('type', node_type),
@@ -700,6 +728,8 @@ class BrainRememberMixin:
             'content_length': len(new_content),
             'embedding_updated': embedding_updated,
             'fields_updated': list(all_updates.keys()),
+            'verified': verified,
+            'verification_failures': verification_failures if not verified else [],
             'pending_resolved': pending_resolved,
         }
 
