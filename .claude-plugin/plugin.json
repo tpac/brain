@@ -1,7 +1,7 @@
 {
   "name": "brain",
-  "version": "8.1.0",
-  "description": "Shared cognitive space for Claude + operator. v8.0: Signal queue replaces consciousness (31→4 signals), surface assembler with priority+budget, daemon supervisor with self-heal+embed lock, dashboard hook logging (Surface/Encoding/Queue tabs), delete daemon facade, stale lock cleanup, MCP health monitor, hook fallback for daemon-down visibility.",
+  "version": "8.6.0",
+  "description": "Shared cognitive space for Claude + operator. v8.6: Data contract (single source of truth), write verification, 3-degree graph traversal, situation embeddings, encoding agent with revision-first prompt, generic revise, capability test platform, seed brain.",
   "author": {
     "name": "Tom Pachys"
   },
