@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-# brain v5.4.0 — Serverless plugin builder
+# brain v8.6.0 — Plugin builder
 # Packs exactly what belongs in the .plugin file. Nothing else.
 #
 # v5.4.0: Brain-Claude conflict protocol, [BRAIN] identity tags,
@@ -45,6 +45,8 @@ FILES=(
   servers/surface_assembler.py
   servers/dal_signal_queue.py
   servers/brain_mcp.py
+  servers/contract.py
+  servers/dal_message_stream.py
   servers/metrics.py
   # Hook scripts — bash shims (thin wrappers)
   hooks/hooks.json
@@ -62,6 +64,7 @@ FILES=(
   hooks/scripts/post-bash-host-check.sh
   hooks/scripts/worktree-context.sh
   hooks/scripts/worktree-cleanup.sh
+  hooks/scripts/restart-daemon.sh
   hooks/scripts/brain-statusline.sh
   hooks/scripts/resolve-brain-db.sh
   hooks/scripts/daemon-client.sh
@@ -83,6 +86,8 @@ FILES=(
   hooks/scripts/worktree_context.py
   hooks/scripts/worktree_cleanup.py
   hooks/scripts/extract-session-log.py
+  # Encoding agent prompt
+  hooks/prompts/encoding-agent.md
   # Skill definition
   skills/brain/SKILL.md
   skills/brain/references/detailed-api.md
