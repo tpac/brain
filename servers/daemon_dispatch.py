@@ -330,6 +330,20 @@ def _handle_revise(brain, args, graph_changes):
     result = brain.revise(node_id=node_id, content=content, reason=reason, updates=updates)
     if result.get('error'):
         return {"ok": False, "error": result['error']}
+
+    # Surface verification failures as warnings
+    if not result.get('verified', True):
+        failures = result.get('verification_failures', [])
+        graph_changes.append("VERIFY_FAIL: revise %s — fields not confirmed: %s" % (
+            node_id[:12], ', '.join(failures)))
+        # Log to brain error system so integrity producer can surface it
+        try:
+            brain._log_error('write_verification',
+                Exception('Revise verification failed for %s: %s' % (node_id[:12], failures)),
+                'Fields claimed updated but read-back shows mismatch')
+        except Exception:
+            pass
+
     graph_changes.append("REVISE: [%s] %s" % (
         result.get("type", "?"), result.get("title", "")[:50]))
     return {"ok": True, "result": result}
