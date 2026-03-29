@@ -377,7 +377,8 @@ def _check_system_status():
             conn = sqlite3.connect(f"file:{brain_path}?mode=ro", uri=True, timeout=2)
             count = conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
             conn.close()
-            status['brain_db'] = {'alive': True, 'nodes': count, 'path': brain_path}
+            size_mb = round(os.path.getsize(brain_path) / 1048576, 1)
+            status['brain_db'] = {'alive': True, 'nodes': count, 'path': brain_path, 'size_mb': size_mb}
         else:
             status['brain_db'] = {'alive': False, 'error': 'File not found'}
     except Exception as e:
@@ -390,7 +391,8 @@ def _check_system_status():
             conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=2)
             conn.execute("SELECT 1").fetchone()
             conn.close()
-            status['logs_db'] = {'alive': True, 'path': logs_path}
+            size_mb = round(os.path.getsize(logs_path) / 1048576, 1)
+            status['logs_db'] = {'alive': True, 'path': logs_path, 'size_mb': size_mb}
         else:
             status['logs_db'] = {'alive': False, 'error': 'File not found'}
     except Exception as e:
@@ -403,8 +405,9 @@ def _check_system_status():
             conn = sqlite3.connect(f"file:{dash_path}?mode=ro", uri=True, timeout=2)
             last_entry = conn.execute("SELECT timestamp FROM hook_log ORDER BY id DESC LIMIT 1").fetchone()
             conn.close()
+            size_mb = round(os.path.getsize(dash_path) / 1048576, 1)
             status['dashboard_db'] = {
-                'alive': True, 'path': dash_path,
+                'alive': True, 'path': dash_path, 'size_mb': size_mb,
                 'last_entry': last_entry[0] if last_entry else 'empty'}
         else:
             status['dashboard_db'] = {'alive': False, 'error': 'File not found'}
@@ -1364,9 +1367,11 @@ async function loadSystemStatus() {
       if (comp.key === 'daemon' && alive) {
         details = 'PID: ' + (s.pid || '?') + ' · Uptime: ' + Math.round((s.uptime || 0) / 60) + 'min';
       } else if (comp.key === 'brain_db' && alive) {
-        details = s.nodes + ' nodes';
+        details = s.nodes + ' nodes · ' + (s.size_mb || '?') + 'MB';
+      } else if (comp.key === 'logs_db' && alive) {
+        details = (s.size_mb || '?') + 'MB';
       } else if (comp.key === 'dashboard_db' && alive) {
-        details = 'Last: ' + (s.last_entry || '?').substring(0, 19);
+        details = (s.size_mb || '?') + 'MB · Last: ' + localTime(s.last_entry);
       } else if (comp.key === 'embedder' && alive) {
         details = s.model || '?';
       } else if (comp.key === 'signal_queue' && alive) {
@@ -1375,6 +1380,7 @@ async function loadSystemStatus() {
         details = s.error || 'unreachable';
       }
 
+      const pathLine = s.path ? '<div style="font-size:9px;color:#444;margin-top:4px;word-break:break-all">' + escapeHtml(s.path) + '</div>' : '';
       card.innerHTML =
         '<div style="display:flex;align-items:center;gap:8px">' +
           '<span style="font-size:20px">' + comp.icon + '</span>' +
@@ -1384,8 +1390,8 @@ async function loadSystemStatus() {
               (alive ? '● Live' : '● Down') +
             '</div>' +
           '</div>' +
-          '<div style="margin-left:auto;font-size:10px;color:#666;text-align:right;max-width:160px;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(details) + '</div>' +
-        '</div>';
+          '<div style="margin-left:auto;font-size:10px;color:#666;text-align:right;max-width:200px;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(details) + '</div>' +
+        '</div>' + pathLine;
       grid.appendChild(card);
     }
   } catch(e) {

@@ -54,7 +54,7 @@ try:
         err_msg = resp.get("error", "unknown error")
         log_hook_output("recall", output_text="(daemon error: %s)" % err_msg, user_prompt=user_message)
         print(json.dumps({"additionalContext":
-            "[BRAIN ERROR] Recall failed: %s" % err_msg}))
+            "[BRAIN]\n⚠️ RECALL FAILED: %s\nThe brain could not search for relevant memories. Operating without context.\n[/BRAIN]" % err_msg}))
         sys.exit(0)
 
     # Extract candidates from the file the daemon wrote
@@ -163,7 +163,8 @@ Rules:
             "latency_distill_ms": round(latency_distill),
         })
 
-        if distilled == "EMPTY" or not distilled:
+        # Strip Haiku's opinions — if it starts with EMPTY, treat as empty
+        if not distilled or distilled.startswith("EMPTY") or distilled.upper().startswith("EMPTY"):
             log_hook_output("recall", output_text="(distilled: empty)", user_prompt=user_message, metadata=_prompt_details)
             print(APPROVE)
         else:
