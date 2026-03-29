@@ -112,8 +112,8 @@ class BrainSurfaceMixin:
                             'last_accessed': row[10], 'created_at': row[11],
                             '_edge_neighbor': True
                         })
-        except:
-            pass
+        except Exception as e:
+            self._log_error('suggest_edge_neighbors', e, 'fetching edge neighbors for suggestions')
 
         # Project filter
         if project:
@@ -213,8 +213,8 @@ class BrainSurfaceMixin:
                 INSERT INTO suggest_log (session_id, context, suggested_ids, created_at)
                 VALUES (?, ?, ?, ?)
             ''', ('auto', ' | '.join(queries), json.dumps([s['id'] for s in suggestions]), ts))
-        except:
-            pass
+        except Exception as e:
+            self._log_error('suggest_log', e, 'logging suggestion to suggest_log')
 
         return {'suggestions': suggestions, 'query_count': len(queries)}
 
@@ -378,8 +378,8 @@ class BrainSurfaceMixin:
             ver = int(self._meta.get(BRAIN_VERSION_KEY, '0'))
             if ver < BRAIN_VERSION:
                 warnings.append({'level': 'warning', 'message': 'Schema version %d < expected %d — migration may have failed' % (ver, BRAIN_VERSION)})
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_error('validate_schema_version', e, 'checking schema version')
 
         # 4. Check embedder status
         if not embedder.is_ready():
@@ -393,8 +393,8 @@ class BrainSurfaceMixin:
             logs_size = os.path.getsize(self.logs_db_path)
             if logs_size > self._max_logs_db_size:
                 warnings.append({'level': 'warning', 'message': 'brain_logs.db is %.0fMB — will auto-trim' % (logs_size / 1024 / 1024)})
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_error('validate_db_sizes', e, 'checking database file sizes')
 
         return warnings
 
@@ -487,12 +487,12 @@ class BrainSurfaceMixin:
                     try:
                         self.enrich_keywords(node_id)
                         enriched += 1
-                    except:
-                        pass
+                    except Exception as e:
+                        self._log_error('health_enrich_keywords', e, 'enriching keywords for missed node %s' % node_id[:12])
                 if enriched > 0:
                     actions.append(f'Auto-enriched keywords on {enriched} frequently-missed nodes')
-            except:
-                pass
+            except Exception as e:
+                self._log_error('health_auto_enrich', e, 'auto-enriching frequently-missed nodes')
 
         # 6. Auto-promote staged learnings
         if auto_fix:
@@ -500,8 +500,8 @@ class BrainSurfaceMixin:
                 promoted = self.auto_promote_staged(revisit_threshold=3)
                 if promoted.get('promoted', 0) > 0:
                     actions.append(f'Auto-promoted {promoted["promoted"]} staged learnings (3+ revisits)')
-            except:
-                pass
+            except Exception as e:
+                self._log_error('health_auto_promote', e, 'auto-promoting staged learnings')
 
         # 7. Check for stale pending staged learnings
         try:
@@ -516,8 +516,8 @@ class BrainSurfaceMixin:
                     'severity': 'medium',
                     'message': f'{stale_staged_count} staged learnings unreviewed for 7+ days.'
                 })
-        except:
-            pass
+        except Exception as e:
+            self._log_error('health_stale_staged', e, 'checking for stale staged learnings')
 
         # Log health check
         try:
@@ -525,8 +525,8 @@ class BrainSurfaceMixin:
                 INSERT INTO health_log (session_id, check_type, result, actions_taken, created_at)
                 VALUES (?, ?, ?, ?, ?)
             ''', (session_id, 'boot_check', json.dumps(issues), json.dumps(actions), ts))
-        except:
-            pass
+        except Exception as e:
+            self._log_error('health_log', e, 'logging health check results')
 
         return {
             'healthy': not any(i['severity'] == 'high' for i in issues),
@@ -668,7 +668,8 @@ class BrainSurfaceMixin:
                 'total_suggest_calls': rows[0] if rows else 0,
                 'avg_suggestions_per_call': rows[1] if rows and rows[1] else 0
             }
-        except:
+        except Exception as e:
+            self._log_error('suggest_metrics', e, 'aggregating suggest_log metrics')
             return {'period_days': period_days, 'error': 'Could not aggregate metrics'}
 
     def pre_edit(self, file: str, tool_name: str = 'Edit') -> dict:
@@ -715,7 +716,8 @@ class BrainSurfaceMixin:
             boot_dt = _dt.fromisoformat(boot_time.replace('Z', '+00:00'))
             now_dt = _dt.now(boot_dt.tzinfo) if boot_dt.tzinfo else _dt.utcnow()
             session_minutes = (now_dt - boot_dt).total_seconds() / 60
-        except Exception:
+        except Exception as e:
+            self._log_error('pre_edit_session_minutes', e, 'computing session minutes from boot time')
             session_minutes = 0
 
         # Compute minutes since last remember
@@ -1094,8 +1096,8 @@ class BrainSurfaceMixin:
                             dt_b = datetime.fromisoformat(date_b.replace('Z', '+00:00'))
                             if abs((dt_a - dt_b).total_seconds()) < cutoff_hours * 3600:
                                 continue
-                        except (ValueError, TypeError):
-                            pass  # Can't parse dates, proceed with comparison
+                        except (ValueError, TypeError) as e:
+                            self._log_error('consolidation_date_parse', e, 'nodes %s/%s' % (nid_a[:8], nid_b[:8]))
 
                     # Compute similarity
                     emb_a = emb_map[nid_a]

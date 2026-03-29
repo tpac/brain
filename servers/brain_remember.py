@@ -420,8 +420,8 @@ class BrainRememberMixin:
         # v5: Build TF-IDF vector for this node
         try:
             self._store_tfidf_vector(node_id, title, content, keywords)
-        except Exception:
-            pass  # Non-critical — recall still works via keywords
+        except Exception as e:
+            self._log_error('tfidf_vector_store', e, 'storing TF-IDF vector for node %s' % node_id[:12])
 
         # Phase 0.5C: Store dense embedding SYNCHRONOUSLY at encode time.
         # Every node must have a semantic vector from birth so it's immediately
@@ -511,27 +511,27 @@ class BrainRememberMixin:
                     graph_dal = GraphDAL(self.conn)
                     if not graph_dal.edge_exists(node_id, recent_id):
                         self.connect(node_id, recent_id, 'co_accessed', 0.2)
-        except Exception:
-            pass  # Non-critical
+        except Exception as e:
+            self._log_error('auto_connect', e, 'auto-connecting node %s to recent context' % node_id[:12])
 
         # v11: Emergent bridging at store-time
         bridges = []
         try:
             bridges = self._bridge_at_store_time(node_id)
-        except Exception:
-            pass  # Non-critical — bridging failure should never block remember
+        except Exception as e:
+            self._log_error('bridge_at_store', e, 'emergent bridging for node %s' % node_id[:12])
 
         # v5: Track encoding for heartbeat
         try:
             self.record_remember()
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_error('record_remember', e, 'tracking encoding for heartbeat')
 
         # v5.1: Track node in current conversation segment
         try:
             self.add_to_segment(node_id)
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_error('add_to_segment', e, 'tracking node %s in conversation segment' % node_id[:12])
 
         # v6: Generate enrichment prompt for Claude to fill in.
         # The brain recalls neighbors and builds a structured prompt.
@@ -821,7 +821,8 @@ class BrainRememberMixin:
             import json as _json
             pending_json = self.get_config('pending_critical_approvals', '[]')
             return _json.loads(pending_json) if pending_json else []
-        except Exception:
+        except Exception as e:
+            self._log_error('get_pending_critical', e, 'parsing pending critical approvals JSON')
             return []
 
     def backfill_summaries(self, batch_size: int = 50) -> Dict[str, Any]:
@@ -897,8 +898,8 @@ class BrainRememberMixin:
                                 (content or title)[:150]
                             )
                         )
-            except Exception:
-                pass
+            except Exception as e:
+                self._log_error('remember_rich_source', e, 'extracting source context from recent messages')
 
         # Store the core node via remember()
         result = self.remember(type=type, title=title, content=content, **kwargs)
@@ -1435,5 +1436,6 @@ class BrainRememberMixin:
                 (combined, self.now(), node_id)
             )
             return combined
-        except:
+        except Exception as e:
+            self._log_error('enrich_keywords', e, 'enriching keywords for node %s' % node_id[:12])
             return None

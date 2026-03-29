@@ -76,8 +76,8 @@ def _get_precision(brain):
         try:
             from servers.recall_scorer import load_bart
             load_bart()
-        except Exception:
-            pass  # Graceful degradation: regex+embeddings still work
+        except Exception as e:
+            brain._log_error('load_bart', e, '_get_precision')
     return brain._precision
 
 
@@ -99,8 +99,8 @@ def hook_recall(brain, args, graph_changes):
     # Store last user message for operator voice capture
     try:
         brain.set_config("last_user_message", user_message[:500])
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('set_last_user_message', e, 'hook_recall')
 
     # ── Explicit feedback detection ──
     # If the user says "useful", "not useful", "garbage", etc., process it as
@@ -131,8 +131,8 @@ def hook_recall(brain, args, graph_changes):
                 precision.receive_feedback(_ask_row[0], _matched_feedback, source="operator")
                 brain.log_debug("precision_feedback", "Operator feedback: %s on recall %d" % (
                     _matched_feedback, _ask_row[0]))
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('explicit_feedback', e, 'hook_recall')
 
     # ── Table-driven precision: evaluate ALL pending followups ──
     # The user's current message is the "followup" signal for PREVIOUS recalls.
@@ -181,8 +181,8 @@ def hook_recall(brain, args, graph_changes):
                         expansions.append(m.get("content", ""))
                 else:
                     expansions.append(resolved.get("content", ""))
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('vocab_expansion', e, 'hook_recall')
 
     enriched = user_message[:500]
     if expansions:
@@ -191,7 +191,8 @@ def hook_recall(brain, args, graph_changes):
     # Recall
     try:
         result = brain.recall(query=enriched, limit=8)
-    except Exception:
+    except Exception as e:
+        brain._log_error('recall_first_attempt', e, 'hook_recall')
         result = brain.recall(query=enriched, limit=8)
 
     results = result.get("results", [])
@@ -233,8 +234,8 @@ def hook_recall(brain, args, graph_changes):
                     seg["segment_id"], seg["similarity"])
             for r in results:
                 brain.add_to_segment(r.get("id", ""))
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('segment_boundary', e, 'hook_recall')
 
     # Gap detection (needed by candidates file + later logging)
     gap = result.get('_gap') if isinstance(result, dict) else None
@@ -380,8 +381,8 @@ def hook_post_response_track(brain, args, graph_changes):
                      "signal": r[2], "timestamp": r[3]}
                     for r in reversed(rows)
                 ]
-            except Exception:
-                pass
+            except Exception as e:
+                brain._log_error('fetch_message_stream', e, 'hook_post_response_track')
 
             # Gather brain context — encoding agent does its OWN recall from DB.
             # Previously read from candidates file (last prompt's recall only).
@@ -435,8 +436,8 @@ def hook_post_response_track(brain, args, graph_changes):
                     {"assumed": r[0], "reality": r[1], "pattern": r[2], "count": r[3]}
                     for r in rows
                 ]
-            except Exception:
-                pass
+            except Exception as e:
+                brain._log_error('fetch_correction_traces', e, 'hook_post_response_track')
 
             # Get previous encoding agent state
             previous_state = brain.get_config('encoding_agent_state', '{}') or '{}'
@@ -460,7 +461,8 @@ def hook_post_response_track(brain, args, graph_changes):
             try:
                 with open(prompt_path) as pf:
                     encoding_instructions = pf.read()
-            except Exception:
+            except Exception as e:
+                brain._log_error('read_encoding_prompt', e, 'hook_post_response_track')
                 encoding_instructions = 'ERROR: Could not read %s' % prompt_path
 
             # Append contract field summary so the agent knows what fields are available
@@ -468,8 +470,8 @@ def hook_post_response_track(brain, args, graph_changes):
                 from .contract import generate_field_summary
                 field_summary = generate_field_summary()
                 encoding_instructions += "\n\n## Available Fields (from contract)\n\n" + field_summary
-            except Exception:
-                pass
+            except Exception as e:
+                brain._log_error('generate_field_summary', e, 'hook_post_response_track')
 
             # Assemble the full prompt with all context inline
             full_prompt = encoding_instructions + "\n\n---\n\n"
@@ -698,8 +700,8 @@ def hook_idle_maintenance(brain, args, graph_changes):
         ref_count = sum(1 for v in reflection.values() if v)
         if ref_count > 0:
             output.append("SELF-REFLECTION: %d reflection(s) generated" % ref_count)
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('self_reflection', e, 'idle_maintenance')
 
     # 6. Backfill summaries
     try:
@@ -707,8 +709,8 @@ def hook_idle_maintenance(brain, args, graph_changes):
         bf_count = backfill.get("updated", 0)
         if bf_count > 0:
             output.append("SUMMARIES: backfilled %d nodes" % bf_count)
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('backfill_summaries', e, 'idle_maintenance')
 
     # 7. Backfill embeddings
     try:
@@ -717,8 +719,8 @@ def hook_idle_maintenance(brain, args, graph_changes):
             emb_count = emb_count.get("count", 0)
         if emb_count and emb_count > 0:
             output.append("EMBEDDINGS: backfilled %d nodes" % emb_count)
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('backfill_embeddings', e, 'idle_maintenance')
 
     # 8. Prune irrelevant auto-captured quotes
     try:
@@ -730,8 +732,8 @@ def hook_idle_maintenance(brain, args, graph_changes):
             for p in prune_result.get("pruned_nodes", [])[:3]:
                 output.append('  pruned: "%s" (sim %.2f) from: %s' % (
                     p["quote"][:50], p["similarity"], p["title"][:40]))
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('prune_quotes', e, 'idle_maintenance')
 
     # 9. DB maintenance (prune old logs, clean orphans)
     try:
@@ -766,8 +768,8 @@ def hook_idle_maintenance(brain, args, graph_changes):
             for g in health.get("gaps", [])[:2]:
                 if g["signal"] != top:
                     output.append("  [%s] %s" % (g["dimension"], g["signal"][:100]))
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('session_health', e, 'idle_maintenance')
 
     # 11. Deep integrity audit
     try:
@@ -789,8 +791,8 @@ def hook_idle_maintenance(brain, args, graph_changes):
         try:
             from hooks.scripts.hook_common import log_hook_output
             log_hook_output("IDLE", output_text="\n".join(output))
-        except Exception:
-            pass
+        except Exception as e:
+            brain._log_error('log_idle_output', e, 'idle_maintenance')
 
     # Log so we can verify idle fires and what it does
     import datetime
@@ -838,8 +840,8 @@ def hook_post_compact_reboot(brain, args, graph_changes):
                 synthesis_info = {"just_ran": True, "parts": parts}
             except Exception as e:
                 synthesis_info = {"error": str(e)}
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('synthesis_safety_net', e, 'hook_post_compact_reboot')
 
     # Re-run lightweight boot
     boot = brain.context_boot(user=user, project=project, task="post-compaction reboot")
@@ -867,15 +869,15 @@ def hook_post_compact_reboot(brain, args, graph_changes):
                         if questions:
                             synthesis_info["open_questions"] = questions
                             synthesis_info["age_minutes"] = age_minutes
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        brain._log_error('parse_open_questions', e, 'hook_post_compact_reboot')
                 elif age_minutes >= 30:
                     synthesis_info["open_questions"] = []
                     synthesis_info["age_minutes"] = age_minutes
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as e:
+                brain._log_error('parse_synth_time', e, 'hook_post_compact_reboot')
+    except Exception as e:
+        brain._log_error('fetch_last_synthesis', e, 'hook_post_compact_reboot')
 
     # Consciousness signals (migrated to signal queue — minimal stub for boot)
     signals = {"reminders": brain.get_due_reminders()}
@@ -884,8 +886,8 @@ def hook_post_compact_reboot(brain, args, graph_changes):
     dev_stage = None
     try:
         dev_stage = brain.assess_developmental_stage()
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('assess_dev_stage', e, 'hook_post_compact_reboot')
 
     # Recall context related to recent work
     recall_results = []
@@ -908,7 +910,8 @@ def hook_post_compact_reboot(brain, args, graph_changes):
             recall_query = " ".join(recall_query_parts)[:500]
             try:
                 result = brain.recall(query=recall_query, limit=8)
-            except Exception:
+            except Exception as e:
+                brain._log_error('reboot_recall_first_attempt', e, 'hook_post_compact_reboot')
                 result = brain.recall(query=recall_query, limit=8)
 
             all_recall = result.get("results", [])
@@ -916,8 +919,8 @@ def hook_post_compact_reboot(brain, args, graph_changes):
                 "SELECT id FROM nodes WHERE created_at > datetime('now', '-2 hours')"
             ).fetchall()}
             recall_results = [r for r in all_recall if r.get("id") not in recent_ids]
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('reboot_recall', e, 'hook_post_compact_reboot')
 
     # Find transcript for rehydration hint
     transcript_path = None
@@ -938,8 +941,8 @@ def hook_post_compact_reboot(brain, args, graph_changes):
                         candidates.append(fpath)
             if candidates:
                 transcript_path = max(candidates, key=os.path.getmtime)
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('find_transcript', e, 'hook_post_compact_reboot')
 
     # ── FORMAT via BrainVoice ──
     voice = BrainVoice(brain)
@@ -975,7 +978,8 @@ def hook_pre_edit(brain, args, graph_changes):
 
     try:
         data = brain.pre_edit(file=filename, tool_name=tool_name)
-    except Exception:
+    except Exception as e:
+        brain._log_error('pre_edit', e, 'hook_pre_edit')
         return {"json": {"decision": "approve"}}
 
     suggestions = data.get("suggestions", [])
@@ -988,8 +992,8 @@ def hook_pre_edit(brain, args, graph_changes):
     change_impacts = []
     try:
         change_impacts = brain.get_change_impact(filename)
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('get_change_impact', e, 'hook_pre_edit')
 
     encoding_warning = _format_encoding_warning(encoding)
 
@@ -1015,8 +1019,8 @@ def hook_pre_edit(brain, args, graph_changes):
                 node_ids_served=json.dumps(node_ids),
                 metadata=json.dumps({"tool": tool_name}),
             )
-        except Exception:
-            pass
+        except Exception as e:
+            brain._log_error('debug_log_pre_edit', e, 'hook_pre_edit')
 
     brain.save()
     return {"json": {"decision": "approve", "reason": context}}
@@ -1031,7 +1035,8 @@ def hook_pre_bash_safety(brain, args, graph_changes):
 
     try:
         result = brain.safety_check(command)
-    except Exception:
+    except Exception as e:
+        brain._log_error('safety_check', e, 'hook_pre_bash_safety')
         return {"json": {
             "decision": "approve",
             "reason": "[BRAIN] \u26a0\ufe0f Safety check failed — proceed carefully. [/BRAIN]",
@@ -1064,8 +1069,8 @@ def hook_pre_bash_safety(brain, args, graph_changes):
                 rule_title=rule_title,
                 claude_action=command[:200],
             )
-        except Exception:
-            pass
+        except Exception as e:
+            brain._log_error('log_conflict', e, 'hook_pre_bash_safety')
 
         return {"json": {"decision": "block", "reason": "\n".join(lines)}}
 
@@ -1104,8 +1109,8 @@ def hook_pre_compact_save(brain, args, graph_changes):
             val = synthesis.get(key)
             if val:
                 parts.append("%s %s" % (val, key))
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('synthesize_session', e, 'hook_pre_compact_save')
 
     # Write compaction boundary marker
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -1127,20 +1132,20 @@ def hook_session_end(brain, args, graph_changes):
     # Synthesize
     try:
         brain.synthesize_session()
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('synthesize_session', e, 'hook_session_end')
 
     # Reflect for next Claude — create boot node with session handoff
     try:
         brain.reflect_for_next_claude()
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('reflect_for_next_claude', e, 'hook_session_end')
 
     # Consolidate
     try:
         brain.consolidate()
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('consolidate', e, 'hook_session_end')
 
     brain.save()
     # Note: the hook client sends "shutdown" separately after this returns
@@ -1162,8 +1167,8 @@ def hook_stop_failure_log(brain, args, graph_changes):
             context=str(error_details)[:500],
         )
         brain.save()
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('log_miss', e, 'hook_stop_failure_log')
 
     return {"output": ""}
 
@@ -1196,12 +1201,12 @@ def hook_config_change_host(brain, args, graph_changes):
             try:
                 from hooks.scripts.hook_common import log_hook_output
                 log_hook_output("HOST_ENV", output_text="\n".join(output_lines))
-            except Exception:
-                pass
+            except Exception as e:
+                brain._log_error('log_host_env_output', e, 'hook_config_change_host')
             graph_changes.append("HOST: environment changed (%d items)" % len(changes))
             brain.save()
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('scan_host_environment', e, 'hook_config_change_host')
 
     return {"output": ""}
 
@@ -1227,12 +1232,12 @@ def hook_post_bash_host_check(brain, args, graph_changes):
             try:
                 from hooks.scripts.hook_common import log_hook_output
                 log_hook_output("HOST_ENV", output_text="\n".join(output_lines))
-            except Exception:
-                pass
+            except Exception as e:
+                brain._log_error('log_host_env_output', e, 'hook_post_bash_host_check')
             graph_changes.append("HOST: env changed after bash (%d items)" % len(changes))
             brain.save()
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('scan_host_environment', e, 'hook_post_bash_host_check')
 
     return {"output": ""}
 
@@ -1251,8 +1256,8 @@ def hook_worktree_context(brain, args, graph_changes):
         )
         if result.returncode == 0:
             branch = result.stdout.strip()
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('git_branch_detect', e, 'hook_worktree_context')
 
     brain.set_config("current_worktree", worktree_name)
     brain.set_config("current_branch", branch)
@@ -1260,8 +1265,8 @@ def hook_worktree_context(brain, args, graph_changes):
 
     try:
         brain.scan_host_environment()
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('scan_host_environment', e, 'hook_worktree_context')
 
     graph_changes.append("WORKTREE: created %s (branch: %s)" % (worktree_name, branch))
 

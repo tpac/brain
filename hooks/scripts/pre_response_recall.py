@@ -73,8 +73,8 @@ try:
         try:
             with open(candidates_path) as f:
                 candidates_data = json.load(f)
-        except Exception:
-            pass
+        except Exception as e:
+            print('[brain] ERROR recall_candidates_parse: %s' % e, file=sys.stderr)
 
     if not candidates_data or not candidates_data.get("candidates"):
         # No candidates — nothing to distill

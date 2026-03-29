@@ -43,10 +43,11 @@ if not user_message and hook_input.get("transcript_path"):
                     elif isinstance(msg, str) and msg:
                         user_message = msg
                         break
-            except Exception:
+            except Exception as e:
+                print('[brain] ERROR track_transcript_entry_parse: %s' % e, file=sys.stderr)
                 continue
-    except Exception:
-        pass
+    except Exception as e:
+        print('[brain] ERROR track_transcript_read: %s' % e, file=sys.stderr)
 event_name = hook_input.get("hook_event_name", "")
 has_user_message = user_message and len(user_message) >= 10
 
@@ -78,5 +79,5 @@ try:
             brain_debug("track: daemon returned ok=false")
     else:
         daemon_unavailable_error("post_response_track")
-except Exception:
-    pass
+except Exception as e:
+    print('[brain] ERROR post_response_track: %s' % e, file=sys.stderr)

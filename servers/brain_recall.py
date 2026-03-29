@@ -171,8 +171,8 @@ class BrainRecallMixin:
                     (node_id, blob, embedder.stats['model_name'], self.now())
                 )
                 stored += 1
-            except Exception:
-                pass  # Skip failed; will retry next cycle
+            except Exception as e:
+                self._log_error('batch_embed_store', e, 'storing embedding for node %s' % node_id[:12])
 
         self.conn.commit()
         return stored
@@ -233,13 +233,14 @@ class BrainRecallMixin:
                         (session_id, query, 'vocab_expansion: ' + ', '.join(expansion_terms), len(expansion_terms), self.now())
                     )
                     self.logs_conn.commit()
-                except Exception:
-                    pass  # Non-critical logging
+                except Exception as e:
+                    self._log_error('vocab_expansion_log', e, 'logging vocabulary expansion')
 
                 return query + ' ' + ' '.join(expansion_terms)
 
             return query
-        except Exception:
+        except Exception as e:
+            self._log_error('vocab_expansion', e, 'expanding query vocabulary')
             return query  # Never break recall due to vocab expansion failure
 
     def _keyword_recall(self, query: str, types: Optional[List[str]] = None, limit: int = 20,
@@ -423,8 +424,8 @@ class BrainRecallMixin:
                         relevance *= 1.5  # Strong boost for last 2 days
                     elif hours_since <= 168:
                         relevance *= 1.2  # Moderate boost for last week
-                except Exception:
-                    pass
+                except Exception as e:
+                    self._log_error('recency_boost', e, 'parsing created_at for recency boost')
 
             # ─── Ebbinghaus retention with time-dilation ───
             retention = 1.0
@@ -480,7 +481,8 @@ class BrainRecallMixin:
                         try:
                             last_accessed_dt = datetime.fromisoformat(last_accessed_str.replace('Z', '+00:00'))
                             last_accessed_ms = last_accessed_dt.timestamp() * 1000
-                        except Exception:
+                        except Exception as e:
+                            self._log_error('decay_parse_last_accessed', e, 'parsing last_accessed for decay')
                             last_accessed_ms = now_ms
 
                         wall_clock_hours = (now_ms - last_accessed_ms) / (1000 * 60 * 60)
@@ -1012,8 +1014,8 @@ class BrainRecallMixin:
                             _freshness = 'this_month'
                         else:
                             _freshness = 'older'
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        self._log_error('freshness_parse', e, 'parsing created_at for freshness classification')
 
                 node['_brain_to_host'] = {
                     'priority': 0.9 if is_locked or is_evolution else (
@@ -1137,8 +1139,8 @@ class BrainRecallMixin:
                         'correction_of': meta_row[2],
                         'last_validated': meta_row[3],
                     }
-            except Exception:
-                pass
+            except Exception as e:
+                self._log_error('recall_node_meta', e, 'fetching node metadata for enrichment')
 
             # Attach neighbor context — reuse existing get_neighbors_with_context,
             # filter to intentional edges in Python
@@ -1153,7 +1155,8 @@ class BrainRecallMixin:
                         for nb in all_neighbors
                         if nb.get('relation') in INTENTIONAL_EDGE_TYPES
                     ][:neighbor_limit]
-                except Exception:
+                except Exception as e:
+                    self._log_error('recall_node_neighbors', e, 'fetching neighbor context')
                     node['_neighbors'] = []
 
     def _traverse_graph(self, seeds: List[Dict], query_vec=None) -> tuple:
@@ -1185,7 +1188,8 @@ class BrainRecallMixin:
             try:
                 dt = datetime.fromisoformat(str(ts).replace('Z', '+00:00'))
                 hours = (datetime.now(dt.tzinfo) - dt).total_seconds() / 3600
-            except Exception:
+            except Exception as e:
+                self._log_error('freshness_multiplier', e, 'parsing timestamp for freshness multiplier')
                 return FRESHNESS_MULTIPLIERS.get('older', 0.6)
             if hours < 24:
                 return FRESHNESS_MULTIPLIERS.get('today', 1.2)
@@ -1213,8 +1217,8 @@ class BrainRecallMixin:
                         sim = dot / (mag_a * mag_b)
                         if sim >= TRAVERSE_SEMANTIC_THRESHOLD:
                             return TRAVERSE_SEMANTIC_BONUS * sim
-            except Exception:
-                pass
+            except Exception as e:
+                self._log_error('traverse_semantic', e, 'computing semantic bonus for graph traversal')
             return 0.0
 
         for seed in seeds:
@@ -1453,7 +1457,8 @@ class BrainRecallMixin:
                     'critical': row[13] == 1 if len(row) > 13 else False
                 })
             return results
-        except Exception:
+        except Exception as e:
+            self._log_error('search_keywords', e, 'keyword search query execution')
             return []
 
     def _mark_accessed(self, node_id: str, session_id: str):

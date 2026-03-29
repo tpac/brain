@@ -14,6 +14,7 @@ Architecture: COMPUTE (brain_consciousness.py) → DECIDE+FORMAT (here) → DELI
 """
 
 import json
+import sys
 from typing import List, Dict, Any, Optional, Callable, Union
 
 from . import embedder
@@ -156,8 +157,8 @@ class BrainVoice:
                 graph_dal = GraphDAL(conn)
                 d1_neighbors = graph_dal.get_neighbors_rich(
                     node_id, limit=max_d1, exclude_node_ids=seen_ids)
-            except Exception:
-                pass
+            except Exception as e:
+                print('[brain_voice] ERROR format_node_deep d1_neighbors: %s' % e, file=sys.stderr)
 
         for nb in d1_neighbors:
             nb_id = nb.get("id", "")
@@ -194,10 +195,10 @@ class BrainVoice:
                                     lines.append("        \u21b3 \"%s\" (id:%s)" % (
                                         nb3.get("title", ""),
                                         nb3_id))
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
+                            except Exception as e:
+                                print('[brain_voice] ERROR format_node_deep d3_neighbors: %s' % e, file=sys.stderr)
+                except Exception as e:
+                    print('[brain_voice] ERROR format_node_deep d2_neighbors: %s' % e, file=sys.stderr)
 
         lines.append("")
 
@@ -528,7 +529,8 @@ class BrainVoice:
         def _safe(fn, default=None):
             try:
                 return fn()
-            except Exception:
+            except Exception as e:
+                print('[brain_voice] ERROR _safe(%s): %s' % (getattr(fn, '__name__', 'lambda'), e), file=sys.stderr)
                 return default
 
         self_knowledge = _safe(lambda: brain.fetch_self_knowledge(limit=5), [])
@@ -941,8 +943,8 @@ class BrainVoice:
                 out.append("Precision (24h): %d recalls, %d eval (%.0f%%) — +%d -%d ~%d ?%d" % (
                     tr, ev, ev / tr * 100, fs.get("positive", 0), fs.get("negative", 0),
                     fs.get("neutral", 0), fs.get("uncertain", 0) + fs.get("ask_operator", 0)))
-        except Exception:
-            pass
+        except Exception as e:
+            print('[brain_voice] ERROR boot_precision_stats: %s' % e, file=sys.stderr)
 
         # Embedder
         if embedder.is_ready():
@@ -972,8 +974,8 @@ class BrainVoice:
                 out.append("Hook activity (24h):")
                 for r in rows:
                     out.append("  %s: %d fires, avg %.0fms" % (r[0].replace("hook_", ""), r[1], r[2] or 0))
-        except Exception:
-            pass
+        except Exception as e:
+            print('[brain_voice] ERROR boot_hook_telemetry: %s' % e, file=sys.stderr)
 
         out.append("")
         out.append("Use brain MCP tools: recall, remember, connect, eval, consciousness")

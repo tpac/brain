@@ -59,8 +59,8 @@ def _handle_recall(brain, args, graph_changes):
             query=args.get("query", ""), limit=args.get("limit", 8))
         try:
             brain._log_error("recall_degraded", e, "Fell back to keyword-only recall")
-        except Exception:
-            pass
+        except Exception as e2:
+            print('[daemon_dispatch] ERROR logging recall_degraded: %s (original: %s)' % (e2, e), file=__import__('sys').stderr)
         return {"ok": True, "result": result,
                 "_degraded": "keyword_fallback", "_reason": str(e)}
 
@@ -210,7 +210,8 @@ def _handle_pre_edit(brain, args, graph_changes):
         tool_name=args.get("tool_name", "Edit"))
     try:
         data["change_impacts"] = brain.get_change_impact(args.get("file", ""))
-    except Exception:
+    except Exception as e:
+        brain._log_error("pre_edit_change_impact", e, "fetching change impacts for %s" % args.get("file", "")[:60])
         data["change_impacts"] = []
     return {"ok": True, "result": data}
 
@@ -341,8 +342,8 @@ def _handle_revise(brain, args, graph_changes):
             brain._log_error('write_verification',
                 Exception('Revise verification failed for %s: %s' % (node_id[:12], failures)),
                 'Fields claimed updated but read-back shows mismatch')
-        except Exception:
-            pass
+        except Exception as e2:
+            print('[daemon_dispatch] ERROR logging write_verification: %s' % e2, file=__import__('sys').stderr)
 
     graph_changes.append("REVISE: [%s] %s" % (
         result.get("type", "?"), result.get("title", "")[:50]))
@@ -470,7 +471,8 @@ def _handle_get_node(brain, args, graph_changes):
              "title": e[3] or "", "type": e[4] or ""}
             for e in edges
         ]
-    except Exception:
+    except Exception as e:
+        brain._log_error("get_node_connections", e, "fetching connections for node %s" % node_id[:12])
         node["connections"] = []
     return {"ok": True, "result": node}
 
