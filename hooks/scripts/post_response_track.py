@@ -62,7 +62,7 @@ try:
         brain_debug("track: event=%s, user_msg=%d chars, assistant_msg=%d chars" % (
             event_name or "UserPromptSubmit", len(user_message), len(last_msg)))
         resp = daemon_call_raw("hook_post_response_track", {
-            "prompt": hook_input.get("prompt", ""),
+            "prompt": user_message,  # extracted from transcript, not raw hook_input
             "message": hook_input.get("message", ""),
             "hook_event_name": event_name,
             "last_assistant_message": last_msg,
