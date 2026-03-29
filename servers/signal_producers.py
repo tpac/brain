@@ -236,3 +236,226 @@ def _produce_conflicts(brain, sq_dal):
             )
     except Exception as e:
         log.warning("_produce_conflicts failed: %s", e)
+
+
+# ── 5. SYSTEM INTEGRITY (lightweight, runs every recall) ──
+
+# Types the system actively queries by name — these get special treatment
+STRUCTURAL_TYPES = {
+    'vocabulary', 'rule', 'decision', 'mechanism', 'lesson', 'impact',
+    'convention', 'pattern', 'constraint', 'correction', 'purpose', 'tension',
+}
+
+def produce_integrity(brain, sq_dal):
+    """Lightweight integrity checks — runs on every recall.
+
+    Surfaces:
+    - Duplicate clusters (same title prefix appearing 3+ times)
+    - Emergent types (non-structural types with 10+ nodes)
+    - Revision drought (0 revisions ever)
+    """
+    try:
+        _check_duplicates(brain, sq_dal)
+        _check_emergent_types(brain, sq_dal)
+        _check_revision_drought(brain, sq_dal)
+    except Exception as e:
+        log.warning("produce_integrity failed: %s", e)
+
+
+def _check_duplicates(brain, sq_dal):
+    """Flag title clusters that suggest duplication."""
+    try:
+        rows = brain.conn.execute("""
+            SELECT SUBSTR(title, 1, 35) as prefix, COUNT(*) as cnt
+            FROM nodes WHERE archived=0
+            GROUP BY prefix HAVING cnt >= 3
+            ORDER BY cnt DESC LIMIT 3
+        """).fetchall()
+        for r in rows:
+            sq_dal.enqueue(
+                id="integrity:dupe:%s" % r[0][:30].replace(" ", "_"),
+                producer="integrity",
+                signal_type="duplicate_cluster",
+                priority=0.45,
+                content="🔄 Duplicate cluster: \"%s...\" × %d nodes — review and consolidate" % (r[0], r[1]),
+                cooldown_seconds=3600,  # 1h — not urgent
+                max_surfaces=2,
+            )
+    except Exception:
+        pass
+
+
+def _check_emergent_types(brain, sq_dal):
+    """Flag non-structural types that have accumulated enough to consider promoting."""
+    try:
+        rows = brain.conn.execute("""
+            SELECT type, COUNT(*) as cnt FROM nodes
+            WHERE archived=0 GROUP BY type HAVING cnt >= 10
+            ORDER BY cnt DESC
+        """).fetchall()
+        for r in rows:
+            if r[0] not in STRUCTURAL_TYPES:
+                sq_dal.enqueue(
+                    id="integrity:emergent_type:%s" % r[0],
+                    producer="integrity",
+                    signal_type="emergent_type",
+                    priority=0.40,
+                    content="🌱 Type \"%s\" has %d nodes but no system behavior — promote to structural?" % (r[0], r[1]),
+                    cooldown_seconds=7200,  # 2h
+                    max_surfaces=1,
+                )
+    except Exception:
+        pass
+
+
+def _check_revision_drought(brain, sq_dal):
+    """Flag if no node has ever been revised — the revision mechanism isn't working."""
+    try:
+        revised = brain.conn.execute(
+            "SELECT COUNT(*) FROM nodes WHERE archived=0 AND revised_at IS NOT NULL"
+        ).fetchone()[0]
+        total = brain.conn.execute(
+            "SELECT COUNT(*) FROM nodes WHERE archived=0"
+        ).fetchone()[0]
+        if total > 50 and revised == 0:
+            sq_dal.enqueue(
+                id="integrity:revision_drought",
+                producer="integrity",
+                signal_type="revision_drought",
+                priority=0.55,
+                content="⚠️ 0 of %d nodes ever revised — stale information accumulates without revision" % total,
+                cooldown_seconds=7200,
+                max_surfaces=2,
+            )
+        elif total > 100:
+            pct = revised / total * 100
+            if pct < 5:
+                sq_dal.enqueue(
+                    id="integrity:low_revision",
+                    producer="integrity",
+                    signal_type="low_revision",
+                    priority=0.35,
+                    content="📊 Only %d of %d nodes (%.0f%%) ever revised — most knowledge is first-draft" % (revised, total, pct),
+                    cooldown_seconds=14400,  # 4h
+                    max_surfaces=1,
+                )
+    except Exception:
+        pass
+
+
+# ── 6. DEEP INTEGRITY AUDIT (runs during idle maintenance) ──
+
+def deep_integrity_audit(brain):
+    """Full brain health audit — runs during idle maintenance.
+
+    Returns a list of findings, each: {type, severity, message, details}
+    """
+    findings = []
+
+    try:
+        # 1. Duplicate detection — find nodes with very similar titles
+        rows = brain.conn.execute("""
+            SELECT SUBSTR(title, 1, 35) as prefix, COUNT(*) as cnt,
+                   GROUP_CONCAT(id, ',') as ids
+            FROM nodes WHERE archived=0
+            GROUP BY prefix HAVING cnt >= 2
+            ORDER BY cnt DESC LIMIT 20
+        """).fetchall()
+        for r in rows:
+            findings.append({
+                "type": "duplicate_cluster",
+                "severity": "medium" if r[1] >= 4 else "low",
+                "message": "\"%s...\" × %d nodes" % (r[0], r[1]),
+                "node_ids": r[2].split(",")[:5],
+            })
+
+        # 2. Emergent types
+        rows = brain.conn.execute("""
+            SELECT type, COUNT(*) as cnt FROM nodes
+            WHERE archived=0 GROUP BY type ORDER BY cnt DESC
+        """).fetchall()
+        for r in rows:
+            if r[0] not in STRUCTURAL_TYPES and r[1] >= 5:
+                findings.append({
+                    "type": "emergent_type",
+                    "severity": "info" if r[1] < 10 else "medium",
+                    "message": "Type \"%s\" has %d nodes — no system behavior defined" % (r[0], r[1]),
+                    "count": r[1],
+                })
+
+        # 3. Cold zones — nodes not accessed in 14+ days
+        cold = brain.conn.execute("""
+            SELECT COUNT(*) FROM nodes WHERE archived=0
+            AND (last_accessed IS NULL OR last_accessed < datetime('now', '-14 days'))
+        """).fetchone()[0]
+        total = brain.conn.execute("SELECT COUNT(*) FROM nodes WHERE archived=0").fetchone()[0]
+        if total > 0:
+            cold_pct = cold / total * 100
+            if cold_pct > 30:
+                findings.append({
+                    "type": "cold_zone",
+                    "severity": "medium",
+                    "message": "%d of %d nodes (%.0f%%) not accessed in 14+ days" % (cold, total, cold_pct),
+                })
+
+        # 4. Isolated nodes (no edges)
+        isolated = brain.conn.execute("""
+            SELECT COUNT(*) FROM nodes n WHERE n.archived=0
+            AND NOT EXISTS (SELECT 1 FROM edges WHERE source_id=n.id OR target_id=n.id)
+        """).fetchone()[0]
+        if isolated > 5:
+            findings.append({
+                "type": "isolated_nodes",
+                "severity": "medium",
+                "message": "%d nodes with zero connections — invisible to graph traversal" % isolated,
+            })
+
+        # 5. Revision stats
+        revised = brain.conn.execute(
+            "SELECT COUNT(*) FROM nodes WHERE archived=0 AND revised_at IS NOT NULL"
+        ).fetchone()[0]
+        findings.append({
+            "type": "revision_stats",
+            "severity": "info",
+            "message": "%d of %d nodes revised (%.0f%%)" % (revised, total, revised / max(1, total) * 100),
+        })
+
+        # 6. Edge type distribution — are co_accessed dominating?
+        edge_types = brain.conn.execute("""
+            SELECT relation, COUNT(*) as cnt FROM edges GROUP BY relation ORDER BY cnt DESC LIMIT 5
+        """).fetchall()
+        total_edges = sum(r[1] for r in edge_types)
+        for r in edge_types:
+            pct = r[1] / max(1, total_edges) * 100
+            if r[0] == 'co_accessed' and pct > 70:
+                findings.append({
+                    "type": "edge_imbalance",
+                    "severity": "info",
+                    "message": "co_accessed edges are %.0f%% of all edges — organic but noisy" % pct,
+                })
+
+        # 7. Metadata sparseness
+        meta_total = brain.conn.execute("SELECT COUNT(*) FROM node_metadata").fetchone()[0]
+        if meta_total > 0:
+            for field in ['reasoning', 'user_raw_quote', 'source_context']:
+                filled = brain.conn.execute(
+                    "SELECT COUNT(*) FROM node_metadata WHERE %s IS NOT NULL AND %s != ''" % (field, field)
+                ).fetchone()[0]
+                pct = filled / meta_total * 100
+                if pct < 30:
+                    findings.append({
+                        "type": "sparse_metadata",
+                        "severity": "low",
+                        "message": "node_metadata.%s: only %.0f%% filled (%d of %d)" % (field, pct, filled, meta_total),
+                    })
+        else:
+            findings.append({
+                "type": "no_metadata",
+                "severity": "medium",
+                "message": "node_metadata table is empty — no reasoning, quotes, or corrections tracked",
+            })
+
+    except Exception as e:
+        findings.append({"type": "audit_error", "severity": "high", "message": str(e)})
+
+    return findings

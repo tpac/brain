@@ -312,6 +312,7 @@ def hook_recall(brain, args, graph_changes):
     from .signal_producers import (
         produce_reminders, produce_encoding_gap,
         produce_vocabulary_gap, produce_system_health,
+        produce_integrity,
     )
 
     sq_dal = SignalQueueDAL(brain.logs_conn)
@@ -319,6 +320,7 @@ def hook_recall(brain, args, graph_changes):
     produce_encoding_gap(brain, sq_dal)
     produce_vocabulary_gap(brain, sq_dal)
     produce_system_health(brain, sq_dal)
+    produce_integrity(brain, sq_dal)
 
     # ── ASSEMBLE: budget-aware output ──
     assembler = SurfaceAssembler(sq_dal, budget_chars=6000)
@@ -758,6 +760,21 @@ def hook_idle_maintenance(brain, args, graph_changes):
                     output.append("  [%s] %s" % (g["dimension"], g["signal"][:100]))
     except Exception:
         pass
+
+    # 11. Deep integrity audit
+    try:
+        from .signal_producers import deep_integrity_audit
+        findings = deep_integrity_audit(brain)
+        if findings:
+            severe = [f for f in findings if f.get("severity") in ("high", "medium")]
+            if severe:
+                output.append("")
+                output.append("INTEGRITY AUDIT (%d finding(s), %d need attention):" % (len(findings), len(severe)))
+                for f in severe[:5]:
+                    output.append("  [%s] %s: %s" % (f["severity"], f["type"], f["message"]))
+                graph_changes.append("INTEGRITY: %d findings" % len(findings))
+    except Exception as e:
+        output.append("INTEGRITY AUDIT ERROR: %s" % e)
 
     # Log to dashboard (not additionalContext — idle maintenance is operational, not conversational)
     if output:
