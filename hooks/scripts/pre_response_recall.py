@@ -99,9 +99,9 @@ try:
             locked = "LOCKED " if c.get("locked") else ""
             candidates_text += "[%s] %s%s (id:%s, conf:%.2f, revised:%s, created:%s)\n" % (
                 c.get("type", "?"), locked, c.get("title", "?"),
-                c.get("id", "")[:16], c.get("confidence", 0),
+                c.get("id", "")[:16], c.get("confidence") or 0,
                 c.get("revised_at") or "never",
-                str(c.get("created_at", ""))[:10])
+                str(c.get("created_at") or "")[:10])
             candidates_text += "  %s\n" % (c.get("content") or "")[:300]
 
             # Graph neighborhood (degree 1 with relation + type)
@@ -120,7 +120,7 @@ try:
                 candidates_text += "  →→ %s\n" % d2_titles
 
             candidates_text += "\n"
-            if c.get("confidence", 0) > 0.3:
+            if (c.get("confidence") or 0) > 0.3:
                 relevant_count += 1
 
         # Dynamic budget based on query complexity
