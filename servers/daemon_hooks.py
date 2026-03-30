@@ -419,10 +419,9 @@ def hook_post_response_track(brain, args, graph_changes):
                     except Exception as enc_e:
                         _enc_ms = int((_t.time() - _enc_t0) * 1000)
                         print("[brain-hooks] ENCODING AGENT FAILED after %dms: %s" % (_enc_ms, enc_e), flush=True)
-                        try:
-                            brain._log_error('encoding_agent_run', enc_e, 'Encoding failed after %dms' % _enc_ms)
-                        except Exception:
-                            pass
+                        # Don't use brain._log_error here — it writes to the main
+                        # brain's logs_conn from a background thread, causing
+                        # "database is locked" on the main thread's log writes.
                     finally:
                         _encoding_lock.release()
 
