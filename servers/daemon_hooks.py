@@ -370,7 +370,7 @@ def hook_post_response_track(brain, args, graph_changes):
     try:
         counter = int(brain.get_config('stop_counter', '0') or '0') + 1
         brain.set_config('stop_counter', str(counter))
-        position = counter % 5  # 0 = encoding fires
+        position = counter % 5  # Fire encoding every 5th stop
 
         if position == 0:
             from .encoding_agent import run_encoding

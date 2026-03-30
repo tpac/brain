@@ -39,35 +39,49 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
     from .pipeline_contract import ENCODING_AGENT
     from .brain_voice import BrainVoice
 
+    _t0 = time.time()
+    profile = []  # (step, ms)
+
+    def _step(name):
+        profile.append((name, int((time.time() - _t0) * 1000)))
+
     # Load API key from .env
     _load_env()
+    _step("env_loaded")
 
     try:
         client = anthropic.Anthropic()
     except Exception as e:
         brain._log_error('encoding_agent_api', e, 'Cannot create Anthropic client')
+        _log("PROFILE FAILED at api_init: %s" % e)
         return {"error": str(e)}
+    _step("api_client")
 
     session_id = brain.get_config('session_id', 'unknown')
 
     # 1. Gather messages from DB
     messages = _gather_messages(brain, session_id)
+    _step("messages(%d)" % len(messages))
     if not messages:
-        _log("no messages, skipping.")
+        _log("no messages, skipping. PROFILE: %s" % profile)
         return {"skipped": True, "reason": "no messages"}
 
     # 2. Independent recall
     recall_context = _gather_recall_context(brain, messages)
+    _step("recall(%d chars)" % len(recall_context))
 
     # 3. Build prompt
     system_prompt = _build_system_prompt()
     user_content = _build_user_content(brain, messages, recall_context, counter)
+    _step("prompt(%d chars)" % len(user_content))
 
     # 4. Get tool schemas
     tools = _get_tool_schemas()
+    _step("tools(%d)" % len(tools))
 
     # 5. Call Sonnet with tool use loop
     _log("calling Sonnet with %d tools, %d chars context..." % (len(tools), len(user_content)))
+    _log("PROFILE so far: %s" % " → ".join("%s:%dms" % (n, t) for n, t in profile))
 
     try:
         api_messages = [{"role": "user", "content": user_content}]
@@ -75,6 +89,7 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
             model="claude-sonnet-4-6", max_tokens=4096,
             system=system_prompt, messages=api_messages, tools=tools)
 
+        _step("sonnet_r0")
         actions = []
         rounds = 0
         for rounds in range(8):
@@ -107,6 +122,7 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
             response = client.messages.create(
                 model="claude-sonnet-4-6", max_tokens=4096,
                 system=system_prompt, messages=api_messages, tools=tools)
+            _step("sonnet_r%d" % (rounds + 1))
 
         # Save agent state
         final_text = "".join(b.text for b in response.content if b.type == "text")
@@ -114,13 +130,17 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
             brain.set_config('encoding_agent_state', final_text[:2000])
 
         brain.save()
-        _log("done. %d rounds, %d actions." % (rounds + 1, len(actions)))
-        return {"rounds": rounds + 1, "actions": actions}
+        _step("saved")
+        profile_str = " → ".join("%s:%dms" % (n, t) for n, t in profile)
+        _log("done. %d rounds, %d actions. PROFILE: %s" % (rounds + 1, len(actions), profile_str))
+        return {"rounds": rounds + 1, "actions": len(actions), "profile": profile}
 
     except Exception as e:
-        brain._log_error('encoding_agent_sonnet', e, 'Sonnet API call failed')
-        _log("FAILED: %s" % e)
-        return {"error": str(e)}
+        _step("FAILED")
+        profile_str = " → ".join("%s:%dms" % (n, t) for n, t in profile)
+        brain._log_error('encoding_agent_sonnet', e, 'Sonnet API call failed. PROFILE: %s' % profile_str)
+        _log("FAILED: %s PROFILE: %s" % (e, profile_str))
+        return {"error": str(e), "profile": profile}
 
 
 def _load_env():
