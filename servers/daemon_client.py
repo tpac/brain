@@ -146,8 +146,18 @@ def ensure_daemon(db_path: str) -> bool:
         current_fp = _code_fingerprint()
         if current_fp != "unknown" and daemon_fp and daemon_fp != current_fp:
             sys.stderr.write(
-                "[brain-daemon] Code changed ({} → {}) — restarting\n"
+                "[brain-daemon] Code changed ({} → {}) — requesting graceful restart\n"
                 .format(daemon_fp[:12], current_fp[:12]))
+            # Use daemon's own restart (saves brain, clears cache, re-execs same PID)
+            # instead of kill (loses unsaved state, triggers race conditions)
+            restart_resp = send_command("restart", timeout=5.0)
+            if restart_resp.get("ok"):
+                sys.stderr.write("[brain-daemon] Restart command sent, waiting...\n")
+                time.sleep(6)  # Daemon needs ~4s for embedder reload
+                if _can_connect().get("ok"):
+                    return True
+            # Graceful restart failed — fall through to kill + respawn
+            sys.stderr.write("[brain-daemon] Graceful restart failed, killing...\n")
             _kill_daemon()
             time.sleep(1)
         else:
