@@ -222,8 +222,13 @@ def compute_distiller_budget(user_message, relevant_count):
     return budget, max_tokens
 
 
-def build_distiller_prompt(candidates, user_message):
+def build_distiller_prompt(candidates, user_message, recent_messages=None):
     """Build the complete distiller prompt. Single entry point.
+
+    Args:
+        candidates: List of candidate node dicts
+        user_message: The user's latest message
+        recent_messages: List of {"role": str, "content": str} for last 5 messages
 
     Returns: (prompt_string, budget, max_tokens)
     """
@@ -232,22 +237,33 @@ def build_distiller_prompt(candidates, user_message):
         candidates, user_message)
     budget, max_tokens = compute_distiller_budget(user_message, relevant_count)
 
-    prompt = """You are the awareness layer of a persistent AI brain.
-Distill these memory candidates into focused context for the main AI.
+    # Format recent messages
+    recent_text = ""
+    if recent_messages:
+        for msg in recent_messages[-5:]:
+            role = (msg.get("role") or "?").upper()
+            content = (msg.get("content") or "")[:200]
+            recent_text += "[%s]: %s\n" % (role, content)
 
-USER MESSAGE: %s
+    prompt = """You are the awareness layer of a persistent AI brain.
+Filter memory candidates to what's relevant for the main AI's next response.
+
+RECENT MESSAGES (last 5):
+%s
+
+USER'S LATEST MESSAGE: %s
 
 CANDIDATES:
 %s
+
 Rules:
-- Only include what's DIRECTLY relevant to the user's message
-- Preserve node IDs like (id:abc123) so the AI can pull full details
-- Include graph connections when they add context (→ related nodes)
-- If a correction or rule applies, lead with it
-- If nothing is relevant, return just the word EMPTY. No explanation.
-- Max %d characters. Be surgical, like a colleague whispering context.
-- If this seems like the start of a conversation, be more generous.
-- NEVER add your own opinions or analysis. You are a filter, not an advisor.""" % (
+- Only include what's DIRECTLY relevant to the user's message and current session topic
+- Preserve node IDs like (id:abc123)
+- Include graph connections when they add useful context
+- Lead with corrections/rules if they apply
+- If nothing is relevant, return EMPTY
+- Max %d characters""" % (
+        recent_text or "(no recent messages)",
         (user_message or "")[:cfg['user_message_limit']],
         candidates_text,
         budget,

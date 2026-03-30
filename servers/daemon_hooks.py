@@ -276,6 +276,20 @@ def hook_recall(brain, args, graph_changes):
             candidates_data.append(node_data)
         # v8.8: Include vocab context — connectors surfaced separately
         vocab_context = result.get('vocab_context', []) if isinstance(result, dict) else []
+
+        # v8.9: Include recent messages for distiller context
+        recent_messages = []
+        try:
+            msg_rows = brain.logs_conn.execute(
+                "SELECT role, content FROM message_stream WHERE session_id = ? "
+                "ORDER BY timestamp DESC LIMIT 5",
+                (session_id,)
+            ).fetchall()
+            recent_messages = [{"role": r[0], "content": (r[1] or "")[:300]}
+                               for r in reversed(msg_rows)]
+        except Exception:
+            pass
+
         with open(candidates_path, 'w') as f:
             _json.dump({
                 "user_message": user_message,
@@ -285,6 +299,7 @@ def hook_recall(brain, args, graph_changes):
                 "vocab_context": [{"id": v.get("id", ""), "title": v.get("title", ""),
                                    "content": v.get("content", "")[:200]}
                                   for v in vocab_context[:5]],
+                "recent_messages": recent_messages,
             }, f, default=str)
     except Exception as e:
         brain._log_error('recall_candidates_write', e, 'Failed to write candidates file')

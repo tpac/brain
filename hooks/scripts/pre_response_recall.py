@@ -96,7 +96,8 @@ try:
             os.path.dirname(os.path.abspath(__file__)))), 'servers'))
         from pipeline_contract import build_distiller_prompt
         distill_prompt, budget, max_tokens = build_distiller_prompt(
-            candidates, user_message)
+            candidates, user_message,
+            recent_messages=candidates_data.get("recent_messages", []))
 
         api_resp = client.messages.create(
             model="claude-haiku-4-5",
