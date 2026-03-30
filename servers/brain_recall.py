@@ -54,33 +54,18 @@ class BrainRecallMixin:
 
     def get_node(self, node_id: str) -> Optional[Dict[str, Any]]:
         """Get a single node by ID with full content and connections."""
-        row = self.conn.execute(
-            "SELECT id, type, title, content, keywords, confidence, locked, "
-            "created_at, updated_at, revised_at, access_count, emotion, "
-            "emotion_label, project, encoding_source, content_summary "
-            "FROM nodes WHERE id = ?", (node_id,)
-        ).fetchone()
-        if not row:
+        node_dal = NodeDAL(self.conn)
+        node = node_dal.get_node(node_id)
+        if not node:
             return None
-        node = {
-            "id": row[0], "type": row[1], "title": row[2], "content": row[3],
-            "keywords": row[4], "confidence": row[5], "locked": bool(row[6]),
-            "created_at": row[7], "updated_at": row[8], "revised_at": row[9],
-            "access_count": row[10], "emotion": row[11],
-            "emotion_label": row[12] or "neutral", "project": row[13],
-            "encoding_source": row[14], "content_summary": row[15],
-        }
         # Attach connections
-        edges = self.conn.execute(
-            "SELECT e.target_id, e.relation, e.weight, n.title, n.type "
-            "FROM edges e LEFT JOIN nodes n ON n.id = e.target_id "
-            "WHERE e.source_id = ? ORDER BY e.weight DESC LIMIT 10",
-            (node_id,)
-        ).fetchall()
+        graph_dal = GraphDAL(self.conn)
+        neighbors = graph_dal.get_neighbors_with_context(node_id, limit=10)
         node["connections"] = [
-            {"target_id": e[0], "relation": e[1], "weight": e[2],
-             "title": e[3] or "", "type": e[4] or ""}
-            for e in edges
+            {"target_id": n["id"], "relation": n.get("relation", ""),
+             "weight": n.get("weight", 0), "title": n.get("title", ""),
+             "type": n.get("type", "")}
+            for n in neighbors
         ]
         return node
 
@@ -290,26 +275,12 @@ class BrainRecallMixin:
                 unique_terms = list(set(tfidf_query_terms))
                 tfidf_dal = TfIdfDAL(self.conn)
                 tfidf_node_ids = tfidf_dal.get_nodes_matching_terms(unique_terms)
+                _node_dal = NodeDAL(self.conn)
                 for nid in tfidf_node_ids[:50]:
                     if nid not in all_seeds:
-                        # Fetch node data
-                        cursor2 = self.conn.execute(
-                            '''SELECT id, type, title, content, keywords, activation, stability,
-                                      access_count, locked, archived, last_accessed, created_at, critical
-                               FROM nodes WHERE id = ?''',
-                            (nid,)
-                        )
-                        row2 = cursor2.fetchone()
-                        if row2:
-                            all_seeds[nid] = {
-                                'id': row2[0], 'type': row2[1], 'title': row2[2],
-                                'content': row2[3], 'keywords': row2[4],
-                                'activation': row2[5], 'stability': row2[6],
-                                'access_count': row2[7], 'locked': row2[8] == 1,
-                                'archived': row2[9] == 1, 'last_accessed': row2[10],
-                                'created_at': row2[11],
-                                'critical': row2[12] == 1 if len(row2) > 12 else False
-                            }
+                        node = _node_dal.get_node(nid)
+                        if node and not node.get('archived'):
+                            all_seeds[nid] = node
             except Exception as _e:
                 self._log_error("recall", _e, "fetching seed node details from database")
 
@@ -948,32 +919,10 @@ class BrainRecallMixin:
             nid = sr['node_id']
             node = keyword_nodes.get(nid)
             if not node:
-                # Node came from embedding-only path — fetch from DB
+                # Node came from embedding-only path — fetch from DB via DAL
                 try:
-                    cursor = self.conn.execute(
-                        '''SELECT id, type, title, content, keywords, activation, stability,
-                                  access_count, locked, archived, last_accessed, created_at,
-                                  emotion, emotion_label, project, personal, personal_context,
-                                  content_summary, confidence, updated_at, revised_at
-                           FROM nodes WHERE id = ?''',
-                        (nid,)
-                    )
-                    row = cursor.fetchone()
-                    if row:
-                        node = {
-                            'id': row[0], 'type': row[1], 'title': row[2],
-                            'content': row[3], 'keywords': row[4],
-                            'activation': row[5], 'stability': row[6],
-                            'access_count': row[7], 'locked': row[8] == 1,
-                            'archived': row[9] == 1, 'last_accessed': row[10],
-                            'created_at': row[11], 'emotion': row[12],
-                            'emotion_label': row[13], 'project': row[14],
-                            'personal': row[15], 'personal_context': row[16],
-                            'content_summary': row[17],
-                            'confidence': row[18],
-                            'updated_at': row[19],
-                            'revised_at': row[20],
-                        }
+                    _node_dal = NodeDAL(self.conn)
+                    node = _node_dal.get_node(nid)
                 except Exception as e:
                     self._log_error("recall_hydrate", e, "Failed to hydrate node %s" % nid[:8])
                     continue
@@ -1398,26 +1347,9 @@ class BrainRecallMixin:
         for node_id, act in activation.items():
             node = node_cache.get(node_id)
             if not node:
-                cursor = self.conn.execute(
-                    '''SELECT id, type, title, content, keywords, activation, stability,
-                              access_count, locked, archived, last_accessed, created_at,
-                              emotion, emotion_label, project, critical
-                       FROM nodes WHERE id = ?''',
-                    (node_id,)
-                )
-                row = cursor.fetchone()
-                if row:
-                    node = {
-                        'id': row[0], 'type': row[1], 'title': row[2],
-                        'content': row[3], 'keywords': row[4],
-                        'activation': row[5], 'stability': row[6],
-                        'access_count': row[7], 'locked': row[8] == 1,
-                        'archived': row[9] == 1, 'last_accessed': row[10],
-                        'created_at': row[11],
-                        'emotion': row[12] or 0, 'emotion_label': row[13] or 'neutral',
-                        'project': row[14],
-                        'critical': row[15] == 1 if len(row) > 15 else False
-                    }
+                _ndal = NodeDAL(self.conn)
+                node = _ndal.get_node(node_id)
+                if node:
                     node_cache[node_id] = node
 
             if node:
@@ -1527,7 +1459,7 @@ class BrainRecallMixin:
                     graph_dal.create_edge(
                         nid_i, nid_j,
                         weight=EDGE_TYPES['co_accessed']['defaultWeight'],
-                        relation='co_accessed', edge_type='co_accessed')
+                        relation='co_accessed')
 
         self.conn.commit()
 
