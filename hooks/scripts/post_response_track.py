@@ -67,7 +67,7 @@ try:
             "message": hook_input.get("message", ""),
             "hook_event_name": event_name,
             "last_assistant_message": last_msg,
-        }, timeout=55.0)  # Encoding agent runs ~49s on every 5th stop
+        }, timeout=10.0)  # Encoding now runs in background thread — hook returns fast
         latency = (time.time() - t0) * 1000
         if resp.get("ok"):
             output = resp.get("result", {}).get("output", "")

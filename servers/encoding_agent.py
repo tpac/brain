@@ -32,6 +32,7 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
         dict with encoding results summary
     """
     def _log(msg):
+        print("[encoding-agent] %s" % msg, flush=True)
         if log_fn:
             log_fn("Encoding agent: %s" % msg)
 
@@ -124,10 +125,25 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
                 system=system_prompt, messages=api_messages, tools=tools)
             _step("sonnet_r%d" % (rounds + 1))
 
-        # Save agent state
+        # Save agent state + surface questions to operator
         final_text = "".join(b.text for b in response.content if b.type == "text")
         if final_text:
             brain.set_config('encoding_agent_state', final_text[:2000])
+            # Surface questions to Tom via signal queue
+            if '?' in final_text:
+                try:
+                    from .dal_signal_queue import SignalQueueDAL
+                    sq = SignalQueueDAL(brain.logs_conn)
+                    sq.produce(
+                        producer='encoding_agent',
+                        signal_type='encoding_question',
+                        priority=0.7,
+                        content=final_text[:500],
+                        ttl_seconds=86400,
+                    )
+                    brain.logs_conn.commit()
+                except Exception:
+                    pass
 
         brain.save()
         _step("saved")

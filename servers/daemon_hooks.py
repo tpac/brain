@@ -378,9 +378,9 @@ def hook_post_response_track(brain, args, graph_changes):
         brain._log_error('store_exchange', e, 'Stop hook: failed to store exchange')
 
     # Encoding agent — fires every 5th stop via Sonnet API.
-    # Runs INLINE (not background thread) — SQLite single-connection deadlocks
-    # if encoding thread and pool worker access brain.conn concurrently.
-    # Stop hook runs after Claude responds, so user doesn't wait.
+    # Runs in BACKGROUND THREAD with its OWN Brain instance (own SQLite connection).
+    # Previous deadlock was from threads sharing brain.conn. Separate connections
+    # work fine under WAL — reads concurrent, writes serialize at DB level.
     encoding_status = ""
     try:
         counter = int(brain.get_config('stop_counter', '0') or '0') + 1
@@ -388,27 +388,46 @@ def hook_post_response_track(brain, args, graph_changes):
         position = counter % 5  # Fire encoding every 5th stop
 
         if position == 0:
-            from .encoding_agent import run_encoding
-            from .daemon_dispatch import COMMAND_TABLE
-            import time as _t
-            _enc_t0 = _t.time()
-            print("[brain-hooks] ENCODING AGENT STARTING (counter=%d)" % counter, flush=True)
-            def dispatch(cmd, cmd_args):
-                entry = COMMAND_TABLE.get(cmd)
-                if entry:
-                    return entry.handler(brain, cmd_args, [])
-                return {"ok": False, "error": "Unknown: %s" % cmd}
-            try:
-                enc_result = run_encoding(brain, dispatch, counter)
-                _enc_ms = int((_t.time() - _enc_t0) * 1000)
-                actions = enc_result.get('actions', 0) if isinstance(enc_result, dict) else 0
-                encoding_status = "ENCODING RAN: %d actions in %dms" % (actions, _enc_ms)
-                print("[brain-hooks] ENCODING AGENT DONE: %s" % encoding_status, flush=True)
-            except Exception as enc_e:
-                _enc_ms = int((_t.time() - _enc_t0) * 1000)
-                encoding_status = "ENCODING FAILED after %dms: %s" % (_enc_ms, enc_e)
-                print("[brain-hooks] ENCODING AGENT FAILED: %s" % enc_e, flush=True)
-                brain._log_error('encoding_agent_run', enc_e, 'Encoding failed after %dms' % _enc_ms)
+            if not _encoding_lock.acquire(blocking=False):
+                encoding_status = "encoding skipped (previous still running)"
+                print("[brain-hooks] Encoding agent skipped — previous run still active", flush=True)
+            else:
+                # Launch in background thread with isolated Brain
+                def _run_encoding():
+                    import time as _t
+                    _enc_t0 = _t.time()
+                    try:
+                        print("[brain-hooks] ENCODING AGENT STARTING (counter=%d)" % counter, flush=True)
+                        # Create isolated Brain with its own SQLite connections
+                        from .brain import Brain
+                        enc_brain = Brain(brain.db_path)
+
+                        from .encoding_agent import run_encoding
+                        from .daemon_dispatch import COMMAND_TABLE
+                        def dispatch(cmd, cmd_args):
+                            entry = COMMAND_TABLE.get(cmd)
+                            if entry:
+                                return entry.handler(enc_brain, cmd_args, [])
+                            return {"ok": False, "error": "Unknown: %s" % cmd}
+
+                        enc_result = run_encoding(enc_brain, dispatch, counter)
+                        _enc_ms = int((_t.time() - _enc_t0) * 1000)
+                        actions = enc_result.get('actions', 0) if isinstance(enc_result, dict) else 0
+                        print("[brain-hooks] ENCODING AGENT DONE: %d actions in %dms" % (actions, _enc_ms), flush=True)
+                        enc_brain.save()
+                        enc_brain.close()
+                    except Exception as enc_e:
+                        _enc_ms = int((_t.time() - _enc_t0) * 1000)
+                        print("[brain-hooks] ENCODING AGENT FAILED after %dms: %s" % (_enc_ms, enc_e), flush=True)
+                        try:
+                            brain._log_error('encoding_agent_run', enc_e, 'Encoding failed after %dms' % _enc_ms)
+                        except Exception:
+                            pass
+                    finally:
+                        _encoding_lock.release()
+
+                threading.Thread(target=_run_encoding, daemon=True).start()
+                encoding_status = "encoding started (background)"
         else:
             encoding_status = "encoding %d/5" % position
     except Exception as e:
