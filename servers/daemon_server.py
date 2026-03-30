@@ -397,6 +397,13 @@ class BrainDaemon:
 
             if cmd == "restart":
                 self._log("Restart requested — scheduling re-exec after response...")
+                # Write "restarting" marker so other callers don't spawn duplicates
+                try:
+                    marker = get_pid_path() + ".starting"
+                    with open(marker, 'w') as f:
+                        f.write("%d:restarting" % os.getpid())
+                except Exception:
+                    pass
                 # Schedule restart AFTER response is sent to client
                 def _do_restart():
                     time.sleep(0.5)  # Let response reach client
