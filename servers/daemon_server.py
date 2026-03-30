@@ -179,9 +179,11 @@ class BrainDaemon:
         autosave_thread = threading.Thread(target=self._autosave_loop, daemon=True)
         autosave_thread.start()
 
-        # Start HTTP MCP server thread (DAEMON_PORT+1)
-        mcp_http_thread = threading.Thread(target=self._start_mcp_http, daemon=True)
-        mcp_http_thread.start()
+        # HTTP MCP server disabled — causing CPU spirals when MCP client retries.
+        # The encoding hook endpoint still works via the command hook path.
+        # TODO: Fix HTTP MCP protocol compliance before re-enabling.
+        # mcp_http_thread = threading.Thread(target=self._start_mcp_http, daemon=True)
+        # mcp_http_thread.start()
 
         self._serve()
 

@@ -353,139 +353,33 @@ def hook_post_response_track(brain, args, graph_changes):
     except Exception as e:
         brain._log_error('store_exchange', e, 'Stop hook: failed to store exchange')
 
-    # 5. Encoding agent gating — set prompt for Stop agent hook
-    #    Command hook wins the race: it hits daemon in <100ms, agent needs seconds to
-    #    parse prompt + decide to call eval. By the time agent reads the config, it's set.
+    # Encoding agent — fires every 5th stop via Sonnet API.
+    # Runs in background thread so the hook returns fast.
+    # All logic lives in encoding_agent.py (single source of truth).
     try:
         counter = int(brain.get_config('stop_counter', '0') or '0') + 1
         brain.set_config('stop_counter', str(counter))
 
-        if counter % 5 != 0:
-            brain.set_config('stop_agent_prompt', 'NONE')
-        else:
-            session_id = brain.get_config('session_id', 'unknown')
-            input_path = '/tmp/brain-{}-encoding-input.json'.format(session_id)
-
-            # Gather messages from message stream (encoding agent reads from DB)
-            from .pipeline_contract import ENCODING_AGENT
-            messages = []
-            try:
-                rows = brain.logs_conn.execute(
-                    "SELECT role, content, signal_type, timestamp "
-                    "FROM message_stream WHERE session_id = ? "
-                    "ORDER BY timestamp DESC LIMIT ?",
-                    (session_id, ENCODING_AGENT['max_messages'])
-                ).fetchall()
-                messages = [
-                    {"role": r[0], "content": (r[1] or "")[:ENCODING_AGENT['message_content_limit']],
-                     "signal": r[2], "timestamp": r[3]}
-                    for r in reversed(rows)
-                ]
-            except Exception as e:
-                brain._log_error('fetch_message_stream', e, 'hook_post_response_track')
-
-            # Gather brain context — encoding agent does its OWN recall from DB.
-            # Previously read from candidates file (last prompt's recall only).
-            # Now: extract topics from messages, query brain directly.
-            # This ensures the agent has context even when individual recalls failed.
-            recall_context_rich = ""
-            try:
-                # Build a recall query from user messages in this batch
-                user_msgs = [m.get("content", "") for m in messages if m.get("role") == "user"]
-                if user_msgs:
-                    # Combine last 3 user messages as the recall query (captures topic range)
-                    recall_query = " ".join(msg[:200] for msg in user_msgs[-3:])
-                    enc_recall = brain.recall(
-                        query=recall_query,
-                        limit=ENCODING_AGENT['recall_candidates_limit'])
-                    enc_results = enc_recall.get("results", [])
-                    if enc_results:
-                        from .brain_voice import BrainVoice
-                        lines = []
-                        for r in enc_results:
-                            # Build a candidate dict compatible with format_node_deep
-                            c = {
-                                "id": r.get("id", ""),
-                                "type": r.get("type", ""),
-                                "title": r.get("title", ""),
-                                "content": r.get("content", ""),
-                                "confidence": r.get("confidence", 0),
-                                "locked": r.get("locked", False),
-                                "revised_at": r.get("revised_at"),
-                                "created_at": r.get("created_at"),
-                                "_graph": r.get("_graph", {}),
-                            }
-                            BrainVoice.format_node_deep(
-                                c, lines, conn=brain.conn,
-                                max_d1=ENCODING_AGENT['max_d1'],
-                                max_d2=ENCODING_AGENT['max_d2'],
-                                max_d3=ENCODING_AGENT['max_d3'])
-                        recall_context_rich = "\n".join(lines)
-            except Exception as e:
-                brain._log_error('encoding_agent_recall', e, 'Independent recall for encoding agent')
-
-            # Gather correction traces
-            corrections = []
-            try:
-                rows = brain.conn.execute(
-                    "SELECT claude_assumed, reality, underlying_pattern, "
-                    "COUNT(*) as cnt FROM correction_traces "
-                    "GROUP BY underlying_pattern ORDER BY cnt DESC LIMIT 10"
-                ).fetchall()
-                corrections = [
-                    {"assumed": r[0], "reality": r[1], "pattern": r[2], "count": r[3]}
-                    for r in rows
-                ]
-            except Exception as e:
-                brain._log_error('fetch_correction_traces', e, 'hook_post_response_track')
-
-            # Get previous encoding agent state
-            previous_state = brain.get_config('encoding_agent_state', '{}') or '{}'
-
-            # Build inline context for the encoding agent
-            import json as _json
-
-            # Format messages (limit from pipeline contract)
-            msg_text = ""
-            for m in messages:
-                role = (m.get("role") or "?").upper()
-                content = (m.get("content") or "")[:ENCODING_AGENT['message_display_limit']]
-                msg_text += "[%s]: %s\n\n" % (role, content)
-
-            # Brain context is already built above as recall_context_rich
-            brain_context = recall_context_rich
-
-            # Read encoding instructions
-            project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            prompt_path = os.path.join(project_dir, 'hooks', 'prompts', 'encoding-agent.md')
-            try:
-                with open(prompt_path) as pf:
-                    encoding_instructions = pf.read()
-            except Exception as e:
-                brain._log_error('read_encoding_prompt', e, 'hook_post_response_track')
-                encoding_instructions = 'ERROR: Could not read %s' % prompt_path
-
-            # Append contract field summary so the agent knows what fields are available
-            try:
-                from .contract import generate_field_summary
-                field_summary = generate_field_summary()
-                encoding_instructions += "\n\n## Available Fields (from contract)\n\n" + field_summary
-            except Exception as e:
-                brain._log_error('generate_field_summary', e, 'hook_post_response_track')
-
-            # Assemble the full prompt with all context inline
-            full_prompt = encoding_instructions + "\n\n---\n\n"
-            full_prompt += "## ENCODING RUN #%d\n\n" % counter
-            full_prompt += "### Previous State\n%s\n\n" % (previous_state or "First run — no previous state.")
-            full_prompt += "### Conversation (last 10 exchanges)\n\n%s\n" % (msg_text or "No messages captured.")
-            if brain_context:
-                full_prompt += "### Brain Context (what was recalled during these exchanges)\n\n%s\n" % brain_context
-            else:
-                full_prompt += "### Brain Context\nNo recall data available for these exchanges.\n\n"
-
-            brain.set_config('stop_agent_prompt', full_prompt)
+        if counter % 5 == 0:
+            from .encoding_agent import run_encoding
+            import threading
+            def _run():
+                try:
+                    # dispatch_fn needs to come from the daemon, but we're in a hook
+                    # that's called BY the daemon. Use a simple wrapper that calls
+                    # brain methods directly (same as dispatch does).
+                    from .daemon_dispatch import COMMAND_TABLE
+                    def dispatch(cmd, cmd_args):
+                        entry = COMMAND_TABLE.get(cmd)
+                        if entry:
+                            return entry.handler(brain, cmd_args, [])
+                        return {"ok": False, "error": "Unknown: %s" % cmd}
+                    run_encoding(brain, dispatch, counter)
+                except Exception as e:
+                    brain._log_error('encoding_agent_run', e, 'Background encoding thread')
+            threading.Thread(target=_run, daemon=True).start()
     except Exception as e:
-        brain._log_error('encoding_agent_prep', e, 'Stop hook')
+        brain._log_error('encoding_agent_gate', e, 'Stop hook')
 
     try:
         brain.record_message()
