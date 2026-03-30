@@ -3,8 +3,14 @@ brain — Daemon Client
 
 Client-side functions for communicating with the brain daemon.
 Used by hook scripts, brain_mcp.py, and brain_cli.py.
+
+Singleton guarantee: ensure_daemon() uses fcntl.flock on a lock file.
+First caller acquires lock, starts daemon, releases lock.
+All other callers block on the lock, wake up to a running daemon.
+No file markers, no polling races.
 """
 
+import fcntl
 import json
 import os
 import signal
@@ -65,11 +71,9 @@ def is_daemon_running() -> bool:
     try:
         with open(pid_path) as f:
             pid = int(f.read().strip())
-        # Check if process exists
         os.kill(pid, 0)
         return True
     except (OSError, ValueError):
-        # Process doesn't exist or PID file is corrupt
         try:
             os.unlink(pid_path)
         except Exception:
@@ -85,137 +89,123 @@ def _can_connect(timeout: float = 2.0) -> dict:
         return {}
 
 
-def _is_starting() -> bool:
-    """Check if another caller recently spawned a daemon (within 15s)."""
-    marker = get_pid_path() + ".starting"
-    if os.path.exists(marker):
-        try:
-            age = time.time() - os.path.getmtime(marker)
-            return age < 15
-        except Exception:
-            pass
-    return False
-
-
-def _mark_starting():
-    """Mark that we're about to spawn a daemon."""
-    marker = get_pid_path() + ".starting"
-    try:
-        with open(marker, 'w') as f:
-            f.write(str(os.getpid()))
-    except Exception:
-        pass
-
-
-def _clear_starting():
-    """Clear the starting marker."""
-    marker = get_pid_path() + ".starting"
-    try:
-        os.unlink(marker)
-    except Exception:
-        pass
-
-
-def _port_is_occupied() -> bool:
-    """Check if something is holding our daemon port."""
-    import socket as _socket
-    addr = get_daemon_addr()
-    s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-    try:
-        s.bind(addr)
-        s.close()
-        return False  # Port is free
-    except OSError:
-        s.close()
-        return True  # Something is holding it
-
-
 def ensure_daemon(db_path: str) -> bool:
     """Start the daemon if not running. Returns True if daemon is ready.
 
-    Design: TCP connection is the health check and the mutex.
-    1. Try to connect — if alive and responsive, done.
-    2. If port occupied but unresponsive — zombie, kill it.
-    3. If another caller is already starting one — wait for it.
-    4. Otherwise — spawn and wait.
+    Uses fcntl.flock for singleton guarantee:
+    - First caller acquires exclusive lock, starts daemon, releases lock.
+    - All concurrent callers block on the lock.
+    - When lock releases, they wake up and find daemon already running.
+    - No races, no duplicate daemons.
     """
-    # Step 1: Already alive and responsive?
+    # Fast path: already running and responsive?
     resp = _can_connect()
     if resp.get("ok"):
+        # Check if code changed — needs graceful restart
         daemon_fp = resp.get("result", {}).get("code_fingerprint", "")
         current_fp = _code_fingerprint()
         if current_fp != "unknown" and daemon_fp and daemon_fp != current_fp:
             sys.stderr.write(
                 "[brain-daemon] Code changed ({} → {}) — requesting graceful restart\n"
                 .format(daemon_fp[:12], current_fp[:12]))
-            # Use daemon's own restart (saves brain, clears cache, re-execs same PID)
-            # instead of kill (loses unsaved state, triggers race conditions)
             restart_resp = send_command("restart", timeout=5.0)
             if restart_resp.get("ok"):
                 sys.stderr.write("[brain-daemon] Restart command sent, waiting...\n")
-                time.sleep(6)  # Daemon needs ~4s for embedder reload
-                if _can_connect().get("ok"):
-                    return True
-            # Graceful restart failed — fall through to kill + respawn
-            sys.stderr.write("[brain-daemon] Graceful restart failed, killing...\n")
+                # Wait for daemon to come back (embedder reload ~4-6s)
+                for _ in range(16):
+                    time.sleep(0.5)
+                    if _can_connect().get("ok"):
+                        return True
+            sys.stderr.write("[brain-daemon] Graceful restart failed, will kill + respawn\n")
             _kill_daemon()
             time.sleep(1)
         else:
             return True
 
-    # Step 2: Port occupied but not responding? Zombie — kill it.
-    if _port_is_occupied():
-        sys.stderr.write("[brain-daemon] Port occupied but unresponsive — killing zombie\n")
-        _kill_daemon()
-        time.sleep(1)
+    # Slow path: need to start daemon. Acquire exclusive lock.
+    lock_path = get_lock_path()
+    lock_fd = None
+    try:
+        lock_fd = open(lock_path, 'w')
+        sys.stderr.write("[brain-daemon] Acquiring startup lock...\n")
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)  # Blocks until acquired
+        sys.stderr.write("[brain-daemon] Lock acquired.\n")
 
-    # Step 3: Someone else already starting?
-    if _is_starting():
-        sys.stderr.write("[brain-daemon] Another caller is starting daemon — waiting\n")
-        for _ in range(20):
-            time.sleep(0.5)
-            if _can_connect().get("ok"):
-                return True
-        # Timed out — stale marker, proceed to spawn
-        _clear_starting()
-
-    # Step 4: Spawn daemon
-    _mark_starting()
-    import subprocess
-    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    log_path = os.path.join(os.path.dirname(db_path), "daemon.log")
-
-    with open(log_path, 'a') as log_fd, open(os.devnull, 'r') as devnull:
-        subprocess.Popen(
-            [sys.executable, '-c',
-             'import sys, os; sys.path.insert(0, %r); '
-             'from servers.daemon_server import BrainDaemon; '
-             'd = BrainDaemon(%r); d.start()' % (parent_dir, db_path)],
-            stdin=devnull,
-            stdout=log_fd,
-            stderr=log_fd,
-            start_new_session=True,
-            env={
-                **os.environ,
-                "VECLIB_MAXIMUM_THREADS": "1",
-                "ORT_DISABLE_ALL_ACCELERATORS": "1",
-                "ONNX_PROVIDERS": "CPUExecutionProvider",
-                "PYTORCH_MPS_DISABLE": "1",
-                "PYTORCH_ENABLE_MPS_FALLBACK": "0",
-            },
-        )
-
-    # Step 5: Wait for it to respond
-    for _ in range(20):  # 10 seconds max
-        time.sleep(0.5)
+        # Re-check after acquiring lock — another caller may have started it
         resp = _can_connect()
         if resp.get("ok"):
-            _clear_starting()
+            sys.stderr.write("[brain-daemon] Daemon already started by another caller.\n")
             return True
 
-    _clear_starting()
-    sys.stderr.write("[brain-daemon] Daemon failed to start within 10s\n")
-    return False
+        # Kill zombie if port occupied but not responding
+        if _port_is_occupied():
+            sys.stderr.write("[brain-daemon] Port occupied but unresponsive — killing zombie\n")
+            _kill_daemon()
+            time.sleep(1)
+
+        # Spawn daemon
+        sys.stderr.write("[brain-daemon] Spawning daemon...\n")
+        import subprocess
+        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        log_path = os.path.join(os.path.dirname(db_path), "daemon.log")
+
+        with open(log_path, 'a') as log_fd_file, open(os.devnull, 'r') as devnull:
+            subprocess.Popen(
+                [sys.executable, '-c',
+                 'import sys, os; sys.path.insert(0, %r); '
+                 'os.environ["BRAIN_DB_DIR"] = %r; '
+                 'from servers.daemon_server import BrainDaemon; '
+                 'd = BrainDaemon(%r); d.start()' % (parent_dir,
+                     os.environ.get('BRAIN_DB_DIR', os.path.dirname(db_path)),
+                     db_path)],
+                stdin=devnull,
+                stdout=log_fd_file,
+                stderr=log_fd_file,
+                start_new_session=True,
+                env={
+                    **os.environ,
+                    "VECLIB_MAXIMUM_THREADS": "1",
+                    "ORT_DISABLE_ALL_ACCELERATORS": "1",
+                    "ONNX_PROVIDERS": "CPUExecutionProvider",
+                    "PYTORCH_MPS_DISABLE": "1",
+                    "PYTORCH_ENABLE_MPS_FALLBACK": "0",
+                },
+            )
+
+        # Wait for it to respond
+        for i in range(20):  # 10 seconds max
+            time.sleep(0.5)
+            resp = _can_connect()
+            if resp.get("ok"):
+                sys.stderr.write("[brain-daemon] Daemon ready (took %.1fs)\n" % ((i + 1) * 0.5))
+                return True
+
+        sys.stderr.write("[brain-daemon] Daemon failed to start within 10s\n")
+        return False
+
+    except Exception as e:
+        sys.stderr.write("[brain-daemon] ensure_daemon error: %s\n" % e)
+        return False
+    finally:
+        if lock_fd:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                lock_fd.close()
+            except Exception:
+                pass
+
+
+def _port_is_occupied() -> bool:
+    """Check if something is holding our daemon port."""
+    addr = get_daemon_addr()
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(addr)
+        s.close()
+        return False
+    except OSError:
+        s.close()
+        return True
 
 
 def _kill_daemon():
@@ -226,27 +216,23 @@ def _kill_daemon():
             pid = int(f.read().strip())
         sys.stderr.write("[brain-daemon] Killing daemon PID={}\n".format(pid))
 
-        # Try SIGTERM first (graceful)
         os.kill(pid, signal.SIGTERM)
 
-        # Wait up to 3s for process to die
         for _ in range(15):
             time.sleep(0.2)
             try:
-                os.kill(pid, 0)  # Check if still alive
+                os.kill(pid, 0)
             except OSError:
-                break  # Dead — good
+                break
         else:
-            # Still alive after 3s — SIGKILL (force)
-            sys.stderr.write("[brain-daemon] SIGTERM failed, sending SIGKILL to PID={}\n".format(pid))
+            sys.stderr.write("[brain-daemon] SIGTERM failed, SIGKILL PID={}\n".format(pid))
             try:
                 os.kill(pid, signal.SIGKILL)
                 time.sleep(0.5)
             except OSError:
-                pass  # Already dead
+                pass
     except Exception as e:
         sys.stderr.write("[brain-daemon] Kill failed: {}\n".format(e))
-    # Clean up files (PID and lock)
     for path in [pid_path, get_lock_path()]:
         try:
             if os.path.exists(path):
@@ -256,22 +242,20 @@ def _kill_daemon():
 
 
 def stop_daemon():
-    """Gracefully stop the daemon. Waits up to 2s for clean exit."""
+    """Gracefully stop the daemon."""
     resp = send_command("shutdown", timeout=5.0)
     if not resp.get("ok"):
         _kill_daemon()
         return
-    # Wait for daemon to actually exit (select loop + cleanup)
     for _ in range(20):
         if not is_daemon_running():
             return
         time.sleep(0.1)
-    # Didn't exit cleanly — force kill
     _kill_daemon()
 
 
 def restart_daemon(db_path: str = None) -> bool:
-    """Stop + start daemon. Returns True if new daemon is ready."""
+    """Stop + start daemon."""
     stop_daemon()
     time.sleep(1)
     if not db_path:
