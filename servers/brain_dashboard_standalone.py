@@ -149,7 +149,7 @@ def _query_encoding_activity(since_ts="", limit=30):
         # New connections (exclude co_accessed and emergent_bridge — organic noise)
         rows = conn.execute(
             f"SELECT e.source_id, e.target_id, e.relation, e.weight, e.created_at, "
-            f"n1.title, n2.title "
+            f"n1.title, n2.title, n1.type, n2.type "
             f"FROM edges e "
             f"LEFT JOIN nodes n1 ON n1.id = e.source_id "
             f"LEFT JOIN nodes n2 ON n2.id = e.target_id "
@@ -161,7 +161,9 @@ def _query_encoding_activity(since_ts="", limit=30):
             events.append({
                 "kind": "connected", "source_title": r[5] or r[0][:12],
                 "target_title": r[6] or r[1][:12], "relation": r[2],
-                "weight": r[3], "timestamp": r[4]})
+                "weight": r[3], "timestamp": r[4],
+                "source_type": r[7] or '', "target_type": r[8] or '',
+                "source_id": r[0], "target_id": r[1]})
 
         # Enrichments
         rows = conn.execute(
@@ -546,13 +548,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self._json_response(200, {"status": status})
 
     def _serve_node_detail(self, node_id):
-        """Lazy-loaded node detail: full content + connected nodes."""
+        """Lazy-loaded node detail: full content + promoted fields + connections."""
         try:
             db = _get_db_path()
-            # Node data
             row = _direct_query(
                 "SELECT id, type, title, content, keywords, locked, emotion, "
-                "access_count, confidence, encoding_source, created_at, last_accessed "
+                "access_count, confidence, encoding_source, created_at, last_accessed, "
+                "revised_at, personal, personal_context, evolution_status, critical "
                 "FROM nodes WHERE id = ?",
                 args=(node_id,), db_path=db)
             if not row:
@@ -563,16 +565,40 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "keywords": r[4], "locked": bool(r[5]), "emotion": r[6],
                 "access_count": r[7], "confidence": r[8], "encoding_source": r[9],
                 "created_at": r[10], "last_accessed": r[11],
+                "revised_at": r[12], "personal": r[13], "personal_context": r[14],
+                "evolution_status": r[15], "critical": bool(r[16]) if r[16] else False,
             }
-            # Connected nodes
-            edges = _direct_query(
-                "SELECT e.target_id, e.relation, e.weight, n.type, n.title "
-                "FROM edges e JOIN nodes n ON n.id = e.target_id "
-                "WHERE e.source_id = ? ORDER BY e.weight DESC LIMIT 20",
+            # Promoted fields from node_metadata
+            meta = _direct_query(
+                "SELECT reasoning, user_raw_quote, correction_of, correction_pattern, "
+                "source_context, last_validated, validation_count "
+                "FROM node_metadata WHERE node_id = ?",
                 args=(node_id,), db_path=db)
+            if meta:
+                m = meta[0]
+                node["metadata"] = {k: v for k, v in {
+                    "reasoning": m[0], "user_raw_quote": m[1],
+                    "correction_of": m[2], "correction_pattern": m[3],
+                    "source_context": m[4], "last_validated": m[5],
+                    "validation_count": m[6],
+                }.items() if v}
+            # Situation from node_embeddings
+            sit = _direct_query(
+                "SELECT situation_text FROM node_embeddings WHERE node_id = ?",
+                args=(node_id,), db_path=db)
+            if sit and sit[0][0]:
+                node["situation"] = sit[0][0]
+            # Connections (both directions)
+            edges = _direct_query(
+                "SELECT n.id, e.relation, e.weight, n.type, n.title FROM edges e "
+                "JOIN nodes n ON n.id = e.target_id WHERE e.source_id = ? "
+                "UNION "
+                "SELECT n.id, e.relation, e.weight, n.type, n.title FROM edges e "
+                "JOIN nodes n ON n.id = e.source_id WHERE e.target_id = ? "
+                "ORDER BY 3 DESC LIMIT 20",
+                args=(node_id, node_id), db_path=db)
             connections = [
-                {"id": e[0], "relation": e[1], "weight": e[2],
-                 "type": e[3], "title": e[4]}
+                {"id": e[0], "relation": e[1], "weight": e[2], "type": e[3], "title": e[4]}
                 for e in edges
             ]
             self._json_response(200, {"node": node, "connections": connections})
@@ -889,6 +915,8 @@ canvas { width: 100%; height: 100%; }
 .node-detail .nd-conn:hover { background: #1a1a2a; }
 .node-detail .nd-conn-title { color: #ccc; font-size: 11px; }
 .node-detail .nd-conn-meta { color: #555; font-size: 10px; }
+.node-detail .nd-field { padding: 4px 0; border-bottom: 1px solid #1a1a2a; font-size: 11px; color: #bbb; }
+.node-detail .nd-fk { color: #7eb8ff; font-weight: bold; margin-right: 4px; }
 .node-tooltip .tt-title { font-weight: bold; color: #fff; margin-bottom: 4px; }
 .node-tooltip .tt-type { font-size: 10px; color: #888; }
 .health { padding: 12px; }
@@ -918,7 +946,7 @@ canvas { width: 100%; height: 100%; }
   <div id="daemon-banner"></div>
   <div class="feed-toggle">
     <button class="feed-btn active" onclick="switchFeed('surface')">Surface</button>
-    <button class="feed-btn" onclick="switchFeed('encoding')">Encoding</button>
+    <button class="feed-btn" onclick="switchFeed('encoding')">Encoding <span id="enc-badge" style="display:none;background:#ff4466;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
     <button class="feed-btn" onclick="switchFeed('queue')">Queue</button>
     <select id="surface-filter" onchange="filterSurface()" style="margin-left:auto;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
       <option value="">All events</option>
@@ -1151,8 +1179,15 @@ async function pollHookLog() {
 })();
 setInterval(pollHookLog, 2000);
 
-// Feed toggle
+// Feed toggle + encoding badge
 let activeFeed = 'surface';
+var encBadgeCount = 0;
+function updateEncBadge(count) {
+  if (activeFeed === 'encoding') return;
+  encBadgeCount += count;
+  var badge = document.getElementById('enc-badge');
+  if (encBadgeCount > 0) { badge.textContent = encBadgeCount; badge.style.display = 'inline'; }
+}
 function switchFeed(name) {
   activeFeed = name;
   document.querySelectorAll('.feed-btn').forEach(b => {
@@ -1164,7 +1199,12 @@ function switchFeed(name) {
   document.getElementById('feed-queue').style.display = name === 'queue' ? 'block' : 'none';
   document.getElementById('surface-filter').style.display = name === 'surface' ? '' : 'none';
   document.getElementById('encoding-filter').style.display = name === 'encoding' ? '' : 'none';
-  if (name === 'encoding' && !encodingLoaded) loadEncodingActivity();
+  if (name === 'encoding') {
+    if (!encodingLoaded) loadEncodingActivity();
+    encBadgeCount = 0;
+    var badge = document.getElementById('enc-badge');
+    badge.style.display = 'none'; badge.textContent = '';
+  }
   if (name === 'queue') loadSignalQueue();
 }
 
@@ -1215,28 +1255,32 @@ async function loadEncodingActivity() {
 
       if (evt.kind === 'created') {
         div.style.cursor = 'pointer';
-        div.onclick = () => loadNodeDetail(evt.id);
+        div.onclick = function() { loadNodeDetail(evt.id); };
         div.innerHTML =
-          '<span class="enc-kind created">created</span>' +
+          '<span class="enc-kind created">CREATED</span> ' +
           '<span class="type-badge type-' + (evt.type||'') + '">' + (evt.type||'') + '</span> ' +
           (evt.locked ? '&#x1f512; ' : '') +
           '<span class="enc-title">' + escapeHtml(evt.title || '') + '</span>' +
-          '<div class="enc-meta">' + t + ' · conf: ' + (evt.confidence||0).toFixed(2) + ' · source: ' + (evt.encoding_source||'?') + ' · id:' + (evt.id||'').substring(0,8) + '</div>' +
+          '<div class="enc-meta">id:' + (evt.id||'').substring(0,8) + ' · ' + t + ' · conf: ' + (evt.confidence||0).toFixed(2) + ' · source: ' + (evt.encoding_source||'?') + '</div>' +
           '<div class="enc-content">' + escapeHtml(evt.content || '') + '</div>';
       } else if (evt.kind === 'revised') {
         div.style.cursor = 'pointer';
-        div.onclick = () => loadNodeDetail(evt.id);
+        div.onclick = function() { loadNodeDetail(evt.id); };
         div.innerHTML =
-          '<span class="enc-kind revised">revised</span>' +
+          '<span class="enc-kind revised">REVISED</span> ' +
           '<span class="type-badge type-' + (evt.type||'') + '">' + (evt.type||'') + '</span> ' +
           '<span class="enc-title">' + escapeHtml(evt.title || '') + '</span>' +
-          '<div class="enc-meta">' + t + ' · conf: ' + (evt.confidence||0).toFixed(2) + ' · source: ' + (evt.encoding_source||'?') + ' · id:' + (evt.id||'').substring(0,8) + '</div>' +
+          '<div class="enc-meta">id:' + (evt.id||'').substring(0,8) + ' · ' + t + ' · conf: ' + (evt.confidence||0).toFixed(2) + ' · source: ' + (evt.encoding_source||'?') + '</div>' +
           '<div class="enc-content">' + escapeHtml(evt.content || '') + '</div>';
       } else if (evt.kind === 'connected') {
+        div.style.cursor = 'pointer';
+        div.onclick = function() { loadNodeDetail(evt.source_id || ''); };
         div.innerHTML =
-          '<span class="enc-kind connected">connected</span>' +
+          '<span class="enc-kind connected">CONNECTED</span> ' +
+          '<span class="type-badge type-' + (evt.source_type||'') + '">' + (evt.source_type||'') + '</span> ' +
           '<span class="enc-title">' + escapeHtml(evt.source_title || '') + '</span>' +
-          ' <span style="color:#aa66ff">—' + (evt.relation||'related_to') + '→</span> ' +
+          ' <span style="color:#aa66ff"> —' + (evt.relation||'related_to') + '→ </span>' +
+          '<span class="type-badge type-' + (evt.target_type||'') + '">' + (evt.target_type||'') + '</span> ' +
           '<span class="enc-title">' + escapeHtml(evt.target_title || '') + '</span>' +
           '<div class="enc-meta">' + t + ' · weight: ' + (evt.weight||0).toFixed(2) + '</div>';
       } else if (evt.kind === 'enriched') {
@@ -1249,6 +1293,7 @@ async function loadEncodingActivity() {
       }
       if (isInitial) container.appendChild(div); else container.prepend(div);
     }
+    if (!isInitial && evts.length > 0) updateEncBadge(evts.length);
     if (d.events.length) lastEncodingTs = d.events[0].timestamp;
   } catch(e) {}
 }
@@ -1508,36 +1553,54 @@ const TYPE_COLORS = {
 };
 
 async function loadNodeDetail(nodeId) {
-  const panel = document.getElementById('node-detail');
+  var panel = document.getElementById('node-detail');
   panel.style.display = 'block';
   panel.innerHTML = '<div style="color:#666;padding:20px">Loading...</div>';
   try {
-    const r = await fetch('/api/node/' + nodeId);
-    const d = await r.json();
-    const n = d.node;
-    const conns = d.connections || [];
-    panel.innerHTML = `
-      <div class="nd-close" onclick="document.getElementById('node-detail').style.display='none'">&times;</div>
-      <div class="nd-title"><span class="type-badge type-${n.type}">${n.type}</span> ${n.locked ? '&#x1f512;' : ''} ${(n.title||'').replace(/</g,'&lt;')}</div>
-      <div class="nd-meta">
-        <span>accessed: ${n.access_count}x</span>
-        <span>confidence: ${(n.confidence||0).toFixed(2)}</span>
-        <span>source: ${n.encoding_source||'?'}</span>
-        <span>emotion: ${(n.emotion||0).toFixed(1)}</span>
-        <span>${localTime(n.created_at)}</span>
-      </div>
-      ${n.keywords ? '<div style="color:#555;font-size:10px;margin-bottom:8px">'+n.keywords+'</div>' : ''}
-      <div class="nd-section">Content</div>
-      <div class="nd-content">${(n.content||'(empty)').replace(/</g,'&lt;')}</div>
-      <div class="nd-section">Connections (${conns.length})</div>
-      ${conns.map(c => `
-        <div class="nd-conn" onclick="loadNodeDetail('${c.id}')">
-          <div class="nd-conn-title"><span class="type-badge type-${c.type}">${c.type}</span> ${(c.title||'').replace(/</g,'&lt;').substring(0,60)}</div>
-          <div class="nd-conn-meta">${c.relation} · weight ${(c.weight||0).toFixed(2)}</div>
-        </div>
-      `).join('')}
-      ${conns.length === 0 ? '<div style="color:#555;padding:8px">No connections</div>' : ''}
-    `;
+    var r = await fetch('/api/node/' + nodeId);
+    var d = await r.json();
+    var n = d.node;
+    var conns = d.connections || [];
+    var meta = n.metadata || {};
+    var h = '';
+    h += '<div class="nd-close" onclick="document.getElementById(&quot;node-detail&quot;).style.display=&quot;none&quot;">&times;</div>';
+    h += '<div class="nd-title"><span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ';
+    if (n.locked) h += '&#x1f512; ';
+    if (n.critical) h += '⚠️ ';
+    h += escapeHtml(n.title || '') + '</div>';
+    h += '<div class="nd-meta">';
+    h += '<span>id: ' + (n.id||'').substring(0,8) + '</span>';
+    h += '<span>accessed: ' + n.access_count + 'x</span>';
+    h += '<span>conf: ' + (n.confidence||0).toFixed(2) + '</span>';
+    h += '<span>source: ' + (n.encoding_source||'?') + '</span>';
+    h += '<span>' + localTime(n.created_at) + '</span>';
+    h += '</div>';
+    if (n.keywords) h += '<div style="color:#555;font-size:10px;margin-bottom:8px">' + escapeHtml(n.keywords) + '</div>';
+    h += '<div class="nd-section">Content</div>';
+    h += '<div class="nd-content">' + escapeHtml(n.content || '(empty)') + '</div>';
+    // Promoted fields
+    var fields = [];
+    if (n.situation) fields.push('<div class="nd-field"><span class="nd-fk">situation:</span> ' + escapeHtml(n.situation) + '</div>');
+    if (meta.reasoning) fields.push('<div class="nd-field"><span class="nd-fk">reasoning:</span> ' + escapeHtml(meta.reasoning) + '</div>');
+    if (meta.user_raw_quote) fields.push('<div class="nd-field"><span class="nd-fk">user_raw_quote:</span> <em>"' + escapeHtml(meta.user_raw_quote) + '"</em></div>');
+    if (meta.correction_of) fields.push('<div class="nd-field"><span class="nd-fk">correction_of:</span> <a style="color:#7eb8ff;cursor:pointer" onclick="loadNodeDetail(&quot;' + meta.correction_of + '&quot;)">' + meta.correction_of + '</a></div>');
+    if (meta.correction_pattern) fields.push('<div class="nd-field"><span class="nd-fk">correction_pattern:</span> ' + escapeHtml(meta.correction_pattern) + '</div>');
+    if (meta.source_context) fields.push('<div class="nd-field"><span class="nd-fk">source_context:</span> ' + escapeHtml(meta.source_context) + '</div>');
+    if (n.personal) fields.push('<div class="nd-field"><span class="nd-fk">personal:</span> ' + escapeHtml(n.personal) + '</div>');
+    if (n.evolution_status) fields.push('<div class="nd-field"><span class="nd-fk">evolution_status:</span> ' + escapeHtml(n.evolution_status) + '</div>');
+    if (n.revised_at) fields.push('<div class="nd-field"><span class="nd-fk">revised:</span> ' + localTime(n.revised_at) + '</div>');
+    if (fields.length) h += '<div class="nd-section">Fields</div>' + fields.join('');
+    // Connections
+    h += '<div class="nd-section">Connections (' + conns.length + ')</div>';
+    for (var i = 0; i < conns.length; i++) {
+      var c = conns[i];
+      h += '<div class="nd-conn" onclick="loadNodeDetail(&quot;' + c.id + '&quot;)">';
+      h += '<div class="nd-conn-title"><span class="type-badge type-' + (c.type||'') + '">' + (c.type||'') + '</span> ' + escapeHtml((c.title||'').substring(0,60)) + '</div>';
+      h += '<div class="nd-conn-meta">' + (c.relation||'') + ' · weight ' + (c.weight||0).toFixed(2) + '</div>';
+      h += '</div>';
+    }
+    if (!conns.length) h += '<div style="color:#555;padding:8px">No connections</div>';
+    panel.innerHTML = h;
   } catch(e) {
     panel.innerHTML = '<div style="color:#ff6666;padding:20px">Failed to load: ' + e.message + '</div>';
   }
