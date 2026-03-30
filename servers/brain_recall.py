@@ -90,17 +90,16 @@ class BrainRecallMixin:
             return []
 
         # Load all embeddings (excluding archived nodes)
-        cursor = self.conn.execute(
-            'SELECT ne.node_id, ne.embedding FROM node_embeddings ne JOIN nodes n ON n.id = ne.node_id WHERE n.archived = 0'
-        )
-        rows = cursor.fetchall()
+        _emb_dal = EmbeddingDAL(self.conn)
+        emb_rows = _emb_dal.get_all_embeddings(exclude_archived=True)
 
-        if not rows:
+        if not emb_rows:
             return []
 
         # Score every node
         scored = []
-        for node_id, blob in rows:
+        for row in emb_rows:
+            node_id, blob = row['node_id'], row['embedding']
             if not blob:
                 continue
             similarity = embedder.cosine_similarity(query_vec, blob)
@@ -151,10 +150,8 @@ class BrainRecallMixin:
 
             blob = embeddings[i]  # Already bytes from embed_batch
             try:
-                self.conn.execute(
-                    'INSERT OR REPLACE INTO node_embeddings (node_id, embedding, model, created_at) VALUES (?, ?, ?, ?)',
-                    (node_id, blob, embedder.stats['model_name'], self.now())
-                )
+                _emb_dal = EmbeddingDAL(self.conn)
+                _emb_dal.store_embedding(node_id, blob, embedder.stats['model_name'])
                 stored += 1
             except Exception as e:
                 self._log_error('batch_embed_store', e, 'storing embedding for node %s' % node_id[:12])
@@ -213,11 +210,13 @@ class BrainRecallMixin:
                 # Log expansion via recall_log (use returned_ids for expansion info)
                 try:
                     session_id = getattr(self, 'session_id', 'unknown')
-                    self.logs_conn.execute(
-                        "INSERT INTO recall_log (session_id, query, returned_ids, returned_count, created_at) VALUES (?, ?, ?, ?, ?)",
-                        (session_id, query, 'vocab_expansion: ' + ', '.join(expansion_terms), len(expansion_terms), self.now())
-                    )
-                    self.logs_conn.commit()
+                    _logs_dal = LogsDAL(self.logs_conn)
+                    _logs_dal.insert_recall_log(
+                        session_id=session_id, query=query,
+                        returned_ids='vocab_expansion: ' + ', '.join(expansion_terms),
+                        returned_count=len(expansion_terms),
+                        embeddings_used=0, recalled_titles='', recalled_snippets='',
+                        created_at=self.now())
                 except Exception as e:
                     self._log_error('vocab_expansion_log', e, 'logging vocabulary expansion')
 
@@ -1355,23 +1354,17 @@ class BrainRecallMixin:
         params.append(limit)
 
         try:
+            # Search uses dynamic LIKE clauses; hydrate results through NodeDAL
             cursor = self.conn.execute(
-                f'''SELECT id, type, title, content, keywords, activation, stability,
-                           access_count, locked, archived, last_accessed, created_at, project, critical
-                    FROM nodes WHERE archived = 0 AND ({where_clause}) LIMIT ?''',
+                f'SELECT id FROM nodes WHERE archived = 0 AND ({where_clause}) LIMIT ?',
                 params
             )
+            _ndal = NodeDAL(self.conn)
             results = []
             for row in cursor.fetchall():
-                results.append({
-                    'id': row[0], 'type': row[1], 'title': row[2],
-                    'content': row[3], 'keywords': row[4],
-                    'activation': row[5], 'stability': row[6],
-                    'access_count': row[7], 'locked': row[8] == 1,
-                    'archived': row[9] == 1, 'last_accessed': row[10],
-                    'created_at': row[11], 'project': row[12],
-                    'critical': row[13] == 1 if len(row) > 13 else False
-                })
+                node = _ndal.get_node(row[0])
+                if node:
+                    results.append(node)
             return results
         except Exception as e:
             self._log_error('search_keywords', e, 'keyword search query execution')
@@ -1447,30 +1440,22 @@ class BrainRecallMixin:
 
     def _get_recent(self, limit: int = 20, types: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Get recently accessed nodes."""
-        sql = 'SELECT id, type, title, content, keywords, activation, stability, access_count, locked, archived, last_accessed, created_at FROM nodes WHERE archived = 0'
+        sql = 'SELECT id FROM nodes WHERE archived = 0'
         params = []
-
         if types:
-            placeholders = ','.join('?' * len(types))
-            sql += f' AND type IN ({placeholders})'
+            sql += ' AND type IN (%s)' % ','.join('?' * len(types))
             params.extend(types)
-
         sql += ' ORDER BY last_accessed DESC LIMIT ?'
         params.append(limit)
 
+        _ndal = NodeDAL(self.conn)
         results = []
-        cursor = self.conn.execute(sql, params)
-        for row in cursor.fetchall():
-            results.append({
-                'id': row[0], 'type': row[1], 'title': row[2],
-                'content': row[3], 'keywords': row[4],
-                'activation': row[5], 'stability': row[6],
-                'access_count': row[7], 'locked': row[8] == 1,
-                'archived': row[9] == 1, 'last_accessed': row[10],
-                'created_at': row[11],
-                'spread_activation': row[5],
-                'effective_activation': row[5]
-            })
+        for row in self.conn.execute(sql, params).fetchall():
+            node = _ndal.get_node(row[0])
+            if node:
+                node['spread_activation'] = node.get('activation', 0)
+                node['effective_activation'] = node.get('activation', 0)
+                results.append(node)
         return results
 
     def _matches_temporal_filter(self, created_at: Optional[str], after: Optional[str], before: Optional[str]) -> bool:
