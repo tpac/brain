@@ -891,6 +891,31 @@ class BrainRecallMixin:
             )
         ]
 
+        # STEP 6.95: Keyword discovery slot.
+        # The 90/10 blend can bury nodes with strong keyword matches.
+        # Reserve one slot for the best keyword-scored node that isn't
+        # already in the top results. Threshold: keyword_score >= 0.5
+        # (meaning 50%+ of query terms match in title/content/keywords).
+        KEYWORD_SLOT_THRESHOLD = 0.5
+        top_ids = {sr['node_id'] for sr in scored_results[:limit]}
+        best_kw = None
+        best_kw_score = 0
+        for nid, kscore in keyword_scores.items():
+            if kscore >= KEYWORD_SLOT_THRESHOLD and nid not in top_ids and node_types.get(nid) != 'vocabulary':
+                if kscore > best_kw_score:
+                    best_kw = nid
+                    best_kw_score = kscore
+        if best_kw:
+            scored_results.insert(min(limit - 1, len(scored_results)), {
+                'node_id': best_kw,
+                'blended_score': best_kw_score * 0.3,  # Give it a reasonable score
+                'embedding_similarity': embedding_scores.get(best_kw),
+                'keyword_score': best_kw_score,
+                '_source': 'keyword_slot',
+                '_context_mismatch': False,
+            })
+            scored_results = scored_results[:limit]
+
         # STEP 7: Hydrate full node data for top results
         # v8.8: Vocab nodes go to separate list — they're connectors, not primary results
         final_results = []
