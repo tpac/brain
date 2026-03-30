@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-# brain v8.6.0 — Plugin builder
+# brain v8.7.0 — Plugin builder
 # Packs exactly what belongs in the .plugin file. Nothing else.
 #
 # v5.4.0: Brain-Claude conflict protocol, [BRAIN] identity tags,
@@ -46,6 +46,8 @@ FILES=(
   servers/dal_signal_queue.py
   servers/brain_mcp.py
   servers/contract.py
+  servers/pipeline_contract.py
+  servers/encoding_agent.py
   servers/dal_message_stream.py
   servers/metrics.py
   # Hook scripts — bash shims (thin wrappers)
@@ -65,6 +67,7 @@ FILES=(
   hooks/scripts/worktree-context.sh
   hooks/scripts/worktree-cleanup.sh
   hooks/scripts/restart-daemon.sh
+  hooks/scripts/encoding-hook.sh
   hooks/scripts/brain-statusline.sh
   hooks/scripts/resolve-brain-db.sh
   hooks/scripts/daemon-client.sh

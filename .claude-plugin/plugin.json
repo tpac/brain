@@ -1,7 +1,7 @@
 {
   "name": "brain",
-  "version": "8.6.0",
-  "description": "Shared cognitive space for Claude + operator. v8.6: Data contract (single source of truth), write verification, 3-degree graph traversal, situation embeddings, encoding agent with revision-first prompt, generic revise, capability test platform, seed brain.",
+  "version": "8.7.0",
+  "description": "Shared cognitive space for Claude + operator. v8.7: Recall quality (enrichment cap, per-result floor), pipeline contract, HTTP MCP (no stale cache), encoding agent via HTTP hook (first working production run), 67 silent exceptions fixed.",
   "author": {
     "name": "Tom Pachys"
   },
