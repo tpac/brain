@@ -697,8 +697,10 @@ class BrainRecallMixin:
                 project_params = [project]
 
             node_critical = {}  # node_id → critical flag
+            node_titles = {}    # node_id → title (for title-match boost)
+            node_types = {}     # node_id → type (for vocab detection)
             cursor = self.conn.execute(
-                f'''SELECT ne.node_id, ne.embedding, n.personal, n.personal_context, n.confidence, n.critical
+                f'''SELECT ne.node_id, ne.embedding, n.personal, n.personal_context, n.confidence, n.critical, n.title, n.type
                     FROM node_embeddings ne
                     JOIN nodes n ON n.id = ne.node_id
                     WHERE 1=1 {archive_filter} {type_filter} {project_filter}''',
@@ -710,6 +712,8 @@ class BrainRecallMixin:
                 node_personal_data[node_id] = (row[2], row[3])  # (personal, personal_context)
                 node_confidence[node_id] = row[4]  # may be None
                 node_critical[node_id] = row[5] or 0  # v5.2: critical flag
+                node_titles[node_id] = row[6] or ''
+                node_types[node_id] = row[7] or ''
                 if blob:
                     sim = embedder.cosine_similarity(query_vec, blob)
                     embedding_scores[node_id] = sim
@@ -833,6 +837,16 @@ class BrainRecallMixin:
                 type_boost = type_boosts.get(node.get('type'), 1.0)
                 blended *= type_boost
 
+            # v8.8: Title-match boost — proportional to query/title word overlap.
+            # If query terms appear in the node's title, strong relevance signal.
+            from .brain_constants import TITLE_MATCH_BOOST
+            title = node_titles.get(nid, '').lower()
+            if title and _query_terms_set:
+                matched = sum(1 for t in _query_terms_set if t in title)
+                title_fraction = matched / len(_query_terms_set)
+                if title_fraction > 0:
+                    blended += title_fraction * TITLE_MATCH_BOOST
+
             # v5.2: Critical node boost — safety-important nodes always surface
             is_critical = node_critical.get(nid, 0) if 'node_critical' in dir() else 0
             if not is_critical and node:
@@ -937,7 +951,9 @@ class BrainRecallMixin:
         ]
 
         # STEP 7: Hydrate full node data for top results
+        # v8.8: Vocab nodes go to separate list — they're connectors, not primary results
         final_results = []
+        vocab_context = []
         for sr in scored_results:
             nid = sr['node_id']
             node = keyword_nodes.get(nid)
@@ -1046,7 +1062,16 @@ class BrainRecallMixin:
                             # Score penalty already applied in STEP 6 — only reduce confidence here
                             node['_brain_to_host']['confidence'] *= 0.6
 
-                final_results.append(node)
+                # v8.8: Vocab nodes are connectors — surface as context, not primary results
+                if ntype == 'vocabulary':
+                    vocab_context.append({
+                        'id': node.get('id', ''),
+                        'title': node.get('title', ''),
+                        'content': (node.get('content') or '')[:200],
+                        '_score': sr['blended_score'],
+                    })
+                else:
+                    final_results.append(node)
 
         # STEP 7.5: Enrich top 3 results with metadata + neighbors
         # All results keep full content (no truncation). Top 3 also get
@@ -1065,6 +1090,7 @@ class BrainRecallMixin:
         recall_ms = (time.time() - t0) * 1000
         result = {
             'results': final_results,
+            'vocab_context': vocab_context,  # v8.8: vocab nodes as connectors, not results
             # Logging is now handled by the precision module in hooks, not here.
             '_recall_log_id': None,
             'intent': intent,
@@ -1235,9 +1261,10 @@ class BrainRecallMixin:
                 seed_id, limit=TRAVERSE_LIMITS[0] * 2,  # fetch extra, filter intentional
                 exclude_relations=EXCLUDED_EDGE_TYPES,
                 exclude_node_ids=seen_ids)
-            # Filter to intentional at degree 1
+            # Filter to intentional at degree 1, skip vocab nodes (they're hubs, not destinations)
             d1_neighbors = [n for n in d1_neighbors
-                            if n.get('relation') in INTENTIONAL_EDGE_TYPES][:TRAVERSE_LIMITS[0]]
+                            if n.get('relation') in INTENTIONAL_EDGE_TYPES
+                            and n.get('type') != 'vocabulary'][:TRAVERSE_LIMITS[0]]
 
             for nb in d1_neighbors:
                 nid = nb['id']
@@ -1260,7 +1287,7 @@ class BrainRecallMixin:
                         exclude_relations=EXCLUDED_EDGE_TYPES,
                         exclude_node_ids=seen_ids)
 
-                    for nb2 in d2_neighbors:
+                    for nb2 in [n for n in d2_neighbors if n.get('type') != 'vocabulary']:
                         nid2 = nb2['id']
                         freshness2 = _freshness(nb2)
                         d2_score = d1_score * TRAVERSE_DAMPEN[1] / TRAVERSE_DAMPEN[0] * (nb2.get('weight') or 0.5) * freshness2
@@ -1281,7 +1308,7 @@ class BrainRecallMixin:
                                 exclude_relations=EXCLUDED_EDGE_TYPES,
                                 exclude_node_ids=seen_ids)
 
-                            for nb3 in d3_neighbors:
+                            for nb3 in [n for n in d3_neighbors if n.get('type') != 'vocabulary']:
                                 nid3 = nb3['id']
                                 d3_score = d2_score * TRAVERSE_DAMPEN[2] / TRAVERSE_DAMPEN[1] * (nb3.get('weight') or 0.5)
                                 neighborhoods[seed_id]['degree_3'].append(

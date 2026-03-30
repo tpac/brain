@@ -320,6 +320,14 @@ def _format_result(tool_name, result):
         else:
             lines.append("No results found.")
 
+        # Show vocab context (connectors, not primary results)
+        vocab = result.get("vocab_context", [])
+        if vocab:
+            lines.append("")
+            lines.append("Related vocabulary:")
+            for v in vocab[:5]:
+                lines.append("  %s (id:%s)" % (v.get('title', ''), v.get('id', '')[:8]))
+
         # Show gap info if present
         gap = result.get("_gap")
         if gap:

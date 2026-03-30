@@ -160,6 +160,11 @@ RELEVANCE_FLOOR_PRIMARY = 0.25    # result won via primary embedding only
 # Example: primary=0.45, enrichment=0.82 → 0.45 + 0.3*(0.82-0.45) = 0.561
 ENRICHMENT_CAP = 0.30
 
+# Title-match boost — proportional to fraction of query terms found in node title.
+# When query terms appear in a node's title, it's a strong signal of relevance.
+# Boost is additive: score += title_fraction * TITLE_MATCH_BOOST
+TITLE_MATCH_BOOST = 0.3
+
 # Vocabulary expansion
 VOCAB_EXPANSION_MAX = 3  # Max terms added per query via vocabulary expansion
 VOCAB_GENERIC_THRESHOLD = 0.05  # Reject vocab terms matching >5% of nodes

@@ -136,14 +136,15 @@ def _query_encoding_activity(since_ts="", limit=30):
 
         # Revised nodes
         rows = conn.execute(
-            "SELECT id, type, title, content, confidence, revised_at "
+            "SELECT id, type, title, content, confidence, revised_at, encoding_source "
             "FROM nodes WHERE revised_at IS NOT NULL AND revised_at > ? "
             "ORDER BY revised_at DESC LIMIT ?",
             (since_ts or "1970-01-01", limit)).fetchall()
         for r in rows:
             events.append({
                 "kind": "revised", "id": r[0], "type": r[1], "title": r[2],
-                "content": (r[3] or "")[:300], "confidence": r[4], "timestamp": r[5]})
+                "content": (r[3] or "")[:300], "confidence": r[4], "timestamp": r[5],
+                "encoding_source": r[6]})
 
         # New connections (exclude co_accessed and emergent_bridge — organic noise)
         rows = conn.execute(
@@ -919,6 +920,17 @@ canvas { width: 100%; height: 100%; }
     <button class="feed-btn active" onclick="switchFeed('surface')">Surface</button>
     <button class="feed-btn" onclick="switchFeed('encoding')">Encoding</button>
     <button class="feed-btn" onclick="switchFeed('queue')">Queue</button>
+    <select id="surface-filter" onchange="filterSurface()" style="margin-left:auto;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
+      <option value="">All events</option>
+      <option value="recall">Recall only</option>
+      <option value="stop">Stop only</option>
+    </select>
+    <select id="encoding-filter" onchange="filterEncoding()" style="display:none;margin-left:8px;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
+      <option value="">All types</option>
+      <option value="created">Created</option>
+      <option value="revised">Revised</option>
+      <option value="connected">Connected</option>
+    </select>
   </div>
   <div class="feed" id="feed"></div>
   <div class="feed" id="feed-encoding" style="display:none"></div>
@@ -1150,8 +1162,26 @@ function switchFeed(name) {
   document.getElementById('feed').style.display = name === 'surface' ? 'block' : 'none';
   document.getElementById('feed-encoding').style.display = name === 'encoding' ? 'block' : 'none';
   document.getElementById('feed-queue').style.display = name === 'queue' ? 'block' : 'none';
+  document.getElementById('surface-filter').style.display = name === 'surface' ? '' : 'none';
+  document.getElementById('encoding-filter').style.display = name === 'encoding' ? '' : 'none';
   if (name === 'encoding' && !encodingLoaded) loadEncodingActivity();
   if (name === 'queue') loadSignalQueue();
+}
+
+function filterSurface() {
+  const val = document.getElementById('surface-filter').value;
+  document.querySelectorAll('#feed .hook-entry').forEach(el => {
+    if (!val) { el.style.display = ''; return; }
+    el.style.display = el.classList.contains(val) ? '' : 'none';
+  });
+}
+
+function filterEncoding() {
+  const val = document.getElementById('encoding-filter').value;
+  document.querySelectorAll('#feed-encoding .enc-entry').forEach(el => {
+    if (!val) { el.style.display = ''; return; }
+    el.style.display = el.dataset.kind === val ? '' : 'none';
+  });
 }
 
 // Encoding activity feed
@@ -1170,12 +1200,17 @@ async function loadEncodingActivity() {
       return;
     }
     const container = document.getElementById('feed-encoding');
-    if (!encodingLoaded) container.innerHTML = '';
+    const isInitial = !encodingLoaded;
+    if (isInitial) container.innerHTML = '';
     encodingLoaded = true;
 
-    for (const evt of d.events) {
+    // On initial load: events are newest-first from API, use append to keep order.
+    // On poll updates: prepend new items to top.
+    const evts = isInitial ? d.events : d.events.slice().reverse();
+    for (const evt of evts) {
       const div = document.createElement('div');
       div.className = 'enc-entry ' + evt.kind;
+      div.dataset.kind = evt.kind;
       const t = localTime(evt.timestamp);
 
       if (evt.kind === 'created') {
@@ -1191,7 +1226,7 @@ async function loadEncodingActivity() {
           '<span class="enc-kind revised">revised</span>' +
           '<span class="type-badge type-' + (evt.type||'') + '">' + (evt.type||'') + '</span> ' +
           '<span class="enc-title">' + escapeHtml(evt.title || '') + '</span>' +
-          '<div class="enc-meta">' + t + ' · conf: ' + (evt.confidence||0).toFixed(2) + '</div>' +
+          '<div class="enc-meta">' + t + ' · conf: ' + (evt.confidence||0).toFixed(2) + ' · source: ' + (evt.encoding_source||'?') + '</div>' +
           '<div class="enc-content">' + escapeHtml(evt.content || '') + '</div>';
       } else if (evt.kind === 'connected') {
         div.innerHTML =
@@ -1208,7 +1243,7 @@ async function loadEncodingActivity() {
           '<div class="enc-meta">' + t + '</div>' +
           '<div class="enc-content">' + escapeHtml(evt.text || '') + '</div>';
       }
-      container.prepend(div);
+      if (isInitial) container.appendChild(div); else container.prepend(div);
     }
     if (d.events.length) lastEncodingTs = d.events[0].timestamp;
   } catch(e) {}

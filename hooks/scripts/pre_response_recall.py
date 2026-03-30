@@ -115,6 +115,13 @@ try:
             "latency_distill_ms": round(latency_distill),
         })
 
+        # Append vocab context if present (connectors, not primary results)
+        vocab = candidates_data.get("vocab_context", [])
+        if vocab and distilled and not distilled.upper().startswith("EMPTY"):
+            vocab_lines = "\n\nRelated vocabulary: " + ", ".join(
+                "%s (id:%s)" % (v.get("title", ""), v.get("id", "")[:8]) for v in vocab[:3])
+            distilled += vocab_lines
+
         # Strip Haiku's opinions — if it starts with EMPTY, treat as empty
         if not distilled or distilled.startswith("EMPTY") or distilled.upper().startswith("EMPTY"):
             log_hook_output("recall", output_text="(distilled: empty)", user_prompt=user_message, metadata=_prompt_details)

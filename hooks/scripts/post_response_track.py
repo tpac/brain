@@ -63,11 +63,11 @@ try:
         brain_debug("track: event=%s, user_msg=%d chars, assistant_msg=%d chars" % (
             event_name or "UserPromptSubmit", len(user_message), len(last_msg)))
         resp = daemon_call_raw("hook_post_response_track", {
-            "prompt": user_message,  # extracted from transcript, not raw hook_input
+            "prompt": user_message,
             "message": hook_input.get("message", ""),
             "hook_event_name": event_name,
             "last_assistant_message": last_msg,
-        })
+        }, timeout=55.0)  # Encoding agent runs ~49s on every 5th stop
         latency = (time.time() - t0) * 1000
         if resp.get("ok"):
             output = resp.get("result", {}).get("output", "")

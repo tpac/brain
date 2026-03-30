@@ -274,12 +274,17 @@ def hook_recall(brain, args, graph_changes):
             elif r.get("_neighbors"):
                 node_data["_graph"] = {"degree_1": r["_neighbors"], "degree_2": [], "degree_3": []}
             candidates_data.append(node_data)
+        # v8.8: Include vocab context — connectors surfaced separately
+        vocab_context = result.get('vocab_context', []) if isinstance(result, dict) else []
         with open(candidates_path, 'w') as f:
             _json.dump({
                 "user_message": user_message,
                 "candidates": candidates_data,
                 "segment_note": segment_note,
                 "gap": gap.get("query") if gap else None,
+                "vocab_context": [{"id": v.get("id", ""), "title": v.get("title", ""),
+                                   "content": v.get("content", "")[:200]}
+                                  for v in vocab_context[:5]],
             }, f, default=str)
     except Exception as e:
         brain._log_error('recall_candidates_write', e, 'Failed to write candidates file')
@@ -361,21 +366,39 @@ def hook_post_response_track(brain, args, graph_changes):
     # Runs INLINE (not background thread) — SQLite single-connection deadlocks
     # if encoding thread and pool worker access brain.conn concurrently.
     # Stop hook runs after Claude responds, so user doesn't wait.
+    encoding_status = ""
     try:
         counter = int(brain.get_config('stop_counter', '0') or '0') + 1
         brain.set_config('stop_counter', str(counter))
+        position = counter % 5  # 0 = encoding fires
 
-        if counter % 5 == 0:
+        if position == 0:
             from .encoding_agent import run_encoding
             from .daemon_dispatch import COMMAND_TABLE
+            import time as _t
+            _enc_t0 = _t.time()
+            print("[brain-hooks] ENCODING AGENT STARTING (counter=%d)" % counter, flush=True)
             def dispatch(cmd, cmd_args):
                 entry = COMMAND_TABLE.get(cmd)
                 if entry:
                     return entry.handler(brain, cmd_args, [])
                 return {"ok": False, "error": "Unknown: %s" % cmd}
-            run_encoding(brain, dispatch, counter)
+            try:
+                enc_result = run_encoding(brain, dispatch, counter)
+                _enc_ms = int((_t.time() - _enc_t0) * 1000)
+                actions = enc_result.get('actions', 0) if isinstance(enc_result, dict) else 0
+                encoding_status = "ENCODING RAN: %d actions in %dms" % (actions, _enc_ms)
+                print("[brain-hooks] ENCODING AGENT DONE: %s" % encoding_status, flush=True)
+            except Exception as enc_e:
+                _enc_ms = int((_t.time() - _enc_t0) * 1000)
+                encoding_status = "ENCODING FAILED after %dms: %s" % (_enc_ms, enc_e)
+                print("[brain-hooks] ENCODING AGENT FAILED: %s" % enc_e, flush=True)
+                brain._log_error('encoding_agent_run', enc_e, 'Encoding failed after %dms' % _enc_ms)
+        else:
+            encoding_status = "encoding %d/5" % position
     except Exception as e:
         brain._log_error('encoding_agent_gate', e, 'Stop hook')
+        encoding_status = "encoding error: %s" % str(e)[:50]
 
     try:
         brain.record_message()
@@ -383,7 +406,7 @@ def hook_post_response_track(brain, args, graph_changes):
         brain._log_error('record_message', e, 'Stop hook')
 
     brain.save()
-    return {"output": ""}
+    return {"output": "(stored + %s)" % encoding_status}
 
 
 
