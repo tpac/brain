@@ -341,8 +341,8 @@ class Brain(
         return datetime.utcnow().isoformat() + 'Z'
 
     def _generate_id(self, node_type: str = None) -> str:
-        """Generate unique node ID using uuid4 hex."""
-        return uuid.uuid4().hex
+        """Generate 8-char hex node ID. ~4.3B combinations, collision-free at brain scale."""
+        return uuid.uuid4().hex[:8]
 
     # ─── Helper: Recency Scoring ───
 

@@ -132,7 +132,7 @@ PRECISION = {
 # FORMATTERS — standard string builders that read from this contract
 # ═══════════════════════════════════════════════════════════════
 
-def format_node_header(node, id_length=16):
+def format_node_header(node, id_length=8):
     """Standard one-line node header used across all stages."""
     locked = "LOCKED " if node.get("locked") else ""
     return "[%s] %s%s (id:%s, conf:%.2f, revised:%s, created:%s)" % (

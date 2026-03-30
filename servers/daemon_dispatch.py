@@ -17,6 +17,25 @@ from typing import Any, Dict, List, NamedTuple, Callable, Optional
 from .daemon_config import _CODE_FINGERPRINT
 
 
+def _resolve_id(brain, node_id):
+    """Resolve a node ID — exact match first, then prefix match.
+
+    Handles both new 8-char IDs and old 32-char IDs gracefully.
+    Returns the full ID if found, or the original input if not.
+    """
+    if not node_id:
+        return node_id
+    # Exact match
+    row = brain.conn.execute('SELECT id FROM nodes WHERE id = ?', (node_id,)).fetchone()
+    if row:
+        return row[0]
+    # Prefix match (for truncated IDs from tool calls)
+    rows = brain.conn.execute('SELECT id FROM nodes WHERE id LIKE ?', (node_id + '%',)).fetchall()
+    if len(rows) == 1:
+        return rows[0][0]
+    return node_id  # Not found or ambiguous — let the caller handle the error
+
+
 class CmdEntry(NamedTuple):
     handler: Callable
     is_write: bool
@@ -46,6 +65,7 @@ def _handle_recall(brain, args, graph_changes):
     # By-ID recall: returns single enriched node
     node_id = args.get("node_id")
     if node_id:
+        node_id = _resolve_id(brain, node_id)
         result = brain.recall_node(
             node_id, neighbor_limit=args.get("neighbor_limit", 3))
         return {"ok": True, "result": result}
@@ -315,7 +335,7 @@ def _handle_revise(brain, args, graph_changes):
     """Update any field(s) on an existing node via revise()."""
     from .contract import validate_field, ALL_FIELDS
 
-    node_id = args.get("node_id", "")
+    node_id = _resolve_id(brain, args.get("node_id", ""))
     reason = args.get("reason", "")
     if not node_id:
         return {"ok": False, "error": "node_id is required"}
@@ -454,7 +474,7 @@ def _handle_find_node_by_title(brain, args, graph_changes):
 
 
 def _handle_get_node(brain, args, graph_changes):
-    node_id = args.get("node_id", "")
+    node_id = _resolve_id(brain, args.get("node_id", ""))
     if not node_id:
         return {"ok": False, "error": "node_id is required"}
     node = brain.get_node(node_id)
@@ -491,8 +511,8 @@ def _handle_encode_cluster(brain, args, graph_changes):
 
 def _handle_connect(brain, args, graph_changes):
     result = brain.connect(
-        source_id=args.get("source_id", ""),
-        target_id=args.get("target_id", ""),
+        source_id=_resolve_id(brain, args.get("source_id", "")),
+        target_id=_resolve_id(brain, args.get("target_id", "")),
         relation=args.get("relation", "related_to"),
         weight=args.get("weight", 0.5))
     graph_changes.append(
@@ -505,7 +525,7 @@ def _handle_connect(brain, args, graph_changes):
 
 def _handle_enrich(brain, args, graph_changes):
     result = brain.store_enrichments(
-        node_id=args.get("node_id", ""),
+        node_id=_resolve_id(brain, args.get("node_id", "")),
         question=args.get("question"),
         anchor=args.get("anchor"),
         bridge=args.get("bridge"),
