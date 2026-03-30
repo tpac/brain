@@ -734,6 +734,20 @@ class NodeDAL:
             (activation_boost, ts, ts, node_id)
         )
 
+    def get_metadata(self, node_id: str) -> Optional[Dict[str, Any]]:
+        """Get node_metadata for a node. Returns None if no metadata exists."""
+        row = self.conn.execute(
+            'SELECT reasoning, user_raw_quote, correction_of, last_validated '
+            'FROM node_metadata WHERE node_id = ?',
+            (node_id,)
+        ).fetchone()
+        if not row or not any(row):
+            return None
+        return {
+            'reasoning': row[0], 'user_raw_quote': row[1],
+            'correction_of': row[2], 'last_validated': row[3],
+        }
+
 
 class EmbeddingDAL:
     """Access layer for node_embeddings and node_enrichments tables."""
@@ -759,6 +773,38 @@ class EmbeddingDAL:
             sql += ' WHERE n.archived = 0'
         rows = self.conn.execute(sql).fetchall()
         return [{'node_id': r[0], 'embedding': r[1]} for r in rows]
+
+    def get_all_with_context(self, exclude_archived: bool = True,
+                             types: List[str] = None,
+                             project: str = None) -> List[Dict[str, Any]]:
+        """Get all embeddings with node context for recall STEP 3 scan.
+
+        Returns: [{node_id, embedding, personal, personal_context,
+                   confidence, critical, title, type}]
+        Filters: archived, type, project — matching recall pipeline needs.
+        """
+        where = []
+        params = []
+        if exclude_archived:
+            where.append('n.archived = 0')
+        if types:
+            where.append('n.type IN (%s)' % ','.join('?' * len(types)))
+            params.extend(types)
+        if project:
+            where.append('(n.project = ? OR n.project IS NULL)')
+            params.append(project)
+        where_sql = (' WHERE ' + ' AND '.join(where)) if where else ''
+        rows = self.conn.execute(
+            'SELECT ne.node_id, ne.embedding, n.personal, n.personal_context, '
+            'n.confidence, n.critical, n.title, n.type '
+            'FROM node_embeddings ne '
+            'JOIN nodes n ON n.id = ne.node_id' + where_sql,
+            params
+        ).fetchall()
+        return [{'node_id': r[0], 'embedding': r[1], 'personal': r[2],
+                 'personal_context': r[3], 'confidence': r[4],
+                 'critical': r[5] or 0, 'title': r[6] or '', 'type': r[7] or ''}
+                for r in rows]
 
     def store_embedding(self, node_id: str, embedding: bytes, model: str) -> None:
         """Store or replace an embedding for a node."""

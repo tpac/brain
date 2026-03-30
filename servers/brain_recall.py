@@ -644,37 +644,21 @@ class BrainRecallMixin:
         _query_terms_set = set(query.lower().split()) if query else set()
 
         try:
-            archive_filter = '' if include_archived else 'AND n.archived = 0'
-            type_filter = ''
-            type_params = []
-            if types:
-                type_placeholders = ','.join('?' * len(types))
-                type_filter = f'AND n.type IN ({type_placeholders})'
-                type_params = list(types)
-            project_filter = ''
-            project_params = []
-            if project:
-                project_filter = 'AND (n.project = ? OR n.project IS NULL)'
-                project_params = [project]
-
             node_critical = {}  # node_id → critical flag
             node_titles = {}    # node_id → title (for title-match boost)
             node_types = {}     # node_id → type (for vocab detection)
-            cursor = self.conn.execute(
-                f'''SELECT ne.node_id, ne.embedding, n.personal, n.personal_context, n.confidence, n.critical, n.title, n.type
-                    FROM node_embeddings ne
-                    JOIN nodes n ON n.id = ne.node_id
-                    WHERE 1=1 {archive_filter} {type_filter} {project_filter}''',
-                type_params + project_params
-            )
-            for row in cursor.fetchall():
-                node_id = row[0]
-                blob = row[1]
-                node_personal_data[node_id] = (row[2], row[3])  # (personal, personal_context)
-                node_confidence[node_id] = row[4]  # may be None
-                node_critical[node_id] = row[5] or 0  # v5.2: critical flag
-                node_titles[node_id] = row[6] or ''
-                node_types[node_id] = row[7] or ''
+            _emb_dal = EmbeddingDAL(self.conn)
+            emb_rows = _emb_dal.get_all_with_context(
+                exclude_archived=not include_archived,
+                types=types, project=project)
+            for row in emb_rows:
+                node_id = row['node_id']
+                blob = row['embedding']
+                node_personal_data[node_id] = (row['personal'], row['personal_context'])
+                node_confidence[node_id] = row['confidence']
+                node_critical[node_id] = row['critical']
+                node_titles[node_id] = row['title']
+                node_types[node_id] = row['type']
                 if blob:
                     sim = embedder.cosine_similarity(query_vec, blob)
                     embedding_scores[node_id] = sim
@@ -691,22 +675,20 @@ class BrainRecallMixin:
             enrichment_used = 0
             best_enrichment_per_node = {}  # node_id → (best_sim, vector_type)
             try:
-                enrich_cursor = self.conn.execute(
-                    'SELECT node_id, vector_type, embedding FROM node_enrichments WHERE embedding IS NOT NULL'
-                )
-                for erow in enrich_cursor.fetchall():
-                    e_node_id, e_type, e_blob = erow
+                _enrich_dal = EnrichmentDAL(self.conn)
+                _enrich_rows = _enrich_dal.get_all_embeddings()
+                for erow in _enrich_rows:
+                    e_node_id = erow['node_id']
+                    e_type = erow['vector_type']
+                    e_blob = erow['embedding']
                     if not e_blob:
                         continue
                     enrichment_count += 1
-                    # Skip if node is filtered out by type/project/archive
+                    # Skip if node is filtered out (not seen in primary scan)
                     if e_node_id not in node_confidence and e_node_id not in embedding_scores:
-                        check = self.conn.execute(
-                            f'''SELECT 1 FROM nodes n WHERE n.id = ? {archive_filter} {type_filter} {project_filter}''',
-                            [e_node_id] + type_params + project_params
-                        ).fetchone()
-                        if not check:
-                            continue
+                        # Node wasn't in the primary scan — check if it passes filters
+                        if e_node_id not in node_types:
+                            continue  # Not in our filtered set at all
                     e_sim = embedder.cosine_similarity(query_vec, e_blob)
                     prev_best = best_enrichment_per_node.get(e_node_id, (0, None))[0]
                     if e_sim > prev_best:
@@ -733,7 +715,6 @@ class BrainRecallMixin:
         situation_scores = {}
         if situation_vec:
             try:
-                from .dal import EmbeddingDAL
                 emb_dal = EmbeddingDAL(self.conn)
                 sit_rows = emb_dal.get_all_situations()
                 for row in sit_rows:
@@ -1091,19 +1072,10 @@ class BrainRecallMixin:
 
             # Attach metadata from node_metadata table
             try:
-                meta_cur = self.conn.execute(
-                    'SELECT reasoning, user_raw_quote, correction_of, last_validated '
-                    'FROM node_metadata WHERE node_id = ?',
-                    (nid,)
-                )
-                meta_row = meta_cur.fetchone()
-                if meta_row and any(meta_row):
-                    node['_metadata'] = {
-                        'reasoning': meta_row[0],
-                        'user_raw_quote': meta_row[1],
-                        'correction_of': meta_row[2],
-                        'last_validated': meta_row[3],
-                    }
+                _ndal = NodeDAL(self.conn)
+                meta = _ndal.get_metadata(nid)
+                if meta:
+                    node['_metadata'] = meta
             except Exception as e:
                 self._log_error('recall_node_meta', e, 'fetching node metadata for enrichment')
 
@@ -1328,16 +1300,12 @@ class BrainRecallMixin:
             current_nodes = [(nid, act) for nid, act in activation.items() if act > 0.01]
 
             for node_id, node_activation in current_nodes:
-                cursor = self.conn.execute(
-                    '''SELECT target_id, weight FROM edges
-                       WHERE source_id = ? AND weight > ?
-                       ORDER BY weight DESC LIMIT ?''',
-                    (node_id, PRUNE_THRESHOLD, MAX_NEIGHBORS)
-                )
+                _gdal = GraphDAL(self.conn)
+                _neighbors = _gdal.get_neighbors(node_id, min_weight=PRUNE_THRESHOLD, limit=MAX_NEIGHBORS)
 
-                for row in cursor.fetchall():
-                    target_id = row[0]
-                    edge_weight = row[1]
+                for nb in _neighbors:
+                    target_id = nb['target_id']
+                    edge_weight = nb['weight']
                     spread = node_activation * edge_weight * decay_factor
                     current_act = activation.get(target_id, 0)
                     activation[target_id] = current_act + spread
