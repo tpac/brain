@@ -878,7 +878,7 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: 'SF Mono', 'Fira Code',
 .graph-controls button:hover { background: #2a2a4a; }
 canvas { width: 100%; height: 100%; }
 .node-tooltip { position: absolute; background: #1a1a2aee; border: 1px solid #3a3a5a; padding: 10px; border-radius: 6px; max-width: 300px; font-size: 11px; pointer-events: none; display: none; z-index: 20; backdrop-filter: blur(8px); }
-.node-detail { position: absolute; top: 0; right: 0; width: 380px; height: 100%; background: #0d0d15f0; border-left: 1px solid #2a2a3a; padding: 16px; overflow-y: auto; z-index: 15; backdrop-filter: blur(12px); font-size: 12px; }
+.node-detail { position: fixed; top: 0; right: 0; width: 380px; height: 100%; background: #0d0d15f0; border-left: 1px solid #2a2a3a; padding: 16px; overflow-y: auto; z-index: 100; backdrop-filter: blur(12px); font-size: 12px; }
 .node-detail .nd-close { position: absolute; top: 8px; right: 12px; cursor: pointer; color: #666; font-size: 18px; }
 .node-detail .nd-close:hover { color: #fff; }
 .node-detail .nd-title { font-weight: bold; color: #fff; font-size: 14px; margin-bottom: 8px; padding-right: 24px; }
@@ -968,9 +968,9 @@ canvas { width: 100%; height: 100%; }
     </div>
     <canvas id="graph-canvas"></canvas>
     <div class="node-tooltip" id="tooltip"></div>
-    <div class="node-detail" id="node-detail" style="display:none"></div>
   </div>
 </div>
+<div class="node-detail" id="node-detail" style="display:none"></div>
 
 <div id="tab-explorer" class="tab-content">
   <div class="explorer">
@@ -1214,19 +1214,23 @@ async function loadEncodingActivity() {
       const t = localTime(evt.timestamp);
 
       if (evt.kind === 'created') {
+        div.style.cursor = 'pointer';
+        div.onclick = () => loadNodeDetail(evt.id);
         div.innerHTML =
           '<span class="enc-kind created">created</span>' +
           '<span class="type-badge type-' + (evt.type||'') + '">' + (evt.type||'') + '</span> ' +
           (evt.locked ? '&#x1f512; ' : '') +
           '<span class="enc-title">' + escapeHtml(evt.title || '') + '</span>' +
-          '<div class="enc-meta">' + t + ' · conf: ' + (evt.confidence||0).toFixed(2) + ' · source: ' + (evt.encoding_source||'?') + '</div>' +
+          '<div class="enc-meta">' + t + ' · conf: ' + (evt.confidence||0).toFixed(2) + ' · source: ' + (evt.encoding_source||'?') + ' · id:' + (evt.id||'').substring(0,8) + '</div>' +
           '<div class="enc-content">' + escapeHtml(evt.content || '') + '</div>';
       } else if (evt.kind === 'revised') {
+        div.style.cursor = 'pointer';
+        div.onclick = () => loadNodeDetail(evt.id);
         div.innerHTML =
           '<span class="enc-kind revised">revised</span>' +
           '<span class="type-badge type-' + (evt.type||'') + '">' + (evt.type||'') + '</span> ' +
           '<span class="enc-title">' + escapeHtml(evt.title || '') + '</span>' +
-          '<div class="enc-meta">' + t + ' · conf: ' + (evt.confidence||0).toFixed(2) + ' · source: ' + (evt.encoding_source||'?') + '</div>' +
+          '<div class="enc-meta">' + t + ' · conf: ' + (evt.confidence||0).toFixed(2) + ' · source: ' + (evt.encoding_source||'?') + ' · id:' + (evt.id||'').substring(0,8) + '</div>' +
           '<div class="enc-content">' + escapeHtml(evt.content || '') + '</div>';
       } else if (evt.kind === 'connected') {
         div.innerHTML =
