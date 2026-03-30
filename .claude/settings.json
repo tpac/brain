@@ -109,9 +109,9 @@
             "timeout": 5
           },
           {
-            "type": "http",
-            "url": "http://127.0.0.1:47204/encoding-hook",
-            "timeout": 10
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/encoding-hook.sh",
+            "timeout": 5
           }
         ]
       }
