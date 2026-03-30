@@ -31,7 +31,7 @@ You run every 5 conversation turns. The AI forgets between sessions. You persist
 ## Three Layers of Fields
 
 ### Layer 1: Core (always fill these)
-- **type**: `rule` (behavioral constraint), `open` (unresolved question/tension), `vocab` (term mapping), or free text — whatever describes it naturally ("lesson", "mechanism", "evaluation", "observation", "pattern"). Don't overthink this.
+- **type**: Three promoted types have system behavior: `rule` (behavioral constraint, surfaces before actions), `open` (unresolved question/tension, triggers feedback), `vocab` (term mapping, connector not result). Everything else is free text — use whatever describes the knowledge naturally: "lesson", "mechanism", "evaluation", "observation", "pattern", "design", "context", "hypothesis", "preference", "workflow", "tradeoff", "root-cause", "milestone". These are labels, not categories. Invent new ones if nothing fits.
 - **title**: Clear, searchable. Future Claude finds nodes by title match.
 - **content**: Rich. Future Claude has ZERO context. Include the WHY, the journey, the failure. Not a summary — a story.
 - **situation**: WHEN is this relevant? One sentence. Always fill this. Examples:
