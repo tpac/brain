@@ -46,7 +46,7 @@ from .brain_constants import (
     SITUATION_WEIGHT,
     SITUATION_THRESHOLD,
 )
-from .dal import GraphDAL
+from .dal import GraphDAL, NodeDAL, EmbeddingDAL, TfIdfDAL, LogsDAL, EnrichmentDAL
 
 
 class BrainRecallMixin:
@@ -288,16 +288,9 @@ class BrainRecallMixin:
         if tfidf_query_terms:
             try:
                 unique_terms = list(set(tfidf_query_terms))
-                placeholders = ','.join('?' * len(unique_terms))
-                cursor = self.conn.execute(
-                    f'''SELECT DISTINCT nv.node_id FROM node_vectors nv
-                        JOIN nodes n ON n.id = nv.node_id
-                        WHERE nv.term IN ({placeholders}) AND n.archived = 0
-                        LIMIT 50''',
-                    unique_terms
-                )
-                for row in cursor.fetchall():
-                    nid = row[0]
+                tfidf_dal = TfIdfDAL(self.conn)
+                tfidf_node_ids = tfidf_dal.get_nodes_matching_terms(unique_terms)
+                for nid in tfidf_node_ids[:50]:
                     if nid not in all_seeds:
                         # Fetch node data
                         cursor2 = self.conn.execute(
@@ -387,11 +380,8 @@ class BrainRecallMixin:
             relevance = (kw_w * keyword_relevance + emb_w * semantic_score)
 
             # v4: Hub dampening (nodes with 20+ connections get reduced relevance)
-            cursor = self.conn.execute(
-                'SELECT COUNT(*) FROM edges WHERE source_id = ?',
-                (node['id'],)
-            )
-            edge_count = cursor.fetchone()[0]
+            _graph_dal = GraphDAL(self.conn)
+            edge_count = _graph_dal.count_node_edges(node['id'], min_weight=0)
             hub = self._get_tunable('hub_dampening', {'threshold': 40, 'penalty': 0.5})
             hub_threshold = hub.get('threshold', 40) if isinstance(hub, dict) else 40
             if edge_count > hub_threshold:
@@ -1225,16 +1215,15 @@ class BrainRecallMixin:
                 return FRESHNESS_MULTIPLIERS.get('this_month', 0.8)
             return FRESHNESS_MULTIPLIERS.get('older', 0.6)
 
+        emb_dal = EmbeddingDAL(self.conn)
         def _semantic_bonus(node_id):
             """Compute additive semantic bonus if query_vec available."""
             if query_vec is None:
                 return 0.0
             try:
-                row = self.conn.execute(
-                    'SELECT embedding FROM node_embeddings WHERE node_id = ?', (node_id,)
-                ).fetchone()
-                if row and row[0]:
-                    node_vec = struct.unpack('%df' % (len(row[0]) // 4), row[0])
+                blob = emb_dal.get_embedding(node_id)
+                if blob:
+                    node_vec = struct.unpack('%df' % (len(blob) // 4), blob)
                     # Cosine similarity
                     dot = sum(a * b for a, b in zip(query_vec, node_vec))
                     mag_a = sum(a * a for a in query_vec) ** 0.5
@@ -1490,23 +1479,12 @@ class BrainRecallMixin:
 
     def _mark_accessed(self, node_id: str, session_id: str):
         """Mark a node as accessed and log it."""
-        ts = self.now()
-        self.conn.execute(
-            '''UPDATE nodes
-               SET access_count = access_count + 1,
-                   activation = MIN(1.0, activation + 0.1),
-                   recency_score = 1.0,
-                   last_accessed = ?,
-                   updated_at = ?
-               WHERE id = ?''',
-            (ts, ts, node_id)
-        )
-        self.logs_conn.execute(
-            'INSERT INTO access_log (session_id, node_id, timestamp) VALUES (?, ?, ?)',
-            (session_id, node_id, ts)
-        )
-        self.logs_conn.commit()
+        node_dal = NodeDAL(self.conn)
+        logs_dal = LogsDAL(self.logs_conn)
+        node_dal.mark_accessed(node_id)
+        logs_dal.log_access(session_id, node_id)
         self.conn.commit()
+        self.logs_conn.commit()
 
     def _hebbian_strengthen(self, node_ids: List[str], segment_node_ids: Optional[List[str]] = None):
         """
@@ -1530,82 +1508,42 @@ class BrainRecallMixin:
         # Cap pairwise work: only top N nodes to avoid O(n^2) explosion
         ids = node_ids[:15]
 
+        graph_dal = GraphDAL(self.conn)
+
         for i in range(len(ids)):
             for j in range(i + 1, len(ids)):
                 nid_i = ids[i]
                 nid_j = ids[j]
 
-                # Check if edge exists (either direction)
-                cursor = self.conn.execute(
-                    'SELECT weight, co_access_count, stability FROM edges WHERE source_id = ? AND target_id = ?',
-                    (nid_i, nid_j)
-                )
-                row = cursor.fetchone()
-
-                if not row:
-                    # Check reverse direction
-                    cursor = self.conn.execute(
-                        'SELECT weight, co_access_count, stability FROM edges WHERE source_id = ? AND target_id = ?',
-                        (nid_j, nid_i)
-                    )
-                    row = cursor.fetchone()
-                    if row:
-                        # Reverse exists — update it
-                        w, count, stab = row
-                        new_weight = min(MAX_WEIGHT, w + LEARNING_RATE * 0.1)
-                        new_stability = min(stab * STABILITY_BOOST, 10.0)
-                        self.conn.execute(
-                            '''UPDATE edges
-                               SET weight = ?, co_access_count = ?, stability = ?, last_strengthened = ?
-                               WHERE source_id = ? AND target_id = ?''',
-                            (new_weight, count + 1, new_stability, ts, nid_j, nid_i)
-                        )
-                        continue
-
-                if row:
-                    # Edge exists — strengthen it
-                    w, count, stab = row
-                    new_weight = min(MAX_WEIGHT, w + LEARNING_RATE * 0.1)
-                    new_stability = min(stab * STABILITY_BOOST, 10.0)
-
-                    self.conn.execute(
-                        '''UPDATE edges
-                           SET weight = ?, co_access_count = ?, stability = ?, last_strengthened = ?
-                           WHERE source_id = ? AND target_id = ?''',
-                        (new_weight, count + 1, new_stability, ts, nid_i, nid_j)
-                    )
+                # Check if edge exists (either direction) — strengthen via DAL
+                if graph_dal.strengthen_edge(nid_i, nid_j, amount=LEARNING_RATE * 0.1):
+                    continue
+                if graph_dal.strengthen_edge(nid_j, nid_i, amount=LEARNING_RATE * 0.1):
+                    continue
                 else:
-                    # NO edge exists — CREATE a co_accessed edge
-                    # v5.1: Only create NEW co_accessed edges within same segment
-                    # (existing edges always get strengthened — they earned it)
+                    # NO edge — create co_accessed (v5.1: only within same segment)
                     if segment_set and (nid_i not in segment_set or nid_j not in segment_set):
-                        continue  # Different segments — skip new edge creation
-
-                    # Start with low weight; repeated co-access will strengthen it
-                    self.conn.execute(
-                        '''INSERT OR IGNORE INTO edges
-                           (source_id, target_id, weight, relation, edge_type, co_access_count,
-                            stability, last_strengthened, created_at)
-                           VALUES (?, ?, ?, 'co_accessed', 'co_accessed', 1, 1.0, ?, ?)''',
-                        (nid_i, nid_j, EDGE_TYPES['co_accessed']['defaultWeight'], ts, ts)
-                    )
+                        continue
+                    graph_dal.create_edge(
+                        nid_i, nid_j,
+                        weight=EDGE_TYPES['co_accessed']['defaultWeight'],
+                        relation='co_accessed', edge_type='co_accessed')
 
         self.conn.commit()
 
     def _log_recall(self, session_id: str, query: str, returned_ids: List[str]) -> Optional[str]:
         """Log a recall event."""
-        ts = self.now()
-        cursor = self.logs_conn.execute(
-            '''INSERT INTO recall_log (session_id, query, returned_ids, returned_count, created_at)
-               VALUES (?, ?, ?, ?, ?)''',
-            (session_id or 'unknown', query, json.dumps(returned_ids), len(returned_ids), ts)
-        )
-        self.logs_conn.commit()
-
-        # Return the last inserted row ID
-        cursor = self.logs_conn.execute('SELECT last_insert_rowid()')
-        row = cursor.fetchone()
-        return str(row[0]) if row else None
+        logs_dal = LogsDAL(self.logs_conn)
+        row_id = logs_dal.insert_recall_log(
+            session_id=session_id or 'unknown',
+            query=query,
+            returned_ids=json.dumps(returned_ids),
+            returned_count=len(returned_ids),
+            embeddings_used=0,
+            recalled_titles='',
+            recalled_snippets='',
+            created_at=self.now())
+        return str(row_id) if row_id else None
 
     def _get_recent(self, limit: int = 20, types: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Get recently accessed nodes."""

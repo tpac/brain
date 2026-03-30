@@ -98,16 +98,14 @@ class LogsDAL:
 
     # ── access_log ──
 
-    def log_access(self, node_id: str, session_id: str, query: str = "",
-                   context: str = "") -> None:
-        """Record a node access in the access log."""
+    def log_access(self, session_id: str, node_id: str) -> None:
+        """Record a node access in the access log. Caller commits."""
         now = datetime.now(timezone.utc).isoformat()
         self.conn.execute(
-            'INSERT INTO access_log (node_id, session_id, query, context, created_at) '
-            'VALUES (?, ?, ?, ?, ?)',
-            (node_id, session_id, query[:500], context[:500], now)
+            'INSERT INTO access_log (session_id, node_id, timestamp) '
+            'VALUES (?, ?, ?)',
+            (session_id, node_id, now)
         )
-        self.conn.commit()
 
     def get_access_count(self, node_id: str) -> int:
         """Get total access count for a node."""
@@ -728,13 +726,13 @@ class NodeDAL:
 
     def mark_accessed(self, node_id: str, activation_boost: float = 0.1) -> None:
         """Update access tracking fields on a node."""
+        ts = _now()
         self.conn.execute(
             'UPDATE nodes SET access_count = access_count + 1, '
             'activation = MIN(1.0, activation + ?), '
-            'recency_score = 1.0, last_accessed = ? WHERE id = ?',
-            (activation_boost, _now(), node_id)
+            'recency_score = 1.0, last_accessed = ?, updated_at = ? WHERE id = ?',
+            (activation_boost, ts, ts, node_id)
         )
-        self.conn.commit()
 
 
 class EmbeddingDAL:
