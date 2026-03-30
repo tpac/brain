@@ -28,8 +28,10 @@ class CmdEntry(NamedTuple):
 # ═══════════════════════════════════════════════════════════════
 
 def _handle_ping(brain, args, graph_changes):
+    import threading as _t
     return {"ok": True, "result": {"status": "alive", "pid": os.getpid(),
-                                    "code_fingerprint": _CODE_FINGERPRINT}}
+                                    "code_fingerprint": _CODE_FINGERPRINT,
+                                    "threads": _t.active_count()}}
 
 
 def _handle_context_boot(brain, args, graph_changes):

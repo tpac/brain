@@ -2,155 +2,106 @@
 
 ## What This Session Built
 
-This was a two-day marathon (2026-03-28 through 2026-03-29) that rebuilt the encoding pipeline, added graph traversal to recall, created situation embeddings, built a testing system, and established the data contract.
+Recall quality fix, encoding agent working for the first time, daemon stability, pipeline contracts. 15 commits.
 
-### Critical: Don't Redo What's Done
+### Don't Redo What's Done
 
-These systems are BUILT AND TESTED. Don't redesign them:
+1. **Enrichment cap (ENRICHMENT_CAP=0.30)** in brain_recall.py STEP 3.5. Enrichment vectors boost primary score by at most 30% of the gap. Before: anchor enrichment vectors dominated every query (sim=0.83 for PRAGMA bug node on "Know yourself"). After: primary content relevance wins. Decode funnel: 27%/32% → 34%/55% (top-3/top-8).
 
-1. **3-degree graph traversal** lives inside `recall()` in brain_recall.py. Seeds are top 5 embedding hits. Degree 1: intentional edges only. Degree 2-3: all except co_accessed. Semantic bonus is additive only. Temporal freshness multipliers. Convergence boost for multi-parent nodes. The traversal adds ~16ms — not the bottleneck. `_traverse_graph()` is the method.
+2. **Per-result relevance floor (0.25/0.45)** in brain_recall.py STEP 6.9. Was all-or-nothing (top result gates everything). Now each result filtered individually. Tom's "Know yourself Anchor" message went from zero candidates to 5 identity-relevant nodes.
 
-2. **Situation embeddings** are a second vector on each node: WHAT it's about (content embedding) + WHEN it matters (situation embedding). Free-form natural language, same cosine infrastructure. Stored in `node_embeddings.situation_embedding` and `node_embeddings.situation_text`. Recall scans both and adds situation score additively (`SITUATION_WEIGHT = 0.2`). The encoding agent writes situations. The contract includes situation as a promoted field.
+3. **Pipeline contract** (servers/pipeline_contract.py). Single source of truth for truncation limits, field selections, and formatting at every pipeline stage. Distiller, encoding agent, MCP output, pre-edit — all read from here.
 
-3. **The encoding agent** fires every 5th Stop via daemon gating. The daemon owns the counter (`stop_counter` config). On 4/5 stops it returns NONE. On the 5th it inlines the full encoding prompt + conversation + brain context. The agent prompt is at `hooks/prompts/encoding-agent.md` — revision-first, with situation examples, structural types listed, contract field summary appended automatically.
+4. **Encoding agent fires in production** for the first time. Previously: type:"agent" Stop hook never fired (Claude Code bug — confirmed by testing + GitHub issues #11947, #22750 + 3K-star reference repo uses 0 agent hooks). Now: runs inside hook_post_response_track via background thread calling Sonnet API. Logic in servers/encoding_agent.py.
 
-4. **The data contract** is `servers/contract.py`. It defines all node fields (structural + promoted). MCP tool schemas are generated from it. Dispatch validates against it. The encoding prompt reads from it. New field = add to contract, it flows everywhere the contract is wired. BUT: 5 components still hardcode field lists (see "What's Not Done" below).
+5. **Daemon singleton via fcntl.flock** in daemon_client.py. Was: file markers with race conditions causing multiple daemons. Now: first caller acquires lock, starts daemon, releases. Others block and wake up to running daemon.
 
-5. **Write verification** — `revise()` reads back every field after writing and returns `verified: true/false`. Verification failures are logged through `brain._log_error` and surface through the signal queue.
+6. **67 silent except:pass → _log_error** across 8 pipeline files. Found critical bug hidden by except:pass: message_stream column was `timestamp` not `created_at` — encoding agent got zero messages since built.
 
-6. **Generic revise** — `revise(node_id, reason, situation="...", confidence=0.9, keywords="...")` updates any field. Content is appended (preserves history). All other fields are replaced. Situation gets its own embedding. SAFE_FIELDS whitelist controls what's valid (should be replaced by contract read — not done yet).
+7. **HTTP MCP server** in daemon (port+1). Works but DISABLED — caused CPU spirals from MCP client retries. Code stays for future. MCP currently via stdio (brain_mcp.py).
 
-## What's NOT Done (and Why It Matters)
+## Critical Traps
 
-### 5 Renegade Components
-These still hardcode field lists instead of reading the contract:
-- `brain_recall.py` — 6 hardcoded SELECT statements
-- `brain_remember.py` — SAFE_FIELDS hardcoded set in revise()
-- `brain_voice.py` — EVOLUTION_TYPES, ENGINEERING_TYPES, CODE_COGNITION_TYPES
-- `daemon_hooks.py` — candidates file builder hardcodes fields
-- `pre_response_recall.py` — distiller format hardcodes fields
+### 1. Daemon Code vs Running Code
+When you change `servers/*.py`, the daemon still runs old code. Use `hooks/scripts/restart-daemon.sh` or the daemon auto-restarts on fingerprint change via ensure_daemon().
 
-Each needs careful wiring: read the code, make the change, test immediately, verify.
+### 2. type:"agent" Hooks DON'T WORK
+Claude Code's type:"agent" hooks silently fail on ALL events. Confirmed by testing Stop and UserPromptSubmit. Nobody in the wild uses them. Use type:"command" only.
 
-### Metadata Dict Refactor
-`remember()` has 14 named parameters. Should become `remember(type, title, content, **metadata)`. This unblocks promoted fields (reasoning, user_raw_quote) on remember. Currently only revise can set promoted fields.
+### 3. HTTP MCP Server is Disabled
+The code exists in daemon_server.py (_start_mcp_http) but the thread isn't started. It caused CPU spirals. .mcp.json uses stdio. Re-enable only after fixing MCP protocol compliance.
 
-### Retroactive Situation Backfill
-874 nodes, 1 has a situation. The maintenance agent (not built yet) should generate situations for existing nodes via LLM. Surface for operator approval.
+### 4. Encoding Agent Needs API Key
+The encoding agent calls Sonnet via Anthropic API. Needs ANTHROPIC_API_KEY in .env file. Without it, encoding silently fails (now logged, not swallowed).
 
-### Dashboard Encoding Tab
-Still shows one-line entries. Needs expandable detail with kind badges (created/revised/connected), situation display, all metadata.
+### 5. Boot Script Fixed
+boot-brain.sh was importing `servers.daemon` (doesn't exist). Fixed to ping + spawn directly. The daemon starts on first session boot.
 
-## Critical Traps — Things That Will Bite You
-
-### 1. The Daemon Runs Old Code
-When you change `servers/*.py`, the daemon still runs the old version. You MUST restart it: `hooks/scripts/restart-daemon.sh`. If you forget, writes silently use old logic. The plugin cache at `~/.claude/plugins/cache/brain/brain/8.6.0/` is a separate copy — rebuild with `bash build-plugin.sh`.
-
-### 2. Hooks Are Snapshotted
-Changes to `.claude/settings.json` hook config during a session are invisible. The encoding agent hook, the Stop agent, the once:true flag — all need a NEW SESSION to take effect.
-
-### 3. INSERT OR REPLACE Wipes Sibling Columns
-In `node_embeddings`, INSERT OR REPLACE replaces the entire row. Use UPDATE to preserve situation_embedding when re-embedding content. This bug was found and fixed in `brain_remember.py revise()`.
-
-### 4. recall() Is Embeddings, _keyword_recall() Is Legacy
-We renamed these. `recall()` IS the production embedding pipeline with graph traversal. `_keyword_recall()` is the 352-line TF-IDF method used only for the 10% keyword blend. If you see `_keyword_recall` — don't call it directly.
-
-### 5. eval Sandbox Needs Safe Builtins
-The eval handler at `daemon_dispatch.py _handle_eval` has `safe_builtins` including str, int, len, etc. Without these, the Stop agent can't read `brain.get_config()` results. Don't remove them.
-
-### 6. User Messages in message_stream
-`post_response_track.py` extracts user_message from the transcript, not from `hook_input.get("prompt")` (which is empty on Stop events). If user messages appear empty in message_stream, check that the thin client sends the extracted value.
-
-## Architecture Overview
+## Architecture After This Session
 
 ```
-User sends message
-  → UserPromptSubmit hook fires
-    → pre_response_recall.py (thin client)
-      → daemon: hook_recall
-        → brain.recall() [embeddings + 3-degree graph + keyword blend + situation boost]
-        → writes candidates file with _graph neighborhoods
-      → reads candidates file
-      → Haiku distills to dynamic budget (400-1200 chars)
-      → returns [BRAIN]...[/BRAIN] to Claude
+Stop event fires
+  → post-response-track.sh (command hook)
+    → daemon: hook_post_response_track
+      → store_exchange (every stop)
+      → increment counter
+      → every 5th: background thread → encoding_agent.run_encoding()
+        → gather messages from message_stream DB
+        → independent recall (not from candidates file)
+        → call Sonnet via Anthropic API
+        → dispatch tool calls against brain directly
 
-Claude responds
-  → Stop hook fires (both hooks in parallel)
-    → post_response_track.py (thin client)
-      → daemon: hook_post_response_track
-        → store_exchange (user msg + assistant msg to message_stream)
-        → increment stop_counter
-        → if 5th stop: build encoding prompt with conversation + brain context
-    → Stop agent (Sonnet, agent hook)
-      → eval(brain.get_config('stop_agent_prompt'))
-      → if NONE: respond NOTHING_NEW
-      → if instructions: run encoding with MCP tools
-        → recall, find_node_by_title, get_node (search first)
-        → revise (update stale), remember (create new), connect (link)
-        → record_divergence (corrections)
+UserPromptSubmit
+  → pre-response-recall.sh (command hook)
+    → daemon: hook_recall → brain.recall() with enrichment cap
+    → write candidates file (for distiller)
+    → thin client reads file → Haiku distills → [BRAIN] context
+
+MCP (stdio):
+  Claude Code → brain_mcp.py (stdio) → daemon (TCP) → brain
+
+Daemon singleton:
+  ensure_daemon() → fcntl.flock → first caller starts, others wait
 ```
 
-## Testing System
+## Files Changed (15 commits)
 
-### Quick Smoke Test
-```bash
-python3 -m pytest tests/test_v84_pipes.py tests/test_contract_sync.py -v
-```
-69 tests covering: DAL, traversal, recall integration, format_node_deep, encoding gating, integrity producer, schema, constants, eval sandbox, production sanity.
-
-### Capability Tests
-```bash
-export ANTHROPIC_API_KEY=...
-python3 eval/capabilities/test_revision.py      # 3 scenarios with fixture brain
-python3 eval/capabilities/test_noise_resistance.py  # 3 scenarios
-```
-Tests revision behavior (does agent revise stale nodes?) and noise resistance (does agent skip casual chat?).
-
-### Extensive Tests
-```bash
-python3 eval/test_extensive_encoding.py  # 5 scenarios × 20 messages
-```
-Full encoding pipeline on fresh brains with seed nodes. Tests architecture_revision, correction_heavy, noise_resistance, vocabulary_enrichment, long_technical.
-
-### Real Conversation Simulation
-```bash
-python3 eval/simulate_real.py --batches 10 --start-from-end
-```
-Runs encoding agent on actual session transcripts from JSONL files.
-
-## Key File Locations
-
-| File | Purpose |
+| File | What |
 |---|---|
-| `servers/contract.py` | Field definitions — the contract |
-| `servers/brain_recall.py` | recall() with 3-degree traversal |
-| `servers/brain_remember.py` | remember() + revise() with verification |
-| `servers/daemon_hooks.py` | hook_recall + hook_post_response_track + encoding gating |
-| `servers/daemon_dispatch.py` | MCP command handlers with contract validation |
-| `servers/daemon_server.py` | Daemon process with restart command |
-| `servers/brain_mcp.py` | MCP tool schemas (generated from contract) |
-| `servers/brain_voice.py` | format_node + format_node_deep (3-degree rendering) |
-| `servers/brain_constants.py` | Traversal constants, situation weights |
-| `servers/dal.py` | Data access layer (get_node uses SELECT *, get_neighbors_rich) |
-| `servers/signal_producers.py` | Integrity checks + deep audit |
-| `hooks/prompts/encoding-agent.md` | Encoding agent prompt |
-| `hooks/scripts/restart-daemon.sh` | One-command daemon restart |
-| `hooks/scripts/pre_response_recall.py` | Recall thin client + Haiku distillation |
-| `hooks/scripts/post_response_track.py` | Stop thin client + message storage |
-| `scripts/seed_brain.py` | Seed brain builder (12 nodes, all features) |
-| `eval/capabilities/base.py` | CapabilityTest + InstrumentedBrain + dispatch_tool |
-| `eval/test_extensive_encoding.py` | 5 scenario × 20 message tests |
-| `eval/fixtures/build_capability_brain.py` | Fixture brain with deliberate problems |
+| servers/brain_constants.py | ENRICHMENT_CAP, lower floors |
+| servers/brain_recall.py | Enrichment cap in STEP 3.5, per-result floor in STEP 6.9 |
+| servers/pipeline_contract.py | NEW — pipeline data flow contract |
+| servers/encoding_agent.py | NEW — Sonnet encoding agent logic |
+| servers/daemon_hooks.py | Encoding fires from hook, 35 silent exceptions fixed |
+| servers/daemon_server.py | HTTP MCP (disabled), restart marker |
+| servers/daemon_client.py | fcntl.flock singleton, graceful restart |
+| servers/brain_voice.py | format_node/format_node_deep use pipeline contract |
+| servers/brain_recall.py | 11 silent exceptions fixed |
+| servers/brain_remember.py | 7 silent exceptions fixed |
+| servers/brain_surface.py | 11 silent exceptions fixed |
+| servers/daemon_dispatch.py | 4 silent exceptions fixed |
+| hooks/scripts/pre_response_recall.py | Distiller uses pipeline contract |
+| hooks/scripts/boot-brain.sh | Fixed dead import, proper daemon startup |
+| hooks/scripts/encoding-hook.sh | NEW (kept as fallback, not primary) |
+| eval/capabilities/base.py | 13 tools from contract, richer output |
+| .mcp.json | Reverted to stdio (HTTP not ready) |
+| .claude/settings.json | Stop hook timeout 10s, removed dead agent hook |
 
 ## Numbers
 
-- 874 active nodes, 19376 edges, 612 locked
-- 26 nodes ever revised (3%)
-- 1 node with situation embedding (just started)
-- 90 nodes with metadata (23% have reasoning)
-- 69 pipe + contract tests passing
-- 5/5 extensive encoding tests passing
-- Recall latency: 340ms avg (183ms cosine, 128ms keyword, 16ms graph, 13ms other)
-- 13 structural types, 18 open types
-- Schema v20 (open types, no CHECK constraint)
-- Plugin v8.6.0
+- Decode funnel: 27%/32% → 34%/55% (top-3/top-8)
+- Corrections category: 85% → 100% top-8
+- Emotional category: 22% → 66% top-8
+- Encoding tests: 5/5 scenarios passing
+- 67 silent exceptions eliminated
+- 19 stale docs archived
+- Plugin: v8.6.0 → v8.7.0
+
+## What's NOT Done
+
+1. **Recall still at 55% top-8** — vocab nodes dominate, pattern category at 33%, title-match boost not implemented
+2. **HTTP MCP not production-ready** — disabled due to CPU spirals
+3. **Situation backfill** — 871 nodes without situations (encoding agent will add them over time)
+4. **SKILL.md not updated** — still describes old system
+5. **Short IDs** — 32-char UUIDs cause FK failures in encoding agent
+6. **SO_REUSEPORT** — daemon has it enabled (line 191), may allow duplicate binds

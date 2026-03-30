@@ -17,8 +17,12 @@ import json
 import os
 import re
 import subprocess
+import threading
 import time
 from datetime import datetime, timezone
+
+# Encoding agent: at most 1 running at a time. Non-blocking acquire — skip if busy.
+_encoding_lock = threading.Lock()
 
 # ── Constants (canonical definitions in brain_voice.py) ──
 
@@ -354,30 +358,22 @@ def hook_post_response_track(brain, args, graph_changes):
         brain._log_error('store_exchange', e, 'Stop hook: failed to store exchange')
 
     # Encoding agent — fires every 5th stop via Sonnet API.
-    # Runs in background thread so the hook returns fast.
-    # All logic lives in encoding_agent.py (single source of truth).
+    # Runs INLINE (not background thread) — SQLite single-connection deadlocks
+    # if encoding thread and pool worker access brain.conn concurrently.
+    # Stop hook runs after Claude responds, so user doesn't wait.
     try:
         counter = int(brain.get_config('stop_counter', '0') or '0') + 1
         brain.set_config('stop_counter', str(counter))
 
         if counter % 5 == 0:
             from .encoding_agent import run_encoding
-            import threading
-            def _run():
-                try:
-                    # dispatch_fn needs to come from the daemon, but we're in a hook
-                    # that's called BY the daemon. Use a simple wrapper that calls
-                    # brain methods directly (same as dispatch does).
-                    from .daemon_dispatch import COMMAND_TABLE
-                    def dispatch(cmd, cmd_args):
-                        entry = COMMAND_TABLE.get(cmd)
-                        if entry:
-                            return entry.handler(brain, cmd_args, [])
-                        return {"ok": False, "error": "Unknown: %s" % cmd}
-                    run_encoding(brain, dispatch, counter)
-                except Exception as e:
-                    brain._log_error('encoding_agent_run', e, 'Background encoding thread')
-            threading.Thread(target=_run, daemon=True).start()
+            from .daemon_dispatch import COMMAND_TABLE
+            def dispatch(cmd, cmd_args):
+                entry = COMMAND_TABLE.get(cmd)
+                if entry:
+                    return entry.handler(brain, cmd_args, [])
+                return {"ok": False, "error": "Unknown: %s" % cmd}
+            run_encoding(brain, dispatch, counter)
     except Exception as e:
         brain._log_error('encoding_agent_gate', e, 'Stop hook')
 

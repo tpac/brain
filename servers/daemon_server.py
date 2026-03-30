@@ -50,7 +50,6 @@ class BrainDaemon:
         self.dirty = False
         self.graph_changes = []  # In-memory graph mutation log
         self._write_lock = threading.Lock()
-        self._embed_lock = threading.Lock()  # Serialize embedder calls (prevent CPU explosion)
         self._pool = ThreadPoolExecutor(max_workers=THREAD_POOL_SIZE)
         self._restart_count = 0
 
@@ -78,6 +77,12 @@ class BrainDaemon:
         Does NOT handle: SIGKILL, OOM (external watchdog needed — MCP plugin).
         Gives up after MAX_SUPERVISOR_RESTARTS consecutive crashes.
         """
+        # Clear pycache so launchd restarts always use latest code
+        import shutil
+        cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '__pycache__')
+        if os.path.isdir(cache_dir):
+            shutil.rmtree(cache_dir, ignore_errors=True)
+
         # Acquire exclusive lock (one daemon per user)
         lock_path = get_lock_path()
         self._lock_fd = open(lock_path, 'w')
@@ -179,12 +184,6 @@ class BrainDaemon:
         autosave_thread = threading.Thread(target=self._autosave_loop, daemon=True)
         autosave_thread.start()
 
-        # HTTP MCP server disabled — causing CPU spirals when MCP client retries.
-        # The encoding hook endpoint still works via the command hook path.
-        # TODO: Fix HTTP MCP protocol compliance before re-enabling.
-        # mcp_http_thread = threading.Thread(target=self._start_mcp_http, daemon=True)
-        # mcp_http_thread.start()
-
         self._serve()
 
     def _bind_socket(self):
@@ -193,10 +192,7 @@ class BrainDaemon:
             try:
                 self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                try:
-                    self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-                except (AttributeError, OSError):
-                    pass
+                # DO NOT set SO_REUSEPORT — it allows duplicate daemons to bind the same port
                 self.server_socket.bind(self.daemon_addr)
                 self.server_socket.listen(SOCKET_BACKLOG)
                 self.server_socket.setblocking(False)
@@ -324,32 +320,12 @@ class BrainDaemon:
 
             self.last_activity = time.time()
 
-            # Watchdog: kill hung requests after 20s
-            import threading as _threading
-            dispatch_result = [None]
-            dispatch_error = [None]
-
-            def _run_dispatch():
-                try:
-                    dispatch_result[0] = self._dispatch(cmd, args)
-                except Exception as _e:
-                    dispatch_error[0] = _e
-
-            worker = _threading.Thread(target=_run_dispatch, daemon=True)
-            worker.start()
-            worker.join(timeout=20.0)
-
-            if worker.is_alive():
-                # Request hung — log and return timeout error
-                self.brain._log_error('daemon_watchdog',
-                    Exception('Request timed out after 20s: %s' % cmd),
-                    'cmd=%s' % cmd)
-                self._send_error(client, "timeout: %s took >20s" % cmd)
-                return
-            elif dispatch_error[0]:
-                raise dispatch_error[0]
-            else:
-                result = dispatch_result[0]
+            # Direct dispatch — no watchdog thread.
+            # The old pattern spawned a thread per request and joined with 20s timeout.
+            # If it timed out, the thread kept running forever → thread leak → CPU spiral.
+            # Now: dispatch runs inline in the pool worker. Client has its own timeout (30s).
+            # Pool worker finishes and returns to pool. No orphans.
+            result = self._dispatch(cmd, args)
 
             self._send_response(client, result)
 
@@ -635,356 +611,7 @@ class BrainDaemon:
         except Exception:
             pass
 
-    # ── HTTP MCP Server ──
-    # Serves MCP JSON-RPC over HTTP on DAEMON_PORT+1.
-    # Uses same dispatch as TCP. Same locking. Same brain.
-    # Tool schemas imported from brain_mcp.py (single source of truth).
-
-    def _start_mcp_http(self):
-        """Start HTTP MCP server on DAEMON_PORT+1 in a daemon thread."""
-        from http.server import HTTPServer, BaseHTTPRequestHandler
-        from . import brain_mcp
-
-        daemon_ref = self
-        mcp_port = self.daemon_addr[1] + 1
-
-        class MCPHTTPHandler(BaseHTTPRequestHandler):
-            """HTTP server handling MCP JSON-RPC + encoding hook.
-
-            Routes:
-              POST / or /mcp  → MCP JSON-RPC (tools/list, tools/call, etc.)
-              POST /encoding-hook → Stop hook encoding agent (calls Sonnet API)
-            """
-
-            def do_POST(self):
-                path = self.path.rstrip('/')
-                try:
-                    length = int(self.headers.get('Content-Length', 0))
-                    body = self.rfile.read(length)
-                except Exception as e:
-                    self._respond(400, {"error": str(e)})
-                    return
-
-                if path == '/encoding-hook':
-                    self._handle_encoding_hook(body)
-                else:
-                    self._handle_mcp(body)
-
-            def _handle_mcp(self, body):
-                """MCP JSON-RPC handler."""
-                try:
-                    msg = json.loads(body.decode('utf-8'))
-                except Exception as e:
-                    self._respond(400, {"jsonrpc": "2.0", "error": {"code": -32700, "message": str(e)}, "id": None})
-                    return
-
-                method = msg.get("method", "")
-                request_id = msg.get("id")
-                params = msg.get("params", {})
-
-                if request_id is None:
-                    self._respond(202, "")
-                    return
-
-                try:
-                    if method == "initialize":
-                        resp = brain_mcp.handle_initialize(request_id)
-                    elif method == "tools/list":
-                        resp = brain_mcp.handle_tools_list(request_id)
-                    elif method == "tools/call":
-                        resp = self._handle_tools_call(request_id, params)
-                    elif method == "ping":
-                        resp = brain_mcp.handle_ping(request_id)
-                    else:
-                        resp = brain_mcp.make_error(request_id, -32601, "Method not found: %s" % method)
-                except Exception as e:
-                    daemon_ref._log("MCP HTTP error in %s: %s" % (method, e))
-                    resp = brain_mcp.make_error(request_id, -32603, "Internal error: %s" % e)
-
-                self._respond(200, resp)
-
-            def _handle_tools_call(self, request_id, params):
-                """Route MCP tool call through daemon dispatch — DIRECT, no TCP relay."""
-                tool_name = params.get("name", "")
-                arguments = params.get("arguments", {})
-                daemon_ref.last_activity = time.time()
-                result = daemon_ref._dispatch(tool_name, arguments)
-                if result.get("ok"):
-                    result_text = brain_mcp._format_result(tool_name, result.get("result", {}))
-                    return brain_mcp.make_response(request_id, {
-                        "content": [{"type": "text", "text": result_text}]
-                    })
-                else:
-                    return brain_mcp.make_response(request_id, {
-                        "content": [{"type": "text", "text": "ERROR: %s" % result.get("error", "Unknown")}],
-                        "isError": True
-                    })
-
-            def _handle_encoding_hook(self, body):
-                """Encoding agent — fires on Stop hook via HTTP.
-
-                Increments counter, stores exchange, triggers encoding every 5th stop.
-                Encoding runs in a background thread (non-blocking).
-                Logic lives in encoding_agent.py — daemon just dispatches.
-                """
-                daemon_ref.last_activity = time.time()
-                brain = daemon_ref.brain
-                if not brain:
-                    self._respond(200, {"decision": "allow"})
-                    return
-
-                try:
-                    counter = int(brain.get_config('stop_counter', '0') or '0') + 1
-                    brain.set_config('stop_counter', str(counter))
-
-                    # Store exchange
-                    try:
-                        hook_input = json.loads(body.decode('utf-8'))
-                        user_msg = hook_input.get('prompt', '') or hook_input.get('message', '')
-                        assistant_msg = (hook_input.get('last_assistant_message', '') or '')[:4000]
-                        session_id = brain.get_config('session_id', '')
-                        if user_msg or assistant_msg:
-                            brain.store_exchange(user_msg, assistant_msg, session_id)
-                    except Exception as e:
-                        brain._log_error('encoding_hook_store', e, 'store exchange')
-
-                    if counter % 5 != 0:
-                        self._respond(200, {"decision": "allow"})
-                        return
-
-                    # Fire encoding in background thread
-                    from .encoding_agent import run_encoding
-                    def _run():
-                        try:
-                            run_encoding(brain, daemon_ref._dispatch, counter, daemon_ref._log)
-                        except Exception as e:
-                            brain._log_error('encoding_hook_run', e, 'Encoding agent failed')
-                        daemon_ref.dirty = True
-
-                    threading.Thread(target=_run, daemon=True).start()
-                    self._respond(200, {"decision": "allow"})
-
-                except Exception as e:
-                    brain._log_error('encoding_hook', e, 'Encoding hook')
-                    self._respond(200, {"decision": "allow"})
-
-            def _respond(self, code, body):
-                self.send_response(code)
-                if isinstance(body, str) and not body:
-                    self.send_header('Content-Length', '0')
-                    self.end_headers()
-                else:
-                    payload = json.dumps(body, default=str).encode('utf-8')
-                    self.send_header('Content-Type', 'application/json')
-                    self.send_header('Content-Length', str(len(payload)))
-                    self.end_headers()
-                    self.wfile.write(payload)
-
-            def log_message(self, format, *args):
-                pass
-
-        def _do_encoding(daemon_ref, brain, counter):
-            """Run the encoding agent: gather context, call Sonnet, dispatch tool calls.
-
-            Same pattern as eval/capabilities/base.py but running inside the daemon
-            with direct brain access (no TCP relay).
-            """
-            import anthropic
-            from .pipeline_contract import ENCODING_AGENT
-            from .brain_voice import BrainVoice
-
-            # Load API key
-            env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
-            if os.path.exists(env_path):
-                with open(env_path) as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith('#') and '=' in line:
-                            k, v = line.split('=', 1)
-                            os.environ.setdefault(k.strip(), v.strip())
-
-            try:
-                client = anthropic.Anthropic()
-            except Exception as e:
-                brain._log_error('encoding_agent_api', e, 'Cannot create Anthropic client')
-                return
-
-            session_id = brain.get_config('session_id', 'unknown')
-
-            # 1. Gather messages from DB
-            messages = []
-            try:
-                rows = brain.logs_conn.execute(
-                    "SELECT role, content, signal_type, timestamp "
-                    "FROM message_stream WHERE session_id = ? "
-                    "ORDER BY timestamp DESC LIMIT ?",
-                    (session_id, ENCODING_AGENT['max_messages'])
-                ).fetchall()
-                messages = [{"role": r[0], "content": (r[1] or "")[:ENCODING_AGENT['message_content_limit']],
-                             "signal": r[2], "timestamp": r[3]}
-                            for r in reversed(rows)]
-            except Exception as e:
-                brain._log_error('encoding_agent_messages', e, 'Failed to fetch messages')
-
-            if not messages:
-                daemon_ref._log("Encoding agent: no messages, skipping.")
-                return
-
-            # 2. Independent recall from conversation topics
-            recall_context = ""
-            try:
-                user_msgs = [m.get("content", "") for m in messages if m.get("role") == "user"]
-                if user_msgs:
-                    recall_query = " ".join(msg[:200] for msg in user_msgs[-3:])
-                    enc_recall = brain.recall(query=recall_query, limit=ENCODING_AGENT['recall_candidates_limit'])
-                    enc_results = enc_recall.get("results", [])
-                    if enc_results:
-                        lines = []
-                        for r in enc_results:
-                            c = {"id": r.get("id", ""), "type": r.get("type", ""),
-                                 "title": r.get("title", ""), "content": r.get("content", ""),
-                                 "confidence": r.get("confidence", 0), "locked": r.get("locked", False),
-                                 "revised_at": r.get("revised_at"), "created_at": r.get("created_at"),
-                                 "_graph": r.get("_graph", {})}
-                            BrainVoice.format_node_deep(c, lines, conn=brain.conn,
-                                max_d1=ENCODING_AGENT['max_d1'],
-                                max_d2=ENCODING_AGENT['max_d2'],
-                                max_d3=ENCODING_AGENT['max_d3'])
-                        recall_context = "\n".join(lines)
-            except Exception as e:
-                brain._log_error('encoding_agent_recall', e, 'Failed independent recall')
-
-            # 3. Build encoding prompt
-            msg_text = ""
-            for m in messages:
-                role = (m.get("role") or "?").upper()
-                content = (m.get("content") or "")[:ENCODING_AGENT['message_display_limit']]
-                msg_text += "[%s]: %s\n\n" % (role, content)
-
-            # Read encoding instructions
-            project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            prompt_path = os.path.join(project_dir, 'hooks', 'prompts', 'encoding-agent.md')
-            try:
-                with open(prompt_path) as pf:
-                    system_prompt = pf.read()
-            except Exception:
-                system_prompt = "You are the encoding agent. Search before encoding. Revise stale nodes."
-
-            # Append contract field summary
-            try:
-                from .contract import generate_field_summary
-                system_prompt += "\n\n## Available Fields (from contract)\n\n" + generate_field_summary()
-            except Exception:
-                pass
-
-            previous_state = brain.get_config('encoding_agent_state', '') or 'First run.'
-
-            user_content = "## ENCODING RUN #%d\n\n" % counter
-            user_content += "### Previous State\n%s\n\n" % previous_state
-            user_content += "### Conversation (last %d exchanges)\n\n%s\n" % (len(messages), msg_text)
-            if recall_context:
-                user_content += "### Brain Context\n\n%s\n" % recall_context
-            else:
-                user_content += "### Brain Context\nNo recall data available.\n\n"
-
-            # 4. Build tool schemas (from brain_mcp — single source of truth)
-            from . import brain_mcp
-            tools = [{"name": t["name"], "description": t["description"],
-                      "input_schema": t["inputSchema"]}
-                     for t in brain_mcp.TOOLS
-                     if t["name"] in {
-                         'recall', 'find_node_by_title', 'get_node',
-                         'remember', 'revise', 'connect',
-                         'record_divergence', 'learn_vocabulary',
-                         'remember_lesson', 'remember_mechanism',
-                         'remember_mental_model', 'remember_impact',
-                         'remember_convention',
-                     }]
-
-            # 5. Call Sonnet with tool use
-            daemon_ref._log("Encoding agent: calling Sonnet with %d tools, %d chars context..." % (
-                len(tools), len(user_content)))
-            api_messages = [{"role": "user", "content": user_content}]
-
-            try:
-                response = client.messages.create(
-                    model="claude-sonnet-4-6", max_tokens=4096,
-                    system=system_prompt, messages=api_messages, tools=tools)
-
-                # Tool use loop (max 8 rounds)
-                for round_num in range(8):
-                    tool_uses = [b for b in response.content if b.type == "tool_use"]
-                    if not tool_uses:
-                        break
-
-                    tool_results = []
-                    for tu in tool_uses:
-                        # Dispatch directly against brain (no TCP)
-                        result = daemon_ref._dispatch(tu.name, tu.input)
-                        if result.get("ok"):
-                            result_text = brain_mcp._format_result(tu.name, result.get("result", {}))
-                        else:
-                            result_text = "ERROR: %s" % result.get("error", "Unknown")
-                        tool_results.append({
-                            "type": "tool_result", "tool_use_id": tu.id,
-                            "content": result_text
-                        })
-                        daemon_ref._log("  [%s] %s" % (tu.name,
-                            tu.input.get("title", tu.input.get("query", tu.input.get("node_id", "")))[:50]))
-
-                    api_messages.append({"role": "assistant", "content": [
-                        {"type": b.type, **({"text": b.text} if b.type == "text" else
-                                            {"id": b.id, "name": b.name, "input": b.input})}
-                        for b in response.content]})
-                    api_messages.append({"role": "user", "content": tool_results})
-                    response = client.messages.create(
-                        model="claude-sonnet-4-6", max_tokens=4096,
-                        system=system_prompt, messages=api_messages, tools=tools)
-
-                # Save final state
-                final_text = ""
-                for b in response.content:
-                    if b.type == "text":
-                        final_text += b.text
-                if final_text:
-                    brain.set_config('encoding_agent_state', final_text[:2000])
-
-                brain.save()
-                daemon_ref.dirty = False
-                daemon_ref._log("Encoding agent: done. %d rounds." % (round_num + 1))
-
-            except Exception as e:
-                brain._log_error('encoding_agent_sonnet', e, 'Sonnet API call failed')
-                daemon_ref._log("Encoding agent FAILED: %s" % e)
-
-        # Bind with retry (same pattern as TCP)
-        for attempt in range(5):
-            try:
-                httpd = HTTPServer(('127.0.0.1', mcp_port), MCPHTTPHandler)
-                httpd.timeout = 1.0  # 1s poll for shutdown
-                self._log("MCP HTTP server listening on 127.0.0.1:%d" % mcp_port)
-                break
-            except OSError as e:
-                if attempt < 4:
-                    self._log("MCP HTTP bind failed (attempt %d/5): %s" % (attempt + 1, e))
-                    time.sleep(1)
-                else:
-                    self._log("MCP HTTP server FAILED to start: %s" % e)
-                    return
-
-        # Serve until daemon stops
-        while self.running:
-            try:
-                httpd.handle_request()  # 1s timeout from above
-            except Exception as e:
-                self._log("MCP HTTP error: %s" % e)
-
-        try:
-            httpd.server_close()
-        except Exception:
-            pass
-        self._log("MCP HTTP server stopped.")
-
     def _log(self, message: str):
         ts = time.strftime("%H:%M:%S")
         print("[brain-daemon {}] {}".format(ts, message), file=sys.stderr)
+

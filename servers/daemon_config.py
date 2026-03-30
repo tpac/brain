@@ -22,7 +22,8 @@ IDLE_TIMEOUT_SECONDS = 4 * 60 * 60  # 4 hours
 AUTOSAVE_INTERVAL_SECONDS = 60  # Save every 60 seconds if dirty
 SOCKET_BACKLOG = 5
 MAX_MESSAGE_SIZE = 1024 * 1024  # 1MB max message
-THREAD_POOL_SIZE = 5  # Max concurrent connections
+THREAD_POOL_SIZE = 1  # Serial: SQLite single-connection deadlocks on concurrent access.
+                       # Future: in-memory graph eliminates this. Pool size=1 for now.
 DAEMON_HOST = ""  # Empty string = all interfaces (IPv4+IPv6), fixes macOS localhost→::1
 DAEMON_PORT = 47200 + (os.getuid() % 100)  # Per-user port to avoid collisions
 
