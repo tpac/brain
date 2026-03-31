@@ -41,6 +41,7 @@ STRUCTURAL_FIELDS = {
     "personal":   {"store": "nodes", "type": "str"},
     "personal_context": {"store": "nodes", "type": "str"},
     "evolution_status":  {"store": "nodes", "type": "str"},
+    "source_turn_id":   {"store": "nodes", "type": "str", "description": "message_stream ID that produced this node (episode linkage)"},
 }
 
 
@@ -104,16 +105,10 @@ def get_writable_fields():
 
 
 def get_remember_fields():
-    """Fields that brain.remember() currently accepts as parameters.
-    This is a subset of writable fields — promoted metadata fields will
-    be added here when remember() gets the metadata dict refactor."""
-    # Structural fields that remember() accepts
-    accepted = {
-        'type', 'title', 'content', 'keywords', 'confidence', 'locked',
-        'emotion', 'emotion_label', 'project', 'personal', 'personal_context',
-        'critical', 'situation',
-    }
-    return {k: v for k, v in get_writable_fields().items() if k in accepted}
+    """Fields that brain.remember() accepts — ALL writable fields.
+    Structural fields go to nodes table, promoted fields go to their
+    respective stores (node_metadata, node_embeddings)."""
+    return get_writable_fields()
 
 
 def get_embeddable_fields():
@@ -169,4 +164,8 @@ def generate_field_summary():
         elif spec.get("append_on_revise"):
             parts.append("— appended on revise, not replaced")
         lines.append("  ".join(parts))
+    lines.append("")
+    lines.append("RETURNS: remember() and remember_batch() return related_nodes — "
+                 "the top 5 most similar existing nodes with full content. "
+                 "Use these to connect() immediately without a separate recall round.")
     return "\n".join(lines)

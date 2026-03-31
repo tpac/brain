@@ -1,17 +1,21 @@
-"""Encoding Agent — LLM-powered brain encoding via Sonnet API.
+"""Encoding Agent v3 — LLM-powered brain encoding via Sonnet API.
 
-Called by the daemon's HTTP encoding hook on every 5th Stop event.
-Gathers conversation + brain context, calls Sonnet with brain tools,
-dispatches tool calls directly against the brain.
+Called by the daemon's Stop hook on every 5th stop event.
+Gathers conversation timeline with pre-attached recall,
+calls Sonnet with brain tools, dispatches tool calls directly.
+
+v3 changes from v2:
+  - Timeline format with pre-attached recall per turn (not flat messages)
+  - Session-scoped encoding journal (not global overwritten state)
+  - Reduced tool set: 8 tools (remember, remember_batch, revise, connect,
+    recall, find_node_by_title, get_node, record_divergence, learn_vocabulary)
+  - remember() returns related_nodes (recall-on-create)
+  - Prompt optimized for 2-3 rounds, focused nodes, batch operations
 
 Uses:
   - brain_mcp.TOOLS for tool schemas (single source of truth)
   - pipeline_contract.ENCODING_AGENT for limits
-  - brain_voice.BrainVoice for formatting
   - contract.generate_field_summary for field documentation
-
-The daemon passes its brain reference and dispatch function.
-No TCP relay — direct brain access.
 """
 
 import os
@@ -24,9 +28,9 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
 
     Args:
         brain: Brain instance (direct access, not via TCP)
-        dispatch_fn: daemon._dispatch function for tool calls
+        dispatch_fn: function(cmd, args) for tool calls
         counter: Current stop counter value
-        log_fn: Optional logging function (daemon._log)
+        log_fn: Optional logging function
 
     Returns:
         dict with encoding results summary
@@ -38,15 +42,13 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
 
     import anthropic
     from .pipeline_contract import ENCODING_AGENT
-    from .brain_voice import BrainVoice
 
     _t0 = time.time()
-    profile = []  # (step, ms)
+    profile = []
 
     def _step(name):
         profile.append((name, int((time.time() - _t0) * 1000)))
 
-    # Load API key from .env
     _load_env()
     _step("env_loaded")
 
@@ -54,33 +56,28 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
         client = anthropic.Anthropic()
     except Exception as e:
         brain._log_error('encoding_agent_api', e, 'Cannot create Anthropic client')
-        _log("PROFILE FAILED at api_init: %s" % e)
         return {"error": str(e)}
     _step("api_client")
 
     session_id = brain.get_config('session_id', 'unknown')
 
-    # 1. Gather messages from DB
+    # 1. Gather messages with pre-attached recall
     messages = _gather_messages(brain, session_id)
     _step("messages(%d)" % len(messages))
     if not messages:
-        _log("no messages, skipping. PROFILE: %s" % profile)
+        _log("no messages, skipping")
         return {"skipped": True, "reason": "no messages"}
 
-    # 2. Independent recall
-    recall_context = _gather_recall_context(brain, messages)
-    _step("recall(%d chars)" % len(recall_context))
-
-    # 3. Build prompt
+    # 2. Build prompt (no independent recall — timeline has pre-attached recall)
     system_prompt = _build_system_prompt()
-    user_content = _build_user_content(brain, messages, recall_context, counter)
+    user_content = _build_user_content(brain, messages, counter, session_id)
     _step("prompt(%d chars)" % len(user_content))
 
-    # 4. Get tool schemas
+    # 3. Get tool schemas
     tools = _get_tool_schemas()
     _step("tools(%d)" % len(tools))
 
-    # 5. Call Sonnet with tool use loop
+    # 4. Call Sonnet
     _log("calling Sonnet with %d tools, %d chars context..." % (len(tools), len(user_content)))
     _log("PROFILE so far: %s" % " → ".join("%s:%dms" % (n, t) for n, t in profile))
 
@@ -93,7 +90,9 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
         _step("sonnet_r0")
         actions = []
         rounds = 0
-        for rounds in range(8):
+        max_rounds = ENCODING_AGENT.get('max_rounds', 5)
+
+        for rounds in range(max_rounds):
             tool_uses = [b for b in response.content if b.type == "tool_use"]
             if not tool_uses:
                 break
@@ -125,25 +124,25 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
                 system=system_prompt, messages=api_messages, tools=tools)
             _step("sonnet_r%d" % (rounds + 1))
 
-        # Save agent state + surface questions to operator
+        # Save encoding journal (session-scoped, cumulative)
         final_text = "".join(b.text for b in response.content if b.type == "text")
-        if final_text:
-            brain.set_config('encoding_agent_state', final_text[:2000])
-            # Surface questions to Tom via signal queue
-            if '?' in final_text:
-                try:
-                    from .dal_signal_queue import SignalQueueDAL
-                    sq = SignalQueueDAL(brain.logs_conn)
-                    sq.produce(
-                        producer='encoding_agent',
-                        signal_type='encoding_question',
-                        priority=0.7,
-                        content=final_text[:500],
-                        ttl_seconds=86400,
-                    )
-                    brain.logs_conn.commit()
-                except Exception:
-                    pass
+        _save_journal(brain, session_id, counter, final_text)
+
+        # Surface questions to operator via signal queue
+        if final_text and '?' in final_text:
+            try:
+                from .dal_signal_queue import SignalQueueDAL
+                sq = SignalQueueDAL(brain.logs_conn)
+                sq.produce(
+                    producer='encoding_agent',
+                    signal_type='encoding_question',
+                    priority=0.7,
+                    content=final_text[:500],
+                    ttl_seconds=86400,
+                )
+                brain.logs_conn.commit()
+            except Exception:
+                pass
 
         brain.save()
         _step("saved")
@@ -159,6 +158,8 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
         return {"error": str(e), "profile": profile}
 
 
+# ── Helpers ──
+
 def _load_env():
     """Load .env file for API key."""
     env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
@@ -172,62 +173,34 @@ def _load_env():
 
 
 def _gather_messages(brain, session_id):
-    """Fetch recent messages from message_stream."""
+    """Fetch recent messages from message_stream with pre-attached recall."""
     from .pipeline_contract import ENCODING_AGENT
     try:
         rows = brain.logs_conn.execute(
-            "SELECT role, content, signal_type, timestamp "
+            "SELECT id, role, content, signal_type, timestamp, recalled_raw "
             "FROM message_stream WHERE session_id = ? "
             "ORDER BY timestamp DESC LIMIT ?",
             (session_id, ENCODING_AGENT['max_messages'])
         ).fetchall()
-        return [{"role": r[0], "content": (r[1] or "")[:ENCODING_AGENT['message_content_limit']],
-                 "signal": r[2], "timestamp": r[3]}
+        return [{"id": r[0], "role": r[1],
+                 "content": (r[2] or "")[:ENCODING_AGENT['message_content_limit']],
+                 "signal": r[3], "timestamp": r[4],
+                 "recalled_raw": r[5]}
                 for r in reversed(rows)]
     except Exception as e:
         brain._log_error('encoding_agent_messages', e, 'Failed to fetch messages')
         return []
 
 
-def _gather_recall_context(brain, messages):
-    """Do independent recall based on conversation topics."""
-    from .pipeline_contract import ENCODING_AGENT
-    from .brain_voice import BrainVoice
-    try:
-        user_msgs = [m.get("content", "") for m in messages if m.get("role") == "user"]
-        if not user_msgs:
-            return ""
-        recall_query = " ".join(msg[:200] for msg in user_msgs[-3:])
-        result = brain.recall(query=recall_query, limit=ENCODING_AGENT['recall_candidates_limit'])
-        results = result.get("results", [])
-        if not results:
-            return ""
-        lines = []
-        for r in results:
-            c = {"id": r.get("id", ""), "type": r.get("type", ""),
-                 "title": r.get("title", ""), "content": r.get("content", ""),
-                 "confidence": r.get("confidence", 0), "locked": r.get("locked", False),
-                 "revised_at": r.get("revised_at"), "created_at": r.get("created_at"),
-                 "_graph": r.get("_graph", {})}
-            BrainVoice.format_node_deep(c, lines, conn=brain.conn,
-                max_d1=ENCODING_AGENT['max_d1'],
-                max_d2=ENCODING_AGENT['max_d2'],
-                max_d3=ENCODING_AGENT['max_d3'])
-        return "\n".join(lines)
-    except Exception as e:
-        brain._log_error('encoding_agent_recall', e, 'Failed independent recall')
-        return ""
-
-
 def _build_system_prompt():
-    """Load encoding agent prompt + contract field summary."""
+    """Load v3 encoding agent prompt + contract field summary."""
     project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    prompt_path = os.path.join(project_dir, 'hooks', 'prompts', 'encoding-agent.md')
+    prompt_path = os.path.join(project_dir, 'hooks', 'prompts', 'encoding-agent-v3.md')
     try:
         with open(prompt_path) as f:
             prompt = f.read()
     except Exception:
-        prompt = "You are the encoding agent. Search before encoding. Revise stale nodes."
+        prompt = "You are the encoding agent. Encode focused nodes. Batch operations. 2-3 rounds."
     try:
         from .contract import generate_field_summary
         prompt += "\n\n## Available Fields (from contract)\n\n" + generate_field_summary()
@@ -236,38 +209,89 @@ def _build_system_prompt():
     return prompt
 
 
-def _build_user_content(brain, messages, recall_context, counter):
-    """Assemble the full encoding prompt."""
+def _build_user_content(brain, messages, counter, session_id):
+    """Assemble the v3 encoding prompt with timeline and journal."""
     from .pipeline_contract import ENCODING_AGENT
 
-    previous_state = brain.get_config('encoding_agent_state', '') or 'First run.'
+    # Encoding journal (session-scoped, cumulative)
+    journal_key = 'encoding_journal_%s' % session_id
+    journal = brain.get_config(journal_key, '') or 'First run — no previous encoding in this session.'
 
-    msg_text = ""
-    for m in messages:
-        role = (m.get("role") or "?").upper()
-        content = (m.get("content") or "")[:ENCODING_AGENT['message_display_limit']]
-        msg_text += "[%s]: %s\n\n" % (role, content)
+    # Build conversation timeline with pre-attached recall
+    timeline = ""
+    turn_num = 0
+    i = 0
+    while i < len(messages):
+        m = messages[i]
+        if m.get("role") == "user":
+            turn_num += 1
+            user_content = (m.get("content") or "")[:ENCODING_AGENT['message_display_limit']]
+            turn_id = m.get("id", "")
+
+            timeline += "[TURN %d]\n" % turn_num
+            timeline += "USER: \"%s\" (turn_id: %s)\n" % (user_content, turn_id)
+
+            # Pre-attached recall from message_stream
+            recalled_raw = m.get("recalled_raw")
+            if recalled_raw:
+                try:
+                    recalled = json.loads(recalled_raw) if isinstance(recalled_raw, str) else recalled_raw
+                    if recalled:
+                        timeline += "BRAIN SURFACED (%d nodes):\n" % len(recalled)
+                        for r in recalled:
+                            snippet = (r.get("content", "") or "")[:500]
+                            timeline += "  [%s] %s (id:%s, score:%.2f)\n" % (
+                                r.get("type", "?"), r.get("title", "?"),
+                                r.get("id", "?")[:8], r.get("score", r.get("effective_activation", 0)))
+                            if snippet:
+                                timeline += "    %s\n" % snippet
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            else:
+                timeline += "BRAIN SURFACED: (no recall data)\n"
+
+            # Include assistant response if next message
+            if i + 1 < len(messages) and messages[i + 1].get("role") == "assistant":
+                asst = (messages[i + 1].get("content") or "")[:ENCODING_AGENT['message_display_limit']]
+                timeline += "ASSISTANT: \"%s\"\n" % asst
+                i += 1
+
+            timeline += "\n"
+        i += 1
 
     content = "## ENCODING RUN #%d\n\n" % counter
-    content += "### Previous State\n%s\n\n" % previous_state
-    content += "### Conversation (last %d exchanges)\n\n%s\n" % (len(messages), msg_text)
-    if recall_context:
-        content += "### Brain Context\n\n%s\n" % recall_context
-    else:
-        content += "### Brain Context\nNo recall data available.\n\n"
+    content += "### Encoding Journal\n%s\n\n" % journal
+    content += "### Conversation Timeline\n\n%s\n" % timeline
     return content
 
 
+def _save_journal(brain, session_id, counter, final_text):
+    """Append encoding run to session-scoped journal."""
+    from .pipeline_contract import ENCODING_AGENT
+    journal_key = 'encoding_journal_%s' % session_id
+    existing = brain.get_config(journal_key, '') or ''
+    max_chars = ENCODING_AGENT.get('journal_max_chars', 8000)
+
+    new_entry = "--- Run #%d ---\n%s" % (counter, final_text[:2000])
+    updated = (existing + '\n' + new_entry).strip()
+
+    # Truncate from the beginning to keep recent runs
+    if len(updated) > max_chars:
+        updated = updated[-max_chars:]
+
+    brain.set_config(journal_key, updated)
+
+    # Also keep old key for backward compat during transition
+    brain.set_config('encoding_agent_state', final_text[:2000])
+
+
 def _get_tool_schemas():
-    """Get encoding-relevant tool schemas from brain_mcp (single source of truth)."""
+    """Get v3 encoding tool schemas from brain_mcp (single source of truth)."""
     from . import brain_mcp
     ENCODING_TOOLS = {
         'recall', 'find_node_by_title', 'get_node',
-        'remember', 'revise', 'connect',
+        'remember_batch', 'revise', 'connect',
         'record_divergence', 'learn_vocabulary',
-        'remember_lesson', 'remember_mechanism',
-        'remember_mental_model', 'remember_impact',
-        'remember_convention',
     }
     return [{"name": t["name"], "description": t["description"],
              "input_schema": t["inputSchema"]}

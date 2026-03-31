@@ -64,6 +64,41 @@ def _generate_remember_schema():
     }
 
 
+def _generate_remember_batch_schema():
+    """Generate the 'remember_batch' tool schema — array of remember() objects."""
+    remember_schema = _generate_remember_schema()
+    node_properties = remember_schema["inputSchema"]["properties"]
+    return {
+        "name": "remember_batch",
+        "description": "Create multiple nodes in one call. Each node uses the same fields as remember(). Auto-connects new nodes to each other and to existing nodes matched by title.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["nodes"],
+            "properties": {
+                "nodes": {
+                    "type": "array",
+                    "description": "Array of node specs — same fields as remember()",
+                    "items": {
+                        "type": "object",
+                        "required": ["type", "title", "content"],
+                        "properties": node_properties,
+                    },
+                },
+                "connect_to": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Existing node titles to fuzzy-match and connect all new nodes to",
+                },
+                "auto_connect": {
+                    "type": "boolean",
+                    "description": "Auto-connect new nodes to each other",
+                    "default": True,
+                },
+            },
+        },
+    }
+
+
 def _generate_revise_schema():
     """Generate the 'revise' MCP tool schema from the contract."""
     from .contract import get_writable_fields
@@ -156,6 +191,7 @@ TOOLS = [
          "limit": {"type": "integer", "description": "Max results (default 8)", "default": 8},
          "neighbor_limit": {"type": "integer", "description": "Max neighbor nodes to include (default 3)", "default": 3}}}},
     _generate_remember_schema(),
+    _generate_remember_batch_schema(),
     {"name": "connect",
      "description": "Create a weighted edge between two brain nodes. Relations: related_to, caused_by, depends_on, contradicts, supports, produced, evolved_from, blocks, enables, example_of.",
      "inputSchema": {"type": "object", "required": ["source_id", "target_id"], "properties": {

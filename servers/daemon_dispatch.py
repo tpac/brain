@@ -48,9 +48,15 @@ class CmdEntry(NamedTuple):
 
 def _handle_ping(brain, args, graph_changes):
     import threading as _t
-    return {"ok": True, "result": {"status": "alive", "pid": os.getpid(),
-                                    "code_fingerprint": _CODE_FINGERPRINT,
-                                    "threads": _t.active_count()}}
+    result = {"status": "alive", "pid": os.getpid(),
+              "code_fingerprint": _CODE_FINGERPRINT,
+              "threads": _t.active_count()}
+    if args.get("thread_detail"):
+        result["thread_list"] = [
+            {"name": t.name, "daemon": t.daemon, "alive": t.is_alive()}
+            for t in _t.enumerate()
+        ]
+    return {"ok": True, "result": result}
 
 
 def _handle_context_boot(brain, args, graph_changes):
@@ -306,7 +312,7 @@ def _handle_synthesize_session(brain, args, graph_changes):
 
 
 def _handle_remember(brain, args, graph_changes):
-    from .contract import validate_field, ALL_FIELDS
+    from .contract import validate_field, get_remember_fields
 
     # Validate all provided fields against contract
     for field, value in args.items():
@@ -314,20 +320,39 @@ def _handle_remember(brain, args, graph_changes):
         if not ok:
             return {"ok": False, "error": err}
 
-    result = brain.remember(
-        type=args.get("type", "context"),
-        title=args.get("title", ""),
-        content=args.get("content", ""),
-        locked=args.get("locked", False),
-        confidence=args.get("confidence", 1.0),
-        emotion=args.get("emotion"),
-        keywords=args.get("keywords"),
-        project=args.get("project"),
-        situation=args.get("situation"))
+    # Pass ALL contract fields through to remember() — it handles routing
+    # to nodes table, node_metadata, and node_embeddings
+    accepted_fields = set(get_remember_fields().keys()) | {'connections'}
+    remember_args = {k: v for k, v in args.items() if k in accepted_fields and v is not None}
+    result = brain.remember(**remember_args)
     node_id = result.get("id", "?")[:8] if isinstance(result, dict) else "?"
     graph_changes.append(
         "REMEMBER: [%s] %s (%s...)" % (
             args.get("type", "?"), args.get("title", "")[:50], node_id))
+    return {"ok": True, "result": result}
+
+
+def _handle_remember_batch(brain, args, graph_changes):
+    from .contract import validate_field, get_remember_fields
+
+    nodes = args.get("nodes", [])
+    if not nodes:
+        return {"ok": False, "error": "nodes array is required"}
+
+    accepted_fields = set(get_remember_fields().keys())
+    cleaned_nodes = []
+    for i, spec in enumerate(nodes):
+        for field, value in spec.items():
+            ok, err = validate_field(field, value)
+            if not ok:
+                return {"ok": False, "error": "node[%d].%s: %s" % (i, field, err)}
+        cleaned_nodes.append({k: v for k, v in spec.items() if k in accepted_fields and v is not None})
+
+    result = brain.remember_batch(
+        nodes=cleaned_nodes,
+        connect_to=args.get("connect_to"),
+        auto_connect=args.get("auto_connect", True))
+    graph_changes.append("REMEMBER_BATCH: %d nodes" % result.get("nodes_created", 0))
     return {"ok": True, "result": result}
 
 
@@ -604,7 +629,10 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "backfill_summaries":  CmdEntry(_handle_backfill_summaries, is_write=True, marks_dirty=True),
     "synthesize_session":  CmdEntry(_handle_synthesize_session, is_write=True, marks_dirty=True),
     "remember":              CmdEntry(_handle_remember,             is_write=True, marks_dirty=True),
+    "remember_batch":        CmdEntry(_handle_remember_batch,      is_write=True, marks_dirty=True),
     "revise":                CmdEntry(_handle_revise,               is_write=True, marks_dirty=True),
+    # Specialized remember tools — kept for interactive MCP use (Anchor calls these).
+    # The encoding agent uses generic remember() with promoted fields instead.
     "remember_lesson":       CmdEntry(_handle_remember_lesson,     is_write=True, marks_dirty=True),
     "remember_impact":       CmdEntry(_handle_remember_impact,     is_write=True, marks_dirty=True),
     "remember_mechanism":    CmdEntry(_handle_remember_mechanism,  is_write=True, marks_dirty=True),
@@ -615,6 +643,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "learn_vocabulary":      CmdEntry(_handle_learn_vocabulary,    is_write=True, marks_dirty=True),
     "find_node_by_title":    CmdEntry(_handle_find_node_by_title,  is_write=False, marks_dirty=False),
     "get_node":              CmdEntry(_handle_get_node,             is_write=False, marks_dirty=False),
+    # encode_cluster: deprecated — use remember_batch() with same contract as remember()
     "encode_cluster":        CmdEntry(_handle_encode_cluster,      is_write=True, marks_dirty=True),
     "connect":               CmdEntry(_handle_connect,             is_write=True, marks_dirty=True),
     "enrich":                CmdEntry(_handle_enrich,              is_write=True, marks_dirty=True),

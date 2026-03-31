@@ -370,10 +370,35 @@ def hook_post_response_track(brain, args, graph_changes):
     user_message = args.get("prompt", "") or args.get("message", "")
     assistant_response = (args.get("last_assistant_message", "") or "")[:4000]
 
-    # Store conversation in message stream (encoding agent reads from this)
+    # Read pre-attached recall from candidates file (written by hook_recall)
+    recalled_node_ids = None
+    recalled_raw = None
     try:
+        import json as _json
         session_id = brain.get_config('session_id', '')
-        brain.store_exchange(user_message, assistant_response, session_id)
+        candidates_path = '/tmp/brain-%s-recall-candidates.json' % session_id
+        if os.path.exists(candidates_path):
+            with open(candidates_path) as _cf:
+                cdata = _json.load(_cf)
+            candidates = cdata.get('candidates', [])
+            if candidates:
+                recalled_node_ids = _json.dumps([c.get('id', '') for c in candidates])
+                recalled_raw = _json.dumps([{
+                    'id': c.get('id', ''), 'type': c.get('type', ''),
+                    'title': c.get('title', ''),
+                    'content': (c.get('content', '') or '')[:500],
+                    'score': c.get('score', 0),
+                } for c in candidates])
+    except Exception as e:
+        brain._log_error('read_recall_candidates', e, 'Stop hook: reading candidates file')
+
+    # Store conversation + recall data in message stream
+    try:
+        if not session_id:
+            session_id = brain.get_config('session_id', '')
+        brain.store_exchange(user_message, assistant_response, session_id,
+                            recalled_node_ids=recalled_node_ids,
+                            recalled_raw=recalled_raw)
     except Exception as e:
         brain._log_error('store_exchange', e, 'Stop hook: failed to store exchange')
 
@@ -425,7 +450,7 @@ def hook_post_response_track(brain, args, graph_changes):
                     finally:
                         _encoding_lock.release()
 
-                threading.Thread(target=_run_encoding, daemon=True).start()
+                threading.Thread(target=_run_encoding, daemon=True, name="encoding-agent").start()
                 encoding_status = "encoding started (background)"
         else:
             encoding_status = "encoding %d/5" % position

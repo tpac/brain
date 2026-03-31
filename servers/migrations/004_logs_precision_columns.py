@@ -47,7 +47,7 @@ def up(conn: sqlite3.Connection, db_path=None) -> None:
         except sqlite3.OperationalError:
             # Column already exists — safe to ignore
             pass
-    conn.commit()
+    # Don't commit — runner handles transaction via savepoint
 
 
 def down(conn: sqlite3.Connection) -> None:

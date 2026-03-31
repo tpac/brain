@@ -160,72 +160,9 @@ class BrainRecallMixin:
         return stored
 
     def _expand_query_with_vocabulary(self, query: str) -> str:
-        """Expand query terms using vocabulary mappings (Step 0.5 in recall pipeline).
-
-        Resolves operator vocabulary to find additional search terms.
-        Example: "working copy" → "working copy worktree git worktree"
-        """
-        try:
-            # Check individual terms and bigrams
-            words = query.lower().split()
-            expansion_terms = []
-
-            # Check bigrams first (more specific)
-            checked_bigrams = set()
-            for i in range(len(words) - 1):
-                bigram = f'{words[i]} {words[i+1]}'
-                checked_bigrams.add(bigram)
-                result = self.resolve_vocabulary(bigram)
-                if result and not result.get('ambiguous'):
-                    # Parse maps_to from content: '"term" → X, Y'
-                    content = result.get('content', '')
-                    if '\u2192' in content:
-                        mapped = content.split('\u2192', 1)[1].strip()
-                        for t in mapped.split(','):
-                            t = t.strip()
-                            if t and t.lower() not in query.lower():
-                                expansion_terms.append(t)
-
-            # Check individual words (skip if part of a matched bigram)
-            for word in words:
-                if len(word) <= 2:
-                    continue
-                # Skip if this word was part of a matched bigram
-                if any(word in bg for bg in checked_bigrams if self.resolve_vocabulary(bg)):
-                    continue
-                result = self.resolve_vocabulary(word)
-                if result and not result.get('ambiguous'):
-                    content = result.get('content', '')
-                    if '\u2192' in content:
-                        mapped = content.split('\u2192', 1)[1].strip()
-                        for t in mapped.split(','):
-                            t = t.strip()
-                            if t and t.lower() not in query.lower():
-                                expansion_terms.append(t)
-
-            # Cap expansion
-            expansion_terms = expansion_terms[:VOCAB_EXPANSION_MAX]
-
-            if expansion_terms:
-                # Log expansion via recall_log (use returned_ids for expansion info)
-                try:
-                    session_id = getattr(self, 'session_id', 'unknown')
-                    _logs_dal = LogsDAL(self.logs_conn)
-                    _logs_dal.insert_recall_log(
-                        session_id=session_id, query=query,
-                        returned_ids='vocab_expansion: ' + ', '.join(expansion_terms),
-                        returned_count=len(expansion_terms),
-                        embeddings_used=0, recalled_titles='', recalled_snippets='',
-                        created_at=self.now())
-                except Exception as e:
-                    self._log_error('vocab_expansion_log', e, 'logging vocabulary expansion')
-
-                return query + ' ' + ' '.join(expansion_terms)
-
-            return query
-        except Exception as e:
-            self._log_error('vocab_expansion', e, 'expanding query vocabulary')
-            return query  # Never break recall due to vocab expansion failure
+        """DEPRECATED v9: Vocab expansion removed. Concept nodes surface through
+        normal recall. Returns query unchanged."""
+        return query
 
     def _keyword_recall(self, query: str, types: Optional[List[str]] = None, limit: int = 20,
                         offset: int = 0, include_archived: bool = False, min_recency: float = 0,
@@ -929,7 +866,7 @@ class BrainRecallMixin:
                                     'constraint', 'lesson', 'convention')  # v5 engineering memory
                 is_cognitive = ntype in ('mental_model', 'reasoning_trace', 'uncertainty',
                                          'correction', 'validation')  # v5 cognitive layer
-                is_engineering = ntype in ('purpose', 'mechanism', 'impact', 'vocabulary')  # v5 engineering
+                is_engineering = ntype in ('purpose', 'mechanism', 'impact', 'concept')  # v5 engineering
 
                 # Temporal freshness — how old is this info?
                 _freshness = 'unknown'
@@ -981,16 +918,8 @@ class BrainRecallMixin:
                             # Score penalty already applied in STEP 6 — only reduce confidence here
                             node['_brain_to_host']['confidence'] *= 0.6
 
-                # v8.8: Vocab nodes are connectors — surface as context, not primary results
-                if ntype == 'vocabulary':
-                    vocab_context.append({
-                        'id': node.get('id', ''),
-                        'title': node.get('title', ''),
-                        'content': (node.get('content') or '')[:200],
-                        '_score': sr['blended_score'],
-                    })
-                else:
-                    final_results.append(node)
+                # v9: All nodes are primary results (vocab→concept migration complete)
+                final_results.append(node)
 
         # STEP 7.5: Enrich top 3 results with metadata + neighbors
         # All results keep full content (no truncation). Top 3 also get
@@ -1173,7 +1102,7 @@ class BrainRecallMixin:
             # Filter to intentional at degree 1, skip vocab nodes (they're hubs, not destinations)
             d1_neighbors = [n for n in d1_neighbors
                             if n.get('relation') in INTENTIONAL_EDGE_TYPES
-                            and n.get('type') != 'vocabulary'][:TRAVERSE_LIMITS[0]]
+                            and n.get('type') != 'concept'][:TRAVERSE_LIMITS[0]]
 
             for nb in d1_neighbors:
                 nid = nb['id']
@@ -1196,7 +1125,7 @@ class BrainRecallMixin:
                         exclude_relations=EXCLUDED_EDGE_TYPES,
                         exclude_node_ids=seen_ids)
 
-                    for nb2 in [n for n in d2_neighbors if n.get('type') != 'vocabulary']:
+                    for nb2 in [n for n in d2_neighbors if n.get('type') != 'concept']:
                         nid2 = nb2['id']
                         freshness2 = _freshness(nb2)
                         d2_score = d1_score * TRAVERSE_DAMPEN[1] / TRAVERSE_DAMPEN[0] * (nb2.get('weight') or 0.5) * freshness2
@@ -1217,7 +1146,7 @@ class BrainRecallMixin:
                                 exclude_relations=EXCLUDED_EDGE_TYPES,
                                 exclude_node_ids=seen_ids)
 
-                            for nb3 in [n for n in d3_neighbors if n.get('type') != 'vocabulary']:
+                            for nb3 in [n for n in d3_neighbors if n.get('type') != 'concept']:
                                 nid3 = nb3['id']
                                 d3_score = d2_score * TRAVERSE_DAMPEN[2] / TRAVERSE_DAMPEN[1] * (nb3.get('weight') or 0.5)
                                 neighborhoods[seed_id]['degree_3'].append(

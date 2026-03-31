@@ -314,8 +314,26 @@ def dispatch_tool(brain: InstrumentedBrain, tool_name: str, tool_input: Dict) ->
             return json.dumps({"ok": True, "node": None})
 
         elif tool_name == "remember":
-            result = brain.remember(**tool_input)
-            return json.dumps({"ok": True, "id": result.get("id", "") if result else "error"})
+            # Filter to kwargs that brain.remember() accepts — promoted fields
+            # (reasoning, user_raw_quote, etc.) are stored separately via revise/metadata
+            accepted = {"type", "title", "content", "keywords", "locked", "confidence",
+                        "emotion", "emotion_label", "emotion_source", "project",
+                        "personal", "personal_context", "critical", "encoding_source",
+                        "situation"}
+            filtered = {k: v for k, v in tool_input.items() if k in accepted}
+            # Store extra fields as metadata after creation
+            extra = {k: v for k, v in tool_input.items() if k not in accepted and v}
+            result = brain.remember(**filtered)
+            node_id = result.get("id", "") if isinstance(result, dict) else ""
+            # Apply promoted/open fields via revise if node was created
+            if node_id and extra:
+                try:
+                    brain._brain.revise(node_id=node_id, reason="apply promoted fields",
+                                         **{k: v for k, v in extra.items()
+                                            if k not in ("connections",)})
+                except Exception:
+                    pass  # best-effort for extra fields
+            return json.dumps({"ok": True, "id": node_id})
 
         elif tool_name == "revise":
             result = brain.revise(**tool_input)

@@ -965,26 +965,29 @@ class BrainSurfaceMixin:
 
     def store_exchange(self, user_message: str, assistant_response: str,
                        session_id: str = '',
-                       signal_type: Optional[str] = None) -> Dict[str, Any]:
+                       signal_type: Optional[str] = None,
+                       recalled_node_ids: Optional[str] = None,
+                       recalled_raw: Optional[str] = None) -> Dict[str, Any]:
         """Store both messages to the conversation stream.
 
         Called by hook_post_response_track on every Stop event.
-        Tom's messages become pending encoding material.
 
         Args:
-            user_message: Tom's raw message
-            assistant_response: Claude's response
+            user_message: operator's raw message
+            assistant_response: assistant's response
             session_id: current session ID
-            signal_type: 'decision', 'correction', 'insight', 'exploration',
-                         or None. Stored on the user message for escalation.
+            signal_type: 'decision', 'correction', 'insight', 'exploration', or None
+            recalled_node_ids: JSON string — node IDs surfaced for this user turn
+            recalled_raw: JSON string — [{id, type, title, content_snippet, score}]
 
         Returns:
             Dict with user_id, assistant_id, signal_type.
         """
         from .dal_message_stream import MessageStreamDAL
         dal = MessageStreamDAL(self.logs_conn)
-        # Signal annotates the USER message (Tom's words), not the assistant response
-        user_id = dal.store('user', user_message, session_id, signal_type=signal_type)
+        # Recall data attaches to the USER message (recall happened before response)
+        user_id = dal.store('user', user_message, session_id, signal_type=signal_type,
+                           recalled_node_ids=recalled_node_ids, recalled_raw=recalled_raw)
         assistant_id = dal.store('assistant', assistant_response, session_id)
         return {'user_id': user_id, 'assistant_id': assistant_id, 'signal_type': signal_type}
 

@@ -1,0 +1,27 @@
+{
+  "id": "conv_004_art_design",
+  "source": "synthetic",
+  "category": "creative_design",
+  "exchanges": [
+    {"role": "user", "content": "I want the dashboard to feel alive. Not just data tables — something that shows the brain breathing. Nodes being created, connections forming, recall happening in real time."},
+    {"role": "assistant", "content": "We could add a live activity feed — recent encodes, recalls, connections as they happen. Plus a graph visualization showing the neighborhood around the most active nodes. The dashboard already has WebSocket support via the observer channel."},
+    {"role": "user", "content": "The graph viz is important but don't make it look like every other knowledge graph demo with floating circles. I want it to feel organic, like neurons. The distance between nodes should mean something."},
+    {"role": "assistant", "content": "Force-directed layout where edge weight controls distance — strongly connected nodes cluster together, weakly connected ones drift apart. Locked nodes could glow differently. And nodes that were recently accessed could pulse, showing where the brain's attention is."},
+    {"role": "user", "content": "Yes! Attention is the right word. The brain has attention patterns — what it's been asked about, what it surfaces most. Can we visualize that?"},
+    {"role": "assistant", "content": "The access_count and recency_score fields already track this. We could size nodes by access frequency and color them by recency — hot red for just-accessed, cooling to blue for dormant. The encoding agent's activity would show as bursts of new connections."},
+    {"role": "user", "content": "I like the temperature metaphor. Hot and cold knowledge. But I also want to see the gaps — where the brain should know something but doesn't. Dark spots."},
+    {"role": "assistant", "content": "That's harder but doable. We could analyze query patterns — topics that get asked about but return low-score results. Those are the gaps. Visualize them as dim placeholder nodes, inviting the user to fill them in."}
+  ],
+  "ground_truth": {
+    "encode_targets": [
+      {"type": "decision", "topic": "dashboard should feel alive with real-time activity", "exchange_range": [0, 1]},
+      {"type": "preference", "topic": "organic neuron-like visualization not generic graph", "exchange_range": [2, 3]},
+      {"type": "mechanism", "topic": "temperature metaphor for knowledge recency", "exchange_range": [4, 5]},
+      {"type": "concept", "topic": "gap visualization as dark spots", "exchange_range": [6, 7]}
+    ],
+    "decode_queries": [
+      {"query": "how should the brain dashboard look", "expected_topics": ["alive", "organic", "neurons"]},
+      {"query": "visualizing knowledge gaps", "expected_topics": ["gaps", "dark spots", "placeholder"]}
+    ]
+  }
+}

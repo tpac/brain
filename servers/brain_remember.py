@@ -336,29 +336,30 @@ class BrainRememberMixin:
                  personal_context: Optional[str] = None,
                  critical: bool = False,
                  encoding_source: Optional[str] = None,
-                 situation: Optional[str] = None) -> Dict[str, Any]:
+                 situation: Optional[str] = None,
+                 source_turn_id: Optional[str] = None,
+                 evolution_status: Optional[str] = None,
+                 # Promoted metadata fields (stored in node_metadata sidecar table)
+                 reasoning: Optional[str] = None,
+                 user_raw_quote: Optional[str] = None,
+                 correction_of: Optional[str] = None,
+                 correction_pattern: Optional[str] = None,
+                 source_context: Optional[str] = None,
+                 confidence_rationale: Optional[str] = None,
+                 alternatives: Optional[List[Dict[str, str]]] = None,
+                 change_impacts: Optional[List[Dict[str, str]]] = None,
+                 source_attribution: Optional[str] = None,
+                 scope: Optional[str] = None,
+                 **extra_fields) -> Dict[str, Any]:
         """
         Store a new memory node with semantic indexing and connections.
 
-        Args:
-            type: Node type (person, project, task, etc.)
-            title: Node title
-            content: Optional detailed content
-            keywords: Optional keywords (auto-extracted if not provided)
-            locked: If True, node never decays
-            connections: List of {target_id, relation, weight} dicts
-            emotion: Emotional intensity (0-1)
-            emotion_label: 'positive', 'negative', 'neutral', 'frustration', etc.
-            emotion_source: 'auto', 'user', 'system'
-            project: Optional project ID to associate
-            confidence: Confidence score (for future use)
-            personal: v4 personal flag — 'fixed' (permanent fact), 'fluid' (evolving truth),
-                      'contextual' (depends on conditions), or None (not personal)
-            personal_context: v4 qualifier for contextual personal nodes — describes when/where
-                              the personal info applies (e.g. "during technical sprints")
+        Accepts ALL contract fields. Core fields go to the nodes table,
+        promoted fields go to node_metadata/node_embeddings, and any
+        unknown fields are silently ignored (future-proof).
 
         Returns:
-            Dict with id, type, title, emotion, emotion_label, bridges_created, personal
+            Dict with id, type, title, and related_nodes (top 5 similar existing nodes).
         """
         # Validate personal flag
         if personal and personal not in ('fixed', 'fluid', 'contextual'):
@@ -402,13 +403,15 @@ class BrainRememberMixin:
                 activation, stability, locked, confidence,
                 recency_score, emotion, emotion_label, emotion_source, project,
                 personal, personal_context, encoding_version, encoding_source,
+                evolution_status, source_turn_id,
                 last_accessed, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, 1.0, 1.0, ?, ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+               VALUES (?, ?, ?, ?, ?, ?, 1.0, 1.0, ?, ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (node_id, type, title, content, content_summary, keywords,
              1 if locked else 0, confidence,
              emotion, emotion_label, emotion_source, project,
              personal, personal_context, CURRENT_ENCODING_VERSION,
              encoding_source or 'manual',
+             evolution_status, source_turn_id,
              ts, ts, ts)
         )
         self.conn.commit()
@@ -553,18 +556,44 @@ class BrainRememberMixin:
             self._log_error('remember_resolve_pending', e,
                             'Failed to resolve pending messages after encoding %s' % node_id[:8])
 
+        # v9: Store promoted metadata fields in sidecar table
+        try:
+            self._store_node_metadata(
+                node_id, reasoning=reasoning, user_raw_quote=user_raw_quote,
+                correction_of=correction_of, correction_pattern=correction_pattern,
+                source_context=source_context, confidence_rationale=confidence_rationale,
+                alternatives=alternatives, change_impacts=change_impacts,
+                source_attribution=source_attribution, scope=scope)
+        except Exception as e:
+            self._log_error('remember_metadata', e, 'storing metadata for %s' % node_id[:8])
+
+        # v9: Recall-on-create — return related nodes so caller can connect immediately
+        related_nodes = []
+        try:
+            if embedding_stored:
+                recall_result = self.recall(query='%s %s' % (title, (content or '')[:200]), limit=6)
+                for r in recall_result.get('results', []):
+                    if r.get('id') != node_id:
+                        related_nodes.append({
+                            'id': r.get('id', ''),
+                            'type': r.get('type', ''),
+                            'title': r.get('title', ''),
+                            'content': (r.get('content', '') or '')[:500],
+                            'confidence': r.get('confidence', 0),
+                            'score': round(r.get('effective_activation', 0), 3),
+                        })
+                    if len(related_nodes) >= 5:
+                        break
+        except Exception as e:
+            self._log_error('remember_recall_on_create', e, 'recall-on-create for %s' % node_id[:8])
+
         return {
             'id': node_id,
             'type': type,
             'title': title,
-            'emotion': emotion,
-            'emotion_label': emotion_label,
-            'bridges_created': len(bridges),
-            'embedding_stored': embedding_stored,  # Phase 0.5C
-            'personal': personal,  # v4
-            'enrichment_prompt': enrichment_prompt,  # v6: for Claude to fill in
-            'enrichment_stored': enrichment_stored,  # v6: count of stored enrichments
-            'pending_resolved': resolved_count,  # v8: how many pending messages were resolved
+            'embedding_stored': embedding_stored,
+            'enrichment_prompt': enrichment_prompt,
+            'related_nodes': related_nodes,
         }
 
     # ═══════════════════════════════════════════════════════════════
@@ -845,67 +874,26 @@ class BrainRememberMixin:
             self.conn.commit()
         return {'backfilled': count, 'remaining': len(rows) - count}
 
-    def remember_rich(self, type: str, title: str, content: Optional[str] = None,
-                      reasoning: Optional[str] = None,
-                      alternatives: Optional[List[Dict[str, str]]] = None,
-                      user_raw_quote: Optional[str] = None,
-                      correction_of: Optional[str] = None,
-                      correction_pattern: Optional[str] = None,
-                      source_context: Optional[str] = None,
-                      confidence_rationale: Optional[str] = None,
-                      change_impacts: Optional[List[Dict[str, str]]] = None,
-                      source_attribution: Optional[str] = None,
-                      scope: Optional[str] = None,
-                      **kwargs) -> Dict[str, Any]:
-        """Store a memory node with rich metadata (v5 cognitive encoding).
+    def _store_node_metadata(self, node_id: str,
+                             reasoning: Optional[str] = None,
+                             user_raw_quote: Optional[str] = None,
+                             correction_of: Optional[str] = None,
+                             correction_pattern: Optional[str] = None,
+                             source_context: Optional[str] = None,
+                             confidence_rationale: Optional[str] = None,
+                             alternatives: Optional[List[Dict[str, str]]] = None,
+                             change_impacts: Optional[List[Dict[str, str]]] = None,
+                             source_attribution: Optional[str] = None,
+                             scope: Optional[str] = None):
+        """Store promoted metadata fields for a node.
 
-        Wraps remember() with additional metadata stored in node_metadata sidecar table.
-        Use this instead of remember() when you have reasoning, alternatives, corrections,
-        or other rich context to preserve.
+        Core fields live in the nodes table. Promoted fields live in:
+        - node_metadata: reasoning, user_raw_quote, correction_of, etc.
+        - nodes: source_attribution, scope (direct columns)
 
-        Args:
-            type, title, content, **kwargs: Passed through to remember()
-            reasoning: The reasoning chain that produced this conclusion
-            alternatives: List of {option, rejected_because} dicts
-            user_raw_quote: User's exact words (prevents encoding bias)
-            correction_of: node_id this knowledge corrects
-            correction_pattern: The underlying divergence pattern
-            source_context: What prompted this knowledge (user correction, code reading, etc.)
-            confidence_rationale: WHY the confidence level was set
-            change_impacts: List of {if_modified, must_check, because} for engineering memory
-            source_attribution: user_stated | claude_inferred | session_synthesis | correction | code_reading
-            scope: system | module | file | function | cross-system | cross-file | cross-function
+        Called by remember() after node creation. Idempotent via INSERT OR REPLACE.
         """
-        # v5.2: Auto-populate user_raw_quote from last user message if not provided.
-        # The pre-response hook stores the user's message in brain_meta.
-        # This ensures operator voice is captured structurally, not by discipline.
-        #
-        # IMPORTANT: Quotes must not float. An auto-captured quote gets anchored with
-        # source_context that records what was being discussed (the node title acts as
-        # Claude's interpretation; source_context bridges the two).
-        if user_raw_quote is None:
-            try:
-                last_msg = self.get_config('last_user_message')
-                if last_msg and len(last_msg) >= 10:
-                    user_raw_quote = last_msg
-                    # Auto-anchor: if no source_context provided, generate one
-                    # that ties the quote to the node being created
-                    if source_context is None:
-                        source_context = (
-                            'Auto-captured operator message during encoding of: '
-                            '%s. Host understood this as: %s' % (
-                                title[:80],
-                                (content or title)[:150]
-                            )
-                        )
-            except Exception as e:
-                self._log_error('remember_rich_source', e, 'extracting source context from recent messages')
-
-        # Store the core node via remember()
-        result = self.remember(type=type, title=title, content=content, **kwargs)
-        node_id = result['id']
-
-        # Set source_attribution and scope on the node
+        # Update source_attribution and scope on nodes table (direct columns)
         updates = []
         params = []
         if source_attribution:
@@ -917,10 +905,9 @@ class BrainRememberMixin:
         if updates:
             params.append(node_id)
             self.conn.execute(
-                f"UPDATE nodes SET {', '.join(updates)} WHERE id = ?", params
-            )
+                "UPDATE nodes SET %s WHERE id = ?" % ', '.join(updates), params)
 
-        # Store rich metadata in sidecar table
+        # Store metadata in sidecar table
         has_metadata = any([reasoning, alternatives, user_raw_quote, correction_of,
                            correction_pattern, source_context, confidence_rationale,
                            change_impacts])
@@ -935,10 +922,9 @@ class BrainRememberMixin:
                  json.dumps(alternatives) if alternatives else None,
                  user_raw_quote, correction_of, correction_pattern,
                  source_context, confidence_rationale,
-                 self.now() if correction_of else None,  # corrections are self-validating
+                 self.now() if correction_of else None,
                  json.dumps(change_impacts) if change_impacts else None,
-                 self.now())
-            )
+                 self.now()))
 
         # If this corrects another node, create edge and lower its confidence
         if correction_of:
@@ -946,17 +932,70 @@ class BrainRememberMixin:
                 self.connect(node_id, correction_of, 'corrected_by', 0.8)
                 self.conn.execute(
                     "UPDATE nodes SET confidence = MAX(0.2, COALESCE(confidence, 0.7) * 0.7) WHERE id = ?",
-                    (correction_of,)
-                )
-            except Exception as _e:
-                self._log_error("remember_rich", _e, "self.connect(node_id, correction_of, corrected_by")
+                    (correction_of,))
+            except Exception as e:
+                self._log_error('metadata_correction_link', e,
+                                'linking correction %s → %s' % (node_id[:8], correction_of[:8]))
 
         self.conn.commit()
 
-        result['source_attribution'] = source_attribution
-        result['scope'] = scope
-        result['has_metadata'] = has_metadata
-        return result
+    def remember_rich(self, type: str, title: str, content: Optional[str] = None,
+                      **kwargs) -> Dict[str, Any]:
+        """Backward-compatible wrapper — remember() now handles all fields directly."""
+        return self.remember(type=type, title=title, content=content, **kwargs)
+
+    def remember_batch(self, nodes: List[Dict],
+                        connect_to: Optional[List[str]] = None,
+                        auto_connect: bool = True) -> Dict[str, Any]:
+        """Create multiple nodes in one call. Each node uses the same contract as remember().
+
+        Args:
+            nodes: List of dicts, each with the same fields remember() accepts
+                   (type, title, content, keywords, situation, reasoning, etc.)
+            connect_to: List of existing node titles to fuzzy-match and connect all new nodes to
+            auto_connect: If True, auto-connect new nodes to each other
+
+        Returns:
+            {nodes_created, results: [{id, title, related_nodes}], connections_created}
+        """
+        results = []
+        created_ids = []
+        connections_created = 0
+
+        for spec in nodes:
+            result = self.remember(**spec)
+            results.append(result)
+            if result.get('id'):
+                created_ids.append(result['id'])
+
+        # Auto-connect new nodes to each other
+        if auto_connect and len(created_ids) > 1:
+            for i, src_id in enumerate(created_ids):
+                for dst_id in created_ids[i + 1:]:
+                    try:
+                        self.connect(src_id, dst_id, relation='related_to', weight=0.5)
+                        connections_created += 1
+                    except Exception:
+                        pass
+
+        # Fuzzy-match connect_to titles
+        if connect_to:
+            created_set = set(created_ids)
+            for title_query in connect_to:
+                match = self.find_node_by_title(title_query, threshold=0.75)
+                if match and match.get('id') not in created_set:
+                    for node_id in created_ids:
+                        try:
+                            self.connect(node_id, match['id'], relation='related_to', weight=0.6)
+                            connections_created += 1
+                        except Exception:
+                            pass
+
+        return {
+            'nodes_created': len(created_ids),
+            'results': results,
+            'connections_created': connections_created,
+        }
 
     def validate_node(self, node_id: str, context: Optional[str] = None) -> Dict[str, Any]:
         """Mark a node as validated — its knowledge has been confirmed as still accurate.

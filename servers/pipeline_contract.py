@@ -58,12 +58,14 @@ DISTILLER = {
     'max_tokens': 500,          # Haiku output cap
 }
 
-# Encoding agent (Sonnet) — needs rich context for revision decisions
+# Encoding agent v3 (Sonnet) — timeline with pre-attached recall
 ENCODING_AGENT = {
     'message_content_limit': 2000,    # per message from message_stream
-    'message_display_limit': 600,     # per message in formatted prompt
+    'message_display_limit': 800,     # per message in formatted timeline (increased for v3)
     'max_messages': 10,               # last N exchanges
-    'recall_candidates_limit': 5,     # candidates for brain context
+    'recall_candidates_limit': 5,     # candidates per turn (pre-attached)
+    'max_rounds': 5,                  # Sonnet API round limit (target: 2-3)
+    'journal_max_chars': 8000,        # encoding journal truncation limit
     'max_d1': 3,                      # degree 1 neighbors shown
     'max_d2': 3,                      # degree 2
     'max_d3': 3,                      # degree 3

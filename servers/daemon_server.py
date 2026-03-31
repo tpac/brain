@@ -176,12 +176,14 @@ class BrainDaemon:
 
         self.running = True
         self._restart_count = 0  # Reset on successful start
-        self._log("Daemon started. PID={}, addr={}:{}, workers={}, restarts={}".format(
+        threads = threading.enumerate()
+        self._log("Daemon started. PID={}, addr={}:{}, workers={}, restarts={}, threads={}({})".format(
             os.getpid(), self.daemon_addr[0], self.daemon_addr[1],
-            THREAD_POOL_SIZE, self._restart_count))
+            THREAD_POOL_SIZE, self._restart_count, len(threads),
+            ", ".join(t.name for t in threads if t.name != "MainThread")))
 
         # Start autosave thread
-        autosave_thread = threading.Thread(target=self._autosave_loop, daemon=True)
+        autosave_thread = threading.Thread(target=self._autosave_loop, daemon=True, name="autosave")
         autosave_thread.start()
 
         self._serve()
@@ -277,6 +279,8 @@ class BrainDaemon:
 
     def _handle_client(self, client: socket.socket):
         """Handle a single client connection (runs in thread pool)."""
+        t = threading.current_thread()
+        t_name = t.name
         try:
             # Update activity immediately — even if parsing fails, someone is talking to us
             self.last_activity = time.time()
@@ -325,16 +329,25 @@ class BrainDaemon:
             # If it timed out, the thread kept running forever → thread leak → CPU spiral.
             # Now: dispatch runs inline in the pool worker. Client has its own timeout (30s).
             # Pool worker finishes and returns to pool. No orphans.
+            t.name = "pool-worker:%s" % cmd
+            t0 = time.time()
             result = self._dispatch(cmd, args)
+            elapsed_ms = int((time.time() - t0) * 1000)
+
+            if elapsed_ms > 2000:
+                self._log("[thread:%s] %s took %dms" % (t_name, cmd, elapsed_ms))
 
             self._send_response(client, result)
 
         except Exception as e:
+            self._log("[thread:%s] EXCEPTION in %s: %s" % (
+                t_name, msg.get("cmd", "?") if 'msg' in dir() else "?", e))
             try:
                 self._send_error(client, "Internal error: {}".format(e))
             except Exception:
                 pass
         finally:
+            t.name = t_name
             try:
                 client.close()
             except Exception:
@@ -538,7 +551,7 @@ class BrainDaemon:
             pass  # Status file is best-effort
 
     def _autosave_loop(self):
-        """Periodically save brain if dirty + run internal health check."""
+        """Periodically save brain if dirty + run internal health check + thread monitor."""
         while self.running:
             time.sleep(AUTOSAVE_INTERVAL_SECONDS)
             if self.dirty:
@@ -557,6 +570,27 @@ class BrainDaemon:
                     self.brain.conn.execute("SELECT 1").fetchone()
                 except Exception as e:
                     self._log("HEALTH: SQLite check failed: {}".format(e))
+            # Thread inventory — detect runaway threads (Python level)
+            threads = threading.enumerate()
+            alive = [t for t in threads if t.is_alive()]
+            non_daemon = [t for t in alive if not t.daemon and t.name != "MainThread"]
+            if len(alive) > 15 or non_daemon:
+                self._log("THREADS: %d alive (%d non-daemon): %s" % (
+                    len(alive), len(non_daemon),
+                    ", ".join("%s(%s)" % (t.name, "daemon" if t.daemon else "NON-DAEMON") for t in alive
+                             if t.name != "MainThread")))
+            # Native thread CPU monitor — catches onnxruntime/tokenizers spin
+            try:
+                import subprocess
+                r = subprocess.run(
+                    ['ps', '-M', '-p', str(os.getpid()), '-o', 'pcpu='],
+                    capture_output=True, text=True, timeout=3)
+                hot = [float(x) for x in r.stdout.strip().split('\n') if x.strip() and float(x.strip()) > 50]
+                if hot:
+                    self._log("CPU SPIRAL DETECTED: %d native threads at %s%%" % (
+                        len(hot), "+".join("%.0f" % h for h in hot)))
+            except Exception:
+                pass
             self._write_status()
 
     def _handle_signal(self, signum, frame):

@@ -127,6 +127,7 @@ TABLES = {
             encoding_version TEXT DEFAULT NULL,
             encoding_source TEXT DEFAULT NULL,
             revised_at TEXT DEFAULT NULL,
+            source_turn_id TEXT DEFAULT NULL,
             last_accessed TEXT,
             created_at TEXT,
             updated_at TEXT
@@ -151,6 +152,7 @@ TABLES = {
             'encoding_version': 'NULL',      # v6: encoding pipeline version (v5, v6, etc.) — floor adapts to quality
             'encoding_source': 'NULL',       # v7: how this node was created: 'manual' | 'auto' | 'idle' | 'hook'
             'revised_at': 'NULL',            # v8: when this node was last revised via revise()
+            'source_turn_id': 'NULL',        # v9: message_stream.id that produced this node (episode linkage)
             'last_accessed': 'NULL',
             'created_at': 'NULL', 'updated_at': 'NULL',
         }
@@ -933,7 +935,9 @@ LOG_TABLES = {
             signal_type TEXT DEFAULT NULL,
             surfaced_count INTEGER DEFAULT 0,
             resolved INTEGER DEFAULT 0,
-            resolved_at TEXT DEFAULT NULL
+            resolved_at TEXT DEFAULT NULL,
+            recalled_node_ids TEXT DEFAULT NULL,
+            recalled_raw TEXT DEFAULT NULL
         )""",
     },
 

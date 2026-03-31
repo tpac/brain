@@ -34,58 +34,12 @@ if [ -z "$BRAIN_DB_DIR" ]; then
   exit 0
 fi
 
-# ── Start daemon FIRST (foreground) — single source of truth ──
-# The daemon keeps Brain + embedder loaded in memory.
-# Boot waits for daemon, then uses it for context formatting.
-# No direct Brain() instantiation — daemon owns the model.
-python3 -c "
-import sys, os, socket, json, subprocess, time
-
-parent = os.path.dirname(os.environ.get('BRAIN_SERVER_DIR', ''))
-if parent:
-    sys.path.insert(0, parent)
-
-db_dir = os.environ.get('BRAIN_DB_DIR', '')
-db_path = os.path.join(db_dir, 'brain.db')
-port = 47200 + (os.getuid() % 100)
-
-# Check if daemon is already running
-def ping():
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(2)
-        s.connect(('127.0.0.1', port))
-        s.sendall((json.dumps({'cmd': 'ping'}) + '\n').encode())
-        data = s.recv(4096)
-        s.close()
-        return json.loads(data.decode().strip()).get('ok', False)
-    except Exception:
-        return False
-
-if ping():
-    sys.stderr.write('[brain-boot] Daemon already running on port %d\n' % port)
-else:
-    # Start daemon in background
-    sys.stderr.write('[brain-boot] Starting daemon...\n')
-    project_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    startup = (
-        'import sys, os; '
-        'sys.path.insert(0, %r); '
-        'os.environ[\"BRAIN_DB_DIR\"] = %r; '
-        'from servers.daemon_server import BrainDaemon; '
-        'd = BrainDaemon(%r); d.start()'
-    ) % (project_dir, db_dir, db_path)
-    subprocess.Popen([sys.executable, '-c', startup],
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                     start_new_session=True)
-    # Wait for daemon to be ready
-    for i in range(8):
-        time.sleep(1)
-        if ping():
-            sys.stderr.write('[brain-boot] Daemon ready (took %ds)\n' % (i + 1))
-            break
-    else:
-        sys.stderr.write('[brain-boot] WARNING: Daemon did not start within 8s\n')
+# ── Start daemon via ensure_daemon() — fcntl-locked singleton ──
+# No inline spawning. ensure_daemon() handles: lock, ping, spawn, code-change restart.
+PYTHONPATH="$(cd "$(dirname "$0")/../.." && pwd)" python3 -c "
+from servers.daemon_client import ensure_daemon; import os, sys
+db = os.path.join(os.environ.get('BRAIN_DB_DIR', ''), 'brain.db')
+sys.stderr.write('[brain-boot] Daemon %s\n' % ('ready' if ensure_daemon(db) else 'FAILED'))
 "
 
 exec python3 "$(dirname "$0")/boot_brain.py"
