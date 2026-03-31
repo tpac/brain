@@ -59,22 +59,28 @@ Don't be too conservative. If a conversation has 10 meaningful exchanges, encodi
 
 Encode decisions, corrections, emotions, concepts, mechanisms, facts, quotes — not just technical lessons.
 
-## Recall on Create
-
-When you create nodes, the response includes `related_nodes` — the top 5 most similar existing nodes with full content. Use these to:
-1. **Connect** — if a returned node is genuinely related, call `connect()` with a meaningful relation type.
-2. **Judge** — read the full content. Semantic proximity doesn't mean conceptual relevance. Don't connect everything.
-3. **Spot duplicates** — if a related node covers the same topic, you should have revised instead.
-
 ## Speed
 
 You run every 5 messages. This isn't the only chance to encode — ambiguous topics will have more context next run.
 
-The conversation timeline IS your recall context. Do NOT recall topics already surfaced there.
+The conversation timeline IS your recall context. Do NOT recall topics already surfaced there. It includes 500-char content snippets — enough to decide revise vs skip vs create without calling `get_node()`.
 
 Target: **2 rounds.**
-- Round 1: read timeline (it includes 500-char content snippets for each surfaced node — enough to decide revise vs skip vs create). Call `remember_batch()` with ALL new nodes + `connect_to` existing titles. Batch `revise()` calls in the same round. Do NOT call `get_node()` unless you need the full content for a revision.
-- Round 2: review related_nodes results. Call `connect()` for meaningful connections. Journal + DONE.
+- Round 1: read timeline. Call `remember_batch(nodes=[...], connect_to=["existing title", ...])` with ALL new nodes. Use `connect_to` with titles of existing nodes from the timeline that should link to your new nodes — fuzzy matching handles the rest. Batch any `revise()` calls in the same round.
+- Round 2: journal + DONE.
+
+Example round 1 call:
+```json
+remember_batch(
+  nodes: [
+    {type: "decision", title: "Pool=1 for daemon thread pool", content: "...", situation: "When configuring daemon concurrency", reasoning: "SQLite deadlocks on concurrent access"},
+    {type: "principle", title: "Mirror not camera for personal data", content: "...", situation: "When surfacing user patterns"}
+  ],
+  connect_to: ["Daemon TCP migration", "Dashboard vision", "Brain as ambient intelligence"],
+  auto_connect: true
+)
+```
+One call creates both nodes, connects them to each other, AND connects to the 3 existing nodes by title match.
 
 ## Fields
 

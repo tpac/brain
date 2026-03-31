@@ -102,7 +102,7 @@ V3_TOOL_NAMES = {
 
 V3_PLUS_TOOL_NAMES = {
     'recall', 'find_node_by_title', 'get_node',
-    'remember', 'revise', 'connect',
+    'remember_batch', 'revise',
     'record_divergence', 'learn_vocabulary',
 }
 
@@ -111,14 +111,13 @@ def _build_tools(tool_names=None):
     from eval.capabilities.base import _build_capability_tools
     all_tools = _build_capability_tools()
     names = tool_names or V3_TOOL_NAMES
-    # encode_cluster isn't in capability_tools — add from brain_mcp
-    if 'encode_cluster' in names:
-        from servers import brain_mcp
-        for t in brain_mcp.TOOLS:
-            if t["name"] == "encode_cluster":
-                all_tools.append({"name": t["name"], "description": t["description"],
-                                  "input_schema": t["inputSchema"]})
-                break
+    # Add tools from brain_mcp that aren't in capability_tools
+    from servers import brain_mcp
+    existing_names = {t["name"] for t in all_tools}
+    for t in brain_mcp.TOOLS:
+        if t["name"] in names and t["name"] not in existing_names:
+            all_tools.append({"name": t["name"], "description": t["description"],
+                              "input_schema": t["inputSchema"]})
     return [t for t in all_tools if t["name"] in names]
 
 
@@ -150,29 +149,19 @@ def dispatch_with_recall(brain: InstrumentedBrain, tool_name: str, tool_input: d
                           return_related: bool = False) -> str:
     """Dispatch tool call. If return_related, append related nodes to remember/encode_cluster results."""
 
-    # Handle encode_cluster specially
-    if tool_name == "encode_cluster":
+    # Handle remember_batch
+    if tool_name == "remember_batch":
         try:
-            result = brain._brain.encode_cluster(
+            result = brain._brain.remember_batch(
                 nodes=tool_input.get("nodes", []),
                 connect_to=tool_input.get("connect_to"),
                 auto_connect=tool_input.get("auto_connect", True))
-            # Capture for instrumentation
             brain.actions.append(CapturedAction(
-                tool="encode_cluster", args=tool_input, result=result, timestamp=time.time()))
-
-            if return_related and result.get("created_ids"):
-                # Get related nodes for each created node
-                all_created = result.get("created_ids", [])
-                related_by_node = {}
-                for nid in all_created:
-                    related_by_node[nid] = _get_related_for_node(brain, nid, exclude_ids=all_created)
-                result["related_by_node"] = related_by_node
-
+                tool="remember_batch", args=tool_input, result=result, timestamp=time.time()))
             return json.dumps({"ok": True, "result": result}, default=str)
         except Exception as e:
             brain.actions.append(CapturedAction(
-                tool="encode_cluster", args=tool_input, error=str(e), timestamp=time.time()))
+                tool="remember_batch", args=tool_input, error=str(e), timestamp=time.time()))
             return json.dumps({"ok": False, "error": str(e)})
 
     # Standard dispatch for other tools
