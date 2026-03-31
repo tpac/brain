@@ -4,9 +4,13 @@
 
 Use the **MCP tools**. They are your primary interface. The boot hook starts the daemon automatically.
 
-**Core tools:** `recall`, `remember`, `revise`, `connect`, `enrich`, `encode_cluster`, `find_node_by_title`, `get_node`, `eval`, `consciousness`, `engineering_context`, `dismiss_signal`, `queue_state`
+**Core tools:** `recall`, `remember`, `remember_batch`, `revise`, `connect`, `enrich`, `find_node_by_title`, `get_node`, `eval`, `consciousness`, `engineering_context`, `dismiss_signal`, `queue_state`
 
-**Specialized remember tools** (first-class MCP, not eval wrappers):
+**`remember`** now accepts ALL contract fields including promoted metadata: `situation`, `reasoning`, `user_raw_quote`, `correction_of`, `correction_pattern`, `source_context`, `source_turn_id`. Returns `related_nodes` (top 5 similar existing nodes with full content).
+
+**`remember_batch`** — batch create: `remember_batch(nodes=[...], connect_to=["title",...])`. Same fields as remember(). Auto-connects new nodes + fuzzy-matches existing titles.
+
+**Specialized remember tools** (content formatters — structure knowledge into rich nodes):
 `remember_lesson`, `remember_impact`, `remember_mechanism`, `remember_convention`, `remember_uncertainty`, `remember_mental_model`, `record_divergence`, `learn_vocabulary`
 
 **`revise`** — update existing nodes: `revise(node_id="...", content="...", reason="...")`. Use when recalled knowledge is outdated. Appends content, re-embeds, preserves history.

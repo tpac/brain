@@ -84,7 +84,7 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
     try:
         api_messages = [{"role": "user", "content": user_content}]
         response = client.messages.create(
-            model="claude-sonnet-4-6", max_tokens=4096,
+            model="claude-sonnet-4-6", max_tokens=ENCODING_AGENT['max_tokens'],
             system=system_prompt, messages=api_messages, tools=tools)
 
         _step("sonnet_r0")
@@ -120,7 +120,7 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
                 for b in response.content]})
             api_messages.append({"role": "user", "content": tool_results})
             response = client.messages.create(
-                model="claude-sonnet-4-6", max_tokens=4096,
+                model="claude-sonnet-4-6", max_tokens=ENCODING_AGENT['max_tokens'],
                 system=system_prompt, messages=api_messages, tools=tools)
             _step("sonnet_r%d" % (rounds + 1))
 
@@ -239,7 +239,7 @@ def _build_user_content(brain, messages, counter, session_id):
                     if recalled:
                         timeline += "BRAIN SURFACED (%d nodes):\n" % len(recalled)
                         for r in recalled:
-                            snippet = (r.get("content", "") or "")[:500]
+                            snippet = (r.get("content", "") or "")[:ENCODING_AGENT['timeline_snippet_limit']]
                             timeline += "  [%s] %s (id:%s, score:%.2f)\n" % (
                                 r.get("type", "?"), r.get("title", "?"),
                                 r.get("id", "?")[:8], r.get("score", r.get("effective_activation", 0)))
@@ -272,7 +272,7 @@ def _save_journal(brain, session_id, counter, final_text):
     existing = brain.get_config(journal_key, '') or ''
     max_chars = ENCODING_AGENT.get('journal_max_chars', 8000)
 
-    new_entry = "--- Run #%d ---\n%s" % (counter, final_text[:2000])
+    new_entry = "--- Run #%d ---\n%s" % (counter, final_text[:ENCODING_AGENT['journal_entry_limit']])
     updated = (existing + '\n' + new_entry).strip()
 
     # Truncate from the beginning to keep recent runs

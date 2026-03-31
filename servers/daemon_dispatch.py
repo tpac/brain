@@ -11,7 +11,6 @@ reports whether a write lock is needed.
 
 import json
 import os
-import re
 from typing import Any, Dict, List, NamedTuple, Callable, Optional
 
 from .daemon_config import _CODE_FINGERPRINT
@@ -99,26 +98,6 @@ def _handle_heartbeat(brain, args, graph_changes):
     return {"ok": True, "result": {"nudge": nudge}}
 
 
-def _handle_vocab_check(brain, args, graph_changes):
-    message = args.get("message", "")
-    candidates = set()
-    candidates.update(
-        t.strip().lower() for t in
-        re.findall(r"\bthe\s+([\w][\w\s-]{2,25})\b", message, re.IGNORECASE))
-    candidates.update(
-        t.strip().lower() for t in
-        re.findall(r"\b([\w]+-[\w]+(?:-[\w]+)?)\b", message)
-        if len(t) > 4)
-    expansions = []
-    for term in candidates:
-        resolved = brain.resolve_vocabulary(term)
-        if resolved:
-            content = resolved.get("content", "")
-            if content:
-                expansions.append(content)
-    return {"ok": True, "result": {"expansions": expansions}}
-
-
 def _handle_validate_config(brain, args, graph_changes):
     return {"ok": True, "result": {"warnings": brain.validate_config()}}
 
@@ -132,11 +111,6 @@ def _handle_health_check(brain, args, graph_changes):
 def _handle_consciousness(brain, args, graph_changes):
     """Migrated to signal_producers + signal queue. Returns reminders only."""
     return {"ok": True, "result": {"reminders": brain.get_due_reminders()}}
-
-
-def _handle_urgent_signals(brain, args, graph_changes):
-    """Migrated to signal_producers. Returns empty."""
-    return {"ok": True, "result": []}
 
 
 def _handle_dismiss_signal(brain, args, graph_changes):
@@ -590,11 +564,11 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "context_boot":             CmdEntry(_handle_context_boot,         is_write=False),
     "recall":                   CmdEntry(_handle_recall,               is_write=False),
     "heartbeat":                CmdEntry(_handle_heartbeat,            is_write=False),
-    "vocab_check":              CmdEntry(_handle_vocab_check,          is_write=False),
+
     "validate_config":          CmdEntry(_handle_validate_config,      is_write=False),
     "health_check":             CmdEntry(_handle_health_check,         is_write=False),
     "consciousness":            CmdEntry(_handle_consciousness,        is_write=False),
-    "urgent_signals":           CmdEntry(_handle_urgent_signals,       is_write=False),
+
     "dismiss_signal":           CmdEntry(_handle_dismiss_signal,       is_write=True),
     "queue_state":              CmdEntry(_handle_queue_state,          is_write=False),
     "engineering_context":      CmdEntry(_handle_engineering_context,   is_write=False),
@@ -643,8 +617,8 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "learn_vocabulary":      CmdEntry(_handle_learn_vocabulary,    is_write=True, marks_dirty=True),
     "find_node_by_title":    CmdEntry(_handle_find_node_by_title,  is_write=False, marks_dirty=False),
     "get_node":              CmdEntry(_handle_get_node,             is_write=False, marks_dirty=False),
-    # encode_cluster: deprecated — use remember_batch() with same contract as remember()
-    "encode_cluster":        CmdEntry(_handle_encode_cluster,      is_write=True, marks_dirty=True),
+    # encode_cluster: DEPRECATED — use remember_batch() instead. Handler kept for backward compat.
+    # "encode_cluster":        CmdEntry(_handle_encode_cluster,      is_write=True, marks_dirty=True),
     "connect":               CmdEntry(_handle_connect,             is_write=True, marks_dirty=True),
     "enrich":                CmdEntry(_handle_enrich,              is_write=True, marks_dirty=True),
     "eval":                  CmdEntry(_handle_eval,                is_write=True, marks_dirty=True),

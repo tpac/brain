@@ -69,6 +69,12 @@ ENCODING_AGENT = {
     'max_d1': 3,                      # degree 1 neighbors shown
     'max_d2': 3,                      # degree 2
     'max_d3': 3,                      # degree 3
+    'recall_on_create_limit': 5,      # max related_nodes returned per remember()
+    'recall_on_create_content_limit': 500,  # chars of content per related node
+    'recall_on_create_query_limit': 200,    # chars of content used in recall query
+    'journal_entry_limit': 2000,      # max chars per journal entry
+    'max_tokens': 4096,               # Sonnet API output cap
+    'timeline_snippet_limit': 500,    # chars of recalled content shown in timeline
 }
 
 # MCP tool output (direct recall by Claude)

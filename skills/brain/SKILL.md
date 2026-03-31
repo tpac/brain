@@ -175,31 +175,28 @@ Encoding has 3 dimensions: Judgment (WHAT to encode), Quality (HOW rich), Struct
 ### Core
 ```
 recall(query, limit) — find related memories by meaning
-remember(type, title, content, keywords, locked, confidence) — store a node
+remember(type, title, content, keywords, situation, reasoning, user_raw_quote, ...) — store a node
+  Accepts ALL contract fields (promoted metadata flows to node_metadata).
+  Returns related_nodes: top 5 similar existing nodes with full content.
+remember_batch(nodes=[...], connect_to=["title",...], auto_connect=True) — batch create
+  Each node uses the same fields as remember(). Auto-connects + fuzzy title matching.
 connect(source_id, target_id, relation, weight) — link two nodes
+revise(node_id, reason, content, ...) — update existing node (content is appended)
+find_node_by_title(title_query, threshold, top_k) — fuzzy search
+get_node(node_id) — full content + connections by ID
 enrich(node_id, question, anchor, bridge, keywords) — improve recall vectors
 ```
 
-### Specialized Encoding (use these — they structure your content)
+### Specialized Encoding (content formatters — use for structured knowledge)
 ```
 remember_lesson(title, what_happened, root_cause, fix, preventive_principle) — auto-locked
 remember_impact(title, if_changed, must_check, because) — dependency tracking
 remember_mechanism(title, content, steps, data_flow) — how something works
 remember_convention(title, content, pattern, anti_pattern) — coding patterns
-remember_uncertainty(title, what_unknown, why_it_matters) — honest not-knowing (low confidence)
-remember_mental_model(title, model_description, applies_to, confidence) — your understanding
+remember_uncertainty(title, what_unknown, why_it_matters) — honest not-knowing
+remember_mental_model(title, model_description, applies_to, confidence) — understanding
 record_divergence(claude_assumed, reality, underlying_pattern, severity) — corrections
 learn_vocabulary(term, maps_to, context) — operator term mapping
-```
-
-### Compound Operations (encode multiple nodes in one call)
-```
-encode_cluster(nodes, connect_to, auto_connect) — store cluster + auto-connect + enrichments
-  nodes: [{type, title, content, enrichment?: {question, anchor, bridge, keywords}}]
-  connect_to: ["existing node title"] — fuzzy match, no UUIDs needed
-  Returns: {nodes_created, connections_created, duplicates, missing, suggested_connections}
-
-find_node_by_title(title_query, threshold, top_k) — fuzzy search with context for verification
 ```
 
 ### Introspection

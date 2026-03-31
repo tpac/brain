@@ -27,6 +27,8 @@ _encoding_lock = threading.Lock()
 # ── Constants (canonical definitions in brain_voice.py) ──
 
 from servers.brain_voice import BrainVoice
+from .pipeline_contract import ENCODING_AGENT as _EA_CONTRACT
+_ENCODING_AGENT_TIMELINE_SNIPPET = _EA_CONTRACT['timeline_snippet_limit']
 
 # Backwards-compatible function aliases — delegate to BrainVoice static methods
 # format_recall_results used only by MCP tool output, not by hook path
@@ -386,7 +388,7 @@ def hook_post_response_track(brain, args, graph_changes):
                 recalled_raw = _json.dumps([{
                     'id': c.get('id', ''), 'type': c.get('type', ''),
                     'title': c.get('title', ''),
-                    'content': (c.get('content', '') or '')[:500],
+                    'content': (c.get('content', '') or '')[:_ENCODING_AGENT_TIMELINE_SNIPPET],
                     'score': c.get('score', 0),
                 } for c in candidates])
     except Exception as e:

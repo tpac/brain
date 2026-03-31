@@ -35,7 +35,7 @@ from .brain_constants import (
     STABILITY_BOOST,
     STABILITY_FLOOR_ACCESS_THRESHOLD,
     STABILITY_FLOOR_RETENTION,
-    VOCAB_EXPANSION_MAX,
+
     TRAVERSE_DAMPEN,
     TRAVERSE_LIMITS,
     TRAVERSE_SEMANTIC_BONUS,
@@ -159,11 +159,6 @@ class BrainRecallMixin:
         self.conn.commit()
         return stored
 
-    def _expand_query_with_vocabulary(self, query: str) -> str:
-        """DEPRECATED v9: Vocab expansion removed. Concept nodes surface through
-        normal recall. Returns query unchanged."""
-        return query
-
     def _keyword_recall(self, query: str, types: Optional[List[str]] = None, limit: int = 20,
                         offset: int = 0, include_archived: bool = False, min_recency: float = 0,
                         project: Optional[str] = None, session_id: Optional[str] = None,
@@ -187,8 +182,7 @@ class BrainRecallMixin:
         """
         limit = min(limit, MAX_PAGE_SIZE)
 
-        # v5.2 Step 0.5: Vocabulary expansion
-        expanded_query = self._expand_query_with_vocabulary(query)
+        expanded_query = query
 
         # v5 Step 0: Intent detection
         intent_data = self._classify_intent(query)
@@ -541,8 +535,7 @@ class BrainRecallMixin:
 
         # ── PRIMARY PATH: Embeddings-first ──
 
-        # v5.2 Step 0.5: Vocabulary expansion (before embedding AND keyword search)
-        expanded_query = self._expand_query_with_vocabulary(query)
+        expanded_query = query
 
         # STEP 1: Embed the query
         try:

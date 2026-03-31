@@ -607,8 +607,8 @@ class BrainVoice:
             out.append("Embedder: %s (%sd, %sms)" % (es["model_name"], es["embedding_dim"], es["load_time_ms"]))
 
         out.append("")
-        out.append("Tools: recall, remember, connect, enrich, encode_cluster, find_node_by_title")
-        out.append("Specialized: remember_lesson, remember_impact, remember_mental_model, record_divergence, learn_vocabulary")
+        out.append("Tools: recall, remember, remember_batch, connect, enrich, find_node_by_title")
+        out.append("Specialized: remember_lesson, remember_impact, remember_mechanism, remember_convention, remember_uncertainty, remember_mental_model, record_divergence, learn_vocabulary")
         out.append("Introspection: consciousness, engineering_context, eval")
         out.append("[/BRAIN]")
 

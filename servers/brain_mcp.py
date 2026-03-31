@@ -266,19 +266,7 @@ TOOLS = [
          "maps_to": {"type": "string", "description": "What it means in brain/code context"},
          "context": {"type": "string", "description": "Where/how this term is used"}}}},
 
-    # ── Compound operations ──
-    {"name": "encode_cluster",
-     "description": "Compound encoding — store multiple nodes in one call with auto-connections. Accepts inline enrichments, fuzzy-matches connect_to titles, auto-finds related nodes. Returns quality feedback (duplicates, missing enrichments, suggested connections).",
-     "inputSchema": {"type": "object", "required": ["nodes"], "properties": {
-         "nodes": {"type": "array", "description": "List of node specs: [{type, title, content, keywords?, enrichment?: {question?, anchor?, bridge?, keywords?}}]",
-                   "items": {"type": "object", "required": ["type", "title", "content"], "properties": {
-                       "type": {"type": "string"}, "title": {"type": "string"}, "content": {"type": "string"},
-                       "keywords": {"type": "string"}, "locked": {"type": "boolean"},
-                       "enrichment": {"type": "object", "properties": {
-                           "question": {"type": "string"}, "anchor": {"type": "string"},
-                           "bridge": {"type": "string"}, "keywords": {"type": "string"}}}}}},
-         "connect_to": {"type": "array", "items": {"type": "string"}, "description": "Existing node titles to fuzzy-match and connect to (no UUIDs needed)"},
-         "auto_connect": {"type": "boolean", "description": "Auto-find and connect to related existing nodes", "default": True}}}},
+    # ── Lookup operations ──
     {"name": "find_node_by_title",
      "description": "Find an existing node by fuzzy title matching using embedding similarity. Returns best match above threshold with context (content snippet, keywords) for verification. Default threshold 0.75 is conservative.",
      "inputSchema": {"type": "object", "required": ["title_query"], "properties": {

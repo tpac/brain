@@ -294,38 +294,6 @@ class BrainRememberMixin:
 
         self.conn.commit()
 
-    async def store_embedding(self, node_id: str, text: str) -> Optional[Dict[str, Any]]:
-        """
-        Embed text via embedder and store as BLOB in node_embeddings table.
-        Fire-and-forget async; non-critical if fails.
-
-        Args:
-            node_id: Node ID
-            text: Text to embed
-
-        Returns:
-            {'node_id': str, 'embed_ms': int} or None on failure
-        """
-        if not embedder.is_ready():
-            return None
-
-        t0 = time.time()
-        blob = embedder.embed(text)  # Already returns bytes
-        if not blob:
-            return None
-
-        try:
-            self.conn.execute(
-                'INSERT OR REPLACE INTO node_embeddings (node_id, embedding, model, created_at) VALUES (?, ?, ?, ?)',
-                (node_id, blob, embedder.stats['model_name'], self.now())
-            )
-            self.conn.commit()
-
-            return {'node_id': node_id, 'embed_ms': int((time.time() - t0) * 1000)}
-        except Exception as e:
-            print(f'[brain] Failed to store embedding for {node_id}: {e}')
-            return None
-
     def remember(self, type: str, title: str, content: Optional[str] = None,
                  keywords: Optional[str] = None, locked: bool = False,
                  connections: Optional[List[Dict[str, Any]]] = None,
@@ -570,19 +538,20 @@ class BrainRememberMixin:
         # v9: Recall-on-create — return related nodes so caller can connect immediately
         related_nodes = []
         try:
+            from .pipeline_contract import ENCODING_AGENT
             if embedding_stored:
-                recall_result = self.recall(query='%s %s' % (title, (content or '')[:200]), limit=6)
+                recall_result = self.recall(query='%s %s' % (title, (content or '')[:ENCODING_AGENT['recall_on_create_query_limit']]), limit=ENCODING_AGENT['recall_on_create_limit'] + 1)
                 for r in recall_result.get('results', []):
                     if r.get('id') != node_id:
                         related_nodes.append({
                             'id': r.get('id', ''),
                             'type': r.get('type', ''),
                             'title': r.get('title', ''),
-                            'content': (r.get('content', '') or '')[:500],
+                            'content': (r.get('content', '') or '')[:ENCODING_AGENT['recall_on_create_content_limit']],
                             'confidence': r.get('confidence', 0),
                             'score': round(r.get('effective_activation', 0), 3),
                         })
-                    if len(related_nodes) >= 5:
+                    if len(related_nodes) >= ENCODING_AGENT['recall_on_create_limit']:
                         break
         except Exception as e:
             self._log_error('remember_recall_on_create', e, 'recall-on-create for %s' % node_id[:8])
