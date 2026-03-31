@@ -8,6 +8,7 @@
 # 3. $HOME/AgentsContext/brain/ (local Claude Code via symlink)
 # If none found, boot fails cleanly (no /tmp fallback — silent data loss is worse).
 
+
 source "$(dirname "$0")/resolve-brain-db.sh"
 
 # No DB found — guide the user
@@ -42,4 +43,6 @@ db = os.path.join(os.environ.get('BRAIN_DB_DIR', ''), 'brain.db')
 sys.stderr.write('[brain-boot] Daemon %s\n' % ('ready' if ensure_daemon(db) else 'FAILED'))
 "
 
+# Mark as booted, then run
+touch "$BOOT_FLAG"
 exec python3 "$(dirname "$0")/boot_brain.py"

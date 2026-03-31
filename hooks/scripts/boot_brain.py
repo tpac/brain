@@ -12,8 +12,21 @@ db_dir = os.environ.get("BRAIN_DB_DIR", "")
 
 
 def _boot_via_daemon():
-    """Boot context through daemon — the normal path."""
-    # Reset session activity
+    """Boot context through daemon — the normal path.
+    Skips full boot if already booted this session (once: true not honored for settings hooks).
+    """
+    # Check if already booted — skip full re-boot on session resume.
+    # Compare current session_id with last booted session_id.
+    # reset_session() below generates a new session_id, so a fresh session always boots.
+    current_sid = daemon_call("get_config", {"key": "session_id", "default": ""})
+    current_sid = current_sid.get("value", current_sid) if isinstance(current_sid, dict) else (current_sid or "")
+    booted_sid = daemon_call("get_config", {"key": "last_booted_session", "default": ""})
+    booted_sid = booted_sid.get("value", booted_sid) if isinstance(booted_sid, dict) else (booted_sid or "")
+    if current_sid and booted_sid and current_sid == booted_sid:
+        print("[BRAIN] (session resumed — brain already loaded)", file=sys.stderr)
+        return True
+
+    # Reset session activity (generates new session_id)
     daemon_call("reset_session", {})
 
     # Get debug mode
@@ -46,10 +59,17 @@ def _boot_via_daemon():
         if text:
             log_hook_output("boot", output_text=text)
             print(text)
+            # Mark session as booted (skip re-boots on resume)
+            # Mark this session as booted (skip re-boots on resume)
+            sid = daemon_call("get_config", {"key": "session_id", "default": ""})
+            sid_val = sid.get("value", sid) if isinstance(sid, dict) else (sid or "")
+            if sid_val:
+                daemon_call("set_config", {"key": "last_booted_session", "value": sid_val})
             return True
     elif isinstance(result, str) and result:
         log_hook_output("boot", output_text=result)
         print(result)
+        daemon_call("set_config", {"key": "session_booted", "value": "1"})
         return True
 
     return False
