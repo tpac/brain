@@ -67,25 +67,6 @@ ENV_CHANGE_PATTERNS = [
 
 
 
-def _get_precision(brain):
-    """Get or create a RecallPrecision instance cached on the brain object.
-
-    Caching avoids re-running _ensure_columns() on every hook invocation.
-    The instance is garbage collected if the brain object is replaced
-    (e.g., daemon restart).
-    """
-    if not hasattr(brain, '_precision') or brain._precision is None:
-        from servers.brain_precision import RecallPrecision
-        brain._precision = RecallPrecision(brain.logs_conn, brain.conn,
-                                            logs_dal=getattr(brain, '_logs_dal', None))
-        # Lazy-load BART for precision evaluation (stays warm for daemon lifetime)
-        try:
-            from servers.recall_scorer import load_bart
-            load_bart()
-        except Exception as e:
-            brain._log_error('load_bart', e, '_get_precision')
-    return brain._precision
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # HOOK FUNCTIONS — one per hook event
@@ -128,44 +109,12 @@ def hook_recall(brain, args, graph_changes):
                 _matched_feedback = signal
                 break
         if _matched_feedback:
-            precision = _get_precision(brain)
-            # Find the most recent ask_operator recall
-            _ask_row = brain.logs_conn.execute(
-                """SELECT id FROM recall_log
-                   WHERE followup_signal = 'ask_operator' AND explicit_feedback IS NULL
-                   ORDER BY created_at DESC LIMIT 1""").fetchone()
-            if _ask_row:
-                precision.receive_feedback(_ask_row[0], _matched_feedback, source="operator")
-                brain.log_debug("precision_feedback", "Operator feedback: %s on recall %d" % (
-                    _matched_feedback, _ask_row[0]))
+            # DEPRECATED 2026-04-03: Precision evaluation removed.
+            # Judge + encoder coupling replaces regex/embedding evaluation.
+            # Feedback detection kept for future use but doesn't write anywhere.
+            brain.log_debug("feedback_detected", "Operator feedback: %s (not evaluated — precision deprecated)" % _matched_feedback)
     except Exception as e:
         brain._log_error('explicit_feedback', e, 'hook_recall')
-
-    # ── Table-driven precision: evaluate ALL pending followups ──
-    # The user's current message is the "followup" signal for PREVIOUS recalls.
-    # Query the table for all recalls awaiting evaluation (Stage 2 → 3),
-    # not just the last one. This fixes the 68% evaluation loss.
-    try:
-        dal = getattr(brain, '_logs_dal', None)
-        if dal and user_message:
-            pending = dal.get_pending_followups(session_id, limit=5)
-            if pending:
-                precision = _get_precision(brain)
-                for p in pending:
-                    try:
-                        precision.evaluate_followup(p['id'], user_message)
-                    except Exception as e:
-                        brain._log_error('precision_evaluate_followup', e,
-                                         'recall_log_id=%s' % p['id'])
-        else:
-            # Fallback: single-slot config handoff (remove once DAL always available)
-            prev_log_id = brain.get_config("last_evaluated_recall_id", "")
-            if prev_log_id and user_message:
-                precision = _get_precision(brain)
-                precision.evaluate_followup(int(prev_log_id), user_message)
-                brain.set_config("last_evaluated_recall_id", "")
-    except Exception as e:
-        brain._log_error('precision_evaluate_followup', e, 'table-driven')
 
     # DEPRECATED 2026-04-01: Vocabulary expansion disabled. Vocab migrated to concept nodes
     # which surface through normal recall. Regex expansion added noise without measurable

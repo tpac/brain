@@ -1,7 +1,14 @@
 """
-brain — Recall Precision Module
+brain — Recall Precision Module — DEPRECATED 2026-04-03
 
-Owns the entire recall precision lifecycle. No other module should read/write
+This module is no longer active. The judge + encoder coupling replaces
+regex/embedding precision evaluation. recall_log is now owned by
+LogsDAL (dal.py) and written by brain.recall() directly.
+
+The recall_log TABLE is still used (pipeline logging for dashboard).
+The EVALUATION functions in this module are dead code.
+
+Previously owned the recall precision lifecycle. No other module should read/write
 the recall_log table directly — all precision data flows through this class.
 
 == WHY THIS EXISTS ==
