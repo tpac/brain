@@ -253,8 +253,8 @@ def hook_recall(brain, args, graph_changes):
             ).fetchall()
             recent_messages = [{"role": r[0], "content": (r[1] or "")[:300]}
                                for r in reversed(msg_rows)]
-        except Exception:
-            pass
+        except Exception as _e:
+            brain._log_error('judge_recent_messages', _e, 'fetching recent messages for judge')
 
         # Session context from last encoding agent run (Layer 2 judge needs this)
         session_context = brain.get_config('session_context', '') or ''
@@ -358,8 +358,8 @@ def hook_recall(brain, args, graph_changes):
                         "SELECT title FROM nodes WHERE id LIKE ?", (_nid + '%',)).fetchone()
                     if _trow:
                         recently_recalled.append({"id": _nid, "title": _trow[0]})
-        except Exception:
-            pass
+        except Exception as _e:
+            brain._log_error('judge_recently_recalled', _e, 'fetching recently recalled titles')
 
         # Build judge prompt
         judge_prompt, max_tokens = build_judge_prompt(
@@ -395,8 +395,8 @@ def hook_recall(brain, args, graph_changes):
             _judge_path = "/tmp/brain-%s-judge-selected.json" % session_id
             with open(_judge_path, 'w') as _jf:
                 _json.dump({"selected_ids": list(selected_ids)}, _jf)
-        except Exception:
-            pass
+        except Exception as _e:
+            brain._log_error('judge_selected_write', _e, 'writing judge-selected file')
 
         if selected:
             # Layer 3: Graph expansion from judge-selected seeds
@@ -425,8 +425,8 @@ def hook_recall(brain, args, graph_changes):
                         "judge_prompt": judge_prompt,
                         "judge_output": additional_context,
                     }, _jrf)
-            except Exception:
-                pass
+            except Exception as _e:
+                brain._log_error('judge_result_write', _e, 'writing judge result file (success)')
         else:
             # Judge selected nothing — write empty result for dashboard
             try:
@@ -437,8 +437,8 @@ def hook_recall(brain, args, graph_changes):
                         "judge_prompt": judge_prompt,
                         "judge_output": "(no selection)",
                     }, _jrf)
-            except Exception:
-                pass
+            except Exception as _e:
+                brain._log_error('judge_result_write', _e, 'writing judge result file (no selection)')
 
     except Exception as _judge_err:
         brain._log_error('daemon_judge', _judge_err,
@@ -559,8 +559,8 @@ def hook_post_response_track(brain, args, graph_changes):
                                     weight=LEARNING_RATE * 0.15,
                                     edge_type='co_accessed',
                                     description='judge-selected')
-                            except Exception:
-                                pass
+                            except Exception as _e:
+                                brain._log_error('hebbian_edge', _e, 'creating co_accessed edge')
     except Exception as e:
         brain._log_error('hebbian_judge_selected', e, 'Stop hook: Hebbian on judge-selected')
 

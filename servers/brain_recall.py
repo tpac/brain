@@ -546,8 +546,8 @@ class BrainRecallMixin:
                                 "GROUP BY source_id"):
                                 self._structural_degree_cache[_row[0]] = \
                                     self._structural_degree_cache.get(_row[0], 0) + _row[1]
-                        except Exception:
-                            pass
+                        except Exception as _e:
+                            self._log_error('fatigue_degree_cache', _e, 'building structural degree cache')
 
                     _fatigue_count = self._session_fatigue.get(node_id, 0)
                     if _fatigue_count > 0:

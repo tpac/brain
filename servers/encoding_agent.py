@@ -144,8 +144,8 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
                     ttl_seconds=86400,
                 )
                 brain.logs_conn.commit()
-            except Exception:
-                pass
+            except Exception as _e:
+                print('[encoding-agent] ERROR surfacing question to signal queue: %s' % _e, flush=True)
 
         brain.save()
         _step("saved")
@@ -207,8 +207,8 @@ def _build_system_prompt():
     try:
         from .contract import generate_field_summary
         prompt += "\n\n## Available Fields (from contract)\n\n" + generate_field_summary()
-    except Exception:
-        pass
+    except Exception as _e:
+        print('[encoding-agent] WARNING: could not load field summary: %s' % _e, flush=True)
     return prompt
 
 
@@ -276,8 +276,8 @@ def _build_user_content(brain, messages, counter, session_id):
                                 timeline += "  [%s] %s (id:%s)\n" % (
                                     r.get("type", "?"), r.get("title", "?"),
                                     r.get("id", "?")[:8])
-                    except (json.JSONDecodeError, TypeError):
-                        pass
+                    except (json.JSONDecodeError, TypeError) as _e:
+                        print('[encoding-agent] WARNING: bad recalled_raw JSON: %s' % _e, flush=True)
                 else:
                     timeline += "BRAIN SURFACED: (no recall data)\n"
 

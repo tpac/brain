@@ -924,8 +924,8 @@ class BrainRememberMixin:
             for k, v in kv.items():
                 if k not in field_values and k not in EMBEDDING_SKIP_FIELDS and v and v.strip():
                     field_values[k] = v
-        except Exception:
-            pass
+        except Exception as _e:
+            self._log_error('enrichment_field_values', _e, 'collecting field values for enrichment')
 
         for group_name, group_config in EMBEDDING_GROUPS.items():
             # Skip blend — it's the primary embedding, already stored in node_embeddings
@@ -1076,8 +1076,8 @@ class BrainRememberMixin:
                     try:
                         self.connect(src_id, dst_id, relation='related_to', weight=0.5)
                         connections_created += 1
-                    except Exception:
-                        pass
+                    except Exception as _e:
+                        self._log_error('batch_auto_connect', _e, 'connecting %s → %s' % (src_id[:8], dst_id[:8]))
 
         # Fuzzy-match connect_to titles
         if connect_to:
@@ -1097,8 +1097,8 @@ class BrainRememberMixin:
                             self.connect_typed(node_id, match['id'], relation='related',
                                               weight=0.6, description=description)
                             connections_created += 1
-                        except Exception:
-                            pass
+                        except Exception as _e:
+                            self._log_error('batch_connect_to', _e, 'connecting %s → %s' % (node_id[:8], match['id'][:8]))
 
         return {
             'nodes_created': len(created_ids),
