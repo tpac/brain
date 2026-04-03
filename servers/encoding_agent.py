@@ -320,7 +320,8 @@ def _save_journal(brain, session_id, counter, final_text):
     brain.set_config(journal_key, updated)
 
     # Also keep old key for backward compat during transition
-    brain.set_config('encoding_agent_state', final_text[:2000])
+    from .pipeline_contract import PIPELINE as _PL
+    brain.set_config('encoding_agent_state', final_text[:_PL['encoding_state_compat']])
 
 
 def _save_session_context(brain, final_text):

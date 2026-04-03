@@ -117,7 +117,20 @@ def get_group_weight(vector_type):
 
 # ═══════════════════════════════════════════════════════════════
 # TRUNCATION LIMITS — per stage, per field
+# Single source of truth. Never hardcode a limit in application code.
 # ═══════════════════════════════════════════════════════════════
+
+# Pipeline-wide limits (used across multiple stages)
+PIPELINE = {
+    'user_message_store': 500,       # user message stored as config (last_user_message)
+    'user_message_query': 500,       # user message used as recall/priming query input
+    'assistant_response_store': 4000, # assistant response stored to message_stream
+    'recent_message_content': 300,   # recent message content for judge conversation context
+    'recall_log_query': 500,         # query text stored in recall_log
+    'recall_log_title': 80,          # node title in recall_log
+    'recall_log_snippet': 150,       # content snippet in recall_log
+    'encoding_state_compat': 2000,   # encoding_agent_state backward compat config
+}
 
 # Candidates file (written by daemon, read by judge + encoding agent)
 CANDIDATES_FILE = {
@@ -350,6 +363,7 @@ NEIGHBOR_TRUNCATION = {
 PRECISION = {
     'title_limit': 100,
     'snippet_limit': 150,
+    'query_limit': 500,        # max query text stored in recall_log
 }
 
 

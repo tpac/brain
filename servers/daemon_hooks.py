@@ -104,7 +104,8 @@ def hook_recall(brain, args, graph_changes):
 
     # Store last user message for operator voice capture
     try:
-        brain.set_config("last_user_message", user_message[:500])
+        from .pipeline_contract import PIPELINE as _PL
+        brain.set_config("last_user_message", user_message[:_PL['user_message_store']])
     except Exception as e:
         brain._log_error('set_last_user_message', e, 'hook_recall')
 
@@ -169,7 +170,7 @@ def hook_recall(brain, args, graph_changes):
     # DEPRECATED 2026-04-01: Vocabulary expansion disabled. Vocab migrated to concept nodes
     # which surface through normal recall. Regex expansion added noise without measurable
     # recall improvement (confirmed by decode funnel — 0% impact from vocab expansion).
-    enriched = user_message[:500]
+    enriched = user_message[:_PL['user_message_query']]
 
     # Recall — logging happens inside brain.recall() (single source of truth)
     try:
@@ -251,7 +252,7 @@ def hook_recall(brain, args, graph_changes):
                 "ORDER BY timestamp DESC LIMIT 5",
                 (session_id,)
             ).fetchall()
-            recent_messages = [{"role": r[0], "content": (r[1] or "")[:300]}
+            recent_messages = [{"role": r[0], "content": (r[1] or "")[:_PL['recent_message_content']]}
                                for r in reversed(msg_rows)]
         except Exception as _e:
             brain._log_error('judge_recent_messages', _e, 'fetching recent messages for judge')
@@ -461,7 +462,8 @@ def hook_post_response_track(brain, args, graph_changes):
     3. record_message: heartbeat counter
     """
     user_message = args.get("prompt", "") or args.get("message", "")
-    assistant_response = (args.get("last_assistant_message", "") or "")[:4000]
+    from .pipeline_contract import PIPELINE as _PL
+    assistant_response = (args.get("last_assistant_message", "") or "")[:_PL['assistant_response_store']]
 
     # Read recall data: judge-selected IDs + judge output (additionalContext)
     # recalled_node_ids = judge-selected only (what encoder should see)

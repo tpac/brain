@@ -443,12 +443,13 @@ class BrainRecallMixin:
                 if not _sid.startswith("ses_"):
                     _sid = f"ses_{_sid}"
                 _logs_dal = LogsDAL(self.logs_conn)
+                from .pipeline_contract import PIPELINE as _PL
                 _log_id = _logs_dal.insert_recall_log(
-                    session_id=_sid, query=query[:500],
+                    session_id=_sid, query=query[:_PL['recall_log_query']],
                     returned_ids=json.dumps([r.get("id") for r in _kw_results]),
                     returned_count=len(_kw_results), embeddings_used=0,
-                    recalled_titles=json.dumps({r.get("id"): r.get("title", "")[:80] for r in _kw_results}),
-                    recalled_snippets=json.dumps({r.get("id"): (r.get("content") or "")[:150] for r in _kw_results}),
+                    recalled_titles=json.dumps({r.get("id"): r.get("title", "")[:_PL['recall_log_title']] for r in _kw_results}),
+                    recalled_snippets=json.dumps({r.get("id"): (r.get("content") or "")[:_PL['recall_log_snippet']] for r in _kw_results}),
                     created_at=datetime.now(__import__('datetime').timezone.utc).isoformat(),
                     source=source)
                 result['_recall_log_id'] = str(_log_id) if _log_id else None
@@ -928,7 +929,7 @@ class BrainRecallMixin:
             _logs_dal = LogsDAL(self.logs_conn)
             recall_log_id = _logs_dal.insert_recall_log(
                 session_id=_sid,
-                query=query[:500],
+                query=query[:PRECISION.get('query_limit', 500)],
                 returned_ids=json.dumps([r.get("id") for r in final_results]),
                 returned_count=len(final_results),
                 embeddings_used=1,
