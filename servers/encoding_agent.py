@@ -230,7 +230,11 @@ def _build_user_content(brain, messages, counter, session_id):
 
     # Build node catalog from all judge outputs (deduplicated, full metadata)
     judge_outputs = [m.get("judge_output") for m in messages if m.get("role") == "user"]
-    node_catalog, cataloged_ids = build_encoder_node_catalog(judge_outputs, brain.conn)
+    try:
+        node_catalog, cataloged_ids = build_encoder_node_catalog(judge_outputs, brain.conn)
+    except Exception as _e:
+        print('[encoding-agent] ERROR building node catalog: %s' % _e, flush=True)
+        node_catalog, cataloged_ids = '', set()
 
     # Build conversation timeline with node references (not full nodes)
     timeline = ""
