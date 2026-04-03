@@ -918,18 +918,18 @@ class BrainRecallMixin:
         recall_ms = (time.time() - t0) * 1000
         recall_log_id = None
         try:
-            from .pipeline_contract import PRECISION
+            from .pipeline_contract import PIPELINE as _PL
             _sid = session_id or self.get_config("session_id", "ses_unknown")
             if not _sid.startswith("ses_"):
                 _sid = f"ses_{_sid}"
-            _titles = {r.get("id"): r.get("title", "")[:PRECISION['title_limit']]
+            _titles = {r.get("id"): r.get("title", "")[:_PL['recall_log_title']]
                        for r in final_results}
-            _snippets = {r.get("id"): (r.get("content") or "")[:PRECISION['snippet_limit']]
+            _snippets = {r.get("id"): (r.get("content") or "")[:_PL['recall_log_snippet']]
                          for r in final_results}
             _logs_dal = LogsDAL(self.logs_conn)
             recall_log_id = _logs_dal.insert_recall_log(
                 session_id=_sid,
-                query=query[:PRECISION.get('query_limit', 500)],
+                query=query[:_PL['recall_log_query']],
                 returned_ids=json.dumps([r.get("id") for r in final_results]),
                 returned_count=len(final_results),
                 embeddings_used=1,

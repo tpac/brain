@@ -689,6 +689,17 @@ class NodeDAL:
         )
         self.conn.commit()
 
+    def purge(self, node_id: str) -> None:
+        """Hard delete a node and ALL associated data.
+        Removes: node, embeddings, enrichments, edges (both directions), metadata KV.
+        Use archive() for soft delete. This is irreversible."""
+        self.conn.execute('DELETE FROM node_enrichments WHERE node_id = ?', (node_id,))
+        self.conn.execute('DELETE FROM node_embeddings WHERE node_id = ?', (node_id,))
+        self.conn.execute('DELETE FROM node_metadata_kv WHERE node_id = ?', (node_id,))
+        self.conn.execute('DELETE FROM edges WHERE source_id = ? OR target_id = ?', (node_id, node_id))
+        self.conn.execute('DELETE FROM nodes WHERE id = ?', (node_id,))
+        self.conn.commit()
+
     def unlock(self, node_id: str) -> None:
         """Unlock a node."""
         self.conn.execute(
@@ -981,6 +992,11 @@ class GraphDAL:
         self.conn = conn
 
     # --- Reads ---
+
+    def count_total(self) -> int:
+        """Count total edges."""
+        row = self.conn.execute('SELECT COUNT(*) FROM edges').fetchone()
+        return row[0] if row else 0
 
     def get_edge(self, source_id: str, target_id: str) -> Optional[Dict[str, Any]]:
         """Get a single edge between two nodes (directional)."""

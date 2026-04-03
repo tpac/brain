@@ -757,12 +757,10 @@ def hook_idle_maintenance(brain, args, graph_changes):
 
         all_junk = {nid: title for nid, title in junk_vocab + single_word_junk}
         if all_junk:
+            from .dal import NodeDAL
+            _node_dal = NodeDAL(brain.conn)
             for nid in all_junk:
-                brain.conn.execute("DELETE FROM node_enrichments WHERE node_id = ?", (nid,))
-                brain.conn.execute("DELETE FROM node_vectors WHERE node_id = ?", (nid,))
-                brain.conn.execute("DELETE FROM edges WHERE source_id = ? OR target_id = ?", (nid, nid))
-                brain.conn.execute("DELETE FROM nodes WHERE id = ?", (nid,))
-            brain.conn.commit()
+                _node_dal.purge(nid)
             output.append("VOCAB CLEANUP: pruned %d junk nodes" % len(all_junk))
             graph_changes.append("VOCAB_CLEANUP: %d pruned" % len(all_junk))
     except Exception as e:

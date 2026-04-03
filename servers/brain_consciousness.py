@@ -40,10 +40,9 @@ class ConsciousnessMixin:
         """
         try:
             # Gather maturity indicators
-            total_nodes = self.conn.execute(
-                'SELECT COUNT(*) FROM nodes WHERE archived=0'
-            ).fetchone()[0]
-            total_edges = self.conn.execute('SELECT COUNT(*) FROM edges').fetchone()[0]
+            from .dal import NodeDAL, GraphDAL
+            total_nodes = NodeDAL(self.conn).count()
+            total_edges = GraphDAL(self.conn).count_total()
 
             corrections = self.conn.execute(
                 'SELECT COUNT(*) FROM correction_traces'

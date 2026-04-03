@@ -357,13 +357,12 @@ NEIGHBOR_TRUNCATION = {
 
 
 # ═══════════════════════════════════════════════════════════════
-# PRECISION LOGGING — what to capture for evaluation
-# ═══════════════════════════════════════════════════════════════
-
+# PRECISION — DEPRECATED: use PIPELINE['recall_log_*'] instead.
+# Kept for backward compat with callers that import PRECISION directly.
 PRECISION = {
-    'title_limit': 100,
-    'snippet_limit': 150,
-    'query_limit': 500,        # max query text stored in recall_log
+    'title_limit': 100,       # → PIPELINE['recall_log_title']
+    'snippet_limit': 150,     # → PIPELINE['recall_log_snippet']
+    'query_limit': 500,       # → PIPELINE['recall_log_query']
 }
 
 
