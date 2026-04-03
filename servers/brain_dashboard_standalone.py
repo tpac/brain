@@ -608,21 +608,31 @@ def _check_system_status():
     except Exception as e:
         status['logs_db'] = {'alive': False, 'error': str(e)[:100]}
 
-    # 4. Dashboard DB
-    dash_path = _get_dashboard_db_path()
+    # 4. Haiku Judge — success rate and latency from recall_log + judge files
     try:
-        if os.path.exists(dash_path):
-            conn = sqlite3.connect(f"file:{dash_path}?mode=ro", uri=True, timeout=2)
-            last_entry = conn.execute("SELECT timestamp FROM hook_log ORDER BY id DESC LIMIT 1").fetchone()
-            conn.close()
-            size_mb = round(os.path.getsize(dash_path) / 1048576, 1)
-            status['dashboard_db'] = {
-                'alive': True, 'path': dash_path, 'size_mb': size_mb,
-                'last_entry': last_entry[0] if last_entry else 'empty'}
-        else:
-            status['dashboard_db'] = {'alive': False, 'error': 'File not found'}
+        logs_path = _get_logs_db_path()
+        conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=2)
+        # Last 20 hook recalls
+        rows = conn.execute(
+            "SELECT id, created_at FROM recall_log WHERE source = 'hook' "
+            "ORDER BY id DESC LIMIT 20").fetchall()
+        total = len(rows)
+        with_judge = 0
+        last_judge_time = None
+        for r in rows:
+            judge_path = "/tmp/brain-judge-result-%s.json" % r[0]
+            if os.path.exists(judge_path):
+                with_judge += 1
+                if not last_judge_time:
+                    last_judge_time = r[1]
+        conn.close()
+        rate = round(with_judge * 100 / total) if total else 0
+        status['judge'] = {
+            'alive': rate > 50, 'success_rate': '%d%%' % rate,
+            'last_success': last_judge_time or 'never',
+            'sample': '%d/%d' % (with_judge, total)}
     except Exception as e:
-        status['dashboard_db'] = {'alive': False, 'error': str(e)[:100]}
+        status['judge'] = {'alive': False, 'error': str(e)[:100]}
 
     # 5. Embedder — check via daemon status file
     try:
@@ -1798,7 +1808,7 @@ async function loadSystemStatus() {
       {key: 'daemon', label: 'Brain Daemon', icon: '🧠'},
       {key: 'brain_db', label: 'Brain DB', icon: '💾'},
       {key: 'logs_db', label: 'Logs DB', icon: '📋'},
-      {key: 'dashboard_db', label: 'Dashboard DB', icon: '📊'},
+      {key: 'judge', label: 'Haiku Judge', icon: '⚖️'},
       {key: 'embedder', label: 'Embedder', icon: '🔮'},
       {key: 'signal_queue', label: 'Signal Queue', icon: '📡'},
     ];

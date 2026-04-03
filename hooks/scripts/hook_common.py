@@ -189,47 +189,10 @@ def mark_hook_errors_surfaced(error_ids):
 
 
 def log_hook_output(hook_name, output_text="", operator_text="", metadata="", user_prompt="", session_id=""):
-    """Log hook output to brain_dashboard.db for dashboard visibility.
-
-    Uses a separate DB from brain.db and brain_logs.db — clean isolation.
-    Dashboard-only instrumentation — does not affect brain behavior.
-    To disconnect: remove calls to this function from hook scripts.
-    """
-    if not db_dir or not os.path.isdir(db_dir):
-        return
-    # Always log if there's a user_prompt — even empty output is useful
-    # to see that the hook fired and what the user said
-    if not output_text and not operator_text and not user_prompt:
-        return
-
-    # Resolve session_id from hook input if not provided
-    if not session_id:
-        try:
-            hi = json.loads(os.environ.get("HOOK_INPUT", "{}"))
-            session_id = hi.get("session_id", "")
-        except Exception:
-            session_id = ""
-
-    dashboard_db = os.path.join(db_dir, "brain_dashboard.db")
-    try:
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-        conn = sqlite3.connect(dashboard_db, timeout=5)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS hook_log ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT, hook_name TEXT NOT NULL, "
-            "timestamp TEXT NOT NULL, output_text TEXT, operator_text TEXT, "
-            "metadata TEXT, session_id TEXT, user_prompt TEXT)")
-        conn.execute(
-            "INSERT INTO hook_log (hook_name, timestamp, output_text, operator_text, metadata, session_id, user_prompt) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (hook_name, ts, output_text, operator_text, metadata, session_id, user_prompt))
-        # Keep last 500 entries
-        conn.execute("DELETE FROM hook_log WHERE id NOT IN (SELECT id FROM hook_log ORDER BY id DESC LIMIT 500)")
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass  # Dashboard logging must never break hooks
+    """DEPRECATED 2026-04-03: brain_dashboard.db is no longer read by the dashboard.
+    Dashboard reads from recall_log (brain_logs.db) and judge tmp files.
+    This function is kept as a no-op to avoid breaking callers."""
+    return
 
 
 def get_hook_input():

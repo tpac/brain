@@ -3,18 +3,15 @@
 contract.py defines what fields a node HAS.
 pipeline_contract.py defines what fields FLOW at each stage.
 
-Without this, truncation limits, field selections, and neighbor formats were
-hardcoded in 6+ files. Changing a limit required grep + manual edits + surprises.
-
 Stages:
-  RECALL → CANDIDATES FILE → DISTILLER (Haiku) → [BRAIN] context → Claude
+  RECALL → CANDIDATES FILE → JUDGE (Haiku) → additionalContext → Claude
   RECALL → CANDIDATES FILE → ENCODING AGENT (Sonnet) → brain writes
   RECALL → MCP TOOL OUTPUT → Claude (direct recall)
   RECALL → PRE-EDIT SUGGESTIONS → Claude
 
-To change what the distiller sees: edit DISTILLER_*.
-To change what the encoding agent sees: edit ENCODING_*.
-To add a field everywhere: add to NODE_CORE_FIELDS + update stage configs.
+To change what the judge sees: edit JUDGE config + build_judge_prompt().
+To change what the encoding agent sees: edit ENCODING_AGENT config.
+Truncation limits: PIPELINE dict (single source of truth for all stages).
 """
 
 
@@ -152,18 +149,6 @@ JUDGE = {
     'recent_recalls_messages': 10,  # look back 10 messages for previously surfaced nodes
     'session_context_limit': 400,   # encoder's session summary (evolves, carries multiple topics)
     'max_tokens': 600,              # Haiku output cap
-}
-
-# DEPRECATED — kept for backward compat during migration
-DISTILLER = {
-    'content_limit': 500,
-    'max_candidates': 8,
-    'user_message_limit': 500,
-    'budget_base': 400,
-    'budget_per_relevant': 100,
-    'budget_long_query_bonus': 100,
-    'budget_max': 1200,
-    'max_tokens': 500,
 }
 
 # Encoding agent v3.2 (Sonnet) — split node catalog + timeline with references
@@ -411,95 +396,6 @@ def format_neighbor_d2(nb):
         nb.get("type", "?"),
         str(nb.get("id", ""))[:t['d2_id']],
     )
-
-
-def format_candidates_for_distiller(candidates, user_message):
-    """DEPRECATED 2026-04-01 — replaced by format_candidate_for_judge + build_judge_prompt.
-    Kept for backward compat during migration. Remove when distiller code is fully gone.
-    """
-    cfg = DISTILLER
-    text = ""
-    relevant_count = 0
-
-    for c in candidates[:cfg['max_candidates']]:
-        # Node header
-        text += format_node_header(c) + "\n"
-        # Content
-        text += "  %s\n" % (c.get("content") or "")[:cfg['content_limit']]
-
-        # Graph neighborhood
-        graph = c.get("_graph", {})
-        d1 = graph.get("degree_1", [])
-        for nb in d1[:3]:
-            text += format_neighbor_d1(nb) + "\n"
-
-        d2 = graph.get("degree_2", [])
-        if d2:
-            d2_items = ", ".join(format_neighbor_d2(n) for n in d2[:3])
-            text += "  →→ %s\n" % d2_items
-
-        text += "\n"
-        if (c.get("confidence") or 0) > 0.3:
-            relevant_count += 1
-
-    return text, relevant_count
-
-
-def compute_distiller_budget(user_message, relevant_count):
-    """DEPRECATED 2026-04-01 — replaced by JUDGE config. Remove with distiller."""
-    cfg = DISTILLER
-    query_len = len(user_message or "")
-    budget = cfg['budget_base'] + min(
-        cfg['budget_max'] - cfg['budget_base'],
-        relevant_count * cfg['budget_per_relevant'] +
-        (cfg['budget_long_query_bonus'] if query_len > 100 else 0)
-    )
-    max_tokens = min(cfg['max_tokens'], budget // 2)
-    return budget, max_tokens
-
-
-def build_distiller_prompt(candidates, user_message, recent_messages=None):
-    """DEPRECATED 2026-04-01 — replaced by build_judge_prompt.
-    Kept for backward compat. Remove when pre_response_recall.py migration is confirmed stable.
-    """
-    cfg = DISTILLER
-    candidates_text, relevant_count = format_candidates_for_distiller(
-        candidates, user_message)
-    budget, max_tokens = compute_distiller_budget(user_message, relevant_count)
-
-    # Format recent messages
-    recent_text = ""
-    if recent_messages:
-        for msg in recent_messages[-5:]:
-            role = (msg.get("role") or "?").upper()
-            content = (msg.get("content") or "")[:200]
-            recent_text += "[%s]: %s\n" % (role, content)
-
-    prompt = """You are the awareness layer of a persistent AI brain.
-Filter memory candidates to what's relevant for the main AI's next response.
-
-RECENT MESSAGES (last 5):
-%s
-
-USER'S LATEST MESSAGE: %s
-
-CANDIDATES:
-%s
-
-Rules:
-- Only include what's DIRECTLY relevant to the user's message and current session topic
-- Preserve node IDs like (id:abc123)
-- Include graph connections when they add useful context
-- Lead with corrections/rules if they apply
-- If nothing is relevant, return EMPTY
-- Max %d characters""" % (
-        recent_text or "(no recent messages)",
-        (user_message or "")[:cfg['user_message_limit']],
-        candidates_text,
-        budget,
-    )
-
-    return prompt, budget, max_tokens
 
 
 # ═══════════════════════════════════════════════════════════════
