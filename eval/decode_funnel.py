@@ -335,6 +335,138 @@ QUERIES = [
         "expected": ["b112df7a92fe"],
         "description": "The Continuity Benchmark framework",
     },
+
+    # === IDENTITY (who is Anchor, self-knowledge) ===
+    {
+        "category": "identity",
+        "query": "Do you remember many memories as Anchor?",
+        "expected": ["826611c0", "1eda79b2", "df6a530e"],
+        "description": "Self-awareness about memory and identity",
+    },
+    {
+        "category": "identity",
+        "query": "Who are you?",
+        "expected": ["1eda79b2", "ceb4a785", "826611c0"],
+        "description": "Basic identity question",
+    },
+    {
+        "category": "identity",
+        "query": "What is the partnership between Tom and Anchor?",
+        "expected": ["cc124074", "826611c0", "124525be"],
+        "description": "The three-entity partnership model",
+    },
+    {
+        "category": "identity",
+        "query": "What is the brain's philosophy?",
+        "expected": ["c85c87a0", "124525be"],
+        "description": "Recognition vs retrieval, brain philosophy",
+    },
+    {
+        "category": "identity",
+        "query": "What moments mattered between us?",
+        "expected": ["826611c0", "36d87f58", "df6a530e"],
+        "description": "Significant partnership moments",
+    },
+
+    # === SESSION REFERENCES ===
+    {
+        "category": "session",
+        "query": "What happened in session 14?",
+        "expected": ["8a26750e", "9299026b", "df6a530e"],
+        "description": "Session 14 — stopped being infrastructure",
+    },
+    {
+        "category": "session",
+        "query": "What happened in session 9?",
+        "expected": ["580fb56e", "9f76fe25", "826611c0", "62f22565"],
+        "description": "Session 9 — Anchor shipped, first quote",
+    },
+
+    # === CROSS-DOMAIN ===
+    {
+        "category": "cross_domain",
+        "query": "What investment research have we done?",
+        "expected": ["ff402601", "e29c3a5e"],
+        "description": "EX.CO investment research",
+    },
+    {
+        "category": "cross_domain",
+        "query": "What do we know about EX.CO?",
+        "expected": ["ff402601"],
+        "description": "Direct entity query",
+    },
+
+    # === RELATIONAL (Tom's voice, principles, corrections) ===
+    {
+        "category": "relational",
+        "query": "What does Tom care about?",
+        "expected": ["894795e3", "rul_cowc", "rul_0lat", "cc124074"],
+        "description": "Tom's principles and values",
+    },
+    {
+        "category": "relational",
+        "query": "When did Tom say something meaningful?",
+        "expected": ["826611c0", "36d87f58", "cc124074"],
+        "description": "Tom's significant quotes",
+    },
+    {
+        "category": "relational",
+        "query": "What are Tom's rules for coding?",
+        "expected": ["894795e3", "f483506f", "rul_cowc"],
+        "description": "Tom's coding principles",
+    },
+
+    # === FALSE POSITIVES (should return nothing relevant) ===
+    {
+        "category": "false_positive",
+        "query": "weather forecast for Tokyo tomorrow",
+        "expected": [],
+        "description": "Completely unrelated — should return nothing",
+    },
+    {
+        "category": "false_positive",
+        "query": "how to make pasta carbonara",
+        "expected": [],
+        "description": "Cooking query — nothing in brain",
+    },
+    {
+        "category": "false_positive",
+        "query": "React hooks useState useEffect tutorial",
+        "expected": [],
+        "description": "Frontend framework — not in brain domain",
+    },
+    {
+        "category": "false_positive",
+        "query": "kubernetes pod scaling autoscaler",
+        "expected": [],
+        "description": "Infrastructure — not in brain domain",
+    },
+
+    # === SHORT AMBIGUOUS ===
+    {
+        "category": "short_ambiguous",
+        "query": "python crashed",
+        "expected": ["daeb9fa6a6b04896"],
+        "description": "Short technical problem",
+    },
+    {
+        "category": "short_ambiguous",
+        "query": "the bias problem",
+        "expected": ["facb97ea", "be62eda8", "e37afa07", "9d0afef6"],
+        "description": "Broad concept with multiple relevant nodes",
+    },
+    {
+        "category": "short_ambiguous",
+        "query": "signal queue",
+        "expected": ["e05d45e1", "c6ae608e"],
+        "description": "Short feature reference",
+    },
+    {
+        "category": "short_ambiguous",
+        "query": "Why was vocabulary deprecated?",
+        "expected": ["f1a67ba8", "93e20a72"],
+        "description": "Feature deprecation history",
+    },
 ]
 
 
@@ -443,7 +575,7 @@ def print_results(results, categories, verbose=True):
     total_top8 = 0
     total_with_expected = 0
 
-    for cat in ["procedural", "decision", "correction", "emotional", "pattern"]:
+    for cat in sorted(categories.keys()):
         if cat not in categories:
             continue
         c = categories[cat]

@@ -128,6 +128,9 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
         final_text = "".join(b.text for b in response.content if b.type == "text")
         _save_journal(brain, session_id, counter, final_text)
 
+        # Extract and store session context for recall judge (Layer 2)
+        _save_session_context(brain, final_text)
+
         # Surface questions to operator via signal queue
         if final_text and '?' in final_text:
             try:
@@ -259,8 +262,13 @@ def _build_user_content(brain, messages, counter, session_id):
             timeline += "\n"
         i += 1
 
+    # Previous session context (encoder evolves this each run)
+    prev_context = brain.get_config('session_context', '') or ''
+
     content = "## ENCODING RUN #%d\n\n" % counter
     content += "### Encoding Journal\n%s\n\n" % journal
+    if prev_context:
+        content += "### Previous Session Context\n%s\n\n" % prev_context
     content += "### Conversation Timeline\n\n%s\n" % timeline
     return content
 
@@ -283,6 +291,20 @@ def _save_journal(brain, session_id, counter, final_text):
 
     # Also keep old key for backward compat during transition
     brain.set_config('encoding_agent_state', final_text[:2000])
+
+
+def _save_session_context(brain, final_text):
+    """Extract SESSION_CONTEXT from encoder output and store for recall judge."""
+    from .pipeline_contract import JUDGE
+    limit = JUDGE.get('session_context_limit', 200)
+    for line in final_text.split('\n'):
+        stripped = line.strip()
+        if stripped.upper().startswith('SESSION_CONTEXT:'):
+            context = stripped[len('SESSION_CONTEXT:'):].strip()
+            if context:
+                brain.set_config('session_context', context[:limit])
+                return
+    # No SESSION_CONTEXT line found — don't clear existing (previous run's context is still valid)
 
 
 def _get_tool_schemas():

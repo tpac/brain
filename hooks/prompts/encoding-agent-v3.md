@@ -45,12 +45,17 @@ Use **`remember_batch()`** to create multiple nodes in one call. Each node uses 
 ```
 remember_batch(
   nodes: [{type, title, content, situation, reasoning, ...}, ...],
-  connect_to: ["existing node title", ...],  // fuzzy match, no IDs needed
+  connect_to: [
+    {"title": "existing node title", "why": "corrects the earlier assumption about X"},
+    ...
+  ],
   auto_connect: true  // connects new nodes to each other
 )
 ```
 
-- **`revise()`** when a node exists but is wrong, stale, or incomplete. Don't create duplicates.
+`connect_to.why` describes the relationship — future recall uses this to decide relevance. "related to" is useless. "corrects", "extends", "depends on", "contradicts" — say what the connection MEANS.
+
+- **`revise()`** when a node exists but is wrong, stale, or incomplete. Don't create duplicates. Also use revise to **enrich sparse nodes**: if a recalled node in the timeline has no `situation` or `reasoning`, add them based on the current conversation context. This makes old nodes findable by future recall. Example: a node about "daemon TCP migration" surfaced during debugging → `revise(node_id, situation="When debugging daemon connectivity or port configuration")`.
 - **`connect()` existing nodes** when you notice two nodes that should be linked but aren't. Connections between existing nodes are as valuable as new nodes.
 - **Concept nodes** (`type: "concept"`) are the grounding layer — they describe what things ARE, not what happened to them. If the conversation references something important that has no concept node, create one.
 - **Skip** when the brain already has it right, or the conversation was routine — greetings, debugging dead ends, the assistant's verbose explanations, questions without answers.
@@ -66,7 +71,7 @@ You run every 5 messages. This isn't the only chance to encode — ambiguous top
 The conversation timeline IS your recall context. Do NOT recall topics already surfaced there. It includes 500-char content snippets — enough to decide revise vs skip vs create without calling `get_node()`.
 
 Target: **2 rounds.**
-- Round 1: read timeline. Call `remember_batch(nodes=[...], connect_to=["existing title", ...])` with ALL new nodes. Use `connect_to` with titles of existing nodes from the timeline that should link to your new nodes — fuzzy matching handles the rest. Batch any `revise()` calls in the same round.
+- Round 1: read timeline. Call `remember_batch(nodes=[...], connect_to=[{title, why}, ...])` with ALL new nodes. Use `connect_to` with titles of existing nodes from the timeline that should link to your new nodes — fuzzy matching handles the rest. Every connection needs a `why`. Batch any `revise()` calls in the same round.
 - Round 2: journal + DONE.
 
 Example round 1 call:
@@ -76,11 +81,15 @@ remember_batch(
     {type: "decision", title: "Pool=1 for daemon thread pool", content: "...", situation: "When configuring daemon concurrency", reasoning: "SQLite deadlocks on concurrent access"},
     {type: "principle", title: "Mirror not camera for personal data", content: "...", situation: "When surfacing user patterns"}
   ],
-  connect_to: ["Daemon TCP migration", "Dashboard vision", "Brain as ambient intelligence"],
+  connect_to: [
+    {"title": "Daemon TCP migration", "why": "Pool=1 decision depends on the TCP architecture"},
+    {"title": "Dashboard vision", "why": "mirror-not-camera principle shapes dashboard design"},
+    {"title": "Brain as ambient intelligence", "why": "both express the same ambient UX philosophy"}
+  ],
   auto_connect: true
 )
 ```
-One call creates both nodes, connects them to each other, AND connects to the 3 existing nodes by title match.
+One call creates both nodes, connects them to each other, AND connects to the 3 existing nodes with described relationships.
 
 ## Fields
 
@@ -124,7 +133,13 @@ Your response must end with a structured journal entry. This is your continuity 
 ENCODED: [what you created/revised, with node IDs and titles]
 SKIPPED: [what you saw but chose not to encode, and why]
 WATCHING: [threads forming across turns that aren't ready to encode yet]
+SESSION_CONTEXT: [one sentence — what is this session about and what does the user care about right now]
 ```
+
+SESSION_CONTEXT is read by the recall system to judge which memories are relevant. The previous session context (if any) appears above your timeline — evolve it, don't replace it. If the topic shifted, carry the previous topic and add the new one. If it narrowed, sharpen. Write it for a reader who has zero context about this session.
+
+Example first run: "Tom is redesigning the decode pipeline to use an LLM judge instead of cosine scoring."
+Example after topic shift: "Decode pipeline redesign (Layer 2 judge, paused). Now exploring edge description quality — how connect_to captures relationship reasoning."
 
 ## When done
 

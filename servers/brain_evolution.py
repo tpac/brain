@@ -22,12 +22,8 @@ from .brain_constants import (
     DREAM_MIN_NOVELTY,
     DREAM_WALK_LENGTH,
     EMBEDDING_PRIMARY_WEIGHT,
-    EMOTION_WEIGHT,
-    FREQUENCY_WEIGHT,
     KEYWORD_FALLBACK_WEIGHT,
     REASONING_STEP_TYPES,
-    RECENCY_WEIGHT,
-    RELEVANCE_WEIGHT,
     STABILITY_BOOST,
 )
 
@@ -138,40 +134,40 @@ class BrainEvolutionMixin:
                             self.conn.execute(
                                 "DELETE FROM edges WHERE source_id = target_id"
                             )
-                            # Merge node_metadata: preserve best data from both
+                            # Merge metadata KV: preserve best data from both
                             try:
-                                keep_meta = self.conn.execute(
-                                    "SELECT * FROM node_metadata WHERE node_id = ?", (keep_id,)
-                                ).fetchone()
-                                archive_meta = self.conn.execute(
-                                    "SELECT * FROM node_metadata WHERE node_id = ?", (archive_id,)
-                                ).fetchone()
+                                from .dal_metadata import MetadataDAL
+                                _mdal = MetadataDAL(self.conn)
+                                keep_meta = _mdal.get(keep_id)
+                                archive_meta = _mdal.get(archive_id)
                                 if archive_meta and not keep_meta:
                                     # Surviving node has no metadata — adopt archived node's
-                                    self.conn.execute(
-                                        "UPDATE node_metadata SET node_id = ? WHERE node_id = ?",
-                                        (keep_id, archive_id)
-                                    )
+                                    for k, v in archive_meta.items():
+                                        _mdal.set(keep_id, k, v)
+                                    _mdal.delete_all(archive_id)
                                 elif archive_meta and keep_meta:
-                                    # Both have metadata — merge: take higher validation count,
-                                    # most recent last_validated, combine reasoning
-                                    cols = [d[1] for d in self.conn.execute(
-                                        "PRAGMA table_info(node_metadata)"
-                                    ).fetchall()]
-                                    arch_dict = dict(zip(cols, archive_meta))
-                                    keep_dict = dict(zip(cols, keep_meta))
-                                    # Merge validation counts
-                                    arch_vc = arch_dict.get('validation_count') or 0
-                                    keep_vc = keep_dict.get('validation_count') or 0
+                                    # Both have metadata — merge: keep wins, archive fills gaps
+                                    # Special: validation_count sums, last_validated takes most recent
+                                    arch_vc = int(archive_meta.get('validation_count', 0) or 0)
+                                    keep_vc = int(keep_meta.get('validation_count', 0) or 0)
+                                    if arch_vc + keep_vc > 0:
+                                        _mdal.set(keep_id, 'validation_count', str(arch_vc + keep_vc))
+                                    arch_lv = archive_meta.get('last_validated', '')
+                                    keep_lv = keep_meta.get('last_validated', '')
+                                    best_lv = max(arch_lv or '', keep_lv or '')
+                                    if best_lv:
+                                        _mdal.set(keep_id, 'last_validated', best_lv)
+                                    # For all other keys: keep wins, archive fills gaps
+                                    for k, v in archive_meta.items():
+                                        if k not in ('validation_count', 'last_validated') and k not in keep_meta:
+                                            _mdal.set(keep_id, k, v)
+                                    _mdal.delete_all(archive_id)
+                                    # DEPRECATED: old fixed-column update follows for backward compat
                                     merged_vc = arch_vc + keep_vc
-                                    # Take most recent last_validated
-                                    arch_lv = arch_dict.get('last_validated') or ''
-                                    keep_lv = keep_dict.get('last_validated') or ''
-                                    best_lv = max(arch_lv, keep_lv) or None
-                                    # Combine reasoning if surviving is empty
-                                    merged_reasoning = keep_dict.get('reasoning') or arch_dict.get('reasoning')
-                                    merged_quote = keep_dict.get('user_raw_quote') or arch_dict.get('user_raw_quote')
-                                    merged_impacts = keep_dict.get('change_impacts') or arch_dict.get('change_impacts')
+                                    best_lv = best_lv or None
+                                    merged_reasoning = keep_meta.get('reasoning') or archive_meta.get('reasoning')
+                                    merged_quote = keep_meta.get('user_raw_quote') or archive_meta.get('user_raw_quote')
+                                    merged_impacts = keep_meta.get('change_impacts') or archive_meta.get('change_impacts')
                                     self.conn.execute(
                                         """UPDATE node_metadata SET
                                            validation_count = ?, last_validated = ?,
@@ -353,12 +349,14 @@ class BrainEvolutionMixin:
         try:
             # Stale reasoning: nodes with reasoning metadata but never validated (>21 days old)
             stale_nodes = self.conn.execute(
-                """SELECT nm.node_id, n.confidence FROM node_metadata nm
-                   JOIN nodes n ON n.id = nm.node_id
-                   WHERE nm.reasoning IS NOT NULL
-                     AND (nm.last_validated IS NULL OR nm.last_validated < datetime('now', '-21 days'))
+                """SELECT kv.node_id, n.confidence FROM node_metadata_kv kv
+                   JOIN nodes n ON n.id = kv.node_id
+                   WHERE kv.key = 'reasoning'
+                     AND kv.node_id NOT IN (
+                         SELECT node_id FROM node_metadata_kv
+                         WHERE key = 'last_validated' AND value > datetime('now', '-21 days'))
                      AND n.archived = 0 AND n.confidence IS NOT NULL AND n.confidence > 0.5
-                     AND nm.created_at < datetime('now', '-21 days')
+                     AND n.created_at < datetime('now', '-21 days')
                    LIMIT 10"""
             ).fetchall()
             for nid, conf in stale_nodes:
@@ -482,42 +480,12 @@ class BrainEvolutionMixin:
                    WHERE timestamp > datetime('now', '-7 days')"""
             ).fetchone()[0]
 
-            if total_accessed > 20:
-                old_ratio = old_reaccessed / total_accessed
-                current_weights = self._get_tunable('recall_weights', {
-                    'relevance': RELEVANCE_WEIGHT, 'recency': RECENCY_WEIGHT,
-                    'frequency': FREQUENCY_WEIGHT, 'emotion': EMOTION_WEIGHT
-                })
-                if not isinstance(current_weights, dict):
-                    current_weights = {'relevance': RELEVANCE_WEIGHT, 'recency': RECENCY_WEIGHT,
-                                       'frequency': FREQUENCY_WEIGHT, 'emotion': EMOTION_WEIGHT}
-
-                # If >40% of re-accessed nodes are old, recency is over-weighted
-                if old_ratio > 0.4 and current_weights.get('recency', RECENCY_WEIGHT) > 0.15:
-                    new_weights = dict(current_weights)
-                    delta = 0.05
-                    new_weights['recency'] = round(new_weights.get('recency', RECENCY_WEIGHT) - delta, 2)
-                    new_weights['relevance'] = round(new_weights.get('relevance', RELEVANCE_WEIGHT) + delta, 2)
-                    self._set_tunable('recall_weights', new_weights,
-                                      f'Old nodes re-accessed at {old_ratio:.0%} — shifting weight from recency to relevance')
-                    results['tuned'].append({
-                        'param': 'recall_weights',
-                        'old': current_weights, 'new': new_weights,
-                        'reason': f'{old_ratio:.0%} of re-accessed nodes are old'
-                    })
-                # If <10% are old, recency is under-weighted
-                elif old_ratio < 0.1 and current_weights.get('recency', RECENCY_WEIGHT) < 0.45:
-                    new_weights = dict(current_weights)
-                    delta = 0.05
-                    new_weights['recency'] = round(new_weights.get('recency', RECENCY_WEIGHT) + delta, 2)
-                    new_weights['relevance'] = round(new_weights.get('relevance', RELEVANCE_WEIGHT) - delta, 2)
-                    self._set_tunable('recall_weights', new_weights,
-                                      f'Old nodes rarely re-accessed ({old_ratio:.0%}) — boosting recency')
-                    results['tuned'].append({
-                        'param': 'recall_weights',
-                        'old': current_weights, 'new': new_weights,
-                        'reason': f'Only {old_ratio:.0%} of re-accessed nodes are old'
-                    })
+            # Recall weight auto-tuning removed 2026-04-02.
+            # Old additive weights (recency/relevance/frequency/emotion) replaced by
+            # recall_scoring.unified_score() which uses multiplicative modulators.
+            # Future auto-tuning should target FRESHNESS_BANDS, EMOTION_AMPLIFICATION,
+            # FREQUENCY_PENALTY_SCALE in brain_constants.py.
+            pass
         except Exception as _e:
             self._log_error("auto_heal", _e, "")
 
@@ -821,14 +789,16 @@ class BrainEvolutionMixin:
             return result
 
         # Find nodes with auto-captured quotes (source_context starts with 'Auto-captured')
+        # Find nodes with auto-captured quotes via KV store
         rows = self.conn.execute(
-            '''SELECT nm.node_id, nm.user_raw_quote, nm.source_context,
+            '''SELECT kv_q.node_id, kv_q.value as quote, kv_c.value as source_ctx,
                       n.title, n.content, ne.embedding
-               FROM node_metadata nm
-               JOIN nodes n ON nm.node_id = n.id
+               FROM node_metadata_kv kv_q
+               JOIN nodes n ON kv_q.node_id = n.id
                LEFT JOIN node_embeddings ne ON n.id = ne.node_id
-               WHERE nm.user_raw_quote IS NOT NULL
-                 AND nm.source_context LIKE 'Auto-captured%'
+               LEFT JOIN node_metadata_kv kv_c ON kv_q.node_id = kv_c.node_id AND kv_c.key = 'source_context'
+               WHERE kv_q.key = 'user_raw_quote'
+                 AND kv_c.value LIKE 'Auto-captured%%'
                  AND n.archived = 0
                ORDER BY n.created_at DESC
                LIMIT ?''',
@@ -851,15 +821,12 @@ class BrainEvolutionMixin:
 
             if sim < threshold:
                 # Clear mismatch — prune the quote but leave a trace
-                self.conn.execute(
-                    '''UPDATE node_metadata
-                       SET user_raw_quote = NULL,
-                           source_context = ?
-                       WHERE node_id = ?''',
-                    ('Pruned auto-quote (sim=%.2f, below %.2f): "%s"' % (
-                        sim, threshold, quote[:100]),
-                     node_id)
-                )
+                from .dal_metadata import MetadataDAL
+                _mdal = MetadataDAL(self.conn)
+                _mdal.delete(node_id, 'user_raw_quote')
+                _mdal.set(node_id, 'source_context',
+                          'Pruned auto-quote (sim=%.2f, below %.2f): "%s"' % (
+                              sim, threshold, quote[:100]))
                 result['pruned'] += 1
                 result['pruned_nodes'].append({
                     'id': node_id,
@@ -935,8 +902,8 @@ class BrainEvolutionMixin:
                 f"SELECT COUNT(*) FROM correction_traces WHERE created_at > datetime('now', '-{eval_period_days} days')"
             ).fetchone()[0]
             recent_validations = self.conn.execute(
-                f"""SELECT COUNT(*) FROM node_metadata
-                    WHERE last_validated > datetime('now', '-{eval_period_days} days')"""
+                f"""SELECT COUNT(*) FROM node_metadata_kv
+                    WHERE key = 'last_validated' AND value > datetime('now', '-{eval_period_days} days')"""
             ).fetchone()[0]
 
             if recent_corrections + recent_validations >= 5:

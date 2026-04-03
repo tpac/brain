@@ -166,40 +166,19 @@ def hook_recall(brain, args, graph_changes):
     except Exception as e:
         brain._log_error('precision_evaluate_followup', e, 'table-driven')
 
-    # Vocabulary expansion
-    expansions = []
-    try:
-        candidates = set()
-        candidates.update(
-            t.strip().lower() for t in
-            re.findall(r"\bthe\s+([\w][\w\s-]{2,25})\b", user_message, re.IGNORECASE)
-        )
-        candidates.update(
-            t.strip().lower() for t in
-            re.findall(r"\b([\w]+-[\w]+(?:-[\w]+)?)\b", user_message)
-            if len(t) > 4
-        )
-        for term in candidates:
-            resolved = brain.resolve_vocabulary(term)
-            if resolved:
-                if resolved.get("ambiguous"):
-                    for m in resolved.get("mappings", []):
-                        expansions.append(m.get("content", ""))
-                else:
-                    expansions.append(resolved.get("content", ""))
-    except Exception as e:
-        brain._log_error('vocab_expansion', e, 'hook_recall')
-
+    # DEPRECATED 2026-04-01: Vocabulary expansion disabled. Vocab migrated to concept nodes
+    # which surface through normal recall. Regex expansion added noise without measurable
+    # recall improvement (confirmed by decode funnel — 0% impact from vocab expansion).
     enriched = user_message[:500]
-    if expansions:
-        enriched += " " + " ".join(expansions)[:200]
 
     # Recall
     try:
-        result = brain.recall(query=enriched, limit=8)
+        from .pipeline_contract import CANDIDATES_FILE as _CF
+        result = brain.recall(query=enriched, limit=_CF['max_candidates'])
     except Exception as e:
         brain._log_error('recall_first_attempt', e, 'hook_recall')
-        result = brain.recall(query=enriched, limit=8)
+        from .pipeline_contract import CANDIDATES_FILE as _CF
+        result = brain.recall(query=enriched, limit=_CF['max_candidates'])
 
     results = result.get("results", [])
 
@@ -269,6 +248,10 @@ def hook_recall(brain, args, graph_changes):
                 "created_at": r.get("created_at"),
                 "discovery": r.get("_discovery", "embedding"),
             }
+            # Include metadata for Layer 2 judge
+            if CANDIDATES_FILE.get('include_metadata'):
+                from .pipeline_contract import enrich_candidate_metadata
+                enrich_candidate_metadata(brain, r.get("id", ""), node_data, CANDIDATES_FILE)
             # Include 3-degree graph neighborhood (full — encoding agent needs it)
             graph = r.get("_graph", {})
             if graph:
@@ -277,7 +260,7 @@ def hook_recall(brain, args, graph_changes):
                 node_data["_graph"] = {"degree_1": r["_neighbors"], "degree_2": [], "degree_3": []}
             candidates_data.append(node_data)
         # v8.8: Include vocab context — connectors surfaced separately
-        vocab_context = result.get('vocab_context', []) if isinstance(result, dict) else []
+        # DEPRECATED 2026-04-01: vocab_context removed (vocab → concept migration)
 
         # v8.9: Include recent messages for distiller context
         recent_messages = []
@@ -292,15 +275,16 @@ def hook_recall(brain, args, graph_changes):
         except Exception:
             pass
 
+        # Session context from last encoding agent run (Layer 2 judge needs this)
+        session_context = brain.get_config('session_context', '') or ''
+
         with open(candidates_path, 'w') as f:
             _json.dump({
                 "user_message": user_message,
+                "session_context": session_context,
                 "candidates": candidates_data,
                 "segment_note": segment_note,
                 "gap": gap.get("query") if gap else None,
-                "vocab_context": [{"id": v.get("id", ""), "title": v.get("title", ""),
-                                   "content": v.get("content", "")[:200]}
-                                  for v in vocab_context[:5]],
                 "recent_messages": recent_messages,
             }, f, default=str)
     except Exception as e:
@@ -403,6 +387,44 @@ def hook_post_response_track(brain, args, graph_changes):
                             recalled_raw=recalled_raw)
     except Exception as e:
         brain._log_error('store_exchange', e, 'Stop hook: failed to store exchange')
+
+    # v10: Hebbian strengthening on JUDGE-SELECTED nodes only.
+    # Only nodes the Layer 2 judge selected get co_accessed edges.
+    # This is meaningful co-activation — two memories contributing to the same response.
+    # Previously: every top-25 candidate got edges (71K noise edges).
+    try:
+        import json as _json
+        _judge_path = '/tmp/brain-%s-judge-selected.json' % session_id
+        if os.path.exists(_judge_path):
+            with open(_judge_path) as _jf:
+                _judge_data = _json.load(_jf)
+            _judge_ids = _judge_data.get('selected_ids', [])
+            if len(_judge_ids) >= 2:
+                # Resolve short IDs to full IDs
+                _full_ids = []
+                for _sid in _judge_ids:
+                    _row = brain.conn.execute(
+                        "SELECT id FROM nodes WHERE id LIKE ?", (_sid + '%',)).fetchone()
+                    if _row:
+                        _full_ids.append(_row[0])
+                if len(_full_ids) >= 2:
+                    # co_accessed edges — now meaningful (judge-selected only).
+                    # Old noise edges deleted 2026-04-02. Fresh start.
+                    # These participate in traversal — real Hebbian co-activation.
+                    from .brain_constants import LEARNING_RATE
+                    for i in range(len(_full_ids)):
+                        for j in range(i + 1, min(len(_full_ids), i + 8)):
+                            try:
+                                brain.connect_typed(
+                                    _full_ids[i], _full_ids[j],
+                                    relation='co_accessed',
+                                    weight=LEARNING_RATE * 0.15,
+                                    edge_type='co_accessed',
+                                    description='judge-selected')
+                            except Exception:
+                                pass
+    except Exception as e:
+        brain._log_error('hebbian_judge_selected', e, 'Stop hook: Hebbian on judge-selected')
 
     # Encoding agent — fires every 5th stop via Sonnet API.
     # Runs in BACKGROUND THREAD with its OWN Brain instance (own SQLite connection).

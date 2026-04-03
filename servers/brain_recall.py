@@ -300,122 +300,19 @@ class BrainRecallMixin:
             if node.get('critical'):
                 relevance *= CRITICAL_BOOST
 
-            recency = self._recency_score(node.get('last_accessed'))
-            frequency = self._frequency_score(node.get('access_count', 0))
+            # v10: Keyword path produces raw relevance score.
+            # Unified scoring is applied ONCE in STEP 6 of recall() after
+            # embedding and keyword scores merge. Applying it here would
+            # double-modulate. Keep keyword path output as raw relevance.
             emotion_intensity = abs(node.get('emotion', 0))
-
-            # v6: Recency boost — recent nodes get relevance multiplier
-            # This ensures recent work is findable even if embedding match is imperfect
-            created = node.get('created_at') or node.get('last_accessed')
-            if created:
-                try:
-                    created_dt = datetime.fromisoformat(created.replace('Z', '+00:00'))
-                    hours_since = (datetime.utcnow() - created_dt.replace(tzinfo=None)).total_seconds() / 3600
-                    if hours_since <= 48:
-                        relevance *= 1.5  # Strong boost for last 2 days
-                    elif hours_since <= 168:
-                        relevance *= 1.2  # Moderate boost for last week
-                except Exception as e:
-                    self._log_error('recency_boost', e, 'parsing created_at for recency boost')
-
-            # ─── Ebbinghaus retention with time-dilation ───
-            retention = 1.0
-            # v4: Personal flag overrides decay
-            # - fixed: never decays (permanent facts — birthday, family, role)
-            # - fluid: 10x slower decay (evolving truths — current interests, active projects)
-            # - contextual: normal decay but carries qualifier for context matching
-            node_personal = node.get('personal')
-            if node_personal == 'fixed':
-                retention = 1.0  # Skip all decay — same as locked
-            elif not node.get('locked'):
-                half_lives = self._get_tunable('decay_half_lives', DECAY_HALF_LIFE)
-                half_life = half_lives.get(node.get('type'), 168)
-                # v5.2: Comprehensive guard against inf bug variants
-                # auto_heal can corrupt half_lives via JSON round-trip:
-                #   float('inf') → str("inf") → breaks decay computation
-                if isinstance(half_life, str):
-                    if half_life.lower() in ('inf', 'infinity', '__inf__'):
-                        half_life = float('inf')
-                    else:
-                        try:
-                            half_life = float(half_life)
-                        except (ValueError, TypeError):
-                            half_life = 168  # fallback to default
-                if isinstance(half_life, (int, float)) and not isinstance(half_life, bool):
-                    if half_life >= 999999:  # sentinel for infinity
-                        half_life = float('inf')
-                    elif half_life != half_life:  # NaN check
-                        half_life = 168
-                # v4: Fluid personal nodes decay 10x slower
-                if node_personal == 'fluid':
-                    half_life = half_life * 10 if half_life != float('inf') else half_life
-                # v4: Evolution-informed decay protection.
-                # Nodes connected to active tensions/hypotheses/aspirations get 3x slower decay.
-                # They're part of an active investigation and shouldn't fade while it's ongoing.
-                if half_life != float('inf'):
-                    try:
-                        evo_conn = self.conn.execute(
-                            """SELECT COUNT(*) FROM edges e
-                               JOIN nodes n ON (e.source_id = n.id OR e.target_id = n.id)
-                               WHERE (e.source_id = ? OR e.target_id = ?)
-                                 AND n.type IN ('tension','hypothesis','aspiration')
-                                 AND n.evolution_status = 'active' AND n.archived = 0""",
-                            (node['id'], node['id'])
-                        ).fetchone()[0]
-                        if evo_conn > 0:
-                            half_life = half_life * 3
-                    except Exception as _e:
-                        self._log_error("recall", _e, "checking evolution connections for half-life adjustment")
-                if half_life != float('inf'):
-                    last_accessed_str = node.get('last_accessed')
-                    if last_accessed_str:
-                        try:
-                            last_accessed_dt = datetime.fromisoformat(last_accessed_str.replace('Z', '+00:00'))
-                            last_accessed_ms = last_accessed_dt.timestamp() * 1000
-                        except Exception as e:
-                            self._log_error('decay_parse_last_accessed', e, 'parsing last_accessed for decay')
-                            last_accessed_ms = now_ms
-
-                        wall_clock_hours = (now_ms - last_accessed_ms) / (1000 * 60 * 60)
-
-                        # Read time-dilation rates from brain config
-                        active_rate = self.get_config('decay_active_rate', 1.0)
-                        idle_rate = self.get_config('decay_idle_rate', 0.1)
-
-                        # Calculate session vs idle hours since access
-                        total_session_minutes = float(self.get_config('total_session_minutes', 0) or 0)
-                        last_session_minutes = float(self.get_config('_last_session_minutes_at_access', 0) or 0)
-                        session_hours_since_access = max(0, (total_session_minutes - last_session_minutes) / 60)
-                        idle_hours = max(0, wall_clock_hours - session_hours_since_access)
-
-                        # Dilated time
-                        dilated_hours = (session_hours_since_access * active_rate +
-                                        idle_hours * idle_rate)
-
-                        effective_s = node.get('stability', 1.0) * half_life
-                        retention = math.exp(-dilated_hours / effective_s) if effective_s > 0 else 1.0
-
-                        # Stability floor
-                        if (node.get('access_count', 0) >= STABILITY_FLOOR_ACCESS_THRESHOLD and
-                            retention < STABILITY_FLOOR_RETENTION):
-                            retention = STABILITY_FLOOR_RETENTION
-
-            if emotion_intensity > 0.5:
-                retention = min(1.0, retention * (1 + emotion_intensity * 0.5))
-
-            combined = self._combined_score(relevance, recency, frequency,
-                                          emotion_intensity, node.get('locked', False))
-            effective = combined * retention
+            effective = relevance
 
             scored.append({
                 **node,
-                'recency_score': recency,
-                'frequency_score': frequency,
                 'relevance_score': relevance,
                 'semantic_score': semantic_score,
                 'keyword_relevance': keyword_relevance,
                 'emotion_intensity': emotion_intensity,
-                'retention': retention,
                 'effective_activation': effective
             })
 
@@ -452,7 +349,15 @@ class BrainRecallMixin:
         for node in page:
             self._mark_accessed(node['id'], session_id)
 
-        self._hebbian_strengthen([n['id'] for n in page])
+        # v10: Hebbian co_accessed edge creation DISABLED.
+        # Previously: every recall created co_accessed edges between all top-25 results.
+        # This produced 71K noise edges (90% of graph) that destroyed topology.
+        # Biology: neurons that fire together wire together — but our "firing together"
+        # was just "scored similarly on cosine," not meaningful co-activation.
+        #
+        # Re-enable when: judge-selected node IDs are available in hook_post_response_track.
+        # Then: only strengthen between nodes the judge selected AND the assistant used.
+        # That's real co-activation — two memories genuinely contributing to the same response.
 
         # v4: Auto-instrument (skipped when called from recall
         # or hooks — they log via the precision module instead)
@@ -580,6 +485,12 @@ class BrainRecallMixin:
             emb_rows = _emb_dal.get_all_with_context(
                 exclude_archived=not include_archived,
                 types=types, project=project)
+            # Per-node data collected here for unified_score() in STEP 6.
+            # created_at/emotion/access_count feed the modulator formula.
+            node_created_at = {}    # node_id → ISO timestamp (for freshness)
+            node_emotion = {}       # node_id → float (for emotional amplification)
+            node_access_count = {}  # node_id → int (for hub penalty)
+
             for row in emb_rows:
                 node_id = row['node_id']
                 blob = row['embedding']
@@ -588,21 +499,81 @@ class BrainRecallMixin:
                 node_critical[node_id] = row['critical']
                 node_titles[node_id] = row['title']
                 node_types[node_id] = row['type']
+                node_created_at[node_id] = row.get('created_at')
+                node_emotion[node_id] = row.get('emotion', 0)
+                node_access_count[node_id] = row.get('access_count', 0)
                 if blob:
                     sim = embedder.cosine_similarity(query_vec, blob)
+
+                    # v10: Synaptic fatigue — nodes recalled repeatedly this session
+                    # get dampened at the base cosine level. Resets between sessions.
+                    # Biology: neurotransmitter depletion after repeated firing.
+                    #
+                    # K (fatigue resistance) scales with structural degree:
+                    #   K = base / (1 + degree / scale)
+                    #   Hub (30 edges): K=2.5, fatigues fast
+                    #   Peripheral (3 edges): K=7.7, fatigues slow
+                    #   New node (0 edges): K=10, barely fatigues
+                    # The graph structure IS the fatigue signal.
+                    if not hasattr(self, '_session_fatigue'):
+                        self._session_fatigue = {}
+                    if not hasattr(self, '_structural_degree_cache'):
+                        # Cache structural degree per node — recomputed once per session
+                        self._structural_degree_cache = {}
+                        try:
+                            for _row in self.conn.execute(
+                                "SELECT source_id, COUNT(*) FROM edges "
+                                "WHERE edge_type NOT IN ('co_accessed','emergent_bridge') "
+                                "GROUP BY source_id"):
+                                self._structural_degree_cache[_row[0]] = \
+                                    self._structural_degree_cache.get(_row[0], 0) + _row[1]
+                        except Exception:
+                            pass
+
+                    _fatigue_count = self._session_fatigue.get(node_id, 0)
+                    if _fatigue_count > 0:
+                        _degree = self._structural_degree_cache.get(node_id, 0)
+                        _K = 10.0 / (1.0 + _degree / 10.0)
+                        _fatigue = _fatigue_count / (_fatigue_count + _K)
+                        sim *= (1.0 - _fatigue)
+
                     embedding_scores[node_id] = sim
-                    primary_scores[node_id] = sim  # v8.7: preserve primary for enrichment cap
+                    primary_scores[node_id] = sim
                     enrichment_hits[node_id] = 'primary'
                     nodes_with_embeddings += 1
 
-            # v8.7 STEP 3.5: Scan enrichment embeddings (V5 multi-vector encoding)
-            # Each node may have up to 4 enrichment vectors.
-            # Enrichments BOOST primary score but don't REPLACE it (ENRICHMENT_CAP).
-            # This prevents broad enrichment vectors from overriding content relevance.
-            from .brain_constants import ENRICHMENT_CAP
+            # v10: STEP 3.5: Z-weighted multi-vector scoring
+            # Each node has 2-4 group vectors (title, high_meta, other_meta) in
+            # node_enrichments, plus the primary (blend) in node_embeddings.
+            # Old enrichment types (question, anchor, bridge, keywords) still exist
+            # and participate with the other_meta weight.
+            #
+            # Scoring: weight × cosine_sim per vector, average top 2.
+            # Requires 2 vectors to agree — prevents noisy single-field matches.
+            # Tested 2026-04-02: +20pts R@8, +22pts R@25 vs old enrichment cap.
+            # See pipeline_contract.EMBEDDING_GROUPS for weight definitions.
+            try:
+                from .pipeline_contract import get_group_weight, EMBEDDING_GROUPS
+            except ImportError:
+                from pipeline_contract import get_group_weight, EMBEDDING_GROUPS
+
+            # Group vector types that get their own weight (from contract)
+            _known_group_types = {g['vector_type'] for g in EMBEDDING_GROUPS.values()
+                                  if g.get('vector_type') != '_primary'}
+            _other_meta_weight = EMBEDDING_GROUPS['other_meta']['weight']
+            _blend_weight = EMBEDDING_GROUPS['blend']['weight']
+
             enrichment_count = 0
             enrichment_used = 0
-            best_enrichment_per_node = {}  # node_id → (best_sim, vector_type)
+            # Collect ALL weighted scores per node: [(weighted_score, vector_type), ...]
+            node_vector_scores = {}  # node_id → list of (weighted_sim, type)
+
+            # Primary (blend) scores — already computed, add with blend weight
+            for nid, prim_sim in primary_scores.items():
+                if nid not in node_vector_scores:
+                    node_vector_scores[nid] = []
+                node_vector_scores[nid].append((_blend_weight * prim_sim, '_primary'))
+
             try:
                 _enrich_dal = EnrichmentDAL(self.conn)
                 _enrich_rows = _enrich_dal.get_all_embeddings()
@@ -613,29 +584,42 @@ class BrainRecallMixin:
                     if not e_blob:
                         continue
                     enrichment_count += 1
-                    # Skip if node is filtered out (not seen in primary scan)
-                    if e_node_id not in node_confidence and e_node_id not in embedding_scores:
-                        # Node wasn't in the primary scan — check if it passes filters
-                        if e_node_id not in node_types:
-                            continue  # Not in our filtered set at all
-                    e_sim = embedder.cosine_similarity(query_vec, e_blob)
-                    prev_best = best_enrichment_per_node.get(e_node_id, (0, None))[0]
-                    if e_sim > prev_best:
-                        best_enrichment_per_node[e_node_id] = (e_sim, e_type)
+                    # Skip if node not in our filtered set
+                    if e_node_id not in node_types:
+                        continue
 
-                # Apply enrichment cap: primary + CAP * (enrichment - primary)
-                for e_node_id, (best_esim, best_etype) in best_enrichment_per_node.items():
-                    prim = primary_scores.get(e_node_id, 0)
-                    if best_esim > prim:
-                        capped = prim + ENRICHMENT_CAP * (best_esim - prim)
-                        if capped > embedding_scores.get(e_node_id, 0):
-                            embedding_scores[e_node_id] = capped
-                            enrichment_hits[e_node_id] = best_etype
-                            enrichment_used += 1
+                    e_sim = embedder.cosine_similarity(query_vec, e_blob)
+
+                    # Get z-index weight: known group types get their contract weight,
+                    # old enrichment types (question, anchor, etc.) get other_meta weight
+                    if e_type in _known_group_types:
+                        weight = get_group_weight(e_type)
+                    else:
+                        weight = _other_meta_weight
+
+                    if e_node_id not in node_vector_scores:
+                        node_vector_scores[e_node_id] = []
+                    node_vector_scores[e_node_id].append((weight * e_sim, e_type))
+
+                # Z-weighted top2-avg: for each node, sort weighted scores, avg top 2
+                for nid, scores in node_vector_scores.items():
+                    if len(scores) < 1:
+                        continue
+                    scores.sort(reverse=True)
+                    if len(scores) >= 2:
+                        final = (scores[0][0] + scores[1][0]) / 2
+                    else:
+                        final = scores[0][0]
+
+                    # Update embedding_scores if this beats the current
+                    if final > embedding_scores.get(nid, 0):
+                        embedding_scores[nid] = final
+                        enrichment_hits[nid] = scores[0][1]  # best vector type
+                        enrichment_used += 1
+
             except Exception as e:
-                # Table might not exist yet during migration
                 if 'no such table' not in str(e):
-                    self._log_error("recall_enrichment_scan", e, "STEP 3.5 enrichment scan")
+                    self._log_error("recall_enrichment_scan", e, "STEP 3.5 z-weighted scoring")
 
         except Exception as e:
             print(f'[brain] Embedding scan error: {e}', file=sys.stderr)
@@ -725,27 +709,11 @@ class BrainRecallMixin:
             if is_critical:
                 blended *= CRITICAL_BOOST
 
-            # v5: Apply confidence as a scoring factor.
-            # Confidence < 1.0 penalizes (corrected nodes rank lower).
-            # Confidence > default (validated nodes) gets a mild boost.
-            # NULL confidence = 1.0 (no effect). Range: [0.1, 1.0] → multiplier [0.7, 1.05]
-            conf = node_confidence.get(nid)
-            if conf is not None:
-                # Map confidence [0.1, 1.0] to multiplier [0.7, 1.05]
-                # At 0.1 (heavily corrected): 0.7x penalty
-                # At 0.7 (default): 1.0x (neutral)
-                # At 1.0 (validated): 1.05x mild boost
-                conf_multiplier = 0.7 + (conf - 0.1) * (1.05 - 0.7) / (1.0 - 0.1)
-                conf_multiplier = max(0.7, min(1.05, conf_multiplier))
-                blended *= conf_multiplier
-
-            # v4 FIX: Apply contextual qualifier penalty BEFORE sorting.
-            # Previously this was applied post-hoc to effective_activation after the sort,
-            # meaning it had zero effect on ordering. Now it penalizes the sort key itself.
+            # v4 FIX: Contextual qualifier penalty — nodes marked 'contextual' with
+            # a personal_context that doesn't overlap query terms get penalized.
             _context_mismatch = False
             node_personal_pair = node_personal_data.get(nid)
             if not node_personal_pair and node:
-                # Fallback: try to get from keyword node (may be missing)
                 _np = node.get('personal')
                 _npc = node.get('personal_context', '')
                 node_personal_pair = (_np, _npc)
@@ -763,8 +731,21 @@ class BrainRecallMixin:
             if sit_score > 0:
                 blended += SITUATION_WEIGHT * sit_score
 
+            # v10: unified_score integration DEFERRED.
+            # Testing showed that applying modulator formula to the embedding path
+            # regresses R@8 by -10pts because the modulators dampen scores that were
+            # previously passing the relevance floor. The z-weighted top2-avg embedding
+            # groups (STEP 3.5) already provide the R@25 improvement.
+            #
+            # Next step: investigate why the frequency penalty and hub dampening
+            # cause regressions — likely need per-query-type adaptive weights
+            # rather than one fixed formula.
+            #
+            # The recall_scoring.py module is ready but not wired in yet.
+            # Data collection (node_created_at, node_emotion, node_access_count)
+            # is in place for when we're ready to integrate.
+
             # Minimum threshold — don't return noise
-            # v5.2: Critical nodes get a much lower threshold
             min_threshold = CRITICAL_SIMILARITY_THRESHOLD if is_critical else 0.05
             if blended < min_threshold:
                 continue
@@ -782,29 +763,15 @@ class BrainRecallMixin:
         scored_results.sort(key=lambda x: -x['blended_score'])
         scored_results = scored_results[:limit]
 
-        # STEP 6.5: 3-degree graph traversal from top seed nodes.
-        # Walks intentional edges at degree 1, all edges (except co_accessed)
-        # at degree 2-3. Semantic bonus when graph + embedding converge.
+        # STEP 6.5: Graph traversal MOVED to Layer 3 (post-judge).
+        # Previously: traversed from top-5 cosine results (often hubs).
+        # Now: traversal happens in pre_response_recall.py AFTER the judge
+        # selects relevant nodes. The judge's selections are the right seeds.
+        # The _traverse_graph() function still exists for Layer 3 to call
+        # via the 'graph_expand' daemon command.
         graph_neighborhoods = {}
         try:
-            seeds = scored_results[:GRAPH_AUGMENT_TOP_N]
-            graph_candidates, graph_neighborhoods = self._traverse_graph(
-                seeds, query_vec=query_vec)
-
-            # Add graph-discovered nodes to scored results
-            for nid, info in graph_candidates.items():
-                scored_results.append({
-                    'node_id': nid,
-                    'blended_score': info['score'],
-                    'embedding_similarity': None,
-                    'keyword_score': None,
-                    '_source': info['discovery'],
-                    '_context_mismatch': False,
-                })
-
-            if graph_candidates:
-                scored_results.sort(key=lambda x: -x['blended_score'])
-                scored_results = scored_results[:limit]
+            pass  # Traversal deferred to Layer 3
         except Exception as e:
             self._log_error("recall", e, "STEP 6.5 graph traversal")
 
@@ -991,10 +958,11 @@ class BrainRecallMixin:
             if not nid:
                 continue
 
-            # Attach metadata from node_metadata table
+            # Attach metadata from KV store
             try:
-                _ndal = NodeDAL(self.conn)
-                meta = _ndal.get_metadata(nid)
+                from .dal_metadata import MetadataDAL
+                _meta_dal = MetadataDAL(self.conn)
+                meta = _meta_dal.get(nid)
                 if meta:
                     node['_metadata'] = meta
             except Exception as e:
@@ -1293,13 +1261,18 @@ class BrainRecallMixin:
             return []
 
     def _mark_accessed(self, node_id: str, session_id: str):
-        """Mark a node as accessed and log it."""
+        """Mark a node as accessed, log it, and increment synaptic fatigue."""
         node_dal = NodeDAL(self.conn)
         logs_dal = LogsDAL(self.logs_conn)
         node_dal.mark_accessed(node_id)
         logs_dal.log_access(session_id, node_id)
         self.conn.commit()
         self.logs_conn.commit()
+
+        # Increment session fatigue counter — next recall will dampen this node's cosine
+        if not hasattr(self, '_session_fatigue'):
+            self._session_fatigue = {}
+        self._session_fatigue[node_id] = self._session_fatigue.get(node_id, 0) + 1
 
     def _hebbian_strengthen(self, node_ids: List[str], segment_node_ids: Optional[List[str]] = None):
         """

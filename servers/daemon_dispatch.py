@@ -472,6 +472,62 @@ def _handle_find_node_by_title(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
+def _handle_graph_expand(brain, args, graph_changes):
+    """Layer 3: expand from judge-selected seed nodes via structural edges.
+
+    Args:
+        node_ids: list of seed node IDs (from judge selection)
+        depth: how many hops (default 1)
+        limit_per_seed: max neighbors per seed (default 3)
+
+    Returns: list of neighbor nodes with edge info, deduplicated.
+    """
+    node_ids = args.get("node_ids", [])
+    depth = min(args.get("depth", 1), 2)  # Cap at 2 hops
+    limit_per = args.get("limit_per_seed", 3)
+
+    if not node_ids:
+        return {"ok": True, "result": {"neighbors": []}}
+
+    from .brain_constants import EXCLUDED_EDGE_TYPES
+    seen = set(node_ids)
+    neighbors = []
+
+    for seed_id in node_ids:
+        # Resolve short IDs
+        full_id = seed_id
+        if len(seed_id) < 16:
+            row = brain.conn.execute(
+                "SELECT id FROM nodes WHERE id LIKE ?", (seed_id + '%',)).fetchone()
+            if row:
+                full_id = row[0]
+
+        # Get structural neighbors (both directions — edges are bidirectional)
+        rows = brain.conn.execute("""
+            SELECT n.id, n.type, n.title, substr(n.content, 1, 300),
+                   e.edge_type, e.weight, e.description, n.confidence
+            FROM edges e
+            JOIN nodes n ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END
+            WHERE (e.source_id = ? OR e.target_id = ?) AND n.archived = 0
+            AND n.id != ?
+            AND e.edge_type NOT IN ({})
+            ORDER BY e.weight DESC LIMIT ?
+        """.format(','.join('?' for _ in EXCLUDED_EDGE_TYPES)),
+            [full_id, full_id, full_id, full_id] + list(EXCLUDED_EDGE_TYPES) + [limit_per]).fetchall()
+
+        for r in rows:
+            if r[0] not in seen:
+                seen.add(r[0])
+                neighbors.append({
+                    "id": r[0], "type": r[1], "title": r[2],
+                    "content": r[3], "edge_type": r[4],
+                    "edge_weight": r[5], "edge_description": r[6] or "",
+                    "confidence": r[7], "seed_id": full_id,
+                })
+
+    return {"ok": True, "result": {"neighbors": neighbors, "seeds": len(node_ids)}}
+
+
 def _handle_get_node(brain, args, graph_changes):
     node_id = _resolve_id(brain, args.get("node_id", ""))
     if not node_id:
@@ -617,6 +673,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "learn_vocabulary":      CmdEntry(_handle_learn_vocabulary,    is_write=True, marks_dirty=True),
     "find_node_by_title":    CmdEntry(_handle_find_node_by_title,  is_write=False, marks_dirty=False),
     "get_node":              CmdEntry(_handle_get_node,             is_write=False, marks_dirty=False),
+    "graph_expand":          CmdEntry(_handle_graph_expand,         is_write=False, marks_dirty=False),
     # encode_cluster: DEPRECATED — use remember_batch() instead. Handler kept for backward compat.
     # "encode_cluster":        CmdEntry(_handle_encode_cluster,      is_write=True, marks_dirty=True),
     "connect":               CmdEntry(_handle_connect,             is_write=True, marks_dirty=True),

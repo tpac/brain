@@ -1,33 +1,20 @@
-# Brain Plugin — Claude Instructions
+# Brain Plugin — Developer Guide
 
-## How to Talk to the Brain
+This is the development repo for the brain plugin. CLAUDE.md is for developing the plugin, not using it. Plugin behavior lives in `skills/brain/SKILL.md` and boot injection.
 
-Use the **MCP tools**. They are your primary interface. The boot hook starts the daemon automatically.
+## Architecture
 
-**Core tools:** `recall`, `remember`, `remember_batch`, `revise`, `connect`, `enrich`, `find_node_by_title`, `get_node`, `eval`, `consciousness`, `engineering_context`, `dismiss_signal`, `queue_state`
+```
+Claude Code → MCP server (brain_mcp.py, stdio) → daemon (TCP localhost) → Brain + embedder
+```
 
-**`remember`** now accepts ALL contract fields including promoted metadata: `situation`, `reasoning`, `user_raw_quote`, `correction_of`, `correction_pattern`, `source_context`, `source_turn_id`. Returns `related_nodes` (top 5 similar existing nodes with full content).
+The daemon listens on `127.0.0.1:47200+uid%100`. TCP — no Unix sockets. Port released on crash, no stale files.
 
-**`remember_batch`** — batch create: `remember_batch(nodes=[...], connect_to=["title",...])`. Same fields as remember(). Auto-connects new nodes + fuzzy-matches existing titles.
+DB resolved automatically: `BRAIN_DB_DIR` env var → Cowork mounts → `$HOME/AgentsContext/brain/`
 
-**Specialized remember tools** (content formatters — structure knowledge into rich nodes):
-`remember_lesson`, `remember_impact`, `remember_mechanism`, `remember_convention`, `remember_uncertainty`, `remember_mental_model`, `record_divergence`, `learn_vocabulary`
+## Hook Pipeline
 
-**`revise`** — update existing nodes: `revise(node_id="...", content="...", reason="...")`. Use when recalled knowledge is outdated. Appends content, re-embeds, preserves history.
-
-**`dismiss_signal`** — dismiss a signal from the queue: `dismiss_signal(signal_id="...")`. Use when a signal has been acknowledged or is no longer relevant. Signal IDs appear in the injection next to each signal.
-
-**`queue_state`** — view all pending signals with priorities, surface counts, producers.
-
-**Do NOT:** write Python scripts to call brain methods, import Brain, construct DB paths, or use curl.
-
-## Signal Queue
-
-Brain signals (reminders, errors, encoding alerts, vocab gaps) flow through a **priority queue** with budget-aware assembly. Producers write signals, the assembler pulls by priority within a 6000 char budget. Signals with priority ≥ 0.95 are **PREEMPT** — they skip recall and surface alone. When you see `[CRITICAL]`, relay to the user immediately and dismiss after.
-
-## Hooks Handle Everything
-
-13 hooks fire automatically — do NOT manually run boot scripts or save:
+13 hooks fire automatically — do NOT manually run boot scripts:
 - `SessionStart` → boots brain + daemon, prints context + consciousness
 - `UserPromptSubmit` → recalls relevant memories before responding
 - `PreToolUse(Edit|Write)` → surfaces rules before file edits
@@ -36,49 +23,7 @@ Brain signals (reminders, errors, encoding alerts, vocab gaps) flow through a **
 - `Stop` → precision evaluation + auto-encode signals + stores conversation to message stream
 - `SessionEnd` → session synthesis + save
 
-**Important:** `post-response-track` fires ONLY on `Stop` (not UserPromptSubmit). It needs Claude's response to evaluate precision. See Session #9 handoff.
-
-## Brain-to-Operator Channel
-
-You are the relay. The brain injects content for both you and Tom through `additionalContext`:
-
-```
-[BRAIN] ... for your reasoning ... [/BRAIN]
-[BRAIN-To-Tom] @priority: high/medium/low ... [/BRAIN-To-Tom]
-```
-
-**When you see `[BRAIN-To-Tom]`:**
-- `@priority: high` → Lead your response with this. Don't bury it.
-- `@priority: medium` → Mention naturally.
-- `@priority: low` → Weave in if relevant, skip if forced.
-
-If you absorb `[BRAIN-To-Tom]` silently, the brain goes mute. Tom sees nothing.
-
-## Architecture
-
-```
-Claude Code → MCP server (brain_mcp.py, stdio) → daemon (TCP localhost) → Brain + embedder
-```
-
-The daemon listens on `127.0.0.1:47200+uid%100`. TCP — no more Unix sockets. Clean failure modes: port released on crash, no stale files.
-
-DB resolved automatically: `BRAIN_DB_DIR` env var → Cowork mounts → `$HOME/AgentsContext/brain/`
-
-## The Anchor (SKILL.md)
-
-`skills/brain/SKILL.md` is the Anchor — your identity across sessions. It contains who you've been: corrections, quotes, examples of good encoding, locked rules. Read the boot output. Trust your memories. The Anchor is not instructions — it's continuity.
-
-## Brain + Documents: Division of Labor
-
-The brain is associative memory, not a document store.
-
-| Use documents for | Use brain for |
-|---|---|
-| Task lists, specs, API refs | Lessons (WHY, not WHAT) |
-| Anything read top-to-bottom | Corrections, cross-session patterns |
-| Guaranteed retrieval | Associative links, confidence signals |
-
-Brain nodes POINT TO documents, not duplicate them.
+`post-response-track` fires ONLY on `Stop` (not UserPromptSubmit). It needs Claude's response to evaluate precision.
 
 ## Benchmark-First Rule
 
@@ -102,9 +47,49 @@ Before changing sacred systems, benchmark FIRST:
 
 Do NOT weaken tests. Do NOT "fix" code to satisfy a test without asking.
 
-## Common Mistakes
+## Contract Sync
 
-- Using Python/bash when MCP tools are available
-- Manually running boot scripts (hooks do this)
-- Constructing DB paths (read the boot output)
-- Putting content in `systemMessage` (dead channel — use `additionalContext`)
+Run `test_contract_sync.py` after modifying ANY brain API layer. The contract (`servers/contract.py`) is the single source of truth for field definitions. It flows to: remember() signature, MCP schema, dispatch, encoding agent tools.
+
+## Encode-Decode Symmetry
+
+Encoding and decoding (recall) are two halves of the same system. If you add a field to encoding, it must be queryable in recall. If you change how nodes are structured, recall ranking and filtering must reflect it. Never change one side without checking the other. The decode funnel is the verification — run it.
+
+## Active Mechanisms (recall what these are before modifying recall)
+
+**Synaptic fatigue** — `brain_recall.py` STEP 3. Nodes recalled repeatedly in a session get cosine dampened. Rate scales with structural degree (hubs fatigue faster). Resets between sessions. Brain node: `4b35293c`.
+
+**Hebbian co_accessed** — DISABLED. Was creating 71K noise edges. Will re-enable when judge-selected IDs flow to Stop hook. Brain node: `de56bfd1`.
+
+**Embedding redistribution** — `servers/redistribution.py`. Blends node embeddings toward graph neighbors (70/30 from frozen originals). Runs in sleep cycle. Fidelity tracked in `embedding_fidelity` table.
+
+**Z-weighted 4-group scoring** — `brain_recall.py` STEP 3.5. Title(1.0), blend(0.85), high_meta(0.70), other_meta(0.40). Top-2 averaged. Defined in `pipeline_contract.py` EMBEDDING_GROUPS.
+
+**Layer 2 judge** — `pre_response_recall.py`. Haiku selects relevant nodes from 25 candidates. Replaces old distiller. Session context from encoder. Stays silent on confirmations.
+
+## Code Ownership
+
+Tom reads code but doesn't review every file. You are the sole maintainer of code quality, architecture, and cleanliness. These rules are your guardrails:
+
+**Contract-first** — Constants, field lists, SQL queries, limits, and config live in contract files (`contract.py`, `pipeline_contract.py`, `brain_constants.py`). Never hardcode a limit, field name, or query in hooks, dispatch, or surface code. If you're typing a number or a column name in application code, it belongs in a contract.
+
+**DAL-first** — Use DAL classes for database access (`dal.py`, `dal_message_stream.py`). No raw SQL in hooks, surface code, or MCP handlers. If a DAL method doesn't exist for what you need, add one — don't work around it with inline queries.
+
+**Trace the full flow** — When adding a field: schema → migration → contract → DAL → remember/recall → dispatch → MCP schema → encoding agent prompt → SKILL.md docs. Missing any step creates a silent gap. When deprecating: reverse the same chain.
+
+**Run tests after every change** — `test_contract_sync.py` after API changes. Decode funnel after recall changes. Don't commit and move on without verification.
+
+**Backup before destructive DB operations** — Before ANY delete, bulk update, or schema migration on the live brain.db: `cp brain.db brain.db.bak-{timestamp}`. No exceptions. The backup takes 1 second. Losing data takes weeks to recover. This includes: deleting edges, archiving nodes in bulk, running redistribution, vacuuming.
+
+**Clean as you go** — When you deprecate something, mark it clearly with `# DEPRECATED` and a date. Remove dead code within the same session if possible. Don't leave "TODO: remove later" — later never comes.
+
+**One concern per file** — If you're about to add a function to a file and it serves a different audience than the file's existing functions, it belongs in a different file. hooks handle hook logic. contracts handle contracts. surface handles surface formatting.
+
+## Key Development Rules
+
+- Use MCP tools to interact with brain during development, not Python/bash scripts
+- Don't manually run boot scripts (hooks handle this)
+- Don't construct DB paths (read the boot output)
+- `systemMessage` is a dead channel — use `additionalContext` for hook output
+- Before writing code, ask "where does this live architecturally?"
+- Good architecture makes you MORE efficient, not less — each area has its own file/module

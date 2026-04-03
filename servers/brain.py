@@ -47,9 +47,6 @@ from . import embedder
 
 from .brain_constants import (
     DECAY_HALF_LIFE,
-    RECENCY_WEIGHT, RELEVANCE_WEIGHT, FREQUENCY_WEIGHT, EMOTION_WEIGHT,
-    EMOTION_FLOOR,
-    RECENCY_BANDS,
     INTENT_PATTERNS, INTENT_TYPE_BOOSTS, TEMPORAL_PATTERNS,
 )
 
@@ -346,76 +343,10 @@ class Brain(
 
     # ─── Helper: Recency Scoring ───
 
-    def _recency_score(self, last_accessed: Optional[str]) -> float:
-        """
-        Compute recency score for a node based on last access time.
-        Maps hours ago to RECENCY_BANDS score.
-
-        Args:
-            last_accessed: ISO timestamp of last access (or None)
-
-        Returns:
-            Score 0.05-1.0 based on recency band
-        """
-        if not last_accessed:
-            return 0.05
-
-        try:
-            last_dt = datetime.fromisoformat(last_accessed.replace('Z', '+00:00'))
-            now = datetime.utcnow()
-            hours_ago = (now - last_dt.replace(tzinfo=None)).total_seconds() / 3600
-
-            for band in RECENCY_BANDS:
-                if hours_ago <= band['maxHours']:
-                    return band['score']
-
-            return 0.05
-        except Exception:
-            return 0.05
-
-    def _frequency_score(self, access_count: int) -> float:
-        """
-        Compute frequency score (logarithmic, capped at 1.0).
-
-        Args:
-            access_count: Number of times node was accessed
-
-        Returns:
-            Score 0-1.0: min(1.0, log2(max(1, count)) / 10)
-        """
-        return min(1.0, math.log2(max(1, access_count)) / 10)
-
-    def _combined_score(self, relevance: float, recency: float, frequency: float,
-                       emotion: float, locked: bool) -> float:
-        """
-        Compute combined relevance score blending all factors.
-
-        Args:
-            relevance: Keyword/graph relevance (0-1)
-            recency: Recency score (0-1)
-            frequency: Frequency score (0-1)
-            emotion: Emotional intensity (0-1)
-            locked: Whether node is locked (boosts relevance)
-
-        Returns:
-            Combined score (0-1)
-        """
-        # Emotion intensity: raw emotion (0-1) with floor so neutral isn't zero
-        emotion_score = min(1.0, EMOTION_FLOOR + (emotion or 0) * (1 - EMOTION_FLOOR))
-
-        if locked:
-            # Locked nodes: relevance dominant, emotion still matters
-            return relevance * 0.5 + recency * 0.2 + frequency * 0.05 + emotion_score * 0.25
-
-        # Normal blend by tunable weights (defaults to module constants)
-        w = self._get_tunable('recall_weights', {
-            'relevance': RELEVANCE_WEIGHT, 'recency': RECENCY_WEIGHT,
-            'frequency': FREQUENCY_WEIGHT, 'emotion': EMOTION_WEIGHT
-        })
-        return (relevance * w.get('relevance', RELEVANCE_WEIGHT) +
-                recency * w.get('recency', RECENCY_WEIGHT) +
-                frequency * w.get('frequency', FREQUENCY_WEIGHT) +
-                emotion_score * EMOTION_WEIGHT)
+    # _recency_score, _frequency_score, _combined_score REMOVED 2026-04-02.
+    # Replaced by recall_scoring.unified_score() — a pure module with one formula
+    # for both embedding and keyword paths. See recall_scoring.py for the
+    # research-grounded formula (pattern completion + bounded modulators).
 
     def _classify_intent(self, query: str) -> Dict[str, Any]:
         """

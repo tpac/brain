@@ -234,9 +234,8 @@ class BrainConnectionsMixin:
         src_title = self._get_node_title(source_id) or source_id
         tgt_title = self._get_node_title(target_id) or target_id
 
-        # Auto-generate description
-        shared_part = f' via shared neighbors: {shared_titles[:150]}' if shared_titles else ''
-        description = f'Emergent bridge: "{src_title[:60]}" ↔ "{tgt_title[:60]}"{shared_part}'
+        # Description: just the structural fact. LLM-generated "why" is a future consolidation improvement.
+        description = 'shares %d neighbors' % max(2, shared_titles.count('|') + 1) if shared_titles else ''
 
         self.connect_typed(source_id, target_id, 'emergent_bridge', 0.15, 'emergent_bridge', description)
 

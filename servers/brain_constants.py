@@ -98,26 +98,53 @@ LEARNING_RATE = 0.2
 MAX_WEIGHT = 1.0
 PRUNE_THRESHOLD = 0.05
 
-# Recency scoring weights
-RECENCY_WEIGHT = 0.30
-RELEVANCE_WEIGHT = 0.35
-FREQUENCY_WEIGHT = 0.10
-EMOTION_WEIGHT = 0.25
+# ═══════════════════════════════════════════════════════════════
+# UNIFIED SCORING — recall_scoring.py
+# ═══════════════════════════════════════════════════════════════
+# Semantic similarity is the gatekeeper (multiplicative).
+# Other signals MODULATE within bounded ranges.
+# Zero semantic = zero final, regardless of other signals.
+#
+# Biology mapping:
+#   semantic_score → pattern completion (hippocampal CA3)
+#   freshness      → hippocampal fresh trace (created_at, NOT last_accessed)
+#   emotion        → amygdala modulation (GANE: winner-take-more)
+#   frequency      → cue overload penalty (high-access = low diagnostic)
+#   confidence     → consolidation strength
+#
+# Formula: final = base * (1.0 + recency + emotion + frequency + confidence)
+# Max modulator: 1.545x. Min modulator: 0.81x. Bounded.
+#
+# Tested 2026-04-02: fixes R@8 gap where embedding improvements (+20pts
+# in simulation) showed +0pts in production due to additive scoring.
 
-# Emotion constants
-EMOTION_FLOOR = 0.3
-EMOTION_DECAY_RATE = 0.95
-
-# Recency time bands
-RECENCY_BANDS = [
-    {'maxHours': 1,     'score': 1.0},
-    {'maxHours': 6,     'score': 0.9},
-    {'maxHours': 24,    'score': 0.75},
-    {'maxHours': 72,    'score': 0.5},
-    {'maxHours': 168,   'score': 0.3},
-    {'maxHours': 720,   'score': 0.15},
-    {'maxHours': float('inf'), 'score': 0.05},
+# Freshness from creation time — when the knowledge was born.
+# NOT last_accessed (self-fulfilling: mark_accessed refreshes every recall cycle).
+FRESHNESS_BANDS = [
+    {'max_hours': 1,              'boost': 0.30},  # just created
+    {'max_hours': 6,              'boost': 0.25},  # same session
+    {'max_hours': 24,             'boost': 0.20},  # today
+    {'max_hours': 72,             'boost': 0.12},  # this week
+    {'max_hours': 168,            'boost': 0.06},  # recent
+    {'max_hours': 720,            'boost': 0.02},  # this month
+    {'max_hours': float('inf'),   'boost': 0.0},   # established knowledge
 ]
+
+# Emotion amplification — multiplicative on semantic base.
+# abs(emotion) * this = boost. Max 0.2 boost at emotion=1.0.
+EMOTION_AMPLIFICATION = 0.20
+
+# Frequency PENALTY — high access_count = hub = low diagnostic value.
+# Kicks in above threshold. Capped at max.
+FREQUENCY_PENALTY_THRESHOLD = 20   # Below this: no penalty
+FREQUENCY_PENALTY_SCALE = 0.03     # log(ac/threshold) * this
+FREQUENCY_PENALTY_MAX = 0.10       # Cap: never more than 10% penalty
+
+# Confidence modulator — validated knowledge gets mild boost.
+# Maps [0.1, 1.0] confidence to [-0.09, +0.045] boost.
+CONFIDENCE_NEUTRAL = 0.70          # No effect at default confidence
+CONFIDENCE_SCALE = 0.15            # (confidence - neutral) * this
+
 
 # Page sizes
 DEFAULT_PAGE_SIZE = 20
@@ -150,6 +177,8 @@ CURRENT_ENCODING_VERSION = "v5"
 # v8.7: Lowered from 0.80/0.50 and changed from all-or-nothing to per-result.
 # Previous sweep data (214 enriched cases) was pre-enrichment-cap, no longer applies.
 # The Haiku distiller is the primary quality gate; this floor catches obvious noise.
+# Relevance floors — minimum blended score to include in results.
+# v8.7: Per-result floor (not global). Each result must meet its own bar.
 RELEVANCE_FLOOR_ENRICHED = 0.45   # result won via enrichment vector
 RELEVANCE_FLOOR_PRIMARY = 0.25    # result won via primary embedding only
 
@@ -269,8 +298,8 @@ EDGE_TYPES = {
     'part_of': {'defaultWeight': 0.7, 'decays': False, 'description': 'Node to parent'},
     'depends_on': {'defaultWeight': 0.7, 'decays': False, 'description': 'Node requires another'},
     'related': {'defaultWeight': 0.5, 'decays': False, 'description': 'Manual or inferred — intentional, no decay'},
-    'co_accessed': {'defaultWeight': 0.3, 'decays': True, 'halfLife': 336, 'description': 'Hebbian co-recall — 14d half-life (v2: up from 7d)'},
-    'emergent_bridge': {'defaultWeight': 0.15, 'decays': True, 'halfLife': 720, 'description': 'Auto-discovered bridge — 30d half-life (v2: up from 3d, high quality conceptual links)'},
+    'co_accessed': {'defaultWeight': 0.3, 'decays': True, 'halfLife': 720, 'description': 'Judge-selected Hebbian — meaningful co-activation, participates in traversal'},
+    'emergent_bridge': {'defaultWeight': 0.15, 'decays': True, 'halfLife': 720, 'description': 'Auto-discovered bridge — excluded from traversal'},
 }
 
 # Edge decay
@@ -298,7 +327,10 @@ INTENTIONAL_EDGE_TYPES = {
     'related_to', 'caused_by', 'supports', 'blocks', 'example_of', 'evolved_from',
     'contradicts', 'refers_to',
 }
-EXCLUDED_EDGE_TYPES = {'co_accessed'}  # Usage noise — excluded at all degrees
+# Edges excluded from graph traversal during recall.
+# co_accessed: NOW judge-selected only (clean). Old noise edges deleted 2026-04-02.
+# emergent_bridge: Auto-discovered weak connections — excluded from traversal.
+EXCLUDED_EDGE_TYPES = {'emergent_bridge'}
 
 # Situation embeddings — WHEN knowledge matters (second vector dimension)
 SITUATION_WEIGHT = 0.2          # Additive boost for situation match during recall

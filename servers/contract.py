@@ -59,36 +59,39 @@ PROMOTED_FIELDS = {
         "description": "When is this knowledge relevant? One sentence.",
     },
     "reasoning": {
-        "store": "node_metadata",
-        "column": "reasoning",
+        "store": "metadata_kv",
         "type": "str",
         "description": "Why this was encoded — decision rationale.",
     },
     "user_raw_quote": {
-        "store": "node_metadata",
-        "column": "user_raw_quote",
+        "store": "metadata_kv",
         "type": "str",
         "description": "Operator's exact words.",
     },
+    "anchor_raw_quote": {
+        "store": "metadata_kv",
+        "type": "str",
+        "description": "Anchor's exact words — reflections, realizations, insights.",
+    },
     "correction_of": {
-        "store": "node_metadata",
-        "column": "correction_of",
+        "store": "metadata_kv",
         "type": "str",
         "description": "Node ID this corrects.",
     },
     "correction_pattern": {
-        "store": "node_metadata",
-        "column": "correction_pattern",
+        "store": "metadata_kv",
         "type": "str",
         "description": "Behavioral pattern behind the correction.",
     },
     "source_context": {
-        "store": "node_metadata",
-        "column": "source_context",
+        "store": "metadata_kv",
         "type": "str",
         "description": "Session/context when this was encoded.",
     },
 }
+
+# Metadata field names (for generic read/write through MetadataDAL)
+METADATA_KEYS = [k for k, v in PROMOTED_FIELDS.items() if v.get("store") == "metadata_kv"]
 
 
 # ── COMBINED VIEW ──

@@ -387,7 +387,7 @@ TABLES = {
         'create': """CREATE TABLE IF NOT EXISTS node_enrichments (
             id TEXT PRIMARY KEY,
             node_id TEXT NOT NULL,
-            vector_type TEXT NOT NULL CHECK(vector_type IN ('question', 'anchor', 'bridge', 'keywords')),
+            vector_type TEXT NOT NULL,
             text TEXT NOT NULL,
             embedding BLOB,
             model TEXT DEFAULT 'snowflake-arctic-embed-m',
@@ -414,7 +414,8 @@ TABLES = {
         'columns': {'key': None, 'value': 'NULL', 'updated_at': 'NULL'}
     },
 
-    # v15: Node metadata sidecar — rich encoding fields without bloating nodes table
+    # DEPRECATED 2026-04-02: Fixed-column metadata. Replaced by node_metadata_kv.
+    # Kept for backward compat — migration 008 copies data to KV. Stop writing here.
     'node_metadata': {
         'create': """CREATE TABLE IF NOT EXISTS node_metadata (
             node_id TEXT PRIMARY KEY,
@@ -438,6 +439,20 @@ TABLES = {
             'confidence_rationale': 'NULL', 'last_validated': 'NULL',
             'validation_count': '0', 'change_impacts': 'NULL',
             'created_at': 'NULL',
+        }
+    },
+
+    # v21: Key-value metadata — extensible without schema changes
+    'node_metadata_kv': {
+        'create': """CREATE TABLE IF NOT EXISTS node_metadata_kv (
+            node_id TEXT NOT NULL,
+            key TEXT NOT NULL,
+            value TEXT,
+            PRIMARY KEY (node_id, key),
+            FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
+        )""",
+        'columns': {
+            'node_id': None, 'key': None, 'value': 'NULL',
         }
     },
 

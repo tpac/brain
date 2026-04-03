@@ -780,7 +780,14 @@ class EmbeddingDAL:
         """Get all embeddings with node context for recall STEP 3 scan.
 
         Returns: [{node_id, embedding, personal, personal_context,
-                   confidence, critical, title, type}]
+                   confidence, critical, title, type,
+                   created_at, emotion, access_count}]
+
+        The last 3 fields feed unified_score() in recall_scoring.py:
+          created_at → freshness_from_created (recency from birth, not access)
+          emotion → emotion amplification (GANE model)
+          access_count → frequency penalty (hub dampening)
+
         Filters: archived, type, project — matching recall pipeline needs.
         """
         where = []
@@ -796,14 +803,17 @@ class EmbeddingDAL:
         where_sql = (' WHERE ' + ' AND '.join(where)) if where else ''
         rows = self.conn.execute(
             'SELECT ne.node_id, ne.embedding, n.personal, n.personal_context, '
-            'n.confidence, n.critical, n.title, n.type '
+            'n.confidence, n.critical, n.title, n.type, '
+            'n.created_at, n.emotion, n.access_count '
             'FROM node_embeddings ne '
             'JOIN nodes n ON n.id = ne.node_id' + where_sql,
             params
         ).fetchall()
         return [{'node_id': r[0], 'embedding': r[1], 'personal': r[2],
                  'personal_context': r[3], 'confidence': r[4],
-                 'critical': r[5] or 0, 'title': r[6] or '', 'type': r[7] or ''}
+                 'critical': r[5] or 0, 'title': r[6] or '', 'type': r[7] or '',
+                 'created_at': r[8], 'emotion': r[9] or 0,
+                 'access_count': r[10] or 0}
                 for r in rows]
 
     def store_embedding(self, node_id: str, embedding: bytes, model: str) -> None:

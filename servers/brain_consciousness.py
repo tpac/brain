@@ -64,13 +64,10 @@ class ConsciousnessMixin:
                 "SELECT COUNT(*) FROM nodes WHERE type='mental_model' AND archived=0"
             ).fetchone()[0]
 
-            with_reasoning = self.conn.execute(
-                'SELECT COUNT(*) FROM node_metadata WHERE reasoning IS NOT NULL'
-            ).fetchone()[0]
-
-            with_quotes = self.conn.execute(
-                'SELECT COUNT(*) FROM node_metadata WHERE user_raw_quote IS NOT NULL'
-            ).fetchone()[0]
+            from .dal_metadata import MetadataDAL
+            _meta_dal = MetadataDAL(self.conn)
+            with_reasoning = _meta_dal.nodes_with_field('reasoning')
+            with_quotes = _meta_dal.nodes_with_field('user_raw_quote')
 
             validations = self.conn.execute(
                 "SELECT COUNT(*) FROM nodes WHERE type='validation' AND archived=0"

@@ -307,9 +307,10 @@ class BrainRememberMixin:
                  situation: Optional[str] = None,
                  source_turn_id: Optional[str] = None,
                  evolution_status: Optional[str] = None,
-                 # Promoted metadata fields (stored in node_metadata sidecar table)
+                 # Promoted metadata fields (stored in node_metadata_kv)
                  reasoning: Optional[str] = None,
                  user_raw_quote: Optional[str] = None,
+                 anchor_raw_quote: Optional[str] = None,
                  correction_of: Optional[str] = None,
                  correction_pattern: Optional[str] = None,
                  source_context: Optional[str] = None,
@@ -427,6 +428,26 @@ class BrainRememberMixin:
             except Exception as e:
                 print(f'[brain] Situation embedding failed for {node_id}: {e}', file=sys.stderr)
 
+        # ── Multi-vector group embeddings (z-indexed architecture) ──
+        # Each node gets 2-4 vectors stored in node_enrichments.
+        # Group 1 (title) always computed. Groups 3-4 only if metadata exists.
+        # Group 2 (blend) is the primary embedding already stored above.
+        # These vectors enable z-weighted top2-avg scoring in recall:
+        # score = avg(top 2 of [weight * cosine(query, vec) for each group])
+        # See pipeline_contract.EMBEDDING_GROUPS for weights and field mappings.
+        if embedding_stored:
+            try:
+                self._compute_group_vectors(node_id, title, content, situation,
+                                            reasoning=reasoning,
+                                            user_raw_quote=user_raw_quote,
+                                            anchor_raw_quote=anchor_raw_quote,
+                                            correction_pattern=correction_pattern,
+                                            source_context=source_context,
+                                            **{k: v for k, v in (extra_fields or {}).items()
+                                               if isinstance(v, str) and v.strip()})
+            except Exception as e:
+                print(f'[brain] Group vector embedding failed for {node_id}: {e}', file=sys.stderr)
+
         # Create connections
         if connections:
             for conn in connections:
@@ -528,10 +549,17 @@ class BrainRememberMixin:
         try:
             self._store_node_metadata(
                 node_id, reasoning=reasoning, user_raw_quote=user_raw_quote,
+                anchor_raw_quote=anchor_raw_quote,
                 correction_of=correction_of, correction_pattern=correction_pattern,
                 source_context=source_context, confidence_rationale=confidence_rationale,
                 alternatives=alternatives, change_impacts=change_impacts,
-                source_attribution=source_attribution, scope=scope)
+                source_attribution=source_attribution, scope=scope,
+                **{k: v for k, v in extra_fields.items()
+                   if k not in ('type', 'title', 'content', 'keywords', 'locked',
+                                'connections', 'emotion', 'emotion_label', 'emotion_source',
+                                'project', 'confidence', 'personal', 'personal_context',
+                                'critical', 'encoding_source', 'situation', 'source_turn_id',
+                                'evolution_status')})
         except Exception as e:
             self._log_error('remember_metadata', e, 'storing metadata for %s' % node_id[:8])
 
@@ -664,6 +692,21 @@ class BrainRememberMixin:
                     embedding_updated = True
         except Exception as e:
             self._log_error("revise_embed", e, "Failed to re-embed node %s" % node_id[:8])
+
+        # Re-compute group vectors (z-indexed multi-vector architecture)
+        # Reads current metadata from KV store + situation from node_embeddings
+        # so the vectors reflect the latest state after revision.
+        if embedding_updated:
+            try:
+                sit_row = self.conn.execute(
+                    'SELECT situation_text FROM node_embeddings WHERE node_id = ?',
+                    (node_id,)).fetchone()
+                current_situation = sit_row[0] if sit_row else all_updates.get('situation')
+                self._compute_group_vectors(
+                    node_id, title, new_content, situation=current_situation)
+            except Exception as e:
+                self._log_error("revise_group_vectors", e,
+                                "Failed to re-compute group vectors for %s" % node_id[:8])
 
         # Re-index TF-IDF
         try:
@@ -843,9 +886,95 @@ class BrainRememberMixin:
             self.conn.commit()
         return {'backfilled': count, 'remaining': len(rows) - count}
 
+    def _compute_group_vectors(self, node_id: str, title: str, content: str,
+                               situation: str = None, **metadata_fields):
+        """Compute and store multi-vector group embeddings for a node.
+
+        Architecture: 4 groups defined in pipeline_contract.EMBEDDING_GROUPS.
+        - title: always computed (diagnostic pointer)
+        - blend: already stored in node_embeddings (skip here)
+        - high_meta: situation + quotes — only if fields exist
+        - other_meta: reasoning + correction_pattern + emergent — only if fields exist
+
+        Vectors stored in node_enrichments with vector_type matching the group name.
+        At recall time, recall scoring reads these and applies z-weighted top2-avg.
+        See: brain_recall.py Step 3.5 for how these are scored.
+        """
+        from . import embedder
+        from .pipeline_contract import (EMBEDDING_GROUPS, EMBEDDING_SKIP_FIELDS,
+                                        EMBEDDING_FIELD_CHAR_LIMIT)
+
+        if not embedder.is_ready():
+            return
+
+        # Build field value lookup: all available fields for this node
+        field_values = {'title': title, 'content': content}
+        if situation:
+            field_values['situation'] = situation
+        for k, v in metadata_fields.items():
+            if v and isinstance(v, str) and v.strip() and k not in EMBEDDING_SKIP_FIELDS:
+                field_values[k] = v
+
+        # Also read any KV metadata not passed as args (emergent fields)
+        try:
+            from .dal_metadata import MetadataDAL
+            dal = MetadataDAL(self.conn)
+            kv = dal.get(node_id)
+            for k, v in kv.items():
+                if k not in field_values and k not in EMBEDDING_SKIP_FIELDS and v and v.strip():
+                    field_values[k] = v
+        except Exception:
+            pass
+
+        for group_name, group_config in EMBEDDING_GROUPS.items():
+            # Skip blend — it's the primary embedding, already stored in node_embeddings
+            if group_config.get('vector_type') == '_primary':
+                continue
+
+            vector_type = group_config['vector_type']
+            group_fields = group_config.get('fields', [])
+
+            # Collect text parts for this group
+            parts = []
+            for field_name in group_fields:
+                if field_name == '_emergent':
+                    # Emergent: any KV field not explicitly in ANY group
+                    all_explicit = set()
+                    for g in EMBEDDING_GROUPS.values():
+                        all_explicit.update(f for f in g.get('fields', []) if f != '_emergent')
+                    for k, v in field_values.items():
+                        if k not in all_explicit and k not in ('title', 'content'):
+                            parts.append(v[:EMBEDDING_FIELD_CHAR_LIMIT])
+                else:
+                    val = field_values.get(field_name, '')
+                    if val:
+                        parts.append(val[:EMBEDDING_FIELD_CHAR_LIMIT])
+
+            # Skip group if no data (unless always_compute)
+            if not parts and not group_config.get('always_compute'):
+                continue
+
+            if not parts:
+                continue  # Even always_compute needs at least one field
+
+            # Embed and store
+            embed_text = ". ".join(parts)
+            blob = embedder.embed(embed_text)
+            if blob:
+                self.conn.execute(
+                    '''INSERT OR REPLACE INTO node_enrichments
+                       (id, node_id, vector_type, text, embedding, model, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                    (f'{node_id}_{vector_type}', node_id, vector_type,
+                     embed_text[:500], blob, embedder.stats.get('model_name', ''),
+                     self.now()))
+
+        self.conn.commit()
+
     def _store_node_metadata(self, node_id: str,
                              reasoning: Optional[str] = None,
                              user_raw_quote: Optional[str] = None,
+                             anchor_raw_quote: Optional[str] = None,
                              correction_of: Optional[str] = None,
                              correction_pattern: Optional[str] = None,
                              source_context: Optional[str] = None,
@@ -853,14 +982,14 @@ class BrainRememberMixin:
                              alternatives: Optional[List[Dict[str, str]]] = None,
                              change_impacts: Optional[List[Dict[str, str]]] = None,
                              source_attribution: Optional[str] = None,
-                             scope: Optional[str] = None):
+                             scope: Optional[str] = None,
+                             **extra_metadata):
         """Store promoted metadata fields for a node.
 
-        Core fields live in the nodes table. Promoted fields live in:
-        - node_metadata: reasoning, user_raw_quote, correction_of, etc.
-        - nodes: source_attribution, scope (direct columns)
+        Core fields live in the nodes table. Metadata fields live in node_metadata_kv
+        (key-value store). Extra kwargs are stored as emergent metadata keys.
 
-        Called by remember() after node creation. Idempotent via INSERT OR REPLACE.
+        Called by remember() after node creation.
         """
         # Update source_attribution and scope on nodes table (direct columns)
         updates = []
@@ -876,24 +1005,26 @@ class BrainRememberMixin:
             self.conn.execute(
                 "UPDATE nodes SET %s WHERE id = ?" % ', '.join(updates), params)
 
-        # Store metadata in sidecar table
-        has_metadata = any([reasoning, alternatives, user_raw_quote, correction_of,
-                           correction_pattern, source_context, confidence_rationale,
-                           change_impacts])
-        if has_metadata:
-            self.conn.execute(
-                '''INSERT OR REPLACE INTO node_metadata
-                   (node_id, reasoning, alternatives, user_raw_quote, correction_of,
-                    correction_pattern, source_context, confidence_rationale,
-                    last_validated, validation_count, change_impacts, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)''',
-                (node_id, reasoning,
-                 json.dumps(alternatives) if alternatives else None,
-                 user_raw_quote, correction_of, correction_pattern,
-                 source_context, confidence_rationale,
-                 self.now() if correction_of else None,
-                 json.dumps(change_impacts) if change_impacts else None,
-                 self.now()))
+        # Build metadata dict from all non-None kwargs
+        from .dal_metadata import MetadataDAL
+        meta = {}
+        if reasoning: meta['reasoning'] = reasoning
+        if user_raw_quote: meta['user_raw_quote'] = user_raw_quote
+        if anchor_raw_quote: meta['anchor_raw_quote'] = anchor_raw_quote
+        if correction_of: meta['correction_of'] = correction_of
+        if correction_pattern: meta['correction_pattern'] = correction_pattern
+        if source_context: meta['source_context'] = source_context
+        if confidence_rationale: meta['confidence_rationale'] = confidence_rationale
+        if alternatives: meta['alternatives'] = json.dumps(alternatives)
+        if change_impacts: meta['change_impacts'] = json.dumps(change_impacts)
+        # Emergent metadata — any extra kwargs flow through
+        for k, v in extra_metadata.items():
+            if v is not None and str(v).strip():
+                meta[k] = str(v)
+
+        if meta:
+            dal = MetadataDAL(self.conn)
+            dal.set_many(node_id, meta)
 
         # If this corrects another node, create edge and lower its confidence
         if correction_of:
@@ -950,12 +1081,20 @@ class BrainRememberMixin:
         # Fuzzy-match connect_to titles
         if connect_to:
             created_set = set(created_ids)
-            for title_query in connect_to:
+            for entry in connect_to:
+                # Accept both old format (string) and new format (dict with title + why)
+                if isinstance(entry, dict):
+                    title_query = entry.get('title', '')
+                    description = entry.get('why', '')
+                else:
+                    title_query = str(entry)
+                    description = ''
                 match = self.find_node_by_title(title_query, threshold=0.75)
                 if match and match.get('id') not in created_set:
                     for node_id in created_ids:
                         try:
-                            self.connect(node_id, match['id'], relation='related_to', weight=0.6)
+                            self.connect_typed(node_id, match['id'], relation='related',
+                                              weight=0.6, description=description)
                             connections_created += 1
                         except Exception:
                             pass

@@ -568,20 +568,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "revised_at": r[12], "personal": r[13], "personal_context": r[14],
                 "evolution_status": r[15], "critical": bool(r[16]) if r[16] else False,
             }
-            # Promoted fields from node_metadata
-            meta = _direct_query(
-                "SELECT reasoning, user_raw_quote, correction_of, correction_pattern, "
-                "source_context, last_validated, validation_count "
-                "FROM node_metadata WHERE node_id = ?",
+            # Promoted fields from metadata KV store
+            meta_kv = _direct_query(
+                "SELECT key, value FROM node_metadata_kv WHERE node_id = ?",
                 args=(node_id,), db_path=db)
-            if meta:
-                m = meta[0]
-                node["metadata"] = {k: v for k, v in {
-                    "reasoning": m[0], "user_raw_quote": m[1],
-                    "correction_of": m[2], "correction_pattern": m[3],
-                    "source_context": m[4], "last_validated": m[5],
-                    "validation_count": m[6],
-                }.items() if v}
+            if meta_kv:
+                node["metadata"] = {r[0]: r[1] for r in meta_kv if r[1]}
             # Situation from node_embeddings
             sit = _direct_query(
                 "SELECT situation_text FROM node_embeddings WHERE node_id = ?",

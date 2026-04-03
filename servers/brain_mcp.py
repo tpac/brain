@@ -86,8 +86,15 @@ def _generate_remember_batch_schema():
                 },
                 "connect_to": {
                     "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Existing node titles to fuzzy-match and connect all new nodes to",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string", "description": "Existing node title to fuzzy-match"},
+                            "why": {"type": "string", "description": "Why these are connected — what the relationship means"}
+                        },
+                        "required": ["title", "why"]
+                    },
+                    "description": "Existing node titles to connect to, with description of why they're connected.",
                 },
                 "auto_connect": {
                     "type": "boolean",

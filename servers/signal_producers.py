@@ -434,25 +434,25 @@ def deep_integrity_audit(brain):
                     "message": "co_accessed edges are %.0f%% of all edges — organic but noisy" % pct,
                 })
 
-        # 7. Metadata sparseness
-        meta_total = brain.conn.execute("SELECT COUNT(*) FROM node_metadata").fetchone()[0]
+        # 7. Metadata sparseness (via KV DAL)
+        from .dal_metadata import MetadataDAL
+        _meta_dal = MetadataDAL(brain.conn)
+        meta_total = _meta_dal.total_nodes()
         if meta_total > 0:
             for field in ['reasoning', 'user_raw_quote', 'source_context']:
-                filled = brain.conn.execute(
-                    "SELECT COUNT(*) FROM node_metadata WHERE %s IS NOT NULL AND %s != ''" % (field, field)
-                ).fetchone()[0]
+                filled = _meta_dal.nodes_with_field(field)
                 pct = filled / meta_total * 100
                 if pct < 30:
                     findings.append({
                         "type": "sparse_metadata",
                         "severity": "low",
-                        "message": "node_metadata.%s: only %.0f%% filled (%d of %d)" % (field, pct, filled, meta_total),
+                        "message": "metadata.%s: only %.0f%% filled (%d of %d)" % (field, pct, filled, meta_total),
                     })
         else:
             findings.append({
                 "type": "no_metadata",
                 "severity": "medium",
-                "message": "node_metadata table is empty — no reasoning, quotes, or corrections tracked",
+                "message": "No metadata in KV store — no reasoning, quotes, or corrections tracked",
             })
 
     except Exception as e:
