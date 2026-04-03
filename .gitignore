@@ -69,5 +69,8 @@ exports/
 # Research outputs — large (26MB+), not source code
 references/research-agent-outputs/
 
+# Conversation logs — our history, not source code (159MB)
+conversations/
+
 # Claude Code temp files
 /tmp/
