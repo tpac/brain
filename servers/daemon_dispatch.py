@@ -379,6 +379,43 @@ def _handle_revise(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
+def _handle_revise_batch(brain, args, graph_changes):
+    """Revise multiple nodes in one call."""
+    from .contract import validate_field
+
+    revisions = args.get("revisions", [])
+    if not revisions:
+        return {"ok": False, "error": "revisions array is required"}
+
+    # Inherit encoding_source from dispatch wrapper
+    top_encoding_source = args.get("encoding_source")
+
+    # Validate each revision
+    for i, spec in enumerate(revisions):
+        if not spec.get("node_id"):
+            return {"ok": False, "error": "revisions[%d]: node_id required" % i}
+        if not spec.get("reason"):
+            return {"ok": False, "error": "revisions[%d]: reason required" % i}
+        for field, value in spec.items():
+            if field not in ("node_id", "reason"):
+                ok, err = validate_field(field, value)
+                if not ok:
+                    return {"ok": False, "error": "revisions[%d].%s: %s" % (i, field, err)}
+
+    # Resolve short IDs
+    resolved = []
+    for spec in revisions:
+        r = dict(spec)
+        r['node_id'] = _resolve_id(brain, r['node_id'])
+        if top_encoding_source and 'encoding_source' not in r:
+            r['encoding_source'] = top_encoding_source
+        resolved.append(r)
+
+    result = brain.revise_batch(resolved)
+    graph_changes.append("REVISE_BATCH: %d revised" % result.get("revised", 0))
+    return {"ok": True, "result": result}
+
+
 def _handle_remember_lesson(brain, args, graph_changes):
     result = brain.remember_lesson(
         title=args.get("title", ""),
@@ -669,6 +706,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "remember":              CmdEntry(_handle_remember,             is_write=True, marks_dirty=True),
     "remember_batch":        CmdEntry(_handle_remember_batch,      is_write=True, marks_dirty=True),
     "revise":                CmdEntry(_handle_revise,               is_write=True, marks_dirty=True),
+    "revise_batch":          CmdEntry(_handle_revise_batch,         is_write=True, marks_dirty=True),
     # Specialized remember tools — kept for interactive MCP use (Anchor calls these).
     # The encoding agent uses generic remember() with promoted fields instead.
     "remember_lesson":       CmdEntry(_handle_remember_lesson,     is_write=True, marks_dirty=True),

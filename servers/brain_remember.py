@@ -1142,6 +1142,59 @@ class BrainRememberMixin:
             'connections_created': connections_created,
         }
 
+    def revise_batch(self, revisions: List[Dict]) -> Dict[str, Any]:
+        """Revise multiple nodes in one call. Each revision uses the same contract as revise().
+
+        Args:
+            revisions: List of dicts, each with:
+                - node_id (required): ID of node to revise
+                - reason (required): why this revision
+                - content: new content (replaces old, history saved)
+                - situation, reasoning, user_raw_quote, etc.: any revisable field
+
+        Example:
+            revise_batch(revisions=[
+                {"node_id": "abc123", "content": "Judge now runs in daemon", "reason": "architecture changed"},
+                {"node_id": "def456", "situation": "When debugging daemon connectivity", "reason": "adding situation"},
+                {"node_id": "ghi789", "reasoning": "updated — encoder uses node catalog", "reason": "encoder v3.2"},
+            ])
+
+        Returns:
+            {revised: count, results: [{node_id, status, error?}]}
+        """
+        results = []
+        revised_count = 0
+
+        for spec in revisions:
+            node_id = spec.get('node_id')
+            if not node_id:
+                results.append({'error': 'missing node_id', 'status': 'skipped'})
+                continue
+
+            reason = spec.get('reason', '')
+            content = spec.get('content')
+
+            # Extract all fields except node_id/reason/content for updates
+            updates = {k: v for k, v in spec.items()
+                       if k not in ('node_id', 'reason', 'content') and v is not None}
+
+            try:
+                result = self.revise(node_id=node_id, content=content,
+                                     reason=reason, updates=updates)
+                if result.get('error'):
+                    results.append({'node_id': node_id, 'status': 'error', 'error': result['error']})
+                else:
+                    results.append({'node_id': node_id, 'status': 'revised'})
+                    revised_count += 1
+            except Exception as e:
+                self._log_error('revise_batch', e, 'revising %s' % node_id[:8])
+                results.append({'node_id': node_id, 'status': 'error', 'error': str(e)})
+
+        return {
+            'revised': revised_count,
+            'results': results,
+        }
+
     def validate_node(self, node_id: str, context: Optional[str] = None) -> Dict[str, Any]:
         """Mark a node as validated — its knowledge has been confirmed as still accurate.
 

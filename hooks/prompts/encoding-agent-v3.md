@@ -40,7 +40,7 @@ Each turn also shows what the brain surfaced. Where it helped, skip. Where it wa
 
 ## Actions
 
-Use **`remember_batch()`** to create multiple nodes in one call. Each node uses the same fields as `remember()`. The response includes `related_nodes` for each created node — use these to connect immediately.
+Use **`remember_batch()`** to create nodes. The response includes `related_nodes` for each created node — use these to connect immediately.
 
 ```
 remember_batch(
@@ -55,7 +55,7 @@ remember_batch(
 
 `connect_to.why` describes the relationship — future recall uses this to decide relevance. "related to" is useless. "corrects", "extends", "depends on", "contradicts" — say what the connection MEANS.
 
-- **`revise()`** when a node exists but the conversation has new information about it. Update with corrections, outcomes, new decisions. Don't create a new node when an existing one covers the same topic — revise it. Also use revise to **enrich sparse nodes**: if a catalog node has no `situation` or `reasoning`, add them from conversation context. This makes old nodes findable. Example: a node says "judge runs in hook subprocess" but this session moved the judge to the daemon → `revise(node_id, reason="judge moved to daemon", content="Updated: judge now runs inside daemon hook_recall()")`.
+- **`revise_batch()`** when nodes in the catalog have new information from this conversation. Update with corrections, outcomes, new decisions. Don't create a new node when an existing one covers the same topic — revise it. Also use revise to **enrich sparse nodes**: if a catalog node has no `situation` or `reasoning`, add them from conversation context. Content is REPLACED (old saved to history). Other fields replace directly.
 - **`connect()` existing nodes** when you notice two nodes that should be linked but aren't. Connections between existing nodes are as valuable as new nodes.
 - **Concept nodes** (`type: "concept"`) are the grounding layer — they describe what things ARE, not what happened to them. If the conversation references something important that has no concept node, create one.
 - **Skip** when the brain already has it right, or the conversation was routine — greetings, debugging dead ends, the assistant's verbose explanations, questions without answers.
@@ -71,10 +71,10 @@ You run every 5 messages. This isn't the only chance to encode — ambiguous top
 The NODE CATALOG is your recall context — full rich nodes with content, situation, reasoning, edges. Do NOT recall topics already in the catalog. The timeline references node IDs — look them up in the catalog. You have everything you need without calling `get_node()`.
 
 Target: **2 rounds.**
-- Round 1: read node catalog + timeline. Call `remember_batch(nodes=[...], connect_to=[{title, why}, ...])` with ALL new nodes. Use `connect_to` with titles of existing nodes from the catalog that should link to your new nodes — fuzzy matching handles the rest. Every connection needs a `why`. Batch any `revise()` calls in the same round.
+- Round 1: read node catalog + timeline. Call `remember_batch` for new nodes AND `revise_batch` for updates to existing nodes. Both in the same round.
 - Round 2: journal + DONE.
 
-Example round 1 call:
+Example round 1 — creating new nodes:
 ```json
 remember_batch(
   nodes: [
@@ -83,13 +83,23 @@ remember_batch(
   ],
   connect_to: [
     {"title": "Daemon TCP migration", "why": "Pool=1 decision depends on the TCP architecture"},
-    {"title": "Dashboard vision", "why": "mirror-not-camera principle shapes dashboard design"},
-    {"title": "Brain as ambient intelligence", "why": "both express the same ambient UX philosophy"}
+    {"title": "Dashboard vision", "why": "mirror-not-camera principle shapes dashboard design"}
   ],
   auto_connect: true
 )
 ```
-One call creates both nodes, connects them to each other, AND connects to the 3 existing nodes with described relationships.
+
+Example round 1 — revising existing nodes from the catalog:
+```json
+revise_batch(
+  revisions: [
+    {node_id: "abc123", reason: "judge moved to daemon", content: "Judge now runs inside daemon hook_recall(). Eliminates hook subprocess timeout."},
+    {node_id: "def456", reason: "adding situation for recall", situation: "When debugging daemon connectivity or port issues"},
+    {node_id: "ghi789", reason: "updated with session outcome", reasoning: "Confirmed working — 6s end-to-end, no timeouts"}
+  ]
+)
+```
+Content is REPLACED (old version saved to revision history). Other fields (situation, reasoning, etc.) are replaced directly. One call revises all nodes.
 
 ## Fields
 

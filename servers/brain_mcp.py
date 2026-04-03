@@ -128,12 +128,45 @@ def _generate_revise_schema():
 
     return {
         "name": "revise",
-        "description": "Update any field(s) on an existing brain node. Content is appended with revision history. All other fields are replaced.",
+        "description": "Update any field(s) on an existing brain node. Content is REPLACED (old saved to revision history). All other fields replaced.",
         "inputSchema": {
             "type": "object",
             "required": ["node_id", "reason"],
             "properties": properties,
         }
+    }
+
+
+def _build_revise_batch_schema():
+    """Generate the 'revise_batch' MCP tool schema."""
+    return {
+        "name": "revise_batch",
+        "description": "Revise multiple brain nodes in one call. Each revision can update content (replaced, history saved), metadata (reasoning, situation, etc.), or any revisable field. Use this instead of multiple revise() calls.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["revisions"],
+            "properties": {
+                "revisions": {
+                    "type": "array",
+                    "description": "List of revisions. Each must have node_id and reason, plus any fields to update.",
+                    "items": {
+                        "type": "object",
+                        "required": ["node_id", "reason"],
+                        "properties": {
+                            "node_id": {"type": "string", "description": "Node ID to revise"},
+                            "reason": {"type": "string", "description": "Why this revision"},
+                            "content": {"type": "string", "description": "New content (replaces old, history saved)"},
+                            "situation": {"type": "string", "description": "When is this relevant (gets own embedding)"},
+                            "reasoning": {"type": "string", "description": "Why this was encoded"},
+                            "user_raw_quote": {"type": "string", "description": "Operator's exact words"},
+                            "anchor_raw_quote": {"type": "string", "description": "Anchor's exact words"},
+                            "keywords": {"type": "string", "description": "Space-separated keywords"},
+                            "confidence": {"type": "number", "description": "0-1 confidence score"},
+                        },
+                    },
+                },
+            },
+        },
     }
 
 
@@ -207,6 +240,7 @@ TOOLS = [
          "relation": {"type": "string", "description": "Edge relation type", "default": "related_to"},
          "weight": {"type": "number", "description": "Edge weight 0.0-1.0", "default": 0.5}}}},
     _generate_revise_schema(),
+    _build_revise_batch_schema(),
     {"name": "enrich",
      "description": "Store V5 enrichment vectors for a node (after filling in the enrichment_prompt from remember()). Pass the generated question, anchor phrase, bridge sentence, and/or keywords. Each is embedded and stored for improved recall.",
      "inputSchema": {"type": "object", "required": ["node_id"], "properties": {
