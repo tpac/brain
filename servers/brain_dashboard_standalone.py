@@ -1080,6 +1080,7 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: 'SF Mono', 'Fira Code',
 .recall-title:hover { background: #2a2a4a; color: #ccc; }
 .recall-title.used { border-color: #33ff88; color: #7eff7e; }
 .recall-title.more { background: none; border: none; color: #555; cursor: default; font-style: italic; }
+.enc-prompt-body pre { background: #0a0a12; border: 1px solid #2a1a3a; border-left: 3px solid #aa66ff; border-radius: 4px; padding: 8px 12px; color: #b8b8d8; font-size: 11px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; max-height: 500px; overflow-y: auto; margin: 4px 8px 8px; }
 .recall-judge-output pre { background: #0d1117; border: 1px solid #1a2a1a; border-left: 3px solid #33ff88; border-radius: 4px; padding: 8px 12px; color: #b8d8b8; font-size: 11px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; max-height: 300px; overflow-y: auto; margin: 4px 8px; }
 .hook-body pre { background: #0a0a12; border: 1px solid #1a1a2a; border-radius: 4px; padding: 10px; color: #bbb; font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-height: 500px; overflow-y: auto; }
 .feed-toggle { display: flex; gap: 0; padding: 0 8px; margin-top: 4px; }
@@ -1552,6 +1553,11 @@ async function loadEncodingActivity() {
       return;
     }
 
+    // Only re-render on first load or if run count changed
+    const newCount = runsD.runs.length;
+    const oldCount = container.dataset.runCount || '0';
+    if (encodingLoaded && String(newCount) === oldCount) return;
+    container.dataset.runCount = String(newCount);
     if (!encodingLoaded) container.innerHTML = '';
     encodingLoaded = true;
 
@@ -1565,33 +1571,35 @@ async function loadEncodingActivity() {
       const nodeCount = run.nodes ? run.nodes.length : 0;
       const edgeCount = run.edges ? run.edges.length : 0;
 
-      // Header
+      // Header — click toggles actions list
       let html = '<div class="hook-header" onclick="toggleHookBody(this)">' +
         '<span class="hook-badge" style="background:#aa66ff;color:#000">ENCODE</span>' +
         '<span class="hook-time">' + t + '</span>' +
         '<span class="hook-size">' + nodeCount + ' nodes, ' + edgeCount + ' edges</span>' +
+        '<button class="hook-details-btn" style="margin-left:auto" onclick="event.stopPropagation();toggleEncPrompt(this.parentElement.parentElement)">Show Prompt</button>' +
       '</div>';
 
-      // Actions summary (always visible)
-      html += '<div style="padding:4px 12px">';
+      // Actions list (hidden by default, toggled by header click)
+      html += '<div class="hook-body" style="padding:4px 12px">';
       for (const n of (run.nodes || [])) {
         html += '<div class="enc-entry created" style="margin:2px 0;padding:4px 8px">' +
           '<span class="enc-kind created">CREATED</span> ' +
           '<span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ' +
           '<span class="enc-title">' + escapeHtml(n.title || '') + '</span></div>';
       }
-      for (const e of (run.edges || [])) {
+      for (const e of (run.edges || []).slice(0, 8)) {
         html += '<div class="enc-entry connected" style="margin:2px 0;padding:4px 8px">' +
           '<span class="enc-kind connected">CONNECTED</span> ' +
           escapeHtml(e.source_title || '') + ' <span style="color:#aa66ff">—' + (e.relation||'') + '→</span> ' +
           escapeHtml(e.target_title || '') + '</div>';
       }
+      if ((run.edges || []).length > 8) {
+        html += '<div style="color:#555;font-size:10px;padding:2px 8px">+' + ((run.edges || []).length - 8) + ' more edges</div>';
+      }
       html += '</div>';
 
-      // Full prompt context (expandable)
-      html += '<div class="hook-body">';
-      html += '<button class="hook-details-btn" onclick="toggleDetails(this)">Full Prompt</button>';
-      html += '<div class="hook-details"><pre>';
+      // Full prompt (separate expandable, toggled by Show Prompt button)
+      html += '<div class="enc-prompt-body" style="display:none"><pre>';
 
       // Reconstructed prompt: messages + judge output
       if (run.session_context) {
@@ -1609,12 +1617,25 @@ async function loadEncodingActivity() {
         }
         html += '\\n';
       }
-      html += '</pre></div></div>';
+      html += '</pre></div>';
 
       div.innerHTML = html;
       container.appendChild(div);
     }
   } catch(e) { console.error('loadEncodingActivity error:', e); }
+}
+
+function toggleEncPrompt(entry) {
+  var prompt = entry.querySelector('.enc-prompt-body');
+  if (!prompt) return;
+  var btn = entry.querySelector('.hook-details-btn');
+  if (prompt.style.display === 'none') {
+    prompt.style.display = 'block';
+    if (btn) btn.textContent = 'Hide Prompt';
+  } else {
+    prompt.style.display = 'none';
+    if (btn) btn.textContent = 'Show Prompt';
+  }
 }
 
 setInterval(() => { if (activeFeed === 'encoding') loadEncodingActivity(); }, 5000);

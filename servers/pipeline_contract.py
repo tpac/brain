@@ -156,7 +156,7 @@ DISTILLER = {
 # Encoding agent v3 (Sonnet) — timeline with pre-attached recall
 ENCODING_AGENT = {
     'message_content_limit': 2000,    # per message from message_stream
-    'message_display_limit': 800,     # per message in formatted timeline (increased for v3)
+    'message_display_limit': 1200,    # per message in formatted timeline (v3.1: increased so encoder sees what Anchor implemented)
     'max_messages': 10,               # last N exchanges
     'recall_candidates_limit': 5,     # candidates per turn (pre-attached)
     'max_rounds': 5,                  # Sonnet API round limit (target: 2-3)
@@ -169,7 +169,8 @@ ENCODING_AGENT = {
     'recall_on_create_query_limit': 200,    # chars of content used in recall query
     'journal_entry_limit': 2000,      # max chars per journal entry
     'max_tokens': 4096,               # Sonnet API output cap
-    'timeline_snippet_limit': 500,    # chars of recalled content shown in timeline
+    'timeline_snippet_limit': 500,    # chars of recalled content shown in timeline (fallback only)
+    'judge_output_limit': 2000,       # chars of judge output per turn in encoder timeline
 }
 
 # MCP tool output (direct recall by Claude)

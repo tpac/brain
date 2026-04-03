@@ -237,8 +237,10 @@ def _build_user_content(brain, messages, counter, session_id):
             # Pre-attached recall: prefer judge_output (curated) over recalled_raw (noisy)
             judge_output = m.get("judge_output")
             if judge_output:
-                # Exact additionalContext Claude received — judge-selected + enriched + graph neighbors
-                timeline += "BRAIN SURFACED (judge-selected):\n%s\n" % judge_output
+                # Judge-selected nodes — truncated to keep prompt manageable
+                # Encoder needs: which nodes, why relevant, type. Not full content of each.
+                _judge_limit = ENCODING_AGENT.get('judge_output_limit', 2000)
+                timeline += "BRAIN SURFACED (judge-selected):\n%s\n" % judge_output[:_judge_limit]
             else:
                 # Fallback: raw candidates (judge didn't complete or old data)
                 recalled_raw = m.get("recalled_raw")
