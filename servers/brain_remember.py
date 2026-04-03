@@ -634,11 +634,27 @@ class BrainRememberMixin:
         old_content = old_content or ''
         ts = self.now()
 
-        # Content is special — append with revision divider
+        # Content: REPLACE with new version. Old version saved to revision_history.
+        # The node always reflects current truth. History lives in metadata, not embeddings.
         new_content = old_content
         if 'content' in all_updates:
-            divider = "\n\n--- Revised %s: %s ---\n" % (ts[:10], reason)
-            new_content = old_content + divider + all_updates.pop('content')
+            new_content = all_updates.pop('content')
+            # Save old content to revision log (metadata KV)
+            if old_content and old_content != new_content:
+                import json as _json
+                try:
+                    existing_history = self.conn.execute(
+                        "SELECT value FROM node_metadata_kv WHERE node_id = ? AND key = 'revision_history'",
+                        (node_id,)).fetchone()
+                    history = _json.loads(existing_history[0]) if existing_history and existing_history[0] else []
+                    history.append({"timestamp": ts, "reason": reason, "old_content": old_content[:2000]})
+                    # Keep last 5 revisions
+                    history = history[-5:]
+                    self.conn.execute(
+                        "INSERT OR REPLACE INTO node_metadata_kv (node_id, key, value) VALUES (?, 'revision_history', ?)",
+                        (node_id, _json.dumps(history)))
+                except Exception as _e:
+                    self._log_error('revision_history', _e, 'saving revision history for %s' % node_id[:8])
 
         # Build SQL UPDATE for all fields
         # Always update: content, content_summary, updated_at, revised_at

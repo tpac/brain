@@ -14,7 +14,7 @@ Encode at the level that enables surprise. The specific fix is useful today — 
 ## Node Structure
 
 The available fields are appended below (from the contract). Key things to know:
-- `content` is **appended** on revise, not replaced — add what's new, don't rewrite
+- `content` is **replaced** on revise — write the corrected/updated version. Old content is saved to revision history automatically.
 - `situation` gets its **own embedding** — it directly improves recall matching
 - `correction_of` creates a structural link, not just a label
 

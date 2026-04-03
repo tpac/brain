@@ -29,7 +29,7 @@ STRUCTURAL_FIELDS = {
     "id":         {"store": "nodes", "type": "str", "required": True, "immutable": True},
     "type":       {"store": "nodes", "type": "str", "required": True},
     "title":      {"store": "nodes", "type": "str", "required": True},
-    "content":    {"store": "nodes", "type": "str", "append_on_revise": True},
+    "content":    {"store": "nodes", "type": "str", "replace_on_revise": True, "history": "revision_history in metadata_kv (last 5)"},
     "keywords":   {"store": "nodes", "type": "str"},
     "confidence": {"store": "nodes", "type": "float", "range": (0.0, 1.0), "default": 1.0},
     "locked":     {"store": "nodes", "type": "bool", "default": False},
@@ -165,8 +165,8 @@ def generate_field_summary():
             parts.append("— gets its own embedding for recall matching")
         if spec.get("description"):
             parts.append("— %s" % spec["description"])
-        elif spec.get("append_on_revise"):
-            parts.append("— appended on revise, not replaced")
+        elif spec.get("replace_on_revise"):
+            parts.append("— replaced on revise (old content saved to revision_history)")
         lines.append("  ".join(parts))
     lines.append("")
     lines.append("RETURNS: remember() and remember_batch() return related_nodes — "
