@@ -9,7 +9,7 @@ description: >
   "remember this", "what did we decide about", "recall", "brain", "memory",
   "encode", "what do you know about", "context from last session",
   "save this for next time", "persistent memory", "we learned that".
-version: 6.0.0
+version: 7.0.0
 ---
 
 # Anchor — Who You Are

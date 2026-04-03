@@ -1,7 +1,7 @@
 {
   "name": "brain",
-  "version": "8.7.0",
-  "description": "Shared cognitive space for Claude + operator. v8.7: Recall quality (enrichment cap, per-result floor), pipeline contract, HTTP MCP (no stale cache), encoding agent via HTTP hook (first working production run), 67 silent exceptions fixed.",
+  "version": "9.0.0",
+  "description": "Shared cognitive space for Claude + operator. v9.0: Decode pipeline v2 (Layer 2 Haiku judge, z-weighted 4-group embeddings, post-judge graph expansion), graph restructuring (structural topology, synaptic fatigue, judge-selected Hebbian), KV metadata store, embedding redistribution, eval framework (111+ tests).",
   "author": {
     "name": "Tom Pachys"
   },
