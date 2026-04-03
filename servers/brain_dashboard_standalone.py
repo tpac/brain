@@ -1578,18 +1578,20 @@ async function loadEncodingActivity() {
       return;
     }
 
-    // Only re-render on first load or if run count changed
-    const newCount = runsD.runs.length;
-    const oldCount = container.dataset.runCount || '0';
-    if (encodingLoaded && String(newCount) === oldCount) return;
+    // Only re-render if content changed (run count or total nodes)
+    const totalNodes = runsD.runs.reduce((s, r) => s + (r.nodes ? r.nodes.length : 0), 0);
+    const fingerprint = runsD.runs.length + ':' + totalNodes;
+    const oldFingerprint = container.dataset.fingerprint || '';
+    if (encodingLoaded && fingerprint === oldFingerprint) return;
+    const oldRunCount = parseInt((oldFingerprint || '0').split(':')[0]) || 0;
     // Flash encoding badge when new run detected
-    if (encodingLoaded && newCount > parseInt(oldCount)) {
+    if (encodingLoaded && runsD.runs.length > oldRunCount) {
       const badge = document.getElementById('enc-badge');
       badge.style.display = '';
-      badge.textContent = '+' + (newCount - parseInt(oldCount));
+      badge.textContent = '+' + (runsD.runs.length - oldRunCount);
       setTimeout(() => { if (activeFeed !== 'encoding') badge.style.display = ''; }, 5000);
     }
-    container.dataset.runCount = String(newCount);
+    container.dataset.fingerprint = fingerprint;
     if (!encodingLoaded) container.innerHTML = '';
     encodingLoaded = true;
 
