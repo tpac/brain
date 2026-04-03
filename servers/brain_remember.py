@@ -661,15 +661,19 @@ class BrainRememberMixin:
         set_parts = ['content = ?', 'content_summary = ?', 'updated_at = ?', 'revised_at = ?']
         params = [new_content, self._generate_summary(title, new_content), ts, ts]
 
-        # Safe fields that can be updated via revise
-        SAFE_FIELDS = {
-            'title', 'type', 'keywords', 'locked', 'confidence', 'emotion',
+        # Fields that live on the nodes table (updatable via SQL)
+        NODES_TABLE_FIELDS = {
+            'title', 'type', 'keywords', 'confidence', 'emotion',
             'emotion_label', 'project', 'personal', 'personal_context',
-            'critical', 'evolution_status',
+            'critical', 'evolution_status', 'encoding_source',
         }
+        # Immutable — never revisable
+        IMMUTABLE = {'id', 'created_at', 'locked'}
 
         for field, value in all_updates.items():
-            if field in SAFE_FIELDS:
+            if field in IMMUTABLE:
+                continue
+            if field in NODES_TABLE_FIELDS:
                 set_parts.append('%s = ?' % field)
                 params.append(value)
                 if field == 'title':
@@ -679,6 +683,19 @@ class BrainRememberMixin:
         self.conn.execute(
             'UPDATE nodes SET %s WHERE id = ?' % ', '.join(set_parts), params)
         self.conn.commit()
+
+        # Handle metadata KV fields (reasoning, user_raw_quote, anchor_raw_quote, etc.)
+        from .contract import PROMOTED_FIELDS
+        for field, value in all_updates.items():
+            if field in PROMOTED_FIELDS and PROMOTED_FIELDS[field].get('store') == 'metadata_kv':
+                try:
+                    self.conn.execute(
+                        "INSERT OR REPLACE INTO node_metadata_kv (node_id, key, value) VALUES (?, ?, ?)",
+                        (node_id, field, str(value) if value else None))
+                    self.conn.commit()
+                except Exception as _e:
+                    self._log_error('revise_metadata_kv', _e,
+                                    'updating %s for %s' % (field, node_id[:8]))
 
         # Handle situation embedding separately (lives in node_embeddings, not nodes)
         if 'situation' in all_updates:
