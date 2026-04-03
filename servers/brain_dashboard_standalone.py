@@ -1269,6 +1269,14 @@ canvas { width: 100%; height: 100%; }
       <option value="24" selected>24h</option>
       <option value="168">7d</option>
     </select>
+    <select id="error-source" onchange="filterErrors()" style="background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px">
+      <option value="">All sources</option>
+      <option value="brain">Brain</option>
+      <option value="hook">Hook</option>
+      <option value="daemon">Daemon</option>
+      <option value="telemetry">Telemetry</option>
+      <option value="conflict">Conflict</option>
+    </select>
     <button onclick="loadErrors()" style="background:#1a1a2a;color:#7eb8ff;border:1px solid #3a3a5a;padding:3px 12px;border-radius:4px;cursor:pointer">Refresh</button>
     <span id="error-count" style="color:#666;font-size:11px;margin-left:auto"></span>
   </div>
@@ -1781,6 +1789,7 @@ async function loadErrors() {
     feed.innerHTML = '';
     for (const e of d.errors) {
       const div = document.createElement('div');
+      div.dataset.source = e.source || '';
       const levelColor = {critical:'#ff4444',error:'#ff6644',warning:'#ffaa33',info:'#4a9eff'}[e.level] || '#888';
       div.style.cssText = 'padding:8px 12px;margin:4px 0;background:#111118;border-radius:6px;border-left:3px solid ' + levelColor + ';font-size:12px';
       const t = localTime(e.timestamp);
@@ -1793,6 +1802,7 @@ async function loadErrors() {
         '<div style="color:#555;font-size:10px;margin-top:2px">' + t + '</div>';
       feed.appendChild(div);
     }
+    filterErrors();
   } catch(e) {
     document.getElementById('errors-feed').innerHTML = '<div style="color:#f66;padding:20px">Failed to load errors: ' + e + '</div>';
   }
@@ -1863,19 +1873,38 @@ setInterval(() => {
   if (statusTab && statusTab.classList.contains('active')) loadSystemStatus();
 }, 5000);
 
-// Auto-refresh errors every 10s — update badge even when not on tab
-let lastErrorCount = 0;
+function filterErrors() {
+  const val = document.getElementById('error-source').value;
+  document.querySelectorAll('#errors-feed > div').forEach(el => {
+    if (!val) { el.style.display = ''; return; }
+    el.style.display = (el.dataset.source || '') === val ? '' : 'none';
+  });
+}
+
+// Auto-refresh errors every 10s — badge only shows NEW errors
+let lastSeenErrorCount = -1;
 setInterval(async () => {
   const errTab = document.getElementById('tab-errors');
-  if (errTab && errTab.classList.contains('active')) { loadErrors(); return; }
-  // Background check — just get count for badge
+  if (errTab && errTab.classList.contains('active')) {
+    loadErrors();
+    // When viewing the tab, mark current count as seen
+    try {
+      const r2 = await fetch('/api/errors?hours=1&limit=1');
+      const d2 = await r2.json();
+      lastSeenErrorCount = d2.count;
+      document.getElementById('err-badge').style.display = 'none';
+    } catch(e) {}
+    return;
+  }
+  // Background check — only badge if count increased
   try {
     const r = await fetch('/api/errors?hours=1&limit=1');
     const d = await r.json();
     const badge = document.getElementById('err-badge');
-    if (d.count > 0) {
+    if (lastSeenErrorCount < 0) { lastSeenErrorCount = d.count; }
+    if (d.count > lastSeenErrorCount) {
       badge.style.display = '';
-      badge.textContent = d.count;
+      badge.textContent = d.count - lastSeenErrorCount;
     } else {
       badge.style.display = 'none';
     }
