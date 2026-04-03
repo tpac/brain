@@ -4,39 +4,78 @@ This is the development repo for the brain plugin. CLAUDE.md is for developing t
 
 ## Architecture
 
+Two paths to the brain, both through the daemon:
+
 ```
-Claude Code → MCP server (brain_mcp.py, stdio) → daemon (TCP localhost) → Brain + embedder
+MCP tools (Anchor direct):  Claude Code → brain_mcp.py → daemon (TCP) → brain.recall(source='mcp')
+Hook pipeline (per prompt):  Claude Code → hook scripts → daemon (TCP) → brain.recall(source='hook') + Haiku judge
 ```
 
-The daemon listens on `127.0.0.1:47200+uid%100`. TCP — no Unix sockets. Port released on crash, no stale files.
+The daemon is the single gateway. It holds: Brain object, embedder, anthropic client (for Haiku judge).
+Listens on `127.0.0.1:47200+uid%100`. TCP — no Unix sockets.
 
-DB resolved automatically: `BRAIN_DB_DIR` env var → Cowork mounts → `$HOME/AgentsContext/brain/`
+DB resolved automatically: `BRAIN_DB_DIR` env var → `$HOME/AgentsContext/brain/`
+
+### Decode pipeline (per user prompt)
+```
+UserPromptSubmit hook fires
+  → pre-response-recall.sh → pre_response_recall.py (thin client)
+    → daemon: hook_recall()
+      ├─ Layer 1: brain.recall() → 25 candidates (236ms)
+      │   └─ logs to recall_log (source, query, titles, snippets)
+      ├─ Layer 2: Haiku judge → selects 5-8 relevant nodes (3-5s)
+      │   └─ writes /tmp/brain-judge-selected.json
+      │   └─ writes /tmp/brain-judge-result-{id}.json (for dashboard)
+      ├─ Layer 3: graph expansion from judge-selected seeds
+      └─ returns formatted additionalContext
+    → thin client prints {"additionalContext": "Brain recalled N memories:..."}
+  → Claude receives context and responds
+```
+
+### Encode pipeline (every 5th Stop)
+```
+Stop hook fires
+  ├─ store_exchange() → message_stream (user msg + assistant msg + judge-selected IDs + judge_output)
+  ├─ Hebbian strengthening (co_accessed edges between judge-selected nodes)
+  └─ Every 5th stop → encoding agent (Sonnet, background thread)
+      ├─ Reads: message_stream messages + judge_output per turn
+      ├─ Node catalog: judge-surfaced nodes with full metadata, deduplicated
+      ├─ Timeline: conversation turns with node ID references
+      └─ Creates/revises/connects nodes (encoding_source='encoder:sonnet')
+```
+
+### encoding_source convention
+Who created a node. Format: `category:process`.
+- `anchor` — Anchor direct via MCP (only source that can lock nodes)
+- `encoder:sonnet` — encoding agent
+- `idle:dreams` / `idle:redistribution` — background processes
+- `hook:compaction` — hook lifecycle markers
 
 ## Hook Pipeline
 
-13 hooks fire automatically — do NOT manually run boot scripts:
+Hooks fire automatically — do NOT manually run boot scripts:
 - `SessionStart` → boots brain + daemon, prints context + consciousness
-- `UserPromptSubmit` → recalls relevant memories before responding
+- `UserPromptSubmit` → thin client calls daemon for recall + judge → returns additionalContext
 - `PreToolUse(Edit|Write)` → surfaces rules before file edits
+- `PreToolUse(Bash)` → safety check for destructive commands
 - `PreCompact` → saves brain before context loss
 - `PostCompact` → re-boots context after compaction
-- `Stop` → precision evaluation + auto-encode signals + stores conversation to message stream
+- `Stop` → stores exchange to message_stream (with judge-selected IDs + judge_output), Hebbian strengthening, gates encoding agent (every 5th stop)
 - `SessionEnd` → session synthesis + save
 
-`post-response-track` fires ONLY on `Stop` (not UserPromptSubmit). It needs Claude's response to evaluate precision.
+The UserPromptSubmit hook is a thin wrapper — all logic (recall, judge, graph expansion) runs in the daemon.
 
 ## Benchmark-First Rule
 
 Before changing sacred systems, benchmark FIRST:
 - Embedding: `servers/embedder.py`
 - Recall: `servers/brain_recall.py`
-- Encoding: `servers/brain_remember.py`
-- Precision: `servers/brain_precision.py`
+- Encoding: `servers/brain_remember.py` + `servers/encoding_agent.py`
 - Hook output: `servers/brain_voice.py`
 
-**Continuity Benchmark** (`eval/encode_eval_v2.py`): tests encoding quality across model versions. Runs Monday/Thursday. Baseline: 100%±0% aha on all 3 segments. Winner: `identity_examples` variant with live brain access.
+**Encoding Eval** (`eval/encoding_prompt_eval_v32.py`): A/B comparison of encoder prompt formats. Uses `IsolatedBrain` — fully isolated from production. Measures: prompt size, tokens, rounds, time, actions, field richness.
 
-**Decode Funnel** (`eval/decode_funnel.py`): tests recall quality — 50 queries, 5 categories. Baseline after recency boost: 51% top-3, 69% top-8. Run before ANY recall change.
+**Decode Funnel** (`eval/decode_funnel.py`): tests recall quality — 50 queries, 5 categories. Run before ANY recall change.
 
 ## Test Integrity Rule
 
@@ -57,15 +96,17 @@ Encoding and decoding (recall) are two halves of the same system. If you add a f
 
 ## Active Mechanisms (recall what these are before modifying recall)
 
-**Synaptic fatigue** — `brain_recall.py` STEP 3. Nodes recalled repeatedly in a session get cosine dampened. Rate scales with structural degree (hubs fatigue faster). Resets between sessions. Brain node: `4b35293c`.
+**Synaptic fatigue** — `brain_recall.py` STEP 3. Nodes recalled repeatedly in a session get cosine dampened. Rate scales with structural degree (hubs fatigue faster). Resets between sessions.
 
-**Hebbian co_accessed** — DISABLED. Was creating 71K noise edges. Will re-enable when judge-selected IDs flow to Stop hook. Brain node: `de56bfd1`.
+**Hebbian co_accessed** — RE-ENABLED. Judge-selected IDs now flow to Stop hook. Only nodes the judge selected get co_accessed edges — meaningful co-activation, not cosine coincidences.
 
 **Embedding redistribution** — `servers/redistribution.py`. Blends node embeddings toward graph neighbors (70/30 from frozen originals). Runs in sleep cycle. Fidelity tracked in `embedding_fidelity` table.
 
 **Z-weighted 4-group scoring** — `brain_recall.py` STEP 3.5. Title(1.0), blend(0.85), high_meta(0.70), other_meta(0.40). Top-2 averaged. Defined in `pipeline_contract.py` EMBEDDING_GROUPS.
 
-**Layer 2 judge** — `pre_response_recall.py`. Haiku selects relevant nodes from 25 candidates. Replaces old distiller. Session context from encoder. Stays silent on confirmations.
+**Layer 2 judge** — runs inside `daemon_hooks.py` hook_recall(). Haiku selects relevant nodes from 25 candidates. Graph expansion (Layer 3) seeds from judge-selected nodes only. Stays silent on confirmations.
+
+**Precision** — DEPRECATED. `brain_precision.py` evaluation functions are dead code. recall_log table still used for pipeline logging (owned by LogsDAL). Judge + encoder coupling replaces regex/embedding evaluation.
 
 ## Dashboard
 
@@ -87,7 +128,7 @@ Dashboard → reads from those same DBs + files → displays to operator
 
 **Recall logging is inside `brain.recall()`.** Every recall — hook, MCP, internal — gets logged to `recall_log` with a `source` column. No caller needs to log separately. This was moved from the hook into the recall method itself to ensure single source of truth.
 
-**Judge data flows through tmp files, not the hook.** The hook writes `/tmp/brain-judge-result-{recall_log_id}.json` containing the exact Haiku prompt and the exact additionalContext sent to Claude. The dashboard reads these files. This decouples judge monitoring from hook timeout constraints.
+**Judge data flows through tmp files.** The daemon writes `/tmp/brain-judge-result-{recall_log_id}.json` containing the exact Haiku prompt and the exact additionalContext sent to Claude. The dashboard reads these files passively.
 
 ## Test Isolation
 
@@ -130,3 +171,6 @@ Tom reads code but doesn't review every file. You are the sole maintainer of cod
 - `systemMessage` is a dead channel — use `additionalContext` for hook output
 - Before writing code, ask "where does this live architecturally?"
 - Good architecture makes you MORE efficient, not less — each area has its own file/module
+- **Discussion IS the work** — do not touch Edit/Write/code tools during design conversations. Wait for an explicit go signal. Questions and observations are not go signals.
+- **Trace the pipeline before changing it** — the decode→encode pipeline has coupled stages. Each component expects specific input from the previous stage. Don't change one stage without understanding the full flow.
+- **Encoding depends on decoding** — the encoder receives judge-selected nodes from the decode pipeline. If the judge fails, the encoder gets no context. If recall quality degrades, encoding quality degrades. A broken decode pipeline silently breaks encoding.
