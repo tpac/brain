@@ -520,7 +520,8 @@ def _query_all_errors(limit=50, hours=24):
             conn = sqlite3.connect(f"file:{dash_path}?mode=ro", uri=True, timeout=3)
             rows = conn.execute(
                 "SELECT id, timestamp, output_text FROM hook_log "
-                "WHERE hook_name='DAEMON_DOWN' ORDER BY id DESC LIMIT ?",
+                "WHERE hook_name='DAEMON_DOWN' AND timestamp > %s "
+                "ORDER BY id DESC LIMIT ?" % since,
                 (limit,)).fetchall()
             for r in rows:
                 errors.append({
