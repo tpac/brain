@@ -52,14 +52,22 @@ model-package/*.egg-info/
 # Historical simulation data — not part of source
 archives/
 
-# Claude Code — only track settings.json (hooks + permissions)
+# Claude Code — only track settings.json and skills symlinks
 .claude/*
 !.claude/settings.json
+!.claude/skills/
+!.claude/skills/brain/
+!.claude/skills/brain/SKILL.md
 
 # Design docs and session handoffs (not part of plugin source)
 docs/
 eval/results/
 eval/fixtures/brain_eval_copy.db*
 eval/fixtures/eval_daemon.log
-eval/results/
 exports/
+
+# Research outputs — large (26MB+), not source code
+references/research-agent-outputs/
+
+# Claude Code temp files
+/tmp/
