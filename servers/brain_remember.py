@@ -672,6 +672,9 @@ class BrainRememberMixin:
 
         for field, value in all_updates.items():
             if field in IMMUTABLE:
+                self._log_error('revise_immutable',
+                                ValueError('Cannot revise immutable field: %s' % field),
+                                'node %s attempted to revise %s' % (node_id[:8], field))
                 continue
             if field in NODES_TABLE_FIELDS:
                 set_parts.append('%s = ?' % field)
