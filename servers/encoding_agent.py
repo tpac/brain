@@ -325,15 +325,33 @@ def _save_journal(brain, session_id, counter, final_text):
 
 
 def _save_session_context(brain, final_text):
-    """Extract SESSION_CONTEXT from encoder output and store for recall judge."""
-    from .pipeline_contract import JUDGE
-    limit = JUDGE.get('session_context_limit', 200)
+    """Extract SESSION_CONTEXT from encoder output and APPEND to session journey.
+
+    Each encoding run adds its context to the running summary, building
+    a journey: "dashboard fix | judge moved to daemon | encoder cleanup".
+    Truncates from the beginning to keep recent context within limit.
+    Both the recall judge and the encoder read this accumulated context.
+    """
+    from .pipeline_contract import ENCODING_AGENT
+    limit = ENCODING_AGENT.get('session_context_limit', 800)
     for line in final_text.split('\n'):
         stripped = line.strip()
         if stripped.upper().startswith('SESSION_CONTEXT:'):
-            context = stripped[len('SESSION_CONTEXT:'):].strip()
-            if context:
-                brain.set_config('session_context', context[:limit])
+            new_context = stripped[len('SESSION_CONTEXT:'):].strip()
+            if new_context:
+                existing = brain.get_config('session_context', '') or ''
+                if existing:
+                    combined = existing + ' | ' + new_context
+                else:
+                    combined = new_context
+                # Truncate from beginning to keep recent context
+                if len(combined) > limit:
+                    combined = combined[len(combined) - limit:]
+                    # Clean up — don't start mid-word
+                    pipe_idx = combined.find(' | ')
+                    if pipe_idx >= 0 and pipe_idx < 50:
+                        combined = combined[pipe_idx + 3:]
+                brain.set_config('session_context', combined)
                 return
     # No SESSION_CONTEXT line found — don't clear existing (previous run's context is still valid)
 

@@ -147,7 +147,7 @@ JUDGE = {
     'user_message_limit': 300,
     'recent_messages': 5,           # last 5 user messages for context
     'recent_recalls_messages': 10,  # look back 10 messages for previously surfaced nodes
-    'session_context_limit': 400,   # encoder's session summary (evolves, carries multiple topics)
+    'session_context_limit': 800,   # shared with ENCODING_AGENT — full session journey
     'max_tokens': 600,              # Haiku output cap
 }
 
