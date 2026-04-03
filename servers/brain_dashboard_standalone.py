@@ -842,6 +842,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 AND NOT EXISTS (SELECT 1 FROM edges e WHERE e.source_id = n.id OR e.target_id = n.id)
             """, db_path=db)
 
+            # Encoding status from brain_meta
+            enc_counter = 0
+            enc_position = 0
+            try:
+                enc_row = _direct_query(
+                    "SELECT value FROM brain_meta WHERE key = 'stop_counter'", db_path=db)
+                if enc_row and enc_row[0][0]:
+                    enc_counter = int(enc_row[0][0])
+                    enc_position = enc_counter % 5
+            except Exception:
+                pass
+
             self._json_response(200, {
                 "nodes": nodes[0][0] if nodes else 0,
                 "edges": edges[0][0] if edges else 0,
@@ -850,6 +862,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "orphans": orphans[0][0] if orphans else 0,
                 "types": {t: cnt for t, cnt in types},
                 "daemon": "alive" if daemon_alive() else "unavailable",
+                "encoding": {"counter": enc_counter, "position": enc_position, "next_in": 5 - enc_position if enc_position else 0},
             })
         except Exception as e:
             self._json_response(500, {"error": str(e)})
@@ -1293,7 +1306,8 @@ async function loadStats() {
        <div class="stat"><span class="stat-value">${d.locked}</span><span class="stat-label">Locked</span></div>
        <div class="stat"><span class="stat-value">${d.recent_24h}</span><span class="stat-label">24h</span></div>
        <div class="stat"><span class="stat-value">${d.orphans}</span><span class="stat-label">Orphans</span></div>
-       <div class="daemon-status ${statusClass}">${statusText}</div>`;
+       <div class="daemon-status ${statusClass}">${statusText}</div>
+       <div class="daemon-status alive" style="font-size:10px;padding:3px 8px">${d.encoding ? 'Encode: ' + d.encoding.position + '/5' + (d.encoding.position === 0 ? ' ⚡' : '') : ''}</div>`;
 
     const banner = document.getElementById('daemon-banner');
     if (!daemonAlive) {

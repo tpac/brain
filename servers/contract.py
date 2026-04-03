@@ -42,6 +42,7 @@ STRUCTURAL_FIELDS = {
     "personal_context": {"store": "nodes", "type": "str"},
     "evolution_status":  {"store": "nodes", "type": "str"},
     "source_turn_id":   {"store": "nodes", "type": "str", "description": "message_stream ID that produced this node (episode linkage)"},
+    "encoding_source":  {"store": "nodes", "type": "str", "description": "Who created this node. Convention: category:process. anchor = direct MCP, encoder:sonnet = encoding agent, idle:dreams/redistribution/etc, hook:boot/compaction. Only anchor can lock."},
 }
 
 

@@ -592,6 +592,9 @@ def hook_post_response_track(brain, args, graph_changes):
                         from .encoding_agent import run_encoding
                         from .daemon_dispatch import COMMAND_TABLE
                         def dispatch(cmd, cmd_args):
+                            # Inject encoding_source for write operations
+                            if cmd in ('remember', 'remember_batch', 'revise'):
+                                cmd_args.setdefault('encoding_source', 'encoder:sonnet')
                             entry = COMMAND_TABLE.get(cmd)
                             if entry:
                                 return entry.handler(enc_brain, cmd_args, [])
@@ -1253,6 +1256,7 @@ def hook_pre_compact_save(brain, args, graph_changes):
         content="Context compacted. Synthesis ran. Post-compact reboot will re-inject context.",
         keywords="compaction boundary session handoff",
         locked=False,
+        encoding_source='hook:compaction',
     )
     graph_changes.append("COMPACTION: boundary marker created at %s" % ts)
 

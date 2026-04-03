@@ -154,7 +154,7 @@ class BrainDreamsMixin:
                     content=insight,
                     keywords=f'dream intuition association {self._extract_keywords(node_end_a + " " + node_end_b)}',
                     locked=False,
-                    encoding_source='idle',
+                    encoding_source='idle:dreams',
                     emotion=0.2,
                     emotion_label='curiosity',
                     emotion_source='dream',
@@ -313,7 +313,7 @@ class BrainDreamsMixin:
             emotion=0.15,
             emotion_label='curiosity',
             emotion_source='brain',
-            encoding_source='idle',
+            encoding_source='idle:dreams',
         )
 
         # Connect to triggers

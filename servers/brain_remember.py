@@ -334,9 +334,10 @@ class BrainRememberMixin:
         if personal and personal not in ('fixed', 'fluid', 'contextual'):
             personal = None
 
-        # Constitution: auto-generated content must earn permanence
-        # Anything from idle_maintenance or hooks starts unlocked regardless of request
-        if encoding_source in ('idle', 'hook') and locked:
+        # Constitution: only intentional (anchor) encoding can create locked nodes.
+        # All automated sources (encoder, idle, hook) must earn permanence.
+        # encoding_source convention: "category:process" e.g. "encoder:sonnet", "idle:redistribution"
+        if encoding_source and not encoding_source.startswith('anchor') and locked:
             locked = False
 
         node_id = self._generate_id(type)
@@ -379,7 +380,7 @@ class BrainRememberMixin:
              1 if locked else 0, confidence,
              emotion, emotion_label, emotion_source, project,
              personal, personal_context, CURRENT_ENCODING_VERSION,
-             encoding_source or 'manual',
+             encoding_source or 'anchor',
              evolution_status, source_turn_id,
              ts, ts, ts)
         )

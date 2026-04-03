@@ -150,7 +150,7 @@ TABLES = {
             'source_attribution': 'NULL',    # v5: user_stated | claude_inferred | session_synthesis | correction | code_reading
             'scope': 'NULL',                 # v5: system | module | file | function | cross-system | cross-file | cross-function
             'encoding_version': 'NULL',      # v6: encoding pipeline version (v5, v6, etc.) — floor adapts to quality
-            'encoding_source': 'NULL',       # v7: how this node was created: 'manual' | 'auto' | 'idle' | 'hook'
+            'encoding_source': 'NULL',       # v7: who created this node. Convention: "category:process". anchor = direct MCP, encoder:sonnet = encoding agent, idle:redistribution/consolidation/etc, hook:boot/compaction. Only 'anchor' can lock.
             'revised_at': 'NULL',            # v8: when this node was last revised via revise()
             'source_turn_id': 'NULL',        # v9: message_stream.id that produced this node (episode linkage)
             'last_accessed': 'NULL',
