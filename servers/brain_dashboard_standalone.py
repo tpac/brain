@@ -302,7 +302,7 @@ def _query_encoding_runs(limit=10):
                 try:
                     t_this = datetime.fromisoformat(ts.replace('Z', '+00:00'))
                     t_run = datetime.fromisoformat(current_run["start_ts"].replace('Z', '+00:00'))
-                    if abs((t_this - t_run).total_seconds()) < 30:
+                    if abs((t_this - t_run).total_seconds()) < 60:
                         current_run["nodes"].append({
                             "id": n[0], "type": n[1], "title": n[2],
                             "content": n[3], "timestamp": ts})
@@ -324,8 +324,7 @@ def _query_encoding_runs(limit=10):
         if current_run:
             runs.append(current_run)
 
-        # Only keep clusters with 2+ nodes (encoding runs create multiple nodes)
-        runs = [r for r in runs if len(r.get("nodes", [])) >= 2]
+        # Keep all clusters (single-node creates are manual encodes by Anchor)
 
         # Attach edges to runs by timestamp proximity
         for run in runs:
@@ -339,7 +338,7 @@ def _query_encoding_runs(limit=10):
                     from datetime import datetime
                     t_edge = datetime.fromisoformat(e_ts.replace('Z', '+00:00'))
                     t_run = datetime.fromisoformat(run["start_ts"].replace('Z', '+00:00'))
-                    if abs((t_edge - t_run).total_seconds()) < 30:
+                    if abs((t_edge - t_run).total_seconds()) < 60:
                         run["edges"].append({
                             "relation": e[2], "weight": e[3],
                             "source_title": e[5] or e[0][:12],
@@ -1161,7 +1160,7 @@ canvas { width: 100%; height: 100%; }
   <div class="tab active" onclick="switchTab('live')">Live</div>
   <div class="tab" onclick="switchTab('graph')">Graph</div>
   <div class="tab" onclick="switchTab('explorer')">Explorer</div>
-  <div class="tab" onclick="switchTab('errors')">Errors</div>
+  <div class="tab" onclick="switchTab('errors')">Errors <span id="err-badge" style="display:none;background:#ff4466;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:2px"></span></div>
   <div class="tab" onclick="switchTab('status')">Status</div>
   <div class="tab" onclick="switchTab('health')">Health</div>
 </div>
@@ -1426,12 +1425,12 @@ function renderRecallEntry(evt) {
   return div;
 }
 
-function shouldShowEntry(evt) {
+function isEntryVisible(src) {
   const filterVal = document.getElementById('surface-filter').value;
-  if (!filterVal) return evt.source !== 'internal';  // hide internal by default
-  if (filterVal === 'recall') return evt.source === 'hook';
-  if (filterVal === 'mcp') return evt.source === 'mcp';
-  if (filterVal === 'internal') return evt.source === 'internal';
+  if (!filterVal) return src !== 'internal';
+  if (filterVal === 'recall') return src === 'hook';
+  if (filterVal === 'mcp') return src === 'mcp';
+  if (filterVal === 'internal') return src === 'internal';
   return true;
 }
 
@@ -1445,8 +1444,10 @@ async function pollRecallLog() {
       const sorted = d.events.slice().reverse();
       for (const evt of sorted) {
         if (evt.id <= lastRecallId) continue;
-        if (!shouldShowEntry(evt)) continue;
-        feed.prepend(renderRecallEntry(evt));
+        const el = renderRecallEntry(evt);
+        // Always add to DOM, use display to filter
+        if (!isEntryVisible(evt.source || 'unknown')) el.style.display = 'none';
+        feed.prepend(el);
       }
       lastRecallId = d.latest_id;
       while (feed.children.length > MAX_ENTRIES) feed.removeChild(feed.lastChild);
@@ -1557,6 +1558,13 @@ async function loadEncodingActivity() {
     const newCount = runsD.runs.length;
     const oldCount = container.dataset.runCount || '0';
     if (encodingLoaded && String(newCount) === oldCount) return;
+    // Flash encoding badge when new run detected
+    if (encodingLoaded && newCount > parseInt(oldCount)) {
+      const badge = document.getElementById('enc-badge');
+      badge.style.display = '';
+      badge.textContent = '+' + (newCount - parseInt(oldCount));
+      setTimeout(() => { if (activeFeed !== 'encoding') badge.style.display = ''; }, 5000);
+    }
     container.dataset.runCount = String(newCount);
     if (!encodingLoaded) container.innerHTML = '';
     encodingLoaded = true;
@@ -1582,13 +1590,13 @@ async function loadEncodingActivity() {
       // Actions list (hidden by default, toggled by header click)
       html += '<div class="hook-body" style="padding:4px 12px">';
       for (const n of (run.nodes || [])) {
-        html += '<div class="enc-entry created" style="margin:2px 0;padding:4px 8px">' +
+        html += '<div class="enc-entry created" data-kind="created" style="margin:2px 0;padding:4px 8px">' +
           '<span class="enc-kind created">CREATED</span> ' +
           '<span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ' +
           '<span class="enc-title">' + escapeHtml(n.title || '') + '</span></div>';
       }
       for (const e of (run.edges || []).slice(0, 8)) {
-        html += '<div class="enc-entry connected" style="margin:2px 0;padding:4px 8px">' +
+        html += '<div class="enc-entry connected" data-kind="connected" style="margin:2px 0;padding:4px 8px">' +
           '<span class="enc-kind connected">CONNECTED</span> ' +
           escapeHtml(e.source_title || '') + ' <span style="color:#aa66ff">—' + (e.relation||'') + '→</span> ' +
           escapeHtml(e.target_title || '') + '</div>';
@@ -1829,10 +1837,23 @@ setInterval(() => {
   if (statusTab && statusTab.classList.contains('active')) loadSystemStatus();
 }, 5000);
 
-// Auto-refresh errors every 10s when tab is active
-setInterval(() => {
+// Auto-refresh errors every 10s — update badge even when not on tab
+let lastErrorCount = 0;
+setInterval(async () => {
   const errTab = document.getElementById('tab-errors');
-  if (errTab && errTab.classList.contains('active')) loadErrors();
+  if (errTab && errTab.classList.contains('active')) { loadErrors(); return; }
+  // Background check — just get count for badge
+  try {
+    const r = await fetch('/api/errors?hours=1&limit=1');
+    const d = await r.json();
+    const badge = document.getElementById('err-badge');
+    if (d.count > 0) {
+      badge.style.display = '';
+      badge.textContent = d.count;
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch(e) {}
 }, 10000);
 
 // Health
