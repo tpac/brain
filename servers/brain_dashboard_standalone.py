@@ -453,7 +453,8 @@ def _query_all_errors(limit=50, hours=24):
     errors = []
     logs_path = _get_logs_db_path()
     dash_path = _get_dashboard_db_path()
-    since = "datetime('now', '-%d hours')" % hours
+    # Use strftime with T separator to match ISO timestamps in DB
+    since = "strftime('%%Y-%%m-%%dT%%H:%%M:%%S', 'now', '-%d hours')" % hours
 
     # 1. Brain internal errors (debug_log where event_type='error')
     if os.path.exists(logs_path):
