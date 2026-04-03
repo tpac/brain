@@ -78,12 +78,14 @@ def _handle_recall(brain, args, graph_changes):
     # By-query recall: semantic search with keyword fallback
     try:
         result = brain.recall(
-            query=args.get("query", ""), limit=args.get("limit", 8))
+            query=args.get("query", ""), limit=args.get("limit", 8),
+            source='mcp')
         return {"ok": True, "result": result}
     except Exception as e:
         # Degraded: fall back to keyword-only recall
         result = brain.recall(
-            query=args.get("query", ""), limit=args.get("limit", 8))
+            query=args.get("query", ""), limit=args.get("limit", 8),
+            source='mcp')
         try:
             brain._log_error("recall_degraded", e, "Fell back to keyword-only recall")
         except Exception as e2:

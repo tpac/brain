@@ -78,7 +78,7 @@ class BrainSurfaceMixin:
         recall_limit = max(limit * pool_multiplier, 15)
 
         for q in queries:
-            result = self.recall(query=q, limit=recall_limit)
+            result = self.recall(query=q, limit=recall_limit, source='internal')
             results = result.get('results', result) if isinstance(result, dict) else result
             for r in results:
                 if r['id'] not in seen:
@@ -329,7 +329,7 @@ class BrainSurfaceMixin:
 
         # 3. Recall by context query (project-scoped)
         if query:
-            recall_result = self.recall(query=query, limit=max_recall, project=project)
+            recall_result = self.recall(query=query, limit=max_recall, project=project, source='internal')
             recalled = recall_result.get('results', recall_result) if isinstance(recall_result, dict) else recall_result
             for r in recalled:
                 if r['id'] not in seen:
@@ -822,7 +822,7 @@ class BrainSurfaceMixin:
                         break
 
             # Recall relevant safety context
-            recall_result = self.recall(command, limit=5)
+            recall_result = self.recall(command, limit=5, source='internal')
             results = recall_result.get('results', recall_result) if isinstance(recall_result, dict) else recall_result
 
             safety_types = {'rule', 'decision', 'constraint', 'convention', 'lesson'}
@@ -967,7 +967,8 @@ class BrainSurfaceMixin:
                        session_id: str = '',
                        signal_type: Optional[str] = None,
                        recalled_node_ids: Optional[str] = None,
-                       recalled_raw: Optional[str] = None) -> Dict[str, Any]:
+                       recalled_raw: Optional[str] = None,
+                       judge_output: Optional[str] = None) -> Dict[str, Any]:
         """Store both messages to the conversation stream.
 
         Called by hook_post_response_track on every Stop event.
@@ -977,8 +978,9 @@ class BrainSurfaceMixin:
             assistant_response: assistant's response
             session_id: current session ID
             signal_type: 'decision', 'correction', 'insight', 'exploration', or None
-            recalled_node_ids: JSON string — node IDs surfaced for this user turn
-            recalled_raw: JSON string — [{id, type, title, content_snippet, score}]
+            recalled_node_ids: JSON string — judge-selected node IDs (what Claude saw)
+            recalled_raw: JSON string — all 25 candidates (debugging only)
+            judge_output: exact additionalContext string Claude received (for encoder)
 
         Returns:
             Dict with user_id, assistant_id, signal_type.
@@ -987,7 +989,8 @@ class BrainSurfaceMixin:
         dal = MessageStreamDAL(self.logs_conn)
         # Recall data attaches to the USER message (recall happened before response)
         user_id = dal.store('user', user_message, session_id, signal_type=signal_type,
-                           recalled_node_ids=recalled_node_ids, recalled_raw=recalled_raw)
+                           recalled_node_ids=recalled_node_ids, recalled_raw=recalled_raw,
+                           judge_output=judge_output)
         assistant_id = dal.store('assistant', assistant_response, session_id)
         return {'user_id': user_id, 'assistant_id': assistant_id, 'signal_type': signal_type}
 

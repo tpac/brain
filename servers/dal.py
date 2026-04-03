@@ -289,17 +289,26 @@ class LogsDAL:
     def insert_recall_log(self, session_id: str, query: str, returned_ids: str,
                           returned_count: int, embeddings_used: int,
                           recalled_titles: str, recalled_snippets: str,
-                          created_at: str) -> int:
+                          created_at: str, source: str = 'hook') -> int:
         """Insert a new recall_log row (Stage 1: LOGGED). Returns row ID."""
         cursor = self.conn.execute(
             """INSERT INTO recall_log
                (session_id, query, returned_ids, returned_count,
-                embeddings_used, recalled_titles, recalled_snippets, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                embeddings_used, recalled_titles, recalled_snippets, created_at, source)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (session_id, query, returned_ids, returned_count,
-             embeddings_used, recalled_titles, recalled_snippets, created_at))
+             embeddings_used, recalled_titles, recalled_snippets, created_at, source))
         self.conn.commit()
         return cursor.lastrowid
+
+    def update_recall_judge(self, recall_log_id: int, judge_prompt: str,
+                             judge_output: str) -> None:
+        """Store judge prompt and output on a recall row."""
+        self.conn.execute(
+            """UPDATE recall_log SET judge_prompt = ?, judge_output = ?
+               WHERE id = ?""",
+            (judge_prompt, judge_output, recall_log_id))
+        self.conn.commit()
 
     def update_recall_response(self, recall_log_id: int, response_snippet: str,
                                 match_method: str, evaluation_metadata: Optional[str],

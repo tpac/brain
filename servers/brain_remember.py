@@ -568,7 +568,7 @@ class BrainRememberMixin:
         try:
             from .pipeline_contract import ENCODING_AGENT
             if embedding_stored:
-                recall_result = self.recall(query='%s %s' % (title, (content or '')[:ENCODING_AGENT['recall_on_create_query_limit']]), limit=ENCODING_AGENT['recall_on_create_limit'] + 1)
+                recall_result = self.recall(query='%s %s' % (title, (content or '')[:ENCODING_AGENT['recall_on_create_query_limit']]), limit=ENCODING_AGENT['recall_on_create_limit'] + 1, source='internal')
                 for r in recall_result.get('results', []):
                     if r.get('id') != node_id:
                         related_nodes.append({

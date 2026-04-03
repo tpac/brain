@@ -41,11 +41,6 @@
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/scripts/pre-response-recall.sh",
             "timeout": 15
-          },
-          {
-            "type": "prompt",
-            "model": "haiku",
-            "prompt": "A user sent this message: $ARGUMENTS\nRespond with ONLY this JSON, no markdown: {\"decision\": \"allow\", \"reason\": \"PROMPT_HOOK_FIRED\"}"
           }
         ]
       }

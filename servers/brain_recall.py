@@ -398,7 +398,7 @@ class BrainRecallMixin:
                include_archived: bool = False,
                min_recency: float = 0, project: Optional[str] = None,
                session_id: Optional[str] = None,
-               situation_vec=None) -> Dict[str, Any]:
+               situation_vec=None, source: str = 'unknown') -> Dict[str, Any]:
         """Recall: embeddings + 3-degree graph traversal + keyword blending + situation matching.
 
         OLD approach: Run keyword recall first, sprinkle embedding scores on top.
@@ -436,6 +436,25 @@ class BrainRecallMixin:
                 'warning': 'Recall is keyword-only. Semantic understanding disabled.',
             }
             print(f'[brain] WARNING: keyword-only recall (embedder not ready)', file=sys.stderr)
+            # Log degraded recall to recall_log
+            try:
+                _kw_results = result.get('results', [])
+                _sid = session_id or self.get_config("session_id", "ses_unknown")
+                if not _sid.startswith("ses_"):
+                    _sid = f"ses_{_sid}"
+                _logs_dal = LogsDAL(self.logs_conn)
+                _log_id = _logs_dal.insert_recall_log(
+                    session_id=_sid, query=query[:500],
+                    returned_ids=json.dumps([r.get("id") for r in _kw_results]),
+                    returned_count=len(_kw_results), embeddings_used=0,
+                    recalled_titles=json.dumps({r.get("id"): r.get("title", "")[:80] for r in _kw_results}),
+                    recalled_snippets=json.dumps({r.get("id"): (r.get("content") or "")[:150] for r in _kw_results}),
+                    created_at=datetime.now(__import__('datetime').timezone.utc).isoformat(),
+                    source=source)
+                result['_recall_log_id'] = str(_log_id) if _log_id else None
+            except Exception as _log_err:
+                self._log_error("recall_log_write", _log_err,
+                                "Failed to log degraded recall (source=%s)" % source)
             return result
 
         # ── PRIMARY PATH: Embeddings-first ──
@@ -668,23 +687,23 @@ class BrainRecallMixin:
             emb_score = embedding_scores.get(nid, 0)
             kw_score = keyword_scores.get(nid, 0)
 
-            # Determine source and compute blended score
+            # Determine discovery source and compute blended score
             if emb_score > 0 and kw_score > 0:
                 # Both signals available — blend with embeddings primary
                 blended = (EMBEDDING_PRIMARY_WEIGHT * emb_score +
                           KEYWORD_FALLBACK_WEIGHT * kw_score)
-                source = 'embedding+keyword'
+                discovery = 'embedding+keyword'
             elif emb_score > 0:
                 # Embedding only — use embedding score directly
                 blended = emb_score
-                source = 'embedding_only'
+                discovery = 'embedding_only'
             else:
                 # Keyword only (node has no embedding) — use keyword but PENALIZE.
                 # Keyword-only results lack the primary signal. They should never
                 # outrank a strong embedding match. Scale by KEYWORD_FALLBACK_WEIGHT
                 # so a perfect keyword match (1.0) scores at most 0.10.
                 blended = KEYWORD_FALLBACK_WEIGHT * kw_score
-                source = 'keyword_only_fallback'
+                discovery = 'keyword_only_fallback'
 
             # Apply intent-based type boosting
             node = keyword_nodes.get(nid)
@@ -755,7 +774,7 @@ class BrainRecallMixin:
                 'blended_score': blended,
                 'embedding_similarity': round(emb_score * 1000) / 1000 if emb_score else None,
                 'keyword_score': round(kw_score * 1000) / 1000 if kw_score else None,
-                '_source': source,
+                '_source': discovery,
                 '_context_mismatch': _context_mismatch,
             })
 
@@ -894,13 +913,39 @@ class BrainRecallMixin:
             except Exception as _e:
                 self._log_error("recall", _e, "marking node as accessed for Hebbian learning")
 
-        # STEP 9: Build result
+        # STEP 9: Log recall to recall_log (single source of truth)
         recall_ms = (time.time() - t0) * 1000
+        recall_log_id = None
+        try:
+            from .pipeline_contract import PRECISION
+            _sid = session_id or self.get_config("session_id", "ses_unknown")
+            if not _sid.startswith("ses_"):
+                _sid = f"ses_{_sid}"
+            _titles = {r.get("id"): r.get("title", "")[:PRECISION['title_limit']]
+                       for r in final_results}
+            _snippets = {r.get("id"): (r.get("content") or "")[:PRECISION['snippet_limit']]
+                         for r in final_results}
+            _logs_dal = LogsDAL(self.logs_conn)
+            recall_log_id = _logs_dal.insert_recall_log(
+                session_id=_sid,
+                query=query[:500],
+                returned_ids=json.dumps([r.get("id") for r in final_results]),
+                returned_count=len(final_results),
+                embeddings_used=1,
+                recalled_titles=json.dumps(_titles),
+                recalled_snippets=json.dumps(_snippets),
+                created_at=datetime.now(__import__('datetime').timezone.utc).isoformat(),
+                source=source)
+        except Exception as _log_err:
+            # LOUD failure — log to error table, don't swallow
+            self._log_error("recall_log_write", _log_err,
+                            "Failed to log recall (source=%s, query=%s)" % (source, query[:100]))
+
+        # Build result
         result = {
             'results': final_results,
             'vocab_context': vocab_context,  # v8.8: vocab nodes as connectors, not results
-            # Logging is now handled by the precision module in hooks, not here.
-            '_recall_log_id': None,
+            '_recall_log_id': str(recall_log_id) if recall_log_id else None,
             'intent': intent,
             '_recall_mode': 'embeddings_first',
             '_embedding_stats': {

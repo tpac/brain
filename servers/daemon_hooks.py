@@ -171,42 +171,23 @@ def hook_recall(brain, args, graph_changes):
     # recall improvement (confirmed by decode funnel — 0% impact from vocab expansion).
     enriched = user_message[:500]
 
-    # Recall
+    # Recall — logging happens inside brain.recall() (single source of truth)
     try:
         from .pipeline_contract import CANDIDATES_FILE as _CF
-        result = brain.recall(query=enriched, limit=_CF['max_candidates'])
+        result = brain.recall(query=enriched, limit=_CF['max_candidates'],
+                              session_id=session_id, source='hook')
     except Exception as e:
         brain._log_error('recall_first_attempt', e, 'hook_recall')
         from .pipeline_contract import CANDIDATES_FILE as _CF
-        result = brain.recall(query=enriched, limit=_CF['max_candidates'])
+        result = brain.recall(query=enriched, limit=_CF['max_candidates'],
+                              session_id=session_id, source='hook')
 
     results = result.get("results", [])
 
-    # ── Precision: log recall through the precision module ──
-    # Previously, logging was buried inside recall() via _log_recall().
-    # Now the hook calls precision.log_recall() explicitly, storing full context
-    # (titles, snippets, embeddings_used flag) for future evaluation.
-    if results:
-        try:
-            precision = _get_precision(brain)
-            from .pipeline_contract import PRECISION
-            recalled_titles = {r.get("id"): r.get("title", "")[:PRECISION['title_limit']] for r in results}
-            recalled_snippets = {r.get("id"): (r.get("content") or "")[:PRECISION['snippet_limit']] for r in results}
-            embeddings_used = result.get("_recall_mode") != "keyword_only_DEGRADED"
-            recall_log_id = precision.log_recall(
-                session_id=session_id,
-                query=enriched[:500],
-                returned_ids=[r.get("id") for r in results],
-                recalled_titles=recalled_titles,
-                recalled_snippets=recalled_snippets,
-                embeddings_used=embeddings_used,
-            )
-            # Table-driven: row IS the state (Stage 1: LOGGED). No config key needed.
-            # Fallback config set for backward compat if DAL not available.
-            if not getattr(brain, '_logs_dal', None):
-                brain.set_config("last_recall_log_id", str(recall_log_id))
-        except Exception as e:
-            brain._log_error('precision_log_recall', e, 'query=%s' % enriched[:100])
+    # recall_log_id comes from brain.recall() now — extract for precision lifecycle
+    recall_log_id = result.get('_recall_log_id')
+    if recall_log_id and not getattr(brain, '_logs_dal', None):
+        brain.set_config("last_recall_log_id", str(recall_log_id))
 
     # Segment boundary detection
     segment_note = None
@@ -286,6 +267,7 @@ def hook_recall(brain, args, graph_changes):
                 "segment_note": segment_note,
                 "gap": gap.get("query") if gap else None,
                 "recent_messages": recent_messages,
+                "recall_log_id": recall_log_id,
             }, f, default=str)
     except Exception as e:
         brain._log_error('recall_candidates_write', e, 'Failed to write candidates file')
@@ -340,7 +322,132 @@ def hook_recall(brain, args, graph_changes):
     # Dashboard logging happens in the thin client — one source of truth.
     brain.save()
     session_id = brain.get_config('session_id', '')
-    return {"json": {"decision": "approve"}, "session_id": session_id}
+
+    # ── Layer 2: Haiku judge (runs in daemon — no subprocess timeout risk) ──
+    additional_context = None
+    try:
+        # Load .env for API key (same as encoding agent)
+        _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+        if os.path.exists(_env_path):
+            with open(_env_path) as _ef:
+                for _eline in _ef:
+                    _eline = _eline.strip()
+                    if _eline and not _eline.startswith('#') and '=' in _eline:
+                        _ek, _ev = _eline.split('=', 1)
+                        os.environ.setdefault(_ek.strip(), _ev.strip())
+
+        import anthropic as _anthropic
+        from .pipeline_contract import build_judge_prompt, format_judge_output, JUDGE
+
+        # Recently recalled (for deduplication)
+        recently_recalled = []
+        try:
+            from .pipeline_contract import JUDGE as _J
+            _lookback = _J.get('recent_recalls_messages', 10)
+            _rows = brain.logs_conn.execute(
+                "SELECT recalled_node_ids FROM message_stream "
+                "WHERE recalled_node_ids IS NOT NULL AND role='user' "
+                "ORDER BY id DESC LIMIT ?", (_lookback,)).fetchall()
+            _seen_ids = set()
+            for _r in _rows:
+                for _nid in _json.loads(_r[0]):
+                    _seen_ids.add(_nid)
+            if _seen_ids:
+                for _nid in list(_seen_ids)[:20]:
+                    _trow = brain.conn.execute(
+                        "SELECT title FROM nodes WHERE id LIKE ?", (_nid + '%',)).fetchone()
+                    if _trow:
+                        recently_recalled.append({"id": _nid, "title": _trow[0]})
+        except Exception:
+            pass
+
+        # Build judge prompt
+        judge_prompt, max_tokens = build_judge_prompt(
+            candidates_data, user_message,
+            session_context=brain.get_config('session_context', '') or '',
+            recent_messages=recent_messages if 'recent_messages' in dir() else [],
+            recently_recalled=recently_recalled)
+
+        # Call Haiku (persistent client — no import overhead)
+        _client = _anthropic.Anthropic()
+        _api_resp = _client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": judge_prompt}])
+        _raw = _api_resp.content[0].text.strip()
+
+        # Parse JSON
+        _json_str = _raw
+        if _json_str.startswith("```"):
+            _json_str = _json_str.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        _start = _json_str.find("{")
+        _end = _json_str.rfind("}") + 1
+        if _start >= 0 and _end > _start:
+            judgment = _json.loads(_json_str[_start:_end])
+        else:
+            judgment = {"selected": []}
+
+        selected = judgment.get("selected", [])
+        selected_ids = {s.get("id", "")[:8] for s in selected}
+
+        # Write judge-selected IDs for Hebbian + Stop hook
+        try:
+            _judge_path = "/tmp/brain-%s-judge-selected.json" % session_id
+            with open(_judge_path, 'w') as _jf:
+                _json.dump({"selected_ids": list(selected_ids)}, _jf)
+        except Exception:
+            pass
+
+        if selected:
+            # Layer 3: Graph expansion from judge-selected seeds
+            graph_neighbors = []
+            try:
+                from .daemon_dispatch import COMMAND_TABLE
+                expand_entry = COMMAND_TABLE.get("graph_expand")
+                if expand_entry:
+                    expand_result = expand_entry.handler(brain, {
+                        "node_ids": list(selected_ids),
+                        "depth": 1, "limit_per_seed": 3,
+                    }, graph_changes)
+                    if expand_result.get("ok"):
+                        graph_neighbors = expand_result.get("result", {}).get("neighbors", [])
+            except Exception as _ge:
+                brain._log_error('judge_graph_expand', _ge, 'Layer 3 expand failed')
+
+            additional_context = format_judge_output(selected, candidates_data, graph_neighbors)
+
+            # Write judge result file for dashboard
+            try:
+                _jr_path = "/tmp/brain-judge-result-%s.json" % recall_log_id
+                with open(_jr_path, 'w') as _jrf:
+                    _json.dump({
+                        "recall_log_id": recall_log_id,
+                        "judge_prompt": judge_prompt,
+                        "judge_output": additional_context,
+                    }, _jrf)
+            except Exception:
+                pass
+        else:
+            # Judge selected nothing — write empty result for dashboard
+            try:
+                _jr_path = "/tmp/brain-judge-result-%s.json" % recall_log_id
+                with open(_jr_path, 'w') as _jrf:
+                    _json.dump({
+                        "recall_log_id": recall_log_id,
+                        "judge_prompt": judge_prompt,
+                        "judge_output": "(no selection)",
+                    }, _jrf)
+            except Exception:
+                pass
+
+    except Exception as _judge_err:
+        brain._log_error('daemon_judge', _judge_err,
+                         'Layer 2 judge failed in daemon (query=%s)' % user_message[:100])
+
+    if additional_context:
+        return {"json": {"additionalContext": additional_context}, "session_id": session_id}
+    else:
+        return {"json": {"decision": "approve"}, "session_id": session_id}
 
 
 
@@ -356,27 +463,57 @@ def hook_post_response_track(brain, args, graph_changes):
     user_message = args.get("prompt", "") or args.get("message", "")
     assistant_response = (args.get("last_assistant_message", "") or "")[:4000]
 
-    # Read pre-attached recall from candidates file (written by hook_recall)
+    # Read recall data: judge-selected IDs + judge output (additionalContext)
+    # recalled_node_ids = judge-selected only (what encoder should see)
+    # recalled_raw = all 25 candidates (debugging only)
+    # judge_output = exact additionalContext Claude received (enriched judge selections)
     recalled_node_ids = None
     recalled_raw = None
+    judge_output = None
     try:
         import json as _json
         session_id = brain.get_config('session_id', '')
+
+        # Read raw candidates (for debugging — recalled_raw)
         candidates_path = '/tmp/brain-%s-recall-candidates.json' % session_id
+        recall_log_id = None
         if os.path.exists(candidates_path):
             with open(candidates_path) as _cf:
                 cdata = _json.load(_cf)
             candidates = cdata.get('candidates', [])
+            recall_log_id = cdata.get('recall_log_id')
             if candidates:
-                recalled_node_ids = _json.dumps([c.get('id', '') for c in candidates])
                 recalled_raw = _json.dumps([{
                     'id': c.get('id', ''), 'type': c.get('type', ''),
                     'title': c.get('title', ''),
                     'content': (c.get('content', '') or '')[:_ENCODING_AGENT_TIMELINE_SNIPPET],
                     'score': c.get('score', 0),
                 } for c in candidates])
+
+        # Read judge-selected IDs (what actually reached Claude)
+        _judge_sel_path = '/tmp/brain-%s-judge-selected.json' % session_id
+        if os.path.exists(_judge_sel_path):
+            with open(_judge_sel_path) as _jf:
+                _jdata = _json.load(_jf)
+            _judge_ids = _jdata.get('selected_ids', [])
+            if _judge_ids:
+                recalled_node_ids = _json.dumps(_judge_ids)
+
+        # Read judge output (exact additionalContext) — for encoder
+        if recall_log_id:
+            _judge_result_path = '/tmp/brain-judge-result-%s.json' % recall_log_id
+            if os.path.exists(_judge_result_path):
+                with open(_judge_result_path) as _jrf:
+                    _jr_data = _json.load(_jrf)
+                judge_output = _jr_data.get('judge_output')
+
+        # Fallback: if judge never ran (no judge file at all), store all candidates.
+        # If judge ran and selected 0, recalled_node_ids stays empty — that's correct.
+        if not recalled_node_ids and not judge_output and candidates:
+            recalled_node_ids = _json.dumps([c.get('id', '') for c in candidates])
+
     except Exception as e:
-        brain._log_error('read_recall_candidates', e, 'Stop hook: reading candidates file')
+        brain._log_error('read_recall_data', e, 'Stop hook: reading recall/judge files')
 
     # Store conversation + recall data in message stream
     try:
@@ -384,7 +521,8 @@ def hook_post_response_track(brain, args, graph_changes):
             session_id = brain.get_config('session_id', '')
         brain.store_exchange(user_message, assistant_response, session_id,
                             recalled_node_ids=recalled_node_ids,
-                            recalled_raw=recalled_raw)
+                            recalled_raw=recalled_raw,
+                            judge_output=judge_output)
     except Exception as e:
         brain._log_error('store_exchange', e, 'Stop hook: failed to store exchange')
 
@@ -904,10 +1042,10 @@ def hook_post_compact_reboot(brain, args, graph_changes):
         if recall_query_parts:
             recall_query = " ".join(recall_query_parts)[:500]
             try:
-                result = brain.recall(query=recall_query, limit=8)
+                result = brain.recall(query=recall_query, limit=8, source='hook')
             except Exception as e:
                 brain._log_error('reboot_recall_first_attempt', e, 'hook_post_compact_reboot')
-                result = brain.recall(query=recall_query, limit=8)
+                result = brain.recall(query=recall_query, limit=8, source='hook')
 
             all_recall = result.get("results", [])
             recent_ids = {r[0] for r in brain.conn.execute(

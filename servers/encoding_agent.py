@@ -180,7 +180,7 @@ def _gather_messages(brain, session_id):
     from .pipeline_contract import ENCODING_AGENT
     try:
         rows = brain.logs_conn.execute(
-            "SELECT id, role, content, signal_type, timestamp, recalled_raw "
+            "SELECT id, role, content, signal_type, timestamp, recalled_raw, judge_output "
             "FROM message_stream WHERE session_id = ? "
             "ORDER BY timestamp DESC LIMIT ?",
             (session_id, ENCODING_AGENT['max_messages'])
@@ -188,7 +188,7 @@ def _gather_messages(brain, session_id):
         return [{"id": r[0], "role": r[1],
                  "content": (r[2] or "")[:ENCODING_AGENT['message_content_limit']],
                  "signal": r[3], "timestamp": r[4],
-                 "recalled_raw": r[5]}
+                 "recalled_raw": r[5], "judge_output": r[6]}
                 for r in reversed(rows)]
     except Exception as e:
         brain._log_error('encoding_agent_messages', e, 'Failed to fetch messages')
@@ -234,24 +234,30 @@ def _build_user_content(brain, messages, counter, session_id):
             timeline += "[TURN %d]\n" % turn_num
             timeline += "USER: \"%s\" (turn_id: %s)\n" % (user_content, turn_id)
 
-            # Pre-attached recall from message_stream
-            recalled_raw = m.get("recalled_raw")
-            if recalled_raw:
-                try:
-                    recalled = json.loads(recalled_raw) if isinstance(recalled_raw, str) else recalled_raw
-                    if recalled:
-                        timeline += "BRAIN SURFACED (%d nodes):\n" % len(recalled)
-                        for r in recalled:
-                            snippet = (r.get("content", "") or "")[:ENCODING_AGENT['timeline_snippet_limit']]
-                            timeline += "  [%s] %s (id:%s, score:%.2f)\n" % (
-                                r.get("type", "?"), r.get("title", "?"),
-                                r.get("id", "?")[:8], r.get("score", r.get("effective_activation", 0)))
-                            if snippet:
-                                timeline += "    %s\n" % snippet
-                except (json.JSONDecodeError, TypeError):
-                    pass
+            # Pre-attached recall: prefer judge_output (curated) over recalled_raw (noisy)
+            judge_output = m.get("judge_output")
+            if judge_output:
+                # Exact additionalContext Claude received — judge-selected + enriched + graph neighbors
+                timeline += "BRAIN SURFACED (judge-selected):\n%s\n" % judge_output
             else:
-                timeline += "BRAIN SURFACED: (no recall data)\n"
+                # Fallback: raw candidates (judge didn't complete or old data)
+                recalled_raw = m.get("recalled_raw")
+                if recalled_raw:
+                    try:
+                        recalled = json.loads(recalled_raw) if isinstance(recalled_raw, str) else recalled_raw
+                        if recalled:
+                            timeline += "BRAIN SURFACED (%d candidates, no judge):\n" % len(recalled)
+                            for r in recalled:
+                                snippet = (r.get("content", "") or "")[:ENCODING_AGENT['timeline_snippet_limit']]
+                                timeline += "  [%s] %s (id:%s, score:%.2f)\n" % (
+                                    r.get("type", "?"), r.get("title", "?"),
+                                    r.get("id", "?")[:8], r.get("score", r.get("effective_activation", 0)))
+                                if snippet:
+                                    timeline += "    %s\n" % snippet
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                else:
+                    timeline += "BRAIN SURFACED: (no recall data)\n"
 
             # Include assistant response if next message
             if i + 1 < len(messages) and messages[i + 1].get("role") == "assistant":

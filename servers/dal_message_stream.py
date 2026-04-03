@@ -81,7 +81,8 @@ class MessageStreamDAL:
     def store(self, role: str, content: str, session_id: str = '',
               signal_type: Optional[str] = None,
               recalled_node_ids: Optional[str] = None,
-              recalled_raw: Optional[str] = None) -> int:
+              recalled_raw: Optional[str] = None,
+              judge_output: Optional[str] = None) -> int:
         """Store a message to the stream. Returns the row id.
 
         Args:
@@ -89,14 +90,15 @@ class MessageStreamDAL:
             content: raw message text
             session_id: current session identifier
             signal_type: 'decision', 'correction', 'insight', 'exploration', or None
-            recalled_node_ids: JSON array of node IDs surfaced for this turn
-            recalled_raw: JSON array of {id, type, title, content_snippet, score}
+            recalled_node_ids: JSON array — judge-selected node IDs (what Claude saw)
+            recalled_raw: JSON array — all candidates (debugging only)
+            judge_output: exact additionalContext string (for encoder consumption)
         """
         cursor = self.conn.execute(
             'INSERT INTO message_stream '
-            '(timestamp, role, content, session_id, signal_type, recalled_node_ids, recalled_raw) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?)',
-            (_now(), role, content, session_id, signal_type, recalled_node_ids, recalled_raw))
+            '(timestamp, role, content, session_id, signal_type, recalled_node_ids, recalled_raw, judge_output) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            (_now(), role, content, session_id, signal_type, recalled_node_ids, recalled_raw, judge_output))
         self.conn.commit()
         return cursor.lastrowid
 

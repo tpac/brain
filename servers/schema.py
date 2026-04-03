@@ -816,7 +816,10 @@ LOG_TABLES = {
             followup_signal TEXT,
             explicit_feedback TEXT,
             evaluated_at TEXT,
-            created_at TEXT
+            created_at TEXT,
+            source TEXT DEFAULT 'hook',
+            judge_prompt TEXT,
+            judge_output TEXT
         )""",
     },
     'miss_log': {
@@ -952,7 +955,8 @@ LOG_TABLES = {
             resolved INTEGER DEFAULT 0,
             resolved_at TEXT DEFAULT NULL,
             recalled_node_ids TEXT DEFAULT NULL,
-            recalled_raw TEXT DEFAULT NULL
+            recalled_raw TEXT DEFAULT NULL,
+            judge_output TEXT DEFAULT NULL
         )""",
     },
 

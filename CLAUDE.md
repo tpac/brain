@@ -67,6 +67,28 @@ Encoding and decoding (recall) are two halves of the same system. If you add a f
 
 **Layer 2 judge** — `pre_response_recall.py`. Haiku selects relevant nodes from 25 candidates. Replaces old distiller. Session context from encoder. Stays silent on confirmations.
 
+## Dashboard
+
+The dashboard (`servers/brain_dashboard_standalone.py`) is a **passive observer** — it reads, never writes to brain data. It inspects the brain from the side without interfering with the process.
+
+```
+Brain (daemon + hooks) → does the work → writes to DBs + tmp files
+Dashboard → reads from those same DBs + files → displays to operator
+```
+
+**Data sources the dashboard reads (all read-only):**
+- `brain.db` — nodes, edges, encoding activity, graph data
+- `brain_logs.db` → `recall_log` — single source of truth for ALL recalls (hook, MCP, internal). Includes query, candidates, titles, snippets, source.
+- `brain_logs.db` → `signal_queue` — pending signals
+- `brain_logs.db` → `hook_errors`, `debug_log`, `brain_telemetry` — errors and diagnostics
+- `/tmp/brain-judge-result-{id}.json` — judge prompt + output, written by hooks for async pickup
+
+**`brain_dashboard.db` is DEPRECATED.** It was a parallel logging pipe that diverged from reality. The dashboard now reads from the brain's own data — same tables the daemon uses.
+
+**Recall logging is inside `brain.recall()`.** Every recall — hook, MCP, internal — gets logged to `recall_log` with a `source` column. No caller needs to log separately. This was moved from the hook into the recall method itself to ensure single source of truth.
+
+**Judge data flows through tmp files, not the hook.** The hook writes `/tmp/brain-judge-result-{recall_log_id}.json` containing the exact Haiku prompt and the exact additionalContext sent to Claude. The dashboard reads these files. This decouples judge monitoring from hook timeout constraints.
+
 ## Code Ownership
 
 Tom reads code but doesn't review every file. You are the sole maintainer of code quality, architecture, and cleanliness. These rules are your guardrails:

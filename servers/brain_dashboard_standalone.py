@@ -81,15 +81,85 @@ def _direct_query(sql, args=(), db_path=None):
         return []
 
 
-# ── Hook Log — reads brain_dashboard.db for actual brain surface output ──
+# ── Recall Log — reads from brain_logs.db (single source of truth) ──
 
 def _get_dashboard_db_path():
     db_dir = os.environ.get("BRAIN_DB_DIR", os.path.join(os.path.expanduser("~"), "AgentsContext", "brain"))
     return os.path.join(db_dir, "brain_dashboard.db")
 
 
+def _read_judge_file(recall_log_id):
+    """Read judge data from temp file written by the hook. Dashboard is read-only observer."""
+    path = "/tmp/brain-judge-result-%s.json" % recall_log_id
+    if not os.path.exists(path):
+        return None, None
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        return data.get("judge_prompt"), data.get("judge_output")
+    except Exception:
+        return None, None
+
+
+def _query_recall_log(since_id=0, limit=50):
+    """Read recall events from recall_log in brain_logs.db — the single source of truth.
+    Shows all recalls: hook-initiated, MCP (Anchor's proactive), and internal."""
+    path = _get_logs_db_path()
+    if not os.path.exists(path):
+        return []
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=3)
+        rows = conn.execute(
+            "SELECT id, session_id, query, returned_ids, returned_count, "
+            "recalled_titles, recalled_snippets, created_at, source, "
+            "embeddings_used, used_ids, used_count, precision_score "
+            "FROM recall_log WHERE id > ? ORDER BY id DESC LIMIT ?",
+            (since_id, limit)
+        ).fetchall()
+        conn.close()
+        results = []
+        for r in rows:
+            titles = {}
+            snippets = {}
+            try:
+                titles = json.loads(r[5]) if r[5] else {}
+            except Exception:
+                pass
+            try:
+                snippets = json.loads(r[6]) if r[6] else {}
+            except Exception:
+                pass
+            returned_ids = []
+            try:
+                returned_ids = json.loads(r[3]) if r[3] else []
+            except Exception:
+                pass
+            used_ids = []
+            try:
+                used_ids = json.loads(r[10]) if r[10] else []
+            except Exception:
+                pass
+            # Read judge data from tmp file (dashboard is passive observer)
+            j_prompt, j_output = _read_judge_file(r[0])
+            results.append({
+                "id": r[0], "session_id": r[1] or "", "query": r[2] or "",
+                "returned_ids": returned_ids, "returned_count": r[4] or 0,
+                "titles": titles, "snippets": snippets,
+                "timestamp": r[7] or "", "source": r[8] or "unknown",
+                "embeddings_used": bool(r[9]),
+                "used_ids": used_ids, "used_count": r[11] or 0,
+                "precision_score": r[12],
+                "judge_prompt": j_prompt,
+                "judge_output": j_output,
+            })
+        return results
+    except Exception:
+        return []
+
+
 def _query_hook_log(since_id=0, limit=50):
-    """Read hook_log entries from brain_dashboard.db."""
+    """DEPRECATED: Read hook_log entries from brain_dashboard.db.
+    Kept for backward compat — use _query_recall_log instead."""
     path = _get_dashboard_db_path()
     if not os.path.exists(path):
         return []
@@ -182,6 +252,144 @@ def _query_encoding_activity(since_ts="", limit=30):
         # Sort all by timestamp descending
         events.sort(key=lambda e: e.get("timestamp", ""), reverse=True)
         return events[:limit]
+    except Exception:
+        return []
+
+
+def _query_encoding_runs(limit=10):
+    """Reconstruct encoding runs by grouping auto-encoded actions by time.
+    Passive: reads existing data from brain.db + brain_logs.db, no encoder changes.
+
+    Groups nodes/edges with encoding_source='auto' into runs (30s window).
+    For each run, reconstructs what the encoder saw: messages + judge output.
+    """
+    db = _get_db_path()
+    logs_path = _get_logs_db_path()
+    if not os.path.exists(db):
+        return []
+    try:
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=3)
+
+        # Get recent nodes — group by timestamp clusters to detect encoding runs.
+        # The encoding agent creates multiple nodes within seconds.
+        nodes = conn.execute(
+            "SELECT id, type, title, substr(content,1,200), created_at, encoding_source "
+            "FROM nodes WHERE created_at > datetime('now', '-24 hours') "
+            "ORDER BY created_at DESC LIMIT 100"
+        ).fetchall()
+
+        # Get auto-encoded edges (same timeframe)
+        edges = conn.execute(
+            "SELECT e.source_id, e.target_id, e.relation, e.weight, e.created_at, "
+            "n1.title, n2.title "
+            "FROM edges e "
+            "LEFT JOIN nodes n1 ON n1.id = e.source_id "
+            "LEFT JOIN nodes n2 ON n2.id = e.target_id "
+            "WHERE e.created_at > datetime('now', '-24 hours') "
+            "AND e.relation NOT IN ('co_accessed') "
+            "ORDER BY e.created_at DESC LIMIT 200"
+        ).fetchall()
+        conn.close()
+
+        # Group into runs by 30-second windows
+        runs = []
+        current_run = None
+        for n in nodes:
+            ts = n[4] or ""
+            if current_run and ts and current_run["start_ts"]:
+                # If within 30s of the current run's latest action
+                from datetime import datetime
+                try:
+                    t_this = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                    t_run = datetime.fromisoformat(current_run["start_ts"].replace('Z', '+00:00'))
+                    if abs((t_this - t_run).total_seconds()) < 30:
+                        current_run["nodes"].append({
+                            "id": n[0], "type": n[1], "title": n[2],
+                            "content": n[3], "timestamp": ts})
+                        continue
+                except Exception:
+                    pass
+
+            # Start new run
+            if current_run:
+                runs.append(current_run)
+            current_run = {
+                "start_ts": ts,
+                "nodes": [{"id": n[0], "type": n[1], "title": n[2],
+                           "content": n[3], "timestamp": ts}],
+                "edges": [],
+                "prompt": None,
+            }
+
+        if current_run:
+            runs.append(current_run)
+
+        # Only keep clusters with 2+ nodes (encoding runs create multiple nodes)
+        runs = [r for r in runs if len(r.get("nodes", [])) >= 2]
+
+        # Attach edges to runs by timestamp proximity
+        for run in runs:
+            if not run["start_ts"]:
+                continue
+            for e in edges:
+                e_ts = e[4] or ""
+                if not e_ts:
+                    continue
+                try:
+                    from datetime import datetime
+                    t_edge = datetime.fromisoformat(e_ts.replace('Z', '+00:00'))
+                    t_run = datetime.fromisoformat(run["start_ts"].replace('Z', '+00:00'))
+                    if abs((t_edge - t_run).total_seconds()) < 30:
+                        run["edges"].append({
+                            "relation": e[2], "weight": e[3],
+                            "source_title": e[5] or e[0][:12],
+                            "target_title": e[6] or e[1][:12],
+                            "timestamp": e_ts})
+                except Exception:
+                    pass
+
+        # For each run, reconstruct the prompt context from message_stream
+        if os.path.exists(logs_path):
+            logs_conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=3)
+            for run in runs[:limit]:
+                try:
+                    # Get messages the encoder would have seen (before this run)
+                    rows = logs_conn.execute(
+                        "SELECT role, substr(content,1,500), signal_type, judge_output "
+                        "FROM message_stream "
+                        "WHERE timestamp < ? "
+                        "ORDER BY timestamp DESC LIMIT 10",
+                        (run["start_ts"],)
+                    ).fetchall()
+                    timeline = []
+                    for r in reversed(rows):
+                        entry = {"role": r[0], "content": r[1], "signal": r[2]}
+                        if r[3]:
+                            entry["judge_output"] = r[3][:2000]
+                        timeline.append(entry)
+                    run["prompt_context"] = timeline
+                except Exception:
+                    run["prompt_context"] = []
+
+            # Also get encoding journal
+            try:
+                brain_conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=3)
+                # Session context from brain config
+                ctx_row = brain_conn.execute(
+                    "SELECT value FROM config WHERE key='session_context'").fetchone()
+                journal_rows = brain_conn.execute(
+                    "SELECT key, value FROM config WHERE key LIKE 'encoding_journal_%' "
+                    "ORDER BY key DESC LIMIT 1").fetchone()
+                brain_conn.close()
+                for run in runs[:limit]:
+                    run["session_context"] = (ctx_row[0] if ctx_row else "")[:500]
+                    run["journal"] = (journal_rows[1] if journal_rows else "")[:2000]
+            except Exception:
+                pass
+
+            logs_conn.close()
+
+        return runs[:limit]
     except Exception:
         return []
 
@@ -474,10 +682,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_insights()
         elif path == "/api/status":
             self._serve_status()
+        elif path == "/api/recalls":
+            self._serve_recalls(params)
         elif path == "/api/hook-log":
             self._serve_hook_log(params)
         elif path == "/api/encoding-activity":
             self._serve_encoding_activity(params)
+        elif path == "/api/encoding-runs":
+            self._serve_encoding_runs(params)
         elif path == "/api/signal-queue":
             self._serve_signal_queue()
         elif path == "/api/assembler-comparison":
@@ -509,8 +721,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
             "daemon_port": DAEMON_PORT,
         })
 
+    def _serve_recalls(self, params):
+        """Return recall events from recall_log — the single source of truth."""
+        since_id = int(params.get("since_id", [0])[0])
+        limit = int(params.get("limit", [50])[0])
+        entries = _query_recall_log(since_id=since_id, limit=limit)
+        latest_id = entries[0]["id"] if entries else since_id
+        self._json_response(200, {"events": entries, "latest_id": latest_id})
+
+    def _serve_encoding_runs(self, params):
+        """Return encoding runs — grouped actions with reconstructed prompt context."""
+        limit = int(params.get("limit", [10])[0])
+        runs = _query_encoding_runs(limit=limit)
+        self._json_response(200, {"runs": runs})
+
     def _serve_hook_log(self, params):
-        """Return recent hook log entries — the actual brain surface output."""
+        """DEPRECATED: Return hook log entries from brain_dashboard.db."""
         since_id = int(params.get("since_id", [0])[0])
         limit = int(params.get("limit", [50])[0])
         entries = _query_hook_log(since_id=since_id, limit=limit)
@@ -849,6 +1075,12 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: 'SF Mono', 'Fira Code',
 .hook-details.open { display: block; }
 .hook-details pre { background: #050510; border: 1px solid #1a1a3a; border-radius: 4px; padding: 10px; color: #998; font-size: 10px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; max-height: 600px; overflow-y: auto; }
 .hook-prompt { padding: 6px 12px; background: #0d1117; border-left: 3px solid #58a6ff; color: #c9d1d9; font-size: 12px; margin: 0 8px; font-style: italic; }
+.recall-titles { padding: 4px 12px 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+.recall-title { display: inline-block; padding: 2px 8px; background: #1a1a2a; border: 1px solid #2a2a3a; border-radius: 3px; font-size: 10px; color: #aaa; cursor: pointer; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recall-title:hover { background: #2a2a4a; color: #ccc; }
+.recall-title.used { border-color: #33ff88; color: #7eff7e; }
+.recall-title.more { background: none; border: none; color: #555; cursor: default; font-style: italic; }
+.recall-judge-output pre { background: #0d1117; border: 1px solid #1a2a1a; border-left: 3px solid #33ff88; border-radius: 4px; padding: 8px 12px; color: #b8d8b8; font-size: 11px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; max-height: 300px; overflow-y: auto; margin: 4px 8px; }
 .hook-body pre { background: #0a0a12; border: 1px solid #1a1a2a; border-radius: 4px; padding: 10px; color: #bbb; font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-height: 500px; overflow-y: auto; }
 .feed-toggle { display: flex; gap: 0; padding: 0 8px; margin-top: 4px; }
 .feed-btn { background: #111118; border: 1px solid #2a2a3a; color: #666; padding: 6px 16px; cursor: pointer; font-family: inherit; font-size: 11px; transition: all 0.15s; }
@@ -941,9 +1173,10 @@ canvas { width: 100%; height: 100%; }
     <button class="feed-btn" onclick="switchFeed('encoding')">Encoding <span id="enc-badge" style="display:none;background:#ff4466;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
     <button class="feed-btn" onclick="switchFeed('queue')">Queue</button>
     <select id="surface-filter" onchange="filterSurface()" style="margin-left:auto;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
-      <option value="">All events</option>
-      <option value="recall">Recall only</option>
-      <option value="stop">Stop only</option>
+      <option value="">All sources</option>
+      <option value="recall">Hook recalls</option>
+      <option value="mcp">Anchor recalls</option>
+      <option value="internal">Internal</option>
     </select>
     <select id="encoding-filter" onchange="filterEncoding()" style="display:none;margin-left:8px;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
       <option value="">All types</option>
@@ -1080,8 +1313,8 @@ async function loadStats() {
 loadStats();
 setInterval(loadStats, 30000);
 
-// Live feed — polls hook_log from brain_logs.db
-let lastHookId = 0;
+// Live feed — polls recall_log from brain_logs.db (single source of truth)
+let lastRecallId = 0;
 const MAX_ENTRIES = 100;
 
 function escapeHtml(s) {
@@ -1089,7 +1322,7 @@ function escapeHtml(s) {
 }
 function localTime(utcStr, mode) {
   if (!utcStr) return '';
-  const d = new Date(utcStr.endsWith('Z') ? utcStr : utcStr + 'Z');
+  const d = new Date(utcStr);
   if (isNaN(d)) return utcStr;
   if (mode === 'time') return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
   return d.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit'});
@@ -1101,75 +1334,155 @@ function toggleDetails(btn) {
   btn.textContent = details.classList.contains('open') ? 'Hide Details' : 'Full Details';
 }
 
-function formatMetadata(raw) {
-  try {
-    const obj = JSON.parse(raw);
-    if (obj.distill_prompt) {
-      return '=== FULL PROMPT SENT TO HAIKU ===\\n\\n' +
-        obj.distill_prompt + '\\n\\n' +
-        '=== STATS ===\\n' +
-        'Model: ' + (obj.model || '?') + '\\n' +
-        'Candidates: ' + (obj.candidates_count || '?') + '\\n' +
-        'Fetch latency: ' + (obj.latency_fetch_ms || '?') + 'ms\\n' +
-        'Distill latency: ' + (obj.latency_distill_ms || '?') + 'ms';
-    }
-    return JSON.stringify(obj, null, 2);
-  } catch(e) {
-    return raw;
-  }
-}
-
 function toggleHookBody(el) {
   const body = el.parentElement.querySelector('.hook-body');
   body.classList.toggle('open');
 }
 
-async function pollHookLog() {
-  try {
-    const r = await fetch('/api/hook-log?since_id=' + lastHookId + '&limit=20');
-    const d = await r.json();
-    if (!d.events || !d.events.length) return;
-    const feed = document.getElementById('feed');
-    // Clear placeholder on first data
-    if (feed.querySelector('.hook-placeholder')) feed.querySelector('.hook-placeholder').remove();
-    // Events come newest-first from API; reverse to prepend in correct order
-    const sorted = d.events.slice().reverse();
-    for (const evt of sorted) {
-      if (evt.id <= lastHookId) continue;
-      const div = document.createElement('div');
-      div.className = 'hook-entry ' + (evt.hook_name || '');
-      const t = localTime(evt.timestamp, 'time');
-      const chars = (evt.output_text || '').length;
-      const sid = evt.session_id ? evt.session_id.substring(0, 8) : '';
-      div.innerHTML =
-        '<div class="hook-header" onclick="toggleHookBody(this)">' +
-          '<span class="hook-badge ' + evt.hook_name + '">' + evt.hook_name + '</span>' +
-          '<span class="hook-time">' + t + '</span>' +
-          (sid ? '<span class="hook-session" title="' + escapeHtml(evt.session_id) + '">' + sid + '</span>' : '') +
-          '<span class="hook-id">#' + evt.id + '</span>' +
-          '<span class="hook-size">' + chars + ' chars</span>' +
-        '</div>' +
-        (evt.user_prompt ? '<div class="hook-prompt">' + escapeHtml(evt.user_prompt) + '</div>' : '') +
-        '<div class="hook-body">' +
-          '<pre>' + escapeHtml(evt.output_text || '(empty)') + '</pre>' +
-          (evt.operator_text ? '<pre style="border-left:2px solid #ffaa33;margin-top:6px">' + escapeHtml(evt.operator_text) + '</pre>' : '') +
-          (evt.metadata ? '<button class="hook-details-btn" onclick="toggleDetails(this)">Full Details</button><div class="hook-details"><pre>' + escapeHtml(formatMetadata(evt.metadata)) + '</pre></div>' : '') +
+const SOURCE_COLORS = {
+  hook: '#7eb8ff',
+  mcp: '#b8ff7e',
+  internal: '#888',
+  unknown: '#666'
+};
+const SOURCE_LABELS = {
+  hook: 'HOOK',
+  mcp: 'ANCHOR',
+  internal: 'INTERNAL',
+  unknown: '?'
+};
+
+function renderRecallEntry(evt) {
+  const div = document.createElement('div');
+  div.className = 'hook-entry recall-entry';
+  const src = evt.source || 'unknown';
+  div.dataset.source = src;
+  div.dataset.recallId = evt.id;
+  div.dataset.needsJudge = (src === 'hook' && !evt.judge_output) ? '1' : '0';
+  const t = localTime(evt.timestamp, 'time');
+  const srcColor = SOURCE_COLORS[src] || '#666';
+  const srcLabel = SOURCE_LABELS[src] || src.toUpperCase();
+  const sid = evt.session_id ? evt.session_id.substring(4, 12) : '';
+  const count = evt.returned_count || 0;
+  const titles = evt.titles || {};
+  const snippets = evt.snippets || {};
+  const ids = evt.returned_ids || [];
+  const usedIds = new Set(evt.used_ids || []);
+
+  // Short details: judge_output = exact additionalContext sent to Claude
+  // Falls back to candidate title chips if no judge data yet (MCP recalls, old data)
+  let shortContent = '';
+  if (evt.judge_output && evt.judge_output !== '(no selection)') {
+    shortContent = '<div class="recall-judge-output"><pre>' + escapeHtml(evt.judge_output) + '</pre></div>';
+  } else if (evt.judge_output === '(no selection)') {
+    shortContent = '<div class="recall-judge-output" style="color:#666;padding:6px 12px;font-size:11px">(judge selected nothing)</div>';
+  } else {
+    // No judge data — show candidate titles as fallback
+    const titleEntries = Object.entries(titles).slice(0, 8);
+    if (titleEntries.length) {
+      shortContent = '<div class="recall-titles">' +
+        titleEntries.map(([nid, title]) => {
+          return '<span class="recall-title" onclick="showNodeDetail(&quot;' + nid + '&quot;)" title="' + escapeHtml(nid) + '">' +
+            escapeHtml(title) + '</span>';
+        }).join('') +
+        (Object.keys(titles).length > 8 ? '<span class="recall-title more">+' + (Object.keys(titles).length - 8) + ' more</span>' : '') +
         '</div>';
-      feed.prepend(div);
     }
-    lastHookId = d.latest_id;
-    // Cap entries
-    while (feed.children.length > MAX_ENTRIES) feed.removeChild(feed.lastChild);
-  } catch(e) {}
+  }
+
+  // Full details: judge_prompt = exact prompt sent to Haiku
+  // Falls back to candidate list if no judge data yet
+  let fullDetails = '<div class="hook-details"><pre>';
+  if (evt.judge_prompt) {
+    fullDetails += escapeHtml(evt.judge_prompt);
+  } else {
+    fullDetails += '=== ' + ids.length + ' CANDIDATES (no judge prompt stored) ===\\n\\n';
+    for (const nid of ids) {
+      const title = titles[nid] || nid.substring(0, 12);
+      const snippet = snippets[nid] || '';
+      fullDetails += title + '\\n';
+      if (snippet) fullDetails += '  ' + snippet.substring(0, 150).replace(/\\n/g, ' ') + '\\n';
+      fullDetails += '\\n';
+    }
+  }
+  fullDetails += '</pre></div>';
+
+  div.innerHTML =
+    '<div class="hook-header" onclick="toggleHookBody(this)">' +
+      '<span class="hook-badge" style="background:' + srcColor + ';color:#000">' + srcLabel + '</span>' +
+      '<span class="hook-time">' + t + '</span>' +
+      (sid ? '<span class="hook-session">' + sid + '</span>' : '') +
+      '<span class="hook-id">#' + evt.id + '</span>' +
+      '<span class="hook-size">' + count + ' nodes</span>' +
+      (evt.precision_score !== null && evt.precision_score !== undefined ? '<span class="hook-size" style="color:' + (evt.precision_score > 0.5 ? '#7eff7e' : '#ff7e7e') + '">' + Math.round(evt.precision_score * 100) + '%</span>' : '') +
+    '</div>' +
+    '<div class="hook-prompt">' + escapeHtml(evt.query || '') + '</div>' +
+    shortContent +
+    '<div class="hook-body">' +
+      '<button class="hook-details-btn" onclick="toggleDetails(this)">Full Details</button>' +
+      fullDetails +
+    '</div>';
+  return div;
 }
 
-// Initial load: get recent history
+function shouldShowEntry(evt) {
+  const filterVal = document.getElementById('surface-filter').value;
+  if (!filterVal) return evt.source !== 'internal';  // hide internal by default
+  if (filterVal === 'recall') return evt.source === 'hook';
+  if (filterVal === 'mcp') return evt.source === 'mcp';
+  if (filterVal === 'internal') return evt.source === 'internal';
+  return true;
+}
+
+async function pollRecallLog() {
+  try {
+    const r = await fetch('/api/recalls?since_id=' + lastRecallId + '&limit=20');
+    const d = await r.json();
+    const feed = document.getElementById('feed');
+    if (d.events && d.events.length) {
+      if (feed.querySelector('.hook-placeholder')) feed.querySelector('.hook-placeholder').remove();
+      const sorted = d.events.slice().reverse();
+      for (const evt of sorted) {
+        if (evt.id <= lastRecallId) continue;
+        if (!shouldShowEntry(evt)) continue;
+        feed.prepend(renderRecallEntry(evt));
+      }
+      lastRecallId = d.latest_id;
+      while (feed.children.length > MAX_ENTRIES) feed.removeChild(feed.lastChild);
+    }
+    // Async judge update: check entries missing judge data
+    // Only update entries NOT currently scrolled into view or expanded
+    const pending = document.querySelectorAll('#feed .recall-entry[data-needs-judge="1"]');
+    if (pending.length) {
+      const ids = Array.from(pending).map(el => el.dataset.recallId).filter(Boolean);
+      if (ids.length) {
+        const minId = Math.min(...ids.map(Number)) - 1;
+        const jr = await fetch('/api/recalls?since_id=' + minId + '&limit=' + (ids.length + 5));
+        const jd = await jr.json();
+        for (const evt of (jd.events || [])) {
+          if (evt.judge_output) {
+            const el = document.querySelector('#feed .recall-entry[data-recall-id="' + evt.id + '"][data-needs-judge="1"]');
+            if (el) {
+              // One-time re-render: chips → judge output. Won't fire again (needsJudge becomes 0).
+              const scrollTop = feed.scrollTop;
+              const newEl = renderRecallEntry(evt);
+              el.replaceWith(newEl);
+              feed.scrollTop = scrollTop;
+            }
+          }
+        }
+      }
+    }
+  } catch(e) { console.error('pollRecallLog error:', e); }
+}
+
+// Initial load
 (async function() {
   const feed = document.getElementById('feed');
   feed.innerHTML = '<div class="hook-placeholder" style="color:#666;padding:20px;text-align:center">Waiting for brain activity...</div>';
-  await pollHookLog();
+  await pollRecallLog();
 })();
-setInterval(pollHookLog, 2000);
+setInterval(pollRecallLog, 2000);
 
 // Feed toggle + encoding badge
 let activeFeed = 'surface';
@@ -1202,9 +1515,13 @@ function switchFeed(name) {
 
 function filterSurface() {
   const val = document.getElementById('surface-filter').value;
-  document.querySelectorAll('#feed .hook-entry').forEach(el => {
-    if (!val) { el.style.display = ''; return; }
-    el.style.display = el.classList.contains(val) ? '' : 'none';
+  document.querySelectorAll('#feed .recall-entry').forEach(el => {
+    const src = el.dataset.source || '';
+    if (!val) { el.style.display = src === 'internal' ? 'none' : ''; return; }
+    if (val === 'recall') el.style.display = src === 'hook' ? '' : 'none';
+    else if (val === 'mcp') el.style.display = src === 'mcp' ? '' : 'none';
+    else if (val === 'internal') el.style.display = src === 'internal' ? '' : 'none';
+    else el.style.display = '';
   });
 }
 
@@ -1222,75 +1539,85 @@ let lastEncodingTs = '';
 
 async function loadEncodingActivity() {
   try {
-    const r = await fetch('/api/encoding-activity?limit=50' + (lastEncodingTs ? '&since=' + encodeURIComponent(lastEncodingTs) : ''));
-    const d = await r.json();
-    if (!d.events || !d.events.length) {
+    const container = document.getElementById('feed-encoding');
+    // Load encoding runs (grouped by run, with prompt context)
+    const runsR = await fetch('/api/encoding-runs?limit=10');
+    const runsD = await runsR.json();
+
+    if (!runsD.runs || !runsD.runs.length) {
       if (!encodingLoaded) {
-        document.getElementById('feed-encoding').innerHTML = '<div style="color:#666;padding:20px;text-align:center">No recent encoding activity</div>';
+        container.innerHTML = '<div style="color:#666;padding:20px;text-align:center">No recent encoding runs</div>';
       }
       encodingLoaded = true;
       return;
     }
-    const container = document.getElementById('feed-encoding');
-    const isInitial = !encodingLoaded;
-    if (isInitial) container.innerHTML = '';
+
+    if (!encodingLoaded) container.innerHTML = '';
     encodingLoaded = true;
 
-    // On initial load: events are newest-first from API, use append to keep order.
-    // On poll updates: prepend new items to top.
-    const evts = isInitial ? d.events : d.events.slice().reverse();
-    for (const evt of evts) {
+    // Render each run as a card
+    container.innerHTML = '';
+    for (const run of runsD.runs) {
       const div = document.createElement('div');
-      div.className = 'enc-entry ' + evt.kind;
-      div.dataset.kind = evt.kind;
-      const t = localTime(evt.timestamp);
+      div.className = 'hook-entry';
+      div.style.borderLeftColor = '#aa66ff';
+      const t = localTime(run.start_ts, 'time');
+      const nodeCount = run.nodes ? run.nodes.length : 0;
+      const edgeCount = run.edges ? run.edges.length : 0;
 
-      if (evt.kind === 'created') {
-        div.style.cursor = 'pointer';
-        div.onclick = function() { loadNodeDetail(evt.id); };
-        div.innerHTML =
+      // Header
+      let html = '<div class="hook-header" onclick="toggleHookBody(this)">' +
+        '<span class="hook-badge" style="background:#aa66ff;color:#000">ENCODE</span>' +
+        '<span class="hook-time">' + t + '</span>' +
+        '<span class="hook-size">' + nodeCount + ' nodes, ' + edgeCount + ' edges</span>' +
+      '</div>';
+
+      // Actions summary (always visible)
+      html += '<div style="padding:4px 12px">';
+      for (const n of (run.nodes || [])) {
+        html += '<div class="enc-entry created" style="margin:2px 0;padding:4px 8px">' +
           '<span class="enc-kind created">CREATED</span> ' +
-          '<span class="type-badge type-' + (evt.type||'') + '">' + (evt.type||'') + '</span> ' +
-          (evt.locked ? '&#x1f512; ' : '') +
-          '<span class="enc-title">' + escapeHtml(evt.title || '') + '</span>' +
-          '<div class="enc-meta">id:' + (evt.id||'').substring(0,8) + ' · ' + t + ' · conf: ' + (evt.confidence||0).toFixed(2) + ' · source: ' + (evt.encoding_source||'?') + '</div>' +
-          '<div class="enc-content">' + escapeHtml(evt.content || '') + '</div>';
-      } else if (evt.kind === 'revised') {
-        div.style.cursor = 'pointer';
-        div.onclick = function() { loadNodeDetail(evt.id); };
-        div.innerHTML =
-          '<span class="enc-kind revised">REVISED</span> ' +
-          '<span class="type-badge type-' + (evt.type||'') + '">' + (evt.type||'') + '</span> ' +
-          '<span class="enc-title">' + escapeHtml(evt.title || '') + '</span>' +
-          '<div class="enc-meta">id:' + (evt.id||'').substring(0,8) + ' · ' + t + ' · conf: ' + (evt.confidence||0).toFixed(2) + ' · source: ' + (evt.encoding_source||'?') + '</div>' +
-          '<div class="enc-content">' + escapeHtml(evt.content || '') + '</div>';
-      } else if (evt.kind === 'connected') {
-        div.style.cursor = 'pointer';
-        div.onclick = function() { loadNodeDetail(evt.source_id || ''); };
-        div.innerHTML =
-          '<span class="enc-kind connected">CONNECTED</span> ' +
-          '<span class="type-badge type-' + (evt.source_type||'') + '">' + (evt.source_type||'') + '</span> ' +
-          '<span class="enc-title">' + escapeHtml(evt.source_title || '') + '</span>' +
-          ' <span style="color:#aa66ff"> —' + (evt.relation||'related_to') + '→ </span>' +
-          '<span class="type-badge type-' + (evt.target_type||'') + '">' + (evt.target_type||'') + '</span> ' +
-          '<span class="enc-title">' + escapeHtml(evt.target_title || '') + '</span>' +
-          '<div class="enc-meta">' + t + ' · weight: ' + (evt.weight||0).toFixed(2) + '</div>';
-      } else if (evt.kind === 'enriched') {
-        div.innerHTML =
-          '<span class="enc-kind enriched">enriched</span>' +
-          '<span class="enc-title">' + escapeHtml(evt.node_title || '') + '</span>' +
-          ' <span style="color:#4a9eff">(' + (evt.vector_type||'') + ')</span>' +
-          '<div class="enc-meta">' + t + '</div>' +
-          '<div class="enc-content">' + escapeHtml(evt.text || '') + '</div>';
+          '<span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ' +
+          '<span class="enc-title">' + escapeHtml(n.title || '') + '</span></div>';
       }
-      if (isInitial) container.appendChild(div); else container.prepend(div);
+      for (const e of (run.edges || [])) {
+        html += '<div class="enc-entry connected" style="margin:2px 0;padding:4px 8px">' +
+          '<span class="enc-kind connected">CONNECTED</span> ' +
+          escapeHtml(e.source_title || '') + ' <span style="color:#aa66ff">—' + (e.relation||'') + '→</span> ' +
+          escapeHtml(e.target_title || '') + '</div>';
+      }
+      html += '</div>';
+
+      // Full prompt context (expandable)
+      html += '<div class="hook-body">';
+      html += '<button class="hook-details-btn" onclick="toggleDetails(this)">Full Prompt</button>';
+      html += '<div class="hook-details"><pre>';
+
+      // Reconstructed prompt: messages + judge output
+      if (run.session_context) {
+        html += '=== SESSION CONTEXT ===\\n' + escapeHtml(run.session_context) + '\\n\\n';
+      }
+      if (run.journal) {
+        html += '=== ENCODING JOURNAL ===\\n' + escapeHtml(run.journal.substring(0, 2000)) + '\\n\\n';
+      }
+      html += '=== CONVERSATION TIMELINE ===\\n\\n';
+      for (const msg of (run.prompt_context || [])) {
+        const role = msg.role === 'user' ? 'TOM' : 'ANCHOR';
+        html += role + ': ' + escapeHtml(msg.content || '') + '\\n';
+        if (msg.judge_output) {
+          html += 'BRAIN SURFACED (judge-selected):\\n' + escapeHtml(msg.judge_output) + '\\n';
+        }
+        html += '\\n';
+      }
+      html += '</pre></div></div>';
+
+      div.innerHTML = html;
+      container.appendChild(div);
     }
-    if (!isInitial && evts.length > 0) updateEncBadge(evts.length);
-    if (d.events.length) lastEncodingTs = d.events[0].timestamp;
-  } catch(e) {}
+  } catch(e) { console.error('loadEncodingActivity error:', e); }
 }
 
-setInterval(() => { if (activeFeed === 'encoding') loadEncodingActivity(); }, 3000);
+setInterval(() => { if (activeFeed === 'encoding') loadEncodingActivity(); }, 5000);
 
 // Signal Queue feed
 async function loadSignalQueue() {
