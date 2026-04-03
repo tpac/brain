@@ -213,14 +213,26 @@ def _build_system_prompt():
 
 
 def _build_user_content(brain, messages, counter, session_id):
-    """Assemble the v3 encoding prompt with timeline and journal."""
-    from .pipeline_contract import ENCODING_AGENT
+    """Assemble the v3.2 encoding prompt: node catalog + timeline with references.
+
+    Structure:
+    1. Encoding journal (what previous runs did)
+    2. Session context (running summary)
+    3. Node catalog: all judge-surfaced nodes, full rich metadata, deduplicated
+    4. Timeline: conversation turns with node references (IDs only, not repeated)
+    """
+    from .pipeline_contract import ENCODING_AGENT, build_encoder_node_catalog
+    import re
 
     # Encoding journal (session-scoped, cumulative)
     journal_key = 'encoding_journal_%s' % session_id
     journal = brain.get_config(journal_key, '') or 'First run — no previous encoding in this session.'
 
-    # Build conversation timeline with pre-attached recall
+    # Build node catalog from all judge outputs (deduplicated, full metadata)
+    judge_outputs = [m.get("judge_output") for m in messages if m.get("role") == "user"]
+    node_catalog, cataloged_ids = build_encoder_node_catalog(judge_outputs, brain.conn)
+
+    # Build conversation timeline with node references (not full nodes)
     timeline = ""
     turn_num = 0
     i = 0
@@ -234,13 +246,24 @@ def _build_user_content(brain, messages, counter, session_id):
             timeline += "[TURN %d]\n" % turn_num
             timeline += "USER: \"%s\" (turn_id: %s)\n" % (user_content, turn_id)
 
-            # Pre-attached recall: prefer judge_output (curated) over recalled_raw (noisy)
+            # Reference surfaced nodes by ID (full data in catalog above)
             judge_output = m.get("judge_output")
-            if judge_output:
-                # Judge-selected nodes — truncated to keep prompt manageable
-                # Encoder needs: which nodes, why relevant, type. Not full content of each.
-                _judge_limit = ENCODING_AGENT.get('judge_output_limit', 2000)
-                timeline += "BRAIN SURFACED (judge-selected):\n%s\n" % judge_output[:_judge_limit]
+            if judge_output and judge_output != '(no selection)':
+                ref_ids = re.findall(r'id:([a-f0-9]{8})', judge_output)
+                if ref_ids:
+                    # Get titles for readable references
+                    refs = []
+                    for rid in ref_ids:
+                        title_row = brain.conn.execute(
+                            "SELECT title FROM nodes WHERE id LIKE ?",
+                            (rid + '%',)).fetchone()
+                        title = title_row[0][:50] if title_row else rid
+                        refs.append('%s ("%s")' % (rid, title))
+                    timeline += "BRAIN SURFACED: %s\n" % ", ".join(refs)
+                else:
+                    timeline += "BRAIN SURFACED: (judge selected but no IDs parsed)\n"
+            elif judge_output == '(no selection)':
+                timeline += "BRAIN SURFACED: (none relevant)\n"
             else:
                 # Fallback: raw candidates (judge didn't complete or old data)
                 recalled_raw = m.get("recalled_raw")
@@ -249,19 +272,16 @@ def _build_user_content(brain, messages, counter, session_id):
                         recalled = json.loads(recalled_raw) if isinstance(recalled_raw, str) else recalled_raw
                         if recalled:
                             timeline += "BRAIN SURFACED (%d candidates, no judge):\n" % len(recalled)
-                            for r in recalled:
-                                snippet = (r.get("content", "") or "")[:ENCODING_AGENT['timeline_snippet_limit']]
-                                timeline += "  [%s] %s (id:%s, score:%.2f)\n" % (
+                            for r in recalled[:5]:
+                                timeline += "  [%s] %s (id:%s)\n" % (
                                     r.get("type", "?"), r.get("title", "?"),
-                                    r.get("id", "?")[:8], r.get("score", r.get("effective_activation", 0)))
-                                if snippet:
-                                    timeline += "    %s\n" % snippet
+                                    r.get("id", "?")[:8])
                     except (json.JSONDecodeError, TypeError):
                         pass
                 else:
                     timeline += "BRAIN SURFACED: (no recall data)\n"
 
-            # Include assistant response if next message
+            # Include assistant response — both roles matter equally for encoding
             if i + 1 < len(messages) and messages[i + 1].get("role") == "assistant":
                 asst = (messages[i + 1].get("content") or "")[:ENCODING_AGENT['message_display_limit']]
                 timeline += "ASSISTANT: \"%s\"\n" % asst
@@ -276,7 +296,9 @@ def _build_user_content(brain, messages, counter, session_id):
     content = "## ENCODING RUN #%d\n\n" % counter
     content += "### Encoding Journal\n%s\n\n" % journal
     if prev_context:
-        content += "### Previous Session Context\n%s\n\n" % prev_context
+        content += "### Session Context\n%s\n\n" % prev_context
+    if node_catalog:
+        content += "### %s\n\n" % node_catalog
     content += "### Conversation Timeline\n\n%s\n" % timeline
     return content
 

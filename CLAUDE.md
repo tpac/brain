@@ -89,6 +89,21 @@ Dashboard → reads from those same DBs + files → displays to operator
 
 **Judge data flows through tmp files, not the hook.** The hook writes `/tmp/brain-judge-result-{recall_log_id}.json` containing the exact Haiku prompt and the exact additionalContext sent to Claude. The dashboard reads these files. This decouples judge monitoring from hook timeout constraints.
 
+## Test Isolation
+
+**All tests and evals MUST use `IsolatedBrain`** (`tests/isolated_brain.py`). Never run tests against production databases. The harness copies brain.db + brain_logs.db to a temp directory and creates an isolated Brain instance. Production is never touched.
+
+```python
+from tests.isolated_brain import IsolatedBrain
+
+with IsolatedBrain() as env:
+    result = env.dispatch("recall", {"query": "test", "limit": 5})
+    # env.brain — isolated Brain instance
+    # env.db_dir — temp directory (auto-cleaned)
+```
+
+This is infrastructure for ALL tests — unit, integration, evals, benchmarks. No exceptions.
+
 ## Code Ownership
 
 Tom reads code but doesn't review every file. You are the sole maintainer of code quality, architecture, and cleanliness. These rules are your guardrails:
