@@ -428,6 +428,7 @@ def hook_post_response_track(brain, args, graph_changes):
         # Read raw candidates (for debugging — recalled_raw)
         candidates_path = '/tmp/brain-%s-recall-candidates.json' % session_id
         recall_log_id = None
+        candidates = []
         if os.path.exists(candidates_path):
             with open(candidates_path) as _cf:
                 cdata = _json.load(_cf)
