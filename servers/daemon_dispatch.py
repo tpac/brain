@@ -316,13 +316,19 @@ def _handle_remember_batch(brain, args, graph_changes):
         return {"ok": False, "error": "nodes array is required"}
 
     accepted_fields = set(get_remember_fields().keys())
+    # Inherit top-level encoding_source into each node (dispatch wrapper injects this)
+    top_encoding_source = args.get("encoding_source")
+
     cleaned_nodes = []
     for i, spec in enumerate(nodes):
         for field, value in spec.items():
             ok, err = validate_field(field, value)
             if not ok:
                 return {"ok": False, "error": "node[%d].%s: %s" % (i, field, err)}
-        cleaned_nodes.append({k: v for k, v in spec.items() if k in accepted_fields and v is not None})
+        cleaned = {k: v for k, v in spec.items() if k in accepted_fields and v is not None}
+        if top_encoding_source and 'encoding_source' not in cleaned:
+            cleaned['encoding_source'] = top_encoding_source
+        cleaned_nodes.append(cleaned)
 
     result = brain.remember_batch(
         nodes=cleaned_nodes,
