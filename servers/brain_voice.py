@@ -584,6 +584,7 @@ class BrainVoice:
 
         # Operator channel
         signal_count = sum(len(cs.get(k, [])) for k in ["evolutions", "silent_errors", "uncertain_areas"])
+        high_issues = [i for i in health.get("issues", []) if i.get("severity") == "high"]
         alert_count = len(high_issues)
         operator_msg = self._operator_boot_summary(
             node_count=ctx.get("total_nodes", "?"),
