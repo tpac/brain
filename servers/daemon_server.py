@@ -396,13 +396,14 @@ class BrainDaemon:
                             self.brain.save()
                     except Exception as e:
                         self._log("Save error during restart: {}".format(e))
-                    import shutil
+                    import shutil, subprocess
                     servers_dir = os.path.dirname(os.path.abspath(__file__))
                     project_dir = os.path.dirname(servers_dir)
-                    cache_dir = os.path.join(servers_dir, '__pycache__')
-                    if os.path.isdir(cache_dir):
-                        shutil.rmtree(cache_dir, ignore_errors=True)
-                    self._cleanup()
+                    # Clear bytecode cache
+                    for cache_dir in [os.path.join(servers_dir, '__pycache__'),
+                                      os.path.join(project_dir, 'hooks', 'scripts', '__pycache__')]:
+                        if os.path.isdir(cache_dir):
+                            shutil.rmtree(cache_dir, ignore_errors=True)
                     db_dir = os.environ.get('BRAIN_DB_DIR', os.path.dirname(self.db_path))
                     startup = (
                         "import sys, os; "
@@ -412,11 +413,18 @@ class BrainDaemon:
                         "d = BrainDaemon(%r); d.start()"
                         % (project_dir, db_dir, self.db_path)
                     )
-                    self._log("Re-exec: %s -c ..." % sys.executable)
-                    os.execv(sys.executable, [sys.executable, '-c', startup])
+                    self._log("Spawning new daemon: %s -c ..." % sys.executable)
+                    # Spawn new process BEFORE cleanup — ensures new daemon starts
+                    subprocess.Popen([sys.executable, '-c', startup],
+                                     start_new_session=True,
+                                     stdout=open('/dev/null', 'w'),
+                                     stderr=open('/dev/null', 'w'))
+                    self._log("New daemon spawned. Shutting down old.")
+                    self._cleanup()
+                    os._exit(0)
 
                 import threading as _t
-                _t.Thread(target=_do_restart, daemon=True).start()
+                _t.Thread(target=_do_restart, daemon=False).start()
                 return {"ok": True, "result": {"status": "restarting"}}
 
             # Hook commands — read hooks run without lock, write hooks serialize
