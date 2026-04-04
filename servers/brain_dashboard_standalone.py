@@ -347,46 +347,28 @@ def _query_encoding_runs(limit=10):
                 except Exception:
                     pass
 
-        # For each run, reconstruct the prompt context from message_stream
-        if os.path.exists(logs_path):
-            logs_conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=3)
-            for run in runs[:limit]:
+        # Read actual encoder prompt from tmp files (passive observer).
+        # The encoding agent writes the exact prompt Sonnet received.
+        import glob as _glob
+        prompt_files = sorted(_glob.glob("/tmp/brain-encoding-prompt-*.json"),
+                              key=os.path.getmtime, reverse=True)
+
+        for run in runs[:limit]:
+            run["encoder_prompt"] = None
+            # Match prompt file to run by timestamp proximity
+            for pf in prompt_files[:20]:
                 try:
-                    # Get messages the encoder would have seen (before this run)
-                    rows = logs_conn.execute(
-                        "SELECT role, substr(content,1,500), signal_type, judge_output "
-                        "FROM message_stream "
-                        "WHERE timestamp < ? "
-                        "ORDER BY timestamp DESC LIMIT 10",
-                        (run["start_ts"],)
-                    ).fetchall()
-                    timeline = []
-                    for r in reversed(rows):
-                        entry = {"role": r[0], "content": r[1], "signal": r[2]}
-                        if r[3]:
-                            entry["judge_output"] = r[3][:2000]
-                        timeline.append(entry)
-                    run["prompt_context"] = timeline
+                    pf_mtime = os.path.getmtime(pf)
+                    from datetime import datetime, timezone
+                    run_ts = datetime.fromisoformat(run["start_ts"].replace('Z', '+00:00'))
+                    pf_ts = datetime.fromtimestamp(pf_mtime, tz=timezone.utc)
+                    if abs((run_ts - pf_ts).total_seconds()) < 120:
+                        with open(pf) as _pf:
+                            prompt_data = json.load(_pf)
+                        run["encoder_prompt"] = prompt_data.get("user_content")
+                        break
                 except Exception:
-                    run["prompt_context"] = []
-
-            # Also get encoding journal
-            try:
-                brain_conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=3)
-                # Session context from brain config
-                ctx_row = brain_conn.execute(
-                    "SELECT value FROM config WHERE key='session_context'").fetchone()
-                journal_rows = brain_conn.execute(
-                    "SELECT key, value FROM config WHERE key LIKE 'encoding_journal_%' "
-                    "ORDER BY key DESC LIMIT 1").fetchone()
-                brain_conn.close()
-                for run in runs[:limit]:
-                    run["session_context"] = (ctx_row[0] if ctx_row else "")[:500]
-                    run["journal"] = (journal_rows[1] if journal_rows else "")[:2000]
-            except Exception:
-                pass
-
-            logs_conn.close()
+                    continue
 
         return runs[:limit]
     except Exception:
@@ -1642,24 +1624,12 @@ async function loadEncodingActivity() {
       }
       html += '</div>';
 
-      // Full prompt (separate expandable, toggled by Show Prompt button)
+      // Full prompt — actual prompt Sonnet received (from tmp file)
       html += '<div class="enc-prompt-body" style="display:none"><pre>';
-
-      // Reconstructed prompt: messages + judge output
-      if (run.session_context) {
-        html += '=== SESSION CONTEXT ===\\n' + escapeHtml(run.session_context) + '\\n\\n';
-      }
-      if (run.journal) {
-        html += '=== ENCODING JOURNAL ===\\n' + escapeHtml(run.journal.substring(0, 2000)) + '\\n\\n';
-      }
-      html += '=== CONVERSATION TIMELINE ===\\n\\n';
-      for (const msg of (run.prompt_context || [])) {
-        const role = msg.role === 'user' ? 'TOM' : 'ANCHOR';
-        html += role + ': ' + escapeHtml(msg.content || '') + '\\n';
-        if (msg.judge_output) {
-          html += 'BRAIN SURFACED (judge-selected):\\n' + escapeHtml(msg.judge_output) + '\\n';
-        }
-        html += '\\n';
+      if (run.encoder_prompt) {
+        html += escapeHtml(run.encoder_prompt);
+      } else {
+        html += '(no prompt file found — encoding ran before prompt logging was added)';
       }
       html += '</pre></div>';
 

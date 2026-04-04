@@ -77,7 +77,21 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
     tools = _get_tool_schemas()
     _step("tools(%d)" % len(tools))
 
-    # 4. Call Sonnet
+    # 4. Write prompt to tmp file for dashboard (passive observer pattern)
+    try:
+        _prompt_path = "/tmp/brain-encoding-prompt-%d.json" % counter
+        import json as _pjson
+        with open(_prompt_path, 'w') as _pf:
+            _pjson.dump({
+                "counter": counter,
+                "system_prompt_chars": len(system_prompt),
+                "user_content": user_content,
+                "tools_count": len(tools),
+            }, _pf)
+    except Exception as _pe:
+        print('[encoding-agent] WARNING: could not write prompt file: %s' % _pe, flush=True)
+
+    # Call Sonnet
     _log("calling Sonnet with %d tools, %d chars context..." % (len(tools), len(user_content)))
     _log("PROFILE so far: %s" % " → ".join("%s:%dms" % (n, t) for n, t in profile))
 
