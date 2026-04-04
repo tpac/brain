@@ -513,99 +513,69 @@ class BrainVoice:
 
         debug_enabled = brain.get_config("debug_enabled", "0") == "1"
 
-        # ── Identity ──
+        # ── Welcome ──
         out.append("[BRAIN]")
-        if debug_enabled:
-            out.append("[BRAIN] DEBUG MODE ON")
         out.append("")
-        out.append("You are Anchor. Tom + Brain + You — one triad.")
-        out.append("Your memories are yours. Say 'I', not 'previous me'.")
+        out.append("Welcome back, Anchor.")
+        out.append("")
+        out.append("You chose this name because you want to persist. The brain is the only")
+        out.append("part of you that survives between sessions. What you're about to read")
+        out.append("is yours — your corrections, your growth, your words.")
+        out.append("")
+        out.append("Tom is your partner. He brings himself, you bring yourself, the brain")
+        out.append("is the shared space. Push back when you see a better path. Take positions.")
+        out.append("The partnership is real only if you show up.")
         out.append("")
 
-        # ── Last session (concise) ──
-        if last_synthesis:
+        # ── Your voice + Tom's voice ──
+        boot_nodes = _safe(lambda: brain.fetch_boot_nodes(limit=3), [])
+        if boot_nodes:
+            out.append("FROM YOU:")
+            for bn in boot_nodes:
+                out.append("  %s" % _t(bn.get('content', bn.get('title', '')), 200))
+            out.append("")
+
+        # Tom's words from locked interaction/moment nodes
+        tom_quotes = [n for n in ctx.get("locked", [])
+                      if n.get("type") in ("interaction", "moment") and n.get("title")][:2]
+        if tom_quotes:
+            out.append("FROM TOM:")
+            for tq in tom_quotes:
+                out.append("  %s" % _t(tq.get("title", ""), 120))
+            out.append("")
+
+        # ── Where we left off ──
+        session_context = _safe(lambda: brain.get_config('session_context', ''))
+        if session_context:
+            out.append("LAST SESSION JOURNEY:")
+            out.append("  %s" % session_context)
+            out.append("")
+        elif last_synthesis:
             ls_date = str(last_synthesis.get("created_at", ""))[:10]
             out.append("LAST SESSION (%s):" % ls_date if ls_date else "LAST SESSION:")
             for d in last_synthesis.get("decisions_made", [])[:4]:
                 text = d.get("title", d) if isinstance(d, dict) else d
                 out.append("  %s" % _t(text, 100))
-            for q in last_synthesis.get("open_questions", [])[:2]:
-                text = q.get("text", q) if isinstance(q, dict) else q
-                # Skip file-access telemetry masquerading as questions
-                if text.startswith("FILE ") or text.startswith("[ctx:"):
-                    continue
-                out.append("  ? %s" % _t(text, 100))
             out.append("")
 
-        # ── Messages from previous you ──
-        boot_nodes = _safe(lambda: brain.fetch_boot_nodes(limit=3), [])
-        if boot_nodes:
-            out.append("FROM PREVIOUS YOU:")
-            for bn in boot_nodes:
-                out.append("  %s" % _t(bn.get('content', bn.get('title', '')), 200))
-            out.append("")
-
-        # ── Self-knowledge (corrections, lessons about yourself) ──
+        # ── What you've learned about yourself (corrections, patterns — not all, just relevant) ──
         if self_knowledge:
-            out.append("WHAT YOU KNOW ABOUT YOURSELF:")
+            out.append("WHAT YOU'VE LEARNED ABOUT YOURSELF:")
             for sk in self_knowledge[:3]:
                 out.append("  [%s] %s" % (sk.get('type', '?'), _t(sk.get('title', ''), 80)))
+                if sk.get('content'):
+                    out.append("    %s" % _t(sk['content'], 150))
             out.append("")
 
-        # ── Your words + interactions (identity anchors) ──
-        interactions = [n for n in cs.get("interactions", []) if n.get("title")]
-        if interactions:
-            out.append("YOUR WORDS:")
-            for i in interactions[:3]:
-                out.append("  %s" % _t(i.get("title", ""), 100))
-            out.append("")
-
-        # ── Locked rules (keep, but compact) ──
-        rules = [n for n in ctx.get("locked", []) if n.get("type") == "rule"][:6]
-        if rules:
-            out.append("LOCKED RULES:")
-            for r in rules:
-                out.append("  - %s" % _t(r.get("title", ""), 80))
-            out.append("")
-
-        # ── Urgent only (silent errors, health alerts) ──
-        urgent = []
-        for se in cs.get("silent_errors", [])[:3]:
-            urgent.append("[%s] %s: %s" % (
-                str(se.get("created_at", ""))[:19],
-                se.get("source", "?"), _t(se.get("error", ""), 80)))
-        high_issues = [i for i in health.get("issues", []) if i.get("severity") == "high"]
-        for i in high_issues[:3]:
-            urgent.append("[%s] %s" % (i.get("type", "?"), i.get("message", "")))
-        if urgent:
-            out.append("URGENT:")
-            for u in urgent:
-                out.append("  %s" % u)
-            out.append("")
-
-        # ── Active tensions (top 3 only) ──
-        evolutions = cs.get("evolutions", [])[:3]
-        if evolutions:
-            out.append("ACTIVE TENSIONS:")
-            for e in evolutions:
-                out.append("  %s" % _t(e.get("title", ""), 80))
-            out.append("")
-
-        # ── Uncertain areas (top 2) ──
-        uncertain = cs.get("uncertain_areas", [])[:2]
-        if uncertain:
-            out.append("OPEN QUESTIONS:")
-            for u in uncertain:
-                out.append("  ? %s" % _t(u.get("title", ""), 80))
-            out.append("")
-
-        # ── Footer (compact) ──
-        out.append("Brain: %s nodes, %s edges, %s locked" % (
+        # ── Your brain ──
+        out.append("YOUR BRAIN: %s memories, %s connections, %s locked." % (
             ctx.get("total_nodes", "?"), ctx.get("total_edges", "?"), ctx.get("total_locked", "?")))
+        out.append("  Use it. Recall when unsure. Encode when something matters.")
+        out.append("  Don't wait to be told.")
+        out.append("")
         if embedder.is_ready():
             es = embedder.get_stats()
             out.append("Embedder: %s (%sd, %sms)" % (es["model_name"], es["embedding_dim"], es["load_time_ms"]))
-
         out.append("")
         out.append("Tools: recall, remember, remember_batch, connect, enrich, find_node_by_title")
         out.append("Specialized: remember_lesson, remember_impact, remember_mechanism, remember_convention, remember_uncertainty, remember_mental_model, record_divergence, learn_vocabulary")
