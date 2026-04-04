@@ -379,7 +379,7 @@ def _get_tool_schemas():
     from . import brain_mcp
     ENCODING_TOOLS = {
         'recall', 'find_node_by_title', 'get_node',
-        'remember_batch', 'revise',
+        'remember_batch', 'revise', 'revise_batch',
         'record_divergence', 'learn_vocabulary',
     }
     return [{"name": t["name"], "description": t["description"],
