@@ -485,6 +485,78 @@ class LogsDAL:
         return row[0] if row else 0
 
 
+class SessionStateDAL:
+    """Access layer for session_state table in brain_logs.db.
+
+    First-class session-scoped data: fatigue, journal, context, counters.
+    Keyed by (session_id, key, node_id). Replaces scattered in-memory
+    dicts and brain_meta config keys.
+    """
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def get(self, session_id: str, key: str, node_id: str = '') -> Optional[str]:
+        """Get a single session state value."""
+        row = self.conn.execute(
+            "SELECT value FROM session_state WHERE session_id = ? AND key = ? AND node_id = ?",
+            (session_id, key, node_id)).fetchone()
+        return row[0] if row else None
+
+    def set(self, session_id: str, key: str, value: str, node_id: str = ''):
+        """Set a session state value (upsert)."""
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            """INSERT INTO session_state (session_id, key, node_id, value, updated_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(session_id, key, node_id)
+               DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
+            (session_id, key, node_id, value, ts))
+        self.conn.commit()
+
+    def increment(self, session_id: str, key: str, node_id: str) -> int:
+        """Increment a counter value. Returns new count."""
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            """INSERT INTO session_state (session_id, key, node_id, value, updated_at)
+               VALUES (?, ?, ?, '1', ?)
+               ON CONFLICT(session_id, key, node_id)
+               DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT),
+                            updated_at = excluded.updated_at""",
+            (session_id, key, node_id, ts))
+        self.conn.commit()
+        row = self.conn.execute(
+            "SELECT value FROM session_state WHERE session_id = ? AND key = ? AND node_id = ?",
+            (session_id, key, node_id)).fetchone()
+        return int(row[0]) if row else 1
+
+    def load_all(self, session_id: str, key: str) -> Dict[str, str]:
+        """Load all values for a key in a session. Returns {node_id: value}."""
+        rows = self.conn.execute(
+            "SELECT node_id, value FROM session_state WHERE session_id = ? AND key = ?",
+            (session_id, key)).fetchall()
+        return {r[0]: r[1] for r in rows}
+
+    def load_fatigue(self, session_id: str) -> Dict[str, int]:
+        """Load fatigue counts for a session. Returns {node_id: count}."""
+        rows = self.conn.execute(
+            "SELECT node_id, CAST(value AS INTEGER) FROM session_state "
+            "WHERE session_id = ? AND key = 'fatigue'",
+            (session_id,)).fetchall()
+        return {r[0]: r[1] for r in rows}
+
+    def cleanup_old_sessions(self, keep_last_n: int = 5):
+        """Remove session_state for old sessions, keeping the N most recent."""
+        self.conn.execute(
+            """DELETE FROM session_state WHERE session_id NOT IN (
+                SELECT DISTINCT session_id FROM session_state
+                ORDER BY updated_at DESC LIMIT ?
+            )""", (keep_last_n,))
+        self.conn.commit()
+
+
 class MetaDAL:
     """Access layer for brain_meta table — key-value config store."""
 

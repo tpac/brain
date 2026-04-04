@@ -337,6 +337,13 @@ def _save_journal(brain, session_id, counter, final_text):
 
     brain.set_config(journal_key, updated)
 
+    # v9.2: Dual-write to session_state (new home for session-scoped data)
+    try:
+        from .dal import SessionStateDAL
+        SessionStateDAL(brain.logs_conn).set(session_id, 'journal', updated)
+    except Exception:
+        pass  # brain_meta is the fallback
+
     # Also keep old key for backward compat during transition
     from .pipeline_contract import PIPELINE as _PL
     brain.set_config('encoding_agent_state', final_text[:_PL['encoding_state_compat']])
@@ -370,6 +377,14 @@ def _save_session_context(brain, final_text):
                     if pipe_idx >= 0 and pipe_idx < 50:
                         combined = combined[pipe_idx + 3:]
                 brain.set_config('session_context', combined)
+                # v9.2: Dual-write to session_state
+                try:
+                    from .dal import SessionStateDAL
+                    _sid = brain.get_config('session_id', '')
+                    if _sid:
+                        SessionStateDAL(brain.logs_conn).set(_sid, 'context', combined)
+                except Exception:
+                    pass
                 return
     # No SESSION_CONTEXT line found — don't clear existing (previous run's context is still valid)
 

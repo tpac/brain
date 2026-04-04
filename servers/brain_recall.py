@@ -547,7 +547,19 @@ class BrainRecallMixin:
                     #   New node (0 edges): K=10, barely fatigues
                     # The graph structure IS the fatigue signal.
                     if not hasattr(self, '_session_fatigue'):
-                        self._session_fatigue = {}
+                        # v9.2: Load fatigue from DB (persists across daemon restarts)
+                        # Use the same resolved session_id that _mark_accessed will use
+                        _fatigue_sid = session_id or self.get_config('session_id', '')
+                        try:
+                            from .dal import SessionStateDAL
+                            if _fatigue_sid and self.logs_conn:
+                                self._session_fatigue = SessionStateDAL(self.logs_conn).load_fatigue(_fatigue_sid)
+                            else:
+                                self._session_fatigue = {}
+                        except Exception:
+                            self._session_fatigue = {}
+                        # Store resolved sid for _mark_accessed consistency
+                        self._fatigue_session_id = _fatigue_sid
                     if not hasattr(self, '_structural_degree_cache'):
                         # Cache structural degree per node — recomputed once per session
                         self._structural_degree_cache = {}
@@ -651,6 +663,19 @@ class BrainRecallMixin:
             except Exception as e:
                 if 'no such table' not in str(e):
                     self._log_error("recall_enrichment_scan", e, "STEP 3.5 z-weighted scoring")
+
+            # v9.2: Apply fatigue AFTER z-weighted scoring (not before).
+            # Fatigue was previously applied to primary sim only, but STEP 3.5
+            # could overwrite with unfatigued z-weighted scores. Now fatigue
+            # dampens the final embedding score regardless of which vector won.
+            if hasattr(self, '_session_fatigue') and self._session_fatigue:
+                for nid in list(embedding_scores.keys()):
+                    _fc = self._session_fatigue.get(nid, 0)
+                    if _fc > 0:
+                        _deg = self._structural_degree_cache.get(nid, 0) if hasattr(self, '_structural_degree_cache') else 0
+                        _K = 10.0 / (1.0 + _deg / 10.0)
+                        _fat = _fc / (_fc + _K)
+                        embedding_scores[nid] *= (1.0 - _fat)
 
         except Exception as e:
             print(f'[brain] Embedding scan error: {e}', file=sys.stderr)
@@ -948,7 +973,8 @@ class BrainRecallMixin:
         self._enrich_results(final_results[:3])
 
         # STEP 8: Mark accessed (for Hebbian learning)
-        sid = session_id or ('ses_%d' % int(time.time() * 1000))
+        # v9.2: Use the same resolved session_id as fatigue (consistency)
+        sid = getattr(self, '_fatigue_session_id', None) or session_id or ('ses_%d' % int(time.time() * 1000))
         for node in final_results:
             try:
                 self._mark_accessed(node['id'], sid)
@@ -1360,9 +1386,15 @@ class BrainRecallMixin:
         self.logs_conn.commit()
 
         # Increment session fatigue counter — next recall will dampen this node's cosine
+        # v9.2: Also persist to session_state DB (survives daemon restart)
         if not hasattr(self, '_session_fatigue'):
             self._session_fatigue = {}
         self._session_fatigue[node_id] = self._session_fatigue.get(node_id, 0) + 1
+        try:
+            from .dal import SessionStateDAL
+            SessionStateDAL(self.logs_conn).increment(session_id, 'fatigue', node_id)
+        except Exception:
+            pass  # In-memory still works if DB write fails
 
     def _hebbian_strengthen(self, node_ids: List[str], segment_node_ids: Optional[List[str]] = None):
         """

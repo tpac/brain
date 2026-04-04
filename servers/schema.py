@@ -1048,6 +1048,21 @@ LOG_TABLES = {
         )""",
     },
 
+    # v9.2: Session state — first-class session-scoped data.
+    # Replaces scattered in-memory dicts and brain_meta config keys.
+    # Key types: 'fatigue' (node_id=node, value=count), 'journal' (node_id='', value=text),
+    # 'context' (node_id='', value=journey text). Session-keyed, auto-cleanup by age.
+    'session_state': {
+        'create': """CREATE TABLE IF NOT EXISTS session_state (
+            session_id TEXT NOT NULL,
+            key TEXT NOT NULL,
+            node_id TEXT NOT NULL DEFAULT '',
+            value TEXT,
+            updated_at TEXT,
+            PRIMARY KEY (session_id, key, node_id)
+        )""",
+    },
+
 }
 
 LOG_INDEXES = [
@@ -1080,6 +1095,8 @@ LOG_INDEXES = [
     # signal_queue
     'CREATE INDEX IF NOT EXISTS idx_sq_priority ON signal_queue(dismissed, priority DESC)',
     'CREATE INDEX IF NOT EXISTS idx_sq_producer ON signal_queue(producer)',
+    # v9.2: session_state
+    'CREATE INDEX IF NOT EXISTS idx_session_state_session ON session_state(session_id)',
 ]
 
 

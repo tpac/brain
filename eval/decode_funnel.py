@@ -484,6 +484,11 @@ def run_funnel(brain_db_path, floor_override=None, verbose=True):
         query = q["query"]
         expected = set(q["expected"])
 
+        # v9.2: Reset fatigue between eval queries — each query is independent.
+        # Without this, fatigue accumulates across 70+ queries unrealistically.
+        if hasattr(brain, '_session_fatigue'):
+            brain._session_fatigue = {}
+
         # Run recall
         t0 = time.time()
         try:
