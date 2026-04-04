@@ -431,6 +431,18 @@ class Brain(
         """Write session activity to brain_meta via DAL."""
         self._meta.set(key, str(value))
 
+    @property
+    def session_id(self):
+        """Single source of truth for current session ID. Always UUID hex.
+
+        v9.2: Replaces scattered get_config("session_id", <various defaults>)
+        calls across daemon_hooks, brain_recall, encoding_agent. One accessor,
+        one format, one fallback.
+        """
+        if not hasattr(self, '_cached_session_id') or not self._cached_session_id:
+            self._cached_session_id = self.get_config('session_id', '') or ''
+        return self._cached_session_id or 'no_session'
+
     def reset_session_activity(self):
         """Reset session counters for new session."""
         self._update_session_activity('remember_count', 0)
@@ -439,6 +451,8 @@ class Brain(
         self._update_session_activity('last_encode_at_message', 0)
         self._update_session_activity('boot_time', self.now())
         self._update_session_activity('session_id', uuid.uuid4().hex)
+        # v9.2: Clear cached session_id so property re-reads
+        self._cached_session_id = None
         # v5: Reset session state accumulator
         self._session_state = {
             'decisions': [], 'corrections': [], 'inflections': [],

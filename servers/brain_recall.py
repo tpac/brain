@@ -349,7 +349,7 @@ class BrainRecallMixin:
 
         # Step 7: Mark accessed + Hebbian
         if not session_id:
-            session_id = f'ses_{int(time.time() * 1000)}'
+            session_id = self.session_id
 
         for node in page:
             self._mark_accessed(node['id'], session_id)
@@ -444,9 +444,7 @@ class BrainRecallMixin:
             # Log degraded recall to recall_log
             try:
                 _kw_results = result.get('results', [])
-                _sid = session_id or self.get_config("session_id", "ses_unknown")
-                if not _sid.startswith("ses_"):
-                    _sid = f"ses_{_sid}"
+                _sid = session_id or self.session_id
                 _logs_dal = LogsDAL(self.logs_conn)
                 from .pipeline_contract import PIPELINE as _PL
                 _log_id = _logs_dal.insert_recall_log(
@@ -549,7 +547,7 @@ class BrainRecallMixin:
                     if not hasattr(self, '_session_fatigue'):
                         # v9.2: Load fatigue from DB (persists across daemon restarts)
                         # Use the same resolved session_id that _mark_accessed will use
-                        _fatigue_sid = session_id or self.get_config('session_id', '')
+                        _fatigue_sid = session_id or self.session_id
                         try:
                             from .dal import SessionStateDAL
                             if _fatigue_sid and self.logs_conn:
@@ -974,7 +972,8 @@ class BrainRecallMixin:
 
         # STEP 8: Mark accessed (for Hebbian learning)
         # v9.2: Use the same resolved session_id as fatigue (consistency)
-        sid = getattr(self, '_fatigue_session_id', None) or session_id or ('ses_%d' % int(time.time() * 1000))
+        # v9.2: Unified session_id — single source, no timestamp fallbacks
+        sid = getattr(self, '_fatigue_session_id', None) or session_id or self.session_id
         for node in final_results:
             try:
                 self._mark_accessed(node['id'], sid)
@@ -986,9 +985,7 @@ class BrainRecallMixin:
         recall_log_id = None
         try:
             from .pipeline_contract import PIPELINE as _PL
-            _sid = session_id or self.get_config("session_id", "ses_unknown")
-            if not _sid.startswith("ses_"):
-                _sid = f"ses_{_sid}"
+            _sid = session_id or self.session_id
             _titles = {r.get("id"): r.get("title", "")[:_PL['recall_log_title']]
                        for r in final_results}
             _snippets = {r.get("id"): (r.get("content") or "")[:_PL['recall_log_snippet']]

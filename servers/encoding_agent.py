@@ -59,7 +59,7 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
         return {"error": str(e)}
     _step("api_client")
 
-    session_id = brain.get_config('session_id', 'unknown')
+    session_id = brain.session_id
 
     # 1. Gather messages with pre-attached recall
     messages = _gather_messages(brain, session_id)
@@ -380,7 +380,7 @@ def _save_session_context(brain, final_text):
                 # v9.2: Dual-write to session_state
                 try:
                     from .dal import SessionStateDAL
-                    _sid = brain.get_config('session_id', '')
+                    _sid = brain.session_id
                     if _sid:
                         SessionStateDAL(brain.logs_conn).set(_sid, 'context', combined)
                 except Exception:

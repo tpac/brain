@@ -81,7 +81,7 @@ def hook_recall(brain, args, graph_changes):
     aspirations, hypotheses, tensions, instincts, pending messages, graph changes.
     """
     user_message = args.get("prompt", "") or args.get("message", "")
-    session_id = brain.get_config("session_id", "ses_unknown")
+    session_id = brain.session_id
 
     # Store last user message for operator voice capture
     try:
@@ -161,7 +161,6 @@ def hook_recall(brain, args, graph_changes):
     # Session dedup happens only at distiller stage, not here.
     try:
         from .pipeline_contract import CANDIDATES_FILE
-        session_id = brain.get_config('session_id', 'unknown')
         candidates_path = '/tmp/brain-{}-recall-candidates.json'.format(session_id)
         import json as _json
         content_limit = CANDIDATES_FILE['content_limit']
@@ -244,7 +243,7 @@ def hook_recall(brain, args, graph_changes):
     if gap:
         try:
             from .dal import LogsDAL
-            session_id = brain.get_config('session_id', '')
+            session_id = brain.session_id
             LogsDAL(brain.logs_conn).log_gap(gap['query'], gap.get('top_score', 0), session_id)
         except Exception as e:
             brain._log_error('hook_recall_gap_log', e, 'Failed to log recall gap')
@@ -271,7 +270,7 @@ def hook_recall(brain, args, graph_changes):
     # The thin client reads the file, calls LLM to distill, returns context.
     # Dashboard logging happens in the thin client — one source of truth.
     brain.save()
-    session_id = brain.get_config('session_id', '')
+    session_id = brain.session_id
 
     # ── Layer 2: Haiku judge (runs in daemon — no subprocess timeout risk) ──
     additional_context = None
@@ -442,7 +441,7 @@ def hook_post_response_track(brain, args, graph_changes):
     judge_output = None
     try:
         import json as _json
-        session_id = brain.get_config('session_id', '')
+        session_id = brain.session_id
 
         # Read raw candidates (for debugging — recalled_raw)
         candidates_path = '/tmp/brain-%s-recall-candidates.json' % session_id
@@ -489,7 +488,7 @@ def hook_post_response_track(brain, args, graph_changes):
     # Store conversation + recall data in message stream
     try:
         if not session_id:
-            session_id = brain.get_config('session_id', '')
+            session_id = brain.session_id
         brain.store_exchange(user_message, assistant_response, session_id,
                             recalled_node_ids=recalled_node_ids,
                             recalled_raw=recalled_raw,
