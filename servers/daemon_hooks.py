@@ -206,7 +206,7 @@ def hook_recall(brain, args, graph_changes):
             brain._log_error('judge_recent_messages', _e, 'fetching recent messages for judge')
 
         # Session context from last encoding agent run (Layer 2 judge needs this)
-        session_context = brain.get_config('session_context', '') or ''
+        session_context = brain.session_context
 
         with open(candidates_path, 'w') as f:
             _json.dump({
@@ -317,7 +317,7 @@ def hook_recall(brain, args, graph_changes):
         # Build judge prompt
         judge_prompt, max_tokens = build_judge_prompt(
             candidates_data, user_message,
-            session_context=brain.get_config('session_context', '') or '',
+            session_context=brain.session_context,
             recent_messages=recent_messages if 'recent_messages' in dir() else [],
             recently_recalled=recently_recalled,
             retrieval_stats=_retrieval_stats,

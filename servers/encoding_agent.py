@@ -309,7 +309,7 @@ def _build_user_content(brain, messages, counter, session_id):
         i += 1
 
     # Previous session context (encoder evolves this each run)
-    prev_context = brain.get_config('session_context', '') or ''
+    prev_context = brain.session_context
 
     content = "## ENCODING RUN #%d\n\n" % counter
     content += "### Encoding Journal\n%s\n\n" % journal
@@ -364,7 +364,7 @@ def _save_session_context(brain, final_text):
         if stripped.upper().startswith('SESSION_CONTEXT:'):
             new_context = stripped[len('SESSION_CONTEXT:'):].strip()
             if new_context:
-                existing = brain.get_config('session_context', '') or ''
+                existing = brain.session_context
                 if existing:
                     combined = existing + ' | ' + new_context
                 else:

@@ -432,6 +432,15 @@ class Brain(
         self._meta.set(key, str(value))
 
     @property
+    def session_context(self):
+        """Single accessor for session context (running journey summary).
+
+        v9.2: Replaces 4 scattered get_config("session_context", "") reads
+        across daemon_hooks.py and encoding_agent.py.
+        """
+        return self.get_config('session_context', '') or ''
+
+    @property
     def session_id(self):
         """Single source of truth for current session ID. Always UUID hex.
 
