@@ -300,6 +300,95 @@ def format_node_for_encoder(node_id, db_conn):
         return None
 
 
+def correction_enrich(node_ids, db_conn):
+    """Find corrections for a set of nodes. Both directions.
+
+    Returns dict: {node_id: [{"id", "title", "direction"}]}
+    - direction "corrected_by": this node was superseded by another
+    - direction "corrects": this node corrects another
+
+    Checks two data sources:
+    1. edges table: relation='corrected_by' (bidirectional pairs)
+    2. node_metadata: correction_of field (node → what it corrects)
+    """
+    if not node_ids or not db_conn:
+        return {}
+
+    corrections = {}  # node_id → list of correction info dicts
+    try:
+        placeholders = ','.join('?' for _ in node_ids)
+
+        # 1. Edges: find corrected_by edges where our nodes are source or target
+        edge_rows = db_conn.execute(
+            """SELECT source_id, target_id FROM edges
+               WHERE relation = 'corrected_by'
+               AND (source_id IN (%s) OR target_id IN (%s))""" % (placeholders, placeholders),
+            list(node_ids) + list(node_ids)
+        ).fetchall()
+
+        for src, tgt in edge_rows:
+            if src in node_ids:
+                # src was corrected_by tgt
+                title = db_conn.execute(
+                    "SELECT title FROM nodes WHERE id = ?", (tgt,)).fetchone()
+                if title:
+                    corrections.setdefault(src, []).append({
+                        "id": tgt[:8], "title": title[0], "direction": "corrected_by"})
+            if tgt in node_ids:
+                # tgt was corrected_by src (reverse — tgt corrects src)
+                title = db_conn.execute(
+                    "SELECT title FROM nodes WHERE id = ?", (src,)).fetchone()
+                if title:
+                    corrections.setdefault(tgt, []).append({
+                        "id": src[:8], "title": title[0], "direction": "corrects"})
+
+        # 2. node_metadata: correction_of field
+        meta_rows = db_conn.execute(
+            """SELECT node_id, correction_of FROM node_metadata
+               WHERE node_id IN (%s) AND correction_of IS NOT NULL
+               AND correction_of != ''""" % placeholders,
+            list(node_ids)
+        ).fetchall()
+
+        for nid, corrects_id in meta_rows:
+            title = db_conn.execute(
+                "SELECT title FROM nodes WHERE id LIKE ?", (corrects_id[:8] + '%',)).fetchone()
+            if title:
+                corrections.setdefault(nid, []).append({
+                    "id": corrects_id[:8], "title": title[0], "direction": "corrects"})
+
+        # 3. Reverse: find nodes that correct OUR nodes (via correction_of field)
+        meta_reverse = db_conn.execute(
+            """SELECT node_id, correction_of FROM node_metadata
+               WHERE correction_of IS NOT NULL AND correction_of != ''"""
+        ).fetchall()
+        for nid, corrects_id in meta_reverse:
+            # Check if corrects_id matches any of our node_ids (prefix match)
+            for our_id in node_ids:
+                if our_id.startswith(corrects_id[:8]) or corrects_id.startswith(our_id[:8]):
+                    title = db_conn.execute(
+                        "SELECT title FROM nodes WHERE id = ?", (nid,)).fetchone()
+                    if title:
+                        corrections.setdefault(our_id, []).append({
+                            "id": nid[:8], "title": title[0], "direction": "corrected_by"})
+
+    except Exception:
+        pass
+
+    # Deduplicate per node
+    for nid in corrections:
+        seen = set()
+        deduped = []
+        for c in corrections[nid]:
+            key = (c["id"], c["direction"])
+            if key not in seen:
+                seen.add(key)
+                deduped.append(c)
+        corrections[nid] = deduped
+
+    return corrections
+
+
 def build_encoder_node_catalog(judge_outputs, db_conn):
     """Build deduplicated node catalog from judge outputs across multiple turns.
 
@@ -323,11 +412,22 @@ def build_encoder_node_catalog(judge_outputs, db_conn):
     if not seen_ids:
         return '', set()
 
+    # v9.2: Enrich with correction chains so encoder can revise stale nodes
+    corrections = correction_enrich(seen_ids, db_conn)
+
     lines = ['=== BRAIN NODES SURFACED THIS SESSION (%d unique) ===' % len(seen_ids), '']
     formatted_ids = set()
     for nid in seen_ids:
         formatted = format_node_for_encoder(nid, db_conn)
         if formatted:
+            # Append correction annotations
+            node_corrs = corrections.get(nid, [])
+            for corr in node_corrs:
+                if corr["direction"] == "corrected_by":
+                    formatted += '\n  ⚠ UPDATED BY: "%s" (%s) — consider revising this node' % (
+                        corr["title"][:50], corr["id"])
+                elif corr["direction"] == "corrects":
+                    formatted += '\n  CORRECTS: "%s" (%s)' % (corr["title"][:50], corr["id"])
             lines.append(formatted)
             lines.append('')
             formatted_ids.add(nid)
@@ -693,12 +793,16 @@ Candidates:
     return prompt, cfg['max_tokens']
 
 
-def format_judge_output(selected, candidates, graph_neighbors=None):
+def format_judge_output(selected, candidates, graph_neighbors=None,
+                        corrections=None):
     """Format the judge's selections into structured additionalContext for Claude.
 
     Takes Haiku's selected nodes (with "why" reasoning) and the full candidates
     list (with content, metadata, edges). Produces a clean text block that Claude
     reads as its memory context.
+
+    Args:
+        corrections: dict from correction_enrich() — {node_id: [{"id", "title", "direction"}]}
 
     Example output:
         Brain recalled 3 memories:
@@ -779,6 +883,18 @@ def format_judge_output(selected, candidates, graph_neighbors=None):
                 desc = " — %s" % e["why"] if e.get("why") else ""
                 edge_parts.append("\"%s\" (%s%s)" % (e["title"][:40], e["type"], desc))
             lines.append("Connected: " + ", ".join(edge_parts))
+
+        # v9.2: Correction chain — show if this node was corrected or corrects another
+        if corrections:
+            node_corrections = corrections.get(c.get("id", ""), [])
+            if not node_corrections:
+                # Try short ID match
+                node_corrections = corrections.get(c.get("id", "")[:8], [])
+            for corr in node_corrections:
+                if corr["direction"] == "corrected_by":
+                    lines.append("⚠ Updated by: \"%s\" (%s)" % (corr["title"][:50], corr["id"]))
+                elif corr["direction"] == "corrects":
+                    lines.append("Corrects: \"%s\" (%s)" % (corr["title"][:50], corr["id"]))
 
         lines.append("")  # blank line between nodes
 

@@ -370,7 +370,20 @@ def hook_recall(brain, args, graph_changes):
             except Exception as _ge:
                 brain._log_error('judge_graph_expand', _ge, 'Layer 3 expand failed')
 
-            additional_context = format_judge_output(selected, candidates_data, graph_neighbors)
+            # Layer 3.5: Correction enrichment — follow correction chains
+            corrections = {}
+            try:
+                from .pipeline_contract import correction_enrich
+                _all_ids = set(selected_ids)
+                for nb in graph_neighbors:
+                    if nb.get("id"):
+                        _all_ids.add(nb["id"])
+                corrections = correction_enrich(_all_ids, brain.conn)
+            except Exception as _ce:
+                brain._log_error('correction_enrich', _ce, 'Layer 3.5 correction enrichment')
+
+            additional_context = format_judge_output(selected, candidates_data, graph_neighbors,
+                                                     corrections=corrections)
 
             # Write judge result file for dashboard
             try:
