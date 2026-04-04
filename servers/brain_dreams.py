@@ -387,17 +387,9 @@ class BrainDreamsMixin:
         except:
             stats['embeddings_backfilled'] = 0
 
-        # ── v4: Auto-discover evolutions (tensions, patterns, hypotheses, aspirations) ──
-        try:
-            discoveries = self.auto_discover_evolutions()
-            stats['discoveries'] = {
-                'tensions': len(discoveries.get('tensions', [])),
-                'patterns': len(discoveries.get('patterns', [])),
-                'hypotheses': len(discoveries.get('hypotheses', [])),
-                'aspirations': len(discoveries.get('aspirations', [])),
-                'total': discoveries.get('_stats', {}).get('total_created', 0),
-            }
-        except Exception:
-            stats['discoveries'] = {'tensions': 0, 'patterns': 0, 'hypotheses': 0, 'aspirations': 0, 'total': 0}
+        # ── v4: Auto-discover evolutions — PAUSED (2026-04-04)
+        # Generated 140 tension nodes, mostly duplicates about dead systems.
+        # Needs redesign before re-enabling: quality gate, dedup check, relevance filter.
+        stats['discoveries'] = {'tensions': 0, 'patterns': 0, 'hypotheses': 0, 'aspirations': 0, 'total': 0, '_paused': True}
 
         return stats

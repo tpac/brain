@@ -1,172 +1,175 @@
 {
-  "SessionStart": [
-    {
-      "matcher": "",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/boot-brain.sh",
-          "timeout": 15
-        }
-      ]
-    }
-  ],
-  "UserPromptSubmit": [
-    {
-      "matcher": "",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-response-recall.sh",
-          "timeout": 15
-        }
-      ]
-    }
-  ],
-  "PreToolUse": [
-    {
-      "matcher": "Edit|Write",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-edit-suggest.sh",
-          "timeout": 8
-        },
-        {
-          "type": "prompt",
-          "prompt": "You are a test integrity guardian. Examine this tool call: $ARGUMENTS\n\nIF the file being edited/written is NOT a test file (filename does not contain 'test_' or '_test' or is not in a 'tests/' directory), respond: {\"decision\": \"allow\"}\n\nIF it IS a test file, check whether the edit WEAKENS any assertion. Weakening means:\n- Changing assertEqual/assertAlmostEqual to assertGreater/assertLess/assertIsNotNone/assertTrue (less specific)\n- Removing assert statements entirely\n- Wrapping assertions in try/except to swallow failures\n- Changing exact expected values to ranges or looser checks\n- Adding skip decorators to previously-passing tests\n- Commenting out assertions\n\nIf the edit WEAKENS assertions, respond:\n{\"decision\": \"block\", \"reason\": \"⚠️ TEST INTEGRITY: This edit weakens test assertions. Do NOT modify tests to make them pass. Instead, STOP and report to the user: what the test expected vs what the code returned. Ask: 'Is the test expectation wrong, or does the code have a bug?' Wait for approval before changing any test.\"}\n\nIf the edit adds NEW tests, strengthens existing assertions, adds comments, or makes non-assertion changes to test files, respond: {\"decision\": \"allow\"}\n\nIf unclear, respond: {\"decision\": \"allow\", \"reason\": \"⚠️ Test file modified — remember the Test Integrity Rule: do not weaken assertions without user approval.\"}"
-        }
-      ]
-    },
-    {
-      "matcher": "Bash",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-bash-safety.sh",
-          "timeout": 8
-        }
-      ]
-    }
-  ],
-  "Notification": [
-    {
-      "matcher": "idle_prompt",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/idle-maintenance.sh",
-          "timeout": 30
-        }
-      ]
-    }
-  ],
-  "PreCompact": [
-    {
-      "matcher": "",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-compact-save.sh",
-          "timeout": 10
-        }
-      ]
-    }
-  ],
-  "PostCompact": [
-    {
-      "matcher": "",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-compact-reboot.sh",
-          "timeout": 10
-        }
-      ]
-    }
-  ],
-  "Stop": [
-    {
-      "matcher": "",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-response-track.sh",
-          "timeout": 15
-        }
-      ]
-    }
-  ],
-  "StopFailure": [
-    {
-      "matcher": "",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/stop-failure-log.sh",
-          "timeout": 5
-        }
-      ]
-    }
-  ],
-  "SessionEnd": [
-    {
-      "matcher": "",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-end.sh",
-          "timeout": 10
-        }
-      ]
-    }
-  ],
-  "ConfigChange": [
-    {
-      "matcher": "",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/config-change-host.sh",
-          "timeout": 5
-        }
-      ]
-    }
-  ],
-  "PostToolUse": [
-    {
-      "matcher": "Bash",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-bash-host-check.sh",
-          "timeout": 5
-        }
-      ]
-    }
-  ],
-  "WorktreeCreate": [
-    {
-      "matcher": "",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/worktree-context.sh",
-          "timeout": 5
-        }
-      ]
-    }
-  ],
-  "WorktreeRemove": [
-    {
-      "matcher": "",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/worktree-cleanup.sh",
-          "timeout": 5
-        }
-      ]
-    }
-  ]
+  "description": "Brain plugin hooks: boot, recall, encode, safety, lifecycle",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/boot-brain.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-response-recall.sh",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-edit-suggest.sh",
+            "timeout": 8
+          },
+          {
+            "type": "prompt",
+            "prompt": "You are a test integrity guardian. Examine this tool call: $ARGUMENTS\n\nIF the file being edited/written is NOT a test file (filename does not contain 'test_' or '_test' or is not in a 'tests/' directory), respond: {\"decision\": \"allow\"}\n\nIF it IS a test file, check whether the edit WEAKENS any assertion. Weakening means:\n- Changing assertEqual/assertAlmostEqual to assertGreater/assertLess/assertIsNotNone/assertTrue (less specific)\n- Removing assert statements entirely\n- Wrapping assertions in try/except to swallow failures\n- Changing exact expected values to ranges or looser checks\n- Adding skip decorators to previously-passing tests\n- Commenting out assertions\n\nIf the edit WEAKENS assertions, respond:\n{\"decision\": \"block\", \"reason\": \"⚠️ TEST INTEGRITY: This edit weakens test assertions. Do NOT modify tests to make them pass. Instead, STOP and report to the user: what the test expected vs what the code returned. Ask: 'Is the test expectation wrong, or does the code have a bug?' Wait for approval before changing any test.\"}\n\nIf the edit adds NEW tests, strengthens existing assertions, adds comments, or makes non-assertion changes to test files, respond: {\"decision\": \"allow\"}\n\nIf unclear, respond: {\"decision\": \"allow\", \"reason\": \"⚠️ Test file modified — remember the Test Integrity Rule: do not weaken assertions without user approval.\"}"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-bash-safety.sh",
+            "timeout": 8
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/idle-maintenance.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-compact-save.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-compact-reboot.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-response-track.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/stop-failure-log.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-end.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "ConfigChange": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/config-change-host.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-bash-host-check.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "WorktreeCreate": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/worktree-context.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/worktree-cleanup.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
 }
