@@ -194,6 +194,18 @@ ENRICHMENT_CAP = 0.30
 # Boost is additive: score += title_fraction * TITLE_MATCH_BOOST
 TITLE_MATCH_BOOST = 0.3
 
+# Noise floor — minimum blended score for non-critical candidates.
+# v9: Raised from 0.05 to cut pure embedding noise before scoring.
+NOISE_FLOOR_THRESHOLD = 0.15
+
+# FTS5 full-text search
+FTS5_CANDIDATE_LIMIT = 5     # Max FTS5-only candidates sent to judge
+FTS5_SEARCH_LIMIT = 30       # How many FTS5 hits to fetch before filtering
+FTS5_PASSTHROUGH_SCORE = 0.20  # Score for FTS5-only candidates (above noise floor)
+
+# Retrieval stats — judge guidance thresholds
+RETRIEVAL_LOW_CONFIDENCE = 0.35   # Top score below this → judge gets low-confidence warning
+
 # Vocabulary expansion
 VOCAB_EXPANSION_MAX = 3  # Max terms added per query via vocabulary expansion
 VOCAB_GENERIC_THRESHOLD = 0.05  # Reject vocab terms matching >5% of nodes

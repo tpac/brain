@@ -739,6 +739,31 @@ def ensure_schema(conn, db_path=None):
         except Exception:
             pass
 
+    # 6b. FTS5 full-text search virtual table
+    # FTS5 tables use CREATE VIRTUAL TABLE — no ALTER TABLE support, separate from TABLES dict.
+    # Porter stemming: "recommending" matches "recommend". Unicode61 for international text.
+    try:
+        conn.execute("""CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
+            node_id UNINDEXED,
+            title,
+            content,
+            keywords,
+            tokenize='porter unicode61'
+        )""")
+        # Auto-populate on first run: FTS5 empty but nodes exist
+        _fts_count = conn.execute("SELECT COUNT(*) FROM nodes_fts").fetchone()[0]
+        _node_count = conn.execute("SELECT COUNT(*) FROM nodes WHERE archived = 0").fetchone()[0]
+        if _fts_count == 0 and _node_count > 0:
+            conn.execute("""
+                INSERT INTO nodes_fts (node_id, title, content, keywords)
+                SELECT id, title, COALESCE(content, ''), COALESCE(keywords, '')
+                FROM nodes WHERE archived = 0
+            """)
+            conn.commit()
+            print(f"[brain] FTS5 index populated: {_node_count} nodes")
+    except Exception as e:
+        print(f"[brain] FTS5 setup warning: {e}")
+
     # 7. Update version
     if current_version < BRAIN_VERSION:
         conn.execute(

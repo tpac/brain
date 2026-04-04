@@ -981,6 +981,81 @@ class TfIdfDAL:
         return row[0] if row else 0
 
 
+class Fts5DAL:
+    """Access layer for nodes_fts (FTS5 full-text search).
+
+    FTS5 provides word-level search alongside embedding similarity.
+    Different signal: embeddings match meaning, FTS5 matches words.
+    Both feed into the judge which decides relevance.
+    """
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    def search(self, query: str, limit: int = 30) -> List[str]:
+        """Full-text search. Returns node_ids ranked by BM25 relevance.
+
+        Title matches weighted 10x over content, keywords 2x.
+        bm25() column weights: (node_id=0, title=10, content=1, keywords=2)
+        """
+        safe_query = self._sanitize_query(query)
+        if not safe_query:
+            return []
+        try:
+            rows = self.conn.execute(
+                """SELECT node_id FROM nodes_fts
+                   WHERE nodes_fts MATCH ?
+                   ORDER BY bm25(nodes_fts, 0, 10.0, 1.0, 2.0)
+                   LIMIT ?""",
+                (safe_query, limit)
+            ).fetchall()
+            return [r[0] for r in rows]
+        except Exception:
+            return []
+
+    def upsert(self, node_id: str, title: str, content: str, keywords: str):
+        """Insert or update a node in the FTS5 index."""
+        self.delete(node_id)
+        self.conn.execute(
+            "INSERT INTO nodes_fts (node_id, title, content, keywords) VALUES (?, ?, ?, ?)",
+            (node_id, title, content or '', keywords or ''))
+
+    def delete(self, node_id: str):
+        """Remove a node from FTS5 index."""
+        try:
+            self.conn.execute(
+                "DELETE FROM nodes_fts WHERE node_id = ?", (node_id,))
+        except Exception:
+            pass
+
+    def rebuild(self):
+        """Full rebuild of FTS5 index from nodes table."""
+        self.conn.execute("DELETE FROM nodes_fts")
+        self.conn.execute("""
+            INSERT INTO nodes_fts (node_id, title, content, keywords)
+            SELECT id, title, COALESCE(content, ''), COALESCE(keywords, '')
+            FROM nodes WHERE archived = 0
+        """)
+        self.conn.commit()
+
+    @staticmethod
+    def _sanitize_query(query: str) -> str:
+        """Sanitize query for FTS5 MATCH syntax.
+
+        Wraps each meaningful term in quotes, joins with OR.
+        Caps at 8 terms to prevent explosion.
+        """
+        from .brain_constants import TFIDF_STOP_WORDS
+        words = query.strip().split()
+        terms = [w for w in words if w.lower() not in TFIDF_STOP_WORDS and len(w) > 1]
+        if not terms:
+            terms = [w for w in words if len(w) > 1]
+        if not terms:
+            return ''
+        # Quote each term, join with OR (any match, not all)
+        return ' OR '.join('"%s"' % t.replace('"', '') for t in terms[:8])
+
+
 class GraphDAL:
     """Access layer for brain.db graph tables: edges.
 

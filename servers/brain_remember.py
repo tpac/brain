@@ -396,6 +396,14 @@ class BrainRememberMixin:
         except Exception as e:
             self._log_error('tfidf_vector_store', e, 'storing TF-IDF vector for node %s' % node_id[:12])
 
+        # v9: Sync FTS5 full-text search index
+        try:
+            from .dal import Fts5DAL
+            Fts5DAL(self.conn).upsert(node_id, title, content or '', keywords or '')
+            self.conn.commit()
+        except Exception as e:
+            self._log_error('fts5_sync_remember', e, 'syncing FTS5 for node %s' % node_id[:12])
+
         # Phase 0.5C: Store dense embedding SYNCHRONOUSLY at encode time.
         # Every node must have a semantic vector from birth so it's immediately
         # findable via embedding search. ~50ms per node — acceptable for remember().
@@ -753,6 +761,15 @@ class BrainRememberMixin:
             self._store_tfidf_vector(node_id, title, new_content, current_keywords)
         except Exception as e:
             self._log_error("revise_tfidf", e, "Failed to re-index TF-IDF for %s" % node_id[:8])
+
+        # v9: Re-sync FTS5 full-text search index
+        try:
+            from .dal import Fts5DAL
+            kw_for_fts = current_keywords if 'current_keywords' in dir() else ''
+            Fts5DAL(self.conn).upsert(node_id, title, new_content, kw_for_fts or '')
+            self.conn.commit()
+        except Exception as e:
+            self._log_error("fts5_sync_revise", e, "syncing FTS5 for %s" % node_id[:8])
 
         # Auto-resolve consolidation pairs
         try:

@@ -140,14 +140,17 @@ CANDIDATES_FILE = {
 }
 
 # Judge (Haiku) — selects relevant nodes with reasoning (replaces distiller)
+# v9: max_candidates 25→20, Anchor truncation 150→400, recent_messages 5→7
 JUDGE = {
     'content_limit': 300,           # shorter per node since more candidates
-    'max_candidates': 25,           # wide net
+    'max_candidates': 20,           # v9: was 25. FTS5 adds up to 5 more = 25 max total
     'max_selected': 8,              # Haiku picks at most this many
     'user_message_limit': 300,
-    'recent_messages': 5,           # last 5 user messages for context
+    'anchor_message_limit': 400,    # v9: was 150. Anchor responses carry design context
+    'recent_messages': 7,           # v9: was 5. Deeper conversation window
     'recent_recalls_messages': 10,  # look back 10 messages for previously surfaced nodes
     'session_context_limit': 800,   # shared with ENCODING_AGENT — full session journey
+    'judge_session_context_tail': 200,  # v9: judge gets tail of session context (current focus)
     'max_tokens': 600,              # Haiku output cap
 }
 
@@ -405,16 +408,26 @@ def format_neighbor_d2(nb):
 def format_candidate_for_judge(c, index):
     """Format a single candidate for the judge prompt. Compact, metadata-rich."""
     cfg = JUDGE
-    # Header: index, type, title, id, score, confidence, locked, created
+    # Header: index, type, title, id, score, confidence, locked, created, discovery
     parts = ["id:%s" % str(c.get("id", ""))[:8]]
     score = c.get("score", 0)
     if score:
-        parts.append("match:%.2f" % score)
+        # v9: Cap displayed score at 1.0 — critical boost inflates past 1.0
+        # which misleads the judge. Show 'boosted' flag if capped.
+        display_score = min(score, 1.0)
+        score_str = "match:%.2f" % display_score
+        if score > 1.0:
+            score_str += ",boosted"
+        parts.append(score_str)
     conf = c.get("confidence")
     if conf:
         parts.append("conf:%.1f" % conf)
     if c.get("locked"):
         parts.append("locked")
+    # v9: Discovery source — how this candidate was found
+    discovery = c.get("discovery", "")
+    if discovery and discovery not in ("embedding", "embedding_only", "embedding+keyword"):
+        parts.append("via:%s" % discovery)
     created = str(c.get("created_at") or "")[:19]  # trim to seconds, UTC
     if created:
         parts.append(created + "Z")
@@ -458,9 +471,43 @@ def format_candidate_for_judge(c, index):
     return "\n".join(lines)
 
 
+def _dedup_candidates(candidates):
+    """Remove near-duplicate candidates by title similarity.
+    Keeps the higher-scored candidate when two titles share >80% words."""
+    if len(candidates) <= 1:
+        return candidates
+    seen_titles = {}  # normalized title words → candidate
+    result = []
+    for c in candidates:
+        title_words = set(c.get("title", "").lower().split())
+        duplicate = False
+        for seen_key, seen_c in list(seen_titles.items()):
+            seen_words = set(seen_key.split())
+            if not title_words or not seen_words:
+                continue
+            overlap = len(title_words & seen_words) / max(len(title_words), len(seen_words))
+            if overlap > 0.8:
+                # Keep the higher scored one
+                if (c.get("score", 0) or 0) > (seen_c.get("score", 0) or 0):
+                    result.remove(seen_c)
+                    seen_titles[" ".join(sorted(title_words))] = c
+                    result.append(c)
+                duplicate = True
+                break
+        if not duplicate:
+            key = " ".join(sorted(title_words))
+            seen_titles[key] = c
+            result.append(c)
+    return result
+
+
 def build_judge_prompt(candidates, user_message, session_context="",
-                       recent_messages=None, recently_recalled=None):
+                       recent_messages=None, recently_recalled=None,
+                       retrieval_stats=None, intent=None):
     """Build the Layer 2 judge prompt. Single entry point.
+
+    v9: Added retrieval_stats, intent, score normalization, conversation
+    context expansion, session context tail, candidate dedup, discovery tags.
 
     Args:
         candidates: List of candidate node dicts (enriched with metadata)
@@ -468,27 +515,42 @@ def build_judge_prompt(candidates, user_message, session_context="",
         session_context: Encoder's session summary (from brain_meta)
         recent_messages: List of {"role": str, "content": str}
         recently_recalled: List of {"id": str, "title": str} from last N recalls
+        retrieval_stats: Dict with brain_size, top_score, median_score, source_breakdown
+        intent: Query intent from STEP 2 classification (e.g. 'reasoning_chain', 'how_to')
 
     Returns: (prompt_string, max_tokens)
     """
     cfg = JUDGE
 
+    # v9: Deduplicate candidates (remove near-identical titles)
+    candidates = _dedup_candidates(candidates[:cfg['max_candidates']])
+
     # Format conversation context (both roles, asymmetric truncation)
+    # v9: Anchor responses now 400 chars (was 150), 7 messages (was 5)
     conversation = ""
     if recent_messages:
         for msg in recent_messages[-(cfg['recent_messages']):]:
             role = msg.get("role", "?")
             if role == "user":
                 label = "Tom"
-                content = (msg.get("content") or "")[:300]
+                content = (msg.get("content") or "")[:cfg['user_message_limit']]
             else:
                 label = "Anchor"
-                content = (msg.get("content") or "")[:150]
+                content = (msg.get("content") or "")[:cfg['anchor_message_limit']]
             conversation += "%s: %s\n" % (label, content)
 
     # Append current user message (not yet in message_stream — stored on Stop, not Submit)
     if user_message:
-        conversation += "Tom: %s\n" % (user_message or "")[:300]
+        conversation += "Tom: %s\n" % (user_message or "")[:cfg['user_message_limit']]
+
+    # v9: Session context — use tail for current focus, not full changelog
+    judge_session_context = ""
+    if session_context:
+        tail_limit = cfg.get('judge_session_context_tail', 200)
+        if len(session_context) > tail_limit:
+            judge_session_context = "Current focus: ..." + session_context[-tail_limit:]
+        else:
+            judge_session_context = session_context
 
     # Format recently recalled (lightweight — id + title only)
     recalled_text = ""
@@ -496,9 +558,51 @@ def build_judge_prompt(candidates, user_message, session_context="",
         for r in recently_recalled:
             recalled_text += "%s \"%s\"\n" % (str(r.get("id", ""))[:8], r.get("title", "")[:60])
 
+    # v9: Build retrieval context block (always present when stats available)
+    retrieval_context = ""
+    if retrieval_stats:
+        rs = retrieval_stats
+        top = rs.get('top_score', 0)
+        median = rs.get('median_score', 0)
+        brain_sz = rs.get('brain_size', 0)
+        n_candidates = rs.get('candidates_after_floor', 0)
+        breakdown = rs.get('source_breakdown', {})
+
+        retrieval_context = "Retrieval: %d candidates from %d memories. Top: %.2f, median: %.2f." % (
+            n_candidates, brain_sz, top, median)
+
+        # Source breakdown (non-zero only)
+        src_parts = []
+        for src, count in breakdown.items():
+            if count > 0:
+                src_parts.append("%d %s" % (count, src))
+        if src_parts:
+            retrieval_context += " Sources: %s." % ", ".join(src_parts)
+
+        # v9: Dynamic guidance based on distribution
+        from .brain_constants import RETRIEVAL_LOW_CONFIDENCE
+        if top < RETRIEVAL_LOW_CONFIDENCE:
+            retrieval_context += (
+                "\nNOTE: Top score %.2f is low for %d memories — "
+                "brain likely has nothing relevant. Prefer selecting 0." % (top, brain_sz))
+
+    # v9: Intent context (from STEP 2 classification)
+    intent_context = ""
+    if intent and intent != 'general':
+        _intent_guidance = {
+            'decision_lookup': 'Tom is looking for a past decision — prioritize decision, rule, and correction nodes.',
+            'reasoning_chain': 'Design/reasoning task — architecture, mechanism, and pattern nodes most helpful.',
+            'correction_lookup': 'Looking for a correction — prioritize correction and lesson nodes.',
+            'how_to': 'How-to question — mechanism, convention, and lesson nodes most helpful.',
+            'temporal': 'Time-based query — check created_at dates, prioritize session and milestone nodes.',
+            'state_query': 'Checking current state — recent decisions and open items most relevant.',
+        }
+        if intent in _intent_guidance:
+            intent_context = "Query type: %s. %s" % (intent, _intent_guidance[intent])
+
     # Format candidates
     candidates_text = ""
-    for i, c in enumerate(candidates[:cfg['max_candidates']], 1):
+    for i, c in enumerate(candidates, 1):
         candidates_text += format_candidate_for_judge(c, i) + "\n\n"
 
     prompt = """You are a memory relevance judge for a shared AI brain. The brain stores memories from conversations between an operator (Tom) and an AI assistant (Anchor). You decide which memories help Anchor respond to Tom's next message.
@@ -509,41 +613,35 @@ Conversation (recent, oldest first):
 %s
 Recently surfaced (deprioritize — only select if the current message specifically needs them):
 %s
-%d candidate memories follow. Each has a type, title, and content snippet.
-
 Field guide:
-- match: how similar this memory is to the current message (0-1, from embedding search). High match means topically close, but topic alone doesn't mean relevant.
-- conf: system confidence in this memory (0-1). Higher = more established knowledge.
-- locked: manually confirmed as important by the operator.
-- Situation: describes WHEN this memory is relevant — use this to judge if it applies now.
-- Reasoning: WHY this memory was stored — helps you understand its purpose.
-- Quote: the operator's exact words when this was learned.
-- Corrects: ID of a memory this one replaces or updates. If you surface the original, surface the correction too.
-- Edges: connections to other memories. The type (extends, corrects, depends_on, addresses) tells you HOW they're related.
+- match: similarity to query (0-1). High match = topically close, but topic alone ≠ relevant. 'boosted' means score was artificially raised (critical node).
+- conf: system confidence (0-1). Higher = more established.
+- locked: operator-confirmed important.
+- via:fts5_only: found by word match only — no semantic similarity. May be coincidence. Verify carefully.
+- via:both: found by word match AND semantic similarity. Strong convergence signal.
+- Situation: WHEN this memory applies — match to current context.
+- Reasoning: WHY stored. Corrects: replaces this ID. Edges: connections (type tells HOW related).
 
-Not all memories have all fields — older memories may only have title and content. Judge by what's available.
+%s
+%s
+%d candidates follow. Select 0-%d.
+- Short confirmations ("yes", "ok", "thanks") → select 0.
+- Word coincidence without meaning overlap → select 0. ("React hooks" ≠ "brain hooks")
+- Unsure? Don't select. No context > wrong context. Silence is better than noise.
 
-Example: Tom is working on a web app project and asks "why is the daemon crashing on startup?" Candidates include "DAEMON_HOST 127.0.0.1 breaks macOS: localhost resolves to IPv6" (match:0.78, situation: debugging daemon persistence, created 2026-03-18), "Refactoring strategy: one layer per session" (match:0.65, locked), and "Tom generalizes specific fixes into structural principles" (match:0.42).
-Good judgment: reject ALL three. "DAEMON_HOST 127.0.0.1" is about the brain plugin's daemon, not the web app's daemon — situation says "debugging daemon persistence" which is brain-specific. "Refactoring strategy" is a general principle but doesn't help debug a crash. "Tom generalizes fixes" is a pattern about Tom, not about daemons. Return {"selected":[],"reason":"all candidates are from brain-plugin context, none relate to the web app daemon crash"}.
-
-Critical rules:
-- If the user's message is a short confirmation ("yes", "ok", "got it", "thanks", "continue"), select 0.
-- If the candidates are only tangentially related — they share a word but not the meaning — select 0. Example: a query about "React hooks" matching a memory about "brain hooks" is a word coincidence, not relevance.
-- If you're unsure whether a candidate helps, don't select it. The assistant is better off without context than with misleading context.
-
-Select 0-%d memories. Return ONLY this JSON, no other text:
-{"selected":[{"id":"...","why":"one phrase for Anchor explaining relevance"}]}
-
-If nothing is relevant, return: {"selected":[],"reason":"brief reason"}
-Silence is better than noise.
+Return ONLY JSON:
+{"selected":[{"id":"...","why":"one phrase"}]}
+If nothing relevant: {"selected":[],"reason":"brief reason"}
 
 Candidates:
 
 %s""" % (
-        session_context or "(first messages — no session context yet)",
+        judge_session_context or "(first messages)",
         conversation or "(no recent messages)",
         recalled_text or "(none)",
-        len(candidates[:cfg['max_candidates']]),
+        retrieval_context,
+        intent_context,
+        len(candidates),
         cfg['max_selected'],
         candidates_text,
     )

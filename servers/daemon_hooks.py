@@ -311,12 +311,18 @@ def hook_recall(brain, args, graph_changes):
         except Exception as _e:
             brain._log_error('judge_recently_recalled', _e, 'fetching recently recalled titles')
 
+        # v9: Extract retrieval stats and intent for judge context
+        _retrieval_stats = result.get('_retrieval_stats') if isinstance(result, dict) else None
+        _intent = result.get('intent') if isinstance(result, dict) else None
+
         # Build judge prompt
         judge_prompt, max_tokens = build_judge_prompt(
             candidates_data, user_message,
             session_context=brain.get_config('session_context', '') or '',
             recent_messages=recent_messages if 'recent_messages' in dir() else [],
-            recently_recalled=recently_recalled)
+            recently_recalled=recently_recalled,
+            retrieval_stats=_retrieval_stats,
+            intent=_intent)
 
         # Call Haiku (persistent client — no import overhead)
         _client = _anthropic.Anthropic()

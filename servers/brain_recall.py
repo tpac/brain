@@ -45,8 +45,13 @@ from .brain_constants import (
     EXCLUDED_EDGE_TYPES,
     SITUATION_WEIGHT,
     SITUATION_THRESHOLD,
+    NOISE_FLOOR_THRESHOLD,
+    FTS5_CANDIDATE_LIMIT,
+    FTS5_SEARCH_LIMIT,
+    FTS5_PASSTHROUGH_SCORE,
+    RETRIEVAL_LOW_CONFIDENCE,
 )
-from .dal import GraphDAL, NodeDAL, EmbeddingDAL, TfIdfDAL, LogsDAL, EnrichmentDAL
+from .dal import GraphDAL, NodeDAL, EmbeddingDAL, TfIdfDAL, LogsDAL, EnrichmentDAL, Fts5DAL
 
 
 class BrainRecallMixin:
@@ -494,6 +499,12 @@ class BrainRecallMixin:
         nodes_with_embeddings = 0
         nodes_without_embeddings = 0
 
+        # v9: Brain size for retrieval stats (computed once)
+        try:
+            _brain_size = self.conn.execute("SELECT COUNT(*) FROM nodes WHERE archived = 0").fetchone()[0]
+        except Exception:
+            _brain_size = 0
+
         # Pre-compute query terms for contextual qualifier matching (applied in STEP 6)
         _query_terms_set = set(query.lower().split()) if query else set()
 
@@ -679,8 +690,25 @@ class BrainRecallMixin:
             if nid not in embedding_scores:
                 nodes_without_embeddings += 1
 
-        # STEP 5: Build unified candidate set (all nodes seen by either path)
-        all_candidate_ids = set(embedding_scores.keys()) | set(keyword_scores.keys())
+        # STEP 4.5: FTS5 independent candidate net
+        # FTS5 catches nodes where words match but embeddings didn't connect.
+        # These go to the judge as fts5_only candidates (no blended score needed).
+        fts5_only_ids = set()
+        fts5_all_ids = set()
+        try:
+            fts5_dal = Fts5DAL(self.conn)
+            fts5_hits = fts5_dal.search(query, FTS5_SEARCH_LIMIT)
+            fts5_all_ids = set(fts5_hits)
+            for nid in fts5_hits:
+                if nid not in embedding_scores and nid not in keyword_scores:
+                    fts5_only_ids.add(nid)
+                    if len(fts5_only_ids) >= FTS5_CANDIDATE_LIMIT:
+                        break
+        except Exception as e:
+            self._log_error('recall_fts5', e, 'FTS5 candidate search')
+
+        # STEP 5: Build unified candidate set (all nodes seen by any path)
+        all_candidate_ids = set(embedding_scores.keys()) | set(keyword_scores.keys()) | fts5_only_ids
 
         # STEP 6: Score each candidate — embeddings primary, keywords fallback
         scored_results = []
@@ -689,15 +717,26 @@ class BrainRecallMixin:
             kw_score = keyword_scores.get(nid, 0)
 
             # Determine discovery source and compute blended score
-            if emb_score > 0 and kw_score > 0:
+            if nid in fts5_only_ids:
+                # v9: FTS5-only — word match, no embedding match.
+                # Passthrough score above noise floor. Judge decides relevance.
+                blended = FTS5_PASSTHROUGH_SCORE
+                discovery = 'fts5_only'
+            elif emb_score > 0 and kw_score > 0:
                 # Both signals available — blend with embeddings primary
                 blended = (EMBEDDING_PRIMARY_WEIGHT * emb_score +
                           KEYWORD_FALLBACK_WEIGHT * kw_score)
                 discovery = 'embedding+keyword'
+                # v9: Tag 'both' if also found by FTS5
+                if nid in fts5_all_ids:
+                    discovery = 'both'
             elif emb_score > 0:
                 # Embedding only — use embedding score directly
                 blended = emb_score
                 discovery = 'embedding_only'
+                # v9: Tag 'both' if also found by FTS5
+                if nid in fts5_all_ids:
+                    discovery = 'both'
             else:
                 # Keyword only (node has no embedding) — use keyword but PENALIZE.
                 # Keyword-only results lack the primary signal. They should never
@@ -766,7 +805,8 @@ class BrainRecallMixin:
             # is in place for when we're ready to integrate.
 
             # Minimum threshold — don't return noise
-            min_threshold = CRITICAL_SIMILARITY_THRESHOLD if is_critical else 0.05
+            # v9: Raised from 0.05 to NOISE_FLOOR_THRESHOLD (0.15)
+            min_threshold = CRITICAL_SIMILARITY_THRESHOLD if is_critical else NOISE_FLOOR_THRESHOLD
             if blended < min_threshold:
                 continue
 
@@ -798,10 +838,11 @@ class BrainRecallMixin:
         # STEP 6.9: Per-result relevance floor.
         # v8.7: Changed from all-or-nothing (top result gates everything) to per-result.
         # Each result must meet its own floor based on how it was discovered.
-        # Floors lowered (0.25/0.45) since enrichment cap now prevents inflated scores.
+        # v9: FTS5-only candidates bypass the relevance floor — they go straight to judge.
         scored_results = [
             sr for sr in scored_results
-            if sr['blended_score'] >= (
+            if sr['_source'] == 'fts5_only'  # FTS5-only: always pass to judge
+            or sr['blended_score'] >= (
                 RELEVANCE_FLOOR_ENRICHED
                 if enrichment_hits.get(sr['node_id'], 'primary') != 'primary'
                 else RELEVANCE_FLOOR_PRIMARY
@@ -960,6 +1001,8 @@ class BrainRecallMixin:
                     'embedding+keyword': sum(1 for r in final_results if r.get('_discovery') == 'embedding+keyword'),
                     'embedding_only': sum(1 for r in final_results if r.get('_discovery') == 'embedding_only'),
                     'keyword_only_fallback': sum(1 for r in final_results if r.get('_discovery') == 'keyword_only_fallback'),
+                    'fts5_only': sum(1 for r in final_results if r.get('_discovery') == 'fts5_only'),
+                    'both': sum(1 for r in final_results if r.get('_discovery') == 'both'),
                     'graph_d1': sum(1 for r in final_results if r.get('_discovery') == 'graph_d1'),
                     'graph_d2': sum(1 for r in final_results if r.get('_discovery') == 'graph_d2'),
                     'graph_d3': sum(1 for r in final_results if r.get('_discovery') == 'graph_d3'),
@@ -969,6 +1012,20 @@ class BrainRecallMixin:
                 'enrichment_vectors_scanned': enrichment_count if 'enrichment_count' in dir() else 0,
                 'enrichment_vectors_used': enrichment_used if 'enrichment_used' in dir() else 0,
                 'results_via_enrichment': sum(1 for r in final_results if enrichment_hits.get(r.get('id', ''), 'primary') != 'primary'),
+            },
+            # v9: Retrieval stats for judge — distribution-aware context
+            '_retrieval_stats': {
+                'brain_size': _brain_size,
+                'candidates_after_floor': len(scored_results) if 'scored_results' in dir() else 0,
+                'top_score': round(scored_results[0]['blended_score'], 3) if scored_results else 0,
+                'median_score': round(scored_results[len(scored_results)//2]['blended_score'], 3) if scored_results else 0,
+                'source_breakdown': {
+                    'embedding_only': sum(1 for sr in scored_results if sr['_source'] == 'embedding_only'),
+                    'embedding+keyword': sum(1 for sr in scored_results if sr['_source'] == 'embedding+keyword'),
+                    'fts5_only': sum(1 for sr in scored_results if sr['_source'] == 'fts5_only'),
+                    'both': sum(1 for sr in scored_results if sr['_source'] == 'both'),
+                    'keyword_only_fallback': sum(1 for sr in scored_results if sr['_source'] == 'keyword_only_fallback'),
+                } if 'scored_results' in dir() else {},
             },
         }
 
@@ -1266,7 +1323,11 @@ class BrainRecallMixin:
 
     def _search_keywords(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """
-        Search nodes by keyword/title/content.
+        Search nodes by full-text search (FTS5).
+
+        v9: Replaced LIKE-based search with FTS5. Porter stemming,
+        BM25 ranking, title weighted 10x. TF-IDF scoring layer
+        (_keyword_recall) stays unchanged — it scores, FTS5 finds.
 
         Args:
             query: Search query
@@ -1275,35 +1336,18 @@ class BrainRecallMixin:
         Returns:
             List of matching nodes
         """
-        words = self._tfidf_tokenize(query)
-        if not words:
-            return []
-
-        # Build OR conditions: (LIKE word1 OR LIKE word2 OR ...)
-        conditions = []
-        params = []
-        for w in words:
-            conditions.append('(LOWER(keywords) LIKE ? OR LOWER(title) LIKE ? OR LOWER(content) LIKE ?)')
-            params.extend([f'%{w}%', f'%{w}%', f'%{w}%'])
-
-        where_clause = ' OR '.join(conditions)
-        params.append(limit)
-
         try:
-            # Search uses dynamic LIKE clauses; hydrate results through NodeDAL
-            cursor = self.conn.execute(
-                f'SELECT id FROM nodes WHERE archived = 0 AND ({where_clause}) LIMIT ?',
-                params
-            )
+            fts5_dal = Fts5DAL(self.conn)
+            node_ids = fts5_dal.search(query, limit)
             _ndal = NodeDAL(self.conn)
             results = []
-            for row in cursor.fetchall():
-                node = _ndal.get_node(row[0])
-                if node:
+            for nid in node_ids:
+                node = _ndal.get_node(nid)
+                if node and not node.get('archived'):
                     results.append(node)
             return results
         except Exception as e:
-            self._log_error('search_keywords', e, 'keyword search query execution')
+            self._log_error('search_keywords_fts5', e, 'FTS5 search failed, falling back to empty')
             return []
 
     def _mark_accessed(self, node_id: str, session_id: str):
