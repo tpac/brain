@@ -255,7 +255,7 @@ remember(type, title, content, keywords, situation, reasoning, user_raw_quote, .
 remember_batch(nodes=[...], connect_to=[{title, why},...], auto_connect=True) — batch create
   Each node uses the same fields as remember(). Auto-connects + fuzzy title matching.
 connect(source_id, target_id, relation, weight) — link two nodes
-revise(node_id, reason, content, ...) — update existing node (content is appended)
+revise(node_id, reason, content, ...) — update existing node (content REPLACED, old saved to revision history)
 find_node_by_title(title_query, threshold, top_k) — fuzzy search
 get_node(node_id) — full content + connections by ID
 enrich(node_id, question, anchor, bridge, keywords) — improve recall vectors
