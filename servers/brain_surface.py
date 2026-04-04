@@ -212,7 +212,7 @@ class BrainSurfaceMixin:
             self.logs_conn.execute('''
                 INSERT INTO suggest_log (session_id, context, suggested_ids, created_at)
                 VALUES (?, ?, ?, ?)
-            ''', ('auto', ' | '.join(queries), json.dumps([s['id'] for s in suggestions]), ts))
+            ''', ('auto', ' | '.join(queries), json.dumps([s['id'] for s in suggestions]), self.now()))
         except Exception as e:
             self._log_error('suggest_log', e, 'logging suggestion to suggest_log')
 
