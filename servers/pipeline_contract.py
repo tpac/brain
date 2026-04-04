@@ -14,6 +14,46 @@ To change what the encoding agent sees: edit ENCODING_AGENT config.
 Truncation limits: PIPELINE dict (single source of truth for all stages).
 """
 
+from datetime import datetime, timezone
+
+
+def _relative_time(iso_str):
+    """Convert UTC ISO timestamp to relative time label.
+
+    Returns human-readable age: 'just now', 'today', 'yesterday', '3d ago', '2w ago', '1mo ago'.
+    Both judge and Anchor see this instead of raw UTC timestamps.
+    """
+    if not iso_str:
+        return None
+    try:
+        # Handle various ISO formats
+        ts_str = str(iso_str).replace('Z', '+00:00')
+        if '+' not in ts_str and ts_str.count('-') <= 2:
+            ts_str += '+00:00'
+        ts = datetime.fromisoformat(ts_str)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        delta = now - ts
+        hours = delta.total_seconds() / 3600
+        days = delta.days
+
+        if hours < 1:
+            return "just now"
+        elif hours < 24:
+            return "today"
+        elif hours < 48:
+            return "yesterday"
+        elif days < 7:
+            return "%dd ago" % days
+        elif days < 30:
+            return "%dw ago" % (days // 7)
+        else:
+            months = days // 30
+            return "%dmo ago" % months
+    except Exception:
+        return None
+
 
 # ═══════════════════════════════════════════════════════════════
 # NODE FIELDS — what to include at each stage
@@ -428,9 +468,13 @@ def format_candidate_for_judge(c, index):
     discovery = c.get("discovery", "")
     if discovery and discovery not in ("embedding", "embedding_only", "embedding+keyword"):
         parts.append("via:%s" % discovery)
-    created = str(c.get("created_at") or "")[:19]  # trim to seconds, UTC
-    if created:
-        parts.append(created + "Z")
+    # v9.1: Relative time instead of raw UTC — judge and Anchor both think in relative time
+    created_rel = _relative_time(c.get("created_at"))
+    revised_rel = _relative_time(c.get("revised_at"))
+    if revised_rel and created_rel and revised_rel != created_rel:
+        parts.append("created %s, revised %s" % (created_rel, revised_rel))
+    elif created_rel:
+        parts.append(created_rel)
 
     header = "#%d [%s] \"%s\" (%s)" % (
         index, c.get("type", "?"), c.get("title", "?")[:70], ", ".join(parts))
@@ -689,13 +733,19 @@ def format_judge_output(selected, candidates, graph_neighbors=None):
         if not c:
             continue
 
-        # Header
+        # Header — v9.1: includes relative time so Anchor knows when this memory is from
         parts = ["id:%s" % sid]
         conf = c.get("confidence")
         if conf:
             parts.append("conf:%.1f" % conf)
         if c.get("locked"):
             parts.append("locked")
+        created_rel = _relative_time(c.get("created_at"))
+        revised_rel = _relative_time(c.get("revised_at"))
+        if revised_rel and created_rel and revised_rel != created_rel:
+            parts.append("created %s, revised %s" % (created_rel, revised_rel))
+        elif created_rel:
+            parts.append(created_rel)
         header = "[%s] \"%s\" (%s)" % (c.get("type", "?"), c.get("title", "?")[:70], ", ".join(parts))
         lines.append(header)
 
