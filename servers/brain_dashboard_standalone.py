@@ -81,16 +81,16 @@ def _direct_query(sql, args=(), db_path=None):
         return []
 
 
-# ── Recall Log — reads from brain_logs.db (single source of truth) ──
+# ── Recall Feed — reads from trace_events (single source of truth) ──
 
 def _get_dashboard_db_path():
     db_dir = os.environ.get("BRAIN_DB_DIR", os.path.join(os.path.expanduser("~"), "AgentsContext", "brain"))
     return os.path.join(db_dir, "brain_dashboard.db")
 
 
-def _read_judge_file(recall_log_id):
+def _read_judge_file(recall_ref):
     """Read judge data from temp file written by the hook. Dashboard is read-only observer."""
-    path = "/tmp/brain-judge-result-%s.json" % recall_log_id
+    path = "/tmp/brain-judge-result-%s.json" % recall_ref
     if not os.path.exists(path):
         return None, None
     try:
@@ -102,56 +102,96 @@ def _read_judge_file(recall_log_id):
 
 
 def _query_recall_log(since_id=0, limit=50):
-    """Read recall events from recall_log in brain_logs.db — the single source of truth.
-    Shows all recalls: hook-initiated, MCP (Anchor's proactive), and internal."""
+    """Read recall events from S1 traces — the single source of truth.
+    Migrated from recall_log table (2026-04-05) to trace_events.
+    Shows S1 recall chains: O (candidates), K (judge-selected), Δ (additionalContext)."""
     path = _get_logs_db_path()
     if not os.path.exists(path):
         return []
     try:
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=3)
+        # Get S1 recall O events (one per recall)
         rows = conn.execute(
-            "SELECT id, session_id, query, returned_ids, returned_count, "
-            "recalled_titles, recalled_snippets, created_at, source, "
-            "embeddings_used, used_ids, used_count, precision_score "
-            "FROM recall_log WHERE id > ? ORDER BY id DESC LIMIT ?",
+            "SELECT id, chain_id, ref_id, summary, metadata, session_id, created_at "
+            "FROM trace_events WHERE scale = 's1' AND event_type = 'O' AND ref_type = 'recall' "
+            "AND id > ? ORDER BY id DESC LIMIT ?",
             (since_id, limit)
         ).fetchall()
-        conn.close()
+
+        # For each O event, find the K and Δ in the same chain
         results = []
         for r in rows:
-            titles = {}
-            snippets = {}
+            trace_id = r[0]
+            chain_id = r[1]
+            recall_ref = r[2] or ''
+            summary = r[3] or ''
+            session_id = r[5] or ''
+            timestamp = r[6] or ''
+
+            # Parse O metadata for candidates
+            candidates = []
+            query = ''
             try:
-                titles = json.loads(r[5]) if r[5] else {}
+                meta = json.loads(r[4]) if r[4] else {}
+                query = meta.get('query', '')
+                for cand_str in meta.get('candidates', []):
+                    parts = cand_str.split('|')
+                    if len(parts) >= 4:
+                        candidates.append({
+                            'id': parts[0], 'title': parts[1],
+                            'score': parts[2], 'type': parts[3]})
             except Exception:
                 pass
-            try:
-                snippets = json.loads(r[6]) if r[6] else {}
-            except Exception:
-                pass
-            returned_ids = []
-            try:
-                returned_ids = json.loads(r[3]) if r[3] else []
-            except Exception:
-                pass
-            used_ids = []
-            try:
-                used_ids = json.loads(r[10]) if r[10] else []
-            except Exception:
-                pass
-            # Read judge data from tmp file (dashboard is passive observer)
-            j_prompt, j_output = _read_judge_file(r[0])
+
+            # Find K event (judge-selected) in same chain
+            selected_ids = []
+            k_row = conn.execute(
+                "SELECT ref_id, summary, metadata FROM trace_events "
+                "WHERE chain_id = ? AND event_type = 'K'", (chain_id,)
+            ).fetchone()
+            if k_row:
+                try:
+                    selected_ids = json.loads(k_row[0]) if k_row[0] else []
+                except Exception:
+                    pass
+
+            # Find Δ event (additionalContext) in same chain
+            judge_output = None
+            d_row = conn.execute(
+                "SELECT metadata FROM trace_events "
+                "WHERE chain_id = ? AND event_type = 'delta'", (chain_id,)
+            ).fetchone()
+            if d_row:
+                try:
+                    d_meta = json.loads(d_row[0]) if d_row[0] else {}
+                    judge_output = d_meta.get('content', '')
+                except Exception:
+                    pass
+
+            # Also try tmp file for judge prompt
+            j_prompt, j_output_file = _read_judge_file(recall_ref)
+
+            # Build titles dict from candidates
+            titles = {c['id']: c['title'] for c in candidates}
+
             results.append({
-                "id": r[0], "session_id": r[1] or "", "query": r[2] or "",
-                "returned_ids": returned_ids, "returned_count": r[4] or 0,
-                "titles": titles, "snippets": snippets,
-                "timestamp": r[7] or "", "source": r[8] or "unknown",
-                "embeddings_used": bool(r[9]),
-                "used_ids": used_ids, "used_count": r[11] or 0,
-                "precision_score": r[12],
+                "id": trace_id,
+                "session_id": session_id,
+                "query": query,
+                "returned_ids": [c['id'] for c in candidates],
+                "returned_count": len(candidates),
+                "titles": titles,
+                "snippets": {},
+                "timestamp": timestamp,
+                "source": "hook",
+                "embeddings_used": True,
+                "used_ids": selected_ids,
+                "used_count": len(selected_ids),
+                "precision_score": None,
                 "judge_prompt": j_prompt,
-                "judge_output": j_output,
+                "judge_output": judge_output or j_output_file,
             })
+        conn.close()
         return results
     except Exception:
         return []
@@ -622,29 +662,24 @@ def _check_system_status():
     except Exception as e:
         status['logs_db'] = {'alive': False, 'error': str(e)[:100]}
 
-    # 4. Haiku Judge — success rate and latency from recall_log + judge files
+    # 4. Haiku Judge — success rate from S1 traces
     try:
         logs_path = _get_logs_db_path()
         conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=2)
-        # Last 20 hook recalls
+        # Last 20 S1 recall K events (judge selections)
         rows = conn.execute(
-            "SELECT id, created_at FROM recall_log WHERE source = 'hook' "
-            "ORDER BY id DESC LIMIT 20").fetchall()
+            "SELECT id, summary, created_at FROM trace_events "
+            "WHERE scale = 's1' AND event_type = 'K' AND ref_type = 'judge_selected' "
+            "ORDER BY created_at DESC LIMIT 20").fetchall()
         total = len(rows)
-        with_judge = 0
-        last_judge_time = None
-        for r in rows:
-            judge_path = "/tmp/brain-judge-result-%s.json" % r[0]
-            if os.path.exists(judge_path):
-                with_judge += 1
-                if not last_judge_time:
-                    last_judge_time = r[1]
+        with_selection = sum(1 for r in rows if 'selected' in (r[1] or '') and not r[1].startswith('0'))
+        last_time = rows[0][2] if rows else 'never'
         conn.close()
-        rate = round(with_judge * 100 / total) if total else 0
+        rate = round(with_selection * 100 / total) if total else 0
         status['judge'] = {
-            'alive': rate > 50, 'success_rate': '%d%%' % rate,
-            'last_success': last_judge_time or 'never',
-            'sample': '%d/%d' % (with_judge, total)}
+            'alive': total > 0, 'success_rate': '%d%%' % rate,
+            'last_success': last_time,
+            'sample': '%d/%d with selections' % (with_selection, total)}
     except Exception as e:
         status['judge'] = {'alive': False, 'error': str(e)[:100]}
 
@@ -749,7 +784,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         })
 
     def _serve_recalls(self, params):
-        """Return recall events from recall_log — the single source of truth."""
+        """Return recall events from S1 traces — the single source of truth."""
         since_id = int(params.get("since_id", [0])[0])
         limit = int(params.get("limit", [50])[0])
         entries = _query_recall_log(since_id=since_id, limit=limit)
@@ -1010,20 +1045,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "detail": "Nodes under 100 chars lack context for future recall.",
                 })
 
-            # Precision loop health
+            # Trace coverage (replaces precision loop health)
             try:
                 db_dir = os.path.dirname(db)
                 logs_db = os.path.join(db_dir, "brain_logs.db")
-                total = _direct_query("SELECT COUNT(*) FROM recall_log", db_path=logs_db)
-                evaluated = _direct_query("SELECT COUNT(*) FROM recall_log WHERE precision_score IS NOT NULL", db_path=logs_db)
-                total_n = total[0][0] if total else 0
-                eval_n = evaluated[0][0] if evaluated else 0
-                eval_pct = (eval_n / total_n * 100) if total_n > 0 else 0
-                if eval_pct < 10 and total_n > 0:
+                s1_traces = _direct_query(
+                    "SELECT COUNT(*) FROM trace_events WHERE scale = 's1' "
+                    "AND created_at > datetime('now', '-24 hours')", db_path=logs_db)
+                s1_count = s1_traces[0][0] if s1_traces else 0
+                if s1_count == 0:
                     insights.append({
                         "severity": "high", "icon": "\U0001f4ca",
-                        "title": "Precision loop at %.1f%% (%d/%d evaluated)" % (eval_pct, eval_n, total_n),
-                        "detail": "The brain can't learn which recalls help. The feedback loop is starving.",
+                        "title": "No S1 traces in 24h",
+                        "detail": "No recall or encoding traces. Check daemon and hook pipeline.",
                     })
             except Exception:
                 pass
