@@ -246,7 +246,7 @@ class BrainRecallMixin:
             session_id: Optional session ID for logging
 
         Returns:
-            Dict with results (list of nodes), _recall_log_id, intent
+            Dict with results (list of nodes), recall_ref, intent
         """
         limit = min(limit, MAX_PAGE_SIZE)
 
@@ -286,7 +286,6 @@ class BrainRecallMixin:
             # Return recent nodes if no seeds found
             return {
                 'results': self._get_recent(limit, types),
-                '_recall_log_id': None,
                 'intent': intent
             }
 
@@ -441,13 +440,9 @@ class BrainRecallMixin:
                 # Note: reasoning methods not yet implemented, skipping for now
                 pass
 
-        # TODO: _recall_log_id is returned but nothing calls mark_recall_used()
-        # to close the loop.  Until that method exists, recall_log.used_count
-        # stays 0 and the "recall precision" consciousness signal is always 0%.
-        # See: tests/relearning.py header for the full TODO list.
+        # recall_log writes removed 2026-04-05 — traces are source of truth
         result = {
             'results': page,
-            '_recall_log_id': recall_log_id,
             'intent': intent,
         }
 
@@ -483,7 +478,7 @@ class BrainRecallMixin:
             session_id: Optional session ID
 
         Returns:
-            Dict with results, _recall_log_id, _embedding_stats, intent, _recall_mode
+            Dict with results, recall_ref, _embedding_stats, intent, _recall_mode
         """
         t0 = time.time()
         limit = min(limit, MAX_PAGE_SIZE)
@@ -500,7 +495,7 @@ class BrainRecallMixin:
             }
             print(f'[brain] WARNING: keyword-only recall (embedder not ready)', file=sys.stderr)
             # recall_log writes REMOVED 2026-04-05 — S1 traces capture all recall data.
-            # _recall_log_id no longer returned (consumers use stop counter instead).
+            # recall_ref no longer returned (consumers use stop counter instead).
             return result
 
         # ── PRIMARY PATH: Embeddings-first ──
