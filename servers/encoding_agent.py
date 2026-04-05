@@ -75,8 +75,10 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None, session_id=None):
         _log("no messages, skipping")
         return {"skipped": True, "reason": "no messages"}
 
-    # 2. Build prompt (no independent recall — timeline has pre-attached recall)
-    system_prompt = _build_system_prompt()
+    # 2. Build prompt — instructions from interactions table (learnable boundary)
+    _enc_interaction = brain.get_interaction('encoding_agent')
+    _enc_instructions = _enc_interaction.get('template', '') if _enc_interaction else ''
+    system_prompt = _build_system_prompt(prompt_instructions=_enc_instructions or None)
     user_content = _build_user_content(brain, messages, counter, session_id)
     _step("prompt(%d chars)" % len(user_content))
 
@@ -281,15 +283,24 @@ def _gather_messages(brain, session_id):
         return []
 
 
-def _build_system_prompt():
-    """Load v3 encoding agent prompt + contract field summary."""
-    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    prompt_path = os.path.join(project_dir, 'hooks', 'prompts', 'encoding-agent-v3.md')
-    try:
-        with open(prompt_path) as f:
-            prompt = f.read()
-    except Exception:
-        prompt = "You are the encoding agent. Encode focused nodes. Batch operations. 2-3 rounds."
+def _build_system_prompt(prompt_instructions=None):
+    """Build encoding agent system prompt.
+
+    If prompt_instructions provided (from interactions table), uses it.
+    Otherwise falls back to encoding-agent-v3.md file.
+    Appends contract field summary in both cases.
+    """
+    if prompt_instructions:
+        prompt = prompt_instructions
+    else:
+        # Fallback: load from file
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        prompt_path = os.path.join(project_dir, 'hooks', 'prompts', 'encoding-agent-v3.md')
+        try:
+            with open(prompt_path) as f:
+                prompt = f.read()
+        except Exception:
+            prompt = "You are the encoding agent. Encode focused nodes. Batch operations. 2-3 rounds."
     try:
         from .contract import generate_field_summary
         prompt += "\n\n## Available Fields (from contract)\n\n" + generate_field_summary()
