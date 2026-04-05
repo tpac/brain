@@ -647,14 +647,15 @@ class InteractionDAL:
     def get_version(self, name: str, version: int) -> Optional[Dict[str, Any]]:
         """Get a specific version of an interaction."""
         row = self.conn.execute(
-            'SELECT id, name, version, template, parameters, created_at, created_by '
+            'SELECT id, name, version, template, parameters, created_at, created_by, parent_version '
             'FROM interactions WHERE name = ? AND version = ?',
             (name, version)).fetchone()
         if not row:
             return None
         return {'id': row[0], 'name': row[1], 'version': row[2],
                 'template': row[3], 'parameters': row[4],
-                'created_at': row[5], 'created_by': row[6]}
+                'created_at': row[5], 'created_by': row[6],
+                'parent_version': row[7]}
 
     def list_all(self) -> List[Dict[str, Any]]:
         """List all interactions with their latest version."""

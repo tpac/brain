@@ -443,6 +443,27 @@ class Brain(
         """
         return self.get_config('session_context', '') or ''
 
+    def get_interaction_config(self, name: str) -> dict:
+        """Get the latest config for an interaction. Returns {} if not found."""
+        interaction = self._interaction_dal.get_latest(name)
+        if not interaction or not interaction.get('parameters'):
+            return {}
+        try:
+            return json.loads(interaction['parameters'])
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    def get_interaction_prompt(self, name: str) -> str:
+        """Get the latest prompt text for an LLM interaction. Returns '' if not found."""
+        interaction = self._interaction_dal.get_latest(name)
+        if not interaction:
+            return ''
+        return interaction.get('template', '')
+
+    def get_interaction(self, name: str) -> dict:
+        """Get full latest interaction (id, template, parameters, version). Returns None if not found."""
+        return self._interaction_dal.get_latest(name)
+
     def get_or_create_session(self, session_id: str) -> 'SessionContext':
         """Get or create a SessionContext for a given session_id.
 
