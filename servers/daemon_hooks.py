@@ -316,14 +316,18 @@ def hook_recall(brain, args, graph_changes):
         _retrieval_stats = result.get('_retrieval_stats') if isinstance(result, dict) else None
         _intent = result.get('intent') if isinstance(result, dict) else None
 
-        # Build judge prompt
+        # Build judge prompt — instructions from interactions table (learnable boundary)
+        _judge_interaction = brain.get_interaction('judge')
+        _judge_instructions = _judge_interaction.get('template', '') if _judge_interaction else ''
+        _judge_interaction_id = _judge_interaction.get('id') if _judge_interaction else None
         judge_prompt, max_tokens = build_judge_prompt(
             candidates_data, user_message,
             session_context=brain.session_context,
             recent_messages=recent_messages if 'recent_messages' in dir() else [],
             recently_recalled=recently_recalled,
             retrieval_stats=_retrieval_stats,
-            intent=_intent)
+            intent=_intent,
+            prompt_instructions=_judge_instructions or None)
 
         # Call Haiku (persistent client — no import overhead)
         _client = _anthropic.Anthropic()
@@ -428,6 +432,7 @@ def hook_recall(brain, args, graph_changes):
                     ref_type='additionalContext',
                     summary='%d nodes surfaced' % len(selected) if selected else '(no selection)',
                     metadata={'content': (additional_context or '')[:4000]},
+                    interaction_id=_judge_interaction_id,
                     session_id=session_id)
             except Exception as _te:
                 brain._log_error('trace_s1_recall', _te, 'S1 recall trace capture')

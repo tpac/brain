@@ -647,14 +647,19 @@ def _dedup_candidates(candidates):
 
 def build_judge_prompt(candidates, user_message, session_context="",
                        recent_messages=None, recently_recalled=None,
-                       retrieval_stats=None, intent=None):
+                       retrieval_stats=None, intent=None,
+                       prompt_instructions=None):
     """Build the Layer 2 judge prompt. Single entry point.
 
     v9: Added retrieval_stats, intent, score normalization, conversation
     context expansion, session context tail, candidate dedup, discovery tags.
+    v10: prompt_instructions from interactions table (learnable boundary).
 
     Args:
         candidates: List of candidate node dicts (enriched with metadata)
+        prompt_instructions: Optional judge instructions from interactions table.
+            If provided, replaces the hardcoded prompt text. Data assembly
+            (conversation, candidates, etc.) stays in code.
         user_message: The user's latest message
         session_context: Encoder's session summary (from brain_meta)
         recent_messages: List of {"role": str, "content": str}
@@ -749,7 +754,30 @@ def build_judge_prompt(candidates, user_message, session_context="",
     for i, c in enumerate(candidates, 1):
         candidates_text += format_candidate_for_judge(c, i) + "\n\n"
 
-    prompt = """You are a memory relevance judge for a shared AI brain. The brain stores memories from conversations between an operator (Tom) and an AI assistant (Anchor). You decide which memories help Anchor respond to Tom's next message.
+    # Instructions: from interactions table (learnable) or hardcoded default
+    if not prompt_instructions:
+        prompt_instructions = (
+            "You are a memory relevance judge for a shared AI brain. The brain stores "
+            "memories from conversations between an operator (Tom) and an AI assistant "
+            "(Anchor). You decide which memories help Anchor respond to Tom's next message.\n\n"
+            "Field guide:\n"
+            "- match: similarity to query (0-1). High match = topically close, but topic alone ≠ relevant. "
+            "'boosted' means score was artificially raised (critical node).\n"
+            "- conf: system confidence (0-1). Higher = more established.\n"
+            "- locked: operator-confirmed important.\n"
+            "- via:fts5_only: found by word match only — no semantic similarity. May be coincidence. Verify carefully.\n"
+            "- via:both: found by word match AND semantic similarity. Strong convergence signal.\n"
+            "- Situation: WHEN this memory applies — match to current context.\n"
+            "- Reasoning: WHY stored. Corrects: replaces this ID. Edges: connections (type tells HOW related).\n\n"
+            "Selection rules:\n"
+            "- Short confirmations (\"yes\", \"ok\", \"thanks\") → select 0.\n"
+            "- Word coincidence without meaning overlap → select 0. (\"React hooks\" ≠ \"brain hooks\")\n"
+            "- Unsure? Don't select. No context > wrong context. Silence is better than noise.\n\n"
+            "Return ONLY JSON:\n"
+            "{\"selected\":[{\"id\":\"...\",\"why\":\"one phrase\"}]}\n"
+            "If nothing relevant: {\"selected\":[],\"reason\":\"brief reason\"}")
+
+    prompt = """%s
 
 Session: %s
 
@@ -757,29 +785,14 @@ Conversation (recent, oldest first):
 %s
 Recently surfaced (deprioritize — only select if the current message specifically needs them):
 %s
-Field guide:
-- match: similarity to query (0-1). High match = topically close, but topic alone ≠ relevant. 'boosted' means score was artificially raised (critical node).
-- conf: system confidence (0-1). Higher = more established.
-- locked: operator-confirmed important.
-- via:fts5_only: found by word match only — no semantic similarity. May be coincidence. Verify carefully.
-- via:both: found by word match AND semantic similarity. Strong convergence signal.
-- Situation: WHEN this memory applies — match to current context.
-- Reasoning: WHY stored. Corrects: replaces this ID. Edges: connections (type tells HOW related).
-
 %s
 %s
 %d candidates follow. Select 0-%d.
-- Short confirmations ("yes", "ok", "thanks") → select 0.
-- Word coincidence without meaning overlap → select 0. ("React hooks" ≠ "brain hooks")
-- Unsure? Don't select. No context > wrong context. Silence is better than noise.
-
-Return ONLY JSON:
-{"selected":[{"id":"...","why":"one phrase"}]}
-If nothing relevant: {"selected":[],"reason":"brief reason"}
 
 Candidates:
 
 %s""" % (
+        prompt_instructions,
         judge_session_context or "(first messages)",
         conversation or "(no recent messages)",
         recalled_text or "(none)",

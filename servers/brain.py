@@ -181,6 +181,13 @@ class Brain(
         # Post-schema initialization (TF-IDF rebuild if needed)
         self._post_schema_init()
 
+        # Seed interactions if empty (first boot or cleared)
+        try:
+            from .interaction_seed import seed_interactions
+            seed_interactions(self)
+        except Exception as _e:
+            print('[brain] WARNING: interaction seed failed: %s' % _e, flush=True)
+
         # v5: Session state accumulator for synthesis
         self._session_state = {
             'decisions': [], 'corrections': [], 'inflections': [],
