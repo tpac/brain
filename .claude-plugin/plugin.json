@@ -1,7 +1,7 @@
 {
   "name": "brain",
-  "version": "9.1.0",
-  "description": "Shared cognitive space for Claude + operator. v9.1: Dashboard v2 (real pipeline data), judge in daemon (no timeout), encoder v3.2 (node catalog + references), encoding_source convention, revise replaces content, test isolation, 20+ cleanups.",
+  "version": "9.2.0",
+  "description": "Shared cognitive space for Claude + operator. v9.2: Fractal trace system (O/K/Δ at every scale), interactions table (versioned learnable boundaries), filter_nodes + query_logs MCP tools, PostToolUse trace capture, dashboard Traces tab.",
   "author": {
     "name": "Tom Pachys"
   },
