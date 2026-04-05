@@ -240,17 +240,37 @@ def _load_env():
 
 
 def _gather_messages(brain, session_id):
-    """Fetch recent messages from message_stream with pre-attached recall."""
+    """Fetch recent messages from traces (primary) with message_stream fallback.
+
+    Returns: [{id, role, content, signal, timestamp, recalled_raw, judge_output}]
+    Reads from trace_events via get_session_turns(). Falls back to message_stream
+    if traces are empty (transition period).
+    """
     from .pipeline_contract import ENCODING_AGENT
+    limit = ENCODING_AGENT['max_messages']
+    content_limit = ENCODING_AGENT['message_content_limit']
+
+    # Primary: read from traces
+    try:
+        turns = brain._trace_dal.get_session_turns(session_id, limit=limit)
+        if turns:
+            for i, t in enumerate(turns):
+                t['id'] = 'turn-%d' % i  # synthetic ID for timeline references
+                t['content'] = (t.get('content', '') or '')[:content_limit]
+            return turns
+    except Exception as e:
+        print('[encoding-agent] TRACE READ ERROR: %s' % e, flush=True)
+
+    # Fallback: read from message_stream (legacy, for sessions without traces)
     try:
         rows = brain.logs_conn.execute(
             "SELECT id, role, content, signal_type, timestamp, recalled_raw, judge_output "
             "FROM message_stream WHERE session_id = ? "
             "ORDER BY timestamp DESC LIMIT ?",
-            (session_id, ENCODING_AGENT['max_messages'])
+            (session_id, limit)
         ).fetchall()
         return [{"id": r[0], "role": r[1],
-                 "content": (r[2] or "")[:ENCODING_AGENT['message_content_limit']],
+                 "content": (r[2] or "")[:content_limit],
                  "signal": r[3], "timestamp": r[4],
                  "recalled_raw": r[5], "judge_output": r[6]}
                 for r in reversed(rows)]
