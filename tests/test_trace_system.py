@@ -223,6 +223,200 @@ class TestTraceDAL:
 
 
 # ═══════════════════════════════════════════════════════
+# A1: New query methods
+# ═══════════════════════════════════════════════════════
+
+class TestGetChains:
+    """Verify get_chains returns grouped chains with events."""
+
+    @pytest.fixture(autouse=True)
+    def setup_brain(self):
+        with IsolatedBrain() as env:
+            self.dal = env.brain._trace_dal
+            yield
+
+    def _write_chain(self, chain_id, scale, session_id='sess-1', events=None):
+        """Helper: write a complete O/K/delta chain."""
+        events = events or [('O', 'recall'), ('K', 'judge_selected'), ('delta', 'additionalContext')]
+        for et, rt in events:
+            self.dal.append(chain_id=chain_id, scale=scale, event_type=et,
+                            ref_type=rt, summary='%s %s' % (et, rt),
+                            session_id=session_id)
+
+    def test_returns_grouped(self):
+        """Returns chains with nested events, not flat list."""
+        self._write_chain('s1r-abc-1', 's1')
+        result = self.dal.get_chains(session_id='sess-1', scale='s1')
+        assert len(result) == 1
+        assert result[0]['chain_id'] == 's1r-abc-1'
+        assert len(result[0]['events']) == 3
+
+    def test_filters_by_session(self):
+        """Only returns chains from requested session."""
+        self._write_chain('s1r-abc-1', 's1', session_id='sess-1')
+        self._write_chain('s1r-def-1', 's1', session_id='sess-2')
+        result = self.dal.get_chains(session_id='sess-1', scale='s1')
+        chain_ids = [c['chain_id'] for c in result]
+        assert 's1r-abc-1' in chain_ids
+        assert 's1r-def-1' not in chain_ids
+
+    def test_filters_by_scale(self):
+        """Only returns chains from requested scale."""
+        self._write_chain('s0-abc-1', 's0', events=[('K', 'user_message'), ('delta', 'assistant_message')])
+        self._write_chain('s1r-abc-1', 's1')
+        result = self.dal.get_chains(session_id='sess-1', scale='s1')
+        assert all(c['chain_id'].startswith('s1') for c in result)
+
+    def test_respects_limit(self):
+        """Limit caps number of chains returned."""
+        import time
+        for i in range(10):
+            self._write_chain('s1r-abc-%d' % i, 's1')
+            time.sleep(0.01)
+        result = self.dal.get_chains(session_id='sess-1', scale='s1', limit=3)
+        assert len(result) <= 3
+
+    def test_events_include_metadata(self):
+        """Events within chains include parsed metadata."""
+        self.dal.append(chain_id='meta-chain', scale='s1', event_type='O',
+                        ref_type='recall', metadata={'query': 'test', 'count': 25},
+                        session_id='sess-1')
+        result = self.dal.get_chains(session_id='sess-1', scale='s1')
+        assert result[0]['events'][0]['metadata'] == {'query': 'test', 'count': 25}
+
+
+class TestGetByRefType:
+    """Verify get_by_ref_type filters correctly."""
+
+    @pytest.fixture(autouse=True)
+    def setup_brain(self):
+        with IsolatedBrain() as env:
+            self.dal = env.brain._trace_dal
+            yield
+
+    def test_filters_by_ref_type(self):
+        """Only returns events with matching ref_type."""
+        self.dal.append(chain_id='c1', scale='s1', event_type='outcome',
+                        ref_type='correction', summary='corrected')
+        self.dal.append(chain_id='c2', scale='s1', event_type='outcome',
+                        ref_type='recall_hit', summary='recalled')
+        self.dal.append(chain_id='c3', scale='s1', event_type='delta',
+                        ref_type='additionalContext', summary='surfaced')
+
+        result = self.dal.get_by_ref_type('correction')
+        assert len(result) == 1
+        assert result[0]['summary'] == 'corrected'
+
+    def test_filters_by_scale(self):
+        """Scale filter narrows results further."""
+        tag = 'refscale_%s' % id(self)
+        self.dal.append(chain_id='c1', scale='s0', event_type='delta',
+                        ref_type='tool_result', summary=tag + ' s0 tool')
+        self.dal.append(chain_id='c2', scale='s1', event_type='delta',
+                        ref_type='additionalContext', summary=tag + ' s1 context')
+
+        result = self.dal.get_by_ref_type('tool_result', scale='s0')
+        tagged = [r for r in result if tag in r['summary']]
+        assert len(tagged) == 1
+        assert 's0 tool' in tagged[0]['summary']
+
+    def test_respects_limit(self):
+        for i in range(10):
+            self.dal.append(chain_id='c%d' % i, scale='s1', event_type='outcome',
+                            ref_type='correction', summary='item %d' % i)
+        result = self.dal.get_by_ref_type('correction', limit=3)
+        assert len(result) <= 3
+
+
+class TestGetOutcomes:
+    """Verify get_outcomes returns outcome events."""
+
+    @pytest.fixture(autouse=True)
+    def setup_brain(self):
+        with IsolatedBrain() as env:
+            self.dal = env.brain._trace_dal
+            yield
+
+    def test_returns_outcomes_for_chain(self):
+        """Returns only outcome events for a specific chain."""
+        self.dal.append(chain_id='oc-test', scale='s1', event_type='O',
+                        ref_type='recall', summary='original')
+        self.dal.append(chain_id='oc-test', scale='s1', event_type='outcome',
+                        ref_type='correction', summary='corrected later')
+
+        result = self.dal.get_outcomes(chain_id='oc-test')
+        assert len(result) == 1
+        assert result[0]['ref_type'] == 'correction'
+
+    def test_returns_outcomes_for_scale(self):
+        """Returns all outcomes at a given scale."""
+        self.dal.append(chain_id='c1', scale='s1', event_type='outcome',
+                        ref_type='correction', summary='correction 1')
+        self.dal.append(chain_id='c2', scale='s1', event_type='outcome',
+                        ref_type='recall_hit', summary='recall hit 1')
+        self.dal.append(chain_id='c3', scale='s0', event_type='outcome',
+                        ref_type='correction', summary='s0 correction')
+
+        result = self.dal.get_outcomes(scale='s1')
+        assert len(result) == 2
+        assert all(e['scale'] == 's1' for e in result)
+
+    def test_no_outcomes_returns_empty(self):
+        """Returns empty list when no outcomes exist."""
+        self.dal.append(chain_id='no-oc', scale='s1', event_type='O',
+                        ref_type='recall', summary='no outcome here')
+        result = self.dal.get_outcomes(chain_id='no-oc')
+        assert result == []
+
+
+class TestCountBy:
+    """Verify count_by aggregation."""
+
+    @pytest.fixture(autouse=True)
+    def setup_brain(self):
+        with IsolatedBrain() as env:
+            self.dal = env.brain._trace_dal
+            # Clear trace_events for exact count tests
+            env.brain.logs_conn.execute('DELETE FROM trace_events')
+            env.brain.logs_conn.commit()
+            yield
+
+    def test_count_by_event_type(self):
+        """Counts events grouped by event_type."""
+        self.dal.append(chain_id='c1', scale='s1', event_type='O', ref_type='recall')
+        self.dal.append(chain_id='c1', scale='s1', event_type='K', ref_type='judge_selected')
+        self.dal.append(chain_id='c1', scale='s1', event_type='delta', ref_type='additionalContext')
+        self.dal.append(chain_id='c2', scale='s1', event_type='O', ref_type='recall')
+
+        result = self.dal.count_by('event_type', scale='s1')
+        assert result.get('O', 0) == 2
+        assert result.get('K', 0) == 1
+        assert result.get('delta', 0) == 1
+
+    def test_count_by_ref_type(self):
+        """Counts events grouped by ref_type."""
+        self.dal.append(chain_id='c1', scale='s1', event_type='outcome',
+                        ref_type='correction')
+        self.dal.append(chain_id='c2', scale='s1', event_type='outcome',
+                        ref_type='correction')
+        self.dal.append(chain_id='c3', scale='s1', event_type='outcome',
+                        ref_type='recall_hit')
+
+        result = self.dal.count_by('ref_type', scale='s1')
+        assert result.get('correction', 0) == 2
+        assert result.get('recall_hit', 0) == 1
+
+    def test_count_by_filters_scale(self):
+        """Scale filter only counts matching events."""
+        self.dal.append(chain_id='c1', scale='s0', event_type='K', ref_type='user_message')
+        self.dal.append(chain_id='c2', scale='s1', event_type='O', ref_type='recall')
+
+        result = self.dal.count_by('event_type', scale='s0')
+        assert result.get('K', 0) == 1
+        assert result.get('O', 0) == 0
+
+
+# ═══════════════════════════════════════════════════════
 # C1: get_session_turns
 # ═══════════════════════════════════════════════════════
 

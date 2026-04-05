@@ -758,6 +758,141 @@ class TraceDAL:
             ref_type=ref_type, ref_id=ref_id, summary=summary,
             session_id=session_id)
 
+    def get_chains(self, session_id: str = '', scale: str = '',
+                   hours: int = 24, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get complete chains grouped, with all events and metadata.
+
+        Returns: [{chain_id, scale, events: [{event_type, ref_type, summary, metadata, created_at}]}]
+        Ordered by most recent chain first.
+        """
+        conditions = ['created_at > ?']
+        params = [(datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()]
+        if session_id:
+            conditions.append('session_id = ?')
+            params.append(session_id)
+        if scale:
+            conditions.append('scale = ?')
+            params.append(scale)
+        where = ' AND '.join(conditions)
+
+        rows = self.conn.execute(
+            'SELECT chain_id, scale, event_type, ref_type, ref_id, summary, metadata, created_at '
+            'FROM trace_events WHERE %s ORDER BY created_at DESC' % where,
+            params).fetchall()
+
+        # Group by chain_id, preserve order of first appearance
+        chains = {}
+        chain_order = []
+        for r in rows:
+            cid = r[0]
+            if cid not in chains:
+                chains[cid] = {'chain_id': cid, 'scale': r[1], 'events': []}
+                chain_order.append(cid)
+            meta = {}
+            try:
+                meta = json.loads(r[6]) if r[6] else {}
+            except (json.JSONDecodeError, TypeError):
+                pass
+            chains[cid]['events'].append({
+                'event_type': r[2], 'ref_type': r[3] or '', 'ref_id': r[4] or '',
+                'summary': r[5] or '', 'metadata': meta, 'created_at': r[7]})
+
+        # Reverse events within each chain to chronological order
+        for cid in chain_order:
+            chains[cid]['events'].reverse()
+
+        result = [chains[cid] for cid in chain_order[:limit]]
+        return result
+
+    def get_by_ref_type(self, ref_type: str, scale: str = '',
+                        hours: int = 24, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get events filtered by ref_type.
+
+        Use: "all corrections", "all recall_hits", "all encoding_runs".
+        """
+        conditions = ['ref_type = ?', 'created_at > ?']
+        params = [ref_type, (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()]
+        if scale:
+            conditions.append('scale = ?')
+            params.append(scale)
+        where = ' AND '.join(conditions)
+
+        rows = self.conn.execute(
+            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, created_at '
+            'FROM trace_events WHERE %s ORDER BY created_at DESC LIMIT ?' % where,
+            params + [limit]).fetchall()
+
+        results = []
+        for r in rows:
+            meta = {}
+            try:
+                meta = json.loads(r[7]) if r[7] else {}
+            except (json.JSONDecodeError, TypeError):
+                pass
+            results.append({
+                'id': r[0], 'chain_id': r[1], 'scale': r[2], 'event_type': r[3],
+                'ref_type': r[4] or '', 'ref_id': r[5] or '', 'summary': r[6] or '',
+                'metadata': meta, 'created_at': r[8]})
+        return results
+
+    def get_outcomes(self, chain_id: str = '', scale: str = '',
+                     hours: int = 168) -> List[Dict[str, Any]]:
+        """Get outcome events, optionally for a specific chain or scale.
+
+        Use: S3 checks which S1 chains got corrected vs validated.
+        Default 168h = 7 days.
+        """
+        conditions = ["event_type = 'outcome'", 'created_at > ?']
+        params = [(datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()]
+        if chain_id:
+            conditions.append('chain_id = ?')
+            params.append(chain_id)
+        if scale:
+            conditions.append('scale = ?')
+            params.append(scale)
+        where = ' AND '.join(conditions)
+
+        rows = self.conn.execute(
+            'SELECT id, chain_id, scale, ref_type, ref_id, summary, metadata, created_at '
+            'FROM trace_events WHERE %s ORDER BY created_at DESC' % where,
+            params).fetchall()
+
+        results = []
+        for r in rows:
+            meta = {}
+            try:
+                meta = json.loads(r[6]) if r[6] else {}
+            except (json.JSONDecodeError, TypeError):
+                pass
+            results.append({
+                'id': r[0], 'chain_id': r[1], 'scale': r[2], 'event_type': 'outcome',
+                'ref_type': r[3] or '', 'ref_id': r[4] or '', 'summary': r[5] or '',
+                'metadata': meta, 'created_at': r[7]})
+        return results
+
+    def count_by(self, field: str, scale: str = '', hours: int = 24) -> Dict[str, int]:
+        """Count events grouped by a field.
+
+        field: 'event_type', 'ref_type', or 'chain_id'
+        Returns: {value: count} dict
+        """
+        allowed = {'event_type', 'ref_type', 'chain_id', 'scale'}
+        if field not in allowed:
+            return {}
+
+        conditions = ['created_at > ?']
+        params = [(datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()]
+        if scale:
+            conditions.append('scale = ?')
+            params.append(scale)
+        where = ' AND '.join(conditions)
+
+        rows = self.conn.execute(
+            'SELECT %s, COUNT(*) FROM trace_events WHERE %s GROUP BY %s' % (field, where, field),
+            params).fetchall()
+
+        return {r[0] or '': r[1] for r in rows}
+
     def get_session_turns(self, session_id: str, limit: int = 20) -> List[Dict[str, Any]]:
         """Get chronological turns for a session from S0 + S1 traces.
 
