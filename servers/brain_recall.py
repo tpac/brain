@@ -430,12 +430,15 @@ class BrainRecallMixin:
         # v4: Auto-instrument (skipped when called from recall
         # or hooks — they log via the precision module instead)
         returned_ids = [n['id'] for n in page]
+        # DEPRECATED: recall_log writes. Data now in S1 trace_events.
+        # recall_log_id still used for tmp file paths (judge result files).
+        # TODO: replace with stop counter from SessionContext.
         recall_log_id = None
         if not _skip_log:
             try:
                 recall_log_id = self._log_recall(session_id, query, returned_ids)
             except Exception as _e:
-                self._log_error("recall", _e, "logging recall event to recall_log")
+                pass  # Non-critical — traces are the source of truth now
 
         # v6: Attach reasoning chains when intent is reasoning_chain
         reasoning_chains = []

@@ -99,13 +99,11 @@ Architecture doc: `docs/ARCHITECTURE-FRACTAL.md`. Core: `integrate(O, K) → Δ`
 
 **REMAINING for next session:**
 - Wire code-only boundaries to read config from interactions (voice, boot, pre_edit, assembler)
-- Pass session_id in remaining thin clients (bash, host_check, session_end, compact, idle)
-- Remove deprecated brain.session_id property
-- Rename modules to scale positions (encoding_agent.py → s1_encoder.py)
 - Outcome traces (the learning signal — not yet built)
-- Verify encoding fires end-to-end with all fixes
-- Dashboard recall display fix (broken — separate UI session)
+- Dashboard recall display fix (broken — reads recall_log which is deprecated)
+- Dashboard counter fix (not incrementing)
 - Encoding agent loads embedder unnecessarily (doubles memory/CPU)
+- recall_log writes deprecated (still writing for tmp file path compat — replace with stop counter)
 
 **NOT BUILT (future sessions):**
 - Session encoder (Scale 2)
