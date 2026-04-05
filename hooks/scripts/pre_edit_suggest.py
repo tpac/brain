@@ -33,6 +33,7 @@ try:
         resp = daemon_call_raw("hook_pre_edit", {
             "filename": filename,
             "tool_name": tool_name,
+            "session_id": hook_input.get("session_id", ""),
         }, timeout=7.0)
         latency = (time.time() - t0) * 1000
         if resp.get("ok"):

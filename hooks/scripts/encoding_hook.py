@@ -21,6 +21,7 @@ if not daemon_available():
 resp = daemon_call_raw("hook_post_response_track", {
     "prompt": hook_input.get("prompt", "") or hook_input.get("message", ""),
     "last_assistant_message": hook_input.get("last_assistant_message", ""),
+    "session_id": hook_input.get("session_id", ""),
 }, timeout=5.0)
 
 if not resp.get("ok"):

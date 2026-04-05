@@ -37,6 +37,7 @@ try:
     resp = daemon_call_raw("hook_recall", {
         "prompt": hook_input.get("prompt", ""),
         "message": hook_input.get("message", ""),
+        "session_id": hook_input.get("session_id", ""),
     }, timeout=14.0)  # Slightly under hook timeout (15s) to avoid race
 
     if not resp.get("ok"):

@@ -475,7 +475,10 @@ class Brain(
         """
         from .session_context import SessionContext
         if not session_id:
-            session_id = uuid.uuid4().hex
+            # Fallback: use brain_meta session_id (set at boot) rather than random UUID
+            session_id = self.session_id
+            if session_id == 'no_session':
+                session_id = uuid.uuid4().hex
         ctx = SessionContext.load(self.logs_conn, session_id)
         if ctx:
             return ctx

@@ -67,6 +67,7 @@ try:
             "message": hook_input.get("message", ""),
             "hook_event_name": event_name,
             "last_assistant_message": last_msg,
+            "session_id": hook_input.get("session_id", ""),
         }, timeout=10.0)  # Encoding now runs in background thread — hook returns fast
         latency = (time.time() - t0) * 1000
         if resp.get("ok"):
