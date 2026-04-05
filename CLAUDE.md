@@ -172,6 +172,34 @@ Every boundary where two parts of the system meet has an entry in the `interacti
 
 **Seeding:** `interaction_seed.py` populates v1 from current hardcoded values on boot (idempotent).
 
+**The 6 interactions and their config keys:**
+
+`judge` (LLM — Haiku): prompt instructs how to select relevant nodes
+- config: content_limit, max_candidates, max_selected, user_message_limit, anchor_message_limit, recent_messages, session_context_limit, max_tokens
+- reads: `pipeline_contract.py:build_judge_prompt()` — prompt from DB, data assembly in code
+- wired: YES (reads from interactions table at runtime)
+
+`encoding_agent` (LLM — Sonnet): prompt instructs how to encode conversation to nodes
+- config: message_content_limit, max_messages, max_rounds, journal_max_chars, max_tokens, session_context_limit, node_edge_limit
+- reads: `encoding_agent.py:_build_system_prompt()` — prompt from DB, field summary appended in code
+- wired: YES (reads from interactions table at runtime)
+
+`voice_surface` (code only): formats judge output into additionalContext for Anchor
+- config: content_truncation, situation_truncation, quote_truncation, max_edges, node_title_max, edge_title_max
+- reads: `pipeline_contract.py:format_judge_output()` — NOT YET WIRED (hardcoded)
+
+`boot` (code only): session start context — identity, last session, self-knowledge
+- config: boot_nodes_limit, boot_nodes_truncation, tom_quotes_limit, tom_quotes_truncation, self_knowledge_limit, session_decisions_limit
+- reads: `brain_voice.py:render_boot_v2()` — NOT YET WIRED (hardcoded)
+
+`pre_edit` (code only): surfaces rules before file edits
+- config: recall_pool_multiplier, suggestion_limit, encoding_health_stale_edits, encoding_health_stale_minutes, context_files_limit
+- reads: `brain_surface.py:pre_edit()` — NOT YET WIRED (hardcoded)
+
+`signal_assembler` (code only): budget-based signal selection for context injection
+- config: budget_chars, max_proactive_signals, reminder_priority, encoding_gap_priority, cooldown values
+- reads: `surface_assembler.py` — NOT YET WIRED (hardcoded)
+
 ## SessionContext
 
 Session identity flows with every brain call — hooks, MCP, encoding. The brain doesn't own sessions.
