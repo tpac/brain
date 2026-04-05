@@ -1,128 +1,66 @@
-# Next Work — Open Items after Session 2026-04-03
+# Next Work — Open Items after Session 2026-04-05 (scales/ restructure)
 
-## Done This Session (2026-04-03 cleanup)
+## Done This Session
 
-### ✅ Dashboard v2
-- Reads from `recall_log` + judge tmp files (single source of truth)
-- `brain_dashboard.db` writes stopped (`log_hook_output` is no-op)
-- Surface feed: source badges (HOOK/ANCHOR/INTERNAL), judge output display, Full Details
-- Encoding tab: run cards with actual Sonnet prompt from tmp file
-- Errors tab: source filter, time filter fixed (ISO format), badge for new errors only
-- Status tab: Judge health replaces Dashboard DB status
-- Encoding status indicator in stats bar
+### Scales Architecture (fractal code structure)
+- `scales/dispatch.py` — shared TCP dispatch + dispatch factory for all scale agents
+- `scales/runner.py` — generic background thread lifecycle + LLM tool loop
+- `scales/s1/recall.py` — S1R chain (judge, graph expand, correction enrich, traces)
+- `scales/s1/recall_contract.py` — S1R config, judge prompt building, output formatting
+- `scales/s1/encode.py` — S1E chain (gather, prompt, LLM loop, journal, context)
+- `scales/s1/encode_contract.py` — S1E config, node formatting, catalog building
+- Old files (`encoding_agent.py`, `judge_contract.py`, `encoding_contract.py`) → backward-compat shims
+- daemon_hooks.py now S0-only (hooks + scale gates)
 
-### ✅ Judge moved to daemon
-- Haiku call runs inside `daemon_hooks.py hook_recall()`, not hook subprocess
-- Eliminates 723ms cold import + hook timeout kills (was 85% failure rate)
-- Thin client (`pre_response_recall.py`) reduced from 247 to 68 lines
-
-### ✅ Encoder v3.2
-- Node catalog: deduplicated rich nodes at top (full metadata, all KV, edges)
-- Timeline: ID references, not repeated content
-- Both roles get 2500 char display limit (shared learnings, not just Tom's words)
-- Session context: additive journey with `|` separator (800 chars)
-- `revise_batch()` added for encoder efficiency
-- Encoder prompt updated with examples for both batch tools
-
-### ✅ Decode-encode contamination fix
-- `message_stream.recalled_node_ids`: judge-selected only (was all 25)
-- `message_stream.judge_output`: exact additionalContext for encoder
-- Encoder reads `judge_output` (curated) not `recalled_raw` (noisy)
-
-### ✅ Revise replaces content
-- Content is REPLACED on revise, not appended (brain was remembering wrong things)
-- Old content saved to `revision_history` in metadata KV (last 5 versions)
-- All metadata KV fields revisable, only `id`, `created_at`, `locked` immutable
-
-### ✅ encoding_source convention
-- Format: `category:process` (anchor, encoder:sonnet, idle:dreams, hook:compaction)
-- Only `anchor` can create locked nodes
-- Added to contract, schema, all callers
-
-### ✅ Infrastructure
-- `IsolatedBrain` test harness (tests/isolated_brain.py)
-- 13 critical silent errors made loud
-- PRECISION module deprecated (judge+encoder coupling replaces it)
-- Truncation contracts centralized in PIPELINE
-- Raw SQL moved to DAL (NodeDAL.purge, GraphDAL.count_total)
-- Distiller dead code deleted (~90 lines)
-- Daemon restart fixed (subprocess.Popen + os._exit, was silently failing)
-- Boot prompt rewritten (recognition-first, not instruction-first)
-- Plugin hooks.json synced with project settings (timeouts fixed)
+### Code Cleanup
+- Extracted judge call from hook_recall god function (400→226 lines)
+- Split pipeline_contract.py into per-boundary contracts
+- Made session_id required in encoding agent (no silent fallback)
+- Enriched MCP recall with corrections + graph expansion + metadata
+- Removed recall_log INSERT writes (traces are single source of truth)
+- Replaced recall_log_id with session-scoped recall_ref
+- Removed message_stream fallback from encoding agent
 
 ---
 
 ## Still Open
 
-### 1. MCP Skill Tool (HIGH — blocks Anchor's brain access)
-**Problem:** Plugin disabled in user settings → MCP server not running → brain skill tools don't work.
-**Solution ready:** Enable plugin, remove duplicate project hooks, use `--plugin-dir` for dev.
-**Test:** Fresh session with `claude --plugin-dir /Users/tpac/brain`, run `/reload-plugins`.
+### 1. S2 Session Encoder (HIGH — next major feature)
+**Status:** Infrastructure ready. S2 copies S1 pattern.
+**What exists:** scales/ directory, runner.py, dispatch.py, trace_contract has S2 ref_types
+**What to build:**
+- `scales/s2/encode.py` — session encoder (copies s1/encode.py pattern)
+- `scales/s2/encode_contract.py` — S2 config
+- Interaction seed: 'session_encoder' in interactions table
+- SessionContext.s2_chain() method
+- Encoding gate: counter % 15 in hook_post_response_track
 
-### 2. Daemon Stability (HIGH — affects all sessions)
-**Problem:** 200% CPU sustained for 30+ minutes. Diagnosed: ONNX Runtime / FastEmbed memory leak. RSS grows to 1.1GB+ over hours → swap thrashing.
-**Proposed fix:** RSS watchdog (auto-restart at 1.5GB threshold). Not yet built.
-**Alternative:** Replace FastEmbed with non-leaking embedding library.
+### 2. Outcome Traces (HIGH — the learning signal)
+**Problem:** Traces capture O/K/Δ but not outcomes. Without outcomes, no scale can learn whether its output served the target function.
+**Action:** Add outcome events to trace system. Correction detection, future-recall tracking.
 
-### 3. Signal Producers (MEDIUM)
-**Problem:** Stale signals accumulate. Queue cleared this session but producers still fire for conditions that no longer matter.
-**Action:** Review each producer, disable outdated ones.
+### 3. Dashboard Migration to Traces (MEDIUM)
+**Problem:** Dashboard reads from recall_log (deprecated, no new writes) and tmp files.
+**Action:** Migrate recall display to read from trace_events. Dashboard should observe the same data path as all other consumers.
 
-### 4. Encoder Revise Quality (MEDIUM — dedicated session)
-**Problem:** 7% revision rate. Encoder overwhelmingly creates new nodes instead of revising existing ones. Now has full node catalog + `revise_batch()` — tools are ready, behavior needs tuning.
-**Action:** Dedicated debugging session with eval comparison.
+### 4. Wire Code-Only Interactions to Config (MEDIUM)
+**Problem:** 4 interactions (voice_surface, boot, pre_edit, signal_assembler) have config in DB but code reads hardcoded values.
+**Action:** Wire remaining interactions to read from interactions table.
 
-### 5. Daemon Reload MCP Tool (LOW)
-**Problem:** WIP handler in daemon_dispatch.py, not wired to command table or MCP schema.
-**Action:** Complete and test. Low priority since `hooks/scripts/restart-daemon.sh` works.
+### 5. Daemon Stability (MEDIUM)
+**Problem:** ONNX/FastEmbed memory leak. RSS grows to 1.1GB+.
+**Proposed fix:** RSS watchdog (auto-restart at threshold).
 
-### 6. Fractal Integration Architecture (HIGH — S0/S1 infrastructure COMPLETE)
-Architecture doc: `docs/ARCHITECTURE-FRACTAL.md`. Core: `integrate(O, K) → Δ` at every scale.
+### 6. brain_precision.py Cleanup (LOW)
+**Problem:** 763-line module, only `get_precision_summary()` is called (by boot + self-reflection).
+**Action:** Extract that one method into LogsDAL, delete the rest.
 
-**BUILT this session:**
-- Trace contract (`trace_contract.py`): S0-S4 scales, event types, ref types, validation at write time
-- TraceDAL: 8 methods (append, get_chain, get_recent, get_chains, get_by_ref_type, get_outcomes, count_by, get_session_turns)
-- 104 tests across 6 test suites (unit, contract sync, integration, S1 cycle, session context, interactions)
-- SessionContext: per-request session identity, persisted in DB, survives daemon restarts
-- Session_id flows from Claude Code hook args through thin clients to daemon
-- S0 traces: K (user_message) + delta (assistant_message + tool_result), summary/metadata split
-- S1 traces: O (candidates) + K (judge_selected) + delta (additionalContext + encoding_run)
-- Interactions as learnable boundaries: 6 seeded (judge + encoding_agent with prompts, 4 code-only with config)
-- Judge reads prompt from interactions table at runtime (learnable)
-- Encoding agent reads prompt from interactions table at runtime (learnable)
-- Trace events link to interaction_id for version comparison
-- S0/S1 migration: encoding agent + judge context read from traces, message_stream stripped to escalation
-- MCP tools: filter_nodes, query_logs, query_traces, query_outcomes, count_traces, list_interactions, get_interaction
-- daemon_hooks.py refactored: 261→50 line main function + 5 clean helpers
-- Single-writer rule: encoding agent writes via daemon TCP, not direct DB
-- Dashboard: Traces tab, timezone fix, Status+Health merged
+### 7. Signal Producers (LOW — moves to S2)
+**Problem:** Signal producers (encoding gap, vocabulary gap, system health) run in S1 recall hook. They're S2 concerns.
+**Action:** Move to S2 session encoder when built.
 
-**REMAINING for next session:**
-- Wire code-only boundaries to read config from interactions (voice, boot, pre_edit, assembler)
-- Outcome traces (the learning signal — not yet built)
-- Dashboard recall display fix (broken — reads recall_log which is deprecated)
-- Dashboard counter fix (not incrementing)
-- Encoding agent loads embedder unnecessarily (doubles memory/CPU)
-- recall_log writes deprecated (still writing for tmp file path compat — replace with stop counter)
-
-**NOT BUILT (future sessions):**
-- Session encoder (Scale 2)
-- Sleep graph operations (Scale 3)
-- Growth external research (Scale 4)
-- Partnership signal tracking
-- Encoding gap detection
-
-### 7. Scale 1 Gaps (MEDIUM)
-Remaining gaps for Scale 2 readiness:
-1. Correction linking partially done (Layer 3.5 shipped, trace backfill pending)
-2. No partnership signal tracking
-3. No encoding gap detection (Scale 2 responsibility)
-4. Tool interactions now captured via PostToolUse trace
-5. Session patterns not fed to encoder
-
-### 8. Sleep Cycle Scheduling (LOW — subsumed by Scale 3 design)
-Redistribution, community detection, consolidation built but not scheduled.
-Now part of the fractal architecture as Scale 3.
-
-### 9. Non-critical Silent Errors (LOW)
-136 silent `except: pass` in metrics.py, brain_engineering.py, migrations, CLI. Not urgent.
+### 8. Shim Cleanup (LOW — after S2 ships)
+**Action:** Remove backward-compat re-export shims once all imports updated:
+- `encoding_agent.py` → `scales/s1/encode.py`
+- `encoding_contract.py` → `scales/s1/encode_contract.py`
+- `judge_contract.py` → `scales/s1/recall_contract.py`

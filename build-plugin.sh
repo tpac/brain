@@ -50,6 +50,15 @@ FILES=(
   servers/judge_contract.py
   servers/encoding_contract.py
   servers/encoding_agent.py
+  # Scale modules (fractal architecture)
+  servers/scales/__init__.py
+  servers/scales/dispatch.py
+  servers/scales/runner.py
+  servers/scales/s1/__init__.py
+  servers/scales/s1/recall.py
+  servers/scales/s1/recall_contract.py
+  servers/scales/s1/encode.py
+  servers/scales/s1/encode_contract.py
   servers/dal_message_stream.py
   servers/metrics.py
   # Hook scripts — bash shims (thin wrappers)
