@@ -22,6 +22,8 @@
     "vocabulary",
     "hooks"
   ],
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": "./.mcp.json",
   "config": {
     "embedder": {
       "model_name": "Snowflake/snowflake-arctic-embed-m-v1.5",

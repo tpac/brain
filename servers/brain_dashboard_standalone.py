@@ -380,6 +380,36 @@ def _get_logs_db_path():
     return os.path.join(db_dir, "brain_logs.db")
 
 
+def _query_traces(hours=24, scale='', limit=200):
+    """Read trace_events from brain_logs.db."""
+    path = _get_logs_db_path()
+    if not os.path.exists(path):
+        return []
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=3)
+        conditions = ["created_at > datetime('now', '-%d hours')" % hours]
+        params = []
+        if scale:
+            conditions.append('scale = ?')
+            params.append(scale)
+        where = ' AND '.join(conditions)
+        rows = conn.execute(
+            "SELECT id, chain_id, scale, event_type, ref_type, ref_id, "
+            "summary, metadata, session_id, created_at "
+            "FROM trace_events WHERE %s ORDER BY created_at DESC LIMIT ?" % where,
+            params + [limit]
+        ).fetchall()
+        conn.close()
+        return [{
+            'id': r[0], 'chain_id': r[1], 'scale': r[2],
+            'event_type': r[3], 'ref_type': r[4] or '', 'ref_id': r[5] or '',
+            'summary': r[6] or '', 'metadata': r[7], 'session_id': r[8] or '',
+            'created_at': r[9],
+        } for r in rows]
+    except Exception:
+        return []
+
+
 def _query_signal_queue():
     """Read signal_queue from brain_logs.db — all non-dismissed signals."""
     path = _get_logs_db_path()
@@ -691,6 +721,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_errors(params)
         elif path == "/api/system-status":
             self._serve_system_status()
+        elif path == "/api/traces":
+            hours = int(params.get("hours", ["24"])[0])
+            scale = params.get("scale", [""])[0]
+            self._json_response(200, _query_traces(hours=hours, scale=scale))
         elif path.startswith("/api/node/"):
             node_id = path.split("/api/node/")[1]
             self._serve_node_detail(node_id)
@@ -1045,8 +1079,8 @@ def _build_dashboard_html():
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #0a0a0f; color: #e0e0e0; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; overflow: hidden; height: 100vh; }
-.tabs { display: flex; background: #111118; border-bottom: 1px solid #2a2a3a; }
-.tab { padding: 10px 20px; cursor: pointer; color: #888; border-bottom: 2px solid transparent; transition: all 0.2s; }
+.tabs { display: flex; background: #111118; border-bottom: 1px solid #2a2a3a; overflow-x: auto; flex-shrink: 0; }
+.tab { padding: 10px 14px; cursor: pointer; color: #888; border-bottom: 2px solid transparent; transition: all 0.2s; white-space: nowrap; font-size: 12px; }
 .tab:hover { color: #ccc; }
 .tab.active { color: #7eb8ff; border-bottom-color: #7eb8ff; }
 .tab-content { display: none; height: calc(100vh - 42px); overflow: auto; }
@@ -1168,8 +1202,8 @@ canvas { width: 100%; height: 100%; }
   <div class="tab" onclick="switchTab('graph')">Graph</div>
   <div class="tab" onclick="switchTab('explorer')">Explorer</div>
   <div class="tab" onclick="switchTab('errors')">Errors <span id="err-badge" style="display:none;background:#ff4466;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:2px"></span></div>
-  <div class="tab" onclick="switchTab('status')">Status</div>
   <div class="tab" onclick="switchTab('health')">Health</div>
+  <div class="tab" onclick="switchTab('traces')">Traces</div>
 </div>
 
 <div id="tab-live" class="tab-content active">
@@ -1267,15 +1301,31 @@ canvas { width: 100%; height: 100%; }
   <div class="feed" id="errors-feed"></div>
 </div>
 
-<div id="tab-status" class="tab-content">
-  <div style="padding:8px">
-    <button onclick="loadSystemStatus()" style="background:#1a1a2a;color:#7eb8ff;border:1px solid #3a3a5a;padding:4px 16px;border-radius:4px;cursor:pointer">Refresh</button>
-  </div>
+<div id="tab-health" class="tab-content">
+  <div class="health" id="health-content"></div>
+  <h3 style="color:#888;margin:20px 8px 8px;font-size:13px">System Status</h3>
   <div id="status-grid" style="padding:0 8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px"></div>
 </div>
 
-<div id="tab-health" class="tab-content">
-  <div class="health" id="health-content"></div>
+<div id="tab-traces" class="tab-content">
+  <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;padding:4px 8px">
+    <select id="trace-scale-filter" onchange="loadTraces()" style="background:#111;color:#ccc;border:1px solid #333;padding:4px 8px;border-radius:4px;font-size:11px">
+      <option value="">All scales</option>
+      <option value="s0">S0 (Exchange)</option>
+      <option value="s1">S1 (Turn)</option>
+      <option value="s2">S2 (Session)</option>
+      <option value="s3">S3 (Sleep)</option>
+      <option value="s4">S4 (Growth)</option>
+    </select>
+    <select id="trace-hours-filter" onchange="loadTraces()" style="background:#111;color:#ccc;border:1px solid #333;padding:4px 8px;border-radius:4px;font-size:11px">
+      <option value="1">Last hour</option>
+      <option value="6">Last 6h</option>
+      <option value="24" selected>Last 24h</option>
+      <option value="168">Last 7d</option>
+    </select>
+    <span id="trace-count" style="color:#888;font-size:11px"></span>
+  </div>
+  <div id="traces-content"></div>
 </div>
 
 <script>
@@ -1283,7 +1333,7 @@ let daemonAlive = false;
 
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t, i) => {
-    const tabs = ['live','graph','explorer','errors','status','health'];
+    const tabs = ['live','graph','explorer','errors','health','traces'];
     t.classList.toggle('active', tabs[i] === name);
   });
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -1291,8 +1341,8 @@ function switchTab(name) {
   if (name === 'graph') { setTimeout(() => { initGraph(); resizeCanvas(); if (graphNodes.length) render(); else loadGraph(); }, 50); }
   if (name === 'explorer') searchNodes();
   if (name === 'errors') loadErrors();
-  if (name === 'status') loadSystemStatus();
-  if (name === 'health') loadHealth();
+  if (name === 'health') { loadHealth(); loadSystemStatus(); }
+  if (name === 'traces') { loadTraces(); _startTraceAutoRefresh(); } else { _stopTraceAutoRefresh(); }
 }
 
 async function loadStats() {
@@ -1338,7 +1388,9 @@ function escapeHtml(s) {
 }
 function localTime(utcStr, mode) {
   if (!utcStr) return '';
-  const d = new Date(utcStr);
+  let s = utcStr;
+  if (s.length >= 19 && !s.endsWith('Z') && !s.includes('+')) s += 'Z';
+  const d = new Date(s);
   if (isNaN(d)) return utcStr;
   if (mode === 'time') return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
   return d.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit'});
@@ -1922,6 +1974,102 @@ async function loadHealth() {
       </div>
     `;
   } catch(e) { console.error(e); }
+}
+
+// Traces
+let _traceChainEntries = [];
+let _traceRendered = 0;
+const _TRACE_BATCH = 30;
+
+async function loadTraces() {
+  try {
+    const scaleFilter = document.getElementById('trace-scale-filter').value;
+    const hours = document.getElementById('trace-hours-filter').value;
+    const url = '/api/traces?hours=' + hours + (scaleFilter ? '&scale=' + scaleFilter : '');
+    const r = await fetch(url);
+    const traces = await r.json();
+    const el = document.getElementById('traces-content');
+    const label = hours <= 1 ? '1h' : hours <= 6 ? '6h' : hours <= 24 ? '24h' : '7d';
+    document.getElementById('trace-count').textContent = traces.length + ' events (' + label + ')';
+
+    if (!traces.length) {
+      el.innerHTML = '<div style="color:#888;text-align:center;padding:40px">No trace events yet. Traces will appear after your next prompt.</div>';
+      _traceChainEntries = [];
+      return;
+    }
+
+    // Group by chain, preserve order
+    const chains = {};
+    const chainOrder = [];
+    traces.forEach(t => {
+      if (!chains[t.chain_id]) { chains[t.chain_id] = []; chainOrder.push(t.chain_id); }
+      chains[t.chain_id].push(t);
+    });
+    _traceChainEntries = chainOrder.map(id => [id, chains[id]]);
+    _traceRendered = 0;
+    el.innerHTML = '';
+    _renderTracesBatch(el);
+  } catch(e) { console.error('loadTraces', e); }
+}
+
+function _renderTracesBatch(el) {
+  const scaleColors = {s0:'#888', s1:'#7eb8ff', s2:'#ffaa33', s3:'#33ff88', s4:'#ff66aa'};
+  const typeIcons = {O:'&#x1F441;', K:'&#x1F4D6;', delta:'&#x0394;', outcome:'&#x1F4CA;'};
+  const end = Math.min(_traceRendered + _TRACE_BATCH, _traceChainEntries.length);
+
+  let html = '';
+  for (let i = _traceRendered; i < end; i++) {
+    const [chainId, events] = _traceChainEntries[i];
+    const firstTime = events[events.length - 1].created_at;
+    const chainScale = events[0].scale;
+    const color = scaleColors[chainScale] || '#666';
+
+    html += '<div style="background:#0a0a12;border-radius:8px;margin:6px 0;border-left:3px solid ' + color + '">';
+    html += '<div style="padding:8px 12px;display:flex;justify-content:space-between;align-items:center">';
+    html += '<span style="color:' + color + ';font-size:11px;font-weight:bold">' + chainId + '</span>';
+    html += '<span style="color:#555;font-size:10px">' + localTime(firstTime) + '</span>';
+    html += '</div>';
+
+    events.forEach(ev => {
+      const icon = typeIcons[ev.event_type] || '&#x2022;';
+      const evColor = scaleColors[ev.scale] || '#666';
+      html += '<div style="padding:4px 12px 4px 20px;border-top:1px solid #111;display:flex;gap:8px;align-items:flex-start">';
+      html += '<span style="flex-shrink:0">' + icon + '</span>';
+      html += '<div style="flex:1;min-width:0">';
+      html += '<span style="color:' + evColor + ';font-size:10px;margin-right:6px">' + ev.event_type + '</span>';
+      if (ev.ref_type) html += '<span style="color:#555;font-size:10px">[' + ev.ref_type + ']</span> ';
+      html += '<div style="color:#ccc;font-size:12px;margin-top:2px;white-space:pre-wrap;word-break:break-word">' + (ev.summary || '').substring(0, 200) + '</div>';
+      html += '</div>';
+      html += '<span style="color:#444;font-size:9px;flex-shrink:0;white-space:nowrap">' + localTime(ev.created_at, 'time') + '</span>';
+      html += '</div>';
+    });
+
+    html += '</div>';
+  }
+  el.insertAdjacentHTML('beforeend', html);
+  _traceRendered = end;
+
+  if (_traceRendered < _traceChainEntries.length) {
+    el.insertAdjacentHTML('beforeend', '<div id="trace-load-more" style="text-align:center;padding:12px"><button onclick="_loadMoreTraces()" style="background:#1a1a2a;color:#7eb8ff;border:1px solid #3a3a5a;padding:4px 16px;border-radius:4px;cursor:pointer">Load more (' + (_traceChainEntries.length - _traceRendered) + ' remaining)</button></div>');
+  }
+}
+
+function _loadMoreTraces() {
+  const btn = document.getElementById('trace-load-more');
+  if (btn) btn.remove();
+  _renderTracesBatch(document.getElementById('traces-content'));
+}
+
+let _traceAutoRefresh = null;
+function _startTraceAutoRefresh() {
+  _stopTraceAutoRefresh();
+  _traceAutoRefresh = setInterval(() => {
+    const tab = document.getElementById('tab-traces');
+    if (tab && tab.classList.contains('active')) loadTraces();
+  }, 5000);
+}
+function _stopTraceAutoRefresh() {
+  if (_traceAutoRefresh) { clearInterval(_traceAutoRefresh); _traceAutoRefresh = null; }
 }
 
 // Graph

@@ -1,7 +1,7 @@
 {
   "brain": {
     "command": "python3",
-    "args": ["/Users/tpac/brain/servers/brain_mcp.py"],
+    "args": ["${CLAUDE_PLUGIN_ROOT}/servers/brain_mcp.py"],
     "env": {
       "PYTHONUNBUFFERED": "1",
       "BRAIN_DB_DIR": "/Users/tpac/AgentsContext/brain"

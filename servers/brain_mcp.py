@@ -32,7 +32,7 @@ _last_daemon_fingerprint = None  # Track daemon restarts
 
 def _generate_remember_schema():
     """Generate the 'remember' MCP tool schema from the contract."""
-    from .contract import get_remember_fields as get_writable_fields
+    from servers.contract import get_remember_fields as get_writable_fields
 
     TYPE_MAP = {"str": "string", "float": "number", "bool": "boolean", "int": "integer"}
 
@@ -108,7 +108,7 @@ def _generate_remember_batch_schema():
 
 def _generate_revise_schema():
     """Generate the 'revise' MCP tool schema from the contract."""
-    from .contract import get_writable_fields
+    from servers.contract import get_writable_fields
 
     TYPE_MAP = {"str": "string", "float": "number", "bool": "boolean", "int": "integer"}
 
@@ -221,7 +221,10 @@ PROTOCOL_VERSION = "2024-11-05"
 # Tool definitions — what Claude sees as native tools
 # Memory operations only. No operational tools (ping, save, health_check, config).
 # Daemon self-manages; hooks use internal commands directly.
-TOOLS = [
+def _build_tools():
+    """Build tool list at startup. If this fails, the MCP server is dead — scream about it."""
+    try:
+        return [
     # ── Core memory operations ──
     {"name": "recall",
      "description": "Semantic recall from brain — searches nodes by meaning using embeddings. Returns ranked results with titles, content, types, confidence.",
@@ -320,6 +323,27 @@ TOOLS = [
      "inputSchema": {"type": "object", "required": ["node_id"], "properties": {
          "node_id": {"type": "string", "description": "Full node ID"}}}},
 
+    {"name": "filter_nodes",
+     "description": "Structured query: filter nodes by any structural field (type, encoding_source, locked, confidence, etc.). Use for bulk lookups that semantic recall can't do — 'all corrections', 'nodes by encoder', 'low confidence nodes'. If no include/exclude/lt/gt given, lists all distinct values for discovery.",
+     "inputSchema": {"type": "object", "required": ["field"], "properties": {
+         "field": {"type": "string", "description": "Column to filter on (type, encoding_source, locked, confidence, project, etc.)"},
+         "include": {"type": "array", "items": {"type": "string"}, "description": "Show only nodes where field matches one of these values"},
+         "exclude": {"type": "array", "items": {"type": "string"}, "description": "Hide nodes where field matches one of these values"},
+         "lt": {"type": "number", "description": "Less than (for numeric fields like confidence, emotion)"},
+         "gt": {"type": "number", "description": "Greater than (for numeric fields)"},
+         "limit": {"type": "integer", "description": "Max results (default 50, max 200)", "default": 50},
+         "sort_by": {"type": "string", "description": "Sort column: created_at (default), confidence, access_count, title", "default": "created_at"},
+         "sort_order": {"type": "string", "description": "asc or desc (default)", "default": "desc"}}}},
+
+    {"name": "query_logs",
+     "description": "Query brain operational logs — errors, debug events, and signals. Use this to diagnose brain health: hook timeouts, daemon errors, signal queue state, recall pipeline issues. Three sources available: 'errors' (hook failures like timeouts and crashes), 'debug' (daemon internal events), 'signals' (signal queue including daemon_down, brain_error). Use source='all' to get a merged timeline. Filter by level ('error', 'critical') or hook_name ('hook_recall', 'hook_post_response_track') to narrow results.",
+     "inputSchema": {"type": "object", "properties": {
+         "source": {"type": "string", "description": "Which log source: 'errors' (hook_errors table), 'debug' (debug_log table), 'signals' (signal_queue), or 'all' (merged timeline)", "default": "all", "enum": ["all", "errors", "debug", "signals"]},
+         "hours": {"type": "integer", "description": "Look back window in hours (default 24)", "default": 24},
+         "level": {"type": "string", "description": "Filter by severity: 'error', 'critical', or 'all'", "default": "all"},
+         "hook_name": {"type": "string", "description": "Filter hook_errors by hook name (e.g. 'hook_recall', 'hook_pre_bash_safety')"},
+         "limit": {"type": "integer", "description": "Max results per source (default 50, max 200)", "default": 50}}}},
+
     # ── Introspection ──
     {"name": "consciousness",
      "description": "Get brain consciousness signals. Most signals migrated to signal queue — returns reminders only. Use queue_state for full signal view.",
@@ -342,7 +366,52 @@ TOOLS = [
      "description": "Escape hatch — evaluate arbitrary Python expression on brain object. Variable 'brain' is the Brain instance. Use for methods not exposed as direct tools.",
      "inputSchema": {"type": "object", "required": ["code"], "properties": {
          "code": {"type": "string", "description": "Python expression to eval (brain object available as 'brain')"}}}},
-]
+        ]
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        crash_msg = "[brain-mcp] FATAL: Tool schema generation failed — MCP server cannot start.\n{}\n{}".format(e, tb)
+
+        # Scream to stderr (Claude Code may log this)
+        sys.stderr.write(crash_msg)
+        sys.stderr.flush()
+
+        # Write crash sentinel for boot hook to find
+        crash_file = "/tmp/brain-mcp-crash.txt"
+        try:
+            with open(crash_file, "w") as f:
+                f.write(crash_msg)
+        except Exception:
+            pass
+
+        # Write signal to queue (direct SQLite — daemon may be fine, it's the MCP that's broken)
+        try:
+            import sqlite3
+            db_dir = os.environ.get("BRAIN_DB_DIR", "")
+            if not db_dir:
+                candidate = os.path.join(os.path.expanduser("~"), "AgentsContext", "brain")
+                if os.path.isdir(candidate):
+                    db_dir = candidate
+            if db_dir:
+                logs_db = os.path.join(db_dir, "brain_logs.db")
+                conn = sqlite3.connect(logs_db, timeout=3)
+                conn.execute(
+                    """INSERT OR REPLACE INTO signal_queue
+                       (id, producer, signal_type, priority, content, preempt, created_at,
+                        times_surfaced, dismissed, cooldown_seconds)
+                       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 0, 0, 0)""",
+                    ("mcp:startup_crash", "brain_mcp", "mcp_crash", 0.95,
+                     "FATAL: Brain MCP server crashed on startup — Anchor has NO direct brain tools. Error: {}".format(e),
+                     1))  # PREEMPT — this is critical
+                conn.commit()
+                conn.close()
+        except Exception:
+            pass
+
+        raise  # Still crash — but now we've left evidence
+
+
+TOOLS = _build_tools()
 
 
 def make_response(request_id, result):

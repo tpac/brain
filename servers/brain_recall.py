@@ -74,6 +74,23 @@ class BrainRecallMixin:
         ]
         return node
 
+    def filter_nodes(self, field: str, include=None, exclude=None,
+                     lt=None, gt=None, limit: int = 50,
+                     sort_by: str = 'created_at', sort_order: str = 'desc'):
+        """Structured query: filter nodes by any structural field."""
+        node_dal = NodeDAL(self.conn)
+        return node_dal.filter_nodes(
+            field=field, include=include, exclude=exclude,
+            lt=lt, gt=gt, limit=limit, sort_by=sort_by, sort_order=sort_order)
+
+    def query_logs(self, source: str = 'all', hours: int = 24,
+                   level: str = 'all', hook_name: str = '',
+                   limit: int = 50):
+        """Query brain logs: errors, debug events, and signals."""
+        return self._logs_dal.query_logs(
+            source=source, hours=hours, level=level,
+            hook_name=hook_name, limit=limit)
+
     def semantic_recall(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """
         Pure embedding-based search (brute-force cosine scan).

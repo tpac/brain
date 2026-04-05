@@ -10,24 +10,28 @@ from hook_common import db_path, daemon_available, daemon_call, daemon_call_raw,
 
 db_dir = os.environ.get("BRAIN_DB_DIR", "")
 
+# Session ID from hook input — extracted by boot-brain.sh, passed as env var
+_hook_session_id = os.environ.get("BRAIN_HOOK_SESSION_ID", "")
+
 
 def _boot_via_daemon():
     """Boot context through daemon — the normal path.
     Skips full boot if already booted this session (once: true not honored for settings hooks).
     """
-    # Check if already booted — skip full re-boot on session resume.
-    # Compare current session_id with last booted session_id.
-    # reset_session() below generates a new session_id, so a fresh session always boots.
+    # Check if already booted — use Claude's session_id for continuity.
     current_sid = daemon_call("get_config", {"key": "session_id", "default": ""})
     current_sid = current_sid.get("value", current_sid) if isinstance(current_sid, dict) else (current_sid or "")
     booted_sid = daemon_call("get_config", {"key": "last_booted_session", "default": ""})
     booted_sid = booted_sid.get("value", booted_sid) if isinstance(booted_sid, dict) else (booted_sid or "")
-    if current_sid and booted_sid and current_sid == booted_sid:
+
+    # Use Claude's session_id if available, otherwise check existing
+    _sid = _hook_session_id or current_sid
+    if _sid and booted_sid and _sid == booted_sid:
         print("[BRAIN] (session resumed — brain already loaded)", file=sys.stderr)
         return True
 
-    # Reset session activity (generates new session_id)
-    daemon_call("reset_session", {})
+    # Reset session activity with Claude's session_id (not a random UUID)
+    daemon_call("reset_session", {"session_id": _hook_session_id} if _hook_session_id else {})
 
     # Get debug mode
     debug = daemon_call("get_config", {"key": "debug_enabled", "default": "0"})

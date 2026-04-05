@@ -76,11 +76,28 @@
 **Problem:** WIP handler in daemon_dispatch.py, not wired to command table or MCP schema.
 **Action:** Complete and test. Low priority since `hooks/scripts/restart-daemon.sh` works.
 
-### 6. Sleep Cycle Scheduling (LOW — unchanged from previous session)
+### 6. Fractal Integration Architecture (HIGH — designed, implementation started)
+Architecture doc: `docs/ARCHITECTURE-FRACTAL.md`. Core: `integrate(O, K) → Δ` at every scale.
+- **Trace infrastructure BUILT**: trace_events table, TraceDAL, S0+S1 capture, dashboard Traces tab
+- **Interactions table BUILT**: versioned templates for learnable boundaries (6 seeded)
+- **filter_nodes + query_logs MCP tools BUILT**
+- **Session encoder (Scale 2)**: NOT BUILT — next priority. Same integrate(), wider inputs.
+- **Sleep (Scale 3)**: NOT BUILT — community detection, bridge identification, dedup, correction propagation
+- **Growth (Scale 4)**: NOT BUILT — external research, uncertainty investigation
+- **Outcome traces**: NOT BUILT — the learning signal
+- **sessionContext refactor**: session_id should flow with every call, not live on singleton (parallel session support)
+
+### 7. Scale 1 Gaps (MEDIUM — blocks Scale 2)
+5 gaps identified between Scale 1 and Scale 2:
+1. Correction linking partially done (Layer 3.5 shipped, trace backfill pending)
+2. No partnership signal tracking
+3. No encoding gap detection
+4. Tool interactions now captured via PostToolUse trace
+5. Session patterns not fed to encoder
+
+### 8. Sleep Cycle Scheduling (LOW — subsumed by Scale 3 design)
 Redistribution, community detection, consolidation built but not scheduled.
+Now part of the fractal architecture as Scale 3.
 
-### 7. Encoding Philosophy Shift (LOW — unchanged from previous session)
-Encode journeys not just endpoints. Session context partially addresses this.
-
-### 8. Non-critical Silent Errors (LOW)
+### 9. Non-critical Silent Errors (LOW)
 136 silent `except: pass` in metrics.py, brain_engineering.py, migrations, CLI. Not urgent.

@@ -1063,6 +1063,35 @@ LOG_TABLES = {
         )""",
     },
 
+    'interactions': {
+        'create': """CREATE TABLE IF NOT EXISTS interactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1,
+            template TEXT NOT NULL,
+            parameters TEXT,
+            created_at TEXT NOT NULL,
+            created_by TEXT DEFAULT 'anchor',
+            parent_version INTEGER,
+            UNIQUE(name, version)
+        )""",
+    },
+    'trace_events': {
+        'create': """CREATE TABLE IF NOT EXISTS trace_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chain_id TEXT NOT NULL,
+            scale TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            ref_type TEXT,
+            ref_id TEXT,
+            summary TEXT,
+            metadata TEXT,
+            session_id TEXT,
+            interaction_id INTEGER,
+            created_at TEXT NOT NULL
+        )""",
+    },
+
 }
 
 LOG_INDEXES = [
@@ -1092,6 +1121,13 @@ LOG_INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_gaps_timestamp ON recall_gaps(timestamp)',
     # v8: pending_consolidation
     'CREATE INDEX IF NOT EXISTS idx_consolidation_resolved ON pending_consolidation(resolved)',
+    # interactions
+    'CREATE INDEX IF NOT EXISTS idx_interactions_name ON interactions(name)',
+    # trace_events
+    'CREATE INDEX IF NOT EXISTS idx_trace_chain ON trace_events(chain_id)',
+    'CREATE INDEX IF NOT EXISTS idx_trace_scale ON trace_events(scale)',
+    'CREATE INDEX IF NOT EXISTS idx_trace_created ON trace_events(created_at)',
+    'CREATE INDEX IF NOT EXISTS idx_trace_session ON trace_events(session_id)',
     # signal_queue
     'CREATE INDEX IF NOT EXISTS idx_sq_priority ON signal_queue(dismissed, priority DESC)',
     'CREATE INDEX IF NOT EXISTS idx_sq_producer ON signal_queue(producer)',
@@ -1112,6 +1148,7 @@ def ensure_logs_schema(conn):
     # v8: Add new columns to message_stream if table already existed
     _add_column_if_missing(conn, 'message_stream', 'signal_type', 'TEXT DEFAULT NULL')
     _add_column_if_missing(conn, 'message_stream', 'surfaced_count', 'INTEGER DEFAULT 0')
+    _add_column_if_missing(conn, 'trace_events', 'interaction_id', 'INTEGER')
     _add_column_if_missing(conn, 'message_stream', 'resolved', 'INTEGER DEFAULT 0')
     _add_column_if_missing(conn, 'message_stream', 'resolved_at', 'TEXT DEFAULT NULL')
 

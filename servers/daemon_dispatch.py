@@ -236,8 +236,8 @@ def _handle_record_message(brain, args, graph_changes):
 
 
 def _handle_reset_session(brain, args, graph_changes):
-    brain.reset_session_activity()
-    return {"ok": True, "result": {"status": "reset"}}
+    brain.reset_session_activity(session_id=args.get("session_id", ""))
+    return {"ok": True, "result": {"status": "reset", "session_id": brain.session_id}}
 
 
 def _handle_set_config(brain, args, graph_changes):
@@ -544,6 +544,47 @@ def _handle_find_node_by_title(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
+def _handle_trace_append(brain, args, graph_changes):
+    """Append a trace event from any source."""
+    event_id = brain._trace_dal.append(
+        chain_id=args.get("chain_id", ""),
+        scale=args.get("scale", "raw"),
+        event_type=args.get("event_type", ""),
+        ref_type=args.get("ref_type", ""),
+        ref_id=args.get("ref_id", ""),
+        summary=args.get("summary", ""),
+        metadata=args.get("metadata"),
+        session_id=args.get("session_id", ""))
+    return {"ok": True, "result": {"event_id": event_id}}
+
+
+def _handle_query_logs(brain, args, graph_changes):
+    """Query brain logs: errors, debug events, and signals."""
+    result = brain.query_logs(
+        source=args.get("source", "all"),
+        hours=args.get("hours", 24),
+        level=args.get("level", "all"),
+        hook_name=args.get("hook_name", ""),
+        limit=args.get("limit", 50))
+    return {"ok": True, "result": result}
+
+
+def _handle_filter_nodes(brain, args, graph_changes):
+    """Structured query: filter nodes by any structural field."""
+    result = brain.filter_nodes(
+        field=args.get("field", ""),
+        include=args.get("include"),
+        exclude=args.get("exclude"),
+        lt=args.get("lt"),
+        gt=args.get("gt"),
+        limit=args.get("limit", 50),
+        sort_by=args.get("sort_by", "created_at"),
+        sort_order=args.get("sort_order", "desc"))
+    if "error" in result:
+        return {"ok": False, "error": result["error"]}
+    return {"ok": True, "result": result}
+
+
 def _handle_graph_expand(brain, args, graph_changes):
     """Layer 3: expand from judge-selected seed nodes via structural edges.
 
@@ -745,6 +786,9 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "record_divergence":     CmdEntry(_handle_record_divergence,   is_write=True, marks_dirty=True),
     "learn_vocabulary":      CmdEntry(_handle_learn_vocabulary,    is_write=True, marks_dirty=True),
     "find_node_by_title":    CmdEntry(_handle_find_node_by_title,  is_write=False, marks_dirty=False),
+    "filter_nodes":          CmdEntry(_handle_filter_nodes,        is_write=False, marks_dirty=False),
+    "query_logs":            CmdEntry(_handle_query_logs,          is_write=False, marks_dirty=False),
+    "trace_append":          CmdEntry(_handle_trace_append,        is_write=True,  marks_dirty=False),
     "get_node":              CmdEntry(_handle_get_node,             is_write=False, marks_dirty=False),
     "graph_expand":          CmdEntry(_handle_graph_expand,         is_write=False, marks_dirty=False),
     # encode_cluster: DEPRECATED — use remember_batch() instead. Handler kept for backward compat.

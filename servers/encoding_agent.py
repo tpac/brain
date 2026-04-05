@@ -91,6 +91,34 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
     except Exception as _pe:
         print('[encoding-agent] WARNING: could not write prompt file: %s' % _pe, flush=True)
 
+    # Trace S1 encode: O and K reference the prompt file, not inline content
+    try:
+        _session_id = brain.session_id
+        _enc_chain = 'encode-%s-%d' % (_session_id[:8], counter)
+        # O: pointer to the encoding prompt file + turn count
+        _turn_count = len(messages) if messages else 0
+        brain._trace_dal.append(
+            chain_id=_enc_chain, scale='s1', event_type='O',
+            ref_type='encoding_prompt',
+            ref_id='/tmp/brain-encoding-prompt-%d.json' % counter,
+            summary='%d turns, %d chars context, interaction: encoding-agent-v3' % (
+                _turn_count, len(user_content)),
+            session_id=_session_id)
+        # K: which node IDs are in the catalog (extracted from messages)
+        _node_ids_in_catalog = set()
+        for m in (messages or []):
+            for nid in (m.get('recalled_node_ids') or []):
+                _node_ids_in_catalog.add(nid[:8] if nid else '')
+        brain._trace_dal.append(
+            chain_id=_enc_chain, scale='s1', event_type='K',
+            ref_type='node_catalog',
+            ref_id=','.join(sorted(_node_ids_in_catalog)[:20]),
+            summary='%d unique nodes in catalog from %d turns' % (
+                len(_node_ids_in_catalog), _turn_count),
+            session_id=_session_id)
+    except Exception:
+        pass
+
     # Call Sonnet
     _log("calling Sonnet with %d tools, %d chars context..." % (len(tools), len(user_content)))
     _log("PROFILE so far: %s" % " → ".join("%s:%dms" % (n, t) for n, t in profile))
@@ -165,7 +193,7 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
         _step("saved")
         profile_str = " → ".join("%s:%dms" % (n, t) for n, t in profile)
         _log("done. %d rounds, %d actions. PROFILE: %s" % (rounds + 1, len(actions), profile_str))
-        return {"rounds": rounds + 1, "actions": len(actions), "profile": profile}
+        return {"rounds": rounds + 1, "actions": len(actions), "action_details": actions, "profile": profile}
 
     except Exception as e:
         _step("FAILED")

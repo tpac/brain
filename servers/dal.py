@@ -485,6 +485,272 @@ class LogsDAL:
         return row[0] if row else 0
 
 
+    def query_logs(self, source: str = 'all', hours: int = 24,
+                   level: str = 'all', hook_name: str = '',
+                   limit: int = 50) -> Dict[str, Any]:
+        """Unified log query across hook_errors, debug_log, and signal_queue.
+
+        Args:
+            source: 'errors' (hook_errors), 'debug' (debug_log), 'signals'
+                    (signal_queue), or 'all' (merged, sorted by time).
+            hours: look back window (default 24).
+            level: filter by level — 'error', 'critical', 'warning', or 'all'.
+            hook_name: filter hook_errors by hook name (e.g. 'hook_recall').
+            limit: max results per source (capped at 200).
+
+        Returns: dict with 'entries' list and 'counts' summary.
+        """
+        limit = min(max(limit, 1), 200)
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        entries = []
+        counts = {}
+
+        # ── hook_errors ──
+        if source in ('errors', 'all'):
+            try:
+                conditions = ['created_at > ?']
+                params = [cutoff]
+                if level != 'all':
+                    conditions.append('level = ?')
+                    params.append(level)
+                if hook_name:
+                    conditions.append('hook_name = ?')
+                    params.append(hook_name)
+                where = ' AND '.join(conditions)
+                rows = self.conn.execute(
+                    'SELECT id, hook_name, level, error, context, created_at '
+                    'FROM hook_errors WHERE %s ORDER BY created_at DESC LIMIT ?' % where,
+                    params + [limit]
+                ).fetchall()
+                count_row = self.conn.execute(
+                    'SELECT COUNT(*) FROM hook_errors WHERE %s' % where, params
+                ).fetchone()
+                counts['hook_errors'] = count_row[0] if count_row else 0
+                for r in rows:
+                    entries.append({
+                        'source': 'hook_errors', 'id': r[0], 'hook_name': r[1],
+                        'level': r[2], 'message': r[3], 'context': r[4] or '',
+                        'created_at': r[5]
+                    })
+            except Exception:
+                counts['hook_errors'] = 0
+
+        # ── debug_log ──
+        if source in ('debug', 'all'):
+            try:
+                conditions = ['created_at > ?']
+                params = [cutoff]
+                if level == 'error':
+                    conditions.append("event_type = 'error'")
+                elif level != 'all':
+                    conditions.append('event_type = ?')
+                    params.append(level)
+                where = ' AND '.join(conditions)
+                rows = self.conn.execute(
+                    'SELECT id, source, event_type, metadata, created_at '
+                    'FROM debug_log WHERE %s ORDER BY created_at DESC LIMIT ?' % where,
+                    params + [limit]
+                ).fetchall()
+                count_row = self.conn.execute(
+                    'SELECT COUNT(*) FROM debug_log WHERE %s' % where, params
+                ).fetchone()
+                counts['debug_log'] = count_row[0] if count_row else 0
+                for r in rows:
+                    meta = {}
+                    try:
+                        meta = json.loads(r[3]) if r[3] else {}
+                    except (json.JSONDecodeError, TypeError):
+                        meta = {'raw': str(r[3])[:200]}
+                    entries.append({
+                        'source': 'debug_log', 'id': r[0], 'origin': r[1] or '',
+                        'level': r[2], 'message': meta.get('error', meta.get('message', str(meta)[:200])),
+                        'context': meta.get('context', ''),
+                        'created_at': r[4]
+                    })
+            except Exception:
+                counts['debug_log'] = 0
+
+        # ── signal_queue ──
+        if source in ('signals', 'all'):
+            try:
+                conditions = ['created_at > ?']
+                params = [cutoff]
+                where = ' AND '.join(conditions)
+                rows = self.conn.execute(
+                    'SELECT id, producer, signal_type, priority, content, dismissed, created_at '
+                    'FROM signal_queue WHERE %s ORDER BY priority DESC, created_at DESC LIMIT ?' % where,
+                    params + [limit]
+                ).fetchall()
+                count_row = self.conn.execute(
+                    'SELECT COUNT(*) FROM signal_queue WHERE %s' % where, params
+                ).fetchone()
+                counts['signals'] = count_row[0] if count_row else 0
+                for r in rows:
+                    entries.append({
+                        'source': 'signal_queue', 'id': r[0], 'producer': r[1],
+                        'level': r[2], 'priority': r[3],
+                        'message': (r[4] or '')[:300], 'dismissed': bool(r[5]),
+                        'created_at': r[6]
+                    })
+            except Exception:
+                counts['signals'] = 0
+
+        # Sort merged entries by time descending
+        entries.sort(key=lambda e: e.get('created_at', ''), reverse=True)
+        if source == 'all':
+            entries = entries[:limit]
+
+        return {'entries': entries, 'counts': counts}
+
+
+class InteractionDAL:
+    """Access layer for interactions — versioned templates for system boundaries.
+
+    Every learnable boundary (judge prompt, encoding prompt, voice format,
+    signal assembly) is an interaction. Versioned, traceable, optimizable
+    by higher scales.
+    """
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def register(self, name: str, template: str, parameters: str = '',
+                 created_by: str = 'anchor') -> Dict[str, Any]:
+        """Register a new version of an interaction. Auto-increments version."""
+        now = datetime.now(timezone.utc).isoformat()
+        # Get current max version
+        row = self.conn.execute(
+            'SELECT MAX(version) FROM interactions WHERE name = ?', (name,)
+        ).fetchone()
+        version = (row[0] or 0) + 1 if row else 1
+        parent = version - 1 if version > 1 else None
+        self.conn.execute(
+            'INSERT INTO interactions (name, version, template, parameters, created_at, created_by, parent_version) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?)',
+            (name, version, template, parameters, now, created_by, parent))
+        self.conn.commit()
+        return {'name': name, 'version': version, 'id': self.conn.execute(
+            'SELECT last_insert_rowid()').fetchone()[0]}
+
+    def get_latest(self, name: str) -> Optional[Dict[str, Any]]:
+        """Get the latest version of an interaction."""
+        row = self.conn.execute(
+            'SELECT id, name, version, template, parameters, created_at, created_by '
+            'FROM interactions WHERE name = ? ORDER BY version DESC LIMIT 1',
+            (name,)).fetchone()
+        if not row:
+            return None
+        return {'id': row[0], 'name': row[1], 'version': row[2],
+                'template': row[3], 'parameters': row[4],
+                'created_at': row[5], 'created_by': row[6]}
+
+    def get_version(self, name: str, version: int) -> Optional[Dict[str, Any]]:
+        """Get a specific version of an interaction."""
+        row = self.conn.execute(
+            'SELECT id, name, version, template, parameters, created_at, created_by '
+            'FROM interactions WHERE name = ? AND version = ?',
+            (name, version)).fetchone()
+        if not row:
+            return None
+        return {'id': row[0], 'name': row[1], 'version': row[2],
+                'template': row[3], 'parameters': row[4],
+                'created_at': row[5], 'created_by': row[6]}
+
+    def list_all(self) -> List[Dict[str, Any]]:
+        """List all interactions with their latest version."""
+        rows = self.conn.execute(
+            'SELECT name, MAX(version) as v, COUNT(*) as versions '
+            'FROM interactions GROUP BY name ORDER BY name').fetchall()
+        return [{'name': r[0], 'latest_version': r[1], 'total_versions': r[2]}
+                for r in rows]
+
+
+class TraceDAL:
+    """Access layer for trace_events — the fractal learning loop.
+
+    Append-only event chains. Each chain tracks one integrate() cycle:
+    what was observed, what knowledge was selected, what was produced,
+    and what happened next (corrections, recalls, outcomes).
+
+    Over time, all small log tables migrate into trace_events.
+    Each becomes a different event_type + ref_type in one table.
+    """
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def append(self, chain_id: str, scale: str, event_type: str,
+               ref_type: str = '', ref_id: str = '', summary: str = '',
+               metadata: Optional[Dict] = None, session_id: str = '',
+               interaction_id: int = None) -> int:
+        """Append an event to a trace chain. Returns event id."""
+        now = datetime.now(timezone.utc).isoformat()
+        meta_json = json.dumps(metadata) if metadata else None
+        cursor = self.conn.execute(
+            'INSERT INTO trace_events '
+            '(chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, interaction_id, created_at) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (chain_id, scale, event_type, ref_type, ref_id,
+             summary if summary else '', meta_json, session_id, interaction_id, now))
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_chain(self, chain_id: str) -> List[Dict[str, Any]]:
+        """Get all events in a trace chain, ordered by time."""
+        rows = self.conn.execute(
+            'SELECT id, scale, event_type, ref_type, ref_id, summary, metadata, created_at '
+            'FROM trace_events WHERE chain_id = ? ORDER BY created_at ASC',
+            (chain_id,)).fetchall()
+        results = []
+        for r in rows:
+            meta = {}
+            try:
+                meta = json.loads(r[6]) if r[6] else {}
+            except (json.JSONDecodeError, TypeError):
+                meta = {}
+            results.append({
+                'id': r[0], 'scale': r[1], 'event_type': r[2],
+                'ref_type': r[3], 'ref_id': r[4], 'summary': r[5],
+                'metadata': meta, 'created_at': r[7]})
+        return results
+
+    def get_recent(self, scale: str = '', hours: int = 24,
+                   event_type: str = '', limit: int = 100) -> List[Dict[str, Any]]:
+        """Get recent trace events, optionally filtered by scale and type."""
+        conditions = ['created_at > ?']
+        params = [(datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()]
+        if scale:
+            conditions.append('scale = ?')
+            params.append(scale)
+        if event_type:
+            conditions.append('event_type = ?')
+            params.append(event_type)
+        where = ' AND '.join(conditions)
+        rows = self.conn.execute(
+            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, created_at '
+            'FROM trace_events WHERE %s ORDER BY created_at DESC LIMIT ?' % where,
+            params + [limit]).fetchall()
+        return [{'id': r[0], 'chain_id': r[1], 'scale': r[2], 'event_type': r[3],
+                 'ref_type': r[4], 'ref_id': r[5], 'summary': r[6], 'created_at': r[7]}
+                for r in rows]
+
+    def get_chains_for_session(self, session_id: str) -> List[str]:
+        """Get all chain IDs from a session."""
+        rows = self.conn.execute(
+            'SELECT DISTINCT chain_id FROM trace_events WHERE session_id = ? ORDER BY created_at ASC',
+            (session_id,)).fetchall()
+        return [r[0] for r in rows]
+
+    def append_outcome(self, chain_id: str, ref_type: str, ref_id: str,
+                       summary: str, session_id: str = '') -> int:
+        """Append an outcome event to an existing chain. Called later when
+        we learn what happened (correction, recall, revision)."""
+        return self.append(
+            chain_id=chain_id, scale='outcome', event_type='outcome',
+            ref_type=ref_type, ref_id=ref_id, summary=summary,
+            session_id=session_id)
+
+
 class SessionStateDAL:
     """Access layer for session_state table in brain_logs.db.
 
@@ -697,6 +963,84 @@ class NodeDAL:
             (node_type,)
         ).fetchone()
         return row[0] if row else 0
+
+    def filter_nodes(self, field: str, include=None, exclude=None,
+                     lt=None, gt=None, limit: int = 50,
+                     sort_by: str = 'created_at', sort_order: str = 'desc'):
+        """Filter nodes by any structural field.
+
+        Args:
+            field: column name — must be in STRUCTURAL_FIELDS whitelist.
+            include: list of values to match (exact, IN).
+            exclude: list of values to exclude (exact, NOT IN).
+            lt/gt: numeric comparisons for float/int fields.
+            limit: max results (capped at 200).
+            sort_by: column to sort by.
+            sort_order: 'asc' or 'desc'.
+
+        Returns: dict with 'nodes' list and 'total_count'.
+        """
+        from .contract import STRUCTURAL_FIELDS
+
+        # Whitelist field
+        if field not in STRUCTURAL_FIELDS:
+            return {"error": "Unknown field '%s'. Valid: %s" % (
+                field, ', '.join(sorted(STRUCTURAL_FIELDS.keys())))}
+
+        # Whitelist sort_by
+        allowed_sort = {'created_at', 'confidence', 'access_count', 'title', 'type', 'updated_at'}
+        if sort_by not in allowed_sort:
+            sort_by = 'created_at'
+        if sort_order not in ('asc', 'desc'):
+            sort_order = 'desc'
+
+        limit = min(max(limit, 1), 200)
+
+        # Build WHERE clauses
+        conditions = ['archived = 0']
+        params = []
+
+        if include and exclude:
+            return {"error": "Cannot use both include and exclude"}
+
+        if include:
+            placeholders = ','.join('?' for _ in include)
+            conditions.append('%s IN (%s)' % (field, placeholders))
+            params.extend(include)
+        elif exclude:
+            placeholders = ','.join('?' for _ in exclude)
+            conditions.append('%s NOT IN (%s)' % (field, placeholders))
+            params.extend(exclude)
+
+        if lt is not None:
+            conditions.append('%s < ?' % field)
+            params.append(lt)
+        if gt is not None:
+            conditions.append('%s > ?' % field)
+            params.append(gt)
+
+        where = ' AND '.join(conditions)
+
+        # Count total matches
+        count_row = self.conn.execute(
+            'SELECT COUNT(*) FROM nodes WHERE %s' % where, params
+        ).fetchone()
+        total_count = count_row[0] if count_row else 0
+
+        # Fetch results
+        sql = 'SELECT id, title, type, confidence, created_at, %s FROM nodes WHERE %s ORDER BY %s %s LIMIT ?' % (
+            field, where, sort_by, sort_order)
+        rows = self.conn.execute(sql, params + [limit]).fetchall()
+
+        nodes = []
+        for r in rows:
+            node = {'id': r[0], 'title': r[1], 'type': r[2],
+                    'confidence': r[3], 'created_at': r[4]}
+            if field not in ('id', 'title', 'type', 'confidence', 'created_at'):
+                node[field] = r[5]
+            nodes.append(node)
+
+        return {"nodes": nodes, "total_count": total_count}
 
     def get_all_for_reindex(self) -> List[Dict[str, Any]]:
         """Get all non-archived nodes for TF-IDF reindex."""

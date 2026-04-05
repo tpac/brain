@@ -384,6 +384,50 @@ def hook_recall(brain, args, graph_changes):
             additional_context = format_judge_output(selected, candidates_data, graph_neighbors,
                                                      corrections=corrections)
 
+            # Scale 1 trace: recall → judge → surface
+            try:
+                _recall_chain = 'recall-%s-%s' % (session_id[:8], recall_log_id or 'x')
+                # Build candidate detail: id, title, score, type
+                _cand_detail = []
+                for c in candidates_data[:25]:
+                    _cand_detail.append('%s|%s|%.2f|%s' % (
+                        c.get('id', '')[:8], c.get('title', '')[:80],
+                        c.get('score', 0), c.get('type', '')))
+                # Build selected detail from candidates using selected_ids
+                _sel_detail = []
+                for c in candidates_data:
+                    if c.get('id', '')[:8] in selected_ids:
+                        _sel_detail.append('%s|%s' % (c.get('id', '')[:8], c.get('title', '')))
+                # Build expanded detail
+                _exp_detail = []
+                for nb in graph_neighbors[:10]:
+                    _exp_detail.append('%s|%s|%s' % (
+                        nb.get('id', '')[:8], nb.get('title', '')[:60], nb.get('relation', '')))
+
+                # O: the query + all candidates with scores
+                brain._trace_dal.append(
+                    chain_id=_recall_chain, scale='s1', event_type='O',
+                    ref_type='recall', ref_id=str(recall_log_id or ''),
+                    summary='query: %s\ncandidates:\n%s' % (
+                        enriched[:300], '\n'.join(_cand_detail)),
+                    session_id=session_id)
+                # K: selected nodes + expanded neighbors (the knowledge provided)
+                brain._trace_dal.append(
+                    chain_id=_recall_chain, scale='s1', event_type='K',
+                    ref_type='judge_selected',
+                    ref_id=_json.dumps(list(selected_ids)),
+                    summary='selected:\n%s\nexpanded:\n%s' % (
+                        '\n'.join(_sel_detail), '\n'.join(_exp_detail)),
+                    session_id=session_id)
+                # Δ: the actual additionalContext that crossed to Anchor
+                brain._trace_dal.append(
+                    chain_id=_recall_chain, scale='s1', event_type='delta',
+                    ref_type='additionalContext',
+                    summary=(additional_context or '(no selection)')[:2000],
+                    session_id=session_id)
+            except Exception:
+                pass
+
             # Write judge result file for dashboard
             try:
                 _jr_path = "/tmp/brain-judge-result-%s.json" % recall_log_id
@@ -496,6 +540,24 @@ def hook_post_response_track(brain, args, graph_changes):
     except Exception as e:
         brain._log_error('store_exchange', e, 'Stop hook: failed to store exchange')
 
+    # Scale 0 trace: O → K → Δ
+    # O = full context available, K = the message that triggered, Δ = the response
+    try:
+        _stop_count = brain.get_config('stop_counter', '0') or '0'
+        _chain = 's0-%s-%s' % (session_id[:8], _stop_count)
+        brain._trace_dal.append(
+            chain_id=_chain, scale='s0', event_type='K',
+            ref_type='user_message',
+            summary=user_message[:2000] if user_message else '',
+            session_id=session_id)
+        brain._trace_dal.append(
+            chain_id=_chain, scale='s0', event_type='delta',
+            ref_type='assistant_message',
+            summary=assistant_response[:2000] if assistant_response else '',
+            session_id=session_id)
+    except Exception as e:
+        brain._log_error('trace_scale0', e, 'Stop hook: trace capture')
+
     # v10: Hebbian strengthening on JUDGE-SELECTED nodes only.
     # Only nodes the Layer 2 judge selected get co_accessed edges.
     # This is meaningful co-activation — two memories contributing to the same response.
@@ -574,6 +636,22 @@ def hook_post_response_track(brain, args, graph_changes):
                         _enc_ms = int((_t.time() - _enc_t0) * 1000)
                         actions = enc_result.get('actions', 0) if isinstance(enc_result, dict) else 0
                         print("[brain-hooks] ENCODING AGENT DONE: %d actions in %dms" % (actions, _enc_ms), flush=True)
+
+                        # Scale 1 trace: encoding as O → K → Δ
+                        try:
+                            _enc_chain = 'encode-%s-%d' % (session_id[:8], counter)
+                            _action_lines = []
+                            for _a in (enc_result.get('action_details', []) if isinstance(enc_result, dict) else []):
+                                _action_lines.append('%s: %s' % (_a.get('tool', ''), _a.get('summary', '')))
+                            enc_brain._trace_dal.append(
+                                chain_id=_enc_chain, scale='s1', event_type='delta',
+                                ref_type='encoding_run', ref_id=str(counter),
+                                summary='%d actions in %dms:\n%s' % (
+                                    actions, _enc_ms, '\n'.join(_action_lines) if _action_lines else '(no actions)'),
+                                session_id=session_id)
+                        except Exception:
+                            pass
+
                         enc_brain.save()
                         enc_brain.close()
                     except Exception as enc_e:

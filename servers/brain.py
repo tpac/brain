@@ -168,6 +168,9 @@ class Brain(
         # DAL instances — incremental adoption, brain.py migrates one method at a time
         self._meta = MetaDAL(self.conn)
         self._logs_dal = LogsDAL(self.logs_conn)
+        from .dal import TraceDAL, InteractionDAL
+        self._trace_dal = TraceDAL(self.logs_conn)
+        self._interaction_dal = InteractionDAL(self.logs_conn)
 
         # Init rate limiter for error logging (DDoS protection)
         self._init_rate_limiter()
@@ -452,14 +455,21 @@ class Brain(
             self._cached_session_id = self.get_config('session_id', '') or ''
         return self._cached_session_id or 'no_session'
 
-    def reset_session_activity(self):
-        """Reset session counters for new session."""
+    def reset_session_activity(self, session_id: str = ''):
+        """Reset session counters for new session.
+
+        Args:
+            session_id: Claude's session_id from hook stdin. If provided, uses
+                        Claude's ID for continuity across daemon restarts.
+                        If empty, generates a UUID (legacy fallback).
+        """
         self._update_session_activity('remember_count', 0)
         self._update_session_activity('edit_check_count', 0)
         self._update_session_activity('message_count', 0)
         self._update_session_activity('last_encode_at_message', 0)
         self._update_session_activity('boot_time', self.now())
-        self._update_session_activity('session_id', uuid.uuid4().hex)
+        sid = session_id or uuid.uuid4().hex
+        self._update_session_activity('session_id', sid)
         # v9.2: Clear cached session_id so property re-reads
         self._cached_session_id = None
         # v5: Reset session state accumulator

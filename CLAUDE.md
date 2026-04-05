@@ -130,6 +130,23 @@ Dashboard → reads from those same DBs + files → displays to operator
 
 **Judge data flows through tmp files.** The daemon writes `/tmp/brain-judge-result-{recall_log_id}.json` containing the exact Haiku prompt and the exact additionalContext sent to Claude. The dashboard reads these files passively.
 
+## Fractal Trace System
+
+The brain captures execution traces using `integrate(O, K) → Δ` at every scale. See `docs/ARCHITECTURE-FRACTAL.md` for the full architecture.
+
+**Tables (brain_logs.db):**
+- `trace_events` — O/K/Δ/outcome events, grouped by chain_id, tagged by scale (s0-s4)
+- `interactions` — versioned templates for every learnable boundary (judge, encoder, voice, boot, etc.)
+
+**Scales:**
+- s0: raw exchange (user messages, assistant responses, tool results via PostToolUse)
+- s1: turn integration (recall candidates, judge selection, encoding actions)
+- s2-s4: session/sleep/growth (not yet built)
+
+**Dashboard:** Traces tab shows events grouped by chain, filterable by scale and time range, auto-refreshes.
+
+**PostToolUse hook** (`hooks/scripts/post_tool_trace.py`): captures ALL tool results as s0 delta traces via daemon `trace_append` command.
+
 ## Test Isolation
 
 **All tests and evals MUST use `IsolatedBrain`** (`tests/isolated_brain.py`). Never run tests against production databases. The harness copies brain.db + brain_logs.db to a temp directory and creates an isolated Brain instance. Production is never touched.
