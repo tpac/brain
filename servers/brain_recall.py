@@ -93,12 +93,39 @@ class BrainRecallMixin:
 
     def query_traces(self, scale: str = '', hours: int = 24,
                      event_type: str = '', chain_id: str = '',
-                     limit: int = 100):
-        """Query trace events — the fractal learning loop data."""
+                     session_id: str = '', ref_type: str = '',
+                     grouped: bool = False, limit: int = 100):
+        """Query trace events — the fractal learning loop data.
+
+        Modes:
+        - chain_id set: return single chain with all events
+        - ref_type set: filter events by ref_type
+        - grouped=True + session_id: return chains grouped with nested events
+        - default: return flat recent events
+        """
         if chain_id:
             return {'chain': self._trace_dal.get_chain(chain_id)}
+        if ref_type:
+            return {'events': self._trace_dal.get_by_ref_type(
+                ref_type=ref_type, scale=scale, hours=hours, limit=limit)}
+        if grouped and session_id:
+            return {'chains': self._trace_dal.get_chains(
+                session_id=session_id, scale=scale, hours=hours, limit=limit)}
+        if session_id:
+            return {'events': self._trace_dal.get_recent(
+                scale=scale, hours=hours, event_type=event_type, limit=limit)}
         return {'events': self._trace_dal.get_recent(
             scale=scale, hours=hours, event_type=event_type, limit=limit)}
+
+    def query_outcomes(self, chain_id: str = '', scale: str = '',
+                       hours: int = 168):
+        """Query outcome events — the learning signal."""
+        return self._trace_dal.get_outcomes(
+            chain_id=chain_id, scale=scale, hours=hours)
+
+    def count_traces(self, field: str, scale: str = '', hours: int = 24):
+        """Count trace events grouped by a field."""
+        return self._trace_dal.count_by(field=field, scale=scale, hours=hours)
 
     def list_interactions(self):
         """List all registered interactions with latest versions."""

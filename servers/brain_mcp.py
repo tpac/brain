@@ -346,13 +346,30 @@ def _build_tools():
 
     # ── Traces & Interactions ──
     {"name": "query_traces",
-     "description": "Query the fractal trace system — O/K/Δ/outcome events at every scale (s0-s4). Use to inspect what happened: what was observed, what knowledge was selected, what changed, what the outcome was. Filter by scale ('s0','s1'), event_type ('O','K','delta','outcome'), or retrieve a full chain by chain_id. Traces are the learning loop — higher scales read lower scales' traces.",
+     "description": "Query the fractal trace system — O/K/Δ/outcome events at every scale (s0-s4). Use to inspect what happened: what was observed, what knowledge was selected, what changed, what the outcome was. Filter by scale, event_type, ref_type, session_id, or retrieve a full chain by chain_id. Use grouped=true with session_id to get chains with nested events. Traces are the learning loop — higher scales read lower scales' traces.",
      "inputSchema": {"type": "object", "properties": {
          "scale": {"type": "string", "description": "Filter by scale: 's0' (exchange), 's1' (turn), 's2' (session), 's3' (sleep), 's4' (growth). Empty = all."},
          "event_type": {"type": "string", "description": "Filter by type: 'O' (observation), 'K' (knowledge), 'delta' (changes), 'outcome'. Empty = all."},
          "chain_id": {"type": "string", "description": "Get all events in a specific chain. Overrides other filters."},
+         "session_id": {"type": "string", "description": "Filter by session. Combine with grouped=true for chain-grouped results."},
+         "ref_type": {"type": "string", "description": "Filter by ref_type: 'correction', 'recall_hit', 'encoding_run', 'tool_result', etc."},
+         "grouped": {"type": "boolean", "description": "If true + session_id, return chains grouped with nested events instead of flat list.", "default": False},
          "hours": {"type": "integer", "description": "Look back window in hours (default 24)", "default": 24},
          "limit": {"type": "integer", "description": "Max results (default 100)", "default": 100}}}},
+
+    {"name": "query_outcomes",
+     "description": "Query outcome events — the learning signal. Outcomes are added retrospectively when we learn what happened next (corrections, future recalls). Use to find which chains got corrected vs validated.",
+     "inputSchema": {"type": "object", "properties": {
+         "chain_id": {"type": "string", "description": "Get outcomes for a specific chain."},
+         "scale": {"type": "string", "description": "Filter by scale. Empty = all."},
+         "hours": {"type": "integer", "description": "Look back window in hours (default 168 = 7 days)", "default": 168}}}},
+
+    {"name": "count_traces",
+     "description": "Count trace events grouped by a field. Use for quick overview: 'how many corrections?', 'events per type', 'chains per scale'.",
+     "inputSchema": {"type": "object", "required": ["field"], "properties": {
+         "field": {"type": "string", "description": "Group by: 'event_type', 'ref_type', 'chain_id', 'scale'"},
+         "scale": {"type": "string", "description": "Filter by scale. Empty = all."},
+         "hours": {"type": "integer", "description": "Look back window in hours (default 24)", "default": 24}}}},
 
     {"name": "list_interactions",
      "description": "List all registered interactions — versioned templates for every learnable boundary in the system (judge, encoder, voice, boot, etc.). Shows name, latest version, and total versions.",

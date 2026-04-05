@@ -579,7 +579,28 @@ def _handle_query_traces(brain, args, graph_changes):
         hours=args.get("hours", 24),
         event_type=args.get("event_type", ""),
         chain_id=args.get("chain_id", ""),
+        session_id=args.get("session_id", ""),
+        ref_type=args.get("ref_type", ""),
+        grouped=args.get("grouped", False),
         limit=args.get("limit", 100))
+    return {"ok": True, "result": result}
+
+
+def _handle_query_outcomes(brain, args, graph_changes):
+    """Query outcome events — the learning signal."""
+    result = brain.query_outcomes(
+        chain_id=args.get("chain_id", ""),
+        scale=args.get("scale", ""),
+        hours=args.get("hours", 168))
+    return {"ok": True, "result": result}
+
+
+def _handle_count_traces(brain, args, graph_changes):
+    """Count trace events grouped by a field."""
+    result = brain.count_traces(
+        field=args.get("field", "event_type"),
+        scale=args.get("scale", ""),
+        hours=args.get("hours", 24))
     return {"ok": True, "result": result}
 
 
@@ -818,6 +839,8 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "filter_nodes":          CmdEntry(_handle_filter_nodes,        is_write=False, marks_dirty=False),
     "query_logs":            CmdEntry(_handle_query_logs,          is_write=False, marks_dirty=False),
     "query_traces":          CmdEntry(_handle_query_traces,        is_write=False, marks_dirty=False),
+    "query_outcomes":        CmdEntry(_handle_query_outcomes,      is_write=False, marks_dirty=False),
+    "count_traces":          CmdEntry(_handle_count_traces,        is_write=False, marks_dirty=False),
     "list_interactions":     CmdEntry(_handle_list_interactions,   is_write=False, marks_dirty=False),
     "get_interaction":       CmdEntry(_handle_get_interaction,     is_write=False, marks_dirty=False),
     "trace_append":          CmdEntry(_handle_trace_append,        is_write=True,  marks_dirty=False),
