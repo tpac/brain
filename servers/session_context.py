@@ -1,0 +1,97 @@
+"""SessionContext — per-request session identity.
+
+The brain is a singleton. Sessions are not. SessionContext flows with every
+brain call — hooks, MCP, encoding. The brain serves requests tagged with
+context, like a database server.
+
+SessionContext carries:
+- session_id: identity (from Claude Code hook args)
+- stop_counter: which stop we're on
+- (future: fatigue state, encoding journal, session_context string)
+
+Usage:
+    # In a hook:
+    ctx = SessionContext.from_hook_args(args)
+    chain = ctx.s0_chain()  # 's0-{session_short}-{stop}'
+
+    # Persist across daemon restarts:
+    ctx.save(conn)
+    ctx = SessionContext.load(conn, session_id)
+"""
+import json
+import uuid
+import sqlite3
+from datetime import datetime, timezone
+
+
+class SessionContext:
+    """Per-session state that flows with every brain call."""
+
+    def __init__(self, session_id: str = '', stop_counter: int = 0):
+        self.session_id = session_id or uuid.uuid4().hex
+        self.stop_counter = stop_counter
+
+    @classmethod
+    def from_hook_args(cls, args: dict) -> 'SessionContext':
+        """Create from Claude Code hook JSON input.
+
+        Every hook receives session_id in its stdin JSON.
+        If missing, generates a fallback UUID.
+        """
+        session_id = args.get('session_id', '') or ''
+        return cls(session_id=session_id)
+
+    @property
+    def session_short(self) -> str:
+        """First 8 chars of session_id — used in chain IDs."""
+        return self.session_id[:8]
+
+    def increment_stop(self):
+        """Increment stop counter. Called by the Stop hook."""
+        self.stop_counter += 1
+
+    # ── Chain ID generators ──
+
+    def s0_chain(self) -> str:
+        """S0 chain: one per stop — messages + tools."""
+        return 's0-%s-%d' % (self.session_short, self.stop_counter)
+
+    def s1r_chain(self) -> str:
+        """S1 recall chain: recall/judge for this stop."""
+        return 's1r-%s-%d' % (self.session_short, self.stop_counter)
+
+    def s1e_chain(self) -> str:
+        """S1 encode chain: encoding run triggered at this stop."""
+        return 's1e-%s-%d' % (self.session_short, self.stop_counter)
+
+    # ── Persistence ──
+
+    def save(self, conn: sqlite3.Connection):
+        """Save session context to DB. Creates or updates."""
+        now = datetime.now(timezone.utc).isoformat()
+        data = json.dumps({
+            'stop_counter': self.stop_counter,
+        })
+        # Use session_state table (already exists in brain_logs.db)
+        conn.execute(
+            'INSERT OR REPLACE INTO session_state (session_id, key, node_id, value, updated_at) '
+            'VALUES (?, ?, ?, ?, ?)',
+            (self.session_id, '_session_context', '', data, now))
+        conn.commit()
+
+    @classmethod
+    def load(cls, conn: sqlite3.Connection, session_id: str) -> 'SessionContext':
+        """Load session context from DB. Returns None if not found."""
+        row = conn.execute(
+            'SELECT value FROM session_state WHERE session_id = ? AND key = ?',
+            (session_id, '_session_context')).fetchone()
+        if not row:
+            return None
+        try:
+            data = json.loads(row[0])
+            return cls(
+                session_id=session_id,
+                stop_counter=data.get('stop_counter', 0),
+            )
+        except (json.JSONDecodeError, TypeError):
+            return None
