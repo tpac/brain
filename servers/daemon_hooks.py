@@ -85,12 +85,13 @@ def hook_recall(brain, args, graph_changes):
 
     # Write current stop counter to tmp file — PostToolUse and Stop hooks read this
     # to attach tool calls and messages to the same chain for this turn.
+    _current_stop = '0'
     try:
         _current_stop = brain.get_config('stop_counter', '0') or '0'
         with open('/tmp/brain-%s-current-stop.txt' % session_id, 'w') as _f:
             _f.write(_current_stop)
-    except Exception:
-        pass
+    except Exception as e:
+        brain._log_error('write_current_stop', e, 'hook_recall')
 
     # Store last user message for operator voice capture
     try:
