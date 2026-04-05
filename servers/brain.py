@@ -443,35 +443,55 @@ class Brain(
         """
         return self.get_config('session_context', '') or ''
 
+    def get_or_create_session(self, session_id: str) -> 'SessionContext':
+        """Get or create a SessionContext for a given session_id.
+
+        This is the single entry point for session state. Hooks send
+        session_id from Claude Code args. The brain holds the state.
+
+        If the session exists in DB (daemon restarted), loads it.
+        If new, creates and persists it.
+        """
+        from .session_context import SessionContext
+        if not session_id:
+            session_id = uuid.uuid4().hex
+        ctx = SessionContext.load(self.logs_conn, session_id)
+        if ctx:
+            return ctx
+        ctx = SessionContext(session_id=session_id)
+        ctx.save(self.logs_conn)
+        return ctx
+
     @property
     def session_id(self):
-        """Single source of truth for current session ID. Always UUID hex.
+        """DEPRECATED — use get_or_create_session(session_id) instead.
 
-        v9.2: Replaces scattered get_config("session_id", <various defaults>)
-        calls across daemon_hooks, brain_recall, encoding_agent. One accessor,
-        one format, one fallback.
+        Kept for backward compatibility. Returns the last-seen session_id
+        from brain_meta. New code should pass SessionContext through the
+        call chain, not read from this singleton property.
         """
         if not hasattr(self, '_cached_session_id') or not self._cached_session_id:
             self._cached_session_id = self.get_config('session_id', '') or ''
         return self._cached_session_id or 'no_session'
 
     def reset_session_activity(self, session_id: str = ''):
-        """Reset session counters for new session.
+        """Reset session counters. Session_id comes from hook args, not generated.
 
-        Args:
-            session_id: Claude's session_id from hook stdin. If provided, uses
-                        Claude's ID for continuity across daemon restarts.
-                        If empty, generates a UUID (legacy fallback).
+        Also creates/updates SessionContext in DB for persistence across
+        daemon restarts.
         """
+        sid = session_id or uuid.uuid4().hex
         self._update_session_activity('remember_count', 0)
         self._update_session_activity('edit_check_count', 0)
         self._update_session_activity('message_count', 0)
         self._update_session_activity('last_encode_at_message', 0)
         self._update_session_activity('boot_time', self.now())
-        sid = session_id or uuid.uuid4().hex
         self._update_session_activity('session_id', sid)
-        # v9.2: Clear cached session_id so property re-reads
-        self._cached_session_id = None
+        self._cached_session_id = sid
+        # Persist SessionContext for daemon restart recovery
+        from .session_context import SessionContext
+        ctx = SessionContext(session_id=sid)
+        ctx.save(self.logs_conn)
         # v5: Reset session state accumulator
         self._session_state = {
             'decisions': [], 'corrections': [], 'inflections': [],

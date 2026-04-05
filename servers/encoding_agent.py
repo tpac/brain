@@ -63,7 +63,8 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
         return {"error": str(e)}
     _step("api_client")
 
-    session_id = brain.session_id
+    # session_id passed via dispatch context, fallback to brain property (deprecated)
+    session_id = brain.session_id  # TODO: receive as parameter once all callers pass it
 
     # 1. Gather messages with pre-attached recall
     messages = _gather_messages(brain, session_id)
@@ -97,8 +98,9 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
 
     # Trace S1 encode: O and K via dispatch (routes through daemon for writes)
     try:
-        _session_id = brain.session_id
-        _enc_chain = 's1e-%s-%d' % (_session_id[:8], counter)
+        from .session_context import SessionContext
+        _ctx = SessionContext(session_id=session_id, stop_counter=counter)
+        _enc_chain = _ctx.s1e_chain()
         _turn_count = len(messages) if messages else 0
 
         # K: extract node IDs from recalled_raw in messages
@@ -121,14 +123,14 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
             'ref_id': '/tmp/brain-encoding-prompt-%d.json' % counter,
             'summary': '%d turns, %d chars context, interaction: encoding-agent-v3' % (
                 _turn_count, len(user_content)),
-            'session_id': _session_id})
+            'session_id': session_id})
         dispatch_fn('trace_append', {
             'chain_id': _enc_chain, 'scale': 's1', 'event_type': 'K',
             'ref_type': 'node_catalog',
             'ref_id': ','.join(sorted(_node_ids_in_catalog)[:20]),
             'summary': '%d unique nodes in catalog from %d turns' % (
                 len(_node_ids_in_catalog), _turn_count),
-            'session_id': _session_id})
+            'session_id': session_id})
     except Exception as _te:
         print('[encoding-agent] TRACE ERROR: %s' % _te, flush=True)
 

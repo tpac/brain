@@ -81,13 +81,12 @@ def hook_recall(brain, args, graph_changes):
     aspirations, hypotheses, tensions, instincts, pending messages, graph changes.
     """
     user_message = args.get("prompt", "") or args.get("message", "")
-    session_id = brain.session_id
+    ctx = brain.get_or_create_session(args.get('session_id', ''))
+    session_id = ctx.session_id
+    _current_stop = str(ctx.stop_counter)
 
-    # Write current stop counter to tmp file — PostToolUse and Stop hooks read this
-    # to attach tool calls and messages to the same chain for this turn.
-    _current_stop = '0'
+    # Write current stop counter to tmp file — PostToolUse reads this (cross-process)
     try:
-        _current_stop = brain.get_config('stop_counter', '0') or '0'
         with open('/tmp/brain-%s-current-stop.txt' % session_id, 'w') as _f:
             _f.write(_current_stop)
     except Exception as e:
@@ -396,7 +395,7 @@ def hook_recall(brain, args, graph_changes):
 
             # Scale 1 trace: recall → judge → surface
             try:
-                _recall_chain = 's1r-%s-%s' % (session_id[:8], _current_stop)
+                _recall_chain = ctx.s1r_chain()
                 # Build candidate detail: id, title, score, type
                 _cand_detail = []
                 for c in candidates_data[:25]:
@@ -634,7 +633,9 @@ def _run_encoding_agent(brain_db_path, session_id, counter):
 
         # S1 encode delta trace (via daemon TCP)
         try:
-            _enc_chain = 's1e-%s-%d' % (session_id[:8], counter)
+            from .session_context import SessionContext as _SC
+            _enc_ctx = _SC(session_id=session_id, stop_counter=counter)
+            _enc_chain = _enc_ctx.s1e_chain()
             action_lines = []
             for a in (enc_result.get('action_details', []) if isinstance(enc_result, dict) else []):
                 action_lines.append('%s: %s' % (a.get('tool', ''), a.get('summary', '')))
@@ -673,7 +674,8 @@ def hook_post_response_track(brain, args, graph_changes):
     6. Record message heartbeat
     """
     from .pipeline_contract import PIPELINE as _PL
-    session_id = brain.session_id
+    ctx = brain.get_or_create_session(args.get('session_id', ''))
+    session_id = ctx.session_id
     user_message = args.get("prompt", "") or args.get("message", "")
     assistant_response = (args.get("last_assistant_message", "") or "")[:_PL['assistant_response_store']]
 
@@ -694,22 +696,18 @@ def hook_post_response_track(brain, args, graph_changes):
     except Exception as e:
         brain._log_error('store_exchange', e, 'Stop hook')
 
-    # 3. Write S0 traces
+    # 3. Write S0 traces (using SessionContext for chain IDs)
     try:
-        stop_count = brain.get_config('stop_counter', '0') or '0'
-        chain = 's0-%s-%s' % (session_id[:8], stop_count)
-        recall_chain = ''
-        if recall_data['recall_log_id']:
-            recall_chain = 's1r-%s-%s' % (session_id[:8], stop_count)
+        recall_chain = ctx.s1r_chain() if recall_data['recall_log_id'] else ''
         brain._trace_dal.append(
-            chain_id=chain, scale='s0', event_type='K',
+            chain_id=ctx.s0_chain(), scale='s0', event_type='K',
             ref_type='user_message',
             summary=user_message[:200] if user_message else '',
             metadata={'content': user_message[:4000] if user_message else '',
                       'recall_chain': recall_chain} if user_message else None,
             session_id=session_id)
         brain._trace_dal.append(
-            chain_id=chain, scale='s0', event_type='delta',
+            chain_id=ctx.s0_chain(), scale='s0', event_type='delta',
             ref_type='assistant_message',
             summary=assistant_response[:200] if assistant_response else '',
             metadata={'content': assistant_response[:4000]} if assistant_response else None,
@@ -724,10 +722,11 @@ def hook_post_response_track(brain, args, graph_changes):
         brain._log_error('hebbian_judge_selected', e, 'Stop hook')
 
     # 5. Encoding agent gate (every 5th stop)
+    ctx.increment_stop()
+    ctx.save(brain.logs_conn)
     encoding_status = ""
     try:
-        counter = int(brain.get_config('stop_counter', '0') or '0') + 1
-        brain.set_config('stop_counter', str(counter))
+        counter = ctx.stop_counter
         position = counter % 5
 
         if position == 0:
