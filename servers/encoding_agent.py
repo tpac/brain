@@ -98,7 +98,7 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
     # Trace S1 encode: O and K via dispatch (routes through daemon for writes)
     try:
         _session_id = brain.session_id
-        _enc_chain = 'encode-%s-%d' % (_session_id[:8], counter)
+        _enc_chain = 's1e-%s-%d' % (_session_id[:8], counter)
         _turn_count = len(messages) if messages else 0
 
         # K: extract node IDs from recalled_raw in messages

@@ -81,12 +81,15 @@ REF_TYPES = {
 
 # ── CHAIN ID CONVENTIONS ──
 # chain_id groups related O/K/Δ/outcome events.
+#
+# One chain per stop at S0. Everything between stop N-1 and stop N
+# (messages, tool calls) belongs to the same S0 chain.
+# S1 chains reference the S0 chain via parent_chain in metadata.
 
 CHAIN_PREFIXES = {
-    "s0": "s0-{session_id_short}-{stop_counter}",
-    "s0_tool": "s0-{session_id_short}-tool",
-    "s1_recall": "recall-{session_id_short}-{recall_log_id}",
-    "s1_encode": "encode-{session_id_short}-{counter}",
+    "s0": "s0-{session_short}-{stop}",       # one chain per stop — messages + tools
+    "s1_recall": "s1r-{session_short}-{stop}",  # recall/judge for this stop
+    "s1_encode": "s1e-{session_short}-{stop}",  # encoding run triggered at this stop
 }
 
 

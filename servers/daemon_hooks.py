@@ -83,6 +83,15 @@ def hook_recall(brain, args, graph_changes):
     user_message = args.get("prompt", "") or args.get("message", "")
     session_id = brain.session_id
 
+    # Write current stop counter to tmp file — PostToolUse and Stop hooks read this
+    # to attach tool calls and messages to the same chain for this turn.
+    try:
+        _current_stop = brain.get_config('stop_counter', '0') or '0'
+        with open('/tmp/brain-%s-current-stop.txt' % session_id, 'w') as _f:
+            _f.write(_current_stop)
+    except Exception:
+        pass
+
     # Store last user message for operator voice capture
     try:
         from .pipeline_contract import PIPELINE as _PL
@@ -386,7 +395,7 @@ def hook_recall(brain, args, graph_changes):
 
             # Scale 1 trace: recall → judge → surface
             try:
-                _recall_chain = 'recall-%s-%s' % (session_id[:8], recall_log_id or 'x')
+                _recall_chain = 's1r-%s-%s' % (session_id[:8], _current_stop)
                 # Build candidate detail: id, title, score, type
                 _cand_detail = []
                 for c in candidates_data[:25]:
@@ -404,27 +413,28 @@ def hook_recall(brain, args, graph_changes):
                     _exp_detail.append('%s|%s|%s' % (
                         nb.get('id', '')[:8], nb.get('title', '')[:60], nb.get('relation', '')))
 
-                # O: the query + all candidates with scores
+                # O: summary for display, metadata for substance
                 brain._trace_dal.append(
                     chain_id=_recall_chain, scale='s1', event_type='O',
                     ref_type='recall', ref_id=str(recall_log_id or ''),
-                    summary='query: %s\ncandidates:\n%s' % (
-                        enriched[:300], '\n'.join(_cand_detail)),
-                    metadata={'source': 'hook', 'candidate_count': len(results)},
+                    summary='%d candidates for: %s' % (len(results), enriched[:100]),
+                    metadata={'source': 'hook', 'query': enriched[:500],
+                              'candidates': _cand_detail},
                     session_id=session_id)
-                # K: selected nodes + expanded neighbors (the knowledge provided)
+                # K: summary for display, metadata for substance
                 brain._trace_dal.append(
                     chain_id=_recall_chain, scale='s1', event_type='K',
                     ref_type='judge_selected',
                     ref_id=_json.dumps(list(selected_ids)),
-                    summary='selected:\n%s\nexpanded:\n%s' % (
-                        '\n'.join(_sel_detail), '\n'.join(_exp_detail)),
+                    summary='%d selected, %d expanded' % (len(selected), len(graph_neighbors)),
+                    metadata={'selected': _sel_detail, 'expanded': _exp_detail},
                     session_id=session_id)
-                # Δ: the actual additionalContext that crossed to Anchor
+                # Δ: summary short, full additionalContext in metadata
                 brain._trace_dal.append(
                     chain_id=_recall_chain, scale='s1', event_type='delta',
                     ref_type='additionalContext',
-                    summary=(additional_context or '(no selection)')[:2000],
+                    summary='%d nodes surfaced' % len(selected) if selected else '(no selection)',
+                    metadata={'content': (additional_context or '')[:4000]},
                     session_id=session_id)
             except Exception as _te:
                 brain._log_error('trace_s1_recall', _te, 'S1 recall trace capture')
@@ -623,7 +633,7 @@ def _run_encoding_agent(brain_db_path, session_id, counter):
 
         # S1 encode delta trace (via daemon TCP)
         try:
-            _enc_chain = 'encode-%s-%d' % (session_id[:8], counter)
+            _enc_chain = 's1e-%s-%d' % (session_id[:8], counter)
             action_lines = []
             for a in (enc_result.get('action_details', []) if isinstance(enc_result, dict) else []):
                 action_lines.append('%s: %s' % (a.get('tool', ''), a.get('summary', '')))
@@ -689,17 +699,19 @@ def hook_post_response_track(brain, args, graph_changes):
         chain = 's0-%s-%s' % (session_id[:8], stop_count)
         recall_chain = ''
         if recall_data['recall_log_id']:
-            recall_chain = 'recall-%s-%s' % (session_id[:8], recall_data['recall_log_id'])
+            recall_chain = 's1r-%s-%s' % (session_id[:8], stop_count)
         brain._trace_dal.append(
             chain_id=chain, scale='s0', event_type='K',
             ref_type='user_message',
-            summary=user_message[:2000] if user_message else '',
-            metadata={'recall_chain': recall_chain} if recall_chain else None,
+            summary=user_message[:200] if user_message else '',
+            metadata={'content': user_message[:4000] if user_message else '',
+                      'recall_chain': recall_chain} if user_message else None,
             session_id=session_id)
         brain._trace_dal.append(
             chain_id=chain, scale='s0', event_type='delta',
             ref_type='assistant_message',
-            summary=assistant_response[:2000] if assistant_response else '',
+            summary=assistant_response[:200] if assistant_response else '',
+            metadata={'content': assistant_response[:4000]} if assistant_response else None,
             session_id=session_id)
     except Exception as e:
         brain._log_error('trace_s0', e, 'Stop hook')

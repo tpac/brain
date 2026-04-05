@@ -781,20 +781,22 @@ class TraceDAL:
             chain_id = r[0]
             if chain_id not in chains:
                 chains[chain_id] = {}
+            meta = {}
+            try:
+                meta = json.loads(r[4]) if r[4] else {}
+            except (json.JSONDecodeError, TypeError):
+                pass
+            # Content lives in metadata (full), summary is truncated for display
+            content = meta.get('content', '') or r[3] or ''
             if r[2] == 'user_message':
-                meta = {}
-                try:
-                    meta = json.loads(r[4]) if r[4] else {}
-                except (json.JSONDecodeError, TypeError):
-                    pass
                 chains[chain_id]['user'] = {
-                    'content': r[3] or '',
+                    'content': content,
                     'timestamp': r[5],
                     'recall_chain': meta.get('recall_chain', ''),
                 }
             elif r[2] == 'assistant_message':
                 chains[chain_id]['assistant'] = {
-                    'content': r[3] or '',
+                    'content': content,
                     'timestamp': r[5],
                 }
 
@@ -809,12 +811,16 @@ class TraceDAL:
         if recall_chains:
             placeholders = ','.join('?' for _ in recall_chains)
             s1_rows = self.conn.execute(
-                "SELECT chain_id, summary FROM trace_events "
+                "SELECT chain_id, metadata FROM trace_events "
                 "WHERE scale = 's1' AND event_type = 'delta' AND ref_type = 'additionalContext' "
                 "AND chain_id IN (%s)" % placeholders,
                 list(recall_chains)).fetchall()
             for r in s1_rows:
-                judge_outputs[r[0]] = r[1] or ''
+                try:
+                    meta = json.loads(r[1]) if r[1] else {}
+                    judge_outputs[r[0]] = meta.get('content', '')
+                except (json.JSONDecodeError, TypeError):
+                    judge_outputs[r[0]] = ''
 
         # Build result in encoding_agent._gather_messages() shape
         turns = []
