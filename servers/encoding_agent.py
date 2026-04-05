@@ -23,14 +23,15 @@ import json
 import time
 
 
-def run_encoding(brain, dispatch_fn, counter, log_fn=None):
+def run_encoding(brain, dispatch_fn, counter, log_fn=None, session_id=None):
     """Run the encoding agent.
 
     Args:
-        brain: Brain instance (READ-ONLY — for recall, get_node, session_id)
+        brain: Brain instance (READ-ONLY — for recall, get_node)
         dispatch_fn: function(cmd, args) for ALL writes (routes through daemon TCP)
         counter: Current stop counter value
         log_fn: Optional logging function
+        session_id: Session ID from caller (SessionContext). Do NOT read brain.session_id.
 
     All writes (remember, revise, connect, set_config, trace_append) go through
     dispatch_fn which routes to daemon via TCP. brain is read-only to avoid
@@ -63,8 +64,9 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
         return {"error": str(e)}
     _step("api_client")
 
-    # session_id passed via dispatch context, fallback to brain property (deprecated)
-    session_id = brain.session_id  # TODO: receive as parameter once all callers pass it
+    # session_id from caller (SessionContext) — never read brain.session_id
+    if not session_id:
+        session_id = brain.session_id  # fallback for legacy callers only
 
     # 1. Gather messages with pre-attached recall
     messages = _gather_messages(brain, session_id)

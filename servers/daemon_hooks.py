@@ -246,7 +246,6 @@ def hook_recall(brain, args, graph_changes):
     if gap:
         try:
             from .dal import LogsDAL
-            session_id = brain.session_id
             LogsDAL(brain.logs_conn).log_gap(gap['query'], gap.get('top_score', 0), session_id)
         except Exception as e:
             brain._log_error('hook_recall_gap_log', e, 'Failed to log recall gap')
@@ -273,7 +272,6 @@ def hook_recall(brain, args, graph_changes):
     # The thin client reads the file, calls LLM to distill, returns context.
     # Dashboard logging happens in the thin client — one source of truth.
     brain.save()
-    session_id = brain.session_id
 
     # ── Layer 2: Haiku judge (runs in daemon — no subprocess timeout risk) ──
     additional_context = None
@@ -591,7 +589,7 @@ def _run_encoding_agent(brain_db_path, session_id, counter):
         dispatch = _make_encoding_dispatch(enc_brain)
 
         from .encoding_agent import run_encoding
-        enc_result = run_encoding(enc_brain, dispatch, counter)
+        enc_result = run_encoding(enc_brain, dispatch, counter, session_id=session_id)
         _enc_ms = int((_t.time() - _enc_t0) * 1000)
         actions = enc_result.get('actions', 0) if isinstance(enc_result, dict) else 0
         print("[brain-hooks] ENCODING AGENT DONE: %d actions in %dms" % (actions, _enc_ms), flush=True)
