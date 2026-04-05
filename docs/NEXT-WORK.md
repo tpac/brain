@@ -76,22 +76,49 @@
 **Problem:** WIP handler in daemon_dispatch.py, not wired to command table or MCP schema.
 **Action:** Complete and test. Low priority since `hooks/scripts/restart-daemon.sh` works.
 
-### 6. Fractal Integration Architecture (HIGH — designed, implementation started)
+### 6. Fractal Integration Architecture (HIGH — S0/S1 infrastructure COMPLETE)
 Architecture doc: `docs/ARCHITECTURE-FRACTAL.md`. Core: `integrate(O, K) → Δ` at every scale.
-- **Trace infrastructure BUILT**: trace_events table, TraceDAL, S0+S1 capture, dashboard Traces tab
-- **Interactions table BUILT**: versioned templates for learnable boundaries (6 seeded)
-- **filter_nodes + query_logs MCP tools BUILT**
-- **Session encoder (Scale 2)**: NOT BUILT — next priority. Same integrate(), wider inputs.
-- **Sleep (Scale 3)**: NOT BUILT — community detection, bridge identification, dedup, correction propagation
-- **Growth (Scale 4)**: NOT BUILT — external research, uncertainty investigation
-- **Outcome traces**: NOT BUILT — the learning signal
-- **sessionContext refactor**: session_id should flow with every call, not live on singleton (parallel session support)
 
-### 7. Scale 1 Gaps (MEDIUM — blocks Scale 2)
-5 gaps identified between Scale 1 and Scale 2:
+**BUILT this session:**
+- Trace contract (`trace_contract.py`): S0-S4 scales, event types, ref types, validation at write time
+- TraceDAL: 8 methods (append, get_chain, get_recent, get_chains, get_by_ref_type, get_outcomes, count_by, get_session_turns)
+- 104 tests across 6 test suites (unit, contract sync, integration, S1 cycle, session context, interactions)
+- SessionContext: per-request session identity, persisted in DB, survives daemon restarts
+- Session_id flows from Claude Code hook args through thin clients to daemon
+- S0 traces: K (user_message) + delta (assistant_message + tool_result), summary/metadata split
+- S1 traces: O (candidates) + K (judge_selected) + delta (additionalContext + encoding_run)
+- Interactions as learnable boundaries: 6 seeded (judge + encoding_agent with prompts, 4 code-only with config)
+- Judge reads prompt from interactions table at runtime (learnable)
+- Encoding agent reads prompt from interactions table at runtime (learnable)
+- Trace events link to interaction_id for version comparison
+- S0/S1 migration: encoding agent + judge context read from traces, message_stream stripped to escalation
+- MCP tools: filter_nodes, query_logs, query_traces, query_outcomes, count_traces, list_interactions, get_interaction
+- daemon_hooks.py refactored: 261→50 line main function + 5 clean helpers
+- Single-writer rule: encoding agent writes via daemon TCP, not direct DB
+- Dashboard: Traces tab, timezone fix, Status+Health merged
+
+**REMAINING for next session:**
+- Wire code-only boundaries to read config from interactions (voice, boot, pre_edit, assembler)
+- Pass session_id in remaining thin clients (bash, host_check, session_end, compact, idle)
+- Remove deprecated brain.session_id property
+- Rename modules to scale positions (encoding_agent.py → s1_encoder.py)
+- Outcome traces (the learning signal — not yet built)
+- Verify encoding fires end-to-end with all fixes
+- Dashboard recall display fix (broken — separate UI session)
+- Encoding agent loads embedder unnecessarily (doubles memory/CPU)
+
+**NOT BUILT (future sessions):**
+- Session encoder (Scale 2)
+- Sleep graph operations (Scale 3)
+- Growth external research (Scale 4)
+- Partnership signal tracking
+- Encoding gap detection
+
+### 7. Scale 1 Gaps (MEDIUM)
+Remaining gaps for Scale 2 readiness:
 1. Correction linking partially done (Layer 3.5 shipped, trace backfill pending)
 2. No partnership signal tracking
-3. No encoding gap detection
+3. No encoding gap detection (Scale 2 responsibility)
 4. Tool interactions now captured via PostToolUse trace
 5. Session patterns not fed to encoder
 
