@@ -1454,19 +1454,7 @@ class BrainRecallMixin:
 
         self.conn.commit()
 
-    def _log_recall(self, session_id: str, query: str, returned_ids: List[str]) -> Optional[str]:
-        """Log a recall event."""
-        logs_dal = LogsDAL(self.logs_conn)
-        row_id = logs_dal.insert_recall_log(
-            session_id=session_id or 'unknown',
-            query=query,
-            returned_ids=json.dumps(returned_ids),
-            returned_count=len(returned_ids),
-            embeddings_used=0,
-            recalled_titles='',
-            recalled_snippets='',
-            created_at=self.now())
-        return str(row_id) if row_id else None
+    # _log_recall REMOVED 2026-04-05 — recall_log writes deprecated, traces are source of truth
 
     def _get_recent(self, limit: int = 20, types: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Get recently accessed nodes."""

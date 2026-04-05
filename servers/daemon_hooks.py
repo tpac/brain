@@ -304,23 +304,6 @@ def hook_recall(brain, args, graph_changes):
 
 
 
-def _read_recall_data(session_id):
-    """Read recall_ref from tmp file written by the recall hook.
-
-    Returns dict with recall_ref (used for S1 trace chain cross-reference).
-    Content data (recalled_raw, judge_output) now lives in trace_events.
-    """
-    result = {'recall_ref': None}
-
-    candidates_path = '/tmp/brain-%s-recall-candidates.json' % session_id
-    if not os.path.exists(candidates_path):
-        return result
-
-    with open(candidates_path) as f:
-        result['recall_ref'] = json.load(f).get('recall_ref')
-
-    return result
-
 
 def _hebbian_strengthen(brain, session_id):
     """Strengthen co_accessed edges between judge-selected nodes.
@@ -379,22 +362,15 @@ def hook_post_response_track(brain, args, graph_changes):
     user_message = args.get("prompt", "") or args.get("message", "")
     assistant_response = (args.get("last_assistant_message", "") or "")[:_PL['assistant_response_store']]
 
-    # 1. Read recall_ref from tmp file (for trace cross-reference)
-    recall_data = {'recall_ref': None}
-    try:
-        recall_data = _read_recall_data(session_id)
-    except Exception as e:
-        brain._log_error('read_recall_data', e, 'Stop hook')
-
-    # 2. Store exchange in message_stream (escalation only — content in traces)
+    # 1. Store exchange in message_stream (escalation only — content in traces)
     try:
         brain.store_exchange(user_message, assistant_response, session_id)
     except Exception as e:
         brain._log_error('store_exchange', e, 'Stop hook')
 
-    # 3. Write S0 traces (using SessionContext for chain IDs)
+    # 2. Write S0 traces (using SessionContext for chain IDs)
     try:
-        recall_chain = ctx.s1r_chain() if recall_data['recall_ref'] else ''
+        recall_chain = ctx.s1r_chain()
         brain._trace_dal.append(
             chain_id=ctx.s0_chain(), scale='s0', event_type='K',
             ref_type='user_message',

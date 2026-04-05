@@ -893,19 +893,9 @@ class BrainVoice:
         out.append("Brain: %s nodes, %s edges, %s locked" % (
             ctx.get("total_nodes", "?"), ctx.get("total_edges", "?"), ctx.get("total_locked", "?")))
 
-        # Precision feedback
-        try:
-            from .brain_precision import RecallPrecision
-            ps = RecallPrecision(brain.logs_conn, brain.conn).get_precision_summary(hours=24)
-            tr = ps.get("total_recalls", 0)
-            if tr > 0:
-                ev = ps.get("evaluated_recalls", 0)
-                fs = ps.get("followup_signals", {})
-                out.append("Precision (24h): %d recalls, %d eval (%.0f%%) — +%d -%d ~%d ?%d" % (
-                    tr, ev, ev / tr * 100, fs.get("positive", 0), fs.get("negative", 0),
-                    fs.get("neutral", 0), fs.get("uncertain", 0) + fs.get("ask_operator", 0)))
-        except Exception as e:
-            print('[brain_voice] ERROR boot_precision_stats: %s' % e, file=sys.stderr)
+        # Precision feedback — REMOVED 2026-04-05
+        # recall_log no longer written to (traces are source of truth).
+        # Precision metrics will be rebuilt from trace outcome events when S2 ships.
 
         # Embedder
         if embedder.is_ready():

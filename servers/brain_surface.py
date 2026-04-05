@@ -1105,11 +1105,4 @@ class BrainSurfaceMixin:
 
         return new_pairs
 
-    def _get_or_create_precision(self):
-        """Get cached RecallPrecision instance."""
-        if not hasattr(self, '_precision') or self._precision is None:
-            from .brain_precision import RecallPrecision
-            self._precision = RecallPrecision(
-                self.logs_conn, self.conn,
-                logs_dal=getattr(self, '_logs_dal', None))
-        return self._precision
+    # _get_or_create_precision REMOVED 2026-04-05 — brain_precision.py deleted

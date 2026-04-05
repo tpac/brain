@@ -126,8 +126,7 @@ FILES=(
   # Migrations
   servers/migrations/__init__.py
   servers/migrations/004_logs_precision_columns.py
-  # Precision + recall scorer
-  servers/brain_precision.py
+  # Recall scorer (brain_precision.py DELETED 2026-04-05)
   servers/recall_scorer.py
   servers/text_processing.py
   # Data files

@@ -1559,33 +1559,9 @@ class BrainEngineeringMixin:
         """
         generated = {'performance': 0, 'capability': 0, 'interaction': 0, 'failure': 0}
 
-        # Performance: recall quality from the precision module.
-        # Previously this was BROKEN (used_count always 0 because mark_recall_used()
-        # didn't exist). Now the RecallPrecision module handles all recall_log access.
-        # Consciousness reads the summary — it doesn't own precision logic.
-        try:
-            from servers.brain_precision import RecallPrecision
-            precision_mod = RecallPrecision(self.logs_conn, self.conn)
-            summary = precision_mod.get_precision_summary(hours=168)  # 7 days
-            if summary.get("has_data") and summary["evaluated_recalls"] >= 10:
-                existing = self.conn.execute(
-                    "SELECT COUNT(*) FROM nodes WHERE type = 'performance' AND created_at > datetime('now', '-3 days')"
-                ).fetchone()[0]
-                if existing == 0:
-                    avg_p = summary["avg_precision"]
-                    total = summary["total_recalls"]
-                    evaluated = summary["evaluated_recalls"]
-                    emb_pct = summary["embeddings_used_pct"]
-                    self.create_performance(
-                        f"Recall precision this week: {avg_p:.0%} ({evaluated}/{total} evaluated)",
-                        f"Auto-generated from recall precision tracking. "
-                        f"Embeddings used: {emb_pct:.0%}. "
-                        f"Feedback count: {summary['feedback_count']}.",
-                        keywords="auto performance recall precision weekly"
-                    )
-                    generated['performance'] += 1
-        except Exception as _e:
-            self._log_error("auto_generate_self_reflection", _e, "generating recall precision performance node")
+        # Performance: recall precision — REMOVED 2026-04-05
+        # recall_log no longer written to. Precision metrics will be
+        # rebuilt from trace outcome events when S2/outcomes ship.
 
         # Failure detection: repeated miss signals
         try:
