@@ -56,7 +56,7 @@ def main():
             "chain_id": "s0-%s-tool" % session_id[:8],
             "scale": "s0",
             "event_type": "delta",
-            "ref_type": tool_name,
+            "ref_type": "tool_result",
             "ref_id": tool_input.get("file_path", "") or tool_input.get("command", "")[:100] or "",
             "summary": summary[:500],
             "session_id": session_id,

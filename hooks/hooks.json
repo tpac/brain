@@ -143,11 +143,26 @@
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-bash-host-check.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post_tool_trace.py",
+            "timeout": 3
           }
         ]
       },
       {
-        "matcher": "",
+        "matcher": "Edit|Write|Read|Glob|Grep|Agent|WebSearch|WebFetch|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post_tool_trace.py",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
         "hooks": [
           {
             "type": "command",

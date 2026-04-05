@@ -20,7 +20,10 @@
       "mcp__plugin_brain_brain__engineering_context",
       "mcp__plugin_brain_brain__eval",
       "mcp__plugin_brain_brain__filter_nodes",
-      "mcp__plugin_brain_brain__query_logs"
+      "mcp__plugin_brain_brain__query_logs",
+      "mcp__plugin_brain_brain__query_traces",
+      "mcp__plugin_brain_brain__list_interactions",
+      "mcp__plugin_brain_brain__get_interaction"
     ]
   }
 }

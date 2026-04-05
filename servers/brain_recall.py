@@ -91,6 +91,25 @@ class BrainRecallMixin:
             source=source, hours=hours, level=level,
             hook_name=hook_name, limit=limit)
 
+    def query_traces(self, scale: str = '', hours: int = 24,
+                     event_type: str = '', chain_id: str = '',
+                     limit: int = 100):
+        """Query trace events — the fractal learning loop data."""
+        if chain_id:
+            return {'chain': self._trace_dal.get_chain(chain_id)}
+        return {'events': self._trace_dal.get_recent(
+            scale=scale, hours=hours, event_type=event_type, limit=limit)}
+
+    def list_interactions(self):
+        """List all registered interactions with latest versions."""
+        return self._interaction_dal.list_all()
+
+    def get_interaction(self, name: str, version: int = 0):
+        """Get an interaction by name, optionally a specific version."""
+        if version:
+            return self._interaction_dal.get_version(name, version)
+        return self._interaction_dal.get_latest(name)
+
     def semantic_recall(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """
         Pure embedding-based search (brute-force cosine scan).

@@ -683,7 +683,15 @@ class TraceDAL:
                ref_type: str = '', ref_id: str = '', summary: str = '',
                metadata: Optional[Dict] = None, session_id: str = '',
                interaction_id: int = None) -> int:
-        """Append an event to a trace chain. Returns event id."""
+        """Append an event to a trace chain. Returns event id.
+
+        Validates against trace_contract before writing.
+        """
+        from .trace_contract import validate_trace_event
+        ok, error = validate_trace_event(scale, event_type, ref_type)
+        if not ok:
+            raise ValueError("Trace contract violation: %s" % error)
+
         now = datetime.now(timezone.utc).isoformat()
         meta_json = json.dumps(metadata) if metadata else None
         cursor = self.conn.execute(

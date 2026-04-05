@@ -170,6 +170,13 @@ Tom reads code but doesn't review every file. You are the sole maintainer of cod
 
 **DAL-first** — Use DAL classes for database access (`dal.py`, `dal_message_stream.py`). No raw SQL in hooks, surface code, or MCP handlers. If a DAL method doesn't exist for what you need, add one — don't work around it with inline queries.
 
+**Single-writer rule** — The daemon's main thread is the ONLY writer to brain.db and brain_logs.db. Background threads (encoding agent, idle maintenance) must route writes through the daemon via TCP dispatch, not write directly. This eliminates "database is locked" errors. Pattern:
+- Main thread hooks (recall, stop, pre-edit): write directly via `brain.method()`
+- Background threads: send writes via TCP to daemon (`dispatch_fn('remember', args)`)
+- Read operations: any thread can read (WAL mode allows concurrent readers)
+- The encoding agent's `brain` parameter is READ-ONLY. All writes go through `dispatch_fn`.
+- Trace writes from hooks use `brain._trace_dal.append()` (main thread). Trace writes from encoding use `dispatch_fn('trace_append', args)` (background thread).
+
 **Trace the full flow** — When adding a field: schema → migration → contract → DAL → remember/recall → dispatch → MCP schema → encoding agent prompt → SKILL.md docs. Missing any step creates a silent gap. When deprecating: reverse the same chain.
 
 **Run tests after every change** — `test_contract_sync.py` after API changes. Decode funnel after recall changes. Don't commit and move on without verification.

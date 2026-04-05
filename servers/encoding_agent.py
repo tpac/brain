@@ -27,10 +27,14 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
     """Run the encoding agent.
 
     Args:
-        brain: Brain instance (direct access, not via TCP)
-        dispatch_fn: function(cmd, args) for tool calls
+        brain: Brain instance (READ-ONLY — for recall, get_node, session_id)
+        dispatch_fn: function(cmd, args) for ALL writes (routes through daemon TCP)
         counter: Current stop counter value
         log_fn: Optional logging function
+
+    All writes (remember, revise, connect, set_config, trace_append) go through
+    dispatch_fn which routes to daemon via TCP. brain is read-only to avoid
+    DB lock contention with the main daemon thread.
 
     Returns:
         dict with encoding results summary
@@ -55,7 +59,7 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
     try:
         client = anthropic.Anthropic()
     except Exception as e:
-        brain._log_error('encoding_agent_api', e, 'Cannot create Anthropic client')
+        print('[encoding-agent] ERROR: Cannot create Anthropic client: %s' % e, flush=True)
         return {"error": str(e)}
     _step("api_client")
 
@@ -91,33 +95,42 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
     except Exception as _pe:
         print('[encoding-agent] WARNING: could not write prompt file: %s' % _pe, flush=True)
 
-    # Trace S1 encode: O and K reference the prompt file, not inline content
+    # Trace S1 encode: O and K via dispatch (routes through daemon for writes)
     try:
         _session_id = brain.session_id
         _enc_chain = 'encode-%s-%d' % (_session_id[:8], counter)
-        # O: pointer to the encoding prompt file + turn count
         _turn_count = len(messages) if messages else 0
-        brain._trace_dal.append(
-            chain_id=_enc_chain, scale='s1', event_type='O',
-            ref_type='encoding_prompt',
-            ref_id='/tmp/brain-encoding-prompt-%d.json' % counter,
-            summary='%d turns, %d chars context, interaction: encoding-agent-v3' % (
-                _turn_count, len(user_content)),
-            session_id=_session_id)
-        # K: which node IDs are in the catalog (extracted from messages)
+
+        # K: extract node IDs from recalled_raw in messages
         _node_ids_in_catalog = set()
         for m in (messages or []):
-            for nid in (m.get('recalled_node_ids') or []):
-                _node_ids_in_catalog.add(nid[:8] if nid else '')
-        brain._trace_dal.append(
-            chain_id=_enc_chain, scale='s1', event_type='K',
-            ref_type='node_catalog',
-            ref_id=','.join(sorted(_node_ids_in_catalog)[:20]),
-            summary='%d unique nodes in catalog from %d turns' % (
+            _raw = m.get('recalled_raw') or ''
+            if _raw:
+                try:
+                    for c in json.loads(_raw):
+                        _cid = c.get('id', '') if isinstance(c, dict) else ''
+                        if _cid:
+                            _node_ids_in_catalog.add(_cid[:8])
+                except (ValueError, TypeError):
+                    pass
+
+        # Write traces via dispatch (goes through daemon TCP for writes)
+        dispatch_fn('trace_append', {
+            'chain_id': _enc_chain, 'scale': 's1', 'event_type': 'O',
+            'ref_type': 'encoding_prompt',
+            'ref_id': '/tmp/brain-encoding-prompt-%d.json' % counter,
+            'summary': '%d turns, %d chars context, interaction: encoding-agent-v3' % (
+                _turn_count, len(user_content)),
+            'session_id': _session_id})
+        dispatch_fn('trace_append', {
+            'chain_id': _enc_chain, 'scale': 's1', 'event_type': 'K',
+            'ref_type': 'node_catalog',
+            'ref_id': ','.join(sorted(_node_ids_in_catalog)[:20]),
+            'summary': '%d unique nodes in catalog from %d turns' % (
                 len(_node_ids_in_catalog), _turn_count),
-            session_id=_session_id)
-    except Exception:
-        pass
+            'session_id': _session_id})
+    except Exception as _te:
+        print('[encoding-agent] TRACE ERROR: %s' % _te, flush=True)
 
     # Call Sonnet
     _log("calling Sonnet with %d tools, %d chars context..." % (len(tools), len(user_content)))
@@ -168,10 +181,10 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
 
         # Save encoding journal (session-scoped, cumulative)
         final_text = "".join(b.text for b in response.content if b.type == "text")
-        _save_journal(brain, session_id, counter, final_text)
+        _save_journal(brain, dispatch_fn, session_id, counter, final_text)
 
         # Extract and store session context for recall judge (Layer 2)
-        _save_session_context(brain, final_text)
+        _save_session_context(brain, dispatch_fn, final_text)
 
         # Surface questions to operator via signal queue
         if final_text and '?' in final_text:
@@ -189,16 +202,21 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
             except Exception as _e:
                 print('[encoding-agent] ERROR surfacing question to signal queue: %s' % _e, flush=True)
 
-        brain.save()
-        _step("saved")
+        # No brain.save() needed — writes go through daemon TCP, not enc_brain
+        _step("done")
         profile_str = " → ".join("%s:%dms" % (n, t) for n, t in profile)
         _log("done. %d rounds, %d actions. PROFILE: %s" % (rounds + 1, len(actions), profile_str))
-        return {"rounds": rounds + 1, "actions": len(actions), "action_details": actions, "profile": profile}
+        _write_actions = [a for a in actions if a['tool'] in (
+            'remember', 'remember_batch', 'revise', 'revise_batch',
+            'connect', 'record_divergence', 'learn_vocabulary')]
+        return {"rounds": rounds + 1, "actions": len(actions),
+                "write_actions": len(_write_actions),
+                "action_details": _write_actions, "profile": profile}
 
     except Exception as e:
         _step("FAILED")
         profile_str = " → ".join("%s:%dms" % (n, t) for n, t in profile)
-        brain._log_error('encoding_agent_sonnet', e, 'Sonnet API call failed. PROFILE: %s' % profile_str)
+        print('[encoding-agent] ERROR: Sonnet API call failed: %s PROFILE: %s' % (e, profile_str), flush=True)
         _log("FAILED: %s PROFILE: %s" % (e, profile_str))
         return {"error": str(e), "profile": profile}
 
@@ -233,7 +251,7 @@ def _gather_messages(brain, session_id):
                  "recalled_raw": r[5], "judge_output": r[6]}
                 for r in reversed(rows)]
     except Exception as e:
-        brain._log_error('encoding_agent_messages', e, 'Failed to fetch messages')
+        print('[encoding-agent] ERROR: Failed to fetch messages: %s' % e, flush=True)
         return []
 
 
@@ -349,7 +367,7 @@ def _build_user_content(brain, messages, counter, session_id):
     return content
 
 
-def _save_journal(brain, session_id, counter, final_text):
+def _save_journal(brain, dispatch_fn, session_id, counter, final_text):
     """Append encoding run to session-scoped journal."""
     from .pipeline_contract import ENCODING_AGENT
     journal_key = 'encoding_journal_%s' % session_id
@@ -363,21 +381,14 @@ def _save_journal(brain, session_id, counter, final_text):
     if len(updated) > max_chars:
         updated = updated[-max_chars:]
 
-    brain.set_config(journal_key, updated)
-
-    # v9.2: Dual-write to session_state (new home for session-scoped data)
-    try:
-        from .dal import SessionStateDAL
-        SessionStateDAL(brain.logs_conn).set(session_id, 'journal', updated)
-    except Exception:
-        pass  # brain_meta is the fallback
+    dispatch_fn('set_config', {'key': journal_key, 'value': updated})
 
     # Also keep old key for backward compat during transition
     from .pipeline_contract import PIPELINE as _PL
-    brain.set_config('encoding_agent_state', final_text[:_PL['encoding_state_compat']])
+    dispatch_fn('set_config', {'key': 'encoding_agent_state', 'value': final_text[:_PL['encoding_state_compat']]})
 
 
-def _save_session_context(brain, final_text):
+def _save_session_context(brain, dispatch_fn, final_text):
     """Extract SESSION_CONTEXT from encoder output and APPEND to session journey.
 
     Each encoding run adds its context to the running summary, building
@@ -404,15 +415,7 @@ def _save_session_context(brain, final_text):
                     pipe_idx = combined.find(' | ')
                     if pipe_idx >= 0 and pipe_idx < 50:
                         combined = combined[pipe_idx + 3:]
-                brain.set_config('session_context', combined)
-                # v9.2: Dual-write to session_state
-                try:
-                    from .dal import SessionStateDAL
-                    _sid = brain.session_id
-                    if _sid:
-                        SessionStateDAL(brain.logs_conn).set(_sid, 'context', combined)
-                except Exception:
-                    pass
+                dispatch_fn('set_config', {'key': 'session_context', 'value': combined})
                 return
     # No SESSION_CONTEXT line found — don't clear existing (previous run's context is still valid)
 

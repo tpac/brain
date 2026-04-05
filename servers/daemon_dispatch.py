@@ -545,17 +545,20 @@ def _handle_find_node_by_title(brain, args, graph_changes):
 
 
 def _handle_trace_append(brain, args, graph_changes):
-    """Append a trace event from any source."""
-    event_id = brain._trace_dal.append(
-        chain_id=args.get("chain_id", ""),
-        scale=args.get("scale", "raw"),
-        event_type=args.get("event_type", ""),
-        ref_type=args.get("ref_type", ""),
-        ref_id=args.get("ref_id", ""),
-        summary=args.get("summary", ""),
-        metadata=args.get("metadata"),
-        session_id=args.get("session_id", ""))
-    return {"ok": True, "result": {"event_id": event_id}}
+    """Append a trace event from any source. Validates against trace_contract."""
+    try:
+        event_id = brain._trace_dal.append(
+            chain_id=args.get("chain_id", ""),
+            scale=args.get("scale", "s0"),
+            event_type=args.get("event_type", ""),
+            ref_type=args.get("ref_type", ""),
+            ref_id=args.get("ref_id", ""),
+            summary=args.get("summary", ""),
+            metadata=args.get("metadata"),
+            session_id=args.get("session_id", ""))
+        return {"ok": True, "result": {"event_id": event_id}}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
 
 
 def _handle_query_logs(brain, args, graph_changes):
@@ -566,6 +569,32 @@ def _handle_query_logs(brain, args, graph_changes):
         level=args.get("level", "all"),
         hook_name=args.get("hook_name", ""),
         limit=args.get("limit", 50))
+    return {"ok": True, "result": result}
+
+
+def _handle_query_traces(brain, args, graph_changes):
+    """Query trace events: O/K/Δ/outcome at every scale."""
+    result = brain.query_traces(
+        scale=args.get("scale", ""),
+        hours=args.get("hours", 24),
+        event_type=args.get("event_type", ""),
+        chain_id=args.get("chain_id", ""),
+        limit=args.get("limit", 100))
+    return {"ok": True, "result": result}
+
+
+def _handle_list_interactions(brain, args, graph_changes):
+    """List all registered interactions."""
+    return {"ok": True, "result": brain.list_interactions()}
+
+
+def _handle_get_interaction(brain, args, graph_changes):
+    """Get a specific interaction by name and optional version."""
+    result = brain.get_interaction(
+        name=args.get("name", ""),
+        version=args.get("version", 0))
+    if not result:
+        return {"ok": False, "error": "Interaction not found: %s" % args.get("name", "")}
     return {"ok": True, "result": result}
 
 
@@ -788,6 +817,9 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "find_node_by_title":    CmdEntry(_handle_find_node_by_title,  is_write=False, marks_dirty=False),
     "filter_nodes":          CmdEntry(_handle_filter_nodes,        is_write=False, marks_dirty=False),
     "query_logs":            CmdEntry(_handle_query_logs,          is_write=False, marks_dirty=False),
+    "query_traces":          CmdEntry(_handle_query_traces,        is_write=False, marks_dirty=False),
+    "list_interactions":     CmdEntry(_handle_list_interactions,   is_write=False, marks_dirty=False),
+    "get_interaction":       CmdEntry(_handle_get_interaction,     is_write=False, marks_dirty=False),
     "trace_append":          CmdEntry(_handle_trace_append,        is_write=True,  marks_dirty=False),
     "get_node":              CmdEntry(_handle_get_node,             is_write=False, marks_dirty=False),
     "graph_expand":          CmdEntry(_handle_graph_expand,         is_write=False, marks_dirty=False),

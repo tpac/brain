@@ -425,8 +425,8 @@ def hook_recall(brain, args, graph_changes):
                     ref_type='additionalContext',
                     summary=(additional_context or '(no selection)')[:2000],
                     session_id=session_id)
-            except Exception:
-                pass
+            except Exception as _te:
+                brain._log_error('trace_s1_recall', _te, 'S1 recall trace capture')
 
             # Write judge result file for dashboard
             try:
@@ -611,56 +611,90 @@ def hook_post_response_track(brain, args, graph_changes):
                 encoding_status = "encoding skipped (previous still running)"
                 print("[brain-hooks] Encoding agent skipped — previous run still active", flush=True)
             else:
-                # Launch in background thread with isolated Brain
+                # Launch in background thread with read-only Brain + write-via-daemon
                 def _run_encoding():
                     import time as _t
                     _enc_t0 = _t.time()
+                    enc_brain = None
                     try:
                         print("[brain-hooks] ENCODING AGENT STARTING (counter=%d)" % counter, flush=True)
-                        # Create isolated Brain with its own SQLite connections
+                        # Read-only Brain for recall/get_node during encoding
                         from .brain import Brain
                         enc_brain = Brain(brain.db_path)
 
-                        from .encoding_agent import run_encoding
+                        # Write commands (remember, revise, connect) go through daemon TCP.
+                        # Read commands (recall, get_node, find_node_by_title) use local enc_brain.
+                        # This eliminates DB lock contention — all writes serialize through daemon.
                         from .daemon_dispatch import COMMAND_TABLE
+                        _WRITE_CMDS = {'remember', 'remember_batch', 'revise', 'revise_batch',
+                                       'connect', 'enrich', 'record_divergence', 'learn_vocabulary',
+                                       'trace_append'}
+
+                        def _daemon_write(cmd, cmd_args):
+                            """Send write command to daemon via TCP."""
+                            import socket as _sock
+                            msg = json.dumps({"cmd": cmd, "args": cmd_args}) + "\n"
+                            s = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
+                            s.settimeout(30)
+                            try:
+                                from .daemon_config import DAEMON_HOST, DAEMON_PORT
+                                s.connect((DAEMON_HOST, DAEMON_PORT))
+                                s.sendall(msg.encode())
+                                data = b""
+                                while True:
+                                    chunk = s.recv(65536)
+                                    if not chunk:
+                                        break
+                                    data += chunk
+                                    if b"\n" in data:
+                                        break
+                                return json.loads(data.decode().strip()) if data else {"ok": False, "error": "empty"}
+                            except Exception as e:
+                                return {"ok": False, "error": "daemon write: %s" % e}
+                            finally:
+                                s.close()
+
                         def dispatch(cmd, cmd_args):
-                            # Inject encoding_source for write operations
                             if cmd in ('remember', 'remember_batch', 'revise'):
                                 cmd_args.setdefault('encoding_source', 'encoder:sonnet')
+                            if cmd in _WRITE_CMDS:
+                                return _daemon_write(cmd, cmd_args)
+                            # Reads use local enc_brain (no lock contention)
                             entry = COMMAND_TABLE.get(cmd)
                             if entry:
                                 return entry.handler(enc_brain, cmd_args, [])
                             return {"ok": False, "error": "Unknown: %s" % cmd}
 
+                        from .encoding_agent import run_encoding
                         enc_result = run_encoding(enc_brain, dispatch, counter)
                         _enc_ms = int((_t.time() - _enc_t0) * 1000)
                         actions = enc_result.get('actions', 0) if isinstance(enc_result, dict) else 0
                         print("[brain-hooks] ENCODING AGENT DONE: %d actions in %dms" % (actions, _enc_ms), flush=True)
 
-                        # Scale 1 trace: encoding as O → K → Δ
+                        # Scale 1 trace: encoding Δ (via daemon to avoid lock)
                         try:
                             _enc_chain = 'encode-%s-%d' % (session_id[:8], counter)
                             _action_lines = []
                             for _a in (enc_result.get('action_details', []) if isinstance(enc_result, dict) else []):
                                 _action_lines.append('%s: %s' % (_a.get('tool', ''), _a.get('summary', '')))
-                            enc_brain._trace_dal.append(
-                                chain_id=_enc_chain, scale='s1', event_type='delta',
-                                ref_type='encoding_run', ref_id=str(counter),
-                                summary='%d actions in %dms:\n%s' % (
+                            _daemon_write('trace_append', {
+                                'chain_id': _enc_chain, 'scale': 's1', 'event_type': 'delta',
+                                'ref_type': 'encoding_run', 'ref_id': str(counter),
+                                'summary': '%d actions in %dms:\n%s' % (
                                     actions, _enc_ms, '\n'.join(_action_lines) if _action_lines else '(no actions)'),
-                                session_id=session_id)
-                        except Exception:
-                            pass
+                                'session_id': session_id})
+                        except Exception as _te:
+                            print('[brain-hooks] TRACE ERROR (encode delta): %s' % _te, flush=True)
 
-                        enc_brain.save()
-                        enc_brain.close()
                     except Exception as enc_e:
                         _enc_ms = int((_t.time() - _enc_t0) * 1000)
                         print("[brain-hooks] ENCODING AGENT FAILED after %dms: %s" % (_enc_ms, enc_e), flush=True)
-                        # Don't use brain._log_error here — it writes to the main
-                        # brain's logs_conn from a background thread, causing
-                        # "database is locked" on the main thread's log writes.
                     finally:
+                        if enc_brain:
+                            try:
+                                enc_brain.close()
+                            except Exception:
+                                pass
                         _encoding_lock.release()
 
                 threading.Thread(target=_run_encoding, daemon=True, name="encoding-agent").start()

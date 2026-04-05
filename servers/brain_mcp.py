@@ -344,6 +344,26 @@ def _build_tools():
          "hook_name": {"type": "string", "description": "Filter hook_errors by hook name (e.g. 'hook_recall', 'hook_pre_bash_safety')"},
          "limit": {"type": "integer", "description": "Max results per source (default 50, max 200)", "default": 50}}}},
 
+    # ── Traces & Interactions ──
+    {"name": "query_traces",
+     "description": "Query the fractal trace system — O/K/Δ/outcome events at every scale (s0-s4). Use to inspect what happened: what was observed, what knowledge was selected, what changed, what the outcome was. Filter by scale ('s0','s1'), event_type ('O','K','delta','outcome'), or retrieve a full chain by chain_id. Traces are the learning loop — higher scales read lower scales' traces.",
+     "inputSchema": {"type": "object", "properties": {
+         "scale": {"type": "string", "description": "Filter by scale: 's0' (exchange), 's1' (turn), 's2' (session), 's3' (sleep), 's4' (growth). Empty = all."},
+         "event_type": {"type": "string", "description": "Filter by type: 'O' (observation), 'K' (knowledge), 'delta' (changes), 'outcome'. Empty = all."},
+         "chain_id": {"type": "string", "description": "Get all events in a specific chain. Overrides other filters."},
+         "hours": {"type": "integer", "description": "Look back window in hours (default 24)", "default": 24},
+         "limit": {"type": "integer", "description": "Max results (default 100)", "default": 100}}}},
+
+    {"name": "list_interactions",
+     "description": "List all registered interactions — versioned templates for every learnable boundary in the system (judge, encoder, voice, boot, etc.). Shows name, latest version, and total versions.",
+     "inputSchema": {"type": "object", "properties": {}}},
+
+    {"name": "get_interaction",
+     "description": "Get a specific interaction template by name. Returns the template text, parameters, version, and who created it. Use to inspect or reference the current prompt/template for any system boundary.",
+     "inputSchema": {"type": "object", "required": ["name"], "properties": {
+         "name": {"type": "string", "description": "Interaction name (e.g. 'judge', 'encoding_agent', 'voice_surface', 'boot')"},
+         "version": {"type": "integer", "description": "Specific version (default: latest)", "default": 0}}}},
+
     # ── Introspection ──
     {"name": "consciousness",
      "description": "Get brain consciousness signals. Most signals migrated to signal queue — returns reminders only. Use queue_state for full signal view.",
