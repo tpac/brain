@@ -84,3 +84,93 @@ def run_in_background(name, brain_db_path, session_id, counter, lock,
             lock.release()
 
     threading.Thread(target=_thread_fn, daemon=True, name=name).start()
+
+
+def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
+                 user_content, tools, dispatch_fn, log_fn=None):
+    """Generic LLM tool loop — call model, process tool_use, dispatch, repeat.
+
+    Used by all scale encode agents. Scale-specific logic is in what
+    system_prompt, user_content, and tools contain — the loop is identical.
+
+    Args:
+        client: anthropic.Anthropic() instance
+        model: Model ID (e.g. 'claude-sonnet-4-6')
+        max_tokens: Max output tokens
+        max_rounds: Max tool-use rounds before stopping
+        system_prompt: System prompt string
+        user_content: User content string
+        tools: List of tool schema dicts
+        dispatch_fn: function(cmd, args) -> dict for tool execution
+        log_fn: Optional function(msg) for logging
+
+    Returns:
+        dict with: rounds, actions, write_actions, action_details, final_text, profile
+    """
+    def _log(msg):
+        if log_fn:
+            log_fn(msg)
+
+    WRITE_TOOLS = {
+        'remember', 'remember_batch', 'revise', 'revise_batch',
+        'connect', 'record_divergence', 'learn_vocabulary',
+    }
+
+    t0 = time.time()
+    profile = []
+
+    def _step(name):
+        profile.append((name, int((time.time() - t0) * 1000)))
+
+    api_messages = [{"role": "user", "content": user_content}]
+    response = client.messages.create(
+        model=model, max_tokens=max_tokens,
+        system=system_prompt, messages=api_messages, tools=tools)
+    _step("llm_r0")
+
+    actions = []
+    rounds = 0
+
+    for rounds in range(max_rounds):
+        tool_uses = [b for b in response.content if b.type == "tool_use"]
+        if not tool_uses:
+            break
+
+        tool_results = []
+        for tu in tool_uses:
+            result = dispatch_fn(tu.name, tu.input)
+            from servers import brain_mcp
+            if result.get("ok"):
+                result_text = brain_mcp._format_result(tu.name, result.get("result", {}))
+            else:
+                result_text = "ERROR: %s" % result.get("error", "Unknown")
+            tool_results.append({
+                "type": "tool_result", "tool_use_id": tu.id,
+                "content": result_text,
+            })
+            action_summary = tu.input.get("title", tu.input.get("query",
+                tu.input.get("node_id", "")))[:60]
+            actions.append({"tool": tu.name, "summary": action_summary})
+            _log("  [%s] %s" % (tu.name, action_summary))
+
+        api_messages.append({"role": "assistant", "content": [
+            {"type": b.type, **({"text": b.text} if b.type == "text" else
+                                {"id": b.id, "name": b.name, "input": b.input})}
+            for b in response.content]})
+        api_messages.append({"role": "user", "content": tool_results})
+        response = client.messages.create(
+            model=model, max_tokens=max_tokens,
+            system=system_prompt, messages=api_messages, tools=tools)
+        _step("llm_r%d" % (rounds + 1))
+
+    final_text = "".join(b.text for b in response.content if b.type == "text")
+    write_actions = [a for a in actions if a['tool'] in WRITE_TOOLS]
+
+    return {
+        "rounds": rounds + 1,
+        "actions": len(actions),
+        "write_actions": len(write_actions),
+        "action_details": write_actions,
+        "final_text": final_text[:2000] if final_text else '',
+        "profile": profile,
+    }

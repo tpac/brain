@@ -16,7 +16,7 @@ from servers.scales.dispatch import load_env
 
 def _get_recently_recalled(brain, session_id):
     """Get recently judge-selected node IDs from S1 traces (for dedup)."""
-    from servers.pipeline_contract import JUDGE
+    from servers.scales.s1.recall_contract import JUDGE
     lookback = JUDGE.get('recent_recalls_messages', 10)
     recent_k = brain._trace_dal.get_by_ref_type(
         'judge_selected', scale='s1', hours=24, limit=lookback)
@@ -44,7 +44,7 @@ def _call_judge(brain, candidates_data, user_message, session_context,
         judgment_dict has 'selected' list. Empty on failure.
     """
     import anthropic
-    from servers.pipeline_contract import build_judge_prompt
+    from servers.scales.s1.recall_contract import build_judge_prompt
 
     # Recently recalled (for dedup)
     recently_recalled = []
@@ -115,7 +115,7 @@ def _expand_and_enrich(brain, selected_ids, graph_changes):
     # Correction enrichment
     corrections = {}
     try:
-        from servers.pipeline_contract import correction_enrich
+        from servers.scales.s1.recall_contract import correction_enrich
         all_ids = set(selected_ids)
         for nb in graph_neighbors:
             if nb.get("id"):
@@ -218,7 +218,7 @@ def run_judge(brain, ctx, candidates_data, user_message, session_context,
     graph_neighbors, corrections = _expand_and_enrich(brain, selected_ids, graph_changes)
 
     # Format output
-    from servers.pipeline_contract import format_judge_output
+    from servers.scales.s1.recall_contract import format_judge_output
     additional_context = format_judge_output(selected, candidates_data, graph_neighbors,
                                              corrections=corrections)
 
