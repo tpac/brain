@@ -684,12 +684,9 @@ def hook_post_response_track(brain, args, graph_changes):
     except Exception as e:
         brain._log_error('read_recall_data', e, 'Stop hook')
 
-    # 2. Store exchange in message_stream (legacy — escalation system uses this)
+    # 2. Store exchange in message_stream (escalation only — content in traces)
     try:
-        brain.store_exchange(user_message, assistant_response, session_id,
-                            recalled_node_ids=recall_data['recalled_node_ids'],
-                            recalled_raw=recall_data['recalled_raw'],
-                            judge_output=recall_data['judge_output'])
+        brain.store_exchange(user_message, assistant_response, session_id)
     except Exception as e:
         brain._log_error('store_exchange', e, 'Stop hook')
 

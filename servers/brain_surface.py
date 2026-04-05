@@ -969,29 +969,22 @@ class BrainSurfaceMixin:
                        recalled_node_ids: Optional[str] = None,
                        recalled_raw: Optional[str] = None,
                        judge_output: Optional[str] = None) -> Dict[str, Any]:
-        """Store both messages to the conversation stream.
+        """Store exchange to message_stream (escalation only) — content lives in traces.
 
         Called by hook_post_response_track on every Stop event.
-
-        Args:
-            user_message: operator's raw message
-            assistant_response: assistant's response
-            session_id: current session ID
-            signal_type: 'decision', 'correction', 'insight', 'exploration', or None
-            recalled_node_ids: JSON string — judge-selected node IDs (what Claude saw)
-            recalled_raw: JSON string — all 25 candidates (debugging only)
-            judge_output: exact additionalContext string Claude received (for encoder)
+        Message_stream is now lightweight: short content for escalation display,
+        no recalled_raw or judge_output (those are in trace_events).
 
         Returns:
             Dict with user_id, assistant_id, signal_type.
         """
         from .dal_message_stream import MessageStreamDAL
         dal = MessageStreamDAL(self.logs_conn)
-        # Recall data attaches to the USER message (recall happened before response)
-        user_id = dal.store('user', user_message, session_id, signal_type=signal_type,
-                           recalled_node_ids=recalled_node_ids, recalled_raw=recalled_raw,
-                           judge_output=judge_output)
-        assistant_id = dal.store('assistant', assistant_response, session_id)
+        # Short content for escalation display — full content in S0 traces
+        user_id = dal.store('user', user_message[:200] if user_message else '',
+                           session_id, signal_type=signal_type)
+        assistant_id = dal.store('assistant', assistant_response[:200] if assistant_response else '',
+                                session_id)
         return {'user_id': user_id, 'assistant_id': assistant_id, 'signal_type': signal_type}
 
     def resolve_recent_pending(self, reason: str = 'encoded',
