@@ -201,18 +201,14 @@ def hook_recall(brain, args, graph_changes):
         # v8.8: Include vocab context — connectors surfaced separately
         # DEPRECATED 2026-04-01: vocab_context removed (vocab → concept migration)
 
-        # v8.9: Include recent messages for distiller context
+        # Recent messages for judge context — from traces
         recent_messages = []
         try:
-            msg_rows = brain.logs_conn.execute(
-                "SELECT role, content FROM message_stream WHERE session_id = ? "
-                "ORDER BY timestamp DESC LIMIT 5",
-                (session_id,)
-            ).fetchall()
-            recent_messages = [{"role": r[0], "content": (r[1] or "")[:_PL['recent_message_content']]}
-                               for r in reversed(msg_rows)]
+            turns = brain._trace_dal.get_session_turns(session_id, limit=5)
+            recent_messages = [{"role": t['role'], "content": (t['content'] or '')[:_PL['recent_message_content']]}
+                               for t in turns]
         except Exception as _e:
-            brain._log_error('judge_recent_messages', _e, 'fetching recent messages for judge')
+            brain._log_error('judge_recent_messages', _e, 'fetching recent messages from traces')
 
         # Session context from last encoding agent run (Layer 2 judge needs this)
         session_context = brain.session_context
@@ -297,19 +293,20 @@ def hook_recall(brain, args, graph_changes):
         import anthropic as _anthropic
         from .pipeline_contract import build_judge_prompt, format_judge_output, JUDGE
 
-        # Recently recalled (for deduplication)
+        # Recently recalled (for deduplication) — from S1 K traces
         recently_recalled = []
         try:
             from .pipeline_contract import JUDGE as _J
             _lookback = _J.get('recent_recalls_messages', 10)
-            _rows = brain.logs_conn.execute(
-                "SELECT recalled_node_ids FROM message_stream "
-                "WHERE recalled_node_ids IS NOT NULL AND role='user' "
-                "ORDER BY id DESC LIMIT ?", (_lookback,)).fetchall()
+            _recent_k = brain._trace_dal.get_by_ref_type(
+                'judge_selected', scale='s1', hours=24, limit=_lookback)
             _seen_ids = set()
-            for _r in _rows:
-                for _nid in _json.loads(_r[0]):
-                    _seen_ids.add(_nid)
+            for _evt in _recent_k:
+                try:
+                    for _nid in _json.loads(_evt.get('ref_id', '[]')):
+                        _seen_ids.add(_nid)
+                except (ValueError, TypeError):
+                    pass
             if _seen_ids:
                 for _nid in list(_seen_ids)[:20]:
                     _trow = brain.conn.execute(
