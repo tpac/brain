@@ -965,18 +965,11 @@ class BrainSurfaceMixin:
 
     def store_exchange(self, user_message: str, assistant_response: str,
                        session_id: str = '',
-                       signal_type: Optional[str] = None,
-                       recalled_node_ids: Optional[str] = None,
-                       recalled_raw: Optional[str] = None,
-                       judge_output: Optional[str] = None) -> Dict[str, Any]:
-        """Store exchange to message_stream (escalation only) — content lives in traces.
+                       signal_type: Optional[str] = None, **_kwargs) -> Dict[str, Any]:
+        """Store exchange to message_stream (escalation only).
 
-        Called by hook_post_response_track on every Stop event.
-        Message_stream is now lightweight: short content for escalation display,
-        no recalled_raw or judge_output (those are in trace_events).
-
-        Returns:
-            Dict with user_id, assistant_id, signal_type.
+        Content truncated to 200 chars for escalation display.
+        Full content lives in S0 trace_events.
         """
         from .dal_message_stream import MessageStreamDAL
         dal = MessageStreamDAL(self.logs_conn)

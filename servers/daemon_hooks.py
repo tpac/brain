@@ -27,8 +27,6 @@ _encoding_lock = threading.Lock()
 # ── Constants (canonical definitions in brain_voice.py) ──
 
 from servers.brain_voice import BrainVoice
-from .pipeline_contract import ENCODING_AGENT as _EA_CONTRACT
-_ENCODING_AGENT_TIMELINE_SNIPPET = _EA_CONTRACT['timeline_snippet_limit']
 
 # Backwards-compatible function aliases — delegate to BrainVoice static methods
 # format_recall_results used only by MCP tool output, not by hook path
@@ -474,49 +472,19 @@ def hook_recall(brain, args, graph_changes):
 
 
 def _read_recall_data(session_id):
-    """Read recall/judge data from tmp files written by the recall hook.
+    """Read recall_log_id from tmp file written by the recall hook.
 
-    Returns dict with: recalled_node_ids, recalled_raw, judge_output, recall_log_id.
-    All values are JSON strings or None.
+    Returns dict with recall_log_id (used for S1 trace chain cross-reference).
+    Content data (recalled_raw, judge_output) now lives in trace_events.
     """
-    result = {'recalled_node_ids': None, 'recalled_raw': None,
-              'judge_output': None, 'recall_log_id': None}
+    result = {'recall_log_id': None}
 
     candidates_path = '/tmp/brain-%s-recall-candidates.json' % session_id
     if not os.path.exists(candidates_path):
         return result
 
     with open(candidates_path) as f:
-        cdata = json.load(f)
-    candidates = cdata.get('candidates', [])
-    result['recall_log_id'] = cdata.get('recall_log_id')
-
-    if candidates:
-        result['recalled_raw'] = json.dumps([{
-            'id': c.get('id', ''), 'type': c.get('type', ''),
-            'title': c.get('title', ''),
-            'content': (c.get('content', '') or '')[:_ENCODING_AGENT_TIMELINE_SNIPPET],
-            'score': c.get('score', 0),
-        } for c in candidates])
-
-    # Judge-selected IDs
-    judge_sel_path = '/tmp/brain-%s-judge-selected.json' % session_id
-    if os.path.exists(judge_sel_path):
-        with open(judge_sel_path) as f:
-            judge_ids = json.load(f).get('selected_ids', [])
-        if judge_ids:
-            result['recalled_node_ids'] = json.dumps(judge_ids)
-
-    # Judge output (additionalContext)
-    if result['recall_log_id']:
-        judge_result_path = '/tmp/brain-judge-result-%s.json' % result['recall_log_id']
-        if os.path.exists(judge_result_path):
-            with open(judge_result_path) as f:
-                result['judge_output'] = json.load(f).get('judge_output')
-
-    # Fallback: if judge never ran, use all candidates
-    if not result['recalled_node_ids'] and not result['judge_output'] and candidates:
-        result['recalled_node_ids'] = json.dumps([c.get('id', '') for c in candidates])
+        result['recall_log_id'] = json.load(f).get('recall_log_id')
 
     return result
 
@@ -676,9 +644,8 @@ def hook_post_response_track(brain, args, graph_changes):
     user_message = args.get("prompt", "") or args.get("message", "")
     assistant_response = (args.get("last_assistant_message", "") or "")[:_PL['assistant_response_store']]
 
-    # 1. Read recall data from tmp files
-    recall_data = {'recalled_node_ids': None, 'recalled_raw': None,
-                   'judge_output': None, 'recall_log_id': None}
+    # 1. Read recall_log_id from tmp file (for trace cross-reference)
+    recall_data = {'recall_log_id': None}
     try:
         recall_data = _read_recall_data(session_id)
     except Exception as e:
