@@ -211,7 +211,9 @@ def run_encoding(brain, dispatch_fn, counter, log_fn=None):
             'connect', 'record_divergence', 'learn_vocabulary')]
         return {"rounds": rounds + 1, "actions": len(actions),
                 "write_actions": len(_write_actions),
-                "action_details": _write_actions, "profile": profile}
+                "action_details": _write_actions,
+                "final_text": final_text[:2000] if final_text else '',
+                "profile": profile}
 
     except Exception as e:
         _step("FAILED")

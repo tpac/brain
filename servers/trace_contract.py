@@ -64,18 +64,17 @@ REF_TYPES = {
     ("s0", "delta"):   ["assistant_message", "tool_result"],
     ("s0", "outcome"): ["correction", "follow_up"],
 
-    # Scale 1: turn integration (recall + encode paths)
-    ("s1", "O"):       ["recall",            # candidates with scores (recall path)
-                         "encoding_prompt"],   # what the encoder was given (encode path)
-    ("s1", "K"):       ["judge_selected",    # what the judge picked (recall path)
-                         "node_catalog"],      # which nodes available to encoder (encode path)
-    ("s1", "delta"):   ["additionalContext",  # what reached Anchor (recall path)
-                         "encoding_run"],      # what the encoder produced (encode path)
-
-    # Scale 1: turn integration — encode path (chain prefix: encode-)
-    # O = what the encoder was given, K = which nodes in catalog, delta = what it produced
-    # Encode O and K use same keys as recall — the contract unifies both paths
-
+    # Scale 1: turn integration
+    # Recall path (chain prefix: recall-): O=candidates, K=judge picks, delta=context sent to Anchor
+    # Encode path (chain prefix: encode-): O=prompt given, K=node catalog, delta=actions+reasoning
+    ("s1", "O"):       ["recall",            # candidates with scores
+                         "encoding_prompt"],   # what the encoder was given
+    ("s1", "K"):       ["judge_selected",    # what the judge picked
+                         "node_catalog"],      # which nodes available to encoder
+    ("s1", "delta"):   ["additionalContext",  # what reached Anchor
+                         "encoding_run"],      # what the encoder produced
+    ("s1", "outcome"): ["correction",         # Tom corrected something that was recalled
+                         "recall_hit"],        # node was recalled in a future turn
     # Scale 2-4: to be defined when built
 }
 

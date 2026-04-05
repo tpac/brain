@@ -410,6 +410,7 @@ def hook_recall(brain, args, graph_changes):
                     ref_type='recall', ref_id=str(recall_log_id or ''),
                     summary='query: %s\ncandidates:\n%s' % (
                         enriched[:300], '\n'.join(_cand_detail)),
+                    metadata={'source': 'hook', 'candidate_count': len(results)},
                     session_id=session_id)
                 # K: selected nodes + expanded neighbors (the knowledge provided)
                 brain._trace_dal.append(
@@ -465,239 +466,266 @@ def hook_recall(brain, args, graph_changes):
 
 
 
-def hook_post_response_track(brain, args, graph_changes):
-    """Stop event — store exchange + gate encoding agent.
+def _read_recall_data(session_id):
+    """Read recall/judge data from tmp files written by the recall hook.
 
-    1. store_exchange: persist conversation to message stream
-    2. encoding agent gating: set stop_agent_prompt every 5th stop
-    3. record_message: heartbeat counter
+    Returns dict with: recalled_node_ids, recalled_raw, judge_output, recall_log_id.
+    All values are JSON strings or None.
     """
-    user_message = args.get("prompt", "") or args.get("message", "")
+    result = {'recalled_node_ids': None, 'recalled_raw': None,
+              'judge_output': None, 'recall_log_id': None}
+
+    candidates_path = '/tmp/brain-%s-recall-candidates.json' % session_id
+    if not os.path.exists(candidates_path):
+        return result
+
+    with open(candidates_path) as f:
+        cdata = json.load(f)
+    candidates = cdata.get('candidates', [])
+    result['recall_log_id'] = cdata.get('recall_log_id')
+
+    if candidates:
+        result['recalled_raw'] = json.dumps([{
+            'id': c.get('id', ''), 'type': c.get('type', ''),
+            'title': c.get('title', ''),
+            'content': (c.get('content', '') or '')[:_ENCODING_AGENT_TIMELINE_SNIPPET],
+            'score': c.get('score', 0),
+        } for c in candidates])
+
+    # Judge-selected IDs
+    judge_sel_path = '/tmp/brain-%s-judge-selected.json' % session_id
+    if os.path.exists(judge_sel_path):
+        with open(judge_sel_path) as f:
+            judge_ids = json.load(f).get('selected_ids', [])
+        if judge_ids:
+            result['recalled_node_ids'] = json.dumps(judge_ids)
+
+    # Judge output (additionalContext)
+    if result['recall_log_id']:
+        judge_result_path = '/tmp/brain-judge-result-%s.json' % result['recall_log_id']
+        if os.path.exists(judge_result_path):
+            with open(judge_result_path) as f:
+                result['judge_output'] = json.load(f).get('judge_output')
+
+    # Fallback: if judge never ran, use all candidates
+    if not result['recalled_node_ids'] and not result['judge_output'] and candidates:
+        result['recalled_node_ids'] = json.dumps([c.get('id', '') for c in candidates])
+
+    return result
+
+
+def _hebbian_strengthen(brain, session_id):
+    """Strengthen co_accessed edges between judge-selected nodes.
+
+    Only nodes the Layer 2 judge selected get edges — meaningful co-activation.
+    """
+    judge_path = '/tmp/brain-%s-judge-selected.json' % session_id
+    if not os.path.exists(judge_path):
+        return
+
+    with open(judge_path) as f:
+        judge_ids = json.load(f).get('selected_ids', [])
+    if len(judge_ids) < 2:
+        return
+
+    # Resolve short IDs to full IDs
+    full_ids = []
+    for sid in judge_ids:
+        row = brain.conn.execute("SELECT id FROM nodes WHERE id LIKE ?", (sid + '%',)).fetchone()
+        if row:
+            full_ids.append(row[0])
+    if len(full_ids) < 2:
+        return
+
+    from .brain_constants import LEARNING_RATE
+    for i in range(len(full_ids)):
+        for j in range(i + 1, min(len(full_ids), i + 8)):
+            try:
+                brain.connect_typed(full_ids[i], full_ids[j],
+                                    relation='co_accessed', weight=LEARNING_RATE * 0.15,
+                                    edge_type='co_accessed', description='judge-selected')
+            except Exception as e:
+                brain._log_error('hebbian_edge', e, 'creating co_accessed edge')
+
+
+def _daemon_tcp_send(cmd, args):
+    """Send a command to the daemon via TCP. Used by background threads
+    that must not write to DB directly (single-writer rule)."""
+    import socket as _sock
+    port = 47200 + (os.getuid() % 100)
+    msg = json.dumps({"cmd": cmd, "args": args}) + "\n"
+    s = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
+    s.settimeout(30)
+    try:
+        s.connect(("127.0.0.1", port))
+        s.sendall(msg.encode())
+        data = b""
+        while True:
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+            if b"\n" in data:
+                break
+        return json.loads(data.decode().strip()) if data else {"ok": False, "error": "empty"}
+    except Exception as e:
+        return {"ok": False, "error": "daemon TCP: %s" % e}
+    finally:
+        s.close()
+
+
+def _make_encoding_dispatch(enc_brain):
+    """Create a dispatch function for the encoding agent.
+
+    Reads use local enc_brain (no lock contention).
+    Writes go through daemon TCP (single-writer rule).
+    """
+    from .daemon_dispatch import COMMAND_TABLE
+
+    _WRITE_CMDS = {'remember', 'remember_batch', 'revise', 'revise_batch',
+                   'connect', 'enrich', 'record_divergence', 'learn_vocabulary',
+                   'trace_append', 'set_config'}
+
+    def dispatch(cmd, cmd_args):
+        if cmd in ('remember', 'remember_batch', 'revise'):
+            cmd_args.setdefault('encoding_source', 'encoder:sonnet')
+        if cmd in _WRITE_CMDS:
+            return _daemon_tcp_send(cmd, cmd_args)
+        entry = COMMAND_TABLE.get(cmd)
+        if entry:
+            return entry.handler(enc_brain, cmd_args, [])
+        return {"ok": False, "error": "Unknown: %s" % cmd}
+
+    return dispatch
+
+
+def _run_encoding_agent(brain_db_path, session_id, counter):
+    """Run the encoding agent in a background thread.
+
+    Creates a read-only Brain instance. All writes go through daemon TCP.
+    Called by the encoding gate in hook_post_response_track.
+    """
+    import time as _t
+    _enc_t0 = _t.time()
+    enc_brain = None
+    try:
+        print("[brain-hooks] ENCODING AGENT STARTING (counter=%d)" % counter, flush=True)
+        from .brain import Brain
+        enc_brain = Brain(brain_db_path)
+
+        dispatch = _make_encoding_dispatch(enc_brain)
+
+        from .encoding_agent import run_encoding
+        enc_result = run_encoding(enc_brain, dispatch, counter)
+        _enc_ms = int((_t.time() - _enc_t0) * 1000)
+        actions = enc_result.get('actions', 0) if isinstance(enc_result, dict) else 0
+        print("[brain-hooks] ENCODING AGENT DONE: %d actions in %dms" % (actions, _enc_ms), flush=True)
+
+        # S1 encode delta trace (via daemon TCP)
+        try:
+            _enc_chain = 'encode-%s-%d' % (session_id[:8], counter)
+            action_lines = []
+            for a in (enc_result.get('action_details', []) if isinstance(enc_result, dict) else []):
+                action_lines.append('%s: %s' % (a.get('tool', ''), a.get('summary', '')))
+            _daemon_tcp_send('trace_append', {
+                'chain_id': _enc_chain, 'scale': 's1', 'event_type': 'delta',
+                'ref_type': 'encoding_run', 'ref_id': str(counter),
+                'summary': '%d actions in %dms:\n%s\n---\n%s' % (
+                    actions, _enc_ms,
+                    '\n'.join(action_lines) if action_lines else '(no actions)',
+                    (enc_result.get('final_text', '') or '')[:2000]),
+                'session_id': session_id})
+        except Exception as e:
+            print('[brain-hooks] TRACE ERROR (encode delta): %s' % e, flush=True)
+
+    except Exception as e:
+        _enc_ms = int((_t.time() - _enc_t0) * 1000)
+        print("[brain-hooks] ENCODING AGENT FAILED after %dms: %s" % (_enc_ms, e), flush=True)
+    finally:
+        if enc_brain:
+            try:
+                enc_brain.close()
+            except Exception:
+                pass
+        _encoding_lock.release()
+
+
+def hook_post_response_track(brain, args, graph_changes):
+    """Stop event — store exchange, write traces, Hebbian strengthening, gate encoder.
+
+    Flow:
+    1. Read recall data from tmp files (written by recall hook)
+    2. Store exchange in message_stream (legacy, for escalation)
+    3. Write S0 traces (K=user_message, delta=assistant_message)
+    4. Hebbian strengthen judge-selected co_accessed edges
+    5. Gate encoding agent (every 5th stop, background thread)
+    6. Record message heartbeat
+    """
     from .pipeline_contract import PIPELINE as _PL
+    session_id = brain.session_id
+    user_message = args.get("prompt", "") or args.get("message", "")
     assistant_response = (args.get("last_assistant_message", "") or "")[:_PL['assistant_response_store']]
 
-    # Read recall data: judge-selected IDs + judge output (additionalContext)
-    # recalled_node_ids = judge-selected only (what encoder should see)
-    # recalled_raw = all 25 candidates (debugging only)
-    # judge_output = exact additionalContext Claude received (enriched judge selections)
-    recalled_node_ids = None
-    recalled_raw = None
-    judge_output = None
+    # 1. Read recall data from tmp files
+    recall_data = {'recalled_node_ids': None, 'recalled_raw': None,
+                   'judge_output': None, 'recall_log_id': None}
     try:
-        import json as _json
-        session_id = brain.session_id
-
-        # Read raw candidates (for debugging — recalled_raw)
-        candidates_path = '/tmp/brain-%s-recall-candidates.json' % session_id
-        recall_log_id = None
-        candidates = []
-        if os.path.exists(candidates_path):
-            with open(candidates_path) as _cf:
-                cdata = _json.load(_cf)
-            candidates = cdata.get('candidates', [])
-            recall_log_id = cdata.get('recall_log_id')
-            if candidates:
-                recalled_raw = _json.dumps([{
-                    'id': c.get('id', ''), 'type': c.get('type', ''),
-                    'title': c.get('title', ''),
-                    'content': (c.get('content', '') or '')[:_ENCODING_AGENT_TIMELINE_SNIPPET],
-                    'score': c.get('score', 0),
-                } for c in candidates])
-
-        # Read judge-selected IDs (what actually reached Claude)
-        _judge_sel_path = '/tmp/brain-%s-judge-selected.json' % session_id
-        if os.path.exists(_judge_sel_path):
-            with open(_judge_sel_path) as _jf:
-                _jdata = _json.load(_jf)
-            _judge_ids = _jdata.get('selected_ids', [])
-            if _judge_ids:
-                recalled_node_ids = _json.dumps(_judge_ids)
-
-        # Read judge output (exact additionalContext) — for encoder
-        if recall_log_id:
-            _judge_result_path = '/tmp/brain-judge-result-%s.json' % recall_log_id
-            if os.path.exists(_judge_result_path):
-                with open(_judge_result_path) as _jrf:
-                    _jr_data = _json.load(_jrf)
-                judge_output = _jr_data.get('judge_output')
-
-        # Fallback: if judge never ran (no judge file at all), store all candidates.
-        # If judge ran and selected 0, recalled_node_ids stays empty — that's correct.
-        if not recalled_node_ids and not judge_output and candidates:
-            recalled_node_ids = _json.dumps([c.get('id', '') for c in candidates])
-
+        recall_data = _read_recall_data(session_id)
     except Exception as e:
-        brain._log_error('read_recall_data', e, 'Stop hook: reading recall/judge files')
+        brain._log_error('read_recall_data', e, 'Stop hook')
 
-    # Store conversation + recall data in message stream
+    # 2. Store exchange in message_stream (legacy — escalation system uses this)
     try:
-        if not session_id:
-            session_id = brain.session_id
         brain.store_exchange(user_message, assistant_response, session_id,
-                            recalled_node_ids=recalled_node_ids,
-                            recalled_raw=recalled_raw,
-                            judge_output=judge_output)
+                            recalled_node_ids=recall_data['recalled_node_ids'],
+                            recalled_raw=recall_data['recalled_raw'],
+                            judge_output=recall_data['judge_output'])
     except Exception as e:
-        brain._log_error('store_exchange', e, 'Stop hook: failed to store exchange')
+        brain._log_error('store_exchange', e, 'Stop hook')
 
-    # Scale 0 trace: O → K → Δ
-    # O = full context available, K = the message that triggered, Δ = the response
+    # 3. Write S0 traces
     try:
-        _stop_count = brain.get_config('stop_counter', '0') or '0'
-        _chain = 's0-%s-%s' % (session_id[:8], _stop_count)
+        stop_count = brain.get_config('stop_counter', '0') or '0'
+        chain = 's0-%s-%s' % (session_id[:8], stop_count)
+        recall_chain = ''
+        if recall_data['recall_log_id']:
+            recall_chain = 'recall-%s-%s' % (session_id[:8], recall_data['recall_log_id'])
         brain._trace_dal.append(
-            chain_id=_chain, scale='s0', event_type='K',
+            chain_id=chain, scale='s0', event_type='K',
             ref_type='user_message',
             summary=user_message[:2000] if user_message else '',
+            metadata={'recall_chain': recall_chain} if recall_chain else None,
             session_id=session_id)
         brain._trace_dal.append(
-            chain_id=_chain, scale='s0', event_type='delta',
+            chain_id=chain, scale='s0', event_type='delta',
             ref_type='assistant_message',
             summary=assistant_response[:2000] if assistant_response else '',
             session_id=session_id)
     except Exception as e:
-        brain._log_error('trace_scale0', e, 'Stop hook: trace capture')
+        brain._log_error('trace_s0', e, 'Stop hook')
 
-    # v10: Hebbian strengthening on JUDGE-SELECTED nodes only.
-    # Only nodes the Layer 2 judge selected get co_accessed edges.
-    # This is meaningful co-activation — two memories contributing to the same response.
-    # Previously: every top-25 candidate got edges (71K noise edges).
+    # 4. Hebbian strengthening
     try:
-        import json as _json
-        _judge_path = '/tmp/brain-%s-judge-selected.json' % session_id
-        if os.path.exists(_judge_path):
-            with open(_judge_path) as _jf:
-                _judge_data = _json.load(_jf)
-            _judge_ids = _judge_data.get('selected_ids', [])
-            if len(_judge_ids) >= 2:
-                # Resolve short IDs to full IDs
-                _full_ids = []
-                for _sid in _judge_ids:
-                    _row = brain.conn.execute(
-                        "SELECT id FROM nodes WHERE id LIKE ?", (_sid + '%',)).fetchone()
-                    if _row:
-                        _full_ids.append(_row[0])
-                if len(_full_ids) >= 2:
-                    # co_accessed edges — now meaningful (judge-selected only).
-                    # Old noise edges deleted 2026-04-02. Fresh start.
-                    # These participate in traversal — real Hebbian co-activation.
-                    from .brain_constants import LEARNING_RATE
-                    for i in range(len(_full_ids)):
-                        for j in range(i + 1, min(len(_full_ids), i + 8)):
-                            try:
-                                brain.connect_typed(
-                                    _full_ids[i], _full_ids[j],
-                                    relation='co_accessed',
-                                    weight=LEARNING_RATE * 0.15,
-                                    edge_type='co_accessed',
-                                    description='judge-selected')
-                            except Exception as _e:
-                                brain._log_error('hebbian_edge', _e, 'creating co_accessed edge')
+        _hebbian_strengthen(brain, session_id)
     except Exception as e:
-        brain._log_error('hebbian_judge_selected', e, 'Stop hook: Hebbian on judge-selected')
+        brain._log_error('hebbian_judge_selected', e, 'Stop hook')
 
-    # Encoding agent — fires every 5th stop via Sonnet API.
-    # Runs in BACKGROUND THREAD with its OWN Brain instance (own SQLite connection).
-    # Previous deadlock was from threads sharing brain.conn. Separate connections
-    # work fine under WAL — reads concurrent, writes serialize at DB level.
+    # 5. Encoding agent gate (every 5th stop)
     encoding_status = ""
     try:
         counter = int(brain.get_config('stop_counter', '0') or '0') + 1
         brain.set_config('stop_counter', str(counter))
-        position = counter % 5  # Fire encoding every 5th stop
+        position = counter % 5
 
         if position == 0:
             if not _encoding_lock.acquire(blocking=False):
                 encoding_status = "encoding skipped (previous still running)"
                 print("[brain-hooks] Encoding agent skipped — previous run still active", flush=True)
             else:
-                # Launch in background thread with read-only Brain + write-via-daemon
-                def _run_encoding():
-                    import time as _t
-                    _enc_t0 = _t.time()
-                    enc_brain = None
-                    try:
-                        print("[brain-hooks] ENCODING AGENT STARTING (counter=%d)" % counter, flush=True)
-                        # Read-only Brain for recall/get_node during encoding
-                        from .brain import Brain
-                        enc_brain = Brain(brain.db_path)
-
-                        # Write commands (remember, revise, connect) go through daemon TCP.
-                        # Read commands (recall, get_node, find_node_by_title) use local enc_brain.
-                        # This eliminates DB lock contention — all writes serialize through daemon.
-                        from .daemon_dispatch import COMMAND_TABLE
-                        _WRITE_CMDS = {'remember', 'remember_batch', 'revise', 'revise_batch',
-                                       'connect', 'enrich', 'record_divergence', 'learn_vocabulary',
-                                       'trace_append'}
-
-                        def _daemon_write(cmd, cmd_args):
-                            """Send write command to daemon via TCP."""
-                            import socket as _sock
-                            msg = json.dumps({"cmd": cmd, "args": cmd_args}) + "\n"
-                            s = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
-                            s.settimeout(30)
-                            try:
-                                from .daemon_config import DAEMON_HOST, DAEMON_PORT
-                                s.connect((DAEMON_HOST, DAEMON_PORT))
-                                s.sendall(msg.encode())
-                                data = b""
-                                while True:
-                                    chunk = s.recv(65536)
-                                    if not chunk:
-                                        break
-                                    data += chunk
-                                    if b"\n" in data:
-                                        break
-                                return json.loads(data.decode().strip()) if data else {"ok": False, "error": "empty"}
-                            except Exception as e:
-                                return {"ok": False, "error": "daemon write: %s" % e}
-                            finally:
-                                s.close()
-
-                        def dispatch(cmd, cmd_args):
-                            if cmd in ('remember', 'remember_batch', 'revise'):
-                                cmd_args.setdefault('encoding_source', 'encoder:sonnet')
-                            if cmd in _WRITE_CMDS:
-                                return _daemon_write(cmd, cmd_args)
-                            # Reads use local enc_brain (no lock contention)
-                            entry = COMMAND_TABLE.get(cmd)
-                            if entry:
-                                return entry.handler(enc_brain, cmd_args, [])
-                            return {"ok": False, "error": "Unknown: %s" % cmd}
-
-                        from .encoding_agent import run_encoding
-                        enc_result = run_encoding(enc_brain, dispatch, counter)
-                        _enc_ms = int((_t.time() - _enc_t0) * 1000)
-                        actions = enc_result.get('actions', 0) if isinstance(enc_result, dict) else 0
-                        print("[brain-hooks] ENCODING AGENT DONE: %d actions in %dms" % (actions, _enc_ms), flush=True)
-
-                        # Scale 1 trace: encoding Δ (via daemon to avoid lock)
-                        try:
-                            _enc_chain = 'encode-%s-%d' % (session_id[:8], counter)
-                            _action_lines = []
-                            for _a in (enc_result.get('action_details', []) if isinstance(enc_result, dict) else []):
-                                _action_lines.append('%s: %s' % (_a.get('tool', ''), _a.get('summary', '')))
-                            _daemon_write('trace_append', {
-                                'chain_id': _enc_chain, 'scale': 's1', 'event_type': 'delta',
-                                'ref_type': 'encoding_run', 'ref_id': str(counter),
-                                'summary': '%d actions in %dms:\n%s' % (
-                                    actions, _enc_ms, '\n'.join(_action_lines) if _action_lines else '(no actions)'),
-                                'session_id': session_id})
-                        except Exception as _te:
-                            print('[brain-hooks] TRACE ERROR (encode delta): %s' % _te, flush=True)
-
-                    except Exception as enc_e:
-                        _enc_ms = int((_t.time() - _enc_t0) * 1000)
-                        print("[brain-hooks] ENCODING AGENT FAILED after %dms: %s" % (_enc_ms, enc_e), flush=True)
-                    finally:
-                        if enc_brain:
-                            try:
-                                enc_brain.close()
-                            except Exception:
-                                pass
-                        _encoding_lock.release()
-
-                threading.Thread(target=_run_encoding, daemon=True, name="encoding-agent").start()
+                threading.Thread(
+                    target=_run_encoding_agent,
+                    args=(brain.db_path, session_id, counter),
+                    daemon=True, name="encoding-agent").start()
                 encoding_status = "encoding started (background)"
         else:
             encoding_status = "encoding %d/5" % position
@@ -705,6 +733,7 @@ def hook_post_response_track(brain, args, graph_changes):
         brain._log_error('encoding_agent_gate', e, 'Stop hook')
         encoding_status = "encoding error: %s" % str(e)[:50]
 
+    # 6. Heartbeat
     try:
         brain.record_message()
     except Exception as e:

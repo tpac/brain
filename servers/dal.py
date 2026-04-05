@@ -749,14 +749,102 @@ class TraceDAL:
             (session_id,)).fetchall()
         return [r[0] for r in rows]
 
-    def append_outcome(self, chain_id: str, ref_type: str, ref_id: str,
+    def append_outcome(self, chain_id: str, scale: str, ref_type: str, ref_id: str,
                        summary: str, session_id: str = '') -> int:
         """Append an outcome event to an existing chain. Called later when
         we learn what happened (correction, recall, revision)."""
         return self.append(
-            chain_id=chain_id, scale='outcome', event_type='outcome',
+            chain_id=chain_id, scale=scale, event_type='outcome',
             ref_type=ref_type, ref_id=ref_id, summary=summary,
             session_id=session_id)
+
+    def get_session_turns(self, session_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Get chronological turns for a session from S0 + S1 traces.
+
+        Returns same shape as encoding_agent._gather_messages():
+        [{role, content, signal_type, timestamp, judge_output, recalled_raw}]
+
+        Groups S0 K (user_message) + S0 delta (assistant_message) per chain,
+        cross-references S1 delta (additionalContext) via recall_chain in metadata.
+        """
+        # Get S0 events for this session, chronologically
+        rows = self.conn.execute(
+            "SELECT chain_id, event_type, ref_type, summary, metadata, created_at "
+            "FROM trace_events WHERE scale = 's0' AND session_id = ? "
+            "AND event_type IN ('K', 'delta') AND ref_type IN ('user_message', 'assistant_message') "
+            "ORDER BY created_at ASC",
+            (session_id,)).fetchall()
+
+        # Group by chain (each chain = one stop = user+assistant pair)
+        chains = {}
+        for r in rows:
+            chain_id = r[0]
+            if chain_id not in chains:
+                chains[chain_id] = {}
+            if r[2] == 'user_message':
+                meta = {}
+                try:
+                    meta = json.loads(r[4]) if r[4] else {}
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                chains[chain_id]['user'] = {
+                    'content': r[3] or '',
+                    'timestamp': r[5],
+                    'recall_chain': meta.get('recall_chain', ''),
+                }
+            elif r[2] == 'assistant_message':
+                chains[chain_id]['assistant'] = {
+                    'content': r[3] or '',
+                    'timestamp': r[5],
+                }
+
+        # Cross-reference S1 delta (additionalContext) for judge_output
+        recall_chains = set()
+        for data in chains.values():
+            rc = data.get('user', {}).get('recall_chain', '')
+            if rc:
+                recall_chains.add(rc)
+
+        judge_outputs = {}
+        if recall_chains:
+            placeholders = ','.join('?' for _ in recall_chains)
+            s1_rows = self.conn.execute(
+                "SELECT chain_id, summary FROM trace_events "
+                "WHERE scale = 's1' AND event_type = 'delta' AND ref_type = 'additionalContext' "
+                "AND chain_id IN (%s)" % placeholders,
+                list(recall_chains)).fetchall()
+            for r in s1_rows:
+                judge_outputs[r[0]] = r[1] or ''
+
+        # Build result in encoding_agent._gather_messages() shape
+        turns = []
+        for chain_id in sorted(chains.keys(), key=lambda c: chains[c].get('user', {}).get('timestamp', '')):
+            data = chains[chain_id]
+            if 'user' in data:
+                recall_chain = data['user'].get('recall_chain', '')
+                turns.append({
+                    'role': 'user',
+                    'content': data['user']['content'],
+                    'timestamp': data['user']['timestamp'],
+                    'signal': None,
+                    'judge_output': judge_outputs.get(recall_chain, ''),
+                    'recalled_raw': None,  # Not stored in S0 traces (available in S1 O)
+                })
+            if 'assistant' in data:
+                turns.append({
+                    'role': 'assistant',
+                    'content': data['assistant']['content'],
+                    'timestamp': data['assistant']['timestamp'],
+                    'signal': None,
+                    'judge_output': None,
+                    'recalled_raw': None,
+                })
+
+        # Apply limit (most recent turns)
+        if len(turns) > limit:
+            turns = turns[-limit:]
+
+        return turns
 
 
 class SessionStateDAL:
