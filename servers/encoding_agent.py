@@ -1,8 +1,11 @@
-"""Encoding Agent v3 — LLM-powered brain encoding via Sonnet API.
+"""Scale 1 Turn Encoder — LLM-powered brain encoding via Sonnet API.
 
-Called by the daemon's Stop hook on every 5th stop event.
-Gathers conversation timeline with pre-attached recall,
-calls Sonnet with brain tools, dispatches tool calls directly.
+Fractal scale: S1 (Turn integration, every 5th stop).
+Interaction: 'encoding_agent' in interactions table.
+
+Called by the daemon's Stop hook. Gathers conversation timeline
+with pre-attached recall, calls Sonnet with brain tools,
+dispatches tool calls through daemon TCP (single-writer rule).
 
 v3 changes from v2:
   - Timeline format with pre-attached recall per turn (not flat messages)

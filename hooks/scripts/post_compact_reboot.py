@@ -5,7 +5,9 @@ Thin client: sends hook_post_compact_reboot to daemon, falls back to direct Pyth
 import sys, os, json
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import daemon_available, daemon_call_raw, daemon_unavailable_error
+from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error
+
+hook_input = get_hook_input()
 
 def _format_output(result):
     """Extract merged output (both channels already merged via wrap_for_hook)."""
@@ -13,7 +15,7 @@ def _format_output(result):
 
 try:
     if daemon_available():
-        resp = daemon_call_raw("hook_post_compact_reboot", {}, timeout=10.0)
+        resp = daemon_call_raw("hook_post_compact_reboot", {"session_id": hook_input.get("session_id", "")}, timeout=10.0)
         if resp.get("ok"):
             result = resp.get("result", {})
             formatted = _format_output(result)

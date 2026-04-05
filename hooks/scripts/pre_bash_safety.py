@@ -44,7 +44,7 @@ if not is_destructive:
 brain_debug("bash: DESTRUCTIVE → %s" % command[:120])
 try:
     if daemon_available():
-        resp = daemon_call_raw("hook_pre_bash_safety", {"command": command}, timeout=7.0)
+        resp = daemon_call_raw("hook_pre_bash_safety", {"command": command, "session_id": hook_input.get("session_id", "")}, timeout=7.0)
         if resp.get("ok"):
             result = resp.get("result", {})
             if "json" in result:

@@ -30,7 +30,7 @@ if not any(re.search(pat, command, re.IGNORECASE) for pat in ENV_CHANGE_PATTERNS
 
 try:
     if daemon_available():
-        daemon_call_raw("hook_post_bash_host_check", {"command": command}, timeout=5.0)
+        daemon_call_raw("hook_post_bash_host_check", {"command": command, "session_id": hook_input.get("session_id", "")}, timeout=5.0)
     else:
         daemon_unavailable_error("post_bash_host_check")
 except Exception:
