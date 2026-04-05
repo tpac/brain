@@ -21,12 +21,11 @@ DB resolved automatically: `BRAIN_DB_DIR` env var → `$HOME/AgentsContext/brain
 UserPromptSubmit hook fires
   → pre-response-recall.sh → pre_response_recall.py (thin client)
     → daemon: hook_recall()
-      ├─ Layer 1: brain.recall() → 25 candidates (236ms)
-      │   └─ logs to recall_log (source, query, titles, snippets)
-      ├─ Layer 2: Haiku judge → selects 5-8 relevant nodes (3-5s)
+      ├─ Layer 1: brain.recall() → 25 candidates
+      ├─ Layer 2: scales/s1/recall.py:run_judge() → Haiku selects 5-8 nodes
       │   └─ writes /tmp/brain-judge-selected.json
-      │   └─ writes /tmp/brain-judge-result-{id}.json (for dashboard)
-      ├─ Layer 3: graph expansion from judge-selected seeds
+      │   └─ writes /tmp/brain-judge-result-{ref}.json (for dashboard)
+      ├─ Layer 3: graph expansion + correction enrichment
       └─ returns formatted additionalContext
     → thin client prints {"additionalContext": "Brain recalled N memories:..."}
   → Claude receives context and responds
@@ -35,14 +34,32 @@ UserPromptSubmit hook fires
 ### Encode pipeline (every 5th Stop)
 ```
 Stop hook fires
-  ├─ store_exchange() → message_stream (user msg + assistant msg + judge-selected IDs + judge_output)
+  ├─ store_exchange() → message_stream (escalation only)
+  ├─ S0 traces (user_message, assistant_message)
   ├─ Hebbian strengthening (co_accessed edges between judge-selected nodes)
-  └─ Every 5th stop → encoding agent (Sonnet, background thread)
-      ├─ Reads: message_stream messages + judge_output per turn
-      ├─ Node catalog: judge-surfaced nodes with full metadata, deduplicated
-      ├─ Timeline: conversation turns with node ID references
-      └─ Creates/revises/connects nodes (encoding_source='encoder:sonnet')
+  └─ Every 5th stop → scales/runner.py:run_in_background()
+      └─ scales/s1/encode.py:run_encoding() (Sonnet, background thread)
+          ├─ Reads: S0 traces (conversation turns via TraceDAL)
+          ├─ Node catalog: judge-surfaced nodes with full metadata, deduplicated
+          ├─ Timeline: conversation turns with node ID references
+          └─ Creates/revises/connects nodes (encoding_source='encoder:sonnet')
 ```
+
+### Scales Architecture
+```
+servers/scales/
+  dispatch.py         — TCP dispatch + dispatch factory (shared by all scales)
+  runner.py           — background thread lifecycle + generic LLM tool loop
+  s1/
+    recall.py         — S1R: judge call, graph expand, correction enrich, traces
+    recall_contract.py— S1R config, judge prompt, output formatting
+    encode.py         — S1E: gather messages, build prompt, LLM loop, journal
+    encode_contract.py— S1E config, node formatting, catalog building
+  s2/                 — (future: session encoder, copies s1/ pattern)
+```
+
+S0 hooks stay in `daemon_hooks.py` (they're observation points, not scale logic).
+Old files (`encoding_agent.py`, `judge_contract.py`, `encoding_contract.py`) are re-export shims.
 
 ### encoding_source convention
 Who created a node. Format: `category:process`.
@@ -104,9 +121,9 @@ Encoding and decoding (recall) are two halves of the same system. If you add a f
 
 **Z-weighted 4-group scoring** — `brain_recall.py` STEP 3.5. Title(1.0), blend(0.85), high_meta(0.70), other_meta(0.40). Top-2 averaged. Defined in `pipeline_contract.py` EMBEDDING_GROUPS.
 
-**Layer 2 judge** — runs inside `daemon_hooks.py` hook_recall(). Haiku selects relevant nodes from 25 candidates. Graph expansion (Layer 3) seeds from judge-selected nodes only. Stays silent on confirmations.
+**Layer 2 judge** — runs in `scales/s1/recall.py:run_judge()`, called from daemon_hooks.hook_recall(). Haiku selects relevant nodes from 25 candidates. Graph expansion + correction enrichment from judge-selected seeds. Stays silent on confirmations.
 
-**Precision** — DEPRECATED. `brain_precision.py` evaluation functions are dead code. recall_log table still used for pipeline logging (owned by LogsDAL). Judge + encoder coupling replaces regex/embedding evaluation.
+**Precision** — DELETED. `brain_precision.py` removed (2026-04-05). recall_log writes removed — traces are single source of truth. Precision metrics will be rebuilt from trace outcome events.
 
 ## Dashboard
 
@@ -126,9 +143,9 @@ Dashboard → reads from those same DBs + files → displays to operator
 
 **`brain_dashboard.db` is DEPRECATED.** It was a parallel logging pipe that diverged from reality. The dashboard now reads from the brain's own data — same tables the daemon uses.
 
-**Recall logging is inside `brain.recall()`.** Every recall — hook, MCP, internal — gets logged to `recall_log` with a `source` column. No caller needs to log separately. This was moved from the hook into the recall method itself to ensure single source of truth.
+**`recall_log` writes REMOVED (2026-04-05).** Traces (trace_events table) are the single source of truth for all recall events. The recall_log table still exists with historical data but no new rows are inserted. Dashboard recall display should migrate to reading from trace_events.
 
-**Judge data flows through tmp files.** The daemon writes `/tmp/brain-judge-result-{recall_log_id}.json` containing the exact Haiku prompt and the exact additionalContext sent to Claude. The dashboard reads these files passively.
+**Judge data flows through tmp files.** The daemon writes `/tmp/brain-judge-result-{recall_ref}.json` containing the exact Haiku prompt and the exact additionalContext sent to Claude. The dashboard reads these files passively.
 
 ## Fractal Trace System
 
