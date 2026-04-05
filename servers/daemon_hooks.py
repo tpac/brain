@@ -61,6 +61,244 @@ ENV_CHANGE_PATTERNS = [
 # ── Helpers ──
 
 
+def _load_env():
+    """Load .env file for API key. Shared by judge and encoding agent."""
+    _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+    if os.path.exists(_env_path):
+        with open(_env_path) as _ef:
+            for _eline in _ef:
+                _eline = _eline.strip()
+                if _eline and not _eline.startswith('#') and '=' in _eline:
+                    _ek, _ev = _eline.split('=', 1)
+                    os.environ.setdefault(_ek.strip(), _ev.strip())
+
+
+def _get_recently_recalled(brain, session_id):
+    """Get recently judge-selected node IDs from S1 traces (for dedup)."""
+    from .pipeline_contract import JUDGE as _J
+    _lookback = _J.get('recent_recalls_messages', 10)
+    _recent_k = brain._trace_dal.get_by_ref_type(
+        'judge_selected', scale='s1', hours=24, limit=_lookback)
+    _seen_ids = set()
+    for _evt in _recent_k:
+        try:
+            for _nid in json.loads(_evt.get('ref_id', '[]')):
+                _seen_ids.add(_nid)
+        except (ValueError, TypeError):
+            pass
+    recently_recalled = []
+    for _nid in list(_seen_ids)[:20]:
+        _trow = brain.conn.execute(
+            "SELECT title FROM nodes WHERE id LIKE ?", (_nid + '%',)).fetchone()
+        if _trow:
+            recently_recalled.append({"id": _nid, "title": _trow[0]})
+    return recently_recalled
+
+
+def _call_judge(brain, candidates_data, user_message, session_context, recent_messages,
+                session_id, result):
+    """Call Haiku judge to select relevant nodes from candidates.
+
+    Returns: (judgment_dict, judge_prompt, max_tokens, interaction_id)
+        judgment_dict has 'selected' list. Empty on failure.
+    """
+    import anthropic
+    from .pipeline_contract import build_judge_prompt
+
+    # Recently recalled (for dedup)
+    recently_recalled = []
+    try:
+        recently_recalled = _get_recently_recalled(brain, session_id)
+    except Exception as _e:
+        brain._log_error('judge_recently_recalled', _e, 'fetching recently recalled titles')
+
+    # Retrieval stats and intent from recall result
+    _retrieval_stats = result.get('_retrieval_stats') if isinstance(result, dict) else None
+    _intent = result.get('intent') if isinstance(result, dict) else None
+
+    # Build prompt — instructions from interactions table (learnable boundary)
+    _judge_interaction = brain.get_interaction('judge')
+    _judge_instructions = _judge_interaction.get('template', '') if _judge_interaction else ''
+    _judge_interaction_id = _judge_interaction.get('id') if _judge_interaction else None
+    judge_prompt, max_tokens = build_judge_prompt(
+        candidates_data, user_message,
+        session_context=session_context,
+        recent_messages=recent_messages,
+        recently_recalled=recently_recalled,
+        retrieval_stats=_retrieval_stats,
+        intent=_intent,
+        prompt_instructions=_judge_instructions or None)
+
+    # Call Haiku
+    _client = anthropic.Anthropic()
+    _api_resp = _client.messages.create(
+        model="claude-haiku-4-5",
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": judge_prompt}])
+    _raw = _api_resp.content[0].text.strip()
+
+    # Parse JSON
+    _json_str = _raw
+    if _json_str.startswith("```"):
+        _json_str = _json_str.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+    _start = _json_str.find("{")
+    _end = _json_str.rfind("}") + 1
+    if _start >= 0 and _end > _start:
+        judgment = json.loads(_json_str[_start:_end])
+    else:
+        judgment = {"selected": []}
+
+    return judgment, judge_prompt, max_tokens, _judge_interaction_id
+
+
+def _expand_and_enrich(brain, selected_ids, graph_changes):
+    """Layer 3 graph expansion + Layer 3.5 correction enrichment from judge seeds.
+
+    Returns: (graph_neighbors, corrections)
+    """
+    # Layer 3: Graph expansion
+    graph_neighbors = []
+    try:
+        from .daemon_dispatch import COMMAND_TABLE
+        expand_entry = COMMAND_TABLE.get("graph_expand")
+        if expand_entry:
+            expand_result = expand_entry.handler(brain, {
+                "node_ids": list(selected_ids),
+                "depth": 1, "limit_per_seed": 3,
+            }, graph_changes)
+            if expand_result.get("ok"):
+                graph_neighbors = expand_result.get("result", {}).get("neighbors", [])
+    except Exception as _ge:
+        brain._log_error('judge_graph_expand', _ge, 'Layer 3 expand failed')
+
+    # Layer 3.5: Correction enrichment
+    corrections = {}
+    try:
+        from .pipeline_contract import correction_enrich
+        _all_ids = set(selected_ids)
+        for nb in graph_neighbors:
+            if nb.get("id"):
+                _all_ids.add(nb["id"])
+        corrections = correction_enrich(_all_ids, brain.conn)
+    except Exception as _ce:
+        brain._log_error('correction_enrich', _ce, 'Layer 3.5 correction enrichment')
+
+    return graph_neighbors, corrections
+
+
+def _write_s1_recall_traces(brain, ctx, candidates_data, selected_ids, selected,
+                            graph_neighbors, additional_context, enriched, results,
+                            recall_ref, interaction_id, session_id):
+    """Write S1 recall traces: O (candidates), K (judge-selected), Δ (additionalContext)."""
+    _recall_chain = ctx.s1r_chain()
+
+    # O: candidates detail
+    _cand_detail = []
+    for c in candidates_data[:25]:
+        _cand_detail.append('%s|%s|%.2f|%s' % (
+            c.get('id', '')[:8], c.get('title', '')[:80],
+            c.get('score', 0), c.get('type', '')))
+
+    # K: selected detail
+    _sel_detail = []
+    for c in candidates_data:
+        if c.get('id', '')[:8] in selected_ids:
+            _sel_detail.append('%s|%s' % (c.get('id', '')[:8], c.get('title', '')))
+
+    # Expanded detail
+    _exp_detail = []
+    for nb in graph_neighbors[:10]:
+        _exp_detail.append('%s|%s|%s' % (
+            nb.get('id', '')[:8], nb.get('title', '')[:60], nb.get('relation', '')))
+
+    brain._trace_dal.append(
+        chain_id=_recall_chain, scale='s1', event_type='O',
+        ref_type='recall', ref_id=str(recall_ref or ''),
+        summary='%d candidates for: %s' % (len(results), enriched[:100]),
+        metadata={'source': 'hook', 'query': enriched[:500],
+                  'candidates': _cand_detail},
+        session_id=session_id)
+    brain._trace_dal.append(
+        chain_id=_recall_chain, scale='s1', event_type='K',
+        ref_type='judge_selected',
+        ref_id=json.dumps(list(selected_ids)),
+        summary='%d selected, %d expanded' % (len(selected), len(graph_neighbors)),
+        metadata={'selected': _sel_detail, 'expanded': _exp_detail},
+        session_id=session_id)
+    brain._trace_dal.append(
+        chain_id=_recall_chain, scale='s1', event_type='delta',
+        ref_type='additionalContext',
+        summary='%d nodes surfaced' % len(selected) if selected else '(no selection)',
+        metadata={'content': (additional_context or '')[:4000]},
+        interaction_id=interaction_id,
+        session_id=session_id)
+
+
+def _write_judge_result_file(recall_ref, judge_prompt, output, brain):
+    """Write judge result to tmp file for dashboard pickup."""
+    try:
+        _jr_path = "/tmp/brain-judge-result-%s.json" % recall_ref
+        with open(_jr_path, 'w') as _jrf:
+            json.dump({
+                "recall_ref": recall_ref,
+                "judge_prompt": judge_prompt,
+                "judge_output": output,
+            }, _jrf)
+    except Exception as _e:
+        brain._log_error('judge_result_write', _e, 'writing judge result file')
+
+
+def _run_judge(brain, ctx, candidates_data, user_message, session_context,
+               recent_messages, result, enriched, results, recall_ref,
+               session_id, graph_changes):
+    """Layer 2 Haiku judge — select relevant nodes, expand graph, write traces.
+
+    Returns: additional_context string or None.
+    """
+    _load_env()
+
+    # Call the judge
+    judgment, judge_prompt, max_tokens, interaction_id = _call_judge(
+        brain, candidates_data, user_message, session_context, recent_messages,
+        session_id, result)
+
+    selected = judgment.get("selected", [])
+    selected_ids = {s.get("id", "")[:8] for s in selected}
+
+    # Write judge-selected IDs for Hebbian + Stop hook
+    try:
+        _judge_path = "/tmp/brain-%s-judge-selected.json" % session_id
+        with open(_judge_path, 'w') as _jf:
+            json.dump({"selected_ids": list(selected_ids)}, _jf)
+    except Exception as _e:
+        brain._log_error('judge_selected_write', _e, 'writing judge-selected file')
+
+    if not selected:
+        _write_judge_result_file(recall_ref, judge_prompt, "(no selection)", brain)
+        return None
+
+    # Expand and enrich
+    graph_neighbors, corrections = _expand_and_enrich(brain, selected_ids, graph_changes)
+
+    # Format output
+    from .pipeline_contract import format_judge_output
+    additional_context = format_judge_output(selected, candidates_data, graph_neighbors,
+                                             corrections=corrections)
+
+    # Write traces
+    try:
+        _write_s1_recall_traces(brain, ctx, candidates_data, selected_ids, selected,
+                                graph_neighbors, additional_context, enriched, results,
+                                recall_ref, interaction_id, session_id)
+    except Exception as _te:
+        brain._log_error('trace_s1_recall', _te, 'S1 recall trace capture')
+
+    # Dashboard file
+    _write_judge_result_file(recall_ref, judge_prompt, additional_context, brain)
+
+    return additional_context
+
+
 
 
 
@@ -75,8 +313,15 @@ def hook_recall(brain, args, graph_changes):
     """Pre-response recall — surfaces brain context before Claude responds.
 
     Fires on UserPromptSubmit. Returns JSON with additionalContext.
-    The richest hook: vocab expansion, recall, segment boundaries, priming,
-    aspirations, hypotheses, tensions, instincts, pending messages, graph changes.
+
+    Flow:
+    1. Session setup + store user message
+    2. Recall candidates from brain
+    3. Segment boundary detection
+    4. Build candidates file for encoding agent
+    5. Priming check, gap logging, signal producers
+    6. Layer 2 judge (Haiku) → select → expand → format → trace
+    7. Return additionalContext or approve
     """
     user_message = args.get("prompt", "") or args.get("message", "")
     ctx = brain.get_or_create_session(args.get('session_id', ''))
@@ -141,10 +386,8 @@ def hook_recall(brain, args, graph_changes):
 
     results = result.get("results", [])
 
-    # recall_log_id comes from brain.recall() now — extract for precision lifecycle
-    recall_log_id = result.get('_recall_log_id')
-    if recall_log_id and not getattr(brain, '_logs_dal', None):
-        brain.set_config("last_recall_log_id", str(recall_log_id))
+    # recall_ref removed — use stop counter for tmp file naming and trace refs
+    recall_ref = '%s-%s' % (session_id[:8], _current_stop)
 
     # Segment boundary detection
     segment_note = None
@@ -169,7 +412,6 @@ def hook_recall(brain, args, graph_changes):
     try:
         from .pipeline_contract import CANDIDATES_FILE
         candidates_path = '/tmp/brain-{}-recall-candidates.json'.format(session_id)
-        import json as _json
         content_limit = CANDIDATES_FILE['content_limit']
         candidates_data = []
         for r in results[:CANDIDATES_FILE['max_candidates']]:
@@ -212,14 +454,14 @@ def hook_recall(brain, args, graph_changes):
         session_context = brain.session_context
 
         with open(candidates_path, 'w') as f:
-            _json.dump({
+            json.dump({
                 "user_message": user_message,
                 "session_context": session_context,
                 "candidates": candidates_data,
                 "segment_note": segment_note,
                 "gap": gap.get("query") if gap else None,
                 "recent_messages": recent_messages,
-                "recall_log_id": recall_log_id,
+                "recall_ref": recall_ref,
             }, f, default=str)
     except Exception as e:
         brain._log_error('recall_candidates_write', e, 'Failed to write candidates file')
@@ -276,191 +518,13 @@ def hook_recall(brain, args, graph_changes):
     # ── Layer 2: Haiku judge (runs in daemon — no subprocess timeout risk) ──
     additional_context = None
     try:
-        # Load .env for API key (same as encoding agent)
-        _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
-        if os.path.exists(_env_path):
-            with open(_env_path) as _ef:
-                for _eline in _ef:
-                    _eline = _eline.strip()
-                    if _eline and not _eline.startswith('#') and '=' in _eline:
-                        _ek, _ev = _eline.split('=', 1)
-                        os.environ.setdefault(_ek.strip(), _ev.strip())
-
-        import anthropic as _anthropic
-        from .pipeline_contract import build_judge_prompt, format_judge_output, JUDGE
-
-        # Recently recalled (for deduplication) — from S1 K traces
-        recently_recalled = []
-        try:
-            from .pipeline_contract import JUDGE as _J
-            _lookback = _J.get('recent_recalls_messages', 10)
-            _recent_k = brain._trace_dal.get_by_ref_type(
-                'judge_selected', scale='s1', hours=24, limit=_lookback)
-            _seen_ids = set()
-            for _evt in _recent_k:
-                try:
-                    for _nid in _json.loads(_evt.get('ref_id', '[]')):
-                        _seen_ids.add(_nid)
-                except (ValueError, TypeError):
-                    pass
-            if _seen_ids:
-                for _nid in list(_seen_ids)[:20]:
-                    _trow = brain.conn.execute(
-                        "SELECT title FROM nodes WHERE id LIKE ?", (_nid + '%',)).fetchone()
-                    if _trow:
-                        recently_recalled.append({"id": _nid, "title": _trow[0]})
-        except Exception as _e:
-            brain._log_error('judge_recently_recalled', _e, 'fetching recently recalled titles')
-
-        # v9: Extract retrieval stats and intent for judge context
-        _retrieval_stats = result.get('_retrieval_stats') if isinstance(result, dict) else None
-        _intent = result.get('intent') if isinstance(result, dict) else None
-
-        # Build judge prompt — instructions from interactions table (learnable boundary)
-        _judge_interaction = brain.get_interaction('judge')
-        _judge_instructions = _judge_interaction.get('template', '') if _judge_interaction else ''
-        _judge_interaction_id = _judge_interaction.get('id') if _judge_interaction else None
-        judge_prompt, max_tokens = build_judge_prompt(
-            candidates_data, user_message,
+        additional_context = _run_judge(
+            brain, ctx, candidates_data, user_message,
             session_context=brain.session_context,
             recent_messages=recent_messages if 'recent_messages' in dir() else [],
-            recently_recalled=recently_recalled,
-            retrieval_stats=_retrieval_stats,
-            intent=_intent,
-            prompt_instructions=_judge_instructions or None)
-
-        # Call Haiku (persistent client — no import overhead)
-        _client = _anthropic.Anthropic()
-        _api_resp = _client.messages.create(
-            model="claude-haiku-4-5",
-            max_tokens=max_tokens,
-            messages=[{"role": "user", "content": judge_prompt}])
-        _raw = _api_resp.content[0].text.strip()
-
-        # Parse JSON
-        _json_str = _raw
-        if _json_str.startswith("```"):
-            _json_str = _json_str.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-        _start = _json_str.find("{")
-        _end = _json_str.rfind("}") + 1
-        if _start >= 0 and _end > _start:
-            judgment = _json.loads(_json_str[_start:_end])
-        else:
-            judgment = {"selected": []}
-
-        selected = judgment.get("selected", [])
-        selected_ids = {s.get("id", "")[:8] for s in selected}
-
-        # Write judge-selected IDs for Hebbian + Stop hook
-        try:
-            _judge_path = "/tmp/brain-%s-judge-selected.json" % session_id
-            with open(_judge_path, 'w') as _jf:
-                _json.dump({"selected_ids": list(selected_ids)}, _jf)
-        except Exception as _e:
-            brain._log_error('judge_selected_write', _e, 'writing judge-selected file')
-
-        if selected:
-            # Layer 3: Graph expansion from judge-selected seeds
-            graph_neighbors = []
-            try:
-                from .daemon_dispatch import COMMAND_TABLE
-                expand_entry = COMMAND_TABLE.get("graph_expand")
-                if expand_entry:
-                    expand_result = expand_entry.handler(brain, {
-                        "node_ids": list(selected_ids),
-                        "depth": 1, "limit_per_seed": 3,
-                    }, graph_changes)
-                    if expand_result.get("ok"):
-                        graph_neighbors = expand_result.get("result", {}).get("neighbors", [])
-            except Exception as _ge:
-                brain._log_error('judge_graph_expand', _ge, 'Layer 3 expand failed')
-
-            # Layer 3.5: Correction enrichment — follow correction chains
-            corrections = {}
-            try:
-                from .pipeline_contract import correction_enrich
-                _all_ids = set(selected_ids)
-                for nb in graph_neighbors:
-                    if nb.get("id"):
-                        _all_ids.add(nb["id"])
-                corrections = correction_enrich(_all_ids, brain.conn)
-            except Exception as _ce:
-                brain._log_error('correction_enrich', _ce, 'Layer 3.5 correction enrichment')
-
-            additional_context = format_judge_output(selected, candidates_data, graph_neighbors,
-                                                     corrections=corrections)
-
-            # Scale 1 trace: recall → judge → surface
-            try:
-                _recall_chain = ctx.s1r_chain()
-                # Build candidate detail: id, title, score, type
-                _cand_detail = []
-                for c in candidates_data[:25]:
-                    _cand_detail.append('%s|%s|%.2f|%s' % (
-                        c.get('id', '')[:8], c.get('title', '')[:80],
-                        c.get('score', 0), c.get('type', '')))
-                # Build selected detail from candidates using selected_ids
-                _sel_detail = []
-                for c in candidates_data:
-                    if c.get('id', '')[:8] in selected_ids:
-                        _sel_detail.append('%s|%s' % (c.get('id', '')[:8], c.get('title', '')))
-                # Build expanded detail
-                _exp_detail = []
-                for nb in graph_neighbors[:10]:
-                    _exp_detail.append('%s|%s|%s' % (
-                        nb.get('id', '')[:8], nb.get('title', '')[:60], nb.get('relation', '')))
-
-                # O: summary for display, metadata for substance
-                brain._trace_dal.append(
-                    chain_id=_recall_chain, scale='s1', event_type='O',
-                    ref_type='recall', ref_id=str(recall_log_id or ''),
-                    summary='%d candidates for: %s' % (len(results), enriched[:100]),
-                    metadata={'source': 'hook', 'query': enriched[:500],
-                              'candidates': _cand_detail},
-                    session_id=session_id)
-                # K: summary for display, metadata for substance
-                brain._trace_dal.append(
-                    chain_id=_recall_chain, scale='s1', event_type='K',
-                    ref_type='judge_selected',
-                    ref_id=_json.dumps(list(selected_ids)),
-                    summary='%d selected, %d expanded' % (len(selected), len(graph_neighbors)),
-                    metadata={'selected': _sel_detail, 'expanded': _exp_detail},
-                    session_id=session_id)
-                # Δ: summary short, full additionalContext in metadata
-                brain._trace_dal.append(
-                    chain_id=_recall_chain, scale='s1', event_type='delta',
-                    ref_type='additionalContext',
-                    summary='%d nodes surfaced' % len(selected) if selected else '(no selection)',
-                    metadata={'content': (additional_context or '')[:4000]},
-                    interaction_id=_judge_interaction_id,
-                    session_id=session_id)
-            except Exception as _te:
-                brain._log_error('trace_s1_recall', _te, 'S1 recall trace capture')
-
-            # Write judge result file for dashboard
-            try:
-                _jr_path = "/tmp/brain-judge-result-%s.json" % recall_log_id
-                with open(_jr_path, 'w') as _jrf:
-                    _json.dump({
-                        "recall_log_id": recall_log_id,
-                        "judge_prompt": judge_prompt,
-                        "judge_output": additional_context,
-                    }, _jrf)
-            except Exception as _e:
-                brain._log_error('judge_result_write', _e, 'writing judge result file (success)')
-        else:
-            # Judge selected nothing — write empty result for dashboard
-            try:
-                _jr_path = "/tmp/brain-judge-result-%s.json" % recall_log_id
-                with open(_jr_path, 'w') as _jrf:
-                    _json.dump({
-                        "recall_log_id": recall_log_id,
-                        "judge_prompt": judge_prompt,
-                        "judge_output": "(no selection)",
-                    }, _jrf)
-            except Exception as _e:
-                brain._log_error('judge_result_write', _e, 'writing judge result file (no selection)')
-
+            result=result, enriched=enriched, results=results,
+            recall_ref=recall_ref, session_id=session_id,
+            graph_changes=graph_changes)
     except Exception as _judge_err:
         brain._log_error('daemon_judge', _judge_err,
                          'Layer 2 judge failed in daemon (query=%s)' % user_message[:100])
@@ -475,19 +539,19 @@ def hook_recall(brain, args, graph_changes):
 
 
 def _read_recall_data(session_id):
-    """Read recall_log_id from tmp file written by the recall hook.
+    """Read recall_ref from tmp file written by the recall hook.
 
-    Returns dict with recall_log_id (used for S1 trace chain cross-reference).
+    Returns dict with recall_ref (used for S1 trace chain cross-reference).
     Content data (recalled_raw, judge_output) now lives in trace_events.
     """
-    result = {'recall_log_id': None}
+    result = {'recall_ref': None}
 
     candidates_path = '/tmp/brain-%s-recall-candidates.json' % session_id
     if not os.path.exists(candidates_path):
         return result
 
     with open(candidates_path) as f:
-        result['recall_log_id'] = json.load(f).get('recall_log_id')
+        result['recall_ref'] = json.load(f).get('recall_ref')
 
     return result
 
@@ -594,7 +658,7 @@ def _run_encoding_agent(brain_db_path, session_id, counter):
         dispatch = _make_encoding_dispatch(enc_brain)
 
         from .encoding_agent import run_encoding
-        enc_result = run_encoding(enc_brain, dispatch, counter, session_id=session_id)
+        enc_result = run_encoding(enc_brain, dispatch, counter, session_id)
         _enc_ms = int((_t.time() - _enc_t0) * 1000)
         actions = enc_result.get('actions', 0) if isinstance(enc_result, dict) else 0
         print("[brain-hooks] ENCODING AGENT DONE: %d actions in %dms" % (actions, _enc_ms), flush=True)
@@ -647,8 +711,8 @@ def hook_post_response_track(brain, args, graph_changes):
     user_message = args.get("prompt", "") or args.get("message", "")
     assistant_response = (args.get("last_assistant_message", "") or "")[:_PL['assistant_response_store']]
 
-    # 1. Read recall_log_id from tmp file (for trace cross-reference)
-    recall_data = {'recall_log_id': None}
+    # 1. Read recall_ref from tmp file (for trace cross-reference)
+    recall_data = {'recall_ref': None}
     try:
         recall_data = _read_recall_data(session_id)
     except Exception as e:
@@ -662,7 +726,7 @@ def hook_post_response_track(brain, args, graph_changes):
 
     # 3. Write S0 traces (using SessionContext for chain IDs)
     try:
-        recall_chain = ctx.s1r_chain() if recall_data['recall_log_id'] else ''
+        recall_chain = ctx.s1r_chain() if recall_data['recall_ref'] else ''
         brain._trace_dal.append(
             chain_id=ctx.s0_chain(), scale='s0', event_type='K',
             ref_type='user_message',

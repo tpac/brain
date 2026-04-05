@@ -430,15 +430,7 @@ class BrainRecallMixin:
         # v4: Auto-instrument (skipped when called from recall
         # or hooks — they log via the precision module instead)
         returned_ids = [n['id'] for n in page]
-        # DEPRECATED: recall_log writes. Data now in S1 trace_events.
-        # recall_log_id still used for tmp file paths (judge result files).
-        # TODO: replace with stop counter from SessionContext.
-        recall_log_id = None
-        if not _skip_log:
-            try:
-                recall_log_id = self._log_recall(session_id, query, returned_ids)
-            except Exception as _e:
-                pass  # Non-critical — traces are the source of truth now
+        # recall_log writes REMOVED 2026-04-05 — S1 traces capture all recall data.
 
         # v6: Attach reasoning chains when intent is reasoning_chain
         reasoning_chains = []
@@ -507,24 +499,8 @@ class BrainRecallMixin:
                 'warning': 'Recall is keyword-only. Semantic understanding disabled.',
             }
             print(f'[brain] WARNING: keyword-only recall (embedder not ready)', file=sys.stderr)
-            # Log degraded recall to recall_log
-            try:
-                _kw_results = result.get('results', [])
-                _sid = session_id or self.session_id
-                _logs_dal = LogsDAL(self.logs_conn)
-                from .pipeline_contract import PIPELINE as _PL
-                _log_id = _logs_dal.insert_recall_log(
-                    session_id=_sid, query=query[:_PL['recall_log_query']],
-                    returned_ids=json.dumps([r.get("id") for r in _kw_results]),
-                    returned_count=len(_kw_results), embeddings_used=0,
-                    recalled_titles=json.dumps({r.get("id"): r.get("title", "")[:_PL['recall_log_title']] for r in _kw_results}),
-                    recalled_snippets=json.dumps({r.get("id"): (r.get("content") or "")[:_PL['recall_log_snippet']] for r in _kw_results}),
-                    created_at=datetime.now(__import__('datetime').timezone.utc).isoformat(),
-                    source=source)
-                result['_recall_log_id'] = str(_log_id) if _log_id else None
-            except Exception as _log_err:
-                self._log_error("recall_log_write", _log_err,
-                                "Failed to log degraded recall (source=%s)" % source)
+            # recall_log writes REMOVED 2026-04-05 — S1 traces capture all recall data.
+            # _recall_log_id no longer returned (consumers use stop counter instead).
             return result
 
         # ── PRIMARY PATH: Embeddings-first ──
@@ -1048,35 +1024,14 @@ class BrainRecallMixin:
 
         # STEP 9: Log recall to recall_log (single source of truth)
         recall_ms = (time.time() - t0) * 1000
-        recall_log_id = None
-        try:
-            from .pipeline_contract import PIPELINE as _PL
-            _sid = session_id or self.session_id
-            _titles = {r.get("id"): r.get("title", "")[:_PL['recall_log_title']]
-                       for r in final_results}
-            _snippets = {r.get("id"): (r.get("content") or "")[:_PL['recall_log_snippet']]
-                         for r in final_results}
-            _logs_dal = LogsDAL(self.logs_conn)
-            recall_log_id = _logs_dal.insert_recall_log(
-                session_id=_sid,
-                query=query[:_PL['recall_log_query']],
-                returned_ids=json.dumps([r.get("id") for r in final_results]),
-                returned_count=len(final_results),
-                embeddings_used=1,
-                recalled_titles=json.dumps(_titles),
-                recalled_snippets=json.dumps(_snippets),
-                created_at=datetime.now(__import__('datetime').timezone.utc).isoformat(),
-                source=source)
-        except Exception as _log_err:
-            # LOUD failure — log to error table, don't swallow
-            self._log_error("recall_log_write", _log_err,
-                            "Failed to log recall (source=%s, query=%s)" % (source, query[:100]))
+        # recall_log writes REMOVED 2026-04-05 — S1 traces capture all recall data.
+        # Previously inserted into recall_log here. Traces (O/K/Δ) in daemon_hooks
+        # are the single source of truth for recall events.
 
         # Build result
         result = {
             'results': final_results,
             'vocab_context': vocab_context,  # v8.8: vocab nodes as connectors, not results
-            '_recall_log_id': str(recall_log_id) if recall_log_id else None,
             'intent': intent,
             '_recall_mode': 'embeddings_first',
             '_embedding_stats': {

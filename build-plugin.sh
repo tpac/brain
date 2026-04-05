@@ -47,6 +47,8 @@ FILES=(
   servers/brain_mcp.py
   servers/contract.py
   servers/pipeline_contract.py
+  servers/judge_contract.py
+  servers/encoding_contract.py
   servers/encoding_agent.py
   servers/dal_message_stream.py
   servers/metrics.py

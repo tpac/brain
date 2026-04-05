@@ -82,12 +82,31 @@ class BrainVoice:
     @staticmethod
     def format_node(node, lines):
         """Standard node display. Used by recall, consolidation, MCP.
-        Reads formatting from pipeline_contract.
+        Reads formatting from pipeline_contract. Shows enrichment data
+        (corrections, situation, edges) when present from _enrich_recall_results.
         """
         from .pipeline_contract import format_node_header, format_neighbor_d1
 
         lines.append(format_node_header(node))
         lines.append(node.get("content", ""))
+
+        # Situation — when is this knowledge relevant
+        situation = node.get("situation", "")
+        if situation:
+            lines.append("  Situation: %s" % situation[:200])
+
+        # Correction chains — was this corrected or does it correct another
+        for corr in node.get("_corrections", []):
+            if corr.get("direction") == "corrected_by":
+                lines.append("  \u26a0 Updated by: \"%s\" (%s)" % (corr["title"][:50], corr["id"]))
+            elif corr.get("direction") == "corrects":
+                lines.append("  Corrects: \"%s\" (%s)" % (corr["title"][:50], corr["id"]))
+
+        # Top edges with descriptions
+        for e in node.get("top_edges", [])[:3]:
+            desc = " \u2014 %s" % e["why"] if e.get("why") else ""
+            lines.append("  \u2192 related: \"%s\" (%s%s)" % (
+                e["title"][:60], e["type"], desc))
 
         for nb in node.get("_neighbors", []):
             lines.append(format_neighbor_d1(nb))

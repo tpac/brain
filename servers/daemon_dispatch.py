@@ -66,6 +66,60 @@ def _handle_context_boot(brain, args, graph_changes):
     return {"ok": True, "result": text}
 
 
+def _enrich_recall_results(brain, result, graph_changes):
+    """Enrich recall results with correction chains and graph expansion.
+
+    Anchor's MCP recall should get the same rich context as the hook path,
+    minus the judge (Anchor doesn't need Haiku to filter for itself).
+    """
+    from .pipeline_contract import correction_enrich, enrich_candidate_metadata, CANDIDATES_FILE
+
+    results = result.get("results", [])
+    if not results:
+        return
+
+    # Collect all result IDs
+    result_ids = set()
+    for r in results:
+        rid = r.get("id", "")
+        if rid:
+            result_ids.add(rid[:8])
+
+    # Correction enrichment — same as Layer 3.5 in hook path
+    try:
+        corrections = correction_enrich(result_ids, brain.conn)
+        if corrections:
+            for r in results:
+                rid = r.get("id", "")
+                node_corrs = corrections.get(rid, []) or corrections.get(rid[:8], [])
+                if node_corrs:
+                    r["_corrections"] = node_corrs
+    except Exception as e:
+        brain._log_error('mcp_recall_corrections', e, 'correction enrichment')
+
+    # Graph expansion from result seeds — same as Layer 3 in hook path
+    try:
+        expand_entry = COMMAND_TABLE.get("graph_expand")
+        if expand_entry:
+            expand_result = expand_entry.handler(brain, {
+                "node_ids": list(result_ids),
+                "depth": 1, "limit_per_seed": 2,
+            }, graph_changes)
+            if expand_result.get("ok"):
+                graph_neighbors = expand_result.get("result", {}).get("neighbors", [])
+                if graph_neighbors:
+                    result["_graph_neighbors"] = graph_neighbors
+    except Exception as e:
+        brain._log_error('mcp_recall_expand', e, 'graph expansion')
+
+    # Enrich top results with metadata (situation, edges)
+    try:
+        for r in results[:5]:
+            enrich_candidate_metadata(brain, r.get("id", ""), r, CANDIDATES_FILE)
+    except Exception as e:
+        brain._log_error('mcp_recall_metadata', e, 'metadata enrichment')
+
+
 def _handle_recall(brain, args, graph_changes):
     # By-ID recall: returns single enriched node
     node_id = args.get("node_id")
@@ -80,7 +134,6 @@ def _handle_recall(brain, args, graph_changes):
         result = brain.recall(
             query=args.get("query", ""), limit=args.get("limit", 8),
             source='mcp')
-        return {"ok": True, "result": result}
     except Exception as e:
         # Degraded: fall back to keyword-only recall
         result = brain.recall(
@@ -90,8 +143,13 @@ def _handle_recall(brain, args, graph_changes):
             brain._log_error("recall_degraded", e, "Fell back to keyword-only recall")
         except Exception as e2:
             print('[daemon_dispatch] ERROR logging recall_degraded: %s (original: %s)' % (e2, e), file=__import__('sys').stderr)
-        return {"ok": True, "result": result,
-                "_degraded": "keyword_fallback", "_reason": str(e)}
+        result["_degraded"] = "keyword_fallback"
+        result["_reason"] = str(e)
+
+    # Enrich with corrections, graph expansion, metadata — same context as hook path
+    _enrich_recall_results(brain, result, graph_changes)
+
+    return {"ok": True, "result": result}
 
 
 def _handle_heartbeat(brain, args, graph_changes):
