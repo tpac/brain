@@ -76,6 +76,38 @@ class TestTraceContract:
         for et in ('O', 'K', 'delta', 'outcome'):
             assert et in self.EVENT_TYPES, "Event type %s missing" % et
 
+    def test_s2_ref_types(self):
+        """S2 (Session) ref_types are valid."""
+        assert self.validate('s2', 'O', 'session_turns') == (True, '')
+        assert self.validate('s2', 'O', 'session_patterns') == (True, '')
+        assert self.validate('s2', 'K', 'session_nodes') == (True, '')
+        assert self.validate('s2', 'K', 'correction_chains') == (True, '')
+        assert self.validate('s2', 'delta', 'journey_arc') == (True, '')
+        assert self.validate('s2', 'delta', 'consolidation') == (True, '')
+        assert self.validate('s2', 'outcome', 'cross_session') == (True, '')
+
+    def test_s3_ref_types(self):
+        """S3 (Sleep) ref_types are valid."""
+        assert self.validate('s3', 'O', 'graph_structure') == (True, '')
+        assert self.validate('s3', 'O', 'dedup_scan') == (True, '')
+        assert self.validate('s3', 'K', 'community_members') == (True, '')
+        assert self.validate('s3', 'K', 'bridge_nodes') == (True, '')
+        assert self.validate('s3', 'delta', 'community_label') == (True, '')
+        assert self.validate('s3', 'delta', 'merge') == (True, '')
+        assert self.validate('s3', 'delta', 'schema_node') == (True, '')
+        assert self.validate('s3', 'outcome', 'recall_improved') == (True, '')
+        assert self.validate('s3', 'outcome', 'operator_approved') == (True, '')
+
+    def test_s4_ref_types(self):
+        """S4 (Growth) ref_types are valid."""
+        assert self.validate('s4', 'O', 'uncertainty_nodes') == (True, '')
+        assert self.validate('s4', 'O', 'external_research') == (True, '')
+        assert self.validate('s4', 'K', 'stale_decisions') == (True, '')
+        assert self.validate('s4', 'delta', 'research_finding') == (True, '')
+        assert self.validate('s4', 'delta', 'cross_project') == (True, '')
+        assert self.validate('s4', 'outcome', 'adopted') == (True, '')
+        assert self.validate('s4', 'outcome', 'rejected') == (True, '')
+
 
 # ═══════════════════════════════════════════════════════
 # C1: TraceDAL methods

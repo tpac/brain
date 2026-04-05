@@ -75,7 +75,44 @@ REF_TYPES = {
                          "encoding_run"],      # what the encoder produced
     ("s1", "outcome"): ["correction",         # Tom corrected something that was recalled
                          "recall_hit"],        # node was recalled in a future turn
-    # Scale 2-4: to be defined when built
+
+    # Scale 2: session integration
+    # Fires every ~15 stops. Sees all S0+S1 traces from this session.
+    ("s2", "O"):       ["session_turns",       # accumulated S0+S1 chains as observation
+                         "session_patterns"],    # detected patterns across turns
+    ("s2", "K"):       ["session_nodes",       # all nodes touched this session
+                         "correction_chains"],   # corrections accumulated this session
+    ("s2", "delta"):   ["journey_arc",         # session narrative encoding
+                         "consolidation"],       # merged or revised shallow encodings
+    ("s2", "outcome"): ["cross_session",       # pattern validated in a future session
+                         "correction"],          # session encoding was later corrected
+
+    # Scale 3: sleep integration
+    # Fires between sessions. Sees full graph + S1/S2 traces across sessions.
+    ("s3", "O"):       ["graph_structure",     # community detection, bridge analysis
+                         "dedup_scan",          # cosine similarity findings
+                         "correction_chains"],  # brain-wide correction chain traversal
+    ("s3", "K"):       ["community_members",   # nodes in a community
+                         "bridge_nodes",        # cross-community connectors
+                         "stale_nodes"],        # nodes not accessed recently
+    ("s3", "delta"):   ["community_label",     # named a community
+                         "merge",               # merged duplicate nodes
+                         "schema_node",         # extracted pattern into schema
+                         "confidence_adjust"],  # lowered superseded confidence
+    ("s3", "outcome"): ["recall_improved",     # recall quality measurably improved
+                         "operator_approved"],  # Tom reviewed and approved the change
+
+    # Scale 4: growth integration
+    # Fires periodically (weekly). Sees full graph + external sources.
+    ("s4", "O"):       ["uncertainty_nodes",   # brain's open questions
+                         "external_research"],  # web search results, papers
+    ("s4", "K"):       ["stale_decisions",     # decisions that may be outdated
+                         "open_questions"],     # unresolved uncertainties
+    ("s4", "delta"):   ["research_finding",    # new knowledge from outside
+                         "decision_update",     # stale decision refreshed
+                         "cross_project"],      # bridge between projects
+    ("s4", "outcome"): ["adopted",             # finding was used by Tom/Anchor
+                         "rejected"],           # Tom rejected the finding
 }
 
 
@@ -87,9 +124,12 @@ REF_TYPES = {
 # S1 chains reference the S0 chain via parent_chain in metadata.
 
 CHAIN_PREFIXES = {
-    "s0": "s0-{session_short}-{stop}",       # one chain per stop — messages + tools
-    "s1_recall": "s1r-{session_short}-{stop}",  # recall/judge for this stop
-    "s1_encode": "s1e-{session_short}-{stop}",  # encoding run triggered at this stop
+    "s0":         "s0-{session_short}-{stop}",        # one chain per stop — messages + tools
+    "s1_recall":  "s1r-{session_short}-{stop}",       # recall/judge for this stop
+    "s1_encode":  "s1e-{session_short}-{stop}",       # encoding run triggered at this stop
+    "s2":         "s2-{session_short}-{run}",          # session encoder run number
+    "s3":         "s3-{date}-{operation}",             # date=YYYYMMDD, operation=community/dedup/etc
+    "s4":         "s4-{date}-{topic}",                 # date=YYYYMMDD, topic=what was researched
 }
 
 
