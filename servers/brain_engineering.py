@@ -157,176 +157,17 @@ class BrainEngineeringMixin:
             source_attribution='claude_inferred',
             confidence=0.3, project=project, **kwargs)
 
-    def record_reasoning_trace(self, title: str, steps: List[str],
-                               conclusion: str, reusable: bool = True,
-                               project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """Reusable logic chain — not just the conclusion but the path to it.
-
-        Populates reasoning_chains + reasoning_steps tables.
-        """
-        content = 'Steps:\n' + '\n'.join(f'  {i+1}. {s}' for i, s in enumerate(steps))
-        content += f'\n\nConclusion: {conclusion}'
-        result = self.remember_rich(
-            type='reasoning_trace', title=title, content=content,
-            reasoning=' → '.join(steps) + ' → ' + conclusion,
-            source_attribution='claude_inferred',
-            project=project, locked=reusable, **kwargs)
-
-        # Also populate reasoning_chains/steps tables
-        try:
-            chain_id = self._generate_id('chain')
-            ts = self.now()
-            self.conn.execute(
-                '''INSERT INTO reasoning_chains (id, decision_node_id, title, step_count, project, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?)''',
-                (chain_id, result['id'], title, len(steps), project, ts)
-            )
-            for i, step in enumerate(steps):
-                self.conn.execute(
-                    '''INSERT INTO reasoning_steps (chain_id, step_order, step_type, content, node_id, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?)''',
-                    (chain_id, i + 1, 'observation', step, result['id'], ts)
-                )
-            # Final conclusion step
-            self.conn.execute(
-                '''INSERT INTO reasoning_steps (chain_id, step_order, step_type, content, node_id, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?)''',
-                (chain_id, len(steps) + 1, 'decision', conclusion, result['id'], ts)
-            )
-            self.conn.commit()
-            result['chain_id'] = chain_id
-        except Exception as _e:
-            self._log_error("record_reasoning_trace", _e, "inserting reasoning steps into reasoning_steps table")
-        return result
-
-    def update_file_inventory(self, project: str, file_path: str,
-                              purpose: str, key_exports: Optional[List[str]] = None,
-                              dependencies: Optional[List[str]] = None,
-                              file_hash: Optional[str] = None) -> Dict[str, Any]:
-        """Track what Claude knows about a file — purpose, exports, dependencies, last seen hash."""
-        ts = self.now()
-        map_id = f'file:{project}:{file_path}'
-        content = json.dumps({
-            'file_path': file_path,
-            'purpose': purpose,
-            'key_exports': key_exports or [],
-            'dependencies': dependencies or [],
-            'last_seen_hash': file_hash,
-            'last_seen_at': ts,
-        })
-        self.conn.execute(
-            '''INSERT OR REPLACE INTO project_maps (id, project, map_type, content, last_updated, created_at)
-               VALUES (?, ?, 'file_inventory', ?, ?, COALESCE(
-                   (SELECT created_at FROM project_maps WHERE id = ?), ?))''',
-            (map_id, project, content, ts, map_id, ts)
-        )
-        self.conn.commit()
-
-        # v5: Cross-reference with vocabulary — connect file to vocab nodes that mention it
-        try:
-            filename = os.path.basename(file_path)
-            vocab_nodes = self.conn.execute(
-                "SELECT id FROM nodes WHERE type = 'vocabulary' AND archived = 0 AND content LIKE ?",
-                (f'%{filename}%',)
-            ).fetchall()
-            # Also find purpose/mechanism nodes about this file
-            eng_nodes = self.conn.execute(
-                "SELECT id FROM nodes WHERE type IN ('purpose', 'mechanism') AND archived = 0 AND title LIKE ?",
-                (f'%{filename}%',)
-            ).fetchall()
-            # Create edges between file inventory's related nodes and vocabulary
-            for (vid,) in vocab_nodes:
-                for (eid,) in eng_nodes:
-                    self.connect(vid, eid, 'maps_to', weight=0.7)
-        except Exception as _e:
-            self._log_error("update_file_inventory", _e, "linking file inventory vocab nodes to engineering nodes")
-
-        return {'id': map_id, 'file_path': file_path, 'updated': True}
-
-    def get_file_inventory(self, project: str) -> List[Dict[str, Any]]:
-        """Return full file inventory for a project."""
-        cur = self.conn.execute(
-            "SELECT content FROM project_maps WHERE project = ? AND map_type = 'file_inventory' ORDER BY last_updated DESC",
-            (project,)
-        )
-        results = []
-        for row in cur.fetchall():
-            try:
-                results.append(json.loads(row[0]))
-            except (json.JSONDecodeError, TypeError):
-                pass
-        return results
-
-    def detect_file_changes(self, project: str) -> List[Dict[str, Any]]:
-        """Compare stored file hashes against current state. Returns files that changed since last session.
-
-        Requires git to be available. Falls back to empty list if not.
-        """
-        import subprocess
-        inventory = self.get_file_inventory(project)
-        if not inventory:
-            return []
-
-        changes = []
-        for entry in inventory:
-            fp = entry.get('file_path', '')
-            stored_hash = entry.get('last_seen_hash')
-            if not fp or not stored_hash:
-                continue
-            try:
-                result = subprocess.run(
-                    ['git', 'hash-object', fp],
-                    capture_output=True, text=True, timeout=5
-                )
-                if result.returncode == 0:
-                    current_hash = result.stdout.strip()
-                    if current_hash != stored_hash:
-                        changes.append({
-                            'file_path': fp,
-                            'purpose': entry.get('purpose', ''),
-                            'stored_hash': stored_hash[:8],
-                            'current_hash': current_hash[:8],
-                        })
-            except Exception:
-                continue
-        return changes
-
-    def update_system_purpose(self, project: str, purpose: str,
-                              architecture: Optional[str] = None,
-                              key_decisions: Optional[List[str]] = None) -> Dict[str, Any]:
-        """Store/update the system-level purpose for a project."""
-        ts = self.now()
-        map_id = f'purpose:{project}'
-        content = json.dumps({
-            'purpose': purpose,
-            'architecture': architecture,
-            'key_decisions': key_decisions or [],
-        })
-        self.conn.execute(
-            '''INSERT OR REPLACE INTO project_maps (id, project, map_type, content, last_updated, created_at)
-               VALUES (?, ?, 'system_purpose', ?, ?, COALESCE(
-                   (SELECT created_at FROM project_maps WHERE id = ?), ?))''',
-            (map_id, project, content, ts, map_id, ts)
-        )
-        self.conn.commit()
-        return {'id': map_id, 'project': project}
+    # REMOVED 2026-04-05: record_reasoning_trace, update_file_inventory,
+    # get_file_inventory, detect_file_changes, update_system_purpose
+    # Tables dropped (reasoning_chains, reasoning_steps, project_maps).
+    # These should be nodes+edges, not separate tables.
 
     def get_engineering_context(self, project: Optional[str] = None) -> Dict[str, Any]:
         """Synthesize all engineering memory for boot context. The warm-up killer."""
         result = {}
 
-        # System purpose
-        if project:
-            cur = self.conn.execute(
-                "SELECT content FROM project_maps WHERE project = ? AND map_type = 'system_purpose'",
-                (project,)
-            )
-            row = cur.fetchone()
-            if row:
-                try:
-                    result['system_purpose'] = json.loads(row[0])
-                except (json.JSONDecodeError, TypeError):
-                    pass
+        # System purpose — project_maps table dropped 2026-04-05
+        # Future: use nodes with type='purpose' and project field
 
         # Purpose nodes (system scope first, then file, then function)
         purpose_filter = "AND project = ?" if project else ""
@@ -1563,28 +1404,7 @@ class BrainEngineeringMixin:
         # recall_log no longer written to. Precision metrics will be
         # rebuilt from trace outcome events when S2/outcomes ship.
 
-        # Failure detection: repeated miss signals
-        try:
-            repeated = self.logs_conn.execute(
-                """SELECT signal, COUNT(*) as cnt FROM miss_log
-                   WHERE created_at > datetime('now', '-7 days')
-                   GROUP BY signal HAVING cnt >= 3
-                   ORDER BY cnt DESC LIMIT 2"""
-            ).fetchall()
-            for signal, count in repeated:
-                existing = self.conn.execute(
-                    "SELECT COUNT(*) FROM nodes WHERE type = 'failure_mode' AND keywords LIKE ? AND archived = 0",
-                    (f'%auto {signal}%',)
-                ).fetchone()[0]
-                if existing == 0:
-                    self.create_failure_mode(
-                        f"Recurring miss signal: {signal} ({count}x this week)",
-                        f"Auto-detected: {count} '{signal}' events in 7 days. This is a recurring failure pattern.",
-                        keywords=f"auto failure-mode {signal} recurring"
-                    )
-                    generated['failure'] += 1
-        except Exception as _e:
-            self._log_error("auto_generate_self_reflection", _e, "detecting repeated miss signals from miss_log")
+        # Failure detection from miss_log — REMOVED 2026-04-05 (table dropped)
 
         # Capability: check embedder status
         try:
