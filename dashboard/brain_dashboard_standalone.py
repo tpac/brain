@@ -135,15 +135,27 @@ def _query_recall_log(since_id=0, limit=50, session_id=''):
             # Parse O metadata for candidates
             candidates = []
             query = ''
+            # Extract candidate count from summary: "N candidates for: query"
+            candidate_count = 0
+            try:
+                if summary and 'candidates for:' in summary:
+                    candidate_count = int(summary.split(' candidates')[0])
+                    query = summary.split('for: ', 1)[1] if 'for: ' in summary else ''
+            except (ValueError, IndexError):
+                pass
             try:
                 meta = json.loads(r[4]) if r[4] else {}
-                query = meta.get('query', '')
+                if not query:
+                    query = meta.get('query', '')
                 for cand_str in meta.get('candidates', []):
+                    # Format: id|title|score|type — title may contain pipes
                     parts = cand_str.split('|')
                     if len(parts) >= 4:
+                        # Last part is type, second-to-last is score, first is id
+                        # Everything in between is the title
                         candidates.append({
-                            'id': parts[0], 'title': parts[1],
-                            'score': parts[2], 'type': parts[3]})
+                            'id': parts[0], 'title': '|'.join(parts[1:-2]),
+                            'score': parts[-2], 'type': parts[-1]})
             except Exception:
                 pass
 
@@ -183,7 +195,7 @@ def _query_recall_log(since_id=0, limit=50, session_id=''):
                 "session_id": session_id,
                 "query": query,
                 "returned_ids": [c['id'] for c in candidates],
-                "returned_count": len(candidates),
+                "returned_count": candidate_count or len(candidates),
                 "titles": titles,
                 "snippets": {},
                 "timestamp": timestamp,
@@ -1518,7 +1530,7 @@ function renderRecallEntry(evt) {
       '<span class="hook-time">' + t + '</span>' +
       (sid ? '<span class="hook-session">' + sid + '</span>' : '') +
       '<span class="hook-id">#' + evt.id + '</span>' +
-      '<span class="hook-size">' + count + ' nodes</span>' +
+      '<span class="hook-size">' + (evt.used_count || 0) + ' selected</span>' +
       (evt.precision_score !== null && evt.precision_score !== undefined ? '<span class="hook-size" style="color:' + (evt.precision_score > 0.5 ? '#7eff7e' : '#ff7e7e') + '">' + Math.round(evt.precision_score * 100) + '%</span>' : '') +
     '</div>' +
     '<div class="hook-prompt">' + escapeHtml(evt.query || '') + '</div>' +
