@@ -591,15 +591,7 @@ def hook_idle_maintenance(brain, args, graph_changes):
     except Exception as e:
         output.append("EDGE DECAY ERROR: %s" % e)
 
-    # 3e. Consolidation detection — find overlapping nodes for LLM-driven merging
-    try:
-        consolidation_count = brain.detect_consolidation_candidates()
-        if consolidation_count:
-            output.append("CONSOLIDATION: %d new candidate pair(s) queued" % consolidation_count)
-            graph_changes.append("CONSOLIDATION: %d pair(s) detected" % consolidation_count)
-    except Exception as e:
-        brain._log_error('idle_consolidation', e, 'Consolidation detection failed')
-        output.append("CONSOLIDATION ERROR: %s" % e)
+    # consolidation detection — REMOVED 2026-04-05 (pending_consolidation table dropped)
 
     # message_stream expiry REMOVED 2026-04-05 — table deleted, traces are source of truth
 
@@ -1075,23 +1067,13 @@ def hook_session_end(brain, args, graph_changes):
 
 
 def hook_stop_failure_log(brain, args, graph_changes):
-    """StopFailure — logs API failures to brain for pattern detection."""
+    """StopFailure — logs API failures. miss_log table dropped, use debug_log."""
     error_type = args.get("error", "unknown")
     error_details = args.get("error_details", "")
-    session_id = args.get("session_id", "")
-
     try:
-        brain.log_miss(
-            session_id=session_id,
-            signal="api_failure",
-            query="API error: %s" % error_type,
-            expected_node_id=None,
-            context=str(error_details)[:500],
-        )
-        brain.save()
-    except Exception as e:
-        brain._log_error('log_miss', e, 'hook_stop_failure_log')
-
+        brain.log_debug("stop_failure", "API error: %s — %s" % (error_type, str(error_details)[:200]))
+    except Exception:
+        pass
     return {"output": ""}
 
 

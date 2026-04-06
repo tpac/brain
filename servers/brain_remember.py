@@ -764,13 +764,7 @@ class BrainRememberMixin:
         except Exception as e:
             self._log_error("fts5_sync_revise", e, "syncing FTS5 for %s" % node_id[:8])
 
-        # Auto-resolve consolidation pairs
-        try:
-            from .dal import LogsDAL
-            LogsDAL(self.logs_conn).resolve_consolidation_for_node(node_id)
-        except Exception as e:
-            self._log_error("revise_consolidation_resolve", e,
-                            "Failed to auto-resolve consolidation pair for %s" % node_id[:8])
+        # pending_consolidation table dropped 2026-04-05
 
         # message_stream escalation REMOVED 2026-04-05
 
