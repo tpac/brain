@@ -353,10 +353,11 @@ def _query_encoding_runs(limit=10, session_id=''):
 
             # Get delta event (encoding results) from same chain
             d_row = conn.execute(
-                "SELECT summary FROM trace_events "
+                "SELECT summary, created_at FROM trace_events "
                 "WHERE chain_id = ? AND event_type = 'delta'", (chain_id,)
             ).fetchone()
             summary = d_row[0] if d_row else '(encoding in progress or no actions)'
+            delta_ts = d_row[1] if d_row else ''
 
             # Read encoder prompt from tmp file if available
             encoder_prompt = None
@@ -367,29 +368,75 @@ def _query_encoding_runs(limit=10, session_id=''):
                 except Exception:
                     pass
 
-            # Parse actions from summary
-            nodes_created = []
-            for line in summary.split('\n'):
-                line = line.strip()
-                if line.startswith('remember') or line.startswith('revise'):
-                    parts = line.split(': ', 1)
-                    if len(parts) == 2:
-                        nodes_created.append({"tool": parts[0], "title": parts[1][:80]})
-
             runs.append({
                 "chain_id": chain_id,
                 "counter": counter,
                 "start_ts": timestamp,
+                "delta_ts": delta_ts,
                 "session_id": session,
                 "summary": summary[:500],
                 "prompt_info": prompt_info,
                 "catalog_info": catalog_info,
-                "nodes": nodes_created,
+                "nodes": [],
                 "edges": [],
                 "encoder_prompt": encoder_prompt,
             })
 
         conn.close()
+
+        # Enrich runs with actual nodes/edges from brain.db
+        db = _get_db_path()
+        if os.path.exists(db) and runs:
+            try:
+                bconn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=3)
+                for run in runs:
+                    ts = run.get('delta_ts') or run.get('start_ts', '')
+                    if not ts:
+                        continue
+                    # Normalize timestamp for BETWEEN (strip tz, truncate to seconds)
+                    ts_clean = ts.replace('+00:00', '').replace('Z', '').split('.')[0]
+                    ts_lo = ts_clean[:10] + 'T' + ts_clean[11:13] + ':' + '%02d' % max(0, int(ts_clean[14:16]) - 2) + ':00'
+                    ts_hi = ts_clean[:10] + 'T' + ts_clean[11:13] + ':' + '%02d' % min(59, int(ts_clean[14:16]) + 2) + ':59'
+
+                    # Nodes created by encoder in window
+                    nodes = bconn.execute(
+                        "SELECT id, type, title, substr(content,1,200), created_at "
+                        "FROM nodes WHERE encoding_source = 'encoder:sonnet' "
+                        "AND created_at BETWEEN ? AND ? ORDER BY created_at",
+                        (ts_lo, ts_hi)).fetchall()
+                    run['nodes'] = [{"id": n[0], "type": n[1], "title": n[2],
+                                     "content": n[3], "timestamp": n[4]} for n in nodes]
+
+                    # Revised nodes in same window
+                    revised = bconn.execute(
+                        "SELECT id, type, title, substr(content,1,200), revised_at "
+                        "FROM nodes WHERE encoding_source = 'encoder:sonnet' "
+                        "AND revised_at BETWEEN ? AND ? ORDER BY revised_at",
+                        (ts_lo, ts_hi)).fetchall()
+                    for r in revised:
+                        if not any(n['id'] == r[0] for n in run['nodes']):
+                            run['nodes'].append({"id": r[0], "type": r[1], "title": r[2],
+                                                  "content": r[3], "timestamp": r[4],
+                                                  "kind": "revised"})
+
+                    # Edges created in same window
+                    edges = bconn.execute(
+                        "SELECT e.source_id, e.target_id, e.relation, e.weight, e.created_at, "
+                        "n1.title, n2.title "
+                        "FROM edges e "
+                        "LEFT JOIN nodes n1 ON n1.id = e.source_id "
+                        "LEFT JOIN nodes n2 ON n2.id = e.target_id "
+                        "WHERE e.created_at BETWEEN ? AND ? "
+                        "AND e.relation NOT IN ('co_accessed', 'emergent_bridge') "
+                        "ORDER BY e.created_at", (ts_lo, ts_hi)).fetchall()
+                    run['edges'] = [{"relation": e[2], "weight": e[3],
+                                     "source_title": e[5] or e[0][:12],
+                                     "target_title": e[6] or e[1][:12],
+                                     "timestamp": e[4]} for e in edges]
+                bconn.close()
+            except Exception:
+                pass
+
         return runs
     except Exception:
         return []
@@ -1746,20 +1793,28 @@ async function loadEncodingActivity() {
 
       // Details (hidden by default, toggled by header click)
       html += '<div class="hook-body" style="padding:4px 12px">';
-      // Summary from trace delta
-      if (run.summary) {
-        html += '<pre style="color:#bbb;font-size:11px;white-space:pre-wrap;margin:4px 0">' + escapeHtml(run.summary) + '</pre>';
-      }
-      // Parsed actions
+      // Nodes — created and revised
       for (const n of (run.nodes || [])) {
-        const tool = n.tool || 'remember';
-        const kind = tool.includes('revise') ? 'REVISED' : 'CREATED';
-        const kindClass = tool.includes('revise') ? 'revised' : 'created';
-        html += '<div class="enc-entry ' + kindClass + '" style="margin:2px 0;padding:4px 8px">' +
+        const kind = n.kind === 'revised' ? 'REVISED' : 'CREATED';
+        const kindClass = n.kind === 'revised' ? 'revised' : 'created';
+        html += '<div class="enc-entry ' + kindClass + '" data-kind="' + kindClass + '" style="margin:2px 0;padding:4px 8px;cursor:pointer" onclick="showNodeDetail(\'' + (n.id||'') + '\')">' +
           '<span class="enc-kind ' + kindClass + '">' + kind + '</span> ' +
-          '<span class="enc-title">' + escapeHtml(n.title || '') + '</span></div>';
+          '<span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ' +
+          '<span class="enc-title">' + escapeHtml(n.title || '') + '</span>' +
+          (n.content ? '<div style="color:#888;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml((n.content||'').substring(0, 150)) + '</div>' : '') +
+          '</div>';
       }
-      if (!run.nodes || !run.nodes.length) {
+      // Edges — connections
+      for (const e of (run.edges || []).slice(0, 8)) {
+        html += '<div class="enc-entry connected" data-kind="connected" style="margin:2px 0;padding:4px 8px">' +
+          '<span class="enc-kind connected">CONNECTED</span> ' +
+          escapeHtml(e.source_title || '') + ' <span style="color:#aa66ff">\u2014' + (e.relation||'') + '\u2192</span> ' +
+          escapeHtml(e.target_title || '') + '</div>';
+      }
+      if ((run.edges || []).length > 8) {
+        html += '<div style="color:#555;font-size:10px;padding:2px 8px">+' + ((run.edges || []).length - 8) + ' more edges</div>';
+      }
+      if (!run.nodes.length && !run.edges.length) {
         html += '<div style="color:#555;font-size:11px;padding:4px 8px">(no write actions)</div>';
       }
       html += '</div>';
