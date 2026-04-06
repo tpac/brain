@@ -1728,30 +1728,39 @@ async function loadEncodingActivity() {
       const nodeCount = run.nodes ? run.nodes.length : 0;
       const edgeCount = run.edges ? run.edges.length : 0;
 
-      // Header — click toggles actions list
+      // Header — click toggles details
+      const sid = run.session_id ? run.session_id.substring(0, 8) : '';
       let html = '<div class="hook-header" onclick="toggleHookBody(this)">' +
         '<span class="hook-badge" style="background:#aa66ff;color:#000">ENCODE</span>' +
         '<span class="hook-time">' + t + '</span>' +
-        '<span class="hook-size">' + nodeCount + ' nodes, ' + edgeCount + ' edges</span>' +
+        (sid ? '<span class="hook-session">' + sid + '</span>' : '') +
+        '<span class="hook-id">#' + (run.counter || '') + '</span>' +
+        '<span class="hook-size">' + nodeCount + ' actions</span>' +
         '<button class="hook-details-btn" style="margin-left:auto" onclick="event.stopPropagation();toggleEncPrompt(this.parentElement.parentElement)">Show Prompt</button>' +
       '</div>';
 
-      // Actions list (hidden by default, toggled by header click)
+      // Info line — prompt context
+      if (run.prompt_info) {
+        html += '<div class="hook-prompt">' + escapeHtml(run.prompt_info) + '</div>';
+      }
+
+      // Details (hidden by default, toggled by header click)
       html += '<div class="hook-body" style="padding:4px 12px">';
+      // Summary from trace delta
+      if (run.summary) {
+        html += '<pre style="color:#bbb;font-size:11px;white-space:pre-wrap;margin:4px 0">' + escapeHtml(run.summary) + '</pre>';
+      }
+      // Parsed actions
       for (const n of (run.nodes || [])) {
-        html += '<div class="enc-entry created" data-kind="created" style="margin:2px 0;padding:4px 8px">' +
-          '<span class="enc-kind created">CREATED</span> ' +
-          '<span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ' +
+        const tool = n.tool || 'remember';
+        const kind = tool.includes('revise') ? 'REVISED' : 'CREATED';
+        const kindClass = tool.includes('revise') ? 'revised' : 'created';
+        html += '<div class="enc-entry ' + kindClass + '" style="margin:2px 0;padding:4px 8px">' +
+          '<span class="enc-kind ' + kindClass + '">' + kind + '</span> ' +
           '<span class="enc-title">' + escapeHtml(n.title || '') + '</span></div>';
       }
-      for (const e of (run.edges || []).slice(0, 8)) {
-        html += '<div class="enc-entry connected" data-kind="connected" style="margin:2px 0;padding:4px 8px">' +
-          '<span class="enc-kind connected">CONNECTED</span> ' +
-          escapeHtml(e.source_title || '') + ' <span style="color:#aa66ff">—' + (e.relation||'') + '→</span> ' +
-          escapeHtml(e.target_title || '') + '</div>';
-      }
-      if ((run.edges || []).length > 8) {
-        html += '<div style="color:#555;font-size:10px;padding:2px 8px">+' + ((run.edges || []).length - 8) + ' more edges</div>';
+      if (!run.nodes || !run.nodes.length) {
+        html += '<div style="color:#555;font-size:11px;padding:4px 8px">(no write actions)</div>';
       }
       html += '</div>';
 
