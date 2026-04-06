@@ -902,10 +902,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             enc_counter = 0
             enc_position = 0
             try:
+                # Read stop counter from session_state (session-scoped via SessionContext)
+                logs_db = os.path.join(os.path.dirname(db), "brain_logs.db")
                 enc_row = _direct_query(
-                    "SELECT value FROM brain_meta WHERE key = 'stop_counter'", db_path=db)
-                if enc_row and enc_row[0][0]:
-                    enc_counter = int(enc_row[0][0])
+                    "SELECT session_id, value FROM session_state "
+                    "WHERE key = '_session_context' ORDER BY updated_at DESC LIMIT 1",
+                    db_path=logs_db)
+                if enc_row and enc_row[0][1]:
+                    state = json.loads(enc_row[0][1])
+                    enc_counter = state.get('stop_counter', 0)
                     enc_position = enc_counter % 5
             except Exception:
                 pass
@@ -1462,7 +1467,7 @@ function renderRecallEntry(evt) {
   const t = localTime(evt.timestamp, 'time');
   const srcColor = SOURCE_COLORS[src] || '#666';
   const srcLabel = SOURCE_LABELS[src] || src.toUpperCase();
-  const sid = evt.session_id ? evt.session_id.substring(4, 12) : '';
+  const sid = evt.session_id ? evt.session_id.substring(0, 8) : '';
   const count = evt.returned_count || 0;
   const titles = evt.titles || {};
   const snippets = evt.snippets || {};

@@ -128,26 +128,9 @@ class LogsDAL:
             for r in rows
         ]
 
-    # ── recall_log ──
-
-    def log_recall(self, session_id: str, query: str, result_count: int,
-                   result_ids: Optional[List[str]] = None, intent: str = "") -> int:
-        """Record a recall event. Returns the recall_log id.
-
-        DEPRECATED: Use RecallPrecision.log_recall() from servers/brain_precision.py instead.
-        This method uses wrong column names (result_ids/intent vs the actual schema's
-        returned_ids/returned_count) and lacks the precision tracking columns.
-        Kept for backward compatibility only — do not add new callers.
-        """
-        now = datetime.now(timezone.utc).isoformat()
-        ids_json = json.dumps(result_ids) if result_ids else '[]'
-        cursor = self.conn.execute(
-            'INSERT INTO recall_log (session_id, query, result_count, result_ids, intent, created_at) '
-            'VALUES (?, ?, ?, ?, ?, ?)',
-            (session_id, query[:500], result_count, ids_json, intent, now)
-        )
-        self.conn.commit()
-        return cursor.lastrowid
+    # ── recall_log — REMOVED 2026-04-05 ──
+    # All recall_log write methods deleted. Traces (trace_events) are source of truth.
+    # Table still exists with historical data. Dashboard reads from traces.
 
     # ── miss_log ──
 
@@ -277,134 +260,11 @@ class LogsDAL:
 
         return stats
 
-    # ── recall_log (precision lifecycle) ──
-    # Schema: id, session_id, query, returned_ids, returned_count, used_ids, used_count,
-    #         precision_score, embeddings_used, recalled_titles, recalled_snippets,
-    #         assistant_response_snippet, match_method, evaluation_metadata,
-    #         followup_signal, explicit_feedback, evaluated_at, created_at
-    #
-    # Row lifecycle: LOGGED → RESPONSE_STORED → EVALUATED → FEEDBACK_RECEIVED
-    # Hooks query the table for pending work — no config keys for handoff.
-
-    def insert_recall_log(self, session_id: str, query: str, returned_ids: str,
-                          returned_count: int, embeddings_used: int,
-                          recalled_titles: str, recalled_snippets: str,
-                          created_at: str, source: str = 'hook') -> int:
-        """Insert a new recall_log row (Stage 1: LOGGED). Returns row ID."""
-        cursor = self.conn.execute(
-            """INSERT INTO recall_log
-               (session_id, query, returned_ids, returned_count,
-                embeddings_used, recalled_titles, recalled_snippets, created_at, source)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (session_id, query, returned_ids, returned_count,
-             embeddings_used, recalled_titles, recalled_snippets, created_at, source))
-        self.conn.commit()
-        return cursor.lastrowid
-
-    def update_recall_judge(self, recall_log_id: int, judge_prompt: str,
-                             judge_output: str) -> None:
-        """Store judge prompt and output on a recall row."""
-        self.conn.execute(
-            """UPDATE recall_log SET judge_prompt = ?, judge_output = ?
-               WHERE id = ?""",
-            (judge_prompt, judge_output, recall_log_id))
-        self.conn.commit()
-
-    def update_recall_response(self, recall_log_id: int, response_snippet: str,
-                                match_method: str, evaluation_metadata: Optional[str],
-                                evaluated_at: str) -> None:
-        """Store Claude's response on a recall row (Stage 2: RESPONSE_STORED)."""
-        self.conn.execute(
-            """UPDATE recall_log
-               SET assistant_response_snippet = ?,
-                   match_method = ?,
-                   evaluation_metadata = COALESCE(?, evaluation_metadata),
-                   evaluated_at = ?
-               WHERE id = ?""",
-            (response_snippet, match_method, evaluation_metadata, evaluated_at, recall_log_id))
-        self.conn.commit()
-
-    def update_recall_evaluation(self, recall_log_id: int, followup_signal: str,
-                                  match_method: str, precision_score: Optional[float],
-                                  evaluation_metadata: str, evaluated_at: str) -> None:
-        """Store followup evaluation (Stage 3: EVALUATED). Won't override explicit feedback."""
-        self.conn.execute(
-            """UPDATE recall_log
-               SET followup_signal = ?,
-                   match_method = ?,
-                   precision_score = ?,
-                   evaluation_metadata = ?,
-                   evaluated_at = ?
-               WHERE id = ? AND explicit_feedback IS NULL""",
-            (followup_signal, match_method, precision_score,
-             evaluation_metadata, evaluated_at, recall_log_id))
-        self.conn.commit()
-
-    def update_recall_feedback(self, recall_log_id: int, explicit_feedback: str,
-                                precision_score: float, evaluated_at: str) -> None:
-        """Store explicit operator feedback (Stage 4: FEEDBACK_RECEIVED). Overrides auto-score."""
-        self.conn.execute(
-            """UPDATE recall_log
-               SET explicit_feedback = ?,
-                   precision_score = ?,
-                   evaluated_at = ?
-               WHERE id = ?""",
-            (explicit_feedback, precision_score, evaluated_at, recall_log_id))
-        self.conn.commit()
-
-    def get_recall_row(self, recall_log_id: int) -> Optional[Dict[str, Any]]:
-        """Fetch a single recall_log row by ID."""
-        row = self.conn.execute(
-            """SELECT id, session_id, query, returned_ids, returned_count,
-                      recalled_titles, recalled_snippets, assistant_response_snippet,
-                      match_method, evaluation_metadata, followup_signal,
-                      explicit_feedback, precision_score, evaluated_at, created_at
-               FROM recall_log WHERE id = ?""",
-            (recall_log_id,)).fetchone()
-        if not row:
-            return None
-        return {
-            'id': row[0], 'session_id': row[1], 'query': row[2],
-            'returned_ids': row[3], 'returned_count': row[4],
-            'recalled_titles': row[5], 'recalled_snippets': row[6],
-            'assistant_response_snippet': row[7], 'match_method': row[8],
-            'evaluation_metadata': row[9], 'followup_signal': row[10],
-            'explicit_feedback': row[11], 'precision_score': row[12],
-            'evaluated_at': row[13], 'created_at': row[14],
-        }
-
-    def get_pending_response(self, session_id: str) -> Optional[int]:
-        """Find the most recent recall awaiting response storage (Stage 1 → 2).
-
-        Returns recall_log ID or None.
-        """
-        row = self.conn.execute(
-            """SELECT id FROM recall_log
-               WHERE session_id = ? AND assistant_response_snippet IS NULL
-                 AND returned_count > 0
-               ORDER BY created_at DESC LIMIT 1""",
-            (session_id,)).fetchone()
-        return row[0] if row else None
-
-    def get_pending_followups(self, session_id: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """Find recalls awaiting followup evaluation (any stage before EVALUATED).
-
-        Returns recalls that have no followup signal and no explicit feedback,
-        regardless of whether a response was stored. This catches:
-        - Stage 2 rows (response stored, awaiting followup) — normal flow
-        - Stage 1 rows (no response — hook timeout or short response) — recovery
-
-        The followup evaluation can run without the response — it just won't
-        have embedding signals from evaluate_response. Better to evaluate with
-        partial data than not evaluate at all.
-        """
-        rows = self.conn.execute(
-            """SELECT id, created_at FROM recall_log
-               WHERE session_id = ? AND followup_signal IS NULL
-                 AND explicit_feedback IS NULL AND returned_count > 0
-               ORDER BY created_at DESC LIMIT ?""",
-            (session_id, limit)).fetchall()
-        return [{'id': r[0], 'created_at': r[1]} for r in rows]
+    # ── recall_log precision lifecycle — REMOVED 2026-04-05 ──
+    # All methods deleted: insert_recall_log, update_recall_judge,
+    # update_recall_response, update_recall_evaluation, update_recall_feedback,
+    # get_recall_row, get_pending_response, get_pending_followups.
+    # brain_precision.py (the only caller) was deleted. Traces are source of truth.
 
     # ── staged_learnings ──
 
