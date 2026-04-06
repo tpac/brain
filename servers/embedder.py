@@ -27,6 +27,12 @@ from typing import Optional, List, Dict, Any
 os.environ["ORT_DISABLE_ALL_ACCELERATORS"] = "1"
 os.environ.setdefault("ONNX_PROVIDERS", "CPUExecutionProvider")
 
+# Disable ONNX Runtime thread spinning. Without this, ONNX native threads
+# spin-wait for work instead of yielding, causing sustained 200% CPU on
+# macOS even when idle. Known issue with onnxruntime <= 1.19.2 on Python 3.9.
+# See: https://github.com/microsoft/onnxruntime/issues/9313
+os.environ.setdefault("ORT_ALLOW_SPINNING", "0")
+
 # ─── Runtime State (set by load_model) ───
 _model = None
 _config = {}   # Current model config
@@ -129,7 +135,14 @@ def load_model(config: Optional[Dict[str, Any]] = None):
 
         # Always force CPU-only execution provider.
         # CoreML/Metal causes SIGABRT in background processes on Apple Silicon.
-        provider_kwargs = {"providers": ["CPUExecutionProvider"]}
+        # threads=2: limit ONNX internal threads to prevent spin-wait CPU spikes.
+        # See: https://github.com/microsoft/onnxruntime/issues/9313
+        import multiprocessing
+        _onnx_threads = min(2, multiprocessing.cpu_count())
+        common_kwargs = {
+            "providers": ["CPUExecutionProvider"],
+            "threads": _onnx_threads,
+        }
 
         # ── Load chain: local path → HuggingFace cache → pip fallback ──
 
@@ -139,14 +152,14 @@ def load_model(config: Optional[Dict[str, Any]] = None):
             _model = TextEmbedding(model_name=model_name,
                                    specific_model_path=model_path,
                                    **({"cache_dir": cache_dir} if cache_dir else {}),
-                                   **provider_kwargs)
+                                   **common_kwargs)
         else:
             # Try 1: Let FastEmbed load normally (from cache or HuggingFace)
             try:
                 kwargs = {}
                 if cache_dir:
                     kwargs['cache_dir'] = cache_dir
-                _model = TextEmbedding(model_name=model_name, **kwargs, **provider_kwargs)
+                _model = TextEmbedding(model_name=model_name, **kwargs, **common_kwargs)
             except Exception as hf_err:
                 # Try 2: HuggingFace failed — try pip-installed model package
                 pip_path = _discover_pip_model()
@@ -154,7 +167,7 @@ def load_model(config: Optional[Dict[str, Any]] = None):
                     print(f"[embedder] HuggingFace unavailable, using pip model: {pip_path}", file=sys.stderr)
                     _model = TextEmbedding(model_name=model_name,
                                            specific_model_path=pip_path,
-                                           **provider_kwargs)
+                                           **common_kwargs)
                 else:
                     # Try 3: pip package not installed — install it and retry
                     # TODO(pypi): Remove auto-install once brain-embedding is on PyPI
@@ -170,7 +183,8 @@ def load_model(config: Optional[Dict[str, Any]] = None):
                     if pip_path:
                         print(f"[embedder] Installed model from pip: {pip_path}", file=sys.stderr)
                         _model = TextEmbedding(model_name=model_name,
-                                               specific_model_path=pip_path)
+                                               specific_model_path=pip_path,
+                                               **common_kwargs)
                     else:
                         raise hf_err  # All fallbacks exhausted
 
@@ -178,7 +192,7 @@ def load_model(config: Optional[Dict[str, Any]] = None):
         stats['model_loaded'] = True
         stats['load_error'] = None
         source = "local" if model_path else ("pip" if _discover_pip_model() else "HuggingFace")
-        print(f"[embedder] {model_name} ({dim}d, {pooling}) loaded in {stats['load_time_ms']}ms [source: {source}]", file=sys.stderr)
+        print(f"[embedder] {model_name} ({dim}d, {pooling}) loaded in {stats['load_time_ms']}ms [source: {source}, threads: {_onnx_threads}]", file=sys.stderr)
 
     except ImportError as e:
         stats['model_loaded'] = False
