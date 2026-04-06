@@ -1,15 +1,16 @@
 """Tests for daemon_hooks.py — hook logic layer.
 
 Tests cover:
-- hook_recall() output format (merged channels, no systemMessage)
+- hook_recall() output format (judge-formatted additionalContext)
 - Early return behavior (no results = approve)
-- Reminder surfacing through operator channel
-- Debug mode routing through operator channel
+- Judge integration (mock — no API key in test env)
+- Signal production (reminders flow into signal queue)
 """
 
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -17,8 +18,23 @@ from tests.brain_test_base import BrainTestBase
 from servers.daemon_hooks import hook_recall
 
 
+# Realistic output matching format_judge_output() in recall_contract.py
+_MOCK_JUDGE_OUTPUT = (
+    'Brain recalled 1 memories:\n\n'
+    '[rule] "Test rule for recall" (id:abcd1234, conf:1.0)\n'
+    'Content: Important test content\n'
+)
+
+
+def _mock_run_judge(brain, ctx, candidates_data, user_message, **kwargs):
+    """Mock judge that returns formatted output for any non-empty candidates."""
+    if not candidates_data:
+        return None
+    return _MOCK_JUDGE_OUTPUT
+
+
 class TestHookRecallOutput(BrainTestBase):
-    """Verify hook_recall() output uses merged channel format."""
+    """Verify hook_recall() output format."""
 
     def _call_recall(self, message="test query"):
         """Helper to call hook_recall with standard args."""
@@ -31,12 +47,13 @@ class TestHookRecallOutput(BrainTestBase):
         self.brain.remember(type="lesson", title="Test lesson", content="We learned something")
 
     def test_hook_recall_early_return_when_empty(self):
-        """No results/signals → returns approve (no-op)."""
+        """No results/signals -> returns approve (no-op)."""
         result = self._call_recall("xyzzy gibberish")
         self.assertEqual(result["json"], {"decision": "approve"})
 
-    def test_hook_recall_returns_additional_context(self):
-        """When results exist, returns {'json': {'additionalContext': str}}."""
+    @patch('servers.daemon_hooks._run_judge', side_effect=_mock_run_judge)
+    def test_hook_recall_returns_additional_context(self, mock_judge):
+        """When results exist and judge selects, returns {'json': {'additionalContext': str}}."""
         self._seed_data()
         result = self._call_recall("test rule")
         self.assertIn("json", result)
@@ -48,43 +65,60 @@ class TestHookRecallOutput(BrainTestBase):
         result = self._call_recall("test rule")
         self.assertNotIn("systemMessage", result.get("json", {}))
 
-    def test_hook_recall_has_brain_tags(self):
-        """additionalContext contains [BRAIN]...[/BRAIN] wrapping."""
+    @patch('servers.daemon_hooks._run_judge', side_effect=_mock_run_judge)
+    def test_hook_recall_has_brain_recalled_header(self, mock_judge):
+        """additionalContext contains 'Brain recalled' header from judge output."""
         self._seed_data()
         result = self._call_recall("test rule")
         ctx = result["json"]["additionalContext"]
-        self.assertIn("[BRAIN]", ctx)
-        self.assertIn("[/BRAIN]", ctx)
+        self.assertIn("Brain recalled", ctx)
+        self.assertIn("memories:", ctx)
 
-    def test_hook_recall_with_due_reminder(self):
-        """Create reminder with past due_date, verify it appears in operator channel as high priority.
+    @patch('servers.daemon_hooks._run_judge', side_effect=_mock_run_judge)
+    def test_hook_recall_contains_node_content(self, mock_judge):
+        """additionalContext includes node type, title, and content from judge formatting."""
+        self._seed_data()
+        result = self._call_recall("test rule")
+        ctx = result["json"]["additionalContext"]
+        self.assertIn("[rule]", ctx)
+        self.assertIn("Test rule for recall", ctx)
 
-        Reminders trigger urgent_signals, which prevents early return even without recall results.
+    def test_hook_recall_reminder_produced_to_signal_queue(self):
+        """Create reminder with past due_date, verify it flows into signal queue.
+
+        Reminders are produced into the signal queue by signal_producers. They do NOT
+        appear in additionalContext directly -- the current code path uses the judge
+        for additionalContext. This test verifies the signal queue receives the reminder.
         """
+        self._seed_data()  # Need results to get past early return
         self.brain.create_reminder("Ship the feature", "2020-01-01T00:00:00")
-        result = self._call_recall("what should I do")
-        ctx = result["json"]["additionalContext"]
-        self.assertIn("[BRAIN-To-", ctx)
-        self.assertIn("Ship the feature", ctx)
-        self.assertIn("@priority: high", ctx)
+        with patch('servers.daemon_hooks._run_judge', side_effect=_mock_run_judge):
+            self._call_recall("what should I do")
 
-    def test_hook_recall_debug_mode_output(self):
-        """Enable debug, verify full injection appears in operator channel."""
-        self.brain.set_config("debug_enabled", "1")
+        # Verify reminder was produced into signal queue (query directly, pull() consumes)
+        rows = self.brain.logs_conn.execute(
+            "SELECT content FROM signal_queue WHERE dismissed = 0"
+        ).fetchall()
+        all_content = [r[0] for r in rows]
+        reminder_found = any('Ship the feature' in c for c in all_content)
+        self.assertTrue(reminder_found,
+                        "Expected reminder 'Ship the feature' in signal queue, got: %s" %
+                        all_content)
+
+    @patch('servers.daemon_hooks._run_judge', side_effect=_mock_run_judge)
+    def test_hook_recall_judge_failure_returns_approve(self, mock_judge):
+        """When judge raises an exception, hook_recall returns approve."""
+        mock_judge.side_effect = RuntimeError("API key missing")
         self._seed_data()
         result = self._call_recall("test rule")
-        ctx = result["json"]["additionalContext"]
-        self.assertIn("[BRAIN-To-", ctx)
-        self.assertIn("[DEBUG]", ctx)
-        self.assertIn("Brain→Claude injection", ctx)
+        self.assertEqual(result["json"].get("decision"), "approve")
 
-    def test_hook_recall_debug_mode_disabled(self):
-        """Disable debug, verify no debug section in output."""
-        self.brain.set_config("debug_enabled", "0")
+    @patch('servers.daemon_hooks._run_judge', return_value=None)
+    def test_hook_recall_judge_returns_none_means_approve(self, mock_judge):
+        """When judge returns None (no selection), hook_recall returns approve."""
         self._seed_data()
         result = self._call_recall("test rule")
-        ctx = result["json"]["additionalContext"]
-        self.assertNotIn("[DEBUG]", ctx)
+        self.assertEqual(result["json"].get("decision"), "approve")
 
 
 if __name__ == '__main__':

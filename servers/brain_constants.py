@@ -241,50 +241,63 @@ INTENT_TYPE_BOOSTS = {
     'general':           {'purpose': 1.1, 'mechanism': 1.1, 'impact': 1.1, 'vocabulary': 1.1},
 }
 
+def _start_of_today():
+    """Midnight UTC today."""
+    return datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+def _start_of_week():
+    """Monday 00:00 UTC of the current week."""
+    now = datetime.utcnow()
+    return (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+
+def _start_of_month():
+    """First day of the current month, 00:00 UTC."""
+    return datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
 TEMPORAL_PATTERNS = [
     {
         'pattern': re.compile(r'\btoday\b', re.IGNORECASE),
         'range_fn': lambda: {
-            'after': datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z'
+            'after': _start_of_today().isoformat() + 'Z'
         }
     },
     {
         'pattern': re.compile(r'\byesterday\b', re.IGNORECASE),
         'range_fn': lambda: {
-            'after': (datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0).replace(day=datetime.utcnow().day - 1).isoformat() + 'Z'),
-            'before': (datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z'),
+            'after': (_start_of_today() - timedelta(days=1)).isoformat() + 'Z',
+            'before': _start_of_today().isoformat() + 'Z',
         }
     },
     {
         'pattern': re.compile(r'\bthis week\b', re.IGNORECASE),
         'range_fn': lambda: {
-            'after': datetime.utcnow().replace(day=datetime.utcnow().day - datetime.utcnow().weekday(), hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z'
+            'after': _start_of_week().isoformat() + 'Z'
         }
     },
     {
         'pattern': re.compile(r'\blast week\b', re.IGNORECASE),
         'range_fn': lambda: {
-            'after': datetime.utcnow().replace(day=datetime.utcnow().day - datetime.utcnow().weekday() - 7, hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z',
-            'before': datetime.utcnow().replace(day=datetime.utcnow().day - datetime.utcnow().weekday(), hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z',
+            'after': (_start_of_week() - timedelta(weeks=1)).isoformat() + 'Z',
+            'before': _start_of_week().isoformat() + 'Z',
         }
     },
     {
         'pattern': re.compile(r'\bthis month\b', re.IGNORECASE),
         'range_fn': lambda: {
-            'after': datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z'
+            'after': _start_of_month().isoformat() + 'Z'
         }
     },
     {
         'pattern': re.compile(r'\blast month\b', re.IGNORECASE),
         'range_fn': lambda: {
-            'after': datetime.utcnow().replace(month=datetime.utcnow().month - 1, day=1, hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z',
-            'before': datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z',
+            'after': (_start_of_month().replace(day=1) - timedelta(days=1)).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z',
+            'before': _start_of_month().isoformat() + 'Z',
         }
     },
     {
         'pattern': re.compile(r'\blast (\d+) days?\b', re.IGNORECASE),
         'range_fn': lambda m: {
-            'after': datetime.utcnow().replace(day=datetime.utcnow().day - int(m.group(1))).isoformat() + 'Z'
+            'after': (datetime.utcnow() - timedelta(days=int(m.group(1)))).isoformat() + 'Z'
         }
     },
     {

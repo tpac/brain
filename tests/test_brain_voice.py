@@ -141,7 +141,7 @@ class TestBrainVoiceRenderBoot(BrainTestBase):
         self.assertIn("[/BRAIN]", wrapper)
         self.assertIn("Anchor", wrapper)
         # Footer with stats
-        self.assertIn("Brain:", wrapper)
+        self.assertIn("YOUR BRAIN:", wrapper)
         # Tools section
         self.assertIn("recall", wrapper)
 
@@ -285,16 +285,15 @@ class TestBrainVoiceOperatorChannelV2(BrainTestBase):
         self.assertNotIn("[BRAIN-To-", result)
 
     def test_wrap_for_hook_both_channels(self):
-        """Both present → output has both tagged sections in order."""
+        """Operator channel killed (2026-03-28) — wrap_for_hook returns Claude content only.
+        Signals handle operator alerts via signal queue now."""
         voice = BrainVoice(self.brain)
         result = voice.wrap_for_hook("[BRAIN]\nclaude stuff\n[/BRAIN]", "@priority: high\nHello Tom")
         self.assertIn("[BRAIN]", result)
-        self.assertIn("[BRAIN-To-", result)
-        # ADJUSTED: Operator section comes FIRST (2026-03-22) — survives hook
-        # timeout truncation. Tom's reminders matter more than Claude's reasoning.
-        tom_pos = result.index("[BRAIN-To-")
-        brain_pos = result.index("[BRAIN]\n")
-        self.assertLess(tom_pos, brain_pos)
+        self.assertIn("claude stuff", result)
+        # Operator content is ignored — no [BRAIN-To-*] tags
+        self.assertNotIn("[BRAIN-To-", result)
+        self.assertNotIn("Hello Tom", result)
 
     def test_wrap_for_hook_empty_operator(self):
         """Empty string for_operator → treated as no operator content."""
@@ -305,18 +304,20 @@ class TestBrainVoiceOperatorChannelV2(BrainTestBase):
         self.assertNotIn("[BRAIN-To-", result2)
 
     def test_wrap_for_hook_host_name(self):
-        """Uses brain config host_name in tag."""
+        """Operator channel killed (2026-03-28) — host_name no longer affects output."""
         self.brain.set_config("host_name", "Tom")
         voice = BrainVoice(self.brain)
         result = voice.wrap_for_hook("[BRAIN]\ntest\n[/BRAIN]", "hello")
-        self.assertIn("[BRAIN-To-Tom]", result)
-        self.assertIn("[/BRAIN-To-Tom]", result)
+        # Operator content ignored — returns Claude content only
+        self.assertIn("[BRAIN]", result)
+        self.assertNotIn("[BRAIN-To-Tom]", result)
 
     def test_wrap_for_hook_default_host(self):
-        """No host_name config → falls back to 'Operator'."""
+        """Operator channel killed (2026-03-28) — no operator tags emitted."""
         voice = BrainVoice(self.brain)
         result = voice.wrap_for_hook("[BRAIN]\ntest\n[/BRAIN]", "hello")
-        self.assertIn("[BRAIN-To-Operator]", result)
+        self.assertNotIn("[BRAIN-To-Operator]", result)
+        self.assertIn("[BRAIN]", result)
 
     # render_operator_prompt: DELETED — migrated to signal queue + assembler (2026-03-27)
 
