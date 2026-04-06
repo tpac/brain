@@ -415,18 +415,7 @@ class BrainSurfaceMixin:
                 'node_id': row[0]
             })
 
-        # 2. Check for recent miss logs
-        miss_count_row = self.logs_conn.execute(
-            "SELECT COUNT(*) FROM miss_log WHERE created_at > datetime('now', '-24 hours')"
-        ).fetchone()
-        miss_count = miss_count_row[0] if miss_count_row else 0
-
-        if miss_count > 3:
-            issues.append({
-                'type': 'high_miss_rate',
-                'severity': 'medium',
-                'message': f'{miss_count} recall misses in the last 24 hours. Consider keyword enrichment.'
-            })
+        # 2. miss_log check REMOVED 2026-04-06 — table dropped
 
         # 3. Check for orphaned locked nodes
         orphaned = self.conn.execute('''
@@ -467,52 +456,8 @@ class BrainSurfaceMixin:
                 ''')
                 actions.append('Auto-archived context nodes older than 14 days')
 
-        # 5. Auto-enrich keywords on missed nodes
-        if auto_fix:
-            try:
-                missed_nodes = self.logs_conn.execute('''
-                    SELECT DISTINCT expected_node_id FROM miss_log
-                    WHERE expected_node_id IS NOT NULL
-                    ORDER BY rowid DESC LIMIT 10
-                ''').fetchall()
-                enriched = 0
-                for (node_id,) in missed_nodes:
-                    try:
-                        self.enrich_keywords(node_id)
-                        enriched += 1
-                    except Exception as e:
-                        self._log_error('health_enrich_keywords', e, 'enriching keywords for missed node %s' % node_id[:12])
-                if enriched > 0:
-                    actions.append(f'Auto-enriched keywords on {enriched} frequently-missed nodes')
-            except Exception as e:
-                self._log_error('health_auto_enrich', e, 'auto-enriching frequently-missed nodes')
-
-        # 6. Auto-promote staged learnings
-        if auto_fix:
-            try:
-                promoted = self.auto_promote_staged(revisit_threshold=3)
-                if promoted.get('promoted', 0) > 0:
-                    actions.append(f'Auto-promoted {promoted["promoted"]} staged learnings (3+ revisits)')
-            except Exception as e:
-                self._log_error('health_auto_promote', e, 'auto-promoting staged learnings')
-
-        # 7. Check for stale pending staged learnings
-        try:
-            stale_staged_row = self.logs_conn.execute('''
-                SELECT COUNT(*) FROM staged_learnings
-                WHERE status = 'pending' AND created_at < datetime('now', '-7 days')
-            ''').fetchone()
-            stale_staged_count = stale_staged_row[0] if stale_staged_row else 0
-            if stale_staged_count > 0:
-                issues.append({
-                    'type': 'stale_staged_learnings',
-                    'severity': 'medium',
-                    'message': f'{stale_staged_count} staged learnings unreviewed for 7+ days.'
-                })
-        except Exception as e:
-            self._log_error('health_stale_staged', e, 'checking for stale staged learnings')
-
-        # health_log writes REMOVED 2026-04-05 — table dropped
+        # 5-7: miss_log auto-enrich, staged_learnings auto-promote, stale staged check
+        # ALL REMOVED 2026-04-06 — tables dropped
 
         return {
             'healthy': not any(i['severity'] == 'high' for i in issues),
@@ -521,124 +466,8 @@ class BrainSurfaceMixin:
             'checked_at': ts
         }
 
-    def list_staged(self, status: str = 'pending', limit: int = 20) -> Dict[str, Any]:
-        """
-        List staged learnings with optional status filter.
-        Returns dict with staged list.
-        """
-        # Two-step: get staged from logs DB, then enrich from main DB
-        query = 'SELECT node_id, status, times_revisited, created_at FROM staged_learnings WHERE 1=1'
-        params = []
-        if status != 'all':
-            query += ' AND status = ?'
-            params.append(status)
-        query += ' ORDER BY created_at DESC LIMIT ?'
-        params.append(limit)
-
-        rows = self.logs_conn.execute(query, params).fetchall()
-        results = []
-        for node_id, sl_status, times_revisited, created_at in rows:
-            node_row = self.conn.execute(
-                'SELECT title, content, type, confidence FROM nodes WHERE id = ? AND archived = 0',
-                (node_id,)
-            ).fetchone()
-            if node_row:
-                results.append({
-                    'node_id': node_id, 'status': sl_status,
-                    'times_revisited': times_revisited,
-                    'title': node_row[0], 'content': node_row[1],
-                    'type': node_row[2], 'confidence': node_row[3],
-                })
-        return {'staged': results}
-
-    def confirm_staged(self, node_id: str, lock: bool = False, new_title: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Confirm a staged learning — promotes it to full node.
-        Bumps confidence to 0.8, removes [staged] prefix, optionally locks.
-        """
-        exists = self.conn.execute('SELECT id FROM nodes WHERE id = ?', (node_id,)).fetchone()
-        if not exists:
-            return {'action': 'error', 'error': f'Node {node_id} not found'}
-
-        ts = self.now()
-
-        # Update node
-        if new_title:
-            self.conn.execute(
-                f'UPDATE nodes SET confidence = 0.8, locked = {1 if lock else 0}, title = ?, updated_at = ? WHERE id = ?',
-                (new_title, ts, node_id)
-            )
-        else:
-            self.conn.execute(
-                f'UPDATE nodes SET confidence = 0.8, locked = {1 if lock else 0}, title = REPLACE(title, "[staged] ", ""), updated_at = ? WHERE id = ?',
-                (ts, node_id)
-            )
-
-        # Update staged_learnings
-        self.logs_conn.execute(
-            "UPDATE staged_learnings SET status = 'confirmed', updated_at = ?, reviewed_session = ? WHERE node_id = ?",
-            (ts, 'current', node_id)
-        )
-
-        return {'action': 'confirmed', 'node_id': node_id, 'confidence': 0.8, 'locked': lock}
-
-    def dismiss_staged(self, node_id: str, reason: str = '') -> Dict[str, Any]:
-        """
-        Dismiss a staged learning — archives the node.
-        """
-        exists = self.conn.execute('SELECT id FROM nodes WHERE id = ?', (node_id,)).fetchone()
-        if not exists:
-            return {'action': 'error', 'error': f'Node {node_id} not found'}
-
-        ts = self.now()
-        self.conn.execute('UPDATE nodes SET archived = 1, updated_at = ? WHERE id = ?', (ts, node_id))
-        self.logs_conn.execute(
-            "UPDATE staged_learnings SET status = 'dismissed', updated_at = ?, reviewed_session = ? WHERE node_id = ?",
-            (ts, reason or 'current', node_id)
-        )
-
-        return {'action': 'dismissed', 'node_id': node_id}
-
-    def auto_promote_staged(self, revisit_threshold: int = 3) -> Dict[str, Any]:
-        """
-        Auto-promote staged learnings with enough revisits.
-        Threshold: 3+ revisits = auto-promote to confidence 0.7.
-        """
-        ts = self.now()
-        # Two-step: get pending staged from logs DB, then filter by main DB
-        staged_rows = self.logs_conn.execute('''
-            SELECT node_id, times_revisited
-            FROM staged_learnings
-            WHERE status = 'pending' AND times_revisited >= ?
-        ''', (revisit_threshold,)).fetchall()
-        candidates = []
-        for node_id, times_revisited in staged_rows:
-            row = self.conn.execute(
-                'SELECT title FROM nodes WHERE id = ? AND archived = 0', (node_id,)
-            ).fetchone()
-            if row:
-                candidates.append((node_id, times_revisited, row[0]))
-
-        if not candidates:
-            return {'promoted': 0}
-
-        count = 0
-        for node_id, _, _ in candidates:
-            self.conn.execute(
-                'UPDATE nodes SET confidence = 0.7, title = REPLACE(title, "[staged] ", ""), updated_at = ? WHERE id = ?',
-                (ts, node_id)
-            )
-            self.logs_conn.execute(
-                "UPDATE staged_learnings SET status = 'promoted', updated_at = ? WHERE node_id = ?",
-                (ts, node_id)
-            )
-            count += 1
-
-        return {'promoted': count, 'threshold': revisit_threshold}
-
-    def get_suggest_metrics(self, period_days: int = 7) -> Dict[str, Any]:
-        """Stub — suggest_log table dropped 2026-04-05."""
-        return {'period_days': period_days, 'total_suggest_calls': 0, 'avg_suggestions_per_call': 0}
+    # list_staged, confirm_staged, dismiss_staged, auto_promote_staged
+    # REMOVED 2026-04-06 — staged_learnings table dropped
 
     def pre_edit(self, file: str, tool_name: str = 'Edit') -> dict:
         """
