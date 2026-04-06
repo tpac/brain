@@ -33,6 +33,43 @@ os.environ.setdefault("ONNX_PROVIDERS", "CPUExecutionProvider")
 # See: https://github.com/microsoft/onnxruntime/issues/9313
 os.environ.setdefault("ORT_ALLOW_SPINNING", "0")
 
+# Monkey-patch fastembed to inject anti-spin session options into ONNX.
+# fastembed only exposes enable_cpu_mem_arena, but we need to disable
+# intra/inter-op spinning. We patch OnnxModel._load_onnx_model to add
+# our config entries to the SessionOptions before session creation.
+def _patch_fastembed_session_options():
+    try:
+        from fastembed.common.onnx_model import OnnxModel
+        _orig_load = OnnxModel._load_onnx_model
+
+        def _patched_load(self, *args, **kwargs):
+            # Inject anti-spin options into extra_session_options
+            extra = kwargs.get('extra_session_options') or {}
+            extra['_anti_spin'] = True  # marker for add_extra_session_options
+            kwargs['extra_session_options'] = extra
+            return _orig_load(self, *args, **kwargs)
+
+        # Patch add_extra_session_options to handle our config
+        _orig_add = OnnxModel.add_extra_session_options
+
+        @staticmethod
+        def _patched_add(session_options, extra_options):
+            anti_spin = extra_options.pop('_anti_spin', False)
+            if anti_spin:
+                session_options.add_session_config_entry(
+                    'session.intra_op.allow_spinning', '0')
+                session_options.add_session_config_entry(
+                    'session.inter_op.allow_spinning', '0')
+            if extra_options:
+                _orig_add(session_options, extra_options)
+
+        OnnxModel._load_onnx_model = _patched_load
+        OnnxModel.add_extra_session_options = _patched_add
+    except ImportError:
+        pass  # fastembed not installed — nothing to patch
+
+_patch_fastembed_session_options()
+
 # ─── Runtime State (set by load_model) ───
 _model = None
 _config = {}   # Current model config
