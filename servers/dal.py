@@ -426,6 +426,31 @@ class TraceDAL:
         self.conn.commit()
         return cursor.lastrowid
 
+    def append_batch(self, events: list) -> List[int]:
+        """Append multiple trace events in a single transaction.
+
+        Reduces WAL lock contention — one commit instead of N.
+        Each event dict uses the same keys as append().
+        """
+        from .trace_contract import validate_trace_event
+        now = datetime.now(timezone.utc).isoformat()
+        ids = []
+        for ev in events:
+            ok, error = validate_trace_event(ev['scale'], ev['event_type'], ev.get('ref_type', ''))
+            if not ok:
+                raise ValueError("Trace contract violation: %s" % error)
+            meta_json = json.dumps(ev.get('metadata')) if ev.get('metadata') else None
+            cursor = self.conn.execute(
+                'INSERT INTO trace_events '
+                '(chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, interaction_id, created_at) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (ev['chain_id'], ev['scale'], ev['event_type'], ev.get('ref_type', ''),
+                 ev.get('ref_id', ''), ev.get('summary', ''), meta_json,
+                 ev.get('session_id', ''), ev.get('interaction_id'), now))
+            ids.append(cursor.lastrowid)
+        self.conn.commit()
+        return ids
+
     def get_chain(self, chain_id: str) -> List[Dict[str, Any]]:
         """Get all events in a trace chain, ordered by time."""
         rows = self.conn.execute(

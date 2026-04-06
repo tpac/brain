@@ -149,26 +149,27 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
         nb.get('id', '')[:8], nb.get('title', '')[:60], nb.get('relation', ''))
         for nb in graph_neighbors[:10]]
 
-    brain._trace_dal.append(
-        chain_id=recall_chain, scale='s1', event_type='O',
-        ref_type='recall', ref_id=str(recall_ref or ''),
-        summary='%d candidates for: %s' % (len(results), enriched[:100]),
-        metadata={'source': 'hook', 'query': enriched[:500], 'candidates': cand_detail},
-        session_id=session_id)
-    brain._trace_dal.append(
-        chain_id=recall_chain, scale='s1', event_type='K',
-        ref_type='judge_selected',
-        ref_id=json.dumps(list(selected_ids)),
-        summary='%d selected, %d expanded' % (len(selected), len(graph_neighbors)),
-        metadata={'selected': sel_detail, 'expanded': exp_detail},
-        session_id=session_id)
-    brain._trace_dal.append(
-        chain_id=recall_chain, scale='s1', event_type='delta',
-        ref_type='additionalContext',
-        summary='%d nodes surfaced' % len(selected) if selected else '(no selection)',
-        metadata={'content': (additional_context or '')[:4000]},
-        interaction_id=interaction_id,
-        session_id=session_id)
+    # Batch all three trace writes in one transaction to avoid
+    # "database is locked" from encoding agent thread writing between commits
+    brain._trace_dal.append_batch([
+        dict(chain_id=recall_chain, scale='s1', event_type='O',
+             ref_type='recall', ref_id=str(recall_ref or ''),
+             summary='%d candidates for: %s' % (len(results), enriched[:100]),
+             metadata={'source': 'hook', 'query': enriched[:500], 'candidates': cand_detail},
+             session_id=session_id),
+        dict(chain_id=recall_chain, scale='s1', event_type='K',
+             ref_type='judge_selected',
+             ref_id=json.dumps(list(selected_ids)),
+             summary='%d selected, %d expanded' % (len(selected), len(graph_neighbors)),
+             metadata={'selected': sel_detail, 'expanded': exp_detail},
+             session_id=session_id),
+        dict(chain_id=recall_chain, scale='s1', event_type='delta',
+             ref_type='additionalContext',
+             summary='%d nodes surfaced' % len(selected) if selected else '(no selection)',
+             metadata={'content': (additional_context or '')[:4000]},
+             interaction_id=interaction_id,
+             session_id=session_id),
+    ])
 
 
 def _write_judge_result_file(recall_ref, judge_prompt, output, brain):
