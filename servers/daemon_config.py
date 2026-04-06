@@ -73,3 +73,13 @@ def get_lock_path() -> str:
 def get_status_path() -> str:
     """Get the daemon status file path (read by statusline script)."""
     return os.path.join("/tmp", "brain-status-{}.json".format(os.getuid()))
+
+
+def get_maintenance_path() -> str:
+    """Get the maintenance mode lock file path."""
+    return os.path.join("/tmp", "brain-maintenance-{}.lock".format(os.getuid()))
+
+
+def is_maintenance_mode() -> bool:
+    """Check if brain is in maintenance mode (DB operations, no daemon)."""
+    return os.path.exists(get_maintenance_path())

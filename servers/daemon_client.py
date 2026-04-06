@@ -97,7 +97,15 @@ def ensure_daemon(db_path: str) -> bool:
     - All concurrent callers block on the lock.
     - When lock releases, they wake up and find daemon already running.
     - No races, no duplicate daemons.
+
+    Maintenance mode: if the maintenance lock file exists, skip startup.
+    Used during DB operations (VACUUM, schema changes, bulk deletes).
     """
+    from .daemon_config import is_maintenance_mode
+    if is_maintenance_mode():
+        sys.stderr.write("[brain-daemon] Maintenance mode active — skipping startup\n")
+        return False
+
     # Fast path: already running and responsive?
     resp = _can_connect()
     if resp.get("ok"):
