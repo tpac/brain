@@ -101,7 +101,7 @@ def _read_judge_file(recall_ref):
         return None, None
 
 
-def _query_recall_log(since_id=0, limit=50):
+def _query_recall_log(since_id=0, limit=50, session_id=''):
     """Read recall events from S1 traces — the single source of truth.
     Migrated from recall_log table (2026-04-05) to trace_events.
     Shows S1 recall chains: O (candidates), K (judge-selected), Δ (additionalContext)."""
@@ -111,11 +111,15 @@ def _query_recall_log(since_id=0, limit=50):
     try:
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=3)
         # Get S1 recall O events (one per recall)
+        where = "scale = 's1' AND event_type = 'O' AND ref_type = 'recall' AND id > ?"
+        params = [since_id]
+        if session_id:
+            where += " AND session_id = ?"
+            params.append(session_id)
         rows = conn.execute(
             "SELECT id, chain_id, ref_id, summary, metadata, session_id, created_at "
-            "FROM trace_events WHERE scale = 's1' AND event_type = 'O' AND ref_type = 'recall' "
-            "AND id > ? ORDER BY id DESC LIMIT ?",
-            (since_id, limit)
+            "FROM trace_events WHERE %s ORDER BY id DESC LIMIT ?" % where,
+            params + [limit]
         ).fetchall()
 
         # For each O event, find the K and Δ in the same chain
@@ -760,6 +764,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             hours = int(params.get("hours", ["24"])[0])
             scale = params.get("scale", [""])[0]
             self._json_response(200, _query_traces(hours=hours, scale=scale))
+        elif path == "/api/sessions":
+            self._serve_sessions()
         elif path.startswith("/api/node/"):
             node_id = path.split("/api/node/")[1]
             self._serve_node_detail(node_id)
@@ -783,11 +789,34 @@ class DashboardHandler(BaseHTTPRequestHandler):
             "daemon_port": DAEMON_PORT,
         })
 
+    def _serve_sessions(self):
+        """Return recent sessions from trace_events."""
+        path = _get_logs_db_path()
+        if not os.path.exists(path):
+            self._json_response(200, [])
+            return
+        try:
+            conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=3)
+            rows = conn.execute(
+                "SELECT DISTINCT session_id, MIN(created_at) as first_seen, "
+                "MAX(created_at) as last_seen, COUNT(*) as event_count "
+                "FROM trace_events WHERE session_id != '' "
+                "AND created_at > datetime('now', '-7 days') "
+                "GROUP BY session_id ORDER BY last_seen DESC LIMIT 20"
+            ).fetchall()
+            conn.close()
+            sessions = [{"id": r[0], "short": r[0][:8], "first": r[1], "last": r[2],
+                         "events": r[3]} for r in rows]
+            self._json_response(200, sessions)
+        except Exception as e:
+            self._json_response(500, {"error": str(e)[:100]})
+
     def _serve_recalls(self, params):
         """Return recall events from S1 traces — the single source of truth."""
         since_id = int(params.get("since_id", [0])[0])
         limit = int(params.get("limit", [50])[0])
-        entries = _query_recall_log(since_id=since_id, limit=limit)
+        session_id = params.get("session_id", [""])[0]
+        entries = _query_recall_log(since_id=since_id, limit=limit, session_id=session_id)
         latest_id = entries[0]["id"] if entries else since_id
         self._json_response(200, {"events": entries, "latest_id": latest_id})
 
@@ -1247,7 +1276,10 @@ canvas { width: 100%; height: 100%; }
     <button class="feed-btn active" onclick="switchFeed('surface')">Surface</button>
     <button class="feed-btn" onclick="switchFeed('encoding')">Encoding <span id="enc-badge" style="display:none;background:#ff4466;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
     <button class="feed-btn" onclick="switchFeed('queue')">Queue</button>
-    <select id="surface-filter" onchange="filterSurface()" style="margin-left:auto;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
+    <select id="session-filter" onchange="onSessionFilterChange()" style="margin-left:auto;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
+      <option value="">All sessions</option>
+    </select>
+    <select id="surface-filter" onchange="filterSurface()" style="margin-left:8px;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
       <option value="">All sources</option>
       <option value="recall">Hook recalls</option>
       <option value="mcp">Anchor recalls</option>
@@ -1411,7 +1443,9 @@ async function loadStats() {
   } catch(e) {}
 }
 loadStats();
+loadSessions();
 setInterval(loadStats, 30000);
+setInterval(loadSessions, 60000);
 
 // Live feed — polls recall_log from brain_logs.db (single source of truth)
 let lastRecallId = 0;
@@ -1536,9 +1570,39 @@ function isEntryVisible(src) {
   return true;
 }
 
+function getSessionFilter() {
+  return document.getElementById('session-filter').value || '';
+}
+
+async function loadSessions() {
+  try {
+    const r = await fetch('/api/sessions');
+    const sessions = await r.json();
+    const sel = document.getElementById('session-filter');
+    // Keep current selection
+    const current = sel.value;
+    sel.innerHTML = '<option value="">All sessions</option>';
+    for (const s of sessions) {
+      const label = s.short + ' (' + s.events + ' events)';
+      sel.innerHTML += '<option value="' + s.id + '">' + label + '</option>';
+    }
+    if (current) sel.value = current;
+  } catch(e) { console.error('loadSessions error:', e); }
+}
+
+function onSessionFilterChange() {
+  // Reset feed and re-poll with new session filter
+  lastRecallId = 0;
+  document.getElementById('feed').innerHTML = '';
+  pollRecallLog();
+}
+
 async function pollRecallLog() {
   try {
-    const r = await fetch('/api/recalls?since_id=' + lastRecallId + '&limit=20');
+    let url = '/api/recalls?since_id=' + lastRecallId + '&limit=20';
+    const sf = getSessionFilter();
+    if (sf) url += '&session_id=' + encodeURIComponent(sf);
+    const r = await fetch(url);
     const d = await r.json();
     const feed = document.getElementById('feed');
     if (d.events && d.events.length) {
