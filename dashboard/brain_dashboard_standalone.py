@@ -1797,7 +1797,7 @@ async function loadEncodingActivity() {
       for (const n of (run.nodes || [])) {
         const kind = n.kind === 'revised' ? 'REVISED' : 'CREATED';
         const kindClass = n.kind === 'revised' ? 'revised' : 'created';
-        html += '<div class="enc-entry ' + kindClass + '" data-kind="' + kindClass + '" style="margin:2px 0;padding:4px 8px;cursor:pointer" onclick="showNodeDetail(\'' + (n.id||'') + '\')">' +
+        html += '<div class="enc-entry ' + kindClass + '" data-kind="' + kindClass + '" style="margin:2px 0;padding:4px 8px;cursor:pointer" onclick="showNodeDetail(&quot;' + (n.id||'') + '&quot;)">' +
           '<span class="enc-kind ' + kindClass + '">' + kind + '</span> ' +
           '<span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ' +
           '<span class="enc-title">' + escapeHtml(n.title || '') + '</span>' +
