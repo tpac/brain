@@ -362,11 +362,8 @@ def hook_post_response_track(brain, args, graph_changes):
     user_message = args.get("prompt", "") or args.get("message", "")
     assistant_response = (args.get("last_assistant_message", "") or "")[:_PL['assistant_response_store']]
 
-    # 1. Store exchange in message_stream (escalation only — content in traces)
-    try:
-        brain.store_exchange(user_message, assistant_response, session_id)
-    except Exception as e:
-        brain._log_error('store_exchange', e, 'Stop hook')
+    # message_stream writes REMOVED 2026-04-05 — content lives in S0 traces.
+    # Escalation tracking was redundant (encoding agent reads from traces, not pending queue).
 
     # 2. Write S0 traces (using SessionContext for chain IDs)
     try:
