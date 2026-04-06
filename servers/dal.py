@@ -170,10 +170,7 @@ class LogsDAL:
             "AND created_at < datetime('now', '-30 days')")
         stats['debug_log_pruned'] = cur.rowcount
 
-        # suggest_log: 30 days
-        cur = self.conn.execute(
-            "DELETE FROM suggest_log WHERE created_at < datetime('now', '-30 days')")
-        stats['suggest_log_pruned'] = cur.rowcount
+        # suggest_log: REMOVED 2026-04-05 (table dropped)
 
         # health_log: 90 days
         cur = self.conn.execute(

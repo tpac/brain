@@ -207,14 +207,7 @@ class BrainSurfaceMixin:
             for r in selected
         ]
 
-        # Log suggestion
-        try:
-            self.logs_conn.execute('''
-                INSERT INTO suggest_log (session_id, context, suggested_ids, created_at)
-                VALUES (?, ?, ?, ?)
-            ''', ('auto', ' | '.join(queries), json.dumps([s['id'] for s in suggestions]), self.now()))
-        except Exception as e:
-            self._log_error('suggest_log', e, 'logging suggestion to suggest_log')
+        # suggest_log writes REMOVED 2026-04-05 — table dropped
 
         return {'suggestions': suggestions, 'query_count': len(queries)}
 
@@ -651,26 +644,8 @@ class BrainSurfaceMixin:
         return {'promoted': count, 'threshold': revisit_threshold}
 
     def get_suggest_metrics(self, period_days: int = 7) -> Dict[str, Any]:
-        """
-        Aggregate suggest_log stats for a period.
-        Returns metrics on suggestion quality and diversity.
-        """
-        since = datetime.utcnow().timestamp() - (period_days * 86400)
-        try:
-            rows = self.logs_conn.execute('''
-                SELECT COUNT(*) as calls, AVG(LENGTH(suggested_ids)) as avg_pool_size
-                FROM suggest_log
-                WHERE created_at > datetime(?, 'unixepoch')
-            ''', (since,)).fetchone()
-
-            return {
-                'period_days': period_days,
-                'total_suggest_calls': rows[0] if rows else 0,
-                'avg_suggestions_per_call': rows[1] if rows and rows[1] else 0
-            }
-        except Exception as e:
-            self._log_error('suggest_metrics', e, 'aggregating suggest_log metrics')
-            return {'period_days': period_days, 'error': 'Could not aggregate metrics'}
+        """Stub — suggest_log table dropped 2026-04-05."""
+        return {'period_days': period_days, 'total_suggest_calls': 0, 'avg_suggestions_per_call': 0}
 
     def pre_edit(self, file: str, tool_name: str = 'Edit') -> dict:
         """
