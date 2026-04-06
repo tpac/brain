@@ -5,7 +5,7 @@ Standalone Brain Dashboard — completely independent from daemon.
 Serves the dashboard HTML on port 47303. Queries the daemon for data via TCP.
 If daemon is unavailable, shows a status message — doesn't crash.
 
-Start: python3 servers/brain_dashboard_standalone.py
+Start: python3 dashboard/brain_dashboard_standalone.py
 """
 
 import json

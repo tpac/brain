@@ -127,7 +127,7 @@ Encoding and decoding (recall) are two halves of the same system. If you add a f
 
 ## Dashboard
 
-The dashboard (`servers/brain_dashboard_standalone.py`) is a **passive observer** — it reads, never writes to brain data. It inspects the brain from the side without interfering with the process.
+The dashboard (`dashboard/brain_dashboard_standalone.py`) is a **passive observer** — it reads, never writes to brain data. It inspects the brain from the side without interfering with the process.
 
 ```
 Brain (daemon + hooks) → does the work → writes to DBs + tmp files

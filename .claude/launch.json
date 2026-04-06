@@ -4,7 +4,7 @@
     {
       "name": "brain-dashboard",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["servers/brain_dashboard_standalone.py"],
+      "runtimeArgs": ["dashboard/brain_dashboard_standalone.py"],
       "port": 47303
     }
   ]
