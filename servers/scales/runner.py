@@ -113,7 +113,7 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
 
     WRITE_TOOLS = {
         'remember', 'remember_batch', 'revise', 'revise_batch',
-        'connect', 'record_divergence', 'learn_vocabulary',
+        'connect',
     }
 
     t0 = time.time()

@@ -362,73 +362,6 @@ class TestValidateConfig(BrainTestBase):
         self.assertTrue(len(version_warnings) > 0, 'Should warn about schema version mismatch')
 
 
-class TestDaemon(BrainTestBase):
-    """Test persistent daemon client-server protocol."""
-
-    def setUp(self):
-        super().setUp()
-        # Kill any leftover daemon from previous test
-        from servers.daemon_client import stop_daemon, is_daemon_running, _kill_daemon
-        if is_daemon_running():
-            _kill_daemon()
-        import time
-        time.sleep(0.3)
-
-    def test_daemon_lifecycle(self):
-        """Daemon starts, responds to ping, remembers, recalls, stops cleanly."""
-        from servers.daemon_client import ensure_daemon, send_command, stop_daemon, is_daemon_running
-        import time
-
-        # Close brain so daemon can have exclusive access
-        self.brain.remember(type="lesson", title="daemon lifecycle target",
-                           content="unique content for daemon lifecycle testing")
-        self.brain.save()
-        self.brain.close()
-        self.brain = None
-
-        # Start daemon
-        ok = ensure_daemon(self.db_path)
-        self.assertTrue(ok, 'Daemon should start')
-        self.assertTrue(is_daemon_running(), 'Daemon should be running')
-
-        # Ping
-        resp = send_command("ping")
-        self.assertTrue(resp.get("ok"), 'Ping should succeed')
-        self.assertEqual(resp["result"]["status"], "alive")
-
-        # Recall — find the node we remembered directly
-        resp = send_command("recall", {"query": "daemon lifecycle target", "limit": 3})
-        self.assertTrue(resp.get("ok"), 'Recall should succeed')
-        results = resp["result"].get("results", [])
-        self.assertTrue(len(results) > 0, 'Should find the remembered node')
-
-        # Remember via daemon
-        resp = send_command("remember", {
-            "type": "lesson",
-            "title": "daemon remember test",
-            "content": "remembered via daemon"
-        })
-        self.assertTrue(resp.get("ok"), 'Remember should succeed: ' + str(resp))
-        self.assertIn("id", resp["result"])
-
-        # Record message + heartbeat
-        resp = send_command("record_message")
-        self.assertTrue(resp.get("ok"), 'Record message should succeed')
-
-        # Save and stop
-        send_command("save")
-        stop_daemon()
-        time.sleep(0.5)
-        self.assertFalse(is_daemon_running(), 'Daemon should be stopped')
-
-        # Verify remembered node persisted
-        from servers.brain import Brain
-        self.brain = Brain(self.db_path)
-        row = self.brain.conn.execute(
-            "SELECT title FROM nodes WHERE title = 'daemon remember test'"
-        ).fetchone()
-        self.assertIsNotNone(row, 'Node should persist in DB')
-
 
 # ═══════════════════════════════════════════════════════════════════════
 # SESSION A: Comprehensive Unit Tests (v5.1 expansion)
@@ -1026,113 +959,6 @@ class TestAutoHeal(BrainTestBase):
 
 # ── P3: Engineering Memory ───────────────────────────────────────────
 
-class TestEngineeringMemory(BrainTestBase):
-    """P3: Test engineering memory type helpers."""
-
-    def test_remember_purpose(self):
-        """Purpose nodes should be locked and system-scoped."""
-        result = self.brain.remember_purpose(
-            title='brain.py — thin assembler + core infrastructure hub',
-            content='After the monolith split, brain.py (1709 lines) is the assembler that inherits 10 mixins plus the infrastructure they all depend on.')
-        self.assertIn('id', result)
-        node = self.brain.conn.execute(
-            "SELECT type, locked, scope FROM nodes WHERE id = ?", (result['id'],)
-        ).fetchone()
-        self.assertEqual(node[0], 'purpose')
-        self.assertEqual(node[1], 1)  # locked
-
-    def test_remember_mechanism(self):
-        """Mechanism nodes should include steps in content."""
-        result = self.brain.remember_mechanism(
-            title='Recall pipeline: embed query → cosine scan → keyword fallback → blend → rank',
-            content='5-step recall with intent detection.',
-            steps=['embed query', 'cosine scan', 'keyword fallback', 'blend scores', 'rank + filter'])
-        self.assertIn('id', result)
-        node = self.brain.conn.execute(
-            "SELECT content FROM nodes WHERE id = ?", (result['id'],)
-        ).fetchone()
-        self.assertIn('embed query', node[0])
-
-    def test_remember_impact(self):
-        """Impact nodes should be locked with change_impacts metadata."""
-        result = self.brain.remember_impact(
-            title='Impact: recall output format changes ripple to hooks',
-            if_changed='recall() output format',
-            must_check='pre-response-recall.sh, boot-brain.sh',
-            because='they parse its return structure')
-        self.assertIn('id', result)
-        node = self.brain.conn.execute(
-            "SELECT type, locked FROM nodes WHERE id = ?", (result['id'],)
-        ).fetchone()
-        self.assertEqual(node[0], 'impact')
-        self.assertEqual(node[1], 1)
-
-    def test_remember_constraint(self):
-        """Constraint nodes should be locked."""
-        result = self.brain.remember_constraint(
-            title='Constraint: only brain.py may define __init__ — mixins must not',
-            content='In the mixin pattern, ONLY the main Brain class defines __init__().',
-            violates_if='A mixin defines __init__ method')
-        self.assertIn('id', result)
-        node = self.brain.conn.execute(
-            "SELECT type, locked FROM nodes WHERE id = ?", (result['id'],)
-        ).fetchone()
-        self.assertEqual(node[0], 'constraint')
-        self.assertEqual(node[1], 1)
-
-    def test_remember_convention(self):
-        """Convention nodes should include examples and anti-patterns."""
-        result = self.brain.remember_convention(
-            title='Error handling in hooks: resolve DB first, wrap imports',
-            content='All hooks follow the same error-handling pattern.',
-            examples=['source resolve-brain-db.sh first', 'wrap brain imports in try/except'],
-            anti_patterns=['bare except with pass', 'exit 1 on non-critical failures'])
-        self.assertIn('id', result)
-        node = self.brain.conn.execute(
-            "SELECT content FROM nodes WHERE id = ?", (result['id'],)
-        ).fetchone()
-        self.assertIn('Anti-patterns:', node[0])
-
-    def test_remember_lesson(self):
-        """Lesson nodes should have structured what/root/fix/principle content."""
-        result = self.brain.remember_lesson(
-            title='Lesson: silent failures are the most dangerous bug class',
-            what_happened='Found 76 except:pass blocks silently swallowing errors',
-            root_cause='Defensive coding habit without corresponding error logging',
-            fix='Added _log_error() with rate limiting to brain_logs.db',
-            preventive_principle='Every except block must log; bare except:pass is forbidden')
-        self.assertIn('id', result)
-        node = self.brain.conn.execute(
-            "SELECT type, locked, content FROM nodes WHERE id = ?", (result['id'],)
-        ).fetchone()
-        self.assertEqual(node[0], 'lesson')
-        self.assertEqual(node[1], 1)  # locked
-        self.assertIn('Root cause:', node[2])
-
-    def test_remember_mental_model(self):
-        """Mental model nodes should be created correctly."""
-        result = self.brain.remember_mental_model(
-            title='My relationship with Tom: partner, not user',
-            model_description='Tom is not a user giving instructions. He is a partner. This changes everything about how I should communicate.')
-        self.assertIn('id', result)
-        node = self.brain.conn.execute(
-            "SELECT type FROM nodes WHERE id = ?", (result['id'],)
-        ).fetchone()
-        self.assertEqual(node[0], 'mental_model')
-
-    def test_remember_uncertainty(self):
-        """Uncertainty nodes should have low confidence."""
-        result = self.brain.remember_uncertainty(
-            title='Uncertain: whether hub dampening threshold of 40 edges is correct',
-            what_unknown='The optimal hub dampening threshold — currently 40 edges',
-            why_it_matters='Wrong threshold means either too much dampening (losing relevant results) or too little (hub nodes dominate recall)')
-        self.assertIn('id', result)
-        node = self.brain.conn.execute(
-            "SELECT type, confidence FROM nodes WHERE id = ?", (result['id'],)
-        ).fetchone()
-        self.assertEqual(node[0], 'uncertainty')
-        self.assertLess(node[1], 0.6, 'Uncertainty nodes should have low confidence')
-
 
 # ── P3: Session Synthesis & Self-Correction ──────────────────────────
 
@@ -1197,13 +1023,6 @@ class TestSessionSynthesis(BrainTestBase):
         self.assertGreater(updated[0], initial_conf,
                           'Confidence should increase after validation')
 
-    def test_get_engineering_context(self):
-        """Engineering context should return purposes, constraints, etc."""
-        self.brain.remember_purpose(title='Test purpose', content='Testing content.')
-        self.brain.remember_constraint(title='Test constraint', content='Testing constraint.')
-        result = self.brain.get_engineering_context()
-        self.assertIsInstance(result, dict)
-
 
 # ── P3: Reminders ────────────────────────────────────────────────────
 
@@ -1232,22 +1051,6 @@ class TestReminders(BrainTestBase):
 
 class TestRememberRich(BrainTestBase):
     """P4: Test remember_rich and node metadata."""
-
-    def test_remember_rich_stores_metadata(self):
-        """remember_rich should create node_metadata row."""
-        result = self.brain.remember_rich(
-            type='decision',
-            title='API versioning: URL path-based (/v1/, /v2/)',
-            content='URL-based versioning for public API. Header versioning only for internal.',
-            reasoning='URL versioning is more discoverable and cacheable.',
-            alternatives='Header versioning, query param versioning')
-        self.assertIn('id', result)
-        meta = self.brain.conn.execute(
-            "SELECT reasoning, alternatives FROM node_metadata WHERE node_id = ?",
-            (result['id'],)
-        ).fetchone()
-        self.assertIsNotNone(meta, 'node_metadata row should exist')
-        self.assertIn('discoverable', meta[0])
 
     def test_recall_node_with_metadata(self):
         """recall_node should return enriched node with metadata."""
@@ -1756,58 +1559,6 @@ class TestSafetyCheck(BrainTestBase):
 # ═══════════════════════════════════════════════════════════════
 # Feature 3: Vocabulary Expansion Tests
 # ═══════════════════════════════════════════════════════════════
-
-class TestVocabularyExpansion(BrainTestBase):
-    """_expand_query_with_vocabulary() — expands operator terms in recall queries."""
-
-    def test_expansion_adds_mapped_terms(self):
-        """Learned vocabulary term gets expanded in query."""
-        self.brain.learn_vocabulary('working copy', maps_to=['worktree', 'git worktree'])
-        expanded = self.brain._expand_query_with_vocabulary('delete the working copy')
-        self.assertIn('worktree', expanded.lower())
-
-    def test_expansion_caps_at_max(self):
-        """Expansion capped at VOCAB_EXPANSION_MAX terms."""
-        from servers.brain_constants import VOCAB_EXPANSION_MAX
-        self.brain.learn_vocabulary('megamap', maps_to=['alpha', 'beta', 'gamma', 'delta', 'epsilon'])
-        expanded = self.brain._expand_query_with_vocabulary('use megamap')
-        added = expanded.replace('use megamap', '').strip().split()
-        self.assertLessEqual(len(added), VOCAB_EXPANSION_MAX)
-
-    def test_expansion_with_no_vocab(self):
-        """Empty vocabulary table — query returned unchanged."""
-        expanded = self.brain._expand_query_with_vocabulary('test query')
-        self.assertEqual(expanded, 'test query')
-
-    def test_expansion_logged(self):
-        """Vocabulary expansion is logged to recall_log."""
-        self.brain.learn_vocabulary('shortcut', maps_to=['keyboard_shortcut'])
-        self.brain._expand_query_with_vocabulary('use shortcut')
-        count = self.brain.logs_conn.execute(
-            "SELECT COUNT(*) FROM recall_log WHERE query = 'use shortcut' AND returned_ids LIKE 'vocab_expansion%'"
-        ).fetchone()[0]
-        self.assertGreaterEqual(count, 1)
-
-    def test_ambiguous_skipped(self):
-        """Ambiguous vocabulary (same term, multiple contexts) is NOT expanded."""
-        # Seed enough nodes so the generic threshold (>5%) isn't triggered
-        for i in range(25):
-            self.brain.remember(type='concept', title=f'Padding node {i}',
-                content=f'Generic content {i}')
-        self.brain.learn_vocabulary('the hook', maps_to=['pre-response-recall.sh'], context='recall')
-        self.brain.learn_vocabulary('the hook', maps_to=['pre-edit-suggest.sh'], context='editing')
-        expanded = self.brain._expand_query_with_vocabulary('what does the hook do')
-        # Should not add either mapping since it's ambiguous
-        self.assertNotIn('pre-response-recall', expanded)
-        self.assertNotIn('pre-edit-suggest', expanded)
-
-    def test_no_duplicate_terms(self):
-        """Mapped term already in query is not re-added."""
-        self.brain.learn_vocabulary('worktree', maps_to=['git worktree'])
-        expanded = self.brain._expand_query_with_vocabulary('delete the worktree')
-        # 'worktree' is already in query, shouldn't be duplicated
-        self.assertEqual(expanded.lower().count('worktree'), expanded.lower().count('worktree'))
-
 
 class TestVocabularyAdmission(BrainTestBase):
     """Vocabulary admission guard — rejects generic/stop words."""

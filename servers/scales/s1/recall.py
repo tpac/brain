@@ -27,12 +27,13 @@ def _get_recently_recalled(brain, session_id):
                 seen_ids.add(nid)
         except (ValueError, TypeError):
             pass
+    from servers.dal import NodeDAL
+    dal = NodeDAL(brain.conn)
     recently_recalled = []
     for nid in list(seen_ids)[:20]:
-        row = brain.conn.execute(
-            "SELECT title FROM nodes WHERE id LIKE ?", (nid + '%',)).fetchone()
-        if row:
-            recently_recalled.append({"id": nid, "title": row[0]})
+        title = dal.get_title(nid)
+        if title:
+            recently_recalled.append({"id": nid, "title": title})
     return recently_recalled
 
 

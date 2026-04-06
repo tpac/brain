@@ -55,7 +55,7 @@ def daemon_tcp_send(cmd, args):
 WRITE_COMMANDS = {
     'remember', 'remember_batch', 'revise', 'revise_batch',
     'connect', 'connect_batch', 'brain_batch',
-    'enrich', 'record_divergence', 'learn_vocabulary',
+    'enrich',
     'trace_append', 'set_config',
 }
 

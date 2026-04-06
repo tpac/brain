@@ -238,13 +238,21 @@ class BrainTestBase(unittest.TestCase):
 
     Every test result (pass/fail/error + duration) is logged to brain_logs.db
     so the brain can analyze testing trends over time.
+
+    The embedder (Arctic v1.5, ~1GB) is loaded once per process via the module
+    singleton in servers/embedder.py. This means the first test takes ~1.5s to
+    load the model, but subsequent tests reuse it at zero cost.
     """
+
+    # Set needs_embedder = False in subclasses that don't need semantic search.
+    # This skips model loading entirely, saving ~1GB memory and ~1.5s startup.
+    needs_embedder = True
 
     def setUp(self):
         self._test_start = time.time()
         self.tmp = tempfile.mkdtemp()
         self.db_path = os.path.join(self.tmp, 'brain.db')
-        self.brain = Brain(self.db_path)
+        self.brain = Brain(self.db_path, skip_embedder=not self.needs_embedder)
         self.brain.reset_session_activity()
 
     def tearDown(self):

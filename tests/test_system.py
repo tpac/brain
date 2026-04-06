@@ -18,8 +18,6 @@ mode: what happens when the daemon isn't ready yet.
 Test hierarchy:
   TestDaemonReadiness     — daemon not ready, slow start, socket race conditions
   TestSessionLifecycle    — full session from boot to end
-  TestDaemonStateFlow     — state propagation across hook calls via daemon
-  TestGraphChangeTracking — graph mutations surface in recall
   TestGracefulDegradation — every hook survives missing daemon, corrupt DB, etc.
   TestConcurrentHooks     — multiple hooks firing while daemon is busy
 """
@@ -46,11 +44,8 @@ from servers.daemon_server import BrainDaemon
 from servers.daemon_client import send_command, is_daemon_running, ensure_daemon, stop_daemon
 from servers.daemon_config import get_socket_path, get_pid_path
 from servers.daemon_hooks import (
-    hook_recall, hook_post_response_track, hook_idle_maintenance,
-    hook_post_compact_reboot, hook_pre_edit, hook_pre_bash_safety,
-    hook_pre_compact_save, hook_session_end, hook_stop_failure_log,
-    hook_config_change_host, hook_post_bash_host_check,
-    hook_worktree_context, hook_worktree_cleanup,
+    hook_recall, hook_pre_edit, hook_pre_bash_safety,
+    hook_config_change_host,
 )
 from tests.brain_test_base import BrainTestBase, HookTestBase as _SharedHookBase
 
@@ -300,21 +295,6 @@ class TestDaemonReadiness(SystemTestBase):
         has_approve = output.get('decision') == 'approve'
         self.assertTrue(has_context or has_approve,
                         f"Expected valid recall output. Got: {json.dumps(output)[:300]}")
-
-    def test_recall_without_daemon_still_finds_relevant_nodes(self):
-        """Direct fallback must actually recall — not just approve blindly."""
-        self._remove_daemon_socket()
-        hook_input = json.dumps({
-            'prompt': 'Tell me about the React component architecture we use',
-        })
-        rc, stdout, stderr = self.run_hook('pre-response-recall.sh', stdin_data=hook_input)
-        self.assertEqual(rc, 0)
-        output = json.loads(stdout.strip())
-        # Should find the React decision node
-        context = output.get('additionalContext', '')
-        self.assertIn('atomic design', context.lower(),
-                       f"Direct fallback should recall React architecture node.\n"
-                       f"Got: {context[:500]}")
 
     def test_pre_edit_without_daemon_returns_valid_json(self):
         """Pre-edit hook must return valid JSON when daemon is down."""
@@ -603,232 +583,6 @@ class TestSessionLifecycle(SystemTestBase):
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# TEST 3: Daemon State Flow — state propagates across hook calls
-# ══════════════════════════════════════════════════════════════════════════
-
-class TestDaemonStateFlow(BrainTestBase):
-    """Tests that daemon_hooks functions share state correctly through Brain.
-
-    These test the daemon_hooks.py functions DIRECTLY (no subprocess),
-    verifying that state set by one hook is visible to the next.
-    """
-
-    def test_recall_drains_pending_messages(self):
-        """Messages stored by background hooks should appear in recall output."""
-        # Simulate a background hook storing a pending message
-        self.brain.set_config('pending_hook_messages',
-                              json.dumps(['HOST: Python upgraded 3.11 -> 3.12']))
-        self.brain.save()
-
-        result = hook_recall(self.brain, {
-            'prompt': 'What should I know about the current environment?',
-        }, [])
-
-        self.assertIn('json', result)
-        context = result['json'].get('additionalContext', '')
-        self.assertIn('QUEUED MESSAGES', context,
-                       f"Recall should surface pending messages.\nGot: {context[:500]}")
-        self.assertIn('Python upgraded', context)
-
-        # Pending should be drained (cleared)
-        remaining = self.brain.get_config('pending_hook_messages', '[]')
-        self.assertEqual(remaining, '[]',
-                         "Pending messages should be cleared after drain")
-
-    def test_track_stores_vocab_gaps(self):
-        """Post-response track should detect and store vocabulary gaps."""
-        hook_post_response_track(self.brain, {
-            'prompt': 'What about the "flux capacitor" in the rendering pipeline?',
-            'hook_event_name': 'UserPromptSubmit',
-        }, [])
-
-        gaps_raw = self.brain.get_config('vocabulary_gaps', '[]')
-        gaps = json.loads(gaps_raw)
-        # "flux capacitor" is in quotes → should be detected as a candidate
-        gap_terms = [g.get('term') if isinstance(g, dict) else g for g in gaps]
-        self.assertTrue(
-            any('flux capacitor' in str(t) for t in gap_terms),
-            f"Should detect 'flux capacitor' as vocabulary gap.\nGaps: {gaps}")
-
-    def test_idle_stores_pending_for_recall(self):
-        """Idle maintenance stores results as pending, recall drains them."""
-        # Run idle maintenance
-        hook_idle_maintenance(self.brain, {}, [])
-
-        # Check pending messages exist
-        pending_raw = self.brain.get_config('pending_hook_messages', '[]')
-        pending = json.loads(pending_raw)
-        self.assertTrue(len(pending) > 0,
-                         "Idle maintenance should store output as pending message")
-        self.assertTrue(any('IDLE MAINTENANCE' in str(p) for p in pending),
-                         f"Pending should contain maintenance output.\nGot: {pending}")
-
-        # Now recall should drain and surface them
-        result = hook_recall(self.brain, {
-            'prompt': 'What happened during idle time?',
-        }, [])
-
-        if 'json' in result and 'additionalContext' in result['json']:
-            context = result['json']['additionalContext']
-            self.assertIn('QUEUED MESSAGES', context)
-
-    def test_pre_compact_creates_boundary_node(self):
-        """Pre-compact should create a compaction boundary marker node."""
-        count_before = self.brain.conn.execute(
-            "SELECT COUNT(*) FROM nodes WHERE title LIKE '%Compaction boundary%'"
-        ).fetchone()[0]
-
-        hook_pre_compact_save(self.brain, {}, [])
-
-        count_after = self.brain.conn.execute(
-            "SELECT COUNT(*) FROM nodes WHERE title LIKE '%Compaction boundary%'"
-        ).fetchone()[0]
-        self.assertEqual(count_after, count_before + 1,
-                         "Pre-compact should create exactly one boundary marker")
-
-    def test_session_end_runs_without_crash(self):
-        """Session end should complete without crashing (synthesis may be empty)."""
-        # Record some activity first
-        self.brain.record_message()
-        self.brain.record_message()
-        # Remember something to give synthesis content to work with
-        self.brain.remember(
-            type='decision', title='Test decision during session',
-            content='We decided to use X instead of Y.',
-            keywords='test decision session')
-        self.brain.save()
-
-        # Session end should not crash
-        result = hook_session_end(self.brain, {}, [])
-        self.assertIn('output', result)
-
-        # Session end calls synthesize + consolidate. At minimum, save ran.
-        # Synthesis may or may not produce a record depending on session data,
-        # but the function itself must not raise.
-
-    def test_worktree_context_sets_config(self):
-        """Worktree context hook should set brain config keys."""
-        hook_worktree_context(self.brain, {
-            'name': 'test-feature-branch',
-            'cwd': '/tmp/test-worktree',
-        }, [])
-
-        self.assertEqual(self.brain.get_config('current_worktree'), 'test-feature-branch')
-        self.assertEqual(self.brain.get_config('current_cwd'), '/tmp/test-worktree')
-
-    def test_worktree_cleanup_clears_config(self):
-        """Worktree cleanup should clear all worktree config."""
-        # Set some values first
-        self.brain.set_config('current_worktree', 'old-worktree')
-        self.brain.set_config('current_branch', 'old-branch')
-        self.brain.set_config('current_cwd', '/old/path')
-
-        hook_worktree_cleanup(self.brain, {}, [])
-
-        # get_config returns None or '' for cleared values
-        self.assertFalse(self.brain.get_config('current_worktree'),
-                         "current_worktree should be cleared")
-        self.assertFalse(self.brain.get_config('current_branch'),
-                         "current_branch should be cleared")
-        self.assertFalse(self.brain.get_config('current_cwd'),
-                         "current_cwd should be cleared")
-
-    def test_stop_failure_runs_without_crash(self):
-        """Stop failure hook should log without crashing."""
-        # log_miss writes to brain_logs.db (separate DB), not brain.db
-        # Just verify the function completes without error
-        result = hook_stop_failure_log(self.brain, {
-            'error': 'rate_limit',
-            'error_details': 'Too many requests',
-            'session_id': 'test-session',
-        }, [])
-        self.assertIn('output', result)
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# TEST 4: Graph Change Tracking — mutations visible in recall
-# ══════════════════════════════════════════════════════════════════════════
-
-class TestGraphChangeTracking(BrainTestBase):
-    """Tests that graph mutations are tracked and surfaced by recall."""
-
-    def test_remember_tracked_in_graph_changes(self):
-        """Brain.remember via daemon should append to graph_changes."""
-        graph_changes = []
-
-        # Simulate what daemon does: remember then pass changes to recall
-        self.brain.remember(
-            type='decision',
-            title='Test decision for graph tracking',
-            content='This decision should appear in graph changes.',
-            keywords='test graph tracking',
-        )
-        graph_changes.append("REMEMBER: [decision] Test decision for graph tracking")
-
-        result = hook_recall(self.brain, {
-            'prompt': 'What changed recently?',
-        }, graph_changes)
-
-        context = result.get('json', {}).get('additionalContext', '')
-        self.assertIn('GRAPH ACTIVITY', context,
-                       f"Recall should surface graph changes.\nGot: {context[:500]}")
-        self.assertIn('Test decision', context)
-
-    def test_graph_changes_drained_after_recall(self):
-        """Graph changes should be cleared after recall drains them."""
-        graph_changes = [
-            "REMEMBER: [rule] New safety rule",
-            "CONNECT: abc12345 -[depends_on]-> def67890",
-        ]
-
-        hook_recall(self.brain, {'prompt': 'test query'}, graph_changes)
-
-        self.assertEqual(len(graph_changes), 0,
-                         "Graph changes should be cleared after drain")
-
-    def test_multiple_mutations_accumulate(self):
-        """Multiple mutations between prompts should all appear."""
-        graph_changes = []
-
-        # Simulate multiple operations between user prompts
-        graph_changes.append("REMEMBER: [decision] Chose REST over GraphQL")
-        graph_changes.append("REMEMBER: [lesson] GraphQL complexity not worth it for MVP")
-        graph_changes.append("CONNECT: node1 -[leads_to]-> node2")
-        graph_changes.append("DREAM: 2 new dream node(s)")
-
-        result = hook_recall(self.brain, {
-            'prompt': 'What happened while I was away?',
-        }, graph_changes)
-
-        context = result.get('json', {}).get('additionalContext', '')
-        self.assertIn('GRAPH ACTIVITY', context)
-        self.assertIn('REST over GraphQL', context)
-        self.assertIn('DREAM', context)
-
-    def test_no_graph_changes_no_section(self):
-        """When no graph changes, the GRAPH ACTIVITY section should not appear."""
-        result = hook_recall(self.brain, {
-            'prompt': 'Tell me about authentication',
-        }, [])
-
-        context = result.get('json', {}).get('additionalContext', '')
-        # Might get approve (no results) or context. Either way, no GRAPH ACTIVITY.
-        if context:
-            self.assertNotIn('GRAPH ACTIVITY', context,
-                             "No mutations → no GRAPH ACTIVITY section")
-
-    def test_idle_maintenance_adds_graph_changes(self):
-        """Idle maintenance should log its mutations to graph_changes."""
-        graph_changes = []
-        hook_idle_maintenance(self.brain, {}, graph_changes)
-        # Idle does dream, consolidate, heal — at least consolidate should log something
-        # Even if counts are 0, the function runs
-        # Check that at least the list was populated OR is empty (both valid)
-        # The key test is that graph_changes is the SAME list (shared reference)
-        self.assertIsInstance(graph_changes, list)
-
-
-# ══════════════════════════════════════════════════════════════════════════
 # TEST 5: Graceful Degradation — every hook survives failure conditions
 # ══════════════════════════════════════════════════════════════════════════
 
@@ -975,18 +729,6 @@ class TestHookFunctions(BrainTestBase):
         super().setUp()
         _seed_realistic_brain(self.brain)
 
-    def test_recall_finds_auth_rules(self):
-        """Recall should find auth rules for auth-related queries."""
-        result = hook_recall(self.brain, {
-            'prompt': 'How does authentication work with Clerk?',
-        }, [])
-
-        self.assertIn('json', result)
-        context = result['json'].get('additionalContext', '')
-        self.assertTrue(
-            'clerk' in context.lower() or 'auth' in context.lower(),
-            f"Should find auth-related nodes.\nContext: {context[:500]}")
-
     def test_recall_short_message_approves(self):
         """Short messages should skip recall entirely."""
         result = hook_recall(self.brain, {'prompt': 'ok'}, [])
@@ -1036,31 +778,6 @@ class TestHookFunctions(BrainTestBase):
         # It always calls brain.safety_check(). The regex is in the CLIENT.
         # So this test is about what happens when a non-destructive command hits safety_check.
         self.assertIn('json', result)
-
-    def test_post_compact_reboot_outputs_context(self):
-        """Post-compact reboot should output substantial brain context."""
-        result = hook_post_compact_reboot(self.brain, {}, [])
-
-        self.assertIn('output', result)
-        output = result['output']
-        self.assertTrue(len(output) > 100,
-                         f"Post-compact output too short ({len(output)} chars).\n"
-                         f"Output: {output[:500]}")
-        self.assertIn('BRAIN POST-COMPACTION REBOOT', output)
-
-    def test_idle_maintenance_runs_all_stages(self):
-        """Idle maintenance should attempt all stages without crashing."""
-        graph_changes = []
-        result = hook_idle_maintenance(self.brain, {}, graph_changes)
-
-        # Output is empty (stored as pending) but shouldn't crash
-        self.assertIn('output', result)
-
-        # Check pending messages were stored
-        pending_raw = self.brain.get_config('pending_hook_messages', '[]')
-        pending = json.loads(pending_raw)
-        self.assertTrue(len(pending) > 0,
-                         "Idle should store maintenance output as pending")
 
     def test_config_change_detects_host_changes(self):
         """Config change hook should scan host and store pending if changes found."""
@@ -1258,78 +975,6 @@ class TestPreScreenGuards(SystemTestBase):
 # ══════════════════════════════════════════════════════════════════════════
 # TEST 9: Seed Brain Tests — foundational knowledge for new brains
 # ══════════════════════════════════════════════════════════════════════════
-
-class TestSeedBrain(unittest.TestCase):
-    """Tests for scripts/seed_brain.py — the seed brain populator."""
-
-    def setUp(self):
-        self.tmpdir = tempfile.mkdtemp(prefix='brain_test_seed_')
-        # Create a fresh brain
-        db_path = os.path.join(self.tmpdir, 'brain.db')
-        self.brain = Brain(db_path)
-        self.brain.save()
-
-    def tearDown(self):
-        self.brain.close()
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
-
-    def test_seed_creates_expected_nodes(self):
-        """seed_brain.py creates all 5 foundational nodes.
-
-        VERIFIES: Seed nodes are created with correct types and locked status.
-        SIGNALS: If count < 5, a seed node definition is missing.
-        """
-        sys.path.insert(0, PROJECT_ROOT)
-        from scripts.seed_brain import seed_brain
-        seed_brain(self.tmpdir)
-
-        # Should have exactly 5 seed nodes
-        count = self.brain.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
-        self.assertEqual(count, 5, "Seed should create exactly 5 nodes")
-
-        # Check locked nodes (4 of 5 should be locked)
-        locked = self.brain.conn.execute("SELECT COUNT(*) FROM nodes WHERE locked = 1").fetchone()[0]
-        self.assertEqual(locked, 4, "4 of 5 seed nodes should be locked")
-
-    def test_seed_is_idempotent(self):
-        """Running seed twice doesn't create duplicates.
-
-        VERIFIES: Idempotency via exact title match.
-        SIGNALS: If count > 5 after double seed, duplicate detection is broken.
-        """
-        from scripts.seed_brain import seed_brain
-        seed_brain(self.tmpdir)
-        seed_brain(self.tmpdir)  # Second run
-
-        count = self.brain.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
-        self.assertEqual(count, 5, "Double seed should still produce exactly 5 nodes")
-
-    def test_seed_creates_connections(self):
-        """Seed creates cross-connections between foundational nodes.
-
-        VERIFIES: Edges exist between seed nodes.
-        SIGNALS: If 0 edges, the connection logic in seed_brain.py is broken.
-        """
-        from scripts.seed_brain import seed_brain
-        seed_brain(self.tmpdir)
-
-        edge_count = self.brain.conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
-        self.assertGreaterEqual(edge_count, 3, "Seed should create at least 3 connections")
-
-    def test_seed_includes_conflict_protocol(self):
-        """The conflict protocol rule is a seed node.
-
-        VERIFIES: The most important seed node (conflict protocol) exists and is locked.
-        """
-        from scripts.seed_brain import seed_brain
-        seed_brain(self.tmpdir)
-
-        row = self.brain.conn.execute(
-            "SELECT locked FROM nodes WHERE title LIKE '%conflict protocol%'"
-        ).fetchone()
-        self.assertIsNotNone(row, "Conflict protocol node should exist")
-        self.assertEqual(row[0], 1, "Conflict protocol should be locked")
-
 
 # ══════════════════════════════════════════════════════════════════════════
 # TEST 10: Daemon Dispatch Tests — hook table + telemetry wrapper

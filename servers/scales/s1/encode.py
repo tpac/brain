@@ -216,12 +216,11 @@ def _build_user_content(brain, messages, counter, session_id):
             if judge_output and judge_output != '(no selection)':
                 ref_ids = re.findall(r'id:([a-f0-9]{8})', judge_output)
                 if ref_ids:
+                    from servers.dal import NodeDAL
+                    dal = NodeDAL(brain.conn)
                     refs = []
                     for rid in ref_ids:
-                        title_row = brain.conn.execute(
-                            "SELECT title FROM nodes WHERE id LIKE ?",
-                            (rid + '%',)).fetchone()
-                        title = title_row[0][:50] if title_row else rid
+                        title = (dal.get_title(rid) or rid)[:50]
                         refs.append('%s ("%s")' % (rid, title))
                     timeline += "SURFACED: %s\n" % ", ".join(refs)
 

@@ -132,7 +132,7 @@ class Brain(
                     pass
             cls._instances.clear()
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, skip_embedder: bool = False):
         """
         Initialize Brain with SQLite3 database.
 
@@ -142,8 +142,11 @@ class Brain(
 
         Args:
             db_path: Path to brain.db file
+            skip_embedder: If True, skip loading the embedding model (~1GB).
+                          Useful for tests that don't need semantic search.
         """
         self.db_path = db_path
+        self._skip_embedder = skip_embedder
 
         # Open SQLite connection with WAL mode for concurrency
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
@@ -195,11 +198,12 @@ class Brain(
         }
 
         # Load embedder with config from brain_meta (falls back to plugin.json defaults)
-        try:
-            embedder_config = self._get_embedder_config()
-            embedder.load_model(embedder_config)
-        except Exception as e:
-            print(f'[brain] Embedder load failed (optional): {e}')
+        if not skip_embedder:
+            try:
+                embedder_config = self._get_embedder_config()
+                embedder.load_model(embedder_config)
+            except Exception as e:
+                print(f'[brain] Embedder load failed (optional): {e}')
 
     def _post_schema_init(self):
         """
@@ -464,8 +468,10 @@ class Brain(
             return ''
         return interaction.get('template', '')
 
-    def get_interaction(self, name: str) -> dict:
-        """Get full latest interaction (id, template, parameters, version). Returns None if not found."""
+    def get_interaction(self, name: str, version: int = 0) -> dict:
+        """Get interaction by name. version=0 (default) returns latest, else specific version."""
+        if version:
+            return self._interaction_dal.get_version(name, version)
         return self._interaction_dal.get_latest(name)
 
     def get_or_create_session(self, session_id: str) -> 'SessionContext':

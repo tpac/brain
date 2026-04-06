@@ -83,14 +83,6 @@ def main():
         code = sys.argv[2] if len(sys.argv) > 2 else ''
         result = daemon_call('eval', {'code': code})
 
-    elif cmd == 'record_divergence':
-        args = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
-        result = daemon_call('record_divergence', args)
-
-    elif cmd == 'learn_vocabulary':
-        args = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
-        result = daemon_call('learn_vocabulary', args)
-
     else:
         # Generic passthrough
         args = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}

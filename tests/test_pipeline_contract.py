@@ -143,11 +143,11 @@ class TestBuildJudgePrompt(unittest.TestCase):
             'test')
         self.assertIn('Silence is better than noise', prompt)
 
-    def test_prompt_includes_tangential_warning(self):
+    def test_prompt_includes_noise_rejection(self):
         prompt, _ = build_judge_prompt(
             [{'id': 'a', 'type': 'rule', 'title': 'T', 'content': 'C'}],
             'test')
-        self.assertIn('tangentially related', prompt)
+        self.assertIn('coincidence', prompt)
 
     def test_max_tokens_from_config(self):
         _, max_tokens = build_judge_prompt(

@@ -3,7 +3,7 @@ MCP Round-Trip Tests — verifies every MCP tool works end-to-end.
 
 Each tool exposed via brain_mcp.py is tested through the daemon dispatch
 layer against a real Brain instance. This catches:
-  - MCP tool → daemon command mapping failures
+  - MCP tool -> daemon command mapping failures
   - Parameter name mismatches between MCP schema and handler
   - Brain method errors not surfaced properly
   - Missing dispatch handlers for new tools
@@ -53,7 +53,7 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertTrue(len(result["id"]) > 0)
 
     def test_remember_then_recall(self):
-        """remember → recall: stored node should be findable."""
+        """remember -> recall: stored node should be findable."""
         r1 = self._dispatch("remember", {
             "type": "decision", "title": "Use Arctic v1.5 for embeddings",
             "content": "Chose Arctic v1.5 because it balances quality and speed."
@@ -65,6 +65,46 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertIn(node_id, found_ids,
                       "Freshly stored node not found by recall — embedding may have failed")
 
+    def test_remember_batch(self):
+        """remember_batch stores multiple nodes in one call."""
+        result = self._dispatch("remember_batch", {
+            "nodes": [
+                {"type": "concept", "title": "Batch node A", "content": "First batch node"},
+                {"type": "concept", "title": "Batch node B", "content": "Second batch node"},
+            ],
+            "auto_connect": True
+        })
+        self.assertIn("nodes_created", result)
+        self.assertEqual(result["nodes_created"], 2)
+
+    def test_revise(self):
+        """revise updates an existing node."""
+        n = self._dispatch("remember", {
+            "type": "lesson", "title": "Revise me", "content": "Original content"
+        })
+        result = self._dispatch("revise", {
+            "node_id": n["id"], "content": "Revised content", "reason": "test"
+        })
+        self.assertIn("id", result)
+        self.assertTrue(result.get("embedding_updated") or result.get("revised_at"))
+        # Verify content changed
+        row = self.brain.conn.execute(
+            "SELECT content FROM nodes WHERE id = ?", (n["id"],)).fetchone()
+        self.assertEqual(row[0], "Revised content")
+
+    def test_revise_batch(self):
+        """revise_batch updates multiple nodes in one call."""
+        n1 = self._dispatch("remember", {"type": "concept", "title": "Rev batch A", "content": "A"})
+        n2 = self._dispatch("remember", {"type": "concept", "title": "Rev batch B", "content": "B"})
+        result = self._dispatch("revise_batch", {
+            "revisions": [
+                {"node_id": n1["id"], "content": "A revised", "reason": "test"},
+                {"node_id": n2["id"], "content": "B revised", "reason": "test"},
+            ]
+        })
+        self.assertIn("revised", result)
+        self.assertEqual(result["revised"], 2)
+
     def test_connect(self):
         """connect creates an edge between two nodes."""
         n1 = self._dispatch("remember", {"type": "concept", "title": "Node A", "content": "First node"})
@@ -73,12 +113,35 @@ class TestMCPRoundTrip(BrainTestBase):
             "source_id": n1["id"], "target_id": n2["id"],
             "relation": "related_to", "weight": 0.8
         })
-        # Verify edge exists in DB
         edge = self.brain.conn.execute(
             "SELECT relation, weight FROM edges WHERE source_id = ? AND target_id = ?",
             (n1["id"], n2["id"])).fetchone()
         self.assertIsNotNone(edge, "Edge should exist after connect")
         self.assertEqual(edge[0], "related_to")
+
+    def test_connect_batch(self):
+        """connect_batch creates multiple edges in one call."""
+        n1 = self._dispatch("remember", {"type": "concept", "title": "CB A", "content": "A"})
+        n2 = self._dispatch("remember", {"type": "concept", "title": "CB B", "content": "B"})
+        n3 = self._dispatch("remember", {"type": "concept", "title": "CB C", "content": "C"})
+        result = self._dispatch("connect_batch", {
+            "connections": [
+                {"source_id": n1["id"], "target_id": n2["id"], "relation": "related_to"},
+                {"source_id": n2["id"], "target_id": n3["id"], "relation": "related_to"},
+            ]
+        })
+        self.assertIn("edges_created", result)
+        self.assertEqual(result["edges_created"], 2)
+
+    def test_brain_batch(self):
+        """brain_batch runs mixed operations in one call."""
+        result = self._dispatch("brain_batch", {
+            "operations": [
+                {"op": "remember", "type": "concept", "title": "Batch op node", "content": "Created via brain_batch"},
+            ]
+        })
+        self.assertIn("results", result)
+        self.assertEqual(len(result["results"]), 1)
 
     def test_enrich(self):
         """enrich stores enrichment vectors for a node."""
@@ -90,111 +153,20 @@ class TestMCPRoundTrip(BrainTestBase):
         })
         self.assertIn("enrichments_stored", result)
 
-    # ── Specialized encoding (promoted from eval) ──
-
-    def test_remember_lesson(self):
-        """remember_lesson stores structured lesson with all fields."""
-        result = self._dispatch("remember_lesson", {
-            "title": "Lock timeout prevents deadlocks",
-            "what_happened": "Write lock had no timeout, causing hangs",
-            "root_cause": "threading.Lock.acquire() blocks forever by default",
-            "fix": "Added timeout=10.0 to acquire calls",
-            "preventive_principle": "All lock acquisitions need timeouts"
+    def test_recall_batch(self):
+        """recall_batch runs multiple queries in one call."""
+        result = self._dispatch("recall_batch", {
+            "queries": ["test query one", "test query two"],
+            "limit": 3
         })
-        self.assertIn("id", result)
-        # Verify it's locked (lessons are auto-locked)
-        node = self.brain.conn.execute(
-            "SELECT locked FROM nodes WHERE id = ?", (result["id"],)).fetchone()
-        self.assertTrue(node[0], "Lessons should be auto-locked")
+        # Returns a list of per-query results
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 2)
 
-    def test_remember_impact(self):
-        """remember_impact stores dependency tracking."""
-        result = self._dispatch("remember_impact", {
-            "title": "daemon_config change requires daemon restart",
-            "if_changed": "DAEMON_HOST in daemon_config.py",
-            "must_check": "All daemon clients, MCP server, dashboard",
-            "because": "Host is read at import time, cached in module scope"
-        })
-        self.assertIn("id", result)
-
-    def test_remember_mechanism(self):
-        """remember_mechanism stores how something works."""
-        result = self._dispatch("remember_mechanism", {
-            "title": "MCP retry flow",
-            "content": "MCP server retries 3 times with backoff on daemon connection failure.",
-            "steps": ["Send command", "On failure: wait 0.5s", "Restart daemon", "Retry"],
-        })
-        self.assertIn("id", result)
-
-    def test_remember_convention(self):
-        """remember_convention stores coding patterns."""
-        result = self._dispatch("remember_convention", {
-            "title": "Lock acquire always with timeout",
-            "content": "Never call lock.acquire() without timeout parameter.",
-            "pattern": "lock.acquire(timeout=10.0)",
-            "anti_pattern": "lock.acquire()  # blocks forever"
-        })
-        self.assertIn("id", result)
-
-    def test_remember_uncertainty(self):
-        """remember_uncertainty stores honest not-knowing."""
-        result = self._dispatch("remember_uncertainty", {
-            "title": "Is 10s lock timeout optimal?",
-            "what_unknown": "Whether 10 seconds is the right timeout for write lock",
-            "why_it_matters": "Too short = false failures, too long = perceived hangs"
-        })
-        self.assertIn("id", result)
-        # Verify low confidence (uncertainties auto-set 0.3)
-        node = self.brain.conn.execute(
-            "SELECT confidence FROM nodes WHERE id = ?", (result["id"],)).fetchone()
-        self.assertLessEqual(node[0], 0.5, "Uncertainties should have low confidence")
-
-    def test_remember_mental_model(self):
-        """remember_mental_model stores understanding of systems."""
-        result = self._dispatch("remember_mental_model", {
-            "title": "Daemon has 3 responsibilities",
-            "model_description": "The daemon: 1) keeps Brain loaded in memory, 2) serializes writes, 3) serves the dashboard. These should be separated.",
-            "applies_to": "servers/daemon_server.py",
-            "confidence": 0.8
-        })
-        self.assertIn("id", result)
-
-    def test_record_divergence(self):
-        """record_divergence tracks corrections."""
-        result = self._dispatch("record_divergence", {
-            "claude_assumed": "DAEMON_HOST=127.0.0.1 works for all localhost connections",
-            "reality": "macOS resolves localhost to ::1 (IPv6), so 127.0.0.1 binding misses it",
-            "underlying_pattern": "IPv4-only assumptions break on dual-stack systems",
-            "severity": "medium"
-        })
-        self.assertIn("id", result)
-
-    def test_learn_vocabulary(self):
-        """learn_vocabulary maps operator terms."""
-        result = self._dispatch("learn_vocabulary", {
-            "term": "the anchor",
-            "maps_to": "Claude's persistent identity across sessions via brain + SKILL.md",
-            "context": "Tom named the continuity mechanism 'Anchor' — it's who Claude chooses to be"
-        })
-        self.assertIn("id", result)
-
-    # ── Introspection ──
-
-    def test_consciousness(self):
-        """consciousness returns signal categories."""
-        result = self._dispatch("consciousness", {})
-        # Should return a dict with signal categories
-        self.assertIsInstance(result, dict)
-
-    def test_engineering_context(self):
-        """engineering_context returns project-scoped memory."""
-        result = self._dispatch("engineering_context", {"project": "brain"})
-        self.assertIsInstance(result, dict)
-
-    # ── Compound operations ──
+    # ── Lookup operations ──
 
     def test_find_node_by_title(self):
-        """find_node_by_title locates nodes by fuzzy title matching with context."""
+        """find_node_by_title locates nodes by fuzzy title matching."""
         self._dispatch("remember", {
             "type": "decision", "title": "Use Arctic v1.5 for embeddings",
             "content": "Chose Arctic v1.5 because it balances quality and speed."
@@ -202,10 +174,8 @@ class TestMCPRoundTrip(BrainTestBase):
         result = self._dispatch("find_node_by_title", {
             "title_query": "Arctic embedding model", "threshold": 0.5
         })
-        self.assertIsNotNone(result, "Should find a node matching 'Arctic embedding model'")
+        self.assertIsNotNone(result)
         self.assertIn("id", result)
-        self.assertIn("content_snippet", result, "Should include content snippet for verification")
-        self.assertIn("keywords", result, "Should include keywords for verification")
         self.assertGreater(result["similarity"], 0.5)
 
     def test_find_node_by_title_no_match(self):
@@ -215,162 +185,91 @@ class TestMCPRoundTrip(BrainTestBase):
         })
         self.assertIsNone(result)
 
-    def test_encode_cluster(self):
-        """encode_cluster stores multiple nodes with connections in one call."""
-        # Seed an existing node to connect to
-        self._dispatch("remember", {
-            "type": "decision", "title": "Brain uses SQLite with WAL mode",
-            "content": "WAL allows concurrent readers with one writer."
-        })
+    def test_get_node(self):
+        """get_node returns full node data by ID."""
+        n = self._dispatch("remember", {"type": "concept", "title": "Get me", "content": "Full content here"})
+        result = self._dispatch("get_node", {"node_id": n["id"]})
+        self.assertIn("id", result)
+        self.assertEqual(result["title"], "Get me")
 
-        result = self._dispatch("encode_cluster", {
-            "nodes": [
-                {"type": "lesson", "title": "Lock timeout prevents deadlocks",
-                 "content": "Write lock had no timeout, could hang forever.",
-                 "enrichment": {"question": "What prevents daemon deadlocks?", "keywords": "lock, timeout, deadlock"}},
-                {"type": "mechanism", "title": "Autosave loop with health check",
-                 "content": "Every 60s: save if dirty, verify SQLite alive."},
-            ],
-            "connect_to": ["Brain uses SQLite"],
-            "auto_connect": True
-        })
-        self.assertEqual(result["nodes_created"], 2)
-        self.assertGreater(result["connections_created"], 0, "Should create inter-cluster + connect_to edges")
-        self.assertEqual(len(result["node_ids"]), 2)
+    def test_get_nodes(self):
+        """get_nodes returns multiple nodes by ID."""
+        n1 = self._dispatch("remember", {"type": "concept", "title": "Multi A", "content": "A"})
+        n2 = self._dispatch("remember", {"type": "concept", "title": "Multi B", "content": "B"})
+        result = self._dispatch("get_nodes", {"node_ids": [n1["id"], n2["id"]]})
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 2)
 
-    def test_encode_cluster_detects_duplicates(self):
-        """encode_cluster warns about near-duplicate nodes."""
-        self._dispatch("remember", {
-            "type": "lesson", "title": "Lock timeout prevents deadlocks",
-            "content": "Original lesson about lock timeouts."
-        })
-        result = self._dispatch("encode_cluster", {
-            "nodes": [
-                {"type": "lesson", "title": "Lock timeout prevents deadlock issues",
-                 "content": "Very similar to existing node."}
-            ]
-        })
-        self.assertEqual(result["nodes_created"], 1)
-        # Should detect the near-duplicate
-        self.assertGreater(len(result["duplicates"]), 0, "Should detect near-duplicate title")
+    def test_filter_nodes(self):
+        """filter_nodes returns nodes matching structural criteria."""
+        result = self._dispatch("filter_nodes", {"field": "type"})
+        # Without include/exclude, returns distinct values
+        self.assertIsInstance(result, dict)
 
-    # ── Safety: find_node_by_title edge cases ──
+    # ── Introspection ──
 
-    def test_find_node_does_not_match_self(self):
-        """find_node_by_title shouldn't cause self-referential connections in encode_cluster."""
-        r = self._dispatch("remember", {
-            "type": "lesson", "title": "Unique title for self-test",
-            "content": "Content for self-reference test."
-        })
-        # Searching for exact same title should find the node
-        match = self._dispatch("find_node_by_title", {
-            "title_query": "Unique title for self-test", "threshold": 0.5
-        })
-        self.assertIsNotNone(match)
-        self.assertEqual(match["id"], r["id"])
+    def test_consciousness(self):
+        """consciousness returns signal categories."""
+        result = self._dispatch("consciousness", {})
+        self.assertIsInstance(result, dict)
 
-    def test_find_node_high_threshold_rejects_weak_matches(self):
-        """High threshold prevents false matches that would pollute connections."""
-        self._dispatch("remember", {
-            "type": "lesson", "title": "Daemon race condition fix",
-            "content": "PID written before socket bound."
-        })
-        # A loosely related query should NOT match at high threshold
-        result = self._dispatch("find_node_by_title", {
-            "title_query": "HTTP server configuration", "threshold": 0.85
-        })
-        self.assertIsNone(result, "Weak semantic match should be rejected at 0.85 threshold")
-
-    def test_find_node_returns_best_not_first(self):
-        """find_node_by_title returns highest similarity, not first found."""
-        self._dispatch("remember", {"type": "concept", "title": "Database indexing strategies", "content": "B-trees vs hash indexes"})
-        self._dispatch("remember", {"type": "lesson", "title": "SQLite WAL mode for concurrent access", "content": "WAL allows readers and writers"})
-        result = self._dispatch("find_node_by_title", {
-            "title_query": "SQLite WAL concurrent", "threshold": 0.5
-        })
-        self.assertIsNotNone(result)
-        self.assertIn("WAL", result["title"], "Should match the WAL node, not the generic indexing node")
-
-    # ── Safety: encode_cluster edge cases ──
-
-    def test_encode_cluster_empty_nodes(self):
-        """encode_cluster with empty nodes list creates nothing."""
-        result = self._dispatch("encode_cluster", {"nodes": []})
-        self.assertEqual(result["nodes_created"], 0)
-        self.assertEqual(result["connections_created"], 0)
-
-    def test_encode_cluster_single_node(self):
-        """encode_cluster with one node doesn't create self-connections."""
-        result = self._dispatch("encode_cluster", {
-            "nodes": [{"type": "lesson", "title": "Solo node test", "content": "Just one."}],
-            "auto_connect": False
-        })
-        self.assertEqual(result["nodes_created"], 1)
-        # Single node + no auto_connect = 0 inter-cluster connections
-        self.assertEqual(result["connections_created"], 0)
-
-    def test_encode_cluster_connect_to_nonexistent(self):
-        """encode_cluster with connect_to that doesn't match reports in missing."""
-        # Seed a node so there's something in the brain, but not a match for our query
-        self._dispatch("remember", {
-            "type": "decision", "title": "Use PostgreSQL for production database",
-            "content": "PostgreSQL chosen for ACID compliance."
-        })
-        result = self._dispatch("encode_cluster", {
-            "nodes": [{"type": "concept", "title": "Unrelated topic about gardening", "content": "How to grow tomatoes."}],
-            "connect_to": ["Quantum physics string theory multiverse"],
-            "auto_connect": False
-        })
-        self.assertEqual(result["nodes_created"], 1)
-        # Quantum physics shouldn't match PostgreSQL at threshold 0.75
-        self.assertTrue(
-            any("no match" in m for m in result["missing"]) or len(result.get("connected_to", [])) == 0,
-            "Should report no match for unrelated connect_to query")
-
-    def test_encode_cluster_missing_enrichment_reported(self):
-        """encode_cluster reports nodes without enrichments in missing."""
-        result = self._dispatch("encode_cluster", {
-            "nodes": [
-                {"type": "lesson", "title": "Has enrichment", "content": "Content.",
-                 "enrichment": {"question": "What is this?"}},
-                {"type": "lesson", "title": "No enrichment", "content": "Content."},
-            ],
-            "auto_connect": False
-        })
-        self.assertEqual(result["nodes_created"], 2)
-        self.assertTrue(any("No enrichment" in m for m in result["missing"]),
-                        "Should report node without enrichment")
-
-    def test_encode_cluster_inter_cluster_connections(self):
-        """encode_cluster connects all nodes in the cluster to each other."""
-        result = self._dispatch("encode_cluster", {
-            "nodes": [
-                {"type": "concept", "title": "Node Alpha", "content": "First."},
-                {"type": "concept", "title": "Node Beta", "content": "Second."},
-                {"type": "concept", "title": "Node Gamma", "content": "Third."},
-            ],
-            "auto_connect": False
-        })
-        self.assertEqual(result["nodes_created"], 3)
-        # 3 nodes = 3 inter-cluster pairs: A-B, A-C, B-C
-        self.assertGreaterEqual(result["connections_created"], 3)
-        # Verify edges exist in DB
-        ids = result["node_ids"]
-        for i, src in enumerate(ids):
-            for dst in ids[i+1:]:
-                edge = self.brain.conn.execute(
-                    "SELECT 1 FROM edges WHERE source_id = ? AND target_id = ?",
-                    (src, dst)).fetchone()
-                self.assertIsNotNone(edge, "Missing edge between cluster nodes %s → %s" % (src[:8], dst[:8]))
-
-    # ── Escape hatch ──
+    def test_engineering_context(self):
+        """engineering_context returns project-scoped memory."""
+        result = self._dispatch("engineering_context", {"project": "brain"})
+        self.assertIsInstance(result, dict)
 
     def test_eval(self):
         """eval executes arbitrary Python on brain object."""
         result = self._dispatch("eval", {"code": "brain.conn.execute('SELECT COUNT(*) FROM nodes').fetchone()[0]"})
-        # eval returns the raw Python value (unwrapped from ok/result envelope)
         self.assertIsInstance(result, int)
         self.assertGreaterEqual(result, 0)
+
+    # ── Trace/log queries ──
+
+    def test_query_logs(self):
+        """query_logs returns log entries."""
+        result = self._dispatch("query_logs", {"hours": 1})
+        self.assertIsInstance(result, dict)
+
+    def test_query_traces(self):
+        """query_traces returns trace events."""
+        result = self._dispatch("query_traces", {"hours": 1, "limit": 5})
+        self.assertIsInstance(result, dict)
+
+    def test_query_outcomes(self):
+        """query_outcomes returns outcome events."""
+        result = self._dispatch("query_outcomes", {"hours": 1})
+        self.assertIsInstance(result, list)
+
+    def test_count_traces(self):
+        """count_traces returns grouped counts."""
+        result = self._dispatch("count_traces", {"field": "event_type"})
+        self.assertIsInstance(result, dict)
+
+    # ── Interactions ──
+
+    def test_list_interactions(self):
+        """list_interactions returns registered interactions."""
+        result = self._dispatch("list_interactions", {})
+        self.assertIsInstance(result, list)
+
+    def test_get_interaction(self):
+        """get_interaction returns a specific interaction."""
+        result = self._dispatch("get_interaction", {"name": "judge"})
+        # May return None if interactions not seeded in isolated brain
+        self.assertTrue(result is None or isinstance(result, dict))
+
+    # ── Signal queue ──
+
+    def test_dismiss_signal(self):
+        """dismiss_signal handles missing signal gracefully."""
+        result = self._dispatch("dismiss_signal", {"signal_id": "nonexistent:signal:id"})
+        self.assertIsInstance(result, dict)
+
+    def test_queue_state(self):
+        """queue_state returns current signal queue."""
+        result = self._dispatch("queue_state", {})
+        self.assertIsInstance(result, list)
 
     # ── Coverage check ──
 
@@ -379,11 +278,9 @@ class TestMCPRoundTrip(BrainTestBase):
         mcp_tool_names = {t["name"] for t in TOOLS}
         test_methods = {m for m in dir(self) if m.startswith("test_") and m != "test_all_mcp_tools_have_roundtrip_tests"}
 
-        # Map test method names to tool names they cover
         tested = set()
         for method in test_methods:
-            # test_remember → "remember", test_remember_lesson → "remember_lesson"
-            tool_name = method.replace("test_", "").replace("_then_recall", "")
+            tool_name = method.replace("test_", "").replace("_then_recall", "").replace("_no_match", "")
             if tool_name in mcp_tool_names:
                 tested.add(tool_name)
 

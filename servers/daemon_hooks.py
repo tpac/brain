@@ -263,14 +263,12 @@ def hook_recall(brain, args, graph_changes):
     from .surface_assembler import SurfaceAssembler
     from .signal_producers import (
         produce_reminders, produce_encoding_gap,
-        produce_vocabulary_gap, produce_system_health,
-        produce_integrity,
+        produce_system_health, produce_integrity,
     )
 
     sq_dal = SignalQueueDAL(brain.logs_conn)
     produce_reminders(brain, sq_dal)
     produce_encoding_gap(brain, sq_dal)
-    produce_vocabulary_gap(brain, sq_dal)
     produce_system_health(brain, sq_dal)
     produce_integrity(brain, sq_dal)
 
@@ -320,11 +318,13 @@ def _hebbian_strengthen(brain, session_id):
         return
 
     # Resolve short IDs to full IDs
+    from servers.dal import NodeDAL
+    dal = NodeDAL(brain.conn)
     full_ids = []
     for sid in judge_ids:
-        row = brain.conn.execute("SELECT id FROM nodes WHERE id LIKE ?", (sid + '%',)).fetchone()
-        if row:
-            full_ids.append(row[0])
+        full_id = dal.resolve_id(sid)
+        if full_id:
+            full_ids.append(full_id)
     if len(full_ids) < 2:
         return
 

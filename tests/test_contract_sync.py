@@ -1,15 +1,12 @@
 """
 Contract Sync Tests — ensures all brain layers stay in sync.
 
-The brain has 6 layers that must agree on method names, parameters, and defaults:
+The brain has 5 layers that must agree on method names, parameters, and defaults:
   1. Brain methods (servers/brain_*.py) — the source of truth
   2. Daemon dispatch (servers/daemon_dispatch.py) — command routing
   3. MCP server (servers/brain_mcp.py) — tool definitions for Claude
-  4. SKILL.md (skills/brain/SKILL.md) — API reference Claude reads
-  5. Eval fake tools (eval/skill_eval.py) — test harness
-  6. Hook scripts (hooks/scripts/*.py) — automated triggers
-
-When ANY of these change, this test catches drift.
+  4. Hook scripts (hooks/scripts/*.py) — automated triggers
+  5. Scale dispatch/runner (servers/scales/) — background agent infrastructure
 
 Run: python3 -m pytest tests/test_contract_sync.py -v
 """
@@ -51,9 +48,8 @@ class TestBrainMethodsExist(unittest.TestCase):
                 for method_name, method in inspect.getmembers(cls_obj, predicate=inspect.isfunction):
                     if method_name.startswith('_'):
                         continue
-                    # Only track encoding/connection/recall methods
                     if any(method_name.startswith(p) for p in
-                           ('remember', 'create_', 'connect', 'record_', 'learn_', 'recall')):
+                           ('remember', 'create_', 'connect', 'record_', 'learn_', 'recall', 'revise')):
                         sig = inspect.signature(method)
                         params = [k for k in sig.parameters.keys() if k != 'self']
                         defaults = {
@@ -67,12 +63,11 @@ class TestBrainMethodsExist(unittest.TestCase):
                         }
 
     def test_core_methods_exist(self):
-        """Critical encoding methods must exist in brain."""
+        """Critical write methods must exist in brain."""
         required = [
-            'remember', 'remember_lesson', 'remember_impact', 'remember_mechanism',
-            'remember_uncertainty', 'remember_convention', 'remember_purpose',
-            'remember_mental_model', 'remember_constraint',
-            'connect', 'learn_vocabulary', 'record_divergence',
+            'remember', 'remember_batch',
+            'revise', 'revise_batch',
+            'connect',
         ]
         for method in required:
             self.assertIn(method, self.methods,
@@ -83,12 +78,6 @@ class TestBrainMethodsExist(unittest.TestCase):
         params = self.methods['remember']['params']
         for p in ['type', 'title', 'content', 'keywords', 'locked']:
             self.assertIn(p, params, f"remember() missing param: {p}")
-
-    def test_remember_lesson_has_required_params(self):
-        """remember_lesson() must have the full lesson structure."""
-        params = self.methods['remember_lesson']['params']
-        for p in ['title', 'what_happened', 'root_cause', 'fix', 'preventive_principle']:
-            self.assertIn(p, params, f"remember_lesson() missing param: {p}")
 
     def test_connect_has_required_params(self):
         """connect() must accept source_id, target_id, relation, weight."""
@@ -105,16 +94,18 @@ class TestDaemonDispatchSync(unittest.TestCase):
         from servers.daemon_dispatch import COMMAND_TABLE
         cls.commands = set(COMMAND_TABLE.keys())
 
-    def test_core_encoding_commands_exist(self):
-        """All remember_* methods must be in daemon dispatch — not just accessible via eval."""
+    def test_core_write_commands_exist(self):
+        """All write methods must be in daemon dispatch."""
         required_commands = [
-            'remember', 'remember_lesson', 'remember_impact', 'remember_mechanism',
-            'remember_uncertainty', 'remember_convention', 'record_divergence',
-            'learn_vocabulary',
+            'remember', 'remember_batch',
+            'revise', 'revise_batch',
+            'connect', 'connect_batch',
+            'brain_batch',
+            'enrich',
         ]
         missing = [cmd for cmd in required_commands if cmd not in self.commands]
         self.assertEqual(missing, [],
-                         f"Daemon dispatch missing commands (forces eval workaround): {missing}")
+                         f"Daemon dispatch missing commands: {missing}")
 
     def test_connection_commands_exist(self):
         """connect must be in daemon dispatch."""
@@ -126,13 +117,23 @@ class TestDaemonDispatchSync(unittest.TestCase):
                      'health_check', 'save', 'eval']:
             self.assertIn(cmd, self.commands, f"Missing core command: {cmd}")
 
+    def test_removed_commands_gone(self):
+        """Deprecated commands should not be in dispatch."""
+        removed = [
+            'remember_lesson', 'remember_impact', 'remember_mechanism',
+            'remember_convention', 'remember_uncertainty', 'remember_mental_model',
+            'record_divergence', 'learn_vocabulary',
+        ]
+        present = [cmd for cmd in removed if cmd in self.commands]
+        self.assertEqual(present, [],
+                         f"Removed commands still in dispatch: {present}")
+
 
 class TestMCPToolSync(unittest.TestCase):
     """Layer 3: MCP tools must match daemon commands and brain signatures."""
 
     @classmethod
     def setUpClass(cls):
-        """Import MCP tool definitions directly (not regex — schemas are now generated)."""
         from servers.brain_mcp import TOOLS
 
         cls.mcp_tools = set(t["name"] for t in TOOLS)
@@ -151,19 +152,29 @@ class TestMCPToolSync(unittest.TestCase):
             self.assertIn(tool, daemon_cmds,
                           f"MCP tool '{tool}' has no daemon command — will fail at runtime")
 
-    def test_core_encoding_tools_exposed(self):
-        """Core encoding tools should be MCP-native, not eval-only.
-        Note: ping, save, health_check, set_config, get_config removed in Session #14 —
-        daemon self-manages. Specialized remember_* promoted to first-class tools."""
+    def test_core_write_tools_exposed(self):
+        """Core write tools should be MCP-native."""
         should_be_mcp = [
-            'remember', 'connect', 'recall', 'consciousness', 'eval',
-            'remember_lesson', 'remember_impact', 'remember_mechanism',
-            'remember_convention', 'remember_uncertainty', 'remember_mental_model',
-            'record_divergence', 'learn_vocabulary',
+            'remember', 'remember_batch',
+            'revise', 'revise_batch',
+            'connect', 'connect_batch',
+            'brain_batch',
+            'recall', 'consciousness', 'eval',
         ]
         for tool in should_be_mcp:
             self.assertIn(tool, self.mcp_tools,
                           f"Core tool '{tool}' not in MCP — Claude can't use it directly")
+
+    def test_removed_tools_gone(self):
+        """Deprecated tools should not be in MCP."""
+        removed = [
+            'remember_lesson', 'remember_impact', 'remember_mechanism',
+            'remember_convention', 'remember_uncertainty', 'remember_mental_model',
+            'record_divergence', 'learn_vocabulary',
+        ]
+        present = [t for t in removed if t in self.mcp_tools]
+        self.assertEqual(present, [],
+                         f"Removed tools still in MCP: {present}")
 
     def test_remember_tool_params_match_brain(self):
         """MCP remember tool params must be a subset of brain.remember() params."""
@@ -193,130 +204,11 @@ class TestMCPToolSync(unittest.TestCase):
                              "MCP connect uses target_title but brain needs target_id")
 
 
-class TestEvalFakeToolSync(unittest.TestCase):
-    """Layer 6: Eval fake tools must match real MCP tools."""
-
-    @classmethod
-    def setUpClass(cls):
-        """Load eval fake tools."""
-        eval_path = ROOT / "eval" / "skill_eval.py"
-        if not eval_path.exists():
-            cls.fake_tools = {}
-            return
-
-        # Import FAKE_BRAIN_TOOLS
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("skill_eval", eval_path)
-        mod = importlib.util.module_from_spec(spec)
-        try:
-            spec.loader.exec_module(mod)
-            cls.fake_tools = {t['name']: t for t in mod.FAKE_BRAIN_TOOLS}
-        except Exception:
-            cls.fake_tools = {}
-
-    def test_eval_connect_uses_correct_params(self):
-        """Eval brain_connect must use source_id/target_id, not source_title/target_title."""
-        if 'brain_connect' not in self.fake_tools:
-            self.skipTest("brain_connect not in eval fake tools")
-        props = self.fake_tools['brain_connect']['input_schema'].get('properties', {})
-        self.assertNotIn('source_title', props,
-                         "Eval brain_connect uses source_title but real API needs source_id — eval results invalid")
-        self.assertNotIn('target_title', props,
-                         "Eval brain_connect uses target_title but real API needs target_id — eval results invalid")
-
-    def test_eval_vocabulary_maps_to_type(self):
-        """Eval brain_learn_vocabulary maps_to should note it can be a list."""
-        if 'brain_learn_vocabulary' not in self.fake_tools:
-            self.skipTest("brain_learn_vocabulary not in eval")
-        # This is informational — brain handles string→list conversion
-        # but eval should ideally document the correct type
-
-    def test_eval_tools_match_brain_methods(self):
-        """Every eval fake tool should correspond to a real brain method."""
-        from servers import brain_engineering, brain_vocabulary, brain_connections, brain_remember
-
-        # Map eval tool names to brain method names
-        tool_to_method = {
-            'brain_remember': 'remember',
-            'brain_remember_impact': 'remember_impact',
-            'brain_remember_mechanism': 'remember_mechanism',
-            'brain_remember_uncertainty': 'remember_uncertainty',
-            'brain_remember_lesson': 'remember_lesson',
-            'brain_connect': 'connect',
-            'brain_record_divergence': 'record_divergence',
-            'brain_learn_vocabulary': 'learn_vocabulary',
-            'brain_remember_convention': 'remember_convention',
-        }
-
-        for tool_name, method_name in tool_to_method.items():
-            if tool_name in self.fake_tools:
-                # Verify the method exists somewhere in brain
-                found = False
-                for mod in [brain_engineering, brain_vocabulary, brain_connections, brain_remember]:
-                    for name in dir(mod):
-                        cls = getattr(mod, name)
-                        if inspect.isclass(cls) and hasattr(cls, method_name):
-                            found = True
-                            break
-                self.assertTrue(found,
-                                f"Eval tool '{tool_name}' maps to '{method_name}' but method not found in brain")
-
-
-class TestSKILLMDSync(unittest.TestCase):
-    """Layer 4: SKILL.md API reference must document real methods."""
-
-    @classmethod
-    def setUpClass(cls):
-        skill_path = ROOT / "skills" / "brain" / "SKILL.md"
-        cls.content = skill_path.read_text() if skill_path.exists() else ""
-
-    def test_core_methods_documented(self):
-        """Core encoding methods must appear in SKILL.md."""
-        required = [
-            'remember', 'remember_lesson', 'remember_impact', 'remember_mechanism',
-            'remember_uncertainty', 'remember_convention', 'connect',
-            'record_divergence', 'learn_vocabulary',
-        ]
-        for method in required:
-            self.assertIn(method, self.content,
-                          f"SKILL.md doesn't mention '{method}' — Claude won't know it exists")
-
-    def test_no_phantom_methods(self):
-        """SKILL.md shouldn't document methods that don't exist."""
-        # Extract method-like references from SKILL.md
-        method_refs = set(re.findall(r'brain\.(\w+)\(', self.content))
-
-        from servers import brain_engineering, brain_vocabulary, brain_connections, brain_remember, brain_evolution
-
-        all_methods = set()
-        for mod in [brain_engineering, brain_vocabulary, brain_connections, brain_remember, brain_evolution]:
-            for name in dir(mod):
-                cls = getattr(mod, name)
-                if inspect.isclass(cls):
-                    for mname, _ in inspect.getmembers(cls, predicate=inspect.isfunction):
-                        if not mname.startswith('_'):
-                            all_methods.add(mname)
-
-        # Also include non-class methods and common brain methods
-        all_methods.update(['recall', 'save', 'health_check',
-                            'format_boot_context', 'set_config', 'get_config',
-                            'recall', 'get_engineering_context',
-                            'synthesize_session',
-                            'record_message', 'get_encoding_heartbeat'])
-
-        phantom = method_refs - all_methods
-        # Filter out common false positives
-        phantom = {p for p in phantom if not p.startswith('_') and p not in ('method', 'function')}
-        self.assertEqual(phantom, set(),
-                         f"SKILL.md references methods that don't exist: {phantom}")
-
-
 class TestDefaultsSync(unittest.TestCase):
     """Cross-layer: parameter defaults must agree."""
 
     def test_confidence_default_consistent(self):
         """remember() confidence default must match across brain, daemon, and MCP."""
-        # Brain default
         from servers import brain_remember
         brain_default = None
         for name in dir(brain_remember):
@@ -347,19 +239,16 @@ class TestDefaultsSync(unittest.TestCase):
 
 
 class TestHookCommandSync(unittest.TestCase):
-    """Layer 5: Hook scripts must only call commands that exist in daemon."""
+    """Layer 4: Hook scripts must only call commands that exist in daemon."""
 
     @classmethod
     def setUpClass(cls):
-        """Extract daemon command calls from hook scripts."""
         hooks_dir = ROOT / "hooks" / "scripts"
         cls.hook_commands = {}
         if hooks_dir.exists():
             for script in hooks_dir.glob("*.py"):
                 content = script.read_text()
-                # Find daemon_call_raw("command", ...) patterns
                 calls = re.findall(r'daemon_call_raw\(["\'](\w+)["\']', content)
-                # Also find send_command("command", ...) patterns
                 calls += re.findall(r'send_command\(["\'](\w+)["\']', content)
                 if calls:
                     cls.hook_commands[script.name] = calls
@@ -369,12 +258,24 @@ class TestHookCommandSync(unittest.TestCase):
         from servers.daemon_dispatch import COMMAND_TABLE
         daemon_cmds = set(COMMAND_TABLE.keys())
 
-        # Hook commands are prefixed with hook_ and handled separately
         for script, commands in self.hook_commands.items():
             for cmd in commands:
                 valid = cmd in daemon_cmds or cmd.startswith('hook_')
                 self.assertTrue(valid,
                                 f"Hook {script} calls '{cmd}' which doesn't exist in daemon")
+
+
+class TestScaleDispatchSync(unittest.TestCase):
+    """Layer 5: Scale dispatch WRITE_COMMANDS must be a subset of daemon COMMAND_TABLE."""
+
+    def test_write_commands_exist_in_daemon(self):
+        from servers.scales.dispatch import WRITE_COMMANDS
+        from servers.daemon_dispatch import COMMAND_TABLE
+        daemon_cmds = set(COMMAND_TABLE.keys())
+
+        missing = [cmd for cmd in WRITE_COMMANDS if cmd not in daemon_cmds]
+        self.assertEqual(missing, [],
+                         f"Scale WRITE_COMMANDS not in daemon: {missing}")
 
 
 if __name__ == '__main__':

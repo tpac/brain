@@ -235,12 +235,13 @@ def correction_enrich(node_ids, db_conn):
             list(node_ids)
         ).fetchall()
 
+        from servers.dal import NodeDAL
+        dal = NodeDAL(db_conn)
         for nid, corrects_id in meta_rows:
-            title = db_conn.execute(
-                "SELECT title FROM nodes WHERE id LIKE ?", (corrects_id[:8] + '%',)).fetchone()
+            title = dal.get_title(corrects_id[:8])
             if title:
                 corrections.setdefault(nid, []).append({
-                    "id": corrects_id[:8], "title": title[0], "direction": "corrects"})
+                    "id": corrects_id[:8], "title": title, "direction": "corrects"})
 
         # 3. Reverse: find nodes that correct OUR nodes (via correction_of field)
         meta_reverse = db_conn.execute(

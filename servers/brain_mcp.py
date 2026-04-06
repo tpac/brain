@@ -267,22 +267,10 @@ def _build_tools():
          "bridge": {"type": "string", "description": "One sentence connecting this node to its most important neighbor"},
          "keywords": {"type": "string", "description": "Comma-separated keywords borrowed from neighbors"}}}},
 
-    # Specialized remember_* tools REMOVED 2026-04-05 — use remember() with type field.
-    # Removed: remember_lesson, remember_impact, remember_mechanism, remember_convention,
-    # remember_uncertainty, remember_mental_model. All were thin wrappers.
-    {"name": "record_divergence",
-     "description": "Track where your model diverged from reality — corrections. Creates correction traces and adjusts related node confidence.",
-     "inputSchema": {"type": "object", "required": ["claude_assumed", "reality", "underlying_pattern"], "properties": {
-         "claude_assumed": {"type": "string", "description": "What you assumed was true"},
-         "reality": {"type": "string", "description": "What turned out to be true"},
-         "underlying_pattern": {"type": "string", "description": "The general pattern behind this divergence"},
-         "severity": {"type": "string", "description": "minor, medium, significant, or critical", "default": "medium"}}}},
-    {"name": "learn_vocabulary",
-     "description": "Map an operator term to its meaning — vocabulary learning. Improves recall by expanding queries with mapped terms.",
-     "inputSchema": {"type": "object", "required": ["term", "maps_to", "context"], "properties": {
-         "term": {"type": "string", "description": "The term as the operator uses it"},
-         "maps_to": {"type": "string", "description": "What it means in brain/code context"},
-         "context": {"type": "string", "description": "Where/how this term is used"}}}},
+    # Specialized tools REMOVED 2026-04-06:
+    # record_divergence, learn_vocabulary — use remember(type='correction'/'vocabulary') instead.
+    # remember_lesson, remember_impact, remember_mechanism, remember_convention,
+    # remember_uncertainty, remember_mental_model — removed 2026-04-05.
 
     # ── Lookup operations ──
     {"name": "find_node_by_title",

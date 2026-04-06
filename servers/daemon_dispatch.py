@@ -24,15 +24,10 @@ def _resolve_id(brain, node_id):
     """
     if not node_id:
         return node_id
-    # Exact match
-    row = brain.conn.execute('SELECT id FROM nodes WHERE id = ?', (node_id,)).fetchone()
-    if row:
-        return row[0]
-    # Prefix match (for truncated IDs from tool calls)
-    rows = brain.conn.execute('SELECT id FROM nodes WHERE id LIKE ?', (node_id + '%',)).fetchall()
-    if len(rows) == 1:
-        return rows[0][0]
-    return node_id  # Not found or ambiguous — let the caller handle the error
+    from servers.dal import NodeDAL
+    dal = NodeDAL(brain.conn)
+    full_id = dal.resolve_id(node_id)
+    return full_id if full_id else node_id  # Not found — let the caller handle the error
 
 
 class CmdEntry(NamedTuple):
@@ -556,29 +551,6 @@ def _handle_brain_batch(brain, args, graph_changes):
     }}
 
 
-def _handle_record_divergence(brain, args, graph_changes):
-    result = brain.record_divergence(
-        claude_assumed=args.get("claude_assumed", ""),
-        reality=args.get("reality", ""),
-        underlying_pattern=args.get("underlying_pattern", ""),
-        severity=args.get("severity", "medium"),
-        original_node_id=args.get("original_node_id"),
-        entity=args.get("entity"),
-        project=args.get("project"))
-    graph_changes.append("RECORD_DIVERGENCE: %s" % args.get("claude_assumed", "")[:50])
-    return {"ok": True, "result": result}
-
-
-def _handle_learn_vocabulary(brain, args, graph_changes):
-    result = brain.learn_vocabulary(
-        term=args.get("term", ""),
-        maps_to=args.get("maps_to", ""),
-        context=args.get("context"),
-        project=args.get("project"))
-    graph_changes.append("LEARN_VOCABULARY: %s" % args.get("term", "")[:50])
-    return {"ok": True, "result": result}
-
-
 def _handle_find_node_by_title(brain, args, graph_changes):
     result = brain.find_node_by_title(
         title_query=args.get("title_query", ""),
@@ -653,7 +625,7 @@ def _handle_list_interactions(brain, args, graph_changes):
 
 
 def _handle_get_interaction(brain, args, graph_changes):
-    """Get a specific interaction by name and optional version."""
+    """Get a specific interaction by name. version=0 returns latest."""
     result = brain.get_interaction(
         name=args.get("name", ""),
         version=args.get("version", 0))
@@ -696,6 +668,8 @@ def _handle_graph_expand(brain, args, graph_changes):
         return {"ok": True, "result": {"neighbors": []}}
 
     from .brain_constants import EXCLUDED_EDGE_TYPES
+    from .dal import NodeDAL
+    dal = NodeDAL(brain.conn)
     seen = set(node_ids)
     neighbors = []
 
@@ -703,10 +677,9 @@ def _handle_graph_expand(brain, args, graph_changes):
         # Resolve short IDs
         full_id = seed_id
         if len(seed_id) < 16:
-            row = brain.conn.execute(
-                "SELECT id FROM nodes WHERE id LIKE ?", (seed_id + '%',)).fetchone()
-            if row:
-                full_id = row[0]
+            resolved = dal.resolve_id(seed_id)
+            if resolved:
+                full_id = resolved
 
         # Get structural neighbors (both directions — edges are bidirectional)
         rows = brain.conn.execute("""
@@ -932,11 +905,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "remember_batch":        CmdEntry(_handle_remember_batch,      is_write=True, marks_dirty=True),
     "revise":                CmdEntry(_handle_revise,               is_write=True, marks_dirty=True),
     "revise_batch":          CmdEntry(_handle_revise_batch,         is_write=True, marks_dirty=True),
-    # Specialized remember tools — kept for interactive MCP use (Anchor calls these).
-    # The encoding agent uses generic remember() with promoted fields instead.
-    # Specialized remember_* commands REMOVED 2026-04-05 — use remember() with type field
-    "record_divergence":     CmdEntry(_handle_record_divergence,   is_write=True, marks_dirty=True),
-    "learn_vocabulary":      CmdEntry(_handle_learn_vocabulary,    is_write=True, marks_dirty=True),
+    # record_divergence, learn_vocabulary REMOVED 2026-04-06 — use remember(type='correction'/'vocabulary')
     "find_node_by_title":    CmdEntry(_handle_find_node_by_title,  is_write=False, marks_dirty=False),
     "filter_nodes":          CmdEntry(_handle_filter_nodes,        is_write=False, marks_dirty=False),
     "query_logs":            CmdEntry(_handle_query_logs,          is_write=False, marks_dirty=False),

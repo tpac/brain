@@ -885,10 +885,19 @@ class NodeDAL:
         d['emotion_label'] = d.get('emotion_label') or 'neutral'
         return d
 
-    def get_title(self, node_id: str) -> Optional[str]:
-        """Get just the title of a node."""
+    def resolve_id(self, prefix: str) -> Optional[str]:
+        """Resolve a short ID prefix (e.g. 8-char) to a full node ID."""
+        if not prefix:
+            return None
         row = self.conn.execute(
-            'SELECT title FROM nodes WHERE id = ?', (node_id,)
+            'SELECT id FROM nodes WHERE id LIKE ?', (prefix + '%',)
+        ).fetchone()
+        return row[0] if row else None
+
+    def get_title(self, node_id: str) -> Optional[str]:
+        """Get just the title of a node. Accepts full ID or prefix."""
+        row = self.conn.execute(
+            'SELECT title FROM nodes WHERE id LIKE ?', (node_id + '%',)
         ).fetchone()
         return row[0] if row else None
 

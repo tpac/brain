@@ -184,11 +184,15 @@ def format_node(node_id, db_conn, config=None):
     """
     cfg = {**NODE_FORMAT_DEFAULTS, **(config or {})}
     try:
+        from servers.dal import NodeDAL
+        full_id = NodeDAL(db_conn).resolve_id(node_id)
+        if not full_id:
+            return None
         row = db_conn.execute(
             "SELECT id, type, title, content, keywords, confidence, locked, "
             "emotion, encoding_source, created_at, personal, personal_context, "
             "revised_at "
-            "FROM nodes WHERE id LIKE ?", (node_id + '%',)).fetchone()
+            "FROM nodes WHERE id = ?", (full_id,)).fetchone()
         if not row:
             return None
 

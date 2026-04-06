@@ -3,7 +3,7 @@
 4 producers, each called once per hook_recall():
   1. produce_reminders    — due/overdue reminders
   2. produce_encoding_gap — "N minutes, nothing encoded"
-  3. produce_vocabulary_gap — unmapped operator terms
+  3. (removed 2026-04-06)
   4. produce_system_health — hook errors, brain errors, rule conflicts
 
 Producers are stateless. They query their data source, upsert into the queue
@@ -95,29 +95,7 @@ def produce_encoding_gap(brain, sq_dal):
         log.warning("produce_encoding_gap failed: %s", e)
 
 
-# ── 3. VOCABULARY GAP ──
-
-def produce_vocabulary_gap(brain, sq_dal):
-    """Surface unmapped operator terms."""
-    try:
-        gaps_json = brain.get_config('vocabulary_gaps', '[]')
-        gaps = json.loads(gaps_json) if gaps_json else []
-        for gap in gaps[-3:]:
-            term = gap.get('term', '') if isinstance(gap, dict) else str(gap)
-            if not term:
-                continue
-            sq_dal.enqueue(
-                id="vocab_gap:%s" % term[:30],
-                producer="vocabulary_gap",
-                signal_type="vocabulary_gap",
-                priority=0.30,
-                content='📖 Unknown term: "%s" — learn with learn_vocabulary()' % term,
-                cooldown_seconds=1800,  # 30 min
-                max_surfaces=2,
-            )
-    except Exception as e:
-        log.warning("produce_vocabulary_gap failed: %s", e)
-
+# ── 3. VOCABULARY GAP — REMOVED 2026-04-06 (learn_vocabulary removed) ──
 
 # ── 4. SYSTEM HEALTH ──
 
