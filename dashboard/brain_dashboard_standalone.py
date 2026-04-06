@@ -300,121 +300,85 @@ def _query_encoding_activity(since_ts="", limit=30):
         return []
 
 
-def _query_encoding_runs(limit=10):
-    """Reconstruct encoding runs by grouping auto-encoded actions by time.
-    Passive: reads existing data from brain.db + brain_logs.db, no encoder changes.
-
-    Groups nodes/edges with encoding_source='auto' into runs (30s window).
-    For each run, reconstructs what the encoder saw: messages + judge output.
-    """
-    db = _get_db_path()
+def _query_encoding_runs(limit=10, session_id=''):
+    """Read encoding runs from S1E traces — the single source of truth.
+    Each S1E chain has O (prompt), K (catalog), delta (actions + results)."""
     logs_path = _get_logs_db_path()
-    if not os.path.exists(db):
+    if not os.path.exists(logs_path):
         return []
     try:
-        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=3)
+        conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=3)
 
-        # Get recent nodes — group by timestamp clusters to detect encoding runs.
-        # The encoding agent creates multiple nodes within seconds.
-        nodes = conn.execute(
-            "SELECT id, type, title, substr(content,1,200), created_at, encoding_source "
-            "FROM nodes WHERE created_at > datetime('now', '-24 hours') "
-            "ORDER BY created_at DESC LIMIT 100"
+        # Get S1E chains — start from O events (every run has one)
+        where = "scale = 's1' AND event_type = 'O' AND ref_type = 'encoding_prompt'"
+        params = []
+        if session_id:
+            where += " AND session_id = ?"
+            params.append(session_id)
+        delta_rows = conn.execute(
+            "SELECT chain_id, ref_id, summary, metadata, session_id, created_at "
+            "FROM trace_events WHERE %s ORDER BY created_at DESC LIMIT ?" % where,
+            params + [limit]
         ).fetchall()
 
-        # Get auto-encoded edges (same timeframe)
-        edges = conn.execute(
-            "SELECT e.source_id, e.target_id, e.relation, e.weight, e.created_at, "
-            "n1.title, n2.title "
-            "FROM edges e "
-            "LEFT JOIN nodes n1 ON n1.id = e.source_id "
-            "LEFT JOIN nodes n2 ON n2.id = e.target_id "
-            "WHERE e.created_at > datetime('now', '-24 hours') "
-            "AND e.relation NOT IN ('co_accessed') "
-            "ORDER BY e.created_at DESC LIMIT 200"
-        ).fetchall()
-        conn.close()
-
-        # Group into runs by 30-second windows
         runs = []
-        current_run = None
-        for n in nodes:
-            ts = n[4] or ""
-            if current_run and ts and current_run["start_ts"]:
-                # If within 30s of the current run's latest action
-                from datetime import datetime
+        for row in delta_rows:
+            chain_id = row[0]
+            prompt_file = row[1] or ''
+            prompt_info = row[2] or ''
+            session = row[4] or ''
+            timestamp = row[5] or ''
+
+            # Extract counter from chain_id (s1e-{session}-{counter})
+            counter = chain_id.split('-')[-1] if chain_id else ''
+
+            # Get K event (node catalog) from same chain
+            k_row = conn.execute(
+                "SELECT summary, ref_id FROM trace_events "
+                "WHERE chain_id = ? AND event_type = 'K'", (chain_id,)
+            ).fetchone()
+            catalog_info = k_row[0] if k_row else ''
+
+            # Get delta event (encoding results) from same chain
+            d_row = conn.execute(
+                "SELECT summary FROM trace_events "
+                "WHERE chain_id = ? AND event_type = 'delta'", (chain_id,)
+            ).fetchone()
+            summary = d_row[0] if d_row else '(encoding in progress or no actions)'
+
+            # Read encoder prompt from tmp file if available
+            encoder_prompt = None
+            if prompt_file and os.path.exists(prompt_file):
                 try:
-                    t_this = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-                    t_run = datetime.fromisoformat(current_run["start_ts"].replace('Z', '+00:00'))
-                    if abs((t_this - t_run).total_seconds()) < 60:
-                        current_run["nodes"].append({
-                            "id": n[0], "type": n[1], "title": n[2],
-                            "content": n[3], "timestamp": ts})
-                        continue
+                    with open(prompt_file) as f:
+                        encoder_prompt = json.load(f).get("user_content")
                 except Exception:
                     pass
 
-            # Start new run
-            if current_run:
-                runs.append(current_run)
-            current_run = {
-                "start_ts": ts,
-                "nodes": [{"id": n[0], "type": n[1], "title": n[2],
-                           "content": n[3], "timestamp": ts}],
+            # Parse actions from summary
+            nodes_created = []
+            for line in summary.split('\n'):
+                line = line.strip()
+                if line.startswith('remember') or line.startswith('revise'):
+                    parts = line.split(': ', 1)
+                    if len(parts) == 2:
+                        nodes_created.append({"tool": parts[0], "title": parts[1][:80]})
+
+            runs.append({
+                "chain_id": chain_id,
+                "counter": counter,
+                "start_ts": timestamp,
+                "session_id": session,
+                "summary": summary[:500],
+                "prompt_info": prompt_info,
+                "catalog_info": catalog_info,
+                "nodes": nodes_created,
                 "edges": [],
-                "prompt": None,
-            }
+                "encoder_prompt": encoder_prompt,
+            })
 
-        if current_run:
-            runs.append(current_run)
-
-        # Keep all clusters (single-node creates are manual encodes by Anchor)
-
-        # Attach edges to runs by timestamp proximity
-        for run in runs:
-            if not run["start_ts"]:
-                continue
-            for e in edges:
-                e_ts = e[4] or ""
-                if not e_ts:
-                    continue
-                try:
-                    from datetime import datetime
-                    t_edge = datetime.fromisoformat(e_ts.replace('Z', '+00:00'))
-                    t_run = datetime.fromisoformat(run["start_ts"].replace('Z', '+00:00'))
-                    if abs((t_edge - t_run).total_seconds()) < 60:
-                        run["edges"].append({
-                            "relation": e[2], "weight": e[3],
-                            "source_title": e[5] or e[0][:12],
-                            "target_title": e[6] or e[1][:12],
-                            "timestamp": e_ts})
-                except Exception:
-                    pass
-
-        # Read actual encoder prompt from tmp files (passive observer).
-        # The encoding agent writes the exact prompt Sonnet received.
-        import glob as _glob
-        prompt_files = sorted(_glob.glob("/tmp/brain-encoding-prompt-*.json"),
-                              key=os.path.getmtime, reverse=True)
-
-        for run in runs[:limit]:
-            run["encoder_prompt"] = None
-            # Match prompt file to run by timestamp proximity
-            for pf in prompt_files[:20]:
-                try:
-                    pf_mtime = os.path.getmtime(pf)
-                    from datetime import datetime, timezone
-                    run_ts = datetime.fromisoformat(run["start_ts"].replace('Z', '+00:00'))
-                    pf_ts = datetime.fromtimestamp(pf_mtime, tz=timezone.utc)
-                    if abs((run_ts - pf_ts).total_seconds()) < 120:
-                        with open(pf) as _pf:
-                            prompt_data = json.load(_pf)
-                        run["encoder_prompt"] = prompt_data.get("user_content")
-                        break
-                except Exception:
-                    continue
-
-        return runs[:limit]
+        conn.close()
+        return runs
     except Exception:
         return []
 
