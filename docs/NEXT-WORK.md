@@ -1,66 +1,66 @@
-# Next Work — Open Items after Session 2026-04-05 (scales/ restructure)
+# Next Work — After Session 2026-04-05 (scales + cleanup)
 
-## Done This Session
+## 27 commits this session
 
-### Scales Architecture (fractal code structure)
-- `scales/dispatch.py` — shared TCP dispatch + dispatch factory for all scale agents
-- `scales/runner.py` — generic background thread lifecycle + LLM tool loop
-- `scales/s1/recall.py` — S1R chain (judge, graph expand, correction enrich, traces)
-- `scales/s1/recall_contract.py` — S1R config, judge prompt building, output formatting
-- `scales/s1/encode.py` — S1E chain (gather, prompt, LLM loop, journal, context)
-- `scales/s1/encode_contract.py` — S1E config, node formatting, catalog building
-- Old files (`encoding_agent.py`, `judge_contract.py`, `encoding_contract.py`) → backward-compat shims
-- daemon_hooks.py now S0-only (hooks + scale gates)
+### Architecture: scales/ directory
+- `scales/dispatch.py` — shared TCP dispatch + dispatch factory
+- `scales/runner.py` — background thread lifecycle + generic LLM tool loop
+- `scales/s1/recall.py` + `recall_contract.py` — S1R chain (judge, expand, traces)
+- `scales/s1/encode.py` + `encode_contract.py` — S1E chain (gather, prompt, LLM loop)
+- Old files → backward-compat re-export shims
 
-### Code Cleanup
-- Extracted judge call from hook_recall god function (400→226 lines)
-- Split pipeline_contract.py into per-boundary contracts
-- Made session_id required in encoding agent (no silent fallback)
-- Enriched MCP recall with corrections + graph expansion + metadata
-- Removed recall_log INSERT writes (traces are single source of truth)
-- Replaced recall_log_id with session-scoped recall_ref
-- Removed message_stream fallback from encoding agent
+### Database cleanup: 23 tables dropped
+- brain_logs.db: 23 → 9 tables (recall_log, message_stream, access_log, suggest_log, health_log, brain_telemetry, curiosity_log, conflict_log, miss_log, eval_snapshots, tuning_log, pending_consolidation, staged_learnings, recall_gaps)
+- brain.db: 32 → 23 tables (projects, project_maps, reasoning_chains, reasoning_steps, session_activity, summaries, prune_archive, version_history, suggest_metrics)
+
+### Code cleanup: ~2,500+ lines removed
+- brain_precision.py — entire module deleted (763 lines)
+- dal_message_stream.py — entire module deleted (332 lines)
+- 18 remember_*/create_* wrapper methods + 6 MCP tools removed
+- TelemetryDAL class removed (~100 lines)
+- access_log, recall_log, message_stream write paths removed
+- get_engineering_context gutted (just nodes, no special structure)
+
+### New capabilities
+- MCP recall enriched (corrections, graph expansion, metadata)
+- `brain_batch` — unified multi-op tool (remember + revise + connect)
+- `connect_batch` — multiple edges in one call
+- Dashboard reads from traces (not deprecated tables)
+- Dashboard session selector + encoding tab from S1E traces
 
 ---
 
-## Still Open
+## Priority for Next Session
 
-### 1. S2 Session Encoder (HIGH — next major feature)
-**Status:** Infrastructure ready. S2 copies S1 pattern.
-**What exists:** scales/ directory, runner.py, dispatch.py, trace_contract has S2 ref_types
-**What to build:**
-- `scales/s2/encode.py` — session encoder (copies s1/encode.py pattern)
-- `scales/s2/encode_contract.py` — S2 config
-- Interaction seed: 'session_encoder' in interactions table
-- SessionContext.s2_chain() method
-- Encoding gate: counter % 15 in hook_post_response_track
+### 1. ENCODER REGRESSION (CRITICAL — quality has degraded)
+The S1 encoding prompt needs serious attention. Tom identified these issues:
 
-### 2. Outcome Traces (HIGH — the learning signal)
-**Problem:** Traces capture O/K/Δ but not outcomes. Without outcomes, no scale can learn whether its output served the target function.
-**Action:** Add outcome events to trace system. Correction detection, future-recall tracking.
+**Data assembly problems (scales/s1/encode.py `_build_user_content`):**
+- Node catalog shows truncated content — used to be full rich nodes with edges, corrections
+- Journal is reverse-ordered (Run #20 before Run #5)
+- "Run #5", "Run #10" are stop counter values, not sequential — confusing
+- max_messages may have regressed (should show 10 turns for context, fires every 5)
 
-### 3. Dashboard Migration to Traces (MEDIUM)
-**Problem:** Dashboard reads from recall_log (deprecated, no new writes) and tmp files.
-**Action:** Migrate recall display to read from trace_events. Dashboard should observe the same data path as all other consumers.
+**Prompt problems (interactions table `encoding_agent` template):**
+- Watching/Skipped/Encoded journal format not documented in prompt
+- Session Context is 800 chars of pipe-separated noise — hard to parse
+- ID formats inconsistent between prompt examples and actual data
+- "BRAIN SURFACED" in timeline shows noise like "judge selected but no IDs parsed"
 
-### 4. Wire Code-Only Interactions to Config (MEDIUM)
-**Problem:** 4 interactions (voice_surface, boot, pre_edit, signal_assembler) have config in DB but code reads hardcoded values.
-**Action:** Wire remaining interactions to read from interactions table.
+**Action:** Dedicated encoder prompt session. Read the actual prompt Sonnet receives (from /tmp/brain-encoding-prompt-*.json), compare against v3.2 intent, fix both the data assembly and the prompt text.
 
-### 5. Daemon Stability (MEDIUM)
-**Problem:** ONNX/FastEmbed memory leak. RSS grows to 1.1GB+.
-**Proposed fix:** RSS watchdog (auto-restart at threshold).
+### 2. S2 Session Encoder (HIGH — infrastructure ready)
+Everything needed: scales/ directory, runner.py, dispatch.py, trace_contract has S2 ref_types, brain_batch tool. Copy S1E pattern.
 
-### 6. brain_precision.py Cleanup (LOW)
-**Problem:** 763-line module, only `get_precision_summary()` is called (by boot + self-reflection).
-**Action:** Extract that one method into LogsDAL, delete the rest.
+### 3. Outcome Traces (HIGH — the learning signal)
+O/K/Δ traced but not outcomes. Without outcomes, no scale learns whether its Δ served the target function.
 
-### 7. Signal Producers (LOW — moves to S2)
-**Problem:** Signal producers (encoding gap, vocabulary gap, system health) run in S1 recall hook. They're S2 concerns.
-**Action:** Move to S2 session encoder when built.
+### 4. _expand_and_enrich shared (MEDIUM)
+Currently in scales/s1/recall.py but MCP recall also uses it. Should be shared infrastructure — any consumer that surfaces nodes wants correction enrichment + graph expansion.
 
-### 8. Shim Cleanup (LOW — after S2 ships)
-**Action:** Remove backward-compat re-export shims once all imports updated:
-- `encoding_agent.py` → `scales/s1/encode.py`
-- `encoding_contract.py` → `scales/s1/encode_contract.py`
-- `judge_contract.py` → `scales/s1/recall_contract.py`
+### 5. Remaining cleanup (LOW)
+- brain_surface.py still references miss_log, staged_learnings (silently fails)
+- brain_engineering.py dead methods (track_session_event, assess_session_health callers)
+- Fatigue storage model (JSON blob instead of per-row in session_state — 52K→87 rows)
+- VACUUM brain_logs.db to reclaim space (tables dropped but pages not freed)
+- Shim files cleanup (encoding_agent.py, judge_contract.py, encoding_contract.py)
