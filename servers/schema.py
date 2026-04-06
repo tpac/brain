@@ -1,20 +1,18 @@
 """
-brain — Canonical Database Schema (v15)
+brain — Canonical Database Schema (v21)
 
 SINGLE SOURCE OF TRUTH for every table, column, index, and constraint.
-Ported from schema.js — identical schema, Python-native implementation.
 
-v15 changes (brain v5 — shared cognitive space):
-  - New columns on nodes: content_summary, source_attribution, scope
-  - New node types: correction, validation, mental_model, reasoning_trace, uncertainty,
-    purpose, mechanism, impact, constraint, convention, lesson, vocabulary
-  - New tables: node_metadata, correction_traces, session_syntheses, project_maps
-  - tuning_log.old_value/new_value changed from REAL to TEXT (supports JSON)
-
-v14 changes:
-  - session_activity table (replaces in-memory tracking from index.js)
-  - node_embeddings.model default changes from 'bge-m3' to 'snowflake-arctic-embed-m'
-  - Embedding dimension changes from 1024 to 768
+v21 changes (dead table cleanup):
+  - Removed 7 dead tables from brain.db: version_history, summaries, projects,
+    reasoning_chains, reasoning_steps, prune_archive, project_maps
+  - Added 2 production tables: embedding_fidelity, node_communities
+  - Removed 14 dead tables from brain_logs.db: access_log, recall_log, miss_log,
+    tuning_log, eval_snapshots, suggest_log, curiosity_log, health_log,
+    staged_learnings, message_stream, recall_gaps, pending_consolidation,
+    brain_telemetry, conflict_log
+  - Added hook_errors table to brain_logs.db
+  - Cleaned up stale migration code in ensure_logs_schema()
 
 HOW MIGRATION WORKS:
   1. On startup, Brain calls ensure_schema(conn)
@@ -185,8 +183,6 @@ TABLES = {
         }
     },
 
-    # access_log — moved to brain_logs.db (see LOG_TABLES)
-
     'brain_meta': {
         'create': """CREATE TABLE IF NOT EXISTS brain_meta (
             key TEXT PRIMARY KEY,
@@ -196,29 +192,8 @@ TABLES = {
         'columns': {'key': None, 'value': 'NULL', 'updated_at': 'NULL'}
     },
 
-    'version_history': {
-        'create': """CREATE TABLE IF NOT EXISTS version_history (
-            version INTEGER NOT NULL,
-            migration_ts TEXT NOT NULL,
-            description TEXT,
-            backup_path TEXT
-        )""",
-        'columns': {'version': None, 'migration_ts': None, 'description': 'NULL', 'backup_path': 'NULL'}
-    },
-
-    'summaries': {
-        'create': """CREATE TABLE IF NOT EXISTS summaries (
-            cluster_id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            summary TEXT NOT NULL,
-            node_ids TEXT NOT NULL,
-            keywords TEXT,
-            last_updated TEXT,
-            created_at TEXT
-        )""",
-        'columns': {'cluster_id': None, 'title': None, 'summary': None, 'node_ids': None,
-                    'keywords': 'NULL', 'last_updated': 'NULL', 'created_at': 'NULL'}
-    },
+    # version_history — REMOVED v21 (dead table)
+    # summaries — REMOVED v21 (dead table)
 
     'emotion_calibration': {
         'create': """CREATE TABLE IF NOT EXISTS emotion_calibration (
@@ -233,16 +208,6 @@ TABLES = {
         'columns': {'id': None, 'node_id': 'NULL', 'user_emotion': None, 'user_label': None,
                     'context': 'NULL', 'created_at': 'NULL'}
     },
-
-    # dream_log — moved to brain_logs.db (see LOG_TABLES)
-
-    # recall_log — moved to brain_logs.db (see LOG_TABLES)
-
-    # miss_log — moved to brain_logs.db (see LOG_TABLES)
-
-    # eval_snapshots — moved to brain_logs.db (see LOG_TABLES)
-
-    # tuning_log — moved to brain_logs.db (see LOG_TABLES)
 
     'node_vectors': {
         'create': """CREATE TABLE IF NOT EXISTS node_vectors (
@@ -264,60 +229,9 @@ TABLES = {
         'columns': {'term': None, 'count': None}
     },
 
-    'projects': {
-        'create': """CREATE TABLE IF NOT EXISTS projects (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            description TEXT,
-            created_at TEXT,
-            updated_at TEXT
-        )""",
-        'columns': {'id': None, 'name': None, 'description': 'NULL',
-                    'created_at': 'NULL', 'updated_at': 'NULL'}
-    },
-
-    # suggest_log — moved to brain_logs.db (see LOG_TABLES)
-
-    'reasoning_chains': {
-        'create': """CREATE TABLE IF NOT EXISTS reasoning_chains (
-            id TEXT PRIMARY KEY,
-            decision_node_id TEXT,
-            title TEXT NOT NULL,
-            trigger_context TEXT,
-            full_context TEXT,
-            step_count INTEGER DEFAULT 0,
-            project TEXT,
-            created_at TEXT,
-            FOREIGN KEY (decision_node_id) REFERENCES nodes(id) ON DELETE SET NULL
-        )""",
-        'columns': {'id': None, 'decision_node_id': 'NULL', 'title': None,
-                    'trigger_context': 'NULL', 'full_context': 'NULL',
-                    'step_count': '0', 'project': 'NULL', 'created_at': 'NULL'}
-    },
-
-    'reasoning_steps': {
-        'create': """CREATE TABLE IF NOT EXISTS reasoning_steps (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            chain_id TEXT NOT NULL,
-            step_order INTEGER NOT NULL,
-            step_type TEXT NOT NULL CHECK(step_type IN ('observation','hypothesis','attempt','evidence','failure','feedback','decision','lesson')),
-            content TEXT NOT NULL,
-            node_id TEXT,
-            created_at TEXT,
-            FOREIGN KEY (chain_id) REFERENCES reasoning_chains(id) ON DELETE CASCADE,
-            FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE SET NULL
-        )""",
-        'columns': {'id': None, 'chain_id': None, 'step_order': None,
-                    'step_type': None, 'content': None, 'node_id': 'NULL', 'created_at': 'NULL'}
-    },
-
-    # curiosity_log — moved to brain_logs.db (see LOG_TABLES)
-
-    # health_log — moved to brain_logs.db (see LOG_TABLES)
-
-    # staged_learnings — moved to brain_logs.db (see LOG_TABLES)
-
-    # debug_log — moved to brain_logs.db (see LOG_TABLES)
+    # projects — REMOVED v21 (dead table)
+    # reasoning_chains — REMOVED v21 (dead table)
+    # reasoning_steps — REMOVED v21 (dead table)
 
     'bridge_proposals': {
         'create': """CREATE TABLE IF NOT EXISTS bridge_proposals (
@@ -339,30 +253,7 @@ TABLES = {
                     'matures_at': None, 'resolved_at': 'NULL'}
     },
 
-    'prune_archive': {
-        'create': """CREATE TABLE IF NOT EXISTS prune_archive (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            item_type TEXT NOT NULL CHECK(item_type IN ('edge','node')),
-            item_id TEXT,
-            source_id TEXT,
-            target_id TEXT,
-            weight REAL,
-            edge_type TEXT,
-            description TEXT DEFAULT '',
-            reason TEXT DEFAULT '',
-            pruned_at TEXT NOT NULL,
-            access_count INTEGER,
-            stability REAL,
-            emotion REAL,
-            created_at TEXT,
-            last_accessed TEXT
-        )""",
-        'columns': {'id': None, 'item_type': None, 'item_id': 'NULL',
-                    'source_id': 'NULL', 'target_id': 'NULL', 'weight': 'NULL',
-                    'edge_type': 'NULL', 'description': "''", 'reason': "''",
-                    'pruned_at': None, 'access_count': 'NULL', 'stability': 'NULL',
-                    'emotion': 'NULL', 'created_at': 'NULL', 'last_accessed': 'NULL'}
-    },
+    # prune_archive — REMOVED v21 (dead table)
 
     'node_embeddings': {
         'create': """CREATE TABLE IF NOT EXISTS node_embeddings (
@@ -400,9 +291,6 @@ TABLES = {
             'created_at': 'CURRENT_TIMESTAMP',
         }
     },
-
-    # brain_telemetry — moved to brain_logs.db (see LOG_TABLES)
-    # High-volume operational data doesn't belong in brain.db.
 
     # v14: Session activity tracking — replaces in-memory sessionActivity from index.js
     'session_activity': {
@@ -501,19 +389,36 @@ TABLES = {
         }
     },
 
-    # v15: Project maps — structured engineering data (file inventory, system purpose, etc.)
-    'project_maps': {
-        'create': """CREATE TABLE IF NOT EXISTS project_maps (
-            id TEXT PRIMARY KEY,
-            project TEXT NOT NULL,
-            map_type TEXT NOT NULL,
-            content TEXT NOT NULL,
-            last_updated TEXT,
-            created_at TEXT
+    # project_maps — REMOVED v21 (dead table)
+
+    # v21: Embedding fidelity tracking for redistribution
+    'embedding_fidelity': {
+        'create': """CREATE TABLE IF NOT EXISTS embedding_fidelity (
+            node_id TEXT PRIMARY KEY,
+            original_embedding BLOB NOT NULL,
+            fidelity REAL DEFAULT 1.0,
+            last_redistributed TEXT,
+            redistribution_count INTEGER DEFAULT 0,
+            pinned INTEGER DEFAULT 0,
+            FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
         )""",
         'columns': {
-            'id': None, 'project': None, 'map_type': None, 'content': None,
-            'last_updated': 'NULL', 'created_at': 'NULL',
+            'original_embedding': None,
+            'fidelity': '1.0',
+            'last_redistributed': 'NULL',
+            'redistribution_count': '0',
+            'pinned': '0',
+        }
+    },
+
+    # v21: Community detection results
+    'node_communities': {
+        'create': """CREATE TABLE IF NOT EXISTS node_communities (
+            node_id TEXT PRIMARY KEY,
+            community_id INTEGER
+        )""",
+        'columns': {
+            'community_id': 'NULL',
         }
     },
 }
@@ -533,21 +438,12 @@ INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id)',
     'CREATE INDEX IF NOT EXISTS idx_edges_weight ON edges(weight)',
     'CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(edge_type)',
-    # summaries
-    'CREATE INDEX IF NOT EXISTS idx_summaries_keywords ON summaries(keywords)',
     # node_vectors
     'CREATE INDEX IF NOT EXISTS idx_vectors_term ON node_vectors(term)',
     'CREATE INDEX IF NOT EXISTS idx_vectors_node ON node_vectors(node_id)',
-    # reasoning
-    'CREATE INDEX IF NOT EXISTS idx_chains_decision ON reasoning_chains(decision_node_id)',
-    'CREATE INDEX IF NOT EXISTS idx_chains_project ON reasoning_chains(project)',
-    'CREATE INDEX IF NOT EXISTS idx_steps_chain ON reasoning_steps(chain_id)',
     # bridge_proposals
     'CREATE INDEX IF NOT EXISTS idx_bridge_proposals_status ON bridge_proposals(status)',
     'CREATE INDEX IF NOT EXISTS idx_bridge_proposals_matures ON bridge_proposals(matures_at)',
-    # prune_archive
-    'CREATE INDEX IF NOT EXISTS idx_prune_archive_date ON prune_archive(pruned_at)',
-    'CREATE INDEX IF NOT EXISTS idx_prune_archive_type ON prune_archive(item_type)',
     # node_embeddings
     'CREATE INDEX IF NOT EXISTS idx_node_embeddings_model ON node_embeddings(model)',
     # v15: node_metadata
@@ -558,8 +454,6 @@ INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_correction_traces_session ON correction_traces(session_id)',
     # v15: session_syntheses
     'CREATE INDEX IF NOT EXISTS idx_session_syntheses_session ON session_syntheses(session_id)',
-    # v15: project_maps
-    'CREATE INDEX IF NOT EXISTS idx_project_maps_type ON project_maps(project, map_type)',
     # v15: nodes scope for engineering memory
     'CREATE INDEX IF NOT EXISTS idx_nodes_scope ON nodes(scope)',
     # v16: critical flag for safety-important nodes
@@ -798,14 +692,7 @@ def ensure_schema(conn, db_path=None):
 # These are operational/telemetry tables that grow unbounded and
 # don't need referential integrity with the knowledge graph.
 LOG_TABLES = {
-    'access_log': {
-        'create': """CREATE TABLE IF NOT EXISTS access_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL,
-            node_id TEXT NOT NULL,
-            timestamp TEXT NOT NULL
-        )""",
-    },
+    # access_log — REMOVED v21 (dead table)
     'debug_log': {
         'create': """CREATE TABLE IF NOT EXISTS debug_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -822,42 +709,8 @@ LOG_TABLES = {
             created_at TEXT
         )""",
     },
-    'recall_log': {
-        'create': """CREATE TABLE IF NOT EXISTS recall_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL,
-            query TEXT NOT NULL,
-            returned_ids TEXT NOT NULL,
-            returned_count INTEGER NOT NULL,
-            used_ids TEXT,
-            used_count INTEGER DEFAULT 0,
-            precision_score REAL,
-            embeddings_used INTEGER DEFAULT 0,
-            recalled_titles TEXT,
-            recalled_snippets TEXT,
-            assistant_response_snippet TEXT,
-            match_method TEXT,
-            evaluation_metadata TEXT,
-            followup_signal TEXT,
-            explicit_feedback TEXT,
-            evaluated_at TEXT,
-            created_at TEXT,
-            source TEXT DEFAULT 'hook',
-            judge_prompt TEXT,
-            judge_output TEXT
-        )""",
-    },
-    'miss_log': {
-        'create': """CREATE TABLE IF NOT EXISTS miss_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL,
-            signal TEXT NOT NULL,
-            query TEXT,
-            expected_node_id TEXT,
-            context TEXT,
-            created_at TEXT
-        )""",
-    },
+    # recall_log — REMOVED v21 (dead table, replaced by trace_events)
+    # miss_log — REMOVED v21 (dead table)
     'dream_log': {
         'create': """CREATE TABLE IF NOT EXISTS dream_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -869,161 +722,28 @@ LOG_TABLES = {
             created_at TEXT
         )""",
     },
-    'tuning_log': {
-        'create': """CREATE TABLE IF NOT EXISTS tuning_log (
+    # tuning_log — REMOVED v21 (dead table)
+    # eval_snapshots — REMOVED v21 (dead table)
+    # suggest_log — REMOVED v21 (dead table)
+    # curiosity_log — REMOVED v21 (dead table)
+    # health_log — REMOVED v21 (dead table)
+    # conflict_log — REMOVED v21 (dead table)
+    # staged_learnings — REMOVED v21 (dead table)
+    # message_stream — REMOVED v21 (dead table, replaced by trace_events)
+    # recall_gaps — REMOVED v21 (dead table)
+    # pending_consolidation — REMOVED v21 (dead table)
+    # brain_telemetry — REMOVED v21 (dead table)
+
+    'hook_errors': {
+        'create': """CREATE TABLE IF NOT EXISTS hook_errors (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            parameter TEXT NOT NULL,
-            old_value TEXT NOT NULL,
-            new_value TEXT NOT NULL,
-            reason TEXT,
-            eval_snapshot_id INTEGER,
-            created_at TEXT
-        )""",
-    },
-    'eval_snapshots': {
-        'create': """CREATE TABLE IF NOT EXISTS eval_snapshots (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            period TEXT NOT NULL,
-            recall_precision REAL,
-            recall_coverage REAL,
-            dream_hit_rate REAL,
-            emotion_accuracy REAL,
-            avg_boot_relevance REAL,
-            total_recalls INTEGER,
-            total_misses INTEGER,
-            total_dreams INTEGER,
-            dreams_accessed INTEGER,
-            recommendations TEXT,
-            created_at TEXT
-        )""",
-    },
-    'suggest_log': {
-        'create': """CREATE TABLE IF NOT EXISTS suggest_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT,
-            context TEXT,
-            suggested_ids TEXT,
-            accepted_ids TEXT,
-            created_at TEXT
-        )""",
-    },
-    'curiosity_log': {
-        'create': """CREATE TABLE IF NOT EXISTS curiosity_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT,
-            gap_type TEXT NOT NULL,
-            target_node_id TEXT,
-            prompt TEXT NOT NULL,
-            resolved INTEGER DEFAULT 0,
-            resolved_at TEXT,
-            created_at TEXT
-        )""",
-    },
-    'health_log': {
-        'create': """CREATE TABLE IF NOT EXISTS health_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT,
-            check_type TEXT NOT NULL,
-            result TEXT,
-            actions_taken TEXT,
-            created_at TEXT
-        )""",
-    },
-    'conflict_log': {
-        'create': """CREATE TABLE IF NOT EXISTS conflict_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT,
+            created_at TEXT NOT NULL,
             hook_name TEXT NOT NULL,
-            rule_node_id TEXT,
-            rule_title TEXT,
-            claude_action TEXT,
-            brain_decision TEXT NOT NULL CHECK(brain_decision IN ('block', 'warn')),
-            resolution TEXT DEFAULT 'pending' CHECK(resolution IN ('pending', 'brain_correct', 'claude_correct', 'scoped_exception', 'dismissed')),
-            operator_response TEXT,
-            surfaced INTEGER DEFAULT 0,
-            created_at TEXT
-        )""",
-        'columns': {
-            'session_id': 'NULL', 'hook_name': None, 'rule_node_id': 'NULL',
-            'rule_title': 'NULL', 'claude_action': 'NULL', 'brain_decision': None,
-            'resolution': "'pending'", 'operator_response': 'NULL',
-            'surfaced': '0', 'created_at': 'NULL'}
-    },
-
-    'staged_learnings': {
-        'create': """CREATE TABLE IF NOT EXISTS staged_learnings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            node_id TEXT NOT NULL,
-            source TEXT NOT NULL DEFAULT 'pre_compact',
-            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','confirmed','dismissed','promoted')),
-            confidence REAL NOT NULL DEFAULT 0.2,
-            times_revisited INTEGER DEFAULT 0,
-            extracted_session TEXT,
-            reviewed_session TEXT,
-            created_at TEXT,
-            updated_at TEXT
-        )""",
-    },
-
-    # v8: Message stream — raw conversation capture for invisible encoding.
-    # Tom's messages stored on every Stop event. Surfaced as pending encoding material.
-    'message_stream': {
-        'create': """CREATE TABLE IF NOT EXISTS message_stream (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT NOT NULL,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            session_id TEXT DEFAULT '',
-            encoded INTEGER DEFAULT 0,
-            signal_type TEXT DEFAULT NULL,
-            surfaced_count INTEGER DEFAULT 0,
-            resolved INTEGER DEFAULT 0,
-            resolved_at TEXT DEFAULT NULL,
-            recalled_node_ids TEXT DEFAULT NULL,
-            recalled_raw TEXT DEFAULT NULL,
-            judge_output TEXT DEFAULT NULL
-        )""",
-    },
-
-    # v8: Recall gaps — queries where the brain had no relevant knowledge.
-    # Logged for trend analysis and gap-driven encoding prompts.
-    'recall_gaps': {
-        'create': """CREATE TABLE IF NOT EXISTS recall_gaps (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT NOT NULL,
-            query TEXT NOT NULL,
-            top_score REAL,
-            session_id TEXT DEFAULT ''
-        )""",
-    },
-
-    # v8: Pending consolidation — duplicate/overlapping node pairs detected by idle.
-    # Surfaced 1-2 per turn when recall has empty slots. LLM decides to merge or keep.
-    'pending_consolidation': {
-        'create': """CREATE TABLE IF NOT EXISTS pending_consolidation (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            node_id_a TEXT NOT NULL,
-            node_id_b TEXT NOT NULL,
-            similarity REAL,
-            detected_at TEXT NOT NULL,
-            resolved INTEGER DEFAULT 0,
-            UNIQUE(node_id_a, node_id_b)
-        )""",
-    },
-
-    # v6: Brain telemetry — every critical operation logs timing, success/failure.
-    # No silent failures. Surfaced via consciousness signals and health_check.
-    # Lives in brain_logs.db to avoid lock contention with brain.db.
-    'brain_telemetry': {
-        'create': """CREATE TABLE IF NOT EXISTS brain_telemetry (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
-            operation TEXT NOT NULL,
-            duration_ms REAL,
-            success INTEGER NOT NULL DEFAULT 1,
-            error_message TEXT,
-            metadata TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            level TEXT NOT NULL DEFAULT 'error',
+            error TEXT NOT NULL,
+            context TEXT DEFAULT '',
+            traceback TEXT DEFAULT '',
+            surfaced INTEGER DEFAULT 0
         )""",
     },
 
@@ -1095,32 +815,13 @@ LOG_TABLES = {
 }
 
 LOG_INDEXES = [
-    'CREATE INDEX IF NOT EXISTS idx_access_log_session ON access_log(session_id)',
-    'CREATE INDEX IF NOT EXISTS idx_access_log_node ON access_log(node_id)',
     'CREATE INDEX IF NOT EXISTS idx_debug_session ON debug_log(session_id)',
     'CREATE INDEX IF NOT EXISTS idx_debug_type ON debug_log(event_type)',
     'CREATE INDEX IF NOT EXISTS idx_debug_created ON debug_log(created_at)',
-    'CREATE INDEX IF NOT EXISTS idx_recall_log_session ON recall_log(session_id)',
-    'CREATE INDEX IF NOT EXISTS idx_recall_log_created ON recall_log(created_at)',
-    'CREATE INDEX IF NOT EXISTS idx_miss_log_signal ON miss_log(signal)',
     'CREATE INDEX IF NOT EXISTS idx_dream_log_session ON dream_log(session_id)',
-    'CREATE INDEX IF NOT EXISTS idx_curiosity_session ON curiosity_log(session_id)',
-    'CREATE INDEX IF NOT EXISTS idx_health_session ON health_log(session_id)',
-    'CREATE INDEX IF NOT EXISTS idx_staged_status ON staged_learnings(status)',
-    'CREATE INDEX IF NOT EXISTS idx_staged_node ON staged_learnings(node_id)',
-    'CREATE INDEX IF NOT EXISTS idx_conflict_session ON conflict_log(session_id)',
-    'CREATE INDEX IF NOT EXISTS idx_conflict_surfaced ON conflict_log(surfaced)',
-    # v6: brain_telemetry
-    'CREATE INDEX IF NOT EXISTS idx_telemetry_op ON brain_telemetry(operation, timestamp)',
-    'CREATE INDEX IF NOT EXISTS idx_telemetry_fail ON brain_telemetry(success)',
-    # v8: message_stream
-    'CREATE INDEX IF NOT EXISTS idx_stream_role_encoded ON message_stream(role, encoded)',
-    'CREATE INDEX IF NOT EXISTS idx_stream_session ON message_stream(session_id)',
-    'CREATE INDEX IF NOT EXISTS idx_stream_timestamp ON message_stream(timestamp)',
-    # v8: recall_gaps
-    'CREATE INDEX IF NOT EXISTS idx_gaps_timestamp ON recall_gaps(timestamp)',
-    # v8: pending_consolidation
-    'CREATE INDEX IF NOT EXISTS idx_consolidation_resolved ON pending_consolidation(resolved)',
+    # hook_errors
+    'CREATE INDEX IF NOT EXISTS idx_hook_errors_hook ON hook_errors(hook_name)',
+    'CREATE INDEX IF NOT EXISTS idx_hook_errors_created ON hook_errors(created_at)',
     # interactions
     'CREATE INDEX IF NOT EXISTS idx_interactions_name ON interactions(name)',
     # trace_events
@@ -1145,12 +846,7 @@ def ensure_logs_schema(conn):
     for table_name, spec in LOG_TABLES.items():
         conn.execute(spec['create'])
 
-    # v8: Add new columns to message_stream if table already existed
-    _add_column_if_missing(conn, 'message_stream', 'signal_type', 'TEXT DEFAULT NULL')
-    _add_column_if_missing(conn, 'message_stream', 'surfaced_count', 'INTEGER DEFAULT 0')
     _add_column_if_missing(conn, 'trace_events', 'interaction_id', 'INTEGER')
-    _add_column_if_missing(conn, 'message_stream', 'resolved', 'INTEGER DEFAULT 0')
-    _add_column_if_missing(conn, 'message_stream', 'resolved_at', 'TEXT DEFAULT NULL')
 
     for idx in LOG_INDEXES:
         try:
