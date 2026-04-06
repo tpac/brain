@@ -1025,17 +1025,18 @@ def hook_pre_compact_save(brain, args, graph_changes):
     except Exception as e:
         brain._log_error('synthesize_session', e, 'hook_pre_compact_save')
 
-    # Write compaction boundary marker
+    # Write compaction boundary as S0 trace (not a node — was creating 21+ duplicate nodes)
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    brain.remember(
-        type="context",
-        title="Compaction boundary at %s" % ts,
-        content="Context compacted. Synthesis ran. Post-compact reboot will re-inject context.",
-        keywords="compaction boundary session handoff",
-        locked=False,
-        encoding_source='hook:compaction',
-    )
-    graph_changes.append("COMPACTION: boundary marker created at %s" % ts)
+    try:
+        ctx = brain.get_or_create_session(args.get('session_id', ''))
+        brain._trace_dal.append(
+            chain_id=ctx.s0_chain(), scale='s0', event_type='delta',
+            ref_type='compaction_boundary',
+            summary='Context compacted at %s' % ts,
+            session_id=ctx.session_id)
+    except Exception as e:
+        brain._log_error('compaction_trace', e, 'writing compaction boundary trace')
+    graph_changes.append("COMPACTION: boundary trace at %s" % ts)
 
     brain.save()
     return {"json": {"decision": "approve"}}

@@ -40,7 +40,7 @@ The dashboard (`dashboard/`) is a passive observer — reads from the same DBs +
 
 ## Scale 0: Exchange
 
-Every conversation turn. Tom sends a message (O), the brain injects context (K), Anchor responds (Δ). The response becomes the next O. This IS the loop.
+Every conversation turn. Tom's message is the observation (O). Everything the brain injects — boot context, recalled nodes, signals, rules — is knowledge (K). Anchor's response is the change (Δ). The response becomes part of the next O. This IS the loop.
 
 Hooks are S0's observation points — all logic lives in the daemon, hooks are thin clients:
 - `SessionStart` → boots daemon, prints identity context

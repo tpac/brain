@@ -1159,7 +1159,22 @@ class BrainEngineeringMixin:
 
         title = "Session %s handoff" % session_date
 
-        # Create boot node
+        # Check if a handoff node for today already exists — revise it instead of creating a dupe
+        try:
+            existing = self.conn.execute(
+                "SELECT id FROM nodes WHERE type = 'boot' AND title = ? AND archived = 0",
+                (title,)).fetchone()
+            if existing:
+                result = self.revise(
+                    node_id=existing[0],
+                    content=content.strip(),
+                    reason='Session handoff updated (same day)',
+                )
+                return result
+        except Exception:
+            pass  # Fall through to create
+
+        # Create boot node (first handoff of the day)
         try:
             result = self.remember(
                 type='boot',
