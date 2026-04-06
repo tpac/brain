@@ -239,12 +239,8 @@ class TestBuildNodeCatalog:
         # The ID is extracted by regex but format_node returns None -> not in formatted_ids
         assert fake_id not in ids
 
-    def test_regex_misses_typed_prefix_ids(self):
-        """KNOWN ISSUE: typed prefix IDs (rul_xxxx) don't match the hex regex.
-
-        build_node_catalog uses r'id:([a-f0-9]{8})' but the judge formats
-        typed IDs like id:rul_uz02. This test documents the mismatch.
-        """
+    def test_regex_handles_typed_prefix_ids(self):
+        """Typed prefix IDs (con_xxxx) must be extracted by build_node_catalog."""
         from servers.scales.s1.encode_contract import build_node_catalog
         import re
 
@@ -258,9 +254,8 @@ class TestBuildNodeCatalog:
         judge_output = '[rule] "Test" (id:%s, conf:0.9)' % node_id
         text, ids = build_node_catalog([judge_output], self.conn)
 
-        # This SHOULD find the node but doesn't — regex mismatch
-        assert node_id not in ids, (
-            "If this starts passing, the regex was fixed — remove this test")
+        assert node_id in ids, (
+            "Regex should match typed-prefix ID %s" % node_id)
 
 
 class TestSaveJournal:

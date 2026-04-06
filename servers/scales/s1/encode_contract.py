@@ -67,11 +67,12 @@ def build_node_catalog(judge_outputs, db_conn):
     """
     import re
     # Extract all node IDs from judge outputs (pattern: id:XXXXXXXX)
+    # Supports both hex IDs (d7d1ddfa) and typed-prefix IDs (con_1c0v)
     seen_ids = set()
     for jo in judge_outputs:
         if not jo or jo == '(no selection)':
             continue
-        for match in re.finditer(r'id:([a-f0-9]{8})', jo):
+        for match in re.finditer(r'id:([a-z0-9_]{6,8})', jo):
             seen_ids.add(match.group(1))
 
     if not seen_ids:

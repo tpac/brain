@@ -214,7 +214,7 @@ def _build_user_content(brain, messages, counter, session_id):
             # Only show when there are actual node IDs — skip noise lines
             judge_output = m.get("judge_output")
             if judge_output and judge_output != '(no selection)':
-                ref_ids = re.findall(r'id:([a-f0-9]{8})', judge_output)
+                ref_ids = re.findall(r'id:([a-z0-9_]{6,8})', judge_output)
                 if ref_ids:
                     from servers.dal import NodeDAL
                     dal = NodeDAL(brain.conn)
