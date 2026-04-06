@@ -266,8 +266,6 @@ find_node_by_title(title_query, threshold, top_k) — fuzzy search
 get_node(node_id) — full content + connections by ID
 get_nodes(node_ids) — batch fetch multiple nodes by ID
 enrich(node_id, question, anchor, bridge, keywords) — improve recall vectors
-record_divergence(claude_assumed, reality, underlying_pattern, severity) — corrections
-learn_vocabulary(term, maps_to, context) — operator term mapping
 ```
 
 ### Introspection
