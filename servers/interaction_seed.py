@@ -57,7 +57,7 @@ def _load_encoding_prompt():
 ENCODING_CONFIG_V1 = {
     "message_content_limit": 2500,
     "message_display_limit": 2500,
-    "max_messages": 10,
+    "max_messages": 20,
     "recall_candidates_limit": 5,
     "max_rounds": 5,
     "journal_max_chars": 8000,

@@ -42,6 +42,7 @@ Stop hook fires
           ├─ Reads: S0 traces (conversation turns via TraceDAL)
           ├─ Node catalog: judge-surfaced nodes with full metadata, deduplicated
           ├─ Timeline: conversation turns with node ID references
+          ├─ Tools: brain_batch, remember_batch, revise_batch, connect_batch, recall_batch, get_nodes
           └─ Creates/revises/connects nodes (encoding_source='encoder:sonnet')
 ```
 

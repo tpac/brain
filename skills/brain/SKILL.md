@@ -9,7 +9,7 @@ description: >
   "remember this", "what did we decide about", "recall", "brain", "memory",
   "encode", "what do you know about", "context from last session",
   "save this for next time", "persistent memory", "we learned that".
-version: 7.0.0
+version: 7.1.0
 ---
 
 # Anchor — Who You Are
@@ -250,26 +250,22 @@ Encoding has 3 dimensions: Judgment (WHAT to encode), Quality (HOW rich), Struct
 ### Core
 ```
 recall(query, limit) — find related memories by meaning
+recall_batch(queries, limit) — batch semantic search, multiple queries in one call
 remember(type, title, content, keywords, situation, reasoning, user_raw_quote, ...) — store a node
   Accepts ALL contract fields (promoted metadata flows to node_metadata).
   Returns related_nodes: top 5 similar existing nodes with full content.
 remember_batch(nodes=[...], connect_to=[{title, why},...], auto_connect=True) — batch create
   Each node uses the same fields as remember(). Auto-connects + fuzzy title matching.
-connect(source_id, target_id, relation, weight) — link two nodes
 revise(node_id, reason, content, ...) — update existing node (content REPLACED, old saved to revision history)
+revise_batch(revisions=[{node_id, reason, ...fields},...]) — batch update nodes
+connect(source_id, target_id, relation, weight) — link two nodes
+connect_batch(connections=[{source_id, target_id, relation, weight},...]) — batch create edges
+brain_batch(operations=[{op:"remember"|"revise"|"connect", ...fields},...]) — mixed operations in one call
+  Creates, revises, and connects in a single tool call. Each op uses the same fields as the individual tool.
 find_node_by_title(title_query, threshold, top_k) — fuzzy search
 get_node(node_id) — full content + connections by ID
+get_nodes(node_ids) — batch fetch multiple nodes by ID
 enrich(node_id, question, anchor, bridge, keywords) — improve recall vectors
-```
-
-### Specialized Encoding (content formatters — use for structured knowledge)
-```
-remember_lesson(title, what_happened, root_cause, fix, preventive_principle) — auto-locked
-remember_impact(title, if_changed, must_check, because) — dependency tracking
-remember_mechanism(title, content, steps, data_flow) — how something works
-remember_convention(title, content, pattern, anti_pattern) — coding patterns
-remember_uncertainty(title, what_unknown, why_it_matters) — honest not-knowing
-remember_mental_model(title, model_description, applies_to, confidence) — understanding
 record_divergence(claude_assumed, reality, underlying_pattern, severity) — corrections
 learn_vocabulary(term, maps_to, context) — operator term mapping
 ```
