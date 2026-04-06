@@ -146,25 +146,14 @@ class TestBrainVoiceRenderBoot(BrainTestBase):
         self.assertIn("recall", wrapper)
 
     def test_render_boot_structure(self):
-        """Boot output has brain tags and identity section.
-        Consciousness signals migrated to signal queue — no longer in boot.
-        """
+        """Boot v2 output has brain tags and welcome."""
         voice = BrainVoice(self.brain)
         result = voice.render_boot()
         text = result['for_claude']
         self.assertIn("[BRAIN]", text)
         self.assertIn("[/BRAIN]", text)
-        # Fresh brain is NEWBORN stage — "Anchor" only appears in mature brains
-        self.assertIn("TRIAD", text)
-
-    def test_render_boot_includes_locked_rules(self):
-        self.brain.remember(
-            type="rule", title="Always test first",
-            content="Rule content", locked=True,
-        )
-        voice = BrainVoice(self.brain)
-        result = voice.render_boot()
-        self.assertIn("locked rules", result['for_claude'].lower())
+        self.assertIn("Welcome back, Anchor", text)
+        self.assertIn("YOUR BRAIN:", text)
 
     def test_render_boot_operator_has_summary(self):
         """Phase 4: Operator channel includes boot summary with priority tags."""

@@ -7,7 +7,7 @@ context, like a database server.
 SessionContext carries:
 - session_id: identity (from Claude Code hook args)
 - stop_counter: which stop we're on
-- (future: fatigue state, encoding journal, session_context string)
+- fatigue: {node_id: access_count} for synaptic fatigue (resets between sessions)
 
 Usage:
     # In a hook:
@@ -21,6 +21,7 @@ Usage:
 import json
 import uuid
 import sqlite3
+from typing import Dict
 from datetime import datetime, timezone
 
 
@@ -30,6 +31,7 @@ class SessionContext:
     def __init__(self, session_id: str = '', stop_counter: int = 0):
         self.session_id = session_id or uuid.uuid4().hex
         self.stop_counter = stop_counter
+        self.fatigue: Dict[str, int] = {}  # {node_id: access_count} — resets between sessions
 
     @classmethod
     def from_hook_args(cls, args: dict) -> 'SessionContext':
@@ -66,13 +68,21 @@ class SessionContext:
 
     # ── Persistence ──
 
+    def increment_fatigue(self, node_id: str) -> int:
+        """Increment fatigue for a node. Returns new count."""
+        self.fatigue[node_id] = self.fatigue.get(node_id, 0) + 1
+        return self.fatigue[node_id]
+
     def save(self, conn: sqlite3.Connection):
-        """Save session context to DB. Creates or updates."""
+        """Save session context to DB. Creates or updates.
+
+        Includes fatigue as JSON — single row replaces 52K per-node rows.
+        """
         now = datetime.now(timezone.utc).isoformat()
         data = json.dumps({
             'stop_counter': self.stop_counter,
+            'fatigue': self.fatigue,
         })
-        # Use session_state table (already exists in brain_logs.db)
         conn.execute(
             'INSERT OR REPLACE INTO session_state (session_id, key, node_id, value, updated_at) '
             'VALUES (?, ?, ?, ?, ?)',
@@ -89,9 +99,11 @@ class SessionContext:
             return None
         try:
             data = json.loads(row[0])
-            return cls(
+            ctx = cls(
                 session_id=session_id,
                 stop_counter=data.get('stop_counter', 0),
             )
+            ctx.fatigue = {k: int(v) for k, v in data.get('fatigue', {}).items()}
+            return ctx
         except (json.JSONDecodeError, TypeError):
             return None

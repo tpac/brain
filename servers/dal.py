@@ -791,12 +791,45 @@ class SessionStateDAL:
         return {r[0]: r[1] for r in rows}
 
     def load_fatigue(self, session_id: str) -> Dict[str, int]:
-        """Load fatigue counts for a session. Returns {node_id: count}."""
+        """Load fatigue counts for a session. Returns {node_id: count}.
+
+        Supports both formats:
+        - New: single JSON blob row (node_id='', value=JSON)
+        - Legacy: per-node rows (node_id=X, value=count)
+        """
+        # Try new JSON blob format first
+        row = self.conn.execute(
+            "SELECT value FROM session_state "
+            "WHERE session_id = ? AND key = 'fatigue' AND node_id = ''",
+            (session_id,)).fetchone()
+        if row and row[0]:
+            try:
+                return {k: int(v) for k, v in json.loads(row[0]).items()}
+            except (json.JSONDecodeError, ValueError, AttributeError):
+                pass
+
+        # Fall back to legacy per-node rows
         rows = self.conn.execute(
             "SELECT node_id, CAST(value AS INTEGER) FROM session_state "
-            "WHERE session_id = ? AND key = 'fatigue'",
+            "WHERE session_id = ? AND key = 'fatigue' AND node_id != ''",
             (session_id,)).fetchall()
         return {r[0]: r[1] for r in rows}
+
+    def save_fatigue(self, session_id: str, fatigue: Dict[str, int]):
+        """Save fatigue dict as a single JSON blob. Replaces per-node rows."""
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            """INSERT INTO session_state (session_id, key, node_id, value, updated_at)
+               VALUES (?, 'fatigue', '', ?, ?)
+               ON CONFLICT(session_id, key, node_id)
+               DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
+            (session_id, json.dumps(fatigue), ts))
+        # Clean up legacy per-node rows for this session
+        self.conn.execute(
+            "DELETE FROM session_state WHERE session_id = ? AND key = 'fatigue' AND node_id != ''",
+            (session_id,))
+        self.conn.commit()
 
     def cleanup_old_sessions(self, keep_last_n: int = 5):
         """Remove session_state for old sessions, keeping the N most recent."""

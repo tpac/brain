@@ -582,19 +582,15 @@ class BrainRecallMixin:
                     #   New node (0 edges): K=10, barely fatigues
                     # The graph structure IS the fatigue signal.
                     if not hasattr(self, '_session_fatigue'):
-                        # v9.2: Load fatigue from DB (persists across daemon restarts)
-                        # Use the same resolved session_id that _mark_accessed will use
+                        # Fatigue lives on SessionContext (persists via ctx.save())
                         _fatigue_sid = session_id or self.session_id
                         try:
-                            from .dal import SessionStateDAL
-                            if _fatigue_sid and self.logs_conn:
-                                self._session_fatigue = SessionStateDAL(self.logs_conn).load_fatigue(_fatigue_sid)
-                            else:
-                                self._session_fatigue = {}
+                            _ctx = self.get_or_create_session(_fatigue_sid) if _fatigue_sid else None
+                            self._session_fatigue = _ctx.fatigue if _ctx else {}
+                            self._fatigue_ctx = _ctx
                         except Exception:
                             self._session_fatigue = {}
-                        # Store resolved sid for _mark_accessed consistency
-                        self._fatigue_session_id = _fatigue_sid
+                            self._fatigue_ctx = None
                     if not hasattr(self, '_structural_degree_cache'):
                         # Cache structural degree per node — recomputed once per session
                         self._structural_degree_cache = {}
@@ -1397,15 +1393,15 @@ class BrainRecallMixin:
         # access_log write removed 2026-04-05 — table dropped
 
         # Increment session fatigue counter — next recall will dampen this node's cosine
-        # v9.2: Also persist to session_state DB (survives daemon restart)
-        if not hasattr(self, '_session_fatigue'):
-            self._session_fatigue = {}
-        self._session_fatigue[node_id] = self._session_fatigue.get(node_id, 0) + 1
-        try:
-            from .dal import SessionStateDAL
-            SessionStateDAL(self.logs_conn).increment(session_id, 'fatigue', node_id)
-        except Exception:
-            pass  # In-memory still works if DB write fails
+        # Fatigue lives on SessionContext, persisted via ctx.save() on stop
+        _ctx = getattr(self, '_fatigue_ctx', None)
+        if _ctx:
+            _ctx.increment_fatigue(node_id)
+        else:
+            # Fallback: in-memory only (no session context available)
+            if not hasattr(self, '_session_fatigue'):
+                self._session_fatigue = {}
+            self._session_fatigue[node_id] = self._session_fatigue.get(node_id, 0) + 1
 
     def _hebbian_strengthen(self, node_ids: List[str], segment_node_ids: Optional[List[str]] = None):
         """
