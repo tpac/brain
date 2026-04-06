@@ -9,7 +9,7 @@ Node formatting uses the system contract: servers.contract.format_node()
 Interaction: 'encoding_agent' in interactions table. Prompt is learnable.
 """
 
-from servers.judge_contract import correction_enrich
+from servers.scales.s1.recall_contract import correction_enrich
 from servers.contract import format_node
 
 # ═══════════════════════════════════════════════════════════════

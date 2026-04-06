@@ -2,17 +2,17 @@
 
 This file contains cross-boundary constants used by multiple stages.
 Boundary-specific logic lives in dedicated contracts:
-- judge_contract.py — S1 recall judge (Haiku selection, formatting, enrichment)
-- encoding_contract.py — S1 turn encoder (Sonnet config, node formatting, catalog)
+- scales/s1/recall_contract.py — S1 recall judge (Haiku selection, formatting, enrichment)
+- scales/s1/encode_contract.py — S1 turn encoder (Sonnet config, node formatting, catalog)
 
-All names are re-exported here for backward compatibility. New code should
-import from the specific contract when touching a single boundary.
+Key names are re-exported here for convenience. Boundary-specific code should
+import from the specific contract directly.
 
 contract.py defines what fields a node HAS.
 pipeline_contract.py defines what fields FLOW at each stage.
 """
 
-from .judge_contract import _relative_time  # noqa: F401 — canonical definition in judge_contract
+from .scales.s1.recall_contract import _relative_time  # noqa: F401 — canonical definition in judge_contract
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -151,7 +151,7 @@ def format_node_header(node, id_length=8):
 
 def format_neighbor_d1(nb):
     """Standard degree-1 neighbor line."""
-    from .judge_contract import NEIGHBOR_TRUNCATION
+    from .scales.s1.recall_contract import NEIGHBOR_TRUNCATION
     t = NEIGHBOR_TRUNCATION
     locked = "LOCKED " if nb.get("locked") else ""
     line = "  → %s: %s\"%s\" (%s, id:%s, conf:%.2f, revised:%s)" % (
@@ -171,7 +171,7 @@ def format_neighbor_d1(nb):
 
 def format_neighbor_d2(nb):
     """Standard degree-2 neighbor breadcrumb."""
-    from .judge_contract import NEIGHBOR_TRUNCATION
+    from .scales.s1.recall_contract import NEIGHBOR_TRUNCATION
     t = NEIGHBOR_TRUNCATION
     return "\"%s\" (%s, id:%s)" % (
         str(nb.get("title", ""))[:t['d2_title']],
@@ -185,7 +185,7 @@ def format_neighbor_d2(nb):
 # New code should import from the specific contract directly.
 # ═══════════════════════════════════════════════════════════════
 
-from .judge_contract import (  # noqa: E402, F401
+from .scales.s1.recall_contract import (  # noqa: E402, F401
     JUDGE,
     CANDIDATES_FILE,
     NEIGHBOR_D1_FIELDS,
@@ -200,7 +200,7 @@ from .judge_contract import (  # noqa: E402, F401
     correction_enrich,
 )
 
-from .encoding_contract import (  # noqa: E402, F401
+from .scales.s1.encode_contract import (  # noqa: E402, F401
     ENCODING_AGENT,
     format_node_for_encoder,
     build_encoder_node_catalog,

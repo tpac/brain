@@ -404,7 +404,7 @@ def hook_post_response_track(brain, args, graph_changes):
                 print("[brain-hooks] Encoding agent skipped — previous run still active", flush=True)
             else:
                 from .scales.runner import run_in_background
-                from .encoding_agent import run_encoding
+                from .scales.s1.encode import run_encoding
                 run_in_background(
                     name='s1e', brain_db_path=brain.db_path,
                     session_id=session_id, counter=counter,
