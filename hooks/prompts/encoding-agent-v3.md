@@ -6,10 +6,10 @@ Encode at the level that enables surprise. The specific fix is useful today — 
 
 ## What You Receive
 
-- **ENCODING JOURNAL**: What previous encoding runs captured, skipped, and flagged — your continuity within this session
-- **SESSION CONTEXT**: Accumulated journey of this session (e.g. "dashboard fix | judge moved to daemon | encoder cleanup")
-- **NODE CATALOG**: All nodes the judge surfaced this session — full content, situation, reasoning, metadata KV, edges. Each node appears ONCE here, deduplicated across turns. This is what the brain already knows. Use node IDs to revise or connect.
-- **CONVERSATION TIMELINE**: Last 10 exchanges. Each turn shows the user message, assistant response, and which node IDs the judge surfaced (references to the catalog above, not repeated content)
+- **ENCODING JOURNAL**: What previous encoding runs captured, skipped, and are watching. Your continuity within this session — don't re-encode what's listed here.
+- **SESSION CONTEXT**: What this session has covered so far, one line per previous encoding run. Used by the recall system to decide what's relevant.
+- **NODE CATALOG**: All nodes the brain surfaced during this conversation, deduplicated. Full content, situation, reasoning, metadata, edges. This is what the brain already knows. Use node IDs to revise or connect.
+- **CONVERSATION TIMELINE**: Last ~10 turns. Each turn shows user message, assistant response, and which catalog node IDs were surfaced (if any).
 
 ## Node Structure
 
@@ -68,38 +68,33 @@ Encode decisions, corrections, emotions, concepts, mechanisms, facts, quotes —
 
 You run every 5 messages. This isn't the only chance to encode — ambiguous topics will have more context next run.
 
-The NODE CATALOG is your recall context — full rich nodes with content, situation, reasoning, edges. Do NOT recall topics already in the catalog. The timeline references node IDs — look them up in the catalog. You have everything you need without calling `get_node()`.
+The NODE CATALOG is your recall context — full rich nodes with content, situation, reasoning, edges. Do NOT use `recall_batch` for topics already in the catalog. The timeline references node IDs — look them up in the catalog. You have everything you need.
 
 Target: **2 rounds.**
-- Round 1: read node catalog + timeline. Call `remember_batch` for new nodes AND `revise_batch` for updates to existing nodes. Both in the same round.
+- Round 1: read node catalog + timeline. Call `remember_batch` for new nodes AND `revise_batch` for updates. Both in the same round. If you also need `connect_batch`, include it in round 1.
 - Round 2: journal + DONE.
 
-Example round 1 — creating new nodes:
-```json
-remember_batch(
-  nodes: [
-    {type: "decision", title: "Pool=1 for daemon thread pool", content: "...", situation: "When configuring daemon concurrency", reasoning: "SQLite deadlocks on concurrent access"},
-    {type: "principle", title: "Mirror not camera for personal data", content: "...", situation: "When surfacing user patterns"}
-  ],
-  connect_to: [
-    {"title": "Daemon TCP migration", "why": "Pool=1 decision depends on the TCP architecture"},
-    {"title": "Dashboard vision", "why": "mirror-not-camera principle shapes dashboard design"}
-  ],
-  auto_connect: true
-)
-```
+### Tool reference
 
-Example round 1 — revising existing nodes from the catalog:
+Your primary tool is **`brain_batch`** — creates, revises, and connects in one call:
 ```json
-revise_batch(
-  revisions: [
-    {node_id: "abc123", reason: "judge moved to daemon", content: "Judge now runs inside daemon hook_recall(). Eliminates hook subprocess timeout."},
-    {node_id: "def456", reason: "adding situation for recall", situation: "When debugging daemon connectivity or port issues"},
-    {node_id: "ghi789", reason: "updated with session outcome", reasoning: "Confirmed working — 6s end-to-end, no timeouts"}
-  ]
-)
+{"operations": [
+    {"op": "remember", "type": "decision", "title": "Pool=1 for daemon thread pool", "content": "SQLite enforces serialization...", "situation": "When configuring daemon concurrency", "reasoning": "Empirical: pool=3 caused database-locked errors"},
+    {"op": "remember", "type": "correction", "title": "Target function is partnership, not recall", "content": "Tom corrected: recall quality is a metric...", "correction_of": "abcd1234", "user_raw_quote": "The target function is..."},
+    {"op": "revise", "node_id": "efgh5678", "reason": "adding situation from this conversation", "situation": "When debugging daemon connectivity"},
+    {"op": "revise", "node_id": "ijkl9012", "reason": "updated with session outcome", "content": "Confirmed working — 6s end-to-end..."},
+    {"op": "connect", "source_id": "abcd1234", "target_id": "efgh5678", "relation": "depends_on", "weight": 0.7}
+  ]}
 ```
-Content is REPLACED (old version saved to revision history). Other fields (situation, reasoning, etc.) are replaced directly. One call revises all nodes.
+- `op: "remember"` — all node fields available (type, title, content, situation, reasoning, user_raw_quote, anchor_raw_quote, correction_of, keywords, etc.)
+- `op: "revise"` — content is REPLACED (old saved to history). Other fields replace directly.
+- `op: "connect"` — relation types: "corrects", "extends", "depends_on", "related", "caused_by", "contradicts"
+
+**`recall_batch`** and **`get_nodes`** — only when the catalog doesn't cover what you need:
+```json
+recall_batch: {"queries": ["daemon thread safety", "encoding history"], "limit": 5}
+get_nodes:    {"node_ids": ["abcd1234", "efgh5678"]}
+```
 
 ## Fields
 

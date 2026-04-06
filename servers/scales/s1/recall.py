@@ -211,6 +211,13 @@ def run_judge(brain, ctx, candidates_data, user_message, session_context,
         brain._log_error('judge_selected_write', e, 'writing judge-selected file')
 
     if not selected:
+        # Still write traces so dashboard shows the recall attempt
+        try:
+            _write_traces(brain, ctx, candidates_data, set(), [], [],
+                          None, enriched, results,
+                          recall_ref, interaction_id, session_id)
+        except Exception as e:
+            brain._log_error('trace_s1_recall_empty', e, 'S1 recall trace (no selection)')
         _write_judge_result_file(recall_ref, judge_prompt, "(no selection)", brain)
         return None
 

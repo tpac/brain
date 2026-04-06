@@ -297,6 +297,17 @@ def _build_tools():
      "inputSchema": {"type": "object", "required": ["node_id"], "properties": {
          "node_id": {"type": "string", "description": "Full node ID"}}}},
 
+    {"name": "get_nodes",
+     "description": "Get multiple nodes by ID in one call. Returns full content, connections, metadata for each.",
+     "inputSchema": {"type": "object", "required": ["node_ids"], "properties": {
+         "node_ids": {"type": "array", "description": "Array of node IDs to fetch", "items": {"type": "string"}}}}},
+
+    {"name": "recall_batch",
+     "description": "Run multiple recall queries in one call. Returns results for each query.",
+     "inputSchema": {"type": "object", "required": ["queries"], "properties": {
+         "queries": {"type": "array", "description": "Array of search queries", "items": {"type": "string"}},
+         "limit": {"type": "integer", "description": "Max results per query (default 5)", "default": 5}}}},
+
     {"name": "filter_nodes",
      "description": "Structured query: filter nodes by any structural field (type, encoding_source, locked, confidence, etc.). Use for bulk lookups that semantic recall can't do — 'all corrections', 'nodes by encoder', 'low confidence nodes'. If no include/exclude/lt/gt given, lists all distinct values for discovery.",
      "inputSchema": {"type": "object", "required": ["field"], "properties": {

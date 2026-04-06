@@ -760,6 +760,49 @@ def _handle_get_node(brain, args, graph_changes):
     return {"ok": True, "result": node}
 
 
+def _handle_recall_batch(brain, args, graph_changes):
+    """Batch recall — multiple queries in one call."""
+    queries = args.get("queries", [])
+    limit = args.get("limit", 5)
+    results = []
+    for q in queries[:10]:  # cap at 10 queries
+        try:
+            result = brain.recall(query=q, limit=limit, source='mcp')
+            results.append({"query": q, "results": result.get("results", [])})
+        except Exception as e:
+            results.append({"query": q, "results": [], "error": str(e)})
+    return {"ok": True, "result": results}
+
+
+def _handle_get_nodes(brain, args, graph_changes):
+    """Batch get_node — multiple node IDs in one call."""
+    node_ids = args.get("node_ids", [])
+    results = []
+    for nid in node_ids[:20]:  # cap at 20
+        resolved = _resolve_id(brain, nid)
+        if not resolved:
+            results.append({"id": nid, "error": "not found"})
+            continue
+        node = brain.get_node(resolved)
+        if not node:
+            results.append({"id": nid, "error": "not found"})
+            continue
+        try:
+            edges = brain.conn.execute(
+                "SELECT e.target_id, e.relation, e.weight, n.title, n.type "
+                "FROM edges e LEFT JOIN nodes n ON n.id = e.target_id "
+                "WHERE e.source_id = ? ORDER BY e.weight DESC LIMIT 10",
+                (resolved,)).fetchall()
+            node["connections"] = [
+                {"target_id": e[0], "relation": e[1], "weight": e[2],
+                 "title": e[3] or "", "type": e[4] or ""}
+                for e in edges]
+        except Exception:
+            node["connections"] = []
+        results.append(node)
+    return {"ok": True, "result": results}
+
+
 def _handle_encode_cluster(brain, args, graph_changes):
     result = brain.encode_cluster(
         nodes=args.get("nodes", []),
@@ -904,6 +947,8 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "get_interaction":       CmdEntry(_handle_get_interaction,     is_write=False, marks_dirty=False),
     "trace_append":          CmdEntry(_handle_trace_append,        is_write=True,  marks_dirty=False),
     "get_node":              CmdEntry(_handle_get_node,             is_write=False, marks_dirty=False),
+    "get_nodes":             CmdEntry(_handle_get_nodes,            is_write=False, marks_dirty=False),
+    "recall_batch":          CmdEntry(_handle_recall_batch,         is_write=False, marks_dirty=False),
     "graph_expand":          CmdEntry(_handle_graph_expand,         is_write=False, marks_dirty=False),
     # encode_cluster: DEPRECATED — use remember_batch() instead. Handler kept for backward compat.
     # "encode_cluster":        CmdEntry(_handle_encode_cluster,      is_write=True, marks_dirty=True),

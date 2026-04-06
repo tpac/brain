@@ -181,17 +181,17 @@ def _build_system_prompt(prompt_instructions=None):
 
 def _build_user_content(brain, messages, counter, session_id):
     """Assemble S1 encoding prompt: node catalog + timeline with references."""
-    from servers.scales.s1.encode_contract import ENCODING_AGENT, build_encoder_node_catalog
+    from servers.scales.s1.encode_contract import ENCODING_AGENT, build_node_catalog
     import re
 
     # Encoding journal (session-scoped, cumulative)
     journal_key = 'encoding_journal_%s' % session_id
     journal = brain.get_config(journal_key, '') or 'First run — no previous encoding in this session.'
 
-    # Build node catalog from all judge outputs (deduplicated, full metadata)
+    # Build node catalog from judge outputs in the visible window
     judge_outputs = [m.get("judge_output") for m in messages if m.get("role") == "user"]
     try:
-        node_catalog, cataloged_ids = build_encoder_node_catalog(judge_outputs, brain.conn)
+        node_catalog, cataloged_ids = build_node_catalog(judge_outputs, brain.conn)
     except Exception as e:
         print('[s1e] ERROR building node catalog: %s' % e, flush=True)
         node_catalog, cataloged_ids = '', set()
@@ -211,6 +211,7 @@ def _build_user_content(brain, messages, counter, session_id):
             timeline += "USER: \"%s\" (turn_id: %s)\n" % (user_content, turn_id)
 
             # Reference surfaced nodes by ID (full data in catalog above)
+            # Only show when there are actual node IDs — skip noise lines
             judge_output = m.get("judge_output")
             if judge_output and judge_output != '(no selection)':
                 ref_ids = re.findall(r'id:([a-f0-9]{8})', judge_output)
@@ -222,13 +223,7 @@ def _build_user_content(brain, messages, counter, session_id):
                             (rid + '%',)).fetchone()
                         title = title_row[0][:50] if title_row else rid
                         refs.append('%s ("%s")' % (rid, title))
-                    timeline += "BRAIN SURFACED: %s\n" % ", ".join(refs)
-                else:
-                    timeline += "BRAIN SURFACED: (judge selected but no IDs parsed)\n"
-            elif judge_output == '(no selection)':
-                timeline += "BRAIN SURFACED: (none relevant)\n"
-            else:
-                timeline += "BRAIN SURFACED: (no recall data)\n"
+                    timeline += "SURFACED: %s\n" % ", ".join(refs)
 
             # Include assistant response
             if i + 1 < len(messages) and messages[i + 1].get("role") == "assistant":
@@ -242,13 +237,16 @@ def _build_user_content(brain, messages, counter, session_id):
     # Previous session context
     prev_context = brain.session_context
 
-    content = "## ENCODING RUN #%d\n\n" % counter
+    # Compute run sequence from journal
+    run_seq = journal.count('--- Run ') + 1 if journal != 'First run — no previous encoding in this session.' else 1
+    content = "## ENCODING RUN %d (stop #%d)\n\n" % (run_seq, counter)
     content += "### Encoding Journal\n%s\n\n" % journal
     if prev_context:
         content += "### Session Context\n%s\n\n" % prev_context
     if node_catalog:
-        content += "### %s\n\n" % node_catalog
+        content += "### %s\n" % node_catalog
     content += "### Conversation Timeline\n\n%s\n" % timeline
+    content += "---\nYou have all the nodes you need in the catalog above. Read what you got before calling any tools. Put ALL operations (creates + revises + connects) in ONE tool call. Target: 2 rounds — one tool call, then journal.\n"
     return content
 
 
@@ -298,11 +296,19 @@ def _save_journal(brain, dispatch_fn, session_id, counter, final_text):
     existing = brain.get_config(journal_key, '') or ''
     max_chars = ENCODING_AGENT.get('journal_max_chars', 8000)
 
-    new_entry = "--- Run #%d ---\n%s" % (counter, final_text[:ENCODING_AGENT['journal_entry_limit']])
+    # Count previous runs in journal to get sequence number
+    run_seq = existing.count('--- Run ') + 1
+    new_entry = "--- Run %d (stop #%d) ---\n%s" % (run_seq, counter, final_text[:ENCODING_AGENT['journal_entry_limit']])
     updated = (existing + '\n' + new_entry).strip()
 
     if len(updated) > max_chars:
-        updated = updated[-max_chars:]
+        # Truncate at entry boundaries, not mid-character
+        truncated = updated[-max_chars:]
+        marker = '--- Run '
+        idx = truncated.find(marker)
+        if idx > 0:
+            truncated = truncated[idx:]
+        updated = truncated
 
     dispatch_fn('set_config', {'key': journal_key, 'value': updated})
 
@@ -322,12 +328,15 @@ def _save_session_context(brain, dispatch_fn, final_text):
             new_context = stripped[len('SESSION_CONTEXT:'):].strip()
             if new_context:
                 existing = brain.session_context
-                combined = (existing + ' | ' + new_context) if existing else new_context
+                # Newline-separated entries instead of pipe noise
+                combined = (existing + '\n' + new_context) if existing else new_context
                 if len(combined) > limit:
-                    combined = combined[len(combined) - limit:]
-                    pipe_idx = combined.find(' | ')
-                    if pipe_idx >= 0 and pipe_idx < 50:
-                        combined = combined[pipe_idx + 3:]
+                    # Truncate at line boundaries from the front
+                    truncated = combined[len(combined) - limit:]
+                    nl_idx = truncated.find('\n')
+                    if nl_idx >= 0 and nl_idx < 60:
+                        truncated = truncated[nl_idx + 1:]
+                    combined = truncated
                 dispatch_fn('set_config', {'key': 'session_context', 'value': combined})
                 return
 
@@ -354,9 +363,9 @@ def _get_tool_schemas():
     """Get S1 encoding tool schemas from brain_mcp (single source of truth)."""
     from servers import brain_mcp
     ENCODING_TOOLS = {
-        'recall', 'find_node_by_title', 'get_node',
-        'remember_batch', 'revise', 'revise_batch',
-        'record_divergence', 'learn_vocabulary',
+        'remember_batch', 'revise_batch',
+        'brain_batch', 'connect_batch',
+        'recall_batch', 'get_nodes',
     }
     return [{"name": t["name"], "description": t["description"],
              "input_schema": t["inputSchema"]}

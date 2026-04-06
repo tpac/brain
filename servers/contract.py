@@ -153,6 +153,130 @@ def validate_field(name, value):
     return True, None
 
 
+# ── NODE FORMATTING ──
+# The standard way any LLM consumer sees a node.
+# A node is never naked — it always includes edges, corrections, metadata.
+# Config controls depth (edge_limit, content_limit), not shape.
+
+# Default config — full depth, no truncation
+NODE_FORMAT_DEFAULTS = {
+    'content_limit': None,      # None = full content
+    'edge_limit': 5,            # structural edges per node
+    'metadata_limit': 300,      # chars per metadata value
+    'edge_filter': ('co_accessed', 'emergent_bridge'),  # relations to exclude
+}
+
+
+def format_node(node_id, db_conn, config=None):
+    """Format a node for LLM consumption — always complete.
+
+    Returns: formatted string or None if node not found.
+
+    A node includes: type, title, id, confidence, locked status,
+    full content, situation, all metadata KV, keywords, personal context,
+    encoding source, created_at, and structural edges with descriptions.
+
+    Config overrides (from NODE_FORMAT_DEFAULTS):
+        content_limit: truncate content (None = full)
+        edge_limit: max edges shown (default 5)
+        metadata_limit: chars per metadata value (default 300)
+        edge_filter: edge relations to exclude (default: co_accessed, emergent_bridge)
+    """
+    cfg = {**NODE_FORMAT_DEFAULTS, **(config or {})}
+    try:
+        row = db_conn.execute(
+            "SELECT id, type, title, content, keywords, confidence, locked, "
+            "emotion, encoding_source, created_at, personal, personal_context, "
+            "revised_at "
+            "FROM nodes WHERE id LIKE ?", (node_id + '%',)).fetchone()
+        if not row:
+            return None
+
+        nid = row[0]
+        lines = ['--- [%s] "%s" (id:%s, conf:%s%s%s) ---' % (
+            row[1] or '?', row[2] or '?', nid[:8],
+            ('%.1f' % row[5]) if row[5] else '?',
+            ', locked' if row[6] else '',
+            ', src:%s' % row[8] if row[8] else '')]
+
+        # Content (indented to separate from header)
+        content = row[3] or ''
+        if cfg['content_limit']:
+            content = content[:cfg['content_limit']]
+        if content:
+            lines.append('  Content: %s' % content)
+
+        # Situation (own embedding — key for recall)
+        sit = db_conn.execute(
+            "SELECT situation_text FROM node_embeddings WHERE node_id = ?",
+            (nid,)).fetchone()
+        if sit and sit[0]:
+            lines.append('  Situation: %s' % sit[0])
+
+        # Metadata KV — resolve correction_of to readable reference
+        meta = db_conn.execute(
+            "SELECT key, value FROM node_metadata_kv WHERE node_id = ?",
+            (nid,)).fetchall()
+        meta_limit = cfg['metadata_limit']
+        skip_keys = ('metadata_created_at', 'revision_history')
+        for m in meta:
+            if not m[1] or m[0] in skip_keys:
+                continue
+            key, val = m[0], m[1]
+            # Resolve correction_of to title + short ID
+            if key == 'correction_of':
+                corr_row = db_conn.execute(
+                    "SELECT id, title FROM nodes WHERE id LIKE ?",
+                    (val[:8] + '%',)).fetchone()
+                if corr_row:
+                    lines.append('  ⚠ Corrects: "%s" (id:%s)' % (corr_row[1][:60], corr_row[0][:8]))
+                else:
+                    lines.append('  ⚠ Corrects: id:%s' % val[:8])
+                continue
+            lines.append('  %s: %s' % (key.replace('_', ' ').title(), val[:meta_limit]))
+
+        # Keywords
+        if row[4]:
+            lines.append('  Keywords: %s' % row[4])
+
+        # Personal context (cross-project guard)
+        if row[10] and row[11]:
+            lines.append('  Context: %s (%s)' % (row[10], row[11]))
+
+        # Dates
+        if row[9]:
+            date_str = 'Created: %s' % row[9][:10]
+            if row[12]:  # revised_at
+                date_str += ' | Revised: %s' % row[12][:10]
+            lines.append('  %s' % date_str)
+
+        # Structural edges — nested, one per line
+        edge_limit = cfg['edge_limit']
+        edge_filter = cfg['edge_filter']
+        placeholders = ','.join('?' for _ in edge_filter)
+        edges = db_conn.execute(
+            "SELECT e.relation, e.weight, n2.title, n2.type, e.description, "
+            "n2.id, n2.created_at, n2.revised_at "
+            "FROM edges e JOIN nodes n2 ON n2.id = e.target_id "
+            "WHERE e.source_id = ? AND e.relation NOT IN (%s) "
+            "ORDER BY e.weight DESC LIMIT ?" % placeholders,
+            (nid, *edge_filter, edge_limit)).fetchall()
+        if edges:
+            lines.append('  Edges:')
+            for e in edges:
+                desc = ' — %s' % e[4] if e[4] else ''
+                target_id = e[5][:8] if e[5] else '?'
+                dates = e[6][:10] if e[6] else '?'
+                if e[7]:
+                    dates += ', rev:%s' % e[7][:10]
+                lines.append('    → "%s" (id:%s, %s) [%s] %s%s' % (
+                    (e[2] or '')[:60], target_id, dates, e[3] or '?', e[0], desc))
+
+        return '\n'.join(lines)
+    except Exception:
+        return None
+
+
 def generate_field_summary():
     """Generate a human-readable field summary for the encoding agent prompt."""
     lines = []
