@@ -812,7 +812,7 @@ class BrainRememberMixin:
             'fields_updated': list(all_updates.keys()),
             'verified': verified,
             'verification_failures': verification_failures if not verified else [],
-            'pending_resolved': pending_resolved,
+            'pending_resolved': 0,
         }
 
     # ═══════════════════════════════════════════════════════════════
