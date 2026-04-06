@@ -501,74 +501,7 @@ def _handle_reload_daemon(brain, args, graph_changes):
         return {"ok": False, "error": "Failed to send restart: %s" % str(e)}
 
 
-def _handle_remember_lesson(brain, args, graph_changes):
-    result = brain.remember_lesson(
-        title=args.get("title", ""),
-        what_happened=args.get("what_happened", ""),
-        root_cause=args.get("root_cause", ""),
-        fix=args.get("fix", ""),
-        preventive_principle=args.get("preventive_principle", ""),
-        project=args.get("project"))
-    graph_changes.append("REMEMBER_LESSON: %s" % args.get("title", "")[:50])
-    return {"ok": True, "result": result}
-
-
-def _handle_remember_impact(brain, args, graph_changes):
-    result = brain.remember_impact(
-        title=args.get("title", ""),
-        if_changed=args.get("if_changed", ""),
-        must_check=args.get("must_check", ""),
-        because=args.get("because", ""),
-        scope=args.get("scope"),
-        severity=args.get("severity"),
-        project=args.get("project"))
-    graph_changes.append("REMEMBER_IMPACT: %s" % args.get("title", "")[:50])
-    return {"ok": True, "result": result}
-
-
-def _handle_remember_mechanism(brain, args, graph_changes):
-    result = brain.remember_mechanism(
-        title=args.get("title", ""),
-        content=args.get("content", ""),
-        scope=args.get("scope"),
-        steps=args.get("steps"),
-        data_flow=args.get("data_flow"),
-        project=args.get("project"))
-    graph_changes.append("REMEMBER_MECHANISM: %s" % args.get("title", "")[:50])
-    return {"ok": True, "result": result}
-
-
-def _handle_remember_uncertainty(brain, args, graph_changes):
-    result = brain.remember_uncertainty(
-        title=args.get("title", ""),
-        what_unknown=args.get("what_unknown", ""),
-        why_it_matters=args.get("why_it_matters", ""),
-        project=args.get("project"))
-    graph_changes.append("REMEMBER_UNCERTAINTY: %s" % args.get("title", "")[:50])
-    return {"ok": True, "result": result}
-
-
-def _handle_remember_convention(brain, args, graph_changes):
-    result = brain.remember_convention(
-        title=args.get("title", ""),
-        content=args.get("content", ""),
-        scope=args.get("scope"),
-        examples=args.get("examples"),
-        anti_patterns=args.get("anti_patterns"),
-        project=args.get("project"))
-    graph_changes.append("REMEMBER_CONVENTION: %s" % args.get("title", "")[:50])
-    return {"ok": True, "result": result}
-
-
-def _handle_remember_mental_model(brain, args, graph_changes):
-    result = brain.remember_mental_model(
-        title=args.get("title", ""),
-        model_description=args.get("model_description", ""),
-        applies_to=args.get("applies_to"),
-        confidence=args.get("confidence", 0.7),
-        project=args.get("project"))
-    graph_changes.append("REMEMBER_MENTAL_MODEL: %s" % args.get("title", "")[:50])
-    return {"ok": True, "result": result}
+# Specialized remember_* handlers REMOVED 2026-04-05 — use remember() with type field.
 
 
 def _handle_record_divergence(brain, args, graph_changes):
@@ -885,12 +818,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "revise_batch":          CmdEntry(_handle_revise_batch,         is_write=True, marks_dirty=True),
     # Specialized remember tools — kept for interactive MCP use (Anchor calls these).
     # The encoding agent uses generic remember() with promoted fields instead.
-    "remember_lesson":       CmdEntry(_handle_remember_lesson,     is_write=True, marks_dirty=True),
-    "remember_impact":       CmdEntry(_handle_remember_impact,     is_write=True, marks_dirty=True),
-    "remember_mechanism":    CmdEntry(_handle_remember_mechanism,  is_write=True, marks_dirty=True),
-    "remember_uncertainty":  CmdEntry(_handle_remember_uncertainty, is_write=True, marks_dirty=True),
-    "remember_convention":   CmdEntry(_handle_remember_convention, is_write=True, marks_dirty=True),
-    "remember_mental_model": CmdEntry(_handle_remember_mental_model, is_write=True, marks_dirty=True),
+    # Specialized remember_* commands REMOVED 2026-04-05 — use remember() with type field
     "record_divergence":     CmdEntry(_handle_record_divergence,   is_write=True, marks_dirty=True),
     "learn_vocabulary":      CmdEntry(_handle_learn_vocabulary,    is_write=True, marks_dirty=True),
     "find_node_by_title":    CmdEntry(_handle_find_node_by_title,  is_write=False, marks_dirty=False),

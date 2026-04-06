@@ -19,148 +19,11 @@ import uuid
 class BrainEngineeringMixin:
     """Engineering methods for Brain."""
 
-    def remember_purpose(self, title: str, content: str, scope: str = 'system',
-                         project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """What something is and why it exists. The warm-up killer.
-
-        Scope: system | module | file | function
-        Examples:
-          system: "brain is a Claude Code plugin for persistent AI memory"
-          file: "brain.py (5500 lines) — core engine: schema, remember(), recall(), consciousness"
-          function: "recall() — 90/10 embedding/keyword blend, returns ranked nodes"
-        """
-        return self.remember_rich(
-            type='purpose', title=title, content=content,
-            scope=scope, source_attribution='claude_inferred',
-            project=project, locked=True, **kwargs)
-
-    def remember_mechanism(self, title: str, content: str, scope: str = 'system',
-                           steps: Optional[List[str]] = None,
-                           data_flow: Optional[str] = None,
-                           project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """How something works: flows, algorithms, interactions.
-
-        Examples:
-          "Recall pipeline: embed query → cosine scan → keyword fallback → blend → rank → hydrate"
-        """
-        # Enrich content with structured steps/flow
-        enriched = content
-        if steps:
-            enriched += '\n\nSteps: ' + ' → '.join(steps)
-        if data_flow:
-            enriched += '\n\nData flow: ' + data_flow
-        return self.remember_rich(
-            type='mechanism', title=title, content=enriched,
-            scope=scope, source_attribution='claude_inferred',
-            project=project, **kwargs)
-
-    def remember_impact(self, title: str, if_changed: str, must_check: str,
-                        because: str, scope: str = 'cross-file',
-                        severity: str = 'medium',
-                        project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """What changes ripple where — the connectivity layer.
-
-        Example: if_changed="recall() output format"
-                 must_check="pre-response-recall.sh, boot-brain.sh"
-                 because="they parse its return structure"
-        """
-        content = f'If {if_changed} changes → must check {must_check} because {because}'
-        change_impacts = [{'if_modified': if_changed, 'must_check': must_check, 'because': because}]
-        return self.remember_rich(
-            type='impact', title=title, content=content,
-            scope=scope, source_attribution='claude_inferred',
-            change_impacts=change_impacts,
-            project=project, locked=True,
-            emotion=0.3 if severity == 'critical' else 0.1,
-            emotion_label='concern' if severity in ('high', 'critical') else 'neutral',
-            **kwargs)
-
-    def remember_constraint(self, title: str, content: str, scope: str = 'system',
-                            violates_if: Optional[str] = None,
-                            project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """What must or must not be done.
-
-        Example: "Never call context_boot() without user/project args"
-                 violates_if="context_boot() called with no arguments"
-        """
-        enriched = content
-        if violates_if:
-            enriched += f'\n\nViolated when: {violates_if}'
-        return self.remember_rich(
-            type='constraint', title=title, content=enriched,
-            scope=scope, source_attribution='claude_inferred',
-            project=project, locked=True, **kwargs)
-
-    def remember_convention(self, title: str, content: str, scope: str = 'project-wide',
-                            examples: Optional[List[str]] = None,
-                            anti_patterns: Optional[List[str]] = None,
-                            project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """Patterns, utilities, coding style for a codebase.
-
-        Example: "Error handling in hooks: resolve DB path first, wrap brain imports in try/except"
-        """
-        enriched = content
-        if examples:
-            enriched += '\n\nExamples: ' + '; '.join(examples)
-        if anti_patterns:
-            enriched += '\n\nAnti-patterns: ' + '; '.join(anti_patterns)
-        return self.remember_rich(
-            type='convention', title=title, content=enriched,
-            scope=scope, source_attribution='claude_inferred',
-            project=project, **kwargs)
-
-    def remember_lesson(self, title: str, what_happened: str, root_cause: str,
-                        fix: str, preventive_principle: str,
-                        project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """What went wrong, root cause, fix, preventive principle.
-
-        Replaces both bug_lesson and causal_chain.
-        """
-        content = (f'What happened: {what_happened}\n'
-                   f'Root cause: {root_cause}\n'
-                   f'Fix: {fix}\n'
-                   f'Principle: {preventive_principle}')
-        return self.remember_rich(
-            type='lesson', title=title, content=content,
-            source_attribution='session_synthesis',
-            project=project, locked=True,
-            emotion=0.4, emotion_label='emphasis', **kwargs)
-
-    def remember_mental_model(self, title: str, model_description: str,
-                              applies_to: Optional[str] = None,
-                              confidence: float = 0.7,
-                              project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """Claude's understanding of how systems/processes work.
-
-        Example: "brain.py has 3 layers: storage (SQLite), intelligence (embeddings + recall),
-                  consciousness (signals + evolution)"
-        """
-        content = model_description
-        if applies_to:
-            content += f'\n\nApplies to: {applies_to}'
-        return self.remember_rich(
-            type='mental_model', title=title, content=content,
-            source_attribution='claude_inferred',
-            confidence_rationale=f'Inferred from code reading (confidence: {confidence})',
-            project=project, confidence=confidence, **kwargs)
-
-    def remember_uncertainty(self, title: str, what_unknown: str,
-                             why_it_matters: str,
-                             project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """Where Claude knows it doesn't understand something.
-
-        These feed the curiosity system and guide future sessions.
-        """
-        content = f'Unknown: {what_unknown}\nWhy it matters: {why_it_matters}'
-        return self.remember_rich(
-            type='uncertainty', title=title, content=content,
-            source_attribution='claude_inferred',
-            confidence=0.3, project=project, **kwargs)
-
-    # REMOVED 2026-04-05: record_reasoning_trace, update_file_inventory,
-    # get_file_inventory, detect_file_changes, update_system_purpose
-    # Tables dropped (reasoning_chains, reasoning_steps, project_maps).
-    # These should be nodes+edges, not separate tables.
+    # REMOVED 2026-04-05: remember_purpose, remember_mechanism, remember_impact,
+    # remember_constraint, remember_convention, remember_lesson, remember_mental_model,
+    # remember_uncertainty, record_reasoning_trace, update_file_inventory,
+    # get_file_inventory, detect_file_changes, update_system_purpose.
+    # All were thin wrappers around remember(type='X'). Use remember() directly.
 
     def get_engineering_context(self, project: Optional[str] = None) -> Dict[str, Any]:
         """DEPRECATED — engineering nodes are just nodes. Use filter_nodes or recall."""
@@ -1117,166 +980,11 @@ class BrainEngineeringMixin:
                 result[key] = []
         return result
 
-    def create_fn_reasoning(self, fn_name: str, content: str, file: Optional[str] = None,
-                            calls: Optional[List[str]] = None, breaks_if: Optional[str] = None,
-                            **kwargs) -> Dict[str, Any]:
-        """Create a function reasoning node — WHY a function exists, its intent, dependencies, risk."""
-        title = f'[fn] {fn_name}'
-        if file:
-            title += f' ({file})'
-        full_content = content
-        if calls:
-            full_content += f'\nCalls: {", ".join(calls)}'
-        if breaks_if:
-            full_content += f'\nBreaks if: {breaks_if}'
-        return self.remember(type='fn_reasoning', title=title, content=full_content,
-                             keywords=kwargs.get('keywords', fn_name), locked=True,
-                             emotion=0.4, emotion_label='emphasis', **{k: v for k, v in kwargs.items() if k != 'keywords'})
-
-    def create_param_influence(self, param_name: str, current_value: str, content: str,
-                               affects: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
-        """Create a parameter influence node — systemic effects of a configurable value."""
-        title = f'[param] {param_name}={current_value}'
-        full_content = content
-        if affects:
-            full_content += f'\nAffects: {", ".join(affects)}'
-        return self.remember(type='param_influence', title=title, content=full_content,
-                             keywords=kwargs.get('keywords', param_name), locked=True,
-                             emotion=0.4, emotion_label='emphasis', **{k: v for k, v in kwargs.items() if k != 'keywords'})
-
-    def create_code_concept(self, name: str, content: str, files: Optional[List[str]] = None,
-                            blast_radius: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """Create a code concept node — semantic unit spanning files/functions with blast radius."""
-        title = f'[concept] {name}'
-        full_content = content
-        if files:
-            full_content += f'\nFiles: {", ".join(files)}'
-        if blast_radius:
-            full_content += f'\nBlast radius: {blast_radius}'
-        return self.remember(type='code_concept', title=title, content=full_content,
-                             keywords=kwargs.get('keywords', name), locked=True,
-                             emotion=0.4, emotion_label='emphasis', **{k: v for k, v in kwargs.items() if k != 'keywords'})
-
-    def create_arch_constraint(self, title_str: str, content: str,
-                               implications: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """Create an architecture constraint — what limits what and why. Challengeable when host changes."""
-        title = f'[constraint] {title_str}'
-        full_content = content
-        if implications:
-            full_content += f'\nImplications: {implications}'
-        return self.remember(type='arch_constraint', title=title, content=full_content,
-                             keywords=kwargs.get('keywords', title_str), locked=True,
-                             emotion=0.4, emotion_label='emphasis', **{k: v for k, v in kwargs.items() if k != 'keywords'})
-
-    def create_causal_chain(self, title_str: str, trigger: str, propagation: str,
-                            failure: str, root_cause: str, prevention: Optional[str] = None,
-                            **kwargs) -> Dict[str, Any]:
-        """Create a causal chain — regression path: trigger → propagation → failure → root cause."""
-        title = f'[chain] {title_str}'
-        content = f'Trigger: {trigger}\nPropagation: {propagation}\nFailure: {failure}\nRoot cause: {root_cause}'
-        if prevention:
-            content += f'\nPrevention: {prevention}'
-        return self.remember(type='causal_chain', title=title, content=content,
-                             keywords=kwargs.get('keywords', title_str), locked=False,
-                             emotion=0.5, emotion_label='concern', **{k: v for k, v in kwargs.items() if k != 'keywords'})
-
-    def create_bug_lesson(self, title_str: str, bug: str, fix: str, lesson: str,
-                          **kwargs) -> Dict[str, Any]:
-        """Create a bug lesson — general principle extracted from a specific bug."""
-        title = f'[bug] {title_str}'
-        content = f'BUG: {bug}\nFIX: {fix}\nLESSON: {lesson}'
-        return self.remember(type='bug_lesson', title=title, content=content,
-                             keywords=kwargs.get('keywords', title_str), locked=True,
-                             emotion=0.5, emotion_label='emphasis', **{k: v for k, v in kwargs.items() if k != 'keywords'})
-
-    def create_comment_anchor(self, file: str, description: str, why_it_matters: str,
-                              **kwargs) -> Dict[str, Any]:
-        """Create a comment anchor — load-bearing comment in code that transfers knowledge."""
-        title = f'[comment] {file}: {description[:50]}'
-        content = f'File: {file}\nComment: {description}\nWhy it matters: {why_it_matters}'
-        return self.remember(type='comment_anchor', title=title, content=content,
-                             keywords=kwargs.get('keywords', f'{file} comment'), locked=False,
-                             emotion=0.3, emotion_label='neutral', **{k: v for k, v in kwargs.items() if k != 'keywords'})
-
-    def create_failure_mode(self, title: str, content: str, instances: int = 1,
-                            project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """
-        Name a recurring failure CLASS, not an individual miss.
-        "Solution fixation" is a failure class. "Recall miss #47" is a single event.
-        Failure modes aggregate: instances, triggers, what breaks the pattern, prevention.
-        """
-        result = self.remember(
-            type='failure_mode', title=f'🚫 FAILURE MODE — {title}', content=content,
-            keywords=kwargs.get('keywords', ''),
-            locked=True,  # Failure modes are permanent prevention
-            emotion=0.7, emotion_label='concern',
-            project=project, confidence=kwargs.get('confidence', 0.8),
-        )
-        node_id = result['id']
-        self.conn.execute("UPDATE nodes SET evolution_status = 'active' WHERE id = ?", (node_id,))
-        self.conn.commit()
-        result['evolution_status'] = 'active'
-        return result
-
-    def create_performance(self, title: str, content: str,
-                           project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """
-        Track a brain quality metric over time. Not a snapshot — a persistent trending node.
-        "Recall precision on Glo queries: 0.81, up from 0.65 last month."
-        """
-        result = self.remember(
-            type='performance', title=f'📈 PERFORMANCE — {title}', content=content,
-            keywords=kwargs.get('keywords', ''),
-            emotion=0.3, emotion_label='neutral',
-            project=project, confidence=kwargs.get('confidence', 0.7),
-        )
-        return result
-
-    def create_capability(self, title: str, content: str,
-                          project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """
-        Record what the brain can or cannot do. Self-inventory.
-        "Can absorb other brains." "Cannot trigger time-based reminders natively."
-        """
-        result = self.remember(
-            type='capability', title=f'🔧 CAPABILITY — {title}', content=content,
-            keywords=kwargs.get('keywords', ''),
-            emotion=0.2, emotion_label='neutral',
-            project=project,
-        )
-        return result
-
-    def create_interaction(self, title: str, content: str,
-                           project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """
-        Observe dynamics of the human-Claude working relationship.
-        Not rules stated by the human — observed cause and effect.
-        "Tom responds well to themed grouped questions."
-        "Tom disengages when Claude suggests pausing at creative moments."
-        """
-        result = self.remember(
-            type='interaction', title=f'🤝 INTERACTION — {title}', content=content,
-            keywords=kwargs.get('keywords', ''),
-            emotion=0.4, emotion_label='curiosity',
-            project=project,
-        )
-        return result
-
-    def create_meta_learning(self, title: str, content: str,
-                             project: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """
-        Record HOW the brain learned something — reusable methods.
-        "Hebbian bug found via relearning simulation — method: replay transcripts,
-         compare output, identify missing edges."
-        """
-        result = self.remember(
-            type='meta_learning', title=f'🔄 META-LEARNING — {title}', content=content,
-            keywords=kwargs.get('keywords', ''),
-            locked=True,  # Learning methods are reusable forever
-            emotion=0.5, emotion_label='curiosity',
-            project=project,
-        )
-        return result
+    # REMOVED 2026-04-05: create_fn_reasoning, create_param_influence,
+    # create_code_concept, create_arch_constraint, create_causal_chain,
+    # create_bug_lesson, create_comment_anchor, create_failure_mode,
+    # create_performance, create_capability, create_interaction, create_meta_learning.
+    # All were thin wrappers around remember(type='X'). Use remember() directly.
 
     def set_reminder(self, node_id: str, due_date: str) -> Dict[str, Any]:
         """
@@ -1350,10 +1058,11 @@ class BrainEngineeringMixin:
             if existing == 0:
                 status = "active" if emb_ready else "unavailable"
                 model = embedder.stats.get('model_name', 'unknown')
-                self.create_capability(
-                    f"Embedder {status}: {model}",
-                    f"Auto-generated. Embedder is {'ready' if emb_ready else 'NOT ready — recall is keyword-only (degraded)'}. Model: {model}.",
-                    keywords="auto capability embedder status"
+                self.remember(
+                    type='capability',
+                    title=f"Embedder {status}: {model}",
+                    content=f"Auto-generated. Embedder is {'ready' if emb_ready else 'NOT ready'}. Model: {model}.",
+                    keywords="auto capability embedder status",
                 )
                 generated['capability'] += 1
         except Exception as _e:
@@ -1379,37 +1088,17 @@ class BrainEngineeringMixin:
                     if dream_no > dream_yes and dream_no >= 2:
                         observations.append('Dream insights get ignored (ignored %d/%d)' % (dream_no, dream_yes + dream_no))
                     if observations:
-                        self.create_interaction(
-                            'Consciousness engagement pattern: ' + '; '.join(observations),
-                            'Auto-detected from consciousness response tracking. ' + '. '.join(observations) + '.',
-                            keywords='auto consciousness-response interaction engagement pattern'
+                        self.remember(
+                            type='interaction',
+                            title='Consciousness engagement pattern: ' + '; '.join(observations),
+                            content='Auto-detected. ' + '. '.join(observations) + '.',
+                            keywords='auto consciousness-response interaction engagement pattern',
                         )
                         generated['interaction'] = generated.get('interaction', 0) + 1
         except Exception as _e:
             self._log_error("auto_generate_self_reflection", _e, "analyzing consciousness response engagement patterns")
 
-        # Meta-learning: track which encoding methods produce good recall
-        try:
-            # Check if nodes created with embeddings have better recall than those without
-            emb_recalled = self.logs_conn.execute(
-                """SELECT COUNT(DISTINCT rl.id) FROM recall_log rl
-                   WHERE rl.used_count > 0 AND rl.created_at > datetime('now', '-7 days')"""
-            ).fetchone()[0]
-
-            if emb_recalled >= 10:
-                existing = self.conn.execute(
-                    "SELECT COUNT(*) FROM nodes WHERE type = 'meta_learning' AND keywords LIKE '%auto recall-method%' AND created_at > datetime('now', '-14 days')"
-                ).fetchone()[0]
-                if existing == 0:
-                    # Count how many useful recalls came from embedding vs keyword path
-                    self.create_meta_learning(
-                        'Recall method: embeddings-first produces %d useful recalls/week' % emb_recalled,
-                        'Auto-measured from recall_log. %d recalls in 7 days had results marked as used.' % emb_recalled,
-                        keywords='auto recall-method meta-learning embeddings weekly'
-                    )
-                    generated['meta_learning'] = generated.get('meta_learning', 0) + 1
-        except Exception as _e:
-            self._log_error("auto_generate_self_reflection", _e, "generating meta-learning node for recall method effectiveness")
+        # Meta-learning from recall_log — REMOVED 2026-04-05 (table dropped)
 
         return generated
 

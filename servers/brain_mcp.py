@@ -253,49 +253,9 @@ def _build_tools():
          "bridge": {"type": "string", "description": "One sentence connecting this node to its most important neighbor"},
          "keywords": {"type": "string", "description": "Comma-separated keywords borrowed from neighbors"}}}},
 
-    # ── Specialized encoding (promoted from eval) ──
-    {"name": "remember_lesson",
-     "description": "Store a lesson learned — what happened, root cause, fix, and preventive principle. Auto-locked, structured content.",
-     "inputSchema": {"type": "object", "required": ["title", "what_happened", "root_cause", "fix", "preventive_principle"], "properties": {
-         "title": {"type": "string", "description": "Lesson title"},
-         "what_happened": {"type": "string", "description": "What went wrong or was discovered"},
-         "root_cause": {"type": "string", "description": "Why it happened"},
-         "fix": {"type": "string", "description": "How it was fixed"},
-         "preventive_principle": {"type": "string", "description": "General principle to prevent recurrence"}}}},
-    {"name": "remember_impact",
-     "description": "Store what changes ripple where — the connectivity layer. What must be checked if something changes.",
-     "inputSchema": {"type": "object", "required": ["title", "if_changed", "must_check", "because"], "properties": {
-         "title": {"type": "string", "description": "Impact title"},
-         "if_changed": {"type": "string", "description": "What might change"},
-         "must_check": {"type": "string", "description": "What must be verified"},
-         "because": {"type": "string", "description": "Why the dependency exists"}}}},
-    {"name": "remember_mechanism",
-     "description": "Store how something works — flows, algorithms, interactions.",
-     "inputSchema": {"type": "object", "required": ["title", "content"], "properties": {
-         "title": {"type": "string", "description": "Mechanism title"},
-         "content": {"type": "string", "description": "How it works"},
-         "steps": {"type": "array", "items": {"type": "string"}, "description": "Step-by-step flow"},
-         "data_flow": {"type": "string", "description": "Data flow description"}}}},
-    {"name": "remember_convention",
-     "description": "Store patterns, utilities, coding style for a codebase.",
-     "inputSchema": {"type": "object", "required": ["title", "content"], "properties": {
-         "title": {"type": "string", "description": "Convention title"},
-         "content": {"type": "string", "description": "The convention/pattern"},
-         "pattern": {"type": "string", "description": "Example of correct usage"},
-         "anti_pattern": {"type": "string", "description": "Example of what NOT to do"}}}},
-    {"name": "remember_uncertainty",
-     "description": "Store where you know you don't understand — honest not-knowing. Low confidence, encourages future investigation.",
-     "inputSchema": {"type": "object", "required": ["title", "what_unknown", "why_it_matters"], "properties": {
-         "title": {"type": "string", "description": "Uncertainty title"},
-         "what_unknown": {"type": "string", "description": "What is not understood"},
-         "why_it_matters": {"type": "string", "description": "Why resolving this matters"}}}},
-    {"name": "remember_mental_model",
-     "description": "Store your understanding of how systems/processes work. Confidence reflects how sure you are.",
-     "inputSchema": {"type": "object", "required": ["title", "model_description"], "properties": {
-         "title": {"type": "string", "description": "Mental model title"},
-         "model_description": {"type": "string", "description": "How you understand this system/process works"},
-         "applies_to": {"type": "string", "description": "What domain/system this applies to"},
-         "confidence": {"type": "number", "description": "How confident in this model (0.0-1.0)", "default": 0.7}}}},
+    # Specialized remember_* tools REMOVED 2026-04-05 — use remember() with type field.
+    # Removed: remember_lesson, remember_impact, remember_mechanism, remember_convention,
+    # remember_uncertainty, remember_mental_model. All were thin wrappers.
     {"name": "record_divergence",
      "description": "Track where your model diverged from reality — corrections. Creates correction traces and adjusts related node confidence.",
      "inputSchema": {"type": "object", "required": ["claude_assumed", "reality", "underlying_pattern"], "properties": {

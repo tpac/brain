@@ -306,12 +306,11 @@ class BrainEvolutionMixin:
                 ).fetchall()
                 example_text = "; ".join([f"assumed '{r[0][:40]}' but was '{r[1][:40]}'" for r in examples])
                 # Create locked lesson node
-                self.remember_lesson(
+                self.remember(
+                    type='lesson',
                     title=f"Recurring divergence: {pattern[:60]}",
-                    what_happened=f"Pattern appeared {count} times in correction traces",
-                    root_cause=pattern,
-                    fix=f"Be aware of this tendency and verify assumptions",
-                    preventive_principle=f"Examples: {example_text[:200]}",
+                    content=f"Pattern appeared {count} times. Root cause: {pattern}. Examples: {example_text[:200]}",
+                    locked=True,
                 )
                 results['resolved'].append({
                     'action': 'correction_consolidated',
