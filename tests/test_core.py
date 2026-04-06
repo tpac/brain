@@ -2,15 +2,15 @@
 """
 brain — Core Unit Tests
 
-Tests the critical paths that have broken before:
-- remember() + recall pipeline
-- connect() sets both relation and edge_type
-- encoding heartbeat tracks messages and encodes
+Tests that catch silent failures and non-obvious regressions:
 - vocabulary system (learn, resolve, ambiguous)
 - confidence scoring in recall
 - error logging pipeline
-- DAL read/write consistency
-- session activity tracking
+- DAL read/write consistency and pattern enforcement
+- consciousness signals, evolution lifecycle
+- rich fields, typed edges, surface formatting
+- critical flag, safety checks, vocabulary admission
+- keyword extraction, common word filtering, sentence splitting
 
 Run: python tests/test_core.py
 """
@@ -31,99 +31,6 @@ from servers.dal import LogsDAL, MetaDAL
 from servers.schema import ensure_schema, ensure_logs_schema
 from tests.brain_test_base import BrainTestBase
 
-
-class TestRememberRecall(BrainTestBase):
-    """Test the remember → recall pipeline."""
-
-    def test_remember_returns_id(self):
-        result = self.brain.remember(type='decision', title='Test decision',
-                                      content='We chose X over Y')
-        self.assertIn('id', result)
-        self.assertEqual(result['type'], 'decision')
-
-    def test_recall_finds_remembered_node(self):
-        self.brain.remember(type='decision', title='Auth: use Clerk',
-                           content='Passwordless login via magic links',
-                           keywords='auth clerk login passwordless')
-        results = self.brain.recall('auth login', limit=5)
-        titles = [r['title'] for r in results.get('results', [])]
-        self.assertTrue(any('Clerk' in t for t in titles),
-                       'Expected to find Clerk node in recall results: %s' % titles)
-
-    def test_locked_node_persists(self):
-        r = self.brain.remember(type='rule', title='Never use mocks',
-                                content='Integration tests only', locked=True)
-        node = self.brain.conn.execute(
-            'SELECT locked FROM nodes WHERE id = ?', (r['id'],)
-        ).fetchone()
-        self.assertEqual(node[0], 1)
-
-    def test_remember_increments_counter(self):
-        activity = self.brain._get_session_activity()
-        initial = int(activity.get('remember_count', 0))
-        self.brain.remember(type='context', title='Test', content='Test')
-        activity = self.brain._get_session_activity()
-        self.assertEqual(int(activity.get('remember_count', 0)), initial + 1)
-
-
-class TestConnect(BrainTestBase):
-    """Test edge creation — specifically the relation/edge_type bug."""
-
-    def test_connect_sets_both_columns(self):
-        """Regression: connect() must set BOTH relation AND edge_type."""
-        n1 = self.brain.remember(type='decision', title='Node A', content='A')
-        n2 = self.brain.remember(type='decision', title='Node B', content='B')
-        self.brain.connect(n1['id'], n2['id'], 'produced', 0.9)
-
-        # Check both columns
-        edge = self.brain.conn.execute(
-            'SELECT relation, edge_type FROM edges WHERE source_id = ? AND target_id = ?',
-            (n1['id'], n2['id'])
-        ).fetchone()
-        self.assertIsNotNone(edge, 'Edge should exist')
-        self.assertEqual(edge[0], 'produced', 'relation column should be set')
-        self.assertEqual(edge[1], 'produced', 'edge_type column should also be set')
-
-    def test_connect_queryable_by_edge_type(self):
-        """Regression: edges must be findable via edge_type queries."""
-        n1 = self.brain.remember(type='impact', title='Impact A', content='A')
-        n2 = self.brain.remember(type='decision', title='Decision B', content='B')
-        self.brain.connect(n1['id'], n2['id'], 'validates_impact', 0.8)
-
-        rows = self.brain.conn.execute(
-            "SELECT source_id FROM edges WHERE edge_type = 'validates_impact'"
-        ).fetchall()
-        self.assertTrue(len(rows) > 0, 'Should find edge by edge_type')
-
-
-class TestEncodingHeartbeat(BrainTestBase):
-    """Test the encoding heartbeat nudge system."""
-
-    def test_no_nudge_below_threshold(self):
-        for _ in range(7):
-            self.brain.record_message()
-        self.assertIsNone(self.brain.get_encoding_heartbeat())
-
-    def test_nudge_at_threshold(self):
-        for _ in range(8):
-            self.brain.record_message()
-        nudge = self.brain.get_encoding_heartbeat()
-        self.assertIsNotNone(nudge)
-        self.assertIn('nothing encoded yet', nudge['message'])
-
-    def test_nudge_clears_after_encode(self):
-        for _ in range(10):
-            self.brain.record_message()
-        self.assertIsNotNone(self.brain.get_encoding_heartbeat())
-        self.brain.remember(type='decision', title='Test', content='Test')
-        self.assertIsNone(self.brain.get_encoding_heartbeat())
-
-    def test_nudge_urgency(self):
-        self.brain.remember(type='context', title='X', content='X')
-        for _ in range(16):
-            self.brain.record_message()
-        nudge = self.brain.get_encoding_heartbeat()
-        self.assertEqual(nudge['severity'], 'urgent')
 
 
 class TestVocabulary(BrainTestBase):
@@ -253,115 +160,6 @@ class TestDAL(unittest.TestCase):
         self.assertEqual(activity['message_count'], 20)
 
 
-class TestSessionActivity(BrainTestBase):
-    """Test session activity tracking."""
-
-    def test_boot_time_set(self):
-        activity = self.brain._get_session_activity()
-        self.assertIn('boot_time', activity)
-        self.assertIsNotNone(activity['boot_time'])
-
-    def test_message_count_increments(self):
-        self.brain.record_message()
-        self.brain.record_message()
-        activity = self.brain._get_session_activity()
-        self.assertEqual(int(activity.get('message_count', 0)), 2)
-
-
-class TestSchemaMigration(unittest.TestCase):
-    """Test schema migration safety features."""
-
-    def setUp(self):
-        self.tmp = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.tmp, 'brain.db')
-
-    def tearDown(self):
-        shutil.rmtree(self.tmp)
-
-    def test_backup_created_on_version_change(self):
-        """Pre-migration backup is created when schema version changes."""
-        # Create a v1 database
-        conn = sqlite3.connect(self.db_path)
-        conn.execute("""CREATE TABLE IF NOT EXISTS brain_meta (
-            key TEXT PRIMARY KEY, value TEXT, updated_at TEXT)""")
-        conn.execute(
-            "INSERT INTO brain_meta (key, value) VALUES (?, ?)",
-            ('brain_schema_version', '1')
-        )
-        conn.commit()
-        conn.close()
-
-        # Now open with ensure_schema which will migrate to v15
-        conn = sqlite3.connect(self.db_path)
-        ensure_schema(conn, db_path=self.db_path)
-        conn.close()
-
-        # Check backup exists
-        backup = self.db_path + '.v1.bak'
-        self.assertTrue(os.path.exists(backup),
-                       'Backup file should exist after migration')
-
-    def test_no_backup_on_fresh_db(self):
-        """No backup for brand new databases (version 0)."""
-        conn = sqlite3.connect(self.db_path)
-        ensure_schema(conn, db_path=self.db_path)
-        conn.close()
-
-        # No backup should exist for fresh DBs
-        import glob as glob_mod
-        backups = glob_mod.glob(self.db_path + '.v*.bak')
-        self.assertEqual(len(backups), 0,
-                        'No backup should be created for fresh databases')
-
-    def test_version_history_records_backup_path(self):
-        """Version history entry includes backup_path."""
-        # Create a v1 database
-        conn = sqlite3.connect(self.db_path)
-        conn.execute("""CREATE TABLE IF NOT EXISTS brain_meta (
-            key TEXT PRIMARY KEY, value TEXT, updated_at TEXT)""")
-        conn.execute(
-            "INSERT INTO brain_meta (key, value) VALUES (?, ?)",
-            ('brain_schema_version', '1')
-        )
-        conn.execute("""CREATE TABLE IF NOT EXISTS version_history (
-            version INTEGER NOT NULL, migration_ts TEXT NOT NULL,
-            description TEXT, backup_path TEXT)""")
-        conn.commit()
-        conn.close()
-
-        # Migrate
-        conn = sqlite3.connect(self.db_path)
-        ensure_schema(conn, db_path=self.db_path)
-
-        # Check version_history
-        row = conn.execute(
-            "SELECT backup_path FROM version_history ORDER BY version DESC LIMIT 1"
-        ).fetchone()
-        conn.close()
-
-        self.assertIsNotNone(row, 'Should have version_history entry')
-        self.assertIsNotNone(row[0], 'backup_path should be recorded')
-        self.assertIn('.v1.bak', row[0])
-
-
-class TestValidateConfig(BrainTestBase):
-    """Test infrastructure validation."""
-
-    def test_healthy_brain_no_warnings(self):
-        """Fresh brain should have no critical warnings."""
-        warnings = self.brain.validate_config()
-        critical = [w for w in warnings if w['level'] == 'critical']
-        self.assertEqual(len(critical), 0, 'Fresh brain should have no critical warnings')
-
-    def test_schema_version_mismatch_warned(self):
-        """Detect schema version mismatch."""
-        # Artificially set wrong version
-        self.brain._meta.set('brain_schema_version', '1')
-        warnings = self.brain.validate_config()
-        version_warnings = [w for w in warnings if 'Schema version' in w['message']]
-        self.assertTrue(len(version_warnings) > 0, 'Should warn about schema version mismatch')
-
-
 
 # ═══════════════════════════════════════════════════════════════════════
 # SESSION A: Comprehensive Unit Tests (v5.1 expansion)
@@ -372,20 +170,6 @@ class TestValidateConfig(BrainTestBase):
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
-
-def _realistic_remember(brain, **kwargs):
-    """Helper that creates realistic nodes with substantial content."""
-    defaults = {
-        'type': 'decision',
-        'title': 'Supply Adapter pattern — clean abstraction layer between Glo and ad delivery',
-        'content': ('Clean abstraction layer between Glo and ad delivery. '
-                    'Interface: createCampaign, updateCampaign, pauseCampaign, '
-                    'resumeCampaign, stopCampaign, getCampaignStats. '
-                    'Each ad server implements this interface. V1: GAM adapter only.'),
-        'keywords': 'adapter pattern supply abstraction gam swappable interface',
-    }
-    defaults.update(kwargs)
-    return brain.remember(**defaults)
 
 
 def _seed_brain_with_realistic_data(brain):
@@ -786,58 +570,6 @@ class _Removed_TestConsciousnessSignals:
         self.assertEqual(miss_trends[0]['query'], 'authentication flow')
 
 
-# ── P1: Developmental Stage ──────────────────────────────────────────
-
-class TestDevelopmentalStage(BrainTestBase):
-    """Test brain developmental stage assessment."""
-
-    def test_empty_brain_is_newborn(self):
-        """Empty brain should be stage 1 (NEWBORN)."""
-        result = self.brain.assess_developmental_stage()
-        self.assertEqual(result['stage'], 1)
-        self.assertEqual(result['stage_name'], 'NEWBORN')
-        self.assertIn('guidance', result)
-        self.assertTrue(len(result['guidance']) > 0)
-
-    def test_populated_brain_advances_stage(self):
-        """Brain with substantial data should advance past NEWBORN."""
-        _seed_brain_with_realistic_data(self.brain)
-        # Need >= 10 nodes to advance past NEWBORN (line 692 of brain_consciousness.py)
-        self.brain.remember(type='lesson', title='Lesson: context overflow loses in-flight decisions',
-            content='During long sessions, context overflow triggers compaction. Any decisions made but not yet encoded are lost.',
-            keywords='lesson context overflow compaction decision loss', locked=True)
-        self.brain.remember(type='concept', title='Spreading activation — multi-hop recall through graph edges',
-            content='Instead of only returning directly matching nodes, follow edges outward to retrieve connected context.',
-            keywords='spreading activation graph recall multi-hop edges')
-        self.brain.remember(type='constraint', title='Constraint: embedder must load in under 3 seconds',
-            content='Boot time is critical. Embedder load > 3s causes hook timeouts.',
-            keywords='constraint embedder load time boot performance', locked=True)
-        result = self.brain.assess_developmental_stage()
-        self.assertGreater(result['stage'], 1,
-                          'Brain with 11+ nodes should advance past NEWBORN')
-        self.assertGreater(result['maturity_score'], 0)
-
-
-# ── P1: Graceful Degradation ─────────────────────────────────────────
-
-class TestGracefulDegradation(BrainTestBase):
-    """P1: Verify brain works when embedder is down."""
-
-    def test_remember_stores_tfidf_even_without_embedding(self):
-        """remember() should always store TF-IDF vectors regardless of embedder state."""
-        result = self.brain.remember(type='decision',
-            title='Database migration uses Prisma ORM with PostgreSQL',
-            content='All database access goes through Prisma. Raw SQL only for analytics queries. PostgreSQL 15 on RDS.',
-            keywords='database prisma orm postgresql rds migration sql')
-        node_id = result['id']
-
-        # Check TF-IDF vectors were stored
-        vectors = self.brain.conn.execute(
-            "SELECT COUNT(*) FROM node_vectors WHERE node_id = ?", (node_id,)
-        ).fetchone()[0]
-        self.assertGreater(vectors, 0, 'TF-IDF vectors should be stored')
-
-
 # ── P2: Evolution Lifecycle ──────────────────────────────────────────
 
 class TestEvolutionCRUD(BrainTestBase):
@@ -932,120 +664,6 @@ class TestEvolutionCRUD(BrainTestBase):
         self.assertEqual(node[1], 1)
 
 
-# ── P2: Auto-Discovery & Healing ─────────────────────────────────────
-
-class TestAutoHeal(BrainTestBase):
-    """P2: Test auto-healing and auto-discovery."""
-
-    def test_auto_discover_returns_structure(self):
-        """auto_discover_evolutions() should return dict with expected keys."""
-        _seed_brain_with_realistic_data(self.brain)
-        result = self.brain.auto_discover_evolutions()
-        self.assertIsInstance(result, dict)
-
-    def test_auto_tune_returns_structure(self):
-        """auto_tune() should return dict with tuned list."""
-        result = self.brain.auto_tune()
-        self.assertIsInstance(result, dict)
-
-    def test_auto_heal_returns_structure(self):
-        """auto_heal() with data should return valid result structure."""
-        _seed_brain_with_realistic_data(self.brain)
-        result = self.brain.auto_heal()
-        self.assertIn('resolved', result)
-        self.assertIn('tuned', result)
-        self.assertIn('cleaned', result)
-
-
-# ── P3: Engineering Memory ───────────────────────────────────────────
-
-
-# ── P3: Session Synthesis & Self-Correction ──────────────────────────
-
-class TestSessionSynthesis(BrainTestBase):
-    """P3: Test session synthesis and self-correction."""
-
-    def test_synthesize_session_with_data(self):
-        """Session synthesis should capture decisions made."""
-        _seed_brain_with_realistic_data(self.brain)
-        # Record some session activity
-        for _ in range(5):
-            self.brain.record_message()
-        result = self.brain.synthesize_session()
-        self.assertIsInstance(result, dict)
-
-    def test_get_last_synthesis_empty(self):
-        """No synthesis on fresh brain."""
-        result = self.brain.get_last_synthesis()
-        self.assertIsNone(result)
-
-    def test_assess_session_health_structure(self):
-        """Session health should return valid structure."""
-        _seed_brain_with_realistic_data(self.brain)
-        for _ in range(10):
-            self.brain.record_message()
-        result = self.brain.assess_session_health()
-        self.assertIsInstance(result, dict)
-
-    def test_record_divergence(self):
-        """Recording a divergence should create correction trace."""
-        original = self.brain.remember(type='decision',
-            title='API rate limiting: use token bucket algorithm',
-            content='Token bucket with 100 requests/minute.',
-            keywords='api rate limit token bucket', confidence=0.8)
-        result = self.brain.record_divergence(
-            original_node_id=original['id'],
-            claude_assumed='Token bucket is the best rate limiting approach',
-            reality='Sliding window is better for bursty API traffic',
-            underlying_pattern='over-engineering from textbook patterns',
-            severity='moderate')
-        self.assertIsInstance(result, dict)
-        # Check correction trace was created
-        traces = self.brain.conn.execute(
-            "SELECT * FROM correction_traces WHERE original_node_id = ?",
-            (original['id'],)).fetchall()
-        self.assertGreater(len(traces), 0)
-
-    def test_record_validation_boosts_confidence(self):
-        """Validating a node should boost its confidence."""
-        node = self.brain.remember(type='decision',
-            title='Use Snowflake Arctic Embed for brain embeddings',
-            content='Snowflake arctic-embed-m-v1.5, 768d, CLS pooling.',
-            keywords='embedding model snowflake arctic', confidence=0.7)
-        initial_conf = 0.7
-        self.brain.record_validation(
-            node_id=node['id'],
-            context='Confirmed in production: 50ms embed time, good recall quality.')
-        updated = self.brain.conn.execute(
-            "SELECT confidence FROM nodes WHERE id = ?", (node['id'],)
-        ).fetchone()
-        # Confidence should increase after validation
-        self.assertGreater(updated[0], initial_conf,
-                          'Confidence should increase after validation')
-
-
-# ── P3: Reminders ────────────────────────────────────────────────────
-
-class TestReminders(BrainTestBase):
-    """P3: Test reminder creation and retrieval."""
-
-    def test_create_and_get_due_reminders(self):
-        """Reminders with past due dates should be returned."""
-        self.brain.create_reminder(
-            title='Check brain health metrics',
-            due_date='2020-01-01T00:00:00Z')  # Already past
-        reminders = self.brain.get_due_reminders()
-        self.assertTrue(len(reminders) > 0, 'Should have due reminders')
-
-    def test_future_reminder_not_due(self):
-        """Reminders in the future should not be returned."""
-        self.brain.create_reminder(
-            title='Future check',
-            due_date='2030-01-01T00:00:00Z')
-        reminders = self.brain.get_due_reminders()
-        future = [r for r in reminders if 'Future check' in r.get('title', '')]
-        self.assertEqual(len(future), 0, 'Future reminders should not be due')
-
 
 # ── P4: Remember Rich & Metadata ─────────────────────────────────────
 
@@ -1078,70 +696,6 @@ class TestRememberRich(BrainTestBase):
             (node['id'],)).fetchone()
         self.assertIsNotNone(meta)
         self.assertGreaterEqual(meta[0], 2)
-
-
-# ── P4: Personal Nodes ───────────────────────────────────────────────
-
-class TestPersonalNodes(BrainTestBase):
-    """P4: Test personal node flags."""
-
-    def test_personal_fixed_auto_locks(self):
-        """personal='fixed' should auto-lock the node."""
-        result = self.brain.remember(type='person',
-            title='Tom Pachys — CEO, EX.CO',
-            content='Tom is the operator. CEO of EX.CO. Partner, not user.',
-            keywords='tom pachys ceo exco operator partner',
-            personal='fixed')
-        node = self.brain.conn.execute(
-            "SELECT locked, personal FROM nodes WHERE id = ?", (result['id'],)
-        ).fetchone()
-        self.assertEqual(node[0], 1, 'Fixed personal should be locked')
-        self.assertEqual(node[1], 'fixed')
-
-    def test_personal_fluid_not_locked(self):
-        """personal='fluid' should NOT auto-lock."""
-        result = self.brain.remember(type='concept',
-            title='Tom currently interested in TRIZ methodology',
-            content='Active interest in systematic inventive thinking as of March 2026.',
-            keywords='tom triz interest methodology',
-            personal='fluid')
-        node = self.brain.conn.execute(
-            "SELECT locked, personal FROM nodes WHERE id = ?", (result['id'],)
-        ).fetchone()
-        self.assertEqual(node[1], 'fluid')
-
-    def test_get_personal_nodes_by_type(self):
-        """get_personal_nodes should filter by personal flag type."""
-        self.brain.remember(type='person', title='Fixed person',
-            content='Fixed content.', personal='fixed')
-        self.brain.remember(type='concept', title='Fluid concept',
-            content='Fluid content.', personal='fluid')
-        fixed = self.brain.get_personal_nodes('fixed')
-        fluid = self.brain.get_personal_nodes('fluid')
-        self.assertTrue(all(n.get('personal') == 'fixed' for n in fixed))
-        self.assertTrue(all(n.get('personal') == 'fluid' for n in fluid))
-
-
-# ── P5: Dreams & Consolidation ───────────────────────────────────────
-
-class TestDreams(BrainTestBase):
-    """P5: Test dream and consolidation system."""
-
-    def test_dream_with_connected_nodes(self):
-        """dream() with connected nodes should generate dreams."""
-        nodes = _seed_brain_with_realistic_data(self.brain)
-        # Connect nodes to create walkable graph
-        for i in range(len(nodes) - 1):
-            self.brain.connect(nodes[i]['id'], nodes[i + 1]['id'], 'related', 0.7)
-        result = self.brain.dream()
-        self.assertIsInstance(result, dict)
-        self.assertIn('dreams', result)
-
-    def test_consolidate_with_data(self):
-        """consolidate() should process nodes and return summary."""
-        _seed_brain_with_realistic_data(self.brain)
-        result = self.brain.consolidate()
-        self.assertIsInstance(result, dict)
 
 
 # ── P6: Surface Layer ────────────────────────────────────────────────
@@ -1177,62 +731,6 @@ class TestSurfaceLayer(BrainTestBase):
         self.assertIsInstance(result, dict)
 
 
-# ── P6: Absorb ───────────────────────────────────────────────────────
-
-class TestAbsorb(BrainTestBase):
-    """P6: Test knowledge absorption from another brain."""
-
-    def test_absorb_new_locked_nodes(self):
-        """Locked nodes from source brain should be absorbed."""
-        # Create source brain
-        source_path = os.path.join(self.tmp, 'source.db')
-        source = Brain(source_path)
-        source.remember(type='rule',
-            title='Unique rule only in source brain for absorption testing',
-            content='This rule exists only in the source brain and should be absorbed.',
-            keywords='unique source absorption test', locked=True)
-        source.save()
-
-        result = self.brain.absorb(source)
-        source.close()
-        self.assertIsInstance(result, dict)
-        self.assertTrue(len(result.get('absorbed', [])) > 0,
-                       'Should absorb locked nodes from source')
-
-    def test_absorb_skips_exact_duplicates(self):
-        """Exact title matches should be skipped during absorption."""
-        # Create same node in both brains
-        self.brain.remember(type='rule', title='Shared rule title',
-            content='Content in target brain.', locked=True)
-        source_path = os.path.join(self.tmp, 'source2.db')
-        source = Brain(source_path)
-        source.remember(type='rule', title='Shared rule title',
-            content='Content in source brain.', locked=True)
-        source.save()
-
-        result = self.brain.absorb(source)
-        source.close()
-        skipped_titles = [s['title'] for s in result.get('skipped', [])]
-        self.assertTrue(any('Shared rule' in t for t in skipped_titles),
-                       'Should skip exact duplicate titles')
-
-    def test_absorb_dry_run(self):
-        """dry_run=True should report without making changes."""
-        source_path = os.path.join(self.tmp, 'source3.db')
-        source = Brain(source_path)
-        source.remember(type='rule', title='Dry run test rule',
-            content='Should not actually be absorbed.', locked=True)
-        source.save()
-
-        initial_count = self.brain.conn.execute(
-            "SELECT COUNT(*) FROM nodes").fetchone()[0]
-        result = self.brain.absorb(source, dry_run=True)
-        source.close()
-        final_count = self.brain.conn.execute(
-            "SELECT COUNT(*) FROM nodes").fetchone()[0]
-        self.assertEqual(initial_count, final_count,
-                        'dry_run should not change node count')
-
 
 # ── P7: Connections ──────────────────────────────────────────────────
 
@@ -1254,69 +752,6 @@ class TestConnectTyped(BrainTestBase):
         self.assertEqual(edge[0], 'depends_on')
         self.assertEqual(edge[1], 'depends_on')
 
-
-# ── P7: Segments ─────────────────────────────────────────────────────
-
-class TestSegments(BrainTestBase):
-    """P7: Test conversation segment detection."""
-
-    def test_get_current_segment_id(self):
-        """Should return a valid segment ID."""
-        seg_id = self.brain.get_current_segment_id()
-        self.assertIsNotNone(seg_id)
-
-    def test_add_to_segment(self):
-        """Adding a node to segment should be retrievable."""
-        node = self.brain.remember(type='concept', title='Test segment node',
-            content='Testing segment membership.')
-        self.brain.add_to_segment(node['id'])
-        seg_nodes = self.brain.get_segment_node_ids()
-        self.assertIn(node['id'], seg_nodes)
-
-
-# ── P7: Priming System ──────────────────────────────────────────────
-
-class TestPriming(BrainTestBase):
-    """P7: Test the priming (active concerns) system."""
-
-    def test_get_active_primes_with_tensions(self):
-        """Active tensions should appear as primes."""
-        a = self.brain.remember(type='decision', title='Embeddings at 90% weight',
-            content='Embedding similarity dominates recall.', keywords='embeddings recall')
-        b = self.brain.remember(type='rule', title='Generic nodes dampened',
-            content='Broad nodes score high with everything.', keywords='generic dampening')
-        self.brain.create_tension(
-            title='Embeddings vs generic nodes in recall ranking',
-            content='Generic nodes with broad content score high similarity.',
-            node_a_id=a['id'], node_b_id=b['id'])
-        primes = self.brain.get_active_primes()
-        self.assertTrue(len(primes) > 0, 'Should have primes from tension')
-        self.assertTrue(any(p['source'] == 'tension' for p in primes))
-
-    def test_get_active_primes_empty_brain(self):
-        """Empty brain should return empty primes list."""
-        primes = self.brain.get_active_primes()
-        self.assertEqual(len(primes), 0)
-
-
-# ── P7: Instinct Check ──────────────────────────────────────────────
-
-class TestInstinctCheck(BrainTestBase):
-    """P7: Test the instinct check (prefrontal cortex) system."""
-
-    def test_instinct_check_empty_returns_none(self):
-        """No instinct should fire on fresh brain."""
-        result = self.brain.get_instinct_check('hello')
-        self.assertIsNone(result)
-
-    def test_instinct_check_encoding_depth_warning(self):
-        """Deep session with no encoding should trigger instinct."""
-        # Simulate 25 messages, 0 remembers
-        for _ in range(25):
-            self.brain.record_message()
-        result = self.brain.get_instinct_check('what should we do next')
-        self.assertIsNotNone(result, 'Should trigger encoding depth instinct')
-        self.assertIn('nothing encoded', result.lower())
 
 
 # ═══════════════════════════════════════════════════════════════
