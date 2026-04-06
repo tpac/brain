@@ -601,15 +601,7 @@ def hook_idle_maintenance(brain, args, graph_changes):
         brain._log_error('idle_consolidation', e, 'Consolidation detection failed')
         output.append("CONSOLIDATION ERROR: %s" % e)
 
-    # 3f. Expire old pending messages (> 48h = stale, resolve silently)
-    try:
-        from .dal_message_stream import MessageStreamDAL
-        msg_dal = MessageStreamDAL(brain.logs_conn)
-        expired = msg_dal.expire_old(max_age_hours=48)
-        if expired:
-            output.append("MSG_STREAM: expired %d old pending messages" % expired)
-    except Exception as e:
-        brain._log_error('idle_expire_messages', e, 'Failed to expire old messages')
+    # message_stream expiry REMOVED 2026-04-05 — table deleted, traces are source of truth
 
     # 4. Reflection prompts
     try:

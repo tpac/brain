@@ -963,52 +963,9 @@ class BrainSurfaceMixin:
     # v8: Invisible encoding — conversation stream
     # ═══════════════════════════════════════════════════════════════
 
-    def store_exchange(self, user_message: str, assistant_response: str,
-                       session_id: str = '',
-                       signal_type: Optional[str] = None, **_kwargs) -> Dict[str, Any]:
-        """Store exchange to message_stream (escalation only).
-
-        Content truncated to 200 chars for escalation display.
-        Full content lives in S0 trace_events.
-        """
-        from .dal_message_stream import MessageStreamDAL
-        dal = MessageStreamDAL(self.logs_conn)
-        # Short content for escalation display — full content in S0 traces
-        user_id = dal.store('user', user_message[:200] if user_message else '',
-                           session_id, signal_type=signal_type)
-        assistant_id = dal.store('assistant', assistant_response[:200] if assistant_response else '',
-                                session_id)
-        return {'user_id': user_id, 'assistant_id': assistant_id, 'signal_type': signal_type}
-
-    def resolve_recent_pending(self, reason: str = 'encoded',
-                                max_age_hours: int = 1,
-                                limit: int = 5) -> int:
-        """Mark recent pending messages as resolved.
-
-        Called after any encoding action (remember, revise, vocabulary, etc.)
-        to close the loop: message → surfaced → encoded → resolved.
-
-        This is the SINGLE ENTRY POINT for resolving pending messages.
-        Any future encoding path (vocabulary, corrections, etc.) calls this
-        same method — no need to rewire for each new encoding type.
-
-        Args:
-            reason: 'encoded' (stored to brain), 'dismissed' (explicitly skipped)
-            max_age_hours: only mark messages within this window.
-                WHY 1 hour default: if Claude encodes, the recent messages
-                are the likely prompt. Don't mark 24h-old messages.
-            limit: max messages to resolve per call.
-
-        Returns:
-            Count of messages resolved.
-        """
-        from .dal_message_stream import MessageStreamDAL
-        msg_dal = MessageStreamDAL(self.logs_conn)
-        pending = msg_dal.get_actionable(limit=limit, max_age_hours=max_age_hours)
-        if not pending:
-            return 0
-        count = msg_dal.mark_resolved([m['id'] for m in pending], reason=reason)
-        return count
+    # store_exchange + resolve_recent_pending REMOVED 2026-04-05
+    # message_stream table deleted. S0 traces capture full content.
+    # Escalation tracking was redundant (encoding agent reads from traces).
 
     # ═══════════════════════════════════════════════════════════════
     # v8: Consolidation detection — find overlapping nodes

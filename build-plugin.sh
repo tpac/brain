@@ -59,7 +59,6 @@ FILES=(
   servers/scales/s1/recall_contract.py
   servers/scales/s1/encode.py
   servers/scales/s1/encode_contract.py
-  servers/dal_message_stream.py
   servers/metrics.py
   # Hook scripts — bash shims (thin wrappers)
   hooks/hooks.json
