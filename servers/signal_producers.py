@@ -129,7 +129,7 @@ def produce_system_health(brain, sq_dal):
     """
     _produce_hook_errors(brain, sq_dal)
     _produce_brain_errors(brain, sq_dal)
-    _produce_conflicts(brain, sq_dal)
+    # _produce_conflicts removed — conflict_log table dropped
 
 
 def _produce_hook_errors(brain, sq_dal):
@@ -198,44 +198,7 @@ def _produce_brain_errors(brain, sq_dal):
         log.warning("_produce_brain_errors failed: %s", e)
 
 
-def _produce_conflicts(brain, sq_dal):
-    """Brain-Claude conflicts from conflict_log table."""
-    try:
-        logs_db = os.path.join(os.path.dirname(brain.db_path), "brain_logs.db")
-        if not os.path.isfile(logs_db):
-            return
-        conn = sqlite3.connect(logs_db, timeout=10)
-        tables = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='conflict_log'"
-        ).fetchall()
-        if not tables:
-            conn.close()
-            return
-        rows = conn.execute(
-            "SELECT id, rule_title, claude_action, created_at FROM conflict_log "
-            "WHERE surfaced = 0 ORDER BY id DESC LIMIT 5"
-        ).fetchall()
-        if rows:
-            ids = [r[0] for r in rows]
-            placeholders = ",".join("?" * len(ids))
-            conn.execute(
-                "UPDATE conflict_log SET surfaced = 1 WHERE id IN (%s)" % placeholders,
-                ids)
-            conn.commit()
-        conn.close()
-
-        for r in rows:
-            sq_dal.enqueue(
-                id="system_health:conflict:%s" % r[0],
-                producer="system_health",
-                signal_type="rule_conflict",
-                priority=0.92,
-                content="⚠️ Rule violation [%s]: %s" % (
-                    (r[1] or '')[:40], (r[2] or '')[:80]),
-                max_surfaces=1,
-            )
-    except Exception as e:
-        log.warning("_produce_conflicts failed: %s", e)
+# _produce_conflicts REMOVED 2026-04-05 — conflict_log table dropped
 
 
 # ── 5. SYSTEM INTEGRITY (lightweight, runs every recall) ──

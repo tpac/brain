@@ -104,29 +104,7 @@ class LogsDAL:
     # All recall_log write methods deleted. Traces (trace_events) are source of truth.
     # Table still exists with historical data. Dashboard reads from traces.
 
-    # ── miss_log ──
-
-    def log_miss(self, session_id: str, signal: str, query: str = "",
-                 expected_node_id: str = "", context: str = "") -> None:
-        """Record a recall miss."""
-        now = datetime.now(timezone.utc).isoformat()
-        self.conn.execute(
-            'INSERT INTO miss_log (session_id, signal, query, expected_node_id, context, created_at) '
-            'VALUES (?, ?, ?, ?, ?, ?)',
-            (session_id, signal, query[:500], expected_node_id, context[:500], now)
-        )
-        self.conn.commit()
-
-    def get_miss_trends(self, days: int = 7, limit: int = 5) -> List[Dict[str, Any]]:
-        """Get queries that frequently miss."""
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        rows = self.conn.execute(
-            'SELECT query, COUNT(*) as cnt FROM miss_log '
-            'WHERE created_at > ? GROUP BY query HAVING cnt >= 2 '
-            'ORDER BY cnt DESC LIMIT ?',
-            (cutoff, limit)
-        ).fetchall()
-        return [{'query': r[0], 'count': r[1]} for r in rows]
+    # ── miss_log — REMOVED 2026-04-05 (table dropped) ──
 
     # ── dream_log ──
 
@@ -224,83 +202,9 @@ class LogsDAL:
     # get_recall_row, get_pending_response, get_pending_followups.
     # brain_precision.py (the only caller) was deleted. Traces are source of truth.
 
-    # ── staged_learnings ──
-
-    def get_staged(self, status: str = "pending", limit: int = 10) -> List[Dict[str, Any]]:
-        """Get staged learnings by status."""
-        rows = self.conn.execute(
-            'SELECT id, node_id, title, content, confidence, times_revisited, status, created_at '
-            'FROM staged_learnings WHERE status = ? ORDER BY created_at DESC LIMIT ?',
-            (status, limit)
-        ).fetchall()
-        return [
-            {'id': r[0], 'node_id': r[1], 'title': r[2], 'content': r[3],
-             'confidence': r[4], 'times_revisited': r[5], 'status': r[6],
-             'created_at': r[7]}
-            for r in rows
-        ]
-
-
-    # ── recall_gaps ──
-    # Schema: id, timestamp, query, top_score, session_id
-
-    def log_gap(self, query: str, top_score: float, session_id: str = '') -> None:
-        """Log a recall gap — a query where the brain had no relevant results."""
-        self.conn.execute(
-            'INSERT INTO recall_gaps (timestamp, query, top_score, session_id) VALUES (?, ?, ?, ?)',
-            (_now(), query, top_score, session_id))
-        self.conn.commit()
-
-    # ── pending_consolidation ──
-    # Schema: id, node_id_a, node_id_b, similarity, detected_at, resolved
-    # UNIQUE(node_id_a, node_id_b)
-
-    def queue_consolidation(self, node_id_a: str, node_id_b: str,
-                            similarity: float) -> bool:
-        """Queue a consolidation pair. Returns True if new, False if already existed."""
-        cursor = self.conn.execute(
-            'INSERT OR IGNORE INTO pending_consolidation '
-            '(node_id_a, node_id_b, similarity, detected_at) VALUES (?, ?, ?, ?)',
-            (node_id_a, node_id_b, similarity, _now()))
-        self.conn.commit()
-        return cursor.rowcount > 0
-
-    def get_pending_consolidation(self, limit: int = 2) -> List[Dict[str, Any]]:
-        """Get unresolved consolidation pairs, highest similarity first."""
-        rows = self.conn.execute(
-            'SELECT id, node_id_a, node_id_b, similarity '
-            'FROM pending_consolidation WHERE resolved = 0 '
-            'ORDER BY similarity DESC LIMIT ?',
-            (limit,)).fetchall()
-        return [
-            {'id': r[0], 'node_id_a': r[1], 'node_id_b': r[2], 'similarity': r[3]}
-            for r in rows
-        ]
-
-    def resolve_consolidation(self, pair_id: int) -> None:
-        """Mark a consolidation pair as resolved (merged or dismissed)."""
-        self.conn.execute(
-            'UPDATE pending_consolidation SET resolved = 1 WHERE id = ?',
-            (pair_id,))
-        self.conn.commit()
-
-    def resolve_consolidation_for_node(self, node_id: str) -> int:
-        """Auto-resolve all pending pairs involving a specific node.
-        Called by revise() to clean up after a node is updated.
-        Returns count of pairs resolved."""
-        cursor = self.conn.execute(
-            'UPDATE pending_consolidation SET resolved = 1 '
-            'WHERE (node_id_a = ? OR node_id_b = ?) AND resolved = 0',
-            (node_id, node_id))
-        self.conn.commit()
-        return cursor.rowcount
-
-    def count_pending_consolidation(self) -> int:
-        """Count unresolved consolidation pairs."""
-        row = self.conn.execute(
-            'SELECT COUNT(*) FROM pending_consolidation WHERE resolved = 0'
-        ).fetchone()
-        return row[0] if row else 0
+    # ── staged_learnings — REMOVED 2026-04-05 (table dropped) ──
+    # ── recall_gaps — REMOVED 2026-04-05 (table dropped) ──
+    # ── pending_consolidation — REMOVED 2026-04-05 (table dropped) ──
 
 
     def query_logs(self, source: str = 'all', hours: int = 24,
@@ -1949,95 +1853,4 @@ class EnrichmentDAL:
         }
 
 
-class TelemetryDAL:
-    """Access layer for brain_telemetry table — operation logging.
-
-    Every critical operation logs timing, success/failure, and metadata.
-    No silent failures — this is the audit trail.
-    """
-
-    def __init__(self, conn: sqlite3.Connection):
-        self.conn = conn
-
-    def log(self, operation: str, success: bool, duration_ms: float = None,
-            error_message: str = None, **metadata) -> None:
-        """Log a telemetry event.
-
-        NOTE: This uses brain_logs.db (not brain.db). Caller must pass logs_conn.
-        Errors are printed to stderr but NOT silenced — they propagate so callers
-        know telemetry is broken and can fix it.
-        """
-        now = datetime.now(timezone.utc).isoformat()
-        meta_json = json.dumps(metadata) if metadata else None
-        self.conn.execute(
-            '''INSERT INTO brain_telemetry
-               (timestamp, operation, duration_ms, success, error_message, metadata, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)''',
-            (now, operation, duration_ms, 1 if success else 0,
-             error_message, meta_json, now)
-        )
-        self.conn.commit()
-
-    def get_stats(self, hours: int = 24) -> Dict[str, Any]:
-        """Get telemetry stats for the last N hours."""
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-        rows = self.conn.execute('''
-            SELECT operation,
-                   COUNT(*) as total,
-                   SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failures,
-                   AVG(duration_ms) as avg_ms,
-                   MAX(duration_ms) as max_ms
-            FROM brain_telemetry
-            WHERE timestamp > ?
-            GROUP BY operation
-        ''', (cutoff,)).fetchall()
-        return {
-            r[0]: {'total': r[1], 'failures': r[2], 'avg_ms': round(r[3], 1) if r[3] else None,
-                   'max_ms': round(r[4], 1) if r[4] else None}
-            for r in rows
-        }
-
-    def get_recent_failures(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get recent failures across all operations."""
-        rows = self.conn.execute('''
-            SELECT timestamp, operation, duration_ms, error_message, metadata
-            FROM brain_telemetry
-            WHERE success = 0
-            ORDER BY timestamp DESC
-            LIMIT ?
-        ''', (limit,)).fetchall()
-        return [
-            {'timestamp': r[0], 'operation': r[1], 'duration_ms': r[2],
-             'error': r[3], 'metadata': json.loads(r[4]) if r[4] else None}
-            for r in rows
-        ]
-
-    def get_enrichment_hit_rate(self, hours: int = 24) -> Dict[str, Any]:
-        """Calculate how often enrichment vectors are used in recall."""
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-        rows = self.conn.execute('''
-            SELECT metadata FROM brain_telemetry
-            WHERE operation = 'recall' AND success = 1 AND timestamp > ?
-        ''', (cutoff,)).fetchall()
-
-        total_recalls = len(rows)
-        enrichment_hits = 0
-        by_type = {'question': 0, 'anchor': 0, 'bridge': 0, 'keywords': 0}
-
-        for (meta_json,) in rows:
-            if meta_json:
-                try:
-                    meta = json.loads(meta_json)
-                    if meta.get('enrichment_hits', 0) > 0:
-                        enrichment_hits += 1
-                    for vtype in by_type:
-                        by_type[vtype] += meta.get(f'enrichment_hit_{vtype}', 0)
-                except (json.JSONDecodeError, TypeError):
-                    pass
-
-        return {
-            'total_recalls': total_recalls,
-            'enrichment_hits': enrichment_hits,
-            'hit_rate_pct': round(enrichment_hits / total_recalls * 100, 1) if total_recalls else 0,
-            'by_type': by_type,
-        }
+# TelemetryDAL — REMOVED 2026-04-05 (brain_telemetry table dropped, never used)
