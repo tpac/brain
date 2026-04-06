@@ -163,73 +163,8 @@ class BrainEngineeringMixin:
     # These should be nodes+edges, not separate tables.
 
     def get_engineering_context(self, project: Optional[str] = None) -> Dict[str, Any]:
-        """Synthesize all engineering memory for boot context. The warm-up killer."""
-        result = {}
-
-        # System purpose — project_maps table dropped 2026-04-05
-        # Future: use nodes with type='purpose' and project field
-
-        # Purpose nodes (system scope first, then file, then function)
-        purpose_filter = "AND project = ?" if project else ""
-        purpose_params = (project,) if project else ()
-        cur = self.conn.execute(
-            f'''SELECT id, title, content, scope FROM nodes
-                WHERE type = 'purpose' AND archived = 0 {purpose_filter}
-                ORDER BY CASE scope
-                    WHEN 'system' THEN 1 WHEN 'module' THEN 2
-                    WHEN 'file' THEN 3 WHEN 'function' THEN 4
-                    ELSE 5 END, access_count DESC
-                LIMIT 20''',
-            purpose_params
-        )
-        result['purposes'] = [{'id': r[0], 'title': r[1], 'content': r[2], 'scope': r[3]}
-                              for r in cur.fetchall()]
-
-        # Impact links (safety-critical)
-        cur = self.conn.execute(
-            f'''SELECT id, title, content FROM nodes
-                WHERE type = 'impact' AND archived = 0 {purpose_filter}
-                ORDER BY access_count DESC LIMIT 10''',
-            purpose_params
-        )
-        result['impacts'] = [{'id': r[0], 'title': r[1], 'content': r[2]} for r in cur.fetchall()]
-
-        # Constraints
-        cur = self.conn.execute(
-            f'''SELECT id, title, content FROM nodes
-                WHERE type = 'constraint' AND archived = 0 {purpose_filter}
-                ORDER BY access_count DESC LIMIT 10''',
-            purpose_params
-        )
-        result['constraints'] = [{'id': r[0], 'title': r[1], 'content': r[2]} for r in cur.fetchall()]
-
-        # Conventions
-        cur = self.conn.execute(
-            f'''SELECT id, title, content FROM nodes
-                WHERE type = 'convention' AND archived = 0 {purpose_filter}
-                ORDER BY access_count DESC LIMIT 5''',
-            purpose_params
-        )
-        result['conventions'] = [{'id': r[0], 'title': r[1], 'content': r[2]} for r in cur.fetchall()]
-
-        # Vocabulary
-        cur = self.conn.execute(
-            "SELECT id, title, content FROM nodes WHERE type = 'vocabulary' AND archived = 0 ORDER BY access_count DESC LIMIT 15"
-        )
-        result['vocabulary'] = [{'id': r[0], 'title': r[1], 'content': r[2]} for r in cur.fetchall()]
-
-        # File inventory
-        if project:
-            result['file_inventory'] = self.get_file_inventory(project)
-
-        # File changes since last session
-        if project:
-            try:
-                result['file_changes'] = self.detect_file_changes(project)
-            except Exception:
-                result['file_changes'] = []
-
-        return result
+        """DEPRECATED — engineering nodes are just nodes. Use filter_nodes or recall."""
+        return {}
 
     def get_change_impact(self, file_path: str) -> List[Dict[str, Any]]:
         """Return all change impact entries for a file — 'If you modify this, also check...'"""
