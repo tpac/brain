@@ -54,7 +54,8 @@ def daemon_tcp_send(cmd, args):
 # Commands that must go through daemon TCP (all writes)
 WRITE_COMMANDS = {
     'remember', 'remember_batch', 'revise', 'revise_batch',
-    'connect', 'enrich', 'record_divergence', 'learn_vocabulary',
+    'connect', 'connect_batch', 'brain_batch',
+    'enrich', 'record_divergence', 'learn_vocabulary',
     'trace_append', 'set_config',
 }
 

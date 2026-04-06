@@ -242,6 +242,20 @@ def _build_tools():
          "target_id": {"type": "string", "description": "Target node ID"},
          "relation": {"type": "string", "description": "Edge relation type", "default": "related_to"},
          "weight": {"type": "number", "description": "Edge weight 0.0-1.0", "default": 0.5}}}},
+    {"name": "connect_batch",
+     "description": "Create multiple edges in one call.",
+     "inputSchema": {"type": "object", "required": ["connections"], "properties": {
+         "connections": {"type": "array", "description": "Array of connections to create", "items": {
+             "type": "object", "required": ["source_id", "target_id"], "properties": {
+                 "source_id": {"type": "string"}, "target_id": {"type": "string"},
+                 "relation": {"type": "string", "default": "related_to"},
+                 "weight": {"type": "number", "default": 0.5}}}}}}},
+    {"name": "brain_batch",
+     "description": "Execute multiple brain operations in one call — remember, revise, and connect mixed together. Each operation runs sequentially. Use for efficient multi-step encoding.",
+     "inputSchema": {"type": "object", "required": ["operations"], "properties": {
+         "operations": {"type": "array", "description": "Array of operations. Each has 'op' field: 'remember', 'revise', or 'connect', plus the fields for that operation.", "items": {
+             "type": "object", "required": ["op"], "properties": {
+                 "op": {"type": "string", "description": "Operation type: remember, revise, or connect"}}}}}}},
     _generate_revise_schema(),
     _build_revise_batch_schema(),
     {"name": "enrich",

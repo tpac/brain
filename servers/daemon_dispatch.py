@@ -501,7 +501,59 @@ def _handle_reload_daemon(brain, args, graph_changes):
         return {"ok": False, "error": "Failed to send restart: %s" % str(e)}
 
 
-# Specialized remember_* handlers REMOVED 2026-04-05 — use remember() with type field.
+def _handle_brain_batch(brain, args, graph_changes):
+    """Execute multiple brain operations in one call.
+
+    Accepts mixed operations: remember, revise, connect in any order.
+    Each operation is validated and executed sequentially.
+    Returns results for each operation.
+
+    Args:
+        operations: list of {op: "remember"|"revise"|"connect", ...fields}
+    """
+    operations = args.get("operations", [])
+    if not operations:
+        return {"ok": False, "error": "operations array is required"}
+
+    top_encoding_source = args.get("encoding_source")
+    results = []
+
+    for i, op_spec in enumerate(operations):
+        op = op_spec.get("op", "")
+        try:
+            if op == "remember":
+                # Route through existing remember handler
+                op_args = {k: v for k, v in op_spec.items() if k != "op"}
+                if top_encoding_source and "encoding_source" not in op_args:
+                    op_args["encoding_source"] = top_encoding_source
+                r = _handle_remember(brain, op_args, graph_changes)
+                results.append({"op": "remember", "index": i, **r})
+
+            elif op == "revise":
+                op_args = {k: v for k, v in op_spec.items() if k != "op"}
+                if top_encoding_source and "encoding_source" not in op_args:
+                    op_args["encoding_source"] = top_encoding_source
+                r = _handle_revise(brain, op_args, graph_changes)
+                results.append({"op": "revise", "index": i, **r})
+
+            elif op == "connect":
+                op_args = {k: v for k, v in op_spec.items() if k != "op"}
+                r = _handle_connect(brain, op_args, graph_changes)
+                results.append({"op": "connect", "index": i, **r})
+
+            else:
+                results.append({"op": op, "index": i, "ok": False,
+                                "error": "Unknown op: %s (use remember, revise, connect)" % op})
+        except Exception as e:
+            results.append({"op": op, "index": i, "ok": False, "error": str(e)[:200]})
+
+    succeeded = sum(1 for r in results if r.get("ok"))
+    return {"ok": True, "result": {
+        "total": len(operations),
+        "succeeded": succeeded,
+        "failed": len(operations) - succeeded,
+        "results": results,
+    }}
 
 
 def _handle_record_divergence(brain, args, graph_changes):
@@ -732,6 +784,27 @@ def _handle_connect(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
+def _handle_connect_batch(brain, args, graph_changes):
+    """Create multiple edges in one call."""
+    connections = args.get("connections", [])
+    if not connections:
+        return {"ok": False, "error": "connections array is required"}
+
+    created = 0
+    for c in connections:
+        try:
+            brain.connect(
+                source_id=_resolve_id(brain, c.get("source_id", "")),
+                target_id=_resolve_id(brain, c.get("target_id", "")),
+                relation=c.get("relation", "related_to"),
+                weight=c.get("weight", 0.5))
+            created += 1
+        except Exception:
+            pass
+    graph_changes.append("CONNECT_BATCH: %d edges" % created)
+    return {"ok": True, "result": {"edges_created": created}}
+
+
 def _handle_enrich(brain, args, graph_changes):
     result = brain.store_enrichments(
         node_id=_resolve_id(brain, args.get("node_id", "")),
@@ -835,6 +908,8 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     # encode_cluster: DEPRECATED — use remember_batch() instead. Handler kept for backward compat.
     # "encode_cluster":        CmdEntry(_handle_encode_cluster,      is_write=True, marks_dirty=True),
     "connect":               CmdEntry(_handle_connect,             is_write=True, marks_dirty=True),
+    "connect_batch":         CmdEntry(_handle_connect_batch,       is_write=True, marks_dirty=True),
+    "brain_batch":           CmdEntry(_handle_brain_batch,         is_write=True, marks_dirty=True),
     "enrich":                CmdEntry(_handle_enrich,              is_write=True, marks_dirty=True),
     "eval":                  CmdEntry(_handle_eval,                is_write=True, marks_dirty=True),
 }
