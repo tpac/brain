@@ -54,12 +54,12 @@ The S1 encoding prompt and data assembly need serious attention:
 ### 2. Scale Architecture (revised)
 Scales simplified from 5 to 4:
 - **S0** — raw exchange (hooks observe, not control)
-- **S1** — turn encoder. Fires every 5 stops, sees 15 messages. Encodes knowledge. Already built.
+- **S1** — turn encoder. Fires every 5 stops, sees 10 turns (20 messages). Encodes knowledge. Already built.
 - **S2** — graph maintenance between sessions. Community detection, consolidation, correction chains, dedup, confidence recalibration. Partially built (idle hook has pieces).
 - **S3** — abstract reasoning. Curiosity, uncertainty resolution, cross-project patterns.
 - **S4** — external research, web search, growth.
 
-S1 with wider observation window replaces the "session encoder" concept. No separate scale needed for journey arcs — S1 sees the journey with 15 messages.
+S1 with wider observation window replaces the "session encoder" concept. No separate scale needed for journey arcs — S1 sees 10 turns.
 
 ### 3. Shared Infrastructure (MEDIUM)
 - Move `_expand_and_enrich` from scales/s1/recall.py to shared (MCP recall uses it too)
