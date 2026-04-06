@@ -1814,7 +1814,7 @@ async function loadEncodingActivity() {
       if ((run.edges || []).length > 8) {
         html += '<div style="color:#555;font-size:10px;padding:2px 8px">+' + ((run.edges || []).length - 8) + ' more edges</div>';
       }
-      if (!run.nodes.length && !run.edges.length) {
+      if (!(run.nodes || []).length && !(run.edges || []).length) {
         html += '<div style="color:#555;font-size:11px;padding:4px 8px">(no write actions)</div>';
       }
       html += '</div>';
