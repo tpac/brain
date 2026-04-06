@@ -76,42 +76,42 @@ The raw partnership interaction. Both Tom and Anchor operate here.
 
 ### Scale 1: Turn (every ~5 stops)
 The brain's first processing pass — recall, judge, encode.
-- **Detect:** Stop hook fires, conversation happened
-- **O:** message_stream (last 5 turns) + judge output
-- **K:** Judge-selected nodes (5-8 per turn)
+- **Detect:** Stop hook fires, counter % 5 == 0
+- **O:** S0 traces (last 15 messages — 3 runs worth of context)
+- **K:** Judge-selected nodes from those turns (via node catalog)
 - **Δ:** Encoded nodes, revised nodes, new connections
-- **Commit:** Write directly (Tom is present)
+- **Commit:** Write via dispatch (brain_batch)
 - **Technology:** Sonnet API, background thread, ~30s, ~$0.03
-- **Status:** BUILT (encoding_agent.py)
+- **Status:** BUILT (scales/s1/encode.py). Wider window (15 msgs) replaces need for separate session scale.
 
-### Scale 2: Session (every ~15 stops)
-Patterns across accumulated turns — the journey, not the moments.
-- **Detect:** 15 stops accumulated since last run
-- **O:** All Turn traces since last run + full message_stream
-- **K:** All session-touched nodes + neighbors + correction traces
-- **Δ:** Journey arcs, cross-turn connections, consolidated shallow encodings
-- **Commit:** Write directly (Tom still present)
-- **Technology:** Sonnet API, background thread, ~60s, ~$0.06
+### Scale 2: Sleep (between sessions)
+Graph-wide operations that need the full picture.
+- **Detect:** Session end, or graph structure signals (communities, dedup, orphans)
+- **O:** S1 traces across sessions, community structures, correction chains
+- **K:** Community members, flagged nodes, cross-session patterns
+- **Δ:** Community labels, merges, confidence adjustments, consolidation, reconsolidation
+- **Commit:** Stage for review → signal queue → Tom reviews next session
+- **Technology:** Python compute (leidenalg, networkx, numpy) + Haiku/Sonnet
+- **Status:** PARTIALLY BUILT (idle hook has dream/consolidate/heal)
+
+### Scale 3: Reasoning (periodic)
+Abstract patterns, curiosity, uncertainty resolution.
+- **Detect:** Uncertainty nodes accumulate, stale patterns, curiosity signals
+- **O:** S2 traces + full graph + uncertainty/curiosity nodes
+- **K:** Open questions, recurring patterns, cross-project bridges
+- **Δ:** Abstract insights, resolved uncertainties, new questions
+- **Commit:** Stage for review + briefing to Tom
+- **Technology:** Sonnet/Opus, Claude Code scheduled task
 - **Status:** NOT BUILT
 
-### Scale 3: Sleep (between sessions)
-Graph-wide operations that need the full picture.
-- **Detect:** Graph structure — Leiden communities, betweenness centrality, cosine dedup scan, correction chains, orphans
-- **O:** Community structures, bridge nodes, contradiction signals
-- **K:** Community members, flagged nodes, session traces
-- **Δ:** Community labels, merges, confidence adjustments, schema nodes, reconsolidation tags
-- **Commit:** Stage for review → signal queue → Tom reviews next session
-- **Technology:** Python compute (leidenalg, networkx, numpy) + Haiku/Sonnet, Claude Code scheduled task
-- **Status:** PARTIALLY BUILT (idle hook has dream/consolidate/heal but no graph-aware encoding)
-
-### Scale 4: Growth (periodic / weekly)
+### Scale 4: Growth (weekly)
 External knowledge and long-term evolution.
-- **Detect:** Uncertainty nodes, staleness, external triggers, open questions
+- **Detect:** Stale decisions, external triggers, research questions from S3
 - **O:** Full graph + web search results + external research
-- **K:** Uncertainty nodes, open questions, stale decisions
-- **Δ:** New knowledge from research, updated stale decisions, cross-project bridges
+- **K:** Stale decisions, open questions, uncertainty nodes
+- **Δ:** New knowledge from research, updated decisions, cross-project bridges
 - **Commit:** Stage for review + briefing to Tom
-- **Technology:** Sonnet/Opus, Claude Code scheduled task, web search, worktrees
+- **Technology:** Opus, Claude Code scheduled task, web search, worktrees
 - **Status:** NOT BUILT
 
 ### Autonomy Gradient
@@ -120,8 +120,8 @@ More scope = more time = less autonomy = more checkpoints.
 | Scale | Tom present? | Correction source | Commit model |
 |-------|-------------|-------------------|--------------|
 | S0 | Yes | Immediate | Response sent |
-| S1 | Yes | Same session | Write directly |
-| S2 | Yes | Same session | Write directly |
+| S1 | Yes | Same session | Write via dispatch |
+| S2 | No | Signal queue → next session | Stage for review |
 | S3 | No | Signal queue → next session | Stage for review |
 | S4 | No | Briefing → Tom reviews | Stage + briefing |
 
@@ -273,7 +273,10 @@ Prior session syntheses exist but encoder never sees them.
 - The fractal feedback loop is a strength IF corrections propagate reliably.
 - The brain's hunger (repeating to learn) is the system seeking reconsolidation opportunities.
 - Higher scales looking at lower scales see the journey — the stumbling IS the outcome.
-- Outcome is scale-dependent. That's not a gap. That's the system working.
+- **O/K/Δ is the complete formula.** There is no "outcome" event. The outcome of one cycle is the observation of the next. The loop closes through time.
+- **Impact is measured by reasoning, not metrics.** Each scale gets traces + target function principles and reasons about whether Δ improved the partnership. No outcome table needed.
+- **LLM reasoning IS the knowledge management system.** The architecture gives it the right data at the right time with the right questions. It appreciates with every model generation.
+- **Each scale optimizes its own interactions through traces.** Only the master prompt (target function + principles) is human-curated. Everything else the system learns.
 
 ---
 

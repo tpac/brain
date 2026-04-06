@@ -1,6 +1,6 @@
 # Next Work — After Session 2026-04-05 (scales + cleanup)
 
-## 27 commits this session
+## 30 commits this session
 
 ### Architecture: scales/ directory
 - `scales/dispatch.py` — shared TCP dispatch + dispatch factory
@@ -10,57 +10,63 @@
 - Old files → backward-compat re-export shims
 
 ### Database cleanup: 23 tables dropped
-- brain_logs.db: 23 → 9 tables (recall_log, message_stream, access_log, suggest_log, health_log, brain_telemetry, curiosity_log, conflict_log, miss_log, eval_snapshots, tuning_log, pending_consolidation, staged_learnings, recall_gaps)
-- brain.db: 32 → 23 tables (projects, project_maps, reasoning_chains, reasoning_steps, session_activity, summaries, prune_archive, version_history, suggest_metrics)
+- brain_logs.db: 23 → 9 tables
+- brain.db: 32 → 23 tables
 
 ### Code cleanup: ~2,500+ lines removed
-- brain_precision.py — entire module deleted (763 lines)
-- dal_message_stream.py — entire module deleted (332 lines)
+- brain_precision.py deleted (763 lines)
+- dal_message_stream.py deleted (332 lines)
 - 18 remember_*/create_* wrapper methods + 6 MCP tools removed
-- TelemetryDAL class removed (~100 lines)
-- access_log, recall_log, message_stream write paths removed
-- get_engineering_context gutted (just nodes, no special structure)
+- TelemetryDAL, dead DAL methods, stale table references cleaned
 
 ### New capabilities
-- MCP recall enriched (corrections, graph expansion, metadata)
-- `brain_batch` — unified multi-op tool (remember + revise + connect)
+- `brain_batch` — unified multi-op tool (remember + revise + connect in one call)
 - `connect_batch` — multiple edges in one call
-- Dashboard reads from traces (not deprecated tables)
-- Dashboard session selector + encoding tab from S1E traces
+- MCP recall enriched (corrections, graph expansion, metadata)
+- Dashboard reads from traces, session selector, encoding tab from S1E traces
+- Dashboard moved to `dashboard/` (not part of brain)
+
+### Key design decisions
+- O/K/Δ is the complete formula — outcome is the next cycle's O, not a fourth element
+- LLM reasoning IS the knowledge management system — architecture gives it the right data at the right time with the right questions
+- Each scale optimizes its own interactions through traces — only the master prompt is human-curated
+- Impact measurement is reasoning about traces, not metrics
 
 ---
 
 ## Priority for Next Session
 
-### 1. ENCODER REGRESSION (CRITICAL — quality has degraded)
-The S1 encoding prompt needs serious attention. Tom identified these issues:
+### 1. ENCODER FIX (CRITICAL — quality has degraded)
+The S1 encoding prompt and data assembly need serious attention:
 
-**Data assembly problems (scales/s1/encode.py `_build_user_content`):**
-- Node catalog shows truncated content — used to be full rich nodes with edges, corrections
-- Journal is reverse-ordered (Run #20 before Run #5)
-- "Run #5", "Run #10" are stop counter values, not sequential — confusing
-- max_messages may have regressed (should show 10 turns for context, fires every 5)
+**Data assembly (scales/s1/encode.py `_build_user_content`):**
+- Show 15 messages (was 10, may have regressed to 5) — more context, same 5-stop trigger
+- Node catalog must show full rich nodes with edges, corrections (currently truncated)
+- Journal should be chronological, not reverse-ordered
+- Stop counter values (Run #5, #10) need context — label as run sequence not raw counter
 
-**Prompt problems (interactions table `encoding_agent` template):**
-- Watching/Skipped/Encoded journal format not documented in prompt
-- Session Context is 800 chars of pipe-separated noise — hard to parse
-- ID formats inconsistent between prompt examples and actual data
-- "BRAIN SURFACED" in timeline shows noise like "judge selected but no IDs parsed"
+**Prompt (interactions table `encoding_agent` template):**
+- Document watching/skipped/encoded journal format
+- Fix ID format inconsistency between examples and actual data
+- Clean up "BRAIN SURFACED" noise in timeline
+- Session Context is 800 chars of pipe-separated noise — needs structure
 
-**Action:** Dedicated encoder prompt session. Read the actual prompt Sonnet receives (from /tmp/brain-encoding-prompt-*.json), compare against v3.2 intent, fix both the data assembly and the prompt text.
+### 2. Scale Architecture (revised)
+Scales simplified from 5 to 4:
+- **S0** — raw exchange (hooks observe, not control)
+- **S1** — turn encoder. Fires every 5 stops, sees 15 messages. Encodes knowledge. Already built.
+- **S2** — graph maintenance between sessions. Community detection, consolidation, correction chains, dedup, confidence recalibration. Partially built (idle hook has pieces).
+- **S3** — abstract reasoning. Curiosity, uncertainty resolution, cross-project patterns.
+- **S4** — external research, web search, growth.
 
-### 2. S2 Session Encoder (HIGH — infrastructure ready)
-Everything needed: scales/ directory, runner.py, dispatch.py, trace_contract has S2 ref_types, brain_batch tool. Copy S1E pattern.
+S1 with wider observation window replaces the "session encoder" concept. No separate scale needed for journey arcs — S1 sees the journey with 15 messages.
 
-### 3. Outcome Traces (HIGH — the learning signal)
-O/K/Δ traced but not outcomes. Without outcomes, no scale learns whether its Δ served the target function.
+### 3. Shared Infrastructure (MEDIUM)
+- Move `_expand_and_enrich` from scales/s1/recall.py to shared (MCP recall uses it too)
+- Standardize scale interface: observe → select → integrate → trace
 
-### 4. _expand_and_enrich shared (MEDIUM)
-Currently in scales/s1/recall.py but MCP recall also uses it. Should be shared infrastructure — any consumer that surfaces nodes wants correction enrichment + graph expansion.
-
-### 5. Remaining cleanup (LOW)
-- brain_surface.py still references miss_log, staged_learnings (silently fails)
-- brain_engineering.py dead methods (track_session_event, assess_session_health callers)
-- Fatigue storage model (JSON blob instead of per-row in session_state — 52K→87 rows)
-- VACUUM brain_logs.db to reclaim space (tables dropped but pages not freed)
-- Shim files cleanup (encoding_agent.py, judge_contract.py, encoding_contract.py)
+### 4. Remaining Cleanup (LOW)
+- brain_surface.py still has miss_log/staged_learnings SQL (silently fails)
+- Fatigue storage: JSON blob instead of per-row (52K→87 rows in session_state)
+- VACUUM brain_logs.db (tables dropped but space not reclaimed)
+- Shim files cleanup
