@@ -55,7 +55,7 @@ The S1 encoding prompt and data assembly need serious attention:
 Scales simplified from 5 to 4:
 - **S0** — raw exchange (hooks observe, not control)
 - **S1** — turn encoder. Fires every 5 stops, sees 10 turns (20 messages). Encodes knowledge. Already built.
-- **S2** — graph maintenance between sessions. Community detection, consolidation, correction chains, dedup, confidence recalibration. Partially built (idle hook has pieces).
+- **S2** — graph maintenance between sessions. Community detection, consolidation, correction chains, dedup, confidence recalibration. **Also: tool use learning** — reads S0 tool traces to capture operational intelligence (workarounds, tool patterns, failure modes). Encode at S2, surface at PreToolUse. Partially built (idle hook has pieces).
 - **S3** — abstract reasoning. Curiosity, uncertainty resolution, cross-project patterns.
 - **S4** — external research, web search, growth.
 
