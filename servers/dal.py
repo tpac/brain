@@ -172,10 +172,7 @@ class LogsDAL:
 
         # suggest_log: REMOVED 2026-04-05 (table dropped)
 
-        # health_log: 90 days
-        cur = self.conn.execute(
-            "DELETE FROM health_log WHERE created_at < datetime('now', '-90 days')")
-        stats['health_log_pruned'] = cur.rowcount
+        # health_log: REMOVED 2026-04-05 (table dropped)
 
         # hook_errors: 30 days (surfaced ones only — unsurfaced kept until shown)
         try:

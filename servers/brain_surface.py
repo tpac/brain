@@ -512,14 +512,7 @@ class BrainSurfaceMixin:
         except Exception as e:
             self._log_error('health_stale_staged', e, 'checking for stale staged learnings')
 
-        # Log health check
-        try:
-            self.logs_conn.execute('''
-                INSERT INTO health_log (session_id, check_type, result, actions_taken, created_at)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (session_id, 'boot_check', json.dumps(issues), json.dumps(actions), ts))
-        except Exception as e:
-            self._log_error('health_log', e, 'logging health check results')
+        # health_log writes REMOVED 2026-04-05 — table dropped
 
         return {
             'healthy': not any(i['severity'] == 'high' for i in issues),
