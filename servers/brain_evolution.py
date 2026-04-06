@@ -457,37 +457,8 @@ class BrainEvolutionMixin:
         except Exception as _e:
             self._log_error("auto_heal", _e, "")
 
-        # 2b. Recall weights — track which signal best predicts re-access
-        try:
-            # Simple heuristic: if old nodes (low recency) are frequently re-accessed,
-            # recency weight is too high
-            # Two-step: get accessed IDs from logs DB, then filter in main DB
-            accessed_ids = self.logs_conn.execute(
-                """SELECT DISTINCT node_id FROM access_log
-                   WHERE timestamp > datetime('now', '-7 days')"""
-            ).fetchall()
-            if accessed_ids:
-                id_list = ','.join("'%s'" % r[0].replace("'", "''") for r in accessed_ids)
-                old_reaccessed = self.conn.execute(
-                    """SELECT COUNT(*) FROM nodes
-                       WHERE id IN (%s) AND created_at < datetime('now', '-30 days')
-                         AND locked = 0""" % id_list
-                ).fetchone()[0]
-            else:
-                old_reaccessed = 0
-            total_accessed = self.logs_conn.execute(
-                """SELECT COUNT(*) FROM access_log
-                   WHERE timestamp > datetime('now', '-7 days')"""
-            ).fetchone()[0]
-
-            # Recall weight auto-tuning removed 2026-04-02.
-            # Old additive weights (recency/relevance/frequency/emotion) replaced by
-            # recall_scoring.unified_score() which uses multiplicative modulators.
-            # Future auto-tuning should target FRESHNESS_BANDS, EMOTION_AMPLIFICATION,
-            # FREQUENCY_PENALTY_SCALE in brain_constants.py.
-            pass
-        except Exception as _e:
-            self._log_error("auto_heal", _e, "")
+        # 2b. Recall weight auto-tuning — REMOVED 2026-04-02 (replaced by unified_score)
+        # access_log table dropped 2026-04-05.
 
         # 2c. Similarity thresholds — adjust based on evolution dismiss/confirm rates
         try:
@@ -603,16 +574,9 @@ class BrainEvolutionMixin:
             hub_ids = self.conn.execute(
                 """SELECT source_id FROM edges GROUP BY source_id HAVING COUNT(*) > 30"""
             ).fetchall()
+            # access_log dropped 2026-04-05. Hub ratio detection needs traces migration.
             hub_in_recent = 0
-            if hub_ids:
-                hub_id_list = ','.join("'%s'" % r[0].replace("'", "''") for r in hub_ids)
-                hub_in_recent = self.logs_conn.execute(
-                    """SELECT COUNT(*) FROM access_log
-                       WHERE node_id IN (%s) AND timestamp > datetime('now', '-7 days')""" % hub_id_list
-                ).fetchone()[0]
-            total_recent = self.logs_conn.execute(
-                "SELECT COUNT(*) FROM access_log WHERE timestamp > datetime('now', '-7 days')"
-            ).fetchone()[0]
+            total_recent = 0
 
             if total_recent > 20:
                 hub_ratio = hub_in_recent / total_recent

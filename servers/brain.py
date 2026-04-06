@@ -332,10 +332,7 @@ class Brain(
                 # Delete entries older than 7 days
                 self.logs_conn.execute(
                     "DELETE FROM debug_log WHERE created_at < datetime('now', '-7 days')")
-                self.logs_conn.execute(
-                    "DELETE FROM access_log WHERE timestamp < datetime('now', '-7 days')")
-                self.logs_conn.execute(
-                    "DELETE FROM recall_log WHERE created_at < datetime('now', '-7 days')")
+                # access_log + recall_log tables dropped 2026-04-05
                 self.logs_conn.execute(
                     "DELETE FROM dream_log WHERE created_at < datetime('now', '-7 days')")
                 self.logs_conn.commit()

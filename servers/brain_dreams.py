@@ -337,20 +337,8 @@ class BrainDreamsMixin:
         ts = self.now()
         stats = {'consolidated': 0}
 
-        # Boost stability for nodes accessed 3+ times in last 24h
-        candidates = self.logs_conn.execute('''
-            SELECT node_id, COUNT(*) as cnt FROM access_log
-            WHERE timestamp > datetime(?, '-24 hours')
-            GROUP BY node_id HAVING cnt >= 3
-        ''', (ts,)).fetchall()
-
-        stab_boost = self._get_tunable('stability_boost', STABILITY_BOOST)
-        for node_id, _ in candidates:
-            self.conn.execute('''
-                UPDATE nodes SET stability = stability * ?, activation = MIN(1.0, activation + 0.1),
-                       updated_at = ? WHERE id = ? AND locked = 0
-            ''', (stab_boost, ts, node_id))
-            stats['consolidated'] += 1
+        # Stability boost from access_log REMOVED 2026-04-05 — table dropped.
+        # Future: rebuild from S1 traces (judge_selected events = meaningful access).
 
         # Promote well-connected nodes
         well_connected = self.conn.execute('''

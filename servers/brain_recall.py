@@ -1392,11 +1392,9 @@ class BrainRecallMixin:
     def _mark_accessed(self, node_id: str, session_id: str):
         """Mark a node as accessed, log it, and increment synaptic fatigue."""
         node_dal = NodeDAL(self.conn)
-        logs_dal = LogsDAL(self.logs_conn)
         node_dal.mark_accessed(node_id)
-        logs_dal.log_access(session_id, node_id)
         self.conn.commit()
-        self.logs_conn.commit()
+        # access_log write removed 2026-04-05 — table dropped
 
         # Increment session fatigue counter — next recall will dampen this node's cosine
         # v9.2: Also persist to session_state DB (survives daemon restart)

@@ -96,37 +96,9 @@ class LogsDAL:
         ).fetchone()
         return row[0] if row else 0
 
-    # ── access_log ──
-
-    def log_access(self, session_id: str, node_id: str) -> None:
-        """Record a node access in the access log. Caller commits."""
-        now = datetime.now(timezone.utc).isoformat()
-        self.conn.execute(
-            'INSERT INTO access_log (session_id, node_id, timestamp) '
-            'VALUES (?, ?, ?)',
-            (session_id, node_id, now)
-        )
-
-    def get_access_count(self, node_id: str) -> int:
-        """Get total access count for a node."""
-        row = self.conn.execute(
-            'SELECT COUNT(*) FROM access_log WHERE node_id = ?', (node_id,)
-        ).fetchone()
-        return row[0] if row else 0
-
-    def get_recent_accesses(self, hours: int = 24, limit: int = 50) -> List[Dict[str, Any]]:
-        """Get recent access log entries."""
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-        rows = self.conn.execute(
-            'SELECT node_id, session_id, query, context, created_at FROM access_log '
-            'WHERE created_at > ? ORDER BY created_at DESC LIMIT ?',
-            (cutoff, limit)
-        ).fetchall()
-        return [
-            {'node_id': r[0], 'session_id': r[1], 'query': r[2],
-             'context': r[3], 'created_at': r[4]}
-            for r in rows
-        ]
+    # ── access_log — REMOVED 2026-04-05 ──
+    # Table dropped. 415K rows, 151K/day writes, never used for anything meaningful.
+    # Node access_count on nodes table is the durable stat.
 
     # ── recall_log — REMOVED 2026-04-05 ──
     # All recall_log write methods deleted. Traces (trace_events) are source of truth.
@@ -189,22 +161,14 @@ class LogsDAL:
         stats = {}
 
         # --- Logs DB retention ---
-        # access_log: 30 days (uses 'timestamp' column, not 'created_at')
-        cur = self.conn.execute(
-            "DELETE FROM access_log WHERE timestamp < datetime('now', '-30 days')")
-        stats['access_log_pruned'] = cur.rowcount
+        # access_log: REMOVED 2026-04-05 (table dropped)
+        # recall_log: REMOVED 2026-04-05 (table dropped)
 
         # debug_log: keep errors forever, prune telemetry/other after 30 days
         cur = self.conn.execute(
             "DELETE FROM debug_log WHERE event_type != 'error' "
             "AND created_at < datetime('now', '-30 days')")
         stats['debug_log_pruned'] = cur.rowcount
-
-        # recall_log: keep evaluated forever, prune unevaluated after 30 days
-        cur = self.conn.execute(
-            "DELETE FROM recall_log WHERE evaluated_at IS NULL "
-            "AND created_at < datetime('now', '-30 days')")
-        stats['recall_log_pruned'] = cur.rowcount
 
         # suggest_log: 30 days
         cur = self.conn.execute(
