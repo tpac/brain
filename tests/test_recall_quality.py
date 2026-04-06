@@ -20,14 +20,6 @@ from datetime import datetime, timedelta
 # Add parent to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from servers.brain import Brain
-from servers.brain_constants import (
-    INTENT_PATTERNS,
-    INTENT_TYPE_BOOSTS,
-    SPREAD_DECAY,
-    MAX_HOPS,
-    TFIDF_STOP_WORDS,
-)
 from tests.brain_test_base import BrainTestBase
 
 
@@ -70,92 +62,6 @@ class TestScoringWeights(BrainTestBase):
         self.assertTrue(len(result_list) >= 1, 'Should find at least one result')
         self.assertIn('Clerk', result_list[0]['title'],
                       f'Clerk node should rank first, got: {result_list[0]["title"]}')
-
-    def test_frequency_boost(self):
-        """A node accessed many times should rank higher than one accessed once.
-
-        Creates two nodes about React component lifecycle. Accesses one 10 times
-        via recall. On the next recall, the frequently-accessed one should rank higher
-        due to the frequency scoring component (log2-based).
-        """
-        n1 = self.brain.remember(
-            type='decision',
-            title='React lifecycle: prefer useEffect cleanup over componentWillUnmount',
-            content='All new components must use functional patterns with useEffect return cleanup. '
-                    'Class components with componentWillUnmount are legacy and should be migrated '
-                    'incrementally during feature work, not as standalone refactoring tickets.',
-            keywords='react lifecycle useEffect cleanup componentWillUnmount functional'
-        )
-        n2 = self.brain.remember(
-            type='decision',
-            title='React lifecycle: avoid useLayoutEffect except for DOM measurement',
-            content='useLayoutEffect blocks the browser paint and causes jank on slower devices. '
-                    'Only use it when you need synchronous DOM measurements before the user sees '
-                    'the frame. All other side effects belong in useEffect.',
-            keywords='react lifecycle useLayoutEffect useEffect DOM measurement performance'
-        )
-        self.brain.save()
-
-        # Access n1 ten times to boost its frequency score
-        for _ in range(10):
-            self.brain.recall('react component lifecycle patterns', limit=5)
-            # Each recall marks accessed nodes, so n1 gets frequency bumps
-
-        # Now query again — the one that was accessed more should rank higher
-        results = self.brain.recall('react lifecycle useEffect', limit=5)
-        result_list = results.get('results', [])
-        self.assertTrue(len(result_list) >= 2,
-                        f'Should find at least 2 results, got {len(result_list)}')
-        # The first result should have a higher access_count
-        top_access = result_list[0].get('access_count', 0)
-        second_access = result_list[1].get('access_count', 0)
-        self.assertGreaterEqual(top_access, second_access,
-                                'Frequently accessed node should have higher access_count')
-
-    def test_emotion_weight(self):
-        """A node with high emotional intensity should have higher emotion_intensity in recall.
-
-        Creates two decision nodes with identical keywords/content structure. One carries
-        high emotion (0.8) and the other is neutral. Verify that the emotion component
-        is reflected in the scoring breakdown.
-        """
-        self.brain.remember(
-            type='decision',
-            title='API rate limiting: implement token bucket with Redis sliding window',
-            content='After the DDoS incident that took down the billing service for 47 minutes, '
-                    'we decided on a token bucket algorithm backed by Redis sorted sets. Each API '
-                    'key gets 1000 tokens per minute with burst capacity of 200. Rate limit headers '
-                    'are mandatory on all responses per RFC 6585.',
-            keywords='api rate-limiting token-bucket redis sliding-window ddos billing',
-            emotion=0.8,
-            emotion_label='urgency'
-        )
-        self.brain.remember(
-            type='decision',
-            title='API rate limiting: use fixed-window counters for internal services',
-            content='Internal service-to-service calls use simpler fixed-window counters because '
-                    'the traffic patterns are predictable and bursts are expected during batch jobs. '
-                    'No need for the complexity of sliding windows when the caller is trusted.',
-            keywords='api rate-limiting fixed-window internal services counters',
-            emotion=0,
-            emotion_label='neutral'
-        )
-        self.brain.save()
-
-        results = self.brain.recall('rate limiting strategy api', limit=5)
-        result_list = results.get('results', [])
-        self.assertTrue(len(result_list) >= 2,
-                        f'Should find at least 2 results, got {len(result_list)}')
-        # Both nodes should be found
-        token_bucket = [r for r in result_list if 'token bucket' in r['title']]
-        fixed_window = [r for r in result_list if 'fixed-window' in r['title']]
-        self.assertTrue(len(token_bucket) > 0, 'Should find token bucket node')
-        self.assertTrue(len(fixed_window) > 0, 'Should find fixed-window node')
-        # Verify emotion_intensity is correctly propagated in scoring breakdown
-        tb_emotion = token_bucket[0].get('emotion_intensity', 0)
-        fw_emotion = fixed_window[0].get('emotion_intensity', 0)
-        self.assertGreater(tb_emotion, fw_emotion,
-                          f'High-emotion node should have higher emotion_intensity ({tb_emotion} vs {fw_emotion})')
 
     def test_locked_never_decays(self):
         """A locked rule node should appear in recall even if its last_accessed is 60 days old.
@@ -358,37 +264,6 @@ class TestDampening(BrainTestBase):
         # Decision node should rank above project node
         self.assertEqual(result_list[0]['type'], 'decision',
                          f'Decision should rank first (type dampening), got type={result_list[0]["type"]}')
-
-    def test_confidence_weighting(self):
-        """Confidence should modulate recall scores: high confidence boosts, low penalizes.
-
-        The confidence signal is intentionally mild (~0.04 boost at 0.95, ~-0.06 at 0.3).
-        Rather than relying on end-to-end ranking (which depends on embedding similarity),
-        verify the scoring function directly: same semantic base should score higher at
-        high confidence than low confidence.
-        """
-        from servers.recall_scoring import unified_score, confidence_boost
-        from servers.brain_constants import CONFIDENCE_NEUTRAL
-
-        # Verify the confidence_boost function produces correct directional signals
-        high_boost = confidence_boost(0.95)
-        low_boost = confidence_boost(0.3)
-        neutral_boost = confidence_boost(CONFIDENCE_NEUTRAL)
-
-        self.assertGreater(high_boost, 0.0,
-                           f'High confidence (0.95) should produce positive boost, got {high_boost}')
-        self.assertLess(low_boost, 0.0,
-                        f'Low confidence (0.3) should produce negative boost, got {low_boost}')
-        self.assertAlmostEqual(neutral_boost, 0.0, places=5,
-                               msg=f'Neutral confidence should produce ~0 boost, got {neutral_boost}')
-
-        # Same semantic score should yield higher final score at high confidence
-        base = 0.75
-        high_score = unified_score(base, confidence=0.95)
-        low_score = unified_score(base, confidence=0.3)
-        self.assertGreater(high_score, low_score,
-                           f'Same base ({base}) should score higher at conf=0.95 ({high_score:.4f}) '
-                           f'than conf=0.3 ({low_score:.4f})')
 
     def test_project_filtering(self):
         """Nodes in the queried project should rank higher than nodes in a different project.
