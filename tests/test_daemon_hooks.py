@@ -18,7 +18,7 @@ from tests.brain_test_base import BrainTestBase
 from servers.daemon_hooks import hook_recall
 
 
-# Realistic output matching format_surface_output() in recall_contract.py
+# Realistic output matching format_surface_output() in surface_contract.py
 _MOCK_SURFACE_OUTPUT = (
     'Brain recalled 1 memories:\n\n'
     '[rule] "Test rule for recall" (id:abcd1234, conf:1.0)\n'

@@ -1,7 +1,7 @@
 """Brain Voice — DECIDE + FORMAT layer for brain consciousness output.
 
 Consolidates all formatting and signal selection logic that was previously
-scattered across brain_surface.py and daemon_hooks.py. BrainVoice is a
+scattered across brain_assembly.py and daemon_hooks.py. BrainVoice is a
 collaborator object (not a mixin) that takes a Brain instance and produces
 formatted output for two channels:
   - for_claude: reasoning context, wrapped in [BRAIN]...[/BRAIN]
@@ -45,7 +45,7 @@ class BrainVoice:
     def __init__(self, brain):
         self.brain = brain
 
-    # ── Formatting primitives (moved from brain_surface.py) ──
+    # ── Formatting primitives (moved from brain_assembly.py) ──
 
     @staticmethod
     def fl(items, header, max_n=5, fmt=None, suffix=None, indent="  "):

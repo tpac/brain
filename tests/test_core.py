@@ -32,45 +32,6 @@ from tests.brain_test_base import BrainTestBase
 
 
 
-class TestVocabulary(BrainTestBase):
-    """Test vocabulary system."""
-
-    def test_learn_and_resolve(self):
-        learn_result = self.brain.learn_vocabulary('GPR', ['Gross Profit Rate'], context='finance')
-        self.assertIn('id', learn_result)
-        resolve_result = self.brain.resolve_vocabulary('GPR')
-        self.assertIsNotNone(resolve_result)
-        # Single match returns {id, title, content}, not {mappings: [...]}
-        self.assertIn('id', resolve_result)
-        self.assertIn('GPR', resolve_result['title'])
-
-    def test_context_dependent_ambiguity(self):
-        # Seed enough nodes so the generic threshold (>5%) isn't triggered for second learn
-        for i in range(25):
-            self.brain.remember(type='concept', title=f'Padding node {i}',
-                content=f'Unrelated content {i}')
-        self.brain.learn_vocabulary('GPR', ['Gross Profit Rate'], context='finance')
-        self.brain.learn_vocabulary('GPR', ['Google PageRank'], context='SEO')
-        result = self.brain.resolve_vocabulary('GPR')
-        self.assertTrue(result.get('ambiguous', False),
-                       'Should be ambiguous with two contexts')
-        self.assertEqual(len(result['mappings']), 2)
-
-    def test_vocabulary_node_connected(self):
-        """Regression: vocab nodes must connect to graph at birth."""
-        # Create a target node first
-        target = self.brain.remember(type='concept', title='Gross Profit Rate',
-                                      content='Financial metric')
-        result = self.brain.learn_vocabulary('GPR', ['Gross Profit Rate'])
-        vocab_id = result.get('id')
-        if vocab_id:
-            edges = self.brain.conn.execute(
-                'SELECT * FROM edges WHERE source_id = ?', (vocab_id,)
-            ).fetchall()
-            self.assertTrue(len(edges) > 0,
-                          'Vocabulary node should have edges at birth')
-
-
 class TestConfidenceScoring(BrainTestBase):
     """Test confidence affects recall ranking."""
 

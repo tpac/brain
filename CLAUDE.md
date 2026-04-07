@@ -77,7 +77,7 @@ Triggered by Anchor's need to know — the brain surfaces context before Anchor 
 - Correction enrichment (corrects/corrected_by chains)
 - Formatted via `format_surface_output()`
 
-Files: `scales/s1/recall.py`, `scales/s1/recall_contract.py`
+Files: `scales/s1/surface.py`, `scales/s1/surface_contract.py`
 Traces: `s1r-{session_short}-{stop}` (O: candidates, K: selected, Δ: additionalContext)
 Interaction: `surface` — the learnable boundary that higher scales will evolve
 
@@ -159,7 +159,7 @@ What each boundary expects and produces. If recall changes its output shape, the
 
 - `contract.py` — field definitions, `format_node()`, `generate_field_summary()`. Single source of truth for what a node IS.
 - `pipeline_contract.py` — surface prompt assembly, z-weighted scoring groups. What flows between pipeline stages.
-- Scale contracts: `s1/recall_contract.py` (surface config, candidate formatting), `s1/encode_contract.py` (encoder config, catalog building)
+- Scale contracts: `s1/surface_contract.py` (surface config, candidate formatting), `s1/encode_contract.py` (encoder config, catalog building)
 
 Run `test_contract_sync.py` after modifying ANY brain API layer. The contract flows to: remember() signature → MCP schema → dispatch → encoding agent tools → SKILL.md docs.
 

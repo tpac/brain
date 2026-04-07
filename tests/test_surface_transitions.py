@@ -84,7 +84,7 @@ class TestDecodeTransitions(BrainTestBase):
         matches them against candidates by id[:8]. If the format diverges,
         Claude gets empty context despite the surface selecting nodes.
         """
-        from servers.scales.s1.recall_contract import format_surface_output
+        from servers.scales.s1.surface_contract import format_surface_output
 
         # Create a node so we have a real ID
         node = self.brain.remember(
@@ -129,7 +129,7 @@ class TestDecodeTransitions(BrainTestBase):
         If the surface hallucinates an ID that doesn't match any candidate,
         format_surface_output should skip it gracefully.
         """
-        from servers.scales.s1.recall_contract import format_surface_output
+        from servers.scales.s1.surface_contract import format_surface_output
 
         candidates = [{
             'id': 'real1234-full-id',
@@ -159,7 +159,7 @@ class TestDecodeTransitions(BrainTestBase):
         correction_enrich must find these relationships so the voice surface
         can warn Claude about superseded knowledge.
         """
-        from servers.scales.s1.recall_contract import correction_enrich
+        from servers.scales.s1.surface_contract import correction_enrich
 
         node_a = self.brain.remember(
             type='decision',
@@ -272,7 +272,7 @@ class TestDecodeTransitions(BrainTestBase):
         IDs and not raise errors. Tests that the recall output shape is compatible
         with the surface input shape.
         """
-        from servers.scales.s1.recall_contract import build_surface_prompt
+        from servers.scales.s1.surface_contract import build_surface_prompt
 
         # Store several nodes to get real recall results
         self.brain.remember(
@@ -325,7 +325,7 @@ class TestDecodeTransitions(BrainTestBase):
         format_surface_output must include the correction warning in the
         additionalContext string. Tests the corrections kwarg wiring.
         """
-        from servers.scales.s1.recall_contract import format_surface_output
+        from servers.scales.s1.surface_contract import format_surface_output
 
         node_id = 'abc12345-full-uuid-here'
         short_id = node_id[:8]

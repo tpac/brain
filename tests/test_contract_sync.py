@@ -31,12 +31,11 @@ class TestBrainMethodsExist(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Introspect all brain modules for public encoding/connection methods."""
-        from servers import brain_engineering, brain_vocabulary, brain_connections, brain_remember, brain_evolution
+        from servers import brain_engineering, brain_connections, brain_remember, brain_evolution
 
         cls.methods = {}
         for mod_name, mod in [
             ('brain_engineering', brain_engineering),
-            ('brain_vocabulary', brain_vocabulary),
             ('brain_connections', brain_connections),
             ('brain_remember', brain_remember),
             ('brain_evolution', brain_evolution),
@@ -147,9 +146,11 @@ class TestMCPToolSync(unittest.TestCase):
         """Every MCP tool must have a matching daemon command."""
         from servers.daemon_dispatch import COMMAND_TABLE
         daemon_cmds = set(COMMAND_TABLE.keys())
+        # These commands are handled directly by daemon_server before COMMAND_TABLE dispatch
+        daemon_direct = {'restart', 'shutdown'}
 
         for tool in self.mcp_tools:
-            self.assertIn(tool, daemon_cmds,
+            self.assertTrue(tool in daemon_cmds or tool in daemon_direct,
                           f"MCP tool '{tool}' has no daemon command — will fail at runtime")
 
     def test_core_write_tools_exposed(self):

@@ -52,11 +52,13 @@ class TestIntegrity(unittest.TestCase):
         """Every MCP tool must have a matching daemon command."""
         mcp_names = {t['name'] for t in MCP_TOOLS}
         dispatch_names = set(COMMAND_TABLE.keys())
+        # Commands handled directly by daemon_server before COMMAND_TABLE dispatch
+        # (they kill/restart the process — can't go through normal dispatch)
+        daemon_direct = {'restart', 'shutdown'}
 
-        # MCP tools that map to daemon commands
         for name in mcp_names:
-            self.assertIn(name, dispatch_names,
-                          f"MCP tool '{name}' has no dispatch entry in COMMAND_TABLE")
+            self.assertTrue(name in dispatch_names or name in daemon_direct,
+                          f"MCP tool '{name}' has no dispatch entry in COMMAND_TABLE or daemon_direct")
 
     def test_dispatch_table_has_valid_entries(self):
         """Every dispatch entry must be a CmdEntry with callable handler."""

@@ -437,33 +437,6 @@ def _handle_revise_batch(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
-def _handle_reload_daemon(brain, args, graph_changes):
-    """Reload the daemon — clears bytecode cache and restarts with fresh code.
-    Used during development when code changes need to be picked up."""
-    import socket
-    port = 47200 + (os.getuid() % 100)
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(5)
-        s.connect(('127.0.0.1', port))
-        s.sendall(json.dumps({"cmd": "restart"}).encode() + b"\n")
-        chunks = []
-        while True:
-            chunk = s.recv(4096)
-            if not chunk:
-                break
-            chunks.append(chunk)
-            try:
-                json.loads(b"".join(chunks))
-                break
-            except Exception:
-                continue
-        s.close()
-        return {"ok": True, "result": {"status": "restarting", "note": "Daemon will restart in ~30s with fresh code. __pycache__ cleared."}}
-    except Exception as e:
-        return {"ok": False, "error": "Failed to send restart: %s" % str(e)}
-
-
 def _handle_brain_batch(brain, args, graph_changes):
     """Execute multiple brain operations in one call.
 

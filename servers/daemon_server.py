@@ -354,16 +354,8 @@ class BrainDaemon:
                 pass
 
     def _observe_command(self, cmd, args, result=None):
-        """Emit command to dashboard observer channel (no-op if nobody's listening)."""
-        try:
-            from servers.brain_dashboard import emit, has_listeners
-            if not has_listeners():
-                return
-            obs_args = {k: str(v)[:120] for k, v in (args or {}).items()}
-            obs_result = {k: str(v)[:300] for k, v in result.items()} if result else None
-            emit("command", command=cmd, args=obs_args, result=obs_result)
-        except Exception:
-            pass
+        """Emit command to dashboard observer channel. DEPRECATED — brain_dashboard.py removed."""
+        pass
 
     def _locked_exec(self, fn, cmd, args):
         """Acquire write lock with timeout, execute fn, observe result."""

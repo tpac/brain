@@ -62,7 +62,7 @@ ENV_CHANGE_PATTERNS = [
 
 
 from .scales.dispatch import daemon_tcp_send as _daemon_tcp_send
-from .scales.s1.recall import run_surface as _run_surface
+from .scales.s1.surface import run_surface as _run_surface
 
 
 

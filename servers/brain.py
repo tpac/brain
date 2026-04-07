@@ -6,8 +6,7 @@ This file contains the Brain class (core infrastructure, constructor, helpers)
 and assembles all functionality via mixin inheritance:
 
   Brain(ConsciousnessMixin, RecallMixin, RememberMixin, ConnectionsMixin,
-        EvolutionMixin, EngineeringMixin, DreamsMixin, VocabularyMixin,
-        SurfaceMixin, AbsorbMixin)
+        EvolutionMixin, EngineeringMixin, DreamsMixin, AssemblyMixin)
 
 Each mixin is in its own file (brain_recall.py, brain_remember.py, etc.)
 and was extracted from the original 9000-line monolith.
@@ -39,9 +38,7 @@ from .brain_connections import BrainConnectionsMixin
 from .brain_evolution import BrainEvolutionMixin
 from .brain_engineering import BrainEngineeringMixin
 from .brain_dreams import BrainDreamsMixin
-from .brain_vocabulary import BrainVocabularyMixin
-from .brain_surface import BrainSurfaceMixin
-from .brain_absorb import BrainAbsorbMixin
+from .brain_assembly import BrainAssemblyMixin
 from . import embedder
 
 
@@ -63,9 +60,7 @@ class Brain(
     BrainEvolutionMixin,
     BrainEngineeringMixin,
     BrainDreamsMixin,
-    BrainVocabularyMixin,
-    BrainSurfaceMixin,
-    BrainAbsorbMixin,
+    BrainAssemblyMixin,
 ):
     """
     Core brain engine.

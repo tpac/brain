@@ -16,7 +16,7 @@ from servers.scales.dispatch import load_env
 
 def _get_recently_surfaced(brain, session_id):
     """Get recently surfaced node IDs from S1 traces (for dedup)."""
-    from servers.scales.s1.recall_contract import SURFACE
+    from servers.scales.s1.surface_contract import SURFACE
     lookback = SURFACE.get('recent_recalls_messages', 10)
     recent_k = brain._trace_dal.get_by_ref_type(
         'surface_selected', scale='s1', hours=24, limit=lookback)
@@ -49,7 +49,7 @@ def _call_surface(brain, candidates_data, user_message, session_context,
         surfaced_dict has 'selected' list. Empty on failure.
     """
     import anthropic
-    from servers.scales.s1.recall_contract import build_surface_prompt
+    from servers.scales.s1.surface_contract import build_surface_prompt
 
     # Recently surfaced (for dedup)
     recently_surfaced = []
@@ -207,7 +207,7 @@ def run_surface(brain, ctx, candidates_data, user_message, session_context,
     graph_neighbors, corrections = _expand_and_enrich(brain, selected_ids, graph_changes)
 
     # Format output
-    from servers.scales.s1.recall_contract import format_surface_output
+    from servers.scales.s1.surface_contract import format_surface_output
     additional_context = format_surface_output(selected, candidates_data, graph_neighbors,
                                                corrections=corrections)
 

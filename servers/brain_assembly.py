@@ -37,8 +37,8 @@ DESTRUCTIVE_PATTERNS = [
 ]
 
 
-class BrainSurfaceMixin:
-    """Surface methods for Brain."""
+class BrainAssemblyMixin:
+    """Assembly methods — gathers context for hooks (boot, pre-edit, procedures)."""
 
     def suggest(self, context: Optional[str] = None, file: Optional[str] = None,
                screen: Optional[str] = None, action: Optional[str] = None,

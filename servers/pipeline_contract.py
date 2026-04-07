@@ -2,7 +2,7 @@
 
 This file contains cross-boundary constants used by multiple stages.
 Boundary-specific logic lives in dedicated contracts:
-- scales/s1/recall_contract.py — S1 Surface (relevance surfacing, formatting, enrichment)
+- scales/s1/surface_contract.py — S1 Surface (relevance surfacing, formatting, enrichment)
 - scales/s1/encode_contract.py — S1 turn encoder (Sonnet config, node formatting, catalog)
 
 Key names are re-exported here for convenience. Boundary-specific code should
@@ -12,7 +12,7 @@ contract.py defines what fields a node HAS.
 pipeline_contract.py defines what fields FLOW at each stage.
 """
 
-from .scales.s1.recall_contract import _relative_time  # noqa: F401 — canonical definition in surface_contract
+from .scales.s1.surface_contract import _relative_time  # noqa: F401 — canonical definition in surface_contract
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -151,7 +151,7 @@ def format_node_header(node, id_length=8):
 
 def format_neighbor_d1(nb):
     """Standard degree-1 neighbor line."""
-    from .scales.s1.recall_contract import NEIGHBOR_TRUNCATION
+    from .scales.s1.surface_contract import NEIGHBOR_TRUNCATION
     t = NEIGHBOR_TRUNCATION
     locked = "LOCKED " if nb.get("locked") else ""
     line = "  → %s: %s\"%s\" (%s, id:%s, conf:%.2f, revised:%s)" % (
@@ -171,7 +171,7 @@ def format_neighbor_d1(nb):
 
 def format_neighbor_d2(nb):
     """Standard degree-2 neighbor breadcrumb."""
-    from .scales.s1.recall_contract import NEIGHBOR_TRUNCATION
+    from .scales.s1.surface_contract import NEIGHBOR_TRUNCATION
     t = NEIGHBOR_TRUNCATION
     return "\"%s\" (%s, id:%s)" % (
         str(nb.get("title", ""))[:t['d2_title']],
@@ -220,7 +220,7 @@ def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
     """
     from .dal import NodeDAL
     from .dal_metadata import MetadataDAL
-    from .scales.s1.recall_contract import correction_enrich
+    from .scales.s1.surface_contract import correction_enrich
 
     conn = brain.conn
     ndal = NodeDAL(conn)
@@ -305,7 +305,7 @@ def get_rich_node(brain_or_conn, node_id):
     """
     from .dal import NodeDAL
     from .dal_metadata import MetadataDAL
-    from .scales.s1.recall_contract import correction_enrich
+    from .scales.s1.surface_contract import correction_enrich
 
     conn = getattr(brain_or_conn, 'conn', brain_or_conn)
     ndal = NodeDAL(conn)
@@ -371,7 +371,7 @@ def get_rich_node(brain_or_conn, node_id):
 # New code should import from the specific contract directly.
 # ═══════════════════════════════════════════════════════════════
 
-from .scales.s1.recall_contract import (  # noqa: E402, F401
+from .scales.s1.surface_contract import (  # noqa: E402, F401
     SURFACE,
     CANDIDATES_FILE,
     NEIGHBOR_D1_FIELDS,
