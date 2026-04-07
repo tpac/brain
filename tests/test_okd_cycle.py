@@ -189,7 +189,7 @@ class TestCrossScaleTraceIntegrity(unittest.TestCase):
                 session_id=session_id)
             trace.append(
                 chain_id='s1r-test-1', scale='s1', event_type='K',
-                ref_type='judge_selected', summary='5 nodes selected',
+                ref_type='surface_selected', summary='5 nodes selected',
                 session_id=session_id)
 
             # Query by session — both scales present
@@ -203,14 +203,20 @@ class TestCrossScaleTraceIntegrity(unittest.TestCase):
                            if e.get('chain_id', '').startswith('s0-test')}
             self.assertNotIn('recall', s0_ref_types,
                              "S1 recall events must not appear in S0 query")
-            self.assertNotIn('judge_selected', s0_ref_types,
-                             "S1 judge events must not appear in S0 query")
+            self.assertNotIn('surface_selected', s0_ref_types,
+                             "S1 surface events must not appear in S0 query")
 
             s1_events = trace.get_recent(scale='s1', hours=1)
             s1_ref_types = {e['ref_type'] for e in s1_events
                            if e.get('chain_id', '').startswith('s1r-test')}
             self.assertNotIn('user_message', s1_ref_types,
                              "S0 user events must not appear in S1 query")
+
+    def test_surface_selected_trace_ref_type(self):
+        """Verify that 'surface_selected' is the correct ref_type for S1R K events."""
+        from servers.trace_contract import validate_trace_event
+        ok, msg = validate_trace_event('s1', 'K', 'surface_selected')
+        self.assertTrue(ok, msg)
 
 
 class TestNodeCatalogRegexMatchesRealIDs(unittest.TestCase):

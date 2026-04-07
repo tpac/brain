@@ -1,13 +1,13 @@
-"""Judge Contract — S1 recall judge (Haiku) prompt building, candidate formatting, output formatting.
+"""Surface Contract — S1 surface (Haiku) prompt building, candidate formatting, output formatting.
 
-The judge selects relevant nodes from recall candidates. This contract defines:
-- What the judge sees (JUDGE config, CANDIDATES_FILE, neighbor fields)
-- How candidates are formatted (format_candidate_for_judge, enrich_candidate_metadata)
-- How the prompt is assembled (build_judge_prompt)
-- How output is formatted for Claude (format_judge_output)
+S1 Surface pushes relevant memories into awareness. This contract defines:
+- What the surfacer sees (SURFACE config, CANDIDATES_FILE, neighbor fields)
+- How candidates are formatted (format_candidate_for_surface, enrich_candidate_metadata)
+- How the prompt is assembled (build_surface_prompt)
+- How output is formatted for Claude (format_surface_output)
 - Correction enrichment (correction_enrich — shared with encoding)
 
-Interaction: 'judge' in interactions table. Prompt is learnable.
+Interaction: 'surface' in interactions table. Prompt is learnable.
 """
 
 from datetime import datetime, timezone
@@ -17,7 +17,7 @@ def _relative_time(iso_str):
     """Convert UTC ISO timestamp to relative time label.
 
     Returns human-readable age: 'just now', 'today', 'yesterday', '3d ago', '2w ago', '1mo ago'.
-    Both judge and Anchor see this instead of raw UTC timestamps.
+    Both surface and Anchor see this instead of raw UTC timestamps.
     """
     if not iso_str:
         return None
@@ -50,10 +50,10 @@ def _relative_time(iso_str):
         return None
 
 # ═══════════════════════════════════════════════════════════════
-# JUDGE CONFIG
+# SURFACE CONFIG
 # ═══════════════════════════════════════════════════════════════
 
-# Candidates file (written by daemon, read by judge + encoding agent)
+# Candidates file (written by daemon, read by surface + encoding agent)
 CANDIDATES_FILE = {
     'content_limit': 1000,
     'max_candidates': 25,
@@ -65,7 +65,7 @@ CANDIDATES_FILE = {
 
 # Judge (Haiku) — selects relevant nodes with reasoning
 # v9: max_candidates 25→20, Anchor truncation 150→400, recent_messages 5→7
-JUDGE = {
+SURFACE = {
     'content_limit': 300,           # shorter per node since more candidates
     'max_candidates': 20,           # v9: was 25. FTS5 adds up to 5 more = 25 max total
     'max_selected': 8,              # Haiku picks at most this many
@@ -74,7 +74,7 @@ JUDGE = {
     'recent_messages': 7,           # v9: was 5. Deeper conversation window
     'recent_recalls_messages': 10,  # look back 10 messages for previously surfaced nodes
     'session_context_limit': 800,   # shared with ENCODING_AGENT — full session journey
-    'judge_session_context_tail': 200,  # v9: judge gets tail of session context (current focus)
+    'session_context_tail': 200,  # v9: surface gets tail of session context (current focus)
     'max_tokens': 600,              # Haiku output cap
 }
 
@@ -139,7 +139,7 @@ _EDGES_QUERY = (
 
 
 def enrich_candidate_metadata(brain, node_id, node_data, config):
-    """Add metadata fields to a candidate dict for the Layer 2 judge.
+    """Add metadata fields to a candidate dict for the Layer 2 surface.
 
     Reads from MetadataDAL (KV store), node_embeddings, and edges tables.
     Only surfaces keys listed in the contract's METADATA_KEYS.
@@ -182,7 +182,7 @@ def enrich_candidate_metadata(brain, node_id, node_data, config):
 
 
 # ═══════════════════════════════════════════════════════════════
-# CORRECTION ENRICHMENT — shared by judge and encoding
+# CORRECTION ENRICHMENT — shared by surface and encoding
 # ═══════════════════════════════════════════════════════════════
 
 def correction_enrich(node_ids, db_conn):
@@ -279,15 +279,15 @@ def correction_enrich(node_ids, db_conn):
 # FORMATTERS
 # ═══════════════════════════════════════════════════════════════
 
-def format_candidate_for_judge(c, index):
-    """Format a single candidate for the judge prompt. Compact, metadata-rich."""
-    cfg = JUDGE
+def format_candidate_for_surface(c, index):
+    """Format a single candidate for the surface prompt. Compact, metadata-rich."""
+    cfg = SURFACE
     # Header: index, type, title, id, score, confidence, locked, created, discovery
     parts = ["id:%s" % str(c.get("id", ""))[:8]]
     score = c.get("score", 0)
     if score:
         # v9: Cap displayed score at 1.0 — critical boost inflates past 1.0
-        # which misleads the judge. Show 'boosted' flag if capped.
+        # which misleads the surface. Show 'boosted' flag if capped.
         display_score = min(score, 1.0)
         score_str = "match:%.2f" % display_score
         if score > 1.0:
@@ -302,7 +302,7 @@ def format_candidate_for_judge(c, index):
     discovery = c.get("discovery", "")
     if discovery and discovery not in ("embedding", "embedding_only", "embedding+keyword"):
         parts.append("via:%s" % discovery)
-    # v9.1: Relative time instead of raw UTC — judge and Anchor both think in relative time
+    # v9.1: Relative time instead of raw UTC — surface and Anchor both think in relative time
     created_rel = _relative_time(c.get("created_at"))
     revised_rel = _relative_time(c.get("revised_at"))
     if revised_rel and created_rel and revised_rel != created_rel:
@@ -379,11 +379,11 @@ def _dedup_candidates(candidates):
     return result
 
 
-def build_judge_prompt(candidates, user_message, session_context="",
+def build_surface_prompt(candidates, user_message, session_context="",
                        recent_messages=None, recently_recalled=None,
                        retrieval_stats=None, intent=None,
                        prompt_instructions=None):
-    """Build the S1 recall judge prompt. Single entry point.
+    """Build the S1 recall surface prompt. Single entry point.
 
     v9: Added retrieval_stats, intent, score normalization, conversation
     context expansion, session context tail, candidate dedup, discovery tags.
@@ -391,7 +391,7 @@ def build_judge_prompt(candidates, user_message, session_context="",
 
     Args:
         candidates: List of candidate node dicts (enriched with metadata)
-        prompt_instructions: Optional judge instructions from interactions table.
+        prompt_instructions: Optional surface instructions from interactions table.
             If provided, replaces the hardcoded prompt text. Data assembly
             (conversation, candidates, etc.) stays in code.
         user_message: The user's latest message
@@ -403,7 +403,7 @@ def build_judge_prompt(candidates, user_message, session_context="",
 
     Returns: (prompt_string, max_tokens)
     """
-    cfg = JUDGE
+    cfg = SURFACE
 
     # v9: Deduplicate candidates (remove near-identical titles)
     candidates = _dedup_candidates(candidates[:cfg['max_candidates']])
@@ -427,13 +427,13 @@ def build_judge_prompt(candidates, user_message, session_context="",
         conversation += "Tom: %s\n" % (user_message or "")[:cfg['user_message_limit']]
 
     # v9: Session context — use tail for current focus, not full changelog
-    judge_session_context = ""
+    surface_session_context = ""
     if session_context:
-        tail_limit = cfg.get('judge_session_context_tail', 200)
+        tail_limit = cfg.get('session_context_tail', 200)
         if len(session_context) > tail_limit:
-            judge_session_context = "Current focus: ..." + session_context[-tail_limit:]
+            surface_session_context = "Current focus: ..." + session_context[-tail_limit:]
         else:
-            judge_session_context = session_context
+            surface_session_context = session_context
 
     # Format recently recalled (lightweight — id + title only)
     recalled_text = ""
@@ -486,12 +486,12 @@ def build_judge_prompt(candidates, user_message, session_context="",
     # Format candidates
     candidates_text = ""
     for i, c in enumerate(candidates, 1):
-        candidates_text += format_candidate_for_judge(c, i) + "\n\n"
+        candidates_text += format_candidate_for_surface(c, i) + "\n\n"
 
     # Instructions: from interactions table (learnable) or hardcoded default
     if not prompt_instructions:
         prompt_instructions = (
-            "You are a memory relevance judge for a shared AI brain. The brain stores "
+            "You surface relevant memories from a shared AI brain. The brain stores "
             "memories from conversations between an operator (Tom) and an AI assistant "
             "(Anchor). You decide which memories help Anchor respond to Tom's next message.\n\n"
             "Field guide:\n"
@@ -527,7 +527,7 @@ Candidates:
 
 %s""" % (
         prompt_instructions,
-        judge_session_context or "(first messages)",
+        surface_session_context or "(first messages)",
         conversation or "(no recent messages)",
         recalled_text or "(none)",
         retrieval_context,
@@ -540,18 +540,22 @@ Candidates:
     return prompt, cfg['max_tokens']
 
 
-def format_judge_output(selected, candidates, graph_neighbors=None,
-                        corrections=None):
-    """Format the judge's selections into structured additionalContext for Claude.
+SURFACE_FORMAT = {'content_limit': 400, 'edge_limit': 3, 'metadata_limit': 150, 'time_format': 'relative'}
 
-    Takes Haiku's selected nodes (with "why" reasoning) and the full candidates
-    list (with content, metadata, edges). Produces a clean text block that Claude
-    reads as its memory context.
+
+def format_surface_output(selected, candidates, graph_neighbors=None,
+                        corrections=None):
+    """Format surfaced selections into structured additionalContext for Claude.
+
+    Per-node rendering delegates to render_rich_node() with SURFACE_FORMAT.
+    This function adds: collection header, relevance reasoning, graph neighbors.
 
     Args:
         corrections: dict from correction_enrich() — {node_id: [{"id", "title", "direction"}]}
     """
-    cfg = JUDGE
+    from servers.contract import render_rich_node
+
+    cfg = SURFACE
     if not selected:
         return ""
 
@@ -571,72 +575,26 @@ def format_judge_output(selected, candidates, graph_neighbors=None,
         if not c:
             continue
 
-        # Header — v9.1: includes relative time so Anchor knows when this memory is from
-        parts = ["id:%s" % sid]
-        conf = c.get("confidence")
-        if conf:
-            parts.append("conf:%.1f" % conf)
-        if c.get("locked"):
-            parts.append("locked")
-        created_rel = _relative_time(c.get("created_at"))
-        revised_rel = _relative_time(c.get("revised_at"))
-        if revised_rel and created_rel and revised_rel != created_rel:
-            parts.append("created %s, revised %s" % (created_rel, revised_rel))
-        elif created_rel:
-            parts.append(created_rel)
-        header = "[%s] \"%s\" (%s)" % (c.get("type", "?"), c.get("title", "?")[:70], ", ".join(parts))
-        lines.append(header)
+        # Attach corrections to candidate dict for render_rich_node
+        if corrections:
+            node_corrs = corrections.get(c.get("id", ""), []) or corrections.get(sid, [])
+            if node_corrs:
+                c["_corrections"] = node_corrs
 
-        # Haiku's relevance reasoning
+        # Per-node rendering — single formatter
+        lines.append(render_rich_node(c, SURFACE_FORMAT))
+
+        # Surfacer's relevance reasoning (S1-specific, not in render_rich_node)
         if why:
             lines.append("Relevance: %s" % why)
 
-        # Content (truncated for context budget)
-        content = (c.get("content") or "")[:400]
-        if content:
-            lines.append("Content: %s" % content)
-
-        # Metadata (only if present)
-        situation = c.get("situation", "")
-        if situation:
-            lines.append("Situation: %s" % situation[:150])
-
-        quote = c.get("user_raw_quote", "")
-        if quote:
-            lines.append("Quote: \"%s\"" % quote[:150])
-
-        corrects = c.get("correction_of", "")
-        if corrects:
-            lines.append("Corrects: %s" % corrects[:30])
-
-        # Top edges (from candidate data, not re-queried)
-        edges = c.get("top_edges", [])
-        if edges:
-            edge_parts = []
-            for e in edges[:3]:
-                desc = " — %s" % e["why"] if e.get("why") else ""
-                edge_parts.append("\"%s\" (%s%s)" % (e["title"][:40], e["type"], desc))
-            lines.append("Connected: " + ", ".join(edge_parts))
-
-        # Correction chain — show if this node was corrected or corrects another
-        if corrections:
-            node_corrections = corrections.get(c.get("id", ""), [])
-            if not node_corrections:
-                # Try short ID match
-                node_corrections = corrections.get(c.get("id", "")[:8], [])
-            for corr in node_corrections:
-                if corr["direction"] == "corrected_by":
-                    lines.append("⚠ Updated by: \"%s\" (%s)" % (corr["title"][:50], corr["id"]))
-                elif corr["direction"] == "corrects":
-                    lines.append("Corrects: \"%s\" (%s)" % (corr["title"][:50], corr["id"]))
-
         lines.append("")  # blank line between nodes
 
-    # Graph neighbors — connected knowledge from judge-selected seeds
+    # Graph neighbors — connected knowledge from surface-selected seeds
     if graph_neighbors:
         lines.append("Related knowledge (via graph):")
-        for nb in graph_neighbors[:6]:  # Cap at 6 neighbors total
-            edge_desc = " — %s" % nb["edge_description"] if nb.get("edge_description") else ""
+        for nb in graph_neighbors[:6]:
+            edge_desc = " — %s" % nb.get("edge_description", "") if nb.get("edge_description") else ""
             lines.append("[%s] \"%s\" (%s%s)" % (
                 nb.get("type", "?"),
                 nb.get("title", "?")[:60],

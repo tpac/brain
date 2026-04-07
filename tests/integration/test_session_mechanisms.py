@@ -8,14 +8,14 @@ Uses a COPY of the live brain DB. Never modifies production.
 Mechanisms tested:
 1. Z-weighted 4-group embedding scoring
 2. Synaptic fatigue (degree-based)
-3. Judge-selected Hebbian (co_accessed from judge, not from cosine scan)
+3. Surface-selected Hebbian (co_accessed from surface, not from cosine scan)
 4. Embedding redistribution (70/30 from frozen originals)
 5. Structural graph separation (co_accessed + emergent excluded from traversal)
-6. Layer 3 post-judge graph expansion
+6. Layer 3 post-surface graph expansion
 7. KV metadata store (extensible without schema changes)
 8. Encoding group vectors (title, high_meta, other_meta stored at encode time)
-9. Session context from encoder to judge
-10. Judge prompt: silence on confirmations + tangential match rejection
+9. Session context from encoder to surface
+10. Surface prompt: silence on confirmations + tangential match rejection
 """
 
 import unittest
@@ -156,17 +156,17 @@ class Test02_SynapticFatigue(unittest.TestCase):
         self.assertGreater(fat_hub, fat_new)
 
 
-class Test03_JudgeSelectedHebbian(unittest.TestCase):
-    """Hebbian co_accessed edges from judge-selected nodes only.
+class Test03_SurfaceSelectedHebbian(unittest.TestCase):
+    """Hebbian co_accessed edges from surface-selected nodes only.
 
     WHAT: Old Hebbian created co_accessed edges between ALL top-25 cosine results.
-    Produced 94K noise edges. Now: only nodes the Layer 2 judge selects get
+    Produced 94K noise edges. Now: only nodes the Layer 2 surface selects get
     co_accessed edges. These participate in graph traversal.
 
     WHY: "Neurons that fire together wire together" — but cosine top-25 isn't
-    meaningful co-activation. Judge-selected IS meaningful.
+    meaningful co-activation. Surface-selected IS meaningful.
 
-    WHERE: daemon_hooks.py hook_post_response_track reads judge-selected.json
+    WHERE: daemon_hooks.py hook_post_response_track reads surface-selected.json
     EDGE TYPE: co_accessed (was noise, now meaningful after 2026-04-02 reset)
     """
 
@@ -267,7 +267,7 @@ class Test04_Redistribution(unittest.TestCase):
 class Test05_StructuralGraph(unittest.TestCase):
     """Structural graph separation — noise edges excluded from traversal.
 
-    WHAT: co_accessed (was 94K noise, now clean judge-selected) included.
+    WHAT: co_accessed (was 94K noise, now clean surface-selected) included.
     emergent_bridge excluded. Traversal only follows structural edges.
 
     WHY: The old graph was a hairball — 2-hop reached 91% of nodes.
@@ -454,8 +454,8 @@ class Test08_ImportIntegrity(unittest.TestCase):
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'servers'))
         try:
             mod = importlib.import_module('pipeline_contract')
-            self.assertTrue(hasattr(mod, 'build_judge_prompt'))
-            self.assertTrue(hasattr(mod, 'format_judge_output'))
+            self.assertTrue(hasattr(mod, 'build_surface_prompt'))
+            self.assertTrue(hasattr(mod, 'format_surface_output'))
             self.assertTrue(hasattr(mod, 'EMBEDDING_GROUPS'))
         finally:
             sys.path.pop(0)

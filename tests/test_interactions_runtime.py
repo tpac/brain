@@ -33,7 +33,7 @@ class TestInteractionSeeding:
         seed_interactions(self.brain)
         all_interactions = self.dal.list_all()
         names = {i['name'] for i in all_interactions}
-        assert names == {'judge', 'encoding_agent', 'voice_surface',
+        assert names == {'surface', 'encoding_agent', 'voice_surface',
                          'boot', 'pre_edit', 'signal_assembler'}
 
     def test_seed_is_idempotent(self):
@@ -44,13 +44,13 @@ class TestInteractionSeeding:
         all_interactions = self.dal.list_all()
         assert all(i['total_versions'] == 1 for i in all_interactions)
 
-    def test_judge_has_prompt_and_config(self):
+    def test_surface_has_prompt_and_config(self):
         from servers.interaction_seed import seed_interactions
         seed_interactions(self.brain)
-        judge = self.dal.get_latest('judge')
-        assert judge is not None
-        assert len(judge['template']) > 100  # real prompt, not placeholder
-        config = json.loads(judge['parameters'])
+        surface = self.dal.get_latest('surface')
+        assert surface is not None
+        assert len(surface['template']) > 100  # real prompt, not placeholder
+        config = json.loads(surface['parameters'])
         assert 'max_candidates' in config
         assert 'max_selected' in config
 

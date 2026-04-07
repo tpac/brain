@@ -62,57 +62,25 @@ def _handle_context_boot(brain, args, graph_changes):
 
 
 def _enrich_recall_results(brain, result, graph_changes):
-    """Enrich recall results with correction chains and graph expansion.
+    """Enrich recall results via get_rich_node — the shared data atom.
 
-    Anchor's MCP recall should get the same rich context as the hook path,
-    minus the judge (Anchor doesn't need Haiku to filter for itself).
+    Anchor's MCP recall gets full enrichment per node:
+    metadata, corrections, connections, situation.
     """
-    from .pipeline_contract import correction_enrich, enrich_candidate_metadata, CANDIDATES_FILE
+    from .pipeline_contract import get_rich_node
 
     results = result.get("results", [])
     if not results:
         return
 
-    # Collect all result IDs
-    result_ids = set()
-    for r in results:
-        rid = r.get("id", "")
-        if rid:
-            result_ids.add(rid[:8])
-
-    # Correction enrichment — same as Layer 3.5 in hook path
-    try:
-        corrections = correction_enrich(result_ids, brain.conn)
-        if corrections:
-            for r in results:
-                rid = r.get("id", "")
-                node_corrs = corrections.get(rid, []) or corrections.get(rid[:8], [])
-                if node_corrs:
-                    r["_corrections"] = node_corrs
-    except Exception as e:
-        brain._log_error('mcp_recall_corrections', e, 'correction enrichment')
-
-    # Graph expansion from result seeds — same as Layer 3 in hook path
-    try:
-        expand_entry = COMMAND_TABLE.get("graph_expand")
-        if expand_entry:
-            expand_result = expand_entry.handler(brain, {
-                "node_ids": list(result_ids),
-                "depth": 1, "limit_per_seed": 2,
-            }, graph_changes)
-            if expand_result.get("ok"):
-                graph_neighbors = expand_result.get("result", {}).get("neighbors", [])
-                if graph_neighbors:
-                    result["_graph_neighbors"] = graph_neighbors
-    except Exception as e:
-        brain._log_error('mcp_recall_expand', e, 'graph expansion')
-
-    # Enrich top results with metadata (situation, edges)
-    try:
-        for r in results[:5]:
-            enrich_candidate_metadata(brain, r.get("id", ""), r, CANDIDATES_FILE)
-    except Exception as e:
-        brain._log_error('mcp_recall_metadata', e, 'metadata enrichment')
+    # Enrich each result with get_rich_node data
+    for r in results[:8]:
+        rich = get_rich_node(brain, r.get("id", ""))
+        if rich:
+            r["_metadata"] = rich.get("_metadata", {})
+            r["_corrections"] = rich.get("_corrections", [])
+            r["connections"] = rich.get("connections", [])
+            r["situation"] = rich.get("situation", "")
 
 
 def _handle_recall(brain, args, graph_changes):
@@ -127,13 +95,13 @@ def _handle_recall(brain, args, graph_changes):
     # By-query recall: semantic search with keyword fallback
     try:
         result = brain.recall(
-            query=args.get("query", ""), limit=args.get("limit", 8),
-            source='mcp')
+            query=args.get("query", ""), filter=args.get("filter"),
+            limit=args.get("limit", 8), source='mcp')
     except Exception as e:
         # Degraded: fall back to keyword-only recall
         result = brain.recall(
-            query=args.get("query", ""), limit=args.get("limit", 8),
-            source='mcp')
+            query=args.get("query", ""), filter=args.get("filter"),
+            limit=args.get("limit", 8), source='mcp')
         try:
             brain._log_error("recall_degraded", e, "Fell back to keyword-only recall")
         except Exception as e2:
@@ -651,10 +619,10 @@ def _handle_filter_nodes(brain, args, graph_changes):
 
 
 def _handle_graph_expand(brain, args, graph_changes):
-    """Layer 3: expand from judge-selected seed nodes via structural edges.
+    """Layer 3: expand from surface-selected seed nodes via structural edges.
 
     Args:
-        node_ids: list of seed node IDs (from judge selection)
+        node_ids: list of seed node IDs (from surface selection)
         depth: how many hops (default 1)
         limit_per_seed: max neighbors per seed (default 3)
 
@@ -711,25 +679,12 @@ def _handle_get_node(brain, args, graph_changes):
     node_id = _resolve_id(brain, args.get("node_id", ""))
     if not node_id:
         return {"ok": False, "error": "node_id is required"}
-    node = brain.get_node(node_id)
+
+    from .pipeline_contract import get_rich_node
+    node = get_rich_node(brain, node_id)
     if not node:
         return {"ok": False, "error": "Node not found: {}".format(node_id)}
-    # Add connections
-    try:
-        edges = brain.conn.execute(
-            "SELECT e.target_id, e.relation, e.weight, n.title, n.type "
-            "FROM edges e LEFT JOIN nodes n ON n.id = e.target_id "
-            "WHERE e.source_id = ? ORDER BY e.weight DESC LIMIT 10",
-            (node_id,)
-        ).fetchall()
-        node["connections"] = [
-            {"target_id": e[0], "relation": e[1], "weight": e[2],
-             "title": e[3] or "", "type": e[4] or ""}
-            for e in edges
-        ]
-    except Exception as e:
-        brain._log_error("get_node_connections", e, "fetching connections for node %s" % node_id[:12])
-        node["connections"] = []
+
     return {"ok": True, "result": node}
 
 
@@ -737,10 +692,11 @@ def _handle_recall_batch(brain, args, graph_changes):
     """Batch recall — multiple queries in one call."""
     queries = args.get("queries", [])
     limit = args.get("limit", 5)
+    batch_filter = args.get("filter")
     results = []
     for q in queries[:10]:  # cap at 10 queries
         try:
-            result = brain.recall(query=q, limit=limit, source='mcp')
+            result = brain.recall(query=q, filter=batch_filter, limit=limit, source='mcp')
             results.append({"query": q, "results": result.get("results", [])})
         except Exception as e:
             results.append({"query": q, "results": [], "error": str(e)})

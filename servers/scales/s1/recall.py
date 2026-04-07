@@ -1,8 +1,8 @@
-"""S1 Recall Chain — judge selection, graph expansion, correction enrichment, trace writing.
+"""S1 Surface Chain — surface relevant memories, graph expansion, correction enrichment, trace writing.
 
 Scale: S1 (Turn integration)
-Chain: s1r (recall)
-Interaction: 'judge' in interactions table (learnable boundary)
+Chain: s1r (surface)
+Interaction: 'surface' in interactions table (learnable boundary)
 
 Triggered by: hook_recall (UserPromptSubmit) in daemon_hooks.py
 Reads: recall candidates from brain.recall(), interactions table
@@ -14,12 +14,16 @@ import json
 from servers.scales.dispatch import load_env
 
 
-def _get_recently_recalled(brain, session_id):
-    """Get recently judge-selected node IDs from S1 traces (for dedup)."""
-    from servers.scales.s1.recall_contract import JUDGE
-    lookback = JUDGE.get('recent_recalls_messages', 10)
+def _get_recently_surfaced(brain, session_id):
+    """Get recently surfaced node IDs from S1 traces (for dedup)."""
+    from servers.scales.s1.recall_contract import SURFACE
+    lookback = SURFACE.get('recent_recalls_messages', 10)
     recent_k = brain._trace_dal.get_by_ref_type(
-        'judge_selected', scale='s1', hours=24, limit=lookback)
+        'surface_selected', scale='s1', hours=24, limit=lookback)
+    # Backward compat: also check old 'judge_selected' ref_type
+    if not recent_k:
+        recent_k = brain._trace_dal.get_by_ref_type(
+            'judge_selected', scale='s1', hours=24, limit=lookback)
     seen_ids = set()
     for evt in recent_k:
         try:
@@ -29,54 +33,57 @@ def _get_recently_recalled(brain, session_id):
             pass
     from servers.dal import NodeDAL
     dal = NodeDAL(brain.conn)
-    recently_recalled = []
+    recently_surfaced = []
     for nid in list(seen_ids)[:20]:
         title = dal.get_title(nid)
         if title:
-            recently_recalled.append({"id": nid, "title": title})
-    return recently_recalled
+            recently_surfaced.append({"id": nid, "title": title})
+    return recently_surfaced
 
 
-def _call_judge(brain, candidates_data, user_message, session_context,
-                recent_messages, session_id, result):
-    """Call Haiku judge to select relevant nodes from candidates.
+def _call_surface(brain, candidates_data, user_message, session_context,
+                  recent_messages, session_id, result):
+    """Call Haiku to surface relevant nodes from candidates.
 
-    Returns: (judgment_dict, judge_prompt, max_tokens, interaction_id)
-        judgment_dict has 'selected' list. Empty on failure.
+    Returns: (surfaced_dict, surface_prompt, max_tokens, interaction_id)
+        surfaced_dict has 'selected' list. Empty on failure.
     """
     import anthropic
-    from servers.scales.s1.recall_contract import build_judge_prompt
+    from servers.scales.s1.recall_contract import build_surface_prompt
 
-    # Recently recalled (for dedup)
-    recently_recalled = []
+    # Recently surfaced (for dedup)
+    recently_surfaced = []
     try:
-        recently_recalled = _get_recently_recalled(brain, session_id)
+        recently_surfaced = _get_recently_surfaced(brain, session_id)
     except Exception as e:
-        brain._log_error('judge_recently_recalled', e, 'fetching recently recalled titles')
+        brain._log_error('surface_recently_recalled', e, 'fetching recently surfaced titles')
 
     # Retrieval stats and intent from recall result
     retrieval_stats = result.get('_retrieval_stats') if isinstance(result, dict) else None
     intent = result.get('intent') if isinstance(result, dict) else None
 
     # Build prompt — instructions from interactions table (learnable boundary)
-    judge_interaction = brain.get_interaction('judge')
-    judge_instructions = judge_interaction.get('template', '') if judge_interaction else ''
-    interaction_id = judge_interaction.get('id') if judge_interaction else None
-    judge_prompt, max_tokens = build_judge_prompt(
+    surface_interaction = brain.get_interaction('surface')
+    # Backward compat: fall back to 'judge' interaction if 'surface' not found
+    if not surface_interaction:
+        surface_interaction = brain.get_interaction('judge')
+    surface_instructions = surface_interaction.get('template', '') if surface_interaction else ''
+    interaction_id = surface_interaction.get('id') if surface_interaction else None
+    surface_prompt, max_tokens = build_surface_prompt(
         candidates_data, user_message,
         session_context=session_context,
         recent_messages=recent_messages,
-        recently_recalled=recently_recalled,
+        recently_recalled=recently_surfaced,
         retrieval_stats=retrieval_stats,
         intent=intent,
-        prompt_instructions=judge_instructions or None)
+        prompt_instructions=surface_instructions or None)
 
     # Call Haiku
     client = anthropic.Anthropic()
     api_resp = client.messages.create(
         model="claude-haiku-4-5",
         max_tokens=max_tokens,
-        messages=[{"role": "user", "content": judge_prompt}])
+        messages=[{"role": "user", "content": surface_prompt}])
     raw = api_resp.content[0].text.strip()
 
     # Parse JSON
@@ -86,52 +93,27 @@ def _call_judge(brain, candidates_data, user_message, session_context,
     start = json_str.find("{")
     end = json_str.rfind("}") + 1
     if start >= 0 and end > start:
-        judgment = json.loads(json_str[start:end])
+        surfaced = json.loads(json_str[start:end])
     else:
-        judgment = {"selected": []}
+        surfaced = {"selected": []}
 
-    return judgment, judge_prompt, max_tokens, interaction_id
+    return surfaced, surface_prompt, max_tokens, interaction_id
 
 
 def _expand_and_enrich(brain, selected_ids, graph_changes):
-    """Graph expansion + correction enrichment from judge-selected seeds.
+    """Graph expansion + correction enrichment from surfaced seeds.
 
     Returns: (graph_neighbors, corrections)
     """
-    # Graph expansion
-    graph_neighbors = []
-    try:
-        from servers.daemon_dispatch import COMMAND_TABLE
-        expand_entry = COMMAND_TABLE.get("graph_expand")
-        if expand_entry:
-            expand_result = expand_entry.handler(brain, {
-                "node_ids": list(selected_ids),
-                "depth": 1, "limit_per_seed": 3,
-            }, graph_changes)
-            if expand_result.get("ok"):
-                graph_neighbors = expand_result.get("result", {}).get("neighbors", [])
-    except Exception as e:
-        brain._log_error('judge_graph_expand', e, 'graph expand failed')
-
-    # Correction enrichment
-    corrections = {}
-    try:
-        from servers.scales.s1.recall_contract import correction_enrich
-        all_ids = set(selected_ids)
-        for nb in graph_neighbors:
-            if nb.get("id"):
-                all_ids.add(nb["id"])
-        corrections = correction_enrich(all_ids, brain.conn)
-    except Exception as e:
-        brain._log_error('correction_enrich', e, 'correction enrichment')
-
-    return graph_neighbors, corrections
+    from servers.pipeline_contract import traverse
+    result = traverse(brain, list(selected_ids))
+    return result['neighbors'], result['corrections']
 
 
 def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
                   graph_neighbors, additional_context, enriched, results,
                   recall_ref, interaction_id, session_id):
-    """Write S1 recall traces: O (candidates), K (judge-selected), Δ (additionalContext)."""
+    """Write S1 surface traces: O (candidates), K (surfaced), Δ (additionalContext)."""
     recall_chain = ctx.s1r_chain()
 
     # O: candidates detail
@@ -140,7 +122,7 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
         c.get('score', 0), c.get('type', ''))
         for c in candidates_data[:25]]
 
-    # K: selected detail
+    # K: surfaced detail
     sel_detail = ['%s|%s' % (c.get('id', '')[:8], c.get('title', ''))
                   for c in candidates_data if c.get('id', '')[:8] in selected_ids]
 
@@ -149,8 +131,7 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
         nb.get('id', '')[:8], nb.get('title', '')[:60], nb.get('relation', ''))
         for nb in graph_neighbors[:10]]
 
-    # Batch all three trace writes in one transaction to avoid
-    # "database is locked" from encoding agent thread writing between commits
+    # Batch all three trace writes in one transaction
     brain._trace_dal.append_batch([
         dict(chain_id=recall_chain, scale='s1', event_type='O',
              ref_type='recall', ref_id=str(recall_ref or ''),
@@ -158,9 +139,9 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
              metadata={'source': 'hook', 'query': enriched[:500], 'candidates': cand_detail},
              session_id=session_id),
         dict(chain_id=recall_chain, scale='s1', event_type='K',
-             ref_type='judge_selected',
+             ref_type='surface_selected',
              ref_id=json.dumps(list(selected_ids)),
-             summary='%d selected, %d expanded' % (len(selected), len(graph_neighbors)),
+             summary='%d surfaced, %d expanded' % (len(selected), len(graph_neighbors)),
              metadata={'selected': sel_detail, 'expanded': exp_detail},
              session_id=session_id),
         dict(chain_id=recall_chain, scale='s1', event_type='delta',
@@ -172,64 +153,63 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
     ])
 
 
-def _write_judge_result_file(recall_ref, judge_prompt, output, brain):
-    """Write judge result to tmp file for dashboard pickup."""
+def _write_surface_result_file(recall_ref, surface_prompt, output, brain):
+    """Write surface result to tmp file for dashboard pickup."""
     try:
-        path = "/tmp/brain-judge-result-%s.json" % recall_ref
+        path = "/tmp/brain-judge-result-%s.json" % recall_ref  # keep filename for dashboard compat
         with open(path, 'w') as f:
             json.dump({
                 "recall_ref": recall_ref,
-                "judge_prompt": judge_prompt,
-                "judge_output": output,
+                "surface_prompt": surface_prompt,
+                "surface_output": output,
             }, f)
     except Exception as e:
-        brain._log_error('judge_result_write', e, 'writing judge result file')
+        brain._log_error('surface_result_write', e, 'writing surface result file')
 
 
-def run_judge(brain, ctx, candidates_data, user_message, session_context,
-              recent_messages, result, enriched, results, recall_ref,
-              session_id, graph_changes):
-    """S1 recall: judge → expand → enrich → format → trace.
+def run_surface(brain, ctx, candidates_data, user_message, session_context,
+                recent_messages, result, enriched, results, recall_ref,
+                session_id, graph_changes):
+    """S1 Surface: surface → expand → enrich → format → trace.
 
-    The complete S1R chain. Called from hook_recall in daemon_hooks.py.
+    The complete S1 Surface chain. Called from hook_recall in daemon_hooks.py.
     Returns: additional_context string or None.
     """
     load_env()
 
-    # Call the judge
-    judgment, judge_prompt, max_tokens, interaction_id = _call_judge(
+    # Call the surfacer
+    surfaced, surface_prompt, max_tokens, interaction_id = _call_surface(
         brain, candidates_data, user_message, session_context, recent_messages,
         session_id, result)
 
-    selected = judgment.get("selected", [])
+    selected = surfaced.get("selected", [])
     selected_ids = {s.get("id", "")[:8] for s in selected}
 
-    # Write judge-selected IDs for Hebbian + Stop hook
+    # Write surfaced IDs for Hebbian + Stop hook
     try:
-        judge_path = "/tmp/brain-%s-judge-selected.json" % session_id
-        with open(judge_path, 'w') as f:
+        surface_path = "/tmp/brain-%s-judge-selected.json" % session_id  # keep filename for compat
+        with open(surface_path, 'w') as f:
             json.dump({"selected_ids": list(selected_ids)}, f)
     except Exception as e:
-        brain._log_error('judge_selected_write', e, 'writing judge-selected file')
+        brain._log_error('surface_selected_write', e, 'writing surface-selected file')
 
     if not selected:
-        # Still write traces so dashboard shows the recall attempt
         try:
             _write_traces(brain, ctx, candidates_data, set(), [], [],
                           None, enriched, results,
                           recall_ref, interaction_id, session_id)
         except Exception as e:
-            brain._log_error('trace_s1_recall_empty', e, 'S1 recall trace (no selection)')
-        _write_judge_result_file(recall_ref, judge_prompt, "(no selection)", brain)
+            brain._log_error('trace_s1_surface_empty', e, 'S1 surface trace (no selection)')
+        _write_surface_result_file(recall_ref, surface_prompt, "(no selection)", brain)
         return None
 
     # Expand and enrich
     graph_neighbors, corrections = _expand_and_enrich(brain, selected_ids, graph_changes)
 
     # Format output
-    from servers.scales.s1.recall_contract import format_judge_output
-    additional_context = format_judge_output(selected, candidates_data, graph_neighbors,
-                                             corrections=corrections)
+    from servers.scales.s1.recall_contract import format_surface_output
+    additional_context = format_surface_output(selected, candidates_data, graph_neighbors,
+                                               corrections=corrections)
 
     # Write traces
     try:
@@ -237,9 +217,13 @@ def run_judge(brain, ctx, candidates_data, user_message, session_context,
                       graph_neighbors, additional_context, enriched, results,
                       recall_ref, interaction_id, session_id)
     except Exception as e:
-        brain._log_error('trace_s1_recall', e, 'S1 recall trace capture')
+        brain._log_error('trace_s1_surface', e, 'S1 surface trace capture')
 
     # Dashboard file
-    _write_judge_result_file(recall_ref, judge_prompt, additional_context, brain)
+    _write_surface_result_file(recall_ref, surface_prompt, additional_context, brain)
 
     return additional_context
+
+
+# Backward compat — old name
+run_judge = run_surface

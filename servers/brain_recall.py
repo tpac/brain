@@ -54,6 +54,82 @@ from .brain_constants import (
 from .dal import GraphDAL, NodeDAL, EmbeddingDAL, TfIdfDAL, LogsDAL, EnrichmentDAL, Fts5DAL
 
 
+# Node table columns — filter checks these on the result dict.
+# Anything not in this set is looked up as a metadata key.
+_NODE_COLUMNS = frozenset({
+    'id', 'type', 'title', 'content', 'keywords', 'activation', 'stability',
+    'access_count', 'locked', 'archived', 'critical', 'recency_score',
+    'emotion', 'emotion_label', 'emotion_source', 'project', 'confidence',
+    'personal', 'personal_context', 'evolution_status', 'resolved_at',
+    'resolved_by', 'due_date', 'content_summary', 'source_attribution',
+    'scope', 'encoding_version', 'encoding_source', 'revised_at',
+    'last_accessed', 'created_at',
+})
+
+
+def _apply_filter(nodes: list, filter_dict: dict, conn) -> list:
+    """Apply dict filter to a list of node dicts.
+
+    Filter format:
+        {"type": {"in": ["moment", "reflection"]}}
+        {"anchor_raw_quote": {"exists": True}}
+        {"content": {"contains": "Anchor"}}
+        {"confidence": {"gte": 0.9}}
+        {"locked": {"equals": 1}}
+
+    Keys in _NODE_COLUMNS are read from the node dict.
+    Other keys are looked up in node_metadata_kv.
+    """
+    if not filter_dict:
+        return nodes
+
+    from .dal_metadata import MetadataDAL
+    mdal = MetadataDAL(conn)
+
+    def _matches(node):
+        for key, conditions in filter_dict.items():
+            # Get the value
+            if key in _NODE_COLUMNS:
+                val = node.get(key)
+            else:
+                val = mdal.get_field(node['id'], key)
+
+            # Apply conditions
+            for op, expected in conditions.items():
+                if op == 'exists':
+                    if expected and not val:
+                        return False
+                    if not expected and val:
+                        return False
+                elif op == 'equals':
+                    if val != expected:
+                        return False
+                elif op == 'in':
+                    if val not in expected:
+                        return False
+                elif op == 'contains':
+                    if not val or expected not in str(val):
+                        return False
+                elif op == 'gte':
+                    if val is None or val < expected:
+                        return False
+                elif op == 'lte':
+                    if val is None or val > expected:
+                        return False
+                else:
+                    print('[brain] WARNING: unknown filter operator %r for key %r' % (op, key), file=sys.stderr)
+        return True
+
+    out = []
+    for n in nodes:
+        try:
+            if _matches(n):
+                out.append(n)
+        except Exception as e:
+            print('[brain] ERROR in _apply_filter for node %s: %s' % (n.get('id', '?'), e), file=sys.stderr)
+    return out
+
+
 class BrainRecallMixin:
     """Recall methods for Brain."""
 
@@ -227,17 +303,16 @@ class BrainRecallMixin:
         self.conn.commit()
         return stored
 
-    def _keyword_recall(self, query: str, types: Optional[List[str]] = None, limit: int = 20,
+    def _keyword_recall(self, query: str, filter: Optional[Dict[str, Any]] = None, limit: int = 20,
                         offset: int = 0, include_archived: bool = False, min_recency: float = 0,
                         project: Optional[str] = None, session_id: Optional[str] = None,
                         _skip_log: bool = False) -> Dict[str, Any]:
         """INTERNAL: TF-IDF keyword recall. Used by recall() for keyword blending.
         Do NOT call directly — use recall() (embeddings + graph traversal) instead.
-        Retrieve relevant nodes with TF-IDF scoring, spreading activation, and decay.
 
         Args:
             query: Search query
-            types: Filter by node types
+            filter: Dict filter (same format as recall())
             limit: Max results to return
             offset: Pagination offset
             include_archived: Include archived nodes
@@ -285,7 +360,7 @@ class BrainRecallMixin:
         if not all_seeds:
             # Return recent nodes if no seeds found
             return {
-                'results': self._get_recent(limit, types),
+                'results': _apply_filter(self._get_recent(limit), filter, self.conn),
                 'intent': intent
             }
 
@@ -306,7 +381,7 @@ class BrainRecallMixin:
             direct_match_scores[seed_id] = (match_count / len(query_terms)) if query_terms else 0
 
         # Step 2: Spreading activation
-        activated = self.spread_activation(list(all_seeds.keys()), types)
+        activated = self.spread_activation(list(all_seeds.keys()), filter)
 
         # v5: Compute batch TF-IDF scores
         activated_ids = [n['id'] for n in activated]
@@ -387,8 +462,7 @@ class BrainRecallMixin:
         filtered = scored
         if not include_archived:
             filtered = [n for n in filtered if not n.get('archived')]
-        if types:
-            filtered = [n for n in filtered if n.get('type') in types]
+        filtered = _apply_filter(filtered, filter, self.conn)
         if min_recency > 0:
             filtered = [n for n in filtered if n.get('recency_score', 0) >= min_recency]
 
@@ -422,8 +496,8 @@ class BrainRecallMixin:
         # Biology: neurons that fire together wire together — but our "firing together"
         # was just "scored similarly on cosine," not meaningful co-activation.
         #
-        # Re-enable when: judge-selected node IDs are available in hook_post_response_track.
-        # Then: only strengthen between nodes the judge selected AND the assistant used.
+        # Re-enable when: surface-selected node IDs are available in hook_post_response_track.
+        # Then: only strengthen between nodes the surfacer selected AND the assistant used.
         # That's real co-activation — two memories genuinely contributing to the same response.
 
         # v4: Auto-instrument (skipped when called from recall
@@ -451,7 +525,7 @@ class BrainRecallMixin:
 
         return result
 
-    def recall(self, query: str, types: Optional[List[str]] = None,
+    def recall(self, query: str, filter: Optional[Dict[str, Any]] = None,
                limit: int = 20, offset: int = 0,
                include_archived: bool = False,
                min_recency: float = 0, project: Optional[str] = None,
@@ -459,17 +533,13 @@ class BrainRecallMixin:
                situation_vec=None, source: str = 'unknown') -> Dict[str, Any]:
         """Recall: embeddings + 3-degree graph traversal + keyword blending + situation matching.
 
-        OLD approach: Run keyword recall first, sprinkle embedding scores on top.
-        NEW approach: Embed the query, scan ALL nodes by embedding similarity,
-        use keywords only as a tiebreaker for exact matches (proper nouns, versions).
-
-        Graceful degradation: if embedder isn't ready, falls back to keyword-only
-        recall via self._keyword_recall() — but logs a LOUD warning because keyword-only
-        recall is fundamentally broken for semantic understanding.
-
         Args:
             query: Search query
-            types: Filter by node types
+            filter: Dict filter on node/metadata fields. Examples:
+                {"type": {"in": ["moment", "reflection"]}}
+                {"anchor_raw_quote": {"exists": True}}
+                {"content": {"contains": "Anchor"}}
+                {"confidence": {"gte": 0.9}}
             limit: Max results
             offset: Pagination offset
             include_archived: Include archived
@@ -485,7 +555,7 @@ class BrainRecallMixin:
 
         # ── FALLBACK: If embedder not ready, degrade to keyword-only ──
         if not embedder.is_ready():
-            result = self._keyword_recall(query, types, limit, offset, include_archived,
+            result = self._keyword_recall(query, filter, limit, offset, include_archived,
                                min_recency, project, session_id, _skip_log=True)
             result['_recall_mode'] = 'keyword_only_DEGRADED'
             result['_embedding_stats'] = {
@@ -507,12 +577,12 @@ class BrainRecallMixin:
             query_vec = embedder.embed(expanded_query)
             if not query_vec:
                 # Embedding failed for this query — fall back
-                result = self._keyword_recall(query, types, limit, offset, include_archived,
+                result = self._keyword_recall(query, filter, limit, offset, include_archived,
                                    min_recency, project, session_id)
                 result['_recall_mode'] = 'keyword_only_DEGRADED'
                 return result
         except Exception as e:
-            result = self._keyword_recall(query, types, limit, offset, include_archived,
+            result = self._keyword_recall(query, filter, limit, offset, include_archived,
                                min_recency, project, session_id)
             result['_recall_mode'] = 'keyword_only_DEGRADED'
             return result
@@ -548,9 +618,13 @@ class BrainRecallMixin:
             node_titles = {}    # node_id → title (for title-match boost)
             node_types = {}     # node_id → type (for vocab detection)
             _emb_dal = EmbeddingDAL(self.conn)
+            # Extract type filter from dict filter for embedding scan pre-filter
+            _types_filter = None
+            if filter and 'type' in filter and 'in' in filter['type']:
+                _types_filter = filter['type']['in']
             emb_rows = _emb_dal.get_all_with_context(
                 exclude_archived=not include_archived,
-                types=types, project=project)
+                types=_types_filter, project=project)
             # Per-node data collected here for unified_score() in STEP 6.
             # created_at/emotion/access_count feed the modulator formula.
             node_created_at = {}    # node_id → ISO timestamp (for freshness)
@@ -735,7 +809,7 @@ class BrainRecallMixin:
         # STEP 4: Also run keyword recall to catch nodes WITHOUT embeddings
         # and to get keyword precision scores for exact-match tiebreaking
         # _skip_log=True: precision module handles logging via hooks, not here.
-        keyword_result = self._keyword_recall(query, types, limit * 3, offset, include_archived,
+        keyword_result = self._keyword_recall(query, filter, limit * 3, offset, include_archived,
                                     min_recency, project, session_id, _skip_log=True)
         keyword_scores = {}  # node_id → keyword_effective_activation
         keyword_nodes = {}   # node_id → full node dict
@@ -748,7 +822,7 @@ class BrainRecallMixin:
 
         # STEP 4.5: FTS5 independent candidate net
         # FTS5 catches nodes where words match but embeddings didn't connect.
-        # These go to the judge as fts5_only candidates (no blended score needed).
+        # These go to the surfacer as fts5_only candidates (no blended score needed).
         fts5_only_ids = set()
         fts5_all_ids = set()
         try:
@@ -879,10 +953,10 @@ class BrainRecallMixin:
         scored_results.sort(key=lambda x: -x['blended_score'])
         scored_results = scored_results[:limit]
 
-        # STEP 6.5: Graph traversal MOVED to Layer 3 (post-judge).
+        # STEP 6.5: Graph traversal MOVED to Layer 3 (post-surface).
         # Previously: traversed from top-5 cosine results (often hubs).
-        # Now: traversal happens in pre_response_recall.py AFTER the judge
-        # selects relevant nodes. The judge's selections are the right seeds.
+        # Now: traversal happens in pre_response_recall.py AFTER the surfacer
+        # selects relevant nodes. The surfacer's selections are the right seeds.
         # The _traverse_graph() function still exists for Layer 3 to call
         # via the 'graph_expand' daemon command.
         graph_neighborhoods = {}
@@ -894,10 +968,10 @@ class BrainRecallMixin:
         # STEP 6.9: Per-result relevance floor.
         # v8.7: Changed from all-or-nothing (top result gates everything) to per-result.
         # Each result must meet its own floor based on how it was discovered.
-        # v9: FTS5-only candidates bypass the relevance floor — they go straight to judge.
+        # v9: FTS5-only candidates bypass the relevance floor — they go straight to surfacer.
         scored_results = [
             sr for sr in scored_results
-            if sr['_source'] == 'fts5_only'  # FTS5-only: always pass to judge
+            if sr['_source'] == 'fts5_only'  # FTS5-only: always pass to surfacer
             or sr['blended_score'] >= (
                 RELEVANCE_FLOOR_ENRICHED
                 if enrichment_hits.get(sr['node_id'], 'primary') != 'primary'
@@ -998,6 +1072,9 @@ class BrainRecallMixin:
                 # v9: All nodes are primary results (vocab→concept migration complete)
                 final_results.append(node)
 
+        # STEP 7.5a: Apply dict filter on final results
+        final_results = _apply_filter(final_results, filter, self.conn)
+
         # STEP 7.5: Enrich top 3 results with metadata + neighbors
         # All results keep full content (no truncation). Top 3 also get
         # metadata and neighbor context for richer understanding.
@@ -1048,7 +1125,7 @@ class BrainRecallMixin:
                 'enrichment_vectors_used': enrichment_used if 'enrichment_used' in dir() else 0,
                 'results_via_enrichment': sum(1 for r in final_results if enrichment_hits.get(r.get('id', ''), 'primary') != 'primary'),
             },
-            # v9: Retrieval stats for judge — distribution-aware context
+            # v9: Retrieval stats for surfacer — distribution-aware context
             '_retrieval_stats': {
                 'brain_size': _brain_size,
                 'candidates_after_floor': len(scored_results) if 'scored_results' in dir() else 0,
@@ -1301,7 +1378,7 @@ class BrainRecallMixin:
             '_recall_mode': 'by_id',
         }
 
-    def spread_activation(self, seed_ids: List[str], types: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    def spread_activation(self, seed_ids: List[str], filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
         Spread activation from seed nodes through graph edges.
 
@@ -1311,7 +1388,7 @@ class BrainRecallMixin:
 
         Args:
             seed_ids: Starting node IDs
-            types: Optional filter by node types
+            filter: Optional dict filter (same format as recall())
 
         Returns:
             List of activated nodes with spread_activation scores
@@ -1348,13 +1425,9 @@ class BrainRecallMixin:
                     node_cache[node_id] = node
 
             if node:
-                # Type filter
-                if types and node.get('type') not in types:
-                    continue
-
                 results.append({**node, 'spread_activation': act})
 
-        return results
+        return _apply_filter(results, filter, self.conn)
 
     def _search_keywords(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """
@@ -1450,13 +1523,10 @@ class BrainRecallMixin:
 
     # _log_recall REMOVED 2026-04-05 — recall_log writes deprecated, traces are source of truth
 
-    def _get_recent(self, limit: int = 20, types: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    def _get_recent(self, limit: int = 20) -> List[Dict[str, Any]]:
         """Get recently accessed nodes."""
         sql = 'SELECT id FROM nodes WHERE archived = 0'
         params = []
-        if types:
-            sql += ' AND type IN (%s)' % ','.join('?' * len(types))
-            params.extend(types)
         sql += ' ORDER BY last_accessed DESC LIMIT ?'
         params.append(limit)
 

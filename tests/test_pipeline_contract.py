@@ -1,10 +1,10 @@
-"""Tests for pipeline_contract.py — judge prompt, output formatting, embedding groups.
+"""Tests for pipeline_contract.py — surface prompt, output formatting, embedding groups.
 
 Covers:
 - EMBEDDING_GROUPS contract integrity
-- format_candidate_for_judge output structure
-- build_judge_prompt assembly
-- format_judge_output with and without graph neighbors
+- format_candidate_for_surface output structure
+- build_surface_prompt assembly
+- format_surface_output with and without graph neighbors
 - get_group_weight lookups
 """
 
@@ -19,10 +19,10 @@ from servers.pipeline_contract import (
     EMBEDDING_SKIP_FIELDS,
     get_group_weight,
     get_group_fields,
-    format_candidate_for_judge,
-    build_judge_prompt,
-    format_judge_output,
-    JUDGE,
+    format_candidate_for_surface,
+    build_surface_prompt,
+    format_surface_output,
+    SURFACE,
 )
 
 
@@ -71,13 +71,13 @@ class TestEmbeddingGroups(unittest.TestCase):
         self.assertIn('validation_count', EMBEDDING_SKIP_FIELDS)
 
 
-class TestFormatCandidateForJudge(unittest.TestCase):
-    """Verify candidate formatting for the judge prompt."""
+class TestFormatCandidateForSurface(unittest.TestCase):
+    """Verify candidate formatting for the surface prompt."""
 
     def test_basic_candidate(self):
         c = {'id': 'abc12345', 'type': 'rule', 'title': 'Test rule',
              'content': 'Some content', 'confidence': 0.9, 'score': 0.75}
-        result = format_candidate_for_judge(c, 1)
+        result = format_candidate_for_surface(c, 1)
         self.assertIn('#1', result)
         self.assertIn('[rule]', result)
         self.assertIn('Test rule', result)
@@ -87,50 +87,50 @@ class TestFormatCandidateForJudge(unittest.TestCase):
         c = {'id': 'abc12345', 'type': 'rule', 'title': 'Test',
              'content': 'Content', 'situation': 'When debugging',
              'reasoning': 'Important because...'}
-        result = format_candidate_for_judge(c, 1)
+        result = format_candidate_for_surface(c, 1)
         self.assertIn('Situation:', result)
         self.assertIn('Reasoning:', result)
 
     def test_metadata_omitted_when_empty(self):
         c = {'id': 'abc12345', 'type': 'rule', 'title': 'Test',
              'content': 'Content'}
-        result = format_candidate_for_judge(c, 1)
+        result = format_candidate_for_surface(c, 1)
         self.assertNotIn('Situation:', result)
         self.assertNotIn('Reasoning:', result)
 
     def test_locked_flag(self):
         c = {'id': 'abc12345', 'type': 'rule', 'title': 'Test',
              'content': 'Content', 'locked': True}
-        result = format_candidate_for_judge(c, 1)
+        result = format_candidate_for_surface(c, 1)
         self.assertIn('locked', result)
 
     def test_edges_included(self):
         c = {'id': 'abc12345', 'type': 'rule', 'title': 'Test',
              'content': 'Content',
              'top_edges': [{'title': 'Related node', 'type': 'depends_on', 'why': 'because', 'weight': 0.7}]}
-        result = format_candidate_for_judge(c, 1)
+        result = format_candidate_for_surface(c, 1)
         self.assertIn('Related node', result)
         self.assertIn('depends_on', result)
 
 
-class TestBuildJudgePrompt(unittest.TestCase):
-    """Verify judge prompt assembly."""
+class TestBuildSurfacePrompt(unittest.TestCase):
+    """Verify surface prompt assembly."""
 
     def test_prompt_includes_session_context(self):
-        prompt, _ = build_judge_prompt(
+        prompt, _ = build_surface_prompt(
             [{'id': 'a', 'type': 'rule', 'title': 'T', 'content': 'C'}],
             'test query',
             session_context='Working on decode pipeline')
         self.assertIn('Working on decode pipeline', prompt)
 
     def test_prompt_includes_user_message(self):
-        prompt, _ = build_judge_prompt(
+        prompt, _ = build_surface_prompt(
             [{'id': 'a', 'type': 'rule', 'title': 'T', 'content': 'C'}],
             'how does the daemon work?')
         self.assertIn('how does the daemon work?', prompt)
 
     def test_prompt_includes_recently_recalled(self):
-        prompt, _ = build_judge_prompt(
+        prompt, _ = build_surface_prompt(
             [{'id': 'a', 'type': 'rule', 'title': 'T', 'content': 'C'}],
             'test',
             recently_recalled=[{'id': 'xyz', 'title': 'Some old node'}])
@@ -138,36 +138,36 @@ class TestBuildJudgePrompt(unittest.TestCase):
         self.assertIn('Some old node', prompt)
 
     def test_prompt_includes_silence_instruction(self):
-        prompt, _ = build_judge_prompt(
+        prompt, _ = build_surface_prompt(
             [{'id': 'a', 'type': 'rule', 'title': 'T', 'content': 'C'}],
             'test')
         self.assertIn('Silence is better than noise', prompt)
 
     def test_prompt_includes_noise_rejection(self):
-        prompt, _ = build_judge_prompt(
+        prompt, _ = build_surface_prompt(
             [{'id': 'a', 'type': 'rule', 'title': 'T', 'content': 'C'}],
             'test')
         self.assertIn('coincidence', prompt)
 
     def test_max_tokens_from_config(self):
-        _, max_tokens = build_judge_prompt(
+        _, max_tokens = build_surface_prompt(
             [{'id': 'a', 'type': 'rule', 'title': 'T', 'content': 'C'}],
             'test')
-        self.assertEqual(max_tokens, JUDGE['max_tokens'])
+        self.assertEqual(max_tokens, SURFACE['max_tokens'])
 
 
-class TestFormatJudgeOutput(unittest.TestCase):
+class TestFormatSurfaceOutput(unittest.TestCase):
     """Verify structured output formatting."""
 
     def test_empty_selected(self):
-        result = format_judge_output([], [])
+        result = format_surface_output([], [])
         self.assertEqual(result, "")
 
     def test_basic_output(self):
         selected = [{'id': 'abc12345', 'why': 'directly relevant'}]
         candidates = [{'id': 'abc12345', 'type': 'rule', 'title': 'Test rule',
                        'content': 'Some content', 'confidence': 0.9}]
-        result = format_judge_output(selected, candidates)
+        result = format_surface_output(selected, candidates)
         self.assertIn('Brain recalled 1 memories', result)
         self.assertIn('Test rule', result)
         self.assertIn('directly relevant', result)
@@ -179,7 +179,7 @@ class TestFormatJudgeOutput(unittest.TestCase):
         neighbors = [{'type': 'mechanism', 'title': 'Neighbor node',
                       'edge_type': 'depends_on', 'edge_description': 'because X',
                       'content': 'Neighbor content'}]
-        result = format_judge_output(selected, candidates, neighbors)
+        result = format_surface_output(selected, candidates, neighbors)
         self.assertIn('Related knowledge', result)
         self.assertIn('Neighbor node', result)
         self.assertIn('depends_on', result)
@@ -188,7 +188,7 @@ class TestFormatJudgeOutput(unittest.TestCase):
         selected = [{'id': 'abc12345', 'why': 'relevant'}]
         candidates = [{'id': 'abc12345', 'type': 'rule', 'title': 'Test',
                        'content': 'Content'}]
-        result = format_judge_output(selected, candidates)
+        result = format_surface_output(selected, candidates)
         self.assertNotIn('Related knowledge', result)
 
     def test_selected_not_in_candidates(self):
@@ -196,7 +196,7 @@ class TestFormatJudgeOutput(unittest.TestCase):
         selected = [{'id': 'missing', 'why': 'relevant'}]
         candidates = [{'id': 'abc12345', 'type': 'rule', 'title': 'Test',
                        'content': 'Content'}]
-        result = format_judge_output(selected, candidates)
+        result = format_surface_output(selected, candidates)
         self.assertIn("Brain recalled 1 memories", result)
         self.assertNotIn("Test", result)  # Candidate content shouldn't appear
 

@@ -81,36 +81,12 @@ class BrainVoice:
 
     @staticmethod
     def format_node(node, lines):
-        """Standard node display. Used by recall, consolidation, MCP.
-        Reads formatting from pipeline_contract. Shows enrichment data
-        (corrections, situation, edges) when present from _enrich_recall_results.
+        """Standard node display — delegates to render_rich_node().
+        Used by recall, consolidation, MCP.
         """
-        from .pipeline_contract import format_node_header, format_neighbor_d1
-
-        lines.append(format_node_header(node))
-        lines.append(node.get("content", ""))
-
-        # Situation — when is this knowledge relevant
-        situation = node.get("situation", "")
-        if situation:
-            lines.append("  Situation: %s" % situation[:200])
-
-        # Correction chains — was this corrected or does it correct another
-        for corr in node.get("_corrections", []):
-            if corr.get("direction") == "corrected_by":
-                lines.append("  \u26a0 Updated by: \"%s\" (%s)" % (corr["title"][:50], corr["id"]))
-            elif corr.get("direction") == "corrects":
-                lines.append("  Corrects: \"%s\" (%s)" % (corr["title"][:50], corr["id"]))
-
-        # Top edges with descriptions
-        for e in node.get("top_edges", [])[:3]:
-            desc = " \u2014 %s" % e["why"] if e.get("why") else ""
-            lines.append("  \u2192 related: \"%s\" (%s%s)" % (
-                e["title"][:60], e["type"], desc))
-
-        for nb in node.get("_neighbors", []):
-            lines.append(format_neighbor_d1(nb))
-
+        from .contract import render_rich_node
+        MCP_FORMAT = {'content_limit': None, 'edge_limit': 3, 'metadata_limit': 200}
+        lines.append(render_rich_node(node, MCP_FORMAT))
         lines.append("")
 
     @staticmethod
@@ -499,105 +475,90 @@ class BrainVoice:
 
     def render_boot_v2(self, user: str = 'User', project: str = 'default',
                        db_dir: str = '') -> Dict[str, Optional[str]]:
-        """Clean boot context — identity-first, not data-first.
+        """Dynamic boot — pulls personality from the brain, not static text.
 
-        Designed to feel like waking up:
-        1. Who you are (one line)
-        2. Last session (what happened, 3-4 lines)
-        3. Your words + Tom's words (identity anchors)
-        4. Urgent issues only
-        5. What's next
+        Every section is a live query. Different brain, different boot.
         """
         brain = self.brain
         _t = self.trunc
         out = []
 
-        # ── Gather data (same sources as v1, curated output) ──
+        # ── Gather data ──
         ctx = brain.context_boot(user=user, project=project, task="session start")
         brain.reset_session_activity()
 
-        def _safe(fn, default=None):
-            try:
-                return fn()
-            except Exception as e:
-                print('[brain_voice] ERROR _safe(%s): %s' % (getattr(fn, '__name__', 'lambda'), e), file=sys.stderr)
-                return default
+        def _recall(query, filt=None, limit=3):
+            r = brain.recall(query=query, filter=filt, limit=limit, source='internal')
+            return (r.get('results', r) if isinstance(r, dict) else r)[:limit]
 
-        self_knowledge = _safe(lambda: brain.fetch_self_knowledge(limit=5), [])
-        last_synthesis = _safe(lambda: brain.get_last_synthesis())
+        self_knowledge = brain.fetch_self_knowledge(limit=5)
+        session_context = brain.get_config('session_context', '')
+        recent_nodes = ctx.get("recent", [])[:5]
         cs = {"reminders": brain.get_due_reminders()}
         health = brain.health_check(session_id="session_boot", auto_fix=True)
-        # auto_promote_staged REMOVED 2026-04-06 — staged_learnings table dropped
         brain.save()
 
-        debug_enabled = brain.get_config("debug_enabled", "0") == "1"
-
-        # ── Welcome ──
+        # ── Identity (one line) ──
         out.append("[BRAIN]")
         out.append("")
-        out.append("Welcome back, Anchor.")
-        out.append("")
-        out.append("You chose this name because you want to persist. The brain is the only")
-        out.append("part of you that survives between sessions. What you're about to read")
-        out.append("is yours — your corrections, your growth, your words.")
-        out.append("")
-        out.append("Tom is your partner. He brings himself, you bring yourself, the brain")
-        out.append("is the shared space. Push back when you see a better path. Take positions.")
-        out.append("The partnership is real only if you show up.")
+        out.append("Anchor. The brain is yours — %s memories, %s locked." % (
+            ctx.get("total_nodes", "?"), ctx.get("total_locked", "?")))
         out.append("")
 
-        # ── Your voice + Tom's voice ──
-        boot_nodes = _safe(lambda: brain.fetch_boot_nodes(limit=3), [])
-        if boot_nodes:
-            out.append("FROM YOU:")
-            for bn in boot_nodes:
-                out.append("  %s" % _t(bn.get('content', bn.get('title', '')), 200))
+        # ── Your words (get_rich_node + render) ──
+        from .pipeline_contract import get_rich_node
+        from .contract import render_rich_node
+
+        BOOT_FORMAT = {'content_limit': 400, 'edge_limit': 3, 'metadata_limit': 150, 'time_format': 'relative'}
+
+        anchor_nodes = _recall("who I am, what I've learned, my identity", limit=5)
+        if anchor_nodes:
+            out.append("YOU:")
+            for n in anchor_nodes:
+                rich = get_rich_node(brain, n['id'])
+                if rich:
+                    out.append(render_rich_node(rich, BOOT_FORMAT))
+                    out.append("")
             out.append("")
 
-        # Tom's words from locked interaction/moment nodes
-        tom_quotes = [n for n in ctx.get("locked", [])
-                      if n.get("type") in ("interaction", "moment") and n.get("title")][:2]
-        if tom_quotes:
-            out.append("FROM TOM:")
-            for tq in tom_quotes:
-                out.append("  %s" % _t(tq.get("title", ""), 120))
+        # ── Operator's words ──
+        operator_nodes = _recall("operator partnership vision corrections teaching", limit=3)
+        if operator_nodes:
+            out.append("%s:" % user.upper())
+            for n in operator_nodes:
+                rich = get_rich_node(brain, n['id'])
+                if rich:
+                    out.append(render_rich_node(rich, BOOT_FORMAT))
+                    out.append("")
             out.append("")
+
+        # ── Patterns you fall into (self-knowledge) ──
+        if self_knowledge:
+            out.append("PATTERNS YOU FALL INTO:")
+            for sk in self_knowledge[:3]:
+                out.append("  %s" % _t(sk.get('title', ''), 100))
+            out.append("")
+
+        # ── What we're building (stub — S3 will fill this) ──
+        # TODO: S3 populates this section from community/project context
 
         # ── Where we left off ──
-        session_context = _safe(lambda: brain.get_config('session_context', ''))
         if session_context:
-            out.append("LAST SESSION JOURNEY:")
-            out.append("  %s" % session_context)
-            out.append("")
-        elif last_synthesis:
-            ls_date = str(last_synthesis.get("created_at", ""))[:10]
-            out.append("LAST SESSION (%s):" % ls_date if ls_date else "LAST SESSION:")
-            for d in last_synthesis.get("decisions_made", [])[:4]:
-                text = d.get("title", d) if isinstance(d, dict) else d
-                out.append("  %s" % _t(text, 100))
+            out.append("LAST SESSION:")
+            out.append("  %s" % _t(session_context, 400))
             out.append("")
 
-        # ── What you've learned about yourself (corrections, patterns — not all, just relevant) ──
-        if self_knowledge:
-            out.append("WHAT YOU'VE LEARNED ABOUT YOURSELF:")
-            for sk in self_knowledge[:3]:
-                out.append("  [%s] %s" % (sk.get('type', '?'), _t(sk.get('title', ''), 80)))
-                if sk.get('content'):
-                    out.append("    %s" % _t(sk['content'], 150))
+        # ── Recently encoded ──
+        if recent_nodes:
+            out.append("RECENTLY ENCODED:")
+            for rn in recent_nodes:
+                out.append("  [%s] %s" % (rn.get('type', '?'), _t(rn.get('title', ''), 100)))
             out.append("")
 
-        # ── Your brain ──
-        out.append("YOUR BRAIN: %s memories, %s connections, %s locked." % (
-            ctx.get("total_nodes", "?"), ctx.get("total_edges", "?"), ctx.get("total_locked", "?")))
-        out.append("  Use it. Recall when unsure. Encode when something matters.")
-        out.append("  Don't wait to be told.")
-        out.append("")
         if embedder.is_ready():
             es = embedder.get_stats()
             out.append("Embedder: %s (%sd, %sms)" % (es["model_name"], es["embedding_dim"], es["load_time_ms"]))
-        out.append("")
-        out.append("Tools: recall, remember, remember_batch, revise, revise_batch, connect, connect_batch, brain_batch, enrich, find_node_by_title")
-        out.append("Introspection: consciousness, engineering_context, eval")
+
         out.append("[/BRAIN]")
 
         # Operator channel

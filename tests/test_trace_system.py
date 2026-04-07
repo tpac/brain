@@ -32,7 +32,7 @@ class TestTraceContract:
     def test_known_good_s1(self):
         assert self.validate('s1', 'O', 'recall') == (True, '')
         assert self.validate('s1', 'O', 'encoding_prompt') == (True, '')
-        assert self.validate('s1', 'K', 'judge_selected') == (True, '')
+        assert self.validate('s1', 'K', 'surface_selected') == (True, '')
         assert self.validate('s1', 'K', 'node_catalog') == (True, '')
         assert self.validate('s1', 'delta', 'additionalContext') == (True, '')
         assert self.validate('s1', 'delta', 'encoding_run') == (True, '')
@@ -174,7 +174,7 @@ class TestTraceDAL:
                         ref_type='recall', summary='first')
         time.sleep(0.01)
         self.dal.append(chain_id='order-test', scale='s1', event_type='K',
-                        ref_type='judge_selected', summary='second')
+                        ref_type='surface_selected', summary='second')
         time.sleep(0.01)
         self.dal.append(chain_id='order-test', scale='s1', event_type='delta',
                         ref_type='additionalContext', summary='third')
@@ -269,7 +269,7 @@ class TestGetChains:
 
     def _write_chain(self, chain_id, scale, session_id='sess-1', events=None):
         """Helper: write a complete O/K/delta chain."""
-        events = events or [('O', 'recall'), ('K', 'judge_selected'), ('delta', 'additionalContext')]
+        events = events or [('O', 'recall'), ('K', 'surface_selected'), ('delta', 'additionalContext')]
         for et, rt in events:
             self.dal.append(chain_id=chain_id, scale=scale, event_type=et,
                             ref_type=rt, summary='%s %s' % (et, rt),
@@ -416,7 +416,7 @@ class TestCountBy:
     def test_count_by_event_type(self):
         """Counts events grouped by event_type."""
         self.dal.append(chain_id='c1', scale='s1', event_type='O', ref_type='recall')
-        self.dal.append(chain_id='c1', scale='s1', event_type='K', ref_type='judge_selected')
+        self.dal.append(chain_id='c1', scale='s1', event_type='K', ref_type='surface_selected')
         self.dal.append(chain_id='c1', scale='s1', event_type='delta', ref_type='additionalContext')
         self.dal.append(chain_id='c2', scale='s1', event_type='O', ref_type='recall')
 
@@ -463,7 +463,7 @@ class TestGetSessionTurns:
             yield
 
     def _write_turn(self, session_id, stop, user_msg, assistant_msg,
-                    judge_output='', recall_chain=''):
+                    surface_output='', recall_chain=''):
         """Helper: write one S0 turn + optional S1 recall delta."""
         chain = 's0-%s-%s' % (session_id[:8], stop)
         meta_k = {'content': user_msg}
@@ -475,10 +475,10 @@ class TestGetSessionTurns:
         self.dal.append(chain_id=chain, scale='s0', event_type='delta',
                         ref_type='assistant_message', summary=assistant_msg[:200],
                         metadata={'content': assistant_msg}, session_id=session_id)
-        if judge_output and recall_chain:
+        if surface_output and recall_chain:
             self.dal.append(chain_id=recall_chain, scale='s1', event_type='delta',
                             ref_type='additionalContext', summary='surfaced',
-                            metadata={'content': judge_output}, session_id=session_id)
+                            metadata={'content': surface_output}, session_id=session_id)
 
     def test_shape(self):
         """Returns list of dicts with expected keys."""
@@ -500,11 +500,11 @@ class TestGetSessionTurns:
         user_msgs = [t['content'] for t in turns if t['role'] == 'user']
         assert user_msgs == ['first message', 'second message']
 
-    def test_cross_reference_judge_output(self):
-        """Judge output from S1 delta is cross-referenced via recall_chain."""
+    def test_cross_reference_surface_output(self):
+        """Surface output from S1 delta is cross-referenced via recall_chain."""
         recall_chain = 's1r-sess3333-5'
         self._write_turn('sess3333aabbccdd', '5', 'what is X?', 'X is Y',
-                         judge_output='Brain recalled: node about X',
+                         surface_output='Brain recalled: node about X',
                          recall_chain=recall_chain)
         turns = self.dal.get_session_turns('sess3333aabbccdd')
         user_turn = [t for t in turns if t['role'] == 'user'][0]

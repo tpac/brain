@@ -47,12 +47,12 @@ class TestDecodeTransitions(BrainTestBase):
                       'Stored node not found in recall results — embedding storage or '
                       'retrieval is broken')
 
-    def test_recall_result_shape_for_judge(self):
-        """recall → judge: recall results must have all fields build_judge_prompt expects.
+    def test_recall_result_shape_for_surface(self):
+        """recall → surface: recall results must have all fields build_surface_prompt expects.
 
-        build_judge_prompt calls format_candidate_for_judge which reads:
+        build_surface_prompt calls format_candidate_for_surface which reads:
         id, type, title, content, confidence, locked, score (via effective_activation),
-        keywords. If recall drops any of these, the judge gets malformed candidates.
+        keywords. If recall drops any of these, the surface gets malformed candidates.
         """
         self.brain.remember(
             type='rule',
@@ -64,27 +64,27 @@ class TestDecodeTransitions(BrainTestBase):
         results = result.get('results', [])
         self.assertTrue(len(results) > 0, 'No recall results — test data not stored')
 
-        # Fields that format_candidate_for_judge reads from each candidate
+        # Fields that format_candidate_for_surface reads from each candidate
         required_fields = {'id', 'type', 'title', 'content', 'confidence', 'locked'}
         node = results[0]
         missing = required_fields - set(node.keys())
         self.assertEqual(missing, set(),
-                         'Recall result missing fields needed by judge: %s' % missing)
+                         'Recall result missing fields needed by surface: %s' % missing)
 
-        # score comes from effective_activation — judge reads it as 'score'
+        # score comes from effective_activation — surface reads it as 'score'
         # The hook_recall code in daemon_hooks enriches candidates before passing
-        # to build_judge_prompt. But the raw recall result must have the base fields.
+        # to build_surface_prompt. But the raw recall result must have the base fields.
         self.assertIn('effective_activation', node,
-                      'Missing effective_activation — judge needs this as candidate score')
+                      'Missing effective_activation — surface needs this as candidate score')
 
-    def test_judge_output_format_judge_output_compatibility(self):
-        """judge JSON → format_judge_output: fake judge response must produce valid output.
+    def test_surface_output_format_surface_output_compatibility(self):
+        """surface JSON → format_surface_output: fake surface response must produce valid output.
 
-        format_judge_output expects selected=[{"id": "...", "why": "..."}] and
+        format_surface_output expects selected=[{"id": "...", "why": "..."}] and
         matches them against candidates by id[:8]. If the format diverges,
-        Claude gets empty context despite the judge selecting nodes.
+        Claude gets empty context despite the surface selecting nodes.
         """
-        from servers.scales.s1.recall_contract import format_judge_output
+        from servers.scales.s1.recall_contract import format_surface_output
 
         # Create a node so we have a real ID
         node = self.brain.remember(
@@ -109,27 +109,27 @@ class TestDecodeTransitions(BrainTestBase):
             'created_at': '2026-04-01T12:00:00Z',
         }]
 
-        # Simulate judge output (what Haiku returns)
+        # Simulate surface output (what Haiku returns)
         selected = [{'id': short_id, 'why': 'directly answers rate limit question'}]
 
-        output = format_judge_output(selected, candidates)
+        output = format_surface_output(selected, candidates)
 
         self.assertIn('Brain recalled', output,
-                      'format_judge_output did not produce header')
+                      'format_surface_output did not produce header')
         self.assertIn('Rate limiting', output,
-                      'format_judge_output did not include node title')
+                      'format_surface_output did not include node title')
         self.assertIn('token bucket', output,
-                      'format_judge_output did not include node content')
+                      'format_surface_output did not include node content')
         self.assertIn(short_id, output,
-                      'format_judge_output did not include node ID')
+                      'format_surface_output did not include node ID')
 
-    def test_judge_output_unmatched_id_skipped(self):
-        """judge JSON → format_judge_output: selected ID not in candidates must not crash.
+    def test_surface_output_unmatched_id_skipped(self):
+        """surface JSON → format_surface_output: selected ID not in candidates must not crash.
 
-        If the judge hallucinates an ID that doesn't match any candidate,
-        format_judge_output should skip it gracefully.
+        If the surface hallucinates an ID that doesn't match any candidate,
+        format_surface_output should skip it gracefully.
         """
-        from servers.scales.s1.recall_contract import format_judge_output
+        from servers.scales.s1.recall_contract import format_surface_output
 
         candidates = [{
             'id': 'real1234-full-id',
@@ -138,18 +138,18 @@ class TestDecodeTransitions(BrainTestBase):
             'content': 'Real content',
             'confidence': 1.0,
         }]
-        # Judge selects a non-existent ID
+        # Surface selects a non-existent ID
         selected = [
             {'id': 'nonexist', 'why': 'hallucinated'},
             {'id': 'real1234', 'why': 'actual match'},
         ]
 
-        output = format_judge_output(selected, candidates)
+        output = format_surface_output(selected, candidates)
 
         # Should include the real node but not crash on the fake one
         self.assertIn('Real node', output)
-        # Should show 2 in header (judge selected 2) but only render 1
-        # Actually format_judge_output uses len(selected) for header count
+        # Should show 2 in header (surface selected 2) but only render 1
+        # Actually format_surface_output uses len(selected) for header count
         self.assertIn('Brain recalled', output)
 
     def test_correction_enrich_finds_correction_chains(self):
@@ -197,10 +197,10 @@ class TestDecodeTransitions(BrainTestBase):
         self.assertIn(node_b['id'][:8], correction_ids,
                       'Correcting node B not found in correction chain for node A')
 
-    def test_hebbian_judge_selected_to_co_accessed_edges(self):
-        """judge-selected IDs → _hebbian_strengthen: creates co_accessed edges.
+    def test_hebbian_surface_selected_to_co_accessed_edges(self):
+        """surface-selected IDs → _hebbian_strengthen: creates co_accessed edges.
 
-        The Stop hook reads judge-selected IDs from a tmp file and calls
+        The Stop hook reads surface-selected IDs from a tmp file and calls
         _hebbian_strengthen. Only selected nodes get edges — the third
         (unselected) node must not get edges.
         """
@@ -216,10 +216,10 @@ class TestDecodeTransitions(BrainTestBase):
 
         session_id = 'test-hebbian-session'
 
-        # Write judge-selected file (what run_judge writes)
-        judge_path = '/tmp/brain-%s-judge-selected.json' % session_id
+        # Write surface-selected file (what _hebbian_strengthen reads)
+        surface_path = '/tmp/brain-%s-surface-selected.json' % session_id
         try:
-            with open(judge_path, 'w') as f:
+            with open(surface_path, 'w') as f:
                 json.dump({'selected_ids': [n1['id'][:8], n2['id'][:8]]}, f)
 
             # Count co_accessed edges before Hebbian strengthening
@@ -232,47 +232,47 @@ class TestDecodeTransitions(BrainTestBase):
             pre_edges_n3 = self.brain.conn.execute(
                 "SELECT COUNT(*) FROM edges "
                 "WHERE (source_id = ? OR target_id = ?) "
-                "AND relation = 'co_accessed' AND description = 'judge-selected'",
+                "AND relation = 'co_accessed'",
                 (n3['id'], n3['id'])
             ).fetchone()[0]
 
             _hebbian_strengthen(self.brain, session_id)
 
-            # _hebbian_strengthen uses connect_typed with description='judge-selected'
-            # Check that a judge-selected co_accessed edge exists between n1 and n2
+            # _hebbian_strengthen creates co_accessed edges between surface-selected nodes
+            # Check that a co_accessed edge exists between n1 and n2
             edge = self.brain.conn.execute(
-                "SELECT relation, description FROM edges "
+                "SELECT relation FROM edges "
                 "WHERE source_id = ? AND target_id = ? "
-                "AND description = 'judge-selected'",
+                "AND relation = 'co_accessed'",
                 (n1['id'], n2['id'])
             ).fetchone()
             self.assertIsNotNone(edge,
-                                 'No judge-selected co_accessed edge between selected nodes')
+                                 'No co_accessed edge between surface-selected nodes')
             self.assertEqual(edge[0], 'co_accessed',
                              'Edge relation should be co_accessed, got: %s' % edge[0])
 
-            # Verify n3 has no judge-selected co_accessed edges
-            n3_judge_edges = self.brain.conn.execute(
+            # Verify n3 has no new co_accessed edges (since it was not selected)
+            post_edges_n3 = self.brain.conn.execute(
                 "SELECT COUNT(*) FROM edges "
                 "WHERE (source_id = ? OR target_id = ?) "
-                "AND relation = 'co_accessed' AND description = 'judge-selected'",
+                "AND relation = 'co_accessed'",
                 (n3['id'], n3['id'])
             ).fetchone()[0]
-            self.assertEqual(n3_judge_edges, 0,
-                             'Unselected node got judge-selected co_accessed edges')
+            self.assertEqual(post_edges_n3, pre_edges_n3,
+                             'Unselected node got new co_accessed edges')
         finally:
-            if os.path.exists(judge_path):
-                os.unlink(judge_path)
+            if os.path.exists(surface_path):
+                os.unlink(surface_path)
 
-    def test_recall_candidates_feed_into_judge_prompt(self):
-        """recall → build_judge_prompt: recall output must produce a valid judge prompt.
+    def test_recall_candidates_feed_into_surface_prompt(self):
+        """recall → build_surface_prompt: recall output must produce a valid surface prompt.
 
         This is the full transition: recall results (enriched as candidates)
-        passed through build_judge_prompt. The prompt must contain all candidate
+        passed through build_surface_prompt. The prompt must contain all candidate
         IDs and not raise errors. Tests that the recall output shape is compatible
-        with the judge input shape.
+        with the surface input shape.
         """
-        from servers.scales.s1.recall_contract import build_judge_prompt
+        from servers.scales.s1.recall_contract import build_surface_prompt
 
         # Store several nodes to get real recall results
         self.brain.remember(
@@ -295,8 +295,8 @@ class TestDecodeTransitions(BrainTestBase):
             c['score'] = c.get('effective_activation', 0)
             candidates.append(c)
 
-        # build_judge_prompt should not raise and should produce a string
-        prompt, max_tokens = build_judge_prompt(
+        # build_surface_prompt should not raise and should produce a string
+        prompt, max_tokens = build_surface_prompt(
             candidates,
             user_message='how do we deploy to production?',
             session_context='Working on deployment pipeline',
@@ -308,24 +308,24 @@ class TestDecodeTransitions(BrainTestBase):
 
         self.assertIsInstance(prompt, str)
         self.assertTrue(len(prompt) > 100,
-                        'Judge prompt suspiciously short: %d chars' % len(prompt))
+                        'Surface prompt suspiciously short: %d chars' % len(prompt))
         self.assertIsInstance(max_tokens, int)
 
         # Every candidate ID (first 8 chars) should appear in the prompt
         for c in candidates:
             short_id = str(c['id'])[:8]
             self.assertIn(short_id, prompt,
-                          'Candidate %s not found in judge prompt — '
-                          'format_candidate_for_judge dropped it' % short_id)
+                          'Candidate %s not found in surface prompt — '
+                          'format_candidate_for_surface dropped it' % short_id)
 
-    def test_format_judge_output_corrections_wiring(self):
-        """format_judge_output + corrections: correction data must appear in output.
+    def test_format_surface_output_corrections_wiring(self):
+        """format_surface_output + corrections: correction data must appear in output.
 
         When correction_enrich returns data for a selected node,
-        format_judge_output must include the correction warning in the
+        format_surface_output must include the correction warning in the
         additionalContext string. Tests the corrections kwarg wiring.
         """
-        from servers.scales.s1.recall_contract import format_judge_output
+        from servers.scales.s1.recall_contract import format_surface_output
 
         node_id = 'abc12345-full-uuid-here'
         short_id = node_id[:8]
@@ -348,10 +348,10 @@ class TestDecodeTransitions(BrainTestBase):
             }]
         }
 
-        output = format_judge_output(selected, candidates, corrections=corrections)
+        output = format_surface_output(selected, candidates, corrections=corrections)
 
         self.assertIn('Updated by', output,
-                      'Correction warning not in format_judge_output — '
+                      'Correction warning not in format_surface_output — '
                       'corrections kwarg is not wired through')
         self.assertIn('PostgreSQL', output,
                       'Correction title not shown in output')

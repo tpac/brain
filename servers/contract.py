@@ -163,122 +163,137 @@ NODE_FORMAT_DEFAULTS = {
     'content_limit': None,      # None = full content
     'edge_limit': 5,            # structural edges per node
     'metadata_limit': 300,      # chars per metadata value
-    'edge_filter': ('co_accessed', 'emergent_bridge'),  # relations to exclude
+    'time_format': 'date',      # 'date' = YYYY-MM-DD, 'relative' = "2d ago"
 }
 
 
 def format_node(node_id, db_conn, config=None):
-    """Format a node for LLM consumption — always complete.
+    """Format a node for LLM consumption.
 
-    Returns: formatted string or None if node not found.
-
-    A node includes: type, title, id, confidence, locked status,
-    full content, situation, all metadata KV, keywords, personal context,
-    encoding source, created_at, and structural edges with descriptions.
+    Data: get_rich_node() from pipeline_contract (single source of truth).
+    Format: renders the rich node dict as a readable string.
 
     Config overrides (from NODE_FORMAT_DEFAULTS):
         content_limit: truncate content (None = full)
         edge_limit: max edges shown (default 5)
         metadata_limit: chars per metadata value (default 300)
-        edge_filter: edge relations to exclude (default: co_accessed, emergent_bridge)
     """
     cfg = {**NODE_FORMAT_DEFAULTS, **(config or {})}
     try:
-        from servers.dal import NodeDAL
-        full_id = NodeDAL(db_conn).resolve_id(node_id)
-        if not full_id:
-            return None
-        row = db_conn.execute(
-            "SELECT id, type, title, content, keywords, confidence, locked, "
-            "emotion, encoding_source, created_at, personal, personal_context, "
-            "revised_at "
-            "FROM nodes WHERE id = ?", (full_id,)).fetchone()
-        if not row:
+        # Data — single source of truth
+        from servers.pipeline_contract import get_rich_node
+        node = get_rich_node(db_conn, node_id)
+        if not node:
             return None
 
-        nid = row[0]
-        lines = ['--- [%s] "%s" (id:%s, conf:%s%s%s) ---' % (
-            row[1] or '?', row[2] or '?', nid[:8],
-            ('%.1f' % row[5]) if row[5] else '?',
-            ', locked' if row[6] else '',
-            ', src:%s' % row[8] if row[8] else '')]
-
-        # Content (indented to separate from header)
-        content = row[3] or ''
-        if cfg['content_limit']:
-            content = content[:cfg['content_limit']]
-        if content:
-            lines.append('  Content: %s' % content)
-
-        # Situation (own embedding — key for recall)
-        sit = db_conn.execute(
-            "SELECT situation_text FROM node_embeddings WHERE node_id = ?",
-            (nid,)).fetchone()
-        if sit and sit[0]:
-            lines.append('  Situation: %s' % sit[0])
-
-        # Metadata KV — resolve correction_of to readable reference
-        meta = db_conn.execute(
-            "SELECT key, value FROM node_metadata_kv WHERE node_id = ?",
-            (nid,)).fetchall()
-        meta_limit = cfg['metadata_limit']
-        skip_keys = ('metadata_created_at', 'revision_history')
-        for m in meta:
-            if not m[1] or m[0] in skip_keys:
-                continue
-            key, val = m[0], m[1]
-            # Resolve correction_of to title + short ID
-            if key == 'correction_of':
-                corr_row = db_conn.execute(
-                    "SELECT id, title FROM nodes WHERE id LIKE ?",
-                    (val[:8] + '%',)).fetchone()
-                if corr_row:
-                    lines.append('  ⚠ Corrects: "%s" (id:%s)' % (corr_row[1][:60], corr_row[0][:8]))
-                else:
-                    lines.append('  ⚠ Corrects: id:%s' % val[:8])
-                continue
-            lines.append('  %s: %s' % (key.replace('_', ' ').title(), val[:meta_limit]))
-
-        # Keywords
-        if row[4]:
-            lines.append('  Keywords: %s' % row[4])
-
-        # Personal context (cross-project guard)
-        if row[10] and row[11]:
-            lines.append('  Context: %s (%s)' % (row[10], row[11]))
-
-        # Dates
-        if row[9]:
-            date_str = 'Created: %s' % row[9][:10]
-            if row[12]:  # revised_at
-                date_str += ' | Revised: %s' % row[12][:10]
-            lines.append('  %s' % date_str)
-
-        # Structural edges — nested, one per line
-        edge_limit = cfg['edge_limit']
-        edge_filter = cfg['edge_filter']
-        placeholders = ','.join('?' for _ in edge_filter)
-        edges = db_conn.execute(
-            "SELECT e.relation, e.weight, n2.title, n2.type, e.description, "
-            "n2.id, n2.created_at, n2.revised_at "
-            "FROM edges e JOIN nodes n2 ON n2.id = e.target_id "
-            "WHERE e.source_id = ? AND e.relation NOT IN (%s) "
-            "ORDER BY e.weight DESC LIMIT ?" % placeholders,
-            (nid, *edge_filter, edge_limit)).fetchall()
-        if edges:
-            lines.append('  Edges:')
-            for e in edges:
-                desc = ' — %s' % e[4] if e[4] else ''
-                target_id = e[5][:8] if e[5] else '?'
-                dates = e[6][:10] if e[6] else '?'
-                if e[7]:
-                    dates += ', rev:%s' % e[7][:10]
-                lines.append('    → "%s" (id:%s, %s) [%s] %s%s' % (
-                    (e[2] or '')[:60], target_id, dates, e[3] or '?', e[0], desc))
-
-        return '\n'.join(lines)
+        # Format — render the dict
+        return render_rich_node(node, cfg)
     except Exception:
         return None
+
+
+def render_rich_node(node, config=None):
+    """Render a get_rich_node() dict as a formatted string.
+
+    This is the single formatter. Different configs produce different views:
+    - Encoder: full content, all metadata, 5 edges
+    - Surface: truncated content, key metadata, 3 edges
+    - Boot: same as surface (for now)
+    """
+    cfg = {**NODE_FORMAT_DEFAULTS, **(config or {})}
+    nid = node.get('id', '?')
+    use_relative = cfg.get('time_format') == 'relative'
+
+    def _fmt_time(ts):
+        if not ts:
+            return None
+        if use_relative:
+            from servers.pipeline_contract import _relative_time
+            return _relative_time(ts)
+        return str(ts)[:10]
+
+    # Header
+    parts = ["id:%s" % nid[:8]]
+    conf = node.get('confidence')
+    if conf:
+        parts.append("conf:%.1f" % conf)
+    if node.get('locked'):
+        parts.append("locked")
+    if node.get('encoding_source'):
+        parts.append("src:%s" % node['encoding_source'])
+    created_rel = _fmt_time(node.get('created_at'))
+    revised_rel = _fmt_time(node.get('revised_at'))
+    if revised_rel and created_rel and revised_rel != created_rel:
+        parts.append("created %s, revised %s" % (created_rel, revised_rel))
+    elif created_rel:
+        parts.append(created_rel)
+
+    lines = ['[%s] "%s" (%s)' % (
+        node.get('type', '?'), node.get('title', '?'), ", ".join(parts))]
+
+    # Content
+    content = node.get('content', '')
+    if cfg.get('content_limit'):
+        content = content[:cfg['content_limit']]
+    if content:
+        lines.append('  Content: %s' % content)
+
+    # Situation
+    situation = node.get('situation', '')
+    if situation:
+        lines.append('  Situation: %s' % situation)
+
+    # Metadata KV
+    meta = node.get('_metadata', {})
+    meta_limit = cfg.get('metadata_limit', 300)
+    skip_keys = ('metadata_created_at', 'revision_history')
+    for key, val in meta.items():
+        if not val or key in skip_keys:
+            continue
+        if key == 'correction_of':
+            # Corrections are in _corrections with full context
+            continue
+        lines.append('  %s: %s' % (key.replace('_', ' ').title(), str(val)[:meta_limit]))
+
+    # Keywords
+    if node.get('keywords'):
+        lines.append('  Keywords: %s' % node['keywords'])
+
+    # Personal context
+    if node.get('personal') and node.get('personal_context'):
+        lines.append('  Context: %s (%s)' % (node['personal'], node['personal_context']))
+
+    # Dates (already in header when using relative time)
+    if not use_relative:
+        created = str(node.get('created_at', ''))[:10]
+        revised = str(node.get('revised_at', '') or '')[:10]
+        if created:
+            date_str = 'Created: %s' % created
+            if revised:
+                date_str += ' | Revised: %s' % revised
+            lines.append('  %s' % date_str)
+
+    # Corrections
+    for corr in node.get('_corrections', []):
+        if corr.get('direction') == 'corrected_by':
+            lines.append('  ⚠ Updated by: "%s" (id:%s)' % (corr.get('title', '')[:60], corr.get('id', '')[:8]))
+        elif corr.get('direction') == 'corrects':
+            lines.append('  ⚠ Corrects: "%s" (id:%s)' % (corr.get('title', '')[:60], corr.get('id', '')[:8]))
+
+    # Edges
+    edge_limit = cfg.get('edge_limit', 5)
+    connections = node.get('connections', [])[:edge_limit]
+    if connections:
+        lines.append('  Edges:')
+        for e in connections:
+            desc = ' — %s' % e['description'] if e.get('description') else ''
+            target_id = e.get('id', '?')[:8]
+            time_str = _fmt_time(e.get('created_at')) or '?'
+            lines.append('    → "%s" (id:%s, %s) [%s] %s%s' % (
+                e.get('title', '')[:60], target_id, time_str,
+                e.get('type', '?'), e.get('relation', ''), desc))
+
+    return '\n'.join(lines)
 
 
 def generate_field_summary():

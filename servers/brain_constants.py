@@ -199,12 +199,12 @@ TITLE_MATCH_BOOST = 0.3
 NOISE_FLOOR_THRESHOLD = 0.15
 
 # FTS5 full-text search
-FTS5_CANDIDATE_LIMIT = 5     # Max FTS5-only candidates sent to judge
+FTS5_CANDIDATE_LIMIT = 5     # Max FTS5-only candidates sent to surfacer
 FTS5_SEARCH_LIMIT = 30       # How many FTS5 hits to fetch before filtering
 FTS5_PASSTHROUGH_SCORE = 0.20  # Score for FTS5-only candidates (above noise floor)
 
-# Retrieval stats — judge guidance thresholds
-RETRIEVAL_LOW_CONFIDENCE = 0.35   # Top score below this → judge gets low-confidence warning
+# Retrieval stats — surfacer guidance thresholds
+RETRIEVAL_LOW_CONFIDENCE = 0.35   # Top score below this → surfacer gets low-confidence warning
 
 # Vocabulary expansion
 VOCAB_EXPANSION_MAX = 3  # Max terms added per query via vocabulary expansion
@@ -353,7 +353,7 @@ INTENTIONAL_EDGE_TYPES = {
     'contradicts', 'refers_to',
 }
 # Edges excluded from graph traversal during recall.
-# co_accessed: NOW judge-selected only (clean). Old noise edges deleted 2026-04-02.
+# co_accessed: NOW surface-selected only (clean). Old noise edges deleted 2026-04-02.
 # emergent_bridge: Auto-discovered weak connections — excluded from traversal.
 EXCLUDED_EDGE_TYPES = {'emergent_bridge'}
 

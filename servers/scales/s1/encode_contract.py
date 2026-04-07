@@ -9,7 +9,6 @@ Node formatting uses the system contract: servers.contract.format_node()
 Interaction: 'encoding_agent' in interactions table. Prompt is learnable.
 """
 
-from servers.scales.s1.recall_contract import correction_enrich
 from servers.contract import format_node
 
 # ═══════════════════════════════════════════════════════════════
@@ -53,20 +52,20 @@ S1_NODE_CONFIG = {
 
 
 def build_node_catalog(judge_outputs, db_conn):
-    """Build deduplicated node catalog from judge outputs across multiple turns.
+    """Build deduplicated node catalog from surface outputs across multiple turns.
 
     Uses system format_node() with S1 config for full rich nodes.
     Adds correction chain annotations on top.
 
     Args:
-        judge_outputs: list of judge_output strings (one per turn, may be None)
+        judge_outputs: list of surface_output strings (one per turn, may be None)
         db_conn: brain.db connection for rich metadata lookup
 
     Returns:
         (catalog_text, node_id_set) — formatted catalog + set of IDs for reference
     """
     import re
-    # Extract all node IDs from judge outputs (pattern: id:XXXXXXXX)
+    # Extract all node IDs from surface outputs (pattern: id:XXXXXXXX)
     # Supports both hex IDs (d7d1ddfa) and typed-prefix IDs (con_1c0v)
     seen_ids = set()
     for jo in judge_outputs:
@@ -78,22 +77,12 @@ def build_node_catalog(judge_outputs, db_conn):
     if not seen_ids:
         return '', set()
 
-    # Enrich with correction chains so encoder can revise stale nodes
-    corrections = correction_enrich(seen_ids, db_conn)
-
+    # format_node → get_rich_node + render_rich_node includes corrections
     lines = ['Node Catalog (%d nodes surfaced this session)' % len(seen_ids), '']
     formatted_ids = set()
     for nid in seen_ids:
         formatted = format_node(nid, db_conn, config=S1_NODE_CONFIG)
         if formatted:
-            # Append correction annotations
-            node_corrs = corrections.get(nid, [])
-            for corr in node_corrs:
-                if corr["direction"] == "corrected_by":
-                    formatted += '\n  ⚠ UPDATED BY: "%s" (id:%s) — consider revising' % (
-                        corr["title"][:60], corr["id"])
-                elif corr["direction"] == "corrects":
-                    formatted += '\n  CORRECTS: "%s" (id:%s)' % (corr["title"][:60], corr["id"])
             lines.append(formatted)
             lines.append('')
             formatted_ids.add(nid)

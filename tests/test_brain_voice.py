@@ -140,20 +140,22 @@ class TestBrainVoiceRenderBoot(BrainTestBase):
         self.assertIn("[BRAIN]", wrapper)
         self.assertIn("[/BRAIN]", wrapper)
         self.assertIn("Anchor", wrapper)
-        # Footer with stats
-        self.assertIn("YOUR BRAIN:", wrapper)
-        # Tools section
-        self.assertIn("recall", wrapper)
+        # Identity line — new boot opens with "Anchor. The brain is yours"
+        self.assertIn("The brain is yours", wrapper)
+        # Stats line includes memory count
+        self.assertIn("memories", wrapper)
 
     def test_render_boot_structure(self):
-        """Boot v2 output has brain tags and welcome."""
+        """Boot v2 output has brain tags and identity line."""
         voice = BrainVoice(self.brain)
         result = voice.render_boot()
         text = result['for_claude']
         self.assertIn("[BRAIN]", text)
         self.assertIn("[/BRAIN]", text)
-        self.assertIn("Welcome back, Anchor", text)
-        self.assertIn("YOUR BRAIN:", text)
+        # New boot opens with identity line instead of "Welcome back, Anchor"
+        self.assertIn("Anchor. The brain is yours", text)
+        # Stats embedded in the identity line
+        self.assertIn("memories", text)
 
     def test_render_boot_operator_has_summary(self):
         """Phase 4: Operator channel includes boot summary with priority tags."""

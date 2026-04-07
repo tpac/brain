@@ -62,7 +62,7 @@ ENV_CHANGE_PATTERNS = [
 
 
 from .scales.dispatch import daemon_tcp_send as _daemon_tcp_send
-from .scales.s1.recall import run_judge as _run_judge
+from .scales.s1.recall import run_surface as _run_surface
 
 
 
@@ -86,7 +86,7 @@ def hook_recall(brain, args, graph_changes):
     3. Segment boundary detection
     4. Build candidates file for encoding agent
     5. Priming check, gap logging, signal producers
-    6. Layer 2 judge (Haiku) → select → expand → format → trace
+    6. S1 Surface (Haiku) → select → expand → format → trace
     7. Return additionalContext or approve
     """
     user_message = args.get("prompt", "") or args.get("message", "")
@@ -193,7 +193,7 @@ def hook_recall(brain, args, graph_changes):
                 "created_at": r.get("created_at"),
                 "discovery": r.get("_discovery", "embedding"),
             }
-            # Include metadata for Layer 2 judge
+            # Include metadata for S1 Surface
             if CANDIDATES_FILE.get('include_metadata'):
                 from .pipeline_contract import enrich_candidate_metadata
                 enrich_candidate_metadata(brain, r.get("id", ""), node_data, CANDIDATES_FILE)
@@ -207,16 +207,16 @@ def hook_recall(brain, args, graph_changes):
         # v8.8: Include vocab context — connectors surfaced separately
         # DEPRECATED 2026-04-01: vocab_context removed (vocab → concept migration)
 
-        # Recent messages for judge context — from traces
+        # Recent messages for surface context — from traces
         recent_messages = []
         try:
             turns = brain._trace_dal.get_session_turns(session_id, limit=5)
             recent_messages = [{"role": t['role'], "content": (t['content'] or '')[:_PL['recent_message_content']]}
                                for t in turns]
         except Exception as _e:
-            brain._log_error('judge_recent_messages', _e, 'fetching recent messages from traces')
+            brain._log_error('surface_recent_messages', _e, 'fetching recent messages from traces')
 
-        # Session context from last encoding agent run (Layer 2 judge needs this)
+        # Session context from last encoding agent run (S1 Surface needs this)
         session_context = brain.session_context
 
         with open(candidates_path, 'w') as f:
@@ -279,19 +279,19 @@ def hook_recall(brain, args, graph_changes):
     # Dashboard logging happens in the thin client — one source of truth.
     brain.save()
 
-    # ── Layer 2: Haiku judge (runs in daemon — no subprocess timeout risk) ──
+    # ── S1 Surface: push relevant memories into awareness ──
     additional_context = None
     try:
-        additional_context = _run_judge(
+        additional_context = _run_surface(
             brain, ctx, candidates_data, user_message,
             session_context=brain.session_context,
             recent_messages=recent_messages if 'recent_messages' in dir() else [],
             result=result, enriched=enriched, results=results,
             recall_ref=recall_ref, session_id=session_id,
             graph_changes=graph_changes)
-    except Exception as _judge_err:
-        brain._log_error('daemon_judge', _judge_err,
-                         'Layer 2 judge failed in daemon (query=%s)' % user_message[:100])
+    except Exception as _surface_err:
+        brain._log_error('daemon_surface', _surface_err,
+                         'S1 Surface failed in daemon (query=%s)' % user_message[:100])
 
     if additional_context:
         return {"json": {"additionalContext": additional_context}, "session_id": session_id}
@@ -304,24 +304,24 @@ def hook_recall(brain, args, graph_changes):
 
 
 def _hebbian_strengthen(brain, session_id):
-    """Strengthen co_accessed edges between judge-selected nodes.
+    """Strengthen co_accessed edges between surface-selected nodes.
 
-    Only nodes the Layer 2 judge selected get edges — meaningful co-activation.
+    Only nodes the S1 Surface selected get edges — meaningful co-activation.
     """
-    judge_path = '/tmp/brain-%s-judge-selected.json' % session_id
-    if not os.path.exists(judge_path):
+    surface_path = '/tmp/brain-%s-surface-selected.json' % session_id
+    if not os.path.exists(surface_path):
         return
 
-    with open(judge_path) as f:
-        judge_ids = json.load(f).get('selected_ids', [])
-    if len(judge_ids) < 2:
+    with open(surface_path) as f:
+        surface_ids = json.load(f).get('selected_ids', [])
+    if len(surface_ids) < 2:
         return
 
     # Resolve short IDs to full IDs
     from servers.dal import NodeDAL
     dal = NodeDAL(brain.conn)
     full_ids = []
-    for sid in judge_ids:
+    for sid in surface_ids:
         full_id = dal.resolve_id(sid)
         if full_id:
             full_ids.append(full_id)
@@ -334,7 +334,7 @@ def _hebbian_strengthen(brain, session_id):
             try:
                 brain.connect_typed(full_ids[i], full_ids[j],
                                     relation='co_accessed', weight=LEARNING_RATE * 0.15,
-                                    edge_type='co_accessed', description='judge-selected')
+                                    edge_type='co_accessed', description='surface-selected')
             except Exception as e:
                 brain._log_error('hebbian_edge', e, 'creating co_accessed edge')
 
@@ -352,7 +352,7 @@ def hook_post_response_track(brain, args, graph_changes):
     1. Read recall data from tmp files (written by recall hook)
     2. Store exchange in message_stream (legacy, for escalation)
     3. Write S0 traces (K=user_message, delta=assistant_message)
-    4. Hebbian strengthen judge-selected co_accessed edges
+    4. Hebbian strengthen surface-selected co_accessed edges
     5. Gate encoding agent (every 5th stop, background thread)
     6. Record message heartbeat
     """
@@ -388,7 +388,7 @@ def hook_post_response_track(brain, args, graph_changes):
     try:
         _hebbian_strengthen(brain, session_id)
     except Exception as e:
-        brain._log_error('hebbian_judge_selected', e, 'Stop hook')
+        brain._log_error('hebbian_surface_selected', e, 'Stop hook')
 
     # 5. Encoding agent gate (every 5th stop)
     ctx.increment_stop()

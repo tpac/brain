@@ -151,7 +151,7 @@ class TestS1RecallTraces:
             session_id=session_id)
         self.dal.append(
             chain_id=chain, scale='s1', event_type='K',
-            ref_type='judge_selected',
+            ref_type='surface_selected',
             ref_id=json.dumps([s['id'] for s in selected]),
             summary='%d selected' % len(selected),
             metadata={'selected': sel_detail, 'expanded': []},
@@ -304,13 +304,13 @@ class TestS0S1CrossReference:
             yield
 
     def test_get_session_turns_cross_references(self):
-        """get_session_turns resolves judge_output from S1 via recall_chain."""
+        """get_session_turns resolves surface_output from S1 via recall_chain."""
         session_id = 'sess-xref-test-1234'
         stop = '30'
         s1_chain = 's1r-%s-%s' % (session_id[:8], stop)
         s0_chain = 's0-%s-%s' % (session_id[:8], stop)
 
-        # Write S1 recall delta (what judge produced)
+        # Write S1 recall delta (what surface produced)
         self.dal.append(
             chain_id=s1_chain, scale='s1', event_type='delta',
             ref_type='additionalContext',

@@ -59,7 +59,7 @@ class SessionContext:
         return 's0-%s-%d' % (self.session_short, self.stop_counter)
 
     def s1r_chain(self) -> str:
-        """S1 recall chain: recall/judge for this stop."""
+        """S1 recall chain: recall/surface for this stop."""
         return 's1r-%s-%d' % (self.session_short, self.stop_counter)
 
     def s1e_chain(self) -> str:

@@ -491,8 +491,8 @@ class TestSkillAvailability(unittest.TestCase):
         self.assertIn('Anchor', content)
         # Must have encoding examples (show, don't tell)
         self.assertIn('What Good Encoding Looks Like', content)
-        # Must have quotes (identity anchors)
-        self.assertIn('FROM PREVIOUS YOU', content)
+        # Must have the "What You Are" identity section
+        self.assertIn('What You Are', content)
 
     def test_skill_md_has_api_reference(self):
         """SKILL.md must document the core MCP tools."""
@@ -541,21 +541,21 @@ class TestBootSelfKnowledge(unittest.TestCase):
         self.assertIn('drift', nodes[0]['title'].lower())
 
     def test_boot_context_includes_self_knowledge(self):
-        """Boot context should have WHAT YOU'VE LEARNED ABOUT YOURSELF section."""
+        """Boot context should have PATTERNS YOU FALL INTO section."""
         self.brain.remember(type='lesson', title='Compression instinct',
                             content='I compress by instinct', keywords='compression instinct claude')
         self.brain.save()
         ctx = self.brain.format_boot_context(user='Test', project='test')
-        self.assertIn("WHAT YOU'VE LEARNED ABOUT YOURSELF", ctx)
+        self.assertIn("PATTERNS YOU FALL INTO:", ctx)
         self.assertIn('Compression instinct', ctx)
 
     def test_boot_context_includes_boot_nodes(self):
-        """Boot context should have FROM YOU section."""
+        """Boot context should have YOU: section surfacing boot-type nodes."""
         self.brain.remember(type='boot', title='Session #5 handoff',
                             content='Remember to encode early', keywords='boot handoff')
         self.brain.save()
         ctx = self.brain.format_boot_context(user='Test', project='test')
-        self.assertIn('FROM YOU', ctx)
+        self.assertIn('YOU:', ctx)
         self.assertIn('encode early', ctx)
 
     def test_self_knowledge_before_engineering_context(self):
@@ -661,7 +661,7 @@ class TestConsciousnessFeatures(unittest.TestCase):
         with open(skill_path) as f:
             content = f.read()
         self.assertIn('Anchor', content)
-        self.assertIn('Who You Are', content)
+        self.assertIn('What You Are', content)
 
 
 if __name__ == '__main__':

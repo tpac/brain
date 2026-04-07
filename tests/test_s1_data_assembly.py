@@ -2,7 +2,7 @@
 
 Tests the pure data assembly layer that prepares input for the S1 encoder LLM:
 - _gather_messages: reads S0 traces into the format expected by the encoder
-- build_node_catalog: extracts and formats nodes from judge outputs
+- build_node_catalog: extracts and formats nodes from surface outputs
 - _save_journal: appends encoding run entries to session-scoped journal
 - _save_session_context: extracts SESSION_CONTEXT from encoder output
 
@@ -132,7 +132,7 @@ class TestGatherMessages:
 
 
 class TestBuildNodeCatalog:
-    """Tests for build_node_catalog(judge_outputs, db_conn) — catalog from judge selections."""
+    """Tests for build_node_catalog(surface_outputs, db_conn) — catalog from surface selections."""
 
     NODE_A = 'aa11bb22'
     NODE_B = 'cc33dd44'
@@ -150,8 +150,8 @@ class TestBuildNodeCatalog:
                              'Learned from encoding experiments.')
             yield
 
-    def test_empty_judge_outputs(self):
-        """No judge outputs -> empty catalog."""
+    def test_empty_surface_outputs(self):
+        """No surface outputs -> empty catalog."""
         from servers.scales.s1.encode_contract import build_node_catalog
         text, ids = build_node_catalog([], self.conn)
         assert text == ''
@@ -164,35 +164,35 @@ class TestBuildNodeCatalog:
         assert text == ''
         assert ids == set()
 
-    def test_extracts_node_ids_from_judge_output(self):
-        """Extracts id:XXXXXXXX patterns from judge output strings."""
+    def test_extracts_node_ids_from_surface_output(self):
+        """Extracts id:XXXXXXXX patterns from surface output strings."""
         from servers.scales.s1.encode_contract import build_node_catalog
 
-        judge_output = '[rule] "Test catalog rule" (id:%s, conf:0.9)' % self.NODE_A
-        text, ids = build_node_catalog([judge_output], self.conn)
+        surface_output = '[rule] "Test catalog rule" (id:%s, conf:0.9)' % self.NODE_A
+        text, ids = build_node_catalog([surface_output], self.conn)
 
         assert self.NODE_A in ids
         assert 'Node Catalog' in text
 
     def test_deduplicates_across_outputs(self):
-        """Same node ID in multiple judge outputs appears only once in catalog."""
+        """Same node ID in multiple surface outputs appears only once in catalog."""
         from servers.scales.s1.encode_contract import build_node_catalog
 
-        jo1 = '[rule] "Title A" (id:%s, conf:0.9)' % self.NODE_A
-        jo2 = '[lesson] "Title B" (id:%s, conf:0.8)' % self.NODE_A
+        so1 = '[rule] "Title A" (id:%s, conf:0.9)' % self.NODE_A
+        so2 = '[lesson] "Title B" (id:%s, conf:0.8)' % self.NODE_A
 
-        text, ids = build_node_catalog([jo1, jo2], self.conn)
+        text, ids = build_node_catalog([so1, so2], self.conn)
         assert len(ids) == 1
         assert self.NODE_A in ids
 
     def test_multiple_distinct_ids(self):
-        """Multiple different node IDs from different judge outputs are all extracted."""
+        """Multiple different node IDs from different surface outputs are all extracted."""
         from servers.scales.s1.encode_contract import build_node_catalog
 
-        jo1 = '[rule] "First" (id:%s)' % self.NODE_A
-        jo2 = '[lesson] "Second" (id:%s)' % self.NODE_B
+        so1 = '[rule] "First" (id:%s)' % self.NODE_A
+        so2 = '[lesson] "Second" (id:%s)' % self.NODE_B
 
-        text, ids = build_node_catalog([jo1, jo2], self.conn)
+        text, ids = build_node_catalog([so1, so2], self.conn)
         assert self.NODE_A in ids
         assert self.NODE_B in ids
         assert len(ids) == 2
@@ -201,8 +201,8 @@ class TestBuildNodeCatalog:
         """Catalog entries use format_node, which includes type/title/content/edges."""
         from servers.scales.s1.encode_contract import build_node_catalog
 
-        judge_output = '[rule] "Test catalog rule" (id:%s)' % self.NODE_A
-        text, ids = build_node_catalog([judge_output], self.conn)
+        surface_output = '[rule] "Test catalog rule" (id:%s)' % self.NODE_A
+        text, ids = build_node_catalog([surface_output], self.conn)
 
         assert self.NODE_A in ids
         # format_node includes the node type in brackets and title
@@ -210,7 +210,7 @@ class TestBuildNodeCatalog:
         assert 'Test catalog rule' in text
 
     def test_includes_correction_annotations(self):
-        """Nodes with corrected_by edges get UPDATED BY annotation in catalog."""
+        """Nodes with corrected_by edges get Updated by annotation in catalog."""
         from servers.scales.s1.encode_contract import build_node_catalog
 
         # Create a correcting node and a corrected_by edge
@@ -226,15 +226,15 @@ class TestBuildNodeCatalog:
         text, ids = build_node_catalog([judge_output], self.conn)
 
         assert self.NODE_A in ids
-        assert 'UPDATED BY' in text
+        assert 'Updated by' in text
 
     def test_nonexistent_id_excluded_from_formatted(self):
-        """IDs extracted from judge output but not in DB are not in formatted_ids."""
+        """IDs extracted from surface output but not in DB are not in formatted_ids."""
         from servers.scales.s1.encode_contract import build_node_catalog
 
         fake_id = 'deadbeef'
-        judge_output = '[rule] "Ghost" (id:%s)' % fake_id
-        text, ids = build_node_catalog([judge_output], self.conn)
+        surface_output = '[rule] "Ghost" (id:%s)' % fake_id
+        text, ids = build_node_catalog([surface_output], self.conn)
 
         # The ID is extracted by regex but format_node returns None -> not in formatted_ids
         assert fake_id not in ids
@@ -251,8 +251,8 @@ class TestBuildNodeCatalog:
             pytest.skip("No typed-prefix IDs in isolated brain")
 
         node_id = row[0][:8]
-        judge_output = '[rule] "Test" (id:%s, conf:0.9)' % node_id
-        text, ids = build_node_catalog([judge_output], self.conn)
+        surface_output = '[rule] "Test" (id:%s, conf:0.9)' % node_id
+        text, ids = build_node_catalog([surface_output], self.conn)
 
         assert node_id in ids, (
             "Regex should match typed-prefix ID %s" % node_id)

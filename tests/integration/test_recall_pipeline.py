@@ -104,7 +104,7 @@ class TestRecallPipeline(unittest.TestCase):
         self.assertIn('enrichment_vectors_scanned', stats)
 
     def test_25_candidates_default(self):
-        """Default recall should return up to 25 results for the judge."""
+        """Default recall should return up to 25 results for the surface."""
         result = self.brain.recall("test query", limit=25)
         self.assertLessEqual(len(result['results']), 25)
 

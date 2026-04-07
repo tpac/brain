@@ -292,7 +292,7 @@ class SnapshotRegression:
 
             try:
                 if type_filter:
-                    result = self.brain.recall(query, types=type_filter, limit=20)
+                    result = self.brain.recall(query, filter={"type": {"in": type_filter}}, limit=20)
                 else:
                     result = self.brain.recall(query, limit=20)
 
@@ -370,7 +370,7 @@ class SnapshotRegression:
             # Run current recall
             try:
                 if type_filter:
-                    result = self.brain.recall(query, types=type_filter, limit=20)
+                    result = self.brain.recall(query, filter={"type": {"in": type_filter}}, limit=20)
                 else:
                     result = self.brain.recall(query, limit=20)
 

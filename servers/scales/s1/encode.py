@@ -133,7 +133,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None):
 def _gather_messages(brain, session_id):
     """Fetch recent messages from S0 traces.
 
-    Returns: [{id, role, content, signal, timestamp, recalled_raw, judge_output}]
+    Returns: [{id, role, content, signal, timestamp, recalled_raw, surface_output}]
     Reads from trace_events via get_session_turns().
     """
     from servers.scales.s1.encode_contract import ENCODING_AGENT
@@ -188,7 +188,7 @@ def _build_user_content(brain, messages, counter, session_id):
     journal_key = 'encoding_journal_%s' % session_id
     journal = brain.get_config(journal_key, '') or 'First run — no previous encoding in this session.'
 
-    # Build node catalog from judge outputs in the visible window
+    # Build node catalog from surface outputs in the visible window
     judge_outputs = [m.get("judge_output") for m in messages if m.get("role") == "user"]
     try:
         node_catalog, cataloged_ids = build_node_catalog(judge_outputs, brain.conn)
@@ -257,7 +257,7 @@ def _write_pre_traces(brain, dispatch_fn, messages, user_content, counter, sessi
         enc_chain = ctx.s1e_chain()
         turn_count = len(messages) if messages else 0
 
-        # K: extract node IDs from judge outputs
+        # K: extract node IDs from surface outputs
         node_ids = set()
         for m in (messages or []):
             raw = m.get('recalled_raw') or ''

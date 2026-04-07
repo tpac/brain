@@ -255,7 +255,7 @@ class TestMCPRoundTrip(BrainTestBase):
 
     def test_get_interaction(self):
         """get_interaction returns a specific interaction."""
-        result = self._dispatch("get_interaction", {"name": "judge"})
+        result = self._dispatch("get_interaction", {"name": "surface"})
         # May return None if interactions not seeded in isolated brain
         self.assertTrue(result is None or isinstance(result, dict))
 

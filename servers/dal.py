@@ -328,7 +328,7 @@ class LogsDAL:
 class InteractionDAL:
     """Access layer for interactions — versioned templates for system boundaries.
 
-    Every learnable boundary (judge prompt, encoding prompt, voice format,
+    Every learnable boundary (surface prompt, encoding prompt, voice format,
     signal assembly) is an interaction. Versioned, traceable, optimizable
     by higher scales.
     """
@@ -645,7 +645,7 @@ class TraceDAL:
         """Get chronological turns for a session from S0 + S1 traces.
 
         Returns same shape as encoding_agent._gather_messages():
-        [{role, content, signal_type, timestamp, judge_output, recalled_raw}]
+        [{role, content, signal_type, timestamp, surface_output, recalled_raw}]
 
         Groups S0 K (user_message) + S0 delta (assistant_message) per chain,
         cross-references S1 delta (additionalContext) via recall_chain in metadata.
@@ -1429,7 +1429,7 @@ class Fts5DAL:
 
     FTS5 provides word-level search alongside embedding similarity.
     Different signal: embeddings match meaning, FTS5 matches words.
-    Both feed into the judge which decides relevance.
+    Both feed into the surfacer which decides relevance.
     """
 
     def __init__(self, conn):

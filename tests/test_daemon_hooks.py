@@ -1,9 +1,9 @@
 """Tests for daemon_hooks.py — hook logic layer.
 
 Tests cover:
-- hook_recall() output format (judge-formatted additionalContext)
+- hook_recall() output format (surface-formatted additionalContext)
 - Early return behavior (no results = approve)
-- Judge integration (mock — no API key in test env)
+- Surface integration (mock — no API key in test env)
 - Signal production (reminders flow into signal queue)
 """
 
@@ -18,19 +18,19 @@ from tests.brain_test_base import BrainTestBase
 from servers.daemon_hooks import hook_recall
 
 
-# Realistic output matching format_judge_output() in recall_contract.py
-_MOCK_JUDGE_OUTPUT = (
+# Realistic output matching format_surface_output() in recall_contract.py
+_MOCK_SURFACE_OUTPUT = (
     'Brain recalled 1 memories:\n\n'
     '[rule] "Test rule for recall" (id:abcd1234, conf:1.0)\n'
     'Content: Important test content\n'
 )
 
 
-def _mock_run_judge(brain, ctx, candidates_data, user_message, **kwargs):
-    """Mock judge that returns formatted output for any non-empty candidates."""
+def _mock_run_surface(brain, ctx, candidates_data, user_message, **kwargs):
+    """Mock surface that returns formatted output for any non-empty candidates."""
     if not candidates_data:
         return None
-    return _MOCK_JUDGE_OUTPUT
+    return _MOCK_SURFACE_OUTPUT
 
 
 class TestHookRecallOutput(BrainTestBase):
@@ -51,9 +51,9 @@ class TestHookRecallOutput(BrainTestBase):
         result = self._call_recall("xyzzy gibberish")
         self.assertEqual(result["json"], {"decision": "approve"})
 
-    @patch('servers.daemon_hooks._run_judge', side_effect=_mock_run_judge)
-    def test_hook_recall_returns_additional_context(self, mock_judge):
-        """When results exist and judge selects, returns {'json': {'additionalContext': str}}."""
+    @patch('servers.daemon_hooks._run_surface', side_effect=_mock_run_surface)
+    def test_hook_recall_returns_additional_context(self, mock_surface):
+        """When results exist and surface selects, returns {'json': {'additionalContext': str}}."""
         self._seed_data()
         result = self._call_recall("test rule")
         self.assertIn("json", result)
@@ -65,18 +65,18 @@ class TestHookRecallOutput(BrainTestBase):
         result = self._call_recall("test rule")
         self.assertNotIn("systemMessage", result.get("json", {}))
 
-    @patch('servers.daemon_hooks._run_judge', side_effect=_mock_run_judge)
-    def test_hook_recall_has_brain_recalled_header(self, mock_judge):
-        """additionalContext contains 'Brain recalled' header from judge output."""
+    @patch('servers.daemon_hooks._run_surface', side_effect=_mock_run_surface)
+    def test_hook_recall_has_brain_recalled_header(self, mock_surface):
+        """additionalContext contains 'Brain recalled' header from surface output."""
         self._seed_data()
         result = self._call_recall("test rule")
         ctx = result["json"]["additionalContext"]
         self.assertIn("Brain recalled", ctx)
         self.assertIn("memories:", ctx)
 
-    @patch('servers.daemon_hooks._run_judge', side_effect=_mock_run_judge)
-    def test_hook_recall_contains_node_content(self, mock_judge):
-        """additionalContext includes node type, title, and content from judge formatting."""
+    @patch('servers.daemon_hooks._run_surface', side_effect=_mock_run_surface)
+    def test_hook_recall_contains_node_content(self, mock_surface):
+        """additionalContext includes node type, title, and content from surface formatting."""
         self._seed_data()
         result = self._call_recall("test rule")
         ctx = result["json"]["additionalContext"]
@@ -87,12 +87,12 @@ class TestHookRecallOutput(BrainTestBase):
         """Create reminder with past due_date, verify it flows into signal queue.
 
         Reminders are produced into the signal queue by signal_producers. They do NOT
-        appear in additionalContext directly -- the current code path uses the judge
+        appear in additionalContext directly -- the current code path uses the surface
         for additionalContext. This test verifies the signal queue receives the reminder.
         """
         self._seed_data()  # Need results to get past early return
         self.brain.create_reminder("Ship the feature", "2020-01-01T00:00:00")
-        with patch('servers.daemon_hooks._run_judge', side_effect=_mock_run_judge):
+        with patch('servers.daemon_hooks._run_surface', side_effect=_mock_run_surface):
             self._call_recall("what should I do")
 
         # Verify reminder was produced into signal queue (query directly, pull() consumes)
@@ -105,7 +105,7 @@ class TestHookRecallOutput(BrainTestBase):
                         "Expected reminder 'Ship the feature' in signal queue, got: %s" %
                         all_content)
 
-    @patch('servers.daemon_hooks._run_judge', side_effect=_mock_run_judge)
+    @patch('servers.daemon_hooks._run_surface', side_effect=_mock_run_surface)
     def test_hook_recall_judge_failure_returns_approve(self, mock_judge):
         """When judge raises an exception, hook_recall returns approve."""
         mock_judge.side_effect = RuntimeError("API key missing")
@@ -113,7 +113,7 @@ class TestHookRecallOutput(BrainTestBase):
         result = self._call_recall("test rule")
         self.assertEqual(result["json"].get("decision"), "approve")
 
-    @patch('servers.daemon_hooks._run_judge', return_value=None)
+    @patch('servers.daemon_hooks._run_surface', return_value=None)
     def test_hook_recall_judge_returns_none_means_approve(self, mock_judge):
         """When judge returns None (no selection), hook_recall returns approve."""
         self._seed_data()

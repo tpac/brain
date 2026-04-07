@@ -7,8 +7,8 @@ import json
 import os
 
 
-# ── Judge v1: the instruction portion of the prompt ──
-JUDGE_PROMPT_V1 = """You are a memory relevance judge for a shared AI brain. The brain stores memories from conversations between an operator (Tom) and an AI assistant (Anchor). You decide which memories help Anchor respond to Tom's next message.
+# ── Surface v1: the instruction portion of the prompt ──
+SURFACE_PROMPT_V1 = """You surface relevant memories from a shared AI brain. The brain stores memories from conversations between an operator (Tom) and an AI assistant (Anchor). You decide which memories help Anchor respond to Tom's next message.
 
 Field guide:
 - match: similarity to query (0-1). High match = topically close, but topic alone ≠ relevant. 'boosted' means score was artificially raised (critical node).
@@ -28,7 +28,7 @@ Return ONLY JSON:
 {"selected":[{"id":"...","why":"one phrase"}]}
 If nothing relevant: {"selected":[],"reason":"brief reason"}"""
 
-JUDGE_CONFIG_V1 = {
+SURFACE_CONFIG_V1 = {
     "content_limit": 300,
     "max_candidates": 20,
     "max_selected": 8,
@@ -128,10 +128,10 @@ def seed_interactions(brain):
     dal = brain._interaction_dal
     existing = {i['name'] for i in dal.list_all()}
 
-    if 'judge' not in existing:
-        dal.register('judge',
-                     template=JUDGE_PROMPT_V1,
-                     parameters=json.dumps(JUDGE_CONFIG_V1),
+    if 'surface' not in existing and 'judge' not in existing:
+        dal.register('surface',
+                     template=SURFACE_PROMPT_V1,
+                     parameters=json.dumps(SURFACE_CONFIG_V1),
                      created_by='anchor')
 
     if 'encoding_agent' not in existing:

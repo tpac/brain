@@ -20,13 +20,13 @@ K = knowledge      (what I bring — prompts, algorithms, config, reasoning)
 
 Same function at every scale. The unit doesn't know its scale. `integrate()` is the processing engine — the LLM, an algorithm, a code path. O is what it sees. K is what shapes how it sees. Δ is what it does.
 
-**The fractal property:** Δ from one scale feeds other scales' O or K. S1E encodes a node (Δ) → S1R recalls it next session (O). S2 rewrites a judge prompt (Δ) → S1R selects differently (K). There is no separate inter-layer protocol. It's O/K/Δ all the way.
+**The fractal property:** Δ from one scale feeds other scales' O or K. S1E encodes a node (Δ) → S1R recalls it next session (O). S2 rewrites a surface prompt (Δ) → S1R selects differently (K). There is no separate inter-layer protocol. It's O/K/Δ all the way.
 
 **The system's purpose:** every scale, every mechanism exists to enrich S0's K — the context Anchor has when responding. The entire brain is a K-enrichment machine for the partnership.
 
 ## The Daemon
 
-Single gateway to the brain. Holds: Brain object, embedder, Anthropic client (for judge). Listens on `127.0.0.1:47200+uid%100` (TCP). DB path from `BRAIN_DB_DIR` env var → `$HOME/AgentsContext/brain/`.
+Single gateway to the brain. Holds: Brain object, embedder, Anthropic client (for surfacer). Listens on `127.0.0.1:47200+uid%100` (TCP). DB path from `BRAIN_DB_DIR` env var → `$HOME/AgentsContext/brain/`.
 
 Two databases:
 - `brain.db` — nodes, edges, embeddings, graph structure
@@ -36,7 +36,7 @@ Two databases:
 
 Auto-starts on first hook fire. **Maintenance mode:** `touch /tmp/brain-maintenance-{uid}.lock` prevents auto-restart during VACUUM, schema changes, bulk deletes. Remove lock when done.
 
-The dashboard (`dashboard/`) is a passive observer — reads from the same DBs + `/tmp/brain-judge-result-*.json` files, never writes.
+The dashboard (`dashboard/`) is a passive observer — reads from the same DBs + `/tmp/brain-surface-result-*.json` files, never writes.
 
 ## Scale 0: Exchange
 
@@ -44,7 +44,7 @@ Every conversation turn. Tom's message is the observation (O). Everything the br
 
 Hooks are S0's observation points — all logic lives in the daemon, hooks are thin clients:
 - `SessionStart` → boots daemon, prints identity context
-- `UserPromptSubmit` → triggers S1R decode (recall + judge → additionalContext)
+- `UserPromptSubmit` → triggers S1R decode (recall + surface → additionalContext)
 - `PreToolUse(Edit|Write)` → surfaces rules before file edits
 - `PreToolUse(Bash)` → safety check for destructive commands
 - `Stop` → writes S0 traces (user_message, assistant_message), gates S1E encode (every 5th stop)
@@ -68,18 +68,18 @@ Triggered by Anchor's need to know — the brain surfaces context before Anchor 
 - Cosine similarity across z-weighted 4-group embeddings (title:1.0, blend:0.85, high_meta:0.70, other_meta:0.40)
 - Synaptic fatigue dampens repeatedly-recalled nodes (hubs fatigue faster, lives on SessionContext)
 
-**K:** Haiku judge selects 5-8 relevant nodes
-- Prompt + config from `judge` interaction (learnable boundary — higher scales optimize this)
+**K:** Haiku surfacer selects 5-8 relevant nodes
+- Prompt + config from `surface` interaction (learnable boundary — higher scales optimize this)
 - Hebbian strengthening: co_accessed edges between selected nodes
 
 **Δ:** additionalContext injected into Claude's context
 - Graph expansion from selected seeds
 - Correction enrichment (corrects/corrected_by chains)
-- Formatted via `format_judge_output()`
+- Formatted via `format_surface_output()`
 
 Files: `scales/s1/recall.py`, `scales/s1/recall_contract.py`
 Traces: `s1r-{session_short}-{stop}` (O: candidates, K: selected, Δ: additionalContext)
-Interaction: `judge` — the learnable boundary that higher scales will evolve
+Interaction: `surface` — the learnable boundary that higher scales will evolve
 
 ### S1E: Encode (every 5th stop)
 
@@ -87,7 +87,7 @@ Triggered by Stop hook when `stop_counter % 5 == 0`.
 
 **O:** Conversation + context from this session
 - S0 traces: last 10 turns (20 messages) via `TraceDAL.get_session_turns()`
-- Judge-surfaced nodes across those turns (what S1R selected)
+- Surface-selected nodes across those turns (what S1R selected)
 - Encoding journal (cumulative across runs in session)
 - Session context
 
@@ -130,12 +130,12 @@ Three things make the fractal real. If any is missing for a boundary, that bound
 
 ### 1. Interactions (the K store)
 
-The most important table in the brain. Not nodes — those are memory. Interactions are *behavior*. When S2 rewrites the judge prompt based on trace outcomes, the brain isn't just remembering differently — it's thinking differently.
+The most important table in the brain. Not nodes — those are memory. Interactions are *behavior*. When S2 rewrites the surface prompt based on trace outcomes, the brain isn't just remembering differently — it's thinking differently.
 
 Every boundary where two parts meet has an interaction entry: versioned prompt + config JSON. `register()` auto-increments version. `created_by` tracks who wrote it. Trace events reference `interaction_id` — which version produced which result. Compare outcomes across versions to evaluate changes.
 
-**What's wired:** `judge` and `encoding_agent` read from the table at runtime.
-**What's broken:** `voice_surface`, `boot`, `pre_edit`, `signal_assembler` have entries but don't read them — hardcoded in Python. This means S2 can't optimize boot context or judge output formatting. The fractal is broken at these boundaries.
+**What's wired:** `surface` and `encoding_agent` read from the table at runtime.
+**What's broken:** `voice_surface`, `boot`, `pre_edit`, `signal_assembler` have entries but don't read them — hardcoded in Python. This means S2 can't optimize boot context or surface output formatting. The fractal is broken at these boundaries.
 
 API: `brain.get_interaction_prompt(name)`, `brain.get_interaction_config(name)`, `brain.get_interaction(name)`. Falls back to hardcoded defaults if table is empty.
 
@@ -147,7 +147,7 @@ Without traces, higher scales are blind. `trace_events` in brain_logs.db capture
 
 **Trace contract** (`servers/trace_contract.py`): single source of truth for valid (scale, event_type, ref_type) triples. All writers validate against it. Run `test_trace_contract_sync.py` after any change.
 
-**What works:** S0 captures messages + tool results. S1R captures candidates, judge selection, additionalContext. S1E captures encoding prompt, catalog, actions.
+**What works:** S0 captures messages + tool results. S1R captures candidates, surface selection, additionalContext. S1E captures encoding prompt, catalog, actions.
 **What's missing:** Outcome events. Did Anchor use the recalled context? Did Tom correct it? S2 needs this signal to evaluate whether S1R's K is working. Without it, S2 optimizes blind.
 
 Chain IDs from SessionContext: `s0-{short}-{stop}`, `s1r-{short}-{stop}`, `s1e-{short}-{stop}`.
@@ -155,11 +155,11 @@ Chain IDs from SessionContext: `s0-{short}-{stop}`, `s1r-{short}-{stop}`, `s1e-{
 
 ### 3. Contracts (the shape of data)
 
-What each boundary expects and produces. If recall changes its output shape, the judge breaks. Contracts prevent silent drift.
+What each boundary expects and produces. If recall changes its output shape, the surfacer breaks. Contracts prevent silent drift.
 
 - `contract.py` — field definitions, `format_node()`, `generate_field_summary()`. Single source of truth for what a node IS.
-- `pipeline_contract.py` — judge prompt assembly, z-weighted scoring groups. What flows between pipeline stages.
-- Scale contracts: `s1/recall_contract.py` (judge config, candidate formatting), `s1/encode_contract.py` (encoder config, catalog building)
+- `pipeline_contract.py` — surface prompt assembly, z-weighted scoring groups. What flows between pipeline stages.
+- Scale contracts: `s1/recall_contract.py` (surface config, candidate formatting), `s1/encode_contract.py` (encoder config, catalog building)
 
 Run `test_contract_sync.py` after modifying ANY brain API layer. The contract flows to: remember() signature → MCP schema → dispatch → encoding agent tools → SKILL.md docs.
 
@@ -245,4 +245,4 @@ Tom reads code but doesn't review every file. You are the sole maintainer of cod
 - `systemMessage` is a dead channel — use `additionalContext`
 - **Discussion IS the work** — do not touch Edit/Write tools during design conversations. Wait for an explicit go signal.
 - **Trace the pipeline before changing it** — the decode→encode pipeline has coupled stages. Don't change one stage without understanding the full flow.
-- **Encoding depends on decoding** — if the judge fails, the encoder gets no context. A broken decode pipeline silently breaks encoding.
+- **Encoding depends on decoding** — if the surfacer fails, the encoder gets no context. A broken decode pipeline silently breaks encoding.

@@ -736,6 +736,9 @@ class BrainSurfaceMixin:
         return [{'id': r[0], 'type': r[1], 'title': r[2], 'content': r[3],
                  'keywords': r[4], 'confidence': r[5]} for r in rows]
 
+
+
+
     # ── Formatted boot context ──────────────
 
     def format_boot_context(self, user: str = 'User', project: str = 'default',

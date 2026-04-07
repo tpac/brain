@@ -338,7 +338,7 @@ class BrainDreamsMixin:
         stats = {'consolidated': 0}
 
         # Stability boost from access_log REMOVED 2026-04-05 — table dropped.
-        # Future: rebuild from S1 traces (judge_selected events = meaningful access).
+        # Future: rebuild from S1 traces (surface_selected events = meaningful access).
 
         # Promote well-connected nodes
         well_connected = self.conn.execute('''

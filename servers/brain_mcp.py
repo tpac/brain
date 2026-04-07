@@ -227,10 +227,11 @@ def _build_tools():
         return [
     # ── Core memory operations ──
     {"name": "recall",
-     "description": "Semantic recall from brain — searches nodes by meaning using embeddings. Returns ranked results with titles, content, types, confidence.",
+     "description": "Semantic recall from brain — searches nodes by meaning using embeddings. Returns ranked results with titles, content, types, confidence. Supports dict filter for field-level filtering.",
      "inputSchema": {"type": "object", "properties": {
          "query": {"type": "string", "description": "Search query (semantic, not keyword)"},
          "node_id": {"type": "string", "description": "Look up a specific node by ID (skip search)"},
+         "filter": {"type": "object", "description": "Dict filter on node/metadata fields. Examples: {\"type\": {\"in\": [\"moment\"]}} or {\"anchor_raw_quote\": {\"exists\": true}} or {\"content\": {\"contains\": \"Anchor\"}}. Operators: exists, equals, in, contains, gte, lte. Node columns checked on result, other keys checked in metadata."},
          "limit": {"type": "integer", "description": "Max results (default 8)", "default": 8},
          "neighbor_limit": {"type": "integer", "description": "Max neighbor nodes to include (default 3)", "default": 3}}}},
     _generate_remember_schema(),
@@ -294,6 +295,7 @@ def _build_tools():
      "description": "Run multiple recall queries in one call. Returns results for each query.",
      "inputSchema": {"type": "object", "required": ["queries"], "properties": {
          "queries": {"type": "array", "description": "Array of search queries", "items": {"type": "string"}},
+         "filter": {"type": "object", "description": "Dict filter applied to all queries. Same format as recall filter."},
          "limit": {"type": "integer", "description": "Max results per query (default 5)", "default": 5}}}},
 
     {"name": "filter_nodes",
@@ -345,13 +347,13 @@ def _build_tools():
          "hours": {"type": "integer", "description": "Look back window in hours (default 24)", "default": 24}}}},
 
     {"name": "list_interactions",
-     "description": "List all registered interactions — versioned templates for every learnable boundary in the system (judge, encoder, voice, boot, etc.). Shows name, latest version, and total versions.",
+     "description": "List all registered interactions — versioned templates for every learnable boundary in the system (surfacer, encoder, voice, boot, etc.). Shows name, latest version, and total versions.",
      "inputSchema": {"type": "object", "properties": {}}},
 
     {"name": "get_interaction",
      "description": "Get a specific interaction template by name. Returns the template text, parameters, version, and who created it. Use to inspect or reference the current prompt/template for any system boundary.",
      "inputSchema": {"type": "object", "required": ["name"], "properties": {
-         "name": {"type": "string", "description": "Interaction name (e.g. 'judge', 'encoding_agent', 'voice_surface', 'boot')"},
+         "name": {"type": "string", "description": "Interaction name (e.g. 'surface', 'encoding_agent', 'voice_surface', 'boot')"},
          "version": {"type": "integer", "description": "Specific version (default: latest)", "default": 0}}}},
 
     # ── Introspection ──

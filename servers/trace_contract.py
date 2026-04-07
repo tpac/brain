@@ -19,8 +19,8 @@ SCALES = {
     },
     "s1": {
         "name": "Turn",
-        "description": "Brain's first processing pass — recall, judge, encode",
-        "triggers": "UserPromptSubmit (recall/judge) + Stop every 5th (encode)",
+        "description": "Brain's first processing pass — surface, encode",
+        "triggers": "UserPromptSubmit (surface) + Stop every 5th (encode)",
     },
     "s2": {
         "name": "Session",
@@ -65,11 +65,11 @@ REF_TYPES = {
     ("s0", "outcome"): ["correction", "follow_up"],
 
     # Scale 1: turn integration
-    # Recall path (chain prefix: recall-): O=candidates, K=judge picks, delta=context sent to Anchor
-    # Encode path (chain prefix: encode-): O=prompt given, K=node catalog, delta=actions+reasoning
+    # Surface path (chain prefix: s1r-): O=candidates, K=surfaced picks, delta=context sent to Anchor
+    # Encode path (chain prefix: s1e-): O=prompt given, K=node catalog, delta=actions+reasoning
     ("s1", "O"):       ["recall",            # candidates with scores
                          "encoding_prompt"],   # what the encoder was given
-    ("s1", "K"):       ["judge_selected",    # what the judge picked
+    ("s1", "K"):       ["surface_selected",  # what the surfacer picked
                          "node_catalog"],      # which nodes available to encoder
     ("s1", "delta"):   ["additionalContext",  # what reached Anchor
                          "encoding_run"],      # what the encoder produced
@@ -125,7 +125,7 @@ REF_TYPES = {
 
 CHAIN_PREFIXES = {
     "s0":         "s0-{session_short}-{stop}",        # one chain per stop — messages + tools
-    "s1_recall":  "s1r-{session_short}-{stop}",       # recall/judge for this stop
+    "s1_recall":  "s1r-{session_short}-{stop}",       # surface for this stop
     "s1_encode":  "s1e-{session_short}-{stop}",       # encoding run triggered at this stop
     "s2":         "s2-{session_short}-{run}",          # session encoder run number
     "s3":         "s3-{date}-{operation}",             # date=YYYYMMDD, operation=community/dedup/etc

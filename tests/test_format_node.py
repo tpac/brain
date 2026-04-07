@@ -112,12 +112,14 @@ class TestFormatNode(BrainTestBase):
         self.assertIn('Postgres has better JSON support', out)
 
     def test_metadata_correction_of(self):
-        """correction_of resolves to target node title."""
+        """correction_of links the node to the node it supersedes via a correction warning."""
         original_id = self._make_node(title='Use MySQL')
         correction_id = self._make_node(
             title='Use Postgres instead', correction_of=original_id)
         out = format_node(correction_id, self.brain.conn)
-        self.assertIn('Corrects:', out)
+        # render_rich_node shows "⚠ Updated by:" — the correction_of edge is stored as
+        # corrected_by (new→old), so correction_enrich sees direction="corrected_by"
+        self.assertIn('⚠ Updated by:', out)
         self.assertIn('Use MySQL', out)
 
     # ── Edges ──
