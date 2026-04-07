@@ -223,6 +223,11 @@ queue_state() — all pending signals with priorities, surface counts
 dismiss_signal(signal_id) — dismiss a signal from the queue
 ```
 
+### Daemon
+```
+restart() — restart brain daemon with fresh code (clears cache, saves brain, respawns)
+```
+
 ### Escape Hatch
 ```
 eval(code) — arbitrary Python on brain object (for methods not exposed above)

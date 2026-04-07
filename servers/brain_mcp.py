@@ -373,6 +373,11 @@ def _build_tools():
      "inputSchema": {"type": "object", "properties": {
          "project": {"type": "string", "default": "default"}}}},
 
+    # ── Daemon control ──
+    {"name": "restart",
+     "description": "Restart the brain daemon with fresh code. Clears bytecode cache, saves brain, spawns new process. Use after code changes during development.",
+     "inputSchema": {"type": "object", "properties": {}}},
+
     # ── Escape hatch ──
     {"name": "eval",
      "description": "Escape hatch — evaluate arbitrary Python expression on brain object. Variable 'brain' is the Brain instance. Use for methods not exposed as direct tools.",
