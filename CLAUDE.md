@@ -67,19 +67,29 @@ Triggered by Anchor's need to know — the brain surfaces context before Anchor 
 **O:** 25 recall candidates from `brain.recall()`
 - Cosine similarity across z-weighted 4-group embeddings (title:1.0, blend:0.85, high_meta:0.70, other_meta:0.40)
 - Synaptic fatigue dampens repeatedly-recalled nodes (hubs fatigue faster, lives on SessionContext)
+- Candidates enriched via batch `get_rich_node()` — one call, 5 queries for all 25 nodes
+- Each candidate gets unified shape: `_metadata`, `_corrections`, `connections`, `situation`
 
 **K:** Haiku surfacer selects 5-8 relevant nodes
 - Prompt + config from `surface` interaction (learnable boundary — higher scales optimize this)
+- Candidates formatted via `render_rich_node(HAIKU_FORMAT)` — same formatter Anchor sees
+- Query-aware edge selection: `select_edges()` scores edges by `relevance × fatigue + weight_tiebreaker`
+  - Relevance: 70% cosine(query, node_embedding) + 30% cosine(query, description_embedding)
+  - Session fatigue (K=0.25): rotates edges across repeated queries
+  - 3-message query blend (0.6/0.3/0.1): multi-turn context for ambiguous queries
+  - Weight as tiebreaker only (0.01×) — S2 will make weight dynamic
 - Hebbian strengthening: co_accessed edges between selected nodes
 
 **Δ:** additionalContext injected into Claude's context
-- Graph expansion from selected seeds
-- Correction enrichment (corrects/corrected_by chains)
+- Selected nodes rendered via `render_rich_node(SURFACE_FORMAT)`
+- Graph neighbors from `_graph_expand()` (neighbor-only, no re-enrichment)
+- Dedup between selected node connections and graph neighbors (seen_ids)
 - Formatted via `format_surface_output()`
 
 Files: `scales/s1/surface.py`, `scales/s1/surface_contract.py`
 Traces: `s1r-{session_short}-{stop}` (O: candidates, K: selected, Δ: additionalContext)
 Interaction: `surface` — the learnable boundary that higher scales will evolve
+Edge selection constants: `K_EDGE_FATIGUE`, `EDGE_NODE_WEIGHT`, `EDGE_DESC_WEIGHT`, `WEIGHT_TIEBREAKER`, `TURN_WEIGHTS` in `surface_contract.py`
 
 ### S1E: Encode (every 5th stop)
 
@@ -94,7 +104,9 @@ Triggered by Stop hook when `stop_counter % 5 == 0`.
 **K:** Sonnet agent decides what to encode
 - Node catalog: `format_node()` with correction annotations
 - Conversation timeline with SURFACED node references
-- Agent prompt from `encoding_agent` interaction (learnable boundary)
+- Agent prompt from `s1e` interaction (v2: cognitive edge vocabulary, learnable boundary)
+- 20 edge types: 15 cognitive (refines, challenges, grounds, abstracts, triggers, reframes, resolves, opens, strengthens, weakens, corrects, enables, produces, contextualizes, synthesizes) + 5 engineering (implements, depends_on, validates, supersedes, configures)
+- `connect_to` supports `relation` field — encoder specifies edge type, not just description
 
 **Δ:** Sonnet's actions — create, revise, connect nodes
 - Tools: `remember_batch`, `revise_batch`, `connect_batch`, `brain_batch`, `recall_batch`, `get_nodes`
@@ -157,9 +169,9 @@ Chain IDs from SessionContext: `s0-{short}-{stop}`, `s1r-{short}-{stop}`, `s1e-{
 
 What each boundary expects and produces. If recall changes its output shape, the surfacer breaks. Contracts prevent silent drift.
 
-- `contract.py` — field definitions, `format_node()`, `generate_field_summary()`. Single source of truth for what a node IS.
-- `pipeline_contract.py` — surface prompt assembly, z-weighted scoring groups. What flows between pipeline stages.
-- Scale contracts: `s1/surface_contract.py` (surface config, candidate formatting), `s1/encode_contract.py` (encoder config, catalog building)
+- `contract.py` — field definitions, `format_node()`, `render_rich_node()`, `generate_field_summary()`. Single source of truth for what a node IS. `render_rich_node(config)` is the single formatter — HAIKU_FORMAT, SURFACE_FORMAT, ENCODER_FORMAT control verbosity.
+- `pipeline_contract.py` — `get_rich_node()` (accepts single ID or list for batch), `traverse()`, z-weighted scoring groups. What flows between pipeline stages.
+- Scale contracts: `s1/surface_contract.py` (surface config, `select_edges()`, candidate formatting, edge selection constants), `s1/encode_contract.py` (encoder config, catalog building)
 
 Run `test_contract_sync.py` after modifying ANY brain API layer. The contract flows to: remember() signature → MCP schema → dispatch → encoding agent tools → SKILL.md docs.
 
@@ -173,7 +185,7 @@ S2 plugs in the same way S1 does.
 
 ### SessionContext
 
-Per-session state that flows with every brain call. Carries: session_id, stop_counter, fatigue dict. Persisted to session_state table (survives daemon restarts).
+Per-session state that flows with every brain call. Carries: session_id, stop_counter, node fatigue dict, edge fatigue dict. Persisted to session_state table (survives daemon restarts). Both fatigue dicts reset between sessions.
 
 `brain.get_or_create_session(session_id)` — single entry point. Thin clients must pass session_id from Claude Code hook args.
 
