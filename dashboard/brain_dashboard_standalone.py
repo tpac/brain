@@ -25,6 +25,18 @@ DAEMON_HOST = "127.0.0.1"
 DAEMON_PORT = 47200 + (os.getuid() % 100)
 
 
+def utc_cutoff(hours=0, minutes=0, days=0):
+    """Return an ISO cutoff timestamp compatible with stored created_at values.
+
+    All timestamps in brain.db and brain_logs.db use ISO format with 'T' separator
+    and '+00:00' suffix. SQLite's datetime('now') uses space separator and no timezone,
+    which breaks lexicographic comparison. This function returns the correct format.
+    """
+    from datetime import datetime, timezone, timedelta
+    dt = datetime.now(timezone.utc) - timedelta(hours=hours, minutes=minutes, days=days)
+    return dt.strftime('%Y-%m-%dT%H:%M:%S+00:00')
+
+
 def daemon_send(cmd, args=None, timeout=10):
     """Send a command to the daemon, return result or None."""
     try:
@@ -96,7 +108,8 @@ def _read_judge_file(recall_ref):
     try:
         with open(path) as f:
             data = json.load(f)
-        return data.get("judge_prompt"), data.get("judge_output")
+        return (data.get("surface_prompt") or data.get("judge_prompt"),
+                data.get("surface_output") or data.get("judge_output"))
     except Exception:
         return None, None
 
@@ -447,23 +460,26 @@ def _get_logs_db_path():
     return os.path.join(db_dir, "brain_logs.db")
 
 
-def _query_traces(hours=24, scale='', limit=200):
+def _query_traces(hours=24, scale='', limit=200, session_id=''):
     """Read trace_events from brain_logs.db."""
     path = _get_logs_db_path()
     if not os.path.exists(path):
         return []
     try:
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=3)
-        conditions = ["created_at > datetime('now', '-%d hours')" % hours]
-        params = []
+        conditions = ["created_at > ?"]
+        params = [utc_cutoff(hours=hours)]
         if scale:
             conditions.append('scale = ?')
             params.append(scale)
+        if session_id:
+            conditions.append('session_id = ?')
+            params.append(session_id)
         where = ' AND '.join(conditions)
         rows = conn.execute(
             "SELECT id, chain_id, scale, event_type, ref_type, ref_id, "
             "summary, metadata, session_id, created_at "
-            "FROM trace_events WHERE %s ORDER BY created_at DESC LIMIT ?" % where,
+            "FROM trace_events WHERE %s ORDER BY created_at ASC LIMIT ?" % where,
             params + [limit]
         ).fetchall()
         conn.close()
@@ -532,8 +548,7 @@ def _query_all_errors(limit=50, hours=24):
     errors = []
     logs_path = _get_logs_db_path()
     dash_path = _get_dashboard_db_path()
-    # Use strftime with T separator to match ISO timestamps in DB
-    since = "strftime('%%Y-%%m-%%dT%%H:%%M:%%S', 'now', '-%d hours')" % hours
+    since_ts = utc_cutoff(hours=hours)
 
     # 1. Brain internal errors (debug_log where event_type='error')
     if os.path.exists(logs_path):
@@ -541,8 +556,8 @@ def _query_all_errors(limit=50, hours=24):
             conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=3)
             rows = conn.execute(
                 "SELECT id, created_at, source, metadata FROM debug_log "
-                "WHERE event_type='error' AND created_at > %s "
-                "ORDER BY created_at DESC LIMIT ?" % since, (limit,)).fetchall()
+                "WHERE event_type='error' AND created_at > ? "
+                "ORDER BY created_at DESC LIMIT ?", (since_ts, limit)).fetchall()
             for r in rows:
                 meta = {}
                 try:
@@ -564,8 +579,8 @@ def _query_all_errors(limit=50, hours=24):
             conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=3)
             rows = conn.execute(
                 "SELECT id, created_at, hook_name, level, error, context FROM hook_errors "
-                "WHERE created_at > %s ORDER BY created_at DESC LIMIT ?" % since,
-                (limit,)).fetchall()
+                "WHERE created_at > ? ORDER BY created_at DESC LIMIT ?",
+                (since_ts, limit)).fetchall()
             for r in rows:
                 errors.append({
                     'source': 'hook', 'component': r[2], 'timestamp': r[1],
@@ -581,8 +596,8 @@ def _query_all_errors(limit=50, hours=24):
             conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=3)
             rows = conn.execute(
                 "SELECT id, created_at, hook_name, rule_title, brain_decision, resolution "
-                "FROM conflict_log WHERE created_at > %s "
-                "ORDER BY created_at DESC LIMIT ?" % since, (limit,)).fetchall()
+                "FROM conflict_log WHERE created_at > ? "
+                "ORDER BY created_at DESC LIMIT ?", (since_ts, limit)).fetchall()
             for r in rows:
                 errors.append({
                     'source': 'conflict', 'component': r[2], 'timestamp': r[1],
@@ -786,7 +801,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         elif path == "/api/traces":
             hours = int(params.get("hours", ["24"])[0])
             scale = params.get("scale", [""])[0]
-            self._json_response(200, _query_traces(hours=hours, scale=scale))
+            session_id = params.get("session", [""])[0]
+            self._json_response(200, _query_traces(hours=hours, scale=scale, session_id=session_id))
         elif path == "/api/sessions":
             self._serve_sessions()
         elif path.startswith("/api/node/"):
@@ -824,8 +840,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "SELECT DISTINCT session_id, MIN(created_at) as first_seen, "
                 "MAX(created_at) as last_seen, COUNT(*) as event_count "
                 "FROM trace_events WHERE session_id != '' "
-                "AND created_at > datetime('now', '-7 days') "
-                "GROUP BY session_id ORDER BY last_seen DESC LIMIT 20"
+                "AND created_at > ? "
+                "GROUP BY session_id ORDER BY last_seen DESC LIMIT 20",
+                (utc_cutoff(days=7),)
             ).fetchall()
             conn.close()
             sessions = [{"id": r[0], "short": r[0][:8], "first": r[1], "last": r[2],
@@ -949,8 +966,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 db_path=db
             )
             recent = _direct_query(
-                "SELECT COUNT(*) FROM nodes WHERE created_at > datetime('now', '-24 hours')",
-                db_path=db
+                "SELECT COUNT(*) FROM nodes WHERE created_at > ?",
+                args=(utc_cutoff(hours=24),), db_path=db
             )
             orphans = _direct_query("""
                 SELECT COUNT(*) FROM nodes n WHERE archived = 0
@@ -994,7 +1011,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             node_type = params.get("type", [None])[0]
             search = params.get("search", [None])[0]
 
-            sql = "SELECT id, type, title, content, keywords, locked, emotion, access_count, created_at FROM nodes WHERE archived = 0"
+            sql = "SELECT id, type, title, content, keywords, locked, emotion, access_count, created_at, confidence, encoding_source FROM nodes WHERE archived = 0"
             args = []
             if node_type:
                 sql += " AND type = ?"
@@ -1014,6 +1031,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "content": r[3][:500] if r[3] else "",
                     "keywords": r[4], "locked": bool(r[5]),
                     "emotion": r[6], "access_count": r[7], "created_at": r[8],
+                    "confidence": r[9], "encoding_source": r[10],
                 })
             self._json_response(200, {"nodes": nodes, "total": len(nodes)})
         except Exception as e:
@@ -1026,17 +1044,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
             days = float(params.get("days", [30])[0])
             source = params.get("source", [None])[0]
 
-            # Convert fractional days to minutes for SQLite
-            minutes = int(days * 24 * 60)
-            if minutes < 1:
-                minutes = 5
+            # Convert fractional days to hours for cutoff
+            cutoff_hours = days * 24
+            if cutoff_hours < 0.1:
+                cutoff_hours = 0.1
 
-            args = []
+            args = [utc_cutoff(hours=cutoff_hours)]
             nodes_sql = """
                 SELECT id, type, title, locked, emotion, access_count, created_at
                 FROM nodes WHERE archived = 0
-                AND REPLACE(REPLACE(created_at, 'T', ' '), 'Z', '') > datetime('now', '-%d minutes')
-            """ % minutes
+                AND created_at > ?
+            """
             if source:
                 nodes_sql += " AND encoding_source = ?"
                 args.append(source)
@@ -1093,8 +1111,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             thin = _direct_query("""
                 SELECT COUNT(*), AVG(LENGTH(content)) FROM nodes
                 WHERE archived = 0 AND LENGTH(content) < 100
-                AND created_at > datetime('now', '-7 days')
-            """, db_path=db)
+                AND created_at > ?
+            """, args=(utc_cutoff(days=7),), db_path=db)
             if thin and thin[0][0] > 5:
                 insights.append({
                     "severity": "medium", "icon": "\U0001f4cf",
@@ -1108,7 +1126,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 logs_db = os.path.join(db_dir, "brain_logs.db")
                 s1_traces = _direct_query(
                     "SELECT COUNT(*) FROM trace_events WHERE scale = 's1' "
-                    "AND created_at > datetime('now', '-24 hours')", db_path=logs_db)
+                    "AND created_at > ?", args=(utc_cutoff(hours=24),), db_path=logs_db)
                 s1_count = s1_traces[0][0] if s1_traces else 0
                 if s1_count == 0:
                     insights.append({
@@ -1120,15 +1138,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 pass
 
             # Zero quotes
+            _7d = utc_cutoff(days=7)
             quotes = _direct_query("""
                 SELECT COUNT(*) FROM nodes WHERE archived = 0
-                AND created_at > datetime('now', '-7 days')
+                AND created_at > ?
                 AND (content LIKE '%Tom said%' OR content LIKE '%Tom:%'
                      OR content LIKE '%Claude:%' OR title LIKE '%quote%')
-            """, db_path=db)
+            """, args=(_7d,), db_path=db)
             types = dict(_direct_query(
-                "SELECT type, COUNT(*) FROM nodes WHERE archived = 0 AND created_at > datetime('now', '-7 days') GROUP BY type",
-                db_path=db
+                "SELECT type, COUNT(*) FROM nodes WHERE archived = 0 AND created_at > ? GROUP BY type",
+                args=(_7d,), db_path=db
             ))
             total_recent = sum(types.values())
             if quotes and quotes[0][0] == 0 and total_recent > 5:
@@ -1211,8 +1230,15 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: 'SF Mono', 'Fira Code',
 .recall-title:hover { background: #2a2a4a; color: #ccc; }
 .recall-title.used { border-color: #33ff88; color: #7eff7e; }
 .recall-title.more { background: none; border: none; color: #555; cursor: default; font-style: italic; }
+.recall-candidates { margin: 4px 8px; padding: 6px 10px; background: #0d1117; border: 1px solid #1a2a2a; border-left: 3px solid #555; border-radius: 4px; }
+.recall-candidates-header { font-size: 10px; color: #666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.recall-candidate { padding: 2px 0; font-size: 11px; color: #999; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recall-candidate:hover { color: #ccc; }
+.recall-candidate.used { color: #7eff7e; }
+.recall-candidate.more { color: #555; cursor: default; font-style: italic; padding-top: 4px; }
 .enc-prompt-body pre { background: #0a0a12; border: 1px solid #2a1a3a; border-left: 3px solid #aa66ff; border-radius: 4px; padding: 8px 12px; color: #b8b8d8; font-size: 11px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; max-height: 500px; overflow-y: auto; margin: 4px 8px 8px; }
 .recall-judge-output pre { background: #0d1117; border: 1px solid #1a2a1a; border-left: 3px solid #33ff88; border-radius: 4px; padding: 8px 12px; color: #b8d8b8; font-size: 11px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; max-height: 300px; overflow-y: auto; margin: 4px 8px; }
+.surface-prompt-body pre { background: #0d1117; border: 1px solid #2a1a2a; border-left: 3px solid #aa66ff; border-radius: 4px; padding: 8px 12px; color: #c8b8d8; font-size: 11px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; margin: 4px 8px; }
 .hook-body pre { background: #0a0a12; border: 1px solid #1a1a2a; border-radius: 4px; padding: 10px; color: #bbb; font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-height: 500px; overflow-y: auto; }
 .feed-toggle { display: flex; gap: 0; padding: 0 8px; margin-top: 4px; }
 .feed-btn { background: #111118; border: 1px solid #2a2a3a; color: #666; padding: 6px 16px; cursor: pointer; font-family: inherit; font-size: 11px; transition: all 0.15s; }
@@ -1396,9 +1422,9 @@ canvas { width: 100%; height: 100%; }
 </div>
 
 <div id="tab-health" class="tab-content">
-  <div class="health" id="health-content"></div>
-  <h3 style="color:#888;margin:20px 8px 8px;font-size:13px">System Status</h3>
+  <h3 style="color:#888;margin:12px 8px 8px;font-size:13px">System Status</h3>
   <div id="status-grid" style="padding:0 8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px"></div>
+  <div class="health" id="health-content"></div>
 </div>
 
 <div id="tab-traces" class="tab-content">
@@ -1412,10 +1438,13 @@ canvas { width: 100%; height: 100%; }
       <option value="s4">S4 (Growth)</option>
     </select>
     <select id="trace-hours-filter" onchange="loadTraces()" style="background:#111;color:#ccc;border:1px solid #333;padding:4px 8px;border-radius:4px;font-size:11px">
-      <option value="1">Last hour</option>
+      <option value="1" selected>Last hour</option>
       <option value="6">Last 6h</option>
-      <option value="24" selected>Last 24h</option>
+      <option value="24">Last 24h</option>
       <option value="168">Last 7d</option>
+    </select>
+    <select id="trace-session-filter" onchange="loadTraces()" style="background:#111;color:#ccc;border:1px solid #333;padding:4px 8px;border-radius:4px;font-size:11px">
+      <option value="">All sessions</option>
     </select>
     <span id="trace-count" style="color:#888;font-size:11px"></span>
   </div>
@@ -1539,17 +1568,26 @@ function renderRecallEntry(evt) {
   if (evt.judge_output && evt.judge_output !== '(no selection)') {
     shortContent = '<div class="recall-judge-output"><pre>' + escapeHtml(evt.judge_output) + '</pre></div>';
   } else if (evt.judge_output === '(no selection)') {
-    shortContent = '<div class="recall-judge-output" style="color:#666;padding:6px 12px;font-size:11px">(judge selected nothing)</div>';
-  } else {
-    // No judge data — show candidate titles as fallback
     const titleEntries = Object.entries(titles).slice(0, 8);
+    const total = Object.keys(titles).length;
+    shortContent = '<div class="recall-candidates"><div class="recall-candidates-header">0 selected from ' + total + ' candidates</div>' +
+      titleEntries.map(([nid, title]) => {
+        return '<div class="recall-candidate" onclick="loadNodeDetail(&quot;' + nid + '&quot;)">' + escapeHtml(title) + '</div>';
+      }).join('') +
+      (total > 8 ? '<div class="recall-candidate more">+' + (total - 8) + ' more</div>' : '') +
+      '</div>';
+  } else {
+    // No judge data — show candidate titles as compact list
+    const titleEntries = Object.entries(titles).slice(0, 12);
     if (titleEntries.length) {
-      shortContent = '<div class="recall-titles">' +
+      const total = Object.keys(titles).length;
+      shortContent = '<div class="recall-candidates"><div class="recall-candidates-header">' + total + ' candidates (pending judge)</div>' +
         titleEntries.map(([nid, title]) => {
-          return '<span class="recall-title" onclick="showNodeDetail(&quot;' + nid + '&quot;)" title="' + escapeHtml(nid) + '">' +
-            escapeHtml(title) + '</span>';
+          const isUsed = usedIds.has(nid);
+          return '<div class="recall-candidate' + (isUsed ? ' used' : '') + '" onclick="loadNodeDetail(&quot;' + nid + '&quot;)">' +
+            escapeHtml(title) + '</div>';
         }).join('') +
-        (Object.keys(titles).length > 8 ? '<span class="recall-title more">+' + (Object.keys(titles).length - 8) + ' more</span>' : '') +
+        (total > 12 ? '<div class="recall-candidate more">+' + (total - 12) + ' more</div>' : '') +
         '</div>';
     }
   }
@@ -1578,14 +1616,11 @@ function renderRecallEntry(evt) {
       (sid ? '<span class="hook-session">' + sid + '</span>' : '') +
       '<span class="hook-id">#' + evt.id + '</span>' +
       '<span class="hook-size">' + (evt.used_count || 0) + ' selected</span>' +
-      (evt.precision_score !== null && evt.precision_score !== undefined ? '<span class="hook-size" style="color:' + (evt.precision_score > 0.5 ? '#7eff7e' : '#ff7e7e') + '">' + Math.round(evt.precision_score * 100) + '%</span>' : '') +
+      (evt.judge_prompt ? '<button class="hook-details-btn" style="margin-left:auto" onclick="event.stopPropagation();toggleSurfacePrompt(this.parentElement.parentElement)">Show Prompt</button>' : '') +
     '</div>' +
     '<div class="hook-prompt">' + escapeHtml(evt.query || '') + '</div>' +
-    shortContent +
-    '<div class="hook-body">' +
-      '<button class="hook-details-btn" onclick="toggleDetails(this)">Full Details</button>' +
-      fullDetails +
-    '</div>';
+    '<div class="hook-body">' + shortContent + '</div>' +
+    '<div class="surface-prompt-body" style="display:none"><pre>' + (evt.judge_prompt ? escapeHtml(evt.judge_prompt) : '') + '</pre></div>';
   return div;
 }
 
@@ -1748,9 +1783,11 @@ async function loadEncodingActivity() {
       return;
     }
 
-    // Only re-render if content changed (run count or total nodes)
+    // Only re-render if content changed (run count + total nodes + edges + latest timestamp)
     const totalNodes = runsD.runs.reduce((s, r) => s + (r.nodes ? r.nodes.length : 0), 0);
-    const fingerprint = runsD.runs.length + ':' + totalNodes;
+    const totalEdges = runsD.runs.reduce((s, r) => s + (r.edges ? r.edges.length : 0), 0);
+    const latestTs = runsD.runs[0] ? runsD.runs[0].start_ts : '';
+    const fingerprint = runsD.runs.length + ':' + totalNodes + ':' + totalEdges + ':' + latestTs;
     const oldFingerprint = container.dataset.fingerprint || '';
     if (encodingLoaded && fingerprint === oldFingerprint) return;
     const oldRunCount = parseInt((oldFingerprint || '0').split(':')[0]) || 0;
@@ -1797,7 +1834,7 @@ async function loadEncodingActivity() {
       for (const n of (run.nodes || [])) {
         const kind = n.kind === 'revised' ? 'REVISED' : 'CREATED';
         const kindClass = n.kind === 'revised' ? 'revised' : 'created';
-        html += '<div class="enc-entry ' + kindClass + '" data-kind="' + kindClass + '" style="margin:2px 0;padding:4px 8px;cursor:pointer" onclick="showNodeDetail(&quot;' + (n.id||'') + '&quot;)">' +
+        html += '<div class="enc-entry ' + kindClass + '" data-kind="' + kindClass + '" style="margin:2px 0;padding:4px 8px;cursor:pointer" onclick="loadNodeDetail(&quot;' + (n.id||'') + '&quot;)">' +
           '<span class="enc-kind ' + kindClass + '">' + kind + '</span> ' +
           '<span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ' +
           '<span class="enc-title">' + escapeHtml(n.title || '') + '</span>' +
@@ -1834,6 +1871,19 @@ async function loadEncodingActivity() {
   } catch(e) { console.error('loadEncodingActivity error:', e); }
 }
 
+function toggleSurfacePrompt(entry) {
+  var prompt = entry.querySelector('.surface-prompt-body');
+  if (!prompt) return;
+  var btn = entry.querySelector('.hook-details-btn');
+  if (prompt.style.display === 'none') {
+    prompt.style.display = 'block';
+    if (btn) btn.textContent = 'Hide Prompt';
+  } else {
+    prompt.style.display = 'none';
+    if (btn) btn.textContent = 'Show Prompt';
+  }
+}
+
 function toggleEncPrompt(entry) {
   var prompt = entry.querySelector('.enc-prompt-body');
   if (!prompt) return;
@@ -1847,7 +1897,9 @@ function toggleEncPrompt(entry) {
   }
 }
 
-setInterval(() => { if (activeFeed === 'encoding') loadEncodingActivity(); }, 5000);
+setInterval(() => { if (activeFeed === 'encoding') loadEncodingActivity(); }, 3000);
+// Also poll when not viewing, to keep badge updated
+setInterval(() => { if (activeFeed !== 'encoding' && encodingLoaded) loadEncodingActivity(); }, 10000);
 
 // Signal Queue feed
 async function loadSignalQueue() {
@@ -1919,18 +1971,18 @@ async function searchNodes() {
     const d = await r.json();
     const list = document.getElementById('node-list');
     list.innerHTML = d.nodes.map(n => `
-      <div class="node-card ${expandedNode===n.id?'expanded':''}" onclick="toggleNode('${n.id}', this)">
+      <div class="node-card" onclick="loadNodeDetail('${n.id}')" style="cursor:pointer">
         <div class="node-title">
           <span class="type-badge type-${n.type}">${n.type}</span>
           ${n.locked ? '<span class="locked-icon">&#x1f512;</span>' : ''}
           ${n.title || '(untitled)'}
         </div>
         <div class="node-meta">
+          <span>conf: ${(n.confidence||0).toFixed(2)}</span>
           <span>accessed: ${n.access_count}x</span>
-          <span>emotion: ${(n.emotion||0).toFixed(1)}</span>
+          <span>${n.encoding_source || ''}</span>
           <span>${localTime(n.created_at)}</span>
         </div>
-        <div class="node-content">${(n.content||'').replace(/</g,'&lt;')}</div>
       </div>
     `).join('');
   } catch(e) {}
@@ -2128,12 +2180,27 @@ async function loadTraces() {
   try {
     const scaleFilter = document.getElementById('trace-scale-filter').value;
     const hours = document.getElementById('trace-hours-filter').value;
-    const url = '/api/traces?hours=' + hours + (scaleFilter ? '&scale=' + scaleFilter : '');
+    const sessionFilter = document.getElementById('trace-session-filter').value;
+    let url = '/api/traces?hours=' + hours;
+    if (scaleFilter) url += '&scale=' + scaleFilter;
+    if (sessionFilter) url += '&session=' + sessionFilter;
     const r = await fetch(url);
     const traces = await r.json();
     const el = document.getElementById('traces-content');
     const label = hours <= 1 ? '1h' : hours <= 6 ? '6h' : hours <= 24 ? '24h' : '7d';
     document.getElementById('trace-count').textContent = traces.length + ' events (' + label + ')';
+
+    // Populate session dropdown from sessions API (not trace data)
+    const sessSelect = document.getElementById('trace-session-filter');
+    const prevVal = sessSelect.value;
+    try {
+      const sr = await fetch('/api/sessions');
+      const sessions = await sr.json();
+      const opts = '<option value="">All sessions</option>' + sessions.map(s =>
+        '<option value="' + s.id + '"' + (s.id === prevVal ? ' selected' : '') + '>' + s.short + ' (' + s.events + ' events)</option>'
+      ).join('');
+      sessSelect.innerHTML = opts;
+    } catch(e) { /* keep existing options */ }
 
     if (!traces.length) {
       el.innerHTML = '<div style="color:#888;text-align:center;padding:40px">No trace events yet. Traces will appear after your next prompt.</div>';
@@ -2148,7 +2215,7 @@ async function loadTraces() {
       if (!chains[t.chain_id]) { chains[t.chain_id] = []; chainOrder.push(t.chain_id); }
       chains[t.chain_id].push(t);
     });
-    _traceChainEntries = chainOrder.map(id => [id, chains[id]]);
+    _traceChainEntries = chainOrder.map(id => [id, chains[id]]).reverse();
     _traceRendered = 0;
     el.innerHTML = '';
     _renderTracesBatch(el);
@@ -2163,7 +2230,7 @@ function _renderTracesBatch(el) {
   let html = '';
   for (let i = _traceRendered; i < end; i++) {
     const [chainId, events] = _traceChainEntries[i];
-    const firstTime = events[events.length - 1].created_at;
+    const firstTime = events[0].created_at;
     const chainScale = events[0].scale;
     const color = scaleColors[chainScale] || '#666';
 
@@ -2181,7 +2248,7 @@ function _renderTracesBatch(el) {
       html += '<div style="flex:1;min-width:0">';
       html += '<span style="color:' + evColor + ';font-size:10px;margin-right:6px">' + ev.event_type + '</span>';
       if (ev.ref_type) html += '<span style="color:#555;font-size:10px">[' + ev.ref_type + ']</span> ';
-      html += '<div style="color:#ccc;font-size:12px;margin-top:2px;white-space:pre-wrap;word-break:break-word">' + (ev.summary || '').substring(0, 200) + '</div>';
+      html += '<div style="color:#ccc;font-size:12px;margin-top:2px;white-space:pre-wrap;word-break:break-word">' + escapeHtml((ev.summary || '').substring(0, 200)) + '</div>';
       html += '</div>';
       html += '<span style="color:#444;font-size:9px;flex-shrink:0;white-space:nowrap">' + localTime(ev.created_at, 'time') + '</span>';
       html += '</div>';

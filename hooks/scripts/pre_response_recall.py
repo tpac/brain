@@ -14,7 +14,9 @@ _t0 = time.time()
 sys.path.insert(0, os.path.dirname(__file__))
 from hook_common import (get_hook_input, daemon_available, daemon_call_raw,
                          daemon_unavailable_error, brain_debug, log_hook_output)
-sys.stderr.write("[recall-hook] import: %dms\n" % ((time.time() - _t0) * 1000))
+from datetime import datetime as _dt
+def _ts(): return _dt.now().strftime("%H:%M:%S.%f")[:-3]
+sys.stderr.write("[recall-hook %s] import: %dms\n" % (_ts(), (time.time() - _t0) * 1000))
 
 APPROVE = json.dumps({"decision": "approve"})
 
@@ -58,7 +60,7 @@ try:
         context = result_json["additionalContext"]
         log_hook_output("recall", output_text=context, user_prompt=user_message)
         brain_debug("recall: daemon returned context (%d chars) in %dms" % (len(context), elapsed))
-        sys.stderr.write("[recall-hook] total: %dms, printing and exiting\n" % ((time.time() - _t0) * 1000))
+        sys.stderr.write("[recall-hook %s] total: %dms, printing and exiting\n" % (_ts(), (time.time() - _t0) * 1000))
         sys.stdout.write(json.dumps({"additionalContext": context}))
         sys.stdout.flush()
         os._exit(0)  # Fast exit — skip Python cleanup

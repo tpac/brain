@@ -294,14 +294,14 @@ def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
     }
 
 
-def get_rich_node(brain_or_conn, node_id):
-    """One node, fully assembled: content + metadata + correction chain + light connections.
+def get_rich_node(brain_or_conn, node_id_or_ids):
+    """Fully assembled node(s): content + metadata + correction chain + connections.
 
-    - Full content and all metadata on the node itself
-    - Correction chain: follows corrects/corrected_by with full content
-    - Connections: titles only (id, type, title, relation, weight) — no expansion
+    Accepts a single node_id (str) or a list of node_ids.
+    - Single ID → returns one rich node dict, or None if not found.
+    - List of IDs → returns dict {node_id: rich_node_dict}. Missing nodes omitted.
 
-    Accepts brain object or raw db connection.
+    When given a list, uses batched queries (5 queries total instead of N×4).
     """
     from .dal import NodeDAL
     from .dal_metadata import MetadataDAL
@@ -309,61 +309,132 @@ def get_rich_node(brain_or_conn, node_id):
 
     conn = getattr(brain_or_conn, 'conn', brain_or_conn)
     ndal = NodeDAL(conn)
-    mdal = MetadataDAL(conn)
 
-    # Resolve short ID
-    full_id = ndal.resolve_id(node_id) if len(str(node_id)) < 16 else node_id
-    if not full_id:
-        return None
+    # ── Dispatch: single vs batch ──
+    single = isinstance(node_id_or_ids, str)
+    raw_ids = [node_id_or_ids] if single else list(node_id_or_ids)
 
-    node = ndal.get_node(full_id)
-    if not node:
-        return None
+    if not raw_ids:
+        return None if single else {}
 
-    # ── Metadata ──
-    meta = mdal.get(full_id)
-    if meta:
-        node['_metadata'] = meta
+    # Resolve short IDs
+    full_ids = []
+    for nid in raw_ids:
+        full = ndal.resolve_id(nid) if len(str(nid)) < 16 else nid
+        if full:
+            full_ids.append(full)
 
-    # ── Situation (stored in node_embeddings, not nodes) ──
-    sit = conn.execute(
-        "SELECT situation_text FROM node_embeddings WHERE node_id = ?",
-        (full_id,)).fetchone()
-    if sit and sit[0]:
-        node['situation'] = sit[0]
+    if not full_ids:
+        return None if single else {}
 
-    # ── Correction chain (both directions, with content) ──
-    corrections = correction_enrich({full_id, full_id[:8]}, conn)
-    node_corrs = corrections.get(full_id, []) or corrections.get(full_id[:8], [])
-    if node_corrs:
-        # Fetch full content for each correction node
-        for corr in node_corrs:
-            corr_node = ndal.get_node(ndal.resolve_id(corr['id']) or corr['id'])
-            if corr_node:
-                corr['content'] = corr_node.get('content', '')
-                corr['type'] = corr_node.get('type', '')
-        node['_corrections'] = node_corrs
+    # ── 1. Batch fetch all nodes ──
+    ph = ','.join('?' for _ in full_ids)
+    cols = [desc[0] for desc in conn.execute('SELECT * FROM nodes LIMIT 0').description]
+    rows = conn.execute(
+        'SELECT * FROM nodes WHERE id IN (%s)' % ph, full_ids
+    ).fetchall()
 
-    # ── Light connections (titles + dates + description, exclude co_accessed) ──
-    rows = conn.execute("""
-        SELECT n.id, n.type, n.title, e.edge_type, e.weight, e.description,
-               n.created_at, n.revised_at, n.confidence, n.locked
+    nodes = {}
+    for row in rows:
+        d = dict(zip(cols, row))
+        for bf in ('locked', 'archived', 'critical'):
+            d[bf] = d.get(bf) == 1
+        d['emotion'] = d.get('emotion') or 0
+        d['emotion_label'] = d.get('emotion_label') or 'neutral'
+        nodes[d['id']] = d
+
+    if not nodes:
+        return None if single else {}
+
+    found_ids = list(nodes.keys())
+    ph = ','.join('?' for _ in found_ids)
+
+    # ── 2. Batch fetch all metadata ──
+    meta_rows = conn.execute(
+        'SELECT node_id, key, value FROM node_metadata_kv WHERE node_id IN (%s)' % ph,
+        found_ids
+    ).fetchall()
+    meta_by_node = {}
+    for nid, key, value in meta_rows:
+        meta_by_node.setdefault(nid, {})[key] = value
+    for nid in found_ids:
+        if nid in meta_by_node:
+            nodes[nid]['_metadata'] = meta_by_node[nid]
+
+    # ── 3. Batch fetch all situations ──
+    sit_rows = conn.execute(
+        'SELECT node_id, situation_text FROM node_embeddings WHERE node_id IN (%s)' % ph,
+        found_ids
+    ).fetchall()
+    for nid, sit in sit_rows:
+        if sit:
+            nodes[nid]['situation'] = sit
+
+    # ── 4. Batch corrections (already set-based) ──
+    all_ids_for_corrections = set()
+    for fid in found_ids:
+        all_ids_for_corrections.add(fid)
+        all_ids_for_corrections.add(fid[:8])
+    corrections = correction_enrich(all_ids_for_corrections, conn)
+    for nid in found_ids:
+        node_corrs = corrections.get(nid, []) or corrections.get(nid[:8], [])
+        if node_corrs:
+            for corr in node_corrs:
+                corr_full = ndal.resolve_id(corr['id']) or corr['id']
+                corr_node = ndal.get_node(corr_full)
+                if corr_node:
+                    corr['content'] = corr_node.get('content', '')
+                    corr['type'] = corr_node.get('type', '')
+            nodes[nid]['_corrections'] = node_corrs
+
+    # ── 5. Batch fetch all connections ──
+    edge_rows = conn.execute("""
+        SELECT e.source_id, e.target_id, e.edge_type, e.weight, e.description,
+               n1.id, n1.type, n1.title, n1.created_at, n1.revised_at, n1.confidence, n1.locked,
+               n2.id, n2.type, n2.title, n2.created_at, n2.revised_at, n2.confidence, n2.locked
         FROM edges e
-        JOIN nodes n ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END
-        WHERE (e.source_id = ? OR e.target_id = ?) AND n.archived = 0
-        AND n.id != ?
+        JOIN nodes n1 ON n1.id = e.target_id
+        JOIN nodes n2 ON n2.id = e.source_id
+        WHERE (e.source_id IN ({ph}) OR e.target_id IN ({ph}))
         AND e.edge_type NOT IN ('co_accessed', 'emergent_bridge')
-        ORDER BY e.weight DESC LIMIT 10
-    """, [full_id, full_id, full_id, full_id]).fetchall()
+        AND n1.archived = 0 AND n2.archived = 0
+    """.format(ph=ph), found_ids + found_ids).fetchall()
 
-    node['connections'] = [
-        {"id": r[0], "type": r[1], "title": r[2], "relation": r[3], "weight": r[4],
-         "description": r[5] or "", "created_at": r[6], "revised_at": r[7],
-         "confidence": r[8], "locked": r[9] == 1}
-        for r in rows
-    ]
+    edges_by_node = {}
+    found_set = set(found_ids)
+    for row in edge_rows:
+        src, tgt = row[0], row[1]
+        etype, weight, desc = row[2], row[3], row[4]
+        # target-side node data (n1)
+        n1 = {"id": row[5], "type": row[6], "title": row[7], "relation": etype,
+              "weight": weight, "description": desc or "",
+              "created_at": row[8], "revised_at": row[9],
+              "confidence": row[10], "locked": row[11] == 1}
+        # source-side node data (n2)
+        n2 = {"id": row[12], "type": row[13], "title": row[14], "relation": etype,
+              "weight": weight, "description": desc or "",
+              "created_at": row[15], "revised_at": row[16],
+              "confidence": row[17], "locked": row[18] == 1}
 
-    return node
+        if src in found_set and tgt != src:
+            edges_by_node.setdefault(src, []).append(n1)
+        if tgt in found_set and src != tgt:
+            edges_by_node.setdefault(tgt, []).append(n2)
+
+    for nid in found_ids:
+        conns = edges_by_node.get(nid, [])
+        seen = set()
+        deduped = []
+        for c in sorted(conns, key=lambda x: x.get('weight', 0), reverse=True):
+            if c['id'] not in seen and c['id'] != nid:
+                seen.add(c['id'])
+                deduped.append(c)
+        nodes[nid]['connections'] = deduped
+
+    # ── Return ──
+    if single:
+        return nodes.get(full_ids[0])
+    return nodes
 
 
 # ═══════════════════════════════════════════════════════════════

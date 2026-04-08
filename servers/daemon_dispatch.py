@@ -738,11 +738,12 @@ def _handle_connect_batch(brain, args, graph_changes):
     created = 0
     for c in connections:
         try:
-            brain.connect(
+            brain.connect_typed(
                 source_id=_resolve_id(brain, c.get("source_id", "")),
                 target_id=_resolve_id(brain, c.get("target_id", "")),
                 relation=c.get("relation", "related_to"),
-                weight=c.get("weight", 0.5))
+                weight=c.get("weight", 0.5),
+                description=c.get("description", ""))
             created += 1
         except Exception:
             pass

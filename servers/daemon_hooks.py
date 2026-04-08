@@ -176,28 +176,64 @@ def hook_recall(brain, args, graph_changes):
     # Encoding agent needs ALL candidates (including previously surfaced) for revision.
     # Session dedup happens only at distiller stage, not here.
     try:
-        from .pipeline_contract import CANDIDATES_FILE
+        from .pipeline_contract import CANDIDATES_FILE, get_rich_node
         candidates_path = '/tmp/brain-{}-recall-candidates.json'.format(session_id)
-        content_limit = CANDIDATES_FILE['content_limit']
+        capped = results[:CANDIDATES_FILE['max_candidates']]
+
+        # Batch enrichment: one call, 5 queries for all 25 nodes
+        node_ids = [r.get("id", "") for r in capped if r.get("id")]
+        rich_nodes = get_rich_node(brain, node_ids)
+
+        # Edge selection: query-aware scoring (strategy D)
+        # Get query embedding + prior turn embeddings for multi-turn blend
+        import numpy as np
+        _query_emb = result.get("_query_embedding")
+        _query_vec = None
+        _prior_vecs = []
+        if _query_emb is not None:
+            _query_vec = np.frombuffer(_query_emb, dtype=np.float32) if isinstance(_query_emb, bytes) else np.array(_query_emb, dtype=np.float32)
+            # Get prior user messages for multi-turn context
+            try:
+                from .scales.s1.surface_contract import select_edges
+                _prior_turns = brain._trace_dal.get_session_turns(session_id, limit=4)
+                _user_turns = [t for t in _prior_turns if t.get('role') == 'user'][:2]
+                from servers.embedder import embed as _emb
+                for _t in _user_turns:
+                    _text = (_t.get('content') or '')[:500]
+                    if _text and len(_text) > 5:
+                        _blob = _emb(_text)
+                        if _blob:
+                            _prior_vecs.append(np.frombuffer(_blob, dtype=np.float32))
+            except Exception as _e:
+                brain._log_error('edge_select_prior_vecs', _e, 'embedding prior turns')
+
         candidates_data = []
-        for r in results[:CANDIDATES_FILE['max_candidates']]:
-            node_data = {
-                "id": r.get("id", ""),
-                "type": r.get("type", ""),
-                "title": r.get("title", ""),
-                "content": (r.get("content") or "")[:content_limit],
-                "confidence": r.get("confidence", 0),
-                "locked": r.get("locked", False),
-                "score": r.get("effective_activation", 0),
-                "revised_at": r.get("revised_at"),
-                "created_at": r.get("created_at"),
-                "discovery": r.get("_discovery", "embedding"),
-            }
-            # Include metadata for S1 Surface
-            if CANDIDATES_FILE.get('include_metadata'):
-                from .pipeline_contract import enrich_candidate_metadata
-                enrich_candidate_metadata(brain, r.get("id", ""), node_data, CANDIDATES_FILE)
-            # Include 3-degree graph neighborhood (full — encoding agent needs it)
+        for r in capped:
+            nid = r.get("id", "")
+            node_data = rich_nodes.get(nid)
+            if not node_data:
+                # Fallback if node disappeared between recall and enrichment
+                node_data = {
+                    "id": nid, "type": r.get("type", ""),
+                    "title": r.get("title", ""), "content": r.get("content", ""),
+                    "confidence": r.get("confidence", 0), "locked": r.get("locked", False),
+                    "created_at": r.get("created_at"), "revised_at": r.get("revised_at"),
+                }
+            # Query-aware edge selection (S1 intelligence)
+            # Encoding agent gets all connections (no select_edges call).
+            # Render gets the selected subset via edge_limit in config.
+            if _query_vec is not None and node_data.get('connections'):
+                from .scales.s1.surface_contract import select_edges
+                node_data['connections'] = select_edges(
+                    node_data['connections'], _query_vec,
+                    session=ctx, limit=10,  # keep 10, render truncates to 3
+                    prior_vecs=_prior_vecs, brain_conn=brain.conn)
+            # Attach recall-specific fields (not in DB — from scoring pipeline)
+            node_data["score"] = r.get("effective_activation", 0)
+            node_data["discovery"] = r.get("_discovery", "embedding")
+            # Include full graph neighborhood for encoding agent
+            # (encoding agent reads from /tmp file, sees all connections)
+            node_data["_all_connections"] = rich_nodes.get(nid, {}).get('connections', [])
             graph = r.get("_graph", {})
             if graph:
                 node_data["_graph"] = graph

@@ -100,14 +100,60 @@ def _call_surface(brain, candidates_data, user_message, session_context,
     return surfaced, surface_prompt, max_tokens, interaction_id
 
 
-def _expand_and_enrich(brain, selected_ids, graph_changes):
-    """Graph expansion + correction enrichment from surfaced seeds.
+def _graph_expand(brain, selected_ids):
+    """Fetch graph neighbors for selected nodes. Seeds already enriched via get_rich_node.
 
-    Returns: (graph_neighbors, corrections)
+    Only discovers new neighbor nodes for the "Related knowledge" section.
+    No correction re-fetch (already in candidates_data._corrections).
+    No metadata re-fetch (already in candidates_data._metadata).
+
+    Returns: list of neighbor dicts [{id, type, title, content, edge_type, ...}]
     """
-    from servers.pipeline_contract import traverse
-    result = traverse(brain, list(selected_ids))
-    return result['neighbors'], result['corrections']
+    from servers.pipeline_contract import TRAVERSE_EXCLUDED_EDGES
+    from servers.dal import NodeDAL
+
+    conn = brain.conn
+    ndal = NodeDAL(conn)
+    excluded = TRAVERSE_EXCLUDED_EDGES
+    excl_placeholders = ','.join('?' for _ in excluded)
+
+    seen = set()
+    # Resolve and track seed IDs
+    resolved = set()
+    for sid in selected_ids:
+        full = ndal.resolve_id(sid) if len(str(sid)) < 16 else sid
+        if full:
+            resolved.add(full)
+            seen.add(full)
+            seen.add(full[:8])
+
+    neighbors = []
+    for full_id in resolved:
+        rows = conn.execute("""
+            SELECT n.id, n.type, n.title, substr(n.content, 1, 300),
+                   e.edge_type, e.weight, e.description,
+                   n.confidence, n.locked
+            FROM edges e
+            JOIN nodes n ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END
+            WHERE (e.source_id = ? OR e.target_id = ?) AND n.archived = 0
+            AND n.id != ?
+            AND e.edge_type NOT IN ({excl})
+            ORDER BY e.weight DESC LIMIT 3
+        """.format(excl=excl_placeholders),
+            [full_id, full_id, full_id, full_id] + list(excluded)).fetchall()
+
+        for r in rows:
+            if r[0] not in seen:
+                seen.add(r[0])
+                neighbors.append({
+                    "id": r[0], "type": r[1], "title": r[2],
+                    "content": r[3], "edge_type": r[4],
+                    "edge_weight": r[5], "edge_description": r[6] or "",
+                    "confidence": r[7], "locked": r[8] == 1,
+                    "seed_id": full_id,
+                })
+
+    return neighbors
 
 
 def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
@@ -203,13 +249,12 @@ def run_surface(brain, ctx, candidates_data, user_message, session_context,
         _write_surface_result_file(recall_ref, surface_prompt, "(no selection)", brain)
         return None
 
-    # Expand and enrich
-    graph_neighbors, corrections = _expand_and_enrich(brain, selected_ids, graph_changes)
+    # Graph expansion — neighbors only (seeds already enriched via get_rich_node)
+    graph_neighbors = _graph_expand(brain, selected_ids)
 
-    # Format output
+    # Format output — candidates already have _metadata, _corrections, connections
     from servers.scales.s1.surface_contract import format_surface_output
-    additional_context = format_surface_output(selected, candidates_data, graph_neighbors,
-                                               corrections=corrections)
+    additional_context = format_surface_output(selected, candidates_data, graph_neighbors)
 
     # Write traces
     try:

@@ -1126,9 +1126,10 @@ class BrainRememberMixin:
                     description = ''
                 match = self.find_node_by_title(title_query, threshold=0.75)
                 if match and match.get('id') not in created_set:
+                    relation = entry.get('relation', 'related') if isinstance(entry, dict) else 'related'
                     for node_id in created_ids:
                         try:
-                            self.connect_typed(node_id, match['id'], relation='related',
+                            self.connect_typed(node_id, match['id'], relation=relation,
                                               weight=0.6, description=description)
                             connections_created += 1
                         except Exception as _e:

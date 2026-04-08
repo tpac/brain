@@ -120,65 +120,20 @@ PRECISION = {
 
 
 # ═══════════════════════════════════════════════════════════════
-# CANDIDATE ENRICHMENT
+# CANDIDATE ENRICHMENT — DEPRECATED 2026-04-07
+# Replaced by get_rich_node() in pipeline_contract.py.
+# Candidates now use unified get_rich_node shape everywhere.
 # ═══════════════════════════════════════════════════════════════
 
-try:
-    from servers.contract import METADATA_KEYS as _CONTRACT_METADATA_KEYS
-except ImportError:
-    from contract import METADATA_KEYS as _CONTRACT_METADATA_KEYS
-
-_SITUATION_QUERY = 'SELECT situation_text FROM node_embeddings WHERE node_id = ?'
-
-_EDGES_QUERY = (
-    'SELECT n.title, e.edge_type, e.description, e.weight '
-    'FROM edges e JOIN nodes n ON e.target_id = n.id '
-    'WHERE e.source_id = ? AND e.edge_type != "co_accessed" '
-    'ORDER BY e.weight DESC LIMIT ?'
-)
-
-
 def enrich_candidate_metadata(brain, node_id, node_data, config):
-    """Add metadata fields to a candidate dict for the Layer 2 surface.
+    """DEPRECATED 2026-04-07: Use get_rich_node() instead.
 
-    Reads from MetadataDAL (KV store), node_embeddings, and edges tables.
-    Only surfaces keys listed in the contract's METADATA_KEYS.
+    Kept as stub for backward compatibility with eval scripts.
     """
-    if not node_id:
-        return
-
-    # Metadata from KV store — only contract-defined keys
-    try:
-        try:
-            from servers.dal_metadata import MetadataDAL
-        except ImportError:
-            from dal_metadata import MetadataDAL
-        dal = MetadataDAL(brain.conn)
-        meta = dal.get_fields(node_id, _CONTRACT_METADATA_KEYS)
-        for key, value in meta.items():
-            node_data[key] = value
-    except Exception:
-        pass
-
-    # Situation text
-    try:
-        sit = brain.conn.execute(_SITUATION_QUERY, (node_id,)).fetchone()
-        if sit and sit[0]:
-            node_data["situation"] = sit[0]
-    except Exception:
-        pass
-
-    # Top intentional edges with descriptions
-    try:
-        max_edges = config.get('max_edges_described', 3)
-        edges = brain.conn.execute(_EDGES_QUERY, (node_id, max_edges)).fetchall()
-        if edges:
-            node_data["top_edges"] = [
-                {"title": e[0][:60], "type": e[1], "why": e[2] or "", "weight": e[3]}
-                for e in edges
-            ]
-    except Exception:
-        pass
+    from servers.pipeline_contract import get_rich_node
+    rich = get_rich_node(brain, node_id)
+    if rich:
+        node_data.update({k: v for k, v in rich.items() if k not in node_data})
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -280,73 +235,33 @@ def correction_enrich(node_ids, db_conn):
 # ═══════════════════════════════════════════════════════════════
 
 def format_candidate_for_surface(c, index):
-    """Format a single candidate for the surface prompt. Compact, metadata-rich."""
-    cfg = SURFACE
-    # Header: index, type, title, id, score, confidence, locked, created, discovery
-    parts = ["id:%s" % str(c.get("id", ""))[:8]]
+    """Format a single candidate for the surface prompt.
+
+    Thin wrapper around render_rich_node(HAIKU_FORMAT) — adds recall-specific
+    fields (score, discovery) that aren't in the node itself.
+
+    Candidates must be in get_rich_node() shape (with _metadata, _corrections, connections).
+    """
+    from servers.contract import render_rich_node
+
+    # Recall-specific header (score + discovery — not part of the node)
+    score_parts = []
     score = c.get("score", 0)
     if score:
-        # v9: Cap displayed score at 1.0 — critical boost inflates past 1.0
-        # which misleads the surface. Show 'boosted' flag if capped.
         display_score = min(score, 1.0)
         score_str = "match:%.2f" % display_score
         if score > 1.0:
             score_str += ",boosted"
-        parts.append(score_str)
-    conf = c.get("confidence")
-    if conf:
-        parts.append("conf:%.1f" % conf)
-    if c.get("locked"):
-        parts.append("locked")
-    # v9: Discovery source — how this candidate was found
+        score_parts.append(score_str)
     discovery = c.get("discovery", "")
     if discovery and discovery not in ("embedding", "embedding_only", "embedding+keyword"):
-        parts.append("via:%s" % discovery)
-    # v9.1: Relative time instead of raw UTC — surface and Anchor both think in relative time
-    created_rel = _relative_time(c.get("created_at"))
-    revised_rel = _relative_time(c.get("revised_at"))
-    if revised_rel and created_rel and revised_rel != created_rel:
-        parts.append("created %s, revised %s" % (created_rel, revised_rel))
-    elif created_rel:
-        parts.append(created_rel)
+        score_parts.append("via:%s" % discovery)
 
-    header = "#%d [%s] \"%s\" (%s)" % (
-        index, c.get("type", "?"), c.get("title", "?")[:70], ", ".join(parts))
+    header = "#%d" % index
+    if score_parts:
+        header += " (%s)" % ", ".join(score_parts)
 
-    lines = [header]
-
-    # Content (truncated)
-    content = (c.get("content") or "")[:cfg['content_limit']]
-    if content:
-        lines.append("  %s" % content)
-
-    # Metadata — only if present (no empty fields)
-    situation = c.get("situation", "")
-    if situation:
-        lines.append("  Situation: %s" % situation[:120])
-
-    reasoning = c.get("reasoning", "")
-    if reasoning:
-        lines.append("  Reasoning: %s" % reasoning[:120])
-
-    quote = c.get("user_raw_quote", "")
-    if quote:
-        lines.append("  Quote: \"%s\"" % quote[:120])
-
-    corrects = c.get("correction_of", "")
-    if corrects:
-        lines.append("  Corrects: %s" % corrects[:30])
-
-    # Top edges (intentional only, not co_accessed)
-    edges = c.get("top_edges", [])
-    if edges:
-        edge_parts = []
-        for e in edges[:3]:
-            desc = " — %s" % e["why"] if e.get("why") else ""
-            edge_parts.append("\"%s\" (%s%s)" % (e["title"][:40], e["type"], desc))
-        lines.append("  Edges: " + ", ".join(edge_parts))
-
-    return "\n".join(lines)
+    return header + "\n" + render_rich_node(c, HAIKU_FORMAT)
 
 
 def _dedup_candidates(candidates):
@@ -541,17 +456,155 @@ Candidates:
 
 
 SURFACE_FORMAT = {'content_limit': 400, 'edge_limit': 3, 'metadata_limit': 150, 'time_format': 'relative'}
+HAIKU_FORMAT = {'content_limit': 300, 'edge_limit': 3, 'metadata_limit': 120, 'time_format': 'relative'}
 
 
-def format_surface_output(selected, candidates, graph_neighbors=None,
-                        corrections=None):
+# ═══════════════════════════════════════════════════════════════
+# EDGE SELECTION — query-aware scoring for S1 surface
+#
+# Strategy D: 70% node embedding + 30% description embedding.
+# Weight as tiebreaker only (currently static ~0.60 for most edges).
+# Session fatigue rotates edges across repeated queries.
+# 3-message query blending for multi-turn context.
+#
+# FUTURE: When S2 makes weight dynamic, restore weight's role
+# in the score formula (not just tiebreaker).
+# FUTURE: When description coverage exceeds 80%, switch to
+# strategy F (description-first) — see eval/EDGE_SELECTION_EVAL_SPEC.md.
+# FUTURE: When encoder uses real edge types (not 'related'),
+# edge_type becomes a scoring signal.
+# ═══════════════════════════════════════════════════════════════
+
+# Fatigue constants (session-scoped edge rotation)
+K_EDGE_FATIGUE = 0.25   # Gentler than node fatigue — rotation, not suppression
+# Node fatigue K: 10.0 base, 10.0 scale — hardcoded in brain_recall.py:684
+# TODO: Extract node fatigue K here too.
+
+# Relevance blend weights
+EDGE_NODE_WEIGHT = 0.7    # Stored node embedding (title+content)
+EDGE_DESC_WEIGHT = 0.3    # Edge description embedding (when available)
+
+# Weight role (tiebreaker until S2 makes weight dynamic)
+WEIGHT_TIEBREAKER = 0.01
+
+# Multi-turn query blending
+TURN_WEIGHTS = [0.6, 0.3, 0.1]  # current, previous, two_back
+
+
+def select_edges(connections, query_vec, session=None, limit=3, prior_vecs=None,
+                 brain_conn=None):
+    """Select the best edges for a query from a node's full connection list.
+
+    This is S1's edge intelligence. It scores each edge by:
+      relevance × fatigue_discount + weight × tiebreaker
+
+    Where relevance = 0.7 × cosine(query, stored_node_embedding)
+                    + 0.3 × cosine(query, embed(description))  [when desc exists]
+
+    Args:
+        connections: list of edge dicts from get_rich_node().connections
+        query_vec: numpy array (768d) — current query embedding
+        session: SessionContext — for edge fatigue tracking (optional)
+        limit: max edges to return
+        prior_vecs: list of previous query embeddings for multi-turn blend (optional)
+        brain_conn: sqlite3 connection — for loading stored embeddings
+
+    Returns:
+        list of edge dicts (top N by score), same shape as input
+    """
+    import numpy as np
+
+    if not connections or query_vec is None:
+        # No query context — fall back to weight order
+        return sorted(connections, key=lambda c: c.get('weight', 0), reverse=True)[:limit]
+
+    # Multi-turn blend
+    if prior_vecs:
+        weights = TURN_WEIGHTS[:len([query_vec] + prior_vecs)]
+        total = sum(weights)
+        weights = [w / total for w in weights]
+        blended = sum(w * v for w, v in zip(weights, [query_vec] + prior_vecs))
+        norm = np.linalg.norm(blended)
+        if norm > 0:
+            blended = blended / norm
+    else:
+        blended = query_vec
+
+    # Load stored embeddings for all edge targets (batch)
+    target_ids = [c.get('id', '')[:8] for c in connections]
+    stored_embeddings = {}
+    if brain_conn is not None:
+        # Batch load from node_embeddings table
+        full_ids = []
+        for tid in target_ids:
+            row = brain_conn.execute(
+                'SELECT node_id, embedding FROM node_embeddings WHERE node_id LIKE ?',
+                (tid + '%',)).fetchone()
+            if row:
+                vec = np.frombuffer(row[1], dtype=np.float32)
+                stored_embeddings[tid] = vec
+                stored_embeddings[row[0]] = vec
+
+    # Score each edge
+    scored = []
+    for c in connections:
+        tid = c.get('id', '')[:8]
+        weight = c.get('weight', 0.5)
+        desc = c.get('description', '')
+
+        # Node relevance (stored embedding = title + content)
+        node_rel = 0.3  # default when embedding missing
+        target_vec = stored_embeddings.get(tid)
+        if target_vec is not None and len(target_vec) == len(blended):
+            dot = float(np.dot(blended, target_vec))
+            norm_t = float(np.linalg.norm(target_vec))
+            norm_q = float(np.linalg.norm(blended))
+            if norm_t > 0 and norm_q > 0:
+                node_rel = max(0, dot / (norm_q * norm_t))
+
+        # Description relevance (when available)
+        relevance = node_rel
+        if desc:
+            from servers.embedder import embed
+            desc_blob = embed(desc)
+            if desc_blob is not None:
+                desc_vec = np.frombuffer(desc_blob, dtype=np.float32)
+                if len(desc_vec) == len(blended):
+                    dot = float(np.dot(blended, desc_vec))
+                    norm_d = float(np.linalg.norm(desc_vec))
+                    norm_q = float(np.linalg.norm(blended))
+                    if norm_d > 0 and norm_q > 0:
+                        desc_rel = max(0, dot / (norm_q * norm_d))
+                        relevance = EDGE_NODE_WEIGHT * node_rel + EDGE_DESC_WEIGHT * desc_rel
+
+        # Fatigue discount (session-scoped rotation)
+        fatigue_count = 0
+        if session is not None:
+            fatigue_count = session.get_edge_fatigue(tid)
+        fatigue_discount = 1.0 / (1.0 + K_EDGE_FATIGUE * fatigue_count)
+
+        # Final score: relevance-primary, weight as tiebreaker
+        score = relevance * fatigue_discount + weight * WEIGHT_TIEBREAKER
+        scored.append((score, c))
+
+    # Sort by score descending, take top N
+    scored.sort(key=lambda x: x[0], reverse=True)
+    selected = [c for _, c in scored[:limit]]
+
+    # Update fatigue for selected edges
+    if session is not None:
+        for c in selected:
+            session.increment_edge_fatigue(c.get('id', '')[:8])
+
+    return selected
+
+
+def format_surface_output(selected, candidates, graph_neighbors=None):
     """Format surfaced selections into structured additionalContext for Claude.
 
     Per-node rendering delegates to render_rich_node() with SURFACE_FORMAT.
+    Candidates must be in get_rich_node() shape (_metadata, _corrections, connections present).
     This function adds: collection header, relevance reasoning, graph neighbors.
-
-    Args:
-        corrections: dict from correction_enrich() — {node_id: [{"id", "title", "direction"}]}
     """
     from servers.contract import render_rich_node
 
@@ -567,6 +620,9 @@ def format_surface_output(selected, candidates, graph_neighbors=None,
 
     lines = ["Brain recalled %d memories:\n" % len(selected)]
 
+    # Track all IDs in selected nodes + their connections for neighbor dedup
+    seen_ids = set()
+
     for s in selected[:cfg['max_selected']]:
         sid = str(s.get("id", ""))[:8]
         why = s.get("why", "")
@@ -575,13 +631,15 @@ def format_surface_output(selected, candidates, graph_neighbors=None,
         if not c:
             continue
 
-        # Attach corrections to candidate dict for render_rich_node
-        if corrections:
-            node_corrs = corrections.get(c.get("id", ""), []) or corrections.get(sid, [])
-            if node_corrs:
-                c["_corrections"] = node_corrs
+        seen_ids.add(c.get("id", ""))
+        seen_ids.add(sid)
+        # Track connection IDs for dedup
+        for conn in c.get("connections", []):
+            seen_ids.add(conn.get("id", ""))
+            seen_ids.add(conn.get("id", "")[:8])
 
         # Per-node rendering — single formatter
+        # _corrections and connections already present from get_rich_node
         lines.append(render_rich_node(c, SURFACE_FORMAT))
 
         # Surfacer's relevance reasoning (S1-specific, not in render_rich_node)
@@ -591,18 +649,22 @@ def format_surface_output(selected, candidates, graph_neighbors=None,
         lines.append("")  # blank line between nodes
 
     # Graph neighbors — connected knowledge from surface-selected seeds
+    # Dedup: skip nodes already shown as selected nodes or their connections
     if graph_neighbors:
-        lines.append("Related knowledge (via graph):")
-        for nb in graph_neighbors[:6]:
-            edge_desc = " — %s" % nb.get("edge_description", "") if nb.get("edge_description") else ""
-            lines.append("[%s] \"%s\" (%s%s)" % (
-                nb.get("type", "?"),
-                nb.get("title", "?")[:60],
-                nb.get("edge_type", "related"),
-                edge_desc))
-            content = (nb.get("content") or "")[:200]
-            if content:
-                lines.append("  %s" % content)
-        lines.append("")
+        deduped = [nb for nb in graph_neighbors
+                   if nb.get("id", "") not in seen_ids and nb.get("id", "")[:8] not in seen_ids]
+        if deduped:
+            lines.append("Related knowledge (via graph):")
+            for nb in deduped[:6]:
+                edge_desc = " — %s" % nb.get("edge_description", "") if nb.get("edge_description") else ""
+                lines.append("[%s] \"%s\" (%s%s)" % (
+                    nb.get("type", "?"),
+                    nb.get("title", "?")[:60],
+                    nb.get("edge_type", "related"),
+                    edge_desc))
+                content = (nb.get("content") or "")[:200]
+                if content:
+                    lines.append("  %s" % content)
+            lines.append("")
 
     return "\n".join(lines)

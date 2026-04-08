@@ -65,7 +65,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None):
         return {"skipped": True, "reason": "no messages"}
 
     # 2. Build prompt (from interactions table — learnable boundary)
-    enc_interaction = brain.get_interaction('encoding_agent')
+    enc_interaction = brain.get_interaction('s1e') or brain.get_interaction('encoding_agent')
     enc_instructions = enc_interaction.get('template', '') if enc_interaction else ''
     system_prompt = _build_system_prompt(prompt_instructions=enc_instructions or None)
     user_content = _build_user_content(brain, messages, counter, session_id)

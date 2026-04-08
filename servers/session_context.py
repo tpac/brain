@@ -32,6 +32,7 @@ class SessionContext:
         self.session_id = session_id or uuid.uuid4().hex
         self.stop_counter = stop_counter
         self.fatigue: Dict[str, int] = {}  # {node_id: access_count} — resets between sessions
+        self.edge_fatigue: Dict[str, int] = {}  # {target_node_id: surface_count} — edge rotation
 
     @classmethod
     def from_hook_args(cls, args: dict) -> 'SessionContext':
@@ -73,6 +74,15 @@ class SessionContext:
         self.fatigue[node_id] = self.fatigue.get(node_id, 0) + 1
         return self.fatigue[node_id]
 
+    def increment_edge_fatigue(self, target_id: str) -> int:
+        """Increment edge fatigue for a target node. Returns new count."""
+        self.edge_fatigue[target_id] = self.edge_fatigue.get(target_id, 0) + 1
+        return self.edge_fatigue[target_id]
+
+    def get_edge_fatigue(self, target_id: str) -> int:
+        """Get current edge fatigue count for a target node."""
+        return self.edge_fatigue.get(target_id, 0)
+
     def save(self, conn: sqlite3.Connection):
         """Save session context to DB. Creates or updates.
 
@@ -82,6 +92,7 @@ class SessionContext:
         data = json.dumps({
             'stop_counter': self.stop_counter,
             'fatigue': self.fatigue,
+            'edge_fatigue': self.edge_fatigue,
         })
         conn.execute(
             'INSERT OR REPLACE INTO session_state (session_id, key, node_id, value, updated_at) '
@@ -104,6 +115,7 @@ class SessionContext:
                 stop_counter=data.get('stop_counter', 0),
             )
             ctx.fatigue = {k: int(v) for k, v in data.get('fatigue', {}).items()}
+            ctx.edge_fatigue = {k: int(v) for k, v in data.get('edge_fatigue', {}).items()}
             return ctx
         except (json.JSONDecodeError, TypeError):
             return None
