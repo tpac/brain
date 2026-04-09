@@ -181,11 +181,11 @@ class BrainEvolutionMixin:
                             except Exception:
                                 pass  # metadata merge is best-effort
                             # Create audit trail edge
-                            self.conn.execute(
-                                """INSERT OR IGNORE INTO edges (source_id, target_id, edge_type, weight, relation, description, created_at)
-                                   VALUES (?, ?, 'contradicts', 0.9, 'merged_duplicate',
-                                           'Auto-healed: merged near-duplicate (sim > ' || ? || ')', ?)""",
-                                (keep_id, archive_id, str(round(sim, 2)), ts)
+                            from .dal import GraphDAL
+                            GraphDAL(self.conn).add_relation(
+                                keep_id, archive_id, 'merged_duplicate',
+                                'Auto-healed: merged near-duplicate (sim > %s)' % round(sim, 2),
+                                0.9, encoding_source='auto_heal'
                             )
                             results['resolved'].append({
                                 'action': 'merge_duplicate',
@@ -226,38 +226,10 @@ class BrainEvolutionMixin:
         except Exception as _e:
             self._log_error("auto_heal", _e, "")
 
-        # 1d. Create missing edges from co-access (count >= 5)
-        try:
-            co_pairs = self.conn.execute(
-                """SELECT e.source_id, e.target_id, e.co_access_count
-                   FROM edges e
-                   WHERE e.co_access_count >= 5
-                     AND e.edge_type NOT IN ('related', 'part_of', 'contradicts', 'corrected_by',
-                                             'exemplifies', 'produced', 'reasoning_step', 'depends_on')
-                   ORDER BY e.co_access_count DESC LIMIT 10"""
-            ).fetchall()
-
-            for src_id, tgt_id, co_count in co_pairs:
-                # Check no explicit semantic edge exists
-                has_explicit = self.conn.execute(
-                    """SELECT COUNT(*) FROM edges
-                       WHERE ((source_id = ? AND target_id = ?) OR (source_id = ? AND target_id = ?))
-                         AND edge_type IN ('related', 'part_of', 'exemplifies', 'depends_on')""",
-                    (src_id, tgt_id, tgt_id, src_id)
-                ).fetchone()[0]
-                if has_explicit > 0:
-                    continue
-
-                weight = 0.6 if co_count >= 10 else 0.4
-                self.conn.execute(
-                    """INSERT OR IGNORE INTO edges (source_id, target_id, edge_type, weight, relation, description, created_at)
-                       VALUES (?, ?, 'related', ?, 'co_access_promoted',
-                               'Auto-healed: promoted from co-access (' || ? || 'x)', ?)""",
-                    (src_id, tgt_id, weight, str(co_count), ts)
-                )
-                results['cleaned']['edges_created'] += 1
-        except Exception as _e:
-            self._log_error("auto_heal", _e, "")
+        # 1d. REMOVED — co_access_count promotion to 'related' edges
+        # With multi-relation edges, co_accessed lives alongside intentional
+        # relations on the same pair. Promotion is no longer needed — the
+        # co_accessed relation carries its own signal.
 
         # 1f. Resolve confirmed/dismissed evolutions
         try:
@@ -702,9 +674,9 @@ class BrainEvolutionMixin:
         # 3b. Edge weight normalization — cap non-structural edges at 0.9
         try:
             normalized = self.conn.execute(
-                """UPDATE edges SET weight = 0.9
+                """UPDATE edge_relations SET weight = 0.9
                    WHERE weight > 0.95
-                     AND edge_type NOT IN ('reasoning_step', 'produced', 'corrected_by')"""
+                     AND relation NOT IN ('reasoning_step', 'produced', 'corrected_by')"""
             ).rowcount
             results['cleaned']['edges_normalized'] = normalized or 0
         except Exception as _e:
@@ -1343,14 +1315,15 @@ class BrainEvolutionMixin:
             strong_coaccesses = self.conn.execute(
                 """SELECT e.source_id, e.target_id, e.weight, n1.title, n2.title
                    FROM edges e
+                   JOIN edge_relations er ON er.edge_id = e.edge_id
                    JOIN nodes n1 ON e.source_id = n1.id
                    JOIN nodes n2 ON e.target_id = n2.id
-                   WHERE e.relation = 'co_accessed' AND e.weight > 0.6
+                   WHERE er.relation = 'co_accessed' AND er.weight > 0.6
                      AND n1.archived = 0 AND n2.archived = 0
                      AND NOT EXISTS (
-                       SELECT 1 FROM edges e2
-                       WHERE e2.source_id = e.source_id AND e2.target_id = e.target_id
-                         AND e2.relation != 'co_accessed'
+                       SELECT 1 FROM edge_relations er2
+                       WHERE er2.edge_id = e.edge_id
+                         AND er2.relation != 'co_accessed'
                      )
                    ORDER BY e.weight DESC LIMIT 5"""
             ).fetchall()

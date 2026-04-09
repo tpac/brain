@@ -114,10 +114,14 @@ class TestMCPRoundTrip(BrainTestBase):
             "relation": "related_to", "weight": 0.8
         })
         edge = self.brain.conn.execute(
-            "SELECT relation, weight FROM edges WHERE source_id = ? AND target_id = ?",
-            (n1["id"], n2["id"])).fetchone()
-        self.assertIsNotNone(edge, "Edge should exist after connect")
-        self.assertEqual(edge[0], "related_to")
+            "SELECT edge_id FROM edges WHERE (source_id = ? AND target_id = ?) OR (source_id = ? AND target_id = ?)",
+            (n1["id"], n2["id"], n2["id"], n1["id"])).fetchone()
+        self.assertIsNotNone(edge, "Edge should exist")
+        rel = self.brain.conn.execute(
+            "SELECT relation, weight FROM edge_relations WHERE edge_id = ? AND relation = 'related_to'",
+            (edge[0],)).fetchone()
+        self.assertIsNotNone(rel, "Edge relation should exist after connect")
+        self.assertEqual(rel[0], "related_to")
 
     def test_connect_batch(self):
         """connect_batch creates multiple edges in one call."""

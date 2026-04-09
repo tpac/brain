@@ -479,91 +479,20 @@ def hook_idle_maintenance(brain, args, graph_changes):
     print("[brain-hooks] idle_maintenance STARTED at %s" % start_time.isoformat(), flush=True)
     output = []
 
-    # 1. Dream
-    try:
-        dream_result = brain.dream()
-        dream_count = dream_result.get("count", 0)
-        if dream_count > 0:
-            output.append("DREAM: %d dream(s) generated" % dream_count)
-            for d in dream_result.get("dreams", [])[:2]:
-                output.append("  - " + d.get("title", "untitled"))
-            graph_changes.append("DREAM: %d new dream node(s)" % dream_count)
-    except Exception as e:
-        output.append("DREAM ERROR: %s" % e)
+    # 1. Dream — DISABLED 2026-04-08
+    # dream() created random-walk emergent_bridge edges and thought/intuition nodes.
+    # S2 community detection + small-cluster linking replaces this with
+    # structure-aware connections instead of random walks.
 
-    # 2. Consolidate
-    try:
-        consolidate_result = brain.consolidate()
-        cons_count = consolidate_result.get("consolidated", 0)
-        output.append("CONSOLIDATE: %d nodes boosted" % cons_count)
-        if cons_count > 0:
-            graph_changes.append("CONSOLIDATE: %d nodes boosted" % cons_count)
+    # 2. Consolidate — DISABLED 2026-04-08
+    # consolidate() boosted well-connected nodes and ran auto_discover_evolutions
+    # (already paused). S2 confidence recalibration replaces node boosting.
+    # S2 dedup/synthesis replaces evolution discovery.
 
-        discoveries = consolidate_result.get("discoveries", {})
-        total = discoveries.get("total", 0)
-        if total > 0:
-            output.append("\nBRAIN DISCOVERED (%d evolution(s)):" % total)
-            graph_changes.append("DISCOVERED: %d evolution(s)" % total)
-            active = brain.get_active_evolutions()
-            auto_discovered = [e for e in active if "auto-discovered" in (e.get("content") or "")]
-            for evo in auto_discovered[:5]:
-                etype = evo["type"].upper()
-                title = evo["title"]
-                eid = evo["id"]
-                content = evo.get("content", "")
-                action = ""
-                if "ACTION:" in content:
-                    action = content.split("ACTION:")[-1].strip()
-                output.append("  %s: %s" % (etype, title))
-                if action:
-                    output.append("    -> " + action)
-                eid_short = eid[:8]
-                output.append('    [confirm: brain.confirm_evolution("%s...")]' % eid_short)
-                output.append('    [dismiss: brain.dismiss_evolution("%s...")]' % eid_short)
-    except Exception as e:
-        output.append("CONSOLIDATE ERROR: %s" % e)
-
-    # 3. Self-healing
-    try:
-        heal_result = brain.auto_heal()
-        resolved = heal_result.get("resolved", [])
-        tuned = heal_result.get("tuned", [])
-        cleaned = heal_result.get("cleaned", {})
-
-        if resolved:
-            output.append("\nBRAIN HEALED (%d action(s)):" % len(resolved))
-            graph_changes.append("HEALED: %d action(s)" % len(resolved))
-            for r in resolved[:5]:
-                action = r.get("action", "unknown")
-                if action == "merge_duplicate":
-                    output.append('  MERGED: "%s" into "%s" (sim %s)' % (
-                        r.get("archived", ""), r.get("kept", ""), r.get("sim", "")))
-                elif action == "auto_lock":
-                    output.append('  LOCKED: "%s" (%d accesses)' % (
-                        r.get("title", ""), r.get("access_count", 0)))
-                else:
-                    output.append("  %s: %s" % (action, r))
-
-        if tuned:
-            output.append("\nBRAIN TUNED (%d parameter(s)):" % len(tuned))
-            for t in tuned[:5]:
-                output.append("  %s: %s" % (t.get("param", ""), t.get("reason", "")))
-
-        archived = cleaned.get("archived", 0)
-        edges_created = cleaned.get("edges_created", 0)
-        edges_normalized = cleaned.get("edges_normalized", 0)
-        merged = cleaned.get("merged", 0)
-        locked = cleaned.get("locked", 0)
-        if any([archived, edges_created, edges_normalized, merged, locked]):
-            parts = []
-            if merged: parts.append("%d merged" % merged)
-            if locked: parts.append("%d locked" % locked)
-            if archived: parts.append("%d archived" % archived)
-            if edges_created: parts.append("%d edges created" % edges_created)
-            if edges_normalized: parts.append("%d edges normalized" % edges_normalized)
-            output.append("  HYGIENE: " + ", ".join(parts))
-    except Exception as e:
-        output.append("HEAL ERROR: %s" % e)
+    # 3. Self-healing — DISABLED 2026-04-08
+    # auto_heal() was proto-S2: dedup, auto-lock, correction consolidation,
+    # confidence adjustments. S2 integration units replace all of these.
+    # Keeping the code in brain_evolution.py for reference during S2 build.
 
     # 3b. Vocab cleanup — prune junk vocabulary nodes that pollute recall
     try:
@@ -595,17 +524,9 @@ def hook_idle_maintenance(brain, args, graph_changes):
     except Exception as e:
         output.append("VOCAB CLEANUP ERROR: %s" % e)
 
-    # 3c. Auto-tune
-    try:
-        tune_result = brain.auto_tune()
-        tuned = tune_result.get("tuned", [])
-        if tuned:
-            output.append("\nBRAIN AUTO-TUNED (%d parameter(s)):" % len(tuned))
-            graph_changes.append("TUNED: %d parameter(s)" % len(tuned))
-            for t in tuned[:5]:
-                output.append("  %s: %s" % (t.get("param", ""), t.get("reason", t.get("note", ""))))
-    except Exception as e:
-        brain._log_error('auto_tune', e, 'idle_maintenance')
+    # 3c. Auto-tune — DISABLED 2026-04-08
+    # auto_tune() adjusted brain parameters adaptively. S2 interaction
+    # evolution units will replace this with trace-informed optimization.
 
     # 3d. Edge decay — apply half-life decay to auto-generated edges
     try:
@@ -631,26 +552,67 @@ def hook_idle_maintenance(brain, args, graph_changes):
 
     # message_stream expiry REMOVED 2026-04-05 — table deleted, traces are source of truth
 
-    # 4. Reflection prompts
+    # 3e. S2: Community detection
     try:
-        reflections = brain.prompt_reflection()
-        if reflections:
-            output.append("")
-            output.append("REFLECT (transferable insights from this session?):")
-            for r in reflections[:3]:
-                output.append("  " + r)
-            output.append("")
-    except Exception as e:
-        brain._log_error('prompt_reflection', e, 'idle_maintenance')
+        from .scales.s2.community import CommunityDetection
+        from .scales.s2.community_contract import COMMUNITY_DETECTION as CD_CONFIG
 
-    # 5. Self-reflection
-    try:
-        reflection = brain.auto_generate_self_reflection()
-        ref_count = sum(1 for v in reflection.values() if v)
-        if ref_count > 0:
-            output.append("SELF-REFLECTION: %d reflection(s) generated" % ref_count)
+        # Cooldown check
+        cooldown_hours = CD_CONFIG['cooldown_hours']
+        last_run = brain.get_config('s2_community_last_run') or ''
+        should_run = True
+        if last_run:
+            import datetime as _dt
+            try:
+                last_dt = _dt.datetime.fromisoformat(last_run)
+                now_dt = _dt.datetime.now(_dt.timezone.utc)
+                hours_since = (now_dt - last_dt).total_seconds() / 3600
+                if hours_since < cooldown_hours:
+                    should_run = False
+                    output.append("S2 COMMUNITY: skipped (%.1fh since last, cooldown=%dh)" % (
+                        hours_since, cooldown_hours))
+            except (ValueError, TypeError):
+                pass  # invalid stored date — run anyway
+
+        if should_run:
+            unit = CommunityDetection(brain)
+            result = unit.run()
+            communities = result.get('communities', 0)
+            actions = result.get('actions', 0)
+
+            if result.get('error'):
+                output.append("S2 COMMUNITY ERROR: %s" % result['error'])
+            elif result.get('skipped'):
+                output.append("S2 COMMUNITY: skipped (%s)" % result['skipped'])
+            elif actions > 0:
+                output.append("S2 COMMUNITY: %d communities, %d actions" % (communities, actions))
+                details = result.get('details', {})
+                if isinstance(details, dict):
+                    new_count = len(details.get('new', []))
+                    updated_count = len(details.get('updated', []))
+                    removed_count = len(details.get('removed', []))
+                    if new_count:
+                        output.append("  new: %d" % new_count)
+                    if updated_count:
+                        output.append("  updated: %d" % updated_count)
+                    if removed_count:
+                        output.append("  removed: %d" % removed_count)
+                graph_changes.append("S2_COMMUNITY: %d communities" % communities)
+            else:
+                output.append("S2 COMMUNITY: stable (%d communities, no changes)" % communities)
+
+            # Update last run timestamp
+            import datetime as _dt
+            brain.set_config('s2_community_last_run',
+                           _dt.datetime.now(_dt.timezone.utc).isoformat())
     except Exception as e:
-        brain._log_error('self_reflection', e, 'idle_maintenance')
+        output.append("S2 COMMUNITY ERROR: %s" % e)
+
+    # 4. Reflection prompts — DISABLED 2026-04-08
+    # prompt_reflection() and auto_generate_self_reflection() were proto-S2.
+    # S2 encoding and S3 reasoning replace reflection with trace-based analysis.
+
+    # 5. Self-reflection — DISABLED 2026-04-08 (see above)
 
     # 6. Backfill summaries
     try:

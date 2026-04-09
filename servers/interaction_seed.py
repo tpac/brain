@@ -163,3 +163,10 @@ def seed_interactions(brain):
                      template='',
                      parameters=json.dumps(SIGNAL_CONFIG_V1),
                      created_by='anchor')
+
+    if 's2_community' not in existing:
+        from .scales.s2.community_contract import COMMUNITY_DETECTION
+        dal.register('s2_community',
+                     template='',
+                     parameters=json.dumps(COMMUNITY_DETECTION),
+                     created_by='s2:community_detection')

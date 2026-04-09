@@ -225,14 +225,17 @@ class TestDecodeTransitions(BrainTestBase):
             # Count co_accessed edges before Hebbian strengthening
             # (remember() auto-connects recent nodes, so some may already exist)
             pre_edges_n1_n2 = self.brain.conn.execute(
-                "SELECT COUNT(*) FROM edges "
-                "WHERE source_id = ? AND target_id = ? AND relation = 'co_accessed'",
-                (n1['id'], n2['id'])
+                """SELECT COUNT(*) FROM edges e
+                JOIN edge_relations er ON er.edge_id = e.edge_id
+                WHERE ((e.source_id = ? AND e.target_id = ?) OR (e.source_id = ? AND e.target_id = ?))
+                AND er.relation = 'co_accessed'""",
+                (n1['id'], n2['id'], n2['id'], n1['id'])
             ).fetchone()[0]
             pre_edges_n3 = self.brain.conn.execute(
-                "SELECT COUNT(*) FROM edges "
-                "WHERE (source_id = ? OR target_id = ?) "
-                "AND relation = 'co_accessed'",
+                """SELECT COUNT(*) FROM edges e
+                JOIN edge_relations er ON er.edge_id = e.edge_id
+                WHERE (e.source_id = ? OR e.target_id = ?)
+                AND er.relation = 'co_accessed'""",
                 (n3['id'], n3['id'])
             ).fetchone()[0]
 
@@ -241,10 +244,11 @@ class TestDecodeTransitions(BrainTestBase):
             # _hebbian_strengthen creates co_accessed edges between surface-selected nodes
             # Check that a co_accessed edge exists between n1 and n2
             edge = self.brain.conn.execute(
-                "SELECT relation FROM edges "
-                "WHERE source_id = ? AND target_id = ? "
-                "AND relation = 'co_accessed'",
-                (n1['id'], n2['id'])
+                """SELECT er.relation FROM edges e
+                JOIN edge_relations er ON er.edge_id = e.edge_id
+                WHERE ((e.source_id = ? AND e.target_id = ?) OR (e.source_id = ? AND e.target_id = ?))
+                AND er.relation = 'co_accessed'""",
+                (n1['id'], n2['id'], n2['id'], n1['id'])
             ).fetchone()
             self.assertIsNotNone(edge,
                                  'No co_accessed edge between surface-selected nodes')
@@ -253,9 +257,10 @@ class TestDecodeTransitions(BrainTestBase):
 
             # Verify n3 has no new co_accessed edges (since it was not selected)
             post_edges_n3 = self.brain.conn.execute(
-                "SELECT COUNT(*) FROM edges "
-                "WHERE (source_id = ? OR target_id = ?) "
-                "AND relation = 'co_accessed'",
+                """SELECT COUNT(*) FROM edges e
+                JOIN edge_relations er ON er.edge_id = e.edge_id
+                WHERE (e.source_id = ? OR e.target_id = ?)
+                AND er.relation = 'co_accessed'""",
                 (n3['id'], n3['id'])
             ).fetchone()[0]
             self.assertEqual(post_edges_n3, pre_edges_n3,

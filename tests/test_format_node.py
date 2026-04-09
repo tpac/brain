@@ -20,14 +20,10 @@ class TestFormatNode(BrainTestBase):
 
     def _add_edge(self, source_id, target_id, relation='related_to',
                   weight=0.8, description=''):
-        """Insert an edge directly (bypasses Hebbian logic)."""
-        self.brain.conn.execute(
-            "INSERT OR REPLACE INTO edges "
-            "(source_id, target_id, weight, relation, edge_type, description, "
-            "co_access_count, stability, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, 1, 1.0, datetime('now'))",
-            (source_id, target_id, weight, relation, relation, description))
-        self.brain.conn.commit()
+        """Insert an edge using the new multi-relation model."""
+        from servers.dal import GraphDAL
+        dal = GraphDAL(self.brain.conn)
+        dal.add_relation(source_id, target_id, relation, description, weight)
 
     # ── Basic rendering ──
 
@@ -112,15 +108,18 @@ class TestFormatNode(BrainTestBase):
         self.assertIn('Postgres has better JSON support', out)
 
     def test_metadata_correction_of(self):
-        """correction_of links the node to the node it supersedes via a correction warning."""
+        """correction_of links the correcting node to what it supersedes."""
         original_id = self._make_node(title='Use MySQL')
         correction_id = self._make_node(
             title='Use Postgres instead', correction_of=original_id)
-        out = format_node(correction_id, self.brain.conn)
-        # render_rich_node shows "⚠ Updated by:" — the correction_of edge is stored as
-        # corrected_by (new→old), so correction_enrich sees direction="corrected_by"
-        self.assertIn('⚠ Updated by:', out)
-        self.assertIn('Use MySQL', out)
+        # Check from the correcting node's perspective: it corrects the original
+        out_corrector = format_node(correction_id, self.brain.conn)
+        self.assertIn('Corrects:', out_corrector)
+        self.assertIn('Use MySQL', out_corrector)
+        # Check from the corrected node's perspective: it was updated by the correction
+        out_original = format_node(original_id, self.brain.conn)
+        self.assertIn('Updated by:', out_original)
+        self.assertIn('Use Postgres', out_original)
 
     # ── Edges ──
 

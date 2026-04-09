@@ -319,6 +319,7 @@ class BrainRememberMixin:
                  change_impacts: Optional[List[Dict[str, str]]] = None,
                  source_attribution: Optional[str] = None,
                  scope: Optional[str] = None,
+                 auto_connect: bool = True,
                  **extra_fields) -> Dict[str, Any]:
         """
         Store a new memory node with semantic indexing and connections.
@@ -464,56 +465,59 @@ class BrainRememberMixin:
                 relation = conn.get('relation', 'related')
                 weight = conn.get('weight', 0.5)
                 if target_id:
-                    self.connect(node_id, target_id, relation, weight)
+                    try:
+                        self.connect(node_id, target_id, relation, weight)
+                    except (ValueError, Exception) as e:
+                        self._log_error('remember_connection', e,
+                                        'connecting %s → %s' % (node_id[:8], target_id[:8]))
 
         # v6→v7: Auto-connect to conversation context (Machine 1)
         # Connect new node to top 3 most semantically similar recently-accessed nodes.
-        # v6 connected to ALL recent nodes — created massive co_accessed noise.
-        # v7 uses embedding similarity to pick only relevant connections.
-        try:
-            new_node_emb = None
-            if embedding_stored:
-                row = self.conn.execute(
-                    'SELECT embedding FROM node_embeddings WHERE node_id = ?',
-                    (node_id,)
-                ).fetchone()
-                if row:
-                    new_node_emb = row[0]
+        # Disabled via auto_connect=False when caller manages connections explicitly
+        # (e.g. S2 community nodes, batch imports).
+        if auto_connect:
+            try:
+                new_node_emb = None
+                if embedding_stored:
+                    row = self.conn.execute(
+                        'SELECT embedding FROM node_embeddings WHERE node_id = ?',
+                        (node_id,)
+                    ).fetchone()
+                    if row:
+                        new_node_emb = row[0]
 
-            recent = self.conn.execute('''
-                SELECT n.id, ne.embedding FROM nodes n
-                LEFT JOIN node_embeddings ne ON ne.node_id = n.id
-                WHERE n.id != ? AND n.archived = 0
-                  AND n.last_accessed > datetime('now', '-1 hour')
-                  AND n.type NOT IN ('thought', 'intuition')
-                ORDER BY n.last_accessed DESC LIMIT 10
-            ''', (node_id,)).fetchall()
+                recent = self.conn.execute('''
+                    SELECT n.id, ne.embedding FROM nodes n
+                    LEFT JOIN node_embeddings ne ON ne.node_id = n.id
+                    WHERE n.id != ? AND n.archived = 0
+                      AND n.last_accessed > datetime('now', '-1 hour')
+                      AND n.type NOT IN ('thought', 'intuition')
+                    ORDER BY n.last_accessed DESC LIMIT 10
+                ''', (node_id,)).fetchall()
 
-            if new_node_emb and recent:
-                # Rank by similarity, pick top 3
-                scored = []
-                for (recent_id, recent_emb) in recent:
-                    if recent_emb:
-                        sim = embedder.cosine_similarity(new_node_emb, recent_emb)
-                        scored.append((recent_id, sim))
-                    else:
-                        scored.append((recent_id, 0.0))
-                scored.sort(key=lambda x: x[1], reverse=True)
-                for recent_id, sim in scored[:3]:
-                    if sim > 0.3:  # Only connect if meaningfully similar
+                if new_node_emb and recent:
+                    scored = []
+                    for (recent_id, recent_emb) in recent:
+                        if recent_emb:
+                            sim = embedder.cosine_similarity(new_node_emb, recent_emb)
+                            scored.append((recent_id, sim))
+                        else:
+                            scored.append((recent_id, 0.0))
+                    scored.sort(key=lambda x: x[1], reverse=True)
+                    for recent_id, sim in scored[:3]:
+                        if sim > 0.3:
+                            from .dal import GraphDAL
+                            graph_dal = GraphDAL(self.conn)
+                            if not graph_dal.edge_exists(node_id, recent_id):
+                                self.connect(node_id, recent_id, 'co_accessed', max(0.2, sim * 0.5))
+                elif recent:
+                    for (recent_id, _) in recent[:3]:
                         from .dal import GraphDAL
                         graph_dal = GraphDAL(self.conn)
                         if not graph_dal.edge_exists(node_id, recent_id):
-                            self.connect(node_id, recent_id, 'co_accessed', max(0.2, sim * 0.5))
-            elif recent:
-                # Fallback if no embedding: connect to top 3 by recency (old behavior)
-                for (recent_id, _) in recent[:3]:
-                    from .dal import GraphDAL
-                    graph_dal = GraphDAL(self.conn)
-                    if not graph_dal.edge_exists(node_id, recent_id):
-                        self.connect(node_id, recent_id, 'co_accessed', 0.2)
-        except Exception as e:
-            self._log_error('auto_connect', e, 'auto-connecting node %s to recent context' % node_id[:12])
+                            self.connect(node_id, recent_id, 'co_accessed', 0.2)
+            except Exception as e:
+                self._log_error('auto_connect', e, 'auto-connecting node %s to recent context' % node_id[:12])
 
         # v11: Emergent bridging at store-time
         bridges = []
@@ -1117,20 +1121,41 @@ class BrainRememberMixin:
         if connect_to:
             created_set = set(created_ids)
             for entry in connect_to:
-                # Accept both old format (string) and new format (dict with title + why)
+                # Accept three formats:
+                # 1. String: "node title" → relation='related', no description
+                # 2. Dict old: {title, why, relation} → single relation
+                # 3. Dict new: {title, relations: [{relation, why}, ...]} → multiple relations
                 if isinstance(entry, dict):
                     title_query = entry.get('title', '')
-                    description = entry.get('why', '')
                 else:
                     title_query = str(entry)
-                    description = ''
+
                 match = self.find_node_by_title(title_query, threshold=0.75)
-                if match and match.get('id') not in created_set:
-                    relation = entry.get('relation', 'related') if isinstance(entry, dict) else 'related'
-                    for node_id in created_ids:
+                if not match or match.get('id') in created_set:
+                    continue
+
+                # Build list of (relation, description) pairs to create
+                relation_pairs = []
+                if isinstance(entry, dict) and 'relations' in entry:
+                    # New format: multiple relations
+                    for rel_spec in entry['relations']:
+                        rel = rel_spec.get('relation', 'related')
+                        desc = rel_spec.get('why', rel_spec.get('description', ''))
+                        relation_pairs.append((rel, desc))
+                elif isinstance(entry, dict):
+                    # Old format: single relation
+                    rel = entry.get('relation', 'related')
+                    desc = entry.get('why', '')
+                    relation_pairs.append((rel, desc))
+                else:
+                    # String format
+                    relation_pairs.append(('related', ''))
+
+                for node_id in created_ids:
+                    for rel, desc in relation_pairs:
                         try:
-                            self.connect_typed(node_id, match['id'], relation=relation,
-                                              weight=0.6, description=description)
+                            self.connect_typed(node_id, match['id'], relation=rel,
+                                              weight=0.6, description=desc)
                             connections_created += 1
                         except Exception as _e:
                             self._log_error('batch_connect_to', _e, 'connecting %s → %s' % (node_id[:8], match['id'][:8]))

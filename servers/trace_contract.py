@@ -23,15 +23,14 @@ SCALES = {
         "triggers": "UserPromptSubmit (surface) + Stop every 5th (encode)",
     },
     "s2": {
-        "name": "Session",
-        "description": "Patterns across accumulated turns — journey, not moments",
-        "triggers": "Every ~15 stops",
-        "status": "NOT BUILT",
+        "name": "Graph",
+        "description": "Graph-wide operations on S1's accumulated output — communities, dedup, confidence, corrections",
+        "triggers": "Idle hook (between sessions)",
     },
     "s3": {
-        "name": "Sleep",
-        "description": "Graph-wide operations — communities, bridges, dedup, corrections",
-        "triggers": "Between sessions / idle",
+        "name": "Reasoning",
+        "description": "Cross-cluster patterns, abstract insights, resolved uncertainties",
+        "triggers": "Periodic / scheduled",
         "status": "NOT BUILT",
     },
     "s4": {
@@ -76,31 +75,37 @@ REF_TYPES = {
     ("s1", "outcome"): ["correction",         # Tom corrected something that was recalled
                          "recall_hit"],        # node was recalled in a future turn
 
-    # Scale 2: session integration
-    # Fires every ~15 stops. Sees all S0+S1 traces from this session.
-    ("s2", "O"):       ["session_turns",       # accumulated S0+S1 chains as observation
-                         "session_patterns"],    # detected patterns across turns
-    ("s2", "K"):       ["session_nodes",       # all nodes touched this session
-                         "correction_chains"],   # corrections accumulated this session
-    ("s2", "delta"):   ["journey_arc",         # session narrative encoding
-                         "consolidation"],       # merged or revised shallow encodings
-    ("s2", "outcome"): ["cross_session",       # pattern validated in a future session
-                         "correction"],          # session encoding was later corrected
+    # Scale 2: graph integration
+    # Fires during idle hook. Operates on S1's accumulated output (the graph).
+    # Multiple integration units, each with own O/K/Δ.
+    ("s2", "O"):       ["graph_structure",      # nodes + edges observed (community detection)
+                         "graph_stats",          # node/edge counts, density
+                         "dedup_scan",           # cosine similarity clusters
+                         "correction_chains"],   # brain-wide correction chain traversal
+    ("s2", "K"):       ["community_partition",  # algorithm output (communities + membership)
+                         "community_diff",       # comparison with previous run
+                         "stale_nodes"],         # nodes not accessed recently
+    ("s2", "delta"):   ["community_created",    # new community node
+                         "community_updated",    # revised community node
+                         "community_removed",    # stale community archived
+                         "community_assignments",# node_communities table updated
+                         "merge",                # merged duplicate nodes
+                         "confidence_adjust"],   # adjusted confidence scores
+    ("s2", "outcome"): ["recall_improved",      # community nodes improved recall
+                         "operator_reviewed"],   # Tom reviewed S2 output
 
-    # Scale 3: sleep integration
-    # Fires between sessions. Sees full graph + S1/S2 traces across sessions.
-    ("s3", "O"):       ["graph_structure",     # community detection, bridge analysis
-                         "dedup_scan",          # cosine similarity findings
-                         "correction_chains"],  # brain-wide correction chain traversal
-    ("s3", "K"):       ["community_members",   # nodes in a community
-                         "bridge_nodes",        # cross-community connectors
-                         "stale_nodes"],        # nodes not accessed recently
-    ("s3", "delta"):   ["community_label",     # named a community
-                         "merge",               # merged duplicate nodes
-                         "schema_node",         # extracted pattern into schema
-                         "confidence_adjust"],  # lowered superseded confidence
-    ("s3", "outcome"): ["recall_improved",     # recall quality measurably improved
-                         "operator_approved"],  # Tom reviewed and approved the change
+    # Scale 3: reasoning integration
+    # Operates on S2's output (clusters, trajectories, landscapes).
+    ("s3", "O"):       ["cluster_patterns",     # S2 clusters across parameters
+                         "correction_trajectories",  # how understanding evolved
+                         "confidence_landscapes"],    # stable vs turbulent areas
+    ("s3", "K"):       ["cross_cluster",        # nodes appearing across multiple clusters
+                         "learning_curves"],     # correction trajectories over time
+    ("s3", "delta"):   ["abstract_insight",     # cross-cluster pattern recognized
+                         "resolved_question",    # uncertainty answered
+                         "meta_optimization"],   # S2 prompt/config improvement
+    ("s3", "outcome"): ["adopted",              # insight used by Tom/Anchor
+                         "rejected"],            # Tom rejected the insight
 
     # Scale 4: growth integration
     # Fires periodically (weekly). Sees full graph + external sources.
@@ -127,8 +132,8 @@ CHAIN_PREFIXES = {
     "s0":         "s0-{session_short}-{stop}",        # one chain per stop — messages + tools
     "s1_recall":  "s1r-{session_short}-{stop}",       # surface for this stop
     "s1_encode":  "s1e-{session_short}-{stop}",       # encoding run triggered at this stop
-    "s2":         "s2-{session_short}-{run}",          # session encoder run number
-    "s3":         "s3-{date}-{operation}",             # date=YYYYMMDD, operation=community/dedup/etc
+    "s2":         "s2-{date}-{operation}",              # date=YYYYMMDD, operation=community/dedup/etc
+    "s3":         "s3-{date}-{operation}",             # date=YYYYMMDD, operation=synthesis/meta/etc
     "s4":         "s4-{date}-{topic}",                 # date=YYYYMMDD, topic=what was researched
 }
 

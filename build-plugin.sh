@@ -59,6 +59,10 @@ FILES=(
   servers/scales/s1/recall_contract.py
   servers/scales/s1/encode.py
   servers/scales/s1/encode_contract.py
+  servers/scales/s2/__init__.py
+  servers/scales/s2/base.py
+  servers/scales/s2/community.py
+  servers/scales/s2/community_contract.py
   servers/metrics.py
   # Hook scripts — bash shims (thin wrappers)
   hooks/hooks.json

@@ -622,18 +622,20 @@ def _handle_graph_expand(brain, args, graph_changes):
             if resolved:
                 full_id = resolved
 
-        # Get structural neighbors (both directions — edges are bidirectional)
+        # Get structural neighbors (single-direction storage, query both directions)
         rows = brain.conn.execute("""
             SELECT n.id, n.type, n.title, substr(n.content, 1, 300),
-                   e.edge_type, e.weight, e.description, n.confidence
+                   er.relation, e.weight, er.description, n.confidence,
+                   CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction
             FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
             JOIN nodes n ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END
             WHERE (e.source_id = ? OR e.target_id = ?) AND n.archived = 0
             AND n.id != ?
-            AND e.edge_type NOT IN ({})
+            AND er.relation NOT IN ({})
             ORDER BY e.weight DESC LIMIT ?
         """.format(','.join('?' for _ in EXCLUDED_EDGE_TYPES)),
-            [full_id, full_id, full_id, full_id] + list(EXCLUDED_EDGE_TYPES) + [limit_per]).fetchall()
+            [full_id, full_id, full_id, full_id, full_id] + list(EXCLUDED_EDGE_TYPES) + [limit_per]).fetchall()
 
         for r in rows:
             if r[0] not in seen:
@@ -642,7 +644,8 @@ def _handle_graph_expand(brain, args, graph_changes):
                     "id": r[0], "type": r[1], "title": r[2],
                     "content": r[3], "edge_type": r[4],
                     "edge_weight": r[5], "edge_description": r[6] or "",
-                    "confidence": r[7], "seed_id": full_id,
+                    "confidence": r[7], "direction": r[8],
+                    "seed_id": full_id,
                 })
 
     return {"ok": True, "result": {"neighbors": neighbors, "seeds": len(node_ids)}}
@@ -716,17 +719,18 @@ def _handle_encode_cluster(brain, args, graph_changes):
 
 
 def _handle_connect(brain, args, graph_changes):
-    result = brain.connect(
+    brain.connect_typed(
         source_id=_resolve_id(brain, args.get("source_id", "")),
         target_id=_resolve_id(brain, args.get("target_id", "")),
         relation=args.get("relation", "related_to"),
-        weight=args.get("weight", 0.5))
+        weight=args.get("weight", 0.5),
+        description=args.get("description", ""))
     graph_changes.append(
         "CONNECT: %s -[%s]-> %s" % (
             args.get("source_id", "?")[:8],
             args.get("relation", "related_to"),
             args.get("target_id", "?")[:8]))
-    return {"ok": True, "result": result}
+    return {"ok": True, "result": {"connected": True}}
 
 
 def _handle_connect_batch(brain, args, graph_changes):

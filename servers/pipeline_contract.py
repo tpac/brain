@@ -245,16 +245,18 @@ def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
     for full_id in resolved_ids:
         rows = conn.execute("""
             SELECT n.id, n.type, n.title, substr(n.content, 1, 300),
-                   e.edge_type, e.weight, e.description,
-                   n.confidence, n.locked, n.created_at, n.revised_at
+                   er.relation, e.weight, er.description,
+                   n.confidence, n.locked, n.created_at, n.revised_at,
+                   CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction
             FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
             JOIN nodes n ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END
             WHERE (e.source_id = ? OR e.target_id = ?) AND n.archived = 0
             AND n.id != ?
-            AND e.edge_type NOT IN ({excl})
+            AND er.relation NOT IN ({excl})
             ORDER BY e.weight DESC LIMIT ?
         """.format(excl=excl_placeholders),
-            [full_id, full_id, full_id, full_id] + list(excluded) + [limit_per_seed]).fetchall()
+            [full_id, full_id, full_id, full_id, full_id] + list(excluded) + [limit_per_seed]).fetchall()
 
         for r in rows:
             if r[0] not in seen:
@@ -265,6 +267,7 @@ def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
                     "edge_weight": r[5], "edge_description": r[6] or "",
                     "confidence": r[7], "locked": r[8] == 1,
                     "created_at": r[9], "revised_at": r[10],
+                    "direction": r[11],
                     "seed_id": full_id,
                 })
 
@@ -388,48 +391,66 @@ def get_rich_node(brain_or_conn, node_id_or_ids):
             nodes[nid]['_corrections'] = node_corrs
 
     # ── 5. Batch fetch all connections ──
+    # Read from edge_relations (source of truth) via edge_id JOIN.
+    # Single-direction storage: query both directions, detect outgoing/incoming.
     edge_rows = conn.execute("""
-        SELECT e.source_id, e.target_id, e.edge_type, e.weight, e.description,
+        SELECT e.source_id, e.target_id, e.weight,
+               er.relation, er.description, er.weight as rel_weight,
                n1.id, n1.type, n1.title, n1.created_at, n1.revised_at, n1.confidence, n1.locked,
                n2.id, n2.type, n2.title, n2.created_at, n2.revised_at, n2.confidence, n2.locked
         FROM edges e
+        JOIN edge_relations er ON er.edge_id = e.edge_id
         JOIN nodes n1 ON n1.id = e.target_id
         JOIN nodes n2 ON n2.id = e.source_id
         WHERE (e.source_id IN ({ph}) OR e.target_id IN ({ph}))
-        AND e.edge_type NOT IN ('co_accessed', 'emergent_bridge')
+        AND er.relation NOT IN ('co_accessed', 'emergent_bridge')
         AND n1.archived = 0 AND n2.archived = 0
     """.format(ph=ph), found_ids + found_ids).fetchall()
 
-    edges_by_node = {}
+    # Group by (owner_node, neighbor_node) — collect all relations per neighbor
+    edges_by_node = {}  # {owner_id: {neighbor_id: {node_data, relations: [...]}}}
     found_set = set(found_ids)
     for row in edge_rows:
         src, tgt = row[0], row[1]
-        etype, weight, desc = row[2], row[3], row[4]
-        # target-side node data (n1)
-        n1 = {"id": row[5], "type": row[6], "title": row[7], "relation": etype,
-              "weight": weight, "description": desc or "",
-              "created_at": row[8], "revised_at": row[9],
-              "confidence": row[10], "locked": row[11] == 1}
-        # source-side node data (n2)
-        n2 = {"id": row[12], "type": row[13], "title": row[14], "relation": etype,
-              "weight": weight, "description": desc or "",
-              "created_at": row[15], "revised_at": row[16],
-              "confidence": row[17], "locked": row[18] == 1}
+        agg_weight = row[2]
+        rel = row[3] or 'related'
+        desc = row[4] or ''
+        rel_weight = row[5] or agg_weight
+        # n1 = target node, n2 = source node
+        n1_data = {"id": row[6], "type": row[7], "title": row[8],
+                   "created_at": row[9], "revised_at": row[10],
+                   "confidence": row[11], "locked": row[12] == 1}
+        n2_data = {"id": row[13], "type": row[14], "title": row[15],
+                   "created_at": row[16], "revised_at": row[17],
+                   "confidence": row[18], "locked": row[19] == 1}
+        relation_entry = {"relation": rel, "description": desc, "weight": rel_weight}
 
+        # For source node looking outward → neighbor is target (n1) — outgoing
         if src in found_set and tgt != src:
-            edges_by_node.setdefault(src, []).append(n1)
+            key = (src, n1_data['id'])
+            if key not in edges_by_node.setdefault(src, {}):
+                edges_by_node[src][key] = {**n1_data, "weight": agg_weight,
+                                            "direction": "outgoing", "relations": []}
+            edges_by_node[src][key]["relations"].append(relation_entry)
+
+        # For target node looking outward → neighbor is source (n2) — incoming
         if tgt in found_set and src != tgt:
-            edges_by_node.setdefault(tgt, []).append(n2)
+            key = (tgt, n2_data['id'])
+            if key not in edges_by_node.setdefault(tgt, {}):
+                edges_by_node[tgt][key] = {**n2_data, "weight": agg_weight,
+                                            "direction": "incoming", "relations": []}
+            edges_by_node[tgt][key]["relations"].append(relation_entry)
 
     for nid in found_ids:
-        conns = edges_by_node.get(nid, [])
-        seen = set()
-        deduped = []
-        for c in sorted(conns, key=lambda x: x.get('weight', 0), reverse=True):
-            if c['id'] not in seen and c['id'] != nid:
-                seen.add(c['id'])
-                deduped.append(c)
-        nodes[nid]['connections'] = deduped
+        conns = list(edges_by_node.get(nid, {}).values())
+        # Sort by aggregate weight, set 'relation' to highest-weight relation for compat
+        for c in conns:
+            rels = sorted(c['relations'], key=lambda r: r.get('weight', 0), reverse=True)
+            c['relations'] = rels
+            c['relation'] = rels[0]['relation'] if rels else 'related'
+            c['description'] = rels[0]['description'] if rels else ''
+        conns.sort(key=lambda x: x.get('weight', 0), reverse=True)
+        nodes[nid]['connections'] = conns
 
     # ── Return ──
     if single:

@@ -1517,17 +1517,27 @@ class GraphDAL:
         return row[0] if row else 0
 
     def get_edge(self, source_id: str, target_id: str) -> Optional[Dict[str, Any]]:
-        """Get a single edge between two nodes (directional)."""
+        """Get edge between two nodes (checks both directions — single-direction storage).
+
+        Returns edge dict with edge_id, direction, and relations list.
+        """
         row = self.conn.execute(
-            'SELECT weight, co_access_count, stability, relation, last_strengthened '
-            'FROM edges WHERE source_id = ? AND target_id = ?',
-            (source_id, target_id)
+            'SELECT edge_id, source_id, target_id, weight, co_access_count, last_strengthened '
+            'FROM edges WHERE (source_id = ? AND target_id = ?) '
+            'OR (source_id = ? AND target_id = ?)',
+            (source_id, target_id, target_id, source_id)
         ).fetchone()
         if not row:
             return None
+
+        edge_id = row[0]
+        direction = 'outgoing' if row[1] == source_id else 'incoming'
+        relations = self.get_relations(edge_id)
+
         return {
-            'weight': row[0], 'co_access_count': row[1], 'stability': row[2],
-            'relation': row[3], 'last_strengthened': row[4],
+            'edge_id': edge_id, 'weight': row[3],
+            'co_access_count': row[4], 'last_strengthened': row[5],
+            'direction': direction, 'relations': relations,
         }
 
     def edge_exists(self, source_id: str, target_id: str) -> bool:
@@ -1539,44 +1549,56 @@ class GraphDAL:
         ).fetchone()
         return row is not None
 
+    def get_edge_id(self, source_id: str, target_id: str) -> Optional[str]:
+        """Get edge_id for a pair (checks both directions)."""
+        row = self.conn.execute(
+            'SELECT edge_id FROM edges WHERE (source_id = ? AND target_id = ?) '
+            'OR (source_id = ? AND target_id = ?)',
+            (source_id, target_id, target_id, source_id)
+        ).fetchone()
+        return row[0] if row else None
+
     def get_neighbors(self, node_id: str, min_weight: float = 0.05,
                       limit: int = 50) -> List[Dict[str, Any]]:
-        """Get outgoing neighbors for spreading activation.
+        """Get all neighbors (both directions — single-direction storage).
 
-        Returns list of dicts with keys: target_id, weight.
+        Returns list of dicts with keys: neighbor_id, weight, direction.
         """
-        rows = self.conn.execute(
-            'SELECT target_id, weight FROM edges '
-            'WHERE source_id = ? AND weight > ? '
-            'ORDER BY weight DESC LIMIT ?',
-            (node_id, min_weight, limit)
-        ).fetchall()
-        return [{'target_id': r[0], 'weight': r[1]} for r in rows]
+        rows = self.conn.execute("""
+            SELECT
+                CASE WHEN source_id = ? THEN target_id ELSE source_id END as neighbor_id,
+                weight,
+                CASE WHEN source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction
+            FROM edges
+            WHERE (source_id = ? OR target_id = ?) AND weight > ?
+            ORDER BY weight DESC LIMIT ?
+        """, (node_id, node_id, node_id, node_id, min_weight, limit)).fetchall()
+        return [{'neighbor_id': r[0], 'weight': r[1], 'direction': r[2]}
+                for r in rows]
 
     def get_typed_neighbors(self, node_id: str, edge_types: set,
                             limit: int = 10) -> List[Dict[str, Any]]:
-        """Get 1-hop neighbors via intentional (typed) edges only.
+        """Get 1-hop neighbors via specific relation types.
 
-        Searches both directions (source->target and target->source).
-        Returns list of dicts with keys: neighbor_id, relation, weight.
+        Searches both directions. Returns neighbor_id, relation, weight, direction.
         """
         placeholders = ','.join('?' * len(edge_types))
-        params = [node_id] + list(edge_types) + [node_id] + list(edge_types) + [limit]
-        rows = self.conn.execute(f"""
-            SELECT neighbor_id, relation, weight FROM (
-                SELECT target_id AS neighbor_id, relation, weight
-                FROM edges
-                WHERE source_id = ? AND relation IN ({placeholders})
-                UNION
-                SELECT source_id AS neighbor_id, relation, weight
-                FROM edges
-                WHERE target_id = ? AND relation IN ({placeholders})
-            )
-            ORDER BY weight DESC
+        params = [node_id, node_id, node_id] + list(edge_types) + [limit]
+        rows = self.conn.execute("""
+            SELECT
+                CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END as neighbor_id,
+                er.relation, er.weight,
+                CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction
+            FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
+            WHERE (e.source_id = ? OR e.target_id = ?)
+            AND er.relation IN ({placeholders})
+            ORDER BY er.weight DESC
             LIMIT ?
-        """, params).fetchall()
+        """.format(placeholders=placeholders),
+            params[:3] + [node_id] + list(edge_types) + [limit]).fetchall()
         return [
-            {'neighbor_id': r[0], 'relation': r[1], 'weight': r[2]}
+            {'neighbor_id': r[0], 'relation': r[1], 'weight': r[2], 'direction': r[3]}
             for r in rows
         ]
 
@@ -1587,39 +1609,47 @@ class GraphDAL:
         Returns neighbors sorted by edge weight, enriched with node data.
         """
         rows = self.conn.execute("""
-            SELECT n.id, n.type, n.title, n.keywords, n.confidence, e.relation, e.weight
-            FROM (
-                SELECT target_id AS nid, relation, weight FROM edges WHERE source_id = ?
-                UNION
-                SELECT source_id AS nid, relation, weight FROM edges WHERE target_id = ?
-            ) e
-            JOIN nodes n ON n.id = e.nid
-            WHERE n.archived = 0
+            SELECT n.id, n.type, n.title, n.keywords, n.confidence,
+                   e.weight,
+                   CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction,
+                   e.edge_id
+            FROM edges e
+            JOIN nodes n ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END
+            WHERE (e.source_id = ? OR e.target_id = ?) AND n.archived = 0
             ORDER BY e.weight DESC
             LIMIT ?
-        """, (node_id, node_id, limit)).fetchall()
-        return [
-            {'id': r[0], 'type': r[1], 'title': r[2], 'keywords': r[3],
-             'confidence': r[4], 'relation': r[5], 'weight': r[6]}
-            for r in rows
-        ]
+        """, (node_id, node_id, node_id, node_id, limit)).fetchall()
+
+        results = []
+        for r in rows:
+            # Get best relation for this edge
+            rel_row = self.conn.execute(
+                'SELECT relation, weight FROM edge_relations WHERE edge_id = ? ORDER BY weight DESC LIMIT 1',
+                (r[7],)).fetchone()
+            results.append({
+                'id': r[0], 'type': r[1], 'title': r[2], 'keywords': r[3],
+                'confidence': r[4], 'weight': r[5], 'direction': r[6],
+                'relation': rel_row[0] if rel_row else 'related',
+            })
+        return results
 
     def get_neighbors_rich(self, node_id: str, limit: int = 8,
                            exclude_relations: set = None,
                            exclude_node_ids: set = None) -> List[Dict[str, Any]]:
-        """Get neighbors with full node + edge + metadata in one query.
+        """Get neighbors with full node + edge + relation + metadata.
 
-        Filters happen in SQL — no wasted rows from back-edges or visited nodes.
+        Single-direction storage: queries both directions, flags each as outgoing/incoming.
+        Relations from edge_relations via edge_id JOIN.
 
         Args:
-            node_id: Source node to find neighbors of
+            node_id: Node to find neighbors of
             limit: Max neighbors to return
-            exclude_relations: Edge types to skip (e.g. {'co_accessed'})
+            exclude_relations: Relation types to skip (e.g. {'co_accessed'})
             exclude_node_ids: Node IDs to skip (already visited in traversal)
         """
         # Build dynamic WHERE clauses
         where_parts = ["n.archived = 0"]
-        params = [node_id, node_id]
+        params = [node_id, node_id, node_id, node_id]
 
         if exclude_node_ids:
             placeholders = ",".join("?" * len(exclude_node_ids))
@@ -1628,7 +1658,7 @@ class GraphDAL:
 
         if exclude_relations:
             placeholders = ",".join("?" * len(exclude_relations))
-            where_parts.append("e.relation NOT IN (%s)" % placeholders)
+            where_parts.append("er.relation NOT IN (%s)" % placeholders)
             params.extend(exclude_relations)
 
         params.append(limit)
@@ -1639,20 +1669,17 @@ class GraphDAL:
                 n.id, n.type, n.title, n.content_summary, n.confidence,
                 n.revised_at, n.created_at, n.last_accessed, n.access_count,
                 n.locked, n.emotion, n.emotion_label,
-                e.relation, e.weight, e.description,
-                e.last_strengthened, e.co_access_count,
+                er.relation, er.weight, er.description,
+                e.last_strengthened, e.co_access_count, e.edge_id,
+                CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction,
                 m.reasoning, m.user_raw_quote, m.correction_of, m.correction_pattern,
                 m.source_context, m.validation_count
-            FROM (
-                SELECT target_id AS nid, relation, weight, description,
-                       last_strengthened, co_access_count FROM edges WHERE source_id = ?
-                UNION
-                SELECT source_id AS nid, relation, weight, description,
-                       last_strengthened, co_access_count FROM edges WHERE target_id = ?
-            ) e
-            JOIN nodes n ON n.id = e.nid
+            FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
+            JOIN nodes n ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END
             LEFT JOIN node_metadata m ON m.node_id = n.id
-            WHERE %s
+            WHERE (e.source_id = ? OR e.target_id = ?)
+            AND %s
             ORDER BY e.weight DESC
             LIMIT ?
         """ % where_clause, params).fetchall()
@@ -1664,17 +1691,18 @@ class GraphDAL:
             'emotion': r[10], 'emotion_label': r[11],
             'relation': r[12] or '', 'weight': r[13],
             'edge_description': r[14], 'last_strengthened': r[15],
-            'co_access_count': r[16],
-            'reasoning': r[17], 'user_raw_quote': r[18],
-            'correction_of': r[19], 'correction_pattern': r[20],
-            'source_context': r[21], 'validation_count': r[22],
+            'co_access_count': r[16], 'edge_id': r[17],
+            'direction': r[18],
+            'reasoning': r[19], 'user_raw_quote': r[20],
+            'correction_of': r[21], 'correction_pattern': r[22],
+            'source_context': r[23], 'validation_count': r[24],
         } for r in rows]
 
     def count_node_edges(self, node_id: str, min_weight: float = 0.1) -> int:
-        """Count edges from a node (used by dreams, surface)."""
+        """Count edges touching a node (both directions)."""
         row = self.conn.execute(
-            'SELECT COUNT(*) FROM edges WHERE source_id = ? AND weight >= ?',
-            (node_id, min_weight)
+            'SELECT COUNT(*) FROM edges WHERE (source_id = ? OR target_id = ?) AND weight >= ?',
+            (node_id, node_id, min_weight)
         ).fetchone()
         return row[0] if row else 0
 
@@ -1686,108 +1714,93 @@ class GraphDAL:
     def get_well_connected(self, min_weight: float = 0.3,
                            min_edges: int = 5) -> List[Dict[str, Any]]:
         """Find well-connected nodes for consolidation/promotion."""
-        rows = self.conn.execute(
-            'SELECT source_id, SUM(weight) as total_weight, COUNT(*) as edge_count '
-            'FROM edges WHERE weight > ? '
-            'GROUP BY source_id HAVING edge_count >= ?',
-            (min_weight, min_edges)
-        ).fetchall()
+        rows = self.conn.execute("""
+            SELECT node_id, SUM(weight) as total_weight, COUNT(*) as edge_count FROM (
+                SELECT source_id as node_id, weight FROM edges WHERE weight > ?
+                UNION ALL
+                SELECT target_id as node_id, weight FROM edges WHERE weight > ?
+            ) GROUP BY node_id HAVING edge_count >= ?
+        """, (min_weight, min_weight, min_edges)).fetchall()
         return [
             {'node_id': r[0], 'total_weight': r[1], 'edge_count': r[2]}
             for r in rows
         ]
 
     def get_random_walk_neighbors(self, node_id: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get neighbors for random walk (dreams), ordered randomly."""
-        rows = self.conn.execute(
-            'SELECT target_id, weight FROM edges '
-            'WHERE source_id = ? ORDER BY RANDOM() LIMIT ?',
-            (node_id, limit)
-        ).fetchall()
+        """Get neighbors for random walk, ordered randomly. Both directions."""
+        rows = self.conn.execute("""
+            SELECT CASE WHEN source_id = ? THEN target_id ELSE source_id END as neighbor_id,
+                   weight
+            FROM edges
+            WHERE source_id = ? OR target_id = ?
+            ORDER BY RANDOM() LIMIT ?
+        """, (node_id, node_id, node_id, limit)).fetchall()
         return [{'target_id': r[0], 'weight': r[1]} for r in rows]
 
     # --- Writes ---
 
     def create_edge(self, source_id: str, target_id: str, relation: str = 'related',
                     weight: float = 0.5, description: str = '') -> bool:
-        """Create a bidirectional edge. Returns False if already exists."""
-        ts = _now()
-        # Check if already exists
+        """Create a bidirectional edge with one relation. Returns False if already exists.
+
+        DEPRECATED: prefer add_relation() which supports multi-relation edges.
+        Kept for callers that haven't migrated yet.
+        """
         if self.get_edge(source_id, target_id) is not None:
             return False
-        # Forward
-        self.conn.execute(
-            'INSERT OR IGNORE INTO edges '
-            '(source_id, target_id, weight, relation, edge_type, description, '
-            'co_access_count, stability, last_strengthened, created_at) '
-            'VALUES (?, ?, ?, ?, ?, ?, 1, 1.0, ?, ?)',
-            (source_id, target_id, weight, relation, relation, description, ts, ts)
-        )
-        # Reverse
-        self.conn.execute(
-            'INSERT OR IGNORE INTO edges '
-            '(source_id, target_id, weight, relation, edge_type, description, '
-            'co_access_count, stability, last_strengthened, created_at) '
-            'VALUES (?, ?, ?, ?, ?, ?, 1, 1.0, ?, ?)',
-            (target_id, source_id, weight, relation, relation, description, ts, ts)
-        )
-        self.conn.commit()
+        self.add_relation(source_id, target_id, relation, description, weight)
         return True
 
     def strengthen_edge(self, source_id: str, target_id: str,
                         amount: float = 0.1, relation: Optional[str] = None) -> bool:
-        """Strengthen an existing edge (Hebbian learning).
+        """Strengthen an existing edge.
 
-        Returns True if edge was found and strengthened, False if not found.
+        DEPRECATED: Prefer add_relation() which handles strengthening automatically.
+        Delegates to add_relation if relation is specified.
         """
-        from .brain_constants import MAX_WEIGHT, STABILITY_BOOST
-        ts = _now()
         row = self.get_edge(source_id, target_id)
         if not row:
             return False
-        new_weight = min(MAX_WEIGHT, row['weight'] + amount)
-        new_stability = min(row['stability'] * STABILITY_BOOST, 10.0)
-        params = [new_weight, row['co_access_count'] + 1, new_stability, ts,
-                  source_id, target_id]
-        sql = ('UPDATE edges SET weight = ?, co_access_count = ?, '
-               'stability = ?, last_strengthened = ?')
         if relation:
-            sql += ', relation = ?, edge_type = ?'
-            params = [new_weight, row['co_access_count'] + 1, new_stability, ts,
-                      relation, relation, source_id, target_id]
-        sql += ' WHERE source_id = ? AND target_id = ?'
-        self.conn.execute(sql, params)
-        self.conn.commit()
+            self.add_relation(source_id, target_id, relation)
         return True
 
     def create_or_strengthen(self, source_id: str, target_id: str,
                              relation: str = 'related', weight: float = 0.5,
                              strengthen_amount: float = 0.1,
                              description: str = '') -> str:
-        """Create edge if new, strengthen if exists. Returns 'created' or 'strengthened'."""
-        from .brain_constants import LEARNING_RATE
+        """Create edge if new, strengthen if exists. Returns 'created' or 'strengthened'.
+
+        Delegates to add_relation() which handles both cases.
+        """
         existing = self.get_edge(source_id, target_id)
-        if existing:
-            self.strengthen_edge(source_id, target_id, LEARNING_RATE * 0.5, relation)
-            return 'strengthened'
-        else:
-            self.create_edge(source_id, target_id, relation, weight, description)
-            return 'created'
+        self.add_relation(source_id, target_id, relation, description, weight)
+        return 'strengthened' if existing else 'created'
 
     def delete_node_edges(self, node_id: str) -> int:
-        """Delete all edges touching a node. Returns count deleted."""
-        cur = self.conn.execute(
-            'DELETE FROM edges WHERE source_id = ? OR target_id = ?',
+        """Delete all edges AND their relations touching a node. Returns count deleted."""
+        # Get edge_ids first, then cascade
+        edge_ids = [r[0] for r in self.conn.execute(
+            'SELECT edge_id FROM edges WHERE source_id = ? OR target_id = ?',
             (node_id, node_id)
-        )
+        ).fetchall()]
+
+        if edge_ids:
+            ph = ','.join('?' * len(edge_ids))
+            self.conn.execute('DELETE FROM edge_relations WHERE edge_id IN (%s)' % ph, edge_ids)
+            self.conn.execute('DELETE FROM edges WHERE edge_id IN (%s)' % ph, edge_ids)
+
         self.conn.commit()
-        return cur.rowcount
+        return len(edge_ids)
 
     def decay_edges(self) -> Dict[str, Any]:
-        """Apply exponential decay to auto-generated edges based on EDGE_TYPES half-lives.
+        """Apply exponential decay to auto-generated edge relations.
 
-        Formula: new_weight = weight * 0.5^(hours_since_reinforced / half_life)
-        Edges below EDGE_PRUNE_THRESHOLD after decay are deleted.
+        Operates on edge_relations via edge_id.
+        When a relation's weight drops below threshold, that relation is removed.
+        If an edge has no relations left, the physical edge is also removed.
+
+        Formula: new_weight = weight * 0.5^(hours_since_created / half_life)
 
         Returns: {decayed: int, pruned: int, by_type: {relation: {decayed, pruned}}}
         """
@@ -1803,22 +1816,27 @@ class GraphDAL:
 
             half_life = config['halfLife']
 
-            # Apply decay: weight * 0.5^(hours_since / half_life)
-            # hours_since = (julianday('now') - julianday(last_strengthened)) * 24
+            # Apply decay on edge_relations
             self.conn.execute("""
-                UPDATE edges
+                UPDATE edge_relations
                 SET weight = weight * power(0.5,
-                    (julianday('now') - julianday(last_strengthened)) * 24.0 / ?)
+                    (julianday('now') - julianday(created_at)) * 24.0 / ?)
                 WHERE relation = ?
-                  AND last_strengthened IS NOT NULL
-                  AND (julianday('now') - julianday(last_strengthened)) * 24.0 > 0
+                  AND created_at IS NOT NULL
+                  AND (julianday('now') - julianday(created_at)) * 24.0 > 0
             """, (half_life, relation))
             decayed = self.conn.execute('SELECT changes()').fetchone()[0]
 
-            # Prune edges that decayed below threshold
-            self.conn.execute("""
-                DELETE FROM edges WHERE relation = ? AND weight < ?
-            """, (relation, EDGE_PRUNE_THRESHOLD))
+            # Collect edge_ids that will be pruned
+            pruned_edge_ids = [r[0] for r in self.conn.execute(
+                "SELECT edge_id FROM edge_relations WHERE relation = ? AND weight < ?",
+                (relation, EDGE_PRUNE_THRESHOLD)
+            ).fetchall()]
+
+            # Prune relations below threshold
+            self.conn.execute(
+                "DELETE FROM edge_relations WHERE relation = ? AND weight < ?",
+                (relation, EDGE_PRUNE_THRESHOLD))
             pruned = self.conn.execute('SELECT changes()').fetchone()[0]
 
             if decayed or pruned:
@@ -1826,8 +1844,138 @@ class GraphDAL:
                 total_decayed += decayed
                 total_pruned += pruned
 
+            # Update aggregate weights for affected edges
+            for eid in set(pruned_edge_ids):
+                remaining = self.conn.execute(
+                    'SELECT COUNT(*) FROM edge_relations WHERE edge_id = ?', (eid,)
+                ).fetchone()[0]
+                if remaining == 0:
+                    self.conn.execute('DELETE FROM edges WHERE edge_id = ?', (eid,))
+                else:
+                    self._update_aggregate_weight(eid)
+
         self.conn.commit()
         return {'decayed': total_decayed, 'pruned': total_pruned, 'by_type': by_type}
+
+    # --- edge_relations (multi-relation semantic layer via edge_id) ---
+
+    @staticmethod
+    def _generate_edge_id(source_id, target_id):
+        """Deterministic edge ID from source+target pair."""
+        import hashlib
+        h = hashlib.md5((source_id + ':' + target_id).encode()).hexdigest()[:8]
+        return 'edg_' + h
+
+    def add_relation(self, source_id, target_id, relation, description='',
+                     weight=0.5, encoding_source=''):
+        """Add a relation to an edge pair. Creates the physical edge if needed.
+
+        If this exact (edge_id, relation) already exists, strengthens it.
+        Does NOT overwrite other relations on the same edge.
+        Updates edges.weight to the max of all relation weights.
+
+        Raises ValueError if source or target node doesn't exist.
+        """
+        from .brain_constants import LEARNING_RATE, MAX_WEIGHT
+        ts = _now()
+
+        # Validate both nodes exist
+        for nid, label in [(source_id, 'source'), (target_id, 'target')]:
+            exists = self.conn.execute('SELECT 1 FROM nodes WHERE id = ?', (nid,)).fetchone()
+            if not exists:
+                raise ValueError("Cannot create edge: %s node '%s' does not exist" % (label, nid[:12]))
+
+        # Find or create the physical edge (check both directions)
+        edge_id = self.get_edge_id(source_id, target_id)
+
+        if not edge_id:
+            # Create new edge — source_id is the caller's intended source
+            edge_id = self._generate_edge_id(source_id, target_id)
+            self.conn.execute(
+                'INSERT OR IGNORE INTO edges '
+                '(edge_id, source_id, target_id, weight, co_access_count, last_strengthened, created_at) '
+                'VALUES (?, ?, ?, ?, 0, ?, ?)',
+                (edge_id, source_id, target_id, weight, ts, ts))
+
+        # Check if this specific relation already exists on this edge
+        existing_rel = self.conn.execute(
+            'SELECT weight FROM edge_relations WHERE edge_id = ? AND relation = ?',
+            (edge_id, relation)
+        ).fetchone()
+
+        if existing_rel:
+            # Strengthen existing relation
+            new_weight = min(MAX_WEIGHT, existing_rel[0] + LEARNING_RATE * 0.5)
+            self.conn.execute(
+                'UPDATE edge_relations SET weight = ?, created_at = ? '
+                'WHERE edge_id = ? AND relation = ?',
+                (new_weight, ts, edge_id, relation))
+        else:
+            # Insert new relation
+            self.conn.execute(
+                'INSERT OR IGNORE INTO edge_relations '
+                '(edge_id, relation, description, weight, encoding_source, created_at) '
+                'VALUES (?, ?, ?, ?, ?, ?)',
+                (edge_id, relation, description, weight, encoding_source, ts))
+
+        # Update aggregate weight + last_strengthened on physical edge
+        self._update_aggregate_weight(edge_id)
+        self.conn.execute(
+            'UPDATE edges SET last_strengthened = ? WHERE edge_id = ?', (ts, edge_id))
+        self.conn.commit()
+
+    def get_relations(self, edge_id):
+        """Get all relations for an edge by edge_id.
+
+        Returns list of dicts: [{relation, description, weight, encoding_source, created_at}, ...]
+        """
+        rows = self.conn.execute(
+            'SELECT relation, description, weight, encoding_source, created_at '
+            'FROM edge_relations WHERE edge_id = ? '
+            'ORDER BY weight DESC',
+            (edge_id,)
+        ).fetchall()
+        return [{'relation': r[0], 'description': r[1] or '',
+                 'weight': r[2], 'encoding_source': r[3] or '',
+                 'created_at': r[4]}
+                for r in rows]
+
+    def remove_relation(self, source_id, target_id, relation):
+        """Remove a specific relation from a pair.
+
+        If this was the last relation, removes the physical edge too.
+        """
+        edge_id = self.get_edge_id(source_id, target_id)
+        if not edge_id:
+            return
+
+        self.conn.execute(
+            'DELETE FROM edge_relations WHERE edge_id = ? AND relation = ?',
+            (edge_id, relation))
+
+        # Check if any relations remain
+        remaining = self.conn.execute(
+            'SELECT COUNT(*) FROM edge_relations WHERE edge_id = ?',
+            (edge_id,)
+        ).fetchone()[0]
+
+        if remaining == 0:
+            self.conn.execute('DELETE FROM edges WHERE edge_id = ?', (edge_id,))
+        else:
+            self._update_aggregate_weight(edge_id)
+
+        self.conn.commit()
+
+    def _update_aggregate_weight(self, edge_id):
+        """Set edges.weight to max of all relation weights for this edge."""
+        row = self.conn.execute(
+            'SELECT MAX(weight) FROM edge_relations WHERE edge_id = ?',
+            (edge_id,)
+        ).fetchone()
+        if row and row[0] is not None:
+            self.conn.execute(
+                'UPDATE edges SET weight = ? WHERE edge_id = ?',
+                (row[0], edge_id))
 
 
 def _now() -> str:

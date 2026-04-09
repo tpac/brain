@@ -280,18 +280,39 @@ def render_rich_node(node, config=None):
         elif corr.get('direction') == 'corrects':
             lines.append('  ⚠ Corrects: "%s" (id:%s)' % (corr.get('title', '')[:60], corr.get('id', '')[:8]))
 
-    # Edges
+    # Edges — direction as natural language for contextless LLM understanding
     edge_limit = cfg.get('edge_limit', 5)
     connections = node.get('connections', [])[:edge_limit]
     if connections:
         lines.append('  Edges:')
         for e in connections:
-            desc = ' — %s' % e['description'] if e.get('description') else ''
             target_id = e.get('id', '?')[:8]
             time_str = _fmt_time(e.get('created_at')) or '?'
-            lines.append('    → "%s" (id:%s, %s) [%s] %s%s' % (
-                e.get('title', '')[:60], target_id, time_str,
-                e.get('type', '?'), e.get('relation', ''), desc))
+            title = e.get('title', '')[:60]
+            ntype = e.get('type', '?')
+            incoming = e.get('direction') == 'incoming'
+
+            relations = e.get('relations', [])
+            if relations and len(relations) > 1:
+                rel_strs = []
+                for r in relations:
+                    rel = r.get('relation', '')
+                    desc = ' — %s' % r['description'] if r.get('description') else ''
+                    if incoming:
+                        rel_strs.append('"%s" %s this%s' % (title, rel, desc))
+                    else:
+                        rel_strs.append('this %s "%s"%s' % (rel, title, desc))
+                lines.append('    [%s id:%s %s] %s' % (
+                    ntype, target_id, time_str, ' | '.join(rel_strs)))
+            else:
+                rel = e.get('relation', '')
+                desc = ' — %s' % e.get('description', '') if e.get('description') else ''
+                if incoming:
+                    lines.append('    [%s id:%s %s] "%s" %s this%s' % (
+                        ntype, target_id, time_str, title, rel, desc))
+                else:
+                    lines.append('    [%s id:%s %s] this %s "%s"%s' % (
+                        ntype, target_id, time_str, rel, title, desc))
 
     return '\n'.join(lines)
 

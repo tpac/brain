@@ -158,40 +158,24 @@ def correction_enrich(node_ids, db_conn):
     try:
         placeholders = ','.join('?' for _ in node_ids)
 
-        # 1. Edges: find corrected_by edges where our nodes are source or target
-        edge_rows = db_conn.execute(
-            """SELECT source_id, target_id FROM edges
-               WHERE relation = 'corrected_by'
-               AND (source_id IN (%s) OR target_id IN (%s))""" % (placeholders, placeholders),
-            list(node_ids) + list(node_ids)
-        ).fetchall()
+        # 1. REMOVED: Edge-based correction lookup.
+        # In an open relation system, corrections are tracked via the correction_of
+        # metadata field, not hardcoded edge relation types. The encoder can use
+        # any relation name (corrects, supersedes, challenges, replaces, etc.)
+        # and those show up naturally in edge rendering.
+        # Correction_of metadata (below) is the authoritative signal.
 
-        for src, tgt in edge_rows:
-            if src in node_ids:
-                # src was corrected_by tgt
-                title = db_conn.execute(
-                    "SELECT title FROM nodes WHERE id = ?", (tgt,)).fetchone()
-                if title:
-                    corrections.setdefault(src, []).append({
-                        "id": tgt[:8], "title": title[0], "direction": "corrected_by"})
-            if tgt in node_ids:
-                # tgt was corrected_by src (reverse — tgt corrects src)
-                title = db_conn.execute(
-                    "SELECT title FROM nodes WHERE id = ?", (src,)).fetchone()
-                if title:
-                    corrections.setdefault(tgt, []).append({
-                        "id": src[:8], "title": title[0], "direction": "corrects"})
+        # 2. node_metadata_kv: correction_of field (forward: which of our nodes correct something)
+        from servers.dal import NodeDAL
+        dal = NodeDAL(db_conn)
 
-        # 2. node_metadata: correction_of field
         meta_rows = db_conn.execute(
-            """SELECT node_id, correction_of FROM node_metadata
-               WHERE node_id IN (%s) AND correction_of IS NOT NULL
-               AND correction_of != ''""" % placeholders,
+            """SELECT node_id, value FROM node_metadata_kv
+               WHERE key = 'correction_of' AND node_id IN (%s)
+               AND value IS NOT NULL AND value != ''""" % placeholders,
             list(node_ids)
         ).fetchall()
 
-        from servers.dal import NodeDAL
-        dal = NodeDAL(db_conn)
         for nid, corrects_id in meta_rows:
             title = dal.get_title(corrects_id[:8])
             if title:
@@ -200,11 +184,11 @@ def correction_enrich(node_ids, db_conn):
 
         # 3. Reverse: find nodes that correct OUR nodes (via correction_of field)
         meta_reverse = db_conn.execute(
-            """SELECT node_id, correction_of FROM node_metadata
-               WHERE correction_of IS NOT NULL AND correction_of != ''"""
+            """SELECT node_id, value FROM node_metadata_kv
+               WHERE key = 'correction_of'
+               AND value IS NOT NULL AND value != ''"""
         ).fetchall()
         for nid, corrects_id in meta_reverse:
-            # Check if corrects_id matches any of our node_ids (prefix match)
             for our_id in node_ids:
                 if our_id.startswith(corrects_id[:8]) or corrects_id.startswith(our_id[:8]):
                     title = db_conn.execute(

@@ -131,16 +131,18 @@ def _graph_expand(brain, selected_ids):
     for full_id in resolved:
         rows = conn.execute("""
             SELECT n.id, n.type, n.title, substr(n.content, 1, 300),
-                   e.edge_type, e.weight, e.description,
-                   n.confidence, n.locked
+                   er.relation, e.weight, er.description,
+                   n.confidence, n.locked,
+                   CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction
             FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
             JOIN nodes n ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END
             WHERE (e.source_id = ? OR e.target_id = ?) AND n.archived = 0
             AND n.id != ?
-            AND e.edge_type NOT IN ({excl})
+            AND er.relation NOT IN ({excl})
             ORDER BY e.weight DESC LIMIT 3
         """.format(excl=excl_placeholders),
-            [full_id, full_id, full_id, full_id] + list(excluded)).fetchall()
+            [full_id, full_id, full_id, full_id, full_id] + list(excluded)).fetchall()
 
         for r in rows:
             if r[0] not in seen:
@@ -150,6 +152,7 @@ def _graph_expand(brain, selected_ids):
                     "content": r[3], "edge_type": r[4],
                     "edge_weight": r[5], "edge_description": r[6] or "",
                     "confidence": r[7], "locked": r[8] == 1,
+                    "direction": r[9],
                     "seed_id": full_id,
                 })
 

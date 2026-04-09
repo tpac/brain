@@ -89,9 +89,11 @@ EXTERNAL_CLAIM_KEYWORDS = {
     'claude code', 'openai', 'github', 'npm', 'pip', 'docker',
 }
 
-# Stability floor
-STABILITY_FLOOR_ACCESS_THRESHOLD = 5
-STABILITY_FLOOR_RETENTION = 0.3
+# Stability floor — DEPRECATED 2026-04-08
+# Stability was computed but never used in recall, traversal, or scoring.
+# S2 confidence recalibration replaces per-edge stability tracking.
+STABILITY_FLOOR_ACCESS_THRESHOLD = 5  # DEPRECATED
+STABILITY_FLOOR_RETENTION = 0.3  # DEPRECATED
 
 # Hebbian learning
 LEARNING_RATE = 0.2
@@ -338,7 +340,9 @@ CRITICAL_SIMILARITY_THRESHOLD = 0.20  # Lowered embedding threshold for critical
 SPREAD_DECAY = 0.5
 MAX_HOPS = 3
 MAX_NEIGHBORS = 50
-STABILITY_BOOST = 1.5
+# DEPRECATED 2026-04-08 — stability field no longer written to edges.
+# Kept for backward compat (auto_tune reads it). Remove when auto_tune is deleted.
+STABILITY_BOOST = 1.5  # DEPRECATED
 
 # B.2: Graph-augmented recall — 3-degree traversal
 GRAPH_AUGMENT_TOP_N = 5       # Seed traversal from top N embedding results

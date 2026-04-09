@@ -287,13 +287,14 @@ def _query_encoding_activity(since_ts="", limit=30):
 
         # New connections (exclude co_accessed and emergent_bridge — organic noise)
         rows = conn.execute(
-            f"SELECT e.source_id, e.target_id, e.relation, e.weight, e.created_at, "
+            f"SELECT e.source_id, e.target_id, er.relation, e.weight, e.created_at, "
             f"n1.title, n2.title, n1.type, n2.type "
             f"FROM edges e "
+            f"JOIN edge_relations er ON er.edge_id = e.edge_id "
             f"LEFT JOIN nodes n1 ON n1.id = e.source_id "
             f"LEFT JOIN nodes n2 ON n2.id = e.target_id "
             f"{where.replace('created_at', 'e.created_at')} "
-            f"AND e.relation NOT IN ('co_accessed', 'emergent_bridge') "
+            f"AND er.relation NOT IN ('co_accessed', 'emergent_bridge') "
             f"ORDER BY e.created_at DESC LIMIT ?",
             args_base + (limit,)).fetchall()
         for r in rows:
@@ -434,13 +435,14 @@ def _query_encoding_runs(limit=10, session_id=''):
 
                     # Edges created in same window
                     edges = bconn.execute(
-                        "SELECT e.source_id, e.target_id, e.relation, e.weight, e.created_at, "
+                        "SELECT e.source_id, e.target_id, er.relation, e.weight, e.created_at, "
                         "n1.title, n2.title "
                         "FROM edges e "
+                        "JOIN edge_relations er ON er.edge_id = e.edge_id "
                         "LEFT JOIN nodes n1 ON n1.id = e.source_id "
                         "LEFT JOIN nodes n2 ON n2.id = e.target_id "
                         "WHERE e.created_at BETWEEN ? AND ? "
-                        "AND e.relation NOT IN ('co_accessed', 'emergent_bridge') "
+                        "AND er.relation NOT IN ('co_accessed', 'emergent_bridge') "
                         "ORDER BY e.created_at", (ts_lo, ts_hi)).fetchall()
                     run['edges'] = [{"relation": e[2], "weight": e[3],
                                      "source_title": e[5] or e[0][:12],
@@ -939,15 +941,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 node["situation"] = sit[0][0]
             # Connections (both directions)
             edges = _direct_query(
-                "SELECT n.id, e.relation, e.weight, n.type, n.title FROM edges e "
-                "JOIN nodes n ON n.id = e.target_id WHERE e.source_id = ? "
-                "UNION "
-                "SELECT n.id, e.relation, e.weight, n.type, n.title FROM edges e "
-                "JOIN nodes n ON n.id = e.source_id WHERE e.target_id = ? "
-                "ORDER BY 3 DESC LIMIT 20",
-                args=(node_id, node_id), db_path=db)
+                "SELECT n.id, er.relation, e.weight, n.type, n.title, "
+                "CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction "
+                "FROM edges e "
+                "JOIN edge_relations er ON er.edge_id = e.edge_id "
+                "JOIN nodes n ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END "
+                "WHERE (e.source_id = ? OR e.target_id = ?) AND n.archived = 0 "
+                "ORDER BY e.weight DESC LIMIT 20",
+                args=(node_id, node_id, node_id, node_id), db_path=db)
             connections = [
-                {"id": e[0], "relation": e[1], "weight": e[2], "type": e[3], "title": e[4]}
+                {"id": e[0], "relation": e[1], "weight": e[2], "type": e[3],
+                 "title": e[4], "direction": e[5]}
                 for e in edges
             ]
             self._json_response(200, {"node": node, "connections": connections})
@@ -1075,12 +1079,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if node_ids:
                 placeholders = ",".join("?" * len(node_ids))
                 edges_sql = """
-                    SELECT source_id, target_id, relation, weight
-                    FROM edges
-                    WHERE source_id IN (%s) AND target_id IN (%s)
-                """ % (placeholders, placeholders)
+                    SELECT e.source_id, e.target_id, er.relation, e.weight
+                    FROM edges e
+                    JOIN edge_relations er ON er.edge_id = e.edge_id
+                    WHERE (e.source_id IN (%s) OR e.target_id IN (%s))
+                    AND e.source_id IN (%s) AND e.target_id IN (%s)
+                """ % (placeholders, placeholders, placeholders, placeholders)
                 id_list = list(node_ids)
-                edge_rows = _direct_query(edges_sql, id_list + id_list, db_path=db)
+                edge_rows = _direct_query(edges_sql, id_list * 4, db_path=db)
                 edges = [{"source": r[0], "target": r[1], "relation": r[2], "weight": r[3]}
                          for r in edge_rows]
 

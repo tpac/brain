@@ -16,7 +16,6 @@ from .brain_constants import (
     MAX_NEIGHBORS,
     MAX_WEIGHT,
     SPREAD_DECAY,
-    STABILITY_BOOST,
 )
 
 
@@ -25,94 +24,42 @@ class BrainConnectionsMixin:
 
     def connect(self, source_id: str, target_id: str, relation: str = 'related', weight: float = 0.5):
         """
-        Create or strengthen an edge between two nodes.
-        Bidirectional Hebbian learning.
+        Create or add a relation between two nodes.
+        Bidirectional. Does NOT overwrite existing relations — adds alongside them.
 
         Args:
             source_id: Source node ID
             target_id: Target node ID
-            relation: Relation type (e.g., 'related', 'inspired_by')
+            relation: Relation type (e.g., 'related', 'co_accessed')
             weight: Edge weight (0-1)
         """
-        ts = self.now()
-
-        # Check if edge already exists
-        cursor = self.conn.execute(
-            'SELECT weight, co_access_count FROM edges WHERE source_id = ? AND target_id = ?',
-            (source_id, target_id)
-        )
-        existing = cursor.fetchone()
-
-        if existing:
-            old_weight, count = existing
-            new_weight = min(MAX_WEIGHT, old_weight + LEARNING_RATE * 0.5)
-            self.conn.execute(
-                'UPDATE edges SET weight = ?, co_access_count = ?, last_strengthened = ?, relation = ?, edge_type = ? WHERE source_id = ? AND target_id = ?',
-                (new_weight, count + 1, ts, relation, relation, source_id, target_id)
-            )
-        else:
-            # Create bidirectional edge
-            self.conn.execute(
-                'INSERT OR IGNORE INTO edges (source_id, target_id, weight, relation, edge_type, co_access_count, stability, last_strengthened, created_at) VALUES (?, ?, ?, ?, ?, 1, 1.0, ?, ?)',
-                (source_id, target_id, weight, relation, relation, ts, ts)
-            )
-            self.conn.execute(
-                'INSERT OR IGNORE INTO edges (source_id, target_id, weight, relation, edge_type, co_access_count, stability, last_strengthened, created_at) VALUES (?, ?, ?, ?, ?, 1, 1.0, ?, ?)',
-                (target_id, source_id, weight, relation, relation, ts, ts)
-            )
-
-        self.conn.commit()
+        from .dal import GraphDAL
+        graph_dal = GraphDAL(self.conn)
+        graph_dal.add_relation(source_id, target_id, relation, description='', weight=weight)
 
     def connect_typed(self, source_id: str, target_id: str, relation: str = 'related',
                      weight: Optional[float] = None, edge_type: Optional[str] = None,
                      description: str = ''):
         """
-        Create or strengthen typed edge with description.
-        Edge types can be any string; EDGE_TYPES defines decay behavior for known types.
+        Add a typed relation with description between two nodes.
+        Bidirectional. Does NOT overwrite existing relations — adds alongside them.
 
         Args:
             source_id: Source node ID
             target_id: Target node ID
-            relation: Relation name
+            relation: Relation name (open text — any string)
             weight: Edge weight (optional; uses EDGE_TYPES default if not provided)
-            edge_type: Edge type (optional; defaults to relation)
-            description: Human-readable description of connection
+            edge_type: DEPRECATED — ignored, kept for backward compat
+            description: Why this relation exists (rich text)
         """
-        if not edge_type:
-            edge_type = relation
-
         # Known types get configured weight; unknown types get 0.5 default
-        edge_def = EDGE_TYPES.get(edge_type)
+        edge_def = EDGE_TYPES.get(relation)
         actual_weight = weight if weight is not None else (edge_def.get('defaultWeight', 0.5) if edge_def else 0.5)
 
-        ts = self.now()
-
-        # Check if edge already exists
-        cursor = self.conn.execute(
-            'SELECT weight, co_access_count FROM edges WHERE source_id = ? AND target_id = ?',
-            (source_id, target_id)
-        )
-        existing = cursor.fetchone()
-
-        if existing:
-            old_weight, count = existing
-            new_weight = min(MAX_WEIGHT, old_weight + LEARNING_RATE * 0.5)
-            self.conn.execute(
-                'UPDATE edges SET weight = ?, co_access_count = ?, last_strengthened = ?, relation = ?, edge_type = ?, description = ? WHERE source_id = ? AND target_id = ?',
-                (new_weight, count + 1, ts, relation, edge_type, description, source_id, target_id)
-            )
-        else:
-            # Create bidirectional edge
-            self.conn.execute(
-                'INSERT OR IGNORE INTO edges (source_id, target_id, weight, relation, edge_type, description, co_access_count, stability, last_strengthened, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, 1.0, ?, ?)',
-                (source_id, target_id, actual_weight, relation, edge_type, description, ts, ts)
-            )
-            self.conn.execute(
-                'INSERT OR IGNORE INTO edges (source_id, target_id, weight, relation, edge_type, description, co_access_count, stability, last_strengthened, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, 1.0, ?, ?)',
-                (target_id, source_id, actual_weight, relation, edge_type, description, ts, ts)
-            )
-
-        self.conn.commit()
+        from .dal import GraphDAL
+        graph_dal = GraphDAL(self.conn)
+        graph_dal.add_relation(source_id, target_id, relation, description=description,
+                               weight=actual_weight)
 
     def _random_walk(self, start_id: str, steps: int) -> List[str]:
         """
@@ -125,8 +72,10 @@ class BrainConnectionsMixin:
 
         for _ in range(steps):
             neighbors = self.conn.execute('''
-                SELECT target_id, weight FROM edges WHERE source_id = ? ORDER BY RANDOM() LIMIT 10
-            ''', (current,)).fetchall()
+                SELECT CASE WHEN source_id = ? THEN target_id ELSE source_id END, weight
+                FROM edges WHERE source_id = ? OR target_id = ?
+                ORDER BY RANDOM() LIMIT 10
+            ''', (current, current, current)).fetchall()
 
             if not neighbors:
                 break
@@ -169,8 +118,9 @@ class BrainConnectionsMixin:
 
         # Check existing bridge count
         existing = self.conn.execute('''
-            SELECT COUNT(*) FROM edges
-            WHERE (source_id = ? OR target_id = ?) AND edge_type = 'emergent_bridge'
+            SELECT COUNT(*) FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
+            WHERE (e.source_id = ? OR e.target_id = ?) AND er.relation = 'emergent_bridge'
         ''', (node_id, node_id)).fetchone()
         current_bridge_count = existing[0] if existing else 0
 

@@ -363,7 +363,7 @@ def deep_integrity_audit(brain):
 
         # 6. Edge type distribution — are co_accessed dominating?
         edge_types = brain.conn.execute("""
-            SELECT relation, COUNT(*) as cnt FROM edges GROUP BY relation ORDER BY cnt DESC LIMIT 5
+            SELECT relation, COUNT(*) as cnt FROM edge_relations GROUP BY relation ORDER BY cnt DESC LIMIT 5
         """).fetchall()
         total_edges = sum(r[1] for r in edge_types)
         for r in edge_types:

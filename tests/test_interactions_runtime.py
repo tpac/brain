@@ -28,13 +28,13 @@ class TestInteractionSeeding:
             env.brain.logs_conn.commit()
             yield
 
-    def test_seed_creates_all_6(self):
+    def test_seed_creates_all_interactions(self):
         from servers.interaction_seed import seed_interactions
         seed_interactions(self.brain)
         all_interactions = self.dal.list_all()
         names = {i['name'] for i in all_interactions}
         assert names == {'surface', 'encoding_agent', 'voice_surface',
-                         'boot', 'pre_edit', 'signal_assembler'}
+                         'boot', 'pre_edit', 'signal_assembler', 's2_community'}
 
     def test_seed_is_idempotent(self):
         """Running seed twice doesn't create duplicates."""

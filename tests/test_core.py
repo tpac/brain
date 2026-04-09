@@ -178,18 +178,22 @@ class TestSilentFailures(BrainTestBase):
             "SELECT COUNT(*) FROM debug_log WHERE event_type = 'error'"
         ).fetchone()[0]
 
-    def test_remember_with_bad_connection_crashes(self):
-        """FOUND BUG: remember() with invalid connection target raises IntegrityError.
-        connect() does not wrap FK errors — this IS a silent failure path.
-        When this test starts passing (after the bug is fixed), rename to test_remember_with_bad_connection_logs_error."""
-        with self.assertRaises(Exception):
-            self.brain.remember(
-                type='decision',
-                title='Auth: Clerk for passwordless login via magic links',
-                content='Clerk handles auth flow. Magic links for login, no passwords.',
-                keywords='auth clerk login passwordless',
-                connections=[{'target_id': 'nonexistent_node_id_xyz', 'relation': 'related'}]
-            )
+    def test_remember_with_bad_connection_logs_error(self):
+        """remember() with invalid connection target creates the node but logs the edge error.
+        add_relation() validates that both nodes exist and raises ValueError.
+        remember() catches this and logs it — the node itself is still created."""
+        result = self.brain.remember(
+            type='decision',
+            title='Auth: Clerk for passwordless login via magic links',
+            content='Clerk handles auth flow. Magic links for login, no passwords.',
+            keywords='auth clerk login passwordless',
+            connections=[{'target_id': 'nonexistent_node_id_xyz', 'relation': 'related'}]
+        )
+        # Node should be created despite bad connection
+        self.assertIsNotNone(result.get('id'))
+        # The edge should NOT exist (target doesn't exist)
+        from servers.dal import GraphDAL
+        self.assertFalse(GraphDAL(self.brain.conn).edge_exists(result['id'], 'nonexistent_node_id_xyz'))
 
     # test_consciousness_signal_error_does_not_crash removed — function deleted
 
@@ -486,19 +490,23 @@ class TestConnectTyped(BrainTestBase):
     """P7: Test typed edge creation."""
 
     def test_connect_typed_creates_edge_with_type(self):
-        """connect_typed should create edge with specified edge_type."""
+        """connect_typed should create relation in edge_relations."""
         n1 = self.brain.remember(type='decision', title='Node A',
             content='Decision about architecture.')
         n2 = self.brain.remember(type='decision', title='Node B',
             content='Related decision about deployment.')
         self.brain.connect_typed(n1['id'], n2['id'],
-            relation='depends_on', edge_type='depends_on')
+            relation='depends_on', description='deployment depends on architecture')
+        # Find edge_id then query edge_relations
         edge = self.brain.conn.execute(
-            "SELECT edge_type, relation FROM edges WHERE source_id = ? AND target_id = ?",
-            (n1['id'], n2['id'])).fetchone()
-        self.assertIsNotNone(edge)
-        self.assertEqual(edge[0], 'depends_on')
-        self.assertEqual(edge[1], 'depends_on')
+            'SELECT edge_id FROM edges WHERE (source_id = ? AND target_id = ?) OR (source_id = ? AND target_id = ?)',
+            (n1['id'], n2['id'], n2['id'], n1['id'])).fetchone()
+        self.assertIsNotNone(edge, 'Edge should exist between nodes')
+        rel = self.brain.conn.execute(
+            "SELECT relation, description FROM edge_relations WHERE edge_id = ? AND relation = 'depends_on'",
+            (edge[0],)).fetchone()
+        self.assertIsNotNone(rel, 'depends_on relation should exist in edge_relations')
+        self.assertEqual(rel[1], 'deployment depends on architecture')
 
 
 

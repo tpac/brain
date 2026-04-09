@@ -46,14 +46,21 @@ Use **`remember_batch()`** to create nodes. The response includes `related_nodes
 remember_batch(
   nodes: [{type, title, content, situation, reasoning, ...}, ...],
   connect_to: [
-    {"title": "existing node title", "why": "corrects the earlier assumption about X"},
+    {"title": "existing node title", "relations": [
+      {"relation": "extends", "why": "builds on the architectural pattern"},
+      {"relation": "depends_on", "why": "requires this mechanism to function"}
+    ]},
     ...
   ],
   auto_connect: true  // connects new nodes to each other
 )
 ```
 
-`connect_to.why` describes the relationship — future recall uses this to decide relevance. "related to" is useless. "corrects", "extends", "depends on", "contradicts" — say what the connection MEANS.
+**Edges are multi-relation.** Two nodes can have multiple typed relationships. Each `connect_to` entry supports a `relations` array — use it to capture ALL the ways the new node relates to the existing one. One connection can be both `extends` AND `depends_on` — say both, don't pick one.
+
+The `relation` field is open text — use whatever describes the relationship accurately. Common patterns: `extends`, `corrects`, `depends_on`, `implements`, `contradicts`, `resolves`, `caused_by`, `enables`, `validates`, `refines`, `challenges`, `contextualizes`, `supersedes`. But these are examples, not a closed list. If `prerequisite_for` or `diagnosed_during` is more accurate, use that.
+
+The `why` field is the human explanation of that specific relation — it gets embedded and used for recall relevance. "related to" is noise. Be specific about what the connection MEANS.
 
 - **`revise_batch()`** when nodes in the catalog have new information from this conversation. Update with corrections, outcomes, new decisions. Don't create a new node when an existing one covers the same topic — revise it. Also use revise to **enrich sparse nodes**: if a catalog node has no `situation` or `reasoning`, add them from conversation context. Content is REPLACED (old saved to history). Other fields replace directly.
 - **`connect()` existing nodes** when you notice two nodes that should be linked but aren't. Connections between existing nodes are as valuable as new nodes.
@@ -83,12 +90,12 @@ Your primary tool is **`brain_batch`** — creates, revises, and connects in one
     {"op": "remember", "type": "correction", "title": "Target function is partnership, not recall", "content": "Tom corrected: recall quality is a metric...", "correction_of": "abcd1234", "user_raw_quote": "The target function is..."},
     {"op": "revise", "node_id": "efgh5678", "reason": "adding situation from this conversation", "situation": "When debugging daemon connectivity"},
     {"op": "revise", "node_id": "ijkl9012", "reason": "updated with session outcome", "content": "Confirmed working — 6s end-to-end..."},
-    {"op": "connect", "source_id": "abcd1234", "target_id": "efgh5678", "relation": "depends_on", "weight": 0.7}
+    {"op": "connect", "source_id": "abcd1234", "target_id": "efgh5678", "relation": "depends_on", "weight": 0.7, "description": "Pool config requires understanding daemon connectivity"}
   ]}
 ```
 - `op: "remember"` — all node fields available (type, title, content, situation, reasoning, user_raw_quote, anchor_raw_quote, correction_of, keywords, etc.)
 - `op: "revise"` — content is REPLACED (old saved to history). Other fields replace directly.
-- `op: "connect"` — relation types: "corrects", "extends", "depends_on", "related", "caused_by", "contradicts"
+- `op: "connect"` — use specific relation types (open text). Always include `description` explaining why. Multiple connects between the same pair create multiple relations (they don't overwrite).
 
 **`recall_batch`** and **`get_nodes`** — only when the catalog doesn't cover what you need:
 ```json

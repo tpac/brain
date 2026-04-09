@@ -216,10 +216,11 @@ class TestBuildNodeCatalog:
         # Create a correcting node and a corrected_by edge
         _insert_hex_node(self.conn, self.NODE_C, 'rule', 'Updated version of rule',
                          'New improved content.')
+        # Create correction: NODE_C corrects NODE_A
+        # correction_enrich uses metadata (node_metadata_kv), not edge relations
         self.conn.execute(
-            "INSERT OR IGNORE INTO edges (source_id, target_id, relation, weight) "
-            "VALUES (?, ?, 'corrected_by', 1.0)",
-            (self.NODE_A, self.NODE_C))
+            "INSERT OR REPLACE INTO node_metadata_kv (node_id, key, value) VALUES (?, 'correction_of', ?)",
+            (self.NODE_C, self.NODE_A))
         self.conn.commit()
 
         judge_output = '[rule] "Test" (id:%s)' % self.NODE_A

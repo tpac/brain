@@ -29,8 +29,10 @@ Same function at every scale. The unit doesn't know its scale. `integrate()` is 
 Single gateway to the brain. Holds: Brain object, embedder, Anthropic client (for surfacer). Listens on `127.0.0.1:47200+uid%100` (TCP). DB path from `BRAIN_DB_DIR` env var → `$HOME/AgentsContext/brain/`.
 
 Two databases:
-- `brain.db` — nodes, edges, embeddings, graph structure
+- `brain.db` — nodes, edges (v22: `edge_id` PK, single-direction), `edge_relations` (multi-relation per edge), embeddings, graph structure
 - `brain_logs.db` — traces, session state, signal queue, interactions, hook errors
+
+**Edge model (v22):** Physical edges (`edges` table) carry `edge_id`, `source_id` (actor), `target_id` (acted upon), aggregate `weight`. One row per pair — no mirrors. Semantic layer (`edge_relations` table) carries multiple relations per edge via `edge_id` FK: `relation` (open text), `description`, `weight`, `encoding_source`. Direction matters — source is the actor. Use `GraphDAL.add_relation()` for all edge writes.
 
 **Single-writer rule:** the daemon's main thread is the ONLY writer. Background threads (encoding agent, idle) route writes through TCP dispatch. Read operations: any thread can read (WAL mode).
 
@@ -105,8 +107,8 @@ Triggered by Stop hook when `stop_counter % 5 == 0`.
 - Node catalog: `format_node()` with correction annotations
 - Conversation timeline with SURFACED node references
 - Agent prompt from `s1e` interaction (v2: cognitive edge vocabulary, learnable boundary)
-- 20 edge types: 15 cognitive (refines, challenges, grounds, abstracts, triggers, reframes, resolves, opens, strengthens, weakens, corrects, enables, produces, contextualizes, synthesizes) + 5 engineering (implements, depends_on, validates, supersedes, configures)
-- `connect_to` supports `relation` field — encoder specifies edge type, not just description
+- Open text edge types — encoder uses any relation that fits (extends, corrects, depends_on, implements, etc.). Not a closed list.
+- `connect_to` supports `relations` array — multiple typed relations per connection, each with `relation` + `why`
 
 **Δ:** Sonnet's actions — create, revise, connect nodes
 - Tools: `remember_batch`, `revise_batch`, `connect_batch`, `brain_batch`, `recall_batch`, `get_nodes`
@@ -155,12 +157,13 @@ Seeding: `interaction_seed.py` populates v1 from current hardcoded values on boo
 
 ### 2. Traces (the nervous system)
 
-Without traces, higher scales are blind. `trace_events` in brain_logs.db captures O/K/Δ/outcome per chain, tagged by scale.
+Without traces, higher scales are blind. `trace_events` in brain_logs.db captures O/K/Δ per chain, tagged by scale.
 
 **Trace contract** (`servers/trace_contract.py`): single source of truth for valid (scale, event_type, ref_type) triples. All writers validate against it. Run `test_trace_contract_sync.py` after any change.
 
 **What works:** S0 captures messages + tool results. S1R captures candidates, surface selection, additionalContext. S1E captures encoding prompt, catalog, actions.
-**What's missing:** Outcome events. Did Anchor use the recalled context? Did Tom correct it? S2 needs this signal to evaluate whether S1R's K is working. Without it, S2 optimizes blind.
+
+Outcome is not a separate event type — the outcome of one cycle is the observation of the next. The loop closes through time.
 
 Chain IDs from SessionContext: `s0-{short}-{stop}`, `s1r-{short}-{stop}`, `s1e-{short}-{stop}`.
 `TraceDAL.append_batch()` for atomic multi-event writes. Summary (200 chars) for dashboard, metadata JSON (4000 chars) for consumers.

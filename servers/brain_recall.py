@@ -669,10 +669,16 @@ class BrainRecallMixin:
                         # Cache structural degree per node — recomputed once per session
                         self._structural_degree_cache = {}
                         try:
-                            for _row in self.conn.execute(
-                                "SELECT source_id, COUNT(*) FROM edges "
-                                "WHERE edge_type NOT IN ('co_accessed','emergent_bridge') "
-                                "GROUP BY source_id"):
+                            for _row in self.conn.execute("""
+                                SELECT node_id, COUNT(*) FROM (
+                                    SELECT e.source_id as node_id FROM edges e
+                                    JOIN edge_relations er ON er.edge_id = e.edge_id
+                                    WHERE er.relation NOT IN ('co_accessed','emergent_bridge')
+                                    UNION ALL
+                                    SELECT e.target_id as node_id FROM edges e
+                                    JOIN edge_relations er ON er.edge_id = e.edge_id
+                                    WHERE er.relation NOT IN ('co_accessed','emergent_bridge')
+                                ) GROUP BY node_id"""):
                                 self._structural_degree_cache[_row[0]] = \
                                     self._structural_degree_cache.get(_row[0], 0) + _row[1]
                         except Exception as _e:
@@ -1380,8 +1386,10 @@ class BrainRecallMixin:
 
     def spread_activation(self, seed_ids: List[str], filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
-        Spread activation from seed nodes through graph edges.
+        DEPRECATED: Legacy graph traversal. Modern recall uses _traverse_graph()
+        via get_neighbors_rich(). Kept for backward compatibility.
 
+        Spread activation from seed nodes through graph edges.
         Multi-hop with exponential decay (0.5^hop).
         Each hop: get neighbors, multiply activation by edge_weight * decay.
         MAX_HOPS=3, MAX_NEIGHBORS=50 per node.
@@ -1408,11 +1416,11 @@ class BrainRecallMixin:
                 _neighbors = _gdal.get_neighbors(node_id, min_weight=PRUNE_THRESHOLD, limit=MAX_NEIGHBORS)
 
                 for nb in _neighbors:
-                    target_id = nb['target_id']
+                    neighbor_id = nb.get('neighbor_id') or nb.get('target_id')
                     edge_weight = nb['weight']
                     spread = node_activation * edge_weight * decay_factor
-                    current_act = activation.get(target_id, 0)
-                    activation[target_id] = current_act + spread
+                    current_act = activation.get(neighbor_id, 0)
+                    activation[neighbor_id] = current_act + spread
 
         # Fetch full node data
         results = []

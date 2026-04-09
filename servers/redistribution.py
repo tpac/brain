@@ -108,12 +108,17 @@ def is_bridge_node(conn: sqlite3.Connection, node_id: str,
     if node_id not in communities:
         return False
 
-    # Get structural edges with their target communities
+    # Get structural edges with their target communities (both directions)
     edges = conn.execute("""
-        SELECT target_id, weight FROM edges
-        WHERE source_id = ? AND edge_type NOT IN ('co_accessed', 'emergent_bridge')
-        AND weight > 0.1
-    """, (node_id,)).fetchall()
+        SELECT CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END as neighbor,
+               e.weight
+        FROM edges e
+        JOIN edge_relations er ON er.edge_id = e.edge_id
+        WHERE (e.source_id = ? OR e.target_id = ?)
+        AND er.relation NOT IN ('co_accessed', 'emergent_bridge')
+        AND e.weight > 0.1
+        GROUP BY neighbor
+    """, (node_id, node_id, node_id)).fetchall()
 
     # Sum edge weight per community
     community_weights = {}
@@ -144,14 +149,15 @@ def compute_weighted_neighbor_centroid(
     Weight = edge weight. Stronger edges pull harder.
     """
     edges = conn.execute("""
-        SELECT target_id, weight FROM edges
-        WHERE source_id = ? AND edge_type NOT IN ('co_accessed', 'emergent_bridge')
-        AND weight > 0.1
-        UNION
-        SELECT source_id, weight FROM edges
-        WHERE target_id = ? AND edge_type NOT IN ('co_accessed', 'emergent_bridge')
-        AND weight > 0.1
-    """, (node_id, node_id)).fetchall()
+        SELECT CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END as neighbor,
+               e.weight
+        FROM edges e
+        JOIN edge_relations er ON er.edge_id = e.edge_id
+        WHERE (e.source_id = ? OR e.target_id = ?)
+        AND er.relation NOT IN ('co_accessed', 'emergent_bridge')
+        AND e.weight > 0.1
+        GROUP BY neighbor
+    """, (node_id, node_id, node_id)).fetchall()
 
     if not edges:
         return None

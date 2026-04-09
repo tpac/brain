@@ -77,26 +77,35 @@ class TestTraceContract:
             assert et in self.EVENT_TYPES, "Event type %s missing" % et
 
     def test_s2_ref_types(self):
-        """S2 (Session) ref_types are valid."""
-        assert self.validate('s2', 'O', 'session_turns') == (True, '')
-        assert self.validate('s2', 'O', 'session_patterns') == (True, '')
-        assert self.validate('s2', 'K', 'session_nodes') == (True, '')
-        assert self.validate('s2', 'K', 'correction_chains') == (True, '')
-        assert self.validate('s2', 'delta', 'journey_arc') == (True, '')
-        assert self.validate('s2', 'delta', 'consolidation') == (True, '')
-        assert self.validate('s2', 'outcome', 'cross_session') == (True, '')
+        """S2 (Graph) ref_types are valid."""
+        assert self.validate('s2', 'O', 'graph_structure') == (True, '')
+        assert self.validate('s2', 'O', 'graph_stats') == (True, '')
+        assert self.validate('s2', 'O', 'dedup_scan') == (True, '')
+        assert self.validate('s2', 'O', 'correction_chains') == (True, '')
+        assert self.validate('s2', 'K', 'community_partition') == (True, '')
+        assert self.validate('s2', 'K', 'community_diff') == (True, '')
+        assert self.validate('s2', 'K', 'stale_nodes') == (True, '')
+        assert self.validate('s2', 'delta', 'community_created') == (True, '')
+        assert self.validate('s2', 'delta', 'community_updated') == (True, '')
+        assert self.validate('s2', 'delta', 'community_removed') == (True, '')
+        assert self.validate('s2', 'delta', 'community_assignments') == (True, '')
+        assert self.validate('s2', 'delta', 'merge') == (True, '')
+        assert self.validate('s2', 'delta', 'confidence_adjust') == (True, '')
+        assert self.validate('s2', 'outcome', 'recall_improved') == (True, '')
+        assert self.validate('s2', 'outcome', 'operator_reviewed') == (True, '')
 
     def test_s3_ref_types(self):
-        """S3 (Sleep) ref_types are valid."""
-        assert self.validate('s3', 'O', 'graph_structure') == (True, '')
-        assert self.validate('s3', 'O', 'dedup_scan') == (True, '')
-        assert self.validate('s3', 'K', 'community_members') == (True, '')
-        assert self.validate('s3', 'K', 'bridge_nodes') == (True, '')
-        assert self.validate('s3', 'delta', 'community_label') == (True, '')
-        assert self.validate('s3', 'delta', 'merge') == (True, '')
-        assert self.validate('s3', 'delta', 'schema_node') == (True, '')
-        assert self.validate('s3', 'outcome', 'recall_improved') == (True, '')
-        assert self.validate('s3', 'outcome', 'operator_approved') == (True, '')
+        """S3 (Reasoning) ref_types are valid."""
+        assert self.validate('s3', 'O', 'cluster_patterns') == (True, '')
+        assert self.validate('s3', 'O', 'correction_trajectories') == (True, '')
+        assert self.validate('s3', 'O', 'confidence_landscapes') == (True, '')
+        assert self.validate('s3', 'K', 'cross_cluster') == (True, '')
+        assert self.validate('s3', 'K', 'learning_curves') == (True, '')
+        assert self.validate('s3', 'delta', 'abstract_insight') == (True, '')
+        assert self.validate('s3', 'delta', 'resolved_question') == (True, '')
+        assert self.validate('s3', 'delta', 'meta_optimization') == (True, '')
+        assert self.validate('s3', 'outcome', 'adopted') == (True, '')
+        assert self.validate('s3', 'outcome', 'rejected') == (True, '')
 
     def test_s4_ref_types(self):
         """S4 (Growth) ref_types are valid."""

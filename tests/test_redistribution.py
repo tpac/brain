@@ -112,34 +112,52 @@ class TestBridgeNode(unittest.TestCase):
     def setUp(self):
         self.conn = sqlite3.connect(':memory:')
         self.conn.execute("CREATE TABLE nodes (id TEXT PRIMARY KEY)")
-        self.conn.execute("CREATE TABLE edges (source_id TEXT, target_id TEXT, weight REAL, edge_type TEXT)")
-        # Create nodes in 2 communities
+        self.conn.execute("""CREATE TABLE edges (
+            edge_id TEXT PRIMARY KEY, source_id TEXT, target_id TEXT,
+            weight REAL, co_access_count INTEGER DEFAULT 0,
+            last_strengthened TEXT, created_at TEXT,
+            UNIQUE(source_id, target_id))""")
+        self.conn.execute("""CREATE TABLE edge_relations (
+            edge_id TEXT, relation TEXT, description TEXT DEFAULT '',
+            weight REAL, encoding_source TEXT DEFAULT '',
+            decay_rate REAL, created_at TEXT,
+            PRIMARY KEY(edge_id, relation))""")
         for nid in ['a', 'b', 'c', 'd', 'e', 'bridge']:
             self.conn.execute("INSERT INTO nodes VALUES (?)", (nid,))
 
+    def _add_edge(self, src, tgt, weight, relation='related'):
+        """Helper to add an edge with v22 schema."""
+        import hashlib
+        eid = 'edg_' + hashlib.md5((src + ':' + tgt).encode()).hexdigest()[:8]
+        self.conn.execute(
+            "INSERT OR IGNORE INTO edges (edge_id, source_id, target_id, weight) VALUES (?,?,?,?)",
+            (eid, src, tgt, weight))
+        self.conn.execute(
+            "INSERT OR IGNORE INTO edge_relations (edge_id, relation, weight) VALUES (?,?,?)",
+            (eid, relation, weight))
+
     def test_bridge_detected(self):
         """Node with equal-weight edges to 2 OTHER communities = bridge."""
-        # bridge is in community 2, connects equally to community 0 and 1
         communities = {'a': 0, 'b': 0, 'c': 1, 'd': 1, 'bridge': 2}
-        self.conn.execute("INSERT INTO edges VALUES ('bridge', 'a', 0.7, 'related')")
-        self.conn.execute("INSERT INTO edges VALUES ('bridge', 'b', 0.7, 'related')")
-        self.conn.execute("INSERT INTO edges VALUES ('bridge', 'c', 0.7, 'related')")
-        self.conn.execute("INSERT INTO edges VALUES ('bridge', 'd', 0.7, 'related')")
+        self._add_edge('bridge', 'a', 0.7)
+        self._add_edge('bridge', 'b', 0.7)
+        self._add_edge('bridge', 'c', 0.7)
+        self._add_edge('bridge', 'd', 0.7)
         self.assertTrue(is_bridge_node(self.conn, 'bridge', communities))
 
     def test_non_bridge(self):
         """Node with edges to only 1 community = not bridge."""
         communities = {'a': 0, 'b': 0, 'c': 1, 'd': 1, 'e': 0}
-        self.conn.execute("INSERT INTO edges VALUES ('e', 'a', 0.7, 'related')")
-        self.conn.execute("INSERT INTO edges VALUES ('e', 'b', 0.7, 'related')")
+        self._add_edge('e', 'a', 0.7)
+        self._add_edge('e', 'b', 0.7)
         self.assertFalse(is_bridge_node(self.conn, 'e', communities))
 
     def test_dominant_community_not_bridge(self):
         """Node with one community dominating by 2x+ = not bridge."""
         communities = {'a': 0, 'b': 0, 'c': 1, 'bridge': 0}
-        self.conn.execute("INSERT INTO edges VALUES ('bridge', 'a', 0.9, 'related')")
-        self.conn.execute("INSERT INTO edges VALUES ('bridge', 'b', 0.9, 'related')")
-        self.conn.execute("INSERT INTO edges VALUES ('bridge', 'c', 0.3, 'related')")
+        self._add_edge('bridge', 'a', 0.9)
+        self._add_edge('bridge', 'b', 0.9)
+        self._add_edge('bridge', 'c', 0.3)
         self.assertFalse(is_bridge_node(self.conn, 'bridge', communities))
 
     def test_no_community_assignment(self):

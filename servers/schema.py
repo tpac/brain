@@ -40,7 +40,7 @@ import shutil
 import sqlite3
 from datetime import datetime, timezone
 
-BRAIN_VERSION = 20  # v20: removed CHECK constraint on nodes.type — agents can use any type string
+BRAIN_VERSION = 22  # v22: edge_id + single-direction + clean edge schema
 BRAIN_VERSION_KEY = 'brain_schema_version'
 
 # ─── Allowed node types ───
@@ -156,30 +156,45 @@ TABLES = {
         }
     },
 
+    # v22: Physical edge — one row per pair, direction in source/target ordering.
+    # source = "actor" node, target = "acted upon" node.
+    # Single-direction: no mirror rows. Query both directions with OR.
     'edges': {
         'create': """CREATE TABLE IF NOT EXISTS edges (
+            edge_id TEXT PRIMARY KEY,
             source_id TEXT NOT NULL,
             target_id TEXT NOT NULL,
             weight REAL DEFAULT 0.5,
-            relation TEXT DEFAULT 'related',
-            co_access_count INTEGER DEFAULT 1,
-            stability REAL DEFAULT 1.0,
+            co_access_count INTEGER DEFAULT 0,
             last_strengthened TEXT,
             created_at TEXT,
-            edge_type TEXT DEFAULT 'related',
-            decay_rate REAL DEFAULT NULL,
-            description TEXT DEFAULT '',
-            PRIMARY KEY (source_id, target_id),
-            FOREIGN KEY (source_id) REFERENCES nodes(id) ON DELETE CASCADE,
-            FOREIGN KEY (target_id) REFERENCES nodes(id) ON DELETE CASCADE
+            UNIQUE(source_id, target_id)
         )""",
         'columns': {
-            'source_id': None, 'target_id': None,
-            'weight': '0.5', 'relation': "'related'",
-            'co_access_count': '1', 'stability': '1.0',
+            'edge_id': None, 'source_id': None, 'target_id': None,
+            'weight': '0.5', 'co_access_count': '0',
             'last_strengthened': 'NULL', 'created_at': 'NULL',
-            'edge_type': "'related'", 'decay_rate': 'NULL',
-            'description': "''",
+        }
+    },
+
+    # v22: Semantic edge layer — multiple relations per edge.
+    # References edges via edge_id. Open text relation types.
+    'edge_relations': {
+        'create': """CREATE TABLE IF NOT EXISTS edge_relations (
+            edge_id TEXT NOT NULL,
+            relation TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            weight REAL DEFAULT 0.5,
+            encoding_source TEXT DEFAULT '',
+            decay_rate REAL DEFAULT NULL,
+            created_at TEXT,
+            PRIMARY KEY (edge_id, relation)
+        )""",
+        'columns': {
+            'edge_id': None, 'relation': None,
+            'description': "''", 'weight': '0.5',
+            'encoding_source': "''",
+            'decay_rate': 'NULL', 'created_at': 'NULL',
         }
     },
 
@@ -433,11 +448,14 @@ INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_nodes_emotion ON nodes(emotion)',
     'CREATE INDEX IF NOT EXISTS idx_nodes_project ON nodes(project)',
     'CREATE INDEX IF NOT EXISTS idx_nodes_created ON nodes(created_at)',
-    # edges
+    # edges (v22: edge_id PK, source/target for lookups)
     'CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id)',
     'CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id)',
     'CREATE INDEX IF NOT EXISTS idx_edges_weight ON edges(weight)',
-    'CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(edge_type)',
+    'CREATE INDEX IF NOT EXISTS idx_edges_pair ON edges(source_id, target_id)',
+    # edge_relations (v22: edge_id FK, relation for type queries)
+    'CREATE INDEX IF NOT EXISTS idx_edge_relations_edge ON edge_relations(edge_id)',
+    'CREATE INDEX IF NOT EXISTS idx_edge_relations_relation ON edge_relations(relation)',
     # node_vectors
     'CREATE INDEX IF NOT EXISTS idx_vectors_term ON node_vectors(term)',
     'CREATE INDEX IF NOT EXISTS idx_vectors_node ON node_vectors(node_id)',
@@ -562,6 +580,173 @@ def _backfill_data(conn, from_version):
             print(f"[brain] v15 backfill: generated content_summary for existing nodes")
         except Exception as e:
             print(f"[brain] v15 backfill note: {e}")
+
+    if from_version < 22:
+        # v22: Rebuild edges + edge_relations with edge_id, single-direction,
+        # clean columns (no deprecated relation/edge_type/description/stability).
+        _migrate_edges_v22(conn)
+
+
+def _migrate_edges_v22(conn):
+    """Rebuild edges + edge_relations for v22: edge_id, single-direction, clean columns.
+
+    Handles upgrading from:
+    - v20: old edges (bidirectional, deprecated columns), no edge_relations
+    - v21: old edges + old edge_relations (source_id/target_id PK)
+
+    The migration:
+    1. Reads all edges, deduplicates mirrors (keeps one direction per pair)
+    2. Assigns edge_id to each unique pair
+    3. Migrates relation data to edge_relations with edge_id reference
+    4. Rebuilds both tables with clean schemas
+    """
+    import hashlib
+
+    def _edge_id(src, tgt):
+        """Deterministic edge ID from source+target."""
+        h = hashlib.md5((src + ':' + tgt).encode()).hexdigest()[:8]
+        return 'edg_' + h
+
+    try:
+        # Check if already migrated (edges table has edge_id as PK, not just as column)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(edges)").fetchall()}
+        if 'edge_id' in cols:
+            # Check if edge_id is populated (v22 complete) or NULL (v21 partial)
+            sample = conn.execute("SELECT edge_id FROM edges LIMIT 1").fetchone()
+            if sample and sample[0] is not None:
+                print("[brain] v22 migration: edges already migrated, skipping")
+                return
+            # edge_id column exists but values are NULL — need full migration
+
+        # Check if old edge_relations exists (v21) or not (v20)
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        has_old_edge_relations = 'edge_relations' in tables
+
+        # --- Step 1: Read all old edges, deduplicate mirrors ---
+        old_edges = conn.execute("""
+            SELECT source_id, target_id, weight, co_access_count,
+                   last_strengthened, created_at,
+                   relation, description, decay_rate
+            FROM edges
+            WHERE source_id < target_id
+        """).fetchall()
+
+        # Also get node created_at for direction detection
+        node_dates = {}
+        for row in conn.execute("SELECT id, created_at FROM nodes").fetchall():
+            node_dates[row[0]] = row[1] or ''
+
+        print(f"[brain] v22 migration: {len(old_edges)} unique edge pairs to migrate")
+
+        # --- Step 2: Build new edge rows with direction ---
+        new_edges = []  # (edge_id, source, target, weight, co_access, last_str, created)
+        edge_id_map = {}  # (canonical_src, canonical_tgt) -> edge_id
+
+        for src, tgt, weight, co_access, last_str, created, rel, desc, decay in old_edges:
+            # Direction: newer node is source (encoder's intent)
+            src_date = node_dates.get(src, '')
+            tgt_date = node_dates.get(tgt, '')
+
+            if src_date > tgt_date:
+                final_src, final_tgt = src, tgt
+            elif tgt_date > src_date:
+                final_src, final_tgt = tgt, src
+            else:
+                # Same date or missing — lexicographic
+                final_src, final_tgt = (src, tgt) if src < tgt else (tgt, src)
+
+            eid = _edge_id(final_src, final_tgt)
+            edge_id_map[(src, tgt)] = (eid, final_src, final_tgt)
+            # Also map the reverse for lookups
+            edge_id_map[(tgt, src)] = (eid, final_src, final_tgt)
+
+            new_edges.append((eid, final_src, final_tgt, weight,
+                              co_access or 0, last_str, created))
+
+        # --- Step 3: Build new edge_relations rows ---
+        new_relations = []  # (edge_id, relation, description, weight, encoding_source, decay_rate, created)
+
+        if has_old_edge_relations:
+            # v21→v22: read from old edge_relations (already has multi-relation data)
+            old_rels = conn.execute("""
+                SELECT source_id, target_id, relation, description, weight, decay_rate, created_at
+                FROM edge_relations
+                WHERE source_id < target_id
+            """).fetchall()
+
+            for src, tgt, rel, desc, w, decay, created in old_rels:
+                mapping = edge_id_map.get((src, tgt))
+                if mapping:
+                    eid = mapping[0]
+                    new_relations.append((eid, rel or 'related', desc or '',
+                                          w, 'migration:v22', decay, created))
+
+            print(f"[brain] v22 migration: {len(old_rels)} edge_relations from v21")
+        else:
+            # v20→v22: no edge_relations, read from old edges columns
+            for src, tgt, weight, co_access, last_str, created, rel, desc, decay in old_edges:
+                mapping = edge_id_map.get((src, tgt))
+                if mapping:
+                    eid = mapping[0]
+                    new_relations.append((eid, rel or 'related', desc or '',
+                                          weight, 'migration:v22', decay, created))
+
+            print(f"[brain] v22 migration: {len(new_relations)} relations from old edges")
+
+        # --- Step 4: Create new tables ---
+        conn.execute("DROP TABLE IF EXISTS edges_v22")
+        conn.execute("""CREATE TABLE edges_v22 (
+            edge_id TEXT PRIMARY KEY,
+            source_id TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            weight REAL DEFAULT 0.5,
+            co_access_count INTEGER DEFAULT 0,
+            last_strengthened TEXT,
+            created_at TEXT,
+            UNIQUE(source_id, target_id)
+        )""")
+
+        conn.execute("DROP TABLE IF EXISTS edge_relations_v22")
+        conn.execute("""CREATE TABLE edge_relations_v22 (
+            edge_id TEXT NOT NULL,
+            relation TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            weight REAL DEFAULT 0.5,
+            encoding_source TEXT DEFAULT '',
+            decay_rate REAL DEFAULT NULL,
+            created_at TEXT,
+            PRIMARY KEY (edge_id, relation)
+        )""")
+
+        # --- Step 5: Insert data ---
+        conn.executemany(
+            "INSERT OR IGNORE INTO edges_v22 VALUES (?, ?, ?, ?, ?, ?, ?)",
+            new_edges)
+        conn.executemany(
+            "INSERT OR IGNORE INTO edge_relations_v22 VALUES (?, ?, ?, ?, ?, ?, ?)",
+            new_relations)
+
+        # --- Step 6: Swap tables ---
+        conn.execute("DROP TABLE IF EXISTS edges")
+        conn.execute("ALTER TABLE edges_v22 RENAME TO edges")
+
+        if has_old_edge_relations:
+            conn.execute("DROP TABLE IF EXISTS edge_relations")
+        conn.execute("ALTER TABLE edge_relations_v22 RENAME TO edge_relations")
+
+        conn.commit()
+
+        # Verify
+        edge_count = conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
+        rel_count = conn.execute("SELECT COUNT(*) FROM edge_relations").fetchone()[0]
+        print(f"[brain] v22 migration complete: {edge_count} edges, {rel_count} relations")
+
+    except Exception as e:
+        print(f"[brain] v22 migration ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        raise  # Don't silently continue with broken data
 
 
 def ensure_schema(conn, db_path=None):
