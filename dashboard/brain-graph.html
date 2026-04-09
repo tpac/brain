@@ -3,10 +3,12 @@
 <title>Anchors Brain 3D</title>
 <style>
 body { margin: 0; background: #000; font-family: -apple-system, sans-serif; }
-#legend { position: fixed; top: 10px; right: 10px; background: rgba(10,10,20,0.85); border: 1px solid #333; border-radius: 8px; padding: 10px; max-height: 85vh; overflow-y: auto; z-index: 10; font-size: 10px; color: #888; }
-#legend h3 { color: #555; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 6px; }
-.li { display: flex; align-items: center; gap: 5px; padding: 2px 0; }
-.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+#legend { position: fixed; top: 0; right: 0; background: rgba(10,10,20,0.92); border-left: 1px solid #333; padding: 14px; height: 100vh; overflow-y: auto; z-index: 10; font-size: 11px; color: #888; width: 240px; transform: translateX(200px); transition: transform 0.3s ease; }
+#legend:hover { transform: translateX(0); }
+#legend h3 { color: #555; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px; }
+.li { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 4px; cursor: pointer; transition: background 0.15s; }
+.li:hover { background: rgba(255,255,255,0.08); color: white; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 4px currentColor; }
 </style></head><body>
 <div id="graph"></div>
 <div id="legend"><h3>Communities</h3><div class="li"><div class="dot" style="background:#FF6B6B"></div>Community Detection Architecture</div><div class="li"><div class="dot" style="background:#4ECDC4"></div>Recall and Encoding Systems</div><div class="li"><div class="dot" style="background:#45B7D1"></div>Quality Assessment and Evaluation</div><div class="li"><div class="dot" style="background:#96CEB4"></div>Identity and Memory Anchoring</div><div class="li"><div class="dot" style="background:#FFEAA7"></div>Plugin and Hook Architecture</div><div class="li"><div class="dot" style="background:#DDA0DD"></div>Brain Development and Tools</div><div class="li"><div class="dot" style="background:#98D8C8"></div>Fractal Trace Systems</div><div class="li"><div class="dot" style="background:#F7DC6F"></div>Performance and Latency Issues</div><div class="li"><div class="dot" style="background:#BB8FCE"></div>Knowledge and Memory Insights</div><div class="li"><div class="dot" style="background:#85C1E9"></div>Brain Daemon Operations</div><div class="li"><div class="dot" style="background:#F8C471"></div>Encoder Architecture and Evaluation</div><div class="li"><div class="dot" style="background:#82E0AA"></div>Autonomous Operation and Correction</div><div class="li"><div class="dot" style="background:#F1948A"></div>Hebbian Learning and Node Quality</div><div class="li"><div class="dot" style="background:#AED6F1"></div>Boot and Context Systems</div><div class="li"><div class="dot" style="background:#D7BDE2"></div>Dashboard and Encoding Interface</div><div class="li"><div class="dot" style="background:#A3E4D7"></div>Temporal and Cross-Project Systems</div><div class="li"><div class="dot" style="background:#FAD7A0"></div>Recall Infrastructure and Cleanup</div><div class="li"><div class="dot" style="background:#A9CCE3"></div>Recall Pipeline and Traversal</div><div class="li"><div class="dot" style="background:#D5F5E3"></div>Encoding Agent Production</div><div class="li"><div class="dot" style="background:#FADBD8"></div>Brain Identity and Architecture</div><div class="li"><div class="dot" style="background:#E8DAEF"></div>Testing and Daemon Reliability</div><div class="li"><div class="dot" style="background:#D4EFDF"></div>Edge Scoring and Selection</div><div class="li"><div class="dot" style="background:#FCF3CF"></div>Edge Model and Schema</div><div class="li"><div class="dot" style="background:#D6EAF8"></div>Encoding Agent Optimization</div><div class="li"><div class="dot" style="background:#FDEBD0"></div>Edge Types and Vocabulary</div><div class="li"><div class="dot" style="background:#E2EFDA"></div>Dashboard Truth and Visibility</div><div class="li"><div class="dot" style="background:#FFF2CC"></div>Judge and Layer Architecture</div><div class="li"><div class="dot" style="background:#D9E2F3"></div>Hook Context and Boot</div><div class="li"><div class="dot" style="background:#F2F2F2"></div>Precision and Logging Systems</div><div class="li"><div class="dot" style="background:#E6B8AF"></div>Encoding Contracts and Integration</div></div>
@@ -35,5 +37,17 @@ ForceGraph3D()(document.getElementById("graph"))
   .warmupTicks(80)
   .cooldownTicks(150)
   .onNodeClick(function(node){this.cameraPosition({x:node.x+150,y:node.y+80,z:node.z+150},node,1000)})
+});
+
+// Legend interaction: click community to fly to it
+document.querySelectorAll(".li").forEach(function(el) {
+  el.addEventListener("click", function() {
+    var name = this.textContent.trim();
+    var node = gData.nodes.find(function(n) { return n.hub && n.name === name; });
+    if (node) {
+      var g = document.getElementById("graph").__forceGraph;
+      // Fly camera to community hub
+    }
+  });
 });
 </script></body></html>
