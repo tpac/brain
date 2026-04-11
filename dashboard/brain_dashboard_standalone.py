@@ -2828,8 +2828,8 @@ async function loadGraph3D() {
         .d3VelocityDecay(0.5)
         .warmupTicks(150)
         .cooldownTicks(300)
-        .d3Force('charge', d3.forceManyBody().strength(-30).distanceMax(300))
-        .d3Force('link', d3.forceLink().distance(l => l.relation === 'community_member' ? 20 : 60).strength(l => l.relation === 'community_member' ? 0.5 : 0.1))
+        .d3Force('charge', d3.forceManyBody().strength(-15).distanceMax(200))
+        .d3Force('link', d3.forceLink().distance(l => l.relation === 'community_member' ? 8 : 40).strength(l => l.relation === 'community_member' ? 0.7 : 0.05))
         .onNodeClick(node => {
           graph3d.cameraPosition({x: node.x + 150, y: node.y + 80, z: node.z + 150}, node, 1000);
           loadNodeDetail(node.id);
