@@ -326,7 +326,7 @@ def _query_encoding_activity(since_ts="", limit=30):
         return []
 
 
-def _query_encoding_runs(limit=10, session_id=''):
+def _query_encoding_runs(limit=10, session_id='', hours=24):
     """Read encoding runs from S1E traces — the single source of truth.
     Each S1E chain has O (prompt), K (catalog), delta (actions + results)."""
     logs_path = _get_logs_db_path()
@@ -336,8 +336,8 @@ def _query_encoding_runs(limit=10, session_id=''):
         conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=3)
 
         # Get S1E chains — start from O events (every run has one)
-        where = "scale = 's1' AND event_type = 'O' AND ref_type = 'encoding_prompt'"
-        params = []
+        where = "scale = 's1' AND event_type = 'O' AND ref_type = 'encoding_prompt' AND created_at > ?"
+        params = [utc_cutoff(hours=hours)]
         if session_id:
             where += " AND session_id = ?"
             params.append(session_id)
@@ -867,7 +867,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def _serve_encoding_runs(self, params):
         """Return encoding runs — grouped actions with reconstructed prompt context."""
         limit = int(params.get("limit", [10])[0])
-        runs = _query_encoding_runs(limit=limit)
+        hours = int(params.get("hours", [24])[0])
+        runs = _query_encoding_runs(limit=limit, hours=hours)
         self._json_response(200, {"runs": runs})
 
     def _serve_hook_log(self, params):
@@ -900,7 +901,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
         """Return unified errors from all system components."""
         hours = int(params.get("hours", [24])[0])
         limit = int(params.get("limit", [50])[0])
+        source = params.get("source", [""])[0]
         errors = _query_all_errors(limit=limit, hours=hours)
+        if source:
+            errors = [e for e in errors if (e.get('source') or '') == source]
         self._json_response(200, {"errors": errors, "count": len(errors)})
 
     def _serve_system_status(self):
@@ -1325,7 +1329,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             for cid in unique_comms:
                 ct = community_titles.get(cid, 'Community')
                 mc = len([m for m, c in member_to_community.items() if c == cid])
-                communities.append({"id": cid, "name": ct[:60], "color": comm_color.get(cid, '#555'), "count": mc})
+                communities.append({"id": cid, "hub_id": cid, "name": ct[:60], "color": comm_color.get(cid, '#555'), "count": mc})
 
             self._json_response(200, {
                 "nodes": nodes, "edges": edges, "communities": communities,
@@ -1566,7 +1570,7 @@ canvas { width: 100%; height: 100%; }
   <div class="tab active" onclick="switchTab('live')">Live</div>
   <div class="tab" onclick="switchTab('graph')">Graph</div>
   <div class="tab" onclick="switchTab('explorer')">Explorer</div>
-  <div class="tab" onclick="switchTab('errors')">Errors <span id="err-badge" style="display:none;background:#ff4466;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:2px"></span></div>
+  <div class="tab" onclick="switchTab('logs')">Logs <span id="logs-badge" style="display:none;background:#ff4466;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:2px"></span></div>
   <div class="tab" onclick="switchTab('health')">Health</div>
   <div class="tab" onclick="switchTab('traces')">Traces</div>
 </div>
@@ -1577,7 +1581,6 @@ canvas { width: 100%; height: 100%; }
   <div class="feed-toggle">
     <button class="feed-btn active" onclick="switchFeed('decoding')">Decoding</button>
     <button class="feed-btn" onclick="switchFeed('encoding')">Encoding <span id="enc-badge" style="display:none;background:#ff4466;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
-    <button class="feed-btn" onclick="switchFeed('queue')">Queue</button>
     <select id="session-filter" onchange="onSessionFilterChange()" style="margin-left:auto;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
       <option value="">All sessions</option>
     </select>
@@ -1589,7 +1592,6 @@ canvas { width: 100%; height: 100%; }
   </div>
   <div class="feed" id="feed-decoding"></div>
   <div class="feed" id="feed-encoding" style="display:none"></div>
-  <div class="feed" id="feed-queue" style="display:none"></div>
 </div>
 
 <div id="tab-graph" class="tab-content">
@@ -1620,27 +1622,22 @@ canvas { width: 100%; height: 100%; }
   </div>
 </div>
 
-<div id="tab-errors" class="tab-content">
-  <div style="padding:8px;display:flex;gap:8px;align-items:center">
-    <span style="color:#888;font-size:12px">Last</span>
-    <select id="error-hours" onchange="loadErrors()" style="background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px">
+<div id="tab-logs" class="tab-content">
+  <div class="feed-toggle">
+    <button class="feed-btn active" onclick="switchLogFeed('errors')">Errors <span id="err-badge" style="display:none;background:#ff4466;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:2px"></span></button>
+    <button class="feed-btn" onclick="switchLogFeed('queue')">Queue <span id="queue-badge" style="display:none;background:#ffaa33;color:#000;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:2px"></span></button>
+    <button class="feed-btn" onclick="switchLogFeed('daemon')">Daemon</button>
+    <select id="error-hours" onchange="loadLogs()" style="margin-left:auto;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
       <option value="1">1h</option>
       <option value="6">6h</option>
       <option value="24" selected>24h</option>
       <option value="168">7d</option>
     </select>
-    <select id="error-source" onchange="filterErrors()" style="background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px">
-      <option value="">All sources</option>
-      <option value="brain">Brain</option>
-      <option value="hook">Hook</option>
-      <option value="daemon">Daemon</option>
-      <option value="telemetry">Telemetry</option>
-      <option value="conflict">Conflict</option>
-    </select>
-    <button onclick="loadErrors()" style="background:#1a1a2a;color:#7eb8ff;border:1px solid #3a3a5a;padding:3px 12px;border-radius:4px;cursor:pointer">Refresh</button>
-    <span id="error-count" style="color:#666;font-size:11px;margin-left:auto"></span>
+    <span id="logs-count" style="color:#666;font-size:11px"></span>
   </div>
-  <div class="feed" id="errors-feed"></div>
+  <div class="feed" id="feed-errors"></div>
+  <div class="feed" id="feed-queue" style="display:none"></div>
+  <div class="feed" id="feed-daemon" style="display:none"></div>
 </div>
 
 <div id="tab-health" class="tab-content">
@@ -1660,9 +1657,9 @@ canvas { width: 100%; height: 100%; }
       <option value="s4">S4 (Growth)</option>
     </select>
     <select id="trace-hours-filter" onchange="loadTraces()" style="background:#111;color:#ccc;border:1px solid #333;padding:4px 8px;border-radius:4px;font-size:11px">
-      <option value="1" selected>Last hour</option>
+      <option value="1">Last hour</option>
       <option value="6">Last 6h</option>
-      <option value="24">Last 24h</option>
+      <option value="24" selected>Last 24h</option>
       <option value="168">Last 7d</option>
     </select>
     <select id="trace-session-filter" onchange="loadTraces()" style="background:#111;color:#ccc;border:1px solid #333;padding:4px 8px;border-radius:4px;font-size:11px">
@@ -1674,18 +1671,19 @@ canvas { width: 100%; height: 100%; }
 </div>
 
 <script>
+window.onerror = function(msg, src, line, col, err) { document.title = 'ERR L' + line + ': ' + msg; console.error('JS ERROR line ' + line + ': ' + msg); };
 let daemonAlive = false;
 
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t, i) => {
-    const tabs = ['live','graph','explorer','errors','health','traces'];
+    const tabs = ['live','graph','explorer','logs','health','traces'];
     t.classList.toggle('active', tabs[i] === name);
   });
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  if (name === 'graph') { setTimeout(() => { if (!graph3dData) { loadGraph3D(); } else if (graph3d) { var c = document.getElementById('graph-3d'); graph3d.width(c.offsetWidth).height(c.offsetHeight); } }, 100); }
+  if (name === 'graph') { setTimeout(() => { if (!graph3dData) { loadGraph3D(); } else if (graph3d) { var c = document.getElementById('graph-3d'); c.style.height = 'calc(100vh - 42px)'; void c.offsetHeight; graph3d.width(c.offsetWidth || 800).height(c.offsetHeight || 600); } }, 200); }
   if (name === 'explorer') searchNodes();
-  if (name === 'errors') loadErrors();
+  if (name === 'logs') loadLogs();
   if (name === 'health') { loadHealth(); loadSystemStatus(); }
   if (name === 'traces') { loadTraces(); _startTraceAutoRefresh(); } else { _stopTraceAutoRefresh(); }
 }
@@ -1950,14 +1948,13 @@ function updateEncBadge(count) {
 }
 function switchFeed(name) {
   activeFeed = name;
-  document.querySelectorAll('.feed-btn').forEach(b => {
+  document.querySelectorAll('#tab-live .feed-btn').forEach(b => {
     const label = b.textContent.toLowerCase();
     b.classList.toggle('active', label.includes(name));
   });
   document.getElementById('feed-decoding').style.display = name === 'decoding' ? 'block' : 'none';
   document.getElementById('feed-encoding').style.display = name === 'encoding' ? 'block' : 'none';
-  document.getElementById('feed-queue').style.display = name === 'queue' ? 'block' : 'none';
-  document.getElementById('scale-filter').style.display = (name === 'decoding' || name === 'encoding') ? '' : 'none';
+  document.getElementById('scale-filter').style.display = '';
   if (name === 'decoding') loadDecodingFeed();
   if (name === 'encoding') {
     if (!encodingLoaded) loadEncodingActivity();
@@ -1965,7 +1962,6 @@ function switchFeed(name) {
     var badge = document.getElementById('enc-badge');
     badge.style.display = 'none'; badge.textContent = '';
   }
-  if (name === 'queue') loadSignalQueue();
 }
 
 function loadDecodingFeed() {
@@ -2099,7 +2095,7 @@ async function loadEncodingActivity() {
   try {
     const container = document.getElementById('feed-encoding');
     // Load encoding runs (grouped by run, with prompt context)
-    const runsR = await fetch('/api/encoding-runs?limit=10');
+    const runsR = await fetch('/api/encoding-runs?limit=50&hours=12');
     const runsD = await runsR.json();
 
     if (!runsD.runs || !runsD.runs.length) {
@@ -2283,7 +2279,7 @@ async function loadSignalQueue() {
   }
 }
 
-setInterval(() => { if (activeFeed === 'queue') loadSignalQueue(); }, 3000);
+setInterval(() => { if (activeLogFeed === 'queue') loadSignalQueue(); }, 5000);
 
 // Explorer
 let expandedNode = null;
@@ -2320,16 +2316,38 @@ function toggleNode(id, el) {
 }
 
 // Errors
+// ═══ LOGS TAB (Errors + Queue + Daemon) ═══
+let activeLogFeed = 'errors';
+
+function switchLogFeed(name) {
+  activeLogFeed = name;
+  document.querySelectorAll('#tab-logs .feed-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  ['errors','queue','daemon'].forEach(f => {
+    document.getElementById('feed-' + f).style.display = f === name ? '' : 'none';
+  });
+  // Clear badge for this feed
+  if (name === 'errors') { document.getElementById('err-badge').style.display = 'none'; }
+  if (name === 'queue') { document.getElementById('queue-badge').style.display = 'none'; }
+  loadLogs();
+}
+
+async function loadLogs() {
+  if (activeLogFeed === 'errors') loadErrors();
+  else if (activeLogFeed === 'queue') loadSignalQueue();
+  else if (activeLogFeed === 'daemon') loadDaemonLogs();
+}
+
 async function loadErrors() {
   const hours = document.getElementById('error-hours').value;
   try {
     const r = await fetch('/api/errors?hours=' + hours + '&limit=100');
     const d = await r.json();
-    const feed = document.getElementById('errors-feed');
-    document.getElementById('error-count').textContent = d.count + ' errors';
+    const feed = document.getElementById('feed-errors');
+    document.getElementById('logs-count').textContent = d.count + ' errors';
 
     if (!d.errors || !d.errors.length) {
-      feed.innerHTML = '<div style="color:#4a4;padding:20px;text-align:center">✅ No errors in the last ' + hours + 'h</div>';
+      feed.innerHTML = '<div style="color:#4a4;padding:20px;text-align:center">No errors in the last ' + hours + 'h</div>';
       return;
     }
     feed.innerHTML = '';
@@ -2339,18 +2357,56 @@ async function loadErrors() {
       const levelColor = {critical:'#ff4444',error:'#ff6644',warning:'#ffaa33',info:'#4a9eff'}[e.level] || '#888';
       div.style.cssText = 'padding:8px 12px;margin:4px 0;background:#111118;border-radius:6px;border-left:3px solid ' + levelColor + ';font-size:12px';
       const t = localTime(e.timestamp);
+      const sessionTag = e.session_id ? '<span style="color:#555;font-size:9px;margin-left:4px">' + e.session_id.substring(0,8) + '</span>' : '';
       div.innerHTML =
         '<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:bold;text-transform:uppercase;background:' + levelColor + '22;color:' + levelColor + '">' + (e.level || 'error') + '</span> ' +
         '<span style="color:#888;font-size:10px">' + (e.source || '') + '</span> ' +
-        '<span style="color:#aaa;font-weight:bold">' + escapeHtml(e.component || '') + '</span>' +
+        '<span style="color:#aaa;font-weight:bold">' + escapeHtml(e.component || '') + '</span>' + sessionTag +
         '<div style="color:#ccc;margin-top:3px">' + escapeHtml(e.error || '') + '</div>' +
         (e.context ? '<div style="color:#666;font-size:10px;margin-top:2px">' + escapeHtml(e.context) + '</div>' : '') +
         '<div style="color:#555;font-size:10px;margin-top:2px">' + t + '</div>';
       feed.appendChild(div);
     }
-    filterErrors();
   } catch(e) {
-    document.getElementById('errors-feed').innerHTML = '<div style="color:#f66;padding:20px">Failed to load errors: ' + e + '</div>';
+    document.getElementById('feed-errors').innerHTML = '<div style="color:#f66;padding:20px">Failed to load: ' + e + '</div>';
+  }
+}
+
+async function loadDaemonLogs() {
+  const hours = document.getElementById('error-hours').value;
+  try {
+    const r = await fetch('/api/errors?hours=' + hours + '&limit=200&source=daemon');
+    const d = await r.json();
+    const feed = document.getElementById('feed-daemon');
+    // Also show daemon restarts from hook_errors
+    const r2 = await fetch('/api/errors?hours=' + hours + '&limit=50&source=hook');
+    const d2 = await r2.json();
+
+    const all = [...(d.errors || []), ...(d2.errors || [])];
+    all.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+    document.getElementById('logs-count').textContent = all.length + ' daemon events';
+
+    if (!all.length) {
+      feed.innerHTML = '<div style="color:#4a4;padding:20px;text-align:center">No daemon events in the last ' + hours + 'h</div>';
+      return;
+    }
+    feed.innerHTML = '';
+    for (const e of all) {
+      const div = document.createElement('div');
+      const levelColor = {critical:'#ff4444',error:'#ff6644',warning:'#ffaa33',info:'#4a9eff'}[e.level] || '#888';
+      const isRestart = (e.error || '').includes('restart') || (e.component || '').includes('restart');
+      const borderColor = isRestart ? '#4a9eff' : levelColor;
+      div.style.cssText = 'padding:8px 12px;margin:4px 0;background:#111118;border-radius:6px;border-left:3px solid ' + borderColor + ';font-size:12px';
+      const t = localTime(e.timestamp);
+      div.innerHTML =
+        '<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:bold;text-transform:uppercase;background:' + borderColor + '22;color:' + borderColor + '">' + (isRestart ? 'restart' : e.level || 'error') + '</span> ' +
+        '<span style="color:#aaa;font-weight:bold">' + escapeHtml(e.component || '') + '</span>' +
+        '<div style="color:#ccc;margin-top:3px">' + escapeHtml(e.error || '') + '</div>' +
+        '<div style="color:#555;font-size:10px;margin-top:2px">' + t + '</div>';
+      feed.appendChild(div);
+    }
+  } catch(e) {
+    document.getElementById('feed-daemon').innerHTML = '<div style="color:#f66;padding:20px">Failed to load: ' + e + '</div>';
   }
 }
 
@@ -2419,40 +2475,52 @@ setInterval(() => {
   if (statusTab && statusTab.classList.contains('active')) loadSystemStatus();
 }, 5000);
 
-function filterErrors() {
-  const val = document.getElementById('error-source').value;
-  document.querySelectorAll('#errors-feed > div').forEach(el => {
-    if (!val) { el.style.display = ''; return; }
-    el.style.display = (el.dataset.source || '') === val ? '' : 'none';
-  });
-}
-
-// Auto-refresh errors every 10s — badge only shows NEW errors
+// Auto-refresh logs badges every 10s
 let lastSeenErrorCount = -1;
+let lastSeenQueueCount = -1;
+
 setInterval(async () => {
-  const errTab = document.getElementById('tab-errors');
-  if (errTab && errTab.classList.contains('active')) {
-    loadErrors();
-    // When viewing the tab, mark current count as seen
-    try {
-      const r2 = await fetch('/api/errors?hours=1&limit=1');
-      const d2 = await r2.json();
-      lastSeenErrorCount = d2.count;
-      document.getElementById('err-badge').style.display = 'none';
-    } catch(e) {}
-    return;
-  }
-  // Background check — only badge if count increased
+  const logsTab = document.getElementById('tab-logs');
+  const isViewing = logsTab && logsTab.classList.contains('active');
+
+  // Error badge
   try {
     const r = await fetch('/api/errors?hours=1&limit=1');
     const d = await r.json();
-    const badge = document.getElementById('err-badge');
-    if (lastSeenErrorCount < 0) { lastSeenErrorCount = d.count; }
-    if (d.count > lastSeenErrorCount) {
-      badge.style.display = '';
-      badge.textContent = d.count - lastSeenErrorCount;
+    const errBadge = document.getElementById('err-badge');
+    const logsBadge = document.getElementById('logs-badge');
+    if (lastSeenErrorCount < 0) lastSeenErrorCount = d.count;
+    if (isViewing && activeLogFeed === 'errors') {
+      lastSeenErrorCount = d.count;
+      errBadge.style.display = 'none';
+      loadErrors();
+    } else if (d.count > lastSeenErrorCount) {
+      const diff = d.count - lastSeenErrorCount;
+      errBadge.textContent = diff; errBadge.style.display = '';
+      logsBadge.textContent = diff; logsBadge.style.display = '';
     } else {
-      badge.style.display = 'none';
+      errBadge.style.display = 'none';
+      if (lastSeenQueueCount >= 0) logsBadge.style.display = 'none';
+    }
+  } catch(e) {}
+
+  // Queue badge
+  try {
+    const r = await fetch('/api/signal-queue');
+    const signals = await r.json();
+    const count = signals.length;
+    const queueBadge = document.getElementById('queue-badge');
+    const logsBadge = document.getElementById('logs-badge');
+    if (lastSeenQueueCount < 0) lastSeenQueueCount = count;
+    if (isViewing && activeLogFeed === 'queue') {
+      lastSeenQueueCount = count;
+      queueBadge.style.display = 'none';
+    } else if (count > lastSeenQueueCount) {
+      const diff = count - lastSeenQueueCount;
+      queueBadge.textContent = diff; queueBadge.style.display = '';
+      logsBadge.style.display = ''; logsBadge.textContent = '+';
+    } else {
+      queueBadge.style.display = 'none';
     }
   } catch(e) {}
 }, 10000);
@@ -2559,9 +2627,28 @@ async function loadTraces() {
   } catch(e) { console.error('loadTraces', e); }
 }
 
+function _traceChainLabel(chainId) {
+  // Map chain IDs to readable labels
+  // s0-{session}-{stop} → S0 Exchange #stop
+  // s1r-{session}-{stop} → S1 Recall #stop
+  // s1e-{session}-{stop} → S1 Encode #stop
+  // s2-{date}-{op} → S2 {Op}
+  if (chainId.startsWith('s0-')) { const p = chainId.split('-'); return 'S0 Exchange #' + (p[2] || '?'); }
+  if (chainId.startsWith('s1r-')) { const p = chainId.split('-'); return 'S1 Recall (Surface) #' + (p[2] || '?'); }
+  if (chainId.startsWith('s1e-')) { const p = chainId.split('-'); return 'S1 Encode #' + (p[2] || '?'); }
+  if (chainId.startsWith('s2-')) {
+    const op = chainId.split('-').slice(2).join('-');
+    const labels = {community_detection:'S2 Community Detection', consolidation:'S2 Consolidation', edge_family_integration:'S2 Edge Families', relation_reclassify:'S2 Edge Reclassify'};
+    return labels[op] || 'S2 ' + op.replace(/_/g, ' ');
+  }
+  if (chainId.startsWith('s3-')) return 'S3 ' + chainId.split('-').slice(2).join(' ');
+  return chainId;
+}
+
 function _renderTracesBatch(el) {
   const scaleColors = {s0:'#888', s1:'#7eb8ff', s2:'#ffaa33', s3:'#33ff88', s4:'#ff66aa'};
-  const typeIcons = {O:'&#x1F441;', K:'&#x1F4D6;', delta:'&#x0394;', outcome:'&#x1F4CA;'};
+  const typeLabels = {O:'Observed', K:'Selected', delta:'Changed', outcome:'Outcome'};
+  const typeColors = {O:'#45B7D1', K:'#ffaa33', delta:'#33ff88', outcome:'#aa66ff'};
   const end = Math.min(_traceRendered + _TRACE_BATCH, _traceChainEntries.length);
 
   let html = '';
@@ -2570,22 +2657,24 @@ function _renderTracesBatch(el) {
     const firstTime = events[0].created_at;
     const chainScale = events[0].scale;
     const color = scaleColors[chainScale] || '#666';
+    const label = _traceChainLabel(chainId);
+    const sessionId = events[0].session_id || '';
+    const sessionTag = sessionId ? '<span style="color:#444;font-size:9px;margin-left:6px">' + sessionId.substring(0,8) + '</span>' : '';
 
     html += '<div style="background:#0a0a12;border-radius:8px;margin:6px 0;border-left:3px solid ' + color + '">';
     html += '<div style="padding:8px 12px;display:flex;justify-content:space-between;align-items:center">';
-    html += '<span style="color:' + color + ';font-size:11px;font-weight:bold">' + chainId + '</span>';
+    html += '<div><span style="color:' + color + ';font-size:12px;font-weight:bold">' + label + '</span>' + sessionTag + '</div>';
     html += '<span style="color:#555;font-size:10px">' + localTime(firstTime) + '</span>';
     html += '</div>';
 
     events.forEach(ev => {
-      const icon = typeIcons[ev.event_type] || '&#x2022;';
-      const evColor = scaleColors[ev.scale] || '#666';
+      const tColor = typeColors[ev.event_type] || '#666';
+      const tLabel = typeLabels[ev.event_type] || ev.event_type;
       html += '<div style="padding:4px 12px 4px 20px;border-top:1px solid #111;display:flex;gap:8px;align-items:flex-start">';
-      html += '<span style="flex-shrink:0">' + icon + '</span>';
+      html += '<span style="flex-shrink:0;font-size:10px;font-weight:bold;color:' + tColor + ';min-width:55px">' + tLabel + '</span>';
       html += '<div style="flex:1;min-width:0">';
-      html += '<span style="color:' + evColor + ';font-size:10px;margin-right:6px">' + ev.event_type + '</span>';
-      if (ev.ref_type) html += '<span style="color:#555;font-size:10px">[' + ev.ref_type + ']</span> ';
-      html += '<div style="color:#ccc;font-size:12px;margin-top:2px;white-space:pre-wrap;word-break:break-word">' + escapeHtml((ev.summary || '').substring(0, 200)) + '</div>';
+      if (ev.ref_type) html += '<span style="color:#666;font-size:10px;background:#1a1a2a;padding:1px 4px;border-radius:2px;margin-right:4px">' + ev.ref_type + '</span>';
+      html += '<div style="color:#ccc;font-size:12px;margin-top:2px;white-space:pre-wrap;word-break:break-word">' + escapeHtml((ev.summary || '').substring(0, 300)) + '</div>';
       html += '</div>';
       html += '<span style="color:#444;font-size:9px;flex-shrink:0;white-space:nowrap">' + localTime(ev.created_at, 'time') + '</span>';
       html += '</div>';
@@ -2735,21 +2824,24 @@ async function loadGraph3D() {
         .linkColor(l => l.relation === 'community_member' ? '#333' : '#222')
         .linkOpacity(l => l.relation === 'community_member' ? 0.15 : 0.08)
         .linkWidth(l => l.relation === 'community_member' ? 0.3 : 0.15)
-        .d3AlphaDecay(0.06)
-        .d3VelocityDecay(0.4)
-        .warmupTicks(100)
-        .cooldownTicks(200)
+        .d3AlphaDecay(0.08)
+        .d3VelocityDecay(0.5)
+        .warmupTicks(150)
+        .cooldownTicks(300)
+        .d3Force('charge', d3.forceManyBody().strength(-30).distanceMax(300))
+        .d3Force('link', d3.forceLink().distance(l => l.relation === 'community_member' ? 20 : 60).strength(l => l.relation === 'community_member' ? 0.5 : 0.1))
         .onNodeClick(node => {
           graph3d.cameraPosition({x: node.x + 150, y: node.y + 80, z: node.z + 150}, node, 1000);
           loadNodeDetail(node.id);
         });
     }
 
-    // Build legend
+    // Build legend with click-to-focus
     const legendEl = document.getElementById('legend-items');
     if (graph3dData.communities && graph3dData.communities.length) {
       legendEl.innerHTML = graph3dData.communities.map(c =>
         '<div style="display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:4px;cursor:pointer;transition:background 0.15s" ' +
+        'onclick="focusCommunity(&quot;' + (c.hub_id || '') + '&quot;)" ' +
         'onmouseover="this.style.background=`rgba(255,255,255,0.08)`" onmouseout="this.style.background=`none`">' +
         '<div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:' + c.color + ';box-shadow:0 0 4px ' + c.color + '"></div>' +
         '<span style="color:#aaa">' + c.name + ' (' + c.count + ')</span></div>'
@@ -2766,6 +2858,14 @@ function toggleLegend() {
   const el = document.getElementById('graph-legend');
   legendVisible = !legendVisible;
   el.style.transform = legendVisible ? 'translateX(0)' : 'translateX(220px)';
+}
+
+function focusCommunity(hubId) {
+  if (!graph3d || !hubId) return;
+  const node = graph3d.graphData().nodes.find(n => n.id === hubId);
+  if (node) {
+    graph3d.cameraPosition({x: node.x + 120, y: node.y + 60, z: node.z + 120}, node, 1200);
+  }
 }
 
 // Legacy — keep for backward compat but redirect
