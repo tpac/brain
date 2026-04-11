@@ -32,9 +32,11 @@ node_modules/
 *.swp
 *.swo
 
-# Logs
+# Logs and temp files
 brain.log
 daemon.log
+*.zip
+tmp_*
 
 # OS
 .DS_Store
@@ -69,8 +71,10 @@ exports/
 # Research outputs — large (26MB+), not source code
 references/research-agent-outputs/
 
-# Conversation logs — our history, not source code (159MB)
+# Session conversations and logs — personal data (400MB+)
 conversations/
+logs/
 
-# Claude Code temp files
-/tmp/
+# Stale data copies
+data/*.db
+data/*.db-*
