@@ -40,6 +40,9 @@ class ConsolidationDecoder(IntegrationUnit):
         if not self._has_new_traces('s1', ref_type='encoding_run'):
             return {'clusters': [], 'stats': {}, 'skipped': 'no new S1 traces'}
 
+        # Step 0: Graph health — archive broken artifacts
+        healed = self._heal_graph()
+
         last_ts = self._last_run_timestamp()
         is_cold_start = not last_ts
 
@@ -78,8 +81,49 @@ class ConsolidationDecoder(IntegrationUnit):
         return {
             'clusters': enriched,
             'stats': {**scan_stats, 'clusters_formed': len(enriched),
-                      'class_counts': dict(class_counts)},
+                      'class_counts': dict(class_counts),
+                      'healed': healed},
         }
+
+    # ══════════════════════════════════════════════════════════
+    # Step 0: Graph health
+    # ══════════════════════════════════════════════════════════
+
+    def _heal_graph(self):
+        """Archive broken graph artifacts. Runs before every scan.
+
+        Currently detects:
+        - Community nodes with 0 members (failed edge creation)
+        """
+        archived = []
+
+        # Find community nodes with no community_member edges
+        orphan_communities = self.brain.conn.execute("""
+            SELECT n.id, n.title FROM nodes n
+            WHERE n.type = 'community' AND n.archived = 0
+            AND NOT EXISTS (
+                SELECT 1 FROM edges e
+                JOIN edge_relations er ON er.edge_id = e.edge_id
+                WHERE (e.source_id = n.id OR e.target_id = n.id)
+                AND er.relation = 'community_member'
+            )
+        """).fetchall()
+
+        for nid, title in orphan_communities:
+            self.brain._node_dal.archive(nid)
+            archived.append({'id': nid, 'title': title, 'reason': 'community with 0 members'})
+            print('[consolidation] Healed: archived orphan community "%s" (%s)' % (
+                title[:50], nid[:8]), flush=True)
+
+        if archived:
+            self.brain.conn.commit()
+            self.trace('delta', 'consolidated',
+                       'Healed %d broken artifacts: %s' % (
+                           len(archived),
+                           ', '.join(a['title'][:30] for a in archived[:5])),
+                       metadata={'healed': archived})
+
+        return archived
 
     # ══════════════════════════════════════════════════════════
     # Step 1: Embedding scan
