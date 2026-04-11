@@ -1681,7 +1681,7 @@ function switchTab(name) {
   });
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  if (name === 'graph') { setTimeout(() => { if (!graph3dData) { loadGraph3D(); } else if (graph3d) { var c = document.getElementById('graph-3d'); c.style.height = 'calc(100vh - 42px)'; void c.offsetHeight; graph3d.width(c.offsetWidth || 800).height(c.offsetHeight || 600); } }, 200); }
+  if (name === 'graph') { setTimeout(() => { if (!graph3dData) { loadGraph3D(); } else if (graph3d) { var c = document.getElementById('graph-3d'); c.style.height = 'calc(100vh - 42px)'; void c.offsetHeight; var w = c.offsetWidth || 800; var h = c.offsetHeight || 600; graph3d.width(w).height(h); graph3d.renderer().setSize(w, h); graph3d.camera().aspect = w/h; graph3d.camera().updateProjectionMatrix(); } }, 300); }
   if (name === 'explorer') searchNodes();
   if (name === 'logs') loadLogs();
   if (name === 'health') { loadHealth(); loadSystemStatus(); }
