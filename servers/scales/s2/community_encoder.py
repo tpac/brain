@@ -35,7 +35,8 @@ class CommunityEncoder(IntegrationUnit):
         Args:
             proposals: List of proposal dicts from decoder.
                        Only actionable types are processed:
-                       new_community, add_to_existing, drift, health_update.
+                       new_community, add_to_existing, drift, health_update,
+                       merge_communities.
             community_state: Current community state from decoder.
 
         Returns:
@@ -46,7 +47,8 @@ class CommunityEncoder(IntegrationUnit):
         # Filter to actionable proposals
         encoder_proposals = [p for p in proposals
                              if p['type'] in ('new_community', 'add_to_existing',
-                                              'drift', 'health_update')]
+                                              'drift', 'health_update',
+                                              'merge_communities')]
         if not encoder_proposals:
             self.trace('delta', 'community_enriched', 'No actionable proposals')
             return {'actions': 0, 'write_actions': 0, 'rounds': 0,
@@ -418,6 +420,20 @@ class CommunityEncoder(IntegrationUnit):
                     prop.get('signal', '?'),
                     prop.get('old_fraction', 0),
                     prop.get('new_fraction', 0)))
+
+            elif prop['type'] == 'merge_communities':
+                lines.append('    Larger: "%s" (%d members, id:%s)' % (
+                    prop.get('larger_title', '?'),
+                    prop.get('larger_size', 0),
+                    prop.get('larger_id', '?')[:8]))
+                lines.append('    Smaller: "%s" (%d members, id:%s)' % (
+                    prop.get('smaller_title', '?'),
+                    prop.get('smaller_size', 0),
+                    prop.get('smaller_id', '?')[:8]))
+                lines.append('    Overlap: %d shared (%.0f%% of smaller), %d unique in smaller' % (
+                    prop.get('shared_count', 0),
+                    prop.get('overlap_pct', 0) * 100,
+                    prop.get('unique_in_smaller', 0)))
 
             lines.append('')
 

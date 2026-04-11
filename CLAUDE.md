@@ -132,6 +132,7 @@ S2 operates when Tom is away. It sees the full graph, not just one turn. Multipl
 | **Community** | S1 traces + graph | z-score clusters + Sonnet enrichment | community nodes + member edges | **SHIPPED (127 communities)** |
 | Confidence | recall traces | decay/growth algo | adjusted scores | DESIGN NEEDED |
 | Correction | correction chain | resolution rules | archive stale | NOT BUILT |
+| Community Split | incoherent communities | re-cluster within community | split into focused children | NOT BUILT |
 | Weaver/Healer | orphan nodes | content + embeddings | new typed edges | NOT BUILT |
 
 **Ordering matters:** Edge families → Consolidation → Community. Each benefits from the previous.
@@ -139,8 +140,8 @@ S2 operates when Tom is away. It sees the full graph, not just one turn. Multipl
 ### Community Detection (S2CD + S2CE)
 
 **Architecture:** Three files, clean separation.
-- `community_decoder.py` — `CommunityDecoder(IntegrationUnit)`: algorithmic, <1s. Z-score pair scoring, cluster seeding, validation, affinity maps, drift detection, incremental placement.
-- `community_encoder.py` — `CommunityEncoder(IntegrationUnit)`: agentic Sonnet with `brain_batch` tool. Creates community nodes with narratives, situations, metadata. ~240s per batch of 10 proposals (Round 2 generating brain_batch is 90% of cost).
+- `community_decoder.py` — `CommunityDecoder(IntegrationUnit)`: algorithmic, <1s. Z-score pair scoring, cluster seeding, subset absorption, validation, affinity maps, drift detection, merge detection, incremental placement.
+- `community_encoder.py` — `CommunityEncoder(IntegrationUnit)`: agentic Sonnet with `brain_batch` tool. Handles 6 proposal types: new_community, add_to_existing, drift, health_update, merge_communities. ~240s per batch of 10 proposals.
 - `community.py` — `CommunityDetection(CommunityDecoder)`: thin orchestrator, wires decoder→encoder. Public API — callers import from here.
 
 **Performance profile (measured 2026-04-11):**
@@ -153,7 +154,11 @@ S2 operates when Tom is away. It sees the full graph, not just one turn. Multipl
 
 Community nodes are first-class — type='community', participate in recall, have embeddings, situations, full metadata. S1E is excluded from encoding community nodes (S2CE manages them).
 
-Interactions: `s2_community_enrichment` (v7, Sonnet prompt, 16K max_tokens), `s2_community` (decoder config), `s2_edge_families` (21-family classification).
+**Community merge:** Decoder detects communities with 80%+ member overlap (relative to smaller) AND < 3 unique members in the smaller. Adaptive threshold prevents premature merging in young brains. Encoder absorbs smaller into larger — combined narrative, migrated members, smaller archived.
+
+**Community split (NOT BUILT):** As brain grows, communities accumulate members across topics. A 30-member community covering 4 distinct stories needs splitting into focused children. Decoder signals: degrading int_frac, possible_splits stat, cross-cutting nodes. Needs: re-cluster within community, propose 2+ children, encoder creates children and archives parent.
+
+Interactions: `s2_community_enrichment` (v9, Sonnet prompt, 16K max_tokens), `s2_community` (decoder config), `s2_edge_families` (21-family classification).
 
 Files: `scales/s2/community_decoder.py`, `scales/s2/community_encoder.py`, `scales/s2/community.py` (orchestrator), `scales/s2/community_contract.py`, `scales/s2/community_enrichment_prompt.py`, `scales/s2/edge_families.py`, `scales/s2/base.py`
 Traces: `s2-{YYYYMMDD}-community_detection`

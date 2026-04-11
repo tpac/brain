@@ -31,6 +31,11 @@ COMMUNITY_DETECTION = {
     # ── Embedding placement for orphans ──
     'embedding_placement_threshold': 0.50,
 
+    # ── Community merge detection ──
+    # Merge when overlap >= this AND unique members in smaller < min_unique
+    'merge_overlap_threshold': 0.80,    # % of smaller community's members shared
+    'merge_min_unique_members': 3,      # smaller must have < this many unique to merge
+
     # ── Cross-cutting detection ──
     'cross_cutting_min_degree': 15,
     'cross_cutting_max_top_affinity': 0.35,

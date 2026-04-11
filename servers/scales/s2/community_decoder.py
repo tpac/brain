@@ -391,6 +391,9 @@ class CommunityDecoder(IntegrationUnit):
                     'signal': 'corridor_maturing',
                 })
 
+        # Step 5e: Community merge detection
+        merge_candidates = self._detect_merge_candidates(community_state)
+
         # Step 6: Cross-cutting
         cross_cutting = self._detect_cross_cutting(
             node_affinities, degrees)
@@ -450,6 +453,21 @@ class CommunityDecoder(IntegrationUnit):
                 'signal': update['signal'],
                 'old_fraction': update['old_fraction'],
                 'new_fraction': update['new_fraction'],
+            })
+
+        # Merge candidates
+        for merge in merge_candidates:
+            proposals.append({
+                'type': 'merge_communities',
+                'larger_id': merge['larger']['id'],
+                'larger_title': merge['larger']['title'],
+                'larger_size': len(merge['larger']['members']),
+                'smaller_id': merge['smaller']['id'],
+                'smaller_title': merge['smaller']['title'],
+                'smaller_size': len(merge['smaller']['members']),
+                'shared_count': merge['shared_count'],
+                'overlap_pct': merge['overlap_pct'],
+                'unique_in_smaller': merge['unique_in_smaller'],
             })
 
         # Cluster summaries for trace (S3 consumption)
@@ -705,6 +723,51 @@ class CommunityDecoder(IntegrationUnit):
                 affinities.sort(key=lambda x: -x[1])
                 node_affinities[nid] = affinities
         return node_affinities
+
+    # ── Step 6 ──
+
+    # ── Step 5e ──
+
+    def _detect_merge_candidates(self, community_state):
+        """Detect community pairs with high member overlap.
+
+        Merge when:
+        - overlap >= threshold (% of smaller community's members)
+        - AND smaller community has < min_unique unique members
+
+        This adaptive condition prevents merging in young brains where
+        small communities naturally overlap due to few nodes.
+        """
+        threshold = self.config.get('merge_overlap_threshold', 0.80)
+        min_unique = self.config.get('merge_min_unique_members', 3)
+        candidates = []
+
+        # Only check communities with members
+        active = [c for c in community_state if c['members']]
+
+        for i in range(len(active)):
+            for j in range(i + 1, len(active)):
+                a, b = active[i], active[j]
+                shared = a['members'] & b['members']
+                if not shared:
+                    continue
+
+                # Overlap relative to the smaller community
+                smaller, larger = (a, b) if len(a['members']) <= len(b['members']) else (b, a)
+                overlap_pct = len(shared) / len(smaller['members'])
+                unique_in_smaller = len(smaller['members'] - shared)
+
+                if overlap_pct >= threshold and unique_in_smaller < min_unique:
+                    candidates.append({
+                        'larger': larger,
+                        'smaller': smaller,
+                        'shared_count': len(shared),
+                        'overlap_pct': round(overlap_pct, 3),
+                        'unique_in_smaller': unique_in_smaller,
+                    })
+
+        candidates.sort(key=lambda c: -c['overlap_pct'])
+        return candidates
 
     # ── Step 6 ──
 
