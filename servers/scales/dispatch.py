@@ -19,7 +19,9 @@ def load_env():
                 line = line.strip()
                 if line and not line.startswith('#') and '=' in line:
                     k, v = line.split('=', 1)
-                    os.environ.setdefault(k.strip(), v.strip())
+                    k, v = k.strip(), v.strip()
+                    if not os.environ.get(k):  # override empty strings too
+                        os.environ[k] = v
 
 
 def daemon_tcp_send(cmd, args):

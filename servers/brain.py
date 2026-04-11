@@ -463,6 +463,25 @@ class Brain(
             return ''
         return interaction.get('template', '')
 
+    def get_relations_for_families(self, *family_names) -> set:
+        """Get all edge relation types belonging to the given families.
+
+        Reads from s2_edge_families interaction (source of truth).
+        Returns a set of relation strings.
+
+        Usage:
+            correction_rels = brain.get_relations_for_families(
+                'correction_improvement', 'hierarchical_structure')
+            # → {'corrects', 'corrected_by', 'supersedes', 'superseded_by', ...}
+        """
+        config = self.get_interaction_config('s2_edge_families')
+        relations = set()
+        for family in family_names:
+            members = config.get(family, [])
+            if isinstance(members, list):
+                relations.update(members)
+        return relations
+
     def get_interaction(self, name: str, version: int = 0) -> dict:
         """Get interaction by name. version=0 (default) returns latest, else specific version."""
         if version:

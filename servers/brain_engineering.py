@@ -661,19 +661,25 @@ class BrainEngineeringMixin:
         silent_ceiling_above_default = self._get_tunable('conf_silent_ceiling_above_default', 0.15)
 
         try:
+            correction_rels = self.get_relations_for_families(
+                'correction_improvement', 'hierarchical_structure')
+            if not correction_rels:
+                correction_rels = {'corrected_by', 'corrects', 'supersedes', 'superseded_by'}
+            placeholders = ','.join('?' * len(correction_rels))
             well_used = self.conn.execute(
                 '''SELECT n.id, n.type, n.confidence FROM nodes n
                    WHERE n.archived = 0 AND n.access_count >= ?
                      AND n.confidence IS NOT NULL AND n.confidence < 0.95
                      AND NOT EXISTS (
                          SELECT 1 FROM edges e
-                         WHERE e.target_id = n.id AND e.relation = 'corrected_by'
+                         JOIN edge_relations er ON er.edge_id = e.edge_id
+                         WHERE e.target_id = n.id AND er.relation IN (%s)
                      )
                      AND NOT EXISTS (
                          SELECT 1 FROM correction_traces ct
                          WHERE ct.original_node_id = n.id
-                     )''',
-                (silent_min_access,)
+                     )''' % placeholders,
+                (silent_min_access, *correction_rels)
             ).fetchall()
             for node_id, node_type, conf in well_used:
                 type_default = TYPE_CONFIDENCE.get(node_type, 0.70)

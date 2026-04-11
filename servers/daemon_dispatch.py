@@ -485,7 +485,11 @@ def _handle_brain_batch(brain, args, graph_changes):
                     results.append({"op": "archive", "index": i, "ok": False,
                                     "error": "node_id is required"})
                 else:
-                    brain._node_dal.archive(node_id)
+                    from datetime import datetime, timezone
+                    brain.conn.execute(
+                        'UPDATE nodes SET archived = 1, updated_at = ? WHERE id = ?',
+                        (datetime.now(timezone.utc).isoformat(), node_id))
+                    brain.conn.commit()
                     graph_changes.append("ARCHIVE: %s" % node_id[:8])
                     results.append({"op": "archive", "index": i, "ok": True,
                                     "result": {"archived": node_id}})

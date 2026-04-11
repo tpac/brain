@@ -109,8 +109,12 @@ class ConsolidationDecoder(IntegrationUnit):
             )
         """).fetchall()
 
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
         for nid, title in orphan_communities:
-            self.brain._node_dal.archive(nid)
+            self.brain.conn.execute(
+                'UPDATE nodes SET archived = 1, updated_at = ? WHERE id = ?',
+                (now, nid))
             archived.append({'id': nid, 'title': title, 'reason': 'community with 0 members'})
             print('[consolidation] Healed: archived orphan community "%s" (%s)' % (
                 title[:50], nid[:8]), flush=True)
@@ -699,17 +703,21 @@ class ConsolidationDecoder(IntegrationUnit):
 
     def _has_correction_edge(self, node_ids):
         """Check if any correction edge exists between cluster members."""
-        nid_set = set(node_ids)
-        placeholders = ','.join('?' * len(node_ids))
+        correction_rels = self.brain.get_relations_for_families(
+            'correction_improvement', 'hierarchical_structure')
+        if not correction_rels:
+            correction_rels = {'corrects', 'corrected_by', 'supersedes', 'superseded_by'}
+
+        node_ph = ','.join('?' * len(node_ids))
+        rel_ph = ','.join('?' * len(correction_rels))
 
         rows = self.brain.conn.execute("""
-            SELECT e.source_id, e.target_id, er.relation
-            FROM edges e
+            SELECT 1 FROM edges e
             JOIN edge_relations er ON er.edge_id = e.edge_id
             WHERE e.source_id IN (%s) AND e.target_id IN (%s)
-            AND er.relation IN ('corrects', 'supersedes', 'evolved_from')
-        """ % (placeholders, placeholders),
-            list(node_ids) * 2).fetchall()
+            AND er.relation IN (%s) LIMIT 1
+        """ % (node_ph, node_ph, rel_ph),
+            list(node_ids) * 2 + list(correction_rels)).fetchall()
 
         return len(rows) > 0
 
