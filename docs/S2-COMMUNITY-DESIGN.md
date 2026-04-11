@@ -2,8 +2,8 @@
 
 ## Status: SHIPPED TO PRODUCTION
 
-55 communities live on production brain. Decoder + encoder pipeline working end-to-end.
-Dashboard 3D graph visualization live. Incremental path tested across 4 cycles.
+114 communities live on production brain (cold start rerun 2026-04-11, 12 orphans self-healed, 1 duplicate merged).
+Decoder/encoder split shipped. Dashboard 3D graph with legend click-to-focus. Merge detection with adaptive threshold for young brains. Community split NOT BUILT (roadmap).
 
 ## Architecture: S2CD / S2CE Decoder-Encoder Pair
 

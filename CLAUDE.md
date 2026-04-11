@@ -129,7 +129,7 @@ S2 operates when Tom is away. It sees the full graph, not just one turn. Multipl
 |------|---|---|---|--------|
 | **Edge Families** | edge_relations | Sonnet classification | family mapping in interactions | **SHIPPED (21 families)** |
 | **Consolidation** | graph embeddings (title+content) + S1 behavioral traces | similarity thresholds + edge families + community membership | consolidation proposals (phase 1: decoder only) | **DECODER SHIPPED** |
-| **Community** | S1 traces + graph | z-score clusters + Sonnet enrichment | community nodes + member edges | **SHIPPED (127 communities)** |
+| **Community** | S1 traces + graph | z-score clusters + Sonnet enrichment | community nodes + member edges | **SHIPPED (114 communities)** |
 | Confidence | recall traces | decay/growth algo | adjusted scores | DESIGN NEEDED |
 | Correction | correction chain | resolution rules | archive stale | NOT BUILT |
 | Community Split | incoherent communities | re-cluster within community | split into focused children | NOT BUILT |
