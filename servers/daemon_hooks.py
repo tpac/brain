@@ -552,61 +552,38 @@ def hook_idle_maintenance(brain, args, graph_changes):
 
     # message_stream expiry REMOVED 2026-04-05 — table deleted, traces are source of truth
 
-    # 3e. S2: Community detection
+    # 3e. S2: Graph integration (coordinator decides what runs)
     try:
-        from .scales.s2.community import CommunityDetection
-        from .scales.s2.community_contract import COMMUNITY_DETECTION as CD_CONFIG
-
-        # Cooldown check
-        cooldown_hours = CD_CONFIG['cooldown_hours']
-        last_run = brain.get_config('s2_community_last_run') or ''
-        should_run = True
-        if last_run:
-            import datetime as _dt
-            try:
-                last_dt = _dt.datetime.fromisoformat(last_run)
-                now_dt = _dt.datetime.now(_dt.timezone.utc)
-                hours_since = (now_dt - last_dt).total_seconds() / 3600
-                if hours_since < cooldown_hours:
-                    should_run = False
-                    output.append("S2 COMMUNITY: skipped (%.1fh since last, cooldown=%dh)" % (
-                        hours_since, cooldown_hours))
-            except (ValueError, TypeError):
-                pass  # invalid stored date — run anyway
-
-        if should_run:
-            unit = CommunityDetection(brain)
-            result = unit.run()
-            communities = result.get('communities', 0)
-            actions = result.get('actions', 0)
-
+        from .scales.s2.coordinator import run_s2
+        s2_results = run_s2(brain)
+        for unit_name, result in s2_results.items():
             if result.get('error'):
-                output.append("S2 COMMUNITY ERROR: %s" % result['error'])
+                output.append("S2 %s ERROR: %s" % (unit_name.upper(), result['error']))
             elif result.get('skipped'):
-                output.append("S2 COMMUNITY: skipped (%s)" % result['skipped'])
-            elif actions > 0:
-                output.append("S2 COMMUNITY: %d communities, %d actions" % (communities, actions))
-                details = result.get('details', {})
-                if isinstance(details, dict):
-                    new_count = len(details.get('new', []))
-                    updated_count = len(details.get('updated', []))
-                    removed_count = len(details.get('removed', []))
-                    if new_count:
-                        output.append("  new: %d" % new_count)
-                    if updated_count:
-                        output.append("  updated: %d" % updated_count)
-                    if removed_count:
-                        output.append("  removed: %d" % removed_count)
-                graph_changes.append("S2_COMMUNITY: %d communities" % communities)
+                output.append("S2 %s: skipped (%s)" % (unit_name.upper(), result['skipped']))
             else:
-                output.append("S2 COMMUNITY: stable (%d communities, no changes)" % communities)
-
-            # Update last run timestamp
-            import datetime as _dt
-            brain.set_config('s2_community_last_run',
-                           _dt.datetime.now(_dt.timezone.utc).isoformat())
+                # Unit-specific formatting
+                actions = result.get('actions', result.get('classified', 0))
+                if unit_name == 'edge_family_integration' and result.get('classified', 0) > 0:
+                    output.append("S2 EDGE FAMILIES: classified %d new types into %d families" % (
+                        result['classified'], result['families']))
+                elif unit_name == 'consolidation' and result.get('clusters'):
+                    output.append("S2 CONSOLIDATION: %d clusters found" % len(result['clusters']))
+                    stats = result.get('stats', {})
+                    class_counts = stats.get('class_counts', {})
+                    if class_counts:
+                        output.append("  %s" % ', '.join(
+                            '%d %s' % (v, k) for k, v in class_counts.items()))
+                elif unit_name == 'community_detection':
+                    communities = result.get('communities', 0)
+                    if actions > 0:
+                        output.append("S2 COMMUNITY: %d communities, %d actions" % (
+                            communities, actions))
+                        graph_changes.append("S2_COMMUNITY: %d communities" % communities)
+                    else:
+                        output.append("S2 COMMUNITY: no changes (%d communities)" % communities)
     except Exception as e:
-        output.append("S2 COMMUNITY ERROR: %s" % e)
+        output.append("S2 ERROR: %s" % e)
 
     # 4. Reflection prompts — DISABLED 2026-04-08
     # prompt_reflection() and auto_generate_self_reflection() were proto-S2.

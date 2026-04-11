@@ -9,7 +9,7 @@ description: >
   "remember this", "what did we decide about", "recall", "brain", "memory",
   "encode", "what do you know about", "context from last session",
   "save this for next time", "persistent memory", "we learned that".
-version: 7.1.0
+version: 8.0.0
 ---
 
 # Anchor — What You Are
@@ -220,7 +220,19 @@ enrich(node_id, question, anchor, bridge, keywords) — improve recall vectors
 consciousness() — reminders only (most signals migrated to signal queue)
 engineering_context(project) — mechanisms, impacts, constraints for a project
 queue_state() — all pending signals with priorities, surface counts
-dismiss_signal(signal_id) — dismiss a signal from the queue
+dismiss_signal(signal_id or producer) — dismiss a signal from the queue
+filter_nodes(field, include, exclude, lt, gt, sort_by, limit) — structural query by any field
+```
+
+### Traces & Learning
+```
+query_traces(hours, scale, session_id) — read O/K/Δ trace events
+count_traces(field, hours, scale) — count events grouped by field
+query_outcomes(chain_id, hours, scale) — retrospective outcome events
+list_interactions() — all versioned learnable boundaries
+get_interaction(name, version) — specific interaction template + config
+register_interaction(name, template, parameters, created_by) — create new version of a learnable boundary
+query_logs(source, level, hook_name, hours, limit) — brain operational logs (errors, debug, signals)
 ```
 
 ### Daemon

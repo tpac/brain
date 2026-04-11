@@ -80,16 +80,23 @@ REF_TYPES = {
     # Multiple integration units, each with own O/K/Δ.
     ("s2", "O"):       ["graph_structure",      # nodes + edges observed (community detection)
                          "graph_stats",          # node/edge counts, density
-                         "dedup_scan",           # cosine similarity clusters
+                         "s1_delta",             # S1 encoding/surfacing traces since last run
+                         "consolidation_candidates",  # embedding scan + behavioral evidence
                          "correction_chains"],   # brain-wide correction chain traversal
-    ("s2", "K"):       ["community_partition",  # algorithm output (communities + membership)
+    ("s2", "K"):       ["community_proposals",  # S2CD proposals (placements, overlaps, splits, seeds)
+                         "community_partition",  # algorithm output (communities + membership)
                          "community_diff",       # comparison with previous run
+                         "consolidation_proposals",   # enriched clusters with pre-classification
                          "stale_nodes"],         # nodes not accessed recently
-    ("s2", "delta"):   ["community_created",    # new community node
+    ("s2", "delta"):   ["community_enriched",   # S2CE enrichment results (accepted, rejected, placed)
+                         "community_created",    # new community node
                          "community_updated",    # revised community node
                          "community_removed",    # stale community archived
-                         "community_assignments",# node_communities table updated
-                         "merge",                # merged duplicate nodes
+                         "community_assignments",# membership edges updated
+                         "recall_quality_signal",# recall diagnostic (false positive, redundancy, gap)
+                         "consolidated",         # new node from smart merge
+                         "evolved",              # evolution edge added
+                         "kept_distinct",        # similar_to edge, no merge
                          "confidence_adjust"],   # adjusted confidence scores
     ("s2", "outcome"): ["recall_improved",      # community nodes improved recall
                          "operator_reviewed"],   # Tom reviewed S2 output

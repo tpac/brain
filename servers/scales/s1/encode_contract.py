@@ -30,7 +30,7 @@ ENCODING_AGENT = {
     'recall_on_create_content_limit': 500,  # chars of content per related node
     'recall_on_create_query_limit': 200,    # chars of content used in recall query
     'journal_entry_limit': 2000,      # max chars per journal entry
-    'max_tokens': 4096,               # Sonnet API output cap
+    'max_tokens': 12288,              # Sonnet API output cap (raised from 4096)
     'timeline_snippet_limit': 500,    # chars of recalled content shown in timeline (fallback only)
     'session_context_limit': 800,     # session context chars (additive within session, editable by S2)
 
@@ -77,10 +77,23 @@ def build_node_catalog(judge_outputs, db_conn):
     if not seen_ids:
         return '', set()
 
+    # Skip community nodes — S2CE manages communities, S1E encodes from conversation.
+    # S1E still sees "SURFACED: community node" in the timeline but doesn't get
+    # the full content in the catalog. This prevents S1E from revising, correcting,
+    # or connecting to community nodes instead of their members.
+    community_ids = set()
+    if seen_ids:
+        placeholders = ','.join('?' * len(seen_ids))
+        for row in db_conn.execute(
+                "SELECT id FROM nodes WHERE id IN (%s) AND type = 'community'" % placeholders,
+                list(seen_ids)):
+            community_ids.add(row[0])
+
     # format_node → get_rich_node + render_rich_node includes corrections
-    lines = ['Node Catalog (%d nodes surfaced this session)' % len(seen_ids), '']
+    catalog_ids = seen_ids - community_ids
+    lines = ['Node Catalog (%d nodes surfaced this session)' % len(catalog_ids), '']
     formatted_ids = set()
-    for nid in seen_ids:
+    for nid in catalog_ids:
         formatted = format_node(nid, db_conn, config=S1_NODE_CONFIG)
         if formatted:
             lines.append(formatted)

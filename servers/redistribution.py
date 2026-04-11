@@ -104,7 +104,34 @@ def get_blend_ratio(node: Dict) -> float:
 
 def is_bridge_node(conn: sqlite3.Connection, node_id: str,
                    communities: Dict[str, int]) -> bool:
-    """Check if a node has strong edges to 2+ communities without one dominating."""
+    """Check if a node has strong edges to 2+ communities without one dominating.
+
+    Uses community_member edges to determine community membership.
+    The `communities` dict parameter is kept for backward compat but
+    we rebuild from edges if empty.
+    """
+    # Build community membership from community_member edges if needed
+    if not communities:
+        try:
+            rows = conn.execute("""
+                SELECT e2.target_id as member_id,
+                       e2.source_id as community_id
+                FROM edges e2
+                JOIN edge_relations er2 ON er2.edge_id = e2.edge_id
+                WHERE er2.relation = 'community_member'
+                UNION
+                SELECT e2.source_id as member_id,
+                       e2.target_id as community_id
+                FROM edges e2
+                JOIN edge_relations er2 ON er2.edge_id = e2.edge_id
+                JOIN nodes n ON n.id = e2.target_id AND n.type = 'community'
+                WHERE er2.relation = 'community_member'
+            """).fetchall()
+            for member_id, comm_id in rows:
+                communities[member_id] = comm_id
+        except Exception:
+            return False
+
     if node_id not in communities:
         return False
 
@@ -115,7 +142,7 @@ def is_bridge_node(conn: sqlite3.Connection, node_id: str,
         FROM edges e
         JOIN edge_relations er ON er.edge_id = e.edge_id
         WHERE (e.source_id = ? OR e.target_id = ?)
-        AND er.relation NOT IN ('co_accessed', 'emergent_bridge')
+        AND er.relation NOT IN ('co_accessed', 'emergent_bridge', 'community_member')
         AND e.weight > 0.1
         GROUP BY neighbor
     """, (node_id, node_id, node_id)).fetchall()
@@ -252,13 +279,23 @@ def redistribute(conn: sqlite3.Connection, dry_run: bool = False) -> Dict:
     for row in conn.execute("SELECT node_id, original_embedding FROM embedding_fidelity WHERE original_embedding IS NOT NULL"):
         frozen[row[0]] = row[1]
 
-    # Load community assignments
+    # Load community assignments from community_member edges (source of truth)
     communities = {}
     try:
-        for row in conn.execute("SELECT node_id, community_id FROM node_communities"):
-            communities[row[0]] = row[1]
-    except sqlite3.OperationalError:
-        pass  # Table doesn't exist — skip bridge detection
+        rows = conn.execute("""
+            SELECT CASE WHEN e.source_id = n.id THEN e.target_id ELSE e.source_id END as member_id,
+                   n.id as community_id
+            FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
+            JOIN nodes n ON (n.id = e.source_id OR n.id = e.target_id)
+                AND n.type = 'community' AND n.archived = 0
+            WHERE er.relation = 'community_member'
+        """).fetchall()
+        for member_id, comm_id in rows:
+            if member_id != comm_id:  # Don't map community to itself
+                communities[member_id] = comm_id
+    except Exception:
+        pass  # No community data — skip bridge detection
 
     # Load node metadata for blend ratio decisions
     nodes = {}

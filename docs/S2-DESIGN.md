@@ -409,30 +409,43 @@ All units use:
 - `TraceDAL.append_batch()` — trace recording for S3 consumption
 - Signal queue — commit channel for LLM-judgment units
 
-### What's Built (Session 2026-04-08)
+### What's Built (Updated 2026-04-11)
 
 **Foundation (complete):**
-- `IntegrationUnit` base class (`scales/s2/base.py`) — O/K/Δ contract, trace writing, chain ID generation
-- Edge model v22 — `edge_id`, single-direction, `edge_relations` with 120+ typed relations
-- `s2_community` interaction registered in interactions table
-- Trace contract: S2="Graph" scale with community detection ref_types
-- Proto-S2 disabled (auto_heal, dreams, consolidate) — S2 units replace them
+- `IntegrationUnit` base class (`scales/s2/base.py`) — O/K/Δ contract, trace writing, chain ID, shared S2 infra (_has_new_traces, _read_traces_since, _call_llm)
+- Edge model v22 — `edge_id`, single-direction, `edge_relations` with 224 typed relations
+- Interactions registered: `s2_community`, `s2_community_enrichment` (v6), `s2_edge_families`
+- Trace contract updated with S2 community ref_types
+- MCP `register_interaction` tool for managing learnable boundaries
+- Eval harness: `eval/s2_community_eval.py`
 
-**Units built:**
-- `CommunityDetection` (`scales/s2/community.py`) — Leiden-based, tested. Needs rewrite for overlapping (SLPA) + Haiku enrichment per S2-COMMUNITY-DESIGN.md.
-- `RelationReclassifier` (`scales/s2/reclassify.py`) — Sonnet-based, ran successfully. 2,621 edges reclassified. One-time operation, complete.
+**Units built and SHIPPED:**
+- `CommunityDetection` (`scales/s2/community.py`) — Full S2CD/S2CE decoder-encoder pair. Z-score seeding, adaptive thresholds, agentic Sonnet encoder. **55 communities in production.**
+- `EdgeFamilyIntegration` (`scales/s2/edge_families.py`) — Classifies 224 edge types into 21 semantic families. Sonnet classification with description samples. Runs before community detection.
+- `RelationReclassifier` (`scales/s2/reclassify.py`) — One-time operation, complete. 2,621 edges reclassified.
+
+**Dashboard shipped:**
+- 3D ForceGraph visualization with community coloring
+- Decoding/Encoding tabs with scale filter (S1/S2)
+- S2 community traces in the live feed
+
+**Key bug fixes:**
+- Dispatch open fields — S1E's `assumed`, `reality`, `trigger` etc. silently dropped for months. Fixed.
+- Runner trace enrichment — full tool inputs now logged for recovery
+- S1E excludes community nodes from catalog
 
 **Proto-S2 disabled (reference only):**
-- `brain_dreams.py` — dream/consolidate/heal. Code kept, idle hook calls commented out.
-- `brain_evolution.py` — auto_heal/auto_tune/auto_discover. Code kept, idle hook calls commented out.
+- `brain_dreams.py`, `brain_evolution.py` — code kept, idle hook calls commented out.
 - `brain_consciousness.py` — priming system still active (separate from S2).
 
 ---
 
-## Open Questions
+## Open Questions (Updated)
 
-1. **Community detection algorithm:** SLPA (overlapping) vs Leiden (non-overlapping). SLPA tested: 155 communities, 396 multi-member at r=0.1. Needs Haiku enrichment for naming.
-2. **Edge embedding for community detection:** Embed relation text for semantic edge weighting. Use centroid of all embeddings as baseline, not hardcoded `related`.
-3. **Unit coordination:** DAG or independent? Community detection before small-cluster linking before synthesis.
-4. **Interaction evolution safety:** Eval framework needed before S2 can autonomously change S1 prompts.
-5. **Cross-project recall:** Community nodes enable scoping — suppress brain-development communities when working on other projects. The immediate use case for shipping community detection.
+1. ~~Community detection algorithm~~ **RESOLVED**: Neither SLPA nor Leiden. Activation-pattern-based detection using z-score pair scoring + edge families. Overlapping membership via LLM judgment.
+2. ~~Edge embedding for community detection~~ **RESOLVED**: Embedding relation names alone can't discriminate (all cluster at 0.65). Edge families classified by Sonnet with descriptions. Shared neighbors + typed edges are the primary signals.
+3. **Unit coordination:** Independent for now. Community detection runs in idle hook. Future: dedup reads community membership to scope search.
+4. **Interaction evolution safety:** Eval harness built. A/B testing possible via `register_interaction`. S3 can revise prompts when built.
+5. **Cross-project recall:** Community nodes have `situation` fields that discriminate. When brain has multiple projects, communities will naturally separate by topic. Untested — brain currently single-project.
+6. **Fatigue redesign:** Message-distance-based fatigue needed. Spec in `docs/FATIGUE-REDESIGN.md`. Blocks community effectiveness (same nodes keep surfacing).
+7. **S2 Weaver/Healer:** 635 orphan nodes need typed edges. Separate S2 unit, not community detection.

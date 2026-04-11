@@ -1,7 +1,7 @@
 """Tests for S2 community detection unit.
 
-Tests the IntegrationUnit contract, community detection algorithm,
-naming heuristic, diff logic, and write results.
+Tests the IntegrationUnit contract and community decoder algorithm.
+Encoder tests require Anthropic API and are integration-level.
 """
 
 import unittest

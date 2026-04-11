@@ -111,6 +111,14 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None):
         _log("done. %d rounds, %d actions. PROFILE: %s" % (
             result['rounds'], result['actions'], profile_str))
 
+        # Log truncation errors to brain errors table
+        for trunc in result.get('truncations', []):
+            brain._log_error(
+                's1e_truncation',
+                'max_tokens truncation: round %d used %s/%s output tokens' % (
+                    trunc['round'], trunc['output_tokens'], trunc['max_tokens']),
+                'S1E tool call likely corrupted, encoding data may be lost')
+
         # 7. Post-process (S1-specific: journal, session context, signals)
         final_text = result.get('final_text', '')
         _save_journal(brain, dispatch_fn, session_id, counter, final_text)

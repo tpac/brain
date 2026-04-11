@@ -356,6 +356,14 @@ def _build_tools():
          "name": {"type": "string", "description": "Interaction name (e.g. 'surface', 'encoding_agent', 'voice_surface', 'boot')"},
          "version": {"type": "integer", "description": "Specific version (default: latest)", "default": 0}}}},
 
+    {"name": "register_interaction",
+     "description": "Register a new version of an interaction (prompt template + config). Creates version N+1 if the interaction exists, or version 1 if new. Used to evolve learnable boundaries — surface prompts, encoder prompts, community enrichment, edge families. S3 uses this to optimize S1/S2 behavior.",
+     "inputSchema": {"type": "object", "required": ["name"], "properties": {
+         "name": {"type": "string", "description": "Interaction name (e.g. 's2_community_enrichment', 'surface', 'encoding_agent')"},
+         "template": {"type": "string", "description": "The prompt/template text. This is the learnable content."},
+         "parameters": {"type": "string", "description": "JSON config string (model, max_tokens, thresholds, etc.)"},
+         "created_by": {"type": "string", "description": "Who created this version (e.g. 'anchor', 's2:community_detection', 's3:optimization')"}}}},
+
     # ── Introspection ──
     {"name": "consciousness",
      "description": "Get brain consciousness signals. Most signals migrated to signal queue — returns reminders only. Use queue_state for full signal view.",

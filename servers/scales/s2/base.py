@@ -7,10 +7,22 @@ The contract is what it reads and what it produces, not how it's
 structured internally. Units are free to organize their run() however
 makes sense for the operation.
 
-S2 uses this first. S1 can be refactored to use it later.
+## Shared S2 methods
+
+S2 units share common infrastructure for:
+- Reading S1 traces (what changed since last run)
+- Deciding whether to run (_should_run)
+- Calling LLM with learnable prompts from interactions table
+- JSON extraction from LLM responses
+
+These live here so every S2 unit (community, dedup, confidence, etc.)
+uses the same patterns. S3 can tune any unit's LLM behavior by
+revising its interaction entry.
 """
 
-from datetime import date, datetime, timezone
+import json
+import os
+from datetime import date, datetime, timezone, timedelta
 
 
 class IntegrationUnit:
@@ -76,3 +88,179 @@ class IntegrationUnit:
             self.dispatch('trace_append', trace_data)
         else:
             self.brain._trace_dal.append(**trace_data)
+
+    # ── Shared S2 infrastructure ──
+
+    def _last_run_timestamp(self):
+        """Find this unit's most recent trace timestamp.
+
+        Returns ISO timestamp string, or '' if never run.
+        Used by _should_run() to determine "since when" to look for S1 changes.
+        """
+        try:
+            rows = self.brain._trace_dal.get_recent(
+                scale=self.SCALE, event_type='delta', limit=50)
+            # Find most recent trace from THIS unit (match chain_id prefix)
+            prefix = '%s-' % self.SCALE
+            for row in rows:
+                chain = row.get('chain_id', '')
+                if chain.endswith(self.NAME):
+                    return row.get('created_at', '')
+        except Exception:
+            pass
+        return ''
+
+    def _has_new_traces(self, scale, ref_type=None):
+        """Check if there are traces newer than this unit's last run.
+
+        Generic: any S2 unit can check any scale's traces.
+        Returns True on first run (no prior traces).
+
+        Args:
+            scale: Scale to check (e.g. 's1', 's2')
+            ref_type: Optional filter (e.g. 'encoding_run')
+        """
+        last_ts = self._last_run_timestamp()
+        if not last_ts:
+            return True  # Never run — cold start
+
+        try:
+            if ref_type:
+                traces = self.brain._trace_dal.get_by_ref_type(
+                    ref_type, scale=scale, hours=168, limit=5)
+            else:
+                traces = self.brain._trace_dal.get_recent(
+                    scale=scale, event_type='delta', limit=5)
+            for t in traces:
+                if t.get('created_at', '') > last_ts:
+                    return True
+        except Exception:
+            return True  # On error, run to be safe
+
+        return False
+
+    def _read_traces_since(self, scale, since_ts='', hours=168, ref_types=None):
+        """Read trace events from a scale since a timestamp.
+
+        Generic trace reader — each unit interprets the results
+        according to what it needs.
+
+        Args:
+            scale: Scale to read ('s1', 's2', etc.)
+            since_ts: ISO timestamp. If empty, reads all available (cold start).
+            hours: Lookback window. Ignored if since_ts is empty (uses max).
+            ref_types: Optional list of ref_types to filter. If None, reads all.
+
+        Returns:
+            List of trace event dicts, filtered to after since_ts.
+        """
+        if not since_ts:
+            hours = 8760  # ~1 year for cold start
+
+        results = []
+        if ref_types:
+            for rt in ref_types:
+                results.extend(self.brain._trace_dal.get_by_ref_type(
+                    rt, scale=scale, hours=hours, limit=500))
+        else:
+            results = self.brain._trace_dal.get_recent(
+                scale=scale, hours=hours, limit=500)
+
+        if since_ts:
+            results = [t for t in results if t.get('created_at', '') > since_ts]
+
+        return results
+
+    def _get_interaction_config(self, name):
+        """Get config dict from interactions table.
+
+        Returns {} if not found. Config is the 'parameters' JSON field.
+        """
+        return self.brain.get_interaction_config(name)
+
+    def _call_llm(self, interaction_name, user_content):
+        """Call LLM with a learnable prompt from interactions table.
+
+        Loads system prompt from interaction template.
+        Loads config (model, max_tokens) from interaction parameters.
+        Handles JSON extraction from response.
+
+        Args:
+            interaction_name: Key in interactions table (e.g. 's2_community_enrichment')
+            user_content: String content for the user message
+
+        Returns:
+            Parsed JSON from the LLM response, or None on failure.
+        """
+        import anthropic
+        from ..dispatch import load_env
+
+        # Load learnable prompt and config
+        system_prompt = self.brain.get_interaction_prompt(interaction_name)
+        config = self._get_interaction_config(interaction_name)
+        model = config.get('model', 'claude-haiku-4-5')
+        max_tokens = config.get('max_tokens', 4096)
+
+        if not system_prompt:
+            print('[%s] WARNING: no interaction prompt for %s' % (
+                self.NAME, interaction_name), flush=True)
+            return None
+
+        # Ensure API key
+        if not os.environ.get('ANTHROPIC_API_KEY'):
+            load_env()
+
+        try:
+            client = anthropic.Anthropic()
+            response = client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_content}])
+
+            raw = response.content[0].text.strip()
+            return self._extract_json(raw)
+
+        except Exception as e:
+            print('[%s] LLM call failed: %s' % (self.NAME, e), flush=True)
+            self.brain._log_error(self.NAME, e, 'LLM call for %s' % interaction_name)
+            return None
+
+    @staticmethod
+    def _extract_json(text):
+        """Extract JSON array or object from LLM response text.
+
+        Handles markdown code fences, leading/trailing text.
+        Returns parsed JSON (list or dict), or None on failure.
+        """
+        # Strip markdown fences
+        if '```' in text:
+            parts = text.split('```')
+            if len(parts) >= 3:
+                text = parts[1]
+                if text.startswith('json'):
+                    text = text[4:]
+                text = text.strip()
+
+        # Find JSON array or object
+        # Try array first (most common for batched proposals)
+        start = text.find('[')
+        if start >= 0:
+            end = text.rfind(']') + 1
+            if end > start:
+                try:
+                    return json.loads(text[start:end])
+                except json.JSONDecodeError:
+                    pass
+
+        # Try object
+        start = text.find('{')
+        if start >= 0:
+            end = text.rfind('}') + 1
+            if end > start:
+                try:
+                    return json.loads(text[start:end])
+                except json.JSONDecodeError:
+                    pass
+
+        return None

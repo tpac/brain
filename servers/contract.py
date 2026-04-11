@@ -246,7 +246,15 @@ def render_rich_node(node, config=None):
     # Metadata KV
     meta = node.get('_metadata', {})
     meta_limit = cfg.get('metadata_limit', 300)
-    skip_keys = ('metadata_created_at', 'revision_history')
+    skip_keys = (
+        'metadata_created_at', 'revision_history',
+        # S2 community structural metrics — useful for S2CD/S3, not for Anchor
+        'community_internal_edges', 'community_external_edges',
+        'community_internal_fraction', 'community_is_corridor',
+        'community_centroid', 'community_size', 'community_run_count',
+        'community_growth_rate', 'community_edge_signature',
+        'community_last_change',
+    )
     for key, val in meta.items():
         if not val or key in skip_keys:
             continue

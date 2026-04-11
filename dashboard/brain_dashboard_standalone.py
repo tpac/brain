@@ -780,6 +780,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_nodes(params)
         elif path == "/api/graph":
             self._serve_graph(params)
+        elif path == "/api/graph3d":
+            self._serve_graph3d()
         elif path == "/api/insights":
             self._serve_insights()
         elif path == "/api/status":
@@ -1094,6 +1096,245 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._json_response(500, {"error": str(e)})
 
+    def _serve_graph3d(self):
+        """Full graph for 3D visualization: all nodes with community info + all edges."""
+        try:
+            db = _get_db_path()
+
+            # All non-archived nodes
+            rows = _direct_query(
+                "SELECT id, type, title, locked, confidence, access_count, "
+                "encoding_source, created_at, emotion, critical "
+                "FROM nodes WHERE archived = 0",
+                db_path=db)
+
+            # Build community membership from community_member edges
+            # Community nodes have type='community', members linked via community_member relation
+            community_nodes = {}
+            member_to_community = {}
+            comm_edges = _direct_query(
+                "SELECT e.source_id, e.target_id "
+                "FROM edges e JOIN edge_relations er ON er.edge_id = e.edge_id "
+                "WHERE er.relation = 'community_member'",
+                db_path=db)
+            for src, tgt in comm_edges:
+                # source is community node, target is member (or vice versa)
+                community_nodes[src] = True
+                member_to_community[tgt] = src
+
+            # Also check node_communities table as fallback
+            nc_rows = _direct_query(
+                "SELECT node_id, community_id FROM node_communities",
+                db_path=db)
+            if nc_rows:
+                for node_id, comm_id in nc_rows:
+                    if node_id not in member_to_community:
+                        member_to_community[node_id] = 'comm_%d' % comm_id
+
+            # Community color palette
+            comm_colors = [
+                '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
+                '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9',
+                '#F8C471', '#82E0AA', '#F1948A', '#AED6F1', '#D7BDE2',
+                '#A3E4D7', '#FAD7A0', '#A9CCE3', '#D5F5E3', '#FADBD8',
+                '#E8DAEF', '#D4EFDF', '#FCF3CF', '#D6EAF8', '#F2D7D5',
+                '#D5D8DC', '#ABEBC6', '#F9E79F', '#D2B4DE', '#AED6F1',
+            ]
+            # Map community IDs to colors
+            unique_communities = sorted(set(member_to_community.values()))
+            comm_color_map = {}
+            for i, cid in enumerate(unique_communities):
+                comm_color_map[cid] = comm_colors[i % len(comm_colors)]
+
+            # Type colors as fallback when no community
+            type_colors = {
+                'lesson': '#4a9eff', 'correction': '#ff6666', 'interaction': '#33ff88',
+                'rule': '#ffaa33', 'decision': '#aa66ff', 'mental_model': '#33dddd',
+                'mechanism': '#dddd33', 'vocabulary': '#666', 'context': '#555',
+                'bug_lesson': '#ff8866', 'pattern': '#ff66aa', 'community': '#ffffff',
+                'tension': '#ff4444', 'uncertainty': '#aaaaff', 'constraint': '#ff8833',
+                'reflection': '#ff99cc', 'finding': '#88ddff',
+            }
+
+            node_ids = set()
+            nodes = []
+            for r in rows:
+                nid = r[0]
+                ntype = r[1]
+                node_ids.add(nid)
+                comm_id = member_to_community.get(nid)
+                is_community_node = ntype == 'community'
+                color = comm_color_map.get(comm_id, type_colors.get(ntype, '#555'))
+                if is_community_node:
+                    color = comm_color_map.get(nid, '#ffffff')
+                nodes.append({
+                    "id": nid,
+                    "name": r[2][:80] if r[2] else nid[:8],
+                    "type": ntype,
+                    "locked": bool(r[3]),
+                    "confidence": r[4] or 1.0,
+                    "access_count": r[5] or 1,
+                    "encoding_source": r[6] or '',
+                    "created_at": r[7],
+                    "emotion": r[8] or 0,
+                    "critical": bool(r[9]) if r[9] else False,
+                    "community": comm_id,
+                    "color": color,
+                    "val": max(2, min(30, (r[5] or 1) ** 0.5 * 1.5)) if not is_community_node
+                           else max(10, len([m for m, c in member_to_community.items() if c == nid]) * 0.8),
+                    "hub": is_community_node,
+                })
+
+            # All edges between visible nodes
+            edges = []
+            if node_ids:
+                placeholders = ",".join("?" * len(node_ids))
+                edge_rows = _direct_query(
+                    """SELECT e.source_id, e.target_id, er.relation, e.weight
+                    FROM edges e
+                    JOIN edge_relations er ON er.edge_id = e.edge_id
+                    WHERE e.source_id IN (%s) AND e.target_id IN (%s)""" % (placeholders, placeholders),
+                    list(node_ids) * 2, db_path=db)
+                # Deduplicate edges (take strongest relation per pair)
+                seen_pairs = {}
+                for src, tgt, rel, weight in edge_rows:
+                    key = src + ':' + tgt
+                    if key not in seen_pairs or weight > seen_pairs[key][3]:
+                        seen_pairs[key] = (src, tgt, rel, weight)
+                edges = [{"source": v[0], "target": v[1], "relation": v[2], "weight": v[3]}
+                         for v in seen_pairs.values()]
+
+            # Community summary for legend
+            communities = []
+            for cid in unique_communities:
+                # Find the community node title
+                comm_node = next((n for n in nodes if n['id'] == cid and n['hub']), None)
+                member_count = len([m for m, c in member_to_community.items() if c == cid])
+                communities.append({
+                    "id": cid,
+                    "name": comm_node['name'] if comm_node else 'Community %s' % str(cid)[:8],
+                    "color": comm_color_map.get(cid, '#555'),
+                    "count": member_count,
+                })
+
+            self._json_response(200, {
+                "nodes": nodes,
+                "edges": edges,
+                "communities": communities,
+                "stats": {
+                    "total_nodes": len(nodes),
+                    "total_edges": len(edges),
+                    "total_communities": len(communities),
+                },
+            })
+        except Exception as e:
+            import traceback
+            self._json_response(500, {"error": str(e), "trace": traceback.format_exc()})
+
+    def _serve_graph3d(self):
+        """Full 3D graph: all nodes with community membership + all edges."""
+        try:
+            db = _get_db_path()
+
+            # All non-archived nodes
+            rows = _direct_query(
+                "SELECT id, type, title, locked, confidence, access_count, "
+                "encoding_source, created_at, emotion, critical "
+                "FROM nodes WHERE archived = 0", db_path=db)
+
+            # Community membership from community_member edges
+            comm_edges = _direct_query("""
+                SELECT e.source_id, e.target_id, n.title
+                FROM edges e
+                JOIN edge_relations er ON er.edge_id = e.edge_id
+                JOIN nodes n ON n.id = e.source_id AND n.type = 'community' AND n.archived = 0
+                WHERE er.relation = 'community_member'
+            """, db_path=db)
+
+            # Build member → community mapping
+            member_to_community = {}
+            community_titles = {}
+            for src, tgt, title in comm_edges:
+                member_to_community[tgt] = src
+                community_titles[src] = title
+
+            # Bright saturated colors for communities
+            colors = [
+                '#FF4444', '#00E5CC', '#2196F3', '#4CAF50', '#FFD600',
+                '#E040FB', '#00BCD4', '#FF9800', '#9C27B0', '#03A9F4',
+                '#FF5722', '#00E676', '#F44336', '#448AFF', '#CE93D8',
+                '#26C6DA', '#FFAB40', '#5C6BC0', '#69F0AE', '#FF8A80',
+                '#B388FF', '#64FFDA', '#FFE57F', '#82B1FF', '#FF80AB',
+            ]
+            unique_comms = sorted(set(member_to_community.values()))
+            comm_color = {c: colors[i % len(colors)] for i, c in enumerate(unique_comms)}
+
+            type_colors = {
+                'lesson': '#4a9eff', 'correction': '#ff6666', 'interaction': '#33ff88',
+                'rule': '#ffaa33', 'decision': '#aa66ff', 'mental_model': '#33dddd',
+                'mechanism': '#dddd33', 'community': '#ffffff',
+            }
+
+            node_ids = set()
+            nodes = []
+            for r in rows:
+                nid, ntype = r[0], r[1]
+                node_ids.add(nid)
+                comm = member_to_community.get(nid)
+                is_comm = ntype == 'community'
+                color = comm_color.get(comm, comm_color.get(nid, type_colors.get(ntype, '#555')))
+                if is_comm:
+                    color = comm_color.get(nid, '#ffffff')
+                nodes.append({
+                    "id": nid,
+                    "name": (r[2] or nid[:8])[:80],
+                    "type": ntype,
+                    "locked": bool(r[3]),
+                    "confidence": r[4] or 1.0,
+                    "access_count": r[5] or 1,
+                    "created_at": r[7],
+                    "community": comm,
+                    "community_title": community_titles.get(comm, ''),
+                    "color": color,
+                    "val": 1.5 if not is_comm
+                           else max(8, len([m for m, c in member_to_community.items() if c == nid]) * 0.6),
+                    "hub": is_comm,
+                })
+
+            # All edges (dedup strongest per pair)
+            edges = []
+            if node_ids:
+                ph = ",".join("?" * len(node_ids))
+                id_list = list(node_ids)
+                edge_rows = _direct_query("""
+                    SELECT e.source_id, e.target_id, er.relation, e.weight
+                    FROM edges e
+                    JOIN edge_relations er ON er.edge_id = e.edge_id
+                    WHERE e.source_id IN (%s) AND e.target_id IN (%s)
+                """ % (ph, ph), id_list * 2, db_path=db)
+                seen = {}
+                for src, tgt, rel, w in edge_rows:
+                    key = src + ':' + tgt
+                    if key not in seen or w > seen[key][3]:
+                        seen[key] = (src, tgt, rel, w)
+                edges = [{"source": v[0], "target": v[1], "relation": v[2], "weight": v[3]}
+                         for v in seen.values()]
+
+            # Community list for legend
+            communities = []
+            for cid in unique_comms:
+                ct = community_titles.get(cid, 'Community')
+                mc = len([m for m, c in member_to_community.items() if c == cid])
+                communities.append({"id": cid, "name": ct[:60], "color": comm_color.get(cid, '#555'), "count": mc})
+
+            self._json_response(200, {
+                "nodes": nodes, "edges": edges, "communities": communities,
+                "stats": {"nodes": len(nodes), "edges": len(edges), "communities": len(communities)},
+            })
+        except Exception as e:
+            import traceback
+            self._json_response(500, {"error": str(e), "trace": traceback.format_exc()})
+
     def _serve_insights(self):
         try:
             db = _get_db_path()
@@ -1219,6 +1460,7 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: 'SF Mono', 'Fira Code',
 .hook-badge.boot { background: #3a2a1a; color: #ffaa33; }
 .hook-badge.recall { background: #1a3a1a; color: #33ff88; }
 .hook-badge.stop { background: #2a1a3a; color: #aa66ff; }
+.hook-badge.s2 { background: #1a3a4a; color: #45B7D1; }
 .hook-header .hook-time { color: #555; font-size: 11px; }
 .hook-header .hook-session { color: #7eb8ff; font-size: 10px; font-family: monospace; background: #1a1a2a; padding: 1px 4px; border-radius: 3px; }
 .hook-header .hook-id { color: #555; font-size: 10px; font-family: monospace; }
@@ -1333,26 +1575,19 @@ canvas { width: 100%; height: 100%; }
   <div class="stats-bar" id="stats-bar"></div>
   <div id="daemon-banner"></div>
   <div class="feed-toggle">
-    <button class="feed-btn active" onclick="switchFeed('surface')">Surface</button>
+    <button class="feed-btn active" onclick="switchFeed('decoding')">Decoding</button>
     <button class="feed-btn" onclick="switchFeed('encoding')">Encoding <span id="enc-badge" style="display:none;background:#ff4466;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
     <button class="feed-btn" onclick="switchFeed('queue')">Queue</button>
     <select id="session-filter" onchange="onSessionFilterChange()" style="margin-left:auto;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
       <option value="">All sessions</option>
     </select>
-    <select id="surface-filter" onchange="filterSurface()" style="margin-left:8px;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
-      <option value="">All sources</option>
-      <option value="recall">Hook recalls</option>
-      <option value="mcp">Anchor recalls</option>
-      <option value="internal">Internal</option>
-    </select>
-    <select id="encoding-filter" onchange="filterEncoding()" style="display:none;margin-left:8px;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
-      <option value="">All types</option>
-      <option value="created">Created</option>
-      <option value="revised">Revised</option>
-      <option value="connected">Connected</option>
+    <select id="scale-filter" onchange="filterByScale()" style="margin-left:8px;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
+      <option value="">All scales</option>
+      <option value="s1">S1 Turn</option>
+      <option value="s2">S2 Graph</option>
     </select>
   </div>
-  <div class="feed" id="feed"></div>
+  <div class="feed" id="feed-decoding"></div>
   <div class="feed" id="feed-encoding" style="display:none"></div>
   <div class="feed" id="feed-queue" style="display:none"></div>
 </div>
@@ -1360,37 +1595,18 @@ canvas { width: 100%; height: 100%; }
 <div id="tab-graph" class="tab-content">
   <div class="graph-container">
     <div class="graph-controls">
-      <select id="graph-days" onchange="loadGraph()">
-        <option value="0.003" selected>Last 5 min</option>
-        <option value="0.02">Last 30 min</option>
-        <option value="0.04">Last 1 hour</option>
-        <option value="0.25">Last 6 hours</option>
-        <option value="0.5">Last 12 hours</option>
-        <option value="1">Last 1 day</option>
-        <option value="7">Last 7 days</option>
-        <option value="30">Last 30 days</option>
-        <option value="365">All time</option>
-      </select>
-      <select id="graph-limit" onchange="loadGraph()">
-        <option value="40">40 nodes</option>
-        <option value="80" selected>80 nodes</option>
-        <option value="150">150 nodes</option>
-        <option value="300">300 nodes</option>
-      </select>
-      <select id="graph-source" onchange="loadGraph()">
-        <option value="">All sources</option>
-        <option value="manual">Manual (Claude)</option>
-        <option value="auto">Auto-encode (Stop)</option>
-        <option value="idle">Idle (dreams/consolidate)</option>
-        <option value="hook">Hook (compaction/boot)</option>
-      </select>
-      <button onclick="loadGraph()">Refresh</button>
+      <button onclick="loadGraph3D()">Refresh</button>
+      <button onclick="toggleLegend()">Legend</button>
     </div>
-    <canvas id="graph-canvas"></canvas>
-    <div class="node-tooltip" id="tooltip"></div>
+    <div id="graph-3d" style="width:100%;height:100%"></div>
+    <div id="graph-legend" style="position:fixed;top:42px;right:0;background:rgba(10,10,20,0.95);border-left:1px solid #333;padding:14px;height:calc(100vh - 42px);overflow-y:auto;z-index:10;font-size:11px;color:#888;width:260px;transform:translateX(220px);transition:transform 0.3s ease">
+      <h3 style="color:#555;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px">Communities</h3>
+      <div id="legend-items"></div>
+    </div>
   </div>
 </div>
 <div class="node-detail" id="node-detail" style="display:none"></div>
+<script src="https://unpkg.com/3d-force-graph@1"></script>
 
 <div id="tab-explorer" class="tab-content">
   <div class="explorer">
@@ -1435,11 +1651,11 @@ canvas { width: 100%; height: 100%; }
 
 <div id="tab-traces" class="tab-content">
   <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;padding:4px 8px">
-    <select id="trace-scale-filter" onchange="loadTraces()" style="background:#111;color:#ccc;border:1px solid #333;padding:4px 8px;border-radius:4px;font-size:11px">
+    <select id="trace-scale-filter" onchange="onTraceScaleChange()" style="background:#111;color:#ccc;border:1px solid #333;padding:4px 8px;border-radius:4px;font-size:11px">
       <option value="">All scales</option>
       <option value="s0">S0 (Exchange)</option>
       <option value="s1">S1 (Turn)</option>
-      <option value="s2">S2 (Session)</option>
+      <option value="s2">S2 (Graph)</option>
       <option value="s3">S3 (Sleep)</option>
       <option value="s4">S4 (Growth)</option>
     </select>
@@ -1467,7 +1683,7 @@ function switchTab(name) {
   });
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  if (name === 'graph') { setTimeout(() => { initGraph(); resizeCanvas(); if (graphNodes.length) render(); else loadGraph(); }, 50); }
+  if (name === 'graph') { setTimeout(() => { if (!graph3dData) { loadGraph3D(); } else if (graph3d) { var c = document.getElementById('graph-3d'); graph3d.width(c.offsetWidth).height(c.offsetHeight); } }, 100); }
   if (name === 'explorer') searchNodes();
   if (name === 'errors') loadErrors();
   if (name === 'health') { loadHealth(); loadSystemStatus(); }
@@ -1556,8 +1772,10 @@ function renderRecallEntry(evt) {
   div.className = 'hook-entry recall-entry';
   const src = evt.source || 'unknown';
   div.dataset.source = src;
+  div.dataset.scale = 's1';
   div.dataset.recallId = evt.id;
   div.dataset.needsJudge = (src === 'hook' && !evt.judge_output) ? '1' : '0';
+  div.dataset.ts = evt.timestamp || '';
   const t = localTime(evt.timestamp, 'time');
   const srcColor = SOURCE_COLORS[src] || '#666';
   const srcLabel = SOURCE_LABELS[src] || src.toUpperCase();
@@ -1631,11 +1849,11 @@ function renderRecallEntry(evt) {
 }
 
 function isEntryVisible(src) {
-  const filterVal = document.getElementById('surface-filter').value;
+  const el = document.getElementById('scale-filter');
+  const filterVal = el ? el.value : '';
   if (!filterVal) return src !== 'internal';
-  if (filterVal === 'recall') return src === 'hook';
-  if (filterVal === 'mcp') return src === 'mcp';
-  if (filterVal === 'internal') return src === 'internal';
+  if (filterVal === 's1') return src === 'hook' || src === 'mcp';
+  if (filterVal === 's2') return false; // S2 entries handled separately
   return true;
 }
 
@@ -1662,7 +1880,7 @@ async function loadSessions() {
 function onSessionFilterChange() {
   // Reset feed and re-poll with new session filter
   lastRecallId = 0;
-  document.getElementById('feed').innerHTML = '';
+  document.getElementById('feed-decoding').innerHTML = '';
   pollRecallLog();
 }
 
@@ -1673,7 +1891,7 @@ async function pollRecallLog() {
     if (sf) url += '&session_id=' + encodeURIComponent(sf);
     const r = await fetch(url);
     const d = await r.json();
-    const feed = document.getElementById('feed');
+    const feed = document.getElementById('feed-decoding');
     if (d.events && d.events.length) {
       if (feed.querySelector('.hook-placeholder')) feed.querySelector('.hook-placeholder').remove();
       const sorted = d.events.slice().reverse();
@@ -1689,7 +1907,7 @@ async function pollRecallLog() {
     }
     // Async judge update: check entries missing judge data
     // Only update entries NOT currently scrolled into view or expanded
-    const pending = document.querySelectorAll('#feed .recall-entry[data-needs-judge="1"]');
+    const pending = document.querySelectorAll('#feed-decoding .recall-entry[data-needs-judge="1"]');
     if (pending.length) {
       const ids = Array.from(pending).map(el => el.dataset.recallId).filter(Boolean);
       if (ids.length) {
@@ -1698,7 +1916,7 @@ async function pollRecallLog() {
         const jd = await jr.json();
         for (const evt of (jd.events || [])) {
           if (evt.judge_output) {
-            const el = document.querySelector('#feed .recall-entry[data-recall-id="' + evt.id + '"][data-needs-judge="1"]');
+            const el = document.querySelector('#feed-decoding .recall-entry[data-recall-id="' + evt.id + '"][data-needs-judge="1"]');
             if (el) {
               // One-time re-render: chips → judge output. Won't fire again (needsJudge becomes 0).
               const scrollTop = feed.scrollTop;
@@ -1715,7 +1933,7 @@ async function pollRecallLog() {
 
 // Initial load
 (async function() {
-  const feed = document.getElementById('feed');
+  const feed = document.getElementById('feed-decoding');
   feed.innerHTML = '<div class="hook-placeholder" style="color:#666;padding:20px;text-align:center">Waiting for brain activity...</div>';
   await pollRecallLog();
 })();
@@ -1736,11 +1954,11 @@ function switchFeed(name) {
     const label = b.textContent.toLowerCase();
     b.classList.toggle('active', label.includes(name));
   });
-  document.getElementById('feed').style.display = name === 'surface' ? 'block' : 'none';
+  document.getElementById('feed-decoding').style.display = name === 'decoding' ? 'block' : 'none';
   document.getElementById('feed-encoding').style.display = name === 'encoding' ? 'block' : 'none';
   document.getElementById('feed-queue').style.display = name === 'queue' ? 'block' : 'none';
-  document.getElementById('surface-filter').style.display = name === 'surface' ? '' : 'none';
-  document.getElementById('encoding-filter').style.display = name === 'encoding' ? '' : 'none';
+  document.getElementById('scale-filter').style.display = (name === 'decoding' || name === 'encoding') ? '' : 'none';
+  if (name === 'decoding') loadDecodingFeed();
   if (name === 'encoding') {
     if (!encodingLoaded) loadEncodingActivity();
     encBadgeCount = 0;
@@ -1750,16 +1968,119 @@ function switchFeed(name) {
   if (name === 'queue') loadSignalQueue();
 }
 
-function filterSurface() {
-  const val = document.getElementById('surface-filter').value;
-  document.querySelectorAll('#feed .recall-entry').forEach(el => {
-    const src = el.dataset.source || '';
-    if (!val) { el.style.display = src === 'internal' ? 'none' : ''; return; }
-    if (val === 'recall') el.style.display = src === 'hook' ? '' : 'none';
-    else if (val === 'mcp') el.style.display = src === 'mcp' ? '' : 'none';
-    else if (val === 'internal') el.style.display = src === 'internal' ? '' : 'none';
-    else el.style.display = '';
+function loadDecodingFeed() {
+  // S1 recalls auto-load via pollRecallLog interval
+  // Also load S2 decode traces and append as entries
+  pollRecallLog();
+  loadS2DecodeEntries();
+}
+
+function filterByScale() {
+  const val = document.getElementById('scale-filter').value;
+  document.querySelectorAll('#feed-decoding .recall-entry, #feed-decoding .s2-entry').forEach(el => {
+    const scale = el.dataset.scale || 's1';
+    if (!val) { el.style.display = ''; return; }
+    el.style.display = scale === val ? '' : 'none';
   });
+  // Also filter encoding feed
+  document.querySelectorAll('#feed-encoding .enc-entry').forEach(el => {
+    const scale = el.dataset.scale || 's1';
+    if (!val) { el.style.display = ''; return; }
+    el.style.display = scale === val ? '' : 'none';
+  });
+}
+
+let s2DecodeLoaded = false;
+async function loadS2DecodeEntries() {
+  if (s2DecodeLoaded) return;
+  s2DecodeLoaded = true;
+  const container = document.getElementById('feed-decoding');
+  try {
+    // Only show S2 entries from last 24h in the live Decoding feed.
+    // Historical S2 data lives in the Traces tab.
+    const r = await fetch('/api/traces?scale=s2&hours=24');
+    const events = await r.json();
+    if (!Array.isArray(events) || !events.length) return;
+    // Group by chain_id
+    const chains = {};
+    events.forEach(e => {
+      if (!chains[e.chain_id]) chains[e.chain_id] = {events: [], chain_id: e.chain_id};
+      chains[e.chain_id].events.push(e);
+    });
+    const chainList = Object.values(chains).sort((a,b) =>
+      (b.events[0]?.created_at || '').localeCompare(a.events[0]?.created_at || ''));
+
+    chainList.forEach(chain => {
+      const el = _renderS2ChainEntry(chain);
+      // Insert chronologically: find first S1 entry older than this chain
+      const chainTs = chain.events[0]?.created_at || '';
+      const entries = container.querySelectorAll('.recall-entry, .s2-entry');
+      let inserted = false;
+      for (const entry of entries) {
+        const entryTs = entry.dataset.ts || '';
+        if (entryTs && entryTs < chainTs) {
+          container.insertBefore(el, entry);
+          inserted = true;
+          break;
+        }
+      }
+      if (!inserted) container.appendChild(el);
+    });
+  } catch(e) {
+    console.error('S2 decode load failed:', e);
+  }
+}
+
+function _renderS2ChainEntry(chain) {
+  const oEvent = chain.events.find(e => e.event_type === 'O');
+  const kEvent = chain.events.find(e => e.event_type === 'K');
+  const deltaEvents = chain.events.filter(e => e.event_type === 'delta');
+
+  const time = chain.events[0]?.created_at ? localTime(chain.events[0].created_at) : '?';
+  const chainShort = chain.chain_id.substring(0, 20);
+  const chainTs = chain.events[0]?.created_at || '';
+
+  let h = '';
+  h += '<div class="hook-header" onclick="toggleHookBody(this)">';
+  h += '<span class="hook-badge" style="background:#1a3a4a;color:#45B7D1">S2 COMMUNITY</span>';
+  h += '<span class="hook-time">' + time + '</span>';
+  h += '<span class="hook-id">' + chainShort + '</span>';
+
+  const created = deltaEvents.filter(d => d.ref_type === 'community_created');
+  const enriched = deltaEvents.find(d => d.ref_type === 'community_enriched');
+  if (created.length) {
+    h += '<span class="hook-size" style="color:#45B7D1">' + created.length + ' communities created</span>';
+  } else if (enriched) {
+    h += '<span class="hook-size">' + escapeHtml(enriched.summary?.substring(0, 60) || '') + '</span>';
+  }
+  h += '</div>';
+
+  h += '<div class="hook-body">';
+  if (oEvent) {
+    h += '<div style="padding:4px 12px;color:#888;font-size:11px">';
+    h += '<strong style="color:#45B7D1">O (observed):</strong> ' + escapeHtml(oEvent.summary || '') + '</div>';
+  }
+  if (kEvent) {
+    h += '<div style="padding:4px 12px;color:#888;font-size:11px">';
+    h += '<strong style="color:#ffaa33">K (proposals):</strong> ' + escapeHtml(kEvent.summary || '') + '</div>';
+  }
+  deltaEvents.forEach(d => {
+    const color = d.ref_type === 'community_created' ? '#33ff88' :
+                   d.ref_type === 'community_enriched' ? '#aa66ff' :
+                   d.ref_type === 'recall_quality_signal' ? '#ff6666' : '#888';
+    h += '<div style="padding:4px 12px;color:#888;font-size:11px">';
+    h += '<strong style="color:' + color + '">Δ ' + escapeHtml(d.ref_type || '') + ':</strong> ';
+    h += escapeHtml(d.summary || '') + '</div>';
+  });
+  h += '</div>';
+
+  const div = document.createElement('div');
+  div.className = 'hook-entry s2-entry';
+  div.dataset.scale = 's2';
+  div.dataset.ts = chainTs;
+  div.style.borderLeftColor = '#45B7D1';
+  div.innerHTML = h;
+  return div;
 }
 
 function filterEncoding() {
@@ -2182,6 +2503,16 @@ let _traceChainEntries = [];
 let _traceRendered = 0;
 const _TRACE_BATCH = 30;
 
+function onTraceScaleChange() {
+  const scale = document.getElementById('trace-scale-filter').value;
+  const hoursEl = document.getElementById('trace-hours-filter');
+  // S2+ runs happen less frequently — auto-expand to 7d if current window is too narrow
+  if (scale && scale >= 's2' && parseInt(hoursEl.value) < 168) {
+    hoursEl.value = '168';
+  }
+  loadTraces();
+}
+
 async function loadTraces() {
   try {
     const scaleFilter = document.getElementById('trace-scale-filter').value;
@@ -2288,12 +2619,8 @@ function _stopTraceAutoRefresh() {
   if (_traceAutoRefresh) { clearInterval(_traceAutoRefresh); _traceAutoRefresh = null; }
 }
 
-// Graph
-let graphData = null, graphNodes = [], graphEdges = [];
-let canvas, ctx;
-let offsetX = 0, offsetY = 0, scale = 1;
-let dragNode = null, dragStartX, dragStartY;
-let hoveredNode = null, graphInited = false;
+// 3D Graph
+let graph3d = null, graph3dData = null, legendVisible = false;
 
 const TYPE_COLORS = {
   lesson: '#4a9eff', correction: '#ff6666', interaction: '#33ff88',
@@ -2358,22 +2685,95 @@ async function loadNodeDetail(nodeId) {
   }
 }
 
-async function loadGraph() {
-  const days = document.getElementById('graph-days').value;
-  const limit = document.getElementById('graph-limit').value;
-  const source = document.getElementById('graph-source').value;
-  let url = `/api/graph?days=${days}&limit=${limit}`;
-  if (source) url += `&source=${source}`;
+async function loadGraph3D() {
   try {
-    const r = await fetch(url);
-    graphData = await r.json();
-    initForce();
-  } catch(e) {}
+    const r = await fetch('/api/graph3d');
+    graph3dData = await r.json();
+    if (!graph3dData.nodes || !graph3dData.nodes.length) return;
+
+    // Filter: only show nodes IN communities + community hub nodes
+    // Orphans get hidden — they clutter without adding structure
+    const communityNodeIds = new Set();
+    const hubIds = new Set();
+    graph3dData.nodes.forEach(n => {
+      if (n.hub) hubIds.add(n.id);
+      if (n.community) communityNodeIds.add(n.id);
+    });
+    // Include community hubs too
+    hubIds.forEach(id => communityNodeIds.add(id));
+
+    const visibleNodes = graph3dData.nodes.filter(n => communityNodeIds.has(n.id) || hubIds.has(n.id));
+    const visibleIds = new Set(visibleNodes.map(n => n.id));
+
+    // Only community_member edges + typed edges between visible nodes
+    const visibleLinks = graph3dData.edges
+      .filter(e => visibleIds.has(e.source) && visibleIds.has(e.target))
+      .filter(e => e.relation !== 'co_accessed' && e.relation !== 'emergent_bridge')
+      .map(e => ({source: e.source, target: e.target, relation: e.relation}));
+
+    const container = document.getElementById('graph-3d');
+    container.style.height = 'calc(100vh - 42px)';
+    // Force container to have dimensions before creating graph
+    const w = container.offsetWidth || 800;
+    const h = container.offsetHeight || 600;
+
+    if (graph3d) {
+      graph3d.graphData({nodes: visibleNodes, links: visibleLinks});
+    } else {
+      graph3d = ForceGraph3D()(container)
+        .width(w).height(h)
+        .graphData({nodes: visibleNodes, links: visibleLinks})
+        .backgroundColor('#08080f')
+        .nodeVal(n => n.hub ? n.val : 2)
+        .nodeColor(n => n.color)
+        .nodeOpacity(0.85)
+        .nodeLabel(n => {
+          if (n.hub) return '<div style="text-align:center;font-size:14px"><b>' + n.name + '</b><br><span style="color:#aaa">' + (n.val/0.8|0) + ' members</span></div>';
+          const comm = n.community_title ? '<br><span style="color:#666">' + n.community_title.substring(0, 40) + '</span>' : '';
+          return '<div style="text-align:center"><b>' + n.name + '</b><br><span style="color:#888">' + n.type + '</span>' + comm + '</div>';
+        })
+        .linkColor(l => l.relation === 'community_member' ? '#333' : '#222')
+        .linkOpacity(l => l.relation === 'community_member' ? 0.15 : 0.08)
+        .linkWidth(l => l.relation === 'community_member' ? 0.3 : 0.15)
+        .d3AlphaDecay(0.06)
+        .d3VelocityDecay(0.4)
+        .warmupTicks(100)
+        .cooldownTicks(200)
+        .onNodeClick(node => {
+          graph3d.cameraPosition({x: node.x + 150, y: node.y + 80, z: node.z + 150}, node, 1000);
+          loadNodeDetail(node.id);
+        });
+    }
+
+    // Build legend
+    const legendEl = document.getElementById('legend-items');
+    if (graph3dData.communities && graph3dData.communities.length) {
+      legendEl.innerHTML = graph3dData.communities.map(c =>
+        '<div style="display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:4px;cursor:pointer;transition:background 0.15s" ' +
+        'onmouseover="this.style.background=`rgba(255,255,255,0.08)`" onmouseout="this.style.background=`none`">' +
+        '<div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:' + c.color + ';box-shadow:0 0 4px ' + c.color + '"></div>' +
+        '<span style="color:#aaa">' + c.name + ' (' + c.count + ')</span></div>'
+      ).join('');
+    } else {
+      legendEl.innerHTML = '<div style="color:#555;padding:8px">No communities yet</div>';
+    }
+  } catch(e) {
+    console.error('Graph3D load failed:', e);
+  }
 }
 
-function initGraph() {
-  if (graphInited) return;
-  graphInited = true;
+function toggleLegend() {
+  const el = document.getElementById('graph-legend');
+  legendVisible = !legendVisible;
+  el.style.transform = legendVisible ? 'translateX(0)' : 'translateX(220px)';
+}
+
+// Legacy — keep for backward compat but redirect
+async function loadGraph() { loadGraph3D(); }
+
+// Legacy 2D graph removed — replaced by 3D ForceGraph
+
+if(false){function initGraph() {
   canvas = document.getElementById('graph-canvas');
   ctx = canvas.getContext('2d');
   resizeCanvas();
@@ -2530,8 +2930,8 @@ function onWheel(e) {
   if (newScale < 0.1 || newScale > 10) return;
   offsetX = mx - (mx - offsetX) * delta;
   offsetY = my - (my - offsetY) * delta;
-  scale = newScale; render();
-}
+  scale = newScale;
+}} // end if(false) legacy 2D graph
 </script>
 </body>
 </html>'''

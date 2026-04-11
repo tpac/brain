@@ -317,10 +317,10 @@ def _handle_remember(brain, args, graph_changes):
         if not ok:
             return {"ok": False, "error": err}
 
-    # Pass ALL contract fields through to remember() — it handles routing
-    # to nodes table, node_metadata, and node_embeddings
-    accepted_fields = set(get_remember_fields().keys()) | {'connections'}
-    remember_args = {k: v for k, v in args.items() if k in accepted_fields and v is not None}
+    # Pass ALL fields through to remember() — contract fields go to nodes table,
+    # promoted fields to metadata, everything else to node_metadata_kv as extra_fields.
+    # Don't filter — remember() handles routing via **extra_fields kwargs.
+    remember_args = {k: v for k, v in args.items() if v is not None}
     result = brain.remember(**remember_args)
     node_id = result.get("id", "?")[:8] if isinstance(result, dict) else "?"
     graph_changes.append(
@@ -346,7 +346,9 @@ def _handle_remember_batch(brain, args, graph_changes):
             ok, err = validate_field(field, value)
             if not ok:
                 return {"ok": False, "error": "node[%d].%s: %s" % (i, field, err)}
-        cleaned = {k: v for k, v in spec.items() if k in accepted_fields and v is not None}
+        # Pass ALL fields through — contract fields go to nodes table,
+        # promoted fields to metadata, extras to node_metadata_kv
+        cleaned = {k: v for k, v in spec.items() if v is not None}
         if top_encoding_source and 'encoding_source' not in cleaned:
             cleaned['encoding_source'] = top_encoding_source
         cleaned_nodes.append(cleaned)
@@ -477,9 +479,20 @@ def _handle_brain_batch(brain, args, graph_changes):
                 r = _handle_connect(brain, op_args, graph_changes)
                 results.append({"op": "connect", "index": i, **r})
 
+            elif op == "archive":
+                node_id = op_spec.get("node_id")
+                if not node_id:
+                    results.append({"op": "archive", "index": i, "ok": False,
+                                    "error": "node_id is required"})
+                else:
+                    brain._node_dal.archive(node_id)
+                    graph_changes.append("ARCHIVE: %s" % node_id[:8])
+                    results.append({"op": "archive", "index": i, "ok": True,
+                                    "result": {"archived": node_id}})
+
             else:
                 results.append({"op": op, "index": i, "ok": False,
-                                "error": "Unknown op: %s (use remember, revise, connect)" % op})
+                                "error": "Unknown op: %s (use remember, revise, connect, archive)" % op})
         except Exception as e:
             results.append({"op": op, "index": i, "ok": False, "error": str(e)[:200]})
 
@@ -573,6 +586,36 @@ def _handle_get_interaction(brain, args, graph_changes):
     if not result:
         return {"ok": False, "error": "Interaction not found: %s" % args.get("name", "")}
     return {"ok": True, "result": result}
+
+
+def _handle_register_interaction(brain, args, graph_changes):
+    """Register a new version of an interaction (prompt + config).
+
+    Creates a new version if the interaction exists, or version 1 if new.
+    Used by S2/S3 to evolve learnable boundaries.
+    """
+    name = args.get("name", "")
+    template = args.get("template", "")
+    parameters = args.get("parameters", "{}")
+    created_by = args.get("created_by", "")
+
+    if not name:
+        return {"ok": False, "error": "name is required"}
+
+    try:
+        brain._interaction_dal.register(
+            name=name,
+            template=template,
+            parameters=parameters,
+            created_by=created_by)
+        latest = brain._interaction_dal.get_latest(name)
+        return {"ok": True, "result": {
+            "name": name,
+            "version": latest.get("version") if latest else 1,
+            "template_length": len(template),
+        }}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
 
 
 def _handle_filter_nodes(brain, args, graph_changes):
@@ -848,6 +891,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "count_traces":          CmdEntry(_handle_count_traces,        is_write=False, marks_dirty=False),
     "list_interactions":     CmdEntry(_handle_list_interactions,   is_write=False, marks_dirty=False),
     "get_interaction":       CmdEntry(_handle_get_interaction,     is_write=False, marks_dirty=False),
+    "register_interaction":  CmdEntry(_handle_register_interaction,is_write=True,  marks_dirty=False),
     "trace_append":          CmdEntry(_handle_trace_append,        is_write=True,  marks_dirty=False),
     "get_node":              CmdEntry(_handle_get_node,             is_write=False, marks_dirty=False),
     "get_nodes":             CmdEntry(_handle_get_nodes,            is_write=False, marks_dirty=False),

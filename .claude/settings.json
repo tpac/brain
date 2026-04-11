@@ -2,20 +2,18 @@
   "permissions": {
     "allow": [
       "mcp__plugin_brain_brain__recall",
+      "mcp__plugin_brain_brain__recall_batch",
       "mcp__plugin_brain_brain__remember",
+      "mcp__plugin_brain_brain__remember_batch",
+      "mcp__plugin_brain_brain__revise",
+      "mcp__plugin_brain_brain__revise_batch",
       "mcp__plugin_brain_brain__connect",
+      "mcp__plugin_brain_brain__connect_batch",
+      "mcp__plugin_brain_brain__brain_batch",
       "mcp__plugin_brain_brain__enrich",
-      "mcp__plugin_brain_brain__remember_lesson",
-      "mcp__plugin_brain_brain__remember_impact",
-      "mcp__plugin_brain_brain__remember_mechanism",
-      "mcp__plugin_brain_brain__remember_convention",
-      "mcp__plugin_brain_brain__remember_uncertainty",
-      "mcp__plugin_brain_brain__remember_mental_model",
-      "mcp__plugin_brain_brain__record_divergence",
-      "mcp__plugin_brain_brain__learn_vocabulary",
-      "mcp__plugin_brain_brain__encode_cluster",
       "mcp__plugin_brain_brain__find_node_by_title",
       "mcp__plugin_brain_brain__get_node",
+      "mcp__plugin_brain_brain__get_nodes",
       "mcp__plugin_brain_brain__consciousness",
       "mcp__plugin_brain_brain__engineering_context",
       "mcp__plugin_brain_brain__eval",
@@ -24,8 +22,12 @@
       "mcp__plugin_brain_brain__query_traces",
       "mcp__plugin_brain_brain__query_outcomes",
       "mcp__plugin_brain_brain__count_traces",
+      "mcp__plugin_brain_brain__queue_state",
+      "mcp__plugin_brain_brain__dismiss_signal",
       "mcp__plugin_brain_brain__list_interactions",
-      "mcp__plugin_brain_brain__get_interaction"
+      "mcp__plugin_brain_brain__get_interaction",
+      "mcp__plugin_brain_brain__register_interaction",
+      "mcp__plugin_brain_brain__restart"
     ]
   }
 }
