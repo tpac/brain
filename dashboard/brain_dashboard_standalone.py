@@ -2829,14 +2829,14 @@ async function loadGraph3D() {
         .warmupTicks(150)
         .cooldownTicks(300)
         .d3Force('charge', d3.forceManyBody().strength(-15).distanceMax(200))
-        .d3Force('link', d3.forceLink().distance(l => l.relation === 'community_member' ? 8 : 40).strength(l => l.relation === 'community_member' ? 0.7 : 0.05))
+        .d3Force('link', d3.forceLink().distance(l => l.relation === 'community_member' ? 3 : 40).strength(l => l.relation === 'community_member' ? 0.9 : 0.05))
         .onNodeClick(node => {
           graph3d.cameraPosition({x: node.x + 150, y: node.y + 80, z: node.z + 150}, node, 1000);
           loadNodeDetail(node.id);
         });
       // 2x zoom speed
       var controls = graph3d.controls();
-      if (controls) controls.zoomSpeed = 2.0;
+      if (controls) controls.zoomSpeed = 5.0;
     }
 
     // Build legend with click-to-focus
