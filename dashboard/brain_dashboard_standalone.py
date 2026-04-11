@@ -2834,6 +2834,9 @@ async function loadGraph3D() {
           graph3d.cameraPosition({x: node.x + 150, y: node.y + 80, z: node.z + 150}, node, 1000);
           loadNodeDetail(node.id);
         });
+      // 2x zoom speed
+      var controls = graph3d.controls();
+      if (controls) controls.zoomSpeed = 2.0;
     }
 
     // Build legend with click-to-focus
