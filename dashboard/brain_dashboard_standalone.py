@@ -2828,8 +2828,16 @@ async function loadGraph3D() {
         .d3VelocityDecay(0.5)
         .warmupTicks(150)
         .cooldownTicks(300)
-        .d3Force('charge', d3.forceManyBody().strength(-15).distanceMax(200))
-        .d3Force('link', d3.forceLink().distance(l => l.relation === 'community_member' ? 3 : 40).strength(l => l.relation === 'community_member' ? 0.9 : 0.05))
+        .onEngineTick(() => {
+          // Configure forces after engine initializes (d3 not globally available)
+          if (!graph3d._forcesConfigured) {
+            var charge = graph3d.d3Force('charge');
+            if (charge) { charge.strength(-15).distanceMax(200); }
+            var link = graph3d.d3Force('link');
+            if (link) { link.distance(l => l.relation === 'community_member' ? 3 : 40).strength(l => l.relation === 'community_member' ? 0.9 : 0.05); }
+            graph3d._forcesConfigured = true;
+          }
+        })
         .onNodeClick(node => {
           graph3d.cameraPosition({x: node.x + 150, y: node.y + 80, z: node.z + 150}, node, 1000);
           loadNodeDetail(node.id);
