@@ -290,6 +290,11 @@ class CommunityDecoder(IntegrationUnit):
         valid_clusters, corridors, dissolved_count = self._validate_clusters(
             clusters, edges_by_node, typed_neighbors)
 
+        # Step 4b: Absorb subsets — when one cluster is fully contained
+        # in another, merge the smaller into the larger. The larger cluster
+        # keeps all members (no information loss). The smaller is dissolved.
+        valid_clusters, absorbed_count = self._absorb_subsets(valid_clusters)
+
         # Step 5: Affinities for unplaced nodes to NEW clusters
         node_affinities = self._compute_affinities(
             valid_clusters, typed_neighbors)
@@ -479,6 +484,7 @@ class CommunityDecoder(IntegrationUnit):
                              for k, v in bucket_stats.items()},
             'clusters_seeded': len(clusters),
             'fragments_dissolved': dissolved_count,
+            'subsets_absorbed': absorbed_count,
             'valid_clusters': len(valid_clusters),
             'corridors': len(corridors),
             'nodes_with_affinities': len(node_affinities) - len(cross_cutting),
@@ -650,6 +656,38 @@ class CommunityDecoder(IntegrationUnit):
                 corridors.add(cid)
 
         return valid, corridors, dissolved
+
+    # ── Step 4b ──
+
+    def _absorb_subsets(self, valid_clusters):
+        """When one cluster is fully contained in another, absorb it.
+
+        The larger cluster keeps all its members (no information loss).
+        The smaller cluster is dissolved — its members are already
+        covered by the larger one.
+
+        Handles chains: if A ⊂ B ⊂ C, both A and B dissolve into C.
+
+        Returns: (filtered_clusters, absorbed_count)
+        """
+        absorbed = set()
+        cluster_ids = sorted(valid_clusters.keys(),
+                             key=lambda k: -len(valid_clusters[k]))
+
+        for i in range(len(cluster_ids)):
+            if cluster_ids[i] in absorbed:
+                continue
+            larger = valid_clusters[cluster_ids[i]]
+            for j in range(i + 1, len(cluster_ids)):
+                if cluster_ids[j] in absorbed:
+                    continue
+                smaller = valid_clusters[cluster_ids[j]]
+                if smaller <= larger:  # set subset check
+                    absorbed.add(cluster_ids[j])
+
+        filtered = {cid: members for cid, members in valid_clusters.items()
+                    if cid not in absorbed}
+        return filtered, len(absorbed)
 
     # ── Step 5 ──
 
