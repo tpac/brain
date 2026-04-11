@@ -99,6 +99,5 @@ if [ $MCP_EXIT -ne 0 ]; then
   fi
 fi
 
-# Mark as booted, then run
-touch "$BOOT_FLAG"
+# Run boot
 exec python3 "$(dirname "$0")/boot_brain.py"

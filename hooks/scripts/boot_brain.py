@@ -56,8 +56,12 @@ def _boot_via_daemon():
         elif isinstance(stored, dict) and stored.get("value", "default") != "default":
             project = stored["value"]
 
-    # Get formatted boot context
+    # Get formatted boot context (retry once if daemon just started)
     result = daemon_call("context_boot", {"user": user, "project": project})
+    if not result:
+        import time
+        time.sleep(1)
+        result = daemon_call("context_boot", {"user": user, "project": project})
     if isinstance(result, dict):
         text = result.get("for_claude", "") or result.get("text", "")
         if text:
