@@ -1,7 +1,7 @@
 {
   "name": "brain",
-  "version": "9.2.0",
-  "description": "Shared cognitive space for Claude + operator. v9.2: Fractal trace system (O/K/Δ at every scale), interactions table (versioned learnable boundaries), filter_nodes + query_logs MCP tools, PostToolUse trace capture, dashboard Traces tab.",
+  "version": "9.3.0",
+  "description": "Shared cognitive space for Claude + operator. v9.3: S2 Consolidation Encoder (epistemological synthesis — CONSOLIDATE/EVOLVE/KEEP/SKIP), boot BRAIN MAP (community narratives as compressed awareness), dynamic edge families, locked node guardrails, emergent KV flow through revise(), dashboard S2 visibility, SKILL.md v9.",
   "author": {
     "name": "Tom Pachys"
   },
