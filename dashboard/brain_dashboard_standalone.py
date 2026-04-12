@@ -906,6 +906,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
         elif path == "/api/consolidation-runs":
             hours = int(params.get("hours", ["24"])[0])
             self._json_response(200, {"runs": _query_consolidation_runs(hours=hours)})
+        elif path == "/api/consolidation-prompt":
+            batch = int(params.get("batch", ["1"])[0])
+            prompt_path = "/tmp/brain-consolidation-prompt-%d.json" % batch
+            if os.path.exists(prompt_path):
+                with open(prompt_path) as f:
+                    self._json_response(200, json.load(f))
+            else:
+                self._json_response(404, {"error": "No prompt file for batch %d" % batch})
         elif path == "/api/signal-queue":
             self._serve_signal_queue()
         elif path == "/api/assembler-comparison":
@@ -2184,21 +2192,56 @@ function _renderS2ChainEntry(chain) {
   }
   h += '</div>';
 
-  h += '<div class="hook-body">';
+  h += '<div class="hook-body" style="padding:4px 12px">';
   if (oEvent) {
-    h += '<div style="padding:4px 12px;color:#888;font-size:11px">';
+    h += '<div style="padding:2px 0;color:#888;font-size:11px">';
     h += '<strong style="color:' + badgeColor + '">O (observed):</strong> ' + escapeHtml(oEvent.summary || '') + '</div>';
   }
   if (kEvent) {
-    h += '<div style="padding:4px 12px;color:#888;font-size:11px">';
+    h += '<div style="padding:2px 0;color:#888;font-size:11px">';
     h += '<strong style="color:#ffaa33">K (proposals):</strong> ' + escapeHtml(kEvent.summary || '') + '</div>';
+
+    // For consolidation: parse K metadata to show cluster proposals with node titles
+    if (isConsolidation && kEvent.metadata) {
+      try {
+        const meta = typeof kEvent.metadata === 'string' ? JSON.parse(kEvent.metadata) : kEvent.metadata;
+        const clusters = meta.clusters || [];
+        const shown = clusters.slice(0, 15);
+        shown.forEach((c, i) => {
+          const preClass = c.pre_class || 'needs_judgment';
+          const preColor = preClass === 'likely_consolidate' ? '#33ff88' :
+                           preClass === 'likely_evolve' ? '#ffcc00' :
+                           preClass === 'likely_keep' ? '#45B7D1' : '#888';
+          const titles = c.node_titles ? Object.values(c.node_titles) : [];
+          const sim = 'c=' + (c.content_cosine||0).toFixed(2) + ' t=' + (c.title_cosine||0).toFixed(2);
+          let signals = [];
+          if (c.co_recall_count > 0) signals.push('co_recall=' + c.co_recall_count);
+          if (c.has_correction_edge) signals.push('CORRECTION');
+          if (c.has_tension_edge) signals.push('TENSION');
+          if (Object.values(c.catalog_blind || {}).some(v => v)) signals.push('BLIND');
+          if (c.same_community) signals.push('same_comm');
+
+          h += '<div style="margin:3px 0;padding:3px 8px;border-left:2px solid ' + preColor + '">';
+          h += '<span style="color:' + preColor + ';font-size:10px;font-weight:bold">' + preClass.toUpperCase().replace('LIKELY_','') + '</span> ';
+          h += '<span style="color:#666;font-size:10px">' + sim + '</span>';
+          if (signals.length) h += ' <span style="color:#aa8800;font-size:10px">' + signals.join(' ') + '</span>';
+          titles.forEach(t => {
+            h += '<div style="color:#ccc;font-size:11px;padding-left:4px">\u2022 ' + escapeHtml(t) + '</div>';
+          });
+          h += '</div>';
+        });
+        if (clusters.length > 15) {
+          h += '<div style="color:#555;font-size:10px;padding:2px 8px">+' + (clusters.length - 15) + ' more clusters</div>';
+        }
+      } catch(e) {}
+    }
   }
   deltaEvents.forEach(d => {
     const color = d.ref_type === 'community_created' ? '#33ff88' :
                    d.ref_type === 'community_enriched' ? '#aa66ff' :
                    d.ref_type === 'consolidated' ? '#33ff88' :
                    d.ref_type === 'recall_quality_signal' ? '#ff6666' : '#888';
-    h += '<div style="padding:4px 12px;color:#888;font-size:11px">';
+    h += '<div style="padding:2px 0;color:#888;font-size:11px">';
     h += '<strong style="color:' + color + '">Δ ' + escapeHtml(d.ref_type || '') + ':</strong> ';
     h += escapeHtml(d.summary || '') + '</div>';
   });
@@ -2326,7 +2369,9 @@ async function loadEncodingActivity() {
         let html = '<div class="hook-header" onclick="toggleHookBody(this)">' +
           '<span class="hook-badge" style="background:' + color + ';color:#000">' + label + '</span>' +
           '<span class="hook-time">' + t + '</span>' +
-          '<span class="hook-size">' + (isConsol ? (actionCount + ' actions') : escapeHtml((run.summary||'').substring(0, 60))) + '</span></div>';
+          '<span class="hook-size">' + (isConsol ? (actionCount + ' actions') : escapeHtml((run.summary||'').substring(0, 60))) + '</span>' +
+          (isConsol ? '<button class="hook-details-btn" style="margin-left:auto" onclick="event.stopPropagation();toggleConsolPrompt(this.parentElement.parentElement)">Show Prompt</button>' : '') +
+          '</div>';
 
         // Info line
         if (run.o_summary || run.k_summary) {
@@ -2376,6 +2421,10 @@ async function loadEncodingActivity() {
             html += '<div style="margin-top:6px;padding:4px 8px;color:#666;font-size:10px;border-top:1px solid #222">' +
               '<strong>Journal:</strong><pre style="white-space:pre-wrap;margin:4px 0;color:#888">' + escapeHtml(run.journal.substring(0, 500)) + '</pre></div>';
           }
+        }
+        // Prompt body (hidden, toggled by Show Prompt button)
+        if (isConsol) {
+          html += '<div class="consol-prompt-body" style="display:none"><pre style="white-space:pre-wrap;color:#aaa;font-size:10px;max-height:600px;overflow-y:auto">Loading...</pre></div>';
         } else {
           // Community — simpler
           if (run.o_summary) html += '<div style="padding:2px 0;color:#888;font-size:11px"><strong style="color:#45B7D1">O:</strong> ' + escapeHtml(run.o_summary) + '</div>';
@@ -2480,6 +2529,29 @@ function toggleEncPrompt(entry) {
   if (prompt.style.display === 'none') {
     prompt.style.display = 'block';
     if (btn) btn.textContent = 'Hide Prompt';
+  } else {
+    prompt.style.display = 'none';
+    if (btn) btn.textContent = 'Show Prompt';
+  }
+}
+
+async function toggleConsolPrompt(entry) {
+  var prompt = entry.querySelector('.consol-prompt-body');
+  if (!prompt) return;
+  var btn = entry.querySelector('.hook-details-btn');
+  if (prompt.style.display === 'none') {
+    prompt.style.display = 'block';
+    if (btn) btn.textContent = 'Hide Prompt';
+    // Lazy-load prompt content
+    if (prompt.querySelector('pre').textContent === 'Loading...') {
+      try {
+        const r = await fetch('/api/consolidation-prompt?batch=1');
+        const d = await r.json();
+        prompt.querySelector('pre').textContent = d.user_content || d.error || '(no prompt available)';
+      } catch(e) {
+        prompt.querySelector('pre').textContent = '(failed to load prompt)';
+      }
+    }
   } else {
     prompt.style.display = 'none';
     if (btn) btn.textContent = 'Show Prompt';

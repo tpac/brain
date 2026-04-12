@@ -141,6 +141,16 @@ class ConsolidationEncoder(IntegrationUnit):
             # Format this batch
             user_content = journal_prefix + self._format_clusters(batch)
 
+            # Write prompt to tmp file (passive observer for dashboard)
+            try:
+                import json as _json
+                prompt_path = '/tmp/brain-consolidation-prompt-%d.json' % batch_num
+                with open(prompt_path, 'w') as _pf:
+                    _json.dump({"batch": batch_num, "clusters": len(batch),
+                                "user_content": user_content[:50000]}, _pf)
+            except Exception:
+                pass
+
             try:
                 result = run_llm_loop(
                     client=client,
