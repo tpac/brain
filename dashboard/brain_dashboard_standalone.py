@@ -457,6 +457,115 @@ def _query_encoding_runs(limit=10, session_id='', hours=24):
         return []
 
 
+def _query_consolidation_runs(hours=24):
+    """Read consolidation runs from S2 traces with full node/edge detail.
+    Returns synthesized nodes, archived originals, and suppression edges."""
+    logs_path = _get_logs_db_path()
+    db = _get_db_path()
+    if not os.path.exists(logs_path) or not os.path.exists(db):
+        return []
+    try:
+        conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=3)
+        # Get consolidation delta traces
+        delta_rows = conn.execute(
+            "SELECT chain_id, summary, metadata, created_at "
+            "FROM trace_events WHERE chain_id LIKE '%consolidation%' "
+            "AND event_type = 'delta' AND created_at > ? ORDER BY created_at DESC",
+            (utc_cutoff(hours=hours),)).fetchall()
+
+        # Get matching O and K traces
+        ok_rows = conn.execute(
+            "SELECT chain_id, event_type, summary, metadata "
+            "FROM trace_events WHERE chain_id LIKE '%consolidation%' "
+            "AND event_type IN ('O', 'K') AND created_at > ? ORDER BY created_at DESC",
+            (utc_cutoff(hours=hours),)).fetchall()
+        conn.close()
+
+        ok_by_chain = {}
+        for r in ok_rows:
+            chain = r[0]
+            if chain not in ok_by_chain:
+                ok_by_chain[chain] = {}
+            ok_by_chain[chain][r[1]] = {'summary': r[2] or '', 'metadata': r[3]}
+
+        bconn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=3)
+        runs = []
+        for row in delta_rows:
+            chain_id, summary, meta_raw, created_at = row
+            ok = ok_by_chain.get(chain_id, {})
+
+            # Parse delta metadata for journal text
+            journal = ''
+            try:
+                meta = json.loads(meta_raw) if meta_raw else {}
+                journal = meta.get('final_text', '')
+            except Exception:
+                meta = {}
+
+            # Synthesized nodes (created by s2:consolidation)
+            ts_clean = created_at.replace('+00:00', '').replace('Z', '').split('.')[0]
+            ts_lo = ts_clean[:10] + 'T' + '%02d' % max(0, int(ts_clean[11:13]) - 1) + ':00:00'
+            ts_hi = ts_clean[:10] + 'T' + '%02d' % min(23, int(ts_clean[11:13]) + 1) + ':59:59'
+
+            synth_nodes = bconn.execute(
+                "SELECT id, type, title, substr(content,1,300), confidence "
+                "FROM nodes WHERE encoding_source = 's2:consolidation' "
+                "AND created_at BETWEEN ? AND ? AND archived = 0 ORDER BY created_at",
+                (ts_lo, ts_hi)).fetchall()
+
+            # Archived originals (linked via consolidated_into edges to synth nodes)
+            archived_nodes = []
+            for sn in synth_nodes:
+                originals = bconn.execute(
+                    "SELECT n.id, n.type, n.title, substr(n.content,1,150) "
+                    "FROM edges e JOIN edge_relations er ON er.edge_id = e.edge_id "
+                    "JOIN nodes n ON n.id = e.target_id "
+                    "WHERE e.source_id = ? AND er.relation = 'consolidated_into' "
+                    "AND n.archived = 1", (sn[0],)).fetchall()
+                for o in originals:
+                    archived_nodes.append({"id": o[0], "type": o[1], "title": o[2], "content": o[3]})
+
+            # KEPT pairs (similar_to edges created in same window)
+            kept_edges = bconn.execute(
+                "SELECT n1.title, n2.title, er.relation, er.description "
+                "FROM edges e JOIN edge_relations er ON er.edge_id = e.edge_id "
+                "JOIN nodes n1 ON n1.id = e.source_id "
+                "JOIN nodes n2 ON n2.id = e.target_id "
+                "WHERE er.relation = 'similar_to' AND e.created_at BETWEEN ? AND ? "
+                "ORDER BY e.created_at", (ts_lo, ts_hi)).fetchall()
+
+            # EVOLVED (supersedes edges in same window, target archived)
+            evolved_edges = bconn.execute(
+                "SELECT n1.title, n2.title, er.description "
+                "FROM edges e JOIN edge_relations er ON er.edge_id = e.edge_id "
+                "JOIN nodes n1 ON n1.id = e.source_id "
+                "JOIN nodes n2 ON n2.id = e.target_id "
+                "WHERE er.relation = 'supersedes' AND e.created_at BETWEEN ? AND ? "
+                "AND n2.archived = 1 ORDER BY e.created_at", (ts_lo, ts_hi)).fetchall()
+
+            runs.append({
+                "chain_id": chain_id,
+                "timestamp": created_at,
+                "summary": summary or '',
+                "o_summary": ok.get('O', {}).get('summary', ''),
+                "k_summary": ok.get('K', {}).get('summary', ''),
+                "journal": journal[:1000],
+                "synthesized": [{"id": n[0], "type": n[1], "title": n[2],
+                                 "content": n[3], "confidence": n[4]} for n in synth_nodes],
+                "archived": archived_nodes,
+                "kept": [{"source": e[0], "target": e[1], "description": e[3] or ''}
+                         for e in kept_edges],
+                "evolved": [{"survivor": e[0], "archived": e[1], "description": e[2] or ''}
+                            for e in evolved_edges],
+            })
+
+        bconn.close()
+        return runs
+    except Exception as e:
+        print('[dashboard] consolidation runs error: %s' % e)
+        return []
+
+
 def _get_logs_db_path():
     db_dir = os.environ.get("BRAIN_DB_DIR", os.path.join(os.path.expanduser("~"), "AgentsContext", "brain"))
     return os.path.join(db_dir, "brain_logs.db")
@@ -794,6 +903,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_encoding_activity(params)
         elif path == "/api/encoding-runs":
             self._serve_encoding_runs(params)
+        elif path == "/api/consolidation-runs":
+            hours = int(params.get("hours", ["24"])[0])
+            self._json_response(200, {"runs": _query_consolidation_runs(hours=hours)})
         elif path == "/api/signal-queue":
             self._serve_signal_queue()
         elif path == "/api/assembler-comparison":
@@ -2147,8 +2259,18 @@ async function loadEncodingActivity() {
     if (!encodingLoaded) container.innerHTML = '';
     encodingLoaded = true;
 
-    // Also load S2 encode traces (consolidation + community encoder runs)
+    // Load S2 consolidation runs (rich detail from dedicated API)
     let s2Runs = [];
+    try {
+      const consolR = await fetch('/api/consolidation-runs?hours=12');
+      const consolD = await consolR.json();
+      if (consolD.runs) {
+        for (const run of consolD.runs) {
+          s2Runs.push({type: 'consolidation', ...run, start_ts: run.timestamp});
+        }
+      }
+    } catch(e) { console.error('S2 consolidation load:', e); }
+    // Also load S2 community traces (lighter)
     try {
       const s2R = await fetch('/api/traces?scale=s2&hours=12');
       const s2Events = await s2R.json();
@@ -2161,21 +2283,19 @@ async function loadEncodingActivity() {
         Object.entries(s2Chains).forEach(([chainId, events]) => {
           const delta = events.find(e => e.event_type === 'delta');
           if (!delta) return;
-          const isConsol = chainId.includes('consolidation');
-          const isComm = chainId.includes('community');
-          if (!isConsol && !isComm) return;
+          if (chainId.includes('consolidation')) return; // already loaded above
+          if (!chainId.includes('community')) return;
           s2Runs.push({
+            type: 'community',
             chain_id: chainId,
             start_ts: events[0]?.created_at || '',
             summary: delta.summary || '',
-            label: isConsol ? 'S2 CONSOLIDATE' : 'S2 COMMUNITY',
-            color: isConsol ? '#33ff88' : '#45B7D1',
             o_summary: (events.find(e => e.event_type === 'O') || {}).summary || '',
             k_summary: (events.find(e => e.event_type === 'K') || {}).summary || '',
           });
         });
       }
-    } catch(e) { console.error('S2 encode load:', e); }
+    } catch(e) { console.error('S2 community load:', e); }
 
     // Render each run as a card
     container.innerHTML = '';
@@ -2196,16 +2316,79 @@ async function loadEncodingActivity() {
         const div = document.createElement('div');
         div.className = 'hook-entry enc-entry';
         div.dataset.scale = 's2';
-        div.style.borderLeftColor = run.color;
+        const isConsol = run.type === 'consolidation';
+        const color = isConsol ? '#33ff88' : '#45B7D1';
+        const label = isConsol ? 'S2 CONSOLIDATE' : 'S2 COMMUNITY';
+        div.style.borderLeftColor = color;
         const t = localTime(run.start_ts, 'time');
-        div.innerHTML = '<div class="hook-header" onclick="toggleHookBody(this)">' +
-          '<span class="hook-badge" style="background:' + run.color + ';color:#000">' + run.label + '</span>' +
+        const actionCount = (run.synthesized||[]).length + (run.archived||[]).length + (run.kept||[]).length + (run.evolved||[]).length;
+
+        let html = '<div class="hook-header" onclick="toggleHookBody(this)">' +
+          '<span class="hook-badge" style="background:' + color + ';color:#000">' + label + '</span>' +
           '<span class="hook-time">' + t + '</span>' +
-          '<span class="hook-size">' + escapeHtml(run.summary.substring(0, 60)) + '</span></div>' +
-          '<div class="hook-body">' +
-          (run.o_summary ? '<div style="padding:4px 12px;color:#888;font-size:11px"><strong style="color:' + run.color + '">O:</strong> ' + escapeHtml(run.o_summary) + '</div>' : '') +
-          (run.k_summary ? '<div style="padding:4px 12px;color:#888;font-size:11px"><strong style="color:#ffaa33">K:</strong> ' + escapeHtml(run.k_summary) + '</div>' : '') +
-          '<div style="padding:4px 12px;color:#888;font-size:11px"><strong style="color:#33ff88">Δ:</strong> ' + escapeHtml(run.summary) + '</div></div>';
+          '<span class="hook-size">' + (isConsol ? (actionCount + ' actions') : escapeHtml((run.summary||'').substring(0, 60))) + '</span></div>';
+
+        // Info line
+        if (run.o_summary || run.k_summary) {
+          html += '<div class="hook-prompt">' + escapeHtml(run.k_summary || run.o_summary || '') + '</div>';
+        }
+
+        // Body with full detail (same style as S1E)
+        html += '<div class="hook-body" style="padding:4px 12px">';
+
+        if (isConsol) {
+          // Synthesized nodes — CREATED
+          for (const n of (run.synthesized || [])) {
+            html += '<div class="enc-entry created" data-kind="created" style="margin:2px 0;padding:4px 8px;cursor:pointer" onclick="loadNodeDetail(&quot;' + (n.id||'') + '&quot;)">' +
+              '<span class="enc-kind created">SYNTHESIZED</span> ' +
+              '<span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ' +
+              '<span class="enc-title">' + escapeHtml(n.title || '') + '</span>' +
+              (n.content ? '<div style="color:#888;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml((n.content||'').substring(0, 200)) + '</div>' : '') +
+              '</div>';
+          }
+          // Archived originals
+          for (const n of (run.archived || [])) {
+            html += '<div class="enc-entry" style="margin:2px 0;padding:4px 8px;opacity:0.6;cursor:pointer" onclick="loadNodeDetail(&quot;' + (n.id||'') + '&quot;)">' +
+              '<span class="enc-kind" style="background:#663333;color:#ff8888">ARCHIVED</span> ' +
+              '<span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ' +
+              '<span class="enc-title">' + escapeHtml(n.title || '') + '</span>' +
+              (n.content ? '<div style="color:#666;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml((n.content||'').substring(0, 100)) + '</div>' : '') +
+              '</div>';
+          }
+          // Evolved (supersedes)
+          for (const e of (run.evolved || [])) {
+            html += '<div class="enc-entry" style="margin:2px 0;padding:4px 8px">' +
+              '<span class="enc-kind" style="background:#444400;color:#ffcc00">EVOLVED</span> ' +
+              escapeHtml(e.survivor || '') + ' <span style="color:#ffcc00">supersedes</span> ' +
+              '<span style="opacity:0.6">' + escapeHtml(e.archived || '') + '</span></div>';
+          }
+          // Kept (similar_to)
+          for (const e of (run.kept || [])) {
+            html += '<div class="enc-entry" style="margin:2px 0;padding:4px 8px">' +
+              '<span class="enc-kind" style="background:#003344;color:#45B7D1">KEPT</span> ' +
+              escapeHtml(e.source || '') + ' <span style="color:#45B7D1">\u2194</span> ' +
+              escapeHtml(e.target || '') +
+              (e.description ? '<div style="color:#666;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml(e.description.substring(0, 120)) + '</div>' : '') +
+              '</div>';
+          }
+          // Journal
+          if (run.journal) {
+            html += '<div style="margin-top:6px;padding:4px 8px;color:#666;font-size:10px;border-top:1px solid #222">' +
+              '<strong>Journal:</strong><pre style="white-space:pre-wrap;margin:4px 0;color:#888">' + escapeHtml(run.journal.substring(0, 500)) + '</pre></div>';
+          }
+        } else {
+          // Community — simpler
+          if (run.o_summary) html += '<div style="padding:2px 0;color:#888;font-size:11px"><strong style="color:#45B7D1">O:</strong> ' + escapeHtml(run.o_summary) + '</div>';
+          if (run.k_summary) html += '<div style="padding:2px 0;color:#888;font-size:11px"><strong style="color:#ffaa33">K:</strong> ' + escapeHtml(run.k_summary) + '</div>';
+          html += '<div style="padding:2px 0;color:#888;font-size:11px"><strong style="color:#33ff88">Δ:</strong> ' + escapeHtml(run.summary || '') + '</div>';
+        }
+
+        if (!actionCount && !run.summary) {
+          html += '<div style="color:#555;font-size:11px;padding:4px 8px">(no write actions)</div>';
+        }
+        html += '</div>';
+
+        div.innerHTML = html;
         container.appendChild(div);
         continue;
       }
