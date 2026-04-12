@@ -671,6 +671,7 @@ class BrainRememberMixin:
             'title', 'type', 'keywords', 'confidence', 'emotion',
             'emotion_label', 'project', 'personal', 'personal_context',
             'critical', 'evolution_status', 'encoding_source',
+            'archived',  # allows revise(archived=True) for consolidation
         }
         # Immutable — never revisable
         IMMUTABLE = {'id', 'created_at', 'locked'}
@@ -681,6 +682,16 @@ class BrainRememberMixin:
                                 ValueError('Cannot revise immutable field: %s' % field),
                                 'node %s attempted to revise %s' % (node_id[:8], field))
                 continue
+            # Guard: never archive locked/critical nodes via revise(archived=True)
+            if field == 'archived' and value:
+                lock_row = self.conn.execute(
+                    'SELECT locked, critical FROM nodes WHERE id = ?',
+                    (node_id,)).fetchone()
+                if lock_row and (lock_row[0] or lock_row[1]):
+                    self._log_error('revise_archive_locked',
+                                    ValueError('Cannot archive locked/critical node'),
+                                    'node %s' % node_id[:8])
+                    continue
             if field in NODES_TABLE_FIELDS:
                 set_parts.append('%s = ?' % field)
                 params.append(value)
@@ -692,18 +703,28 @@ class BrainRememberMixin:
             'UPDATE nodes SET %s WHERE id = ?' % ', '.join(set_parts), params)
         self.conn.commit()
 
-        # Handle metadata KV fields (reasoning, user_raw_quote, anchor_raw_quote, etc.)
+        # Handle metadata KV fields — PROMOTED fields AND emergent fields.
+        # Any field not on the nodes table and not immutable flows to KV store.
+        # This mirrors remember()'s behavior where **extra_fields → MetadataDAL.
         from .contract import PROMOTED_FIELDS
+        from .dal_metadata import MetadataDAL
+        emergent_kv = {}
         for field, value in all_updates.items():
             if field in PROMOTED_FIELDS and PROMOTED_FIELDS[field].get('store') == 'metadata_kv':
-                try:
-                    self.conn.execute(
-                        "INSERT OR REPLACE INTO node_metadata_kv (node_id, key, value) VALUES (?, ?, ?)",
-                        (node_id, field, str(value) if value else None))
-                    self.conn.commit()
-                except Exception as _e:
-                    self._log_error('revise_metadata_kv', _e,
-                                    'updating %s for %s' % (field, node_id[:8]))
+                # Known promoted field
+                emergent_kv[field] = str(value) if value else None
+            elif field not in NODES_TABLE_FIELDS and field not in IMMUTABLE and field not in (
+                    'content', 'reason', 'updates', 'situation'):
+                # Emergent field — not on nodes table, not a revise() control param.
+                # Store in KV so emergent metadata survives across all operations.
+                if value is not None and str(value).strip():
+                    emergent_kv[field] = str(value)
+        if emergent_kv:
+            try:
+                MetadataDAL(self.conn).set_many(node_id, emergent_kv)
+            except Exception as _e:
+                self._log_error('revise_metadata_kv', _e,
+                                'updating KV for %s (%d fields)' % (node_id[:8], len(emergent_kv)))
 
         # Handle situation embedding separately (lives in node_embeddings, not nodes)
         if 'situation' in all_updates:

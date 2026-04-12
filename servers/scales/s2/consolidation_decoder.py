@@ -37,24 +37,23 @@ class ConsolidationDecoder(IntegrationUnit):
         Returns:
             dict with: clusters (list), stats (dict), skipped (str or None)
         """
-        if not self._has_new_traces('s1', ref_type='encoding_run'):
-            return {'clusters': [], 'stats': {}, 'skipped': 'no new S1 traces'}
+        # Always full scan — takes <1s on ~2000 nodes. Suppression edges
+        # (consolidated_into, similar_to) filter already-processed pairs.
+        # No incremental mode needed — it blocked graduated cold start
+        # and saved <1s at the cost of missing 136 unprocessed clusters.
 
         # Step 0: Graph health — archive broken artifacts
         healed = self._heal_graph()
 
-        last_ts = self._last_run_timestamp()
-        is_cold_start = not last_ts
-
-        # Step 1: Find candidate pairs by embedding similarity
-        candidates, scan_stats = self._scan_embeddings(last_ts, is_cold_start)
+        # Step 1: Find candidate pairs by embedding similarity (always full scan)
+        candidates, scan_stats = self._scan_embeddings('', True)
 
         self.trace('O', 'consolidation_candidates',
-                   'Scanned %d nodes, found %d pairs above %.2f%s' % (
+                   'Scanned %d nodes, found %d pairs above %.2f (suppressed %d)' % (
                        scan_stats['nodes_scanned'],
                        scan_stats['pairs_found'],
                        self.config['similarity_threshold'],
-                       ' (cold start)' if is_cold_start else ''),
+                       scan_stats.get('suppressed_pairs', 0)),
                    metadata=scan_stats)
 
         if not candidates:
@@ -121,7 +120,9 @@ class ConsolidationDecoder(IntegrationUnit):
 
         if archived:
             self.brain.conn.commit()
-            self.trace('delta', 'consolidated',
+            # Use 'O' not 'delta' — heal is an observation, not a consolidation action.
+            # 'delta' would pollute _last_run_timestamp() and prevent cold start scan.
+            self.trace('O', 'consolidation_candidates',
                        'Healed %d broken artifacts: %s' % (
                            len(archived),
                            ', '.join(a['title'][:30] for a in archived[:5])),
@@ -497,6 +498,9 @@ class ConsolidationDecoder(IntegrationUnit):
             # Correction relationship
             cluster['has_correction_edge'] = self._has_correction_edge(nids)
 
+            # Tension relationship (contradicts, challenges)
+            cluster['has_tension_edge'] = self._has_tension_edge(nids)
+
         return clusters
 
     def _load_node_data(self, node_ids):
@@ -721,6 +725,31 @@ class ConsolidationDecoder(IntegrationUnit):
 
         return len(rows) > 0
 
+    def _has_tension_edge(self, node_ids):
+        """Check if any contradiction/challenge edge exists between cluster members.
+
+        Tensions are productive — they represent opposing views on the same topic.
+        NEVER consolidate these. Always KEEP both sides of a tension.
+        """
+        tension_rels = self.brain.get_relations_for_families(
+            'contradiction_conflict')
+        if not tension_rels:
+            tension_rels = {'contradicts', 'challenges', 'conflicts_with',
+                            'contrasts', 'undermines', 'violates'}
+
+        node_ph = ','.join('?' * len(node_ids))
+        rel_ph = ','.join('?' * len(tension_rels))
+
+        rows = self.brain.conn.execute("""
+            SELECT 1 FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
+            WHERE e.source_id IN (%s) AND e.target_id IN (%s)
+            AND er.relation IN (%s) LIMIT 1
+        """ % (node_ph, node_ph, rel_ph),
+            list(node_ids) * 2 + list(tension_rels)).fetchall()
+
+        return len(rows) > 0
+
     # ══════════════════════════════════════════════════════════
     # Step 4: Pre-classify
     # ══════════════════════════════════════════════════════════
@@ -738,9 +767,10 @@ class ConsolidationDecoder(IntegrationUnit):
         content_max = cluster['content_cosine_max']
         title_max = cluster['title_cosine_max']
 
-        # Correction edge → evolution, not consolidation
-        if cluster['has_correction_edge']:
-            return 'likely_evolve'
+        # Correction and tension edges are EVIDENCE for the encoder, not mandates.
+        # The encoder sees has_correction_edge and has_tension_edge in the cluster
+        # data and reasons about them with full content context.
+        # Pre-classifier uses them as soft signals for priority sorting only.
 
         # Type mismatch between cluster members → likely distinct
         types = set()
@@ -797,6 +827,7 @@ class ConsolidationDecoder(IntegrationUnit):
                 'unique_edges': c.get('unique_edges', {}),
                 'same_community': c.get('same_community', False),
                 'has_correction_edge': c.get('has_correction_edge', False),
+                'has_tension_edge': c.get('has_tension_edge', False),
                 'node_titles': {
                     nid: c.get('node_details', {}).get(nid, {}).get('title', '')[:60]
                     for nid in c['nodes']

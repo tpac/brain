@@ -106,7 +106,7 @@ Triggered by Stop hook when `stop_counter % 5 == 0`.
 **K:** Sonnet agent decides what to encode
 - Node catalog: `format_node()` with correction annotations
 - Conversation timeline with SURFACED node references
-- Agent prompt from `s1e` interaction (v2: cognitive edge vocabulary, learnable boundary)
+- Agent prompt from `s1e` interaction (learnable boundary)
 - Open text edge types — encoder uses any relation that fits (extends, corrects, depends_on, implements, etc.). Not a closed list.
 - `connect_to` supports `relations` array — multiple typed relations per connection, each with `relation` + `why`
 
@@ -117,7 +117,7 @@ Triggered by Stop hook when `stop_counter % 5 == 0`.
 Files: `scales/s1/encode.py`, `scales/s1/encode_contract.py`
 Traces: `s1e-{session_short}-{stop}` (O: encoding prompt, K: node catalog, Δ: encoding actions)
 Interaction: `encoding_agent` — the learnable boundary that higher scales will evolve
-**max_tokens:** 12K (raised from 4K on 2026-04-11). Truncation logged to brain errors table via `run_llm_loop`.
+Truncation logged to brain errors table via `run_llm_loop`.
 
 ## Scale 2: Graph Integration
 
@@ -127,13 +127,13 @@ S2 operates when Tom is away. It sees the full graph, not just one turn. Multipl
 
 | Unit | O | K | Δ | Status |
 |------|---|---|---|--------|
-| **Edge Families** | edge_relations | Sonnet classification | family mapping in interactions | **SHIPPED (21 families)** |
-| **Consolidation** | graph embeddings (title+content) + S1 behavioral traces | similarity thresholds + edge families + community membership | consolidation proposals (phase 1: decoder only) | **DECODER SHIPPED** |
-| **Community** | S1 traces + graph | z-score clusters + Sonnet enrichment | community nodes + member edges | **SHIPPED (114 communities)** |
-| Confidence | recall traces | decay/growth algo | adjusted scores | DESIGN NEEDED |
-| Correction | correction chain | resolution rules | archive stale | NOT BUILT |
-| Community Split | incoherent communities | re-cluster within community | split into focused children | NOT BUILT |
-| Weaver/Healer | orphan nodes | content + embeddings | new typed edges | NOT BUILT |
+| **Edge Families** | edge_relations | Sonnet classification | family mapping in interactions | shipped |
+| **Consolidation** | graph embeddings (title+content) + S1 behavioral traces | similarity thresholds + edge families + community membership | consolidation proposals (decoder only) | decoder shipped |
+| **Community** | S1 traces + graph | z-score clusters + Sonnet enrichment | community nodes + member edges | shipped |
+| Confidence | recall traces | decay/growth algo | adjusted scores | not built |
+| Correction | correction chain | resolution rules | archive stale | not built |
+| Community Split | incoherent communities | re-cluster within community | split into focused children | not built |
+| Weaver/Healer | orphan nodes | content + embeddings | new typed edges | not built |
 
 **Ordering matters:** Edge families → Consolidation → Community. Each benefits from the previous.
 
@@ -144,39 +144,30 @@ S2 operates when Tom is away. It sees the full graph, not just one turn. Multipl
 - `community_encoder.py` — `CommunityEncoder(IntegrationUnit)`: agentic Sonnet with `brain_batch` tool. Handles 6 proposal types: new_community, add_to_existing, drift, health_update, merge_communities. ~240s per batch of 10 proposals.
 - `community.py` — `CommunityDetection(CommunityDecoder)`: thin orchestrator, wires decoder→encoder. Public API — callers import from here.
 
-**Performance profile (measured 2026-04-11):**
-- Decoder: ~1s for 2,496 nodes, 8,934 relations
-- Encoder per batch: R1 ~7s (get_nodes), R2 ~220s (brain_batch, 10K+ output tokens), R3 ~13s (journal)
-- Cold start (138 proposals, 14 batches): ~30min total
-- Incremental (5-10 proposals, 1 batch): ~4min
-
-**max_tokens:** S2CE uses 16K (interaction v7). Critical — measured 10.6K output in a single brain_batch. At the old 8K, output was silently truncated, corrupting tool calls. `run_llm_loop` now detects `stop_reason == 'max_tokens'` and logs to brain errors table.
+`run_llm_loop` detects `stop_reason == 'max_tokens'` and logs to brain errors table.
 
 Community nodes are first-class — type='community', participate in recall, have embeddings, situations, full metadata. S1E is excluded from encoding community nodes (S2CE manages them).
 
-**Community merge:** Decoder detects communities with 80%+ member overlap (relative to smaller) AND < 3 unique members in the smaller. Adaptive threshold prevents premature merging in young brains. Encoder absorbs smaller into larger — combined narrative, migrated members, smaller archived.
+**Community merge:** Decoder detects high-overlap communities. Encoder absorbs smaller into larger — combined narrative, migrated members, smaller archived.
 
-**Community split (NOT BUILT):** As brain grows, communities accumulate members across topics. A 30-member community covering 4 distinct stories needs splitting into focused children. Decoder signals: degrading int_frac, possible_splits stat, cross-cutting nodes. Needs: re-cluster within community, propose 2+ children, encoder creates children and archives parent.
+**Community split (not built):** As brain grows, communities accumulate members across topics. Needs: re-cluster within community, propose children, encoder creates children and archives parent.
 
-Interactions: `s2_community_enrichment` (v9, Sonnet prompt, 16K max_tokens), `s2_community` (decoder config), `s2_edge_families` (21-family classification).
+Interactions: `s2_community_enrichment`, `s2_community` (decoder config), `s2_edge_families` (family classification).
 
 Files: `scales/s2/community_decoder.py`, `scales/s2/community_encoder.py`, `scales/s2/community.py` (orchestrator), `scales/s2/community_contract.py`, `scales/s2/community_enrichment_prompt.py`, `scales/s2/edge_families.py`, `scales/s2/base.py`
 Traces: `s2-{YYYYMMDD}-community_detection`
 Design: `docs/S2-COMMUNITY-DESIGN.md`, `docs/S2-DESIGN.md`
 
-### Consolidation (S2 Consolidation Decoder — phase 1)
+### Consolidation
 
 Finds convergent node clusters — nodes that say the same thing, encoded separately because S1E's catalog window is limited. Not "dedup" (removing waste) — **consolidation** (synthesizing better knowledge from fragments).
 
 **Decoder (shipped):** Two-dimensional similarity scan (title cosine + content cosine separately). Enriches clusters with S1 behavioral evidence: co-recall frequency, judge preference, query coverage, catalog blindness, edge comparison, community membership. Pre-classifies as likely_consolidate / likely_evolve / likely_keep / needs_judgment.
 
-**Encoder (phase 2, not built):** Sonnet reads cluster proposals, decides CONSOLIDATE (write new synthesized node, archive originals), EVOLVE (link, archive older), or KEEP (link, possibly rename for disambiguation).
-
-**Performance (measured 2026-04-11):** Full pairwise scan of 1,860 nodes + behavioral enrichment in 0.11s. Found 160 clusters, 623 pairs.
+**Encoder (not built):** Sonnet reads cluster proposals, decides CONSOLIDATE (write new synthesized node, archive originals), EVOLVE (link, archive older), or KEEP (link, possibly rename for disambiguation).
 
 Files: `scales/s2/consolidation_decoder.py`, `scales/s2/consolidation.py` (orchestrator), `scales/s2/consolidation_contract.py`
 Traces: `s2-{YYYYMMDD}-consolidation`
-Design: Plan file in `.claude/plans/`
 
 ## Shared Infrastructure
 
@@ -222,7 +213,7 @@ Run `test_contract_sync.py` after modifying ANY brain API layer. The contract fl
 
 Shared by all scale agents, scale-agnostic:
 - `scales/dispatch.py` — TCP dispatch factory (reads local, writes via daemon). **Known bug:** `load_env()` uses `setdefault` which doesn't override empty env vars. If `ANTHROPIC_API_KEY=""` in environment, the `.env` file value is ignored.
-- `scales/runner.py` — background thread lifecycle + generic LLM tool loop. `run_llm_loop` returns per-round profile, token counts, and `truncations` list. Callers (S1E, S2CE) log truncations to brain errors table.
+- `scales/runner.py` — background thread lifecycle + generic LLM tool loop. `run_llm_loop` returns per-round profile, token counts, and `truncations` list. Callers log truncations to brain errors table.
 
 S2 plugs in the same way S1 does.
 

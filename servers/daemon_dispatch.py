@@ -485,14 +485,25 @@ def _handle_brain_batch(brain, args, graph_changes):
                     results.append({"op": "archive", "index": i, "ok": False,
                                     "error": "node_id is required"})
                 else:
-                    from datetime import datetime, timezone
-                    brain.conn.execute(
-                        'UPDATE nodes SET archived = 1, updated_at = ? WHERE id = ?',
-                        (datetime.now(timezone.utc).isoformat(), node_id))
-                    brain.conn.commit()
-                    graph_changes.append("ARCHIVE: %s" % node_id[:8])
-                    results.append({"op": "archive", "index": i, "ok": True,
-                                    "result": {"archived": node_id}})
+                    # Guard: never archive locked or critical nodes.
+                    # LLM may ignore prompt constraints — enforce at infrastructure level.
+                    row = brain.conn.execute(
+                        'SELECT locked, critical, title FROM nodes WHERE id = ?',
+                        (node_id,)).fetchone()
+                    if row and (row[0] or row[1]):
+                        flag = 'locked' if row[0] else 'critical'
+                        results.append({"op": "archive", "index": i, "ok": False,
+                                        "error": "Cannot archive %s node: %s" % (
+                                            flag, (row[2] or '')[:50])})
+                    else:
+                        from datetime import datetime, timezone
+                        brain.conn.execute(
+                            'UPDATE nodes SET archived = 1, updated_at = ? WHERE id = ?',
+                            (datetime.now(timezone.utc).isoformat(), node_id))
+                        brain.conn.commit()
+                        graph_changes.append("ARCHIVE: %s" % node_id[:8])
+                        results.append({"op": "archive", "index": i, "ok": True,
+                                        "result": {"archived": node_id}})
 
             else:
                 results.append({"op": op, "index": i, "ok": False,

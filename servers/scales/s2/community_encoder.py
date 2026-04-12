@@ -104,6 +104,20 @@ class CommunityEncoder(IntegrationUnit):
             print('[s2ce] WARNING: no enrichment prompt', flush=True)
             return None
 
+        # Inject edge families from DB (shared vocabulary across S2 encoders)
+        edge_families_config = self._get_interaction_config('s2_edge_families')
+        if edge_families_config:
+            family_lines = []
+            for family, types in sorted(edge_families_config.items()):
+                if isinstance(types, list) and family not in ('generic_relation', 'noise'):
+                    family_lines.append('- **%s**: %s' % (
+                        family, ', '.join(types[:8])))
+            if family_lines:
+                families_section = ('\n\n## Edge Families (from brain — %d families)\n\n%s\n\n'
+                                    'Avoid `related_to`. Pick specific types.' % (
+                                        len(family_lines), '\n'.join(family_lines)))
+                system_prompt = system_prompt + families_section
+
         if not os.environ.get('ANTHROPIC_API_KEY'):
             load_env()
 
@@ -221,12 +235,16 @@ class CommunityEncoder(IntegrationUnit):
         encoding_source = self.ENCODING_SOURCE
 
         def dispatch(cmd, cmd_args):
-            if cmd in ('remember', 'remember_batch', 'revise', 'brain_batch'):
+            # Force encoding_source on creates — not setdefault, because the LLM
+            # may fill in encoding_source from schema references or training data.
+            # S2 nodes must always be tagged with the S2 unit that created them.
+            if cmd in ('remember', 'remember_batch'):
                 if isinstance(cmd_args, dict):
-                    cmd_args.setdefault('encoding_source', encoding_source)
-                    for op in cmd_args.get('operations', []):
-                        if isinstance(op, dict) and op.get('op') in ('remember',):
-                            op.setdefault('encoding_source', encoding_source)
+                    cmd_args['encoding_source'] = encoding_source
+            if cmd == 'brain_batch' and isinstance(cmd_args, dict):
+                for op in cmd_args.get('operations', []):
+                    if isinstance(op, dict) and op.get('op') in ('remember',):
+                        op['encoding_source'] = encoding_source
 
             entry = COMMAND_TABLE.get(cmd)
             if entry:
