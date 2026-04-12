@@ -310,6 +310,12 @@ def _build_tools():
          "sort_by": {"type": "string", "description": "Sort column: created_at (default), confidence, access_count, title", "default": "created_at"},
          "sort_order": {"type": "string", "description": "asc or desc (default)", "default": "desc"}}}},
 
+    {"name": "clear_errors",
+     "description": "Clear hook errors and optionally debug log entries. Use to clean up after investigating issues.",
+     "inputSchema": {"type": "object", "properties": {
+         "hours": {"type": "integer", "description": "Clear entries older than this many hours. Omit to clear all."},
+         "debug_log": {"type": "boolean", "description": "Also clear debug_log entries (default false)"}}}},
+
     {"name": "query_logs",
      "description": "Query brain operational logs — errors, debug events, and signals. Use this to diagnose brain health: hook timeouts, daemon errors, signal queue state, recall pipeline issues. Three sources available: 'errors' (hook failures like timeouts and crashes), 'debug' (daemon internal events), 'signals' (signal queue including daemon_down, brain_error). Use source='all' to get a merged timeline. Filter by level ('error', 'critical') or hook_name ('hook_recall', 'hook_post_response_track') to narrow results.",
      "inputSchema": {"type": "object", "properties": {

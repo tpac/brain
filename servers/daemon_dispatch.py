@@ -556,6 +556,32 @@ def _handle_query_logs(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
+def _handle_clear_errors(brain, args, graph_changes):
+    """Clear hook errors and optionally debug log entries."""
+    cleared = {}
+    hours = args.get("hours")  # None = clear all
+
+    # Hook errors
+    if hours:
+        c = brain.logs_conn.execute(
+            "DELETE FROM hook_errors WHERE created_at < datetime('now', '-%d hours')" % int(hours))
+    else:
+        c = brain.logs_conn.execute("DELETE FROM hook_errors")
+    cleared['hook_errors'] = c.rowcount
+
+    # Debug log (if requested)
+    if args.get("debug_log", False):
+        if hours:
+            c = brain.logs_conn.execute(
+                "DELETE FROM debug_log WHERE created_at < datetime('now', '-%d hours')" % int(hours))
+        else:
+            c = brain.logs_conn.execute("DELETE FROM debug_log")
+        cleared['debug_log'] = c.rowcount
+
+    brain.logs_conn.commit()
+    return {"ok": True, "result": cleared}
+
+
 def _handle_query_traces(brain, args, graph_changes):
     """Query trace events: O/K/Δ/outcome at every scale."""
     result = brain.query_traces(
@@ -901,6 +927,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "find_node_by_title":    CmdEntry(_handle_find_node_by_title,  is_write=False, marks_dirty=False),
     "filter_nodes":          CmdEntry(_handle_filter_nodes,        is_write=False, marks_dirty=False),
     "query_logs":            CmdEntry(_handle_query_logs,          is_write=False, marks_dirty=False),
+    "clear_errors":          CmdEntry(_handle_clear_errors,        is_write=True,  marks_dirty=False),
     "query_traces":          CmdEntry(_handle_query_traces,        is_write=False, marks_dirty=False),
     "query_outcomes":        CmdEntry(_handle_query_outcomes,      is_write=False, marks_dirty=False),
     "count_traces":          CmdEntry(_handle_count_traces,        is_write=False, marks_dirty=False),
