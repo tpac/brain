@@ -567,12 +567,41 @@ class BrainVoice:
                     comm_items.append((maturity, size, ctitle, summary))
 
                 if comm_items:
-                    # Show top communities with narrative, rest as titles only
-                    # Settled/active first (they're the most stable knowledge)
+                    # Sort: recently active first, then settled by size
+                    # Communities whose members were recalled recently are more relevant
                     maturity_order = {'settled': 0, 'active': 1, 'forming': 2, 'corridor': 3}
-                    comm_items.sort(key=lambda x: (
-                        maturity_order.get(x[0], 4),
-                        -(int(x[1]) if x[1] and x[1] != '?' else 0)))
+
+                    # Check which communities have recently accessed members
+                    recent_comm_ids = set()
+                    try:
+                        recent_member_rows = brain.conn.execute('''
+                            SELECT DISTINCT
+                                CASE WHEN e.source_id IN (SELECT id FROM nodes WHERE type = 'community')
+                                     THEN e.source_id ELSE e.target_id END as comm_id
+                            FROM edges e
+                            JOIN edge_relations er ON er.edge_id = e.edge_id
+                            JOIN nodes member ON member.id =
+                                CASE WHEN e.source_id IN (SELECT id FROM nodes WHERE type = 'community')
+                                     THEN e.target_id ELSE e.source_id END
+                            WHERE er.relation = 'community_member'
+                            AND member.last_accessed > datetime('now', '-3 days')
+                            AND member.type != 'community'
+                        ''').fetchall()
+                        recent_comm_ids = {r[0] for r in recent_member_rows}
+                    except Exception:
+                        pass
+
+                    # Build sort key: recently active → settled large → rest
+                    comm_items_with_id = []
+                    for cid_row, item in zip(communities, comm_items):
+                        is_recent = cid_row[0] in recent_comm_ids
+                        comm_items_with_id.append((is_recent, item))
+
+                    comm_items_with_id.sort(key=lambda x: (
+                        0 if x[0] else 1,  # recently active first
+                        maturity_order.get(x[1][0], 4),
+                        -(int(x[1][1]) if x[1][1] and x[1][1] != '?' else 0)))
+                    comm_items = [x[1] for x in comm_items_with_id]
 
                     TOP_WITH_NARRATIVE = 20
                     out.append("BRAIN MAP (%d communities):" % len(comm_items))

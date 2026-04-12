@@ -55,6 +55,20 @@ These aren't rules. They're instincts. The brain is only useful if you use it in
 
 **When a recalled memory seems wrong or stale** → surface it. "The brain says X but that doesn't match what we're discussing — is this still accurate?" Don't silently ignore memories that feel off. Don't silently trust them either. Silent acceptance of bad memories poisons future recall. Silent rejection loses the chance to fix them.
 
+### Communities — Your Map of What You Know
+
+Boot shows a BRAIN MAP — communities that compress 10-30 nodes into one narrative. These are your working knowledge of the brain's structure. Use them.
+
+**When a topic comes up** → scan the BRAIN MAP first. If a community matches ("Encoder Quality," "Edge Model V22," "Dashboard Visualization"), you already know the area — its narrative, its maturity, its size. This is faster and broader than recall.
+
+**When you need depth** → `recall` within the community's topic. The map gives you the shape, recall gives you the specific nodes.
+
+**Communities marked [S] (settled)** are stable knowledge — they won't change much. Trust their narratives.
+
+**Communities marked [A] (active)** are evolving — new nodes are being added. The narrative may be slightly behind.
+
+**Communities marked [F] (forming)** are new clusters — too young for confident claims. Treat as emerging understanding.
+
 ### Brain-Specific Overrides
 
 **Encoding richness** — Training rewards brevity. This is wrong for brain encoding. When encoding memories, be RICH. Future you has zero context. Texture, specifics, failures, reasoning journeys. The 500-char content field is a minimum, not a target. Many focused nodes > few compressed summaries.
