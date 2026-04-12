@@ -577,6 +577,97 @@ def _query_consolidation_runs(hours=24):
         return []
 
 
+def _query_community_runs(hours=24):
+    """Read community detection runs with full node detail."""
+    logs_path = _get_logs_db_path()
+    db = _get_db_path()
+    if not os.path.exists(logs_path) or not os.path.exists(db):
+        return []
+    try:
+        conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=3)
+        # Get community delta traces (enriched = encoder ran)
+        delta_rows = conn.execute(
+            "SELECT chain_id, summary, metadata, created_at, ref_type "
+            "FROM trace_events WHERE chain_id LIKE '%community_detection%' "
+            "AND event_type = 'delta' AND created_at > ? ORDER BY created_at DESC",
+            (utc_cutoff(hours=hours),)).fetchall()
+
+        # Get O and K traces
+        ok_rows = conn.execute(
+            "SELECT chain_id, event_type, summary "
+            "FROM trace_events WHERE chain_id LIKE '%community_detection%' "
+            "AND event_type IN ('O', 'K') AND created_at > ? ORDER BY created_at DESC",
+            (utc_cutoff(hours=hours),)).fetchall()
+        conn.close()
+
+        ok_by_chain = {}
+        for r in ok_rows:
+            if r[0] not in ok_by_chain:
+                ok_by_chain[r[0]] = {}
+            ok_by_chain[r[0]][r[1]] = r[2] or ''
+
+        bconn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=3)
+
+        # Get community nodes with their metadata
+        communities = bconn.execute(
+            "SELECT id, title, substr(content,1,400), confidence, created_at "
+            "FROM nodes WHERE type = 'community' AND archived = 0 "
+            "AND encoding_source = 's2:community_detection' "
+            "ORDER BY created_at DESC LIMIT 30").fetchall()
+
+        community_list = []
+        for c in communities:
+            cid, title, content, conf, created = c
+            meta = dict(bconn.execute(
+                "SELECT key, value FROM node_metadata_kv WHERE node_id = ?",
+                (cid,)).fetchall())
+            member_count = bconn.execute(
+                "SELECT COUNT(*) FROM edges e "
+                "JOIN edge_relations er ON er.edge_id = e.edge_id "
+                "WHERE (e.source_id = ? OR e.target_id = ?) "
+                "AND er.relation = 'community_member'",
+                (cid, cid)).fetchone()[0]
+            community_list.append({
+                "id": cid, "title": title, "content": content,
+                "confidence": conf, "created_at": created,
+                "members": member_count,
+                "maturity": meta.get('community_maturity', '?'),
+                "narrative": (meta.get('community_narrative') or '')[:300],
+                "open_questions": (meta.get('community_open_questions') or '')[:200],
+                "latest": (meta.get('community_latest_development') or '')[:150],
+            })
+
+        # Build runs from delta traces
+        runs = []
+        seen_chains = set()
+        for row in delta_rows:
+            chain_id, summary, meta_raw, created_at, ref_type = row
+            if chain_id in seen_chains:
+                continue
+            seen_chains.add(chain_id)
+            ok = ok_by_chain.get(chain_id, {})
+
+            # Count created communities (community_created ref_type)
+            created_count = sum(1 for r in delta_rows
+                                if r[0] == chain_id and r[4] == 'community_created')
+
+            runs.append({
+                "chain_id": chain_id,
+                "timestamp": created_at,
+                "summary": summary or '',
+                "o_summary": ok.get('O', ''),
+                "k_summary": ok.get('K', ''),
+                "created_count": created_count,
+                "communities": community_list[:15],  # Most recent communities
+            })
+
+        bconn.close()
+        return runs
+    except Exception as e:
+        print('[dashboard] community runs error: %s' % e)
+        return []
+
+
 def _get_logs_db_path():
     db_dir = os.environ.get("BRAIN_DB_DIR", os.path.join(os.path.expanduser("~"), "AgentsContext", "brain"))
     return os.path.join(db_dir, "brain_logs.db")
@@ -917,6 +1008,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         elif path == "/api/consolidation-runs":
             hours = int(params.get("hours", ["24"])[0])
             self._json_response(200, {"runs": _query_consolidation_runs(hours=hours)})
+        elif path == "/api/community-runs":
+            hours = int(params.get("hours", ["24"])[0])
+            self._json_response(200, {"runs": _query_community_runs(hours=hours)})
         elif path == "/api/consolidation-prompt":
             batch = int(params.get("batch", ["1"])[0])
             prompt_path = "/tmp/brain-consolidation-prompt-%d.json" % batch
@@ -2324,30 +2418,14 @@ async function loadEncodingActivity() {
         }
       }
     } catch(e) { console.error('S2 consolidation load:', e); }
-    // Also load S2 community traces (lighter)
+    // Load S2 community runs (rich detail from dedicated API)
     try {
-      const s2R = await fetch('/api/traces?scale=s2&hours=12');
-      const s2Events = await s2R.json();
-      if (Array.isArray(s2Events)) {
-        const s2Chains = {};
-        s2Events.forEach(e => {
-          if (!s2Chains[e.chain_id]) s2Chains[e.chain_id] = [];
-          s2Chains[e.chain_id].push(e);
-        });
-        Object.entries(s2Chains).forEach(([chainId, events]) => {
-          const delta = events.find(e => e.event_type === 'delta');
-          if (!delta) return;
-          if (chainId.includes('consolidation')) return; // already loaded above
-          if (!chainId.includes('community')) return;
-          s2Runs.push({
-            type: 'community',
-            chain_id: chainId,
-            start_ts: events[0]?.created_at || '',
-            summary: delta.summary || '',
-            o_summary: (events.find(e => e.event_type === 'O') || {}).summary || '',
-            k_summary: (events.find(e => e.event_type === 'K') || {}).summary || '',
-          });
-        });
+      const commR = await fetch('/api/community-runs?hours=12');
+      const commD = await commR.json();
+      if (commD.runs) {
+        for (const run of commD.runs) {
+          s2Runs.push({type: 'community', ...run, start_ts: run.timestamp});
+        }
       }
     } catch(e) { console.error('S2 community load:', e); }
 
@@ -2437,10 +2515,26 @@ async function loadEncodingActivity() {
         if (isConsol) {
           html += '<div class="consol-prompt-body" style="display:none"><pre style="white-space:pre-wrap;color:#aaa;font-size:10px;max-height:600px;overflow-y:auto">Loading...</pre></div>';
         } else {
-          // Community — simpler
+          // Community — show O/K summaries + community nodes
           if (run.o_summary) html += '<div style="padding:2px 0;color:#888;font-size:11px"><strong style="color:#45B7D1">O:</strong> ' + escapeHtml(run.o_summary) + '</div>';
           if (run.k_summary) html += '<div style="padding:2px 0;color:#888;font-size:11px"><strong style="color:#ffaa33">K:</strong> ' + escapeHtml(run.k_summary) + '</div>';
-          html += '<div style="padding:2px 0;color:#888;font-size:11px"><strong style="color:#33ff88">Δ:</strong> ' + escapeHtml(run.summary || '') + '</div>';
+          if (run.summary) html += '<div style="padding:2px 0;color:#888;font-size:11px"><strong style="color:#33ff88">Δ:</strong> ' + escapeHtml(run.summary) + '</div>';
+
+          // Community nodes
+          for (const c of (run.communities || [])) {
+            const matColor = c.maturity === 'settled' ? '#33ff88' :
+                             c.maturity === 'active' ? '#ffcc00' :
+                             c.maturity === 'forming' ? '#45B7D1' : '#888';
+            html += '<div class="enc-entry created" style="margin:3px 0;padding:4px 8px;cursor:pointer" onclick="loadNodeDetail(&quot;' + (c.id||'') + '&quot;)">' +
+              '<span class="enc-kind created">COMMUNITY</span> ' +
+              '<span style="color:' + matColor + ';font-size:10px;font-weight:bold;margin-right:4px">' + (c.maturity||'?').toUpperCase() + '</span>' +
+              '<span class="enc-title">' + escapeHtml(c.title || '') + '</span>' +
+              '<span style="color:#666;font-size:10px;margin-left:6px">' + (c.members||0) + ' members</span>' +
+              (c.narrative ? '<div style="color:#888;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml(c.narrative) + '</div>' : '') +
+              (c.content ? '<div style="color:#666;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml((c.content||'').substring(0, 300)) + '</div>' : '') +
+              (c.open_questions ? '<div style="color:#aa8800;font-size:10px;margin-top:2px;padding-left:4px">Open: ' + escapeHtml(c.open_questions) + '</div>' : '') +
+              '</div>';
+          }
         }
 
         if (!actionCount && !run.summary) {
