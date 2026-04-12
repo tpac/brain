@@ -539,8 +539,54 @@ class BrainVoice:
                 out.append("  %s" % _t(sk.get('title', ''), 100))
             out.append("")
 
-        # ── What we're building (stub — S3 will fill this) ──
-        # TODO: S3 populates this section from community/project context
+        # ── What the brain knows (community map) ──
+        # Communities compress 10-30 nodes into one narrative.
+        # Loading them here gives Anchor the SHAPE of everything it knows.
+        try:
+            communities = brain.conn.execute('''
+                SELECT n.id, n.title, n.content
+                FROM nodes n
+                WHERE n.type = 'community' AND n.archived = 0
+                ORDER BY n.confidence DESC, n.updated_at DESC
+            ''').fetchall()
+
+            if communities:
+                # Load maturity + member count per community
+                comm_items = []
+                for cid, ctitle, ccontent in communities:
+                    meta = dict(brain.conn.execute(
+                        "SELECT key, value FROM node_metadata_kv "
+                        "WHERE node_id = ? AND key IN "
+                        "('community_maturity', 'community_size', 'community_narrative')",
+                        (cid,)).fetchall())
+                    maturity = meta.get('community_maturity', '?')
+                    size = meta.get('community_size', '?')
+                    narrative = meta.get('community_narrative', '')
+                    # Use narrative if available, fall back to content
+                    summary = narrative or (ccontent or '')
+                    comm_items.append((maturity, size, ctitle, summary))
+
+                if comm_items:
+                    # Show top communities with narrative, rest as titles only
+                    # Settled/active first (they're the most stable knowledge)
+                    maturity_order = {'settled': 0, 'active': 1, 'forming': 2, 'corridor': 3}
+                    comm_items.sort(key=lambda x: (
+                        maturity_order.get(x[0], 4),
+                        -(int(x[1]) if x[1] and x[1] != '?' else 0)))
+
+                    TOP_WITH_NARRATIVE = 20
+                    out.append("BRAIN MAP (%d communities):" % len(comm_items))
+                    for i, (maturity, size, title, summary) in enumerate(comm_items):
+                        mat_tag = maturity[:1].upper() if maturity and maturity != '?' else '?'
+                        if i < TOP_WITH_NARRATIVE:
+                            out.append("  [%s|%s] %s" % (mat_tag, size, _t(title, 70)))
+                            if summary:
+                                out.append("    %s" % _t(summary, 120))
+                        else:
+                            out.append("  [%s|%s] %s" % (mat_tag, size, _t(title, 70)))
+                    out.append("")
+        except Exception as e:
+            brain._log_error('boot_community_map', e, 'loading community map')
 
         # ── Where we left off ──
         if session_context:
