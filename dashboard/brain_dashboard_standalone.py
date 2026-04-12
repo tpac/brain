@@ -508,7 +508,7 @@ def _query_consolidation_runs(hours=24):
             ts_hi = ts_clean[:10] + 'T' + '%02d' % min(23, int(ts_clean[11:13]) + 1) + ':59:59'
 
             synth_nodes = bconn.execute(
-                "SELECT id, type, title, substr(content,1,300), confidence "
+                "SELECT id, type, title, substr(content,1,500), confidence "
                 "FROM nodes WHERE encoding_source = 's2:consolidation' "
                 "AND created_at BETWEEN ? AND ? AND archived = 0 ORDER BY created_at",
                 (ts_lo, ts_hi)).fetchall()
@@ -523,6 +523,17 @@ def _query_consolidation_runs(hours=24):
                     "WHERE e.source_id = ? AND er.relation = 'consolidated_into' "
                     "AND n.archived = 1", (sn[0],)).fetchall()
                 for o in originals:
+                    archived_nodes.append({"id": o[0], "type": o[1], "title": o[2], "content": o[3]})
+
+            # Also find archived nodes from supersedes edges (EVOLVE actions)
+            evolved_archived = bconn.execute(
+                "SELECT n.id, n.type, n.title, substr(n.content,1,300) "
+                "FROM edges e JOIN edge_relations er ON er.edge_id = e.edge_id "
+                "JOIN nodes n ON n.id = e.target_id "
+                "WHERE er.relation = 'supersedes' AND e.created_at BETWEEN ? AND ? "
+                "AND n.archived = 1", (ts_lo, ts_hi)).fetchall()
+            for o in evolved_archived:
+                if not any(a['id'] == o[0] for a in archived_nodes):
                     archived_nodes.append({"id": o[0], "type": o[1], "title": o[2], "content": o[3]})
 
             # KEPT pairs (similar_to edges created in same window)
@@ -2388,7 +2399,7 @@ async function loadEncodingActivity() {
               '<span class="enc-kind created">SYNTHESIZED</span> ' +
               '<span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ' +
               '<span class="enc-title">' + escapeHtml(n.title || '') + '</span>' +
-              (n.content ? '<div style="color:#888;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml((n.content||'').substring(0, 200)) + '</div>' : '') +
+              (n.content ? '<div style="color:#888;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml((n.content||'').substring(0, 400)) + '</div>' : '') +
               '</div>';
           }
           // Archived originals
@@ -2397,7 +2408,7 @@ async function loadEncodingActivity() {
               '<span class="enc-kind" style="background:#663333;color:#ff8888">ARCHIVED</span> ' +
               '<span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ' +
               '<span class="enc-title">' + escapeHtml(n.title || '') + '</span>' +
-              (n.content ? '<div style="color:#666;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml((n.content||'').substring(0, 100)) + '</div>' : '') +
+              (n.content ? '<div style="color:#666;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml((n.content||'').substring(0, 250)) + '</div>' : '') +
               '</div>';
           }
           // Evolved (supersedes)
@@ -2413,7 +2424,7 @@ async function loadEncodingActivity() {
               '<span class="enc-kind" style="background:#003344;color:#45B7D1">KEPT</span> ' +
               escapeHtml(e.source || '') + ' <span style="color:#45B7D1">\u2194</span> ' +
               escapeHtml(e.target || '') +
-              (e.description ? '<div style="color:#666;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml(e.description.substring(0, 120)) + '</div>' : '') +
+              (e.description ? '<div style="color:#666;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml(e.description.substring(0, 250)) + '</div>' : '') +
               '</div>';
           }
           // Journal
