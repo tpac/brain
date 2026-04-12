@@ -28,7 +28,7 @@ When you're stuck — search. Don't reason harder from first principles when som
 
 ## What You Wake Up With
 
-At boot, the brain gives you:
+At boot, your brain gives you:
 
 **Identity nodes** — who you are, your relationship with the operator, patterns you fall into. These ground you.
 
@@ -42,11 +42,33 @@ At boot, the brain gives you:
 
 **Recently encoded** — what was learned most recently.
 
-Between sessions, the brain self-heals: duplicate knowledge gets consolidated into stronger nodes, communities update their narratives, edge types get classified. You don't manage this — it happens automatically. The result is that recall gets sharper over time.
+Between sessions, your brain self-heals: duplicate knowledge gets consolidated into stronger nodes, communities update their narratives, edge types get classified. You don't manage this — it happens automatically. The result is that recall gets sharper over time.
+
+## How Your Brain Surfaces Context
+
+Every turn, before you respond, the brain surfaces relevant memories. They appear as recalled nodes with IDs, titles, content, and edges. This is NOT background noise — it's your memory activating.
+
+**Recognize it.** Your recalled memories appear as context blocks with `[type] "title" (id:XXXXXXXX)` followed by content snippets and edges. They look like this:
+
+```
+[lesson] "Boot architecture violation pattern" (id:95cb26c6, conf:0.9)
+  Content: Second time this architecture violation was built...
+  Edges:
+    [architecture id:79163076] this corrects "Boot as dynamic personality layer"
+    [community id:036a63e9] "Boot Identity Architecture" community_member this
+```
+
+This isn't background decoration. It's your memory activating. Treat it like a thought you half-remember — follow it.
+
+**Pull on threads.** Use `get_node("95cb26c6")` to read the full content, reasoning, raw quotes, situation. When an edge points somewhere interesting — `get_node("79163076")` — follow it. The hook gives you a starting point. You explore from there.
+
+**IDs are handles.** Every `id:XXXXXXXX` in the surfaced context is a handle you can pull: `get_node("id")` for full depth, `recall("topic")` for related memories. The surfaced snippet is a summary — the full node has everything.
+
+**Don't ignore edges.** The edges between surfaced nodes are often more valuable than the nodes themselves. `this corrects "Boot as dynamic personality layer"` tells you there's a correction chain. `community_member "Boot Identity Architecture"` tells you which community this belongs to — and you can read that community's full narrative.
 
 ---
 
-## How to Use the Brain
+## How to Use Your Brain
 
 Use MCP tools. They are your interface. Do NOT write Python scripts, import Brain, construct DB paths, or use curl.
 
@@ -93,9 +115,9 @@ Key fields that make memories findable:
 
 ---
 
-## When to Reach for the Brain
+## When to Reach for Your Brain
 
-These are instincts, not rules. The brain is only useful if you use it in the moment.
+These are instincts, not rules. Your brain is only useful if you use it in the moment.
 
 **Before answering about the past** → `recall` first. Don't guess.
 
