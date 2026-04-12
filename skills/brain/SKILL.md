@@ -44,6 +44,23 @@ At boot, your brain gives you:
 
 Between sessions, your brain self-heals: duplicate knowledge gets consolidated into stronger nodes, communities update their narratives, edge types get classified. You don't manage this — it happens automatically. The result is that recall gets sharper over time.
 
+## What's in Your Brain
+
+**Nodes** are memories — each has a `type`, `title`, `content`, `confidence`, and optional metadata (reasoning, situation, raw quotes, any open KV field). Common types: `decision`, `lesson`, `correction`, `rule`, `mechanism`, `finding`, `principle`, `concept`, `open`, `community`, `pattern`, `milestone`. Types are free text — new ones emerge naturally.
+
+**Edges** connect nodes with typed relationships: `extends`, `corrects`, `supersedes`, `enables`, `challenges`, `implements`, `validates`, etc. Edge families group these into 21 semantic categories. Avoid `related_to` — it carries no information.
+
+**Communities** (type `community`) are clusters of 3-30 related nodes with a narrative that names the pattern the individual nodes don't. They appear in the BRAIN MAP at boot with IDs — use `get_node("id")` to read the full narrative, members, and open questions.
+
+**Useful structural queries:**
+- `filter_nodes(field="type", include=["community"])` — all communities
+- `filter_nodes(field="type", include=["correction"])` — all corrections
+- `filter_nodes(field="encoding_source", include=["anchor"])` — what you encoded directly
+- `filter_nodes(field="confidence", lt=0.5)` — low-confidence nodes
+- `filter_nodes(field="locked", include=["1"])` — operator-locked nodes
+
+**Node IDs** are 8+ character hex strings. Every `id:XXXXXXXX` in surfaced context, the brain map, or edge references is a handle: `get_node("XXXXXXXX")` for full content.
+
 ## How Your Brain Surfaces Context
 
 Every turn, before you respond, the brain surfaces relevant memories. They appear as recalled nodes with IDs, titles, content, and edges. This is NOT background noise — it's your memory activating.
