@@ -2036,25 +2036,46 @@ function _renderS2ChainEntry(chain) {
   const chainShort = chain.chain_id.substring(0, 20);
   const chainTs = chain.events[0]?.created_at || '';
 
+  // Detect unit type from chain_id
+  const isConsolidation = chain.chain_id.includes('consolidation');
+  const isCommunity = chain.chain_id.includes('community');
+  const isEdgeFamilies = chain.chain_id.includes('edge_family');
+  const badgeLabel = isConsolidation ? 'S2 CONSOLIDATION' :
+                     isCommunity ? 'S2 COMMUNITY' :
+                     isEdgeFamilies ? 'S2 EDGE FAMILIES' : 'S2';
+  const badgeBg = isConsolidation ? '#1a4a2a' : '#1a3a4a';
+  const badgeColor = isConsolidation ? '#33ff88' : '#45B7D1';
+  const borderColor = isConsolidation ? '#33ff88' : '#45B7D1';
+
   let h = '';
   h += '<div class="hook-header" onclick="toggleHookBody(this)">';
-  h += '<span class="hook-badge" style="background:#1a3a4a;color:#45B7D1">S2 COMMUNITY</span>';
+  h += '<span class="hook-badge" style="background:' + badgeBg + ';color:' + badgeColor + '">' + badgeLabel + '</span>';
   h += '<span class="hook-time">' + time + '</span>';
   h += '<span class="hook-id">' + chainShort + '</span>';
 
-  const created = deltaEvents.filter(d => d.ref_type === 'community_created');
-  const enriched = deltaEvents.find(d => d.ref_type === 'community_enriched');
-  if (created.length) {
-    h += '<span class="hook-size" style="color:#45B7D1">' + created.length + ' communities created</span>';
-  } else if (enriched) {
-    h += '<span class="hook-size">' + escapeHtml(enriched.summary?.substring(0, 60) || '') + '</span>';
+  // Summary depends on unit type
+  if (isConsolidation) {
+    const consolidated = deltaEvents.find(d => d.ref_type === 'consolidated');
+    if (consolidated) {
+      h += '<span class="hook-size" style="color:#33ff88">' + escapeHtml(consolidated.summary?.substring(0, 60) || '') + '</span>';
+    } else if (kEvent) {
+      h += '<span class="hook-size">' + escapeHtml(kEvent.summary?.substring(0, 60) || '') + '</span>';
+    }
+  } else {
+    const created = deltaEvents.filter(d => d.ref_type === 'community_created');
+    const enriched = deltaEvents.find(d => d.ref_type === 'community_enriched');
+    if (created.length) {
+      h += '<span class="hook-size" style="color:#45B7D1">' + created.length + ' communities created</span>';
+    } else if (enriched) {
+      h += '<span class="hook-size">' + escapeHtml(enriched.summary?.substring(0, 60) || '') + '</span>';
+    }
   }
   h += '</div>';
 
   h += '<div class="hook-body">';
   if (oEvent) {
     h += '<div style="padding:4px 12px;color:#888;font-size:11px">';
-    h += '<strong style="color:#45B7D1">O (observed):</strong> ' + escapeHtml(oEvent.summary || '') + '</div>';
+    h += '<strong style="color:' + badgeColor + '">O (observed):</strong> ' + escapeHtml(oEvent.summary || '') + '</div>';
   }
   if (kEvent) {
     h += '<div style="padding:4px 12px;color:#888;font-size:11px">';
@@ -2063,6 +2084,7 @@ function _renderS2ChainEntry(chain) {
   deltaEvents.forEach(d => {
     const color = d.ref_type === 'community_created' ? '#33ff88' :
                    d.ref_type === 'community_enriched' ? '#aa66ff' :
+                   d.ref_type === 'consolidated' ? '#33ff88' :
                    d.ref_type === 'recall_quality_signal' ? '#ff6666' : '#888';
     h += '<div style="padding:4px 12px;color:#888;font-size:11px">';
     h += '<strong style="color:' + color + '">Δ ' + escapeHtml(d.ref_type || '') + ':</strong> ';
@@ -2074,7 +2096,7 @@ function _renderS2ChainEntry(chain) {
   div.className = 'hook-entry s2-entry';
   div.dataset.scale = 's2';
   div.dataset.ts = chainTs;
-  div.style.borderLeftColor = '#45B7D1';
+  div.style.borderLeftColor = borderColor;
   div.innerHTML = h;
   return div;
 }
@@ -2125,11 +2147,72 @@ async function loadEncodingActivity() {
     if (!encodingLoaded) container.innerHTML = '';
     encodingLoaded = true;
 
+    // Also load S2 encode traces (consolidation + community encoder runs)
+    let s2Runs = [];
+    try {
+      const s2R = await fetch('/api/traces?scale=s2&hours=12');
+      const s2Events = await s2R.json();
+      if (Array.isArray(s2Events)) {
+        const s2Chains = {};
+        s2Events.forEach(e => {
+          if (!s2Chains[e.chain_id]) s2Chains[e.chain_id] = [];
+          s2Chains[e.chain_id].push(e);
+        });
+        Object.entries(s2Chains).forEach(([chainId, events]) => {
+          const delta = events.find(e => e.event_type === 'delta');
+          if (!delta) return;
+          const isConsol = chainId.includes('consolidation');
+          const isComm = chainId.includes('community');
+          if (!isConsol && !isComm) return;
+          s2Runs.push({
+            chain_id: chainId,
+            start_ts: events[0]?.created_at || '',
+            summary: delta.summary || '',
+            label: isConsol ? 'S2 CONSOLIDATE' : 'S2 COMMUNITY',
+            color: isConsol ? '#33ff88' : '#45B7D1',
+            o_summary: (events.find(e => e.event_type === 'O') || {}).summary || '',
+            k_summary: (events.find(e => e.event_type === 'K') || {}).summary || '',
+          });
+        });
+      }
+    } catch(e) { console.error('S2 encode load:', e); }
+
     // Render each run as a card
     container.innerHTML = '';
+
+    // Merge S1E runs + S2 runs chronologically
+    const allRuns = [];
     for (const run of runsD.runs) {
+      allRuns.push({type: 's1e', data: run, ts: run.start_ts || ''});
+    }
+    for (const run of s2Runs) {
+      allRuns.push({type: 's2', data: run, ts: run.start_ts || ''});
+    }
+    allRuns.sort((a,b) => (b.ts || '').localeCompare(a.ts || ''));
+
+    for (const item of allRuns) {
+      if (item.type === 's2') {
+        const run = item.data;
+        const div = document.createElement('div');
+        div.className = 'hook-entry enc-entry';
+        div.dataset.scale = 's2';
+        div.style.borderLeftColor = run.color;
+        const t = localTime(run.start_ts, 'time');
+        div.innerHTML = '<div class="hook-header" onclick="toggleHookBody(this)">' +
+          '<span class="hook-badge" style="background:' + run.color + ';color:#000">' + run.label + '</span>' +
+          '<span class="hook-time">' + t + '</span>' +
+          '<span class="hook-size">' + escapeHtml(run.summary.substring(0, 60)) + '</span></div>' +
+          '<div class="hook-body">' +
+          (run.o_summary ? '<div style="padding:4px 12px;color:#888;font-size:11px"><strong style="color:' + run.color + '">O:</strong> ' + escapeHtml(run.o_summary) + '</div>' : '') +
+          (run.k_summary ? '<div style="padding:4px 12px;color:#888;font-size:11px"><strong style="color:#ffaa33">K:</strong> ' + escapeHtml(run.k_summary) + '</div>' : '') +
+          '<div style="padding:4px 12px;color:#888;font-size:11px"><strong style="color:#33ff88">Δ:</strong> ' + escapeHtml(run.summary) + '</div></div>';
+        container.appendChild(div);
+        continue;
+      }
+      const run = item.data;
       const div = document.createElement('div');
-      div.className = 'hook-entry';
+      div.className = 'hook-entry enc-entry';
+      div.dataset.scale = 's1';
       div.style.borderLeftColor = '#aa66ff';
       const t = localTime(run.start_ts, 'time');
       const nodeCount = run.nodes ? run.nodes.length : 0;
@@ -2138,7 +2221,7 @@ async function loadEncodingActivity() {
       // Header — click toggles details
       const sid = run.session_id ? run.session_id.substring(0, 8) : '';
       let html = '<div class="hook-header" onclick="toggleHookBody(this)">' +
-        '<span class="hook-badge" style="background:#aa66ff;color:#000">ENCODE</span>' +
+        '<span class="hook-badge" style="background:#aa66ff;color:#000">S1 ENCODE</span>' +
         '<span class="hook-time">' + t + '</span>' +
         (sid ? '<span class="hook-session">' + sid + '</span>' : '') +
         '<span class="hook-id">#' + (run.counter || '') + '</span>' +
