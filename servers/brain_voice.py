@@ -564,7 +564,7 @@ class BrainVoice:
                     narrative = meta.get('community_narrative', '')
                     # Use narrative if available, fall back to content
                     summary = narrative or (ccontent or '')
-                    comm_items.append((maturity, size, ctitle, summary))
+                    comm_items.append((maturity, size, ctitle, summary, cid))
 
                 if comm_items:
                     # Sort: recently active first, then settled by size
@@ -605,14 +605,15 @@ class BrainVoice:
 
                     TOP_WITH_NARRATIVE = 20
                     out.append("BRAIN MAP (%d communities):" % len(comm_items))
-                    for i, (maturity, size, title, summary) in enumerate(comm_items):
+                    for i, (maturity, size, title, summary, cid) in enumerate(comm_items):
                         mat_tag = maturity[:1].upper() if maturity and maturity != '?' else '?'
+                        short_id = cid[:8] if cid else '?'
                         if i < TOP_WITH_NARRATIVE:
-                            out.append("  [%s|%s] %s" % (mat_tag, size, _t(title, 70)))
+                            out.append("  [%s|%s] %s (id:%s)" % (mat_tag, size, _t(title, 70), short_id))
                             if summary:
                                 out.append("    %s" % _t(summary, 120))
                         else:
-                            out.append("  [%s|%s] %s" % (mat_tag, size, _t(title, 70)))
+                            out.append("  [%s|%s] %s (id:%s)" % (mat_tag, size, _t(title, 70), short_id))
                     out.append("")
         except Exception as e:
             brain._log_error('boot_community_map', e, 'loading community map')
