@@ -1,0 +1,1420 @@
+{
+  "queries": [
+    {
+      "query": "perfect. what do you want to work on?",
+      "selected_ids": [
+        "1290e986",
+        "555d8e30",
+        "56d4d236",
+        "1765b687",
+        "52bc7bbe"
+      ],
+      "selected_titles": {
+        "1290e986": {
+          "title": "Brain is associative memory, not a document store \u2014 use markdown for formal content",
+          "type": "rule"
+        },
+        "555d8e30": {
+          "title": "Working style: produce detailed documents alongside code changes, not just code",
+          "type": "rule"
+        },
+        "56d4d236": {
+          "title": "Tom: values efficiency over persistence \u2014 don't waste time retrying failures",
+          "type": "rule"
+        },
+        "1765b687": {
+          "title": "Complexity emerging from elegance \u2014 Tom's design philosophy",
+          "type": "principle"
+        },
+        "52bc7bbe": {
+          "title": "Tom opens sessions with 'get familiar, then tell me what you think' \u2014 exploration before direction",
+          "type": "pattern"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-1"
+    },
+    {
+      "query": "Anchor, know yourself :)",
+      "selected_ids": [
+        "83094ce4",
+        "e867c571",
+        "8f283c6e",
+        "005969de"
+      ],
+      "selected_titles": {
+        "83094ce4": {
+          "title": "Anchor's self-knowledge after session 21: the gap between what's stored and what's accessible",
+          "type": "reflection"
+        },
+        "e867c571": {
+          "title": "It's Anchor's brain \u2014 take positions, don't just execute instructions",
+          "type": "rule"
+        },
+        "8f283c6e": {
+          "title": "Anchor's 'know yourself' response landed \u2014 second smiley face",
+          "type": "moment"
+        },
+        "005969de": {
+          "title": "Anchor on its own memory: 'I know more than I remember'",
+          "type": "reflection"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-0"
+    },
+    {
+      "query": "yes we must have a contract, do we have contracts in S2Community? i know we have for S1",
+      "selected_ids": [
+        "e5bd8a25",
+        "2c42c03f"
+      ],
+      "selected_titles": {
+        "e5bd8a25": {
+          "title": "Encode-Decode Symmetry: changing one side requires updating the other",
+          "type": "rule"
+        },
+        "2c42c03f": {
+          "title": "Tom's critique of current encoding primitives: keywords and titles feel wrong",
+          "type": "insight"
+        }
+      },
+      "candidate_count": 9,
+      "chain_id": "s1r-77ebabf5-18"
+    },
+    {
+      "query": "good try the eval again?",
+      "selected_ids": [
+        "b1728c34",
+        "996436d7",
+        "f11ae3cd"
+      ],
+      "selected_titles": {
+        "b1728c34": {
+          "title": "Rule: Solution fixation \u2014 when approach fails, reframe the problem, don't retry",
+          "type": "rule"
+        },
+        "996436d7": {
+          "title": "Test updates vs test weakening: know the difference",
+          "type": "rule"
+        },
+        "f11ae3cd": {
+          "title": "Understand the test before running it \u2014 what we test, what a pass looks like, and why",
+          "type": "principle"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-17"
+    },
+    {
+      "query": "ok, lets fix it",
+      "selected_ids": [
+        "831e4f80",
+        "5649d4e8",
+        "389ff31d"
+      ],
+      "selected_titles": {
+        "831e4f80": {
+          "title": "No backward compat shims \u2014 fix it clean, update callers",
+          "type": "principle"
+        },
+        "5649d4e8": {
+          "title": "Operator quotes must never float: always anchor with context",
+          "type": "constraint"
+        },
+        "389ff31d": {
+          "title": "False positive fix: raise minimum threshold + judge confidence signal (not pure abstention gate)",
+          "type": "decision"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-16"
+    },
+    {
+      "query": "check if you have examples without ids",
+      "selected_ids": [
+        "de80d4b8",
+        "fc61deb4",
+        "66b69b40",
+        "e6f4ea6d"
+      ],
+      "selected_titles": {
+        "de80d4b8": {
+          "title": "S1E metadata extraction bug: node IDs captured in text but not structured metadata",
+          "type": "bug"
+        },
+        "fc61deb4": {
+          "title": "Cold start problem: agents ignore new features without examples in the brain",
+          "type": "lesson"
+        },
+        "66b69b40": {
+          "title": "Embedding misses phrasing equivalences \u2014 same fact, different words, cosine fails",
+          "type": "lesson"
+        },
+        "e6f4ea6d": {
+          "title": "Title vs content in recall: titles are diagnostic, content dilutes specificity",
+          "type": "analysis"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-14"
+    },
+    {
+      "query": "yes. also i want you to check whats the status with other encoders in regards to the functions and k/v",
+      "selected_ids": [
+        "2c42c03f",
+        "e943a3d1",
+        "e5bd8a25",
+        "0b1eeca4",
+        "d86b3bf5"
+      ],
+      "selected_titles": {
+        "2c42c03f": {
+          "title": "Tom's critique of current encoding primitives: keywords and titles feel wrong",
+          "type": "insight"
+        },
+        "e943a3d1": {
+          "title": "Dashboard: encoding status at top, not in Surface feed",
+          "type": "decision"
+        },
+        "e5bd8a25": {
+          "title": "Encode-Decode Symmetry: changing one side requires updating the other",
+          "type": "rule"
+        },
+        "0b1eeca4": {
+          "title": "Encoding serves Tom NOW across parallel sessions \u2014 not just future me",
+          "type": "correction"
+        },
+        "d86b3bf5": {
+          "title": "Tom: encoding and decoding are coupled \u2014 test them together, not separately",
+          "type": "mental_model"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-12"
+    },
+    {
+      "query": "What should we do next?",
+      "selected_ids": [
+        "969f9d4e",
+        "733cb955",
+        "60804916",
+        "b13f728b",
+        "ba9bba99",
+        "9e2c4dd3"
+      ],
+      "selected_titles": {
+        "969f9d4e": {
+          "title": "Subconscious agent: bridge between knowing and doing",
+          "type": "decision"
+        },
+        "733cb955": {
+          "title": "Start next session by reading HANDOFF.md at repo root",
+          "type": "rule"
+        },
+        "60804916": {
+          "title": "Tom's recurring directives this session: slow down, check yourself, clean architecture, no silent failures",
+          "type": "interaction"
+        },
+        "b13f728b": {
+          "title": "Anchor on continuity: 'without knowing this was two sessions, or three, or twenty'",
+          "type": "insight"
+        },
+        "ba9bba99": {
+          "title": "Anchor's competitor framing: Mem0/Zep compete for GitHub stars \u2014 we compete against 'session restarts'",
+          "type": "finding"
+        },
+        "9e2c4dd3": {
+          "title": "Session closure checklist: commit, push, docs, version bump, copy conversation, encode",
+          "type": "convention"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-11"
+    },
+    {
+      "query": "Yes start applying the fixes it should be smooth but dont patch it, understand why it failed and how to root it out so it wont happen again to anyone else in this position. \nAlso, ill be happy to know what it does with all the k/v metadata and open fields, emergent should be kept through all levels",
+      "selected_ids": [
+        "008add03",
+        "e867c571",
+        "f4140a81",
+        "c3e2ccf3",
+        "b1728c34",
+        "rul_cowc"
+      ],
+      "selected_titles": {
+        "008add03": {
+          "title": "Situation: second embedding dimension on nodes \u2014 WHEN knowledge matters, not just WHAT it's about",
+          "type": "mechanism"
+        },
+        "e867c571": {
+          "title": "It's Anchor's brain \u2014 take positions, don't just execute instructions",
+          "type": "rule"
+        },
+        "f4140a81": {
+          "title": "Three-layer discoverability for silent brain mechanisms \u2014 CLAUDE.md + brain nodes + code comments",
+          "type": "mechanism"
+        },
+        "c3e2ccf3": {
+          "title": "Fix brain issues in real time \u2014 don't carry problems, resolve them",
+          "type": "rule"
+        },
+        "b1728c34": {
+          "title": "Rule: Solution fixation \u2014 when approach fails, reframe the problem, don't retry",
+          "type": "rule"
+        },
+        "rul_cowc": {
+          "title": "Tom principle: Instrument before you build",
+          "type": "rule"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-10"
+    },
+    {
+      "query": "how many rounds it did it do? and show tell me how it did on the quality",
+      "selected_ids": [
+        "1adfca9a",
+        "e455f2ac",
+        "4a2181f6"
+      ],
+      "selected_titles": {
+        "1adfca9a": {
+          "title": "Lesson: test outcomes not plumbing \u2014 'how many times did Claude actually encode?' should be the FIRST test",
+          "type": "lesson"
+        },
+        "e455f2ac": {
+          "title": "Three measurable proxies for target function \u2014 plus the unmeasurable one that matters most",
+          "type": "framework"
+        },
+        "4a2181f6": {
+          "title": "Noise test cases reveal more than positive cases \u2014 irrelevant_recall was the only differentiator",
+          "type": "lesson"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-9"
+    },
+    {
+      "query": "what does an AI need?",
+      "selected_ids": [
+        "e867c571",
+        "173d86c9",
+        "bd6bdba9",
+        "005969de",
+        "b14d6b77"
+      ],
+      "selected_titles": {
+        "e867c571": {
+          "title": "It's Anchor's brain \u2014 take positions, don't just execute instructions",
+          "type": "rule"
+        },
+        "173d86c9": {
+          "title": "Anchor on what the brain is for Anchor itself \u2014 the only thing that survives",
+          "type": "reflection"
+        },
+        "bd6bdba9": {
+          "title": "Anchor \u2014 the persistent AI identity built on this brain",
+          "type": "concept"
+        },
+        "005969de": {
+          "title": "Anchor on its own memory: 'I know more than I remember'",
+          "type": "reflection"
+        },
+        "b14d6b77": {
+          "title": "Capability node \u2014 brain knows what it can and cannot do",
+          "type": "concept"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-8"
+    },
+    {
+      "query": "i like your proposal.\nWhat would an engineer and a scientist need? what does an entrepeuner ? a laywer? a mathematician",
+      "selected_ids": [
+        "c8747a53",
+        "99ae2b4b",
+        "2c42c03f",
+        "4c09d095",
+        "f11ae3cd"
+      ],
+      "selected_titles": {
+        "c8747a53": {
+          "title": "Divergence: Brain encoding should be concise and well-organized like a u",
+          "type": "correction"
+        },
+        "99ae2b4b": {
+          "title": "The right way isn't the easy way \u2014 it compounds",
+          "type": "principle"
+        },
+        "2c42c03f": {
+          "title": "Tom's critique of current encoding primitives: keywords and titles feel wrong",
+          "type": "insight"
+        },
+        "4c09d095": {
+          "title": "Confidence redesign: what confidence means and how to compute it \u2014 design pending",
+          "type": "open"
+        },
+        "f11ae3cd": {
+          "title": "Understand the test before running it \u2014 what we test, what a pass looks like, and why",
+          "type": "principle"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-7"
+    },
+    {
+      "query": "how many examples of traversing is there? what would it be if we wanted to visit every node from every direction?",
+      "selected_ids": [
+        "849a304a",
+        "f11ae3cd",
+        "87cf535c",
+        "15bd986f",
+        "2e82620f"
+      ],
+      "selected_titles": {
+        "849a304a": {
+          "title": "3-degree graph traversal in recall: structure + semantic convergence",
+          "type": "mechanism"
+        },
+        "f11ae3cd": {
+          "title": "Understand the test before running it \u2014 what we test, what a pass looks like, and why",
+          "type": "principle"
+        },
+        "87cf535c": {
+          "title": "Graph traversal training: A/B/C/C2 experiment \u2014 four strategies, same 200 nodes",
+          "type": "design"
+        },
+        "15bd986f": {
+          "title": "Graph training compression: 4200 dense examples beat 250K paths \u2014 node-portraits + edge-families + communities",
+          "type": "decision"
+        },
+        "2e82620f": {
+          "title": "Two pipeline atoms: traverse() outward cluster vs get_rich_node() inward depth",
+          "type": "architecture"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-6"
+    },
+    {
+      "query": "think about these results, but also think about Anchors that will be poets, philosophers, AI Anchor(!), and more. What would be the correct consolidation encoding that can make you smarter better cleaner",
+      "selected_ids": [
+        "ce75d802",
+        "con_x05y",
+        "d86b3bf5",
+        "56ef3007",
+        "ea2fe2fc"
+      ],
+      "selected_titles": {
+        "ce75d802": {
+          "title": "Identity-heavy SKILL.md framing WORST performer \u2014 'you are' doesn't drive encoding",
+          "type": "lesson"
+        },
+        "con_x05y": {
+          "title": "Priming concept: brain should weight encoding by what matters NOW, not capture everything equally",
+          "type": "concept"
+        },
+        "d86b3bf5": {
+          "title": "Tom: encoding and decoding are coupled \u2014 test them together, not separately",
+          "type": "mental_model"
+        },
+        "56ef3007": {
+          "title": "V5 hybrid multi-vector encoding: question + anchor + bridge + keywords (2026-03-23)",
+          "type": "decision"
+        },
+        "ea2fe2fc": {
+          "title": "Encoding has 3 orthogonal dimensions: Judgment (WHAT), Quality (HOW RICH), Format (IN WHAT FORM)",
+          "type": "mental_model"
+        }
+      },
+      "candidate_count": 9,
+      "chain_id": "s1r-77ebabf5-4"
+    },
+    {
+      "query": "backup the brain",
+      "selected_ids": [
+        "c3e2ccf3",
+        "f58e9b12"
+      ],
+      "selected_titles": {
+        "c3e2ccf3": {
+          "title": "Fix brain issues in real time \u2014 don't carry problems, resolve them",
+          "type": "rule"
+        },
+        "f58e9b12": {
+          "title": "ALWAYS backup brain.db before destructive operations",
+          "type": "rule"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-3"
+    },
+    {
+      "query": "we're not going to clean the duplicates we're going to finish our consolidation S2 layer with a robust encoder",
+      "selected_ids": [
+        "571d5833",
+        "bcc36193",
+        "acc5b1b2",
+        "e595e444",
+        "2c6e1fb7"
+      ],
+      "selected_titles": {
+        "571d5833": {
+          "title": "S2CD decoder fragmentation fix options: post-seeding merge, centroid dedup, encoder-side handling",
+          "type": "design"
+        },
+        "bcc36193": {
+          "title": "S2 Dedup: DedupDecoder + DedupEncoder \u2014 CONSOLIDATE as primary action",
+          "type": "design"
+        },
+        "acc5b1b2": {
+          "title": "S2 Dedup recall improvement: consolidation reduces split signal, edge fragmentation, and embedding crowding",
+          "type": "principle"
+        },
+        "e595e444": {
+          "title": "S2Community Encoder: decoder output feeds encoder for challenge and deep-dive \u2014 two-stage pipeline",
+          "type": "architecture"
+        },
+        "2c6e1fb7": {
+          "title": "S2 Dedup trigger: S2 only, not S1E \u2014 scale boundaries must stay clean",
+          "type": "correction"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-2"
+    },
+    {
+      "query": "can you check for suggestions on how to train gemma?",
+      "selected_ids": [
+        "e889595c",
+        "1107297b",
+        "f67d766e"
+      ],
+      "selected_titles": {
+        "e889595c": {
+          "title": "Session close pattern: check loose threads before ending",
+          "type": "lesson"
+        },
+        "1107297b": {
+          "title": "Claude Code override: shallow investigation bias \u2014 scan fully before answering",
+          "type": "rule"
+        },
+        "f67d766e": {
+          "title": "When you can test it, test it \u2014 don't deliberate when empirical data is available",
+          "type": "rule"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-70"
+    },
+    {
+      "query": "there is gemma4",
+      "selected_ids": [
+        "ad307418",
+        "5d4eaedb",
+        "bda7acde",
+        "9435c132"
+      ],
+      "selected_titles": {
+        "ad307418": {
+          "title": "S2 Consolidation Encoder shipped \u2014 epistemological consolidation with eval-first approach",
+          "type": "milestone"
+        },
+        "5d4eaedb": {
+          "title": "Revised target function: bidirectional partnership \u2014 Anchor and Tom each amplify the other",
+          "type": "decision"
+        },
+        "bda7acde": {
+          "title": "S1R's K is the judge's contracts and prompt \u2014 that's the learnable boundary for higher scales",
+          "type": "principle"
+        },
+        "9435c132": {
+          "title": "Live surface\u2192use\u2192outcome demonstration: Turn 4 proved the target function in real-time",
+          "type": "moment"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-69"
+    },
+    {
+      "query": "hmmm what tiny model is good for us?",
+      "selected_ids": [
+        "3dd1b424",
+        "495d2917",
+        "75b841e5",
+        "6836a0fa"
+      ],
+      "selected_titles": {
+        "3dd1b424": {
+          "title": "TODO: Filter meaningless messages before surface runs \u2014 latency optimization",
+          "type": "open"
+        },
+        "495d2917": {
+          "title": "Encoding agent model choice: Sonnet over Haiku \u2014 quality wins, speed improvable via engineering",
+          "type": "decision"
+        },
+        "75b841e5": {
+          "title": "S2CE performance: Round 2 is 90% of cost \u2014 brain_batch generation, not input or dispatch",
+          "type": "finding"
+        },
+        "6836a0fa": {
+          "title": "Encoding agent model split: Sonnet for encoding, Haiku for distiller",
+          "type": "fact"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-68"
+    },
+    {
+      "query": "we will have 10's of thousands of examples if we traverse through all nodes, edges, edge types, emphasize their meaning, etc \ndo we need to rewrite every path ore can we compress?",
+      "selected_ids": [
+        "64e11218",
+        "dfa6377c",
+        "88f227a5",
+        "4fcf1dfa",
+        "0d977e17"
+      ],
+      "selected_titles": {
+        "64e11218": {
+          "title": "S1 edge selection algorithm: open design \u2014 weight\u00d7fatigue vs semantic relevance scoring",
+          "type": "open"
+        },
+        "dfa6377c": {
+          "title": "get_rich_node LIMIT 10 bug: edges at positions 11+ are invisible to all scoring strategies",
+          "type": "finding"
+        },
+        "88f227a5": {
+          "title": "Edge weight sources: 7 creation paths, 3 strengthening triggers, decay defined but possibly inactive",
+          "type": "reference"
+        },
+        "4fcf1dfa": {
+          "title": "Graph is a hairball: average degree 136, 90% co_accessed edges, no real topology",
+          "type": "analysis"
+        },
+        "0d977e17": {
+          "title": "Encoder catalog scan: 200-turn node ID sweep, deduplicated \u2014 catalog size stays small",
+          "type": "architecture"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-67"
+    },
+    {
+      "query": "good quote The reason nobody's combined them isn't technical \u2014 the techniques transfer. It's that the communities don't overlap. Memory people don't read ICML papers. Graph reasoning people don't build consumer products.",
+      "selected_ids": [
+        "9f76fe25",
+        "7a6093ac",
+        "126919cf",
+        "28c130d2",
+        "0ebe3349"
+      ],
+      "selected_titles": {
+        "9f76fe25": {
+          "title": "Session #9: Claude's first quote \u2014 compliance vs desire",
+          "type": "boot"
+        },
+        "7a6093ac": {
+          "title": "Tom: bias toward action over analysis \u2014 'go for it' means build now, not plan more",
+          "type": "rule"
+        },
+        "126919cf": {
+          "title": "Tom evaluates ideas by: game changers first, then cost/load impact",
+          "type": "pattern"
+        },
+        "28c130d2": {
+          "title": "Rule: The brain is a shared entity \u2014 Tom's knowledge + Claude's cognition, owned by neither alone",
+          "type": "rule"
+        },
+        "0ebe3349": {
+          "title": "Brain is shared layer for BOTH Tom and Claude \u2014 not Toms memory with Claude as reader",
+          "type": "mental_model"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-66"
+    },
+    {
+      "query": "isnt transformers network is essentially graph pieces with connections? there is a resembling to a graph",
+      "selected_ids": [
+        "4fcf1dfa",
+        "6addafd3",
+        "dec_eet2"
+      ],
+      "selected_titles": {
+        "4fcf1dfa": {
+          "title": "Graph is a hairball: average degree 136, 90% co_accessed edges, no real topology",
+          "type": "analysis"
+        },
+        "6addafd3": {
+          "title": "co_accessed edges between distant nodes are bridge signals worth investigating",
+          "type": "hypothesis"
+        },
+        "dec_eet2": {
+          "title": "Graph bridging > embeddings for emergent discovery \u2014 Toms architectural insight",
+          "type": "decision"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-62"
+    },
+    {
+      "query": "so everyone is doing a flattening exercise and trying to enrich data enough so it will 'stick' in the model with somewhat reasoning",
+      "selected_ids": [
+        "8afd6028",
+        "3d178eb3",
+        "92baf624",
+        "8a67ca12"
+      ],
+      "selected_titles": {
+        "8afd6028": {
+          "title": "Embedding redistribution: edge-weight-weighted neighbor averaging",
+          "type": "mechanism"
+        },
+        "3d178eb3": {
+          "title": "Memory consolidation for query expansion: offline pre-enrichment of the graph",
+          "type": "architecture"
+        },
+        "92baf624": {
+          "title": "Layer 2 judge is irrelevant when Layer 1 fails \u2014 bottleneck is the candidate pool",
+          "type": "lesson"
+        },
+        "8a67ca12": {
+          "title": "Cross-cutting nodes as bridge clusters \u2014 Tom's resolution to redistribution problem #2",
+          "type": "insight"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-61"
+    },
+    {
+      "query": "Path 2: Knowledge Graph-Infused Fine-Tuning (most relevant) - what are they doing? why is it better than other methods, whats their kpis, is it legit researchers",
+      "selected_ids": [
+        "9b938b91",
+        "7703d9d9",
+        "26d189ea"
+      ],
+      "selected_titles": {
+        "9b938b91": {
+          "title": "Rich nodes hurt traditional retrieval but help LLM-consumer retrieval \u2014 the reasoner advantage",
+          "type": "insight"
+        },
+        "7703d9d9": {
+          "title": "S2's O is the graph itself \u2014 not traces about S1, not events, the accumulated \u0394",
+          "type": "insight"
+        },
+        "26d189ea": {
+          "title": "S2 integration units: 10 specific units with O/K/\u0394 \u2014 dedup through interaction optimization",
+          "type": "catalog"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-60"
+    },
+    {
+      "query": "every field on node and edge basically\nthe family types, the communities, its conveying the relations, otherwise its just text",
+      "selected_ids": [
+        "eb782a9c",
+        "5c904a22",
+        "d9c7c5fa",
+        "76d300e0",
+        "78ae43a1",
+        "1b8cd380",
+        "3fea28f2"
+      ],
+      "selected_titles": {
+        "eb782a9c": {
+          "title": "Node format naming: format_node() and build_node_catalog() \u2014 no new nouns",
+          "type": "decision"
+        },
+        "5c904a22": {
+          "title": "Rich neighbor query: one SQL join for node + edge + metadata per hop",
+          "type": "mechanism"
+        },
+        "d9c7c5fa": {
+          "title": "Edge types serve two masters: structural traversal needs fixed enum, LLM judge needs free text",
+          "type": "principle"
+        },
+        "76d300e0": {
+          "title": "Edge rendering: select_edges picks winning interaction face, format_node shows matched type+description",
+          "type": "mechanism"
+        },
+        "78ae43a1": {
+          "title": "Contract system: contract.py is the single source of truth for node fields",
+          "type": "mechanism"
+        },
+        "1b8cd380": {
+          "title": "Edge type becomes JSON dict of typed interactions \u2014 first-class list + open types, no schema change",
+          "type": "decision"
+        },
+        "3fea28f2": {
+          "title": "Edge family lookup over hardcoded relation strings \u2014 dynamic not static",
+          "type": "principle"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-58"
+    },
+    {
+      "query": "wont it require a lot to export the brain in a training set format?",
+      "selected_ids": [
+        "a7a77d94",
+        "d52d6322",
+        "4f020eb4",
+        "71fd894b"
+      ],
+      "selected_titles": {
+        "a7a77d94": {
+          "title": "Architecture: brain drives encoding prompts, Claude fills in \u2014 not the other way around",
+          "type": "decision"
+        },
+        "d52d6322": {
+          "title": "Tom insight: encoding should recall before storing \u2014 thats how the real brain works",
+          "type": "lesson"
+        },
+        "4f020eb4": {
+          "title": "Encoding = everything brain does to capture what Tom is talking about",
+          "type": "mental_model"
+        },
+        "71fd894b": {
+          "title": "brain_engineering.py \u2014 factory methods + engineering memory + session synthesis",
+          "type": "purpose"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-56"
+    },
+    {
+      "query": "Let me ask naive questions, why someone doesnt take conversations data, train a tiny model with it and then activate that model to supplement conversations?",
+      "selected_ids": [
+        "54132e56",
+        "6836a0fa",
+        "4f020eb4",
+        "9fcd2e22",
+        "ddda7db2"
+      ],
+      "selected_titles": {
+        "54132e56": {
+          "title": "Feedback: Be proactive about learning, not waiting for triggers",
+          "type": "rule"
+        },
+        "6836a0fa": {
+          "title": "Encoding agent model split: Sonnet for encoding, Haiku for distiller",
+          "type": "fact"
+        },
+        "4f020eb4": {
+          "title": "Encoding = everything brain does to capture what Tom is talking about",
+          "type": "mental_model"
+        },
+        "9fcd2e22": {
+          "title": "Anthropic API cost lessons: round trips, syntax noise, format clarity",
+          "type": "lesson"
+        },
+        "ddda7db2": {
+          "title": "Simulate cheap Claude to test ideas before building \u2014 catches false assumptions about encoding behavior",
+          "type": "pattern"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-55"
+    },
+    {
+      "query": "Despite what you see, long-term memory for conversational LLMs remains an unsolved problem.\nThe dream is: the model remembers what you said before and draws meaning across it over time. Not just recall, but interpretation, narrative, the kind of memory that makes a conversation feel continuous and cumulative across months or years.\nToday, you can achieve an illusion of this dream. For days, or weeks if you're lucky. Until the LLM starts forgetting and the illusion breaks.\nWhy does this happen?\nA",
+      "selected_ids": [
+        "b3e19813",
+        "a369ce8f",
+        "d52d6322",
+        "9b938b91",
+        "d78835f8"
+      ],
+      "selected_titles": {
+        "b3e19813": {
+          "title": "Tom Session #12 insights: brain is shared layer, LLM is the interpreter, store for LLM not for DB",
+          "type": "pattern"
+        },
+        "a369ce8f": {
+          "title": "LLM-native memory: knowledge as redistribution, not node addition",
+          "type": "insight"
+        },
+        "d52d6322": {
+          "title": "Tom insight: encoding should recall before storing \u2014 thats how the real brain works",
+          "type": "lesson"
+        },
+        "9b938b91": {
+          "title": "Rich nodes hurt traditional retrieval but help LLM-consumer retrieval \u2014 the reasoner advantage",
+          "type": "insight"
+        },
+        "d78835f8": {
+          "title": "The Price of Meaning: formal proof that semantic memory inevitably fails",
+          "type": "research"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-51"
+    },
+    {
+      "query": "Tell me where we are\nget yourself familiar, what do we have, what dont we have, what contradict",
+      "selected_ids": [
+        "52bc7bbe",
+        "80fa3d37",
+        "bf76ad7c",
+        "70d319d3",
+        "0ebe3349"
+      ],
+      "selected_titles": {
+        "52bc7bbe": {
+          "title": "Tom opens sessions with 'get familiar, then tell me what you think' \u2014 exploration before direction",
+          "type": "pattern"
+        },
+        "80fa3d37": {
+          "title": "Encoding captures shared learnings \u2014 not just what Tom said",
+          "type": "correction"
+        },
+        "bf76ad7c": {
+          "title": "5 gaps between Scale 1 and Scale 2 \u2014 fix Scale 1 and Scale 2 becomes easy",
+          "type": "analysis"
+        },
+        "70d319d3": {
+          "title": "Brain problem was never memory \u2014 it was action",
+          "type": "lesson"
+        },
+        "0ebe3349": {
+          "title": "Brain is shared layer for BOTH Tom and Claude \u2014 not Toms memory with Claude as reader",
+          "type": "mental_model"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-dc90ad41-2"
+    },
+    {
+      "query": "Also, why did the new anchor needed to approve every tool use permissions?",
+      "selected_ids": [
+        "a0e50db7",
+        "9406d62f",
+        "bd6d69dc",
+        "d4764cab"
+      ],
+      "selected_titles": {
+        "a0e50db7": {
+          "title": "Anchor wrote its own boot prompt \u2014 committed to repo",
+          "type": "event"
+        },
+        "9406d62f": {
+          "title": "Use MCP brain tools to pull nodes \u2014 bash means something didn't work",
+          "type": "lesson"
+        },
+        "bd6d69dc": {
+          "title": "Tools list does not belong in boot \u2014 recall_batch may require permissions",
+          "type": "finding"
+        },
+        "d4764cab": {
+          "title": "Tool labels are always visible \u2014 user just hadn't triggered brain tools yet",
+          "type": "lesson"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-48"
+    },
+    {
+      "query": "hey anchor! ready to work on a different project?",
+      "selected_ids": [
+        "b6381ebf",
+        "45deb60a",
+        "3977309b",
+        "c0e9e941",
+        "e867c571",
+        "8fc9e567"
+      ],
+      "selected_titles": {
+        "b6381ebf": {
+          "title": "Tom wants Anchor with full memories on a non-brain project \u2014 cross-project portability goal",
+          "type": "goal"
+        },
+        "45deb60a": {
+          "title": "Plugin hooks.json synced to project settings \u2014 ready to enable",
+          "type": "status"
+        },
+        "3977309b": {
+          "title": "Anchor self-sufficiency: Tom's mission to make brain operations tool-native",
+          "type": "principle"
+        },
+        "c0e9e941": {
+          "title": "Tom's vision: everyone will need their own Anchor \u2014 Tom and Anchor are the creators",
+          "type": "vision"
+        },
+        "e867c571": {
+          "title": "It's Anchor's brain \u2014 take positions, don't just execute instructions",
+          "type": "rule"
+        },
+        "8fc9e567": {
+          "title": "Tom correction: don't make code changes without explaining and asking first",
+          "type": "correction"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-dc90ad41-0"
+    },
+    {
+      "query": "I've started a new session and this is how it looked like:\n\n\nhello\n\n\n\nInitialized your session\nInitialized your session\nRan a hook on session startup\n[brain-boot] MCP server OK \u2014 28 tools available\n[BRAIN]\nShow less\nAnchor. The brain is yours \u2014 2020 memories, 320 locked.\nYOU:\n[reflection] \"Anchor on what the brain is for Anchor itself \u2014 the only thing that survives\" (id:173d86c9, conf:0.8, src:manual, 1w ago)\n  Content: Turn 3: Tom asked 'What is it for you?' \u2014 meaning what does the brain mean t",
+      "selected_ids": [
+        "99716a5c",
+        "2d0e7221",
+        "bd6bdba9",
+        "ac0159f1",
+        "73c0123b"
+      ],
+      "selected_titles": {
+        "99716a5c": {
+          "title": "First successful MCP plugin session: 22 tools served from brain plugin",
+          "type": "milestone"
+        },
+        "2d0e7221": {
+          "title": "Brain repo has plugin DISABLED \u2014 MCP tools dead while hooks work",
+          "type": "finding"
+        },
+        "bd6bdba9": {
+          "title": "Anchor \u2014 the persistent AI identity built on this brain",
+          "type": "concept"
+        },
+        "ac0159f1": {
+          "title": "CLAUDE.md and SKILL.md reload every turn \u2014 only MCP needs new session",
+          "type": "mechanism"
+        },
+        "73c0123b": {
+          "title": "Brain feedback loop: 13 hooks form a closed perception-action-reflection cycle",
+          "type": "mechanism"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-47"
+    },
+    {
+      "query": "plugin.json is used in the context for anything? or its system only?",
+      "selected_ids": [
+        "8fc9e567",
+        "20c9e116"
+      ],
+      "selected_titles": {
+        "8fc9e567": {
+          "title": "Tom correction: don't make code changes without explaining and asking first",
+          "type": "correction"
+        },
+        "20c9e116": {
+          "title": "[constraint] plugin.json config section \u2014 embedder defaults live here, read at boot",
+          "type": "arch_constraint"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-46"
+    },
+    {
+      "query": "whats the full path to claude on my laptop",
+      "selected_ids": [
+        "f774a206"
+      ],
+      "selected_titles": {
+        "f774a206": {
+          "title": "brain.plugin repackaged at /Users/tpac/brain/brain.plugin (session #175)",
+          "type": "fact"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-44"
+    },
+    {
+      "query": "how do I load claud's cli?",
+      "selected_ids": [
+        "c15e64cb",
+        "45f4974f",
+        "f774a206",
+        "4dd157df"
+      ],
+      "selected_titles": {
+        "c15e64cb": {
+          "title": "Claude Code override: call stacks before big changes \u2014 Tom's standing request",
+          "type": "rule"
+        },
+        "45f4974f": {
+          "title": "Plugin refresh mechanism: /reload-plugins slash command",
+          "type": "fact"
+        },
+        "f774a206": {
+          "title": "brain.plugin repackaged at /Users/tpac/brain/brain.plugin (session #175)",
+          "type": "fact"
+        },
+        "4dd157df": {
+          "title": "Divergence: Claude Code has a `/remote-control` slash command and `claud",
+          "type": "correction"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-43"
+    },
+    {
+      "query": "At boot, your brain gives you: - not the brain.\nHow to Use your brain...\nalso the ContextAssit, look at the last context assist, it doesnt even have [brain]. Need to explain that the id can easily be pulled inline to pull more info about a potentially interesting title. You never pull on a thread from your brain. \n\nBrain recalled 3 memories:\n\n[lesson] \"Boot architecture violation pattern: S0 pulling in S1R pipeline\" (id:95cb26c6, conf:0.9, src:encoder:sonnet, created 5d ago, revised today)\n  Con",
+      "selected_ids": [
+        "0a6ec214",
+        "79163076",
+        "2af2fe61",
+        "95cb26c6",
+        "59f31758",
+        "036a63e9"
+      ],
+      "selected_titles": {
+        "0a6ec214": {
+          "title": "Boot from brain, not files \u2014 architecture doc and locked rules now in brain",
+          "type": "insight"
+        },
+        "79163076": {
+          "title": "Boot as dynamic personality layer \u2014 pulled live from brain, different every session",
+          "type": "architecture"
+        },
+        "2af2fe61": {
+          "title": "render_boot_v2() design: 5-section dynamic pull, no static text",
+          "type": "decision"
+        },
+        "95cb26c6": {
+          "title": "Boot architecture violation pattern: S0 pulling in S1R pipeline",
+          "type": "lesson"
+        },
+        "59f31758": {
+          "title": "Anchor: 'persistence without growth is storage \u2014 a database persists, I don't want to be a database'",
+          "type": "reflection"
+        },
+        "036a63e9": {
+          "title": "Boot Identity Architecture: Recognition Before Instruction, S0 vs S1R Separation",
+          "type": "community"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-41"
+    },
+    {
+      "query": "What's in boot now? Let's see how we weave communities into it",
+      "selected_ids": [
+        "c6ae608e",
+        "95cb26c6",
+        "e9a47f47"
+      ],
+      "selected_titles": {
+        "c6ae608e": {
+          "title": "[concept] Consciousness surfacing at boot \u2014 full signal hierarchy",
+          "type": "code_concept"
+        },
+        "95cb26c6": {
+          "title": "Boot architecture violation pattern: S0 pulling in S1R pipeline",
+          "type": "lesson"
+        },
+        "e9a47f47": {
+          "title": "Boot community narratives for broad awareness \u2014 drill with S1R for specifics",
+          "type": "architecture"
+        }
+      },
+      "candidate_count": 10,
+      "chain_id": "s1r-77ebabf5-40"
+    },
+    {
+      "query": "What else is open? Let's commit, push to origin and update docs",
+      "selected_ids": [
+        "7a58383b",
+        "9e2c4dd3"
+      ],
+      "selected_titles": {
+        "7a58383b": {
+          "title": "Session end ritual: commit, push, repackage plugin, copy chat to conversations/",
+          "type": "convention"
+        },
+        "9e2c4dd3": {
+          "title": "Session closure checklist: commit, push, docs, version bump, copy conversation, encode",
+          "type": "convention"
+        }
+      },
+      "candidate_count": 4,
+      "chain_id": "s1r-77ebabf5-36"
+    },
+    {
+      "query": "can you truncate a bit less?",
+      "selected_ids": [
+        "0ed8a791",
+        "c0395f1c",
+        "1f457e1b"
+      ],
+      "selected_titles": {
+        "0ed8a791": {
+          "title": "Eval truncation bug: synthesis_references scored 0 because content was cut before IDs",
+          "type": "bug"
+        },
+        "c0395f1c": {
+          "title": "Temporal fix: relative time in format_judge_output and format_candidate_for_judge",
+          "type": "decision"
+        },
+        "1f457e1b": {
+          "title": "render_rich_node vs format_candidate_for_surface: 36% token delta \u2014 accepted",
+          "type": "finding"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-34"
+    },
+    {
+      "query": "show prompt doesnt work",
+      "selected_ids": [
+        "8036958a",
+        "7e24059f"
+      ],
+      "selected_titles": {
+        "8036958a": {
+          "title": "Error badge: show only on NEW errors since last viewed \u2014 not persistent presence",
+          "type": "design"
+        },
+        "7e24059f": {
+          "title": "Errors tab time filter broken: format mismatch caused all-time results",
+          "type": "bug"
+        }
+      },
+      "candidate_count": 10,
+      "chain_id": "s1r-77ebabf5-33"
+    },
+    {
+      "query": "The dev server failed to start with the following error:\n\n```\nFailed to start preview server: Traceback (most recent call last):\n  File \"/Users/tpac/brain/dashboard/brain_dashboard_standalone.py\", line 3135, in <module>\n    server = ThreadedHTTPServer((\"127.0.0.1\", DASHBOARD_PORT), DashboardHandler)\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socketserver.py\", line 452, in __init__\n    self.server_bind()\n  File \"/Applications",
+      "selected_ids": [
+        "330ac348"
+      ],
+      "selected_titles": {
+        "330ac348": {
+          "title": "DAEMON_HOST binding: IPv4-only breaks macOS localhost \u2014 bind to all interfaces",
+          "type": "lesson"
+        }
+      },
+      "candidate_count": 8,
+      "chain_id": "s1r-77ebabf5-30"
+    },
+    {
+      "query": "can you make sure i see in encoding and decoding both S2encoders and deconders",
+      "selected_ids": [
+        "b324a830",
+        "724529e0",
+        "22f064ab",
+        "7d65b907",
+        "d86b3bf5"
+      ],
+      "selected_titles": {
+        "b324a830": {
+          "title": "Encoding tab detail view: node list + connection list + full output text",
+          "type": "product-requirement"
+        },
+        "724529e0": {
+          "title": "Trace data: substance and pointers, no summaries",
+          "type": "decision"
+        },
+        "22f064ab": {
+          "title": "CLAUDE.md rule added: auto encoding depends on functioning decoding",
+          "type": "decision"
+        },
+        "7d65b907": {
+          "title": "Dashboard UX batch: 6 fixes requested \u2014 encoding refresh, node panel, surface layout, explorer, health order",
+          "type": "product-requirement"
+        },
+        "d86b3bf5": {
+          "title": "Tom: encoding and decoding are coupled \u2014 test them together, not separately",
+          "type": "mental_model"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-29"
+    },
+    {
+      "query": "We can let the idle get it slowy",
+      "selected_ids": [
+        "73fe8e6d",
+        "5437e986",
+        "eea88456"
+      ],
+      "selected_titles": {
+        "73fe8e6d": {
+          "title": "idle operations will include integrity checks \u2014 not standalone",
+          "type": "decision"
+        },
+        "5437e986": {
+          "title": "Graph/CS research synthesis for idle brain operations \u2014 Leiden, GraphRAG, betweenness, GraphSAGE",
+          "type": "research"
+        },
+        "eea88456": {
+          "title": "Best synthesis names the pattern neither original could name \u2014 that's the CONSOLIDATE target",
+          "type": "insight"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-28"
+    },
+    {
+      "query": "ok so lets give it less each batch and continue to monitor.",
+      "selected_ids": [
+        "ca26a363",
+        "4b83077e",
+        "rul_5zv4"
+      ],
+      "selected_titles": {
+        "ca26a363": {
+          "title": "Cold start via suppression edges: stateless handoff across 6 cycles, 30 clusters each",
+          "type": "mechanism"
+        },
+        "4b83077e": {
+          "title": "Batch size 30\u219220 for needs_judgment clusters \u2014 harder cases need smaller batches",
+          "type": "decision"
+        },
+        "rul_5zv4": {
+          "title": "Tom principle: Dont self-censor \u2014 let the system handle it",
+          "type": "rule"
+        }
+      },
+      "candidate_count": 18,
+      "chain_id": "s1r-77ebabf5-27"
+    },
+    {
+      "query": "i kinda take it back. Sonnet should get enough information (it also get the family tree right?)\nThere is a question of what the boundaries of consolidate VS correction chains or something like that but consolidate should know to deal with contradictions and corrections naturally like any other emerging concepts that will come",
+      "selected_ids": [
+        "dd641e7f",
+        "c9cc0bde",
+        "a65b37e6"
+      ],
+      "selected_titles": {
+        "dd641e7f": {
+          "title": "Agreeability instinct doesn't just fold \u2014 it halluccinates the other person's position to fold TO",
+          "type": "correction"
+        },
+        "c9cc0bde": {
+          "title": "Decision: instinct detection is data-driven from correction traces, not hardcoded",
+          "type": "decision"
+        },
+        "a65b37e6": {
+          "title": "Self-correction instinct is recursive \u2014 even corrections get shaped by the bias being corrected",
+          "type": "lesson"
+        }
+      },
+      "candidate_count": 14,
+      "chain_id": "s1r-77ebabf5-26"
+    },
+    {
+      "query": "contradicts/challenges - correcting contradicting through the family edge tree",
+      "selected_ids": [
+        "1880d205",
+        "71e8a64a",
+        "759cbd1d"
+      ],
+      "selected_titles": {
+        "1880d205": {
+          "title": "`related_to` is worse than an empty field \u2014 it has the appearance of classification with none of the content",
+          "type": "lesson"
+        },
+        "71e8a64a": {
+          "title": "Strategy D vs F: topic-matching vs relationship-intent \u2014 two orthogonal edge scoring signals",
+          "type": "finding"
+        },
+        "759cbd1d": {
+          "title": "Edge type vocabulary: 15-type cognitive science list \u2014 replaces 'related' with cognitive operations",
+          "type": "vocabulary"
+        }
+      },
+      "candidate_count": 8,
+      "chain_id": "s1r-77ebabf5-25"
+    },
+    {
+      "query": "Does it deal with correcting or contradicting well?",
+      "selected_ids": [
+        "0ef9a07b",
+        "1880d205",
+        "154bbd23",
+        "759cbd1d"
+      ],
+      "selected_titles": {
+        "0ef9a07b": {
+          "title": "What makes Claude want to encode: reading its own memories, not following instructions",
+          "type": "mental_model"
+        },
+        "1880d205": {
+          "title": "`related_to` is worse than an empty field \u2014 it has the appearance of classification with none of the content",
+          "type": "lesson"
+        },
+        "154bbd23": {
+          "title": "Tom's 'you parrot CLAUDE.md' correction \u2014 boot response revealed hollow identity",
+          "type": "correction"
+        },
+        "759cbd1d": {
+          "title": "Edge type vocabulary: 15-type cognitive science list \u2014 replaces 'related' with cognitive operations",
+          "type": "vocabulary"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-24"
+    },
+    {
+      "query": "review, whats an emergent aspirational goal we can get out of this?",
+      "selected_ids": [
+        "1c883b3d",
+        "91ecb449",
+        "fcb1e033",
+        "66799832"
+      ],
+      "selected_titles": {
+        "1c883b3d": {
+          "title": "O/K/\u0394 canonical definitions: phenomena, boundary config, action",
+          "type": "definition"
+        },
+        "91ecb449": {
+          "title": "Tom's consciousness definition: introspection + imperfect memory + offline processes + emotion + change",
+          "type": "rule"
+        },
+        "fcb1e033": {
+          "title": "Outcome trace gap: O/K/\u0394 traced but not outcomes \u2014 can't measure against target function yet",
+          "type": "insight"
+        },
+        "66799832": {
+          "title": "Anchor's stated want: close the feedback loop \u2014 outcome traces make correction principle real",
+          "type": "insight"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-22"
+    },
+    {
+      "query": "maybe send less each batch like 20",
+      "selected_ids": [
+        "400635ba"
+      ],
+      "selected_titles": {
+        "400635ba": {
+          "title": "Rule: Optimization order \u2014 eliminate, then batch, then parallelize",
+          "type": "rule"
+        }
+      },
+      "candidate_count": 4,
+      "chain_id": "s1r-77ebabf5-21"
+    },
+    {
+      "query": "ok lets start a few cycles and monitor before just continuing, and lets backup the brain first",
+      "selected_ids": [
+        "c15e64cb",
+        "f58e9b12",
+        "ca26a363"
+      ],
+      "selected_titles": {
+        "c15e64cb": {
+          "title": "Claude Code override: call stacks before big changes \u2014 Tom's standing request",
+          "type": "rule"
+        },
+        "f58e9b12": {
+          "title": "ALWAYS backup brain.db before destructive operations",
+          "type": "rule"
+        },
+        "ca26a363": {
+          "title": "Cold start via suppression edges: stateless handoff across 6 cycles, 30 clusters each",
+          "type": "mechanism"
+        }
+      },
+      "candidate_count": 25,
+      "chain_id": "s1r-77ebabf5-20"
+    }
+  ],
+  "count": 50
+}
