@@ -326,7 +326,7 @@ class BrainRememberMixin:
 
         Accepts ALL contract fields. Core fields go to the nodes table,
         promoted fields go to node_metadata/node_embeddings, and any
-        unknown fields are silently ignored (future-proof).
+        unknown fields are stored as emergent metadata in node_metadata_kv.
 
         Returns:
             Dict with id, type, title, and related_nodes (top 5 similar existing nodes).

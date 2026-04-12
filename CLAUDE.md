@@ -128,7 +128,7 @@ S2 operates when Tom is away. It sees the full graph, not just one turn. Multipl
 | Unit | O | K | Δ | Status |
 |------|---|---|---|--------|
 | **Edge Families** | edge_relations | Sonnet classification | family mapping in interactions | shipped |
-| **Consolidation** | graph embeddings (title+content) + S1 behavioral traces | similarity thresholds + edge families + community membership | consolidation proposals (decoder only) | decoder shipped |
+| **Consolidation** | graph embeddings (title+content) + S1 behavioral traces | similarity thresholds + edge families + community membership | synthesized nodes, suppression edges, archives | shipped |
 | **Community** | S1 traces + graph | z-score clusters + Sonnet enrichment | community nodes + member edges | shipped |
 | Confidence | recall traces | decay/growth algo | adjusted scores | not built |
 | Correction | correction chain | resolution rules | archive stale | not built |
@@ -162,11 +162,22 @@ Design: `docs/S2-COMMUNITY-DESIGN.md`, `docs/S2-DESIGN.md`
 
 Finds convergent node clusters — nodes that say the same thing, encoded separately because S1E's catalog window is limited. Not "dedup" (removing waste) — **consolidation** (synthesizing better knowledge from fragments).
 
-**Decoder (shipped):** Two-dimensional similarity scan (title cosine + content cosine separately). Enriches clusters with S1 behavioral evidence: co-recall frequency, judge preference, query coverage, catalog blindness, edge comparison, community membership. Pre-classifies as likely_consolidate / likely_evolve / likely_keep / needs_judgment.
+**Decoder:** Always-full-scan (< 1s). Two-dimensional similarity (title cosine + content cosine). Enriches clusters with S1 behavioral evidence: co-recall, judge preference, query coverage, catalog blindness, community membership, correction edges, tension edges. Pre-classifies as likely_consolidate / likely_evolve / likely_keep / needs_judgment. Suppression edges filter already-processed pairs.
 
-**Encoder (not built):** Sonnet reads cluster proposals, decides CONSOLIDATE (write new synthesized node, archive originals), EVOLVE (link, archive older), or KEEP (link, possibly rename for disambiguation).
+**Encoder:** Agentic Sonnet decides per cluster based on WHY nodes are similar:
+- CONSOLIDATE — accidental duplicates → synthesize one stronger node, archive originals
+- EVOLVE — knowledge progressed → newer absorbs older's unique value, archive older
+- KEEP — different perspectives → link with similar_to, disambiguate titles
+- SKIP — format similarity only → suppress, no structural change
 
-Files: `scales/s2/consolidation_decoder.py`, `scales/s2/consolidation.py` (orchestrator), `scales/s2/consolidation_contract.py`
+Graduated cold start: `max_clusters_per_run` caps processing per idle cycle. Easy cases first. Edge families loaded dynamically from DB. Locked/critical nodes protected at infrastructure level (archive op rejects).
+
+Contract: `CLUSTER_SHAPE` in consolidation_contract.py defines decoder→encoder interface.
+
+Interactions: `s2_consolidation_enrichment` (Sonnet prompt, learnable boundary).
+
+Files: `scales/s2/consolidation_decoder.py`, `scales/s2/consolidation_encoder.py`, `scales/s2/consolidation.py` (orchestrator), `scales/s2/consolidation_contract.py`, `scales/s2/consolidation_enrichment_prompt.py`
+Eval: `eval/s2_consolidation_eval.py` (IsolatedBrain harness)
 Traces: `s2-{YYYYMMDD}-consolidation`
 
 ## Shared Infrastructure
