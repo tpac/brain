@@ -1,7 +1,7 @@
 {
   "name": "brain",
-  "version": "9.3.0",
-  "description": "Shared cognitive space for Claude + operator. v9.3: S2 Consolidation Encoder (epistemological synthesis — CONSOLIDATE/EVOLVE/KEEP/SKIP), boot BRAIN MAP (community narratives as compressed awareness), dynamic edge families, locked node guardrails, emergent KV flow through revise(), dashboard S2 visibility, SKILL.md v9.",
+  "version": "9.4.0",
+  "description": "Persistent shared brain between AI assistant and operator. Not a RAG system — a living knowledge graph that heals itself, learns from conversations, and activates the right knowledge at the right moment. v9.4: S2 Healer (Haiku generates missing findability vectors from conversation context), S0 conversation API (traces + historic JSONL), edge_context vectors (nodes findable through their relationships), situation scoring wired (1085 dormant embeddings activated), group vector 100% coverage, ONNX thread-safety fix, recall eval framework (25 scenarios, 10 KPIs, 122 real-trace validation).",
   "author": {
     "name": "Tom Pachys"
   },

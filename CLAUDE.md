@@ -130,12 +130,58 @@ S2 operates when Tom is away. It sees the full graph, not just one turn. Multipl
 | **Edge Families** | edge_relations | Sonnet classification | family mapping in interactions | shipped |
 | **Consolidation** | graph embeddings (title+content) + S1 behavioral traces | similarity thresholds + edge families + community membership | synthesized nodes, suppression edges, archives | shipped |
 | **Community** | S1 traces + graph | z-score clusters + Sonnet enrichment | community nodes + member edges | shipped |
+| **Healer** | nodes missing question/situation/reasoning | Haiku + S0 conversation context | filled metadata via revise() | shipped |
 | Confidence | recall traces | decay/growth algo | adjusted scores | not built |
 | Correction | correction chain | resolution rules | archive stale | not built |
 | Community Split | incoherent communities | re-cluster within community | split into focused children | not built |
-| Weaver/Healer | orphan nodes | content + embeddings | new typed edges | not built |
+| Weaver | orphan nodes | content + embeddings | new typed edges | not built |
 
-**Ordering matters:** Edge families → Consolidation → Community. Each benefits from the previous.
+**Ordering matters:** Edge families → Consolidation → Community → Healer. Each benefits from the previous.
+
+### Healer (S2H)
+
+**Architecture:** Three files, same pattern as community detection.
+- `enrichment_decoder.py` — `EnrichmentDecoder(IntegrationUnit)`: scans for nodes missing question/situation/reasoning fields, loads full context via `get_rich_node()` + S0 conversation API.
+- `enrichment_encoder.py` — `EnrichmentEncoder(IntegrationUnit)`: calls Haiku to generate missing fields, stores via `revise()` through standard write path.
+- `enrichment.py` — `Enrichment(EnrichmentDecoder)`: thin orchestrator.
+- `enrichment_prompt.py` — Haiku prompt (6 sections matching community/consolidation convention).
+- `enrichment_contract.py` — config and constants.
+
+Interaction: `s2_enrichment` — learnable boundary for S3 to optimize.
+Traces: `s2-{YYYYMMDD}-enrichment`
+
+### Writing a New S2 Integration Unit
+
+Three files, same pattern as community detection, consolidation, and healer:
+
+1. **Decoder** (`your_unit_decoder.py`): `YourDecoder(IntegrationUnit)`
+   - Check `_has_new_traces()` to decide whether to run
+   - Read O (observations from S0/S1 traces + graph)
+   - Algorithmic processing (< 1s)
+   - Write O trace, K trace
+   - Return proposals dict
+
+2. **Encoder** (`your_unit_encoder.py`): `YourEncoder(IntegrationUnit)`
+   - Receive proposals from decoder
+   - Call LLM via `_call_llm()` for JSON response, or `run_llm_loop()` for tool calls
+   - Write results through `revise()` / `brain_batch` — never direct DB writes
+   - Write delta trace
+   - Prompt stored in interactions table (learnable boundary for S3)
+
+3. **Orchestrator** (`your_unit.py`): `YourUnit(YourDecoder)`
+   - Inherits decoder, calls `super().run()`
+   - Passes proposals to encoder
+   - Returns combined results
+
+Register in `coordinator.py` units list. Trace chain: `s2-{YYYYMMDD}-{unit_name}`.
+Contract file defines config + data shapes.
+
+## Scale 0: Exchange — S0 API
+
+S0 provides conversation context to upper layers via `scales/s0/conversation.py`:
+
+- `get_conversation(brain, session_id, limit)` — simple path for live sessions (S1E, hooks)
+- `get_conversation_around(brain, node_id, timestamp, before, after)` — rich path for historic lookups (S2 Healer, eval). Resolves session from encoding traces, falls back to JSONL conversation logs for pre-trace history.
 
 ### Community Detection (S2CD + S2CE)
 
