@@ -39,10 +39,11 @@ class BrainConnectionsMixin:
 
     def connect_typed(self, source_id: str, target_id: str, relation: str = 'related',
                      weight: Optional[float] = None, edge_type: Optional[str] = None,
-                     description: str = ''):
+                     description: str = '', encoding_source: str = ''):
         """
         Add a typed relation with description between two nodes.
         Bidirectional. Does NOT overwrite existing relations — adds alongside them.
+        Recomputes edge_context vectors for both endpoints when description is provided.
 
         Args:
             source_id: Source node ID
@@ -51,6 +52,7 @@ class BrainConnectionsMixin:
             weight: Edge weight (optional; uses EDGE_TYPES default if not provided)
             edge_type: DEPRECATED — ignored, kept for backward compat
             description: Why this relation exists (rich text)
+            encoding_source: Who created this edge (e.g. 'encoder:sonnet', 's2:enrichment')
         """
         # Known types get configured weight; unknown types get 0.5 default
         edge_def = EDGE_TYPES.get(relation)
@@ -59,7 +61,21 @@ class BrainConnectionsMixin:
         from .dal import GraphDAL
         graph_dal = GraphDAL(self.conn)
         graph_dal.add_relation(source_id, target_id, relation, description=description,
-                               weight=actual_weight)
+                               weight=actual_weight, encoding_source=encoding_source)
+
+        # Recompute edge_context vectors for both endpoints when edge has a description.
+        # Edge descriptions change what the node "looks like" from its connections.
+        if description and len(description.strip()) > 10:
+            for nid in (source_id, target_id):
+                try:
+                    row = self.conn.execute(
+                        "SELECT title, content FROM nodes WHERE id = ? AND archived = 0",
+                        (nid,)).fetchone()
+                    if row:
+                        self._compute_group_vectors(nid, row[0], row[1] or '')
+                except Exception as e:
+                    self._log_error('connect_edge_context', e,
+                                    'recomputing edge_context for %s' % nid[:8])
 
     def _random_walk(self, start_id: str, steps: int) -> List[str]:
         """

@@ -139,26 +139,26 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None):
 
 
 def _gather_messages(brain, session_id):
-    """Fetch recent messages from S0 traces.
+    """Fetch recent messages for the current session via S0 API.
 
     Returns: [{id, role, content, signal, timestamp, recalled_raw, surface_output}]
-    Reads from trace_events via get_session_turns().
+    Uses S0 layer's get_conversation() — single source of truth.
     """
     from servers.scales.s1.encode_contract import ENCODING_AGENT
+    from servers.scales.s0.conversation import get_conversation
     limit = ENCODING_AGENT['max_messages']
     content_limit = ENCODING_AGENT['message_content_limit']
 
     try:
-        turns = brain._trace_dal.get_session_turns(session_id, limit=limit)
+        turns = get_conversation(brain, session_id, limit=limit)
         if turns:
             for i, t in enumerate(turns):
                 t['id'] = 'turn-%d' % i
                 t['content'] = (t.get('content', '') or '')[:content_limit]
             return turns
     except Exception as e:
-        print('[s1e] TRACE READ ERROR: %s' % e, flush=True)
+        print('[s1e] S0 CONVERSATION ERROR: %s' % e, flush=True)
 
-    # No traces found — empty (message_stream fallback removed 2026-04-05)
     return []
 
 

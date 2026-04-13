@@ -641,7 +641,9 @@ class TraceDAL:
 
         return {r[0] or '': r[1] for r in rows}
 
-    def get_session_turns(self, session_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+    def get_session_turns(self, session_id: str, limit: int = 20,
+                          around_timestamp: str = None,
+                          before: int = None, after: int = None) -> List[Dict[str, Any]]:
         """Get chronological turns for a session from S0 + S1 traces.
 
         Returns same shape as encoding_agent._gather_messages():
@@ -649,6 +651,15 @@ class TraceDAL:
 
         Groups S0 K (user_message) + S0 delta (assistant_message) per chain,
         cross-references S1 delta (additionalContext) via recall_chain in metadata.
+
+        Args:
+            session_id: Full session UUID
+            limit: Max turns to return (most recent if no around_timestamp)
+            around_timestamp: ISO timestamp to center the window on.
+                If provided, returns `before` turns before + `after` turns after
+                this timestamp instead of the most recent `limit`.
+            before: Turns before around_timestamp (default 10)
+            after: Turns after around_timestamp (default 5)
         """
         # Get S0 events for this session, chronologically
         rows = self.conn.execute(
@@ -729,8 +740,20 @@ class TraceDAL:
                     'recalled_raw': None,
                 })
 
-        # Apply limit (most recent turns)
-        if len(turns) > limit:
+        # Apply windowing
+        if around_timestamp:
+            # Find the turn closest to around_timestamp, then take window
+            _before = before if before is not None else 10
+            _after = after if after is not None else 5
+            center_idx = 0
+            for i, t in enumerate(turns):
+                if t.get('timestamp', '') <= around_timestamp:
+                    center_idx = i
+            start = max(0, center_idx - _before * 2)  # ×2 because user+assistant = 2 turns per exchange
+            end = min(len(turns), center_idx + _after * 2 + 1)
+            turns = turns[start:end]
+        elif len(turns) > limit:
+            # Most recent turns (default behavior)
             turns = turns[-limit:]
 
         return turns
@@ -2026,12 +2049,14 @@ class EnrichmentDAL:
         """Get all enrichment embeddings for recall scanning.
 
         Returns list of dicts with node_id, vector_type, embedding.
-        Only returns enrichments that have embeddings (not NULL).
+        Only returns enrichments with embeddings (not NULL) for active
+        (non-archived) nodes. Matches EmbeddingDAL pattern.
         """
         rows = self.conn.execute(
-            '''SELECT node_id, vector_type, embedding
-               FROM node_enrichments
-               WHERE embedding IS NOT NULL'''
+            '''SELECT ne.node_id, ne.vector_type, ne.embedding
+               FROM node_enrichments ne
+               JOIN nodes n ON n.id = ne.node_id
+               WHERE ne.embedding IS NOT NULL AND n.archived = 0'''
         ).fetchall()
         return [
             {'node_id': r[0], 'vector_type': r[1], 'embedding': r[2]}

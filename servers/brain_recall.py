@@ -50,6 +50,12 @@ from .brain_constants import (
     FTS5_SEARCH_LIMIT,
     FTS5_PASSTHROUGH_SCORE,
     RETRIEVAL_LOW_CONFIDENCE,
+    ZSCORE_ENABLED,
+    ZSCORE_MIN_STD,
+    ZSCORE_DEFAULT_MEAN,
+    ZSCORE_DEFAULT_STD,
+    ZSCORE_STATS_KEY_MEAN,
+    ZSCORE_STATS_KEY_STD,
 )
 from .dal import GraphDAL, NodeDAL, EmbeddingDAL, TfIdfDAL, LogsDAL, EnrichmentDAL, Fts5DAL
 
@@ -587,10 +593,19 @@ class BrainRecallMixin:
             result['_recall_mode'] = 'keyword_only_DEGRADED'
             return result
 
-        # STEP 2: Get intent classification (from keyword recall path — still useful)
-        intent_data = self._classify_intent(query)
-        intent = intent_data['intent']
-        type_boosts = intent_data['typeBoosts']
+        # STEP 2: Intent classification — DEPRECATED 2026-04-12.
+        # Regex patterns fire on 12% of queries and miscalibrate scores when they do
+        # (how_to boosted irrelevant rules to 0.943). Replaced by z-score contrastive
+        # scoring which naturally handles type relevance through per-node statistics.
+        # Type boosts removed from STEP 6 scoring.
+        intent = 'general'
+        type_boosts = {}
+
+        # STEP 2.5: Wire situation matching — query IS the situation context.
+        # 1085 nodes have situation embeddings describing WHEN they're relevant.
+        # Scoring logic exists in STEP 3.5b but situation_vec was never passed.
+        if situation_vec is None:
+            situation_vec = query_vec
 
         # STEP 3: Brute-force cosine similarity against ALL stored embeddings
         # This is the core change: embeddings drive retrieval, not keywords.
@@ -645,18 +660,26 @@ class BrainRecallMixin:
                 if blob:
                     sim = embedder.cosine_similarity(query_vec, blob)
 
-                    # v10: Synaptic fatigue — nodes recalled repeatedly this session
-                    # get dampened at the base cosine level. Resets between sessions.
-                    # Biology: neurotransmitter depletion after repeated firing.
-                    #
+                    # v11: Z-score contrastive normalization (BEFORE fatigue).
+                    # Measures SURPRISE: how unusual is this cosine for this node?
+                    # Hub nodes (high mean) get flattened. Specialized nodes
+                    # (low mean, high cosine on this query) get amplified.
+                    # Stats precomputed by scripts/compute_zscore_stats.py.
+                    # v11 NOTE: Z-score contrastive normalization was tested here
+                    # (2026-04-12) but reverted. Z-score is a monotonic per-node
+                    # transform — it changes scores but NOT the ranking within a
+                    # single query. It only helps when nodes from different queries
+                    # compete in a global pool (eval artifact, not production).
+                    # The real lever is V5 enrichment coverage (S2 enrichment unit).
+
+                    # v10: Synaptic fatigue — AFTER z-score normalization.
+                    # Dampens the surprise-score for nodes recalled repeatedly
+                    # this session. Resets between sessions.
                     # K (fatigue resistance) scales with structural degree:
-                    #   K = base / (1 + degree / scale)
                     #   Hub (30 edges): K=2.5, fatigues fast
                     #   Peripheral (3 edges): K=7.7, fatigues slow
                     #   New node (0 edges): K=10, barely fatigues
-                    # The graph structure IS the fatigue signal.
                     if not hasattr(self, '_session_fatigue'):
-                        # Fatigue lives on SessionContext (persists via ctx.save())
                         _fatigue_sid = session_id or self.session_id
                         try:
                             _ctx = self.get_or_create_session(_fatigue_sid) if _fatigue_sid else None
@@ -666,7 +689,6 @@ class BrainRecallMixin:
                             self._session_fatigue = {}
                             self._fatigue_ctx = None
                     if not hasattr(self, '_structural_degree_cache'):
-                        # Cache structural degree per node — recomputed once per session
                         self._structural_degree_cache = {}
                         try:
                             for _row in self.conn.execute("""
@@ -881,11 +903,10 @@ class BrainRecallMixin:
                 blended = KEYWORD_FALLBACK_WEIGHT * kw_score
                 discovery = 'keyword_only_fallback'
 
-            # Apply intent-based type boosting
+            # Intent-based type boosting — DEPRECATED 2026-04-12.
+            # Z-score contrastive scoring replaces type boosts.
+            # type_boosts is always {} now (set in STEP 2).
             node = keyword_nodes.get(nid)
-            if node:
-                type_boost = type_boosts.get(node.get('type'), 1.0)
-                blended *= type_boost
 
             # v8.8: Title-match boost — proportional to query/title word overlap.
             # If query terms appear in the node's title, strong relevance signal.
@@ -1164,6 +1185,21 @@ class BrainRecallMixin:
         result['_query_embedding'] = query_vec
 
         return result
+
+    def _load_zscore_stats(self) -> None:
+        """Load precomputed z-score stats (mean, std) from node_metadata_kv.
+
+        Called once per session on first recall. Stats computed by
+        scripts/compute_zscore_stats.py and stored via MetadataDAL.
+        """
+        from .dal_metadata import MetadataDAL
+        try:
+            mdal = MetadataDAL(self.conn)
+            self._zscore_stats = mdal.get_paired_keys(
+                ZSCORE_STATS_KEY_MEAN, ZSCORE_STATS_KEY_STD)
+        except Exception as e:
+            self._log_error('zscore_load', e, 'loading z-score stats from metadata')
+            self._zscore_stats = {}
 
     def _enrich_results(self, results: List[Dict[str, Any]], neighbor_limit: int = 3) -> None:
         """Enrich recall results with metadata and neighbor context.

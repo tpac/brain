@@ -7,6 +7,7 @@ Ordering matters:
 1. Edge families — classify new relation types (other units depend on this)
 2. Consolidation — clean the graph (merge convergent nodes)
 3. Community detection — detect structure on clean graph
+4. Enrichment — generate V5 vectors for nodes missing them (uses community context)
 """
 
 
@@ -22,11 +23,13 @@ def run_s2(brain):
     from .edge_families import EdgeFamilyIntegration
     from .consolidation import Consolidation
     from .community import CommunityDetection
+    from .enrichment import Enrichment
 
     units = [
         EdgeFamilyIntegration(brain),
         Consolidation(brain),
         CommunityDetection(brain),
+        Enrichment(brain),
     ]
 
     results = {}

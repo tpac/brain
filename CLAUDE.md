@@ -62,7 +62,7 @@ S0 traces written by Stop hook via TraceDAL. Chain ID: `s0-{session_short}-{stop
 
 S1 integrates across turns — selecting what's relevant (S1R) and encoding what matters (S1E).
 
-### S1R: Decode (every user prompt)
+### S1E: Decode (every user prompt)
 
 Triggered by Anchor's need to know — the brain surfaces context before Anchor responds.
 
@@ -303,3 +303,8 @@ Tom reads code but doesn't review every file. You are the sole maintainer of cod
 - **Discussion IS the work** — do not touch Edit/Write tools during design conversations. Wait for an explicit go signal.
 - **Trace the pipeline before changing it** — the decode→encode pipeline has coupled stages. Don't change one stage without understanding the full flow.
 - **Encoding depends on decoding** — if the surfacer fails, the encoder gets no context. A broken decode pipeline silently breaks encoding.
+
+- The marginal cost of completeness is near zero with AI. Do the whole thing.
+Do it right. Do it with tests. Do it with documentation. Do it so well that Tom is genuinely impressed - not politely satisfied, actually
+impressed. Don't offer to "table this for later" when the permanent solve is within reach. Never leave a dangling thread when tying it off takes five more minutes. Never present a workaround when the real fix exists.
+The standard isn't "good enough" - it's "holy shit, that's done." Search before building. Test before shipping.

@@ -41,7 +41,11 @@ def run_in_background(name, brain_db_path, session_id, counter, lock,
         try:
             print("[%s] STARTING (counter=%d)" % (name, counter), flush=True)
             from servers.brain import Brain
-            read_brain = Brain(brain_db_path)
+            # skip_embedder=True: background threads don't embed directly.
+            # Writes go through daemon TCP (single-writer rule) where the
+            # daemon's main thread handles embedding. Loading ONNX in a
+            # background thread causes inter-thread spinning on macOS.
+            read_brain = Brain(brain_db_path, skip_embedder=True)
 
             dispatch = make_scale_dispatch(read_brain, encoding_source=encoding_source)
 

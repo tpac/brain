@@ -91,6 +91,52 @@ class MetadataDAL:
             'SELECT COUNT(DISTINCT node_id) FROM node_metadata_kv').fetchone()
         return row[0] if row else 0
 
+    def get_all_by_key(self, key: str) -> Dict[str, str]:
+        """Get all node_id→value pairs for a given key. For bulk loading."""
+        rows = self.conn.execute(
+            'SELECT node_id, value FROM node_metadata_kv WHERE key = ?',
+            (key,)).fetchall()
+        return {r[0]: r[1] for r in rows}
+
+    def get_paired_keys(self, key1: str, key2: str) -> Dict[str, tuple]:
+        """Get paired values for two keys per node. Returns {node_id: (val1, val2)}.
+
+        Used for loading z-score stats (mean + std as a pair).
+        Nodes must have BOTH keys to be included.
+        """
+        rows = self.conn.execute(
+            'SELECT a.node_id, a.value, b.value '
+            'FROM node_metadata_kv a '
+            'JOIN node_metadata_kv b ON a.node_id = b.node_id AND b.key = ? '
+            'WHERE a.key = ?',
+            (key2, key1)).fetchall()
+        return {r[0]: (r[1], r[2]) for r in rows}
+
+    def get_nodes_with_flag(self, key: str, value: str = 'true') -> List[str]:
+        """Get node IDs where a flag is set to a specific value.
+
+        Used for needs_enrichment flags, etc.
+        """
+        rows = self.conn.execute(
+            'SELECT node_id FROM node_metadata_kv WHERE key = ? AND value = ?',
+            (key, value)).fetchall()
+        return [r[0] for r in rows]
+
+    def clear_flag(self, node_id: str, key: str) -> bool:
+        """Delete a flag after it's been processed. Returns True if existed."""
+        return self.delete(node_id, key)
+
+    def bulk_set_key(self, key: str, node_values: Dict[str, str]) -> int:
+        """Set the same key on many nodes at once. Returns count written."""
+        count = 0
+        for node_id, value in node_values.items():
+            if value is not None and str(value).strip():
+                self.conn.execute(
+                    'INSERT OR REPLACE INTO node_metadata_kv (node_id, key, value) VALUES (?, ?, ?)',
+                    (node_id, key, str(value)))
+                count += 1
+        return count
+
     def field_coverage(self) -> Dict[str, int]:
         """Get count of nodes per metadata key. For health monitoring."""
         rows = self.conn.execute(

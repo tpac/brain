@@ -456,7 +456,8 @@ class BrainRememberMixin:
                                             **{k: v for k, v in (extra_fields or {}).items()
                                                if isinstance(v, str) and v.strip()})
             except Exception as e:
-                print(f'[brain] Group vector embedding failed for {node_id}: {e}', file=sys.stderr)
+                self._log_error('remember_group_vectors', e,
+                                'group vector generation failed for %s' % node_id[:8])
 
         # Create connections
         if connections:
@@ -965,6 +966,8 @@ class BrainRememberMixin:
                                         EMBEDDING_FIELD_CHAR_LIMIT)
 
         if not embedder.is_ready():
+            self._log_error('group_vectors_skip', None,
+                            'embedder not ready — skipping group vectors for %s' % node_id[:8])
             return
 
         # Build field value lookup: all available fields for this node
@@ -1005,6 +1008,23 @@ class BrainRememberMixin:
                     for k, v in field_values.items():
                         if k not in all_explicit and k not in ('title', 'content'):
                             parts.append(v[:EMBEDDING_FIELD_CHAR_LIMIT])
+                elif field_name == '_edge_descriptions':
+                    # Edge context: load descriptions from edge_relations table.
+                    # Only meaningful descriptions (>10 chars), excluding noise edges.
+                    try:
+                        edge_rows = self.conn.execute(
+                            "SELECT er.description FROM edges e "
+                            "JOIN edge_relations er ON er.edge_id = e.edge_id "
+                            "WHERE (e.source_id = ? OR e.target_id = ?) "
+                            "AND er.relation NOT IN ('co_accessed', 'emergent_bridge', 'community_member') "
+                            "AND er.description IS NOT NULL AND length(er.description) > 10 "
+                            "ORDER BY e.weight DESC LIMIT 5",
+                            (node_id, node_id)
+                        ).fetchall()
+                        for (desc,) in edge_rows:
+                            parts.append(desc[:EMBEDDING_FIELD_CHAR_LIMIT])
+                    except Exception:
+                        pass  # No edges or DB error — skip silently, group skips below
                 else:
                     val = field_values.get(field_name, '')
                     if val:

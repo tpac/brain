@@ -58,6 +58,19 @@ DECAY_HALF_LIFE = {
 }
 
 # ═══════════════════════════════════════════════════════════════
+# Z-SCORE: Contrastive recall scoring
+# Measures SURPRISE (how unusual this cosine is for this node)
+# rather than raw similarity. Hub nodes with high mean get flattened.
+# ═══════════════════════════════════════════════════════════════
+
+ZSCORE_ENABLED = True
+ZSCORE_MIN_STD = 0.01               # Floor to avoid division by zero
+ZSCORE_STATS_KEY_MEAN = 'zscore_mean'   # node_metadata_kv key for stored mean
+ZSCORE_STATS_KEY_STD = 'zscore_std'     # node_metadata_kv key for stored std
+ZSCORE_DEFAULT_MEAN = 0.50           # Fallback for nodes without precomputed stats
+ZSCORE_DEFAULT_STD = 0.05            # Fallback std (conservative — minimal normalization)
+
+# ═══════════════════════════════════════════════════════════════
 # CONFIDENCE: Type defaults and dynamics
 # ═══════════════════════════════════════════════════════════════
 

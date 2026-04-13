@@ -82,12 +82,14 @@ REF_TYPES = {
                          "graph_stats",          # node/edge counts, density
                          "s1_delta",             # S1 encoding/surfacing traces since last run
                          "consolidation_candidates",  # embedding scan + behavioral evidence
-                         "correction_chains"],   # brain-wide correction chain traversal
+                         "correction_chains",    # brain-wide correction chain traversal
+                         "enrichment_scan"],     # S2 enrichment: gaps + flags scanned
     ("s2", "K"):       ["community_proposals",  # S2CD proposals (placements, overlaps, splits, seeds)
                          "community_partition",  # algorithm output (communities + membership)
                          "community_diff",       # comparison with previous run
                          "consolidation_proposals",   # enriched clusters with pre-classification
-                         "stale_nodes"],         # nodes not accessed recently
+                         "stale_nodes",          # nodes not accessed recently
+                         "enrichment_proposals"],# S2 enrichment: nodes to enrich with V5 vectors
     ("s2", "delta"):   ["community_enriched",   # S2CE enrichment results (accepted, rejected, placed)
                          "community_created",    # new community node
                          "community_updated",    # revised community node
@@ -97,7 +99,8 @@ REF_TYPES = {
                          "consolidated",         # new node from smart merge
                          "evolved",              # evolution edge added
                          "kept_distinct",        # similar_to edge, no merge
-                         "confidence_adjust"],   # adjusted confidence scores
+                         "confidence_adjust",    # adjusted confidence scores
+                         "enrichment_generated"],# S2 enrichment: V5 vectors generated + stored
     ("s2", "outcome"): ["recall_improved",      # community nodes improved recall
                          "operator_reviewed"],   # Tom reviewed S2 output
 
