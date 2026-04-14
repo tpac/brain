@@ -610,18 +610,7 @@ def hook_idle_maintenance(brain, args, graph_changes):
     except Exception as e:
         brain._log_error('backfill_embeddings', e, 'idle_maintenance')
 
-    # 8. Prune irrelevant auto-captured quotes
-    try:
-        prune_result = brain.prune_irrelevant_quotes(batch_size=30)
-        if prune_result.get("pruned", 0) > 0:
-            output.append("QUOTE PRUNING: %d/%d checked, %d irrelevant removed" % (
-                prune_result["pruned"], prune_result["checked"], prune_result["pruned"]))
-            graph_changes.append("PRUNED: %d irrelevant quotes" % prune_result["pruned"])
-            for p in prune_result.get("pruned_nodes", [])[:3]:
-                output.append('  pruned: "%s" (sim %.2f) from: %s' % (
-                    p["quote"][:50], p["similarity"], p["title"][:40]))
-    except Exception as e:
-        brain._log_error('prune_quotes', e, 'idle_maintenance')
+    # 8. prune_irrelevant_quotes removed 2026-04-13 — fix at encoding time, not after.
 
     # 9. DB maintenance (prune old logs, clean orphans)
     try:
@@ -644,20 +633,7 @@ def hook_idle_maintenance(brain, args, graph_changes):
     except Exception as e:
         output.append("DB MAINTENANCE ERROR: %s" % e)
 
-    # 10. Session health check
-    try:
-        health = brain.assess_session_health()
-        if health and health.get("overall") == "concerning":
-            output.append("")
-            output.append("SESSION HEALTH CHECK: %s" % health["overall"])
-            top = health.get("top_prompt")
-            if top:
-                output.append("  %s" % top)
-            for g in health.get("gaps", [])[:2]:
-                if g["signal"] != top:
-                    output.append("  [%s] %s" % (g["dimension"], g["signal"][:100]))
-    except Exception as e:
-        brain._log_error('session_health', e, 'idle_maintenance')
+    # 10. assess_session_health removed 2026-04-13 — information not action.
 
     # 11. Deep integrity audit
     try:
@@ -704,32 +680,8 @@ def hook_post_compact_reboot(brain, args, graph_changes):
 
     # ── COMPUTE: gather all data ──
 
-    # Safety net: check if pre-compact synthesis ran
+    # synthesize_session removed 2026-04-13
     synthesis_info = {}
-    synth_row = None
-    try:
-        last_synth = brain.conn.execute(
-            "SELECT created_at FROM session_syntheses ORDER BY created_at DESC LIMIT 1"
-        ).fetchone()
-        session_start = brain.get_config("session_start_at", "")
-
-        synth_ran = False
-        if last_synth and session_start:
-            synth_ran = last_synth[0] >= session_start
-
-        if not synth_ran:
-            try:
-                synthesis = brain.synthesize_session()
-                parts = []
-                for key in ("decisions", "corrections", "open_questions"):
-                    val = synthesis.get(key)
-                    if val:
-                        parts.append("%s %s" % (val, key))
-                synthesis_info = {"just_ran": True, "parts": parts}
-            except Exception as e:
-                synthesis_info = {"error": str(e)}
-    except Exception as e:
-        brain._log_error('synthesis_safety_net', e, 'hook_post_compact_reboot')
 
     # Re-run lightweight boot
     boot = brain.context_boot(user=user, project=project, task="post-compaction reboot")
@@ -989,16 +941,7 @@ def hook_pre_compact_save(brain, args, graph_changes):
 
     Must always return {"decision":"approve"} — never block compaction.
     """
-    # Synthesize session
-    try:
-        synthesis = brain.synthesize_session()
-        parts = []
-        for key in ("decisions", "corrections", "teaching_arcs", "open_questions"):
-            val = synthesis.get(key)
-            if val:
-                parts.append("%s %s" % (val, key))
-    except Exception as e:
-        brain._log_error('synthesize_session', e, 'hook_pre_compact_save')
+    # synthesize_session removed 2026-04-13
 
     # Write compaction boundary as S0 trace (not a node — was creating 21+ duplicate nodes)
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -1019,23 +962,10 @@ def hook_pre_compact_save(brain, args, graph_changes):
 
 def hook_session_end(brain, args, graph_changes):
     """SessionEnd — session synthesis + reflection + consolidation + clean shutdown."""
-    # Synthesize
-    try:
-        brain.synthesize_session()
-    except Exception as e:
-        brain._log_error('synthesize_session', e, 'hook_session_end')
+    # synthesize_session removed 2026-04-13
 
-    # Reflect for next Claude — create boot node with session handoff
-    try:
-        brain.reflect_for_next_claude()
-    except Exception as e:
-        brain._log_error('reflect_for_next_claude', e, 'hook_session_end')
-
-    # Consolidate
-    try:
-        brain.consolidate()
-    except Exception as e:
-        brain._log_error('consolidate', e, 'hook_session_end')
+    # reflect_for_next_claude removed 2026-04-13 — boot nodes nothing read.
+    # consolidate() removed 2026-04-13 — wrote to deprecated stability field, created noise.
 
     brain.save()
     # Note: the hook client sends "shutdown" separately after this returns

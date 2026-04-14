@@ -197,23 +197,13 @@ class TestSilentFailures(BrainTestBase):
 
     # test_consciousness_signal_error_does_not_crash removed — function deleted
 
-    def test_dream_with_insufficient_nodes_returns_gracefully(self):
-        """dream() on empty brain should return gracefully, not crash."""
-        result = self.brain.dream()
-        self.assertIsInstance(result, dict)
-        self.assertIn('dreams', result)
-
-    def test_consolidate_on_empty_brain_no_crash(self):
-        """consolidate() on empty brain should complete without error."""
-        result = self.brain.consolidate()
-        self.assertIsInstance(result, dict)
+    # removed — tested deleted method (2026-04-13)
 
     # removed — tested deleted method (2026-04-13)
 
-    def test_synthesize_session_on_empty_brain(self):
-        """synthesize_session() with no data should return valid structure."""
-        result = self.brain.synthesize_session()
-        self.assertIsInstance(result, dict)
+    # removed — tested deleted method (2026-04-13)
+
+    # removed — tested deleted method (2026-04-13)
 
     def test_no_bare_except_pass_in_critical_paths(self):
         """Meta-test: grep for bare 'except:' without logging in brain modules."""

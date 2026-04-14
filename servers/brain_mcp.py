@@ -382,10 +382,7 @@ def _build_tools():
     {"name": "queue_state",
      "description": "Get current signal queue state — all pending signals with priorities, surface counts, producers.",
      "inputSchema": {"type": "object", "properties": {}}},
-    {"name": "engineering_context",
-     "description": "Get engineering memory context — mechanisms, impacts, constraints, conventions for a project.",
-     "inputSchema": {"type": "object", "properties": {
-         "project": {"type": "string", "default": "default"}}}},
+    # engineering_context removed 2026-04-13 — was a stub.
 
     # ── Daemon control ──
     {"name": "restart",
