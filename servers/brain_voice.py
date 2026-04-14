@@ -89,7 +89,6 @@ class BrainVoice:
         lines.append(render_rich_node(node, MCP_FORMAT))
         lines.append("")
 
-    @staticmethod
     # format_node_deep removed 2026-04-14 — dead code, 0 callers.
 
     @staticmethod

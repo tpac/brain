@@ -24,14 +24,11 @@ from .brain_constants import (
     INTENTIONAL_EDGE_TYPES,
     KEYWORD_FALLBACK_WEIGHT,
     LEARNING_RATE,
-    MAX_HOPS,
-    MAX_NEIGHBORS,
     MAX_PAGE_SIZE,
     MAX_WEIGHT,
     PRUNE_THRESHOLD,
     RELEVANCE_FLOOR_ENRICHED,
     RELEVANCE_FLOOR_PRIMARY,
-    SPREAD_DECAY,
     TRAVERSE_DAMPEN,
     TRAVERSE_LIMITS,
     TRAVERSE_SEMANTIC_BONUS,
@@ -525,22 +522,17 @@ class BrainRecallMixin:
                     match_count += 1
             direct_match_scores[seed_id] = (match_count / len(query_terms)) if query_terms else 0
 
-        # Step 2: Spreading activation
-        activated = self.spread_activation(list(all_seeds.keys()), filter)
-
-        # v5: Compute batch TF-IDF scores
+        # Step 2: Score seeds directly (spread_activation removed 2026-04-14)
+        activated = list(all_seeds.values())
         activated_ids = [n['id'] for n in activated]
         tfidf_scores = self._batch_tfidf_scores(tfidf_query_terms, activated_ids)
-
-        # Step 3: Compute combined score with TF-IDF + keyword + intent boosts
-        max_spread = max([n.get('spread_activation', 0.001) for n in activated] or [0.001])
 
         now_ms = time.time() * 1000  # milliseconds
 
         scored = []
         for node in activated:
-            # Keyword-based relevance
-            keyword_relevance = node.get('spread_activation', 0) / max_spread
+            # Keyword-based relevance from direct match strength
+            keyword_relevance = direct_match_scores.get(node['id'], 0)
 
             direct_match = direct_match_scores.get(node['id'], 0)
             if direct_match == 0 and query_terms:
@@ -1411,58 +1403,7 @@ class BrainRecallMixin:
             '_recall_mode': 'by_id',
         }
 
-    def spread_activation(self, seed_ids: List[str], filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-        """
-        DEPRECATED: Legacy graph traversal. Modern recall uses _traverse_graph()
-        via get_neighbors_rich(). Kept for backward compatibility.
-
-        Spread activation from seed nodes through graph edges.
-        Multi-hop with exponential decay (0.5^hop).
-        Each hop: get neighbors, multiply activation by edge_weight * decay.
-        MAX_HOPS=3, MAX_NEIGHBORS=50 per node.
-
-        Args:
-            seed_ids: Starting node IDs
-            filter: Optional dict filter (same format as recall())
-
-        Returns:
-            List of activated nodes with spread_activation scores
-        """
-        activation = {}
-        node_cache = {}
-
-        for sid in seed_ids:
-            activation[sid] = 1.0
-
-        for hop in range(MAX_HOPS):
-            decay_factor = SPREAD_DECAY ** (hop + 1)
-            current_nodes = [(nid, act) for nid, act in activation.items() if act > 0.01]
-
-            for node_id, node_activation in current_nodes:
-                _gdal = GraphDAL(self.conn)
-                _neighbors = _gdal.get_neighbors(node_id, limit=MAX_NEIGHBORS)
-
-                for nb in _neighbors:
-                    neighbor_id = nb.get('id')
-                    edge_weight = nb['weight']
-                    spread = node_activation * edge_weight * decay_factor
-                    current_act = activation.get(neighbor_id, 0)
-                    activation[neighbor_id] = current_act + spread
-
-        # Fetch full node data
-        results = []
-        for node_id, act in activation.items():
-            node = node_cache.get(node_id)
-            if not node:
-                _ndal = NodeDAL(self.conn)
-                node = _ndal.get_naked_node(node_id)
-                if node:
-                    node_cache[node_id] = node
-
-            if node:
-                results.append({**node, 'spread_activation': act})
-
-        return _apply_filter(results, filter, self.conn)
+    # spread_activation removed 2026-04-14 — keyword search finds matches directly.
 
     def _search_keywords(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """
