@@ -799,7 +799,7 @@ class BrainRememberMixin:
 
         # Verify nodes table fields
         from .dal import NodeDAL
-        readback = NodeDAL(self.conn).get_node(node_id)
+        readback = NodeDAL(self.conn).get_naked_node(node_id)
         if readback:
             for field in list(all_updates.keys()):
                 if field in readback:
@@ -857,7 +857,7 @@ class BrainRememberMixin:
             self._log_error('_add_pending_critical', e, 'adding pending critical approval')
 
     def mark_critical(self, node_id: str, reason: str = '') -> Dict[str, Any]:
-        """Propose a node as critical. Does NOT set the flag — requires approve_critical().
+        """Propose a node as critical. Does NOT set the flag — requires operator approval via revise().
 
         Args:
             node_id: The node to mark as critical
@@ -891,31 +891,7 @@ class BrainRememberMixin:
 
         return {'node_id': node_id, 'status': 'pending', 'reason': reason}
 
-    def approve_critical(self, node_id: str) -> Dict[str, Any]:
-        """Approve a node as critical — sets critical=1. Requires explicit operator action.
-
-        Args:
-            node_id: The node to approve as critical
-
-        Returns:
-            Dict with node_id, critical=1, approved_at
-        """
-        # Set the flag
-        ts = self.now()
-        self.conn.execute('UPDATE nodes SET critical = 1, updated_at = ? WHERE id = ?', (ts, node_id))
-        self.conn.commit()
-
-        # Remove from pending list
-        try:
-            import json as _json
-            pending_json = self.get_config('pending_critical_approvals', '[]')
-            pending = _json.loads(pending_json) if pending_json else []
-            pending = [p for p in pending if p.get('node_id') != node_id]
-            self.set_config('pending_critical_approvals', _json.dumps(pending))
-        except Exception as e:
-            self._log_error('approve_critical', e, 'removing from pending list')
-
-        return {'node_id': node_id, 'critical': 1, 'approved_at': ts}
+    # approve_critical removed 2026-04-13 — never wired to MCP, direct DB write.
 
     def get_pending_critical(self) -> List[Dict[str, Any]]:
         """Get all pending critical approval requests."""

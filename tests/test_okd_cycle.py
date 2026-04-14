@@ -79,7 +79,7 @@ class TestJudgeOutputToNodeCatalog(unittest.TestCase):
 
             from servers.scales.s1.encode_contract import build_node_catalog
             catalog_text, catalog_ids = build_node_catalog(
-                [judge_output], env.brain.conn)
+                [judge_output], env.brain)
 
             self.assertIn(short_id, catalog_ids,
                           "Node ID from judge output must appear in catalog")
@@ -251,7 +251,7 @@ class TestNodeCatalogRegexMatchesRealIDs(unittest.TestCase):
             # End-to-end: build_node_catalog with this ID
             from servers.scales.s1.encode_contract import build_node_catalog
             catalog_text, catalog_ids = build_node_catalog(
-                [judge_output], env.brain.conn)
+                [judge_output], env.brain)
             self.assertIn(short_id, catalog_ids,
                           "Real node ID must survive the full catalog pipeline")
 

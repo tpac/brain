@@ -940,8 +940,11 @@ class NodeDAL:
 
     # --- Reads ---
 
-    def get_node(self, node_id: str) -> Optional[Dict[str, Any]]:
-        """Get a single node by ID. Returns all columns as a dict.
+    def get_naked_node(self, node_id: str) -> Optional[Dict[str, Any]]:
+        """Get a single node row by ID. Returns all columns as a dict.
+
+        This is the bare DB row — no metadata, no corrections, no connections.
+        For the full assembled node, use brain.get_node().
 
         Uses PRAGMA table_info to get column names dynamically,
         then SELECT * to get all values. New columns automatically included.

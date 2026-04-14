@@ -132,7 +132,7 @@ class TestGatherMessages:
 
 
 class TestBuildNodeCatalog:
-    """Tests for build_node_catalog(surface_outputs, db_conn) — catalog from surface selections."""
+    """Tests for build_node_catalog(surface_outputs, brain) — catalog from surface selections."""
 
     NODE_A = 'aa11bb22'
     NODE_B = 'cc33dd44'
@@ -153,14 +153,14 @@ class TestBuildNodeCatalog:
     def test_empty_surface_outputs(self):
         """No surface outputs -> empty catalog."""
         from servers.scales.s1.encode_contract import build_node_catalog
-        text, ids = build_node_catalog([], self.conn)
+        text, ids = build_node_catalog([], self.brain)
         assert text == ''
         assert ids == set()
 
     def test_none_and_no_selection_skipped(self):
         """None and '(no selection)' entries are ignored."""
         from servers.scales.s1.encode_contract import build_node_catalog
-        text, ids = build_node_catalog([None, '(no selection)', None], self.conn)
+        text, ids = build_node_catalog([None, '(no selection)', None], self.brain)
         assert text == ''
         assert ids == set()
 
@@ -169,7 +169,7 @@ class TestBuildNodeCatalog:
         from servers.scales.s1.encode_contract import build_node_catalog
 
         surface_output = '[rule] "Test catalog rule" (id:%s, conf:0.9)' % self.NODE_A
-        text, ids = build_node_catalog([surface_output], self.conn)
+        text, ids = build_node_catalog([surface_output], self.brain)
 
         assert self.NODE_A in ids
         assert 'Node Catalog' in text
@@ -181,7 +181,7 @@ class TestBuildNodeCatalog:
         so1 = '[rule] "Title A" (id:%s, conf:0.9)' % self.NODE_A
         so2 = '[lesson] "Title B" (id:%s, conf:0.8)' % self.NODE_A
 
-        text, ids = build_node_catalog([so1, so2], self.conn)
+        text, ids = build_node_catalog([so1, so2], self.brain)
         assert len(ids) == 1
         assert self.NODE_A in ids
 
@@ -192,7 +192,7 @@ class TestBuildNodeCatalog:
         so1 = '[rule] "First" (id:%s)' % self.NODE_A
         so2 = '[lesson] "Second" (id:%s)' % self.NODE_B
 
-        text, ids = build_node_catalog([so1, so2], self.conn)
+        text, ids = build_node_catalog([so1, so2], self.brain)
         assert self.NODE_A in ids
         assert self.NODE_B in ids
         assert len(ids) == 2
@@ -202,7 +202,7 @@ class TestBuildNodeCatalog:
         from servers.scales.s1.encode_contract import build_node_catalog
 
         surface_output = '[rule] "Test catalog rule" (id:%s)' % self.NODE_A
-        text, ids = build_node_catalog([surface_output], self.conn)
+        text, ids = build_node_catalog([surface_output], self.brain)
 
         assert self.NODE_A in ids
         # format_node includes the node type in brackets and title
@@ -224,7 +224,7 @@ class TestBuildNodeCatalog:
         self.conn.commit()
 
         judge_output = '[rule] "Test" (id:%s)' % self.NODE_A
-        text, ids = build_node_catalog([judge_output], self.conn)
+        text, ids = build_node_catalog([judge_output], self.brain)
 
         assert self.NODE_A in ids
         assert 'Updated by' in text
@@ -235,7 +235,7 @@ class TestBuildNodeCatalog:
 
         fake_id = 'deadbeef'
         surface_output = '[rule] "Ghost" (id:%s)' % fake_id
-        text, ids = build_node_catalog([surface_output], self.conn)
+        text, ids = build_node_catalog([surface_output], self.brain)
 
         # The ID is extracted by regex but format_node returns None -> not in formatted_ids
         assert fake_id not in ids
@@ -253,7 +253,7 @@ class TestBuildNodeCatalog:
 
         node_id = row[0][:8]
         surface_output = '[rule] "Test" (id:%s, conf:0.9)' % node_id
-        text, ids = build_node_catalog([surface_output], self.conn)
+        text, ids = build_node_catalog([surface_output], self.brain)
 
         assert node_id in ids, (
             "Regex should match typed-prefix ID %s" % node_id)

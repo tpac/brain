@@ -176,13 +176,13 @@ def hook_recall(brain, args, graph_changes):
     # Encoding agent needs ALL candidates (including previously surfaced) for revision.
     # Session dedup happens only at distiller stage, not here.
     try:
-        from .pipeline_contract import CANDIDATES_FILE, get_rich_node
+        from .pipeline_contract import CANDIDATES_FILE
         candidates_path = '/tmp/brain-{}-recall-candidates.json'.format(session_id)
         capped = results[:CANDIDATES_FILE['max_candidates']]
 
         # Batch enrichment: one call, 5 queries for all 25 nodes
         node_ids = [r.get("id", "") for r in capped if r.get("id")]
-        rich_nodes = get_rich_node(brain, node_ids)
+        rich_nodes = brain.get_node(node_ids)
 
         # Edge selection: query-aware scoring (strategy D)
         # Get query embedding + prior turn embeddings for multi-turn blend

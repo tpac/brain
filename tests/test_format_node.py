@@ -1,11 +1,11 @@
-"""Tests for contract.format_node() — the standard node renderer for LLM consumers."""
+"""Tests for render_rich_node() — the standard node renderer for LLM consumers."""
 
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from tests.brain_test_base import BrainTestBase
-from servers.contract import format_node, NODE_FORMAT_DEFAULTS
+from servers.contract import render_rich_node, NODE_FORMAT_DEFAULTS
 
 
 class TestFormatNode(BrainTestBase):
@@ -25,6 +25,13 @@ class TestFormatNode(BrainTestBase):
         dal = GraphDAL(self.brain.conn)
         dal.add_relation(source_id, target_id, relation, description, weight)
 
+    def _render(self, node_id, config=None):
+        """Fetch node + render: the two-step pattern replacing format_node()."""
+        node = self.brain.get_node(node_id)
+        if not node:
+            return None
+        return render_rich_node(node, config)
+
     # ── Basic rendering ──
 
     def test_full_node(self):
@@ -32,7 +39,7 @@ class TestFormatNode(BrainTestBase):
         nid = self._make_node(
             type='decision', title='Use Postgres', content='We chose Postgres for reliability.',
             keywords='db postgres sql', confidence=0.9, locked=True)
-        out = format_node(nid, self.brain.conn)
+        out = self._render(nid)
         self.assertIsNotNone(out)
         self.assertIn('[decision]', out)
         self.assertIn('"Use Postgres"', out)
@@ -42,8 +49,8 @@ class TestFormatNode(BrainTestBase):
         self.assertIn('Keywords: db postgres sql', out)
 
     def test_nonexistent_node_returns_none(self):
-        """format_node returns None for an ID that doesn't exist."""
-        out = format_node('nonexistent-id-12345678', self.brain.conn)
+        """Render returns None for an ID that doesn't exist."""
+        out = self._render('nonexistent-id-12345678')
         self.assertIsNone(out)
 
     # ── Header format ──
@@ -51,19 +58,19 @@ class TestFormatNode(BrainTestBase):
     def test_header_includes_id_prefix(self):
         """Header shows first 8 chars of node ID."""
         nid = self._make_node(type='lesson', title='Header test')
-        out = format_node(nid, self.brain.conn)
+        out = self._render(nid)
         self.assertIn('id:%s' % nid[:8], out)
 
     def test_header_unlocked_no_locked_flag(self):
         """Unlocked nodes don't show ', locked' in header."""
         nid = self._make_node(locked=False)
-        out = format_node(nid, self.brain.conn)
+        out = self._render(nid)
         self.assertNotIn('locked', out)
 
     def test_header_encoding_source(self):
         """encoding_source appears in header when set."""
         nid = self._make_node(encoding_source='encoder:sonnet')
-        out = format_node(nid, self.brain.conn)
+        out = self._render(nid)
         self.assertIn('src:encoder:sonnet', out)
 
     # ── Content truncation ──
@@ -72,7 +79,7 @@ class TestFormatNode(BrainTestBase):
         """content_limit config truncates long content."""
         long_content = 'A' * 500
         nid = self._make_node(content=long_content)
-        out = format_node(nid, self.brain.conn, config={'content_limit': 50})
+        out = self._render(nid, config={'content_limit': 50})
         # Content line should have exactly 50 A's, not 500
         self.assertIn('A' * 50, out)
         self.assertNotIn('A' * 51, out)
@@ -81,7 +88,7 @@ class TestFormatNode(BrainTestBase):
         """Default (content_limit=None) shows full content."""
         long_content = 'B' * 500
         nid = self._make_node(content=long_content)
-        out = format_node(nid, self.brain.conn)
+        out = self._render(nid)
         self.assertIn('B' * 500, out)
 
     # ── Metadata ──
@@ -97,13 +104,13 @@ class TestFormatNode(BrainTestBase):
             "VALUES (?, X'00', ?, 'test', datetime('now'))",
             (nid, 'When choosing a database for OLTP workloads'))
         self.brain.conn.commit()
-        out = format_node(nid, self.brain.conn)
+        out = self._render(nid)
         self.assertIn('Situation: When choosing a database', out)
 
     def test_metadata_reasoning(self):
         """Reasoning from metadata_kv is rendered."""
         nid = self._make_node(reasoning='Postgres has better JSON support than MySQL')
-        out = format_node(nid, self.brain.conn)
+        out = self._render(nid)
         self.assertIn('Reasoning:', out)
         self.assertIn('Postgres has better JSON support', out)
 
@@ -113,11 +120,11 @@ class TestFormatNode(BrainTestBase):
         correction_id = self._make_node(
             title='Use Postgres instead', correction_of=original_id)
         # Check from the correcting node's perspective: it corrects the original
-        out_corrector = format_node(correction_id, self.brain.conn)
+        out_corrector = self._render(correction_id)
         self.assertIn('Corrects:', out_corrector)
         self.assertIn('Use MySQL', out_corrector)
         # Check from the corrected node's perspective: it was updated by the correction
-        out_original = format_node(original_id, self.brain.conn)
+        out_original = self._render(original_id)
         self.assertIn('Updated by:', out_original)
         self.assertIn('Use Postgres', out_original)
 
@@ -129,7 +136,7 @@ class TestFormatNode(BrainTestBase):
         target_id = self._make_node(type='mechanism', title='Target node')
         self._add_edge(nid, target_id, relation='depends_on', weight=0.9,
                        description='runtime dependency')
-        out = format_node(nid, self.brain.conn)
+        out = self._render(nid)
         self.assertIn('Edges:', out)
         self.assertIn('"Target node"', out)
         self.assertIn('depends_on', out)
@@ -142,12 +149,14 @@ class TestFormatNode(BrainTestBase):
             tid = self._make_node(title='Spoke %d' % i)
             self._add_edge(nid, tid, weight=0.5 + i * 0.01)
         # Default limit is 5 — should show 5 of 6
-        out = format_node(nid, self.brain.conn)
-        arrow_count = out.count('    \u2192 ')
-        self.assertEqual(arrow_count, 5)
+        # Edge lines rendered as '    [type id:XX date] ...' (4-space indent + bracket)
+        out = self._render(nid)
+        edge_lines = [l for l in out.split('\n') if l.startswith('    [')]
+        self.assertEqual(len(edge_lines), 5)
         # With limit 2
-        out2 = format_node(nid, self.brain.conn, config={'edge_limit': 2})
-        self.assertEqual(out2.count('    \u2192 '), 2)
+        out2 = self._render(nid, config={'edge_limit': 2})
+        edge_lines2 = [l for l in out2.split('\n') if l.startswith('    [')]
+        self.assertEqual(len(edge_lines2), 2)
 
     def test_edge_filter_excludes_co_accessed(self):
         """Default edge_filter excludes co_accessed and emergent_bridge."""
@@ -156,7 +165,7 @@ class TestFormatNode(BrainTestBase):
         t2 = self._make_node(title='Co-accessed')
         self._add_edge(nid, t1, relation='related_to')
         self._add_edge(nid, t2, relation='co_accessed')
-        out = format_node(nid, self.brain.conn)
+        out = self._render(nid)
         self.assertIn('"Related"', out)
         self.assertNotIn('"Co-accessed"', out)
 

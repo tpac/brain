@@ -208,12 +208,7 @@ class TestSilentFailures(BrainTestBase):
         result = self.brain.consolidate()
         self.assertIsInstance(result, dict)
 
-    def test_auto_heal_on_empty_brain_no_crash(self):
-        """auto_heal() on empty brain should complete without error."""
-        result = self.brain.auto_heal()
-        self.assertIsInstance(result, dict)
-        self.assertIn('resolved', result)
-        self.assertIn('cleaned', result)
+    # removed — tested deleted method (2026-04-13)
 
     def test_synthesize_session_on_empty_brain(self):
         """synthesize_session() with no data should return valid structure."""
@@ -435,20 +430,7 @@ class TestRememberRich(BrainTestBase):
         self.assertIn('_metadata', node)
         self.assertEqual(recall_result['_recall_mode'], 'by_id')
 
-    def test_validate_node_increments_count(self):
-        """validate_node should increment validation_count."""
-        node = self.brain.remember_rich(
-            type='decision',
-            title='Test validation target',
-            content='Content for validation testing.')
-        self.brain.record_validation(node['id'], 'First validation')
-        self.brain.record_validation(node['id'], 'Second validation')
-        meta = self.brain.conn.execute(
-            "SELECT validation_count FROM node_metadata WHERE node_id = ?",
-            (node['id'],)).fetchone()
-        self.assertIsNotNone(meta)
-        self.assertGreaterEqual(meta[0], 2)
-
+    # removed — tested deleted method (2026-04-13)
 
 # ── P6: Surface Layer ────────────────────────────────────────────────
 
@@ -551,23 +533,7 @@ class TestCriticalFlag(BrainTestBase):
         self.assertEqual(len(pending), 1)
         self.assertEqual(pending[0]['node_id'], node_id)
 
-    def test_approve_critical_sets_flag(self):
-        """approve_critical() sets critical=1 and removes from pending."""
-        result = self.brain.remember(type='rule', title='Never force push to main',
-            content='Force push destroys team history', locked=True)
-        node_id = result['id']
-
-        self.brain.mark_critical(node_id, reason='Prevents data loss')
-        self.brain.approve_critical(node_id)
-
-        row = self.brain.conn.execute(
-            'SELECT critical FROM nodes WHERE id = ?', (node_id,)
-        ).fetchone()
-        self.assertEqual(row[0], 1)
-
-        # Pending list should be empty
-        pending = self.brain.get_pending_critical()
-        self.assertEqual(len(pending), 0)
+    # removed — tested deleted method (2026-04-13)
 
     def test_critical_always_in_boot(self):
         """Critical nodes appear in context_boot() regardless of limits."""
@@ -575,7 +541,8 @@ class TestCriticalFlag(BrainTestBase):
         result = self.brain.remember(type='rule', title='SAFETY: Never delete worktree without confirmation',
             content='Git worktrees may be actively used by other sessions. Deleting silently destroys working directory.',
             keywords='worktree delete safety critical confirmation', locked=True)
-        self.brain.approve_critical(result['id'])
+        self.brain.conn.execute("UPDATE nodes SET critical = 1 WHERE id = ?", (result['id'],))
+        self.brain.conn.commit()
 
         # Boot with very small limits — critical node must still appear
         boot = self.brain.context_boot()
@@ -594,7 +561,8 @@ class TestCriticalFlag(BrainTestBase):
         n2 = self.brain.remember(type='rule', title='Worktree safety critical rule',
             content='Never delete worktrees without checking for active sessions',
             keywords='worktree safety operations critical')
-        self.brain.approve_critical(n2['id'])
+        self.brain.conn.execute("UPDATE nodes SET critical = 1 WHERE id = ?", (n2['id'],))
+        self.brain.conn.commit()
 
         results = self.brain.recall('worktree safety operations')
         result_ids = [r['id'] for r in results.get('results', results)]
@@ -608,7 +576,8 @@ class TestCriticalFlag(BrainTestBase):
         result = self.brain.remember(type='rule', title='SAFETY: Never rm -rf worktree directory',
             content='Worktree directories are actively used. Deleting them destroys shell state.',
             keywords='worktree rm -rf safety directory delete', locked=True)
-        self.brain.approve_critical(result['id'])
+        self.brain.conn.execute("UPDATE nodes SET critical = 1 WHERE id = ?", (result['id'],))
+        self.brain.conn.commit()
 
         # Query with only loosely related terms
         results = self.brain.recall('git branch cleanup procedures')
@@ -636,7 +605,8 @@ class TestCriticalFlag(BrainTestBase):
         """Critical flag survives brain close and reopen."""
         result = self.brain.remember(type='rule', title='Persistent critical rule',
             content='Must survive close/reopen', locked=True)
-        self.brain.approve_critical(result['id'])
+        self.brain.conn.execute("UPDATE nodes SET critical = 1 WHERE id = ?", (result['id'],))
+        self.brain.conn.commit()
         self.brain.save()
         self.brain.close()
         self.brain = None  # Prevent double-close in tearDown
@@ -670,7 +640,8 @@ class TestCriticalFlag(BrainTestBase):
             content='Git worktrees may be actively used by other Claude sessions. Deleting silently destroys working directory and shell state.',
             keywords='worktree delete remove git working copy directory session safety',
             locked=True)
-        self.brain.approve_critical(safety['id'])
+        self.brain.conn.execute("UPDATE nodes SET critical = 1 WHERE id = ?", (safety['id'],))
+        self.brain.conn.commit()
 
         # Query with operator vocabulary
         results = self.brain.recall('clean up working copy')
@@ -703,7 +674,8 @@ class TestSafetyCheck(BrainTestBase):
             title='NEVER delete a git worktree without alerting the user first',
             content='Worktree deletion destroys session CWD',
             keywords='worktree delete remove git', locked=True)
-        self.brain.approve_critical(safety['id'])
+        self.brain.conn.execute("UPDATE nodes SET critical = 1 WHERE id = ?", (safety['id'],))
+        self.brain.conn.commit()
 
         result = self.brain.safety_check('git worktree remove vibrant-brown')
         self.assertTrue(result['destructive'])
@@ -749,22 +721,7 @@ class TestInfBug(BrainTestBase):
         self.assertTrue(decision_hl >= 999999 or decision_hl == float('inf'),
             f'Expected inf-equivalent, got {decision_hl}')
 
-    def test_auto_heal_doesnt_corrupt(self):
-        """auto_heal() produces valid JSON for decay_half_lives."""
-        import json
-        # Seed some data so auto_heal has something to work with
-        for i in range(5):
-            self.brain.remember(type='decision', title=f'Decision {i}',
-                content=f'Important decision about thing {i}', locked=True)
-
-        self.brain.auto_heal()
-
-        config_val = self.brain.get_config('tunable_decay_half_lives')
-        if config_val:
-            parsed = json.loads(config_val)  # Should not throw
-            for k, v in parsed.items():
-                self.assertIsInstance(v, (int, float),
-                    f'decay_half_lives[{k}] = {v} ({type(v)}) — expected numeric')
+    # removed — tested deleted method (2026-04-13)
 
     def test_recall_handles_inf_string(self):
         """Recall still works when config has string 'inf' from legacy bug."""
@@ -806,36 +763,7 @@ class TestInfBug(BrainTestBase):
         results = self.brain.recall('nan test')
         self.assertIsInstance(results, dict)
 
-    def test_locked_recall_after_auto_heal(self):
-        """Scenario: create locked nodes, run auto_heal + auto_tune, verify recall still finds them."""
-        # Create nodes of types that use float('inf') half-life
-        nodes = []
-        for ntype, title in [
-            ('decision', 'Use embeddings-first recall pipeline'),
-            ('rule', 'Never commit secrets to git'),
-            ('lesson', 'Fallback paths need the most testing'),
-            ('procedure', 'Deploy procedure: staging then production'),
-        ]:
-            result = self.brain.remember(type=ntype, title=title,
-                content=f'Important {ntype} about {title.lower()}',
-                keywords=f'{ntype} {title.lower().replace(" ", " ")}',
-                locked=True)
-            nodes.append((result['id'], title))
-
-        # Run maintenance that could corrupt config
-        self.brain.auto_heal()
-        try:
-            self.brain.auto_tune()
-        except Exception:
-            pass  # auto_tune may not have enough data
-
-        # Verify all nodes still recallable
-        for node_id, title in nodes:
-            results = self.brain.recall(title)
-            result_ids = [r['id'] for r in results.get('results', results)]
-            self.assertIn(node_id, result_ids,
-                f'Locked {title} should still be recallable after auto_heal')
-
+    # removed — tested deleted method (2026-04-13)
 
 # ── Identifier Splitting ─────────────────────────────────────────────
 

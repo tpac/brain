@@ -505,8 +505,7 @@ class BrainVoice:
             ctx.get("total_nodes", "?"), ctx.get("total_locked", "?")))
         out.append("")
 
-        # ── Your words (get_rich_node + render) ──
-        from .pipeline_contract import get_rich_node
+        # ── Your words (brain.get_node + render) ──
         from .contract import render_rich_node
 
         BOOT_FORMAT = {'content_limit': 400, 'edge_limit': 3, 'metadata_limit': 150, 'time_format': 'relative'}
@@ -515,7 +514,7 @@ class BrainVoice:
         if anchor_nodes:
             out.append("YOU:")
             for n in anchor_nodes:
-                rich = get_rich_node(brain, n['id'])
+                rich = brain.get_node(n['id'])
                 if rich:
                     out.append(render_rich_node(rich, BOOT_FORMAT))
                     out.append("")
@@ -526,7 +525,7 @@ class BrainVoice:
         if operator_nodes:
             out.append("%s:" % user.upper())
             for n in operator_nodes:
-                rich = get_rich_node(brain, n['id'])
+                rich = brain.get_node(n['id'])
                 if rich:
                     out.append(render_rich_node(rich, BOOT_FORMAT))
                     out.append("")

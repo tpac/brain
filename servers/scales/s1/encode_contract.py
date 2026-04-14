@@ -5,11 +5,11 @@ This contract defines:
 - What the encoder sees (ENCODING_AGENT config)
 - How the node catalog is built (build_node_catalog)
 
-Node formatting uses the system contract: servers.contract.format_node()
+Node formatting uses render_rich_node() from servers.contract.
 Interaction: 'encoding_agent' in interactions table. Prompt is learnable.
 """
 
-from servers.contract import format_node
+from servers.contract import render_rich_node
 
 # ═══════════════════════════════════════════════════════════════
 # ENCODING AGENT CONFIG
@@ -51,7 +51,7 @@ S1_NODE_CONFIG = {
 }
 
 
-def build_node_catalog(judge_outputs, db_conn):
+def build_node_catalog(judge_outputs, brain):
     """Build deduplicated node catalog from surface outputs across multiple turns.
 
     Uses system format_node() with S1 config for full rich nodes.
@@ -59,12 +59,13 @@ def build_node_catalog(judge_outputs, db_conn):
 
     Args:
         judge_outputs: list of surface_output strings (one per turn, may be None)
-        db_conn: brain.db connection for rich metadata lookup
+        brain: Brain instance
 
     Returns:
         (catalog_text, node_id_set) — formatted catalog + set of IDs for reference
     """
     import re
+    conn = getattr(brain, 'conn', brain)  # tests may pass raw conn
     # Extract all node IDs from surface outputs (pattern: id:XXXXXXXX)
     # Supports both hex IDs (d7d1ddfa) and typed-prefix IDs (con_1c0v)
     seen_ids = set()
@@ -84,25 +85,26 @@ def build_node_catalog(judge_outputs, db_conn):
     community_ids = set()
     if seen_ids:
         placeholders = ','.join('?' * len(seen_ids))
-        for row in db_conn.execute(
+        for row in conn.execute(
                 "SELECT id FROM nodes WHERE id IN (%s) AND type = 'community'" % placeholders,
                 list(seen_ids)):
             community_ids.add(row[0])
 
-    # format_node → get_rich_node + render_rich_node includes corrections
+    # Fetch + format: brain.get_node() for data, render_rich_node() for presentation
     catalog_ids = seen_ids - community_ids
     lines = ['Node Catalog (%d nodes surfaced this session)' % len(catalog_ids), '']
     formatted_ids = set()
     for nid in catalog_ids:
-        formatted = format_node(nid, db_conn, config=S1_NODE_CONFIG)
-        if formatted:
-            lines.append(formatted)
-            lines.append('')
-            formatted_ids.add(nid)
+        node = brain.get_node(nid)
+        if node:
+            formatted = render_rich_node(node, S1_NODE_CONFIG)
+            if formatted:
+                lines.append(formatted)
+                lines.append('')
+                formatted_ids.add(nid)
 
     return '\n'.join(lines), formatted_ids
 
 
-# Backward compat aliases
-format_node_for_encoder = lambda node_id, db_conn: format_node(node_id, db_conn, config=S1_NODE_CONFIG)
+# Backward compat alias
 build_encoder_node_catalog = build_node_catalog

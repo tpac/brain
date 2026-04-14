@@ -126,12 +126,11 @@ PRECISION = {
 # ═══════════════════════════════════════════════════════════════
 
 def enrich_candidate_metadata(brain, node_id, node_data, config):
-    """DEPRECATED 2026-04-07: Use get_rich_node() instead.
+    """DEPRECATED 2026-04-07: Use brain.get_node() instead.
 
     Kept as stub for backward compatibility with eval scripts.
     """
-    from servers.pipeline_contract import get_rich_node
-    rich = get_rich_node(brain, node_id)
+    rich = brain.get_node(node_id)
     if rich:
         node_data.update({k: v for k, v in rich.items() if k not in node_data})
 

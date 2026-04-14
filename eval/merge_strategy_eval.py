@@ -97,7 +97,7 @@ def get_raw_scores(brain, query, limit=20):
             tfidf_ids = tfidf_dal.get_nodes_matching_terms(list(set(tfidf_terms)))
             node_dal = NodeDAL(brain.conn)
             for nid in tfidf_ids[:50]:
-                node = node_dal.get_node(nid)
+                node = node_dal.get_naked_node(nid)
                 if node and not node.get('archived'):
                     # Direct match scoring (same as _keyword_recall)
                     title_low = (node.get('title') or '').lower()

@@ -62,20 +62,18 @@ def _handle_context_boot(brain, args, graph_changes):
 
 
 def _enrich_recall_results(brain, result, graph_changes):
-    """Enrich recall results via get_rich_node — the shared data atom.
+    """Enrich recall results via brain.get_node() — the shared data atom.
 
     Anchor's MCP recall gets full enrichment per node:
     metadata, corrections, connections, situation.
     """
-    from .pipeline_contract import get_rich_node
-
     results = result.get("results", [])
     if not results:
         return
 
-    # Enrich each result with get_rich_node data
+    # Enrich each result with brain.get_node() data
     for r in results[:8]:
-        rich = get_rich_node(brain, r.get("id", ""))
+        rich = brain.get_node(r.get("id", ""))
         if rich:
             r["_metadata"] = rich.get("_metadata", {})
             r["_corrections"] = rich.get("_corrections", [])
@@ -291,13 +289,7 @@ def _handle_dream(brain, args, graph_changes):
     return {"ok": True, "result": brain.dream()}
 
 
-def _handle_auto_heal(brain, args, graph_changes):
-    return {"ok": True, "result": brain.auto_heal()}
-
-
-def _handle_auto_tune(brain, args, graph_changes):
-    return {"ok": True, "result": brain.auto_tune()}
-
+    # _handle_auto_heal, _handle_auto_tune removed 2026-04-13 — proto-S2, disabled.
 
 def _handle_backfill_summaries(brain, args, graph_changes):
     return {"ok": True, "result": brain.backfill_summaries(
@@ -740,8 +732,7 @@ def _handle_get_node(brain, args, graph_changes):
     if not node_id:
         return {"ok": False, "error": "node_id is required"}
 
-    from .pipeline_contract import get_rich_node
-    node = get_rich_node(brain, node_id)
+    node = brain.get_node(node_id)
     if not node:
         return {"ok": False, "error": "Node not found: {}".format(node_id)}
 
@@ -764,31 +755,21 @@ def _handle_recall_batch(brain, args, graph_changes):
 
 
 def _handle_get_nodes(brain, args, graph_changes):
-    """Batch get_node — multiple node IDs in one call."""
+    """Batch get_node — multiple node IDs in one call, same rich shape as get_node."""
     node_ids = args.get("node_ids", [])
-    results = []
+    resolved_ids = []
+    errors = []
     for nid in node_ids[:20]:  # cap at 20
         resolved = _resolve_id(brain, nid)
-        if not resolved:
-            results.append({"id": nid, "error": "not found"})
-            continue
-        node = brain.get_node(resolved)
-        if not node:
-            results.append({"id": nid, "error": "not found"})
-            continue
-        try:
-            edges = brain.conn.execute(
-                "SELECT e.target_id, e.relation, e.weight, n.title, n.type "
-                "FROM edges e LEFT JOIN nodes n ON n.id = e.target_id "
-                "WHERE e.source_id = ? ORDER BY e.weight DESC LIMIT 10",
-                (resolved,)).fetchall()
-            node["connections"] = [
-                {"target_id": e[0], "relation": e[1], "weight": e[2],
-                 "title": e[3] or "", "type": e[4] or ""}
-                for e in edges]
-        except Exception:
-            node["connections"] = []
-        results.append(node)
+        if resolved:
+            resolved_ids.append(resolved)
+        else:
+            errors.append({"id": nid, "error": "not found"})
+
+    rich_map = brain.get_node(resolved_ids) if resolved_ids else {}
+    # Batch returns {node_id: rich_dict}. Preserve request order.
+    results = [rich_map[nid] for nid in resolved_ids if nid in rich_map]
+    results.extend(errors)
     return {"ok": True, "result": results}
 
 
@@ -915,8 +896,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "promote_staged":      CmdEntry(_handle_promote_staged,     is_write=True, marks_dirty=True),
     "consolidate":         CmdEntry(_handle_consolidate,        is_write=True, marks_dirty=True),
     "dream":               CmdEntry(_handle_dream,              is_write=True, marks_dirty=True),
-    "auto_heal":           CmdEntry(_handle_auto_heal,          is_write=True, marks_dirty=True),
-    "auto_tune":           CmdEntry(_handle_auto_tune,          is_write=True, marks_dirty=True),
+    # auto_heal, auto_tune removed 2026-04-13 — proto-S2, S2 integration units replace them.
     "backfill_summaries":  CmdEntry(_handle_backfill_summaries, is_write=True, marks_dirty=True),
     "synthesize_session":  CmdEntry(_handle_synthesize_session, is_write=True, marks_dirty=True),
     "remember":              CmdEntry(_handle_remember,             is_write=True, marks_dirty=True),

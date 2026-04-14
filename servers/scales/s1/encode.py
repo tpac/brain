@@ -199,7 +199,7 @@ def _build_user_content(brain, messages, counter, session_id):
     # Build node catalog from surface outputs in the visible window
     judge_outputs = [m.get("judge_output") for m in messages if m.get("role") == "user"]
     try:
-        node_catalog, cataloged_ids = build_node_catalog(judge_outputs, brain.conn)
+        node_catalog, cataloged_ids = build_node_catalog(judge_outputs, brain)
     except Exception as e:
         print('[s1e] ERROR building node catalog: %s' % e, flush=True)
         node_catalog, cataloged_ids = '', set()

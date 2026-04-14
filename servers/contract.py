@@ -43,6 +43,8 @@ STRUCTURAL_FIELDS = {
     "evolution_status":  {"store": "nodes", "type": "str"},
     "source_turn_id":   {"store": "nodes", "type": "str", "description": "message_stream ID that produced this node (episode linkage)"},
     "encoding_source":  {"store": "nodes", "type": "str", "description": "Who created this node. Convention: category:process. anchor = direct MCP, encoder:sonnet = encoding agent, idle:dreams/redistribution/etc, hook:boot/compaction. Only anchor can lock."},
+    "created_at":   {"store": "nodes", "type": "str", "immutable": True, "description": "ISO 8601 timestamp, auto-set on insert. Filterable with lt/gt for date-range queries."},
+    "updated_at":   {"store": "nodes", "type": "str", "immutable": True, "description": "ISO 8601 timestamp, auto-updated on revise. Filterable with lt/gt for date-range queries."},
 }
 
 
@@ -165,31 +167,6 @@ NODE_FORMAT_DEFAULTS = {
     'metadata_limit': 300,      # chars per metadata value
     'time_format': 'date',      # 'date' = YYYY-MM-DD, 'relative' = "2d ago"
 }
-
-
-def format_node(node_id, db_conn, config=None):
-    """Format a node for LLM consumption.
-
-    Data: get_rich_node() from pipeline_contract (single source of truth).
-    Format: renders the rich node dict as a readable string.
-
-    Config overrides (from NODE_FORMAT_DEFAULTS):
-        content_limit: truncate content (None = full)
-        edge_limit: max edges shown (default 5)
-        metadata_limit: chars per metadata value (default 300)
-    """
-    cfg = {**NODE_FORMAT_DEFAULTS, **(config or {})}
-    try:
-        # Data — single source of truth
-        from servers.pipeline_contract import get_rich_node
-        node = get_rich_node(db_conn, node_id)
-        if not node:
-            return None
-
-        # Format — render the dict
-        return render_rich_node(node, cfg)
-    except Exception:
-        return None
 
 
 def render_rich_node(node, config=None):

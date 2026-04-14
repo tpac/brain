@@ -278,7 +278,6 @@ class ConsolidationEncoder(IntegrationUnit):
 
     def _format_clusters(self, clusters):
         from servers.contract import render_rich_node
-        from servers.pipeline_contract import get_rich_node
         from .consolidation_contract import CONSOLIDATION_NODE_FORMAT, CLUSTER_REQUIRED_FIELDS
 
         # Validate cluster shape against contract
@@ -378,7 +377,7 @@ class ConsolidationEncoder(IntegrationUnit):
 
                 # Rich node content (using consolidation format — more depth than community)
                 try:
-                    rich = get_rich_node(self.brain.conn, nid)
+                    rich = self.brain.get_node(nid)
                     if rich:
                         rendered = render_rich_node(rich, CONSOLIDATION_NODE_FORMAT)
                         lines.append('      ' + rendered.replace('\n', '\n      '))

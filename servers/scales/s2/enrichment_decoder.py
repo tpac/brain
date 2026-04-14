@@ -138,10 +138,8 @@ class EnrichmentDecoder(IntegrationUnit):
 
     def _build_proposals(self, target_ids):
         """Build proposals with full context for each target node."""
-        from servers.pipeline_contract import get_rich_node
-
         # Batch load all rich nodes
-        rich_nodes = get_rich_node(self.brain, target_ids)
+        rich_nodes = self.brain.get_node(target_ids)
         if isinstance(rich_nodes, dict) is False:
             rich_nodes = {}
 

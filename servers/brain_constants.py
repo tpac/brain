@@ -354,8 +354,8 @@ SPREAD_DECAY = 0.5
 MAX_HOPS = 3
 MAX_NEIGHBORS = 50
 # DEPRECATED 2026-04-08 — stability field no longer written to edges.
-# Kept for backward compat (auto_tune reads it). Remove when auto_tune is deleted.
-STABILITY_BOOST = 1.5  # DEPRECATED
+# auto_tune removed 2026-04-13. This constant is dead.
+STABILITY_BOOST = 1.5  # DEPRECATED — remove when no tests reference it
 
 # B.2: Graph-augmented recall — 3-degree traversal
 GRAPH_AUGMENT_TOP_N = 5       # Seed traversal from top N embedding results

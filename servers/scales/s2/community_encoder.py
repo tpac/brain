@@ -291,7 +291,6 @@ class CommunityEncoder(IntegrationUnit):
 
     def _format_proposals(self, proposals):
         from servers.contract import render_rich_node
-        from servers.pipeline_contract import get_rich_node
 
         lines = ['PROPOSALS:\n']
 
@@ -355,8 +354,7 @@ class CommunityEncoder(IntegrationUnit):
                     lines.append('    Structural hubs (richly rendered):')
                     for rep in reps[:3]:
                         try:
-                            rich = get_rich_node(
-                                self.brain.conn, rep['id'])
+                            rich = self.brain.get_node( rep['id'])
                             if rich:
                                 rendered = render_rich_node(
                                     rich, S2CE_NODE_FORMAT)
@@ -376,8 +374,7 @@ class CommunityEncoder(IntegrationUnit):
                     latest_id = tl.get('latest', {}).get('id')
                     if latest_id:
                         try:
-                            rich = get_rich_node(
-                                self.brain.conn, latest_id)
+                            rich = self.brain.get_node( latest_id)
                             if rich:
                                 rendered = render_rich_node(
                                     rich, S2CE_NODE_FORMAT)

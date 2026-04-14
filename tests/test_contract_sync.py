@@ -122,6 +122,7 @@ class TestDaemonDispatchSync(unittest.TestCase):
             'remember_lesson', 'remember_impact', 'remember_mechanism',
             'remember_convention', 'remember_uncertainty', 'remember_mental_model',
             'record_divergence', 'learn_vocabulary',
+            'auto_heal', 'auto_tune',
         ]
         present = [cmd for cmd in removed if cmd in self.commands]
         self.assertEqual(present, [],

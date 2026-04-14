@@ -365,164 +365,18 @@ def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
 
 
 def get_rich_node(brain_or_conn, node_id_or_ids):
-    """Fully assembled node(s): content + metadata + correction chain + connections.
+    """DEPRECATED: Use brain.get_node() instead. This wrapper delegates to Brain.get_node().
 
-    Accepts a single node_id (str) or a list of node_ids.
-    - Single ID → returns one rich node dict, or None if not found.
-    - List of IDs → returns dict {node_id: rich_node_dict}. Missing nodes omitted.
-
-    When given a list, uses batched queries (5 queries total instead of N×4).
+    Kept for backward compatibility — callers should migrate to brain.get_node() directly.
     """
-    from .dal import NodeDAL
-    from .dal_metadata import MetadataDAL
-    from .scales.s1.surface_contract import correction_enrich
-
-    conn = getattr(brain_or_conn, 'conn', brain_or_conn)
-    ndal = NodeDAL(conn)
-
-    # ── Dispatch: single vs batch ──
-    single = isinstance(node_id_or_ids, str)
-    raw_ids = [node_id_or_ids] if single else list(node_id_or_ids)
-
-    if not raw_ids:
-        return None if single else {}
-
-    # Resolve short IDs
-    full_ids = []
-    for nid in raw_ids:
-        full = ndal.resolve_id(nid) if len(str(nid)) < 16 else nid
-        if full:
-            full_ids.append(full)
-
-    if not full_ids:
-        return None if single else {}
-
-    # ── 1. Batch fetch all nodes ──
-    ph = ','.join('?' for _ in full_ids)
-    cols = [desc[0] for desc in conn.execute('SELECT * FROM nodes LIMIT 0').description]
-    rows = conn.execute(
-        'SELECT * FROM nodes WHERE id IN (%s)' % ph, full_ids
-    ).fetchall()
-
-    nodes = {}
-    for row in rows:
-        d = dict(zip(cols, row))
-        for bf in ('locked', 'archived', 'critical'):
-            d[bf] = d.get(bf) == 1
-        d['emotion'] = d.get('emotion') or 0
-        d['emotion_label'] = d.get('emotion_label') or 'neutral'
-        nodes[d['id']] = d
-
-    if not nodes:
-        return None if single else {}
-
-    found_ids = list(nodes.keys())
-    ph = ','.join('?' for _ in found_ids)
-
-    # ── 2. Batch fetch all metadata ──
-    meta_rows = conn.execute(
-        'SELECT node_id, key, value FROM node_metadata_kv WHERE node_id IN (%s)' % ph,
-        found_ids
-    ).fetchall()
-    meta_by_node = {}
-    for nid, key, value in meta_rows:
-        meta_by_node.setdefault(nid, {})[key] = value
-    for nid in found_ids:
-        if nid in meta_by_node:
-            nodes[nid]['_metadata'] = meta_by_node[nid]
-
-    # ── 3. Batch fetch all situations ──
-    sit_rows = conn.execute(
-        'SELECT node_id, situation_text FROM node_embeddings WHERE node_id IN (%s)' % ph,
-        found_ids
-    ).fetchall()
-    for nid, sit in sit_rows:
-        if sit:
-            nodes[nid]['situation'] = sit
-
-    # ── 4. Batch corrections (already set-based) ──
-    all_ids_for_corrections = set()
-    for fid in found_ids:
-        all_ids_for_corrections.add(fid)
-        all_ids_for_corrections.add(fid[:8])
-    corrections = correction_enrich(all_ids_for_corrections, conn)
-    for nid in found_ids:
-        node_corrs = corrections.get(nid, []) or corrections.get(nid[:8], [])
-        if node_corrs:
-            for corr in node_corrs:
-                corr_full = ndal.resolve_id(corr['id']) or corr['id']
-                corr_node = ndal.get_node(corr_full)
-                if corr_node:
-                    corr['content'] = corr_node.get('content', '')
-                    corr['type'] = corr_node.get('type', '')
-            nodes[nid]['_corrections'] = node_corrs
-
-    # ── 5. Batch fetch all connections ──
-    # Read from edge_relations (source of truth) via edge_id JOIN.
-    # Single-direction storage: query both directions, detect outgoing/incoming.
-    edge_rows = conn.execute("""
-        SELECT e.source_id, e.target_id, e.weight,
-               er.relation, er.description, er.weight as rel_weight,
-               n1.id, n1.type, n1.title, n1.created_at, n1.revised_at, n1.confidence, n1.locked,
-               n2.id, n2.type, n2.title, n2.created_at, n2.revised_at, n2.confidence, n2.locked
-        FROM edges e
-        JOIN edge_relations er ON er.edge_id = e.edge_id
-        JOIN nodes n1 ON n1.id = e.target_id
-        JOIN nodes n2 ON n2.id = e.source_id
-        WHERE (e.source_id IN ({ph}) OR e.target_id IN ({ph}))
-        AND er.relation NOT IN ('co_accessed', 'emergent_bridge')
-        AND n1.archived = 0 AND n2.archived = 0
-    """.format(ph=ph), found_ids + found_ids).fetchall()
-
-    # Group by (owner_node, neighbor_node) — collect all relations per neighbor
-    edges_by_node = {}  # {owner_id: {neighbor_id: {node_data, relations: [...]}}}
-    found_set = set(found_ids)
-    for row in edge_rows:
-        src, tgt = row[0], row[1]
-        agg_weight = row[2]
-        rel = row[3] or 'related'
-        desc = row[4] or ''
-        rel_weight = row[5] or agg_weight
-        # n1 = target node, n2 = source node
-        n1_data = {"id": row[6], "type": row[7], "title": row[8],
-                   "created_at": row[9], "revised_at": row[10],
-                   "confidence": row[11], "locked": row[12] == 1}
-        n2_data = {"id": row[13], "type": row[14], "title": row[15],
-                   "created_at": row[16], "revised_at": row[17],
-                   "confidence": row[18], "locked": row[19] == 1}
-        relation_entry = {"relation": rel, "description": desc, "weight": rel_weight}
-
-        # For source node looking outward → neighbor is target (n1) — outgoing
-        if src in found_set and tgt != src:
-            key = (src, n1_data['id'])
-            if key not in edges_by_node.setdefault(src, {}):
-                edges_by_node[src][key] = {**n1_data, "weight": agg_weight,
-                                            "direction": "outgoing", "relations": []}
-            edges_by_node[src][key]["relations"].append(relation_entry)
-
-        # For target node looking outward → neighbor is source (n2) — incoming
-        if tgt in found_set and src != tgt:
-            key = (tgt, n2_data['id'])
-            if key not in edges_by_node.setdefault(tgt, {}):
-                edges_by_node[tgt][key] = {**n2_data, "weight": agg_weight,
-                                            "direction": "incoming", "relations": []}
-            edges_by_node[tgt][key]["relations"].append(relation_entry)
-
-    for nid in found_ids:
-        conns = list(edges_by_node.get(nid, {}).values())
-        # Sort by aggregate weight, set 'relation' to highest-weight relation for compat
-        for c in conns:
-            rels = sorted(c['relations'], key=lambda r: r.get('weight', 0), reverse=True)
-            c['relations'] = rels
-            c['relation'] = rels[0]['relation'] if rels else 'related'
-            c['description'] = rels[0]['description'] if rels else ''
-        conns.sort(key=lambda x: x.get('weight', 0), reverse=True)
-        nodes[nid]['connections'] = conns
-
-    # ── Return ──
-    if single:
-        return nodes.get(full_ids[0])
-    return nodes
+    brain = brain_or_conn if hasattr(brain_or_conn, 'get_node') else None
+    if brain is None:
+        # Caller passed a raw connection — need to get brain singleton
+        from .brain import Brain
+        brain = Brain._instance
+        if brain is None:
+            raise RuntimeError("get_rich_node() called with raw conn but no Brain instance exists")
+    return brain.get_node(node_id_or_ids)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -552,6 +406,5 @@ format_judge_output = format_surface_output
 
 from .scales.s1.encode_contract import (  # noqa: E402, F401
     ENCODING_AGENT,
-    format_node_for_encoder,
     build_encoder_node_catalog,
 )
