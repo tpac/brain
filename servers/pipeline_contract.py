@@ -380,8 +380,8 @@ def get_rich_node(brain_or_conn, node_id_or_ids):
 
 
 # ═══════════════════════════════════════════════════════════════
-# BACKWARD COMPATIBILITY — re-exports from split contracts
-# New code should import from the specific contract directly.
+# RE-EXPORTS — many callers import from pipeline_contract.
+# Migrate to specific contracts when touching these callers.
 # ═══════════════════════════════════════════════════════════════
 
 from .scales.s1.surface_contract import (  # noqa: E402, F401
@@ -398,8 +398,7 @@ from .scales.s1.surface_contract import (  # noqa: E402, F401
     enrich_candidate_metadata,
     correction_enrich,
 )
-# Backward compat aliases
-JUDGE = SURFACE
+JUDGE = SURFACE  # legacy alias
 format_candidate_for_judge = format_candidate_for_surface
 build_judge_prompt = build_surface_prompt
 format_judge_output = format_surface_output

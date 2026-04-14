@@ -34,7 +34,7 @@ from .dal import LogsDAL, MetaDAL
 from .brain_recall import BrainRecallMixin
 from .brain_remember import BrainRememberMixin
 from .brain_connections import BrainConnectionsMixin
-from .brain_engineering import BrainEngineeringMixin
+from .brain_reminders import BrainRemindersMixin
 from .brain_assembly import BrainAssemblyMixin
 from . import embedder
 
@@ -53,7 +53,7 @@ class Brain(
     BrainRecallMixin,
     BrainRememberMixin,
     BrainConnectionsMixin,
-    BrainEngineeringMixin,
+    BrainRemindersMixin,
     BrainAssemblyMixin,
 ):
     """

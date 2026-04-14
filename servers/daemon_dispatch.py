@@ -156,22 +156,9 @@ def _handle_queue_state(brain, args, graph_changes):
     return {"ok": True, "result": sq_dal.get_queue_state()}
 
 
-    # _handle_engineering_context removed 2026-04-13 — was a stub returning {}.
-
-
-    # _handle_correction_patterns removed 2026-04-13 — correction_traces table dropped.
-
-
-    # _handle_last_synthesis removed 2026-04-13.
-
-
 def _handle_scan_host(brain, args, graph_changes):
     return {"ok": True, "result": brain.scan_host_environment()}
 
-
-    # _handle_dreams removed 2026-04-13 — dream system removed.
-
-    # _handle_staged, _handle_suggest_metrics removed 2026-04-13 — methods deleted.
 
 def _handle_procedure_trigger(brain, args, graph_changes):
     return {"ok": True, "result": brain.procedure_trigger(
@@ -187,11 +174,6 @@ def _handle_get_config(brain, args, graph_changes):
 def _handle_get_debug_status(brain, args, graph_changes):
     return {"ok": True, "result": {"debug": brain.get_debug_status()}}
 
-
-    # _handle_get_active_evolutions removed 2026-04-13 — use filter_nodes.
-
-    # _handle_assess_dev_stage, _handle_instinct_check, _handle_prompt_reflection
-    # removed 2026-04-13 — consciousness system deleted.
 
 def _handle_enrichment_coverage(brain, args, graph_changes):
     return {"ok": True, "result": brain.get_enrichment_coverage()}
@@ -241,25 +223,15 @@ def _handle_log_debug(brain, args, graph_changes):
     return {"ok": True, "result": {"status": "logged"}}
 
 
-    # _handle_self_reflection removed 2026-04-13.
-
-
 def _handle_promote_staged(brain, args, graph_changes):
     brain.auto_promote_staged(revisit_threshold=args.get("threshold", 3))
     return {"ok": True, "result": {"status": "promoted"}}
 
 
-    # _handle_consolidate, _handle_dream removed 2026-04-13 — proto-S2, created noise.
-
-
-    # _handle_auto_heal, _handle_auto_tune removed 2026-04-13 — proto-S2, disabled.
-
 def _handle_backfill_summaries(brain, args, graph_changes):
     return {"ok": True, "result": brain.backfill_summaries(
         batch_size=args.get("batch_size", 50))}
 
-
-    # _handle_synthesize_session removed 2026-04-13.
 
 def _handle_remember(brain, args, graph_changes):
     from .contract import validate_field, get_remember_fields
@@ -818,29 +790,26 @@ def _handle_eval(brain, args, graph_changes):
 # ═══════════════════════════════════════════════════════════════
 
 COMMAND_TABLE: Dict[str, CmdEntry] = {
+    # Removed 2026-04-13: engineering_context, correction_patterns, last_synthesis,
+    # dreams, staged, suggest_metrics, get_active_evolutions, assess_developmental_stage,
+    # instinct_check, prompt_reflection, self_reflection, consolidate, dream,
+    # auto_heal, auto_tune, synthesize_session.
+    # Removed 2026-04-06: record_divergence, learn_vocabulary.
+
     # ── Reads (no lock needed) ──
     "ping":                     CmdEntry(_handle_ping,                 is_write=False),
     "context_boot":             CmdEntry(_handle_context_boot,         is_write=False),
     "recall":                   CmdEntry(_handle_recall,               is_write=False),
     "heartbeat":                CmdEntry(_handle_heartbeat,            is_write=False),
-
     "validate_config":          CmdEntry(_handle_validate_config,      is_write=False),
     "health_check":             CmdEntry(_handle_health_check,         is_write=False),
     "consciousness":            CmdEntry(_handle_consciousness,        is_write=False),
-
     "dismiss_signal":           CmdEntry(_handle_dismiss_signal,       is_write=True),
     "queue_state":              CmdEntry(_handle_queue_state,          is_write=False),
-    # engineering_context removed 2026-04-13.
-    # correction_patterns removed 2026-04-13.
-    # last_synthesis removed 2026-04-13.
     "scan_host":                CmdEntry(_handle_scan_host,            is_write=False),
-    # dreams removed 2026-04-13 — dream system removed.
-    # staged, suggest_metrics removed 2026-04-13 — methods deleted.
     "procedure_trigger":        CmdEntry(_handle_procedure_trigger,    is_write=False),
     "get_config":               CmdEntry(_handle_get_config,           is_write=False),
     "get_debug_status":         CmdEntry(_handle_get_debug_status,     is_write=False),
-    # get_active_evolutions removed 2026-04-13 — use filter_nodes.
-    # assess_developmental_stage, instinct_check, prompt_reflection removed 2026-04-13.
     "enrichment_coverage":      CmdEntry(_handle_enrichment_coverage,  is_write=False),
     "pre_edit":                 CmdEntry(_handle_pre_edit,             is_write=False),
 
@@ -850,17 +819,12 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "reset_session":       CmdEntry(_handle_reset_session,      is_write=True, marks_dirty=True),
     "set_config":          CmdEntry(_handle_set_config,         is_write=True, marks_dirty=True),
     "log_debug":           CmdEntry(_handle_log_debug,          is_write=True, marks_dirty=True),
-    # self_reflection removed 2026-04-13.
     "promote_staged":      CmdEntry(_handle_promote_staged,     is_write=True, marks_dirty=True),
-    # consolidate, dream removed 2026-04-13 — proto-S2, S2 integration units replace them.
-    # auto_heal, auto_tune removed 2026-04-13 — proto-S2, S2 integration units replace them.
     "backfill_summaries":  CmdEntry(_handle_backfill_summaries, is_write=True, marks_dirty=True),
-    # synthesize_session removed 2026-04-13.
     "remember":              CmdEntry(_handle_remember,             is_write=True, marks_dirty=True),
     "remember_batch":        CmdEntry(_handle_remember_batch,      is_write=True, marks_dirty=True),
     "revise":                CmdEntry(_handle_revise,               is_write=True, marks_dirty=True),
     "revise_batch":          CmdEntry(_handle_revise_batch,         is_write=True, marks_dirty=True),
-    # record_divergence, learn_vocabulary REMOVED 2026-04-06 — use remember(type='correction'/'vocabulary')
     "find_node_by_title":    CmdEntry(_handle_find_node_by_title,  is_write=False, marks_dirty=False),
     "filter_nodes":          CmdEntry(_handle_filter_nodes,        is_write=False, marks_dirty=False),
     "query_logs":            CmdEntry(_handle_query_logs,          is_write=False, marks_dirty=False),

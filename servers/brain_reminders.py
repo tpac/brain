@@ -1,23 +1,17 @@
 """
-brain — BrainEngineering Mixin
+brain — BrainReminders Mixin
 
-Extracted from brain.py monolith. Methods are mixed into the Brain class
-via multiple inheritance. All methods reference self.conn, self.get_config, etc.
-which are provided by Brain.__init__.
+Reminders + change impact lookup. Renamed from brain_engineering.py 2026-04-13
+after removing record_divergence, synthesize_session, assess_session_health,
+recalibrate_confidence, auto_generate_self_reflection, reflect_for_next_claude.
 """
 
-from . import embedder
-from .brain_constants import TYPE_CONFIDENCE, EXTERNAL_CLAIM_KEYWORDS
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 import json
-import re
-import time
-import uuid
 
 
-class BrainEngineeringMixin:
-    """Engineering methods for Brain."""
+class BrainRemindersMixin:
+    """Reminders and change impact methods for Brain."""
 
     # REMOVED 2026-04-05: remember_purpose, remember_mechanism, remember_impact,
     # remember_constraint, remember_convention, remember_lesson, remember_mental_model,

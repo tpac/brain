@@ -50,7 +50,6 @@ class SurfaceAssembler:
 
     def assemble(self, recall_results: List[Dict],
                  segment_note: str = None,
-                 priming_note: str = None,
                  gap: Dict = None) -> Dict[str, Optional[str]]:
         """Assemble the final brain output.
 
@@ -70,10 +69,6 @@ class SurfaceAssembler:
 
         if segment_note:
             reactive_lines.append(segment_note)
-            reactive_lines.append("")
-
-        if priming_note:
-            reactive_lines.append(priming_note)
             reactive_lines.append("")
 
         # Recalled nodes — truncated

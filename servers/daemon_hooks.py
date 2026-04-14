@@ -272,9 +272,6 @@ def hook_recall(brain, args, graph_changes):
         brain.save()
         return {"json": {"decision": "approve"}}
 
-    # Priming check removed 2026-04-13 — queried dropped tables.
-    priming_note = None
-
     # Gap detection: log gaps for trend analysis
     if gap:
         try:
