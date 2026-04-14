@@ -1,12 +1,7 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-# brain v8.7.0 — Plugin builder
+# brain plugin builder
 # Packs exactly what belongs in the .plugin file. Nothing else.
-#
-# v5.4.0: Brain-Claude conflict protocol, [BRAIN] identity tags,
-#          layered precision evaluation, per-hook telemetry, seed brain.
-# v5.3.1: Daemon consolidation + graph change tracking.
-# v5.3: Eval-tested SKILL.md, 5-focus rotating checkpoints, session stats.
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -17,54 +12,88 @@ OUT="${1:-brain.plugin}"
 FILES=(
   .claude-plugin/plugin.json
   .mcp.json
-  # Python brain module — core + 11 mixin modules
+  # Core brain
   servers/__init__.py
   servers/brain.py
-  servers/brain_absorb.py
+  servers/brain_assembly.py
   servers/brain_connections.py
-  servers/brain_consciousness.py
   servers/brain_constants.py
-  servers/brain_dreams.py
-  servers/brain_engineering.py
-  servers/brain_evolution.py
   servers/brain_recall.py
   servers/brain_remember.py
-  servers/brain_surface.py
-  servers/brain_vocabulary.py
+  servers/brain_reminders.py
   servers/brain_voice.py
-  servers/schema.py
+  servers/contract.py
+  servers/pipeline_contract.py
+  servers/recall_scoring.py
+  servers/text_processing.py
   servers/embedder.py
+  servers/schema.py
   servers/migrate.py
+  # DAL
   servers/dal.py
+  servers/dal_metadata.py
+  servers/dal_signal_queue.py
+  # Daemon
   servers/daemon_config.py
   servers/daemon_server.py
   servers/daemon_client.py
   servers/daemon_dispatch.py
   servers/daemon_hooks.py
+  # MCP + signals
+  servers/brain_mcp.py
   servers/signal_producers.py
   servers/surface_assembler.py
-  servers/dal_signal_queue.py
-  servers/brain_mcp.py
-  servers/contract.py
-  servers/pipeline_contract.py
-  servers/judge_contract.py
-  servers/encoding_contract.py
-  servers/encoding_agent.py
-  # Scale modules (fractal architecture)
+  servers/health_check.py
+  servers/interaction_seed.py
+  servers/session_context.py
+  servers/trace_contract.py
+  servers/redistribution.py
+  servers/brain_cli.py
+  # Scale modules
   servers/scales/__init__.py
   servers/scales/dispatch.py
   servers/scales/runner.py
+  servers/scales/s0/__init__.py
+  servers/scales/s0/conversation.py
   servers/scales/s1/__init__.py
-  servers/scales/s1/recall.py
-  servers/scales/s1/recall_contract.py
+  servers/scales/s1/surface.py
+  servers/scales/s1/surface_contract.py
   servers/scales/s1/encode.py
   servers/scales/s1/encode_contract.py
   servers/scales/s2/__init__.py
   servers/scales/s2/base.py
+  servers/scales/s2/coordinator.py
   servers/scales/s2/community.py
   servers/scales/s2/community_contract.py
-  servers/metrics.py
-  # Hook scripts — bash shims (thin wrappers)
+  servers/scales/s2/community_decoder.py
+  servers/scales/s2/community_encoder.py
+  servers/scales/s2/community_enrichment_prompt.py
+  servers/scales/s2/consolidation.py
+  servers/scales/s2/consolidation_contract.py
+  servers/scales/s2/consolidation_decoder.py
+  servers/scales/s2/consolidation_encoder.py
+  servers/scales/s2/consolidation_enrichment_prompt.py
+  servers/scales/s2/edge_families.py
+  servers/scales/s2/edge_families_v1.json
+  servers/scales/s2/enrichment.py
+  servers/scales/s2/enrichment_contract.py
+  servers/scales/s2/enrichment_decoder.py
+  servers/scales/s2/enrichment_encoder.py
+  servers/scales/s2/enrichment_prompt.py
+  servers/scales/s2/reclassify.py
+  # Migrations
+  servers/migrations/__init__.py
+  servers/migrations/runner.py
+  servers/migrations/001_initial_schema.py
+  servers/migrations/002_logs_initial_schema.py
+  servers/migrations/003_backfill_existing_data.py
+  servers/migrations/004_logs_precision_columns.py
+  servers/migrations/005_logs_message_stream_recall.py
+  servers/migrations/006_nodes_source_turn_id.py
+  servers/migrations/007_vocab_to_concept.py
+  servers/migrations/008_metadata_kv.py
+  servers/migrations/009_enrichments_drop_check.py
+  # Hook scripts — bash shims
   hooks/hooks.json
   hooks/scripts/boot-brain.sh
   hooks/scripts/pre-compact-save.sh
@@ -86,7 +115,7 @@ FILES=(
   hooks/scripts/resolve-brain-db.sh
   hooks/scripts/daemon-client.sh
   hooks/scripts/brain-client.sh
-  # Hook scripts — Python logic (imported by bash shims)
+  # Hook scripts — Python logic
   hooks/scripts/hook_common.py
   hooks/scripts/boot_brain.py
   hooks/scripts/pre_compact_save.py
@@ -102,39 +131,14 @@ FILES=(
   hooks/scripts/post_bash_host_check.py
   hooks/scripts/worktree_context.py
   hooks/scripts/worktree_cleanup.py
-  hooks/scripts/extract-session-log.py
-  # Encoding agent prompt
-  hooks/prompts/encoding-agent.md
-  # Skill definition
+  hooks/scripts/encoding_hook.py
+  hooks/scripts/post_tool_trace.py
+  hooks/scripts/agent-bridge.py
+  # Skill
   skills/brain/SKILL.md
   skills/brain/references/detailed-api.md
-  # Test framework
-  tests/__init__.py
-  tests/metrics.py
-  tests/generate_golden.py
-  tests/eval_runner.py
-  tests/run_tests.py
-  tests/golden_dataset.json
-  tests/transcript_parser.py
-  tests/relearning.py
-  tests/brain_test_base.py
-  tests/test_core.py
-  tests/test_precision.py
-  tests/test_comprehensive.py
-  tests/test_recall_scorer.py
-  tests/test_recall_quality.py
-  tests/test_hooks.py
-  tests/test_system.py
-  tests/test_brain_voice.py
-  # Migrations
-  servers/migrations/__init__.py
-  servers/migrations/004_logs_precision_columns.py
-  # Recall scorer (brain_precision.py DELETED 2026-04-05)
-  servers/recall_scorer.py
-  servers/text_processing.py
-  # Data files
+  # Data
   data/common_words_10k.txt
-  # Seed brain
   scripts/seed_brain.py
 )
 
@@ -157,5 +161,5 @@ rm -f "$OUT"
 zip "$OUT" "${FILES[@]}"
 
 size=$(du -h "$OUT" | cut -f1)
-echo ""
-echo "Built $OUT ($size)"
+count=${#FILES[@]}
+echo "✓ Built $OUT — $count files, $size"
