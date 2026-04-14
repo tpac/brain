@@ -31,14 +31,13 @@ class TestBrainMethodsExist(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Introspect all brain modules for public encoding/connection methods."""
-        from servers import brain_engineering, brain_connections, brain_remember, brain_evolution
+        from servers import brain_engineering, brain_connections, brain_remember
 
         cls.methods = {}
         for mod_name, mod in [
             ('brain_engineering', brain_engineering),
             ('brain_connections', brain_connections),
             ('brain_remember', brain_remember),
-            ('brain_evolution', brain_evolution),
         ]:
             for name in dir(mod):
                 cls_obj = getattr(mod, name)
