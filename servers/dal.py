@@ -1570,88 +1570,28 @@ class GraphDAL:
         ).fetchone()
         return row[0] if row else None
 
-    def get_neighbors(self, node_id: str, min_weight: float = 0.05,
-                      limit: int = 50) -> List[Dict[str, Any]]:
-        """Get all neighbors (both directions — single-direction storage).
-
-        Returns list of dicts with keys: neighbor_id, weight, direction.
-        """
-        rows = self.conn.execute("""
-            SELECT
-                CASE WHEN source_id = ? THEN target_id ELSE source_id END as neighbor_id,
-                weight,
-                CASE WHEN source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction
-            FROM edges
-            WHERE (source_id = ? OR target_id = ?) AND weight > ?
-            ORDER BY weight DESC LIMIT ?
-        """, (node_id, node_id, node_id, node_id, min_weight, limit)).fetchall()
-        return [{'neighbor_id': r[0], 'weight': r[1], 'direction': r[2]}
-                for r in rows]
-
-    def get_typed_neighbors(self, node_id: str, edge_types: set,
-                            limit: int = 10) -> List[Dict[str, Any]]:
-        """Get 1-hop neighbors via specific relation types.
-
-        Searches both directions. Returns neighbor_id, relation, weight, direction.
-        """
-        placeholders = ','.join('?' * len(edge_types))
-        params = [node_id, node_id, node_id] + list(edge_types) + [limit]
-        rows = self.conn.execute("""
-            SELECT
-                CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END as neighbor_id,
-                er.relation, er.weight,
-                CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction
-            FROM edges e
-            JOIN edge_relations er ON er.edge_id = e.edge_id
-            WHERE (e.source_id = ? OR e.target_id = ?)
-            AND er.relation IN ({placeholders})
-            ORDER BY er.weight DESC
-            LIMIT ?
-        """.format(placeholders=placeholders),
-            params[:3] + [node_id] + list(edge_types) + [limit]).fetchall()
-        return [
-            {'neighbor_id': r[0], 'relation': r[1], 'weight': r[2], 'direction': r[3]}
-            for r in rows
-        ]
+    # get_neighbors, get_typed_neighbors, get_neighbors_with_context, get_neighbors_rich
+    # consolidated into single get_neighbors() — 2026-04-14.
 
     def get_neighbors_with_context(self, node_id: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """Get neighbors with their full context (title, type, keywords, confidence).
-
-        Used by V5 enrichment to build the structured prompt with neighbor info.
-        Returns neighbors sorted by edge weight, enriched with node data.
-        """
-        rows = self.conn.execute("""
-            SELECT n.id, n.type, n.title, n.keywords, n.confidence,
-                   e.weight,
-                   CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction,
-                   e.edge_id
-            FROM edges e
-            JOIN nodes n ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END
-            WHERE (e.source_id = ? OR e.target_id = ?) AND n.archived = 0
-            ORDER BY e.weight DESC
-            LIMIT ?
-        """, (node_id, node_id, node_id, node_id, limit)).fetchall()
-
-        results = []
-        for r in rows:
-            # Get best relation for this edge
-            rel_row = self.conn.execute(
-                'SELECT relation, weight FROM edge_relations WHERE edge_id = ? ORDER BY weight DESC LIMIT 1',
-                (r[7],)).fetchone()
-            results.append({
-                'id': r[0], 'type': r[1], 'title': r[2], 'keywords': r[3],
-                'confidence': r[4], 'weight': r[5], 'direction': r[6],
-                'relation': rel_row[0] if rel_row else 'related',
-            })
-        return results
+        """DEPRECATED: Use get_neighbors() instead."""
+        return self.get_neighbors(node_id, limit=limit)
 
     def get_neighbors_rich(self, node_id: str, limit: int = 8,
                            exclude_relations: set = None,
                            exclude_node_ids: set = None) -> List[Dict[str, Any]]:
-        """Get neighbors with full node + edge + relation + metadata.
+        """DEPRECATED: Use get_neighbors() instead."""
+        return self.get_neighbors(node_id, limit=limit,
+                                  exclude_relations=exclude_relations,
+                                  exclude_node_ids=exclude_node_ids)
+
+    def get_neighbors(self, node_id: str, limit: int = 8,
+                      exclude_relations: set = None,
+                      exclude_node_ids: set = None) -> List[Dict[str, Any]]:
+        """Get neighbors with node + edge + relation data.
 
         Single-direction storage: queries both directions, flags each as outgoing/incoming.
-        Relations from edge_relations via edge_id JOIN.
+        Relations from edge_relations via edge_id JOIN. Supports filtering.
 
         Args:
             node_id: Node to find neighbors of
@@ -1683,13 +1623,10 @@ class GraphDAL:
                 n.locked, n.emotion, n.emotion_label,
                 er.relation, er.weight, er.description,
                 e.last_strengthened, e.co_access_count, e.edge_id,
-                CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction,
-                m.reasoning, m.user_raw_quote, m.correction_of, m.correction_pattern,
-                m.source_context, m.validation_count
+                CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction
             FROM edges e
             JOIN edge_relations er ON er.edge_id = e.edge_id
             JOIN nodes n ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END
-            LEFT JOIN node_metadata m ON m.node_id = n.id
             WHERE (e.source_id = ? OR e.target_id = ?)
             AND %s
             ORDER BY e.weight DESC
@@ -1705,9 +1642,6 @@ class GraphDAL:
             'edge_description': r[14], 'last_strengthened': r[15],
             'co_access_count': r[16], 'edge_id': r[17],
             'direction': r[18],
-            'reasoning': r[19], 'user_raw_quote': r[20],
-            'correction_of': r[21], 'correction_pattern': r[22],
-            'source_context': r[23], 'validation_count': r[24],
         } for r in rows]
 
     def count_node_edges(self, node_id: str, min_weight: float = 0.1) -> int:

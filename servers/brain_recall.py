@@ -1588,10 +1588,10 @@ class BrainRecallMixin:
 
             for node_id, node_activation in current_nodes:
                 _gdal = GraphDAL(self.conn)
-                _neighbors = _gdal.get_neighbors(node_id, min_weight=PRUNE_THRESHOLD, limit=MAX_NEIGHBORS)
+                _neighbors = _gdal.get_neighbors(node_id, limit=MAX_NEIGHBORS)
 
                 for nb in _neighbors:
-                    neighbor_id = nb.get('neighbor_id') or nb.get('target_id')
+                    neighbor_id = nb.get('id')
                     edge_weight = nb['weight']
                     spread = node_activation * edge_weight * decay_factor
                     current_act = activation.get(neighbor_id, 0)
