@@ -32,9 +32,11 @@ class BrainRemindersMixin:
         for row in cur.fetchall():
             results.append({'id': row[0], 'title': row[1], 'content': row[2]})
 
-        # Also check node_metadata change_impacts
+        # Also check change_impacts in metadata KV
         cur = self.conn.execute(
-            "SELECT nm.node_id, n.title, nm.change_impacts FROM node_metadata nm JOIN nodes n ON n.id = nm.node_id WHERE nm.change_impacts LIKE ?",
+            "SELECT kv.node_id, n.title, kv.value FROM node_metadata_kv kv "
+            "JOIN nodes n ON n.id = kv.node_id "
+            "WHERE kv.key = 'change_impacts' AND kv.value LIKE ?",
             (f'%{file_path}%',)
         )
         for row in cur.fetchall():

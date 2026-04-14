@@ -552,23 +552,7 @@ class BrainRememberMixin:
 
         # message_stream escalation REMOVED 2026-04-05 — encoding reads from traces
 
-        # v9: Store promoted metadata fields in sidecar table
-        try:
-            self._store_node_metadata(
-                node_id, reasoning=reasoning, user_raw_quote=user_raw_quote,
-                anchor_raw_quote=anchor_raw_quote,
-                correction_of=correction_of, correction_pattern=correction_pattern,
-                source_context=source_context, confidence_rationale=confidence_rationale,
-                alternatives=alternatives, change_impacts=change_impacts,
-                source_attribution=source_attribution, scope=scope,
-                **{k: v for k, v in extra_fields.items()
-                   if k not in ('type', 'title', 'content', 'keywords', 'locked',
-                                'connections', 'emotion', 'emotion_label', 'emotion_source',
-                                'project', 'confidence', 'personal', 'personal_context',
-                                'critical', 'encoding_source', 'situation', 'source_turn_id',
-                                'evolution_status')})
-        except Exception as e:
-            self._log_error('remember_metadata', e, 'storing metadata for %s' % node_id[:8])
+        # _store_node_metadata removed 2026-04-13 — old table, KV handles this via _store_metadata_kv above.
 
         # v9: Recall-on-create — return related nodes so caller can connect immediately
         related_nodes = []
@@ -1027,73 +1011,7 @@ class BrainRememberMixin:
 
         self.conn.commit()
 
-    def _store_node_metadata(self, node_id: str,
-                             reasoning: Optional[str] = None,
-                             user_raw_quote: Optional[str] = None,
-                             anchor_raw_quote: Optional[str] = None,
-                             correction_of: Optional[str] = None,
-                             correction_pattern: Optional[str] = None,
-                             source_context: Optional[str] = None,
-                             confidence_rationale: Optional[str] = None,
-                             alternatives: Optional[List[Dict[str, str]]] = None,
-                             change_impacts: Optional[List[Dict[str, str]]] = None,
-                             source_attribution: Optional[str] = None,
-                             scope: Optional[str] = None,
-                             **extra_metadata):
-        """Store promoted metadata fields for a node.
-
-        Core fields live in the nodes table. Metadata fields live in node_metadata_kv
-        (key-value store). Extra kwargs are stored as emergent metadata keys.
-
-        Called by remember() after node creation.
-        """
-        # Update source_attribution and scope on nodes table (direct columns)
-        updates = []
-        params = []
-        if source_attribution:
-            updates.append('source_attribution = ?')
-            params.append(source_attribution)
-        if scope:
-            updates.append('scope = ?')
-            params.append(scope)
-        if updates:
-            params.append(node_id)
-            self.conn.execute(
-                "UPDATE nodes SET %s WHERE id = ?" % ', '.join(updates), params)
-
-        # Build metadata dict from all non-None kwargs
-        from .dal_metadata import MetadataDAL
-        meta = {}
-        if reasoning: meta['reasoning'] = reasoning
-        if user_raw_quote: meta['user_raw_quote'] = user_raw_quote
-        if anchor_raw_quote: meta['anchor_raw_quote'] = anchor_raw_quote
-        if correction_of: meta['correction_of'] = correction_of
-        if correction_pattern: meta['correction_pattern'] = correction_pattern
-        if source_context: meta['source_context'] = source_context
-        if confidence_rationale: meta['confidence_rationale'] = confidence_rationale
-        if alternatives: meta['alternatives'] = json.dumps(alternatives)
-        if change_impacts: meta['change_impacts'] = json.dumps(change_impacts)
-        # Emergent metadata — any extra kwargs flow through
-        for k, v in extra_metadata.items():
-            if v is not None and str(v).strip():
-                meta[k] = str(v)
-
-        if meta:
-            dal = MetadataDAL(self.conn)
-            dal.set_many(node_id, meta)
-
-        # If this corrects another node, create edge and lower its confidence
-        if correction_of:
-            try:
-                self.connect(node_id, correction_of, 'corrected_by', 0.8)
-                self.conn.execute(
-                    "UPDATE nodes SET confidence = MAX(0.2, COALESCE(confidence, 0.7) * 0.7) WHERE id = ?",
-                    (correction_of,))
-            except Exception as e:
-                self._log_error('metadata_correction_link', e,
-                                'linking correction %s → %s' % (node_id[:8], correction_of[:8]))
-
-        self.conn.commit()
+    # _store_node_metadata removed 2026-04-13 — old node_metadata table dropped.
 
     def remember_rich(self, type: str, title: str, content: Optional[str] = None,
                       **kwargs) -> Dict[str, Any]:
@@ -1236,37 +1154,7 @@ class BrainRememberMixin:
             'results': results,
         }
 
-    def validate_node(self, node_id: str, context: Optional[str] = None) -> Dict[str, Any]:
-        """Mark a node as validated — its knowledge has been confirmed as still accurate.
-
-        Updates last_validated timestamp and increments validation_count.
-        Resets any age-based confidence decay.
-        """
-        ts = self.now()
-        # Upsert into node_metadata
-        existing = self.conn.execute(
-            'SELECT node_id FROM node_metadata WHERE node_id = ?', (node_id,)
-        ).fetchone()
-        if existing:
-            self.conn.execute(
-                '''UPDATE node_metadata
-                   SET last_validated = ?, validation_count = validation_count + 1
-                   WHERE node_id = ?''',
-                (ts, node_id)
-            )
-        else:
-            self.conn.execute(
-                '''INSERT INTO node_metadata (node_id, last_validated, validation_count, created_at)
-                   VALUES (?, ?, 1, ?)''',
-                (node_id, ts, ts)
-            )
-        # Boost confidence slightly
-        self.conn.execute(
-            "UPDATE nodes SET confidence = MIN(1.0, COALESCE(confidence, 0.7) + 0.05) WHERE id = ?",
-            (node_id,)
-        )
-        self.conn.commit()
-        return {'node_id': node_id, 'last_validated': ts, 'context': context}
+    # validate_node removed 2026-04-13 — old node_metadata table dropped.
 
     def _generate_summary(self, title: str, content: Optional[str] = None) -> Optional[str]:
         """Generate a content_summary (max 200 chars) for tiered recall.

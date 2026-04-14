@@ -178,9 +178,7 @@ class LogsDAL:
                 "DELETE FROM node_embeddings WHERE node_id NOT IN (SELECT id FROM nodes)")
             stats['orphaned_embeddings'] = cur.rowcount
 
-            cur = graph_conn.execute(
-                "DELETE FROM node_metadata WHERE node_id NOT IN (SELECT id FROM nodes)")
-            stats['orphaned_metadata'] = cur.rowcount
+            # node_metadata orphan cleanup removed 2026-04-13 — table dropped.
 
             cur = graph_conn.execute(
                 "DELETE FROM doc_freq WHERE term NOT IN (SELECT DISTINCT term FROM node_vectors)")
@@ -1223,19 +1221,7 @@ class NodeDAL:
             (activation_boost, ts, ts, node_id)
         )
 
-    def get_metadata(self, node_id: str) -> Optional[Dict[str, Any]]:
-        """Get node_metadata for a node. Returns None if no metadata exists."""
-        row = self.conn.execute(
-            'SELECT reasoning, user_raw_quote, correction_of, last_validated '
-            'FROM node_metadata WHERE node_id = ?',
-            (node_id,)
-        ).fetchone()
-        if not row or not any(row):
-            return None
-        return {
-            'reasoning': row[0], 'user_raw_quote': row[1],
-            'correction_of': row[2], 'last_validated': row[3],
-        }
+    # get_metadata removed 2026-04-13 — old node_metadata table dropped, use MetadataDAL (KV).
 
 
 class EmbeddingDAL:
