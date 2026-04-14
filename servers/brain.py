@@ -31,13 +31,10 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from .schema import ensure_schema, ensure_logs_schema, migrate_logs_to_separate_db
 from .dal import LogsDAL, MetaDAL
-from .brain_consciousness import ConsciousnessMixin
 from .brain_recall import BrainRecallMixin
 from .brain_remember import BrainRememberMixin
 from .brain_connections import BrainConnectionsMixin
-from .brain_evolution import BrainEvolutionMixin
 from .brain_engineering import BrainEngineeringMixin
-from .brain_dreams import BrainDreamsMixin
 from .brain_assembly import BrainAssemblyMixin
 from . import embedder
 
@@ -53,13 +50,10 @@ from .brain_constants import (
 # ═══════════════════════════════════════════════════════════════
 
 class Brain(
-    ConsciousnessMixin,
     BrainRecallMixin,
     BrainRememberMixin,
     BrainConnectionsMixin,
-    BrainEvolutionMixin,
     BrainEngineeringMixin,
-    BrainDreamsMixin,
     BrainAssemblyMixin,
 ):
     """
@@ -187,10 +181,7 @@ class Brain(
             print('[brain] WARNING: interaction seed failed: %s' % _e, flush=True)
 
         # v5: Session state accumulator for synthesis
-        self._session_state = {
-            'decisions': [], 'corrections': [], 'inflections': [],
-            'model_updates': [], 'validations': [], 'open_questions': []
-        }
+        # _session_state removed 2026-04-13 — was used by deleted synthesize/track methods.
 
         # Load embedder with config from brain_meta (falls back to plugin.json defaults)
         if not skip_embedder:
@@ -540,11 +531,6 @@ class Brain(
         from .session_context import SessionContext
         ctx = SessionContext(session_id=sid)
         ctx.save(self.logs_conn)
-        # v5: Reset session state accumulator
-        self._session_state = {
-            'decisions': [], 'corrections': [], 'inflections': [],
-            'model_updates': [], 'validations': [], 'open_questions': []
-        }
         # v5.1: Reset segment state
         self.set_config('segment_id', '0')
         self.set_config('segment_embeddings', '[]')
@@ -951,50 +937,7 @@ class Brain(
 
 
 
-    # ─── v4: DREAM SURPRISE SCORING FOR CONSCIOUSNESS ───
-
-    def get_surfaceable_dreams(self, limit: int = 3) -> List[Dict[str, Any]]:
-        """
-        Get high-surprise dreams worth surfacing to consciousness.
-        Filters: interest_score >= 4, created in last 48 hours, cross-cluster.
-        """
-        try:
-            cursor = self.logs_conn.execute(
-                """SELECT intuition_node_id, insight, seed_nodes, walk_path, created_at
-                   FROM dream_log
-                   WHERE created_at > datetime('now', '-48 hours')
-                     AND intuition_node_id IS NOT NULL
-                   ORDER BY created_at DESC
-                   LIMIT 20"""
-            )
-            dreams = []
-            for row in cursor.fetchall():
-                # Look up node title/content from main DB
-                node_row = self.conn.execute(
-                    'SELECT title, content FROM nodes WHERE id = ?', (row[0],)
-                ).fetchone()
-                node_title = node_row[0] if node_row else ''
-                node_content = node_row[1] if node_row else ''
-                # Recompute surprise: longer walks = more distant = more surprising
-                try:
-                    walks = json.loads(row[3])
-                    total_hops = sum(len(w) for w in walks)
-                except Exception:
-                    total_hops = 0
-
-                if total_hops >= 4:  # Cross-cluster threshold
-                    dreams.append({
-                        'intuition_id': row[0],
-                        'insight': row[1],
-                        'title': node_title,
-                        'content': node_content,
-                        'created_at': row[4],
-                        'total_hops': total_hops,
-                    })
-
-            return dreams[:limit]
-        except Exception:
-            return []
+    # get_surfaceable_dreams removed 2026-04-13 — dream system removed.
 
     # ─── v4: HOST AWARENESS ───
 

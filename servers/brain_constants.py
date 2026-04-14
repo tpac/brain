@@ -102,12 +102,6 @@ EXTERNAL_CLAIM_KEYWORDS = {
     'claude code', 'openai', 'github', 'npm', 'pip', 'docker',
 }
 
-# Stability floor — DEPRECATED 2026-04-08
-# Stability was computed but never used in recall, traversal, or scoring.
-# S2 confidence recalibration replaces per-edge stability tracking.
-STABILITY_FLOOR_ACCESS_THRESHOLD = 5  # DEPRECATED
-STABILITY_FLOOR_RETENTION = 0.3  # DEPRECATED
-
 # Hebbian learning
 LEARNING_RATE = 0.2
 MAX_WEIGHT = 1.0
@@ -353,9 +347,7 @@ CRITICAL_SIMILARITY_THRESHOLD = 0.20  # Lowered embedding threshold for critical
 SPREAD_DECAY = 0.5
 MAX_HOPS = 3
 MAX_NEIGHBORS = 50
-# DEPRECATED 2026-04-08 — stability field no longer written to edges.
-# auto_tune removed 2026-04-13. This constant is dead.
-STABILITY_BOOST = 1.5  # DEPRECATED — remove when no tests reference it
+# STABILITY_BOOST, STABILITY_FLOOR_* removed 2026-04-13 — stability field deprecated.
 
 # B.2: Graph-augmented recall — 3-degree traversal
 GRAPH_AUGMENT_TOP_N = 5       # Seed traversal from top N embedding results
@@ -421,13 +413,4 @@ A: [3-5 word phrase using words from the neighbors above]
 B: [one sentence connecting this node to its most important neighbor]
 K: [5 comma-separated keywords borrowed from neighbors that also describe this node]"""
 
-# Dreaming
-DREAM_WALK_LENGTH = 5
-DREAM_COUNT = 3
-DREAM_MIN_NOVELTY = 2
-
-# Evolution / Curiosity
-REASONING_STEP_TYPES = ['observation', 'hypothesis', 'attempt', 'evidence', 'failure', 'feedback', 'decision', 'lesson']
-CURIOSITY_MAX_PROMPTS = 3
-CURIOSITY_CHAIN_GAP_THRESHOLD = 0
-CURIOSITY_DECAY_WARNING_HOURS = 18
+# Dream, Evolution, Curiosity constants removed 2026-04-13 — all systems deleted.

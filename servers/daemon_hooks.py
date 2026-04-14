@@ -272,19 +272,8 @@ def hook_recall(brain, args, graph_changes):
         brain.save()
         return {"json": {"decision": "approve"}}
 
-    # Priming check
+    # Priming check removed 2026-04-13 — queried dropped tables.
     priming_note = None
-    try:
-        primes = brain.get_active_primes()
-        if primes:
-            match = brain.check_priming(user_message[:500], primes)
-            if match:
-                priming_note = (
-                    'PRIMED TOPIC: "%s" (source: %s, sim: %.2f) '
-                    '— this conversation touches an active concern.' % (
-                        match["topic"][:80], match["source"], match["similarity"]))
-    except Exception as e:
-        brain._log_error('priming_check', e, 'hook_recall')
 
     # Gap detection: log gaps for trend analysis
     if gap:
@@ -722,12 +711,8 @@ def hook_post_compact_reboot(brain, args, graph_changes):
     # Consciousness signals (migrated to signal queue — minimal stub for boot)
     signals = {"reminders": brain.get_due_reminders()}
 
-    # Developmental stage
+    # assess_developmental_stage removed 2026-04-13.
     dev_stage = None
-    try:
-        dev_stage = brain.assess_developmental_stage()
-    except Exception as e:
-        brain._log_error('assess_dev_stage', e, 'hook_post_compact_reboot')
 
     # Recall context related to recent work
     recall_results = []

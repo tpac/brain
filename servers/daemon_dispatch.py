@@ -171,16 +171,7 @@ def _handle_scan_host(brain, args, graph_changes):
 
     # _handle_dreams removed 2026-04-13 — dream system removed.
 
-def _handle_staged(brain, args, graph_changes):
-    return {"ok": True, "result": brain.list_staged(
-        status=args.get("status", "pending"),
-        limit=args.get("limit", 10))}
-
-
-def _handle_suggest_metrics(brain, args, graph_changes):
-    return {"ok": True, "result": brain.get_suggest_metrics(
-        period_days=args.get("period_days", 7))}
-
+    # _handle_staged, _handle_suggest_metrics removed 2026-04-13 — methods deleted.
 
 def _handle_procedure_trigger(brain, args, graph_changes):
     return {"ok": True, "result": brain.procedure_trigger(
@@ -199,18 +190,8 @@ def _handle_get_debug_status(brain, args, graph_changes):
 
     # _handle_get_active_evolutions removed 2026-04-13 — use filter_nodes.
 
-def _handle_assess_dev_stage(brain, args, graph_changes):
-    return {"ok": True, "result": brain.assess_developmental_stage()}
-
-
-def _handle_instinct_check(brain, args, graph_changes):
-    return {"ok": True, "result": {"nudge": brain.get_instinct_check(
-        args.get("message", ""))}}
-
-
-def _handle_prompt_reflection(brain, args, graph_changes):
-    return {"ok": True, "result": brain.prompt_reflection()}
-
+    # _handle_assess_dev_stage, _handle_instinct_check, _handle_prompt_reflection
+    # removed 2026-04-13 — consciousness system deleted.
 
 def _handle_enrichment_coverage(brain, args, graph_changes):
     return {"ok": True, "result": brain.get_enrichment_coverage()}
@@ -854,15 +835,12 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     # last_synthesis removed 2026-04-13.
     "scan_host":                CmdEntry(_handle_scan_host,            is_write=False),
     # dreams removed 2026-04-13 — dream system removed.
-    "staged":                   CmdEntry(_handle_staged,               is_write=False),
-    "suggest_metrics":          CmdEntry(_handle_suggest_metrics,      is_write=False),
+    # staged, suggest_metrics removed 2026-04-13 — methods deleted.
     "procedure_trigger":        CmdEntry(_handle_procedure_trigger,    is_write=False),
     "get_config":               CmdEntry(_handle_get_config,           is_write=False),
     "get_debug_status":         CmdEntry(_handle_get_debug_status,     is_write=False),
     # get_active_evolutions removed 2026-04-13 — use filter_nodes.
-    "assess_developmental_stage": CmdEntry(_handle_assess_dev_stage,   is_write=False),
-    "instinct_check":           CmdEntry(_handle_instinct_check,       is_write=False),
-    "prompt_reflection":        CmdEntry(_handle_prompt_reflection,    is_write=False),
+    # assess_developmental_stage, instinct_check, prompt_reflection removed 2026-04-13.
     "enrichment_coverage":      CmdEntry(_handle_enrichment_coverage,  is_write=False),
     "pre_edit":                 CmdEntry(_handle_pre_edit,             is_write=False),
 
