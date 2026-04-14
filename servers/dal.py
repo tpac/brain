@@ -1570,21 +1570,6 @@ class GraphDAL:
         ).fetchone()
         return row[0] if row else None
 
-    # get_neighbors, get_typed_neighbors, get_neighbors_with_context, get_neighbors_rich
-    # consolidated into single get_neighbors() — 2026-04-14.
-
-    def get_neighbors_with_context(self, node_id: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """DEPRECATED: Use get_neighbors() instead."""
-        return self.get_neighbors(node_id, limit=limit)
-
-    def get_neighbors_rich(self, node_id: str, limit: int = 8,
-                           exclude_relations: set = None,
-                           exclude_node_ids: set = None) -> List[Dict[str, Any]]:
-        """DEPRECATED: Use get_neighbors() instead."""
-        return self.get_neighbors(node_id, limit=limit,
-                                  exclude_relations=exclude_relations,
-                                  exclude_node_ids=exclude_node_ids)
-
     def get_neighbors(self, node_id: str, limit: int = 8,
                       exclude_relations: set = None,
                       exclude_node_ids: set = None) -> List[Dict[str, Any]]:

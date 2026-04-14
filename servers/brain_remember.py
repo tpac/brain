@@ -1335,7 +1335,7 @@ class BrainRememberMixin:
         """
         try:
             graph_dal = GraphDAL(self.conn)
-            neighbors = graph_dal.get_neighbors_with_context(
+            neighbors = graph_dal.get_neighbors(
                 node_id, limit=ENRICHMENT_NEIGHBOR_COUNT
             )
             if not neighbors:
