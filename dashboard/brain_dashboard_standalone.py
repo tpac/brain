@@ -218,7 +218,11 @@ def _query_recall_log(since_id=0, limit=50, session_id=''):
                 "used_count": len(selected_ids),
                 "precision_score": None,
                 "judge_prompt": j_prompt,
-                "judge_output": judge_output or j_output_file,
+                # Prefer the /tmp surface-result file over trace metadata —
+                # the trace truncates at 4000 chars per policy, but the file
+                # holds the full additionalContext (including canary / tail).
+                # Trace content remains as fallback when the file is missing.
+                "judge_output": j_output_file or judge_output,
             })
         conn.close()
         return results
@@ -2211,10 +2215,13 @@ function filterByScale() {
   });
 }
 
-let s2DecodeLoaded = false;
+// Track which S2 chain_ids we've already rendered. Polling adds new ones
+// without re-rendering existing. Previously a s2DecodeLoaded flag gated the
+// whole function to run once per page load, which hid any S2 run that fired
+// after the tab was opened (the dashboard would appear to forget new
+// consolidation/community events until a browser refresh).
+const s2RenderedChains = new Set();
 async function loadS2DecodeEntries() {
-  if (s2DecodeLoaded) return;
-  s2DecodeLoaded = true;
   const container = document.getElementById('feed-decoding');
   try {
     // Only show S2 entries from last 24h in the live Decoding feed.
@@ -2232,8 +2239,10 @@ async function loadS2DecodeEntries() {
       (b.events[0]?.created_at || '').localeCompare(a.events[0]?.created_at || ''));
 
     chainList.forEach(chain => {
+      if (s2RenderedChains.has(chain.chain_id)) return;  // Already in DOM
+      s2RenderedChains.add(chain.chain_id);
       const el = _renderS2ChainEntry(chain);
-      // Insert chronologically: find first S1 entry older than this chain
+      // Insert chronologically: find first entry older than this chain
       const chainTs = chain.events[0]?.created_at || '';
       const entries = container.querySelectorAll('.recall-entry, .s2-entry');
       let inserted = false;
@@ -2251,6 +2260,9 @@ async function loadS2DecodeEntries() {
     console.error('S2 decode load failed:', e);
   }
 }
+// Refresh S2 feed every 15s while decoding tab is active. Light poll —
+// the function is idempotent and only appends new chains.
+setInterval(() => { if (activeFeed === 'decoding') loadS2DecodeEntries(); }, 15000);
 
 function _renderS2ChainEntry(chain) {
   const oEvent = chain.events.find(e => e.event_type === 'O');

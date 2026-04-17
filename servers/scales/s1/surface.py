@@ -133,7 +133,8 @@ def _graph_expand(brain, selected_ids):
             SELECT n.id, n.type, n.title, substr(n.content, 1, 300),
                    er.relation, e.weight, er.description,
                    n.confidence, n.locked,
-                   CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction
+                   CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction,
+                   n.created_at, n.revised_at
             FROM edges e
             JOIN edge_relations er ON er.edge_id = e.edge_id
             JOIN nodes n ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END
@@ -153,6 +154,7 @@ def _graph_expand(brain, selected_ids):
                     "edge_weight": r[5], "edge_description": r[6] or "",
                     "confidence": r[7], "locked": r[8] == 1,
                     "direction": r[9],
+                    "created_at": r[10], "revised_at": r[11],
                     "seed_id": full_id,
                 })
 

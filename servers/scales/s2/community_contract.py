@@ -153,9 +153,11 @@ COMMUNITY_METADATA_KEYS = {
     'community_run_count',            # Integer: how many S2 runs touched this
 
     # ── Encoder-produced (from LLM) ──
-    'community_narrative',            # The story arc in 2-4 sentences
+    # community_narrative / community_open_questions REMOVED 2026-04-17:
+    # - narrative was a duplicate of content (the node's own content field)
+    # - open_questions migrated to the standard `question` enrichment path
+    #   (embedded, participates in recall like any other node's question)
     'community_key_decisions',        # JSON list of node IDs (3-5 defining nodes)
-    'community_open_questions',       # JSON list of strings
     'community_correction_count',     # Integer: correction edges inside community
     'community_dominant_type',        # Most common node type among members
     'community_maturity',             # "forming" / "active" / "settled" / "corridor"

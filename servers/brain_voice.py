@@ -475,17 +475,20 @@ class BrainVoice:
             ''').fetchall()
 
             if communities:
-                # Load maturity + member count per community
+                # Load maturity + member count per community.
+                # Narrative comes from the community node's own content field
+                # (legacy community_narrative metadata key was removed in the
+                # 2026-04-17 migration; it was always a duplicate of content).
                 comm_by_id = {}
                 for cid, ctitle, ccontent in communities:
                     meta = dict(brain.conn.execute(
                         "SELECT key, value FROM node_metadata_kv "
                         "WHERE node_id = ? AND key IN "
-                        "('community_maturity', 'community_size', 'community_narrative')",
+                        "('community_maturity', 'community_size')",
                         (cid,)).fetchall())
                     maturity = meta.get('community_maturity', '?')
                     size = meta.get('community_size', '?')
-                    narrative = meta.get('community_narrative', '') or (ccontent or '')
+                    narrative = ccontent or ''
                     comm_by_id[cid] = (maturity, size, ctitle, narrative, cid)
 
                 # Find communities with recently accessed members

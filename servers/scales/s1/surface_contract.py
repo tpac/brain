@@ -68,7 +68,7 @@ CANDIDATES_FILE = {
 SURFACE = {
     'content_limit': 300,           # shorter per node since more candidates
     'max_candidates': 20,           # v9: was 25. FTS5 adds up to 5 more = 25 max total
-    'max_selected': 8,              # Haiku picks at most this many
+    'max_selected': 5,              # Haiku picks at most this many (was 8 — reduced for 10K hook cap)
     'user_message_limit': 300,
     'anchor_message_limit': 400,    # v9: was 150. Anchor responses carry design context
     'recent_messages': 7,           # v9: was 5. Deeper conversation window
@@ -438,7 +438,16 @@ Candidates:
     return prompt, cfg['max_tokens']
 
 
-SURFACE_FORMAT = {'content_limit': 400, 'edge_limit': 3, 'metadata_limit': 150, 'time_format': 'relative'}
+SURFACE_FORMAT = {
+    'content_limit': 400, 'edge_limit': 3, 'metadata_limit': 150, 'time_format': 'relative',
+    # Surface strips decision/debug fields — keeps content, situation, edges
+    # (what Anchor needs to respond). Judge reasoning, question, keywords, model
+    # provenance, and confidence score aren't action-taking context.
+    'show_confidence': False,
+    'show_encoding_source': False,
+    'show_keywords': False,
+    'extra_skip_keys': ('question', 'reasoning'),
+}
 HAIKU_FORMAT = {'content_limit': 300, 'edge_limit': 3, 'metadata_limit': 120, 'time_format': 'relative'}
 
 
@@ -637,17 +646,59 @@ def format_surface_output(selected, candidates, graph_neighbors=None):
         deduped = [nb for nb in graph_neighbors
                    if nb.get("id", "") not in seen_ids and nb.get("id", "")[:8] not in seen_ids]
         if deduped:
+            # Map seed IDs → titles so we can say "corrects 'S1 Surface...'" by
+            # name instead of leaving the relation dangling.
+            seed_titles = {}
+            for c in candidates:
+                cid = c.get('id', '')
+                if cid:
+                    seed_titles[cid] = c.get('title', '')
+                    seed_titles[cid[:8]] = c.get('title', '')
+
             lines.append("Related knowledge (via graph):")
             for nb in deduped[:6]:
-                edge_desc = " — %s" % nb.get("edge_description", "") if nb.get("edge_description") else ""
-                lines.append("[%s] \"%s\" (%s%s)" % (
+                nid = nb.get('id', '') or ''
+                # Time marker: "1w ago" for unrevised, "created Xw ago, revised Yd ago" when revised
+                created = _relative_time(nb.get('created_at') or '')
+                revised = _relative_time(nb.get('revised_at') or '')
+                if revised and created and revised != created:
+                    time_str = "created %s, revised %s" % (created, revised)
+                elif created:
+                    time_str = created
+                else:
+                    time_str = ""
+                header_parts = ["id:%s" % nid[:8]]
+                if time_str:
+                    header_parts.append(time_str)
+                # Full title — no 60-char cap (readability > density)
+                lines.append('[%s] "%s" (%s)' % (
                     nb.get("type", "?"),
-                    nb.get("title", "?")[:60],
-                    nb.get("edge_type", "related"),
-                    edge_desc))
+                    nb.get("title", "?"),
+                    ", ".join(header_parts)))
+
+                # Direction line — unambiguous who acts on whom. Matches the
+                # convention render_rich_node uses for in-node edges:
+                #   outgoing from seed (seed→rel→this):  "seed" rel this
+                #   incoming to seed (this→rel→seed):    this rel "seed"
+                seed_id = nb.get('seed_id', '') or ''
+                seed_title = seed_titles.get(seed_id) or seed_titles.get(seed_id[:8]) or '(seed)'
+                edge_type = nb.get('edge_type', 'related')
+                edge_desc = nb.get('edge_description', '')
+                direction = nb.get('direction', '')
+                if direction == 'outgoing':
+                    # Edge was seed → this neighbor; seed is the subject
+                    rel_line = '  "%s" %s this' % (seed_title, edge_type)
+                else:
+                    # Edge was this neighbor → seed; neighbor is the subject
+                    rel_line = '  this %s "%s"' % (edge_type, seed_title)
+                if edge_desc:
+                    rel_line += ' — ' + edge_desc
+                lines.append(rel_line)
+
+                # Content snippet last
                 content = (nb.get("content") or "")[:200]
                 if content:
                     lines.append("  %s" % content)
-            lines.append("")
+                lines.append("")  # blank line between neighbors
 
     return "\n".join(lines)

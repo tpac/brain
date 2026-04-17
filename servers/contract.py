@@ -228,15 +228,18 @@ def render_rich_node(node, config=None):
             return _relative_time(ts)
         return str(ts)[:10]
 
-    # Header
+    # Header — individual parts are opt-out via cfg flags (defaults preserve
+    # current behavior for callers that don't set them, e.g. Anchor's MCP queries).
     parts = ["id:%s" % nid[:8]]
-    conf = node.get('confidence')
-    if conf:
-        parts.append("conf:%.1f" % conf)
+    if cfg.get('show_confidence', True):
+        conf = node.get('confidence')
+        if conf:
+            parts.append("conf:%.1f" % conf)
     if node.get('locked'):
         parts.append("locked")
-    if node.get('encoding_source'):
-        parts.append("src:%s" % node['encoding_source'])
+    if cfg.get('show_encoding_source', True):
+        if node.get('encoding_source'):
+            parts.append("src:%s" % node['encoding_source'])
     created_rel = _fmt_time(node.get('created_at'))
     revised_rel = _fmt_time(node.get('revised_at'))
     if revised_rel and created_rel and revised_rel != created_rel:
@@ -264,7 +267,7 @@ def render_rich_node(node, config=None):
     # Metadata KV
     meta = node.get('_metadata', {})
     meta_limit = cfg.get('metadata_limit', 300)
-    skip_keys = (
+    skip_keys = set((
         'metadata_created_at',
         # S2 community structural metrics — useful for S2CD/S3, not for Anchor
         'community_internal_edges', 'community_external_edges',
@@ -272,7 +275,9 @@ def render_rich_node(node, config=None):
         'community_centroid', 'community_size', 'community_run_count',
         'community_growth_rate', 'community_edge_signature',
         'community_last_change',
-    )
+    ))
+    # Caller-supplied extra skips (e.g. SURFACE drops 'question', 'reasoning')
+    skip_keys.update(cfg.get('extra_skip_keys', ()))
     if meta_limit > 0:
         for key, val in meta.items():
             if not val or key in skip_keys:
@@ -286,8 +291,9 @@ def render_rich_node(node, config=None):
             lines.append('  %s: %s' % (key.replace('_', ' ').title(), str(val)[:meta_limit]))
 
     # Keywords
-    if node.get('keywords'):
-        lines.append('  Keywords: %s' % node['keywords'])
+    if cfg.get('show_keywords', True):
+        if node.get('keywords'):
+            lines.append('  Keywords: %s' % node['keywords'])
 
     # Personal context
     if node.get('personal') and node.get('personal_context'):

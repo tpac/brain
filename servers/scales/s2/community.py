@@ -54,9 +54,12 @@ class CommunityDetection(CommunityDecoder):
         proposals, suppressed_count = filter_rejected(self.brain, raw_proposals)
 
         if suppressed_count:
-            self.trace('K', 'rejection_suppression',
-                       '%d proposals suppressed by prior rejections (of %d raw)' % (
-                           suppressed_count, len(raw_proposals)),
+            # Use community_proposals ref_type (valid per trace contract).
+            # Summary prefix 'SUPPRESSED:' lets the dashboard distinguish this
+            # from a regular decoder-output proposals trace.
+            self.trace('K', 'community_proposals',
+                       'SUPPRESSED: %d proposals matched prior rejections (of %d raw), %d surviving' % (
+                           suppressed_count, len(raw_proposals), len(proposals)),
                        metadata={'suppressed': suppressed_count,
                                  'raw_total': len(raw_proposals),
                                  'surviving': len(proposals)})

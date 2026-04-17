@@ -85,8 +85,8 @@ class EnrichmentDecoder(IntegrationUnit):
         situation = self.brain.conn.execute(
             "SELECT COUNT(*) FROM nodes n WHERE n.archived=0 "
             "AND n.id NOT IN ("
-            "  SELECT node_id FROM node_embeddings "
-            "  WHERE situation_text IS NOT NULL AND length(situation_text) > 5)"
+            "  SELECT node_id FROM node_enrichments "
+            "  WHERE vector_type = '_situation' AND text IS NOT NULL AND length(text) > 5)"
         ).fetchone()[0]
 
         reasoning = self.brain.conn.execute(
@@ -117,7 +117,7 @@ class EnrichmentDecoder(IntegrationUnit):
             SELECT n.id FROM nodes n
             WHERE n.archived=0
             AND n.id NOT IN (SELECT node_id FROM node_metadata_kv WHERE key='question')
-            AND n.id NOT IN (SELECT node_id FROM node_embeddings WHERE situation_text IS NOT NULL AND length(situation_text) > 5)
+            AND n.id NOT IN (SELECT node_id FROM node_enrichments WHERE vector_type = '_situation' AND text IS NOT NULL AND length(text) > 5)
             AND n.id NOT IN (SELECT node_id FROM node_metadata_kv WHERE key='reasoning' AND length(value) > 5)
             ORDER BY n.access_count DESC
             LIMIT ?
