@@ -1,9 +1,11 @@
 """S2CE — Community Encoder.
 
-Takes decoder proposals → runs agentic Sonnet → writes community nodes.
-Uses brain_batch tool through run_llm_loop (same pattern as S1E).
+Takes decoder proposals → runs the S2 Community Encoder agent → writes
+community nodes. Uses brain_batch tool through run_llm_loop (same pattern
+as S1E). The encoder agent (currently Haiku 4.5) is configured in the
+s2_community_enrichment interaction — model and prompt are both learnable.
 
-The encoder sees proposals formatted as text: timeline, edge signatures,
+The agent sees proposals formatted as text: timeline, edge signatures,
 representative nodes, sample edges. It creates community nodes with
 narratives, situations, and metadata via tool calls.
 """
@@ -11,9 +13,7 @@ narratives, situations, and metadata via tool calls.
 import os
 
 from .base import IntegrationUnit
-from .community_contract import (
-    COMMUNITY_DETECTION, S2CE_NODE_FORMAT,
-)
+from .community_contract import COMMUNITY_DETECTION
 from .community_decoder import read_community_meta
 from .rejection_table import (
     match_proposals_to_actions,
@@ -154,14 +154,14 @@ class CommunityEncoder(IntegrationUnit):
         return result
 
     # ══════════════════════════════════════════════════════════
-    # _encode — agentic Sonnet via run_llm_loop
+    # _encode — S2 Community Encoder agent via run_llm_loop
     # ══════════════════════════════════════════════════════════
 
     def _encode(self, proposals, community_state):
         """Run S2CE in batches — processes ALL proposals.
 
         Proposals are split into chunks of max_proposals_per_call.
-        Each chunk gets one Sonnet call. Between chunks, community_state
+        Each chunk gets one encoder-agent call. Between chunks, community_state
         is refreshed so later chunks see what earlier ones created.
         """
         import anthropic
@@ -173,9 +173,9 @@ class CommunityEncoder(IntegrationUnit):
             's2_community_enrichment')
         config = self._get_interaction_config('s2_community_enrichment') or {}
         model = config.get('model', self.config.get(
-            'model', 'claude-sonnet-4-20250514'))
+            'model', 'claude-haiku-4-5-20251001'))
         max_tokens = config.get('max_tokens', self.config.get(
-            'max_tokens', 8192))
+            'max_tokens', 32768))
 
         if not system_prompt:
             print('[s2ce] WARNING: no enrichment prompt', flush=True)
@@ -438,7 +438,7 @@ class CommunityEncoder(IntegrationUnit):
             return '\n'.join(lines)
 
     # ══════════════════════════════════════════════════════════
-    # Proposal formatting (text rendering for Sonnet)
+    # Proposal formatting (text rendering for the encoder agent)
     # ══════════════════════════════════════════════════════════
 
     def _format_proposals(self, proposals):

@@ -27,7 +27,7 @@ import numpy as np
 
 from .base import IntegrationUnit
 from .community_contract import (
-    COMMUNITY_DETECTION, S2CE_NODE_FORMAT,
+    COMMUNITY_DETECTION,
     COMMUNITY_METADATA_KEYS,
 )
 from servers.embedder import cosine_similarity

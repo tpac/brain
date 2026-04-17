@@ -279,17 +279,11 @@ def match_proposals_to_actions(sent_proposals, action_details):
 # ═══════════════════════════════════════════════════════════════
 # PRIORITY ORDERING
 # ═══════════════════════════════════════════════════════════════
+#
+# TYPE_PRIORITY lives in community_contract.py (source of truth).
+# Community-specific: the proposal types belong to the community unit.
 
-# Type priority: structural impact first. Merges simplify the landscape,
-# new communities create frontier for future inside-out scans, add_to_existing
-# extends at the frontier, health/drift are maintenance.
-TYPE_PRIORITY = {
-    'merge_communities': 0,
-    'new_community': 1,
-    'add_to_existing': 2,
-    'health_update': 3,
-    'drift': 4,
-}
+from .community_contract import TYPE_PRIORITY  # noqa: E402
 
 
 def sort_proposals_by_priority(proposals):

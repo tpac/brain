@@ -94,6 +94,30 @@ COMMUNITY_ENRICHMENT = {
 
 
 # ═══════════════════════════════════════════════════════════════
+# PROPOSAL TYPE PRIORITY
+# ═══════════════════════════════════════════════════════════════
+#
+# Order proposals by structural impact so the encoder sees the
+# highest-leverage work first:
+#   1. merges simplify the community landscape
+#   2. new_community creates frontier for future inside-out scans
+#   3. add_to_existing extends communities at the frontier
+#   4. health_update corrects community metadata
+#   5. drift moves a single node between communities (lowest impact)
+#
+# Used by rejection_table.sort_proposals_by_priority() when capping
+# quotas and sorting the batch sent to the encoder.
+
+TYPE_PRIORITY = {
+    'merge_communities': 0,
+    'new_community': 1,
+    'add_to_existing': 2,
+    'health_update': 3,
+    'drift': 4,
+}
+
+
+# ═══════════════════════════════════════════════════════════════
 # COMMUNITY NODE METADATA KEYS
 # Flat keys in node_metadata_kv — each independently queryable via SQL.
 #
