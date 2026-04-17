@@ -162,6 +162,12 @@ CONTEXT_BOOT_LOCKED_LIMIT = 50
 CONTEXT_BOOT_RECALL_LIMIT = 15
 CONTEXT_BOOT_RECENT_LIMIT = 10
 
+# Boot context rendering
+BOOT_COMMUNITY_TOP = 18            # Top communities by size/maturity
+BOOT_COMMUNITY_RECENT = 2          # Recently worked-on communities
+BOOT_IDENTITY_LIMIT = 3            # Identity nodes in YOU section
+BOOT_IDENTITY_CONTENT_LIMIT = 300  # Content chars per identity node
+
 # Embeddings weights
 EMBEDDING_PRIMARY_WEIGHT = 0.90
 KEYWORD_FALLBACK_WEIGHT = 0.10

@@ -28,8 +28,28 @@ COMMUNITY_DETECTION = {
     # secondary_affinity / primary_affinity ≥ this
     'overlap_min_ratio': 0.5,
 
+    # ── Add-to-existing affinity threshold ──
+    # Fraction of node's typed neighbors that must be in the community.
+    # 15% was too low (noise). 25% = at least 1 in 4 neighbors.
+    'add_to_existing_min_affinity': 0.25,
+
     # ── Embedding placement for orphans ──
     'embedding_placement_threshold': 0.50,
+
+    # ── Cluster-to-community overlap (duplicate prevention) ──
+    # Before proposing new_community, check if cluster members mostly
+    # connect to an existing community. If fraction of cluster nodes
+    # with neighbors in the same existing community >= this threshold,
+    # convert to add_to_existing instead.
+    'cluster_overlap_threshold': 0.60,
+
+    # ── Drift detection ──
+    # foreign_affinity > home_affinity × drift_ratio triggers a drift proposal.
+    # Per-node override: _sys_drift_threshold in metadata_kv. Encoder raises
+    # this on rejection (e.g. 1.6, 1.7) so weak drift doesn't re-propose.
+    'drift_ratio': 1.5,
+    'drift_ratio_step': 0.1,        # how much encoder raises per rejection
+    'drift_min_foreign_affinity': 0.15,  # absolute floor for foreign affinity
 
     # ── Community merge detection ──
     # Merge when overlap >= this AND unique members in smaller < min_unique
@@ -41,9 +61,23 @@ COMMUNITY_DETECTION = {
     'cross_cutting_max_top_affinity': 0.35,
 
     # ── Encoder ──
-    'model': 'claude-sonnet-4-20250514',
-    'max_tokens': 16384,
-    'max_proposals_per_call': 10,   # Communities per batch (fewer = fits in one round)
+    # Haiku 4.5 after A/B eval proved it outperforms Sonnet 4.6 on this task
+    # (Sonnet 4.6 couldn't complete 2 rounds without max_tokens truncation or
+    # running out of rounds on inspection. Haiku produced 10 communities
+    # with structured narratives in ~60s vs Sonnet's 0 writes in 2 rounds.)
+    'model': 'claude-haiku-4-5-20251001',
+    'max_tokens': 32768,
+    'max_proposals_per_call': 10,   # Smaller batches = richer per-community context
+    'max_actionable_per_run': 30,   # Cap per idle cycle (was 60 for Sonnet)
+    # Per-type quotas — priority order: merge > new_community > add_to_existing > health > drift
+    'type_quotas': {
+        'merge_communities': 3,
+        'new_community': 10,
+        'add_to_existing': 12,
+        'health_update': 3,
+        'drift': 2,
+    },
+    'max_rounds': 2,                # LLM rounds per batch — get_nodes then brain_batch, done
     'journal_max_chars': 14000,
 }
 
@@ -54,8 +88,8 @@ COMMUNITY_DETECTION = {
 # ═══════════════════════════════════════════════════════════════
 
 COMMUNITY_ENRICHMENT = {
-    'model': 'claude-sonnet-4-20250514',
-    'max_tokens': 8192,
+    'model': 'claude-haiku-4-5-20251001',
+    'max_tokens': 32768,
 }
 
 
@@ -128,11 +162,21 @@ COMMUNITY_METADATA_KEYS = {
 # Plus edge signatures, sample edges, metadata → fits in Sonnet 200K
 # ═══════════════════════════════════════════════════════════════
 
+# Used when encoder calls get_nodes() to inspect specific members
 S2CE_NODE_FORMAT = {
     'content_limit': 300,       # Gist, not full content
     'edge_limit': 4,            # Relations matter — keep 4 with descriptions
     'metadata_limit': 150,      # Key metadata only
     'time_format': 'relative',  # "2d ago" not "2026-04-09"
+}
+
+# Compact format for existing communities in the context listing.
+# Just enough for the encoder to check "does my proposal overlap with this?"
+S2CE_COMMUNITY_FORMAT = {
+    'content_limit': 150,       # Brief narrative gist
+    'edge_limit': 0,            # No edges
+    'metadata_limit': 0,        # No metadata — content is the narrative
+    'time_format': 'relative',
 }
 
 # Fields the encoder needs to see per representative node:

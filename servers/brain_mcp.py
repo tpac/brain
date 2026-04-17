@@ -467,9 +467,36 @@ def handle_tools_list(request_id):
 def _format_result(tool_name, result):
     """Format tool result for MCP output.
 
-    Recall gets structured text (same format as hooks) for readability.
-    All other tools get JSON.
+    - recall: structured text (same format as hooks) for readability.
+    - get_nodes: batch-size-aware rendering via contract.py configs.
+      Small batches (<=3) keep raw JSON for Anchor drill-downs.
+      Medium batches (<=10) use GET_NODES_BALANCED_FORMAT.
+      Large batches (>10) use GET_NODES_COMPACT_FORMAT.
+      Prevents tool_result explosion in encoder contexts.
+    - All other tools: JSON dump.
     """
+    if tool_name == "get_nodes" and isinstance(result, dict) and result:
+        # result is {node_id: rich_node_dict, ...}
+        rich_nodes = [v for v in result.values() if isinstance(v, dict) and v.get('id')]
+        if rich_nodes:
+            from servers.contract import (
+                render_rich_node,
+                GET_NODES_SMALL_MAX, GET_NODES_MEDIUM_MAX,
+                GET_NODES_BALANCED_FORMAT, GET_NODES_COMPACT_FORMAT,
+            )
+            n = len(rich_nodes)
+            if n <= GET_NODES_SMALL_MAX:
+                # Small batch — preserve full JSON for Anchor/targeted lookups
+                return json.dumps(result, indent=2, default=str)
+            config = GET_NODES_BALANCED_FORMAT if n <= GET_NODES_MEDIUM_MAX \
+                else GET_NODES_COMPACT_FORMAT
+            lines = []
+            for node in rich_nodes:
+                lines.append(render_rich_node(node, config))
+                lines.append("")
+            return "\n".join(lines)
+        # Fall through if result shape is unexpected
+
     if tool_name == "recall" and isinstance(result, dict):
         from servers.brain_voice import BrainVoice
         results = result.get("results", [])

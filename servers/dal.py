@@ -175,8 +175,8 @@ class LogsDAL:
             stats['orphaned_edges'] = cur.rowcount
 
             cur = graph_conn.execute(
-                "DELETE FROM node_embeddings WHERE node_id NOT IN (SELECT id FROM nodes)")
-            stats['orphaned_embeddings'] = cur.rowcount
+                "DELETE FROM node_enrichments WHERE node_id NOT IN (SELECT id FROM nodes)")
+            stats['orphaned_vectors'] = cur.rowcount
 
             # node_metadata orphan cleanup removed 2026-04-13 — table dropped.
 
@@ -1149,7 +1149,9 @@ class NodeDAL:
         self.conn.commit()
 
     def archive(self, node_id: str) -> None:
-        """Archive a node (soft delete)."""
+        """DEPRECATED — use brain.archive_node() instead.
+        This only sets archived=1. The unified archive_node() also cleans
+        edges, vectors, FTS5, and writes audit metadata."""
         self.conn.execute(
             'UPDATE nodes SET archived = 1, updated_at = ? WHERE id = ?',
             (_now(), node_id)
@@ -1161,7 +1163,6 @@ class NodeDAL:
         Removes: node, embeddings, enrichments, edges (both directions), metadata KV.
         Use archive() for soft delete. This is irreversible."""
         self.conn.execute('DELETE FROM node_enrichments WHERE node_id = ?', (node_id,))
-        self.conn.execute('DELETE FROM node_embeddings WHERE node_id = ?', (node_id,))
         self.conn.execute('DELETE FROM node_metadata_kv WHERE node_id = ?', (node_id,))
         self.conn.execute('DELETE FROM edges WHERE source_id = ? OR target_id = ?', (node_id, node_id))
         self.conn.execute('DELETE FROM nodes WHERE id = ?', (node_id,))
@@ -1225,7 +1226,7 @@ class NodeDAL:
 
 
 class EmbeddingDAL:
-    """Access layer for node_embeddings and node_enrichments tables."""
+    """DEPRECATED v23 — use VectorDAL instead. Reads from old node_embeddings table."""
 
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
@@ -1915,7 +1916,9 @@ def _now() -> str:
 
 
 class EnrichmentDAL:
-    """Access layer for node_enrichments table — multi-vector encoding.
+    """DEPRECATED v23 — use VectorDAL instead.
+
+    Old access layer for node_enrichments table — multi-vector encoding.
 
     Each node can have up to 4 enrichment vectors:
     - question: natural-language question the node answers
@@ -1999,6 +2002,169 @@ class EnrichmentDAL:
             'coverage_pct': round(enriched_nodes / total_nodes * 100, 1) if total_nodes else 0,
             'by_type': {r[0]: r[1] for r in by_type},
         }
+
+
+class VectorDAL:
+    """Unified access layer for all node vectors (node_enrichments table, v23+).
+
+    After v23 migration, ALL vectors live in node_enrichments with vector_type:
+      _primary    — title+content blend (was in node_embeddings)
+      _situation  — situation embedding (was in node_embeddings.situation_embedding)
+      title       — title-only diagnostic pointer
+      high_meta   — situation + quotes
+      other_meta  — reasoning + correction_pattern
+      edge_context — edge descriptions
+      question    — legacy V5 question vector
+      anchor, bridge, keywords — legacy V5 enrichment vectors
+    """
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def store(self, node_id: str, vector_type: str, text: str,
+              embedding: Optional[bytes], model: str = 'snowflake-arctic-embed-m') -> None:
+        """Store or replace a vector for a node.
+
+        Uses deterministic ID '{node_id}__{vector_type}' for INSERT OR REPLACE.
+        """
+        vid = '%s__%s' % (node_id, vector_type)
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            self.conn.execute(
+                '''INSERT OR REPLACE INTO node_enrichments
+                   (id, node_id, vector_type, text, embedding, model, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                (vid, node_id, vector_type, text[:500] if text else '',
+                 embedding, model, now))
+        except Exception as e:
+            import sys
+            print('[VectorDAL] store error for %s/%s: %s' % (
+                node_id[:12], vector_type, e), file=sys.stderr)
+
+    def get_primary(self, node_id: str) -> Optional[bytes]:
+        """Get primary embedding blob for a node."""
+        row = self.conn.execute(
+            "SELECT embedding FROM node_enrichments WHERE node_id = ? AND vector_type = '_primary'",
+            (node_id,)).fetchone()
+        return row[0] if row else None
+
+    def get_all_with_context(self, exclude_archived: bool = True,
+                             types: List[str] = None,
+                             project: str = None) -> List[Dict[str, Any]]:
+        """Get all primary embeddings with node context for recall STEP 3 scan.
+
+        Returns same shape as old EmbeddingDAL.get_all_with_context().
+        """
+        where = ["ne.vector_type = '_primary'"]
+        params = []
+        if exclude_archived:
+            where.append('n.archived = 0')
+        if types:
+            where.append('n.type IN (%s)' % ','.join('?' * len(types)))
+            params.extend(types)
+        if project:
+            where.append('(n.project = ? OR n.project IS NULL)')
+            params.append(project)
+        where_sql = ' WHERE ' + ' AND '.join(where)
+        rows = self.conn.execute(
+            'SELECT ne.node_id, ne.embedding, n.personal, n.personal_context, '
+            'n.confidence, n.critical, n.title, n.type, '
+            'n.created_at, n.emotion, n.access_count '
+            'FROM node_enrichments ne '
+            'JOIN nodes n ON n.id = ne.node_id' + where_sql,
+            params).fetchall()
+        return [{'node_id': r[0], 'embedding': r[1], 'personal': r[2],
+                 'personal_context': r[3], 'confidence': r[4],
+                 'critical': r[5] or 0, 'title': r[6] or '', 'type': r[7] or '',
+                 'created_at': r[8], 'emotion': r[9] or 0,
+                 'access_count': r[10] or 0}
+                for r in rows]
+
+    def get_all_vectors(self, exclude_archived: bool = True) -> List[Dict[str, Any]]:
+        """Get ALL vectors (all types) for unified recall scan.
+
+        Returns: [{node_id, vector_type, embedding}] for rows with non-null embeddings.
+        """
+        sql = ('SELECT ne.node_id, ne.vector_type, ne.embedding '
+               'FROM node_enrichments ne '
+               'JOIN nodes n ON n.id = ne.node_id '
+               'WHERE ne.embedding IS NOT NULL')
+        if exclude_archived:
+            sql += ' AND n.archived = 0'
+        rows = self.conn.execute(sql).fetchall()
+        return [{'node_id': r[0], 'vector_type': r[1], 'embedding': r[2]}
+                for r in rows]
+
+    def get_all_situations(self) -> List[Dict[str, Any]]:
+        """Get all situation embeddings for cosine scan (recall STEP 3.5b)."""
+        rows = self.conn.execute(
+            "SELECT ne.node_id, ne.embedding "
+            "FROM node_enrichments ne "
+            "JOIN nodes n ON n.id = ne.node_id "
+            "WHERE ne.vector_type = '_situation' AND ne.embedding IS NOT NULL "
+            "AND n.archived = 0"
+        ).fetchall()
+        return [{'node_id': r[0], 'situation_embedding': r[1]} for r in rows]
+
+    def get_situation_text(self, node_id: str) -> Optional[str]:
+        """Get situation text for a node."""
+        row = self.conn.execute(
+            "SELECT text FROM node_enrichments WHERE node_id = ? AND vector_type = '_situation'",
+            (node_id,)).fetchone()
+        return row[0] if row and row[0] else None
+
+    def store_situation(self, node_id: str, situation_text: str, situation_blob: bytes) -> None:
+        """Store situation embedding + text for a node."""
+        self.store(node_id, '_situation', situation_text, situation_blob)
+
+    def find_missing(self, vector_type: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Find active nodes missing a specific vector type.
+
+        Returns [{id, title, content}] for nodes that don't have this vector_type.
+        """
+        rows = self.conn.execute('''
+            SELECT n.id, n.title, n.content
+            FROM nodes n
+            WHERE n.archived = 0
+            AND n.id NOT IN (
+                SELECT ne.node_id FROM node_enrichments ne
+                WHERE ne.vector_type = ? AND ne.embedding IS NOT NULL
+            )
+            ORDER BY n.last_accessed DESC
+            LIMIT ?
+        ''', (vector_type, limit)).fetchall()
+        return [{'id': r[0], 'title': r[1] or '', 'content': r[2] or ''} for r in rows]
+
+    def delete_for_node(self, node_id: str) -> int:
+        """Delete all vectors for a node."""
+        self.conn.execute('DELETE FROM node_enrichments WHERE node_id = ?', (node_id,))
+        return self.conn.execute('SELECT changes()').fetchone()[0]
+
+    def get_for_node(self, node_id: str) -> List[Dict[str, Any]]:
+        """Get all vectors for a single node."""
+        rows = self.conn.execute(
+            'SELECT vector_type, text, embedding FROM node_enrichments WHERE node_id = ?',
+            (node_id,)).fetchall()
+        return [{'vector_type': r[0], 'text': r[1], 'embedding': r[2]} for r in rows]
+
+    def get_coverage_stats(self) -> Dict[str, Any]:
+        """Vector coverage statistics."""
+        total_nodes = self.conn.execute(
+            'SELECT COUNT(*) FROM nodes WHERE archived = 0').fetchone()[0]
+        by_type = self.conn.execute(
+            'SELECT vector_type, COUNT(DISTINCT node_id) FROM node_enrichments '
+            'WHERE embedding IS NOT NULL GROUP BY vector_type'
+        ).fetchall()
+        return {
+            'total_nodes': total_nodes,
+            'by_type': {r[0]: r[1] for r in by_type},
+        }
+
+    def count(self) -> int:
+        """Count total vectors."""
+        return self.conn.execute(
+            'SELECT COUNT(*) FROM node_enrichments WHERE embedding IS NOT NULL'
+        ).fetchone()[0]
 
 
 # TelemetryDAL — REMOVED 2026-04-05 (brain_telemetry table dropped, never used)

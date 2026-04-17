@@ -92,23 +92,23 @@ class IntegrationUnit:
     # ── Shared S2 infrastructure ──
 
     def _last_run_timestamp(self):
-        """Find this unit's most recent trace timestamp.
+        """Find this unit's most recent completed run timestamp.
 
         Returns ISO timestamp string, or '' if never run.
-        Used by _should_run() to determine "since when" to look for S1 changes.
+        Only counts runs that wrote a delta trace — incomplete runs
+        (encoder hung, timed out) don't have deltas and are skipped.
         """
         try:
-            rows = self.brain._trace_dal.get_recent(
-                scale=self.SCALE, event_type='delta', limit=50)
-            # Find most recent trace from THIS unit (match chain_id prefix)
-            prefix = '%s-' % self.SCALE
-            for row in rows:
-                chain = row.get('chain_id', '')
-                if chain.endswith(self.NAME):
-                    return row.get('created_at', '')
-        except Exception:
-            pass
-        return ''
+            row = self.brain.logs_conn.execute(
+                "SELECT created_at FROM trace_events "
+                "WHERE scale = ? AND event_type = 'delta' AND chain_id LIKE ? "
+                "ORDER BY created_at DESC LIMIT 1",
+                (self.SCALE, '%%-' + self.NAME)).fetchone()
+            return row[0] if row else ''
+        except Exception as e:
+            import sys
+            print('[%s] _last_run_timestamp error: %s' % (self.NAME, e), file=sys.stderr)
+            return ''
 
     def _has_new_traces(self, scale, ref_type=None):
         """Check if there are traces newer than this unit's last run.

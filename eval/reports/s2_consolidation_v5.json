@@ -1,0 +1,146 @@
+{
+  "timestamp": "2026-04-12T00:48:51.097751",
+  "clusters_processed": 5,
+  "clusters_total": 164,
+  "decode_stats": {
+    "nodes_scanned": 1904,
+    "title_embeddings": 1897,
+    "pairs_found": 629,
+    "suppressed_pairs": 0,
+    "mode": "cold_start",
+    "clusters": 164,
+    "class_counts": {
+      "likely_consolidate": 9,
+      "likely_keep": 16,
+      "needs_judgment": 130,
+      "likely_evolve": 9
+    }
+  },
+  "encode_result": {
+    "actions": 1,
+    "write_actions": 1,
+    "rounds": 2
+  },
+  "analysis": {
+    "actions": [
+      {
+        "cluster_nodes": [
+          "b4e95874",
+          "018ec1d8"
+        ],
+        "pre_class": "likely_consolidate",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "b4e95874",
+          "018ec1d8"
+        ],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 2
+      },
+      {
+        "cluster_nodes": [
+          "3bbdc686",
+          "7846cee4",
+          "2e82620f"
+        ],
+        "pre_class": "likely_keep",
+        "action_type": "KEPT",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 2
+      },
+      {
+        "cluster_nodes": [
+          "4fa06d19",
+          "7132d2a4"
+        ],
+        "pre_class": "likely_keep",
+        "action_type": "KEPT",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "18f6e986",
+          "f3dd7f7d"
+        ],
+        "pre_class": "likely_consolidate",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "18f6e986",
+          "f3dd7f7d"
+        ],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 2
+      },
+      {
+        "cluster_nodes": [
+          "bcff3c1c",
+          "6227fef3"
+        ],
+        "pre_class": "likely_consolidate",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "bcff3c1c",
+          "6227fef3"
+        ],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 2
+      }
+    ],
+    "new_nodes": [
+      {
+        "id": "3714b105",
+        "title": "Encoding write lock blocks recall \u2014 Sonnet holds daemon single-writer during 58s call",
+        "type": "finding",
+        "content": "The daemon's single-writer architecture means encoding locks out recall. A 58s Sonnet call blocks all concurrent recall requests. Discovered independently in two sessions \u2014 once via latency profiling ",
+        "confidence": 0.85
+      },
+      {
+        "id": "ac4d5271",
+        "title": "S2 multi-parameter clustering: semantic, co-access, temporal, correction-chain, structural \u2014 5 dimensions",
+        "type": "architecture",
+        "content": "S2 clusters nodes by multiple independent parameters. The same node can belong to different clusters depending on what you cluster by:\n\n**Semantic** (embedding proximity) \u2014 'these are about the same t",
+        "confidence": 0.85
+      },
+      {
+        "id": "c6c2f5ca",
+        "title": "Pre-April edge description coverage: 5% vs 63-67% post-April \u2014 F strategy blind on old nodes",
+        "type": "finding",
+        "content": "Empirical finding reveals a phase transition in brain quality:\n\n- **Before April 1:** ~5% description coverage on edges\n- **After April 1:** 63-67% description coverage\n\nExample: node `138ede9f` ('fou",
+        "confidence": 0.85
+      }
+    ],
+    "suppression_edges": 9
+  },
+  "scores": {
+    "composite": 0.867,
+    "dimensions": {
+      "acceptance_rate": 1.0,
+      "locked_safety": 1.0,
+      "suppression": 1.0,
+      "action_diversity": 0.667,
+      "synthesis_content_length": 1.0,
+      "synthesis_references": 0.0,
+      "preclass_alignment": 1.0,
+      "efficiency": 1.0
+    },
+    "details": {
+      "acted": 5,
+      "total": 5,
+      "locked_violations": 0,
+      "with_suppression": 5,
+      "action_counts": {
+        "CONSOLIDATED": 3,
+        "KEPT": 2
+      }
+    }
+  },
+  "elapsed_s": 81.09280395507812
+}

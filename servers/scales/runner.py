@@ -165,10 +165,15 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             _log("WARNING: max_tokens hit (round %d, %s/%d output tokens) — response truncated" % (
                 round_num, out_used, max_tokens))
 
+    def _create_message(msgs):
+        """Create message with streaming to avoid timeout on large contexts."""
+        with client.messages.stream(
+                model=model, max_tokens=max_tokens,
+                system=system_prompt, messages=msgs, tools=tools) as stream:
+            return stream.get_final_message()
+
     api_messages = [{"role": "user", "content": user_content}]
-    response = client.messages.create(
-        model=model, max_tokens=max_tokens,
-        system=system_prompt, messages=api_messages, tools=tools)
+    response = _create_message(api_messages)
     _track_usage(response, 0)
     _step("llm_r0")
 
@@ -225,9 +230,7 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                                 {"id": b.id, "name": b.name, "input": b.input})}
             for b in response.content]})
         api_messages.append({"role": "user", "content": tool_results})
-        response = client.messages.create(
-            model=model, max_tokens=max_tokens,
-            system=system_prompt, messages=api_messages, tools=tools)
+        response = _create_message(api_messages)
         _track_usage(response, rounds + 1)
         _step("llm_r%d" % (rounds + 1))
 

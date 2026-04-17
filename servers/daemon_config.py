@@ -18,7 +18,9 @@ os.environ.setdefault("PYTORCH_MPS_DISABLE", "1")
 
 # ─── Constants ───
 
-IDLE_TIMEOUT_SECONDS = 4 * 60 * 60  # 4 hours
+IDLE_TIMEOUT_SECONDS = 4 * 60 * 60  # 4 hours — shutdown after this
+S2_IDLE_THRESHOLD = 5 * 60          # 5 minutes idle before S2 can trigger
+S2_MIN_INTERVAL = 60 * 60           # 1 hour minimum between S2 runs
 AUTOSAVE_INTERVAL_SECONDS = 60  # Save every 60 seconds if dirty
 SOCKET_BACKLOG = 5
 MAX_MESSAGE_SIZE = 1024 * 1024  # 1MB max message

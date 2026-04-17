@@ -236,11 +236,12 @@ class EnrichmentEncoder(IntegrationUnit):
                 **fields_to_write,
             }
 
+            # skip_embedding: prevent ONNX multi-thread spin during S2
+            revise_args['skip_embedding'] = True
+
             if self.dispatch:
                 self.dispatch('revise', revise_args)
             else:
-                # Direct — revise() handles everything:
-                # metadata_kv writes, situation embedding, group vectors, FTS5
                 self.brain.revise(**revise_args)
 
             return len(fields_to_write)

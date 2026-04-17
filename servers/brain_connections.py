@@ -63,19 +63,8 @@ class BrainConnectionsMixin:
         graph_dal.add_relation(source_id, target_id, relation, description=description,
                                weight=actual_weight, encoding_source=encoding_source)
 
-        # Recompute edge_context vectors for both endpoints when edge has a description.
-        # Edge descriptions change what the node "looks like" from its connections.
-        if description and len(description.strip()) > 10:
-            for nid in (source_id, target_id):
-                try:
-                    row = self.conn.execute(
-                        "SELECT title, content FROM nodes WHERE id = ? AND archived = 0",
-                        (nid,)).fetchone()
-                    if row:
-                        self._compute_group_vectors(nid, row[0], row[1] or '')
-                except Exception as e:
-                    self._log_error('connect_edge_context', e,
-                                    'recomputing edge_context for %s' % nid[:8])
+        # v23: edge_context vectors deferred to idle backfill.
+        # Previously recomputed inline here, causing ONNX multi-thread spinning.
 
     def _random_walk(self, start_id: str, steps: int) -> List[str]:
         """

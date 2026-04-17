@@ -218,18 +218,27 @@ class ConsolidationEncoder(IntegrationUnit):
         encoding_source = self.ENCODING_SOURCE
 
         def dispatch(cmd, cmd_args):
-            # Force encoding_source on creates — not setdefault, because the LLM
-            # may fill in encoding_source from schema references or training data.
-            # S2 nodes must always be tagged with the S2 unit that created them.
+            # Force encoding_source + skip_embedding on S2 writes.
+            # skip_embedding prevents ONNX multi-thread spin — vectors
+            # computed by backfill_vectors() after S2 finishes.
             # Revise ops should NOT get encoding_source — don't change who originally
             # created a node just because S2 touched it.
             if cmd in ('remember', 'remember_batch'):
                 if isinstance(cmd_args, dict):
                     cmd_args['encoding_source'] = encoding_source
+                    cmd_args['skip_embedding'] = True
+            if cmd in ('revise', 'revise_batch'):
+                if isinstance(cmd_args, dict):
+                    cmd_args['skip_embedding'] = True
             if cmd == 'brain_batch' and isinstance(cmd_args, dict):
                 for op in cmd_args.get('operations', []):
-                    if isinstance(op, dict) and op.get('op') == 'remember':
-                        op['encoding_source'] = encoding_source
+                    if isinstance(op, dict):
+                        if op.get('op') == 'remember':
+                            op['encoding_source'] = encoding_source
+                        if op.get('op') in ('remember', 'revise'):
+                            op['skip_embedding'] = True
+                        if op.get('op') == 'archive':
+                            op['archived_by'] = encoding_source
 
             entry = COMMAND_TABLE.get(cmd)
             if entry:
@@ -398,8 +407,8 @@ class ConsolidationEncoder(IntegrationUnit):
                         "SELECT key, value FROM node_metadata_kv "
                         "WHERE node_id = ? AND value IS NOT NULL AND value != ''",
                         (nid,)).fetchall()
-                    skip_keys = {'revision_history'}  # internal, not for synthesis
-                    kv_fields = [(k, v) for k, v in kv_rows if k not in skip_keys]
+                    kv_fields = [(k, v) for k, v in kv_rows
+                                 if not k.startswith('_sys_')]  # system fields hidden
                     if kv_fields:
                         lines.append('      Metadata:')
                         for k, v in kv_fields:

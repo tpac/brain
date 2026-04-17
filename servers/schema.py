@@ -40,7 +40,7 @@ import shutil
 import sqlite3
 from datetime import datetime, timezone
 
-BRAIN_VERSION = 22  # v22: edge_id + single-direction + clean edge schema
+BRAIN_VERSION = 23  # v23: vectors consolidated into node_enrichments table
 BRAIN_VERSION_KEY = 'brain_schema_version'
 
 # ─── Allowed node types ───
@@ -270,23 +270,11 @@ TABLES = {
 
     # prune_archive — REMOVED v21 (dead table)
 
-    'node_embeddings': {
-        'create': """CREATE TABLE IF NOT EXISTS node_embeddings (
-            node_id TEXT PRIMARY KEY,
-            embedding BLOB NOT NULL,
-            situation_embedding BLOB,
-            situation_text TEXT,
-            model TEXT NOT NULL DEFAULT 'snowflake-arctic-embed-m',
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
-        )""",
-        'columns': {'node_id': None, 'embedding': None,
-                    'situation_embedding': None, 'situation_text': None,
-                    'model': "'snowflake-arctic-embed-m'", 'created_at': None}
-    },
+    # node_embeddings — REMOVED v23. Migrated to node_enrichments, table dropped.
 
-    # v6: Node enrichments — multi-vector encoding for improved recall.
-    # Each node can have multiple enrichment vectors (question, anchor, bridge, keywords)
+    # v6→v23: Node vectors — ALL embeddings live here.
+    # v6: enrichment vectors (question, anchor, bridge, keywords)
+    # v23: also primary (_primary) and situation (_situation) vectors
     # generated at encode time by an LLM. These are searched alongside the primary embedding.
     # See PLAN.md "Embedding Migration to LLM" for design rationale and benchmark results.
     'node_enrichments': {
@@ -359,27 +347,7 @@ TABLES = {
         }
     },
 
-    # v15: Self-correction traces — where Claude's model diverges from reality
-    'correction_traces': {
-        'create': """CREATE TABLE IF NOT EXISTS correction_traces (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT,
-            original_node_id TEXT,
-            corrected_node_id TEXT,
-            claude_assumed TEXT NOT NULL,
-            reality TEXT NOT NULL,
-            underlying_pattern TEXT,
-            severity TEXT DEFAULT 'minor',
-            created_at TEXT,
-            FOREIGN KEY (original_node_id) REFERENCES nodes(id) ON DELETE SET NULL,
-            FOREIGN KEY (corrected_node_id) REFERENCES nodes(id) ON DELETE SET NULL
-        )""",
-        'columns': {
-            'id': None, 'session_id': 'NULL', 'original_node_id': 'NULL',
-            'corrected_node_id': 'NULL', 'claude_assumed': None, 'reality': None,
-            'underlying_pattern': 'NULL', "severity": "'minor'", 'created_at': 'NULL',
-        }
-    },
+    # correction_traces — REMOVED v23. Dropped.
 
     # v15: Session syntheses — structured knowledge from conversations
     'session_syntheses': {
@@ -436,6 +404,30 @@ TABLES = {
             'community_id': 'NULL',
         }
     },
+    's2_rejections': {
+        # Rejection memory for S2 integration units. When an encoder rejects
+        # a proposal, its fingerprint is stored here so the decoder can
+        # suppress re-proposals of identical input on subsequent runs.
+        # Fingerprint captures what the encoder actually judges on (not
+        # implementation artifacts) — changes in graph state that would
+        # alter the proposal's inputs naturally produce a new fingerprint,
+        # letting legitimate re-proposals through.
+        # See servers/scales/s2/rejection_table.py for fingerprint logic.
+        'create': """CREATE TABLE IF NOT EXISTS s2_rejections (
+            fingerprint TEXT PRIMARY KEY,
+            integration_unit TEXT NOT NULL,
+            proposal_type TEXT NOT NULL,
+            proposed_ids TEXT,
+            created_at TEXT NOT NULL
+        )""",
+        'columns': {
+            'fingerprint': 'TEXT PRIMARY KEY',
+            'integration_unit': 'TEXT NOT NULL',
+            'proposal_type': 'TEXT NOT NULL',
+            'proposed_ids': 'TEXT',
+            'created_at': 'TEXT NOT NULL',
+        }
+    },
 }
 
 # ─── Canonical indexes ───
@@ -462,14 +454,11 @@ INDEXES = [
     # bridge_proposals
     'CREATE INDEX IF NOT EXISTS idx_bridge_proposals_status ON bridge_proposals(status)',
     'CREATE INDEX IF NOT EXISTS idx_bridge_proposals_matures ON bridge_proposals(matures_at)',
-    # node_embeddings
-    'CREATE INDEX IF NOT EXISTS idx_node_embeddings_model ON node_embeddings(model)',
+    # node_embeddings — REMOVED v23 (table deprecated, index not maintained)
     # v15: node_metadata
     'CREATE INDEX IF NOT EXISTS idx_metadata_correction ON node_metadata(correction_of)',
     'CREATE INDEX IF NOT EXISTS idx_metadata_validated ON node_metadata(last_validated)',
-    # v15: correction_traces
-    'CREATE INDEX IF NOT EXISTS idx_correction_traces_pattern ON correction_traces(underlying_pattern)',
-    'CREATE INDEX IF NOT EXISTS idx_correction_traces_session ON correction_traces(session_id)',
+    # correction_traces — REMOVED v23
     # v15: session_syntheses
     'CREATE INDEX IF NOT EXISTS idx_session_syntheses_session ON session_syntheses(session_id)',
     # v15: nodes scope for engineering memory
@@ -479,6 +468,11 @@ INDEXES = [
     # v6 (LLM migration): node_enrichments
     'CREATE INDEX IF NOT EXISTS idx_enrichments_node ON node_enrichments(node_id)',
     'CREATE INDEX IF NOT EXISTS idx_enrichments_type ON node_enrichments(vector_type)',
+    # v23: composite index for vector lookups (backfill_vectors, recall scan)
+    'CREATE INDEX IF NOT EXISTS idx_enrichments_node_type ON node_enrichments(node_id, vector_type)',
+    # s2_rejections — per-unit queries for cleanup/analysis
+    'CREATE INDEX IF NOT EXISTS idx_s2_rejections_unit ON s2_rejections(integration_unit)',
+    'CREATE INDEX IF NOT EXISTS idx_s2_rejections_created ON s2_rejections(created_at)',
     # brain_telemetry indexes — moved to LOG_INDEXES (brain_logs.db)
 ]
 
@@ -585,6 +579,16 @@ def _backfill_data(conn, from_version):
         # v22: Rebuild edges + edge_relations with edge_id, single-direction,
         # clean columns (no deprecated relation/edge_type/description/stability).
         _migrate_edges_v22(conn)
+
+    if from_version < 23:
+        # v23: Consolidate node_embeddings into node_enrichments.
+        # Primary + situation embeddings become rows with vector_type '_primary' / '_situation'.
+        _migrate_vectors_v23(conn)
+
+
+def _migrate_vectors_v23(conn):
+    """v23: node_embeddings → node_enrichments migration. Already ran. Source table dropped."""
+    pass
 
 
 def _migrate_edges_v22(conn):

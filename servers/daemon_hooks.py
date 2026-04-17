@@ -586,15 +586,18 @@ def hook_idle_maintenance(brain, args, graph_changes):
     except Exception as e:
         brain._log_error('backfill_summaries', e, 'idle_maintenance')
 
-    # 7. Backfill embeddings
+    # 7. Backfill ALL vectors (primary, situation, title, high_meta, other_meta, edge_context)
+    # v23: unified backfill replaces backfill_embeddings. Runs single-threaded after S2.
     try:
-        emb_count = brain.backfill_embeddings(batch_size=20)
-        if isinstance(emb_count, dict):
-            emb_count = emb_count.get("count", 0)
-        if emb_count and emb_count > 0:
-            output.append("EMBEDDINGS: backfilled %d nodes" % emb_count)
+        vec_result = brain.backfill_vectors(batch_size=30)
+        if isinstance(vec_result, dict) and not vec_result.get('error'):
+            total = sum(v for k, v in vec_result.items() if isinstance(v, int))
+            if total > 0:
+                parts = ['%s:%d' % (k, v) for k, v in vec_result.items() if isinstance(v, int) and v > 0]
+                output.append("VECTORS: backfilled %d (%s)" % (total, ', '.join(parts)))
+                graph_changes.append("VECTORS: %d backfilled" % total)
     except Exception as e:
-        brain._log_error('backfill_embeddings', e, 'idle_maintenance')
+        brain._log_error('backfill_vectors', e, 'idle_maintenance')
 
     # 8. prune_irrelevant_quotes removed 2026-04-13 — fix at encoding time, not after.
 

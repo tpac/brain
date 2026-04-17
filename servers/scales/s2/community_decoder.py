@@ -100,22 +100,35 @@ class CommunityDecoder(IntegrationUnit):
             dict with keys: proposals, stats, community_state, s1_delta,
                             is_cold_start, skipped (if no new traces)
         """
-        if not self._has_new_traces('s1', ref_type='encoding_run'):
-            return {'proposals': [], 'skipped': 'no new S1 traces'}
-
-        last_ts = self._last_run_timestamp()
-        is_cold_start = not last_ts
-
-        s1_delta = self._read_s1_delta(last_ts)
+        # v23: Always incremental — find unplaced nodes, not trace deltas.
+        # Survives partial failures: if encoder placed 50/100 before crash,
+        # next run finds the remaining 50.
         community_state = self._read_community_state()
 
-        self.trace('O', 's1_delta',
-                   '%d encoding runs, %d new nodes%s' % (
-                       len(s1_delta['encoding_runs']),
-                       len(s1_delta['new_node_ids']),
-                       ' (cold start)' if is_cold_start else ''))
+        # Count unplaced nodes for the trace
+        already_placed = set()
+        for comm in community_state:
+            for mid in comm.get('members', []):
+                already_placed.add(mid)
+        all_active = set(r[0] for r in self.brain.conn.execute(
+            "SELECT id FROM nodes WHERE archived = 0 AND type != 'community'"
+        ).fetchall())
+        unplaced_count = len(all_active - already_placed)
 
-        decode_result = self._decode(s1_delta, community_state, is_cold_start)
+        if unplaced_count == 0:
+            return {'proposals': [], 'skipped': 'all nodes placed'}
+
+        # Build s1_delta for compat with _decode interface
+        s1_delta = {
+            'encoding_runs': [],
+            'new_node_ids': all_active - already_placed,
+        }
+
+        self.trace('O', 's1_delta',
+                   '%d unplaced nodes, %d communities' % (
+                       unplaced_count, len(community_state)))
+
+        decode_result = self._decode(s1_delta, community_state, is_cold_start=False)
         proposals = decode_result['proposals']
         proposals.extend(self._detect_recall_signals(s1_delta, community_state))
 
@@ -140,7 +153,7 @@ class CommunityDecoder(IntegrationUnit):
             'stats': decode_result.get('stats', {}),
             'community_state': community_state,
             's1_delta': s1_delta,
-            'is_cold_start': is_cold_start,
+            'unplaced_count': unplaced_count,
         }
 
     # ══════════════════════════════════════════════════════════
@@ -239,7 +252,7 @@ class CommunityDecoder(IntegrationUnit):
     # _decode — the 9-step pipeline
     # ══════════════════════════════════════════════════════════
 
-    def _decode(self, s1_delta, community_state, is_cold_start):
+    def _decode(self, s1_delta, community_state, is_cold_start=False):
         # Load edge families
         edge_families_config = self._get_interaction_config(
             's2_edge_families') or {}
@@ -271,19 +284,18 @@ class CommunityDecoder(IntegrationUnit):
         pair_zscores, degrees, bucket_stats = self._compute_pair_scores(
             typed_neighbors, edges_by_node)
 
-        if not is_cold_start:
-            pair_zscores = {
-                (a, b): z for (a, b), z in pair_zscores.items()
-                if a in unplaced or b in unplaced
-            }
+        # Always filter to pairs with at least one unplaced node
+        pair_zscores = {
+            (a, b): z for (a, b), z in pair_zscores.items()
+            if a in unplaced or b in unplaced
+        }
 
         # Step 3: Seed clusters from unplaced nodes
         direct_pairs = self._get_direct_pairs(edges_by_node)
-        if not is_cold_start:
-            direct_pairs = {
-                (a, b) for a, b in direct_pairs
-                if a in unplaced or b in unplaced
-            }
+        direct_pairs = {
+            (a, b) for a, b in direct_pairs
+            if a in unplaced or b in unplaced
+        }
         clusters = self._seed_clusters(pair_zscores, direct_pairs)
 
         # Step 4: Validate
@@ -300,6 +312,7 @@ class CommunityDecoder(IntegrationUnit):
             valid_clusters, typed_neighbors)
 
         # Step 5b: Affinities for unplaced nodes to EXISTING communities
+        add_min_affinity = self.config.get('add_to_existing_min_affinity', 0.25)
         existing_additions = {}
         if community_state:
             for nid in unplaced:
@@ -310,7 +323,7 @@ class CommunityDecoder(IntegrationUnit):
                     shared = len(nbrs & comm['members'])
                     if shared > 0:
                         aff = shared / len(nbrs)
-                        if aff >= 0.15:
+                        if aff >= add_min_affinity:
                             if nid not in existing_additions:
                                 existing_additions[nid] = []
                             existing_additions[nid].append(
@@ -320,6 +333,21 @@ class CommunityDecoder(IntegrationUnit):
                 existing_additions[nid].sort(key=lambda x: -x[2])
 
         # Step 5c: Drift detection for PLACED nodes
+        # Per-node threshold: encoder raises _sys_drift_threshold on rejection
+        default_drift_ratio = self.config.get('drift_ratio', 1.5)
+        min_foreign_aff = self.config.get('drift_min_foreign_affinity', 0.15)
+
+        # Bulk-load per-node drift thresholds
+        node_drift_thresholds = {}
+        drift_rows = self.brain.conn.execute(
+            "SELECT node_id, value FROM node_metadata_kv "
+            "WHERE key = '_sys_drift_threshold'").fetchall()
+        for _nid, _val in drift_rows:
+            try:
+                node_drift_thresholds[_nid] = float(_val)
+            except (ValueError, TypeError):
+                pass
+
         drift_candidates = {}
         if community_state:
             for nid in already_placed:
@@ -329,6 +357,7 @@ class CommunityDecoder(IntegrationUnit):
                 if not nbrs:
                     continue
 
+                drift_ratio = node_drift_thresholds.get(nid, default_drift_ratio)
                 home = node_to_community[nid]
                 home_aff = len(nbrs & home['members']) / len(nbrs) if nbrs else 0
 
@@ -336,10 +365,11 @@ class CommunityDecoder(IntegrationUnit):
                     if comm['id'] == home['id']:
                         continue
                     foreign_aff = len(nbrs & comm['members']) / len(nbrs)
-                    if foreign_aff > home_aff * 1.5 and foreign_aff > 0.15:
+                    if foreign_aff > home_aff * drift_ratio and foreign_aff > min_foreign_aff:
                         if nid not in drift_candidates:
                             drift_candidates[nid] = {
                                 'home': home, 'home_aff': home_aff,
+                                'drift_ratio': drift_ratio,
                                 'foreign': []}
                         drift_candidates[nid]['foreign'].append(
                             (comm['id'], comm['title'], foreign_aff))
@@ -347,10 +377,11 @@ class CommunityDecoder(IntegrationUnit):
                 # Also check affinity to NEW clusters
                 for cid, members in valid_clusters.items():
                     foreign_aff = len(nbrs & members) / len(nbrs)
-                    if foreign_aff > home_aff * 1.5 and foreign_aff > 0.15:
+                    if foreign_aff > home_aff * drift_ratio and foreign_aff > min_foreign_aff:
                         if nid not in drift_candidates:
                             drift_candidates[nid] = {
                                 'home': home, 'home_aff': home_aff,
+                                'drift_ratio': drift_ratio,
                                 'foreign': []}
                         drift_candidates[nid]['foreign'].append(
                             ('new_cluster_%d' % cid, 'new cluster', foreign_aff))
@@ -376,7 +407,16 @@ class CommunityDecoder(IntegrationUnit):
                 self.brain.conn, comm['id'],
                 'community_maturity', type='str')
 
-            if old_frac > 0 and int_frac < old_frac * 0.7:
+            if int_frac < 0.05 and len(ms) > 0:
+                # Community's members have no internal edges — it's dead.
+                # Encoder should archive it.
+                community_health_updates.append({
+                    'community': comm,
+                    'old_fraction': old_frac,
+                    'new_fraction': int_frac,
+                    'signal': 'dead',
+                })
+            elif old_frac > 0 and int_frac < old_frac * 0.7:
                 community_health_updates.append({
                     'community': comm,
                     'old_fraction': old_frac,
@@ -411,7 +451,7 @@ class CommunityDecoder(IntegrationUnit):
         proposals = self._build_proposals(
             valid_clusters, corridors, node_affinities,
             orphan_affinities, cross_cutting, tie_analysis,
-            edges_by_node, typed_neighbors)
+            edges_by_node, typed_neighbors, community_state)
 
         # Step 9b: Add incremental proposals
         titles = {}
@@ -440,6 +480,7 @@ class CommunityDecoder(IntegrationUnit):
                 'node_type': types_map.get(nid, '?'),
                 'home_community': drift['home']['title'],
                 'home_affinity': drift['home_aff'],
+                'current_drift_threshold': drift.get('drift_ratio', default_drift_ratio),
                 'foreign': [
                     {'id': cid, 'title': ctitle, 'affinity': aff}
                     for cid, ctitle, aff in drift['foreign'][:3]],
@@ -791,8 +832,8 @@ class CommunityDecoder(IntegrationUnit):
             blobs = []
             for nid in members:
                 row = self.brain.conn.execute(
-                    "SELECT embedding FROM node_embeddings "
-                    "WHERE node_id = ? AND embedding IS NOT NULL",
+                    "SELECT embedding FROM node_enrichments "
+                    "WHERE node_id = ? AND vector_type = '_primary' AND embedding IS NOT NULL",
                     (nid,)).fetchone()
                 if row and row[0]:
                     blobs.append(row[0])
@@ -815,8 +856,8 @@ class CommunityDecoder(IntegrationUnit):
 
         orphan_affinities = {}
         for row in self.brain.conn.execute(
-                "SELECT node_id, embedding FROM node_embeddings "
-                "WHERE embedding IS NOT NULL"):
+                "SELECT node_id, embedding FROM node_enrichments "
+                "WHERE vector_type = '_primary' AND embedding IS NOT NULL"):
             nid, emb = row
             if nid not in orphans:
                 continue
@@ -865,7 +906,8 @@ class CommunityDecoder(IntegrationUnit):
     def _build_proposals(self, valid_clusters, corridors,
                          node_affinities, orphan_affinities,
                          cross_cutting, tie_analysis,
-                         edges_by_node, typed_neighbors):
+                         edges_by_node, typed_neighbors,
+                         community_state=None):
         proposals = []
 
         titles = {}
@@ -874,6 +916,15 @@ class CommunityDecoder(IntegrationUnit):
                 "SELECT id, title, type FROM nodes WHERE archived = 0"):
             titles[row[0]] = row[1][:60]
             types_map[row[0]] = row[2]
+
+        # Build community membership lookup for overlap check
+        comm_members = {}  # comm_id -> set of member ids
+        if community_state:
+            for comm in community_state:
+                comm_members[comm['id']] = comm['members']
+
+        overlap_threshold = self.config.get('cluster_overlap_threshold', 0.60)
+        converted_to_add = 0
 
         # ── Community proposals ──
         for cid, members in sorted(valid_clusters.items(),
@@ -966,6 +1017,44 @@ class CommunityDecoder(IntegrationUnit):
             hub_ids = {r['id'] for r in representatives}
             render_latest = latest_id and latest_id not in hub_ids
 
+            # ── Overlap check: would this cluster duplicate an existing community? ──
+            # For each existing community, count how many cluster members have
+            # neighbors in that community. If >= threshold, convert to add_to_existing.
+            best_overlap_comm = None
+            best_overlap_frac = 0.0
+            if comm_members:
+                for comm_id, comm_mids in comm_members.items():
+                    connecting = sum(
+                        1 for nid in ms
+                        if typed_neighbors.get(nid, set()) & comm_mids)
+                    frac = connecting / len(ms) if ms else 0
+                    if frac > best_overlap_frac:
+                        best_overlap_frac = frac
+                        best_overlap_comm = comm_id
+
+            if best_overlap_frac >= overlap_threshold and best_overlap_comm:
+                # Convert: route unplaced members to the overlapping community
+                comm_title = next(
+                    (c['title'] for c in community_state
+                     if c['id'] == best_overlap_comm), '?')
+                existing_members = comm_members.get(best_overlap_comm, set())
+                for nid in ms:
+                    if nid not in existing_members:
+                        proposals.append({
+                            'type': 'add_to_existing',
+                            'node_id': nid,
+                            'node_title': titles.get(nid, nid[:8]),
+                            'node_type': types_map.get(nid, '?'),
+                            'source': 'overlap_check',
+                            'overlap_frac': round(best_overlap_frac, 2),
+                            'communities': [
+                                {'id': best_overlap_comm,
+                                 'title': comm_title,
+                                 'affinity': best_overlap_frac}],
+                        })
+                converted_to_add += 1
+                continue
+
             proposals.append({
                 'type': 'new_community',
                 'cluster_id': cid,
@@ -1020,6 +1109,11 @@ class CommunityDecoder(IntegrationUnit):
                                 for c, sim in affinities[:5]],
                 'method': 'embedding',
             })
+
+        if converted_to_add:
+            print('[s2cd] Overlap check: converted %d clusters to add_to_existing '
+                  '(threshold %.0f%%)' % (converted_to_add, overlap_threshold * 100),
+                  flush=True)
 
         return proposals
 

@@ -172,10 +172,12 @@ def load_model(config: Optional[Dict[str, Any]] = None):
 
         # Always force CPU-only execution provider.
         # CoreML/Metal causes SIGABRT in background processes on Apple Silicon.
-        # threads=2: limit ONNX internal threads to prevent spin-wait CPU spikes.
-        # See: https://github.com/microsoft/onnxruntime/issues/9313
-        import multiprocessing
-        _onnx_threads = min(2, multiprocessing.cpu_count())
+        # threads=1: single ONNX thread prevents ARM64 threadpool deadlock.
+        # onnxruntime <= 1.19.2 has a race in EigenNonBlockingThreadPool on
+        # weakly-ordered architectures (Apple Silicon) — PR #23098, fixed in
+        # 1.20+ but that requires Python 3.11+. With 1 thread the race can't
+        # trigger. Cost: ~6ms/call, negligible for 768d model.
+        _onnx_threads = 1
         common_kwargs = {
             "providers": ["CPUExecutionProvider"],
             "threads": _onnx_threads,

@@ -1,0 +1,257 @@
+{
+  "timestamp": "2026-04-12T01:25:49.240701",
+  "clusters_processed": 12,
+  "clusters_total": 165,
+  "decode_stats": {
+    "nodes_scanned": 1909,
+    "title_embeddings": 1902,
+    "pairs_found": 630,
+    "suppressed_pairs": 0,
+    "mode": "cold_start",
+    "clusters": 165,
+    "class_counts": {
+      "likely_consolidate": 9,
+      "likely_keep": 16,
+      "needs_judgment": 131,
+      "likely_evolve": 9
+    }
+  },
+  "encode_result": {
+    "actions": 2,
+    "write_actions": 2,
+    "rounds": 4
+  },
+  "analysis": {
+    "actions": [
+      {
+        "cluster_nodes": [
+          "6ac0de63",
+          "a22349d2"
+        ],
+        "pre_class": "likely_consolidate",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "6ac0de63"
+        ],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 2
+      },
+      {
+        "cluster_nodes": [
+          "dab3ba6c",
+          "95cb26c6"
+        ],
+        "pre_class": "likely_consolidate",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "dab3ba6c"
+        ],
+        "revised": [
+          "95cb26c6"
+        ],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "cab4e114",
+          "3c3a3046",
+          "96fc6e64"
+        ],
+        "pre_class": "likely_evolve",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "96fc6e64"
+        ],
+        "revised": [
+          "3c3a3046"
+        ],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "046e0359",
+          "d4c31b9f"
+        ],
+        "pre_class": "likely_evolve",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "046e0359"
+        ],
+        "revised": [
+          "d4c31b9f"
+        ],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "ad15aa67",
+          "7df3de85"
+        ],
+        "pre_class": "likely_keep",
+        "action_type": "KEPT",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "04154c4a",
+          "8ad7ad4f",
+          "996436d7",
+          "07e1a336",
+          "1ea781a2"
+        ],
+        "pre_class": "likely_keep",
+        "action_type": "NO_ACTION",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 0
+      },
+      {
+        "cluster_nodes": [
+          "13446b28",
+          "3b258338"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "KEPT",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "4cf82963",
+          "5cd664c0"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "KEPT",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "13446b28",
+          "3b258338"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "KEPT",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "84fe32d8",
+          "a96a782d"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "a96a782d"
+        ],
+        "revised": [
+          "84fe32d8"
+        ],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "57d27bdf",
+          "20c9e116",
+          "f872fd93",
+          "96488c8a",
+          "1976ded1"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "57d27bdf",
+          "20c9e116",
+          "f872fd93",
+          "96488c8a",
+          "1976ded1"
+        ],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 5
+      },
+      {
+        "cluster_nodes": [
+          "bf168f95",
+          "ce1d490d",
+          "16b0e4f4"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "bf168f95",
+          "ce1d490d",
+          "16b0e4f4"
+        ],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 3
+      }
+    ],
+    "new_nodes": [
+      {
+        "id": "2118e1c3",
+        "title": "Embedder configuration pipeline \u2014 plugin.json defaults through brain_meta overrides to model loading",
+        "type": "arch_concept",
+        "content": "Complete config flow: plugin.json 'config.embedder' section \u2192 _EMBEDDER_DEFAULTS dict \u2192 brain_meta table overrides \u2192 embedder.load_model(config) \u2192 3-step fallback chain (local path \u2192 HuggingFace \u2192 pip brain-embedding \u2192 auto-install). Key functions: _get_embedder_config() reads from brain_meta with plugin.json fallbacks, set_embedder_config() writes to brain_meta for runtime model swapping. Users can change models without code changes via one call: brain.set_embedder_config(model_name='nomic-ai/nomic-embed-text-v1.5-Q', dim=768, pooling='mean'). Takes effect on next boot.\n\nComponents synthesized: plugin.json config (id:20c9e116), pipeline concept (id:1976ded1), config functions (id:57d27bdf, id:96488c8a), load_model fallback chain (id:f872fd93).",
+        "confidence": 0.85
+      },
+      {
+        "id": "898db17d",
+        "title": "Behavioral mirror: heartbeat queries brain with Claude's state, surfaces self-knowledge",
+        "type": "mechanism",
+        "content": "Heartbeat evolved from simple message counter to behavioral mirror. Current: nudges at message threshold 8. Proposed enhancement: summarize Claude's recent behavior (building, discussing, encoding patterns) \u2192 query brain with behavioral description \u2192 surface relevant self-reflections in nudge.\n\nExample flow: 5 messages, 0 encodes, heavy code output \u2192 query \"building without encoding\" \u2192 surface compression instinct node \u2192 nudge: \"You're in build mode with no encodes. A previous you lost all ripple engine reasoning this way.\"\n\nMakes self-knowledge associative, not rule-based. Implementation: modify post_response_track to build behavioral summary, call recall with summary, include findings in nudge. From (id:6ac0de63) and (id:a22349d2).",
+        "confidence": 0.9
+      },
+      {
+        "id": "a07c2a44",
+        "title": "Encoding agent 2-round architecture: remember_batch with connect_to eliminates separate connection round",
+        "type": "arch_design",
+        "content": "Current encoding agent design (post-v3+ rewrite): Round 1 uses remember_batch() with connect_to[] parameter to create ALL new nodes AND connect them to existing nodes via fuzzy title matching in a single call. Auto_connect=True handles inter-node connections. Round 2 is journal + DONE. This replaced the 3-round pattern (R1 batch creates, R2 batch connects, R3 journal) and individual calls (7 remember + 6 find_node_by_title). The 500-char timeline snippets provide sufficient context to eliminate get_node calls entirely.\n\nEvolution: v3+ 3-round pattern (id:16b0e4f4) \u2192 2-round decision (id:bf168f95) \u2192 full rewrite implementation (id:ce1d490d). Key insight: connect_to parameter in remember_batch eliminates the need for a separate connection round.",
+        "confidence": 0.9
+      }
+    ],
+    "suppression_edges": 100
+  },
+  "scores": {
+    "composite": 0.917,
+    "dimensions": {
+      "acceptance_rate": 0.917,
+      "locked_safety": 1.0,
+      "suppression": 0.917,
+      "action_diversity": 0.667,
+      "synthesis_content_length": 1.0,
+      "synthesis_references": 1.0,
+      "preclass_alignment": 0.75,
+      "efficiency": 1.0
+    },
+    "details": {
+      "acted": 11,
+      "total": 12,
+      "locked_violations": 0,
+      "with_suppression": 11,
+      "action_counts": {
+        "CONSOLIDATED": 7,
+        "KEPT": 4,
+        "NO_ACTION": 1
+      }
+    }
+  },
+  "elapsed_s": 143.59083819389343
+}

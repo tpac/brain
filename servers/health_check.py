@@ -50,11 +50,11 @@ def check_group_vector_coverage(brain):
     # Nodes that SHOULD have high_meta (have situation or quotes)
     should_have_high_meta = brain.conn.execute(
         "SELECT COUNT(DISTINCT n.id) FROM nodes n "
-        "LEFT JOIN node_embeddings ne ON ne.node_id = n.id "
+        "LEFT JOIN node_enrichments ne ON ne.node_id = n.id AND ne.vector_type = '_situation' "
         "LEFT JOIN node_metadata_kv m1 ON m1.node_id = n.id AND m1.key = 'user_raw_quote' "
         "LEFT JOIN node_metadata_kv m2 ON m2.node_id = n.id AND m2.key = 'anchor_raw_quote' "
         "WHERE n.archived = 0 AND n.type != 'community' "
-        "AND (ne.situation_text IS NOT NULL OR m1.value IS NOT NULL OR m2.value IS NOT NULL)"
+        "AND (ne.text IS NOT NULL OR m1.value IS NOT NULL OR m2.value IS NOT NULL)"
     ).fetchone()[0]
 
     # Nodes that SHOULD have edge_context (have edge descriptions)

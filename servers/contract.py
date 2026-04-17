@@ -55,8 +55,9 @@ STRUCTURAL_FIELDS = {
 
 PROMOTED_FIELDS = {
     "situation": {
-        "store": "node_embeddings",
-        "column": "situation_text",
+        "store": "node_enrichments",
+        "column": "text",
+        "vector_type": "_situation",
         "type": "str",
         "embeds": True,
         "description": "When is this knowledge relevant? One sentence.",
@@ -169,6 +170,44 @@ NODE_FORMAT_DEFAULTS = {
 }
 
 
+# ── get_nodes BATCH-AWARE FORMATTING ──
+# Prevents tool_result context explosion when encoders call get_nodes
+# on large batches of IDs (the community encoder bug: 30-50 nodes returned
+# as raw JSON dumps = 100-200K tokens, blowing past context window).
+#
+# Callers and their typical batch sizes:
+#   Anchor (MCP):           1-5 nodes   → want full detail
+#   S1E encoder:            5-15 nodes  → need content + edges for context
+#   S2 consolidation:       2-8 nodes   → per-cluster inspection
+#   S2 community encoder:   30-50 nodes → coherence check, gist > depth
+#
+# Strategy: render_rich_node() with scaled config. Small batches stay rich;
+# large batches compress content/edges/metadata but keep structure intact.
+
+# Threshold: below this, return raw JSON (no trimming) — preserves Anchor's
+# single-node drill-downs and targeted lookups.
+GET_NODES_SMALL_MAX = 3
+
+# Threshold: up to this, use balanced config — more room than S2CE but bounded.
+GET_NODES_MEDIUM_MAX = 10
+
+# Balanced: for 4-10 node batches (S1E, consolidation, Anchor multi-node)
+GET_NODES_BALANCED_FORMAT = {
+    'content_limit': 600,       # full enough for encoding decisions
+    'edge_limit': 6,            # relations matter — keep top 6
+    'metadata_limit': 250,
+    'time_format': 'relative',
+}
+
+# Compact: for 11+ node batches (S2 community encoder coherence checks)
+GET_NODES_COMPACT_FORMAT = {
+    'content_limit': 400,       # gist only — enough to judge fit
+    'edge_limit': 4,
+    'metadata_limit': 200,
+    'time_format': 'relative',
+}
+
+
 def render_rich_node(node, config=None):
     """Render a get_rich_node() dict as a formatted string.
 
@@ -208,12 +247,14 @@ def render_rich_node(node, config=None):
     lines = ['[%s] "%s" (%s)' % (
         node.get('type', '?'), node.get('title', '?'), ", ".join(parts))]
 
-    # Content
-    content = node.get('content', '')
-    if cfg.get('content_limit'):
-        content = content[:cfg['content_limit']]
-    if content:
-        lines.append('  Content: %s' % content)
+    # Content (None = no truncation, 0 = hide, N = truncate to N chars)
+    content_limit = cfg.get('content_limit')
+    if content_limit != 0:
+        content = node.get('content', '')
+        if content_limit and content_limit > 0:
+            content = content[:content_limit]
+        if content:
+            lines.append('  Content: %s' % content)
 
     # Situation
     situation = node.get('situation', '')
@@ -224,7 +265,7 @@ def render_rich_node(node, config=None):
     meta = node.get('_metadata', {})
     meta_limit = cfg.get('metadata_limit', 300)
     skip_keys = (
-        'metadata_created_at', 'revision_history',
+        'metadata_created_at',
         # S2 community structural metrics — useful for S2CD/S3, not for Anchor
         'community_internal_edges', 'community_external_edges',
         'community_internal_fraction', 'community_is_corridor',
@@ -232,13 +273,17 @@ def render_rich_node(node, config=None):
         'community_growth_rate', 'community_edge_signature',
         'community_last_change',
     )
-    for key, val in meta.items():
-        if not val or key in skip_keys:
-            continue
-        if key == 'correction_of':
-            # Corrections are in _corrections with full context
-            continue
-        lines.append('  %s: %s' % (key.replace('_', ' ').title(), str(val)[:meta_limit]))
+    if meta_limit > 0:
+        for key, val in meta.items():
+            if not val or key in skip_keys:
+                continue
+            # _sys_ prefix = system/infrastructure fields, never shown to LLMs
+            if key.startswith('_sys_'):
+                continue
+            if key == 'correction_of':
+                # Corrections are in _corrections with full context
+                continue
+            lines.append('  %s: %s' % (key.replace('_', ' ').title(), str(val)[:meta_limit]))
 
     # Keywords
     if node.get('keywords'):

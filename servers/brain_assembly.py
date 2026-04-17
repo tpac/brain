@@ -449,12 +449,15 @@ class BrainAssemblyMixin:
                 'message': f'{stale_count} context nodes older than 7 days.'
             })
             if auto_fix:
-                self.conn.execute('''
-                    UPDATE nodes SET archived = 1
+                stale_ids = [r[0] for r in self.conn.execute('''
+                    SELECT id FROM nodes
                     WHERE type = 'context' AND locked = 0 AND archived = 0
                     AND created_at < datetime('now', '-14 days')
-                ''')
-                actions.append('Auto-archived context nodes older than 14 days')
+                ''').fetchall()]
+                for sid in stale_ids:
+                    self.archive_node(sid, archived_by='hook:integrity',
+                                      reason='context node older than 14 days')
+                actions.append('Auto-archived %d context nodes older than 14 days' % len(stale_ids))
 
         # 5-7: miss_log auto-enrich, staged_learnings auto-promote, stale staged check
         # ALL REMOVED 2026-04-06 — tables dropped
@@ -785,7 +788,7 @@ class BrainAssemblyMixin:
         - Skip pairs already in pending_consolidation
         """
         from . import embedder
-        from .dal import EmbeddingDAL, LogsDAL
+        from .dal import VectorDAL, LogsDAL
         from datetime import datetime, timezone, timedelta
 
         if not embedder.is_ready():
@@ -793,9 +796,10 @@ class BrainAssemblyMixin:
                             "Cannot detect consolidation without embedder")
             return 0
 
-        # Get all embeddings
-        emb_dal = EmbeddingDAL(self.conn)
-        all_embeddings = emb_dal.get_all_embeddings(exclude_archived=True)
+        # Get all primary embeddings
+        vdal = VectorDAL(self.conn)
+        all_embeddings = [{'node_id': r['node_id'], 'embedding': r['embedding']}
+                          for r in vdal.get_all_vectors() if r['vector_type'] == '_primary']
         if not all_embeddings:
             return 0
 

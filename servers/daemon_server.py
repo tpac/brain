@@ -21,7 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Dict, Any
 
 from .daemon_config import (
-    IDLE_TIMEOUT_SECONDS, AUTOSAVE_INTERVAL_SECONDS,
+    IDLE_TIMEOUT_SECONDS, S2_IDLE_THRESHOLD, S2_MIN_INTERVAL, AUTOSAVE_INTERVAL_SECONDS,
     SOCKET_BACKLOG, MAX_MESSAGE_SIZE, THREAD_POOL_SIZE,
     DAEMON_HOST, DAEMON_PORT,
     _CODE_FINGERPRINT,
@@ -249,16 +249,27 @@ class BrainDaemon:
     def _serve(self):
         """Main event loop — accept connections, dispatch to thread pool."""
         last_idle_check = time.time()
+        self._last_s2_run = 0  # epoch — allows first run after S2_MIN_INTERVAL
+        self._s2_running = False
         while self.running:
             # Check idle timeout every ~10 iterations (not every loop)
             now = time.time()
             if now - last_idle_check > 5.0:
                 last_idle_check = now
-                if IDLE_TIMEOUT_SECONDS > 0:
-                    idle = now - self.last_activity
-                    if idle > IDLE_TIMEOUT_SECONDS:
-                        self._log("Idle timeout ({}s). Shutting down.".format(int(idle)))
-                        break
+                idle = now - self.last_activity
+
+                # S2 maintenance: run when idle 5min+ AND at least 1h since last run
+                if (idle > S2_IDLE_THRESHOLD
+                        and now - self._last_s2_run > S2_MIN_INTERVAL
+                        and not self._s2_running):
+                    self._last_s2_run = now
+                    self._s2_running = True
+                    self._pool.submit(self._run_idle_maintenance)
+
+                # Shutdown after long idle
+                if IDLE_TIMEOUT_SECONDS > 0 and idle > IDLE_TIMEOUT_SECONDS:
+                    self._log("Idle timeout ({}s). Shutting down.".format(int(idle)))
+                    break
 
             try:
                 # 0.5s select — balances responsiveness to shutdown vs CPU usage
@@ -592,6 +603,25 @@ class BrainDaemon:
             except Exception:
                 pass
             self._write_status()
+
+    def _run_idle_maintenance(self):
+        """Run S2 + maintenance when daemon is idle. Runs in thread pool.
+
+        Same work as hook_idle_maintenance but triggered internally —
+        no dependency on Claude Code idle_prompt notifications.
+        """
+        self._log("Idle maintenance triggered (%.0fs idle)" % (time.time() - self.last_activity))
+        try:
+            from .daemon_hooks import hook_idle_maintenance
+            graph_changes = []
+            hook_idle_maintenance(self.brain, {"session_id": "daemon-idle"}, graph_changes)
+            if self.brain:
+                self.brain.save()
+            self._log("Idle maintenance complete: %s" % "; ".join(graph_changes) if graph_changes else "Idle maintenance complete (no changes)")
+        except Exception as e:
+            self._log("Idle maintenance error: {}".format(e))
+        finally:
+            self._s2_running = False
 
     def _handle_signal(self, signum, frame):
         self._log("Received signal {}".format(signum))

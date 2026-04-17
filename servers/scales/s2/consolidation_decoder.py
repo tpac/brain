@@ -108,18 +108,16 @@ class ConsolidationDecoder(IntegrationUnit):
             )
         """).fetchall()
 
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).isoformat()
         for nid, title in orphan_communities:
-            self.brain.conn.execute(
-                'UPDATE nodes SET archived = 1, updated_at = ? WHERE id = ?',
-                (now, nid))
-            archived.append({'id': nid, 'title': title, 'reason': 'community with 0 members'})
-            print('[consolidation] Healed: archived orphan community "%s" (%s)' % (
-                title[:50], nid[:8]), flush=True)
+            r = self.brain.archive_node(
+                nid, archived_by='s2:consolidation',
+                reason='community with 0 members')
+            if r.get('ok'):
+                archived.append({'id': nid, 'title': title, 'reason': 'community with 0 members'})
+                print('[consolidation] Healed: archived orphan community "%s" (%s)' % (
+                    title[:50], nid[:8]), flush=True)
 
         if archived:
-            self.brain.conn.commit()
             # Use 'O' not 'delta' — heal is an observation, not a consolidation action.
             # 'delta' would pollute _last_run_timestamp() and prevent cold start scan.
             self.trace('O', 'consolidation_candidates',
@@ -150,12 +148,13 @@ class ConsolidationDecoder(IntegrationUnit):
         threshold = self.config['similarity_threshold']
         suppression = self.config['suppression_relations']
 
-        # Load content (blend) embeddings from node_embeddings
+        # Load content (blend) embeddings — v23: from node_enrichments _primary
         content_rows = self.brain.conn.execute("""
             SELECT ne.node_id, ne.embedding
-            FROM node_embeddings ne
+            FROM node_enrichments ne
             JOIN nodes n ON n.id = ne.node_id
             WHERE n.archived = 0 AND n.type != 'community'
+            AND ne.vector_type = '_primary'
             AND ne.embedding IS NOT NULL AND typeof(ne.embedding) = 'blob'
         """).fetchall()
 

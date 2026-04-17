@@ -517,11 +517,11 @@ def select_edges(connections, query_vec, session=None, limit=3, prior_vecs=None,
     target_ids = [c.get('id', '')[:8] for c in connections]
     stored_embeddings = {}
     if brain_conn is not None:
-        # Batch load from node_embeddings table
+        # Batch load primary embeddings (v23: from node_enrichments)
         full_ids = []
         for tid in target_ids:
             row = brain_conn.execute(
-                'SELECT node_id, embedding FROM node_embeddings WHERE node_id LIKE ?',
+                "SELECT node_id, embedding FROM node_enrichments WHERE vector_type = '_primary' AND node_id LIKE ?",
                 (tid + '%',)).fetchone()
             if row:
                 vec = np.frombuffer(row[1], dtype=np.float32)

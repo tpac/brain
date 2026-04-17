@@ -66,8 +66,8 @@ brain_batch({operations: [
      {target_id: "018ec1d8", relation: "consolidated_into", description: "Synthesized from two independent discoveries of encoding-blocks-recall"},
      {target_id: "b4e95874", relation: "consolidated_into", description: "Synthesized from two independent discoveries of encoding-blocks-recall"}
    ]},
-  {op: "archive", node_id: "018ec1d8"},
-  {op: "archive", node_id: "b4e95874"}
+  {op: "archive", node_id: "018ec1d8", reason: "consolidated into encoding write lock finding"},
+  {op: "archive", node_id: "b4e95874", reason: "consolidated into encoding write lock finding"}
 ]})
 ```
 
@@ -89,7 +89,7 @@ brain_batch({operations: [
   {op: "connect", source_id: "3c3a3046", target_id: "96fc6e64",
    relation: "supersedes",
    description: "Newer data/format separation principle absorbed older three-formatters consolidation"},
-  {op: "archive", node_id: "96fc6e64"}
+  {op: "archive", node_id: "96fc6e64", reason: "superseded by data/format separation principle"}
 ]})
 ```
 

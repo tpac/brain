@@ -121,7 +121,7 @@ CONSOLIDATION = {
     'model': 'claude-sonnet-4-20250514',
     'max_tokens': 16384,
     'max_proposals_per_call': 10,       # Clusters per Sonnet call
-    'max_rounds': 4,                    # Tool-use rounds per call
+    'max_rounds': 2,                    # Tool-use rounds per call — read then write, done
     'journal_max_chars': 14000,
 
     # ── Cold start / run cap ──

@@ -44,7 +44,7 @@ EMBEDDING_GROUPS = {
         'vector_type': 'title',
         'always_compute': True,
     },
-    # Group 2: Blend — existing title+content embedding. Lives in node_embeddings.
+    # Group 2: Blend — title+content embedding. Stored as _primary in node_enrichments.
     'blend': {
         'weight': 0.85,
         'fields': ['title', 'content'],
@@ -363,20 +363,6 @@ def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
         'metadata': metadata,
     }
 
-
-def get_rich_node(brain_or_conn, node_id_or_ids):
-    """DEPRECATED: Use brain.get_node() instead. This wrapper delegates to Brain.get_node().
-
-    Kept for backward compatibility — callers should migrate to brain.get_node() directly.
-    """
-    brain = brain_or_conn if hasattr(brain_or_conn, 'get_node') else None
-    if brain is None:
-        # Caller passed a raw connection — need to get brain singleton
-        from .brain import Brain
-        brain = Brain._instance
-        if brain is None:
-            raise RuntimeError("get_rich_node() called with raw conn but no Brain instance exists")
-    return brain.get_node(node_id_or_ids)
 
 
 # ═══════════════════════════════════════════════════════════════

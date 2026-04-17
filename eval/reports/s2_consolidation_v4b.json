@@ -1,0 +1,137 @@
+{
+  "timestamp": "2026-04-12T00:27:55.209990",
+  "clusters_processed": 5,
+  "clusters_total": 164,
+  "decode_stats": {
+    "nodes_scanned": 1898,
+    "title_embeddings": 1891,
+    "pairs_found": 629,
+    "suppressed_pairs": 0,
+    "mode": "cold_start",
+    "clusters": 164,
+    "class_counts": {
+      "likely_consolidate": 9,
+      "likely_keep": 16,
+      "needs_judgment": 130,
+      "likely_evolve": 9
+    }
+  },
+  "encode_result": {
+    "actions": 2,
+    "write_actions": 2,
+    "rounds": 3
+  },
+  "analysis": {
+    "actions": [
+      {
+        "cluster_nodes": [
+          "b4e95874",
+          "018ec1d8"
+        ],
+        "pre_class": "likely_consolidate",
+        "action_type": "SKIPPED",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 2
+      },
+      {
+        "cluster_nodes": [
+          "7846cee4",
+          "2e82620f",
+          "3bbdc686"
+        ],
+        "pre_class": "likely_keep",
+        "action_type": "KEPT",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 3
+      },
+      {
+        "cluster_nodes": [
+          "4fa06d19",
+          "7132d2a4"
+        ],
+        "pre_class": "likely_keep",
+        "action_type": "KEPT",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "18f6e986",
+          "f3dd7f7d"
+        ],
+        "pre_class": "likely_consolidate",
+        "action_type": "SKIPPED",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 2
+      },
+      {
+        "cluster_nodes": [
+          "bcff3c1c",
+          "6227fef3"
+        ],
+        "pre_class": "likely_consolidate",
+        "action_type": "SKIPPED",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 2
+      }
+    ],
+    "new_nodes": [
+      {
+        "id": "3adaf0dd",
+        "title": "Encoding write lock blocks recall \u2014 Sonnet holds daemon single-writer during 58s call",
+        "type": "finding",
+        "content": "The daemon's single-writer architecture means encoding locks out recall. A 58s Sonnet call blocks all concurrent recall requests. Discovered independently in two sessions \u2014 once via latency profiling ",
+        "confidence": 0.85
+      },
+      {
+        "id": "5331eda4",
+        "title": "S2 multi-parameter clustering: semantic, co-access, temporal, correction-chain, structural \u2014 5 dimensions",
+        "type": "architecture",
+        "content": "S2 clusters nodes by multiple independent parameters. The same node can belong to different clusters depending on what you cluster by:\n\n**Semantic** (embedding proximity) \u2014 'these are about the same t",
+        "confidence": 0.85
+      },
+      {
+        "id": "9aea1306",
+        "title": "Pre-April edge description coverage: 5% vs 63-67% post-April \u2014 F strategy blind on old nodes",
+        "type": "finding",
+        "content": "Edge description coverage reveals a phase transition in brain quality. Pre-April: ~5% \u2014 relationships existed but weren't explained. Post-April: 63-67% after Sonnet reclassification.\n\nCONSEQUENCE: Str",
+        "confidence": 0.85
+      }
+    ],
+    "suppression_edges": 10
+  },
+  "scores": {
+    "composite": 0.773,
+    "dimensions": {
+      "acceptance_rate": 1.0,
+      "locked_safety": 1.0,
+      "suppression": 1.0,
+      "action_diversity": 0.667,
+      "synthesis_content_length": 1.0,
+      "synthesis_references": 0.0,
+      "preclass_alignment": 0.4,
+      "efficiency": 0.667
+    },
+    "details": {
+      "acted": 5,
+      "total": 5,
+      "locked_violations": 0,
+      "with_suppression": 5,
+      "action_counts": {
+        "SKIPPED": 3,
+        "KEPT": 2
+      }
+    }
+  },
+  "elapsed_s": 78.69029808044434
+}

@@ -8,7 +8,7 @@ which are provided by Brain.__init__.
 
 from . import embedder
 from .brain_constants import TYPE_CONFIDENCE
-from .dal import EnrichmentDAL, GraphDAL
+from .dal import GraphDAL, VectorDAL
 from .brain_constants import (
     ENRICHMENT_NEIGHBOR_COUNT,
     ENRICHMENT_PROMPT_TEMPLATE,
@@ -28,6 +28,202 @@ from .brain_constants import (
 
 class BrainRememberMixin:
     """Remember methods for Brain."""
+
+    # ═══════════════════════════════════════════════════════════════
+    # Unified metadata storage — single path for remember() and revise()
+    # ═══════════════════════════════════════════════════════════════
+
+    # Fields that are control parameters, not node metadata.
+    # These are consumed by remember()/revise() logic and should never be stored.
+    _CONTROL_FIELDS = frozenset({
+        'connections', 'auto_connect', 'skip_embedding',
+        'reason', 'updates', 'connect_to',
+    })
+
+    def _store_node_metadata(self, node_id: str, fields: Dict[str, Any],
+                             caller: str = 'unknown') -> int:
+        """Store metadata fields for a node. Single path for all write operations.
+
+        Routes each field to the correct storage:
+          - STRUCTURAL_FIELDS → already on nodes table (skip)
+          - situation → node_enrichments (text, vector deferred to backfill)
+          - PROMOTED metadata_kv fields → node_metadata_kv
+          - Emergent/unknown fields → node_metadata_kv
+          - Control fields → skip silently (connections, auto_connect, etc.)
+
+        Warns on fields that don't match any storage path.
+
+        Returns count of fields stored.
+        """
+        from .contract import STRUCTURAL_FIELDS, PROMOTED_FIELDS
+        from .dal_metadata import MetadataDAL
+
+        kv_fields = {}
+        stored = 0
+
+        for field, value in fields.items():
+            # Control params — consumed by callers, never stored
+            if field in self._CONTROL_FIELDS:
+                continue
+
+            # Structural — already on nodes table, handled by INSERT/UPDATE
+            if field in STRUCTURAL_FIELDS:
+                continue
+
+            # Empty values — skip
+            if value is None or (isinstance(value, str) and not value.strip()):
+                continue
+
+            # Situation — goes to node_enrichments (text now, vector later)
+            if field == 'situation':
+                try:
+                    from .dal import VectorDAL
+                    vdal = VectorDAL(self.conn)
+                    # Store text with NULL embedding — backfill_vectors() fills it
+                    vdal.store(node_id, '_situation', str(value), None, None)
+                    stored += 1
+                except Exception as _e:
+                    self._log_error('store_situation', _e,
+                                    '%s: situation for %s' % (caller, node_id[:8]))
+                continue
+
+            # Promoted metadata_kv field — store in KV
+            if field in PROMOTED_FIELDS:
+                pf = PROMOTED_FIELDS[field]
+                if pf.get('store') == 'metadata_kv':
+                    kv_fields[field] = str(value)
+                    continue
+                # Promoted field with different store — log error so it's visible
+                self._log_error('store_metadata_unhandled',
+                                ValueError('field "%s" (store=%s) not handled' % (
+                                    field, pf.get('store'))),
+                                '%s: node %s' % (caller, node_id[:8]))
+                continue
+
+            # Emergent field — any unknown field goes to metadata_kv
+            kv_fields[field] = str(value)
+
+        if kv_fields:
+            try:
+                count = MetadataDAL(self.conn).set_many(node_id, kv_fields)
+                stored += count
+            except Exception as _e:
+                self._log_error('store_metadata_kv', _e,
+                                '%s: KV for %s (%d fields)' % (
+                                    caller, node_id[:8], len(kv_fields)))
+
+        return stored
+
+    # ═══════════════════════════════════════════════════════════════
+    # Unified archive — single path for all archive operations
+    # ═══════════════════════════════════════════════════════════════
+
+    def archive_node(self, node_id: str, archived_by: str,
+                     reason: str = '', extra: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Archive a node. Single path for all callers.
+
+        What it does:
+          1. Guards: rejects locked/critical nodes
+          2. Sets archived=1, updated_at=now
+          3. Stores audit metadata: archived_by, archived_reason, archived_at
+          4. Deletes edges (edges + edge_relations rows)
+          5. Deletes vectors from node_enrichments (embeddings are expensive to keep)
+          6. Removes from FTS5 index
+
+        Args:
+            node_id: Node to archive.
+            archived_by: Who is archiving. Convention: "s2:consolidation",
+                         "s2:community_detection", "hook:integrity", "anchor", etc.
+            reason: Human-readable reason for the archive.
+            extra: Optional dict of additional metadata to store (e.g. consolidated_into).
+
+        Returns:
+            Dict with ok=True/False and details.
+        """
+        from datetime import datetime, timezone
+        from .dal_metadata import MetadataDAL
+
+        ts = datetime.now(timezone.utc).isoformat()
+
+        # Fetch node
+        row = self.conn.execute(
+            'SELECT id, locked, critical, title, type FROM nodes WHERE id = ?',
+            (node_id,)).fetchone()
+        if not row:
+            return {'ok': False, 'error': 'Node not found', 'node_id': node_id}
+
+        full_id, locked, critical, title, node_type = row
+
+        # Guard: never archive locked or critical nodes
+        if locked or critical:
+            flag = 'locked' if locked else 'critical'
+            self._log_error('archive_guarded',
+                            ValueError('Cannot archive %s node' % flag),
+                            '%s tried to archive %s "%s"' % (
+                                archived_by, node_id[:8], (title or '')[:40]))
+            return {'ok': False, 'error': 'Cannot archive %s node' % flag,
+                    'node_id': node_id}
+
+        # 1. Set archived=1
+        self.conn.execute(
+            'UPDATE nodes SET archived = 1, updated_at = ? WHERE id = ?',
+            (ts, full_id))
+
+        # 2. Store audit metadata (_sys_ prefix = system fields, filtered from LLM rendering)
+        audit = {
+            '_sys_archived_by': archived_by,
+            '_sys_archived_reason': reason or 'no reason provided',
+            '_sys_archived_at': ts,
+        }
+        if extra:
+            for k, v in extra.items():
+                if v is not None:
+                    audit['_sys_archived_%s' % k] = str(v)
+        try:
+            MetadataDAL(self.conn).set_many(full_id, audit)
+        except Exception as _e:
+            self._log_error('archive_metadata', _e,
+                            'storing audit for %s' % node_id[:8])
+
+        # 3. Delete edges (edge_relations first, then edges)
+        edge_ids = [r[0] for r in self.conn.execute(
+            'SELECT edge_id FROM edges WHERE source_id = ? OR target_id = ?',
+            (full_id, full_id)).fetchall()]
+        edges_deleted = 0
+        if edge_ids:
+            for i in range(0, len(edge_ids), 500):
+                chunk = edge_ids[i:i + 500]
+                ph = ','.join('?' * len(chunk))
+                self.conn.execute(
+                    'DELETE FROM edge_relations WHERE edge_id IN (%s)' % ph, chunk)
+                self.conn.execute(
+                    'DELETE FROM edges WHERE edge_id IN (%s)' % ph, chunk)
+                edges_deleted += len(chunk)
+
+        # 4. Delete vectors from node_enrichments
+        vectors_deleted = self.conn.execute(
+            'DELETE FROM node_enrichments WHERE node_id = ?',
+            (full_id,)).rowcount
+
+        # 5. Remove from FTS5 index
+        try:
+            from .dal import Fts5DAL
+            Fts5DAL(self.conn).delete(full_id)
+        except Exception:
+            pass  # FTS5 may not exist in test DBs
+
+        self.conn.commit()
+
+        return {
+            'ok': True,
+            'node_id': full_id,
+            'title': (title or '')[:60],
+            'type': node_type,
+            'archived_by': archived_by,
+            'reason': reason,
+            'edges_deleted': edges_deleted,
+            'vectors_deleted': vectors_deleted,
+        }
 
     def _tfidf_tokenize(self, text: str) -> List[str]:
         """
@@ -325,7 +521,7 @@ class BrainRememberMixin:
         Store a new memory node with semantic indexing and connections.
 
         Accepts ALL contract fields. Core fields go to the nodes table,
-        promoted fields go to node_metadata/node_embeddings, and any
+        promoted fields go to node_metadata_kv/node_enrichments, and any
         unknown fields are stored as emergent metadata in node_metadata_kv.
 
         Returns:
@@ -387,6 +583,23 @@ class BrainRememberMixin:
         )
         self.conn.commit()
 
+        # Store all metadata via unified path — promoted, emergent, and extra fields.
+        _meta_fields = {}
+        # Promoted fields passed as explicit args
+        for _name, _val in [
+            ('reasoning', reasoning), ('user_raw_quote', user_raw_quote),
+            ('anchor_raw_quote', anchor_raw_quote), ('correction_of', correction_of),
+            ('correction_pattern', correction_pattern), ('source_context', source_context),
+            ('confidence_rationale', confidence_rationale), ('scope', scope),
+            ('source_attribution', source_attribution), ('situation', situation),
+        ]:
+            if _val is not None:
+                _meta_fields[_name] = _val
+        # Extra fields from callers (community metadata, any emergent fields)
+        _meta_fields.update(extra_fields)
+        if _meta_fields:
+            self._store_node_metadata(node_id, _meta_fields, caller='remember')
+
         # v5.2: Critical flag requires operator approval — don't set directly
         if critical:
             self._add_pending_critical(node_id, title)
@@ -405,59 +618,10 @@ class BrainRememberMixin:
         except Exception as e:
             self._log_error('fts5_sync_remember', e, 'syncing FTS5 for node %s' % node_id[:12])
 
-        # Phase 0.5C: Store dense embedding SYNCHRONOUSLY at encode time.
-        # Every node must have a semantic vector from birth so it's immediately
-        # findable via embedding search. ~50ms per node — acceptable for remember().
-        embed_text = f'{title}{" " + content if content else ""}'
+        # v23: ALL vector computation deferred to backfill_vectors() in idle.
+        # No inline embedding — clean single path, no ONNX threading risk.
+        # backfill_vectors() handles: _primary, _situation, title, high_meta, etc.
         embedding_stored = False
-
-        if embedder.is_ready():
-            try:
-                blob = embedder.embed(embed_text)
-                if blob:
-                    self.conn.execute(
-                        'INSERT OR REPLACE INTO node_embeddings (node_id, embedding, model, created_at) VALUES (?, ?, ?, ?)',
-                        (node_id, blob, embedder.stats['model_name'], self.now())
-                    )
-                    self.conn.commit()
-                    embedding_stored = True
-            except Exception as e:
-                print(f'[brain] Phase 0.5C: Embedding failed for {node_id}: {e}', file=sys.stderr)
-                # Node still stored — just without embedding. Keyword fallback works.
-        else:
-            print(f'[brain] Phase 0.5C: Embedder not ready — node {node_id} stored WITHOUT embedding', file=sys.stderr)
-
-        # Situation embedding — when this knowledge matters
-        if situation and embedding_stored:
-            try:
-                from .dal import EmbeddingDAL
-                sit_blob = embedder.embed(situation)
-                if sit_blob:
-                    emb_dal = EmbeddingDAL(self.conn)
-                    emb_dal.store_situation(node_id, situation, sit_blob)
-            except Exception as e:
-                print(f'[brain] Situation embedding failed for {node_id}: {e}', file=sys.stderr)
-
-        # ── Multi-vector group embeddings (z-indexed architecture) ──
-        # Each node gets 2-4 vectors stored in node_enrichments.
-        # Group 1 (title) always computed. Groups 3-4 only if metadata exists.
-        # Group 2 (blend) is the primary embedding already stored above.
-        # These vectors enable z-weighted top2-avg scoring in recall:
-        # score = avg(top 2 of [weight * cosine(query, vec) for each group])
-        # See pipeline_contract.EMBEDDING_GROUPS for weights and field mappings.
-        if embedding_stored:
-            try:
-                self._compute_group_vectors(node_id, title, content, situation,
-                                            reasoning=reasoning,
-                                            user_raw_quote=user_raw_quote,
-                                            anchor_raw_quote=anchor_raw_quote,
-                                            correction_pattern=correction_pattern,
-                                            source_context=source_context,
-                                            **{k: v for k, v in (extra_fields or {}).items()
-                                               if isinstance(v, str) and v.strip()})
-            except Exception as e:
-                self._log_error('remember_group_vectors', e,
-                                'group vector generation failed for %s' % node_id[:8])
 
         # Create connections
         if connections:
@@ -480,16 +644,14 @@ class BrainRememberMixin:
             try:
                 new_node_emb = None
                 if embedding_stored:
-                    row = self.conn.execute(
-                        'SELECT embedding FROM node_embeddings WHERE node_id = ?',
-                        (node_id,)
-                    ).fetchone()
-                    if row:
-                        new_node_emb = row[0]
+                    _vdal = VectorDAL(self.conn)
+                    _emb = _vdal.get_primary(node_id)
+                    if _emb:
+                        new_node_emb = _emb
 
                 recent = self.conn.execute('''
                     SELECT n.id, ne.embedding FROM nodes n
-                    LEFT JOIN node_embeddings ne ON ne.node_id = n.id
+                    LEFT JOIN node_enrichments ne ON ne.node_id = n.id AND ne.vector_type = '_primary'
                     WHERE n.id != ? AND n.archived = 0
                       AND n.last_accessed > datetime('now', '-1 hour')
                       AND n.type NOT IN ('thought', 'intuition')
@@ -634,14 +796,14 @@ class BrainRememberMixin:
                 import json as _json
                 try:
                     existing_history = self.conn.execute(
-                        "SELECT value FROM node_metadata_kv WHERE node_id = ? AND key = 'revision_history'",
+                        "SELECT value FROM node_metadata_kv WHERE node_id = ? AND key = '_sys_revision_history'",
                         (node_id,)).fetchone()
                     history = _json.loads(existing_history[0]) if existing_history and existing_history[0] else []
                     history.append({"timestamp": ts, "reason": reason, "old_content": old_content[:2000]})
                     # Keep last 5 revisions
                     history = history[-5:]
                     self.conn.execute(
-                        "INSERT OR REPLACE INTO node_metadata_kv (node_id, key, value) VALUES (?, 'revision_history', ?)",
+                        "INSERT OR REPLACE INTO node_metadata_kv (node_id, key, value) VALUES (?, '_sys_revision_history', ?)",
                         (node_id, _json.dumps(history)))
                 except Exception as _e:
                     self._log_error('revision_history', _e, 'saving revision history for %s' % node_id[:8])
@@ -688,73 +850,15 @@ class BrainRememberMixin:
             'UPDATE nodes SET %s WHERE id = ?' % ', '.join(set_parts), params)
         self.conn.commit()
 
-        # Handle metadata KV fields — PROMOTED fields AND emergent fields.
-        # Any field not on the nodes table and not immutable flows to KV store.
-        # This mirrors remember()'s behavior where **extra_fields → MetadataDAL.
-        from .contract import PROMOTED_FIELDS
-        from .dal_metadata import MetadataDAL
-        emergent_kv = {}
-        for field, value in all_updates.items():
-            if field in PROMOTED_FIELDS and PROMOTED_FIELDS[field].get('store') == 'metadata_kv':
-                # Known promoted field
-                emergent_kv[field] = str(value) if value else None
-            elif field not in NODES_TABLE_FIELDS and field not in IMMUTABLE and field not in (
-                    'content', 'reason', 'updates', 'situation'):
-                # Emergent field — not on nodes table, not a revise() control param.
-                # Store in KV so emergent metadata survives across all operations.
-                if value is not None and str(value).strip():
-                    emergent_kv[field] = str(value)
-        if emergent_kv:
-            try:
-                MetadataDAL(self.conn).set_many(node_id, emergent_kv)
-            except Exception as _e:
-                self._log_error('revise_metadata_kv', _e,
-                                'updating KV for %s (%d fields)' % (node_id[:8], len(emergent_kv)))
+        # Store metadata via unified path — handles promoted, emergent, situation.
+        if all_updates:
+            self._store_node_metadata(node_id, all_updates, caller='revise')
 
-        # Handle situation embedding separately (lives in node_embeddings, not nodes)
-        if 'situation' in all_updates:
-            try:
-                from . import embedder
-                from .dal import EmbeddingDAL
-                sit_text = all_updates['situation']
-                sit_blob = embedder.embed(sit_text)
-                if sit_blob:
-                    EmbeddingDAL(self.conn).store_situation(node_id, sit_text, sit_blob)
-            except Exception as e:
-                self._log_error("revise_situation", e,
-                                "Failed to update situation for %s" % node_id[:8])
-
-        # Re-embed combined content for better retrieval
-        # NOTE: UPDATE not INSERT OR REPLACE — preserve situation_embedding columns
+        # v23: ALL vector computation deferred to backfill_vectors() in idle.
+        # No inline embedding — clean single path for all callers.
+        from .dal import VectorDAL
+        _vdal = VectorDAL(self.conn)
         embedding_updated = False
-        try:
-            from . import embedder
-            if embedder.is_ready():
-                embed_text = '%s %s' % (title, new_content)
-                blob = embedder.embed(embed_text)
-                if blob:
-                    self.conn.execute(
-                        'UPDATE node_embeddings SET embedding=?, model=?, created_at=? WHERE node_id=?',
-                        (blob, embedder.stats.get('model_name', ''), ts, node_id))
-                    self.conn.commit()
-                    embedding_updated = True
-        except Exception as e:
-            self._log_error("revise_embed", e, "Failed to re-embed node %s" % node_id[:8])
-
-        # Re-compute group vectors (z-indexed multi-vector architecture)
-        # Reads current metadata from KV store + situation from node_embeddings
-        # so the vectors reflect the latest state after revision.
-        if embedding_updated:
-            try:
-                sit_row = self.conn.execute(
-                    'SELECT situation_text FROM node_embeddings WHERE node_id = ?',
-                    (node_id,)).fetchone()
-                current_situation = sit_row[0] if sit_row else all_updates.get('situation')
-                self._compute_group_vectors(
-                    node_id, title, new_content, situation=current_situation)
-            except Exception as e:
-                self._log_error("revise_group_vectors", e,
-                                "Failed to re-compute group vectors for %s" % node_id[:8])
 
         # Re-index TF-IDF
         try:
@@ -797,12 +901,7 @@ class BrainRememberMixin:
                         if actual != expected and str(actual) != str(expected):
                             verification_failures.append(field)
 
-        # Verify situation embedding (stored in node_embeddings, not nodes)
-        if 'situation' in all_updates:
-            from .dal import EmbeddingDAL
-            sit_text = EmbeddingDAL(self.conn).get_situation_text(node_id)
-            if not sit_text:
-                verification_failures.append('situation')
+        # Situation embedding deferred to backfill — no inline verification needed
 
         verified = len(verification_failures) == 0
 
@@ -911,15 +1010,17 @@ class BrainRememberMixin:
                                situation: str = None, **metadata_fields):
         """Compute and store multi-vector group embeddings for a node.
 
+        v23: This function is NO LONGER called from remember()/revise().
+        Group vectors are computed by backfill_vectors() in idle maintenance.
+        Kept for backward compat and manual use.
+
         Architecture: 4 groups defined in pipeline_contract.EMBEDDING_GROUPS.
         - title: always computed (diagnostic pointer)
-        - blend: already stored in node_embeddings (skip here)
+        - blend (_primary): stored separately on write path (skip here)
         - high_meta: situation + quotes — only if fields exist
         - other_meta: reasoning + correction_pattern + emergent — only if fields exist
 
         Vectors stored in node_enrichments with vector_type matching the group name.
-        At recall time, recall scoring reads these and applies z-weighted top2-avg.
-        See: brain_recall.py Step 3.5 for how these are scored.
         """
         from . import embedder
         from .pipeline_contract import (EMBEDDING_GROUPS, EMBEDDING_SKIP_FIELDS,
@@ -950,7 +1051,7 @@ class BrainRememberMixin:
             self._log_error('enrichment_field_values', _e, 'collecting field values for enrichment')
 
         for group_name, group_config in EMBEDDING_GROUPS.items():
-            # Skip blend — it's the primary embedding, already stored in node_embeddings
+            # Skip blend — it's the primary embedding (_primary in node_enrichments)
             if group_config.get('vector_type') == '_primary':
                 continue
 
@@ -1368,7 +1469,7 @@ class BrainRememberMixin:
         Each non-None enrichment text is embedded and stored in node_enrichments.
         Returns count of enrichments stored and any errors.
         """
-        enrichment_dal = EnrichmentDAL(self.conn)
+        vdal = VectorDAL(self.conn)
         stored = 0
         errors = []
 
@@ -1387,12 +1488,12 @@ class BrainRememberMixin:
                 blob = None
                 if embedder.is_ready():
                     blob = embedder.embed(text)
-                enrichment_dal.store(node_id, vtype, text, blob,
-                                    model=embedder.stats.get('model_name', 'unknown') if embedder.is_ready() else 'none')
+                vdal.store(node_id, vtype, text, blob,
+                           model=embedder.stats.get('model_name', 'unknown') if embedder.is_ready() else 'none')
                 stored += 1
             except Exception as e:
                 errors.append(f'{vtype}: {str(e)[:100]}')
-                print(f'[brain] Enrichment embed failed for {node_id}/{vtype}: {e}', file=sys.stderr)
+                self._log_error('store_enrichment', e, '%s/%s' % (node_id[:8], vtype))
 
         return {
             'node_id': node_id,
@@ -1401,10 +1502,9 @@ class BrainRememberMixin:
         }
 
     def get_enrichment_coverage(self) -> Dict[str, Any]:
-        """Get enrichment coverage stats."""
+        """Get vector coverage stats."""
         try:
-            enrichment_dal = EnrichmentDAL(self.conn)
-            return enrichment_dal.get_coverage_stats()
+            return VectorDAL(self.conn).get_coverage_stats()
         except Exception as e:
             return {'error': str(e)}
 
@@ -1449,8 +1549,8 @@ class BrainRememberMixin:
                 rows = self.conn.execute(
                     "SELECT ne.node_id, ne.embedding, n.title, n.type, "
                     "SUBSTR(n.content, 1, 200) as snippet, n.keywords "
-                    "FROM node_embeddings ne JOIN nodes n ON ne.node_id = n.id "
-                    "WHERE n.archived = 0"
+                    "FROM node_enrichments ne JOIN nodes n ON ne.node_id = n.id "
+                    "WHERE ne.vector_type = '_primary' AND n.archived = 0"
                 ).fetchall()
                 for node_id, emb_blob, title, ntype, snippet, keywords in rows:
                     if not emb_blob or node_id in scored:

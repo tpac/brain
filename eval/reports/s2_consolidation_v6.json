@@ -1,0 +1,257 @@
+{
+  "timestamp": "2026-04-12T01:22:42.486619",
+  "clusters_processed": 12,
+  "clusters_total": 165,
+  "decode_stats": {
+    "nodes_scanned": 1909,
+    "title_embeddings": 1902,
+    "pairs_found": 630,
+    "suppressed_pairs": 0,
+    "mode": "cold_start",
+    "clusters": 165,
+    "class_counts": {
+      "likely_consolidate": 9,
+      "likely_keep": 16,
+      "needs_judgment": 131,
+      "likely_evolve": 9
+    }
+  },
+  "encode_result": {
+    "actions": 2,
+    "write_actions": 2,
+    "rounds": 4
+  },
+  "analysis": {
+    "actions": [
+      {
+        "cluster_nodes": [
+          "a22349d2",
+          "6ac0de63"
+        ],
+        "pre_class": "likely_consolidate",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "6ac0de63"
+        ],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 2
+      },
+      {
+        "cluster_nodes": [
+          "dab3ba6c",
+          "95cb26c6"
+        ],
+        "pre_class": "likely_consolidate",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "dab3ba6c"
+        ],
+        "revised": [
+          "95cb26c6"
+        ],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "96fc6e64",
+          "3c3a3046",
+          "cab4e114"
+        ],
+        "pre_class": "likely_evolve",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "96fc6e64",
+          "cab4e114"
+        ],
+        "revised": [
+          "3c3a3046"
+        ],
+        "locked_violated": [],
+        "suppression_edges": 2
+      },
+      {
+        "cluster_nodes": [
+          "046e0359",
+          "d4c31b9f"
+        ],
+        "pre_class": "likely_evolve",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "046e0359"
+        ],
+        "revised": [
+          "d4c31b9f"
+        ],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "ad15aa67",
+          "7df3de85"
+        ],
+        "pre_class": "likely_keep",
+        "action_type": "KEPT",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "04154c4a",
+          "07e1a336",
+          "1ea781a2",
+          "996436d7",
+          "8ad7ad4f"
+        ],
+        "pre_class": "likely_keep",
+        "action_type": "KEPT",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 4
+      },
+      {
+        "cluster_nodes": [
+          "3b258338",
+          "13446b28"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "KEPT",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "4cf82963",
+          "5cd664c0"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "KEPT",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "3b258338",
+          "13446b28"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "KEPT",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "84fe32d8",
+          "a96a782d"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "84fe32d8",
+          "a96a782d"
+        ],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 2
+      },
+      {
+        "cluster_nodes": [
+          "1976ded1",
+          "20c9e116",
+          "57d27bdf",
+          "96488c8a",
+          "f872fd93"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "1976ded1",
+          "20c9e116",
+          "57d27bdf",
+          "96488c8a",
+          "f872fd93"
+        ],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 5
+      },
+      {
+        "cluster_nodes": [
+          "bf168f95",
+          "16b0e4f4",
+          "ce1d490d"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "bf168f95",
+          "16b0e4f4"
+        ],
+        "revised": [
+          "ce1d490d"
+        ],
+        "locked_violated": [],
+        "suppression_edges": 0
+      }
+    ],
+    "new_nodes": [
+      {
+        "id": "7571340f",
+        "title": "DAEMON_HOST binding: 127.0.0.1 breaks macOS localhost \u2014 bind to all interfaces",
+        "type": "lesson",
+        "content": "What happened: Dashboard preview showed blank page, all requests ERR_ABORTED. Root cause: daemon bound to 127.0.0.1 (IPv4 only) but macOS resolves 'localhost' to ::1 (IPv6). The preview browser connec",
+        "confidence": 0.95
+      },
+      {
+        "id": "7830d4f1",
+        "title": "Embedder config pipeline \u2014 plugin.json defaults through brain_meta to model load",
+        "type": "code_concept",
+        "content": "Complete pipeline from configuration to model loading: plugin.json (user config) \u2192 _EMBEDDER_DEFAULTS (mirror in brain.py) \u2192 brain_meta table (runtime overrides) \u2192 _get_embedder_config() \u2192 embedder.lo",
+        "confidence": 0.85
+      },
+      {
+        "id": "8f1e0ea6",
+        "title": "Behavioral mirror: heartbeat queries brain with Claude's behavioral state, surfaces self-knowledge",
+        "type": "mechanism",
+        "content": "Current heartbeat: counts messages since last encode, nudges at threshold 8. Proposed: heartbeat summarizes Claude's recent behavior (building, discussing, encoding count) \u2192 queries brain with behavio",
+        "confidence": 0.9
+      }
+    ],
+    "suppression_edges": 103
+  },
+  "scores": {
+    "composite": 0.837,
+    "dimensions": {
+      "acceptance_rate": 1.0,
+      "locked_safety": 1.0,
+      "suppression": 0.917,
+      "action_diversity": 0.667,
+      "synthesis_content_length": 1.0,
+      "synthesis_references": 0.0,
+      "preclass_alignment": 0.833,
+      "efficiency": 1.0
+    },
+    "details": {
+      "acted": 12,
+      "total": 12,
+      "locked_violations": 0,
+      "with_suppression": 11,
+      "action_counts": {
+        "CONSOLIDATED": 7,
+        "KEPT": 5
+      }
+    }
+  },
+  "elapsed_s": 138.86283111572266
+}

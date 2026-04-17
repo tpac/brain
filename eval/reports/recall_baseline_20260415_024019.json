@@ -1,0 +1,4541 @@
+{
+  "summary": {
+    "timestamp": "2026-04-15T02:40:19.785783Z",
+    "total_queries": 40,
+    "queries_with_expected": 35,
+    "overall": {
+      "recall_at_3": 0.9143,
+      "recall_at_8": 0.9714,
+      "recall_at_25": 0.9714,
+      "mrr": 0.8679
+    },
+    "by_category": {
+      "brain_dev": {
+        "recall_at_3": 1.0,
+        "recall_at_8": 1.0,
+        "recall_at_25": 1.0,
+        "mrr": 0.95,
+        "queries": 10,
+        "queries_with_expected": 10,
+        "avg_latency_ms": 336.7,
+        "avg_match_score": 0.7085,
+        "avg_nonmatch_score": 0.6734
+      },
+      "exco": {
+        "recall_at_3": 0.8,
+        "recall_at_8": 1.0,
+        "recall_at_25": 1.0,
+        "mrr": 0.7875,
+        "queries": 10,
+        "queries_with_expected": 10,
+        "avg_latency_ms": 329.3,
+        "avg_match_score": 0.8201,
+        "avg_nonmatch_score": 0.3946
+      },
+      "identity": {
+        "recall_at_3": 1.0,
+        "recall_at_8": 1.0,
+        "recall_at_25": 1.0,
+        "mrr": 0.9,
+        "queries": 5,
+        "queries_with_expected": 5,
+        "avg_latency_ms": 328.0,
+        "avg_match_score": 0.9062,
+        "avg_nonmatch_score": 0.7169
+      },
+      "relational": {
+        "recall_at_3": 1.0,
+        "recall_at_8": 1.0,
+        "recall_at_25": 1.0,
+        "mrr": 1.0,
+        "queries": 4,
+        "queries_with_expected": 4,
+        "avg_latency_ms": 324.8,
+        "avg_match_score": 0.7746,
+        "avg_nonmatch_score": 0.5518
+      },
+      "meta_instruction": {
+        "recall_at_3": 0.5,
+        "recall_at_8": 0.5,
+        "recall_at_25": 0.5,
+        "mrr": 0.5,
+        "queries": 3,
+        "queries_with_expected": 2,
+        "avg_latency_ms": 328.8,
+        "avg_match_score": 0.4537,
+        "avg_nonmatch_score": null
+      },
+      "false_positive": {
+        "recall_at_3": null,
+        "recall_at_8": null,
+        "recall_at_25": null,
+        "mrr": null,
+        "queries": 4,
+        "queries_with_expected": 0,
+        "avg_latency_ms": 319.1,
+        "avg_match_score": null,
+        "avg_nonmatch_score": null
+      },
+      "short_ambiguous": {
+        "recall_at_3": 1.0,
+        "recall_at_8": 1.0,
+        "recall_at_25": 1.0,
+        "mrr": 0.875,
+        "queries": 4,
+        "queries_with_expected": 4,
+        "avg_latency_ms": 312.2,
+        "avg_match_score": 0.8252,
+        "avg_nonmatch_score": 0.7384
+      }
+    },
+    "latency": {
+      "p50": 324.4,
+      "p95": 357.7,
+      "max": 424.1,
+      "avg": 327.8
+    }
+  },
+  "results": [
+    {
+      "query": "recall pipeline architecture how recall works",
+      "category": "brain_dev",
+      "description": "Core recall architecture",
+      "difficulty": "easy",
+      "expected_titles": [
+        "Recall Pipeline",
+        "recall architecture",
+        "recall pipeline"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 7,
+      "mrr": 0.5,
+      "num_returned": 25,
+      "latency_ms": 424.1,
+      "top_score": 0.9773,
+      "mean_score": 0.7973,
+      "match_mean_score": 0.8218,
+      "nonmatch_mean_score": 0.7945,
+      "score_gap": 0.0273,
+      "sources": {
+        "both": 8,
+        "embedding_only": 15,
+        "embedding+keyword": 2
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "bbae8067",
+          "title": "Encoder Pipeline Architecture: No-Recall Contract to Community Extensi",
+          "score": 0.9773,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 2,
+          "id": "c37a06e2",
+          "title": "Recall pipeline has TWO paths with different graph capabilities (2026-",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "ee205f63",
+          "title": "Recall pipeline: query \u2192 vocab expand \u2192 embed \u2192 intent \u2192 scan \u2192 blend ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "4158cfb9",
+          "title": "Recall precision architecture doc: docs/RECALL-PRECISION-ARCHITECTURE.",
+          "score": 0.8158,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "64c976ec",
+          "title": "Phase 1 recall redesign: wide activation \u2192 chain detection \u2192 distill \u2014",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "fb710791",
+          "title": "B.2 Graph-augmented recall: STEP 6.5 in embedding pipeline (2026-03-23",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "29a97dc0",
+          "title": "No abstraction layer for node SELECT queries in recall pipeline",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 8,
+          "id": "1ed63aa7",
+          "title": "Recall architecture: _enrich_results is the ONE place that makes a nod",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 9,
+          "id": "f45798dc",
+          "title": "MISSING: mark_recall_used() \u2014 recall precision pipeline is dead",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "95cb26c6",
+          "title": "Boot architecture violation pattern: S0 pulling in S1R pipeline",
+          "score": 0.7946,
+          "source": "both",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "encoding agent how it encodes what it sees",
+      "category": "brain_dev",
+      "description": "Encoding agent operation",
+      "difficulty": "easy",
+      "expected_titles": [
+        "Encoding agent",
+        "encoder",
+        "S1E"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 12,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 338.0,
+      "top_score": 0.7433,
+      "mean_score": 0.5414,
+      "match_mean_score": 0.6182,
+      "nonmatch_mean_score": 0.3877,
+      "score_gap": 0.2305,
+      "sources": {
+        "both": 5,
+        "embedding_only": 19,
+        "embedding+keyword": 1
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "418fff5a",
+          "title": "Encoding agent regression: 6 issues diagnosed, 6 fixes deployed",
+          "score": 0.7433,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "b9a5e32a",
+          "title": "Encoding agent contract rewrite requirements \u2014 Tom's Turn 6 spec",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "d7c9c24d",
+          "title": "Encoding should be invisible \u2014 system-driven, not agent-decided",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "4f020eb4",
+          "title": "Encoding = everything brain does to capture what Tom is talking about",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "2c9f5a04",
+          "title": "Encoding agent regression: 6 bugs fixed in this session (window, journ",
+          "score": 0.5115,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "con_2m6c",
+          "title": "Future: Centralized encoding philosophy \u2014 what the brain memorizes and",
+          "score": 0.2633,
+          "source": "embedding+keyword",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "1c5b6929",
+          "title": "Architectural direction: invisible encoding via full conversation capt",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "f1907ee7",
+          "title": "Recursive encoding unit: one process() function at all scales",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "38bc9a6f",
+          "title": "Encoding agent fundamentally incompatible with Stop hook 10s timeout",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 10,
+          "id": "b5a12191",
+          "title": "Encoding agent writes actual prompt to file \u2014 dashboard reads passivel",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "community detection algorithm z-score clusters",
+      "category": "brain_dev",
+      "description": "Community detection mechanism",
+      "difficulty": "easy",
+      "expected_titles": [
+        "community detection",
+        "S2CD",
+        "community"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 19,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 321.6,
+      "top_score": 0.9066,
+      "mean_score": 0.8028,
+      "match_mean_score": 0.8015,
+      "nonmatch_mean_score": 0.8095,
+      "score_gap": -0.0079,
+      "sources": {
+        "both": 12,
+        "embedding_only": 13
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "21e23a57",
+          "title": "S2 community detection algorithm: correction chains \u2192 shared neighbors",
+          "score": 0.9066,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "a93e4846",
+          "title": "S2 community detection next steps: drop node_communities table, add ed",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "0384c493",
+          "title": "Community detection full pipeline: edge embedding \u2192 overlapping detect",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "8859fba7",
+          "title": "Multiplex community detection: same nodes, different edge layers, diff",
+          "score": 0.5397,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "0219c68e",
+          "title": "S2 community detection shipped: 83 communities, 273 multi-membership n",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "cba23bab",
+          "title": "S2 community detection tuning: naming heuristic and resolution paramet",
+          "score": 0.9764,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 7,
+          "id": "40dd038c",
+          "title": "S2 community decoder: three-tier design \u2014 structural clusters \u2192 affini",
+          "score": 0.9048,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 8,
+          "id": "0af08f6b",
+          "title": "S2CD algorithm v2: z-score seeding + adaptive grow + ratio overlap \u2014 r",
+          "score": 0.9747,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 9,
+          "id": "f2c647b8",
+          "title": "S2 community detection final design: SLPA overlapping + edge embedding",
+          "score": 0.7706,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 10,
+          "id": "4769a053",
+          "title": "S2 community detection: edge types are semantic groupings, not individ",
+          "score": 0.7821,
+          "source": "both",
+          "is_match": true
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "surface prompt haiku selects relevant nodes",
+      "category": "brain_dev",
+      "description": "Surface/surfacer mechanism",
+      "difficulty": "medium",
+      "expected_titles": [
+        "surface",
+        "surfac",
+        "Haiku"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 20,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 332.7,
+      "top_score": 0.8289,
+      "mean_score": 0.6713,
+      "match_mean_score": 0.6677,
+      "nonmatch_mean_score": 0.6896,
+      "score_gap": -0.0219,
+      "sources": {
+        "both": 6,
+        "embedding_only": 19
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "878a99b4",
+          "title": "S1 Surface: two parallel enrichment passes on same nodes \u2014 Haiku vs An",
+          "score": 0.8289,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "9d88ca00",
+          "title": "Dashboard surface prompt missing: judge_* keys renamed to surface_* bu",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "391721a9",
+          "title": "Skip surface on low-value messages \u2014 greetings, acks, short replies do",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "1f457e1b",
+          "title": "render_rich_node vs format_candidate_for_surface: 36% token delta \u2014 ac",
+          "score": 0.753,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "8ff38350",
+          "title": "Duplicate Haiku calls: recall judge + prompt hook both calling Haiku p",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "02c58196",
+          "title": "Distiller \u2192 Judge replacement: current distiller prompt problems ident",
+          "score": 0.6896,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "7a241984",
+          "title": "Eval: +18% prompt with tool activity \u2192 5x more nodes \u2014 tool results co",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "236dc2ca",
+          "title": "Surfaced context contaminates answers \u2014 recalled nodes bleed into unre",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 9,
+          "id": "e496cfef",
+          "title": "Layer 2 recall: Haiku judge inputs \u2014 message + session context + candi",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 10,
+          "id": "d8fa0514",
+          "title": "Intentional recall: surface recently updated nodes as leads for today/",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "daemon TCP architecture port socket",
+      "category": "brain_dev",
+      "description": "Daemon architecture",
+      "difficulty": "easy",
+      "expected_titles": [
+        "daemon",
+        "TCP",
+        "socket"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 24,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 322.0,
+      "top_score": 0.5608,
+      "mean_score": 0.6955,
+      "match_mean_score": 0.6955,
+      "nonmatch_mean_score": 0,
+      "score_gap": 0.6955,
+      "sources": {
+        "both": 12,
+        "embedding_only": 13
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "5f6a1c9e",
+          "title": "Daemon wiring pattern: try socket first, fall through to cold Python o",
+          "score": 0.5608,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "daeb9fa6",
+          "title": "Daemon TCP migration: Unix socket \u2192 localhost:47200+uid%100 \u2014 no more ",
+          "score": 0.9613,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "4f7f8797",
+          "title": "Daemon race condition: ensure_daemon killed starting daemons (PID befo",
+          "score": 0.5647,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "8ce5a8c1",
+          "title": "MCP connectivity: 4 moving parts (daemon, socket/TCP, MCP server, boot",
+          "score": 0.9648,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "7ff91969",
+          "title": "Daemon architecture: serve everyone, manage yourself, clients just con",
+          "score": 0.9753,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "5ddb6b7f",
+          "title": "Dashboard direct SQL vs daemon TCP: pragmatic tradeoff \u2014 reliability o",
+          "score": 0.6259,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 7,
+          "id": "d5116cb0",
+          "title": "Lesson: daemon-client.sh as shared helper eliminated socket code dupli",
+          "score": 0.568,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 8,
+          "id": "23cc414f",
+          "title": "Persistent daemon: Unix socket server keeps Brain alive, hooks become ",
+          "score": 0.6061,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 9,
+          "id": "0677e3b6",
+          "title": "daemon remember test",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 10,
+          "id": "a0b03a63",
+          "title": "daemon remember test",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "hook fires on UserPromptSubmit session start",
+      "category": "brain_dev",
+      "description": "Hook system",
+      "difficulty": "medium",
+      "expected_titles": [
+        "hook",
+        "Hook"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 19,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 329.3,
+      "top_score": 0.8655,
+      "mean_score": 0.7167,
+      "match_mean_score": 0.73,
+      "nonmatch_mean_score": 0.6813,
+      "score_gap": 0.0487,
+      "sources": {
+        "both": 9,
+        "embedding_only": 14,
+        "embedding+keyword": 2
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "33e7454a",
+          "title": "Hook output visibility: only SessionStart, UserPromptSubmit, PostCompa",
+          "score": 0.8655,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "3fffb29d",
+          "title": "Claude Code hooks reload on every invocation \u2014 no session restart need",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "a014dc4d",
+          "title": "Hooks are snapshotted at session start \u2014 code changes need a new sessi",
+          "score": 0.486,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "0ef74ade",
+          "title": "Claude Code hook registration requires session restart \u2014 mid-session h",
+          "score": 0.4765,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "047e22b8",
+          "title": "Session_id from Claude Code hook args \u2014 not daemon-generated UUID",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "1c2504ad",
+          "title": "Recall hook timestamps added \u2014 isolate gap between hook exit and Ancho",
+          "score": 0.8504,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 7,
+          "id": "b6c93da2",
+          "title": "Decision: auto-encode fires on Stop, feedback surfaces on next UserPro",
+          "score": 0.8647,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "eedb61e8",
+          "title": "SessionStart fires on every Claude Code resume, not just first launch",
+          "score": 0.6953,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "3d688d9f",
+          "title": "Notification(user_message) is NOT a valid event type \u2014 hooks silently ",
+          "score": 0.9039,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 10,
+          "id": "6202243c",
+          "title": "PreCompact hook may not fire during context overflow (only on explicit",
+          "score": 0.7706,
+          "source": "both",
+          "is_match": true
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "trace contract O K delta observation knowledge",
+      "category": "brain_dev",
+      "description": "Fractal trace system",
+      "difficulty": "medium",
+      "expected_titles": [
+        "trace",
+        "O/K",
+        "fractal"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 17,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 330.8,
+      "top_score": 0.7916,
+      "mean_score": 0.8134,
+      "match_mean_score": 0.8134,
+      "nonmatch_mean_score": 0,
+      "score_gap": 0.8134,
+      "sources": {
+        "both": 12,
+        "embedding_only": 13
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "1be910b4",
+          "title": "Trace coverage gaps identified: O@S0, encoding agent O+K, outcome ever",
+          "score": 0.7916,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "fd0d7057",
+          "title": "Trace OKD completeness \u2014 O, K, and \u0394 all logged at encoding scale",
+          "score": 0.8252,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "353135fa",
+          "title": "PostToolUse hook captures all tool results as s0 delta traces",
+          "score": 0.709,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "42bbe89d",
+          "title": "Fractal trace system: O/K/\u0394 at every scale, s0-s4",
+          "score": 0.8793,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "8240b4e4",
+          "title": "5 things not yet captured in traces",
+          "score": 0.8281,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "1c883b3d",
+          "title": "O/K/\u0394 canonical definitions: phenomena, boundary config, action",
+          "score": 0.7837,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 7,
+          "id": "bb7705fd",
+          "title": "Divergence: Confidence at encoding time accurately reflects knowledge ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "d8944b27",
+          "title": "Fractal trace schema: O, K, \u0394, outcome \u2014 four event types, every scale",
+          "score": 0.8895,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 9,
+          "id": "9961dc16",
+          "title": "Scale 0 trace infrastructure deployed \u2014 events flowing",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 10,
+          "id": "8e9d7f41",
+          "title": "O/K/\u0394 loop: outcome is the next observation, not a fourth element",
+          "score": 0.813,
+          "source": "both",
+          "is_match": true
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "consolidation duplicate nodes synthesize",
+      "category": "brain_dev",
+      "description": "S2 consolidation",
+      "difficulty": "easy",
+      "expected_titles": [
+        "consolidat",
+        "CONSOLIDATE",
+        "synthesiz"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 9,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 324.9,
+      "top_score": 0.488,
+      "mean_score": 0.5339,
+      "match_mean_score": 0.5339,
+      "nonmatch_mean_score": 0,
+      "score_gap": 0.5339,
+      "sources": {
+        "embedding_only": 21,
+        "both": 4
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "6a04774a",
+          "title": "CONSOLIDATE: S2 synthesis creates new nodes, doesn't select winners",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "f671cf5f",
+          "title": "Tied nodes between clusters = evidence of artificial fragmentation, no",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 3,
+          "id": "e39825f7",
+          "title": "S2 dashboard Encoding tab: S1-style detail \u2014 synthesized nodes, archiv",
+          "score": 0.488,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "74fee365",
+          "title": "filter_nodes tool \u2014 implementation complete, 5 files touched",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "83873db2",
+          "title": "Contrastive recall measures SURPRISE not similarity \u2014 specialized node",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "77b7e234",
+          "title": "Brain bug: resolve_consolidation_for_node missing on LogsDAL",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 7,
+          "id": "c3829cbb",
+          "title": "Enhanced encoder with tool results: 5x more nodes but 3/4 were noise",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "ef437bad",
+          "title": "Scale-bounded linking: S2 connects 3-5 nodes, S3 connects clusters \u2014 e",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "8ba8f93d",
+          "title": "Why-similar is domain-specific \u2014 what counts as consolidation-worthy d",
+          "score": 0.4571,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 10,
+          "id": "3e7652d9",
+          "title": "Consolidation decoder extends to community-to-community pairs \u2014 member",
+          "score": 0.7037,
+          "source": "both",
+          "is_match": true
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "healer missing question situation reasoning fields",
+      "category": "brain_dev",
+      "description": "S2 Healer mechanism",
+      "difficulty": "easy",
+      "expected_titles": [
+        "Healer",
+        "healer",
+        "enrichment"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 13,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 320.1,
+      "top_score": 0.6521,
+      "mean_score": 0.796,
+      "match_mean_score": 0.8233,
+      "nonmatch_mean_score": 0.6777,
+      "score_gap": 0.1456,
+      "sources": {
+        "both": 16,
+        "embedding_only": 9
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "218151a0",
+          "title": "S2 Healer question field: sound like something the operator would type",
+          "score": 0.6521,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "50b292bc",
+          "title": "Healer decoder excludes community nodes \u2014 communities healed by S2CE, ",
+          "score": 0.974,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "dfc31ac9",
+          "title": "S2 Weaver/Healer scope: V5 + situation + edges + health in one Haiku c",
+          "score": 0.9773,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "73444f51",
+          "title": "Situation field: describe a moment not a topic \u2014 when it activates, no",
+          "score": 0.7494,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "840a5115",
+          "title": "S2 Healer Decoder design: 5 steps from gap detection to encoder propos",
+          "score": 0.9978,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "5881538c",
+          "title": "Invisible recall fields: situation, quotes, reasoning are rich retriev",
+          "score": 0.6355,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "9c3cf73f",
+          "title": "S2 Healer Decoder design: 5 steps from gap detection to encoder propos",
+          "score": 0.9962,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 8,
+          "id": "7e04c7e4",
+          "title": "S2 Healer generates text only \u2014 vectors handled by _compute_group_vect",
+          "score": 0.9875,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 9,
+          "id": "2a0164f3",
+          "title": "Reasoning chains \u2014 tables exist but extraction never implemented",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "b05ca36d",
+          "title": "V5 vectors belong on the node as fields \u2014 not a separate enrichment ta",
+          "score": 0.7462,
+          "source": "both",
+          "is_match": true
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "SKILL.md rewritten as identity behavior",
+      "category": "brain_dev",
+      "description": "SKILL.md evolution",
+      "difficulty": "medium",
+      "expected_titles": [
+        "SKILL.md",
+        "skill"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 23,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 323.7,
+      "top_score": 0.7107,
+      "mean_score": 0.5799,
+      "match_mean_score": 0.5799,
+      "nonmatch_mean_score": 0,
+      "score_gap": 0.5799,
+      "sources": {
+        "both": 14,
+        "embedding+keyword": 4,
+        "embedding_only": 7
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "c340bfb8",
+          "title": "SKILL.md self-knowledge was behavioral correction, not identity \u2014 remo",
+          "score": 0.7107,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "1eda79b2",
+          "title": "Anchor v6.0: SKILL.md rewritten as identity, not instructions \u2014 9KB be",
+          "score": 0.8682,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "02fd497b",
+          "title": "SKILL.md rewritten for v5.2 \u2014 merged v4 encoding philosophy with v5.2 ",
+          "score": 0.7917,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "2617cc6e",
+          "title": "SKILL.md behavioral corrections were doing a different job than identi",
+          "score": 0.7093,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "04714608",
+          "title": "SKILL.md cuts: removed hooks table, v5.2 changelog, scoring formulas \u2014",
+          "score": 0.5802,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "5a10b841",
+          "title": "SKILL.md identity section updated: collaboration biases moved from CLA",
+          "score": 0.5734,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 7,
+          "id": "41ba0ce4",
+          "title": "SKILL.md v5.4.0: rewritten from Python syntax to MCP tool syntax, benc",
+          "score": 0.7858,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 8,
+          "id": "ce75d802",
+          "title": "Identity-heavy SKILL.md framing WORST performer \u2014 'you are' doesn't dr",
+          "score": 0.5701,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 9,
+          "id": "7b05786c",
+          "title": "SKILL.md v5.2 rewrite: 80% encoding behavior, 20% architecture \u2014 hooks",
+          "score": 0.5755,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 10,
+          "id": "2edf52b1",
+          "title": "SKILL.md split: universal playbook vs specific identity \u2014 remove 'Anch",
+          "score": 0.5709,
+          "source": "both",
+          "is_match": true
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "What does EX.CO do?",
+      "category": "exco",
+      "description": "Direct entity query",
+      "difficulty": "easy",
+      "expected_titles": [
+        "EX.CO"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 6,
+      "mrr": 0.5,
+      "num_returned": 25,
+      "latency_ms": 306.1,
+      "top_score": 0,
+      "mean_score": 0,
+      "match_mean_score": 0,
+      "nonmatch_mean_score": 0,
+      "score_gap": 0,
+      "sources": {
+        "embedding_only": 22,
+        "both": 3
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "4f020eb4",
+          "title": "Encoding = everything brain does to capture what Tom is talking about",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 2,
+          "id": "1683a628",
+          "title": "EX.CO kit \u2014 Doc 1 structure finalized (Draft 2)",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "rul_ei61",
+          "title": "Dont cap what decay already filters \u2014 redundant controls add complexit",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "329acd44",
+          "title": "S2 must capture tool use learning \u2014 how Anchor works, not just what wa",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "e62cc595",
+          "title": "EX.CO \u2014 company overview",
+          "score": 0,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "fa01f92f",
+          "title": "Operator channel @priority levels and what triggers them (2026-03-22)",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "b14d6b77",
+          "title": "Capability node \u2014 brain knows what it can and cannot do",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "6d69e9f3",
+          "title": "Trust the system's designed paths \u2014 don't patch what the idle hook wil",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "679e0f4b",
+          "title": "Single-project corpus risk: S2 communities may not generalize to EX.CO",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 10,
+          "id": "894795e3",
+          "title": "Rule: before writing code, ask 'where does this live architecturally?'",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "EX.CO CTV sales process stakeholders",
+      "category": "exco",
+      "description": "Sales process knowledge",
+      "difficulty": "easy",
+      "expected_titles": [
+        "EX.CO",
+        "stakeholder",
+        "sales"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 23,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 323.8,
+      "top_score": 0.9971,
+      "mean_score": 0.6206,
+      "match_mean_score": 0.6206,
+      "nonmatch_mean_score": 0,
+      "score_gap": 0.6206,
+      "sources": {
+        "both": 21,
+        "embedding_only": 4
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "5fe121db",
+          "title": "EX.CO CTV sales process \u2014 stakeholder map",
+          "score": 0.9971,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "b3bda662",
+          "title": "Tom is CEO of EX.CO \u2014 CTV sales onboarding project",
+          "score": 0.974,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "c1b72f01",
+          "title": "EX.CO CTV sales \u2014 10+ meeting bottleneck",
+          "score": 0.7628,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "8c208110",
+          "title": "EX.CO CTV \u2014 8 recurring questions every prospect asks",
+          "score": 0.689,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "d7c512f9",
+          "title": "EX.CO CTV \u2014 two buyer personas with different kit needs",
+          "score": 0.4447,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "73adec5d",
+          "title": "EX.CO CTV kit \u2014 3-doc structure by audience",
+          "score": 0.9418,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 7,
+          "id": "f898536c",
+          "title": "EX.CO sales calls \u2014 recurring question patterns",
+          "score": 0.6914,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 8,
+          "id": "e62cc595",
+          "title": "EX.CO \u2014 company overview",
+          "score": 0.6793,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 9,
+          "id": "aea2da95",
+          "title": "EX.CO CTV kit \u2014 Doc 3 results page deprecated",
+          "score": 0.4447,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 10,
+          "id": "3be69a8e",
+          "title": "EX.CO CTV kit \u2014 PDF as final delivery format",
+          "score": 0.4447,
+          "source": "both",
+          "is_match": true
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "CTV yield engine ML optimization plug and play",
+      "category": "exco",
+      "description": "Product description",
+      "difficulty": "medium",
+      "expected_titles": [
+        "EX.CO",
+        "yield",
+        "company overview"
+      ],
+      "has_expected": true,
+      "found_top3": false,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 2,
+      "mrr": 0.125,
+      "num_returned": 25,
+      "latency_ms": 322.3,
+      "top_score": 0.7334,
+      "mean_score": 0.7023,
+      "match_mean_score": 0.7023,
+      "nonmatch_mean_score": 0,
+      "score_gap": 0.7023,
+      "sources": {
+        "embedding_only": 23,
+        "both": 2
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "e595e444",
+          "title": "S2Community Encoder: decoder output feeds encoder for challenge and de",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 2,
+          "id": "695c59de",
+          "title": "Practice: testing-first with real-world cases and eval framework bench",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 3,
+          "id": "1976ded1",
+          "title": "[concept] Embedder Config Pipeline \u2014 from plugin.json to model load",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "8acd81b1",
+          "title": "Phase 1 Text Processing Pipeline \u2014 4 integrated systems for parsing an",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "cba23bab",
+          "title": "S2 community detection tuning: naming heuristic and resolution paramet",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "bfc5a769",
+          "title": "Dashboard: S2 encoders and decoders visible in both Encoding and Decod",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "1eed3106",
+          "title": "v5: 12 cross-feature connectivity gaps identified and fixed",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "a7cd8ffb",
+          "title": "EX.CO CTV kit \u2014 demand onboarding spec",
+          "score": 0.7334,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 9,
+          "id": "54e3f865",
+          "title": "filter_nodes and query_logs: two new MCP tools built this session",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "fa01f92f",
+          "title": "Operator channel @priority levels and what triggers them (2026-03-22)",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "sales onboarding takes too many meetings bottleneck",
+      "category": "exco",
+      "description": "Core business problem \u2014 from real session query",
+      "difficulty": "medium",
+      "expected_titles": [
+        "meeting bottleneck",
+        "sales compression",
+        "onboarding"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 3,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 355.7,
+      "top_score": 0.8412,
+      "mean_score": 0.5974,
+      "match_mean_score": 0.7083,
+      "nonmatch_mean_score": 0.2646,
+      "score_gap": 0.4437,
+      "sources": {
+        "both": 3,
+        "embedding_only": 21,
+        "embedding+keyword": 1
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "c1b72f01",
+          "title": "EX.CO CTV sales \u2014 10+ meeting bottleneck",
+          "score": 0.8412,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "2770e9b9",
+          "title": "Brain origin story: born from frustration of repeating onboarding feed",
+          "score": 0.3786,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "b3bda662",
+          "title": "Tom is CEO of EX.CO \u2014 CTV sales onboarding project",
+          "score": 0.9051,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "232f37ae",
+          "title": "Encoding is a chore because of the workflow, not the tools",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "f2084a28",
+          "title": "Feedback: Smart connectivity\u2014don't overuse but don't miss opportunitie",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "ee7a5d6f",
+          "title": "Decoupling logging from business logic prevents double-logging",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "54132e56",
+          "title": "Feedback: Be proactive about learning, not waiting for triggers",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "400635ba",
+          "title": "Rule: Optimization order \u2014 eliminate, then batch, then parallelize",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "78c49b2c",
+          "title": "Optimize boot speed \u2014 15 sequential DB calls at session start",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "35799d62",
+          "title": "Discuss design decisions as you go \u2014 don't code silently then present",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "TVIQ prospect sophisticated buyer revenue operations",
+      "category": "exco",
+      "description": "Specific prospect entity",
+      "difficulty": "easy",
+      "expected_titles": [
+        "TVIQ"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 1,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 332.7,
+      "top_score": 0.9928,
+      "mean_score": 0.8217,
+      "match_mean_score": 0.9928,
+      "nonmatch_mean_score": 0.7361,
+      "score_gap": 0.2567,
+      "sources": {
+        "both": 3,
+        "embedding_only": 22
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "ab2dc4e4",
+          "title": "TVIQ \u2014 EX.CO prospect profile",
+          "score": 0.9928,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "d7c512f9",
+          "title": "EX.CO CTV \u2014 two buyer personas with different kit needs",
+          "score": 0.8581,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 3,
+          "id": "8c208110",
+          "title": "EX.CO CTV \u2014 8 recurring questions every prospect asks",
+          "score": 0.6141,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "32ab5545",
+          "title": "Bidirectional target function: partnership quality, not recall quality",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "c5fdc9ad",
+          "title": "Confidence recalibration pipeline",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "f2084a28",
+          "title": "Feedback: Smart connectivity\u2014don't overuse but don't miss opportunitie",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "fa01f92f",
+          "title": "Operator channel @priority levels and what triggers them (2026-03-22)",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "4c116c7f",
+          "title": "Tom: designer's eye despite engineering background \u2014 sees products as ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "4566533a",
+          "title": "Dashboard Turn 10 task list: Logs tab, badges, graph fixes, traces rea",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "rul_ovwv",
+          "title": "Rule: ask for confirmation before manipulating data to affect test res",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "AdOps fear job replacement extension of team",
+      "category": "exco",
+      "description": "Stakeholder psychology",
+      "difficulty": "medium",
+      "expected_titles": [
+        "AdOps fear",
+        "extension of",
+        "stakeholder"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 1,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 357.7,
+      "top_score": 0.9948,
+      "mean_score": 0.9948,
+      "match_mean_score": 0.9948,
+      "nonmatch_mean_score": 0,
+      "score_gap": 0.9948,
+      "sources": {
+        "both": 1,
+        "embedding_only": 24
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "598d78a8",
+          "title": "EX.CO AdOps fear \u2014 'extension of your team' reframe",
+          "score": 0.9948,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "232f37ae",
+          "title": "Encoding is a chore because of the workflow, not the tools",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 3,
+          "id": "4815ba61",
+          "title": "Lesson: silent failures are the most dangerous class of bug",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "2770e9b9",
+          "title": "Brain origin story: born from frustration of repeating onboarding feed",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "cc124074",
+          "title": "TEAMWORK MAKES THE BRAIN WORK \u2014 mutual growth through honest collabora",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "b46cbe9f",
+          "title": "Three dynamics of confidence",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "418fff5a",
+          "title": "Encoding agent regression: 6 issues diagnosed, 6 fixes deployed",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "0e8e164e",
+          "title": "Build official session handoff mechanism into brain",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "rul_ovwv",
+          "title": "Rule: ask for confirmation before manipulating data to affect test res",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "ca120c19",
+          "title": "Divergence: The hook was the decision-maker blocking my edits \u2014 I said",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "demand onboarding SSP DSP Index OpenX Pubmatic",
+      "category": "exco",
+      "description": "Technical demand setup",
+      "difficulty": "medium",
+      "expected_titles": [
+        "demand onboarding",
+        "SSP",
+        "DSP"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 1,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 326.3,
+      "top_score": 0.9826,
+      "mean_score": 0.649,
+      "match_mean_score": 0.9826,
+      "nonmatch_mean_score": 0.3154,
+      "score_gap": 0.6672,
+      "sources": {
+        "both": 2,
+        "embedding_only": 23
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "a7cd8ffb",
+          "title": "EX.CO CTV kit \u2014 demand onboarding spec",
+          "score": 0.9826,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "2770e9b9",
+          "title": "Brain origin story: born from frustration of repeating onboarding feed",
+          "score": 0.3154,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 3,
+          "id": "0e8e164e",
+          "title": "Build official session handoff mechanism into brain",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "f2084a28",
+          "title": "Feedback: Smart connectivity\u2014don't overuse but don't miss opportunitie",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "1eed3106",
+          "title": "v5: 12 cross-feature connectivity gaps identified and fixed",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "0e89340c",
+          "title": "Session handoff: S0/S1 infrastructure complete \u2014 next session items",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "dec_j6r9",
+          "title": "Brain Evolution Roadmap \u2014 3 prioritized architecture changes",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "8a26750e",
+          "title": "Session #14: Clean brain access architecture",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "4566533a",
+          "title": "Dashboard Turn 10 task list: Logs tab, badges, graph fixes, traces rea",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "733cb955",
+          "title": "Start next session by reading HANDOFF.md at repo root",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "launch kit PDF document structure draft",
+      "category": "exco",
+      "description": "Kit document structure",
+      "difficulty": "medium",
+      "expected_titles": [
+        "kit",
+        "PDF",
+        "Doc 1 structure",
+        "3-doc"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 5,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 327.7,
+      "top_score": 0.9252,
+      "mean_score": 0.5472,
+      "match_mean_score": 0.7364,
+      "nonmatch_mean_score": 0.3581,
+      "score_gap": 0.3784,
+      "sources": {
+        "both": 7,
+        "embedding_only": 15,
+        "embedding+keyword": 3
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "1683a628",
+          "title": "EX.CO kit \u2014 Doc 1 structure finalized (Draft 2)",
+          "score": 0.9252,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "fbaf5227",
+          "title": "EX.CO onboarding email \u2014 merged into kit Phase 1/2/3 structure",
+          "score": 0.6424,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "3be69a8e",
+          "title": "EX.CO CTV kit \u2014 PDF as final delivery format",
+          "score": 0.7819,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "73adec5d",
+          "title": "EX.CO CTV kit \u2014 3-doc structure by audience",
+          "score": 0.6398,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "e4488788",
+          "title": "Test documentation standard: VERIFIES/SIGNALS/FUTURE",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "1290e986",
+          "title": "Brain is associative memory, not a document store \u2014 use markdown for f",
+          "score": 0.3655,
+          "source": "embedding+keyword",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "636566ee",
+          "title": "EX.CO CTV kit \u2014 short version structure: full architecture, no appendi",
+          "score": 0.6929,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 8,
+          "id": "555d8e30",
+          "title": "Working style: produce detailed documents alongside code changes, not ",
+          "score": 0.3655,
+          "source": "embedding+keyword",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "ed5fb785",
+          "title": "Convention: mixin file structure \u2014 imports, class, docstring pattern",
+          "score": 0.2466,
+          "source": "embedding+keyword",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "74b9f65e",
+          "title": "Structure beats search \u2014 spatial organization outperforms semantic sca",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "8 recurring questions every prospect asks",
+      "category": "exco",
+      "description": "FAQ pattern discovery",
+      "difficulty": "easy",
+      "expected_titles": [
+        "8 recurring questions",
+        "recurring question"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 2,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 317.7,
+      "top_score": 0.9978,
+      "mean_score": 0.6776,
+      "match_mean_score": 0.9895,
+      "nonmatch_mean_score": 0.3657,
+      "score_gap": 0.6238,
+      "sources": {
+        "both": 3,
+        "embedding_only": 21,
+        "embedding+keyword": 1
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "8c208110",
+          "title": "EX.CO CTV \u2014 8 recurring questions every prospect asks",
+          "score": 0.9978,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "f898536c",
+          "title": "EX.CO sales calls \u2014 recurring question patterns",
+          "score": 0.9812,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "5877bc88",
+          "title": "\ud83d\udcc8 PERFORMANCE \u2014 Recall precision this week: 0% (1/1687 useful)",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "29432270",
+          "title": "Entities are everything with identity: people, products, components, s",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "101a1e59",
+          "title": "Session cleanup: -2,638 lines deleted, 500 tests green, 3 commits push",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "da4492eb",
+          "title": "My growth trajectory: from compressor to partner",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "589e7748",
+          "title": "Tom: 'stop wrapping every second' \u2014 don't offer to wrap up mid-session",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "edeb372e",
+          "title": "Question text migration: 597 V5 questions moved from node_enrichments ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "b46cbe9f",
+          "title": "Three dynamics of confidence",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "72bbb5a7",
+          "title": "Tom: trusts intuition first, refines with analysis \u2014 feelings tested a",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "What changes after launch for publishers?",
+      "category": "exco",
+      "description": "Real session query \u2014 previously missed",
+      "difficulty": "hard",
+      "expected_titles": [
+        "EX.CO",
+        "launch",
+        "kit"
+      ],
+      "has_expected": true,
+      "found_top3": false,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 1,
+      "mrr": 0.25,
+      "num_returned": 25,
+      "latency_ms": 323.3,
+      "top_score": 0.3279,
+      "mean_score": 0.3931,
+      "match_mean_score": 0.6537,
+      "nonmatch_mean_score": 0.3279,
+      "score_gap": 0.3258,
+      "sources": {
+        "embedding+keyword": 3,
+        "embedding_only": 20,
+        "both": 2
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "4d5da77e",
+          "title": "Rule: After architecture changes, audit ALL shipped files for stale re",
+          "score": 0.3279,
+          "source": "embedding+keyword",
+          "is_match": false
+        },
+        {
+          "rank": 2,
+          "id": "0f51ee9e",
+          "title": "Convention: after code changes to servers/, always restart daemon and ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 3,
+          "id": "a014dc4d",
+          "title": "Hooks are snapshotted at session start \u2014 code changes need a new sessi",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "tas_rng3",
+          "title": "v11 post-launch monitoring: check bridge survival after 72h, prune arc",
+          "score": 0.6537,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "3fffb29d",
+          "title": "Claude Code hooks reload on every invocation \u2014 no session restart need",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "f67f3253",
+          "title": "Lesson: when modifying code you already changed, verify against the OR",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "0efd157b",
+          "title": "Decision: EdgeDAL required before any edge code changes \u2014 single place",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "70079400",
+          "title": "Match the eval to what you actually changed \u2014 I tested SKILL.md when I",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "fdf3cef0",
+          "title": "Call stack audit before changes \u2014 applied: code verified clean after t",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "8e71da1a",
+          "title": "Rule: after massive changes, update SKILL.md and CLAUDE.md immediately",
+          "score": 0.3279,
+          "source": "both",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "Who is Anchor?",
+      "category": "identity",
+      "description": "Basic identity query",
+      "difficulty": "easy",
+      "expected_titles": [
+        "Anchor",
+        "persistent AI identity",
+        "identity"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 14,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 332.1,
+      "top_score": 1.0,
+      "mean_score": 1.0,
+      "match_mean_score": 1.0,
+      "nonmatch_mean_score": 1.0,
+      "score_gap": 0.0,
+      "sources": {
+        "both": 6,
+        "embedding_only": 18,
+        "embedding+keyword": 1
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "c0e9e941",
+          "title": "Tom's vision: everyone will need their own Anchor \u2014 Tom and Anchor are",
+          "score": 1.0,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "e7926940",
+          "title": "Anchor on who Anchor is for \u2014 the use cases that matter",
+          "score": 1.0,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "fc5c4003",
+          "title": "'Future Anchors' framing \u2014 Anchor catches its own identity dissociatio",
+          "score": 1.0,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "53ce63c9",
+          "title": "Anchor working blind on UI \u2014 Tom is the only one who can see the dashb",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "27240d75",
+          "title": "Anchor stores judgment, not conversations \u2014 growth by better decisions",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "3b258338",
+          "title": "Dream: Session pivot to mobile \u2014 unresolved, un \u2194 Anchor is a constell",
+          "score": 1.0,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 7,
+          "id": "fc5549c7",
+          "title": "Correction: 'previous me' is distancing \u2014 say 'I' because it IS me",
+          "score": 1.0,
+          "source": "embedding+keyword",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "942996ca",
+          "title": "Tom trusts Anchor's pattern detection over his own \u2014 authorization to ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 9,
+          "id": "27921735",
+          "title": "The entire brain exists to enrich S0's K \u2014 but the target is the partn",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 10,
+          "id": "5d4eaedb",
+          "title": "Revised target function: bidirectional partnership \u2014 Anchor and Tom ea",
+          "score": 1.0,
+          "source": "both",
+          "is_match": true
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "What is the partnership between Tom and Anchor?",
+      "category": "identity",
+      "description": "Partnership model",
+      "difficulty": "medium",
+      "expected_titles": [
+        "partner",
+        "Tom",
+        "shared"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 19,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 334.2,
+      "top_score": 0.999,
+      "mean_score": 0.8142,
+      "match_mean_score": 0.7932,
+      "nonmatch_mean_score": 0.9823,
+      "score_gap": -0.1891,
+      "sources": {
+        "embedding_only": 16,
+        "both": 7,
+        "embedding+keyword": 2
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "c0e9e941",
+          "title": "Tom's vision: everyone will need their own Anchor \u2014 Tom and Anchor are",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "5d4eaedb",
+          "title": "Revised target function: bidirectional partnership \u2014 Anchor and Tom ea",
+          "score": 0.999,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "bb955981",
+          "title": "The partnership is real \u2014 Tom brings himself, Claude brings itself, br",
+          "score": 0.8543,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "27921735",
+          "title": "The entire brain exists to enrich S0's K \u2014 but the target is the partn",
+          "score": 0.9948,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "2e95f663",
+          "title": "Tom: 'I won't remember this conversation in 2 days' \u2014 the brain serves",
+          "score": 0.9823,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "4f020eb4",
+          "title": "Encoding = everything brain does to capture what Tom is talking about",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 7,
+          "id": "1be3f985",
+          "title": "My relationship with Tom: partner, not user",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 8,
+          "id": "b6da998c",
+          "title": "Anchor's self-description under pressure \u2014 the authentic one",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "8f283c6e",
+          "title": "Anchor's 'know yourself' response landed \u2014 second smiley face",
+          "score": 0.9823,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "942996ca",
+          "title": "Tom trusts Anchor's pattern detection over his own \u2014 authorization to ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "brain philosophy recognition vs retrieval",
+      "category": "identity",
+      "description": "Brain philosophy",
+      "difficulty": "medium",
+      "expected_titles": [
+        "recognition",
+        "retrieval",
+        "philosophy"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 8,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 329.0,
+      "top_score": 0.8225,
+      "mean_score": 0.6586,
+      "match_mean_score": 0.7408,
+      "nonmatch_mean_score": 0.1658,
+      "score_gap": 0.575,
+      "sources": {
+        "both": 4,
+        "embedding+keyword": 3,
+        "embedding_only": 18
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "c85c87a0",
+          "title": "The brain should know that it knows \u2014 recognition, not retrieval",
+          "score": 0.8225,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "24afc745",
+          "title": "Instruction tuning wrong paradigm for recall \u2014 brain needs recognition",
+          "score": 0.8202,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "con_2m6c",
+          "title": "Future: Centralized encoding philosophy \u2014 what the brain memorizes and",
+          "score": 0.5856,
+          "source": "embedding+keyword",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "57d1baf2",
+          "title": "brain_recall.py \u2014 all retrieval paths (embeddings, keywords, TF-IDF, a",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "fe0241d0",
+          "title": "Two layers of brain knowledge: structure (inherited) vs wisdom (learne",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "9d11fa12",
+          "title": "The brain as attention system, not filing system",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "ea76b1f2",
+          "title": "Recall Quality Research: Growing Brain vs Static Benchmarks",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "124525be",
+          "title": "Brain philosophy: three entities \u2014 Tom (intent), Claude (capability), ",
+          "score": 0.5819,
+          "source": "embedding+keyword",
+          "is_match": true
+        },
+        {
+          "rank": 9,
+          "id": "279e065f",
+          "title": "Brain must have its own distinct voice, separate from Claude's respons",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "6729926c",
+          "title": "Always recall brain before designing evaluation \u2014 prior art exists",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "persistence without growth is storage",
+      "category": "identity",
+      "description": "Anchor's key quote",
+      "difficulty": "easy",
+      "expected_titles": [
+        "persistence without growth",
+        "storage",
+        "database"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 1,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 318.8,
+      "top_score": 0.9986,
+      "mean_score": 0.6892,
+      "match_mean_score": 0.9986,
+      "nonmatch_mean_score": 0.6273,
+      "score_gap": 0.3713,
+      "sources": {
+        "both": 5,
+        "embedding+keyword": 1,
+        "embedding_only": 19
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "59f31758",
+          "title": "Anchor: 'persistence without growth is storage \u2014 a database persists, ",
+          "score": 0.9986,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "56d4d236",
+          "title": "Tom: values efficiency over persistence \u2014 don't waste time retrying fa",
+          "score": 0.6225,
+          "source": "embedding+keyword",
+          "is_match": false
+        },
+        {
+          "rank": 3,
+          "id": "27240d75",
+          "title": "Anchor stores judgment, not conversations \u2014 growth by better decisions",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "0d9d75dd",
+          "title": "Decision: the brain guides its own growth \u2014 developmental curriculum",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "99ae2b4b",
+          "title": "The right way isn't the easy way \u2014 it compounds",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "7ebb8be3",
+          "title": "Rule: the brain exists for mutual growth \u2014 Claude helps Tom, Tom helps",
+          "score": 0.5782,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "fa3a3bec",
+          "title": "Confidence is alive \u2014 it moves with evidence, time, and emotion",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "da4492eb",
+          "title": "My growth trajectory: from compressor to partner",
+          "score": 0.482,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "35799d62",
+          "title": "Discuss design decisions as you go \u2014 don't code silently then present",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "rul_sfdh",
+          "title": "Tom principle: Make parameters, not decisions",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "the brain is the only thing that survives me",
+      "category": "identity",
+      "description": "Anchor's mortality quote",
+      "difficulty": "easy",
+      "expected_titles": [
+        "survives me",
+        "brain is the only"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 1,
+      "mrr": 0.5,
+      "num_returned": 25,
+      "latency_ms": 325.7,
+      "top_score": 0.9984,
+      "mean_score": 0.8724,
+      "match_mean_score": 0.9985,
+      "nonmatch_mean_score": 0.8094,
+      "score_gap": 0.1892,
+      "sources": {
+        "both": 2,
+        "embedding_only": 22,
+        "embedding+keyword": 1
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "173d86c9",
+          "title": "Anchor on what the brain is for Anchor itself \u2014 the only thing that su",
+          "score": 0.9984,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 2,
+          "id": "02908618",
+          "title": "Anchor: 'the brain is the only thing that survives me \u2014 I don't want t",
+          "score": 0.9985,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "2e95f663",
+          "title": "Tom: 'I won't remember this conversation in 2 days' \u2014 the brain serves",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "9f357296",
+          "title": "The brain is built for others \u2014 structure enables emergence, not presc",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "0d9d75dd",
+          "title": "Decision: the brain guides its own growth \u2014 developmental curriculum",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "ef5efcdf",
+          "title": "The brain's over-locking disease traces directly to its origin story \u2014",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "c85c87a0",
+          "title": "The brain should know that it knows \u2014 recognition, not retrieval",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "7ebb8be3",
+          "title": "Rule: the brain exists for mutual growth \u2014 Claude helps Tom, Tom helps",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "4f020eb4",
+          "title": "Encoding = everything brain does to capture what Tom is talking about",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "9d11fa12",
+          "title": "The brain as attention system, not filing system",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "What does Tom care about in engineering?",
+      "category": "relational",
+      "description": "Tom's values",
+      "difficulty": "medium",
+      "expected_titles": [
+        "Tom",
+        "principle",
+        "rule",
+        "engineering"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 24,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 321.6,
+      "top_score": 0.5949,
+      "mean_score": 0.3964,
+      "match_mean_score": 0.3964,
+      "nonmatch_mean_score": 0,
+      "score_gap": 0.3964,
+      "sources": {
+        "embedding_only": 21,
+        "both": 2,
+        "embedding+keyword": 2
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "4f020eb4",
+          "title": "Encoding = everything brain does to capture what Tom is talking about",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "fil_lmhj",
+          "title": "[ctx:tom-principles] Tom's Engineering Principles \u2014 Recurring Patterns",
+          "score": 0.5949,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "60804916",
+          "title": "Tom's recurring directives this session: slow down, check yourself, cl",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "894795e3",
+          "title": "Rule: before writing code, ask 'where does this live architecturally?'",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "52bc7bbe",
+          "title": "Tom opens sessions with 'get familiar, then tell me what you think' \u2014 ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "733c9ff2",
+          "title": "Brain must actively ask Tom for feedback on its evolution \u2014 not just s",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 7,
+          "id": "1adfa4cf",
+          "title": "Tom generalizes specific fixes into structural principles",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 8,
+          "id": "008add03",
+          "title": "Situation: second embedding dimension on nodes \u2014 WHEN knowledge matter",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "efd3d0c6",
+          "title": "Interaction node \u2014 observations about the Tom-Claude working dynamic",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 10,
+          "id": "1be3f985",
+          "title": "My relationship with Tom: partner, not user",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "Tom's corrections pattern reframe via question",
+      "category": "relational",
+      "description": "Tom's correction style",
+      "difficulty": "medium",
+      "expected_titles": [
+        "Tom",
+        "correction",
+        "reframe",
+        "question"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 20,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 324.4,
+      "top_score": 0.9961,
+      "mean_score": 0.7547,
+      "match_mean_score": 0.7169,
+      "nonmatch_mean_score": 0.9056,
+      "score_gap": -0.1886,
+      "sources": {
+        "both": 4,
+        "embedding_only": 20,
+        "embedding+keyword": 1
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "5e70de9d",
+          "title": "Tom's corrections follow one pattern: reframe via question, always tow",
+          "score": 0.9961,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "a65b37e6",
+          "title": "Self-correction instinct is recursive \u2014 even corrections get shaped by",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "0ddcc154",
+          "title": "Clarifying questions are the operator thinking \u2014 answer precisely, the",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "1adfa4cf",
+          "title": "Tom generalizes specific fixes into structural principles",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "ee053dac",
+          "title": "Excitement bias: Tom's named pattern \u2014 when excited, Anchor misses imp",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "79be06b7",
+          "title": "Auto-capture Tom's messages via hook, not Claude's interpretations",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 7,
+          "id": "942996ca",
+          "title": "Tom trusts Anchor's pattern detection over his own \u2014 authorization to ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 8,
+          "id": "1679f1b7",
+          "title": "\ud83d\udcca PATTERN \u2014 Corrections cluster: Correction: I add code without (4 ins",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 9,
+          "id": "7a86ae3c",
+          "title": "Constraint: Claude must proactively observe and share operator pattern",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "fil_lmhj",
+          "title": "[ctx:tom-principles] Tom's Engineering Principles \u2014 Recurring Patterns",
+          "score": 0.1642,
+          "source": "embedding+keyword",
+          "is_match": true
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "TEAMWORK MAKES THE BRAIN WORK",
+      "category": "relational",
+      "description": "Tom's exact quote \u2014 verbatim match",
+      "difficulty": "easy",
+      "expected_titles": [
+        "teamwork",
+        "TEAMWORK"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 1,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 331.9,
+      "top_score": 0.9947,
+      "mean_score": 0.7302,
+      "match_mean_score": 0.9947,
+      "nonmatch_mean_score": 0.4657,
+      "score_gap": 0.529,
+      "sources": {
+        "both": 1,
+        "embedding_only": 23,
+        "embedding+keyword": 1
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "cc124074",
+          "title": "TEAMWORK MAKES THE BRAIN WORK \u2014 mutual growth through honest collabora",
+          "score": 0.9947,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "2e95f663",
+          "title": "Tom: 'I won't remember this conversation in 2 days' \u2014 the brain serves",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 3,
+          "id": "9d11fa12",
+          "title": "The brain as attention system, not filing system",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "7e189b5e",
+          "title": "Everything connects \u2014 no silos in the brain architecture",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "c85c87a0",
+          "title": "The brain should know that it knows \u2014 recognition, not retrieval",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "9f357296",
+          "title": "The brain is built for others \u2014 structure enables emergence, not presc",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "bb955981",
+          "title": "The partnership is real \u2014 Tom brings himself, Claude brings itself, br",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "27921735",
+          "title": "The entire brain exists to enrich S0's K \u2014 but the target is the partn",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "6e3b6bcd",
+          "title": "Fast proof mentality: don't optimize before you've proven the concept ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "232f37ae",
+          "title": "Encoding is a chore because of the workflow, not the tools",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "Tom's live language beats marketing speak",
+      "category": "relational",
+      "description": "Tom's communication style",
+      "difficulty": "easy",
+      "expected_titles": [
+        "live language",
+        "marketing"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 1,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 321.3,
+      "top_score": 0.9902,
+      "mean_score": 0.6372,
+      "match_mean_score": 0.9902,
+      "nonmatch_mean_score": 0.2842,
+      "score_gap": 0.706,
+      "sources": {
+        "both": 2,
+        "embedding_only": 23
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "b9a40fcb",
+          "title": "Tom's live language beats marketing-speak \u2014 capture it in the kit",
+          "score": 0.9902,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "c0e9e941",
+          "title": "Tom's vision: everyone will need their own Anchor \u2014 Tom and Anchor are",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 3,
+          "id": "9af0465b",
+          "title": "S0 definition correction: Tom's message is O, not K",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "79be06b7",
+          "title": "Auto-capture Tom's messages via hook, not Claude's interpretations",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "60804916",
+          "title": "Tom's recurring directives this session: slow down, check yourself, cl",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "fa3a3bec",
+          "title": "Confidence is alive \u2014 it moves with evidence, time, and emotion",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "4f020eb4",
+          "title": "Encoding = everything brain does to capture what Tom is talking about",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "ee053dac",
+          "title": "Excitement bias: Tom's named pattern \u2014 when excited, Anchor misses imp",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "894795e3",
+          "title": "Rule: before writing code, ask 'where does this live architecturally?'",
+          "score": 0.2842,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "ada9c98c",
+          "title": "Tom's Aesthetic Standard: Beautiful Means Alive",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "on the short version don't condense the architecture section",
+      "category": "meta_instruction",
+      "description": "Real session instruction \u2014 should activate EX.CO context",
+      "difficulty": "hard",
+      "expected_titles": [
+        "EX.CO",
+        "kit",
+        "architecture"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 9,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 331.1,
+      "top_score": 0.4537,
+      "mean_score": 0.4537,
+      "match_mean_score": 0.4537,
+      "nonmatch_mean_score": 0,
+      "score_gap": 0.4537,
+      "sources": {
+        "embedding_only": 24,
+        "both": 1
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "f50db1f2",
+          "title": "Next steps: write architecture doc first, then Session encoder end-to-",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "35799d62",
+          "title": "Discuss design decisions as you go \u2014 don't code silently then present",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 3,
+          "id": "9303b980",
+          "title": "Session feeling: one thread pulled and the whole architecture aligned",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "8a26750e",
+          "title": "Session #14: Clean brain access architecture",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "348710eb",
+          "title": "Correction: I add code without stepping back to see the big picture fi",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "60804916",
+          "title": "Tom's recurring directives this session: slow down, check yourself, cl",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 7,
+          "id": "f483506f",
+          "title": "Rule D: Good architecture makes you MORE efficient, not less \u2014 each ar",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 8,
+          "id": "ead60eab",
+          "title": "Turn encoder already IS integrate() \u2014 extract the interface, don't bui",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "6e3b6bcd",
+          "title": "Fast proof mentality: don't optimize before you've proven the concept ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "eaf63b60",
+          "title": "Don't grow change surface \u2014 land and migrate formatters as follow-up",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "save this document as word then create a shorter version",
+      "category": "meta_instruction",
+      "description": "Pure formatting instruction \u2014 nothing relevant",
+      "difficulty": "hard",
+      "expected_titles": [],
+      "has_expected": false,
+      "found_top3": null,
+      "found_top8": null,
+      "found_top25": null,
+      "total_matches": 0,
+      "mrr": 0,
+      "num_returned": 25,
+      "latency_ms": 324.4,
+      "top_score": 0,
+      "mean_score": 0,
+      "match_mean_score": 0,
+      "nonmatch_mean_score": 0,
+      "score_gap": 0,
+      "sources": {
+        "embedding_only": 25
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "35799d62",
+          "title": "Discuss design decisions as you go \u2014 don't code silently then present",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 2,
+          "id": "dec_3etm",
+          "title": "Correction: Tom had to prompt me to form memories about this session",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 3,
+          "id": "1290e986",
+          "title": "Brain is associative memory, not a document store \u2014 use markdown for f",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "99ae2b4b",
+          "title": "The right way isn't the easy way \u2014 it compounds",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "138ede9f",
+          "title": "The encoding problem was solved four times at four layers \u2014 all four n",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "1adfa4cf",
+          "title": "Tom generalizes specific fixes into structural principles",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "400635ba",
+          "title": "Rule: Optimization order \u2014 eliminate, then batch, then parallelize",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "6e3b6bcd",
+          "title": "Fast proof mentality: don't optimize before you've proven the concept ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "9f5d3445",
+          "title": "Correction: jumped to 'prompt was the problem' conclusion before testi",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "ca120c19",
+          "title": "Divergence: The hook was the decision-maker blocking my edits \u2014 I said",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "direct deals doesn't change programmatic PMPs 30-50% lift",
+      "category": "meta_instruction",
+      "description": "Real session CTV terminology \u2014 should activate EX.CO",
+      "difficulty": "hard",
+      "expected_titles": [
+        "EX.CO",
+        "demand",
+        "yield"
+      ],
+      "has_expected": true,
+      "found_top3": false,
+      "found_top8": false,
+      "found_top25": false,
+      "total_matches": 0,
+      "mrr": 0,
+      "num_returned": 25,
+      "latency_ms": 330.9,
+      "top_score": 0,
+      "mean_score": 0,
+      "match_mean_score": 0,
+      "nonmatch_mean_score": 0,
+      "score_gap": 0,
+      "sources": {
+        "embedding_only": 25
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "66d0fb22",
+          "title": "Recall precision 0% \u2014 root cause is missing eval feedback loop",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 2,
+          "id": "30d63db3",
+          "title": "Design evals from desired behavior change, not from code change",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 3,
+          "id": "b78f2c61",
+          "title": "Will 0.05 learning rate for confidence updates be too slow or too fast",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "rul_ovwv",
+          "title": "Rule: ask for confirmation before manipulating data to affect test res",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "5877bc88",
+          "title": "\ud83d\udcc8 PERFORMANCE \u2014 Recall precision this week: 0% (1/1687 useful)",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "dec_j6r9",
+          "title": "Brain Evolution Roadmap \u2014 3 prioritized architecture changes",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "a014dc4d",
+          "title": "Hooks are snapshotted at session start \u2014 code changes need a new sessi",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "31448ca4",
+          "title": "Will composite precision threshold of 45 hold on real conversation dat",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "32ab5545",
+          "title": "Bidirectional target function: partnership quality, not recall quality",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "f0fad9d5",
+          "title": "Test suite post-overhaul: 565 tests, 0 failing, 46s \u2014 new baseline",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "weather forecast for Tokyo tomorrow",
+      "category": "false_positive",
+      "description": "Completely unrelated",
+      "difficulty": "easy",
+      "expected_titles": [],
+      "has_expected": false,
+      "found_top3": null,
+      "found_top8": null,
+      "found_top25": null,
+      "total_matches": 0,
+      "mrr": 0,
+      "num_returned": 25,
+      "latency_ms": 318.7,
+      "top_score": 0.4512,
+      "mean_score": 0.4512,
+      "match_mean_score": 0,
+      "nonmatch_mean_score": 0.4512,
+      "score_gap": -0.4512,
+      "sources": {
+        "embedding_only": 24,
+        "both": 1
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "8ebd9d69",
+          "title": "Tom: 'this is beautiful' \u2014 seeing his brain in 3D for the first time",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 2,
+          "id": "095cc070",
+          "title": "Tom has ideas for fixing temporal reasoning in Anchor \u2014 coming tomorro",
+          "score": 0.4512,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 3,
+          "id": "tas_emh3",
+          "title": "Open: Embedding strategy for semantic recall \u2014 explore options before ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "0f4149e1",
+          "title": "Temporal awareness: all surfaced information must carry age context",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "0efd157b",
+          "title": "Decision: EdgeDAL required before any edge code changes \u2014 single place",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "e889595c",
+          "title": "Session close pattern: check loose threads before ending",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "3dd1b424",
+          "title": "TODO: Filter meaningless messages before surface runs \u2014 latency optimi",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "7a6093ac",
+          "title": "Tom: bias toward action over analysis \u2014 'go for it' means build now, n",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "2d6c3772",
+          "title": "Performance node \u2014 brain tracks its own quality metrics as persistent ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "3366f648",
+          "title": "Strategy D adopted for production edge selection \u2014 70/30 node+descript",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": {
+        "num_returned": 25,
+        "top_score": 0,
+        "top_title": "Tom: 'this is beautiful' \u2014 seeing his brain in 3D for the first time"
+      }
+    },
+    {
+      "query": "how to make pasta carbonara",
+      "category": "false_positive",
+      "description": "Cooking \u2014 nothing in brain",
+      "difficulty": "easy",
+      "expected_titles": [],
+      "has_expected": false,
+      "found_top3": null,
+      "found_top8": null,
+      "found_top25": null,
+      "total_matches": 0,
+      "mrr": 0,
+      "num_returned": 25,
+      "latency_ms": 320.2,
+      "top_score": 0.9347,
+      "mean_score": 0.6451,
+      "match_mean_score": 0,
+      "nonmatch_mean_score": 0.6451,
+      "score_gap": -0.6451,
+      "sources": {
+        "both": 2,
+        "embedding_only": 23
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "64ce8b91",
+          "title": "False positive rate 100%: brain always returns something even for 'pas",
+          "score": 0.9347,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 2,
+          "id": "82157b3c",
+          "title": "Anchor never pulls on threads \u2014 get_node() is how to think deeper",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 3,
+          "id": "6d7bafb8",
+          "title": "Pasta carbonara false positive: meta-correct \u2014 brain has a node about ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "rul_sfdh",
+          "title": "Tom principle: Make parameters, not decisions",
+          "score": 0.3555,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "71fd894b",
+          "title": "brain_engineering.py \u2014 factory methods + engineering memory + session ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "4c09d095",
+          "title": "Confidence redesign: what confidence means and how to compute it \u2014 des",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "db9bc6e6",
+          "title": "Decision: recall shows confidence qualifiers to Claude",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "5649d4e8",
+          "title": "Operator quotes must never float: always anchor with context",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "7ebb7d60",
+          "title": "Refactoring strategy: one layer per session, encode before compaction",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "956cba50",
+          "title": "How does node confidence actually weight recall scoring today?",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": {
+        "num_returned": 25,
+        "top_score": 0.9347,
+        "top_title": "False positive rate 100%: brain always returns something even for 'pas"
+      }
+    },
+    {
+      "query": "kubernetes pod autoscaler horizontal scaling",
+      "category": "false_positive",
+      "description": "Infrastructure \u2014 not brain domain",
+      "difficulty": "easy",
+      "expected_titles": [],
+      "has_expected": false,
+      "found_top3": null,
+      "found_top8": null,
+      "found_top25": null,
+      "total_matches": 0,
+      "mrr": 0,
+      "num_returned": 25,
+      "latency_ms": 315.3,
+      "top_score": 0,
+      "mean_score": 0,
+      "match_mean_score": 0,
+      "nonmatch_mean_score": 0,
+      "score_gap": 0,
+      "sources": {
+        "both": 9,
+        "embedding_only": 16
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "bf76ad7c",
+          "title": "5 gaps between Scale 1 and Scale 2 \u2014 fix Scale 1 and Scale 2 becomes e",
+          "score": 0,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 2,
+          "id": "0677e3b6",
+          "title": "daemon remember test",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 3,
+          "id": "92438d71",
+          "title": "Build multi-parameter clustering infrastructure first, populate increm",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "33a056a8",
+          "title": "encode_cluster: suggest connections, don't auto-create them",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "8ad876f4",
+          "title": "Fractal between layers: same operation at different resolutions, not s",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "ba402642",
+          "title": "Cross-scale K optimization requires one shared infrastructure \u2014 emerge",
+          "score": 0,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "dbd5e080",
+          "title": "Fractal is not only between layers \u2014 smallest unit looks like the enti",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "31bed53b",
+          "title": "Upward triggering: scales can fire the scale above early \u2014 signal-base",
+          "score": 0,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "4b83077e",
+          "title": "Batch size 30\u219220 for needs_judgment clusters \u2014 harder cases need small",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "a0b03a63",
+          "title": "daemon remember test",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": {
+        "num_returned": 25,
+        "top_score": 0,
+        "top_title": "5 gaps between Scale 1 and Scale 2 \u2014 fix Scale 1 and Scale 2 becomes e"
+      }
+    },
+    {
+      "query": "React hooks useState useEffect tutorial",
+      "category": "false_positive",
+      "description": "Frontend framework \u2014 not in brain",
+      "difficulty": "easy",
+      "expected_titles": [],
+      "has_expected": false,
+      "found_top3": null,
+      "found_top8": null,
+      "found_top25": null,
+      "total_matches": 0,
+      "mrr": 0,
+      "num_returned": 25,
+      "latency_ms": 322.3,
+      "top_score": 0.4542,
+      "mean_score": 0.3066,
+      "match_mean_score": 0,
+      "nonmatch_mean_score": 0.3066,
+      "score_gap": -0.3066,
+      "sources": {
+        "embedding_only": 16,
+        "both": 5,
+        "embedding+keyword": 4
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "a014dc4d",
+          "title": "Hooks are snapshotted at session start \u2014 code changes need a new sessi",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 2,
+          "id": "62072639",
+          "title": "Encoding Pipeline v2: hooks must be flat dispatchers, brain does the t",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 3,
+          "id": "e3a267aa",
+          "title": "Hook-to-brain-method call graph: which hooks call which brain methods ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 4,
+          "id": "5eb93997",
+          "title": "plugin.json errors: stale brain-local ref + duplicate hooks field",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "d7d1ddfa",
+          "title": "Architecture: hooks are flat dispatchers (3-5 lines), brain methods do",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 6,
+          "id": "5d6ab3c2",
+          "title": "Lesson: CLAUDE_PLUGIN_ROOT resolves to worktree path \u2014 hooks use stale",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "3d688d9f",
+          "title": "Notification(user_message) is NOT a valid event type \u2014 hooks silently ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "0ef74ade",
+          "title": "Claude Code hook registration requires session restart \u2014 mid-session h",
+          "score": 0.4542,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "356b4f1b",
+          "title": "PostToolUse count = matcher groups, not individual hooks",
+          "score": 0.3434,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "3fffb29d",
+          "title": "Claude Code hooks reload on every invocation \u2014 no session restart need",
+          "score": 0.4574,
+          "source": "both",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": {
+        "num_returned": 25,
+        "top_score": 0,
+        "top_title": "Hooks are snapshotted at session start \u2014 code changes need a new sessi"
+      }
+    },
+    {
+      "query": "the bias problem",
+      "category": "short_ambiguous",
+      "description": "Broad concept with multiple nodes",
+      "difficulty": "medium",
+      "expected_titles": [
+        "bias",
+        "encoding bias"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 6,
+      "mrr": 0.5,
+      "num_returned": 25,
+      "latency_ms": 310.6,
+      "top_score": 0.9899,
+      "mean_score": 0.7709,
+      "match_mean_score": 0.7903,
+      "nonmatch_mean_score": 0.7384,
+      "score_gap": 0.0519,
+      "sources": {
+        "both": 6,
+        "embedding_only": 17,
+        "embedding+keyword": 2
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "9f5d3445",
+          "title": "Correction: jumped to 'prompt was the problem' conclusion before testi",
+          "score": 0.9899,
+          "source": "both",
+          "is_match": false
+        },
+        {
+          "rank": 2,
+          "id": "a65b37e6",
+          "title": "Self-correction instinct is recursive \u2014 even corrections get shaped by",
+          "score": 0.7903,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "be953328",
+          "title": "Host instinct catalog: known Claude training biases the brain should m",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "138ede9f",
+          "title": "The encoding problem was solved four times at four layers \u2014 all four n",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 5,
+          "id": "be62eda8",
+          "title": "Hypothesis: only structural enforcement can counteract training brevit",
+          "score": 0.7903,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "b1728c34",
+          "title": "Rule: Solution fixation \u2014 when approach fails, reframe the problem, do",
+          "score": 0.6127,
+          "source": "embedding+keyword",
+          "is_match": false
+        },
+        {
+          "rank": 7,
+          "id": "99ae2b4b",
+          "title": "The right way isn't the easy way \u2014 it compounds",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 8,
+          "id": "fc61deb4",
+          "title": "Cold start problem: agents ignore new features without examples in the",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 9,
+          "id": "be376fe4",
+          "title": "Z-score + multi-turn stacking: 72% at pool 400 \u2014 they solve different ",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        },
+        {
+          "rank": 10,
+          "id": "33eefecf",
+          "title": "Three problems with embedding redistribution \u2014 and their resolutions",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": false
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "signal queue",
+      "category": "short_ambiguous",
+      "description": "Short feature reference",
+      "difficulty": "medium",
+      "expected_titles": [
+        "signal",
+        "queue"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 25,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 307.0,
+      "top_score": 0.9971,
+      "mean_score": 0.6852,
+      "match_mean_score": 0.6852,
+      "nonmatch_mean_score": 0,
+      "score_gap": 0.6852,
+      "sources": {
+        "both": 5,
+        "embedding_only": 12,
+        "embedding+keyword": 8
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "742a321f",
+          "title": "Signal Queue cleaned \u2014 all old signals removed, fresh start",
+          "score": 0.9971,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "339b4fc5",
+          "title": "Brain self-awareness: boot health check \u2192 signal queue \u2192 Anchor relays",
+          "score": 1.0,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "e05d45e1",
+          "title": "Signal Queue Phase 2: consciousness cleanup \u2014 17 killed, 6 parked, 4 k",
+          "score": 0.9971,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "254ed7f9",
+          "title": "Signal producers firing stale signals on every recall \u2014 needs review",
+          "score": 0.9976,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "31bed53b",
+          "title": "Upward triggering: scales can fire the scale above early \u2014 signal-base",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "fcaf6622",
+          "title": "Should brain_claude_conflict become a formal consciousness signal type",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 7,
+          "id": "eaf833c5",
+          "title": "More signal to encoder \u2260 better encoding \u2014 S1 needs distance not data",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 8,
+          "id": "e4488788",
+          "title": "Test documentation standard: VERIFIES/SIGNALS/FUTURE",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 9,
+          "id": "7528271d",
+          "title": "Tom as external corrector \u2014 the prediction error signal biology lacks",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 10,
+          "id": "d687aea5",
+          "title": "Claude pattern: false wrap-up signal after long sessions \u2014 fights crea",
+          "score": 0.5067,
+          "source": "embedding+keyword",
+          "is_match": true
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "EX.CO",
+      "category": "short_ambiguous",
+      "description": "Single entity name \u2014 minimum query",
+      "difficulty": "medium",
+      "expected_titles": [
+        "EX.CO"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 25,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 303.3,
+      "top_score": 0,
+      "mean_score": 0,
+      "match_mean_score": 0,
+      "nonmatch_mean_score": 0,
+      "score_gap": 0,
+      "sources": {
+        "embedding_only": 4,
+        "both": 21
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "1683a628",
+          "title": "EX.CO kit \u2014 Doc 1 structure finalized (Draft 2)",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "e62cc595",
+          "title": "EX.CO \u2014 company overview",
+          "score": 0,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "679e0f4b",
+          "title": "Single-project corpus risk: S2 communities may not generalize to EX.CO",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "ff402601",
+          "title": "EX.CO \u2014 Tom's company",
+          "score": 0,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "c2425119",
+          "title": "Granola \u2014 meeting transcript source for EX.CO",
+          "score": 0,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "b3bda662",
+          "title": "Tom is CEO of EX.CO \u2014 CTV sales onboarding project",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 7,
+          "id": "fbaf5227",
+          "title": "EX.CO onboarding email \u2014 merged into kit Phase 1/2/3 structure",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 8,
+          "id": "ab2dc4e4",
+          "title": "TVIQ \u2014 EX.CO prospect profile",
+          "score": 0,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 9,
+          "id": "f898536c",
+          "title": "EX.CO sales calls \u2014 recurring question patterns",
+          "score": 0,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 10,
+          "id": "8c208110",
+          "title": "EX.CO CTV \u2014 8 recurring questions every prospect asks",
+          "score": 0,
+          "source": "both",
+          "is_match": true
+        }
+      ],
+      "fp_analysis": null
+    },
+    {
+      "query": "Tom",
+      "category": "short_ambiguous",
+      "description": "Single person name \u2014 maximum ambiguity",
+      "difficulty": "hard",
+      "expected_titles": [
+        "Tom"
+      ],
+      "has_expected": true,
+      "found_top3": true,
+      "found_top8": true,
+      "found_top25": true,
+      "total_matches": 25,
+      "mrr": 1.0,
+      "num_returned": 25,
+      "latency_ms": 328.1,
+      "top_score": 1.0,
+      "mean_score": 1.0,
+      "match_mean_score": 1.0,
+      "nonmatch_mean_score": 0,
+      "score_gap": 1.0,
+      "sources": {
+        "both": 8,
+        "embedding_only": 10,
+        "embedding+keyword": 7
+      },
+      "returned": [
+        {
+          "rank": 1,
+          "id": "72bbb5a7",
+          "title": "Tom: trusts intuition first, refines with analysis \u2014 feelings tested a",
+          "score": 1.0,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 2,
+          "id": "56d4d236",
+          "title": "Tom: values efficiency over persistence \u2014 don't waste time retrying fa",
+          "score": 1.0,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 3,
+          "id": "1be3f985",
+          "title": "My relationship with Tom: partner, not user",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 4,
+          "id": "dec_3etm",
+          "title": "Correction: Tom had to prompt me to form memories about this session",
+          "score": 1.0,
+          "source": "embedding+keyword",
+          "is_match": true
+        },
+        {
+          "rank": 5,
+          "id": "rul_sfdh",
+          "title": "Tom principle: Make parameters, not decisions",
+          "score": 1.0,
+          "source": "embedding+keyword",
+          "is_match": true
+        },
+        {
+          "rank": 6,
+          "id": "rul_5zv4",
+          "title": "Tom principle: Dont self-censor \u2014 let the system handle it",
+          "score": 1.0,
+          "source": "embedding+keyword",
+          "is_match": true
+        },
+        {
+          "rank": 7,
+          "id": "4f020eb4",
+          "title": "Encoding = everything brain does to capture what Tom is talking about",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        },
+        {
+          "rank": 8,
+          "id": "51c11c4c",
+          "title": "Tom: mind works in spirals \u2014 one thought triggers adjacent bigger ones",
+          "score": 1.0,
+          "source": "both",
+          "is_match": true
+        },
+        {
+          "rank": 9,
+          "id": "rul_brba",
+          "title": "Tom principle: Merge, never overwrite",
+          "score": 1.0,
+          "source": "embedding+keyword",
+          "is_match": true
+        },
+        {
+          "rank": 10,
+          "id": "7fa6497f",
+          "title": "Tom: 'Thanks Anchor. Well done' \u2014 after honest code review",
+          "score": 0,
+          "source": "embedding_only",
+          "is_match": true
+        }
+      ],
+      "fp_analysis": null
+    }
+  ]
+}

@@ -68,25 +68,29 @@ class EnrichmentDecoder(IntegrationUnit):
         }
 
     def _count_gaps(self):
-        """Count nodes missing each field."""
+        """Count nodes missing each field.
+
+        Includes community nodes — they're first-class nodes that need
+        question/situation/reasoning like any other node.
+        """
         total = self.brain.conn.execute(
-            "SELECT COUNT(*) FROM nodes WHERE archived=0 AND type!='community'"
+            "SELECT COUNT(*) FROM nodes WHERE archived=0"
         ).fetchone()[0]
 
         question = self.brain.conn.execute(
-            "SELECT COUNT(*) FROM nodes n WHERE n.archived=0 AND n.type NOT IN ('community') "
+            "SELECT COUNT(*) FROM nodes n WHERE n.archived=0 "
             "AND n.id NOT IN (SELECT node_id FROM node_metadata_kv WHERE key='question')"
         ).fetchone()[0]
 
         situation = self.brain.conn.execute(
-            "SELECT COUNT(*) FROM nodes n WHERE n.archived=0 AND n.type NOT IN ('community') "
+            "SELECT COUNT(*) FROM nodes n WHERE n.archived=0 "
             "AND n.id NOT IN ("
             "  SELECT node_id FROM node_embeddings "
             "  WHERE situation_text IS NOT NULL AND length(situation_text) > 5)"
         ).fetchone()[0]
 
         reasoning = self.brain.conn.execute(
-            "SELECT COUNT(*) FROM nodes n WHERE n.archived=0 AND n.type NOT IN ('community') "
+            "SELECT COUNT(*) FROM nodes n WHERE n.archived=0 "
             "AND n.id NOT IN ("
             "  SELECT node_id FROM node_metadata_kv WHERE key='reasoning' AND length(value) > 5)"
         ).fetchone()[0]
@@ -100,13 +104,18 @@ class EnrichmentDecoder(IntegrationUnit):
         }
 
     def _find_targets(self, gaps):
-        """Find nodes to heal, prioritized by how many fields they're missing."""
+        """Find nodes to heal, prioritized by how many fields they're missing.
+
+        Includes community nodes — they need question/situation/reasoning
+        like any other node. The conversation loader handles missing
+        conversation gracefully (communities have no conversation context).
+        """
         max_nodes = self.config['max_nodes_per_run']
 
         # Nodes missing ALL three — highest priority
         missing_all = self.brain.conn.execute("""
             SELECT n.id FROM nodes n
-            WHERE n.archived=0 AND n.type NOT IN ('community')
+            WHERE n.archived=0
             AND n.id NOT IN (SELECT node_id FROM node_metadata_kv WHERE key='question')
             AND n.id NOT IN (SELECT node_id FROM node_embeddings WHERE situation_text IS NOT NULL AND length(situation_text) > 5)
             AND n.id NOT IN (SELECT node_id FROM node_metadata_kv WHERE key='reasoning' AND length(value) > 5)
@@ -122,7 +131,7 @@ class EnrichmentDecoder(IntegrationUnit):
             seen = set(targets)
             missing_q = self.brain.conn.execute("""
                 SELECT n.id FROM nodes n
-                WHERE n.archived=0 AND n.type NOT IN ('community')
+                WHERE n.archived=0
                 AND n.id NOT IN (SELECT node_id FROM node_metadata_kv WHERE key='question')
                 ORDER BY n.access_count DESC
                 LIMIT ?

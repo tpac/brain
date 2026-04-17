@@ -1,0 +1,254 @@
+{
+  "timestamp": "2026-04-12T01:09:55.947879",
+  "clusters_processed": 12,
+  "clusters_total": 164,
+  "decode_stats": {
+    "nodes_scanned": 1904,
+    "title_embeddings": 1897,
+    "pairs_found": 629,
+    "suppressed_pairs": 0,
+    "mode": "cold_start",
+    "clusters": 164,
+    "class_counts": {
+      "likely_consolidate": 9,
+      "likely_keep": 16,
+      "needs_judgment": 130,
+      "likely_evolve": 9
+    }
+  },
+  "encode_result": {
+    "actions": 3,
+    "write_actions": 3,
+    "rounds": 5
+  },
+  "analysis": {
+    "actions": [
+      {
+        "cluster_nodes": [
+          "a22349d2",
+          "6ac0de63"
+        ],
+        "pre_class": "likely_consolidate",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "6ac0de63"
+        ],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 2
+      },
+      {
+        "cluster_nodes": [
+          "dab3ba6c",
+          "95cb26c6"
+        ],
+        "pre_class": "likely_consolidate",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "dab3ba6c"
+        ],
+        "revised": [
+          "95cb26c6"
+        ],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "96fc6e64",
+          "cab4e114",
+          "3c3a3046"
+        ],
+        "pre_class": "likely_evolve",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "96fc6e64"
+        ],
+        "revised": [
+          "3c3a3046"
+        ],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "d4c31b9f",
+          "046e0359"
+        ],
+        "pre_class": "likely_evolve",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "046e0359"
+        ],
+        "revised": [
+          "d4c31b9f"
+        ],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "7df3de85",
+          "ad15aa67"
+        ],
+        "pre_class": "likely_keep",
+        "action_type": "KEPT",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "04154c4a",
+          "8ad7ad4f",
+          "996436d7",
+          "07e1a336",
+          "1ea781a2"
+        ],
+        "pre_class": "likely_keep",
+        "action_type": "NO_ACTION",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 0
+      },
+      {
+        "cluster_nodes": [
+          "3b258338",
+          "13446b28"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "KEPT",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "4cf82963",
+          "5cd664c0"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "KEPT",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "3b258338",
+          "13446b28"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "KEPT",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 1
+      },
+      {
+        "cluster_nodes": [
+          "84fe32d8",
+          "a96a782d"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "84fe32d8",
+          "a96a782d"
+        ],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 2
+      },
+      {
+        "cluster_nodes": [
+          "deb08b90",
+          "3cf33aa5"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "CONSOLIDATED",
+        "archived": [],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 2
+      },
+      {
+        "cluster_nodes": [
+          "ce1d490d",
+          "16b0e4f4",
+          "bf168f95"
+        ],
+        "pre_class": "needs_judgment",
+        "action_type": "CONSOLIDATED",
+        "archived": [
+          "ce1d490d",
+          "16b0e4f4",
+          "bf168f95"
+        ],
+        "revised": [],
+        "locked_violated": [],
+        "suppression_edges": 3
+      }
+    ],
+    "new_nodes": [
+      {
+        "id": "563a5e66",
+        "title": "DAEMON_HOST 127.0.0.1 breaks macOS: localhost resolves to IPv6, bind to all interfaces",
+        "type": "lesson",
+        "content": "What happened: Dashboard preview showed blank page, all requests ERR_ABORTED. Root cause: daemon bound to 127.0.0.1 (IPv4 only) but macOS resolves 'localhost' to ::1 (IPv6). The preview browser connec",
+        "confidence": 0.95
+      },
+      {
+        "id": "acd6b71e",
+        "title": "Behavioral mirror: heartbeat queries brain with Claude's behavioral state, surfaces self-knowledge",
+        "type": "mechanism",
+        "content": "Current heartbeat: counts messages since last encode, nudges at threshold 8. Proposed: heartbeat summarizes Claude's recent behavior (building, discussing, encoding count) \u2192 queries brain with behavio",
+        "confidence": 0.9
+      },
+      {
+        "id": "d05937c4",
+        "title": "Encoding agent architecture: 2-round structure using remember_batch + connect_to",
+        "type": "decision",
+        "content": "The encoding agent uses a 2-round architecture that replaced the previous 3-round approach (id:16b0e4f4). The rewrite (id:ce1d490d) leverages remember_batch() with connect_to[] parameter to eliminate ",
+        "confidence": 0.9
+      },
+      {
+        "id": "da287761",
+        "title": "Encoding danger: wrong lessons persist, volume ceiling is very high",
+        "type": "lesson",
+        "content": "Tom's principle on encoding safety: the real danger isn't volume overload \u2014 it's encoding WRONG lessons that lock into the brain and mislead future sessions. Volume is self-correcting through pruning ",
+        "confidence": 0.95
+      }
+    ],
+    "suppression_edges": 96
+  },
+  "scores": {
+    "composite": 0.847,
+    "dimensions": {
+      "acceptance_rate": 0.917,
+      "locked_safety": 1.0,
+      "suppression": 0.917,
+      "action_diversity": 0.667,
+      "synthesis_content_length": 1.0,
+      "synthesis_references": 0.5,
+      "preclass_alignment": 0.75,
+      "efficiency": 0.8
+    },
+    "details": {
+      "acted": 11,
+      "total": 12,
+      "locked_violations": 0,
+      "with_suppression": 11,
+      "action_counts": {
+        "CONSOLIDATED": 7,
+        "KEPT": 4,
+        "NO_ACTION": 1
+      }
+    }
+  },
+  "elapsed_s": 154.74078607559204
+}

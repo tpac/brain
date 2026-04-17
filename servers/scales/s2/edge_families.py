@@ -104,10 +104,12 @@ Rules:
                     updated[family].append(m)
                     new_assignments += 1
 
-        # Store updated mapping as new interaction version
+        # Store updated mapping — preserve existing template
+        existing = self.brain._interaction_dal.get_latest('s2_edge_families')
+        existing_template = existing['template'] if existing else ''
         self.brain._interaction_dal.register(
             's2_edge_families',
-            template='',
+            template=existing_template,
             parameters=json.dumps(updated, indent=2),
             created_by=self.ENCODING_SOURCE)
 

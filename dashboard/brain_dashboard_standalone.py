@@ -1164,9 +1164,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 args=(node_id,), db_path=db)
             if meta_kv:
                 node["metadata"] = {r[0]: r[1] for r in meta_kv if r[1]}
-            # Situation from node_embeddings
+            # Situation from node_enrichments (v23)
             sit = _direct_query(
-                "SELECT situation_text FROM node_embeddings WHERE node_id = ?",
+                "SELECT text FROM node_enrichments WHERE node_id = ? AND vector_type = '_situation'",
                 args=(node_id,), db_path=db)
             if sit and sit[0][0]:
                 node["situation"] = sit[0][0]
@@ -3081,7 +3081,7 @@ function _traceChainLabel(chainId) {
   if (chainId.startsWith('s1e-')) { const p = chainId.split('-'); return 'S1 Encode #' + (p[2] || '?'); }
   if (chainId.startsWith('s2-')) {
     const op = chainId.split('-').slice(2).join('-');
-    const labels = {community_detection:'S2 Community Detection', consolidation:'S2 Consolidation', edge_family_integration:'S2 Edge Families', relation_reclassify:'S2 Edge Reclassify'};
+    const labels = {community_detection:'S2 Community Detection', consolidation:'S2 Consolidation', edge_family_integration:'S2 Edge Families', enrichment:'S2 Healer', relation_reclassify:'S2 Edge Reclassify'};
     return labels[op] || 'S2 ' + op.replace(/_/g, ' ');
   }
   if (chainId.startsWith('s3-')) return 'S3 ' + chainId.split('-').slice(2).join(' ');

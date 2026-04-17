@@ -430,16 +430,19 @@ class BrainVoice:
 
         # ── Your words (brain.get_node + render) ──
         from .contract import render_rich_node
+        from .brain_constants import (BOOT_IDENTITY_LIMIT, BOOT_IDENTITY_CONTENT_LIMIT,
+                                      BOOT_COMMUNITY_TOP, BOOT_COMMUNITY_RECENT)
 
         BOOT_FORMAT = {'content_limit': 400, 'edge_limit': 3, 'metadata_limit': 150, 'time_format': 'relative'}
+        BOOT_YOU_FORMAT = {'content_limit': BOOT_IDENTITY_CONTENT_LIMIT, 'edge_limit': 2, 'metadata_limit': 100, 'time_format': 'relative'}
 
-        anchor_nodes = _recall("who I am, what I've learned, my identity", limit=5)
+        anchor_nodes = _recall("who I am, what I've learned, my identity", limit=BOOT_IDENTITY_LIMIT)
         if anchor_nodes:
             out.append("YOU:")
             for n in anchor_nodes:
                 rich = brain.get_node(n['id'])
                 if rich:
-                    out.append(render_rich_node(rich, BOOT_FORMAT))
+                    out.append(render_rich_node(rich, BOOT_YOU_FORMAT))
                     out.append("")
             out.append("")
 
@@ -462,8 +465,7 @@ class BrainVoice:
             out.append("")
 
         # ── What the brain knows (community map) ──
-        # Communities compress 10-30 nodes into one narrative.
-        # Loading them here gives Anchor the SHAPE of everything it knows.
+        # Top communities by size + recently worked on. Gives Anchor the SHAPE of what it knows.
         try:
             communities = brain.conn.execute('''
                 SELECT n.id, n.title, n.content
@@ -474,7 +476,7 @@ class BrainVoice:
 
             if communities:
                 # Load maturity + member count per community
-                comm_items = []
+                comm_by_id = {}
                 for cid, ctitle, ccontent in communities:
                     meta = dict(brain.conn.execute(
                         "SELECT key, value FROM node_metadata_kv "
@@ -483,59 +485,50 @@ class BrainVoice:
                         (cid,)).fetchall())
                     maturity = meta.get('community_maturity', '?')
                     size = meta.get('community_size', '?')
-                    narrative = meta.get('community_narrative', '')
-                    # Use narrative if available, fall back to content
-                    summary = narrative or (ccontent or '')
-                    comm_items.append((maturity, size, ctitle, summary, cid))
+                    narrative = meta.get('community_narrative', '') or (ccontent or '')
+                    comm_by_id[cid] = (maturity, size, ctitle, narrative, cid)
 
-                if comm_items:
-                    # Sort: recently active first, then settled by size
-                    # Communities whose members were recalled recently are more relevant
-                    maturity_order = {'settled': 0, 'active': 1, 'forming': 2, 'corridor': 3}
+                # Find communities with recently accessed members
+                recent_comm_ids = set()
+                try:
+                    recent_member_rows = brain.conn.execute('''
+                        SELECT DISTINCT
+                            CASE WHEN e.source_id IN (SELECT id FROM nodes WHERE type = 'community')
+                                 THEN e.source_id ELSE e.target_id END as comm_id
+                        FROM edges e
+                        JOIN edge_relations er ON er.edge_id = e.edge_id
+                        JOIN nodes member ON member.id =
+                            CASE WHEN e.source_id IN (SELECT id FROM nodes WHERE type = 'community')
+                                 THEN e.target_id ELSE e.source_id END
+                        WHERE er.relation = 'community_member'
+                        AND member.last_accessed > datetime('now', '-3 days')
+                        AND member.type != 'community'
+                    ''').fetchall()
+                    recent_comm_ids = {r[0] for r in recent_member_rows}
+                except Exception:
+                    pass
 
-                    # Check which communities have recently accessed members
-                    recent_comm_ids = set()
-                    try:
-                        recent_member_rows = brain.conn.execute('''
-                            SELECT DISTINCT
-                                CASE WHEN e.source_id IN (SELECT id FROM nodes WHERE type = 'community')
-                                     THEN e.source_id ELSE e.target_id END as comm_id
-                            FROM edges e
-                            JOIN edge_relations er ON er.edge_id = e.edge_id
-                            JOIN nodes member ON member.id =
-                                CASE WHEN e.source_id IN (SELECT id FROM nodes WHERE type = 'community')
-                                     THEN e.target_id ELSE e.source_id END
-                            WHERE er.relation = 'community_member'
-                            AND member.last_accessed > datetime('now', '-3 days')
-                            AND member.type != 'community'
-                        ''').fetchall()
-                        recent_comm_ids = {r[0] for r in recent_member_rows}
-                    except Exception:
-                        pass
+                # Select: BOOT_COMMUNITY_RECENT recently active + BOOT_COMMUNITY_TOP by size
+                maturity_order = {'settled': 0, 'active': 1, 'forming': 2, 'corridor': 3}
+                size_key = lambda item: -(int(item[1]) if item[1] and item[1] != '?' else 0)
 
-                    # Build sort key: recently active → settled large → rest
-                    comm_items_with_id = []
-                    for cid_row, item in zip(communities, comm_items):
-                        is_recent = cid_row[0] in recent_comm_ids
-                        comm_items_with_id.append((is_recent, item))
+                recent_items = [comm_by_id[cid] for cid in recent_comm_ids if cid in comm_by_id]
+                recent_items.sort(key=size_key)
+                recent_items = recent_items[:BOOT_COMMUNITY_RECENT]
+                recent_ids = {item[4] for item in recent_items}
 
-                    comm_items_with_id.sort(key=lambda x: (
-                        0 if x[0] else 1,  # recently active first
-                        maturity_order.get(x[1][0], 4),
-                        -(int(x[1][1]) if x[1][1] and x[1][1] != '?' else 0)))
-                    comm_items = [x[1] for x in comm_items_with_id]
+                top_items = [item for item in comm_by_id.values() if item[4] not in recent_ids]
+                top_items.sort(key=lambda x: (maturity_order.get(x[0], 4), size_key(x)))
+                top_items = top_items[:BOOT_COMMUNITY_TOP]
 
-                    TOP_WITH_NARRATIVE = 20
-                    out.append("BRAIN MAP (%d communities):" % len(comm_items))
-                    for i, (maturity, size, title, summary, cid) in enumerate(comm_items):
+                selected = recent_items + top_items
+                if selected:
+                    out.append("BRAIN MAP (%d communities):" % len(comm_by_id))
+                    for maturity, size, title, summary, cid in selected:
                         mat_tag = maturity[:1].upper() if maturity and maturity != '?' else '?'
-                        short_id = cid[:8] if cid else '?'
-                        if i < TOP_WITH_NARRATIVE:
-                            out.append("  [%s|%s] %s (id:%s)" % (mat_tag, size, _t(title, 70), short_id))
-                            if summary:
-                                out.append("    %s" % _t(summary, 120))
-                        else:
-                            out.append("  [%s|%s] %s (id:%s)" % (mat_tag, size, _t(title, 70), short_id))
+                        out.append("  [%s|%s] %s (id:%s)" % (mat_tag, size, _t(title, 70), cid[:8]))
+                        if summary:
+                            out.append("    %s" % _t(summary, 120))
                     out.append("")
         except Exception as e:
             brain._log_error('boot_community_map', e, 'loading community map')
