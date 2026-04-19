@@ -59,33 +59,54 @@ def bench_single(conn, n_iter=20):
     return results
 
 
-def bench_concurrent(conn, n_threads=7, n_iter_per_thread=10):
+def bench_concurrent(db_path, n_threads=7, n_iter_per_thread=10):
     """N threads hammering the hot read method. Simulates the pre_edit
     hook storm we hit on 2026-04-18 (7 concurrent readers thrashing
-    SQLite's page cache)."""
-    plain = VectorDAL(conn)
-    cached = CachedVectorDAL(conn)
+    SQLite's page cache).
 
-    def _thread_work(dal, method, out):
-        for _ in range(n_iter_per_thread):
-            out.append(_time_ms(getattr(dal, method)))
+    Plain path uses per-thread connections — Python's sqlite3 module on
+    macOS ARM will SIGSEGV if multiple threads call execute() on one
+    connection object, even with check_same_thread=False. The daemon
+    avoids this via single-writer dispatch; the benchmark simulates the
+    read-concurrency that WAL mode was designed for.
 
-    def _run(dal, method):
+    Cached path keeps the single shared cache (the whole point — one
+    in-memory matrix) and relies on CachedVectorDAL's own _sql_lock for
+    the small nodes-table JOIN.
+    """
+    cached = CachedVectorDAL(_connect(db_path))
+
+    def plain_run(method):
         times = []
-        threads = []
-        for _ in range(n_threads):
-            t = threading.Thread(target=_thread_work, args=(dal, method, times))
-            threads.append(t)
+        def worker():
+            tc = _connect(db_path)
+            try:
+                dal = VectorDAL(tc)
+                for _ in range(n_iter_per_thread):
+                    times.append(_time_ms(getattr(dal, method)))
+            finally:
+                tc.close()
+        threads = [threading.Thread(target=worker) for _ in range(n_threads)]
         t0 = time.perf_counter()
         for t in threads: t.start()
         for t in threads: t.join()
-        total_ms = (time.perf_counter() - t0) * 1000.0
-        return times, total_ms
+        return times, (time.perf_counter() - t0) * 1000.0
+
+    def cached_run(method):
+        times = []
+        def worker():
+            for _ in range(n_iter_per_thread):
+                times.append(_time_ms(getattr(cached, method)))
+        threads = [threading.Thread(target=worker) for _ in range(n_threads)]
+        t0 = time.perf_counter()
+        for t in threads: t.start()
+        for t in threads: t.join()
+        return times, (time.perf_counter() - t0) * 1000.0
 
     results = {}
     for method in ['get_all_with_context']:
-        plain_t, plain_total = _run(plain, method)
-        cached_t, cached_total = _run(cached, method)
+        plain_t, plain_total = plain_run(method)
+        cached_t, cached_total = cached_run(method)
         results[method] = {
             'plain_total_ms':     plain_total,
             'cached_total_ms':    cached_total,
@@ -130,7 +151,7 @@ def main():
     print('=' * 78)
     print('7 CONCURRENT THREADS × 10 calls each (70 total calls per variant)')
     print('=' * 78)
-    concurrent = bench_concurrent(conn, n_threads=7, n_iter_per_thread=10)
+    concurrent = bench_concurrent(db_path, n_threads=7, n_iter_per_thread=10)
     print(f'{"method":<28}  {"plain total":>12}  {"cached total":>12}  {"plain p95":>10}  {"cached p95":>10}  {"speedup":>8}')
     print('-' * 96)
     for method, r in concurrent.items():
