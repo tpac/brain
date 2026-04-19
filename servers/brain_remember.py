@@ -214,6 +214,39 @@ class BrainRememberMixin:
 
         self.conn.commit()
 
+        # 6. AFTER commit — invalidate the in-memory vector cache so recall's
+        # cached matrix doesn't retain dead rows. Order matters: if we
+        # dropped before commit and commit failed, the cache would be ahead
+        # of the DB (node gone from cache but archived=0 in the DB) — that
+        # causes transient "node disappears from recall" until the next
+        # daemon restart repairs the cache. No-op when
+        # BRAIN_DISABLE_VECTOR_CACHE=1 (plain VectorDAL has no drop_node).
+        if hasattr(self._vec_dal, 'drop_node'):
+            try:
+                self._vec_dal.drop_node(full_id)
+            except Exception as _e:
+                self._log_error('archive_cache_drop', _e,
+                                'cache drop for %s' % full_id[:8])
+
+        # 7. Trace event — S3 + dashboards see who archived what.
+        # Tracing must never block the archive itself.
+        try:
+            self._trace_dal.append(
+                chain_id='archive-%s' % full_id[:8],
+                scale='s0', event_type='delta', ref_type='tool_result',
+                summary='archived %s by %s' % (full_id[:8], archived_by),
+                metadata={
+                    'node_id': full_id,
+                    'title': (title or '')[:80],
+                    'type': node_type,
+                    'archived_by': archived_by,
+                    'reason': reason,
+                    'edges_deleted': edges_deleted,
+                    'vectors_deleted': vectors_deleted,
+                })
+        except Exception:
+            pass
+
         return {
             'ok': True,
             'node_id': full_id,
