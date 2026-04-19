@@ -164,6 +164,13 @@ class Brain(
         self._trace_dal = TraceDAL(self.logs_conn)
         self._interaction_dal = InteractionDAL(self.logs_conn)
 
+        # Shared CachedVectorDAL instance — one in-memory vector matrix for
+        # the whole daemon process. Consumers (recall, remember, backfill,
+        # etc.) get it via self._vec_dal instead of instantiating VectorDAL
+        # per-call. Same public API as VectorDAL, cache-backed reads.
+        from .dal_vector_cached import CachedVectorDAL
+        self._vec_dal = CachedVectorDAL(self.conn)
+
         # Init rate limiter for error logging (DDoS protection)
         self._init_rate_limiter()
 
@@ -190,6 +197,14 @@ class Brain(
                 embedder.load_model(embedder_config)
             except Exception as e:
                 print(f'[brain] Embedder load failed (optional): {e}')
+
+        # Seed baby brain nodes if missing (runs AFTER embedder — remember() needs it)
+        if not skip_embedder:
+            try:
+                from .seed_pack import seed_baby_brain
+                seed_baby_brain(self)
+            except Exception as _e:
+                print('[brain] WARNING: seed_pack failed: %s' % _e, flush=True)
 
     def _post_schema_init(self):
         """
@@ -988,7 +1003,7 @@ class Brain(
         env['mounted_dirs'] = mounts
 
         # Available pip packages relevant to brain
-        for pkg in ['fastembed', 'brain_embedding', 'sqlite_vec', 'onnxruntime']:
+        for pkg in ['fastembed', 'sqlite_vec', 'onnxruntime']:
             try:
                 __import__(pkg.replace('-', '_'))
                 env[f'pkg_{pkg}'] = True
@@ -1039,13 +1054,11 @@ class Brain(
     # ─── EMBEDDER CONFIG: Model-agnostic configuration ───
 
     # Default embedder config — used when brain_meta has no overrides.
-    # These match plugin.json defaults. If plugin.json changes, update here too.
+    # Must match plugin.json. Switch via set_embedder_config() (takes effect
+    # on next boot) or by editing plugin.json + clearing brain_meta overrides.
     _EMBEDDER_DEFAULTS = {
-        'model_name': 'Snowflake/snowflake-arctic-embed-m-v1.5',
+        'model_name': 'nomic-ai/nomic-embed-text-v1.5-Q',
         'dim': 768,
-        'pooling': 'cls',
-        'model_file': 'onnx/model.onnx',
-        'model_path': 'model-package/brain_embedding/model',
         'cache_dir': None,
     }
 

@@ -15,6 +15,8 @@ import os
 from .base import IntegrationUnit
 from .community_contract import COMMUNITY_DETECTION
 from .community_decoder import read_community_meta
+from servers.trace_contract import build_delta_metadata
+
 from .rejection_table import (
     match_proposals_to_actions,
     record_rejections,
@@ -129,8 +131,9 @@ class CommunityEncoder(IntegrationUnit):
             print('[s2ce] Encoder failed or incomplete - NOT stamping rejections',
                   flush=True)
             result['rejection_skipped_count'] = 0
+            acted_on = []
         else:
-            _, skipped_proposals = match_proposals_to_actions(
+            acted_on, skipped_proposals = match_proposals_to_actions(
                 encoder_proposals, action_details)
             if skipped_proposals:
                 record_rejections(self.brain, skipped_proposals)
@@ -138,18 +141,28 @@ class CommunityEncoder(IntegrationUnit):
                       flush=True)
             result['rejection_skipped_count'] = len(skipped_proposals)
 
+        # Outcome vocab — count acted-on proposals by type.
+        outcomes = {}
+        for p in acted_on:
+            ptype = p.get('type', 'unknown')
+            outcomes[ptype] = outcomes.get(ptype, 0) + 1
+
         self.trace('delta', 'community_enriched',
                    'COMPLETE: %d actions (%d writes) in %d rounds, %d stamped' % (
                        actions, write_actions, rounds,
                        result.get('rejection_skipped_count', 0)),
-                   metadata={
-                       'actions': actions,
-                       'write_actions': write_actions,
-                       'rounds': rounds,
-                       'rejection_skipped': result.get('rejection_skipped_count', 0),
-                       'action_details': action_details,
-                       'final_text': final_text[:2000],
-                   })
+                   metadata=build_delta_metadata(
+                       actions=actions,
+                       write_actions=write_actions,
+                       rounds=rounds,
+                       inputs_processed=len(encoder_proposals),
+                       outcomes=outcomes,
+                       rejection_skipped=result.get('rejection_skipped_count', 0),
+                       journal_entry=result.get('journal_entry', ''),
+                       action_details=action_details,
+                       final_text=final_text,
+                       corridors_filtered=len(corridors),
+                   ))
 
         return result
 
@@ -200,7 +213,9 @@ class CommunityEncoder(IntegrationUnit):
 
         tools = self._get_tool_schemas()
         dispatch_fn = self._make_dispatch()
-        client = anthropic.Anthropic()
+        # 180s per-request timeout — prevents a hung API call from tying
+        # up the encoder. 10-15 proposals per batch fits under 3 minutes.
+        client = anthropic.Anthropic(timeout=180.0)
 
         # Journal text
         journal = self.brain.get_config('s2_community_journal') or ''
@@ -287,9 +302,11 @@ class CommunityEncoder(IntegrationUnit):
                 self.trace('delta', 'community_enriched',
                            'batch %d/%d FAILED: %s' % (batch_num, total_batches, str(e)[:80]))
 
-        # Save journal from last batch's final text
+        # Save journal from last batch's final text. Also return the
+        # extracted entry in the result so the delta trace carries it.
+        total_result['journal_entry'] = ''
         if total_result['final_text']:
-            self._save_journal(total_result['final_text'])
+            total_result['journal_entry'] = self._save_journal(total_result['final_text']) or ''
 
         return total_result
 
@@ -351,7 +368,15 @@ class CommunityEncoder(IntegrationUnit):
     # ══════════════════════════════════════════════════════════
 
     def _save_journal(self, final_text):
-        """Extract and save journal from encoder's final text."""
+        """Extract + persist journal entry. Returns extracted entry ('' if none).
+
+        The returned entry is what the delta trace carries so the same text
+        lives in both brain_meta (cumulative across runs) and traces
+        (per-run, substance-only — no other text bundled in).
+
+        If final_text is non-empty but no section marker is found, logs a
+        brain error — that's an agent-drift signal the operator should see.
+        """
         journal_entry = ''
         if '---' in final_text:
             _, journal_part = final_text.split('---', 1)
@@ -364,7 +389,12 @@ class CommunityEncoder(IntegrationUnit):
                     break
 
         if not journal_entry:
-            return
+            if final_text.strip():
+                self.brain._log_error(
+                    's2ce_journal_extraction',
+                    'no journal markers found in %d-char final_text' % len(final_text),
+                    'agent drifted from prompt format — first 200 chars: %s' % final_text[:200])
+            return ''
 
         existing = self.brain.get_config('s2_community_journal') or ''
         run_header = '--- S2C Run %s ---' % self.brain.now()[:10]
@@ -377,6 +407,7 @@ class CommunityEncoder(IntegrationUnit):
                 new_journal = new_journal[cutpoint:]
 
         self.brain.set_config('s2_community_journal', new_journal.strip())
+        return journal_entry
 
     # ══════════════════════════════════════════════════════════
     # Relevant community lookup

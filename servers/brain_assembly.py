@@ -796,10 +796,14 @@ class BrainAssemblyMixin:
                             "Cannot detect consolidation without embedder")
             return 0
 
-        # Get all primary embeddings
-        vdal = VectorDAL(self.conn)
+        # Get all primary embeddings for the active model — stale-model rows
+        # would pollute the consolidation cluster scores.
+        vdal = self._vec_dal
+        _active_model = embedder.stats.get('model_name') or None
         all_embeddings = [{'node_id': r['node_id'], 'embedding': r['embedding']}
-                          for r in vdal.get_all_vectors() if r['vector_type'] == '_primary']
+                          for r in vdal.get_all_vectors(
+                              vector_types=['_primary'],
+                              model=_active_model)]
         if not all_embeddings:
             return 0
 

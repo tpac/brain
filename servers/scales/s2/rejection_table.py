@@ -15,8 +15,15 @@ Design:
 - Table schema lives in servers/schema.py (single source of truth).
   ensure_schema() creates it at Brain startup — do not CREATE TABLE here.
 
-Used by S2 Community Detection. Other S2 units (consolidation, healer)
-have their own suppression mechanisms (suppression edges, metadata flags).
+Used by S2 Community Detection and Consolidation. Pattern for any S2 unit:
+- Informational outcomes (CONSOLIDATE/EVOLVE/KEEP/community placement)
+  write semantic edges — state is discoverable from the graph via JOIN.
+- Marker-only outcomes (SKIP, "looked at, didn't act") record a fingerprint
+  here so the decoder filters the proposal on subsequent runs.
+
+Decoder-side: call filter_rejected(brain, proposals) before sending to encoder.
+Encoder-side: call record_rejections(brain, skipped, integration_unit=...)
+after the encoder decides a proposal isn't worth a semantic edge.
 """
 import hashlib
 import json
@@ -90,6 +97,15 @@ def compute_fingerprint(proposal):
         raw = 'merge:%s:%s' % (
             proposal.get('larger_id', ''),
             proposal.get('smaller_id', ''))
+
+    elif ptype == 'consolidation_cluster':
+        # Cluster identity = sorted member ids. Any content change on a
+        # member shifts its _primary embedding → the decoder either surfaces
+        # a different cluster (different members above threshold) or the
+        # same cluster with the same fingerprint (member IDs unchanged).
+        # Rejection stays valid until membership actually changes.
+        members = sorted(proposal.get('members', []))
+        raw = 'consol:' + ':'.join(members)
 
     else:
         raw = '%s:%s' % (ptype, proposal.get('node_id', ''))

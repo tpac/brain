@@ -284,13 +284,13 @@ TABLES = {
             vector_type TEXT NOT NULL,
             text TEXT NOT NULL,
             embedding BLOB,
-            model TEXT DEFAULT 'snowflake-arctic-embed-m',
+            model TEXT DEFAULT 'nomic-ai/nomic-embed-text-v1.5-Q',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
         )""",
         'columns': {
             'id': None, 'node_id': None, 'vector_type': None, 'text': None,
-            'embedding': 'NULL', 'model': "'snowflake-arctic-embed-m'",
+            'embedding': 'NULL', 'model': "'nomic-ai/nomic-embed-text-v1.5-Q'",
             'created_at': 'CURRENT_TIMESTAMP',
         }
     },

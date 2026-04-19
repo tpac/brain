@@ -246,6 +246,17 @@ class BrainDaemon:
         self.brain = Brain(self.db_path)
         self._log("Brain loaded from {}".format(self.db_path))
 
+        # Start the embed queue drain worker. remember/revise/remember_batch
+        # enqueue dirty node_ids; this worker embeds them in batches every
+        # EMBED_DRAIN_INTERVAL seconds. S2 Heal catches gaps on idle.
+        try:
+            from servers import embed_queue
+            embed_queue.start(self.brain)
+            self._log("Embed queue worker started (drain every {}s)".format(
+                embed_queue.EMBED_DRAIN_INTERVAL))
+        except Exception as e:
+            self._log("embed_queue start failed: {}".format(e))
+
     def _serve(self):
         """Main event loop — accept connections, dispatch to thread pool."""
         last_idle_check = time.time()

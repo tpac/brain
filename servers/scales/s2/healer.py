@@ -4,11 +4,11 @@ Thin wrapper: decoder scans for gaps → encoder generates via Haiku → done.
 Follows the same pattern as CommunityDetection and Consolidation.
 """
 
-from .enrichment_decoder import EnrichmentDecoder
-from .enrichment_encoder import EnrichmentEncoder
+from .healer_decoder import HealerDecoder
+from .healer_encoder import HealerEncoder
 
 
-class Enrichment(EnrichmentDecoder):
+class Healer(HealerDecoder):
     """Orchestrator: decoder → encoder pipeline for node healing."""
 
     def run(self):
@@ -24,7 +24,7 @@ class Enrichment(EnrichmentDecoder):
                     'stats': decode_result.get('stats', {})}
 
         # Encode: generate missing fields via Haiku
-        encoder = EnrichmentEncoder(self.brain, self.dispatch, self.config)
+        encoder = HealerEncoder(self.brain, self.dispatch, self.config)
         encode_result = encoder.run(proposals)
 
         if not encode_result:

@@ -3,8 +3,13 @@
 # Boot sets BRAIN_DB_DIR once; other hooks reuse it or re-resolve.
 #
 # Usage: source "$(dirname "$0")/resolve-brain-db.sh"
-# After sourcing: BRAIN_DB_DIR, BRAIN_SERVER_DIR, and PLUGIN_ROOT are set.
+# After sourcing: BRAIN_DB_DIR, BRAIN_SERVER_DIR, PLUGIN_ROOT, BRAIN_PYTHON are set.
 # If no brain.db found, BRAIN_DB_DIR is empty — caller should exit 0.
+
+# Ensure the isolated runtime is installed and BRAIN_PYTHON / PATH point at it.
+# First hook invocation on a fresh install blocks ~15s downloading uv + Python
+# + deps. Every subsequent invocation is ~8ms (sentinel fast path).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/brain-env.sh"
 
 # Always resolve from script location — never use CLAUDE_PLUGIN_ROOT cache.
 # The cache can be stale (old code, old socket protocol). Working dir is truth.

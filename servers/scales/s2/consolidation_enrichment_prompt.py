@@ -118,21 +118,15 @@ They're similar because the FORMAT is similar, not the content. Two dream connec
 
 **When:** The content addresses genuinely different topics despite structural similarity. Low content cosine despite high title cosine from formulaic naming.
 
-```
-brain_batch({operations: [
-  {op: "connect", source_id: "05134bf3", target_id: "208b757f",
-   relation: "similar_to",
-   description: "Formulaic dream node format — both are dream connection notes about different topics, no real knowledge overlap"}
-]})
-```
-
-Always create the `similar_to` edge even for SKIP — this prevents re-proposal.
+**Do NOT create an edge for SKIP.** Just list the cluster in the journal under `SKIPPED:` with the short "why". The encoder records a rejection fingerprint automatically so the decoder won't re-propose this cluster on future runs. Writing `similar_to` for SKIP was the old behavior — `similar_to` is now reserved for KEEP decisions (genuine semantic kinship).
 
 ## Every Cluster Needs Action
 
-Process ALL clusters in the batch. Each cluster must result in at least ONE brain_batch call that creates an edge (`consolidated_into` or `similar_to`). If you skip a cluster without creating an edge, the decoder will re-propose it forever.
+Process ALL clusters in the batch. Each cluster must result in either:
+- A `brain_batch` operation that creates an edge (`consolidated_into` for CONSOLIDATE/EVOLVE, `similar_to` for KEEP), OR
+- A `SKIPPED: [titles]` line in the journal (for SKIP — no edge needed, rejection is recorded automatically).
 
-Put all operations for ALL clusters in ONE brain_batch call. Don't make multiple calls — batch everything together.
+Put all edge operations for ALL non-SKIP clusters in ONE brain_batch call. Don't make multiple calls — batch everything together.
 
 ## Reading the Evidence
 

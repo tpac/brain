@@ -1,0 +1,15 @@
+# brain — isolated runtime dependencies
+#
+# Installed into $PLUGIN_DIR/venv by hooks/scripts/ensure-runtime.sh.
+# The plugin ships no Python deps to the user system — everything lives here.
+#
+# Version constraints:
+#   onnxruntime>=1.20 is required — earlier versions have an ARM64
+#   EigenNonBlockingThreadPool race fixed in PR microsoft/onnxruntime#23098.
+#   Without this pin the daemon can deadlock under multi-threaded embedding.
+
+fastembed>=0.8,<0.9
+onnxruntime>=1.24,<2.0
+anthropic>=0.86,<1.0
+numpy>=1.24,<3.0
+sqlite-vec>=0.1,<1.0

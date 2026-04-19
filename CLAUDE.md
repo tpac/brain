@@ -138,17 +138,49 @@ S2 operates when Tom is away. It sees the full graph, not just one turn. Multipl
 
 **Ordering matters:** Edge families → Consolidation → Community → Healer. Each benefits from the previous.
 
+### Pattern: Suppression (two halves — state + fingerprint)
+
+Every S2 unit processes work that *must not repeat*. Two complementary mechanisms cover the two kinds of "don't resurface":
+
+**Half 1 — State-based suppression (informational outcomes).**
+When the encoder's decision is itself meaningful knowledge (a placement, a lineage link, a semantic kinship), it writes a **structural edge** — and that edge's existence marks the node as "handled." Decoder filters by the graph via one JOIN.
+
+> A node is "already handled" by a unit iff it participates (as source or target) in an edge whose `relation` is on the unit's suppression list. Work surfaces to the encoder only when **at least one endpoint** of a proposed cluster/pair is unhandled.
+
+| Unit | Suppression edges | "Handled" means |
+|---|---|---|
+| Community detection | `community_member` | node is placed in some community |
+| Consolidation | `similar_to`, `consolidated_into` | node has been through CONSOLIDATE/EVOLVE/KEEP |
+| Healer | (metadata completeness — field presence in `node_metadata_kv`) | node's required fields are filled |
+
+**Half 2 — Fingerprint-based rejection (marker-only outcomes).**
+When the encoder's decision is "looked at this, nothing to do" (SKIP), writing a semantic edge would pollute the graph (the edge would claim a relationship that isn't there). Instead, hash the proposal's meaningful inputs and store the fingerprint in `s2_rejections`. Decoder computes the same fingerprint on candidate proposals and filters matches.
+
+Canonical mechanism: [`servers/scales/s2/rejection_table.py`](servers/scales/s2/rejection_table.py).
+- `compute_fingerprint(proposal)` — stable hash of what the encoder judges on. When graph state changes in a way that would alter inputs, fingerprint naturally changes → legitimate re-proposals pass.
+- `filter_rejected(brain, proposals)` — decoder-side pre-filter.
+- `record_rejections(brain, proposals, integration_unit=...)` — encoder-side post-write.
+
+Per unit, supported proposal types live in `compute_fingerprint`:
+- Community: `add_to_existing`, `new_community`, `drift`, `health_update`, `merge_communities`
+- Consolidation: `consolidation_cluster` (hash of sorted member ids)
+
+Adding a new unit: add a branch to `compute_fingerprint` if it has a distinct proposal shape; call `filter_rejected` in the decoder before surfacing; call `record_rejections` in the encoder/orchestrator for proposals the encoder doesn't act on. No separate table, no per-unit rejection store.
+
+**Why both halves, not one mechanism.**
+Informational outcomes earn their edge — the edge IS the decision's output and is useful for recall/traversal. Marker-only outcomes shouldn't forge edges with misleading names; the rejection table carries that bookkeeping without lying about the graph. Together: every decoder run is a two-step filter — node-state check drops clusters whose members are all handled, fingerprint check drops clusters the encoder has explicitly rejected. New units inherit both halves for free.
+
 ### Healer (S2H)
 
 **Architecture:** Three files, same pattern as community detection.
-- `enrichment_decoder.py` — `EnrichmentDecoder(IntegrationUnit)`: scans for nodes missing question/situation/reasoning fields, loads full context via `get_rich_node()` + S0 conversation API.
-- `enrichment_encoder.py` — `EnrichmentEncoder(IntegrationUnit)`: calls Haiku to generate missing fields, stores via `revise()` through standard write path.
-- `enrichment.py` — `Enrichment(EnrichmentDecoder)`: thin orchestrator.
-- `enrichment_prompt.py` — Haiku prompt (6 sections matching community/consolidation convention).
-- `enrichment_contract.py` — config and constants.
+- `healer_decoder.py` — `HealerDecoder(IntegrationUnit)`: scans for nodes missing question/situation/reasoning fields, loads full context via `get_rich_node()` + S0 conversation API.
+- `healer_encoder.py` — `HealerEncoder(IntegrationUnit)`: calls Haiku to generate missing fields, stores via `revise()` through standard write path.
+- `healer.py` — `Healer(HealerDecoder)`: thin orchestrator.
+- `healer_prompt.py` — Haiku prompt (6 sections matching community/consolidation convention).
+- `healer_contract.py` — config and constants.
 
-Interaction: `s2_enrichment` — learnable boundary for S3 to optimize.
-Traces: `s2-{YYYYMMDD}-enrichment`
+Interaction: `s2_healer` — learnable boundary for S3 to optimize.
+Traces: `s2-{YYYYMMDD}-healer`
 
 ### Writing a New S2 Integration Unit
 
@@ -291,6 +323,23 @@ Who created a node. Format: `category:process`.
 - `hook:compaction` — hook lifecycle markers
 
 ## Development Rules
+
+### Python runtime — use `./dev`
+
+The brain bundles its own Python at `venv/bin/python` (3.11.11). That's the interpreter the daemon runs, the hooks resolve, and the one **not** blocked by macOS SIP — debuggers (`py-spy`, `lldb`) can only attach to this one.
+
+**Run every dev command through the wrapper:**
+
+```bash
+./dev pytest tests/                   # test suite
+./dev python3 tests/bench_*.py        # benchmarks
+./dev python3 -c 'from servers...'    # one-off
+./dev                                 # subshell with PATH primed
+```
+
+`tests/conftest.py` refuses to run if pytest isn't launched under the bundled Python — catches the "tests pass here but daemon runs a different Python" class of bug. Bypass for a one-off with `BRAIN_ALLOW_ANY_PYTHON=1`.
+
+Hooks source `brain-env.sh` transitively via `resolve-brain-db.sh`; the daemon launcher picks the same Python explicitly (`_debugger_friendly_python()`). Don't add new hook scripts that skip `brain-env.sh`.
 
 ### Test Integrity
 

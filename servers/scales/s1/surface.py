@@ -12,6 +12,7 @@ Writes: S1 traces (O/K/Δ), tmp files for Hebbian + dashboard
 import json
 
 from servers.scales.dispatch import load_env
+from servers.trace_contract import build_selection_metadata
 
 
 def _get_recently_surfaced(brain, session_id):
@@ -78,7 +79,6 @@ def _call_surface(brain, candidates_data, user_message, session_context,
         intent=intent,
         prompt_instructions=surface_instructions or None)
 
-    # Call Haiku
     client = anthropic.Anthropic()
     api_resp = client.messages.create(
         model="claude-haiku-4-5",
@@ -182,6 +182,18 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
         nb.get('id', '')[:8], nb.get('title', '')[:60], nb.get('relation', ''))
         for nb in graph_neighbors[:10]]
 
+    # Selection delta metadata — unified shape for decode-style units.
+    # Candidates considered = all input results; selected = final picks;
+    # dropped = candidates not picked; outcomes map each candidate to
+    # selected/dropped so S3 can learn from the cut.
+    candidate_ids = [c.get('id', '')[:8] for c in candidates_data]
+    selected_short = sorted(selected_ids)
+    dropped_short = [cid for cid in candidate_ids if cid not in selected_ids]
+    outcomes_per_candidate = {
+        cid: ('selected' if cid in selected_ids else 'dropped')
+        for cid in candidate_ids
+    }
+
     # Batch all three trace writes in one transaction
     brain._trace_dal.append_batch([
         dict(chain_id=recall_chain, scale='s1', event_type='O',
@@ -198,7 +210,15 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
         dict(chain_id=recall_chain, scale='s1', event_type='delta',
              ref_type='additionalContext',
              summary='%d nodes surfaced' % len(selected) if selected else '(no selection)',
-             metadata={'content': (additional_context or '')[:4000]},
+             metadata=build_selection_metadata(
+                 candidates_considered=len(results),
+                 selected=selected_short,
+                 dropped=dropped_short,
+                 outcomes_per_candidate=outcomes_per_candidate,
+                 content=additional_context or '',
+                 expanded=exp_detail,
+                 query=enriched[:500],
+             ),
              interaction_id=interaction_id,
              session_id=session_id),
     ])

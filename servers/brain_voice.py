@@ -513,7 +513,20 @@ class BrainVoice:
 
                 # Select: BOOT_COMMUNITY_RECENT recently active + BOOT_COMMUNITY_TOP by size
                 maturity_order = {'settled': 0, 'active': 1, 'forming': 2, 'corridor': 3}
-                size_key = lambda item: -(int(item[1]) if item[1] and item[1] != '?' else 0)
+                def size_key(item):
+                    raw = item[1]
+                    if not raw or raw == '?':
+                        return 0
+                    try:
+                        return -int(raw)
+                    except (TypeError, ValueError):
+                        # One bad row shouldn't nuke the whole map. Log the
+                        # specific offender so it's visible, then sort it last.
+                        brain._log_error(
+                            'boot_community_map',
+                            ValueError('non-integer community_size=%r on %s' % (raw, item[4])),
+                            'bad community_size metadata')
+                        return 0
 
                 recent_items = [comm_by_id[cid] for cid in recent_comm_ids if cid in comm_by_id]
                 recent_items.sort(key=size_key)

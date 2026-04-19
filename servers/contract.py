@@ -11,7 +11,7 @@ Every layer reads from this file:
 
 Field categories:
   STRUCTURAL: columns on 'nodes' table. Typed, validated, drive SQL/math.
-  PROMOTED: additional storage (node_embeddings, node_metadata). Have behavior.
+  PROMOTED: additional storage (node_enrichments, node_metadata_kv). Have behavior.
   FREE: anything else. Stored in nodes.metadata JSON blob. Watched for promotion.
 
 To add a new field:
@@ -114,7 +114,7 @@ def get_writable_fields():
 def get_remember_fields():
     """Fields that brain.remember() accepts — ALL writable fields.
     Structural fields go to nodes table, promoted fields go to their
-    respective stores (node_metadata, node_embeddings)."""
+    respective stores (node_metadata_kv, node_enrichments)."""
     return get_writable_fields()
 
 

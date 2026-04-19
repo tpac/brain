@@ -83,13 +83,13 @@ REF_TYPES = {
                          "s1_delta",             # S1 encoding/surfacing traces since last run
                          "consolidation_candidates",  # embedding scan + behavioral evidence
                          "correction_chains",    # brain-wide correction chain traversal
-                         "enrichment_scan"],     # S2 enrichment: gaps + flags scanned
+                         "healer_scan"],         # S2 Healer: gaps + flags scanned
     ("s2", "K"):       ["community_proposals",  # S2CD proposals (placements, overlaps, splits, seeds)
                          "community_partition",  # algorithm output (communities + membership)
                          "community_diff",       # comparison with previous run
                          "consolidation_proposals",   # enriched clusters with pre-classification
                          "stale_nodes",          # nodes not accessed recently
-                         "enrichment_proposals"],# S2 enrichment: nodes to enrich with V5 vectors
+                         "healer_proposals"],    # S2 Healer: nodes to heal (fill missing fields)
     ("s2", "delta"):   ["community_enriched",   # S2CE enrichment results (accepted, rejected, placed)
                          "community_created",    # new community node
                          "community_updated",    # revised community node
@@ -100,7 +100,7 @@ REF_TYPES = {
                          "evolved",              # evolution edge added
                          "kept_distinct",        # similar_to edge, no merge
                          "confidence_adjust",    # adjusted confidence scores
-                         "enrichment_generated"],# S2 enrichment: V5 vectors generated + stored
+                         "healer_generated"],    # S2 Healer: missing fields generated + stored
     ("s2", "outcome"): ["recall_improved",      # community nodes improved recall
                          "operator_reviewed"],   # Tom reviewed S2 output
 
@@ -146,6 +146,97 @@ CHAIN_PREFIXES = {
     "s3":         "s3-{date}-{operation}",             # date=YYYYMMDD, operation=synthesis/meta/etc
     "s4":         "s4-{date}-{topic}",                 # date=YYYYMMDD, topic=what was researched
 }
+
+
+# ── DELTA METADATA SHAPE ──
+# Agentic encoders (S1E, S2 community, S2 consolidation, S2 healer) all
+# have the same structural shape: an LLM loop that processes inputs, runs
+# N rounds, produces write actions, writes a journal entry, and may record
+# rejection fingerprints. One schema, unit-specific vocab in `outcomes`.
+
+DELTA_METADATA_SHAPE = {
+    'actions':           int,     # total tool calls
+    'write_actions':     int,     # successful writes to the graph
+    'rounds':            int,     # LLM conversation rounds
+    'inputs_processed':  int,     # clusters / proposals / nodes seen
+    'outcomes':          dict,    # unit-specific vocab: {action_name: count}
+    'rejection_skipped': int,     # fingerprints recorded this run
+    'journal_entry':     str,     # THIS RUN's journal contribution (extracted)
+    'action_details':    list,    # per-action records (truncated if huge)
+    'final_text':        str,     # raw agent text, first 2KB
+    'errors':            list,    # first 5 errors
+}
+
+DELTA_FINAL_TEXT_LIMIT = 2000
+DELTA_ERROR_LIST_LIMIT = 5
+
+
+def build_delta_metadata(*,
+                         actions=0, write_actions=0, rounds=0,
+                         inputs_processed=0, outcomes=None,
+                         rejection_skipped=0, journal_entry='',
+                         action_details=None, final_text='',
+                         errors=None, **extras):
+    """Build a unified delta trace metadata dict.
+
+    All agentic encoders (S1E, S2 units) should call this to build the
+    metadata payload for their `delta` trace event. Standardizes field
+    names, applies truncation, and lets each unit pass additional keys
+    via **extras (e.g. clusters_processed, batches).
+
+    Returns a dict ready to pass as the metadata kwarg to a trace writer.
+    """
+    metadata = {
+        'actions':           int(actions or 0),
+        'write_actions':     int(write_actions or 0),
+        'rounds':            int(rounds or 0),
+        'inputs_processed':  int(inputs_processed or 0),
+        'outcomes':          dict(outcomes or {}),
+        'rejection_skipped': int(rejection_skipped or 0),
+        'journal_entry':     (journal_entry or '')[:DELTA_FINAL_TEXT_LIMIT],
+        'action_details':    list(action_details or []),
+        'final_text':        (final_text or '')[:DELTA_FINAL_TEXT_LIMIT],
+        'errors':            list(errors or [])[:DELTA_ERROR_LIST_LIMIT],
+    }
+    # Extras preserved for per-unit fields (can't collide with shared keys).
+    for k, v in extras.items():
+        if k not in metadata:
+            metadata[k] = v
+    return metadata
+
+
+# ── SELECTION METADATA SHAPE ──
+# Decode-style units (S1R) don't have LLM rounds or write actions — they
+# select from candidates. Sibling shape keeps them typed correctly and
+# gives the dashboard/S3 a second vocabulary to read.
+
+SELECTION_METADATA_SHAPE = {
+    'candidates_considered': int,    # how many inputs scored
+    'selected':              list,   # IDs/tags of picks
+    'dropped':               list,   # IDs/tags of rejects
+    'outcomes_per_candidate': dict,  # {candidate_id: 'selected'|'dropped'|...}
+    'content':               str,    # the delta output (e.g. additionalContext), truncated
+}
+
+SELECTION_CONTENT_LIMIT = 4000
+
+
+def build_selection_metadata(*,
+                             candidates_considered=0, selected=None,
+                             dropped=None, outcomes_per_candidate=None,
+                             content='', **extras):
+    """Build a unified selection-style trace metadata dict (S1R-like)."""
+    metadata = {
+        'candidates_considered':  int(candidates_considered or 0),
+        'selected':               list(selected or []),
+        'dropped':                list(dropped or []),
+        'outcomes_per_candidate': dict(outcomes_per_candidate or {}),
+        'content':                (content or '')[:SELECTION_CONTENT_LIMIT],
+    }
+    for k, v in extras.items():
+        if k not in metadata:
+            metadata[k] = v
+    return metadata
 
 
 def validate_trace_event(scale, event_type, ref_type=""):

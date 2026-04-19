@@ -385,7 +385,7 @@ class TestDALPatternEnforcement(unittest.TestCase):
         # Threshold: current state. Lower this as DAL migration progresses.
         # 2026-03-25: 50 violations (brain_precision:20, brain_surface:15, brain_evolution:5,
         #   brain_recall:4, brain_dreams:3, brain_engineering:2, brain_consciousness:1)
-        # New DALs built: NodeDAL, EmbeddingDAL, TfIdfDAL, GraphDAL — migrate callers next.
+        # New DALs built: NodeDAL, VectorDAL, TfIdfDAL, GraphDAL — migrate callers next.
         MAX_ALLOWED_VIOLATIONS = 50
         self.assertLessEqual(total_violations, MAX_ALLOWED_VIOLATIONS,
                             f'{total_violations} direct DB violations in mixins '

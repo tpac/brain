@@ -10,7 +10,105 @@ S1 Surface pushes relevant memories into awareness. This contract defines:
 Interaction: 'surface' in interactions table. Prompt is learnable.
 """
 
+import threading
 from datetime import datetime, timezone
+from collections import OrderedDict
+
+# Hoisted: any embedder API drift fails at daemon boot, not 16s into hook_recall.
+from servers.embedder import embed_document, embed_batch
+from servers import embedder as _embedder
+
+# Bounded cache for edge-description embeddings. Same descriptions recur
+# across turns and across sessions — caching eliminates redundant embed calls.
+#
+# Key: (model_name, description_text). Model-scoped so a model swap doesn't
+# hand out vectors from the wrong geometry. Values are L2-normalized blobs.
+# LRU eviction via OrderedDict; capped at 5000 entries (~15MB at 3KB/vector).
+# All reads/writes guarded by _DESC_CACHE_LOCK so concurrent embed callers
+# (future multi-threaded recall/backfill) can't corrupt LRU order.
+_DESC_VEC_CACHE: "OrderedDict[tuple, bytes]" = OrderedDict()
+_DESC_VEC_CACHE_MAX = 5000
+_DESC_CACHE_LOCK = threading.Lock()
+_DESC_CACHE_HITS = 0
+_DESC_CACHE_MISSES = 0
+
+
+def get_desc_cache_stats() -> dict:
+    """Cache diagnostics — surfaced through embedder stats / logs."""
+    with _DESC_CACHE_LOCK:
+        total = _DESC_CACHE_HITS + _DESC_CACHE_MISSES
+        hit_rate = (_DESC_CACHE_HITS / total) if total else 0.0
+        return {
+            'size': len(_DESC_VEC_CACHE),
+            'max': _DESC_VEC_CACHE_MAX,
+            'hits': _DESC_CACHE_HITS,
+            'misses': _DESC_CACHE_MISSES,
+            'hit_rate': round(hit_rate, 3),
+        }
+
+
+def _desc_vecs_batched(descs):
+    """Resolve descriptions → normalized blobs, using cache + one batched embed.
+
+    Returns list of blobs aligned with descs input. Empty strings return None.
+    Keys the cache by active model name so model swaps don't hand out stale
+    geometry. Dedupes within a single call so a batch with duplicates only
+    pays one embed per unique text.
+    """
+    global _DESC_CACHE_HITS, _DESC_CACHE_MISSES
+    if not descs:
+        return []
+
+    model = _embedder.stats.get('model_name') or ''
+    out = [None] * len(descs)
+
+    # Partition under lock: cached → out[i]; uncached → unique_texts + index map
+    # (unique_texts is deduped so duplicate descriptions in one call only embed once)
+    unique_texts: list = []
+    text_to_unique_idx: dict = {}
+    indices_for_unique: list = []  # list of lists of original indices per unique text
+    hits = 0
+    misses = 0
+    with _DESC_CACHE_LOCK:
+        for i, d in enumerate(descs):
+            if not d:
+                continue
+            key = (model, d)
+            blob = _DESC_VEC_CACHE.get(key)
+            if blob is not None:
+                out[i] = blob
+                _DESC_VEC_CACHE.move_to_end(key)
+                hits += 1
+                continue
+            misses += 1
+            u_idx = text_to_unique_idx.get(d)
+            if u_idx is None:
+                u_idx = len(unique_texts)
+                text_to_unique_idx[d] = u_idx
+                unique_texts.append(d)
+                indices_for_unique.append([i])
+            else:
+                indices_for_unique[u_idx].append(i)
+
+    # Embed outside the lock — embedder call may be slow; we hold no state.
+    if unique_texts:
+        fresh = embed_batch(unique_texts, kind='document')
+        # Populate out[] + cache under lock
+        with _DESC_CACHE_LOCK:
+            for u_idx, blob in enumerate(fresh):
+                if blob is None:
+                    continue
+                for i in indices_for_unique[u_idx]:
+                    out[i] = blob
+                _DESC_VEC_CACHE[(model, unique_texts[u_idx])] = blob
+            while len(_DESC_VEC_CACHE) > _DESC_VEC_CACHE_MAX:
+                _DESC_VEC_CACHE.popitem(last=False)
+
+    if hits or misses:
+        with _DESC_CACHE_LOCK:
+            _DESC_CACHE_HITS += hits
+            _DESC_CACHE_MISSES += misses
+    return out
 
 
 def _relative_time(iso_str):
@@ -522,52 +620,55 @@ def select_edges(connections, query_vec, session=None, limit=3, prior_vecs=None,
     else:
         blended = query_vec
 
-    # Load stored embeddings for all edge targets (batch)
+    # Batch-load all stored target embeddings in one SQL round-trip (v23:
+    # from node_enrichments). Short-prefix match kept for backward compat
+    # with 8-char connection IDs. Falls back silently if brain_conn missing.
     target_ids = [c.get('id', '')[:8] for c in connections]
     stored_embeddings = {}
-    if brain_conn is not None:
-        # Batch load primary embeddings (v23: from node_enrichments)
-        full_ids = []
-        for tid in target_ids:
-            row = brain_conn.execute(
-                "SELECT node_id, embedding FROM node_enrichments WHERE vector_type = '_primary' AND node_id LIKE ?",
-                (tid + '%',)).fetchone()
-            if row:
-                vec = np.frombuffer(row[1], dtype=np.float32)
-                stored_embeddings[tid] = vec
-                stored_embeddings[row[0]] = vec
+    if brain_conn is not None and target_ids:
+        like_clauses = ' OR '.join(['node_id LIKE ?'] * len(target_ids))
+        params = [tid + '%' for tid in target_ids]
+        rows = brain_conn.execute(
+            "SELECT node_id, embedding FROM node_enrichments "
+            "WHERE vector_type = '_primary' AND (%s)" % like_clauses,
+            params).fetchall()
+        for full_id, blob in rows:
+            vec = np.frombuffer(blob, dtype=np.float32)
+            stored_embeddings[full_id[:8]] = vec
+            stored_embeddings[full_id] = vec
+
+    # Batch-embed edge descriptions in one embedder call (cache-aware).
+    descs = [c.get('description', '') for c in connections]
+    desc_blobs = _desc_vecs_batched(descs)
+
+    # Pre-compute the blended-query norm once — it's invariant across edges.
+    norm_q = float(np.linalg.norm(blended))
 
     # Score each edge
     scored = []
-    for c in connections:
+    for c, desc_blob in zip(connections, desc_blobs):
         tid = c.get('id', '')[:8]
         weight = c.get('weight', 0.5)
-        desc = c.get('description', '')
 
         # Node relevance (stored embedding = title + content)
         node_rel = 0.3  # default when embedding missing
         target_vec = stored_embeddings.get(tid)
-        if target_vec is not None and len(target_vec) == len(blended):
-            dot = float(np.dot(blended, target_vec))
+        if target_vec is not None and len(target_vec) == len(blended) and norm_q > 0:
             norm_t = float(np.linalg.norm(target_vec))
-            norm_q = float(np.linalg.norm(blended))
-            if norm_t > 0 and norm_q > 0:
+            if norm_t > 0:
+                dot = float(np.dot(blended, target_vec))
                 node_rel = max(0, dot / (norm_q * norm_t))
 
         # Description relevance (when available)
         relevance = node_rel
-        if desc:
-            from servers.embedder import embed
-            desc_blob = embed(desc)
-            if desc_blob is not None:
-                desc_vec = np.frombuffer(desc_blob, dtype=np.float32)
-                if len(desc_vec) == len(blended):
+        if desc_blob is not None:
+            desc_vec = np.frombuffer(desc_blob, dtype=np.float32)
+            if len(desc_vec) == len(blended) and norm_q > 0:
+                norm_d = float(np.linalg.norm(desc_vec))
+                if norm_d > 0:
                     dot = float(np.dot(blended, desc_vec))
-                    norm_d = float(np.linalg.norm(desc_vec))
-                    norm_q = float(np.linalg.norm(blended))
-                    if norm_d > 0 and norm_q > 0:
-                        desc_rel = max(0, dot / (norm_q * norm_d))
-                        relevance = EDGE_NODE_WEIGHT * node_rel + EDGE_DESC_WEIGHT * desc_rel
+                    desc_rel = max(0, dot / (norm_q * norm_d))
+                    relevance = EDGE_NODE_WEIGHT * node_rel + EDGE_DESC_WEIGHT * desc_rel
 
         # Fatigue discount (session-scoped rotation)
         fatigue_count = 0

@@ -761,6 +761,97 @@ def _handle_enrich(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
+def _handle_diagnose(brain, args, graph_changes):
+    """Dump per-thread stacks + vector cache stats + recent error activity.
+
+    In-process introspection. Survives SIP-protected Python (unlike
+    py-spy/lldb). Call when the daemon is sluggish or spinning — returns
+    enough detail to identify the hot code path without external tools.
+
+    Args (all optional):
+        write_file: path to write full dump to (default /tmp/brain-diagnose-{ts}.txt)
+
+    Returns: dict with thread_count, hot_threads (stacks), cache_stats,
+             recent_errors, and the file path.
+    """
+    import os as _os
+    import sys as _sys
+    import threading as _t
+    import time as _time
+    import traceback as _tb
+    ts = int(_time.time())
+    default_path = '/tmp/brain-diagnose-%d.txt' % ts
+    write_file = args.get('write_file') or default_path
+
+    # Per-thread stacks via sys._current_frames() — no debugger needed.
+    frames = _sys._current_frames()
+    alive = {t.ident: t for t in _t.enumerate()}
+    threads_out = []
+    for tid, frame in frames.items():
+        t = alive.get(tid)
+        stack = _tb.extract_stack(frame)
+        # Deepest (most recent) 12 frames — enough to pinpoint the hot loop.
+        frames_short = [
+            {'file': _os.path.basename(f.filename), 'line': f.lineno,
+             'func': f.name, 'code': (f.line or '').strip()[:120]}
+            for f in stack[-12:]
+        ]
+        threads_out.append({
+            'tid': tid,
+            'name': (t.name if t else '?'),
+            'daemon': (t.daemon if t else None),
+            'alive': (t.is_alive() if t else None),
+            'frames': frames_short,
+        })
+
+    # Vector cache diagnostics (added 2026-04-19 for recall thrash debugging).
+    try:
+        cache_stats = brain._vec_dal.cache_stats() if hasattr(brain, '_vec_dal') else {}
+    except Exception as e:
+        cache_stats = {'error': str(e)}
+
+    # Recent errors — hours defaults to 2.
+    hours = int(args.get('hours', 2))
+    try:
+        recent_errors = brain._logs_dal.get_recent_errors(hours=hours) if hasattr(brain, '_logs_dal') else []
+    except Exception:
+        recent_errors = []
+
+    result = {
+        'timestamp': ts,
+        'pid': _os.getpid(),
+        'thread_count': len(threads_out),
+        'cache_stats': cache_stats,
+        'recent_errors': recent_errors[:20],
+        'file': write_file,
+        'threads': threads_out,
+    }
+
+    # Write full dump to file so the full stack trace is available even
+    # when the TCP response gets truncated by the client.
+    try:
+        with open(write_file, 'w') as f:
+            f.write('brain-diagnose @ %s (pid=%d)\n' % (ts, _os.getpid()))
+            f.write('thread_count=%d\n\n' % len(threads_out))
+            for t in threads_out:
+                f.write('--- Thread %s (id=%s, daemon=%s) ---\n' % (
+                    t['name'], t['tid'], t['daemon']))
+                for fr in t['frames']:
+                    f.write('  %s:%d  %s  |  %s\n' % (
+                        fr['file'], fr['line'], fr['func'], fr['code']))
+                f.write('\n')
+            f.write('\n=== Vector cache stats ===\n%s\n\n' % cache_stats)
+            f.write('=== Recent errors (last %dh) ===\n' % hours)
+            for e in recent_errors[:20]:
+                f.write('  %s\n' % e)
+        result['file_written'] = True
+    except Exception as e:
+        result['file_error'] = str(e)
+        result['file_written'] = False
+
+    return {'ok': True, 'result': result}
+
+
 def _handle_eval(brain, args, graph_changes):
     code = args.get("code", "")
     if not code:
@@ -842,6 +933,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "brain_batch":           CmdEntry(_handle_brain_batch,         is_write=True, marks_dirty=True),
     "enrich":                CmdEntry(_handle_enrich,              is_write=True, marks_dirty=True),
     "eval":                  CmdEntry(_handle_eval,                is_write=True, marks_dirty=True),
+    "diagnose":              CmdEntry(_handle_diagnose,            is_write=False, marks_dirty=False),
 }
 
 # "shutdown" is handled directly by daemon_server (needs to set self.running)

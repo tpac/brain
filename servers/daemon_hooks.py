@@ -27,6 +27,9 @@ _encoding_lock = threading.Lock()
 # ── Constants (canonical definitions in brain_voice.py) ──
 
 from servers.brain_voice import BrainVoice
+# Hoisted — if this import ever breaks, the daemon fails at boot instead of
+# silently degrading recall 16s in.
+from servers.embedder import embed_query
 
 # Backwards-compatible function aliases — delegate to BrainVoice static methods
 # format_recall_results used only by MCP tool output, not by hook path
@@ -197,11 +200,10 @@ def hook_recall(brain, args, graph_changes):
                 from .scales.s1.surface_contract import select_edges
                 _prior_turns = brain._trace_dal.get_session_turns(session_id, limit=4)
                 _user_turns = [t for t in _prior_turns if t.get('role') == 'user'][:2]
-                from servers.embedder import embed as _emb
                 for _t in _user_turns:
                     _text = (_t.get('content') or '')[:500]
                     if _text and len(_text) > 5:
-                        _blob = _emb(_text)
+                        _blob = embed_query(_text)
                         if _blob:
                             _prior_vecs.append(np.frombuffer(_blob, dtype=np.float32))
             except Exception as _e:
@@ -543,31 +545,68 @@ def hook_idle_maintenance(brain, args, graph_changes):
         from .scales.s2.coordinator import run_s2
         s2_results = run_s2(brain)
         for unit_name, result in s2_results.items():
-            if result.get('error'):
-                output.append("S2 %s ERROR: %s" % (unit_name.upper(), result['error']))
-            elif result.get('skipped'):
-                output.append("S2 %s: skipped (%s)" % (unit_name.upper(), result['skipped']))
-            else:
-                # Unit-specific formatting
-                actions = result.get('actions', result.get('classified', 0))
-                if unit_name == 'edge_family_integration' and result.get('classified', 0) > 0:
-                    output.append("S2 EDGE FAMILIES: classified %d new types into %d families" % (
-                        result['classified'], result['families']))
-                elif unit_name == 'consolidation' and result.get('clusters'):
-                    output.append("S2 CONSOLIDATION: %d clusters found" % len(result['clusters']))
-                    stats = result.get('stats', {})
-                    class_counts = stats.get('class_counts', {})
-                    if class_counts:
-                        output.append("  %s" % ', '.join(
-                            '%d %s' % (v, k) for k, v in class_counts.items()))
+            # Per-unit isolation — a buggy formatter for one unit shouldn't
+            # swallow output from other units.
+            try:
+                if not isinstance(result, dict):
+                    output.append("S2 %s: unexpected result shape (%s)" % (
+                        unit_name.upper(), type(result).__name__))
+                    continue
+                if result.get('error'):
+                    output.append("S2 %s ERROR: %s" % (unit_name.upper(), result['error']))
+                    continue
+                if result.get('skipped'):
+                    output.append("S2 %s: skipped (%s)" % (unit_name.upper(), result['skipped']))
+                    continue
+
+                actions = result.get('actions', result.get('classified', 0)) or 0
+
+                if unit_name == 'edge_family_integration':
+                    classified = result.get('classified', 0) or 0
+                    families = result.get('families', 0) or 0
+                    if classified > 0:
+                        output.append("S2 EDGE FAMILIES: classified %d new types into %d families" % (
+                            classified, families))
+
+                elif unit_name == 'consolidation':
+                    clusters = result.get('clusters', 0)
+                    # Accept either int count or list of cluster dicts.
+                    cluster_count = len(clusters) if isinstance(clusters, (list, tuple)) else int(clusters or 0)
+                    if cluster_count > 0:
+                        output.append("S2 CONSOLIDATION: %d clusters found" % cluster_count)
+                        stats = result.get('stats') or {}
+                        class_counts = stats.get('class_counts') or {}
+                        if class_counts:
+                            output.append("  %s" % ', '.join(
+                                '%d %s' % (v, k) for k, v in class_counts.items()))
+
                 elif unit_name == 'community_detection':
-                    communities = result.get('communities', 0)
+                    communities = result.get('communities', 0) or 0
                     if actions > 0:
                         output.append("S2 COMMUNITY: %d communities, %d actions" % (
                             communities, actions))
                         graph_changes.append("S2_COMMUNITY: %d communities" % communities)
                     else:
                         output.append("S2 COMMUNITY: no changes (%d communities)" % communities)
+
+                elif unit_name == 'healer':
+                    nodes_healed = result.get('nodes_healed', 0) or 0
+                    fields_written = result.get('fields_written', 0) or 0
+                    skipped = result.get('skipped', 0) or 0
+                    proposals = result.get('proposals', 0) or 0
+                    if nodes_healed > 0 or fields_written > 0:
+                        output.append("S2 HEALER: %d nodes healed, %d fields written (skipped %d)" % (
+                            nodes_healed, fields_written, skipped))
+                        graph_changes.append("S2_HEALER: %d fields" % fields_written)
+                    elif proposals > 0:
+                        output.append("S2 HEALER: %d proposals, 0 written" % proposals)
+
+                else:
+                    # Unknown unit — render a terse default rather than silently dropping it.
+                    if actions > 0:
+                        output.append("S2 %s: %d actions" % (unit_name.upper(), actions))
+            except Exception as fmt_err:
+                output.append("S2 %s format error: %s" % (unit_name.upper(), fmt_err))
     except Exception as e:
         output.append("S2 ERROR: %s" % e)
 

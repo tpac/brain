@@ -15,6 +15,7 @@ import time
 
 from servers.scales.dispatch import load_env
 from servers.scales.runner import run_llm_loop
+from servers.trace_contract import build_delta_metadata
 
 
 def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None):
@@ -121,9 +122,39 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None):
 
         # 7. Post-process (S1-specific: journal, session context, signals)
         final_text = result.get('final_text', '')
-        _save_journal(brain, dispatch_fn, session_id, counter, final_text)
+        journal_entry = _save_journal(brain, dispatch_fn, session_id, counter, final_text) or ''
         _save_session_context(brain, dispatch_fn, final_text)
         _surface_questions(brain, final_text)
+
+        # 8. Delta trace — unified shape across S1E + S2 encoders.
+        # Outcomes: count write actions by tool (remember / revise / connect / …).
+        action_details = result.get('action_details', [])
+        outcomes = {}
+        for a in action_details:
+            tool = a.get('tool', 'unknown')
+            outcomes[tool] = outcomes.get(tool, 0) + 1
+
+        enc_chain = 's1e-%s-%d' % (session_id[:8], counter)
+        dispatch_fn('trace_append', {
+            'chain_id': enc_chain, 'scale': 's1', 'event_type': 'delta',
+            'ref_type': 'encoding_run',
+            'summary': '%d actions (%d writes) in %d rounds' % (
+                result.get('actions', 0),
+                result.get('write_actions', 0),
+                result.get('rounds', 0)),
+            'metadata': build_delta_metadata(
+                actions=result.get('actions', 0),
+                write_actions=result.get('write_actions', 0),
+                rounds=result.get('rounds', 0),
+                inputs_processed=len(messages),
+                outcomes=outcomes,
+                journal_entry=journal_entry,
+                action_details=action_details,
+                final_text=final_text,
+                stop_counter=counter,
+            ),
+            'session_id': session_id,
+        })
 
         result['profile'] = profile
         return result
@@ -297,15 +328,28 @@ def _write_pre_traces(brain, dispatch_fn, messages, user_content, counter, sessi
 
 
 def _save_journal(brain, dispatch_fn, session_id, counter, final_text):
-    """Append encoding run to session-scoped journal."""
+    """Append encoding run to session-scoped journal. Returns the entry text.
+
+    S1E's entry is just the truncated final_text — encoder output is
+    already the narrative. If final_text is empty, returns ''; logs a
+    brain error since that's an agent-drift signal.
+    """
     from servers.scales.s1.encode_contract import ENCODING_AGENT
     journal_key = 'encoding_journal_%s' % session_id
     existing = brain.get_config(journal_key, '') or ''
     max_chars = ENCODING_AGENT.get('journal_max_chars', 8000)
 
+    entry_body = final_text[:ENCODING_AGENT['journal_entry_limit']]
+    if not entry_body.strip():
+        brain._log_error(
+            's1e_journal_extraction',
+            'empty final_text from S1E (stop #%d)' % counter,
+            'encoder produced no narrative — check prompt + LLM output')
+        return ''
+
     # Count previous runs in journal to get sequence number
     run_seq = existing.count('--- Run ') + 1
-    new_entry = "--- Run %d (stop #%d) ---\n%s" % (run_seq, counter, final_text[:ENCODING_AGENT['journal_entry_limit']])
+    new_entry = "--- Run %d (stop #%d) ---\n%s" % (run_seq, counter, entry_body)
     updated = (existing + '\n' + new_entry).strip()
 
     if len(updated) > max_chars:
@@ -323,6 +367,8 @@ def _save_journal(brain, dispatch_fn, session_id, counter, final_text):
     from servers.pipeline_contract import PIPELINE
     dispatch_fn('set_config', {'key': 'encoding_agent_state',
                                'value': final_text[:PIPELINE['encoding_state_compat']]})
+
+    return entry_body
 
 
 def _save_session_context(brain, dispatch_fn, final_text):

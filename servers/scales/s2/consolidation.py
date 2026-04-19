@@ -12,6 +12,7 @@ Prompt: servers/scales/s2/consolidation_enrichment_prompt.py
 from .consolidation_decoder import ConsolidationDecoder
 from .consolidation_encoder import ConsolidationEncoder
 from .consolidation_contract import CONSOLIDATION
+from .rejection_table import filter_rejected, record_rejections
 
 
 class Consolidation(ConsolidationDecoder):
@@ -39,6 +40,23 @@ class Consolidation(ConsolidationDecoder):
         if not clusters:
             return {'actions': 0, 'clusters': 0, 'stats': stats}
 
+        # Fingerprint-based rejection filter — SKIP decisions from prior
+        # runs populate s2_rejections; those clusters don't resurface here.
+        # Pairs with 'members' key wrap the cluster for compute_fingerprint.
+        proposals = [{'type': 'consolidation_cluster',
+                      'members': c.get('nodes', []),
+                      '_cluster': c}
+                     for c in clusters]
+        surviving, fp_suppressed = filter_rejected(self.brain, proposals)
+        clusters = [p['_cluster'] for p in surviving]
+        stats['fingerprint_suppressed'] = fp_suppressed
+        if fp_suppressed:
+            print('[s2-consolidation] Fingerprint-suppressed %d clusters' % fp_suppressed,
+                  flush=True)
+
+        if not clusters:
+            return {'actions': 0, 'clusters': 0, 'stats': stats}
+
         # Cap clusters per run (graduated cold start).
         # Process easiest first — likely_consolidate before needs_judgment.
         max_per_run = self.config.get('max_clusters_per_run', 30)
@@ -52,6 +70,22 @@ class Consolidation(ConsolidationDecoder):
             print('[s2-consolidation] Capped to %d clusters (of %d total)' % (
                 max_per_run, stats.get('clusters_formed', '?')), flush=True)
 
+        # Snapshot suppression edges before encoder runs so we can detect
+        # which input clusters the encoder actually acted on. Any cluster
+        # with no new intra-cluster similar_to/consolidated_into edge after
+        # the run is recorded as a rejection (SKIP path) — no edge written
+        # on the graph, fingerprint in s2_rejections prevents re-proposal.
+        def _snapshot_suppression_pairs():
+            pairs = set()
+            for row in self.brain.conn.execute(
+                "SELECT e.source_id, e.target_id FROM edges e "
+                "JOIN edge_relations er ON er.edge_id = e.edge_id "
+                "WHERE er.relation IN ('similar_to','consolidated_into')"):
+                pairs.add((min(row[0], row[1]), max(row[0], row[1])))
+            return pairs
+
+        pre_edges = _snapshot_suppression_pairs()
+
         # Encode
         encoder = ConsolidationEncoder(
             self.brain, self.dispatch, self.config)
@@ -61,9 +95,39 @@ class Consolidation(ConsolidationDecoder):
             return {'actions': 0, 'clusters': len(clusters),
                     'stats': stats, 'error': 'encoding failed'}
 
+        # Detect clusters that got no suppression edge this run → SKIPPED →
+        # record a rejection fingerprint so the decoder doesn't resurface them.
+        post_edges = _snapshot_suppression_pairs()
+        new_edges = post_edges - pre_edges
+        skipped_proposals = []
+        for c in clusters:
+            members = c.get('nodes', [])
+            handled = False
+            for i in range(len(members)):
+                for j in range(i + 1, len(members)):
+                    key = (min(members[i], members[j]),
+                           max(members[i], members[j]))
+                    if key in new_edges:
+                        handled = True
+                        break
+                if handled:
+                    break
+            if not handled and len(members) >= 2:
+                skipped_proposals.append({
+                    'type': 'consolidation_cluster',
+                    'members': sorted(members),
+                })
+        recorded = record_rejections(
+            self.brain, skipped_proposals,
+            integration_unit='s2:consolidation') if skipped_proposals else 0
+        if recorded:
+            print('[s2-consolidation] Recorded %d SKIP rejections' % recorded,
+                  flush=True)
+
         return {
             'actions': encode_result.get('write_actions', 0),
             'clusters': len(clusters),
+            'skipped_recorded': recorded,
             'stats': stats,
             'details': {
                 'rounds': encode_result.get('rounds', 0),

@@ -1225,137 +1225,6 @@ class NodeDAL:
     # get_metadata removed 2026-04-13 — old node_metadata table dropped, use MetadataDAL (KV).
 
 
-class EmbeddingDAL:
-    """DEPRECATED v23 — use VectorDAL instead. Reads from old node_embeddings table."""
-
-    def __init__(self, conn: sqlite3.Connection):
-        self.conn = conn
-
-    # --- node_embeddings ---
-
-    def get_embedding(self, node_id: str) -> Optional[bytes]:
-        """Get embedding blob for a node."""
-        row = self.conn.execute(
-            'SELECT embedding FROM node_embeddings WHERE node_id = ?',
-            (node_id,)
-        ).fetchone()
-        return row[0] if row else None
-
-    def get_all_embeddings(self, exclude_archived: bool = True) -> List[Dict[str, Any]]:
-        """Get all embeddings for cosine scan. Returns node_id + embedding blob."""
-        sql = ('SELECT ne.node_id, ne.embedding FROM node_embeddings ne '
-               'JOIN nodes n ON n.id = ne.node_id')
-        if exclude_archived:
-            sql += ' WHERE n.archived = 0'
-        rows = self.conn.execute(sql).fetchall()
-        return [{'node_id': r[0], 'embedding': r[1]} for r in rows]
-
-    def get_all_with_context(self, exclude_archived: bool = True,
-                             types: List[str] = None,
-                             project: str = None) -> List[Dict[str, Any]]:
-        """Get all embeddings with node context for recall STEP 3 scan.
-
-        Returns: [{node_id, embedding, personal, personal_context,
-                   confidence, critical, title, type,
-                   created_at, emotion, access_count}]
-
-        The last 3 fields feed unified_score() in recall_scoring.py:
-          created_at → freshness_from_created (recency from birth, not access)
-          emotion → emotion amplification (GANE model)
-          access_count → frequency penalty (hub dampening)
-
-        Filters: archived, type, project — matching recall pipeline needs.
-        """
-        where = []
-        params = []
-        if exclude_archived:
-            where.append('n.archived = 0')
-        if types:
-            where.append('n.type IN (%s)' % ','.join('?' * len(types)))
-            params.extend(types)
-        if project:
-            where.append('(n.project = ? OR n.project IS NULL)')
-            params.append(project)
-        where_sql = (' WHERE ' + ' AND '.join(where)) if where else ''
-        rows = self.conn.execute(
-            'SELECT ne.node_id, ne.embedding, n.personal, n.personal_context, '
-            'n.confidence, n.critical, n.title, n.type, '
-            'n.created_at, n.emotion, n.access_count '
-            'FROM node_embeddings ne '
-            'JOIN nodes n ON n.id = ne.node_id' + where_sql,
-            params
-        ).fetchall()
-        return [{'node_id': r[0], 'embedding': r[1], 'personal': r[2],
-                 'personal_context': r[3], 'confidence': r[4],
-                 'critical': r[5] or 0, 'title': r[6] or '', 'type': r[7] or '',
-                 'created_at': r[8], 'emotion': r[9] or 0,
-                 'access_count': r[10] or 0}
-                for r in rows]
-
-    def store_embedding(self, node_id: str, embedding: bytes, model: str) -> None:
-        """Store or replace an embedding for a node."""
-        self.conn.execute(
-            'INSERT OR REPLACE INTO node_embeddings '
-            '(node_id, embedding, model, created_at) VALUES (?, ?, ?, ?)',
-            (node_id, embedding, model, _now())
-        )
-        self.conn.commit()
-
-    def count(self) -> int:
-        """Count total embeddings."""
-        row = self.conn.execute('SELECT COUNT(*) FROM node_embeddings').fetchone()
-        return row[0] if row else 0
-
-    # --- situation embeddings ---
-
-    def store_situation(self, node_id: str, situation_text: str, situation_blob: bytes) -> None:
-        """Store situation embedding + text for a node. Node must already have a content embedding."""
-        self.conn.execute(
-            'UPDATE node_embeddings SET situation_embedding=?, situation_text=? WHERE node_id=?',
-            (situation_blob, situation_text, node_id))
-        self.conn.commit()
-
-    def get_all_situations(self) -> List[Dict[str, Any]]:
-        """Get all situation embeddings for cosine scan. Skips nodes without situation."""
-        rows = self.conn.execute(
-            'SELECT ne.node_id, ne.situation_embedding '
-            'FROM node_embeddings ne JOIN nodes n ON n.id = ne.node_id '
-            'WHERE n.archived = 0 AND ne.situation_embedding IS NOT NULL'
-        ).fetchall()
-        return [{'node_id': r[0], 'situation_embedding': r[1]} for r in rows]
-
-    def get_situation_text(self, node_id: str) -> Optional[str]:
-        """Get the raw situation text for a node."""
-        row = self.conn.execute(
-            'SELECT situation_text FROM node_embeddings WHERE node_id = ?', (node_id,)
-        ).fetchone()
-        return row[0] if row else None
-
-    # --- node_enrichments ---
-
-    def get_all_enrichments(self) -> List[Dict[str, Any]]:
-        """Get all enrichment vectors for cosine scan."""
-        rows = self.conn.execute(
-            'SELECT node_id, vector_type, embedding FROM node_enrichments '
-            'WHERE embedding IS NOT NULL'
-        ).fetchall()
-        return [
-            {'node_id': r[0], 'vector_type': r[1], 'embedding': r[2]}
-            for r in rows
-        ]
-
-    def store_enrichment(self, node_id: str, vector_type: str, text: str,
-                         embedding: Optional[bytes], model: str) -> None:
-        """Store an enrichment vector."""
-        import uuid
-        self.conn.execute(
-            'INSERT INTO node_enrichments '
-            '(id, node_id, vector_type, text, embedding, model, created_at) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?)',
-            (uuid.uuid4().hex, node_id, vector_type, text, embedding, model, _now())
-        )
-        self.conn.commit()
-
     def delete_for_node(self, node_id: str) -> int:
         """Delete all enrichments for a node. Returns count deleted."""
         cur = self.conn.execute(
@@ -1931,7 +1800,7 @@ class EnrichmentDAL:
         self.conn = conn
 
     def store(self, node_id: str, vector_type: str, text: str,
-              embedding: Optional[bytes] = None, model: str = 'snowflake-arctic-embed-m') -> str:
+              embedding: Optional[bytes] = None, model: str = 'nomic-ai/nomic-embed-text-v1.5-Q') -> str:
         """Store an enrichment vector for a node. Returns enrichment ID."""
         import uuid
         eid = str(uuid.uuid4().hex[:16])
@@ -1961,7 +1830,7 @@ class EnrichmentDAL:
 
         Returns list of dicts with node_id, vector_type, embedding.
         Only returns enrichments with embeddings (not NULL) for active
-        (non-archived) nodes. Matches EmbeddingDAL pattern.
+        (non-archived) nodes.
         """
         rows = self.conn.execute(
             '''SELECT ne.node_id, ne.vector_type, ne.embedding
@@ -2022,10 +1891,11 @@ class VectorDAL:
         self.conn = conn
 
     def store(self, node_id: str, vector_type: str, text: str,
-              embedding: Optional[bytes], model: str = 'snowflake-arctic-embed-m') -> None:
-        """Store or replace a vector for a node.
+              embedding: Optional[bytes], model: str = 'nomic-ai/nomic-embed-text-v1.5-Q') -> None:
+        """Store or replace a single vector for a node.
 
         Uses deterministic ID '{node_id}__{vector_type}' for INSERT OR REPLACE.
+        For bulk writes, prefer store_batch() — one round-trip instead of N.
         """
         vid = '%s__%s' % (node_id, vector_type)
         now = datetime.now(timezone.utc).isoformat()
@@ -2041,6 +1911,43 @@ class VectorDAL:
             print('[VectorDAL] store error for %s/%s: %s' % (
                 node_id[:12], vector_type, e), file=sys.stderr)
 
+    def store_batch(self, rows, model: str = 'nomic-ai/nomic-embed-text-v1.5-Q') -> int:
+        """Batch insert-or-update many vectors in one executemany round-trip.
+
+        Args:
+            rows: iterable of (node_id, vector_type, text, embedding_blob).
+                  Rows with embedding=None are skipped.
+            model: model tag stored on each row.
+
+        Returns: count of rows actually written.
+
+        INSERT OR REPLACE handles both new inserts and updates to existing
+        (node_id, vector_type) rows via the deterministic id key.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        prepared = []
+        for node_id, vector_type, text, blob in rows:
+            if blob is None or not node_id or not vector_type:
+                continue
+            vid = '%s__%s' % (node_id, vector_type)
+            prepared.append((vid, node_id, vector_type,
+                             text[:500] if text else '',
+                             blob, model, now))
+        if not prepared:
+            return 0
+        try:
+            self.conn.executemany(
+                '''INSERT OR REPLACE INTO node_enrichments
+                   (id, node_id, vector_type, text, embedding, model, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                prepared)
+            return len(prepared)
+        except Exception as e:
+            import sys
+            print('[VectorDAL] store_batch error (%d rows): %s' % (len(prepared), e),
+                  file=sys.stderr)
+            return 0
+
     def get_primary(self, node_id: str) -> Optional[bytes]:
         """Get primary embedding blob for a node."""
         row = self.conn.execute(
@@ -2050,13 +1957,15 @@ class VectorDAL:
 
     def get_all_with_context(self, exclude_archived: bool = True,
                              types: List[str] = None,
-                             project: str = None) -> List[Dict[str, Any]]:
+                             project: str = None,
+                             model: str = None) -> List[Dict[str, Any]]:
         """Get all primary embeddings with node context for recall STEP 3 scan.
 
-        Returns same shape as old EmbeddingDAL.get_all_with_context().
+        When `model` is given, only vectors produced by that model are returned.
+        Stale-model rows are invisible — prevents cosine noise after a swap.
         """
         where = ["ne.vector_type = '_primary'"]
-        params = []
+        params: List[Any] = []
         if exclude_archived:
             where.append('n.archived = 0')
         if types:
@@ -2065,6 +1974,9 @@ class VectorDAL:
         if project:
             where.append('(n.project = ? OR n.project IS NULL)')
             params.append(project)
+        if model:
+            where.append('ne.model = ?')
+            params.append(model)
         where_sql = ' WHERE ' + ' AND '.join(where)
         rows = self.conn.execute(
             'SELECT ne.node_id, ne.embedding, n.personal, n.personal_context, '
@@ -2080,8 +1992,15 @@ class VectorDAL:
                  'access_count': r[10] or 0}
                 for r in rows]
 
-    def get_all_vectors(self, exclude_archived: bool = True) -> List[Dict[str, Any]]:
-        """Get ALL vectors (all types) for unified recall scan.
+    def get_all_vectors(self, exclude_archived: bool = True,
+                        vector_types: Optional[List[str]] = None,
+                        model: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get vectors for unified recall scan, optionally filtered.
+
+        Args:
+            exclude_archived: skip archived nodes (default True)
+            vector_types: restrict to these types, e.g. ['_primary']. None = all.
+            model: restrict to rows produced by this model. None = all.
 
         Returns: [{node_id, vector_type, embedding}] for rows with non-null embeddings.
         """
@@ -2089,21 +2008,36 @@ class VectorDAL:
                'FROM node_enrichments ne '
                'JOIN nodes n ON n.id = ne.node_id '
                'WHERE ne.embedding IS NOT NULL')
+        params: List[Any] = []
         if exclude_archived:
             sql += ' AND n.archived = 0'
-        rows = self.conn.execute(sql).fetchall()
+        if vector_types:
+            ph = ','.join('?' * len(vector_types))
+            sql += f' AND ne.vector_type IN ({ph})'
+            params.extend(vector_types)
+        if model:
+            sql += ' AND ne.model = ?'
+            params.append(model)
+        rows = self.conn.execute(sql, params).fetchall()
         return [{'node_id': r[0], 'vector_type': r[1], 'embedding': r[2]}
                 for r in rows]
 
-    def get_all_situations(self) -> List[Dict[str, Any]]:
-        """Get all situation embeddings for cosine scan (recall STEP 3.5b)."""
-        rows = self.conn.execute(
-            "SELECT ne.node_id, ne.embedding "
-            "FROM node_enrichments ne "
-            "JOIN nodes n ON n.id = ne.node_id "
-            "WHERE ne.vector_type = '_situation' AND ne.embedding IS NOT NULL "
-            "AND n.archived = 0"
-        ).fetchall()
+    def get_all_situations(self, model: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get all situation embeddings for cosine scan (recall STEP 3.5b).
+
+        When `model` is given, only rows produced by that model are returned —
+        stale-model vectors are excluded so cosine scans stay in matched geometry.
+        """
+        sql = ("SELECT ne.node_id, ne.embedding "
+               "FROM node_enrichments ne "
+               "JOIN nodes n ON n.id = ne.node_id "
+               "WHERE ne.vector_type = '_situation' AND ne.embedding IS NOT NULL "
+               "AND n.archived = 0")
+        params: tuple = ()
+        if model:
+            sql += " AND ne.model = ?"
+            params = (model,)
+        rows = self.conn.execute(sql, params).fetchall()
         return [{'node_id': r[0], 'situation_embedding': r[1]} for r in rows]
 
     def get_situation_text(self, node_id: str) -> Optional[str]:
@@ -2117,22 +2051,49 @@ class VectorDAL:
         """Store situation embedding + text for a node."""
         self.store(node_id, '_situation', situation_text, situation_blob)
 
-    def find_missing(self, vector_type: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """Find active nodes missing a specific vector type.
+    def find_missing(self, vector_type: str, limit: int = 50,
+                     model: Optional[str] = None,
+                     node_ids: Optional[set] = None) -> List[Dict[str, Any]]:
+        """Find active nodes whose vector for `vector_type` is missing or stale.
 
-        Returns [{id, title, content}] for nodes that don't have this vector_type.
+        A row is "present" only if it has a non-null embedding AND (if `model`
+        is given) was produced by the same model. On model swaps, rows
+        embedded by prior models become eligible for re-embedding.
+
+        When `node_ids` is given, scope the scan to just those IDs (queue
+        drain path — don't re-scan the whole graph on every tick).
+
+        Returns [{id, title, content}] ordered by recency of access.
         """
-        rows = self.conn.execute('''
-            SELECT n.id, n.title, n.content
-            FROM nodes n
-            WHERE n.archived = 0
-            AND n.id NOT IN (
+        where = ['n.archived = 0']
+        params: list = []
+
+        if model:
+            where.append('''n.id NOT IN (
+                SELECT ne.node_id FROM node_enrichments ne
+                WHERE ne.vector_type = ?
+                  AND ne.embedding IS NOT NULL
+                  AND ne.model = ?
+            )''')
+            params.extend([vector_type, model])
+        else:
+            where.append('''n.id NOT IN (
                 SELECT ne.node_id FROM node_enrichments ne
                 WHERE ne.vector_type = ? AND ne.embedding IS NOT NULL
-            )
-            ORDER BY n.last_accessed DESC
-            LIMIT ?
-        ''', (vector_type, limit)).fetchall()
+            )''')
+            params.append(vector_type)
+
+        if node_ids:
+            ids = list(node_ids)
+            ph = ','.join('?' * len(ids))
+            where.append('n.id IN (%s)' % ph)
+            params.extend(ids)
+
+        sql = ('SELECT n.id, n.title, n.content FROM nodes n '
+               'WHERE ' + ' AND '.join(where) +
+               ' ORDER BY n.last_accessed DESC LIMIT ?')
+        params.append(limit)
+        rows = self.conn.execute(sql, params).fetchall()
         return [{'id': r[0], 'title': r[1] or '', 'content': r[2] or ''} for r in rows]
 
     def delete_for_node(self, node_id: str) -> int:

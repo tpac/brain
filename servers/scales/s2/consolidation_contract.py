@@ -103,7 +103,11 @@ CONSOLIDATION_NODE_FORMAT = {
 
 CONSOLIDATION = {
     # ── Embedding scan (decoder) ──
-    'similarity_threshold': 0.82,       # Minimum cosine for candidate pair
+    'similarity_threshold': 0.89,       # Minimum cosine for candidate pair.
+                                        # Raised from 0.82 after Nomic-Q migration: at 0.82 the
+                                        # similarity graph collapsed into a 2165-node giant
+                                        # component (86% of corpus) — unprocessable as clusters.
+                                        # 0.89 yields ~250 well-formed clusters with biggest ~12.
     'max_cluster_size': 5,              # Larger = topic, not convergence
 
     # ── Behavioral trace lookback (decoder) ──
@@ -119,7 +123,7 @@ CONSOLIDATION = {
 
     # ── Encoder ──
     'model': 'claude-sonnet-4-20250514',
-    'max_tokens': 16384,
+    'max_tokens': 32768,
     'max_proposals_per_call': 10,       # Clusters per Sonnet call
     'max_rounds': 2,                    # Tool-use rounds per call — read then write, done
     'journal_max_chars': 14000,

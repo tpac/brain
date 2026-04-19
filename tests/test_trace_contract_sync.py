@@ -18,7 +18,16 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Files that contain trace writes (production code only, not tests)
 TRACE_WRITER_FILES = [
     'servers/daemon_hooks.py',
-    'servers/encoding_agent.py',
+    'servers/scales/s1/encode.py',
+    'servers/scales/s1/surface.py',
+    'servers/scales/s2/community_decoder.py',
+    'servers/scales/s2/community_encoder.py',
+    'servers/scales/s2/consolidation_decoder.py',
+    'servers/scales/s2/consolidation_encoder.py',
+    'servers/scales/s2/healer_decoder.py',
+    'servers/scales/s2/healer_encoder.py',
+    'servers/scales/s2/edge_families.py',
+    'servers/scales/s2/reclassify.py',
     'hooks/scripts/post_tool_trace.py',
 ]
 

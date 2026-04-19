@@ -136,8 +136,8 @@ class ConsolidationDecoder(IntegrationUnit):
         """Find all node pairs above similarity threshold.
 
         Uses two similarity dimensions:
-        - content_cosine: blend embedding (title + content) from node_embeddings
-        - title_cosine: title-only embedding from node_enrichments
+        - content_cosine: _primary vector (title + content) from node_enrichments
+        - title_cosine: title-only vector from node_enrichments
 
         A pair is a candidate if EITHER dimension exceeds threshold.
         Both scores are reported per pair for the encoder.
@@ -203,35 +203,57 @@ class ConsolidationDecoder(IntegrationUnit):
             else:
                 title_vecs.append(np.zeros(dim, dtype=np.float32))
 
-        # Load suppression edges
-        suppressed = set()
+        # State-based suppression — "Unreviewed Node" pattern.
+        # Following the same design Community detection uses with
+        # community_member: a node is "reviewed" iff it has any edge of a
+        # suppression-relation type. A cluster is surfaced to the encoder
+        # iff at least one member is unreviewed. Nodes whose content
+        # changes don't auto-reset (explicit re-review is a separate flow).
+        # This replaces pair-level suppression which required N² edges per
+        # cluster and relied on prompt compliance to stay consistent.
+        already_reviewed = set()
         if suppression:
             placeholders = ','.join('?' * len(suppression))
-            for row in self.brain.conn.execute("""
-                SELECT e.source_id, e.target_id
-                FROM edges e
-                JOIN edge_relations er ON er.edge_id = e.edge_id
-                WHERE er.relation IN (%s)
-            """ % placeholders, list(suppression)).fetchall():
-                suppressed.add((min(row[0], row[1]), max(row[0], row[1])))
+            reviewed_rows = self.brain.conn.execute("""
+                SELECT DISTINCT node_id FROM (
+                    SELECT e.source_id AS node_id FROM edges e
+                    JOIN edge_relations er ON er.edge_id = e.edge_id
+                    WHERE er.relation IN (%s)
+                    UNION
+                    SELECT e.target_id AS node_id FROM edges e
+                    JOIN edge_relations er ON er.edge_id = e.edge_id
+                    WHERE er.relation IN (%s)
+                )
+            """ % (placeholders, placeholders),
+                list(suppression) + list(suppression)).fetchall()
+            already_reviewed = {r[0] for r in reviewed_rows}
+        # Retain per-pair suppression set for backward-compat with legacy
+        # edges — drops to {} once the state check does the heavy lifting.
+        suppressed = set()
 
         content_mat = np.stack(content_vecs)
         title_mat = np.stack(title_vecs)
 
         def _find_pairs(content_sim, title_sim, row_ids, col_ids):
-            """Find pairs where either content or title similarity exceeds threshold."""
+            """Find pairs where either similarity exceeds threshold.
+
+            Applies the Unreviewed-Node pattern: only pairs with at least one
+            unreviewed endpoint survive. Reviewed↔reviewed pairs are skipped
+            because both endpoints already have suppression edges from prior
+            runs — re-proposing would re-do settled work.
+            """
             pairs = []
-            # Content matches
             yi, xi = np.where(content_sim > threshold)
             pair_set = set()
             for y, x in zip(yi, xi):
                 a, b = row_ids[y], col_ids[x]
                 if a == b:
                     continue
+                if a in already_reviewed and b in already_reviewed:
+                    continue
                 key = (min(a, b), max(a, b))
                 if key not in suppressed and key not in pair_set:
                     pair_set.add(key)
-                    # Get both scores
                     t_sim = float(title_sim[y, x]) if (a in has_title and b in has_title) else 0.0
                     pairs.append((a, b, float(content_sim[y, x]), t_sim))
 
@@ -241,6 +263,8 @@ class ConsolidationDecoder(IntegrationUnit):
                 for y, x in zip(yi, xi):
                     a, b = row_ids[y], col_ids[x]
                     if a == b:
+                        continue
+                    if a in already_reviewed and b in already_reviewed:
                         continue
                     key = (min(a, b), max(a, b))
                     if key not in suppressed and key not in pair_set:
@@ -301,6 +325,8 @@ class ConsolidationDecoder(IntegrationUnit):
             'nodes_scanned': len(content_vecs),
             'title_embeddings': len(has_title),
             'pairs_found': len(unique_pairs),
+            'reviewed_nodes': len(already_reviewed),
+            'unreviewed_nodes': len(content_vecs) - len(already_reviewed),
             'suppressed_pairs': len(suppressed),
             'mode': mode,
         }

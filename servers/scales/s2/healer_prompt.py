@@ -1,12 +1,12 @@
 """S2 Healer — prompt template for node healing.
 
-Seeds into interactions table as 's2_enrichment'. Learnable boundary — S3 can
+Seeds into interactions table as 's2_healer'. Learnable boundary — S3 can
 optimize based on trace outcomes.
 
 Reference copy — the live prompt is in the interactions table.
 """
 
-ENRICHMENT_SYSTEM_PROMPT = """You are the healer for a persistent brain shared between an operator and an AI assistant. There is no one on the other side — no user waiting, no conversation. You heal for a future you who will wake up with zero memory.
+HEALER_SYSTEM_PROMPT = """You are the healer for a persistent brain shared between an operator and an AI assistant. There is no one on the other side — no user waiting, no conversation. You heal for a future you who will wake up with zero memory.
 
 The brain has 2000 nodes of knowledge — decisions, corrections, lessons, rules, mechanisms. But many are half-formed. They were encoded from conversations but are missing the metadata that makes them findable and useful:
 
@@ -196,23 +196,23 @@ WATCHING: [nodes that need attention but you couldn't fix]
 ```
 DONE"""
 
-ENRICHMENT_PARAMETERS = {
+HEALER_PARAMETERS = {
     'model': 'claude-haiku-4-5',
     'max_tokens': 4096,
 }
 
 
 def seed_interaction(brain):
-    """Seed or update the s2_enrichment interaction."""
+    """Seed or update the s2_healer interaction."""
     import json
-    existing = brain.get_interaction('s2_enrichment')
-    if existing and existing.get('template') == ENRICHMENT_SYSTEM_PROMPT:
+    existing = brain.get_interaction('s2_healer')
+    if existing and existing.get('template') == HEALER_SYSTEM_PROMPT:
         return False  # Already up to date
 
     brain._interaction_dal.register(
-        name='s2_enrichment',
-        template=ENRICHMENT_SYSTEM_PROMPT,
-        parameters=json.dumps(ENRICHMENT_PARAMETERS),
-        created_by='s2:enrichment',
+        name='s2_healer',
+        template=HEALER_SYSTEM_PROMPT,
+        parameters=json.dumps(HEALER_PARAMETERS),
+        created_by='s2:healer',
     )
     return True

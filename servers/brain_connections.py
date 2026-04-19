@@ -52,7 +52,7 @@ class BrainConnectionsMixin:
             weight: Edge weight (optional; uses EDGE_TYPES default if not provided)
             edge_type: DEPRECATED — ignored, kept for backward compat
             description: Why this relation exists (rich text)
-            encoding_source: Who created this edge (e.g. 'encoder:sonnet', 's2:enrichment')
+            encoding_source: Who created this edge (e.g. 'encoder:sonnet', 's2:healer')
         """
         # Known types get configured weight; unknown types get 0.5 default
         edge_def = EDGE_TYPES.get(relation)

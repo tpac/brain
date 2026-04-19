@@ -12,6 +12,7 @@ OUT="${1:-brain.plugin}"
 FILES=(
   .claude-plugin/plugin.json
   .mcp.json
+  requirements.txt
   # Core brain
   servers/__init__.py
   servers/brain.py
@@ -27,8 +28,8 @@ FILES=(
   servers/recall_scoring.py
   servers/text_processing.py
   servers/embedder.py
+  servers/embed_queue.py
   servers/schema.py
-  servers/migrate.py
   # DAL
   servers/dal.py
   servers/dal_metadata.py
@@ -47,7 +48,6 @@ FILES=(
   servers/interaction_seed.py
   servers/session_context.py
   servers/trace_contract.py
-  servers/redistribution.py
   servers/brain_cli.py
   # Scale modules
   servers/scales/__init__.py
@@ -75,26 +75,19 @@ FILES=(
   servers/scales/s2/consolidation_enrichment_prompt.py
   servers/scales/s2/edge_families.py
   servers/scales/s2/edge_families_v1.json
-  servers/scales/s2/enrichment.py
-  servers/scales/s2/enrichment_contract.py
-  servers/scales/s2/enrichment_decoder.py
-  servers/scales/s2/enrichment_encoder.py
-  servers/scales/s2/enrichment_prompt.py
+  servers/scales/s2/healer.py
+  servers/scales/s2/healer_contract.py
+  servers/scales/s2/healer_decoder.py
+  servers/scales/s2/healer_encoder.py
+  servers/scales/s2/healer_prompt.py
   servers/scales/s2/reclassify.py
-  # Migrations
-  servers/migrations/__init__.py
-  servers/migrations/runner.py
-  servers/migrations/001_initial_schema.py
-  servers/migrations/002_logs_initial_schema.py
-  servers/migrations/003_backfill_existing_data.py
-  servers/migrations/004_logs_precision_columns.py
-  servers/migrations/005_logs_message_stream_recall.py
-  servers/migrations/006_nodes_source_turn_id.py
-  servers/migrations/007_vocab_to_concept.py
-  servers/migrations/008_metadata_kv.py
-  servers/migrations/009_enrichments_drop_check.py
+  # Migrations directory removed — schema migrations handled by schema.py's
+  # diff-based ALTER TABLE mechanism (see 7d6caeb1).
   # Hook scripts — bash shims
   hooks/hooks.json
+  hooks/scripts/ensure-runtime.sh
+  hooks/scripts/brain-env.sh
+  hooks/scripts/mcp-launch.sh
   hooks/scripts/boot-brain.sh
   hooks/scripts/pre-compact-save.sh
   hooks/scripts/pre-edit-suggest.sh

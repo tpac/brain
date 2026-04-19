@@ -19,6 +19,47 @@ import sys
 import time
 from typing import Any, Dict, Optional
 
+
+def _debugger_friendly_python() -> str:
+    """Pick a Python interpreter the daemon can be spawned with.
+
+    macOS SIP blocks debuggers (py-spy, lldb) from attaching to the
+    system Python at /Applications/Xcode.app/.../Python. A user-managed
+    venv Python is not protected and can be introspected live.
+
+    Priority:
+      1. $BRAIN_PYTHON env var (explicit override)
+      2. <repo>/venv/bin/python (dev checkout)
+      3. <plugin>/venv/bin/python (installed plugin)
+      4. Fall back to sys.executable with a stderr warning
+
+    Returning the first hit keeps future `sudo py-spy dump` / `lldb -p`
+    calls actually usable when the daemon goes hot.
+    """
+    override = os.environ.get('BRAIN_PYTHON', '').strip()
+    if override and os.path.exists(override):
+        return override
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.dirname(here)
+    candidates = [
+        os.path.join(repo_root, 'venv', 'bin', 'python'),
+        os.path.expanduser(
+            '~/.claude/plugins/marketplaces/local-desktop-app-uploads/'
+            'brain/venv/bin/python'),
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+
+    # Fallback: warn once. The daemon still runs; debugging is just harder.
+    if '/Xcode.app/' in sys.executable or sys.executable.startswith('/Applications/'):
+        sys.stderr.write(
+            '[brain-daemon] WARN: spawning with SIP-protected Python (%s). '
+            'Set BRAIN_PYTHON to a user-managed python (e.g. repo venv) '
+            'so py-spy/lldb can attach when the daemon spins.\n' % sys.executable)
+    return sys.executable
+
 from .daemon_config import (
     _code_fingerprint, _CODE_FINGERPRINT,
     get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
@@ -158,8 +199,9 @@ def ensure_daemon(db_path: str) -> bool:
         log_path = os.path.join(os.path.dirname(db_path), "daemon.log")
 
         with open(log_path, 'a') as log_fd_file, open(os.devnull, 'r') as devnull:
+            daemon_python = _debugger_friendly_python()
             subprocess.Popen(
-                [sys.executable, '-c',
+                [daemon_python, '-c',
                  'import sys, os; sys.path.insert(0, %r); '
                  'os.environ["BRAIN_DB_DIR"] = %r; '
                  'from servers.daemon_server import BrainDaemon; '

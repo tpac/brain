@@ -1,0 +1,297 @@
+[harness] loaded 500 oracle items from eval/longmem/data/longmemeval_oracle.json
+[harness] selected 5 items:
+  1. 54026fce                 axis=info_extraction    turns=12
+  2. 2311e44b                 axis=multi_session      turns=18
+  3. 71017276                 axis=temporal           turns=12
+  4. cc5ded98                 axis=knowledge_update   turns=22
+  5. 09ba9854_abs             axis=abstention         turns=22
+[fresh-brain] wiped /Users/tpac/AgentsContext/brain-eval
+[brain] Schema ensured: v0 -> v23
+[embedder] Loading from local path: /Users/tpac/brain/model-package/brain_embedding/model
+[embedder] Snowflake/snowflake-arctic-embed-m-v1.5 (768d, cls) loaded in 256ms [source: local, threads: 1]
+[seed-pack] fresh brain — seeding 16 nodes and 16 edges
+[seed-pack]   create anchor_identity                  → bfa810ee [concept]
+[seed-pack]   create partnership_purpose              → 03fe1358 [principle]
+[seed-pack]   create collaborator_stance              → 95797f22 [principle]
+[seed-pack]   create escalate_conflict                → 9d624368 [rule]
+[seed-pack]   create okd_principle                    → 71215e39 [architecture]
+[seed-pack]   create confidence_alive                 → 69bae6dd [rule]
+[seed-pack]   create interactions_behavior            → 6c662ec2 [insight]
+[seed-pack]   create scale_bounded                    → 55550a09 [principle]
+[seed-pack]   create outcome_is_next_observation      → 0ba2614b [insight]
+[seed-pack]   create verify_before_claiming           → 1b400bfd [rule]
+[seed-pack]   create learn_your_operator              → 831d0c1a [rule]
+[seed-pack]   create rigorous_evaluation              → ebb57154 [principle]
+[seed-pack]   create extend_before_creating           → 37c6e1b9 [principle]
+[seed-pack]   create good_node_shape                  → 1b863701 [principle]
+[seed-pack]   create revise_not_duplicate             → 9cb03b75 [principle]
+[seed-pack]   create node_types_matter                → b62085ff [principle]
+[seed-pack] done: 16 nodes created, 0 skipped, 16 edges created, 0 edges skipped (status=fresh)
+[fresh-brain] brain ready at /Users/tpac/AgentsContext/brain-eval
+[fresh-brain] reset: removed 0 nodes, 0 edges, kept 16 seeds
+
+======================================================================
+[harness] item 1/5 qid=54026fce axis=info_extraction turns=12
+[harness] Q: I've been thinking about ways to stay connected with my colleagues. Any suggestions?
+[harness] A (gold): The user would prefer responses that acknowledge their desire for social interaction and collaboration while working rem
+======================================================================
+[item 1] session 1/1 (12 turns)
+[item 1]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 11961 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:938ms → messages(10):941ms → prompt(11961 chars):941ms → tools(6):943ms
+[s1e]   [remember_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 23999 in / 2489 out | Profile: llm_r0=39202ms, llm_r1=43872ms, llm_r2=53971ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:938ms → messages(10):941ms → prompt(11961 chars):941ms → tools(6):943ms → done:54914ms
+[item 1]   s1e done in 54914ms
+[item 1]   s1e trailing flush (stop=6, 1 unencoded)
+[s1e] calling Sonnet with 6 tools, 15806 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:3ms → messages(12):3ms → prompt(15806 chars):3ms → tools(6):3ms
+[s1e]   [brain_batch] 
+[s1e]   [recall_batch] 
+[s1e]   [recall_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 5 | Actions: 4 (writes: 1) | Tokens: 61559 in / 1924 out | Profile: llm_r0=18266ms, llm_r1=21984ms, llm_r2=26551ms, llm_r3=34823ms, llm_r4=45915ms
+[s1e] done. 5 rounds, 4 actions. PROFILE: env_loaded:0ms → api_client:3ms → messages(12):3ms → prompt(15806 chars):3ms → tools(6):3ms → done:45923ms
+[item 1]   backfill_vectors (compute deferred embeddings)
+[backfill_vectors] started (batch_size=50)
+[backfill_vectors] 87 vectors in 15.9s (_primary:23, title:23, high_meta:2, other_meta:23, question:16)
+[item 1]   backfill done in 15894ms: {'_primary': 23, 'title': 23, 'high_meta': 2, 'other_meta': 23, 'question': 16}
+[item 1]   s2 final flush (2 pending encodings, 4 passes)
+[s2-consolidation] WARNING: no enrichment prompt
+[s2ce] Batch 1/1 (4 proposals)
+[s2ce]   [get_nodes] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 0) | Tokens: 29163 in / 1141 out | Profile: llm_r0=1754ms, llm_r1=14794ms
+[s2ce] Stamped 4 rejected proposals (fingerprints)
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 1]   s2 pass 1/4 done in 17908ms
+[s2-consolidation] WARNING: no enrichment prompt
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 1]   s2 pass 2/4 done in 11ms
+[s2-consolidation] WARNING: no enrichment prompt
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 1]   s2 pass 3/4 done in 8ms
+[s2-consolidation] WARNING: no enrichment prompt
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 1]   s2 pass 4/4 done in 7ms
+[item 1] done: {'turns': 12, 'user_turns': 6, 's1e_runs': 2, 's2_runs': 4, 's1r_ms_total': 1214, 's1e_ms_total': 100838, 's2_ms_total': 17934}
+[query] question: I've been thinking about ways to stay connected with my colleagues. Any suggestions?
+[query] s1r 2263ms, context 0 chars
+[harness] hypothesis: I don't have information about that.
+[harness] abstained: True, had context: False
+[fresh-brain] reset: removed 7 nodes, 38 edges, kept 16 seeds
+
+======================================================================
+[harness] item 2/5 qid=2311e44b axis=multi_session turns=18
+[harness] Q: How many pages do I have left to read in 'The Nightingale'?
+[harness] A (gold): 190
+======================================================================
+[item 2] session 1/2 (10 turns)
+[item 2]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 12930 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:3ms → messages(10):3ms → prompt(12930 chars):3ms → tools(6):3ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 14715 in / 1987 out | Profile: llm_r0=24544ms, llm_r1=32892ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:0ms → api_client:3ms → messages(10):3ms → prompt(12930 chars):3ms → tools(6):3ms → done:32896ms
+[item 2]   s1e done in 32897ms
+[item 2] session 2/2 (8 turns)
+[item 2]   s1e trailing flush (stop=9, 4 unencoded)
+[s1e] calling Sonnet with 6 tools, 22264 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:3ms → messages(18):3ms → prompt(22264 chars):4ms → tools(6):4ms
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 30362 in / 2288 out | Profile: llm_r0=29325ms, llm_r1=35791ms, llm_r2=46813ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:3ms → messages(18):3ms → prompt(22264 chars):4ms → tools(6):4ms → done:46822ms
+[item 2]   backfill_vectors (compute deferred embeddings)
+[backfill_vectors] started (batch_size=50)
+[backfill_vectors] 31 vectors in 2.7s (_primary:8, title:8, high_meta:7, other_meta:8)
+[item 2]   backfill done in 2746ms: {'_primary': 8, 'title': 8, 'high_meta': 7, 'other_meta': 8}
+[item 2]   s2 final flush (2 pending encodings, 4 passes)
+[s2-consolidation] WARNING: no enrichment prompt
+[s2ce] Batch 1/1 (2 proposals)
+[s2ce]   [get_nodes] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 0) | Tokens: 15652 in / 1509 out | Profile: llm_r0=1408ms, llm_r1=18939ms
+[s2ce] Stamped 2 rejected proposals (fingerprints)
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 2]   s2 pass 1/4 done in 19055ms
+[s2-consolidation] WARNING: no enrichment prompt
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 2]   s2 pass 2/4 done in 5ms
+[s2-consolidation] WARNING: no enrichment prompt
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 2]   s2 pass 3/4 done in 5ms
+[s2-consolidation] WARNING: no enrichment prompt
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 2]   s2 pass 4/4 done in 5ms
+[item 2] done: {'turns': 18, 'user_turns': 9, 's1e_runs': 2, 's2_runs': 4, 's1r_ms_total': 3057, 's1e_ms_total': 79719, 's2_ms_total': 19070}
+[query] question: How many pages do I have left to read in 'The Nightingale'?
+[query] s1r 2895ms, context 975 chars
+[harness] hypothesis: You have 190 pages left to read in 'The Nightingale' (440 total pages minus 250 pages completed).
+[harness] abstained: False, had context: True
+[fresh-brain] reset: removed 8 nodes, 42 edges, kept 16 seeds
+
+======================================================================
+[harness] item 3/5 qid=71017276 axis=temporal turns=12
+[harness] Q: How many weeks ago did I meet up with my aunt and receive the crystal chandelier?
+[harness] A (gold): 4
+======================================================================
+[item 3] session 1/1 (12 turns)
+[item 3]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 14325 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:3ms → messages(10):3ms → prompt(14325 chars):3ms → tools(6):3ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 16564 in / 2830 out | Profile: llm_r0=34673ms, llm_r1=45964ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:0ms → api_client:3ms → messages(10):3ms → prompt(14325 chars):3ms → tools(6):3ms → done:45968ms
+[item 3]   s1e done in 45969ms
+[item 3]   s1e trailing flush (stop=6, 1 unencoded)
+[s1e] calling Sonnet with 6 tools, 17959 chars context...
+[s1e] PROFILE so far: env_loaded:1ms → api_client:15ms → messages(12):15ms → prompt(17959 chars):16ms → tools(6):16ms
+[s1e]   [recall_batch] 
+[s1e]   [brain_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 21814 in / 1384 out | Profile: llm_r0=6870ms, llm_r1=22817ms, llm_r2=32857ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:1ms → api_client:15ms → messages(12):15ms → prompt(17959 chars):16ms → tools(6):16ms → done:32878ms
+[s1e] ERROR surfacing question: 'SignalQueueDAL' object has no attribute 'produce'
+[item 3]   backfill_vectors (compute deferred embeddings)
+[backfill_vectors] started (batch_size=50)
+[backfill_vectors] 25 vectors in 3.3s (_primary:8, title:8, high_meta:1, other_meta:8)
+[item 3]   backfill done in 3319ms: {'_primary': 8, 'title': 8, 'high_meta': 1, 'other_meta': 8}
+[item 3]   s2 final flush (2 pending encodings, 4 passes)
+[s2-consolidation] WARNING: no enrichment prompt
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 3]   s2 pass 1/4 done in 5ms
+[s2-consolidation] WARNING: no enrichment prompt
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 3]   s2 pass 2/4 done in 5ms
+[s2-consolidation] WARNING: no enrichment prompt
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 3]   s2 pass 3/4 done in 4ms
+[s2-consolidation] WARNING: no enrichment prompt
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 3]   s2 pass 4/4 done in 4ms
+[item 3] done: {'turns': 12, 'user_turns': 6, 's1e_runs': 2, 's2_runs': 4, 's1r_ms_total': 1748, 's1e_ms_total': 78847, 's2_ms_total': 18}
+[query] question: How many weeks ago did I meet up with my aunt and receive the crystal chandelier?
+[query] s1r 3018ms, context 0 chars
+[harness] hypothesis: I don't have information about that.
+[harness] abstained: True, had context: False
+[fresh-brain] reset: removed 8 nodes, 44 edges, kept 16 seeds
+
+======================================================================
+[harness] item 4/5 qid=cc5ded98 axis=knowledge_update turns=22
+[harness] Q: How much time do I dedicate to coding exercises each day?
+[harness] A (gold): about two hours
+======================================================================
+[item 4] session 1/2 (12 turns)
+[item 4]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 14412 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:3ms → messages(10):4ms → prompt(14412 chars):4ms → tools(6):4ms
+[s1e]   [remember_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 25699 in / 2648 out | Profile: llm_r0=32020ms, llm_r1=37204ms, llm_r2=45727ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:3ms → messages(10):4ms → prompt(14412 chars):4ms → tools(6):4ms → done:45732ms
+[item 4]   s1e done in 45732ms
+[item 4] session 2/2 (10 turns)
+[item 4]   s1e firing at stop=10
+[s1e] calling Sonnet with 6 tools, 26650 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:11ms → messages(20):11ms → prompt(26650 chars):11ms → tools(6):11ms
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 32868 in / 2940 out | Profile: llm_r0=33257ms, llm_r1=42376ms, llm_r2=52211ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:11ms → messages(20):11ms → prompt(26650 chars):11ms → tools(6):11ms → done:52223ms
+[item 4]   s1e done in 52224ms
+[item 4]   s1e trailing flush (stop=11, 1 unencoded)
+[s1e] calling Sonnet with 6 tools, 28412 chars context...
+[s1e] PROFILE so far: env_loaded:2ms → api_client:5ms → messages(20):5ms → prompt(28412 chars):6ms → tools(6):6ms
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 33100 in / 2538 out | Profile: llm_r0=31031ms, llm_r1=39041ms, llm_r2=49404ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:2ms → api_client:5ms → messages(20):5ms → prompt(28412 chars):6ms → tools(6):6ms → done:49417ms
+[s1e] ERROR surfacing question: 'SignalQueueDAL' object has no attribute 'produce'
+[item 4]   backfill_vectors (compute deferred embeddings)
+[backfill_vectors] started (batch_size=50)
+[backfill_vectors] 38 vectors in 5.7s (_primary:11, title:11, high_meta:5, other_meta:11)
+[item 4]   backfill done in 5667ms: {'_primary': 11, 'title': 11, 'high_meta': 5, 'other_meta': 11}
+[item 4]   s2 final flush (3 pending encodings, 4 passes)
+[s2ce] Batch 1/1 (2 proposals)
+[s2ce]   [get_nodes] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 0) | Tokens: 28587 in / 2143 out | Profile: llm_r0=1505ms, llm_r1=25536ms
+[s2ce] Stamped 2 rejected proposals (fingerprints)
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 4]   s2 pass 1/4 done in 27090ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 4]   s2 pass 2/4 done in 6ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 4]   s2 pass 3/4 done in 6ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 4]   s2 pass 4/4 done in 5ms
+[item 4] done: {'turns': 22, 'user_turns': 11, 's1e_runs': 3, 's2_runs': 4, 's1r_ms_total': 3404, 's1e_ms_total': 147384, 's2_ms_total': 27107}
+[query] question: How much time do I dedicate to coding exercises each day?
+[query] s1r 2632ms, context 736 chars
+[harness] hypothesis: I don't have information about that.
+[harness] abstained: True, had context: True
+[fresh-brain] reset: removed 11 nodes, 59 edges, kept 16 seeds
+
+======================================================================
+[harness] item 5/5 qid=09ba9854_abs axis=abstention turns=22
+[harness] Q: How much will I save by taking the bus from the airport to my hotel instead of a taxi?
+[harness] A (gold): The information provided is not enough. You did not mention how much will the bus take.
+======================================================================
+[item 5] session 1/2 (12 turns)
+[item 5]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 8891 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:3ms → messages(10):3ms → prompt(8891 chars):3ms → tools(6):3ms
+[s1e]   [remember_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 22057 in / 2216 out | Profile: llm_r0=24303ms, llm_r1=29003ms, llm_r2=38851ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:3ms → messages(10):3ms → prompt(8891 chars):3ms → tools(6):3ms → done:38855ms
+[item 5]   s1e done in 38856ms
+[item 5] session 2/2 (10 turns)
+[item 5]   s1e firing at stop=10
+[s1e] calling Sonnet with 6 tools, 21140 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:10ms → messages(20):10ms → prompt(21140 chars):10ms → tools(6):10ms
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 32981 in / 3442 out | Profile: llm_r0=49570ms, llm_r1=53670ms, llm_r2=71458ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:10ms → messages(20):10ms → prompt(21140 chars):10ms → tools(6):10ms → done:71470ms
+[item 5]   s1e done in 71470ms
+[item 5]   s1e trailing flush (stop=11, 1 unencoded)
+[s1e] calling Sonnet with 6 tools, 23574 chars context...
+[s1e] PROFILE so far: env_loaded:1ms → api_client:10ms → messages(20):10ms → prompt(23574 chars):10ms → tools(6):10ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 18704 in / 1339 out | Profile: llm_r0=24871ms, llm_r1=34570ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:1ms → api_client:10ms → messages(20):10ms → prompt(23574 chars):10ms → tools(6):10ms → done:34583ms
+[item 5]   backfill_vectors (compute deferred embeddings)
+[backfill_vectors] started (batch_size=50)
+[backfill_vectors] 30 vectors in 4.5s (_primary:10, title:10, other_meta:10)
+[item 5]   backfill done in 4546ms: {'_primary': 10, 'title': 10, 'other_meta': 10}
+[item 5]   s2 final flush (3 pending encodings, 4 passes)
+[s2-consolidation] WARNING: no enrichment prompt
+[s2ce] Batch 1/1 (1 proposals)
+[s2ce]   [get_nodes] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 0) | Tokens: 12897 in / 1019 out | Profile: llm_r0=1766ms, llm_r1=13776ms
+[s2ce] Stamped 1 rejected proposals (fingerprints)
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 5]   s2 pass 1/4 done in 14826ms
+[s2-consolidation] WARNING: no enrichment prompt
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 5]   s2 pass 2/4 done in 8ms
+[s2-consolidation] WARNING: no enrichment prompt
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 5]   s2 pass 3/4 done in 8ms
+[s2-consolidation] WARNING: no enrichment prompt
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 5]   s2 pass 4/4 done in 7ms
+[item 5] done: {'turns': 22, 'user_turns': 11, 's1e_runs': 3, 's2_runs': 4, 's1r_ms_total': 2247, 's1e_ms_total': 144909, 's2_ms_total': 14849}
+[query] question: How much will I save by taking the bus from the airport to my hotel instead of a taxi?
+[query] s1r 5508ms, context 2479 chars
+[harness] hypothesis: I don't have information about that.
+
+The memories mention train options (Tokyo Monorail at ¥500-600 and Keikyu Railway at ¥400-600) from Haneda Airport, but don't contain specific bus costs or pricin
+[harness] abstained: True, had context: True
+
+[harness] done in 696.4s
+[harness] hypotheses → /Users/tpac/brain/eval/longmem/reports/hypotheses_v2_backfill.jsonl
+[harness] report     → /Users/tpac/brain/eval/longmem/reports/run_v2_backfill.json

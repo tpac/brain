@@ -26,6 +26,11 @@ tests/relearned_*.db
 venv/
 node_modules/
 
+# Plugin-scoped runtime (installed by hooks/scripts/ensure-runtime.sh)
+bin/
+py/
+.runtime-ready
+
 # IDE
 .vscode/
 .idea/
@@ -44,12 +49,6 @@ Thumbs.db
 
 # Embedder model cache
 servers/models/
-
-# Model package — commit source only, not the 416MB ONNX model
-model-package/brain_embedding/model/
-model-package/dist/
-model-package/build/
-model-package/*.egg-info/
 
 # Historical simulation data — not part of source
 archives/

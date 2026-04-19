@@ -371,14 +371,18 @@ class BrainRecallMixin:
             return []
 
         t0 = time.time()
-        query_vec = embedder.embed(query)
+        query_vec = embedder.embed_query(query)
         if not query_vec:
             return []
 
-        # Load all primary embeddings (excluding archived nodes)
-        _vdal = VectorDAL(self.conn)
+        # Load all primary embeddings (excluding archived nodes). Filter by
+        # active model in SQL so recall doesn't score against stale-model rows.
+        _vdal = self._vec_dal
+        _active_model = embedder.stats.get('model_name') or ''
         emb_rows = [{'node_id': r['node_id'], 'embedding': r['embedding']}
-                     for r in _vdal.get_all_vectors() if r['vector_type'] == '_primary']
+                    for r in _vdal.get_all_vectors(
+                        vector_types=['_primary'],
+                        model=_active_model or None)]
 
         if not emb_rows:
             return []
@@ -401,12 +405,17 @@ class BrainRecallMixin:
         result = self.backfill_vectors(batch_size)
         return result.get('total', 0) if isinstance(result, dict) else 0
 
-    def backfill_vectors(self, batch_size: int = 20) -> dict:
-        """Backfill ALL missing vectors for nodes — single-threaded, idle-safe.
+    def backfill_vectors(self, batch_size: int = 20,
+                          node_ids=None) -> dict:
+        """Backfill ALL missing vectors for nodes — batched for throughput.
 
-        Runs during idle maintenance AFTER S2 completes.
+        Primary path: called by embed_queue worker, scoped to a set of
+        recently-written node_ids so we don't rescan the graph every tick.
+        Safety path: called by S2 Heal during idle, full scan (node_ids=None).
+
+        Each vector type is resolved with one `embed_batch` call instead of N
+        sequential embeds — on ORT 1.24.4 + fastembed gives ~5-10× speedup.
         Handles: _primary, _situation, title, high_meta, other_meta, edge_context.
-        Each vector type is processed sequentially — no concurrent ONNX access.
 
         Returns dict with counts per vector type.
         """
@@ -421,52 +430,80 @@ class BrainRecallMixin:
         from .pipeline_contract import EMBEDDING_GROUPS, EMBEDDING_SKIP_FIELDS, EMBEDDING_FIELD_CHAR_LIMIT
         from .dal_metadata import MetadataDAL
 
-        vdal = VectorDAL(self.conn)
+        vdal = self._vec_dal
         mdal = MetadataDAL(self.conn)
         model = embedder.stats.get('model_name', '')
         result = {}
 
-        # 1. Primary vectors — nodes missing _primary
-        try:
-            missing = vdal.find_missing('_primary', batch_size)
-            if missing:
-                for node in missing:
-                    try:
-                        text = '%s %s' % (node['title'], node['content'])
-                        blob = embedder.embed(text)
-                        if blob:
-                            vdal.store(node['id'], '_primary', text, blob, model)
-                    except Exception as e:
-                        self._log_error('backfill_primary', e,
-                                        'node %s' % node['id'][:8])
+        def _store_batch(items, vector_type):
+            """items = list of (node_id, text). One embed_batch + one
+            executemany store. Returns count of rows written."""
+            if not items:
+                return 0
+            texts = [t for _, t in items]
+            blobs = embedder.embed_batch(texts, kind='document')
+            rows = [(nid, vector_type, text, blob)
+                    for (nid, text), blob in zip(items, blobs)]
+            stored = vdal.store_batch(rows, model=model)
+            if stored:
                 self.conn.commit()
-                result['_primary'] = len(missing)
+            return stored
+
+        # 1. Primary vectors — nodes missing _primary for the active model
+        try:
+            missing = vdal.find_missing('_primary', batch_size,
+                                        model=model, node_ids=node_ids)
+            items = [(n['id'], '%s %s' % (n['title'], n['content'])) for n in missing]
+            stored = _store_batch(items, '_primary')
+            if stored:
+                result['_primary'] = stored
         except Exception as e:
             self._log_error('backfill_primary_scan', e, 'scanning for missing primaries')
 
-        # 2. Situation vectors — nodes with situation text but no _situation vector
+        # 2. Situation vectors — nodes with situation text but no _situation
+        # vector for the active model. Stale-model rows count as missing.
+        # Source for situation text: metadata_kv['situation'] (canonical) OR
+        # any prior _situation enrichment row (migration path for pre-metadata_kv
+        # data where the text was only persisted on the enrichment row).
         try:
-            sit_missing = self.conn.execute('''
-                SELECT n.id, kv.value as situation_text
+            sit_sql = '''
+                SELECT n.id,
+                       COALESCE(kv.value,
+                                (SELECT text FROM node_enrichments
+                                 WHERE node_id = n.id AND vector_type = '_situation'
+                                   AND text IS NOT NULL AND text != ''
+                                 LIMIT 1)) as situation_text
                 FROM nodes n
-                JOIN node_metadata_kv kv ON kv.node_id = n.id AND kv.key = 'situation'
-                WHERE n.archived = 0 AND kv.value IS NOT NULL AND kv.value != ''
+                LEFT JOIN node_metadata_kv kv
+                       ON kv.node_id = n.id AND kv.key = 'situation'
+                WHERE n.archived = 0
+                AND (
+                    (kv.value IS NOT NULL AND kv.value != '')
+                    OR EXISTS (
+                        SELECT 1 FROM node_enrichments
+                        WHERE node_id = n.id AND vector_type = '_situation'
+                          AND text IS NOT NULL AND text != ''
+                    )
+                )
                 AND n.id NOT IN (
                     SELECT node_id FROM node_enrichments
-                    WHERE vector_type = '_situation' AND embedding IS NOT NULL
+                    WHERE vector_type = '_situation'
+                      AND embedding IS NOT NULL
+                      AND model = ?
                 )
-                LIMIT ?
-            ''', (batch_size,)).fetchall()
-            if sit_missing:
-                for nid, sit_text in sit_missing:
-                    try:
-                        blob = embedder.embed(sit_text)
-                        if blob:
-                            vdal.store(nid, '_situation', sit_text, blob, model)
-                    except Exception as e:
-                        self._log_error('backfill_situation', e, 'node %s' % nid[:8])
-                self.conn.commit()
-                result['_situation'] = len(sit_missing)
+            '''
+            sit_params = [model]
+            if node_ids:
+                ids = list(node_ids)
+                sit_sql += ' AND n.id IN (%s)' % ','.join('?' * len(ids))
+                sit_params.extend(ids)
+            sit_sql += ' LIMIT ?'
+            sit_params.append(batch_size)
+            sit_missing = self.conn.execute(sit_sql, sit_params).fetchall()
+            items = [(nid, txt) for nid, txt in sit_missing if txt]
+            stored = _store_batch(items, '_situation')
+            if stored:
+                result['_situation'] = stored
         except Exception as e:
             self._log_error('backfill_situation_scan', e, 'scanning for missing situations')
 
@@ -477,46 +514,37 @@ class BrainRecallMixin:
                 continue  # blend is the primary, already handled
 
             try:
-                missing = vdal.find_missing(vector_type, batch_size)
+                missing = vdal.find_missing(vector_type, batch_size,
+                                            model=model, node_ids=node_ids)
                 if not missing:
                     continue
 
-                filled = 0
+                items = []
                 for node in missing:
                     try:
-                        # Build text from group fields
                         field_values = {'title': node['title'], 'content': node['content']}
-                        # Add metadata fields
                         kv = mdal.get(node['id'])
                         for k, v in kv.items():
                             if k not in EMBEDDING_SKIP_FIELDS and v and str(v).strip():
                                 field_values[k] = str(v)
 
-                        # Collect fields for this group
                         parts = []
                         for field in group_config.get('fields', []):
                             if field == '_emergent':
-                                # Emergent: any KV field not in other groups
-                                continue
+                                continue  # Emergent: any KV field not in other groups
                             val = field_values.get(field)
                             if val and val.strip():
                                 parts.append(val[:EMBEDDING_FIELD_CHAR_LIMIT])
-
                         if not parts:
                             continue
-
-                        embed_text = '. '.join(parts)
-                        blob = embedder.embed(embed_text)
-                        if blob:
-                            vdal.store(node['id'], vector_type, embed_text, blob, model)
-                            filled += 1
+                        items.append((node['id'], '. '.join(parts)))
                     except Exception as e:
                         self._log_error('backfill_group_%s' % vector_type, e,
                                         'node %s' % node['id'][:8])
 
-                self.conn.commit()
-                if filled:
-                    result[vector_type] = filled
+                stored = _store_batch(items, vector_type)
+                if stored:
+                    result[vector_type] = stored
             except Exception as e:
                 self._log_error('backfill_%s_scan' % vector_type, e,
                                 'scanning for missing %s vectors' % vector_type)
@@ -794,10 +822,11 @@ class BrainRecallMixin:
         # ── PRIMARY PATH: Embeddings-first ──
 
         expanded_query = query
+        _active_model = embedder.stats.get('model_name') or None
 
         # STEP 1: Embed the query
         try:
-            query_vec = embedder.embed(expanded_query)
+            query_vec = embedder.embed_query(expanded_query)
             if not query_vec:
                 # Embedding failed for this query — fall back
                 result = self._keyword_recall(query, filter, limit, offset, include_archived,
@@ -849,14 +878,15 @@ class BrainRecallMixin:
             node_critical = {}  # node_id → critical flag
             node_titles = {}    # node_id → title (for title-match boost)
             node_types = {}     # node_id → type (for vocab detection)
-            _vec_dal = VectorDAL(self.conn)
+            _vec_dal = self._vec_dal
             # Extract type filter from dict filter for embedding scan pre-filter
             _types_filter = None
             if filter and 'type' in filter and 'in' in filter['type']:
                 _types_filter = filter['type']['in']
             emb_rows = _vec_dal.get_all_with_context(
                 exclude_archived=not include_archived,
-                types=_types_filter, project=project)
+                types=_types_filter, project=project,
+                model=_active_model)
             # Per-node data collected here for unified_score() in STEP 6.
             # created_at/emotion/access_count feed the modulator formula.
             node_created_at = {}    # node_id → ISO timestamp (for freshness)
@@ -968,7 +998,9 @@ class BrainRecallMixin:
                 node_vector_scores[nid].append((_blend_weight * prim_sim, '_primary'))
 
             try:
-                _enrich_rows = _vec_dal.get_all_vectors(exclude_archived=not include_archived)
+                _enrich_rows = _vec_dal.get_all_vectors(
+                    exclude_archived=not include_archived,
+                    model=_active_model or None)
                 for erow in _enrich_rows:
                     e_node_id = erow['node_id']
                     e_type = erow['vector_type']
@@ -1033,7 +1065,7 @@ class BrainRecallMixin:
         situation_scores = {}
         if situation_vec:
             try:
-                sit_rows = _vec_dal.get_all_situations()
+                sit_rows = _vec_dal.get_all_situations(model=_active_model)
                 for row in sit_rows:
                     nid = row['node_id']
                     svec = struct.unpack('%df' % (len(row['situation_embedding']) // 4),

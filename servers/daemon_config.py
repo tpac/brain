@@ -24,9 +24,10 @@ S2_MIN_INTERVAL = 5 * 60            # 5 minutes minimum between S2 runs
 AUTOSAVE_INTERVAL_SECONDS = 60  # Save every 60 seconds if dirty
 SOCKET_BACKLOG = 5
 MAX_MESSAGE_SIZE = 1024 * 1024  # 1MB max message
-THREAD_POOL_SIZE = 2  # Allow reads (hook_recall) to run while writes (encoding) happen.
-                       # SQLite WAL mode supports concurrent readers. Write lock in
-                       # daemon_server serializes writes — no deadlock risk.
+THREAD_POOL_SIZE = max(4, (os.cpu_count() or 4) // 2)
+# Scales hook/request concurrency with the host. SQLite WAL allows concurrent
+# readers, and daemon_server serializes writers — no deadlock risk. Embedder
+# (fastembed + ORT 1.24.4) is thread-safe for concurrent InferenceSession.run().
 DAEMON_HOST = ""  # Empty string = all interfaces (IPv4+IPv6), fixes macOS localhost→::1
 DAEMON_PORT = 47200 + (os.getuid() % 100)  # Per-user port to avoid collisions
 

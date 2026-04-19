@@ -2229,21 +2229,31 @@ async function loadS2DecodeEntries() {
     const r = await fetch('/api/traces?scale=s2&hours=24');
     const events = await r.json();
     if (!Array.isArray(events) || !events.length) return;
-    // Group by chain_id
+    // Group by chain_id, sort events within each chain ascending by time,
+    // then sort chains across by most-recent event descending. Relying on
+    // API-order here broke when traces came back unordered.
     const chains = {};
     events.forEach(e => {
       if (!chains[e.chain_id]) chains[e.chain_id] = {events: [], chain_id: e.chain_id};
       chains[e.chain_id].events.push(e);
     });
-    const chainList = Object.values(chains).sort((a,b) =>
-      (b.events[0]?.created_at || '').localeCompare(a.events[0]?.created_at || ''));
+    Object.values(chains).forEach(c => c.events.sort(
+      (a, b) => (a.created_at || '').localeCompare(b.created_at || '')));
+    const chainList = Object.values(chains).sort((a, b) => {
+      const aMax = a.events[a.events.length - 1]?.created_at || '';
+      const bMax = b.events[b.events.length - 1]?.created_at || '';
+      return bMax.localeCompare(aMax);
+    });
 
     chainList.forEach(chain => {
       if (s2RenderedChains.has(chain.chain_id)) return;  // Already in DOM
       s2RenderedChains.add(chain.chain_id);
       const el = _renderS2ChainEntry(chain);
-      // Insert chronologically: find first entry older than this chain
-      const chainTs = chain.events[0]?.created_at || '';
+      // Insert chronologically by the chain's MOST RECENT event — events
+      // within each chain are now sorted ascending, so the last one is the
+      // freshest. Using events[0] (oldest) would bury long-running chains.
+      const chainTs = chain.events[chain.events.length - 1]?.created_at
+                      || chain.events[0]?.created_at || '';
       const entries = container.querySelectorAll('.recall-entry, .s2-entry');
       let inserted = false;
       for (const entry of entries) {
@@ -2269,20 +2279,38 @@ function _renderS2ChainEntry(chain) {
   const kEvent = chain.events.find(e => e.event_type === 'K');
   const deltaEvents = chain.events.filter(e => e.event_type === 'delta');
 
-  const time = chain.events[0]?.created_at ? localTime(chain.events[0].created_at) : '?';
+  // Events sorted ascending; last is newest. Display the newest timestamp
+  // ("when did this run last update") and use it for cross-chain insertion
+  // ordering via dataset.ts — events[0] would bury long-running chains.
+  const newestEvt = chain.events[chain.events.length - 1] || chain.events[0];
+  const time = newestEvt?.created_at ? localTime(newestEvt.created_at) : '?';
   const chainShort = chain.chain_id.substring(0, 20);
-  const chainTs = chain.events[0]?.created_at || '';
+  const chainTs = newestEvt?.created_at || '';
 
-  // Detect unit type from chain_id
-  const isConsolidation = chain.chain_id.includes('consolidation');
-  const isCommunity = chain.chain_id.includes('community');
-  const isEdgeFamilies = chain.chain_id.includes('edge_family');
-  const badgeLabel = isConsolidation ? 'S2 CONSOLIDATION' :
-                     isCommunity ? 'S2 COMMUNITY' :
-                     isEdgeFamilies ? 'S2 EDGE FAMILIES' : 'S2';
-  const badgeBg = isConsolidation ? '#1a4a2a' : '#1a3a4a';
-  const badgeColor = isConsolidation ? '#33ff88' : '#45B7D1';
-  const borderColor = isConsolidation ? '#33ff88' : '#45B7D1';
+  // Unit-type table. Adding a new S2 unit = adding a row here. Keeps
+  // per-unit formatting from branching into five ternaries.
+  const UNIT_STYLES = {
+    consolidation:    {label:'S2 CONSOLIDATION',  bg:'#1a4a2a', fg:'#33ff88'},
+    community:        {label:'S2 COMMUNITY',      bg:'#1a3a4a', fg:'#45B7D1'},
+    edge_family:      {label:'S2 EDGE FAMILIES',  bg:'#1a3a4a', fg:'#45B7D1'},
+    healer:           {label:'S2 HEALER',         bg:'#4a1a4a', fg:'#ff66aa'},
+    _default:         {label:'S2',                bg:'#1a3a4a', fg:'#45B7D1'},
+  };
+  // Match chain_id to unit (first key that appears as substring wins).
+  let unitStyle = UNIT_STYLES._default;
+  for (const [key, style] of Object.entries(UNIT_STYLES)) {
+    if (key !== '_default' && chain.chain_id && chain.chain_id.includes(key)) {
+      unitStyle = style;
+      break;
+    }
+  }
+  const badgeLabel = unitStyle.label;
+  const badgeBg = unitStyle.bg;
+  const badgeColor = unitStyle.fg;
+  const borderColor = unitStyle.fg;
+  const isConsolidation = badgeLabel === 'S2 CONSOLIDATION';
+  const isCommunity     = badgeLabel === 'S2 COMMUNITY';
+  const isHealer        = badgeLabel === 'S2 HEALER';
 
   let h = '';
   h += '<div class="hook-header" onclick="toggleHookBody(this)">';
@@ -2290,22 +2318,41 @@ function _renderS2ChainEntry(chain) {
   h += '<span class="hook-time">' + time + '</span>';
   h += '<span class="hook-id">' + chainShort + '</span>';
 
-  // Summary depends on unit type
-  if (isConsolidation) {
-    const consolidated = deltaEvents.find(d => d.ref_type === 'consolidated');
-    if (consolidated) {
-      h += '<span class="hook-size" style="color:#33ff88">' + escapeHtml(consolidated.summary?.substring(0, 60) || '') + '</span>';
-    } else if (kEvent) {
-      h += '<span class="hook-size">' + escapeHtml(kEvent.summary?.substring(0, 60) || '') + '</span>';
+  // Summary per unit. Each branch is independent — a missing ref_type for
+  // one unit doesn't blow up rendering for the rest of the chain.
+  try {
+    if (isConsolidation) {
+      const consolidated = deltaEvents.find(d => d.ref_type === 'consolidated');
+      if (consolidated) {
+        h += '<span class="hook-size" style="color:' + badgeColor + '">' + escapeHtml((consolidated.summary || '').substring(0, 60)) + '</span>';
+      } else if (kEvent) {
+        h += '<span class="hook-size">' + escapeHtml((kEvent.summary || '').substring(0, 60)) + '</span>';
+      }
+    } else if (isHealer) {
+      const generated = deltaEvents.find(d => d.ref_type === 'healer_generated');
+      if (generated) {
+        h += '<span class="hook-size" style="color:' + badgeColor + '">' + escapeHtml((generated.summary || '').substring(0, 80)) + '</span>';
+      } else if (kEvent) {
+        h += '<span class="hook-size">' + escapeHtml((kEvent.summary || '').substring(0, 80)) + '</span>';
+      } else if (oEvent) {
+        h += '<span class="hook-size" style="color:#888">' + escapeHtml((oEvent.summary || '').substring(0, 80)) + '</span>';
+      }
+    } else if (isCommunity) {
+      const created = deltaEvents.filter(d => d.ref_type === 'community_created');
+      const enriched = deltaEvents.find(d => d.ref_type === 'community_enriched');
+      if (created.length) {
+        h += '<span class="hook-size" style="color:' + badgeColor + '">' + created.length + ' communities created</span>';
+      } else if (enriched) {
+        h += '<span class="hook-size">' + escapeHtml((enriched.summary || '').substring(0, 60)) + '</span>';
+      }
+    } else {
+      // Unknown unit — render whatever summary is available so entries
+      // never go silent just because the dashboard doesn't know the type.
+      const firstSummary = (deltaEvents[0] && deltaEvents[0].summary) || (kEvent && kEvent.summary) || (oEvent && oEvent.summary) || '';
+      if (firstSummary) h += '<span class="hook-size">' + escapeHtml(firstSummary.substring(0, 60)) + '</span>';
     }
-  } else {
-    const created = deltaEvents.filter(d => d.ref_type === 'community_created');
-    const enriched = deltaEvents.find(d => d.ref_type === 'community_enriched');
-    if (created.length) {
-      h += '<span class="hook-size" style="color:#45B7D1">' + created.length + ' communities created</span>';
-    } else if (enriched) {
-      h += '<span class="hook-size">' + escapeHtml(enriched.summary?.substring(0, 60) || '') + '</span>';
-    }
+  } catch (summaryErr) {
+    console.warn('S2 summary render failed for', chain.chain_id, summaryErr);
   }
   h += '</div>';
 
@@ -3068,14 +3115,26 @@ async function loadTraces() {
       return;
     }
 
-    // Group by chain, preserve order
+    // Group by chain, then sort chains by most-recent event timestamp descending.
+    // Previously this relied on API order + a reverse(), which silently broke
+    // when the API returned rows in any other order.
     const chains = {};
-    const chainOrder = [];
     traces.forEach(t => {
-      if (!chains[t.chain_id]) { chains[t.chain_id] = []; chainOrder.push(t.chain_id); }
+      if (!chains[t.chain_id]) chains[t.chain_id] = [];
       chains[t.chain_id].push(t);
     });
-    _traceChainEntries = chainOrder.map(id => [id, chains[id]]).reverse();
+    const chainEntries = Object.entries(chains);
+    // Within each chain, sort events ascending by time so the Observed/Selected/
+    // Changed timeline reads in order.
+    chainEntries.forEach(([_, events]) => events.sort(
+      (a, b) => (a.created_at || '').localeCompare(b.created_at || '')));
+    // Across chains, newest-first by the chain's most-recent event.
+    chainEntries.sort((a, b) => {
+      const aMax = a[1][a[1].length - 1]?.created_at || '';
+      const bMax = b[1][b[1].length - 1]?.created_at || '';
+      return bMax.localeCompare(aMax);
+    });
+    _traceChainEntries = chainEntries;
     _traceRendered = 0;
     el.innerHTML = '';
     _renderTracesBatch(el);
@@ -3093,7 +3152,7 @@ function _traceChainLabel(chainId) {
   if (chainId.startsWith('s1e-')) { const p = chainId.split('-'); return 'S1 Encode #' + (p[2] || '?'); }
   if (chainId.startsWith('s2-')) {
     const op = chainId.split('-').slice(2).join('-');
-    const labels = {community_detection:'S2 Community Detection', consolidation:'S2 Consolidation', edge_family_integration:'S2 Edge Families', enrichment:'S2 Healer', relation_reclassify:'S2 Edge Reclassify'};
+    const labels = {community_detection:'S2 Community Detection', consolidation:'S2 Consolidation', edge_family_integration:'S2 Edge Families', healer:'S2 Healer', relation_reclassify:'S2 Edge Reclassify'};
     return labels[op] || 'S2 ' + op.replace(/_/g, ' ');
   }
   if (chainId.startsWith('s3-')) return 'S3 ' + chainId.split('-').slice(2).join(' ');

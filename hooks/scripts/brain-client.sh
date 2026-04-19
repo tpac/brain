@@ -5,6 +5,9 @@
 #   or:  brain-client.sh ping
 #   or:  brain-client.sh recall '{"query":"test","limit":5}'
 
+# Use the bundled venv Python — same runtime as the daemon + other hooks.
+source "$(dirname "$0")/brain-env.sh" > /dev/null 2>&1 || true
+
 DAEMON_HOST="127.0.0.1"
 DAEMON_PORT=$((47200 + $(id -u) % 100))
 

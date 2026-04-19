@@ -78,7 +78,7 @@ class BrainRememberMixin:
             if field == 'situation':
                 try:
                     from .dal import VectorDAL
-                    vdal = VectorDAL(self.conn)
+                    vdal = self._vec_dal
                     # Store text with NULL embedding — backfill_vectors() fills it
                     vdal.store(node_id, '_situation', str(value), None, None)
                     stored += 1
@@ -618,9 +618,14 @@ class BrainRememberMixin:
         except Exception as e:
             self._log_error('fts5_sync_remember', e, 'syncing FTS5 for node %s' % node_id[:12])
 
-        # v23: ALL vector computation deferred to backfill_vectors() in idle.
-        # No inline embedding — clean single path, no ONNX threading risk.
-        # backfill_vectors() handles: _primary, _situation, title, high_meta, etc.
+        # Vector computation handled by the embed_queue worker — this node
+        # is marked dirty and will be embedded within ~5s. S2 Heal catches
+        # anything that slips through on crash.
+        try:
+            from . import embed_queue
+            embed_queue.enqueue(node_id)
+        except Exception as e:
+            self._log_error('embed_enqueue_remember', e, 'enqueue %s' % node_id[:12])
         embedding_stored = False
 
         # Create connections
@@ -644,7 +649,7 @@ class BrainRememberMixin:
             try:
                 new_node_emb = None
                 if embedding_stored:
-                    _vdal = VectorDAL(self.conn)
+                    _vdal = self._vec_dal
                     _emb = _vdal.get_primary(node_id)
                     if _emb:
                         new_node_emb = _emb
@@ -854,10 +859,15 @@ class BrainRememberMixin:
         if all_updates:
             self._store_node_metadata(node_id, all_updates, caller='revise')
 
-        # v23: ALL vector computation deferred to backfill_vectors() in idle.
-        # No inline embedding — clean single path for all callers.
+        # Vector (re)computation handled by the embed_queue worker — revisions
+        # mark the node dirty so stale text→vector pairs get refreshed within ~5s.
+        try:
+            from . import embed_queue
+            embed_queue.enqueue(node_id)
+        except Exception as e:
+            self._log_error('embed_enqueue_revise', e, 'enqueue %s' % node_id[:12])
         from .dal import VectorDAL
-        _vdal = VectorDAL(self.conn)
+        _vdal = self._vec_dal
         embedding_updated = False
 
         # Re-index TF-IDF
@@ -1100,7 +1110,7 @@ class BrainRememberMixin:
 
             # Embed and store
             embed_text = ". ".join(parts)
-            blob = embedder.embed(embed_text)
+            blob = embedder.embed_document(embed_text)
             if blob:
                 self.conn.execute(
                     '''INSERT OR REPLACE INTO node_enrichments
@@ -1469,7 +1479,7 @@ class BrainRememberMixin:
         Each non-None enrichment text is embedded and stored in node_enrichments.
         Returns count of enrichments stored and any errors.
         """
-        vdal = VectorDAL(self.conn)
+        vdal = self._vec_dal
         stored = 0
         errors = []
 
@@ -1487,7 +1497,7 @@ class BrainRememberMixin:
             try:
                 blob = None
                 if embedder.is_ready():
-                    blob = embedder.embed(text)
+                    blob = embedder.embed_document(text)
                 vdal.store(node_id, vtype, text, blob,
                            model=embedder.stats.get('model_name', 'unknown') if embedder.is_ready() else 'none')
                 stored += 1
@@ -1504,7 +1514,7 @@ class BrainRememberMixin:
     def get_enrichment_coverage(self) -> Dict[str, Any]:
         """Get vector coverage stats."""
         try:
-            return VectorDAL(self.conn).get_coverage_stats()
+            return self._vec_dal.get_coverage_stats()
         except Exception as e:
             return {'error': str(e)}
 
@@ -1544,7 +1554,7 @@ class BrainRememberMixin:
 
         # Path 2: Embedding similarity — semantic fallback
         if embedder.is_ready() and len(scored) < top_k:
-            query_vec = embedder.embed(title_query)
+            query_vec = embedder.embed_query(title_query)
             if query_vec:
                 rows = self.conn.execute(
                     "SELECT ne.node_id, ne.embedding, n.title, n.type, "
@@ -1670,6 +1680,17 @@ class BrainRememberMixin:
                     connections_created += 1
 
         self.conn.commit()
+
+        # Mark all created nodes dirty — embed_queue worker picks them up
+        # within ~5s. Single batch drain for the whole group.
+        try:
+            from . import embed_queue
+            for nid in created_ids:
+                embed_queue.enqueue(nid)
+        except Exception as e:
+            self._log_error('embed_enqueue_remember_batch', e,
+                            'enqueue %d nodes' % len(created_ids))
+
         return {
             "nodes_created": len(created_ids),
             "node_ids": created_ids,

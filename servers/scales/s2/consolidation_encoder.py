@@ -10,6 +10,8 @@ EVOLVE, KEEP, or SKIP for each cluster via tool calls.
 
 import os
 
+from servers.trace_contract import build_delta_metadata
+
 from .base import IntegrationUnit
 from .consolidation_contract import CONSOLIDATION
 
@@ -52,18 +54,34 @@ class ConsolidationEncoder(IntegrationUnit):
         actions = result.get('actions', 0)
         write_actions = result.get('write_actions', 0)
         rounds = result.get('rounds', 0)
+        final_text = result.get('final_text', '') or ''
+
+        # Outcome vocab — count markers in the final text. The encoder
+        # emits structured markers (CONSOLIDATED:, EVOLVED:, KEPT:,
+        # SKIPPED:) one per cluster decision. Counting markers is the
+        # cleanest proxy at this layer; orchestrator's edge-diff SKIP
+        # detection is authoritative for suppression bookkeeping.
+        outcomes = {
+            'consolidate': final_text.count('CONSOLIDATED:'),
+            'evolve':      final_text.count('EVOLVED:'),
+            'keep':        final_text.count('KEPT:'),
+            'skip':        final_text.count('SKIPPED:'),
+        }
 
         self.trace('delta', 'consolidated',
                    '%d actions (%d writes) in %d rounds for %d clusters' % (
                        actions, write_actions, rounds, len(clusters)),
-                   metadata={
-                       'actions': actions,
-                       'write_actions': write_actions,
-                       'rounds': rounds,
-                       'clusters_processed': len(clusters),
-                       'action_details': result.get('action_details', []),
-                       'final_text': result.get('final_text', '')[:2000],
-                   })
+                   metadata=build_delta_metadata(
+                       actions=actions,
+                       write_actions=write_actions,
+                       rounds=rounds,
+                       inputs_processed=len(clusters),
+                       outcomes=outcomes,
+                       journal_entry=result.get('journal_entry', ''),
+                       action_details=result.get('action_details', []),
+                       final_text=final_text,
+                       clusters_processed=len(clusters),
+                   ))
 
         return result
 
@@ -115,7 +133,10 @@ class ConsolidationEncoder(IntegrationUnit):
 
         tools = self._get_tool_schemas()
         dispatch_fn = self._make_dispatch()
-        client = anthropic.Anthropic()
+        # 180s per-request timeout — SDK default (600s) let a hung API call
+        # tie up the encoder for 45 minutes on 2026-04-19. 10 proposals
+        # per batch fits comfortably under 3 minutes on Sonnet.
+        client = anthropic.Anthropic(timeout=180.0)
 
         # Journal text
         journal = self.brain.get_config('s2_consolidation_journal') or ''
@@ -183,9 +204,11 @@ class ConsolidationEncoder(IntegrationUnit):
                 self.brain._log_error(self.NAME, e,
                                       'encode batch %d' % batch_num)
 
-        # Save journal from last batch's final text
+        # Save journal from last batch's final text. Capture the entry
+        # so the delta trace carries it alongside brain_meta.
+        total_result['journal_entry'] = ''
         if total_result['final_text']:
-            self._save_journal(total_result['final_text'])
+            total_result['journal_entry'] = self._save_journal(total_result['final_text']) or ''
 
         return total_result
 
@@ -252,7 +275,14 @@ class ConsolidationEncoder(IntegrationUnit):
     # ══════════════════════════════════════════════════════════
 
     def _save_journal(self, final_text):
-        """Extract and save journal from encoder's final text."""
+        """Extract + persist journal entry. Returns extracted entry ('' if none).
+
+        Entry also appears in the delta trace — single source of truth for
+        per-run narrative, indexed in both brain_meta and trace_events.
+
+        If final_text is non-empty but no section marker is found, logs a
+        brain error — agent-drift signal the operator should see.
+        """
         journal_entry = ''
         if '---' in final_text:
             _, journal_part = final_text.split('---', 1)
@@ -266,7 +296,12 @@ class ConsolidationEncoder(IntegrationUnit):
                     break
 
         if not journal_entry:
-            return
+            if final_text.strip():
+                self.brain._log_error(
+                    's2_consolidation_journal_extraction',
+                    'no journal markers found in %d-char final_text' % len(final_text),
+                    'agent drifted from prompt format — first 200 chars: %s' % final_text[:200])
+            return ''
 
         existing = self.brain.get_config('s2_consolidation_journal') or ''
         run_header = '--- Consolidation Run %s ---' % self.brain.now()[:10]
@@ -280,6 +315,7 @@ class ConsolidationEncoder(IntegrationUnit):
                 new_journal = new_journal[cutpoint:]
 
         self.brain.set_config('s2_consolidation_journal', new_journal.strip())
+        return journal_entry
 
     # ══════════════════════════════════════════════════════════
     # Cluster formatting (text rendering for Sonnet)

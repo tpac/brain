@@ -1,0 +1,459 @@
+[harness] loaded 500 oracle items from eval/longmem/data/longmemeval_oracle.json
+[harness] selected 10 items:
+  1. 54026fce                 axis=info_extraction    turns=12
+  2. fca762bc                 axis=info_extraction    turns=6
+  3. 2311e44b                 axis=multi_session      turns=18
+  4. bc149d6b                 axis=multi_session      turns=22
+  5. 71017276                 axis=temporal           turns=12
+  6. gpt4_b0863698            axis=temporal           turns=12
+  7. cc5ded98                 axis=knowledge_update   turns=22
+  8. 59524333                 axis=knowledge_update   turns=22
+  9. 09ba9854_abs             axis=abstention         turns=22
+  10. edced276_abs             axis=abstention         turns=18
+[fresh-brain] wiped /Users/tpac/AgentsContext/brain-eval
+[brain] Schema ensured: v0 -> v23
+[embedder] Loading from local path: /Users/tpac/brain/model-package/brain_embedding/model
+[embedder] Snowflake/snowflake-arctic-embed-m-v1.5 (768d, cls) loaded in 253ms [source: local, threads: 1]
+[seed-pack] fresh brain — seeding 16 nodes and 16 edges
+[seed-pack]   create anchor_identity                  → 0639c854 [concept]
+[seed-pack]   create partnership_purpose              → 40905e07 [principle]
+[seed-pack]   create collaborator_stance              → 9170c3b9 [principle]
+[seed-pack]   create escalate_conflict                → 7cce8e32 [rule]
+[seed-pack]   create okd_principle                    → 805ec960 [architecture]
+[seed-pack]   create confidence_alive                 → 26a6e8cd [rule]
+[seed-pack]   create interactions_behavior            → 37e2e8b0 [insight]
+[seed-pack]   create scale_bounded                    → a1c37af0 [principle]
+[seed-pack]   create outcome_is_next_observation      → b45fa067 [insight]
+[seed-pack]   create verify_before_claiming           → 30e1e17a [rule]
+[seed-pack]   create learn_your_operator              → 7b26d195 [rule]
+[seed-pack]   create rigorous_evaluation              → 0d52b07b [principle]
+[seed-pack]   create extend_before_creating           → ad799685 [principle]
+[seed-pack]   create good_node_shape                  → e96714c2 [principle]
+[seed-pack]   create revise_not_duplicate             → 56c5950b [principle]
+[seed-pack]   create node_types_matter                → 9273507f [principle]
+[seed-pack] done: 16 nodes created, 0 skipped, 16 edges created, 0 edges skipped (status=fresh)
+[fresh-brain] brain ready at /Users/tpac/AgentsContext/brain-eval
+[fresh-brain] reset: removed 0 nodes, 0 edges, kept 16 seeds
+
+======================================================================
+[harness] item 1/10 qid=54026fce axis=info_extraction turns=12
+[harness] Q: I've been thinking about ways to stay connected with my colleagues. Any suggestions?
+[harness] A (gold): The user would prefer responses that acknowledge their desire for social interaction and collaboration while working rem
+======================================================================
+[item 1] session 1/1 (12 turns)
+[item 1]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 11961 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:1046ms → messages(10):1049ms → prompt(11961 chars):1050ms → tools(6):1051ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 13604 in / 2074 out | Profile: llm_r0=30546ms, llm_r1=40906ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:0ms → api_client:1046ms → messages(10):1049ms → prompt(11961 chars):1050ms → tools(6):1051ms → done:41958ms
+[item 1]   s1e done in 41958ms
+[item 1]   s1e trailing flush (stop=6, 1 unencoded)
+[s1e] calling Sonnet with 6 tools, 15951 chars context...
+[s1e] PROFILE so far: env_loaded:4ms → api_client:16ms → messages(12):16ms → prompt(15951 chars):16ms → tools(6):16ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 13951 in / 1577 out | Profile: llm_r0=26084ms, llm_r1=37024ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:4ms → api_client:16ms → messages(12):16ms → prompt(15951 chars):16ms → tools(6):16ms → done:37043ms
+[item 1]   s2 final flush (2 pending encodings, 4 passes)
+[s2ce] Batch 1/1 (3 proposals)
+[s2ce]   [get_nodes] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 0) | Tokens: 20412 in / 1463 out | Profile: llm_r0=2238ms, llm_r1=21160ms
+[s2ce] Stamped 3 rejected proposals (fingerprints)
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 1]   s2 pass 1/4 done in 22311ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 1]   s2 pass 2/4 done in 5ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 1]   s2 pass 3/4 done in 7ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 1]   s2 pass 4/4 done in 5ms
+[item 1] done: {'turns': 12, 'user_turns': 6, 's1e_runs': 2, 's2_runs': 4, 's1r_ms_total': 1239, 's1e_ms_total': 79002, 's2_ms_total': 22328}
+[query] question: I've been thinking about ways to stay connected with my colleagues. Any suggestions?
+[query] s1r 92ms, context 0 chars
+[harness] hypothesis: I don't have information about that.
+[harness] abstained: True, had context: False
+[fresh-brain] reset: removed 7 nodes, 40 edges, kept 16 seeds
+
+======================================================================
+[harness] item 2/10 qid=fca762bc axis=info_extraction turns=6
+[harness] Q: I wanted to follow up on our previous conversation about language learning apps. You mentioned a few options, and I was 
+[harness] A (gold): Memrise
+======================================================================
+[item 2] session 1/1 (6 turns)
+[item 2]   s1e trailing flush (stop=3, 3 unencoded)
+[s1e] calling Sonnet with 6 tools, 3459 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:3ms → messages(6):3ms → prompt(3459 chars):3ms → tools(6):3ms
+[s1e]   [remember_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 14675 in / 1458 out | Profile: llm_r0=16640ms, llm_r1=20181ms, llm_r2=27688ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:3ms → messages(6):3ms → prompt(3459 chars):3ms → tools(6):3ms → done:27692ms
+[item 2]   s2 final flush (1 pending encodings, 4 passes)
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 2]   s2 pass 1/4 done in 693ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 2]   s2 pass 2/4 done in 705ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 2]   s2 pass 3/4 done in 670ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 2]   s2 pass 4/4 done in 2390ms
+[item 2] done: {'turns': 6, 'user_turns': 3, 's1e_runs': 1, 's2_runs': 4, 's1r_ms_total': 437, 's1e_ms_total': 27693, 's2_ms_total': 4458}
+[query] question: I wanted to follow up on our previous conversation about language learning apps. You mentioned a few...
+[query] s1r 123ms, context 0 chars
+[harness] hypothesis: I don't have information about that.
+[harness] abstained: True, had context: False
+[fresh-brain] reset: removed 4 nodes, 17 edges, kept 16 seeds
+
+======================================================================
+[harness] item 3/10 qid=2311e44b axis=multi_session turns=18
+[harness] Q: How many pages do I have left to read in 'The Nightingale'?
+[harness] A (gold): 190
+======================================================================
+[item 3] session 1/2 (10 turns)
+[item 3]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 12930 chars context...
+[s1e] PROFILE so far: env_loaded:2ms → api_client:5ms → messages(10):6ms → prompt(12930 chars):6ms → tools(6):6ms
+[s1e]   [remember_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 25064 in / 2257 out | Profile: llm_r0=26280ms, llm_r1=31980ms, llm_r2=38789ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:2ms → api_client:5ms → messages(10):6ms → prompt(12930 chars):6ms → tools(6):6ms → done:38796ms
+[item 3]   s1e done in 38797ms
+[item 3] session 2/2 (8 turns)
+[item 3]   s1e trailing flush (stop=9, 4 unencoded)
+[s1e] calling Sonnet with 6 tools, 22134 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:3ms → messages(18):3ms → prompt(22134 chars):3ms → tools(6):4ms
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 30389 in / 1994 out | Profile: llm_r0=28418ms, llm_r1=34341ms, llm_r2=44529ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:3ms → messages(18):3ms → prompt(22134 chars):3ms → tools(6):4ms → done:44537ms
+[s1e] ERROR surfacing question: 'SignalQueueDAL' object has no attribute 'produce'
+[item 3]   s2 final flush (2 pending encodings, 4 passes)
+[s2ce] Batch 1/1 (3 proposals)
+[s2ce]   [get_nodes] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 0) | Tokens: 20329 in / 1390 out | Profile: llm_r0=1319ms, llm_r1=17177ms
+[s2ce] Stamped 3 rejected proposals (fingerprints)
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 3]   s2 pass 1/4 done in 18412ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 3]   s2 pass 2/4 done in 9ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 3]   s2 pass 3/4 done in 6ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 3]   s2 pass 4/4 done in 4ms
+[item 3] done: {'turns': 18, 'user_turns': 9, 's1e_runs': 2, 's2_runs': 4, 's1r_ms_total': 3051, 's1e_ms_total': 83339, 's2_ms_total': 18431}
+[query] question: How many pages do I have left to read in 'The Nightingale'?
+[query] s1r 83ms, context 0 chars
+[harness] hypothesis: I don't have information about that.
+[harness] abstained: True, had context: False
+[fresh-brain] reset: removed 10 nodes, 50 edges, kept 16 seeds
+
+======================================================================
+[harness] item 4/10 qid=bc149d6b axis=multi_session turns=22
+[harness] Q: What is the total weight of the new feed I purchased in the past two months?
+[harness] A (gold): 70 pounds
+======================================================================
+[item 4] session 1/2 (12 turns)
+[item 4]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 9319 chars context...
+[s1e] PROFILE so far: env_loaded:2ms → api_client:5ms → messages(10):6ms → prompt(9319 chars):6ms → tools(6):6ms
+[s1e]   [remember_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 23506 in / 2780 out | Profile: llm_r0=29316ms, llm_r1=35686ms, llm_r2=44328ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:2ms → api_client:5ms → messages(10):6ms → prompt(9319 chars):6ms → tools(6):6ms → done:44334ms
+[item 4]   s1e done in 44335ms
+[item 4] session 2/2 (10 turns)
+[item 4]   s1e firing at stop=10
+[s1e] calling Sonnet with 6 tools, 24171 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:11ms → messages(20):11ms → prompt(24171 chars):11ms → tools(6):11ms
+[s1e]   [remember_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 37426 in / 4281 out | Profile: llm_r0=55072ms, llm_r1=62705ms, llm_r2=76945ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:11ms → messages(20):11ms → prompt(24171 chars):11ms → tools(6):11ms → done:76958ms
+[item 4]   s1e done in 76959ms
+[item 4]   s1e trailing flush (stop=11, 1 unencoded)
+[s1e] calling Sonnet with 6 tools, 27985 chars context...
+[s1e] PROFILE so far: env_loaded:2ms → api_client:13ms → messages(20):13ms → prompt(27985 chars):13ms → tools(6):13ms
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 33878 in / 2478 out | Profile: llm_r0=33843ms, llm_r1=38400ms, llm_r2=50588ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:2ms → api_client:13ms → messages(20):13ms → prompt(27985 chars):13ms → tools(6):13ms → done:50602ms
+[item 4]   s2 final flush (3 pending encodings, 4 passes)
+[s2ce] Batch 1/1 (4 proposals)
+[s2ce]   [get_nodes] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 0) | Tokens: 42171 in / 2852 out | Profile: llm_r0=2136ms, llm_r1=35976ms
+[s2ce] Stamped 4 rejected proposals (fingerprints)
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 4]   s2 pass 1/4 done in 37844ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 4]   s2 pass 2/4 done in 13ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 4]   s2 pass 3/4 done in 11ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 4]   s2 pass 4/4 done in 9ms
+[item 4] done: {'turns': 22, 'user_turns': 11, 's1e_runs': 3, 's2_runs': 4, 's1r_ms_total': 3139, 's1e_ms_total': 171898, 's2_ms_total': 37877}
+[query] question: What is the total weight of the new feed I purchased in the past two months?
+[query] s1r 82ms, context 0 chars
+[harness] hypothesis: I don't have information about that.
+[harness] abstained: True, had context: False
+[fresh-brain] reset: removed 14 nodes, 84 edges, kept 16 seeds
+
+======================================================================
+[harness] item 5/10 qid=71017276 axis=temporal turns=12
+[harness] Q: How many weeks ago did I meet up with my aunt and receive the crystal chandelier?
+Traceback (most recent call last):
+  File "/Users/tpac/brain/eval/longmem/harness.py", line 156, in main
+    r = run_item(brain, item, i, len(picked))
+  File "/Users/tpac/brain/eval/longmem/harness.py", line 86, in run_item
+    print(f"[harness] A (gold): {item['answer'][:120]}", flush=True)
+TypeError: 'int' object is not subscriptable
+[harness] item 5 FAILED: 'int' object is not subscriptable
+[fresh-brain] reset: removed 0 nodes, 0 edges, kept 16 seeds
+
+======================================================================
+[harness] item 6/10 qid=gpt4_b0863698 axis=temporal turns=12
+[harness] Q: How many days ago did I participate in the 5K charity run?
+[harness] A (gold): 7 days ago. 8 days (including the last day) is also acceptable.
+======================================================================
+[item 6] session 1/1 (12 turns)
+[item 6]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 12139 chars context...
+[s1e] PROFILE so far: env_loaded:2ms → api_client:5ms → messages(10):5ms → prompt(12139 chars):5ms → tools(6):5ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 13074 in / 1534 out | Profile: llm_r0=22187ms, llm_r1=30303ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:2ms → api_client:5ms → messages(10):5ms → prompt(12139 chars):5ms → tools(6):5ms → done:30310ms
+[item 6]   s1e done in 30315ms
+[item 6]   s1e trailing flush (stop=6, 1 unencoded)
+[s1e] calling Sonnet with 6 tools, 15862 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:3ms → messages(12):3ms → prompt(15862 chars):3ms → tools(6):3ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 13403 in / 985 out | Profile: llm_r0=16547ms, llm_r1=24008ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:0ms → api_client:3ms → messages(12):3ms → prompt(15862 chars):3ms → tools(6):3ms → done:24014ms
+[item 6]   s2 final flush (2 pending encodings, 4 passes)
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 6]   s2 pass 1/4 done in 13ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 6]   s2 pass 2/4 done in 6ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 6]   s2 pass 3/4 done in 5ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 6]   s2 pass 4/4 done in 5ms
+[item 6] done: {'turns': 12, 'user_turns': 6, 's1e_runs': 2, 's2_runs': 4, 's1r_ms_total': 1923, 's1e_ms_total': 54329, 's2_ms_total': 29}
+[query] question: How many days ago did I participate in the 5K charity run?
+[query] s1r 78ms, context 0 chars
+[harness] hypothesis: I don't have information about that.
+[harness] abstained: True, had context: False
+[fresh-brain] reset: removed 5 nodes, 21 edges, kept 16 seeds
+
+======================================================================
+[harness] item 7/10 qid=cc5ded98 axis=knowledge_update turns=22
+[harness] Q: How much time do I dedicate to coding exercises each day?
+[harness] A (gold): about two hours
+======================================================================
+[item 7] session 1/2 (12 turns)
+[item 7]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 14412 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:3ms → messages(10):3ms → prompt(14412 chars):3ms → tools(6):3ms
+[s1e]   [remember_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 24285 in / 2368 out | Profile: llm_r0=27363ms, llm_r1=33420ms, llm_r2=41412ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:3ms → messages(10):3ms → prompt(14412 chars):3ms → tools(6):3ms → done:41416ms
+[item 7]   s1e done in 41416ms
+[item 7] session 2/2 (10 turns)
+[item 7]   s1e firing at stop=10
+[s1e] calling Sonnet with 6 tools, 26803 chars context...
+[s1e] PROFILE so far: env_loaded:1ms → api_client:9ms → messages(20):9ms → prompt(26803 chars):9ms → tools(6):9ms
+[s1e]   [recall_batch] 
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 4 | Actions: 3 (writes: 1) | Tokens: 45693 in / 2585 out | Profile: llm_r0=6718ms, llm_r1=37222ms, llm_r2=43108ms, llm_r3=51498ms
+[s1e] done. 4 rounds, 3 actions. PROFILE: env_loaded:1ms → api_client:9ms → messages(20):9ms → prompt(26803 chars):9ms → tools(6):9ms → done:51508ms
+[item 7]   s1e done in 51508ms
+[item 7]   s1e trailing flush (stop=11, 1 unencoded)
+[s1e] calling Sonnet with 6 tools, 28458 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:3ms → messages(20):3ms → prompt(28458 chars):3ms → tools(6):3ms
+[s1e]   [recall_batch] 
+[s1e]   [recall_batch] 
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 5 | Actions: 4 (writes: 1) | Tokens: 71588 in / 2206 out | Profile: llm_r0=3402ms, llm_r1=7899ms, llm_r2=37260ms, llm_r3=40942ms, llm_r4=53638ms
+[s1e] done. 5 rounds, 4 actions. PROFILE: env_loaded:0ms → api_client:3ms → messages(20):3ms → prompt(28458 chars):3ms → tools(6):3ms → done:53643ms
+[s1e] ERROR surfacing question: 'SignalQueueDAL' object has no attribute 'produce'
+[item 7]   s2 final flush (3 pending encodings, 4 passes)
+[s2ce] Batch 1/1 (2 proposals)
+[s2ce]   [get_nodes] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 0) | Tokens: 19499 in / 1703 out | Profile: llm_r0=1904ms, llm_r1=22034ms
+[s2ce] Stamped 2 rejected proposals (fingerprints)
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 7]   s2 pass 1/4 done in 23016ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 7]   s2 pass 2/4 done in 9ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 7]   s2 pass 3/4 done in 7ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 7]   s2 pass 4/4 done in 7ms
+[item 7] done: {'turns': 22, 'user_turns': 11, 's1e_runs': 3, 's2_runs': 4, 's1r_ms_total': 3236, 's1e_ms_total': 146569, 's2_ms_total': 23039}
+[query] question: How much time do I dedicate to coding exercises each day?
+[query] s1r 75ms, context 0 chars
+[harness] hypothesis: I don't have information about that.
+[harness] abstained: True, had context: False
+[fresh-brain] reset: removed 11 nodes, 44 edges, kept 16 seeds
+
+======================================================================
+[harness] item 8/10 qid=59524333 axis=knowledge_update turns=22
+[harness] Q: What time do I usually go to the gym?
+[harness] A (gold): 6:00 pm
+======================================================================
+[item 8] session 1/2 (10 turns)
+[item 8]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 13325 chars context...
+[s1e] PROFILE so far: env_loaded:2ms → api_client:5ms → messages(10):5ms → prompt(13325 chars):5ms → tools(6):5ms
+[s1e]   [remember_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 24124 in / 2167 out | Profile: llm_r0=29575ms, llm_r1=35718ms, llm_r2=44974ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:2ms → api_client:5ms → messages(10):5ms → prompt(13325 chars):5ms → tools(6):5ms → done:44980ms
+[item 8]   s1e done in 44981ms
+[item 8] session 2/2 (12 turns)
+[item 8]   s1e firing at stop=10
+[s1e] calling Sonnet with 6 tools, 22795 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:10ms → messages(20):10ms → prompt(22795 chars):10ms → tools(6):10ms
+[s1e]   [recall_batch] 
+[s1e]   [remember_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 26564 in / 1802 out | Profile: llm_r0=5574ms, llm_r1=29679ms, llm_r2=38887ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:10ms → messages(20):10ms → prompt(22795 chars):10ms → tools(6):10ms → done:38899ms
+[item 8]   s1e done in 38899ms
+[item 8]   s1e trailing flush (stop=11, 1 unencoded)
+[s1e] calling Sonnet with 6 tools, 23348 chars context...
+[s1e] PROFILE so far: env_loaded:3ms → api_client:6ms → messages(20):6ms → prompt(23348 chars):6ms → tools(6):6ms
+[s1e]   [brain_batch] 
+[s1e]   [recall_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 4 | Actions: 3 (writes: 1) | Tokens: 37224 in / 1495 out | Profile: llm_r0=21298ms, llm_r1=25165ms, llm_r2=29256ms, llm_r3=37050ms
+[s1e] done. 4 rounds, 3 actions. PROFILE: env_loaded:3ms → api_client:6ms → messages(20):6ms → prompt(23348 chars):6ms → tools(6):6ms → done:37062ms
+[item 8]   s2 final flush (3 pending encodings, 4 passes)
+[s2ce] Batch 1/1 (2 proposals)
+[s2ce]   [get_nodes] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 0) | Tokens: 22512 in / 1592 out | Profile: llm_r0=1368ms, llm_r1=20168ms
+[s2ce] Stamped 2 rejected proposals (fingerprints)
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 8]   s2 pass 1/4 done in 21097ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 8]   s2 pass 2/4 done in 936ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 8]   s2 pass 3/4 done in 1091ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 8]   s2 pass 4/4 done in 754ms
+[item 8] done: {'turns': 22, 'user_turns': 11, 's1e_runs': 3, 's2_runs': 4, 's1r_ms_total': 2352, 's1e_ms_total': 120943, 's2_ms_total': 23878}
+[query] question: What time do I usually go to the gym?
+[query] s1r 69ms, context 0 chars
+[harness] hypothesis: I don't have information about that.
+[harness] abstained: True, had context: False
+[fresh-brain] reset: removed 8 nodes, 42 edges, kept 16 seeds
+
+======================================================================
+[harness] item 9/10 qid=09ba9854_abs axis=abstention turns=22
+[harness] Q: How much will I save by taking the bus from the airport to my hotel instead of a taxi?
+[harness] A (gold): The information provided is not enough. You did not mention how much will the bus take.
+======================================================================
+[item 9] session 1/2 (12 turns)
+[item 9]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 8891 chars context...
+[s1e] PROFILE so far: env_loaded:2ms → api_client:5ms → messages(10):6ms → prompt(8891 chars):6ms → tools(6):6ms
+[s1e]   [remember_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 22779 in / 2565 out | Profile: llm_r0=32576ms, llm_r1=36930ms, llm_r2=43900ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:2ms → api_client:5ms → messages(10):6ms → prompt(8891 chars):6ms → tools(6):6ms → done:43907ms
+[item 9]   s1e done in 43907ms
+[item 9] session 2/2 (10 turns)
+[item 9]   s1e firing at stop=10
+[s1e] calling Sonnet with 6 tools, 20776 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:13ms → messages(20):13ms → prompt(20776 chars):13ms → tools(6):13ms
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 36072 in / 4571 out | Profile: llm_r0=51184ms, llm_r1=58512ms, llm_r2=67483ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:13ms → messages(20):13ms → prompt(20776 chars):13ms → tools(6):13ms → done:67497ms
+[item 9]   s1e done in 67498ms
+[item 9]   s1e trailing flush (stop=11, 1 unencoded)
+[s1e] calling Sonnet with 6 tools, 22771 chars context...
+[s1e] PROFILE so far: env_loaded:2ms → api_client:14ms → messages(20):14ms → prompt(22771 chars):14ms → tools(6):14ms
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 35464 in / 3954 out | Profile: llm_r0=50716ms, llm_r1=56274ms, llm_r2=71126ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:2ms → api_client:14ms → messages(20):14ms → prompt(22771 chars):14ms → tools(6):14ms → done:71144ms
+[item 9]   s2 final flush (3 pending encodings, 4 passes)
+[s2ce] Batch 1/1 (2 proposals)
+[s2ce]   [get_nodes] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 0) | Tokens: 33060 in / 1644 out | Profile: llm_r0=1593ms, llm_r1=21200ms
+[s2ce] Stamped 2 rejected proposals (fingerprints)
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 9]   s2 pass 1/4 done in 22961ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 9]   s2 pass 2/4 done in 774ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 9]   s2 pass 3/4 done in 953ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 9]   s2 pass 4/4 done in 925ms
+[item 9] done: {'turns': 22, 'user_turns': 11, 's1e_runs': 3, 's2_runs': 4, 's1r_ms_total': 2120, 's1e_ms_total': 182554, 's2_ms_total': 25613}
+[query] question: How much will I save by taking the bus from the airport to my hotel instead of a taxi?
+[query] s1r 90ms, context 0 chars
+[harness] hypothesis: I don't have information about that.
+[harness] abstained: True, had context: False
+[fresh-brain] reset: removed 12 nodes, 70 edges, kept 16 seeds
+
+======================================================================
+[harness] item 10/10 qid=edced276_abs axis=abstention turns=18
+[harness] Q: How many days did I spend in total traveling in Hawaii and in Seattle?
+[harness] A (gold): The information provided is not enough. You mentioned traveling for 10 days in Hawaii but did not mention abything about
+======================================================================
+[item 10] session 1/2 (8 turns)
+[item 10] session 2/2 (10 turns)
+[item 10]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 14047 chars context...
+[s1e] PROFILE so far: env_loaded:2ms → api_client:5ms → messages(10):5ms → prompt(14047 chars):6ms → tools(6):6ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 16300 in / 2200 out | Profile: llm_r0=29612ms, llm_r1=41645ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:2ms → api_client:5ms → messages(10):5ms → prompt(14047 chars):6ms → tools(6):6ms → done:41652ms
+[item 10]   s1e done in 41652ms
+[item 10]   s1e trailing flush (stop=9, 4 unencoded)
+[s1e] calling Sonnet with 6 tools, 26892 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:13ms → messages(18):13ms → prompt(26892 chars):13ms → tools(6):13ms
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 36101 in / 3096 out | Profile: llm_r0=32401ms, llm_r1=41117ms, llm_r2=56371ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:13ms → messages(18):13ms → prompt(26892 chars):13ms → tools(6):13ms → done:56388ms
+[item 10]   s2 final flush (2 pending encodings, 4 passes)
+[s2ce] Batch 1/1 (3 proposals)
+[s2ce]   [get_nodes] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 0) | Tokens: 29359 in / 1576 out | Profile: llm_r0=1423ms, llm_r1=19227ms
+[s2ce] Stamped 3 rejected proposals (fingerprints)
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 10]   s2 pass 1/4 done in 20361ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 10]   s2 pass 2/4 done in 10ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 10]   s2 pass 3/4 done in 8ms
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[enrichment] WARNING: no interaction prompt for s2_enrichment
+[item 10]   s2 pass 4/4 done in 8ms
+[item 10] done: {'turns': 18, 'user_turns': 9, 's1e_runs': 2, 's2_runs': 4, 's1r_ms_total': 2635, 's1e_ms_total': 98041, 's2_ms_total': 20387}
+[query] question: How many days did I spend in total traveling in Hawaii and in Seattle?
+[query] s1r 84ms, context 0 chars
+[harness] hypothesis: I don't have information about that.
+[harness] abstained: True, had context: False
+
+[harness] done in 1170.6s
+[harness] hypotheses → /Users/tpac/brain/eval/longmem/reports/hypotheses_baseline_v1.jsonl
+[harness] report     → /Users/tpac/brain/eval/longmem/reports/run_baseline_v1.json

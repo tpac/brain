@@ -8,20 +8,20 @@ Produces proposals for the encoder.
 import json
 
 from .base import IntegrationUnit
-from .enrichment_contract import ENRICHMENT
+from .healer_contract import HEALER
 
 
-class EnrichmentDecoder(IntegrationUnit):
-    NAME = 'enrichment'
+class HealerDecoder(IntegrationUnit):
+    NAME = 'healer'
     SCALE = 's2'
-    ENCODING_SOURCE = 's2:enrichment'
+    ENCODING_SOURCE = 's2:healer'
 
-    O_SOURCES = ['enrichment_gaps', 's1_encoding_runs']
+    O_SOURCES = ['healer_gaps', 's1_encoding_runs']
     K_SOURCES = ['get_rich_node', 's0_conversation']
 
     def __init__(self, brain, dispatch_fn=None, config=None):
         super().__init__(brain, dispatch_fn)
-        self.config = config or ENRICHMENT
+        self.config = config or HEALER
 
     def run(self):
         """Scan for healing needs and build proposals.
@@ -41,7 +41,7 @@ class EnrichmentDecoder(IntegrationUnit):
         target_ids = self._find_targets(gaps)
 
         # O trace
-        self.trace('O', 'enrichment_scan',
+        self.trace('O', 'healer_scan',
                    '%d need question, %d need situation, %d need reasoning → %d targets' % (
                        gaps['question'], gaps['situation'], gaps['reasoning'],
                        len(target_ids)),
@@ -54,7 +54,7 @@ class EnrichmentDecoder(IntegrationUnit):
         proposals = self._build_proposals(target_ids)
 
         # K trace
-        self.trace('K', 'enrichment_proposals',
+        self.trace('K', 'healer_proposals',
                    '%d proposals built' % len(proposals),
                    metadata={
                        'proposal_count': len(proposals),

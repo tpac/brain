@@ -25,12 +25,8 @@
   "mcpServers": "./.mcp.json",
   "config": {
     "embedder": {
-      "model_name": "Snowflake/snowflake-arctic-embed-m-v1.5",
-      "dim": 768,
-      "pooling": "cls",
-      "model_file": "onnx/model.onnx",
-      "model_path": "model-package/brain_embedding/model",
-      "cache_dir": null
+      "model_name": "nomic-ai/nomic-embed-text-v1.5-Q",
+      "dim": 768
     }
   }
 }

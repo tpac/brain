@@ -3,26 +3,28 @@
 Takes proposals from decoder, calls Haiku to generate question/situation/reasoning,
 parses JSON response, writes fields through brain's standard write path.
 
-Uses the s2_enrichment interaction (learnable prompt in interactions table).
+Uses the s2_healer interaction (learnable prompt in interactions table).
 """
 
 import json
 
+from servers.trace_contract import build_delta_metadata
+
 from .base import IntegrationUnit
-from .enrichment_contract import ENRICHMENT
+from .healer_contract import HEALER
 
 
-class EnrichmentEncoder(IntegrationUnit):
-    NAME = 'enrichment'
+class HealerEncoder(IntegrationUnit):
+    NAME = 'healer'
     SCALE = 's2'
-    ENCODING_SOURCE = 's2:enrichment'
+    ENCODING_SOURCE = 's2:healer'
 
-    O_SOURCES = ['enrichment_proposals']
-    K_SOURCES = ['llm_enrichment']
+    O_SOURCES = ['healer_proposals']
+    K_SOURCES = ['llm_healer']
 
     def __init__(self, brain, dispatch_fn=None, config=None):
         super().__init__(brain, dispatch_fn)
-        self.config = config or ENRICHMENT
+        self.config = config or HEALER
 
     def run(self, proposals):
         """Generate missing fields for proposed nodes.
@@ -33,7 +35,7 @@ class EnrichmentEncoder(IntegrationUnit):
         Returns: {nodes_healed, fields_written, skipped, errors, journal}
         """
         if not proposals:
-            self.trace('delta', 'enrichment_generated', 'No proposals to process')
+            self.trace('delta', 'healer_generated', 'No proposals to process')
             return {'nodes_healed': 0, 'fields_written': 0, 'skipped': 0,
                     'errors': [], 'journal': ''}
 
@@ -41,65 +43,92 @@ class EnrichmentEncoder(IntegrationUnit):
         fields_written = 0
         skipped = 0
         errors = []
-        journal = ''
+        healed_ids = []       # for journal_entry: which nodes got filled
+        field_counter = {}    # for outcomes: which fields got written most
+        batches = 0
 
-        # Process in batches
         batch_size = self.config['max_nodes_per_call']
         for batch_start in range(0, len(proposals), batch_size):
+            batches += 1
             batch = proposals[batch_start:batch_start + batch_size]
 
-            # Format batch for Haiku
             user_content = self._format_batch(batch)
-
-            # Call Haiku via learnable prompt
-            result = self._call_llm('s2_enrichment', user_content)
+            result = self._call_llm('s2_healer', user_content)
 
             if result is None:
-                errors.append('LLM call failed for batch %d' % (batch_start // batch_size + 1))
+                errors.append('LLM call failed for batch %d' % batches)
                 continue
 
-            # Parse: result should be a JSON array
-            # _call_llm already extracts JSON, but response may have journal after it
             if isinstance(result, list):
-                enrichments = result
+                healings = result
             elif isinstance(result, dict):
-                enrichments = [result]
+                healings = [result]
             else:
                 errors.append('Unexpected response type: %s' % type(result).__name__)
                 continue
 
-            # Store each enrichment via revise()
-            for enrichment in enrichments:
-                if not isinstance(enrichment, dict):
+            for healing in healings:
+                if not isinstance(healing, dict):
                     continue
-                nid = enrichment.get('node_id', '')
+                nid = healing.get('node_id', '')
                 if not nid:
                     continue
 
-                written = self._store_fields(nid, enrichment)
+                written = self._store_fields(nid, healing)
                 if written > 0:
                     nodes_healed += 1
                     fields_written += written
+                    healed_ids.append(nid[:8])
+                    for field in ('question', 'situation', 'reasoning'):
+                        if healing.get(field):
+                            field_counter[field] = field_counter.get(field, 0) + 1
                 else:
                     skipped += 1
 
-        # Delta trace
-        self.trace('delta', 'enrichment_generated',
+        # Synthesize a journal entry from the numeric result. Healer
+        # doesn't produce free-form agent text, so we build the per-run
+        # narrative here — short, scannable, honest.
+        journal_entry = ''
+        if healed_ids or errors:
+            parts = []
+            parts.append('Healed %d node(s), wrote %d field(s), skipped %d.' % (
+                nodes_healed, fields_written, skipped))
+            if field_counter:
+                parts.append('Fields: %s' % ', '.join(
+                    '%s=%d' % kv for kv in sorted(field_counter.items())))
+            if healed_ids:
+                parts.append('Nodes: %s' % ', '.join(healed_ids[:10]))
+            if errors:
+                parts.append('Errors: %d (first: %s)' % (len(errors), errors[0][:80]))
+            journal_entry = ' '.join(parts)
+
+        outcomes = {
+            'filled': nodes_healed,
+            'skipped': skipped,
+        }
+        outcomes.update(field_counter)  # question/situation/reasoning counts
+
+        self.trace('delta', 'healer_generated',
                    '%d nodes healed, %d fields written, %d skipped' % (
                        nodes_healed, fields_written, skipped),
-                   metadata={
-                       'nodes_healed': nodes_healed,
-                       'fields_written': fields_written,
-                       'skipped': skipped,
-                       'errors': errors[:5],
-                   })
+                   metadata=build_delta_metadata(
+                       actions=nodes_healed + skipped,
+                       write_actions=fields_written,
+                       rounds=batches,
+                       inputs_processed=len(proposals),
+                       outcomes=outcomes,
+                       journal_entry=journal_entry,
+                       errors=errors,
+                       nodes_healed=nodes_healed,
+                       fields_written=fields_written,
+                   ))
 
         return {
             'nodes_healed': nodes_healed,
             'fields_written': fields_written,
             'skipped': skipped,
             'errors': errors,
-            'journal': journal,
+            'journal': journal_entry,
         }
 
     def _format_batch(self, proposals):
