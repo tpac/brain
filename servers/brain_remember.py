@@ -74,26 +74,11 @@ class BrainRememberMixin:
             if value is None or (isinstance(value, str) and not value.strip()):
                 continue
 
-            # Situation — dual-write transition (2026-04-19).
-            # Canonical home is `node_metadata_kv` (alongside question,
-            # reasoning, etc.) — a first-class metadata field, not a
-            # vector artifact. Legacy home is `node_enrichments.text`
-            # WHERE vector_type='_situation' — kept during migration so
-            # readers that haven't been flipped yet still see the value.
-            # Removed in a later commit once all readers prefer kv.
+            # Situation lives in node_metadata_kv as of v24 — alongside
+            # question, reasoning, etc. The embedding (BLOB) is generated
+            # later by backfill_vectors() reading from kv.
             if field == 'situation':
-                situation_text = str(value)
-                # New path (canonical): write to node_metadata_kv via the
-                # existing set_many batched call below.
-                kv_fields['situation'] = situation_text
-                # Legacy path: keep writing to node_enrichments so readers
-                # on brain_recall/healer/health_check still function.
-                try:
-                    self._vec_dal.store(node_id, '_situation', situation_text, None, None)
-                    stored += 1
-                except Exception as _e:
-                    self._log_error('store_situation', _e,
-                                    '%s: situation for %s' % (caller, node_id[:8]))
+                kv_fields['situation'] = str(value)
                 continue
 
             # Promoted metadata_kv field — store in KV

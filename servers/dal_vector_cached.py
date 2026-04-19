@@ -95,11 +95,6 @@ class CachedVectorDAL:
                 if blob is not None)
         return written
 
-    def store_situation(self, node_id: str, situation_text: str,
-                        situation_blob: bytes) -> None:
-        """Keep parity with VectorDAL — delegates to store()."""
-        self.store(node_id, '_situation', situation_text, situation_blob)
-
     def delete_for_node(self, node_id: str) -> int:
         """Full delete (rare — tests, migrations). Cache drops too."""
         with self._sql_lock:

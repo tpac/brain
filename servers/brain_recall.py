@@ -464,31 +464,22 @@ class BrainRecallMixin:
         # any prior _situation enrichment row (migration path for pre-metadata_kv
         # data where the text was only persisted on the enrichment row).
         try:
+            # v24: situation lives in node_metadata_kv. No more enrichment
+            # text fallback — the migration backfilled kv from enrichments,
+            # and commit 4/4 stops dual-writing. kv is the single source.
             sit_sql = '''
-                SELECT n.id,
-                       COALESCE(kv.value,
-                                (SELECT text FROM node_enrichments
-                                 WHERE node_id = n.id AND vector_type = '_situation'
-                                   AND text IS NOT NULL AND text != ''
-                                 LIMIT 1)) as situation_text
+                SELECT n.id, kv.value as situation_text
                 FROM nodes n
-                LEFT JOIN node_metadata_kv kv
-                       ON kv.node_id = n.id AND kv.key = 'situation'
+                JOIN node_metadata_kv kv
+                  ON kv.node_id = n.id AND kv.key = 'situation'
                 WHERE n.archived = 0
-                AND (
-                    (kv.value IS NOT NULL AND kv.value != '')
-                    OR EXISTS (
-                        SELECT 1 FROM node_enrichments
-                        WHERE node_id = n.id AND vector_type = '_situation'
-                          AND text IS NOT NULL AND text != ''
-                    )
-                )
-                AND n.id NOT IN (
-                    SELECT node_id FROM node_enrichments
-                    WHERE vector_type = '_situation'
-                      AND embedding IS NOT NULL
-                      AND model = ?
-                )
+                  AND kv.value IS NOT NULL AND kv.value != ''
+                  AND n.id NOT IN (
+                      SELECT node_id FROM node_enrichments
+                      WHERE vector_type = '_situation'
+                        AND embedding IS NOT NULL
+                        AND model = ?
+                  )
             '''
             sit_params = [model]
             if node_ids:

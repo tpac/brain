@@ -2055,10 +2055,6 @@ class VectorDAL:
             (node_id,)).fetchone()
         return row[0] if row and row[0] else None
 
-    def store_situation(self, node_id: str, situation_text: str, situation_blob: bytes) -> None:
-        """Store situation embedding + text for a node."""
-        self.store(node_id, '_situation', situation_text, situation_blob)
-
     def find_missing(self, vector_type: str, limit: int = 50,
                      model: Optional[str] = None,
                      node_ids: Optional[set] = None) -> List[Dict[str, Any]]:
