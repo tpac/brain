@@ -2041,9 +2041,17 @@ class VectorDAL:
         return [{'node_id': r[0], 'situation_embedding': r[1]} for r in rows]
 
     def get_situation_text(self, node_id: str) -> Optional[str]:
-        """Get situation text for a node."""
+        """Get situation text for a node.
+
+        As of v24, situation is stored in node_metadata_kv (alongside
+        question, reasoning, etc.) — not in node_enrichments.text.
+        This function is a thin wrapper around that kv read, kept for
+        backward compat. Removal scheduled for a follow-up commit once
+        call sites migrate to MetadataDAL.
+        """
         row = self.conn.execute(
-            "SELECT text FROM node_enrichments WHERE node_id = ? AND vector_type = '_situation'",
+            "SELECT value FROM node_metadata_kv "
+            "WHERE node_id = ? AND key = 'situation'",
             (node_id,)).fetchone()
         return row[0] if row and row[0] else None
 

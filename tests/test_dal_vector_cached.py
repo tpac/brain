@@ -63,6 +63,15 @@ def brain_db():
     dal.store('n2', '_situation', 'situation for n2', b'\x20' * 32)
     dal.store('n1', 'title', 'title text n1', b'\x30' * 32)
 
+    # v24+: situation text lives in node_metadata_kv, not node_enrichments.text.
+    # Seed both so legacy-read tests and kv-read tests both have data.
+    conn.execute(
+        "INSERT OR REPLACE INTO node_metadata_kv (node_id, key, value) "
+        "VALUES ('n1', 'situation', 'situation for n1')")
+    conn.execute(
+        "INSERT OR REPLACE INTO node_metadata_kv (node_id, key, value) "
+        "VALUES ('n2', 'situation', 'situation for n2')")
+
     # n6 archived also has a vector — tests exclude_archived filter.
     dal.store('n6', '_primary', 'archived primary', b'\xff' * 32)
 
@@ -158,7 +167,15 @@ class TestParity:
     def test_get_situation_text(self, brain_db):
         inner = VectorDAL(brain_db)
         cached = CachedVectorDAL(brain_db)
+        # v24+: both DALs read situation from node_metadata_kv.
+        # Seeded in fixture for n1 and n2.
+        assert inner.get_situation_text('n1') == 'situation for n1'
+        assert cached.get_situation_text('n1') == 'situation for n1'
+        # Parity across DALs.
         assert inner.get_situation_text('n1') == cached.get_situation_text('n1')
+        # Absent key returns None on both.
+        assert inner.get_situation_text('nope') is None
+        assert cached.get_situation_text('nope') is None
 
     def test_get_for_node(self, brain_db):
         inner = VectorDAL(brain_db)

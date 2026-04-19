@@ -187,7 +187,7 @@ class BrainRecallMixin:
         found_ids = list(nodes.keys())
         ph = ','.join('?' for _ in found_ids)
 
-        # ── 2. Batch fetch all metadata ──
+        # ── 2. Batch fetch all metadata (includes situation as of v24) ──
         meta_rows = conn.execute(
             'SELECT node_id, key, value FROM node_metadata_kv WHERE node_id IN (%s)' % ph,
             found_ids
@@ -198,15 +198,13 @@ class BrainRecallMixin:
         for nid in found_ids:
             if nid in meta_by_node:
                 nodes[nid]['_metadata'] = meta_by_node[nid]
-
-        # ── 3. Batch fetch all situations (v23: from node_enrichments) ──
-        sit_rows = conn.execute(
-            "SELECT node_id, text FROM node_enrichments WHERE vector_type = '_situation' AND node_id IN (%s)" % ph,
-            found_ids
-        ).fetchall()
-        for nid, sit in sit_rows:
-            if sit:
-                nodes[nid]['situation'] = sit
+                # Promote situation to top-level node dict — it's a first-class
+                # field consumers expect alongside title/content. Previously
+                # a separate SELECT from node_enrichments; v24 collapsed it
+                # into the same kv fetch above.
+                sit = meta_by_node[nid].get('situation')
+                if sit:
+                    nodes[nid]['situation'] = sit
 
         # ── 4. Batch corrections (already set-based) ──
         all_ids_for_corrections = set()
