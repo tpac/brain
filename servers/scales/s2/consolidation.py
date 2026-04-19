@@ -42,9 +42,16 @@ class Consolidation(ConsolidationDecoder):
 
         # Fingerprint-based rejection filter — SKIP decisions from prior
         # runs populate s2_rejections; those clusters don't resurface here.
-        # Pairs with 'members' key wrap the cluster for compute_fingerprint.
+        # `member_updated_at` folds into the fingerprint so any revise()
+        # on a member invalidates the rejection automatically (cluster IDs
+        # unchanged + edited content ⇒ the encoder's judgment may differ
+        # from its prior SKIP and must re-evaluate).
         proposals = [{'type': 'consolidation_cluster',
                       'members': c.get('nodes', []),
+                      'member_updated_at': {
+                          nid: c.get('node_details', {}).get(nid, {}).get('updated_at', '')
+                          for nid in c.get('nodes', [])
+                      },
                       '_cluster': c}
                      for c in clusters]
         surviving, fp_suppressed = filter_rejected(self.brain, proposals)
@@ -116,6 +123,10 @@ class Consolidation(ConsolidationDecoder):
                 skipped_proposals.append({
                     'type': 'consolidation_cluster',
                     'members': sorted(members),
+                    'member_updated_at': {
+                        nid: c.get('node_details', {}).get(nid, {}).get('updated_at', '')
+                        for nid in members
+                    },
                 })
         recorded = record_rejections(
             self.brain, skipped_proposals,

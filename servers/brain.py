@@ -164,12 +164,16 @@ class Brain(
         self._trace_dal = TraceDAL(self.logs_conn)
         self._interaction_dal = InteractionDAL(self.logs_conn)
 
-        # Shared CachedVectorDAL instance — one in-memory vector matrix for
-        # the whole daemon process. Consumers (recall, remember, backfill,
-        # etc.) get it via self._vec_dal instead of instantiating VectorDAL
-        # per-call. Same public API as VectorDAL, cache-backed reads.
-        from .dal_vector_cached import CachedVectorDAL
-        self._vec_dal = CachedVectorDAL(self.conn)
+        # Shared vector DAL — cache-backed by default. Set env
+        # BRAIN_DISABLE_VECTOR_CACHE=1 to fall back to raw VectorDAL for
+        # emergency rollback or A/B benchmarking. Brain consumers use
+        # self._vec_dal either way.
+        if os.environ.get('BRAIN_DISABLE_VECTOR_CACHE'):
+            from .dal import VectorDAL
+            self._vec_dal = VectorDAL(self.conn)
+        else:
+            from .dal_vector_cached import CachedVectorDAL
+            self._vec_dal = CachedVectorDAL(self.conn)
 
         # Init rate limiter for error logging (DDoS protection)
         self._init_rate_limiter()

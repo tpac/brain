@@ -99,13 +99,32 @@ def compute_fingerprint(proposal):
             proposal.get('smaller_id', ''))
 
     elif ptype == 'consolidation_cluster':
-        # Cluster identity = sorted member ids. Any content change on a
-        # member shifts its _primary embedding → the decoder either surfaces
-        # a different cluster (different members above threshold) or the
-        # same cluster with the same fingerprint (member IDs unchanged).
-        # Rejection stays valid until membership actually changes.
+        # Cluster identity = sorted (member_id, member_updated_at) pairs.
+        # Members alone aren't enough: a small content edit can leave
+        # similarity above threshold so the cluster re-surfaces with the
+        # same IDs, and the old rejection would block re-evaluation even
+        # though the content the encoder would judge has changed.
+        # Including updated_at makes any revise()/remember() on a member
+        # invalidate the rejection automatically — no bookkeeping needed.
         members = sorted(proposal.get('members', []))
-        raw = 'consol:' + ':'.join(members)
+        updated_at = proposal.get('member_updated_at')
+
+        ts_by_id = None
+        if isinstance(updated_at, dict) and updated_at:
+            ts_by_id = updated_at
+        elif (isinstance(updated_at, list)
+              and len(updated_at) == len(proposal.get('members', []))
+              and updated_at):
+            ts_by_id = dict(zip(proposal.get('members', []), updated_at))
+        # else: absent, empty, or malformed → fall back to id-only format
+        # so pre-existing fingerprints (written before this change) still
+        # match legacy proposals lacking the field.
+
+        if ts_by_id is not None:
+            parts = [f'{m}|{ts_by_id.get(m, "")}' for m in members]
+        else:
+            parts = members
+        raw = 'consol:' + ':'.join(parts)
 
     else:
         raw = '%s:%s' % (ptype, proposal.get('node_id', ''))
