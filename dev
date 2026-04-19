@@ -33,10 +33,21 @@ if [ ! -x "$BRAIN_PYTHON" ]; then
     exit 1
 fi
 
+# Convenience shortcuts. `./dev sync-prompts` is a common reflex after
+# editing any encoder prompt via register_interaction — keeps the seed
+# .py files mirrored to the DB's latest version.
+case "${1:-}" in
+    sync-prompts)
+        shift
+        exec "$BRAIN_PYTHON" -m servers.tools.sync_prompts "$@"
+        ;;
+esac
+
 # No args → interactive subshell with env primed. Exit brings you back.
 if [ $# -eq 0 ]; then
     echo "[dev] Python: $($BRAIN_PYTHON --version) at $BRAIN_PYTHON"
     echo "[dev] PATH has $REPO_ROOT/venv/bin prepended. 'exit' to leave."
+    echo "[dev] Shortcuts: ./dev sync-prompts [--check]"
     exec "${SHELL:-/bin/bash}"
 fi
 

@@ -324,6 +324,33 @@ Who created a node. Format: `category:process`.
 
 ## Development Rules
 
+### Encoder prompts: DB is authoritative, sync to `.py` before committing
+
+The live prompts for encoder agents live in the `interactions` table in
+`brain_logs.db`. That's what runtime reads via `brain.get_interaction_prompt()`.
+The `.py` files next to each encoder (`encoding_prompt.py`,
+`community_enrichment_prompt.py`, `consolidation_enrichment_prompt.py`,
+`healer_prompt.py`) are **seed-only** — they bootstrap fresh brains that have
+no DB entry yet. They must mirror the DB's latest version so a `git clone`
+inherits the mature prompts, not a stale v1.
+
+**Discipline**: after ANY `register_interaction` call that touches one of the
+four encoder prompts (whether by you, S3, or the operator), run:
+
+```bash
+./dev sync-prompts           # write DB latest → .py files
+./dev sync-prompts --check   # CI-style non-zero-exit drift check
+```
+
+Commit the `.py` change together with whatever prompted the registration.
+Never edit the `.py` files by hand to change prompt behavior — that won't
+affect runtime and will silently drift from the DB. Use `register_interaction`,
+then sync.
+
+`tests/test_prompt_sync.py` holds the contract: each seed file must export
+`SYSTEM_PROMPT`, fresh brains must seed all four prompts, and seed must never
+overwrite an externally-registered version.
+
 ### Python runtime — use `./dev`
 
 The brain bundles its own Python at `venv/bin/python` (3.11.11). That's the interpreter the daemon runs, the hooks resolve, and the one **not** blocked by macOS SIP — debuggers (`py-spy`, `lldb`) can only attach to this one.
