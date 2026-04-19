@@ -395,6 +395,7 @@ Tom reads code but doesn't review every file. You are the sole maintainer of cod
 - Don't manually run boot scripts (hooks handle this)
 - Don't construct DB paths (read the boot output)
 - `systemMessage` is a dead channel — use `additionalContext`
+- **Never spawn `Brain(db_path=DB)` in a test/bench/eval script against the live `brain.db` while the daemon is running.** Two Python processes with their own writer connections will eventually corrupt an index (observed 2026-04-19: `idx_nodes_activation` out of sync, REINDEX required). Instead: (a) stop the daemon with the maintenance lock `touch /tmp/brain-maintenance-{uid}.lock` and then `launchctl unload`, (b) use `daemon_client.send_command` to dispatch through TCP, or (c) run against an `IsolatedBrain` copy under `tests/isolated_brain.py`.
 - **Discussion IS the work** — do not touch Edit/Write tools during design conversations. Wait for an explicit go signal.
 - **Trace the pipeline before changing it** — the decode→encode pipeline has coupled stages. Don't change one stage without understanding the full flow.
 - **Encoding depends on decoding** — if the surfacer fails, the encoder gets no context. A broken decode pipeline silently breaks encoding.

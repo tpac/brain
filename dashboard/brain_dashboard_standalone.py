@@ -1162,18 +1162,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "revised_at": r[12], "personal": r[13], "personal_context": r[14],
                 "evolution_status": r[15], "critical": bool(r[16]) if r[16] else False,
             }
-            # Promoted fields from metadata KV store
+            # Promoted fields from metadata KV store (includes situation as of v24).
             meta_kv = _direct_query(
                 "SELECT key, value FROM node_metadata_kv WHERE node_id = ?",
                 args=(node_id,), db_path=db)
             if meta_kv:
-                node["metadata"] = {r[0]: r[1] for r in meta_kv if r[1]}
-            # Situation from node_enrichments (v23)
-            sit = _direct_query(
-                "SELECT text FROM node_enrichments WHERE node_id = ? AND vector_type = '_situation'",
-                args=(node_id,), db_path=db)
-            if sit and sit[0][0]:
-                node["situation"] = sit[0][0]
+                kv = {r[0]: r[1] for r in meta_kv if r[1]}
+                node["metadata"] = kv
+                # Promote situation to top-level (was in node_enrichments pre-v24).
+                if kv.get('situation'):
+                    node["situation"] = kv['situation']
             # Connections (both directions)
             edges = _direct_query(
                 "SELECT n.id, er.relation, e.weight, n.type, n.title, "

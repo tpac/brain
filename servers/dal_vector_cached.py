@@ -115,15 +115,6 @@ class CachedVectorDAL:
     def get_primary(self, node_id: str) -> Optional[bytes]:
         return self._cache.get_embedding(node_id, '_primary')
 
-    def get_situation_text(self, node_id: str) -> Optional[str]:
-        # As of v24, situation text lives in node_metadata_kv (not in the
-        # VectorCache's text field, which was a vector-regeneration artifact).
-        # Delegate directly to the inner DAL — one small indexed SQL read.
-        # No need to cache: situation text isn't on any hot recall path;
-        # get_node hydration batches all kv fields together via MetadataDAL.
-        with self._sql_lock:
-            return self._inner.get_situation_text(node_id)
-
     def get_for_node(self, node_id: str) -> List[Dict[str, Any]]:
         return self._cache.get_for_node(node_id)
 

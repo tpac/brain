@@ -164,18 +164,28 @@ class TestParity:
         assert inner.get_primary('n1') == cached.get_primary('n1')
         assert cached.get_primary('does-not-exist') is None
 
-    def test_get_situation_text(self, brain_db):
-        inner = VectorDAL(brain_db)
-        cached = CachedVectorDAL(brain_db)
-        # v24+: both DALs read situation from node_metadata_kv.
-        # Seeded in fixture for n1 and n2.
-        assert inner.get_situation_text('n1') == 'situation for n1'
-        assert cached.get_situation_text('n1') == 'situation for n1'
-        # Parity across DALs.
-        assert inner.get_situation_text('n1') == cached.get_situation_text('n1')
-        # Absent key returns None on both.
-        assert inner.get_situation_text('nope') is None
-        assert cached.get_situation_text('nope') is None
+    def test_situation_reads_from_metadata_kv(self, brain_db):
+        """Contract: situation is first-class metadata, not a vector.
+
+        As of v24, `situation` lives in node_metadata_kv alongside
+        question/reasoning/quotes. The VectorDAL/CachedVectorDAL
+        get_situation_text wrappers were retired — readers go through
+        MetadataDAL.get_field like any other metadata field.
+        """
+        from servers.dal_metadata import MetadataDAL
+        md = MetadataDAL(brain_db)
+        # Seeded for n1/n2 in the fixture.
+        assert md.get_field('n1', 'situation') == 'situation for n1'
+        assert md.get_field('n2', 'situation') == 'situation for n2'
+        assert md.get_field('n3', 'situation') is None  # no situation seeded
+        assert md.get_field('does-not-exist', 'situation') is None
+        # Belt-and-braces: old wrapper methods must stay removed. If
+        # someone re-adds them, this test catches it so they update the
+        # contract intentionally instead of sneaking in a ghost API.
+        assert not hasattr(VectorDAL, 'get_situation_text'), (
+            'VectorDAL.get_situation_text was removed in v24; use MetadataDAL')
+        assert not hasattr(CachedVectorDAL, 'get_situation_text'), (
+            'CachedVectorDAL.get_situation_text was removed in v24; use MetadataDAL')
 
     def test_get_for_node(self, brain_db):
         inner = VectorDAL(brain_db)

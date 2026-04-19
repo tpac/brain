@@ -25,6 +25,13 @@ import os
 from datetime import date, datetime, timezone, timedelta
 
 
+# Per-request timeout on the Anthropic SDK client used by S2 encoders.
+# The SDK default (600s/request) let a hung API call tie up consolidation
+# for 45 minutes on 2026-04-19. 180s is generous for a 10-proposal batch
+# on Sonnet and caps the blast radius of any single stuck request.
+ANTHROPIC_CLIENT_TIMEOUT = 180.0
+
+
 class IntegrationUnit:
     """Base contract for all integration units at any scale."""
 

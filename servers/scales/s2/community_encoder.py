@@ -213,9 +213,9 @@ class CommunityEncoder(IntegrationUnit):
 
         tools = self._get_tool_schemas()
         dispatch_fn = self._make_dispatch()
-        # 180s per-request timeout — prevents a hung API call from tying
-        # up the encoder. 10-15 proposals per batch fits under 3 minutes.
-        client = anthropic.Anthropic(timeout=180.0)
+        # Single shared S2 timeout — see base.ANTHROPIC_CLIENT_TIMEOUT.
+        from .base import ANTHROPIC_CLIENT_TIMEOUT
+        client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
 
         # Journal text
         journal = self.brain.get_config('s2_community_journal') or ''

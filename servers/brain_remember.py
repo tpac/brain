@@ -199,12 +199,19 @@ class BrainRememberMixin:
             'DELETE FROM node_enrichments WHERE node_id = ?',
             (full_id,)).rowcount
 
-        # 5. Remove from FTS5 index
-        try:
-            from .dal import Fts5DAL
-            Fts5DAL(self.conn).delete(full_id)
-        except Exception:
-            pass  # FTS5 may not exist in test DBs
+        # 5. Remove from FTS5 index. Some test DBs don't enable FTS5 —
+        # skip cleanly when the virtual table is absent, but log any
+        # real failure (production always has FTS5).
+        has_fts5 = self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='nodes_fts'"
+        ).fetchone() is not None
+        if has_fts5:
+            try:
+                from .dal import Fts5DAL
+                Fts5DAL(self.conn).delete(full_id)
+            except Exception as _e:
+                self._log_error('archive_fts5', _e,
+                                'FTS5 delete for %s' % full_id[:8])
 
         self.conn.commit()
 
@@ -223,7 +230,8 @@ class BrainRememberMixin:
                                 'cache drop for %s' % full_id[:8])
 
         # 7. Trace event — S3 + dashboards see who archived what.
-        # Tracing must never block the archive itself.
+        # Tracing must never block the archive itself, but a failure
+        # here is real audit data loss — log it so we know.
         try:
             self._trace_dal.append(
                 chain_id='archive-%s' % full_id[:8],
@@ -238,8 +246,9 @@ class BrainRememberMixin:
                     'edges_deleted': edges_deleted,
                     'vectors_deleted': vectors_deleted,
                 })
-        except Exception:
-            pass
+        except Exception as _e:
+            self._log_error('archive_trace', _e,
+                            'trace write for archived %s' % full_id[:8])
 
         return {
             'ok': True,

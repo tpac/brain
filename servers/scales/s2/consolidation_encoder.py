@@ -133,10 +133,9 @@ class ConsolidationEncoder(IntegrationUnit):
 
         tools = self._get_tool_schemas()
         dispatch_fn = self._make_dispatch()
-        # 180s per-request timeout — SDK default (600s) let a hung API call
-        # tie up the encoder for 45 minutes on 2026-04-19. 10 proposals
-        # per batch fits comfortably under 3 minutes on Sonnet.
-        client = anthropic.Anthropic(timeout=180.0)
+        # Single shared S2 timeout — see base.ANTHROPIC_CLIENT_TIMEOUT.
+        from .base import ANTHROPIC_CLIENT_TIMEOUT
+        client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
 
         # Journal text
         journal = self.brain.get_config('s2_consolidation_journal') or ''
