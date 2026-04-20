@@ -93,19 +93,28 @@ def _new_errors_since(brain, baseline_count: int) -> List[Dict[str, Any]]:
             for r in rows[:n_new]]
 
 
-def run_item(brain, item: Dict[str, Any], item_idx: int, total: int) -> Dict[str, Any]:
-    """Run one item end-to-end. Returns result dict with inline judge + failure class."""
+def run_item(item: Dict[str, Any], item_idx: int, total: int,
+             run_name: str = None, keep_db: bool = False) -> Dict[str, Any]:
+    """Run one item end-to-end. Each item gets its OWN brain DB for isolation.
+
+    Per-item DB (brain-eval-{run_name}/{qid}/) means:
+      - No reset_to_seeds leftovers (cross-item contamination impossible)
+      - Inspectable post-hoc (keep_db=True preserves the DB for debugging)
+      - Prerequisite for parallel execution (each process writes to its own file)
+
+    Returns result dict with inline judge + failure class.
+    """
     from eval.longmem.replay import replay_item, query_brain
     from eval.longmem.answerer import answer_question
-    from eval.longmem.fresh_brain import reset_to_seeds
+    from eval.longmem.fresh_brain import create_fresh_eval_brain, per_item_brain_dir
     from eval.longmem.judge import judge_one
     from eval.longmem.classifier import classify_failure
 
-    # Reset to seeds — each item is independent per LongMemEval semantics
-    reset_to_seeds(brain)
+    qid = item["question_id"]
+    item_db_path = per_item_brain_dir(qid, run_name=run_name)
+    brain = create_fresh_eval_brain(path=item_db_path, wipe=True)
     err_baseline = _snapshot_error_count(brain)
 
-    qid = item["question_id"]
     axis = _item_axis(item)
     n_turns = sum(len(s) for s in item.get("haystack_sessions", []))
     print(f"\n{'='*70}")
@@ -118,6 +127,7 @@ def run_item(brain, item: Dict[str, Any], item_idx: int, total: int) -> Dict[str
     t0 = time.time()
     ingest_session_id = f"ingest-{qid}"
     ingest_stats = replay_item(brain, ingest_session_id, item["haystack_sessions"],
+                               haystack_dates=item.get("haystack_dates"),
                                log_prefix=f"[item {item_idx+1}]")
     ingest_ms = int((time.time() - t0) * 1000)
 
@@ -150,7 +160,7 @@ def run_item(brain, item: Dict[str, Any], item_idx: int, total: int) -> Dict[str
         for e in new_errors[:5]:
             print(f"    {e['type']}: {e['message'][:120]}", flush=True)
 
-    return {
+    result = {
         "question_id": qid,
         "question_type": item["question_type"],
         "axis": axis,
@@ -171,7 +181,25 @@ def run_item(brain, item: Dict[str, Any], item_idx: int, total: int) -> Dict[str
         "answer_tokens_in": a_result.get("tokens_in", 0),
         "answer_tokens_out": a_result.get("tokens_out", 0),
         "total_item_ms": ingest_ms + q_result["s1r_ms"] + a_result["elapsed_ms"],
+        "brain_db_path": item_db_path,
     }
+
+    # Release the per-item brain's handles before any cleanup.
+    try:
+        brain.close()
+    except Exception:
+        pass
+
+    # Cleanup per-item DB unless --keep_dbs was passed.
+    if not keep_db:
+        try:
+            import shutil
+            if os.path.isdir(item_db_path):
+                shutil.rmtree(item_db_path)
+        except Exception as e:
+            print(f"[harness] cleanup failed for {qid}: {e}", flush=True)
+
+    return result
 
 
 def main():
@@ -180,6 +208,8 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--oracle", default="eval/longmem/data/longmemeval_oracle.json")
     parser.add_argument("--run_name", default=None, help="report file suffix (default: timestamp)")
+    parser.add_argument("--keep_dbs", action="store_true",
+                        help="keep per-item brain DBs after each item (for post-hoc inspection)")
     args = parser.parse_args()
 
     # Load env — override empty vars (setdefault skips empty strings, per known bug)
@@ -204,14 +234,15 @@ def main():
         n = sum(len(s) for s in item.get("haystack_sessions", []))
         print(f"  {i+1}. {item['question_id']:<24} axis={axis:<18} turns={n}", flush=True)
 
-    from eval.longmem.fresh_brain import create_fresh_eval_brain
-    brain = create_fresh_eval_brain()
+    # Compute run_name up front — each item's brain lives under brain-eval-{run_name}/{qid}/
+    run_name = args.run_name or datetime.now().strftime("%Y%m%d_%H%M%S")
 
     results = []
     t_run0 = time.time()
     for i, item in enumerate(picked):
         try:
-            r = run_item(brain, item, i, len(picked))
+            r = run_item(item, i, len(picked), run_name=run_name,
+                         keep_db=args.keep_dbs)
             results.append(r)
         except Exception as e:
             import traceback
@@ -221,7 +252,6 @@ def main():
     total_ms = int((time.time() - t_run0) * 1000)
 
     # Write outputs
-    run_name = args.run_name or datetime.now().strftime("%Y%m%d_%H%M%S")
     reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
     os.makedirs(reports_dir, exist_ok=True)
 
@@ -256,6 +286,14 @@ def main():
             "config": {"items_per_axis": args.items, "seed": args.seed},
             "results": results,
         }, f, indent=2)
+
+    # Per-item brain dirs live at ~/AgentsContext/brain-eval-{run_name}/{qid}/.
+    # If --keep_dbs was passed, run_item left them in place for inspection.
+    # Otherwise they're cleaned per-item; the containing dir may be empty.
+    if args.keep_dbs:
+        base_dir = os.path.expanduser(f"~/AgentsContext/brain-eval-{run_name}")
+        if os.path.isdir(base_dir):
+            print(f"[harness] per-item brains preserved → {base_dir}", flush=True)
 
     print(f"\n[harness] done in {total_ms/1000:.1f}s")
     print(f"[harness] overall: {overall:.1%} ({correct_count}/{len(graded)})")

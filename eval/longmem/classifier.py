@@ -39,6 +39,37 @@ Given the bucket and evidence, write ONE actionable sentence describing WHAT spe
 Start directly with the finding. 40 words max."""
 
 
+SUFFICIENCY_PROMPT = """Given a user question, the gold answer, and the context passed to the answerer, judge: was the key fact needed to produce the gold answer PRESENT in the context?
+
+Question: {question}
+Gold answer: {gold}
+Context delivered to answerer:
+{context}
+
+Reply with a single token: PRESENT (context contained the specific fact needed) or MISSING (context lacked the specific fact needed — e.g. mentioned the topic in general but not the specific value/name/quantity). No explanation."""
+
+
+def _context_has_gold(question: str, gold: str, context: str) -> bool:
+    """Judge whether the context delivered to the answerer actually contained
+    the specific fact needed for the gold answer. Distinguishes PARTIAL_RECALL
+    (context mentions topic but not the specific fact) from ANSWER_MISS
+    (context had the fact, answerer didn't use it)."""
+    import anthropic
+    try:
+        client = anthropic.Anthropic()
+        resp = client.messages.create(
+            model=REASON_MODEL,
+            max_tokens=10,
+            messages=[{"role": "user", "content": SUFFICIENCY_PROMPT.format(
+                question=question, gold=gold, context=context[:6000],
+            )}],
+        )
+        text = "".join(b.text for b in resp.content if hasattr(b, "text")).strip().upper()
+        return text.startswith("PRESENT")
+    except Exception:
+        return True  # default to ANSWER_MISS on error — more conservative
+
+
 def _recall_relevant_nodes(brain, gold: str, top_n: int = 15) -> List[Dict[str, Any]]:
     """Use the gold answer as a recall query against the brain.
 
@@ -120,17 +151,19 @@ def _read_s1r_trace(brain, query_session_id: str) -> Optional[Dict[str, Any]]:
 
 
 def _bucket(relevant_nodes: List[Dict], trace: Optional[Dict],
-            has_context: bool, abstained: bool) -> str:
+            has_context: bool, abstained: bool,
+            question: str = "", gold: str = "") -> str:
     """Pick the failure bucket from trace state.
 
-    The trace tells the cleanest story:
-      - 0 candidates    → ENCODE_MISS (nothing matched the query at all)
-      - candidates, 0 selected → SURFACE_MISS (surfacer rejected them)
-      - selected + context     → ANSWER_MISS (answerer had it, didn't use it)
+    Buckets:
+      ENCODE_MISS    - nothing scored against the query and nothing matches gold
+      RECALL_MISS    - gold-adjacent nodes exist but none ranked into top-25
+      SURFACE_MISS   - candidates existed but surfacer selected none (or ctx empty)
+      PARTIAL_RECALL - context delivered but the specific fact is absent
+      ANSWER_MISS    - context contained the fact, answerer still failed
 
-    `relevant_nodes` (from a gold-seeded recall) is a weaker signal —
-    gold answers like "190" or "Memrise" don't embed well, so we use it
-    only to distinguish ENCODE_MISS from RECALL_MISS in the 0-cand path.
+    The PARTIAL_RECALL vs ANSWER_MISS split requires reading the context,
+    so we ask Haiku for a 1-token judgment when we reach that branch.
     """
     if not trace:
         return "RECALL_MISS" if relevant_nodes else "ENCODE_MISS"
@@ -140,19 +173,16 @@ def _bucket(relevant_nodes: List[Dict], trace: Optional[Dict],
     ctx_chars = len(trace["context"])
 
     if n_cand == 0:
-        # No candidates matched the query. If a gold-seeded recall also
-        # finds nothing, nothing's encoded. If it finds something, recall
-        # scoring missed it for the real query.
         return "ENCODE_MISS" if not relevant_nodes else "RECALL_MISS"
 
-    if n_sel == 0:
+    if n_sel == 0 or ctx_chars == 0:
         return "SURFACE_MISS"
 
-    if ctx_chars > 0:
+    # Context was delivered — did it actually contain the fact needed?
+    gold_str = gold if isinstance(gold, str) else json.dumps(gold)
+    if _context_has_gold(question, gold_str, trace["context"]):
         return "ANSWER_MISS"
-
-    # Selected but context empty — rare. Treat as surface issue.
-    return "SURFACE_MISS"
+    return "PARTIAL_RECALL"
 
 
 def _reason(question: str, gold: str, hypothesis: str, bucket: str,
@@ -189,7 +219,8 @@ def classify_failure(brain, question: str, gold: str, hypothesis: str,
     relevant = _recall_relevant_nodes(brain, gold_str, top_n=15)
     trace = _read_s1r_trace(brain, query_session_id)
 
-    bucket = _bucket(relevant, trace, has_context, abstained)
+    bucket = _bucket(relevant, trace, has_context, abstained,
+                     question=question, gold=gold_str)
 
     evidence = {
         "relevant_to_gold": [  # top 5 most-relevant nodes from a gold-seeded recall

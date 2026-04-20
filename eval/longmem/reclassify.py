@@ -15,8 +15,13 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 
-def rebucket(ev: dict, trace_like=None) -> str:
-    """Reproduce classifier._bucket() logic using the stored evidence."""
+def rebucket(ev: dict, item: dict = None) -> str:
+    """Reproduce classifier._bucket() logic using the stored evidence.
+
+    Note: PARTIAL_RECALL vs ANSWER_MISS distinction needs the context text,
+    which isn't stored in evidence — so we can only detect it when re-reading
+    live traces. Post-hoc reclassify gives ANSWER_MISS for ctx>0 cases.
+    """
     if not ev.get("query_fired"):
         return "RECALL_MISS" if ev.get("relevant_to_gold") else "ENCODE_MISS"
 
@@ -27,11 +32,9 @@ def rebucket(ev: dict, trace_like=None) -> str:
 
     if n_cand == 0:
         return "ENCODE_MISS" if not relevant else "RECALL_MISS"
-    if n_sel == 0:
+    if n_sel == 0 or ctx_chars == 0:
         return "SURFACE_MISS"
-    if ctx_chars > 0:
-        return "ANSWER_MISS"
-    return "SURFACE_MISS"
+    return "ANSWER_MISS"
 
 
 def reclassify_report(run_json_path: str, regen_reasons: bool = True) -> str:

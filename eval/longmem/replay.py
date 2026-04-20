@@ -59,6 +59,7 @@ def _run_s2_foreground(brain) -> Dict[str, Any]:
 
 
 def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, str]]],
+                haystack_dates: Optional[List[str]] = None,
                 log_prefix: str = "[replay]") -> Dict[str, Any]:
     """Replay a LongMemEval item's haystack through the brain.
 
@@ -66,6 +67,9 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
         brain: Brain instance
         session_id: unique session id for this ingestion run
         haystack_sessions: list of sessions, each a list of {role, content} turns
+        haystack_dates: optional per-session ISO dates, used to prepend
+            [Current date: YYYY-MM-DD] to user messages so the encoder can
+            resolve relative time expressions
         log_prefix: prefix for log lines
 
     Returns:
@@ -86,6 +90,13 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
     for sess_idx, session in enumerate(haystack_sessions):
         print(f"{log_prefix} session {sess_idx+1}/{total_sessions} ({len(session)} turns)", flush=True)
 
+        # Per-session date — prepended to user messages so the encoder can
+        # resolve relative time references ("last Tuesday", "3 weeks ago")
+        # against a concrete reference instead of today's actual date.
+        session_date = None
+        if haystack_dates and sess_idx < len(haystack_dates):
+            session_date = haystack_dates[sess_idx]
+
         # Walk turns as (user, assistant) pairs. Haystacks are strictly alternating.
         i = 0
         while i < len(session):
@@ -95,6 +106,8 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
                 continue
 
             user_msg = turn.get("content", "")
+            if session_date:
+                user_msg = f"[Current date: {session_date}]\n\n{user_msg}"
             assistant_msg = ""
             if i + 1 < len(session) and session[i + 1].get("role") == "assistant":
                 assistant_msg = session[i + 1].get("content", "")

@@ -13,7 +13,8 @@ BUCKET_LABELS = {
     "ENCODE_MISS": "encode — the answer never made it into the brain",
     "RECALL_MISS": "recall — encoded, but didn't score into the top-25 candidates",
     "SURFACE_MISS": "surface — in candidates, but the surfacer passed it over",
-    "ANSWER_MISS": "answer — selected and in context, but the answerer didn't use it",
+    "PARTIAL_RECALL": "partial recall — context delivered but the specific fact wasn't in it",
+    "ANSWER_MISS": "answer — the fact was in context, but the answerer didn't use it",
 }
 
 BUCKET_INVEST_PROMPT = {
@@ -34,10 +35,17 @@ BUCKET_INVEST_PROMPT = {
         "That's a surfacer prompt / judgment issue. Review the surfacer "
         "interaction prompt for this axis — it's dropping signal it should keep."
     ),
+    "PARTIAL_RECALL": (
+        "The surfacer delivered adjacent/general nodes but not the one carrying "
+        "the specific fact — either the specific fact wasn't encoded as its own "
+        "node (encoder abstraction bias — tune S1E to keep specifics), OR the "
+        "specific node exists but didn't score into the top candidates "
+        "(recall scoring gap for fact-oriented queries)."
+    ),
     "ANSWER_MISS": (
-        "Context was delivered, answerer failed. Either the context was too "
-        "noisy (too many neighbors diluting the signal) or the answerer's "
-        "abstention threshold is too aggressive. Review the answerer prompt."
+        "Context contained the fact, answerer still failed. Abstention threshold "
+        "too aggressive OR context too noisy (too many neighbors diluting signal). "
+        "Review the answerer prompt."
     ),
 }
 
@@ -125,7 +133,8 @@ def render_report(run_json_path: str) -> str:
     if failures:
         lines.append("## Where we're losing")
         lines.append("")
-        for bucket in ("ENCODE_MISS", "RECALL_MISS", "SURFACE_MISS", "ANSWER_MISS", "UNCLASSIFIED"):
+        for bucket in ("ENCODE_MISS", "RECALL_MISS", "SURFACE_MISS",
+                       "PARTIAL_RECALL", "ANSWER_MISS", "UNCLASSIFIED"):
             items = failures.get(bucket, [])
             if not items:
                 continue

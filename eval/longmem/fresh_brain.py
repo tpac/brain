@@ -20,6 +20,20 @@ from typing import Optional
 EVAL_BRAIN_DIR = os.path.expanduser("~/AgentsContext/brain-eval")
 
 
+def per_item_brain_dir(qid: str, run_name: str = None) -> str:
+    """Return a per-item eval brain path, isolated from other items and runs.
+
+    Path shape: ~/AgentsContext/brain-eval-{run_name}/{qid}/
+    If run_name is None, falls back to a generic per-item dir under
+    ~/AgentsContext/brain-eval-items/{qid}/ — handy for one-off scripts.
+    """
+    if run_name:
+        base = os.path.expanduser(f"~/AgentsContext/brain-eval-{run_name}")
+    else:
+        base = os.path.expanduser("~/AgentsContext/brain-eval-items")
+    return os.path.join(base, qid)
+
+
 def wipe_eval_dir(path: str = EVAL_BRAIN_DIR) -> None:
     """Delete the eval brain directory if it exists. Destructive — confirm usage in caller."""
     if os.path.exists(path):
