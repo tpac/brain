@@ -331,36 +331,52 @@ def _hebbian_strengthen(brain, session_id):
     """Strengthen co_accessed edges between surface-selected nodes.
 
     Only nodes the S1 Surface selected get edges — meaningful co-activation.
+
+    Every invocation emits an outcome counter to brain stats — previous
+    "return silently" paths hid a filename bug for months. Now every call
+    has a visible tally, so "why did Hebbian never run?" becomes answerable.
     """
+    outcome = {'file_missing': 0, 'few_ids': 0, 'unresolved': 0, 'edges': 0}
     surface_path = '/tmp/brain-%s-surface-selected.json' % session_id
-    if not os.path.exists(surface_path):
-        return
+    try:
+        if not os.path.exists(surface_path):
+            outcome['file_missing'] = 1
+            return
 
-    with open(surface_path) as f:
-        surface_ids = json.load(f).get('selected_ids', [])
-    if len(surface_ids) < 2:
-        return
+        with open(surface_path) as f:
+            surface_ids = json.load(f).get('selected_ids', [])
+        if len(surface_ids) < 2:
+            outcome['few_ids'] = 1
+            return
 
-    # Resolve short IDs to full IDs
-    from servers.dal import NodeDAL
-    dal = NodeDAL(brain.conn)
-    full_ids = []
-    for sid in surface_ids:
-        full_id = dal.resolve_id(sid)
-        if full_id:
-            full_ids.append(full_id)
-    if len(full_ids) < 2:
-        return
+        # Resolve short IDs to full IDs
+        from servers.dal import NodeDAL
+        dal = NodeDAL(brain.conn)
+        full_ids = []
+        for sid in surface_ids:
+            full_id = dal.resolve_id(sid)
+            if full_id:
+                full_ids.append(full_id)
+        if len(full_ids) < 2:
+            outcome['unresolved'] = 1
+            return
 
-    from .brain_constants import LEARNING_RATE
-    for i in range(len(full_ids)):
-        for j in range(i + 1, min(len(full_ids), i + 8)):
-            try:
-                brain.connect_typed(full_ids[i], full_ids[j],
-                                    relation='co_accessed', weight=LEARNING_RATE * 0.15,
-                                    edge_type='co_accessed', description='surface-selected')
-            except Exception as e:
-                brain._log_error('hebbian_edge', e, 'creating co_accessed edge')
+        from .brain_constants import LEARNING_RATE
+        for i in range(len(full_ids)):
+            for j in range(i + 1, min(len(full_ids), i + 8)):
+                try:
+                    brain.connect_typed(full_ids[i], full_ids[j],
+                                        relation='co_accessed', weight=LEARNING_RATE * 0.15,
+                                        edge_type='co_accessed', description='surface-selected')
+                    outcome['edges'] += 1
+                except Exception as e:
+                    brain._log_error('hebbian_edge', e, 'creating co_accessed edge')
+    finally:
+        # Durable tally so "did Hebbian run?" is answerable without a debugger.
+        try:
+            brain.log_debug('hebbian_run', 'post_response_common', **outcome)
+        except Exception:
+            pass
 
 
 def _s1e_chain_id(session_id, counter):
