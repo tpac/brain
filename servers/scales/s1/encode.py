@@ -120,11 +120,10 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None):
                     trunc['round'], trunc['output_tokens'], trunc['max_tokens']),
                 'S1E tool call likely corrupted, encoding data may be lost')
 
-        # 7. Post-process (S1-specific: journal, session context, signals)
+        # 7. Post-process (S1-specific: journal, session context)
         final_text = result.get('final_text', '')
         journal_entry = _save_journal(brain, dispatch_fn, session_id, counter, final_text) or ''
         _save_session_context(brain, dispatch_fn, final_text)
-        _surface_questions(brain, final_text)
 
         # 8. Delta trace — unified shape across S1E + S2 encoders.
         # Outcomes: count write actions by tool (remember / revise / connect / …).
@@ -392,24 +391,6 @@ def _save_session_context(brain, dispatch_fn, final_text):
                     combined = truncated
                 dispatch_fn('set_config', {'key': 'session_context', 'value': combined})
                 return
-
-
-def _surface_questions(brain, final_text):
-    """Surface encoding agent questions to operator via signal queue."""
-    if final_text and '?' in final_text:
-        try:
-            from servers.dal_signal_queue import SignalQueueDAL
-            sq = SignalQueueDAL(brain.logs_conn)
-            sq.produce(
-                producer='encoding_agent',
-                signal_type='encoding_question',
-                priority=0.7,
-                content=final_text[:500],
-                ttl_seconds=86400,
-            )
-            brain.logs_conn.commit()
-        except Exception as e:
-            print('[s1e] ERROR surfacing question: %s' % e, flush=True)
 
 
 def _get_tool_schemas():

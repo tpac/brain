@@ -256,9 +256,10 @@ def run_surface(brain, ctx, candidates_data, user_message, session_context,
     selected = surfaced.get("selected", [])
     selected_ids = {s.get("id", "")[:8] for s in selected}
 
-    # Write surfaced IDs for Hebbian + Stop hook
+    # Write surfaced IDs for Hebbian + Stop hook.
+    # Filename must match daemon_hooks._hebbian_strengthen reader.
     try:
-        surface_path = "/tmp/brain-%s-judge-selected.json" % session_id  # keep filename for compat
+        surface_path = "/tmp/brain-%s-surface-selected.json" % session_id
         with open(surface_path, 'w') as f:
             json.dump({"selected_ids": list(selected_ids)}, f)
     except Exception as e:

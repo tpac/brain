@@ -369,27 +369,18 @@ def _s1e_chain_id(session_id, counter):
     return SessionContext(session_id=session_id, stop_counter=counter).s1e_chain()
 
 
-def hook_post_response_track(brain, args, graph_changes):
-    """Stop event — store exchange, write traces, Hebbian strengthening, gate encoder.
+def post_response_common(brain, session_id, user_message, assistant_response):
+    """Shared post-response path: S0 traces, Hebbian strengthening, heartbeat,
+    stop counter increment. Used by prod Stop hook and by the eval harness —
+    same code, same ordering, one source of truth.
 
-    Flow:
-    1. Read recall data from tmp files (written by recall hook)
-    2. Store exchange in message_stream (legacy, for escalation)
-    3. Write S0 traces (K=user_message, delta=assistant_message)
-    4. Hebbian strengthen surface-selected co_accessed edges
-    5. Gate encoding agent (every 5th stop, background thread)
-    6. Record message heartbeat
+    Returns the SessionContext after increment.
     """
     from .pipeline_contract import PIPELINE as _PL
-    ctx = brain.get_or_create_session(args.get('session_id', ''))
-    session_id = ctx.session_id
-    user_message = args.get("prompt", "") or args.get("message", "")
-    assistant_response = (args.get("last_assistant_message", "") or "")[:_PL['assistant_response_store']]
+    ctx = brain.get_or_create_session(session_id)
+    assistant_response = (assistant_response or "")[:_PL['assistant_response_store']]
 
-    # message_stream writes REMOVED 2026-04-05 — content lives in S0 traces.
-    # Escalation tracking was redundant (encoding agent reads from traces, not pending queue).
-
-    # 2. Write S0 traces (using SessionContext for chain IDs)
+    # S0 traces (using SessionContext for chain IDs)
     try:
         recall_chain = ctx.s1r_chain()
         brain._trace_dal.append(
@@ -406,17 +397,40 @@ def hook_post_response_track(brain, args, graph_changes):
             metadata={'content': assistant_response[:4000]} if assistant_response else None,
             session_id=session_id)
     except Exception as e:
-        brain._log_error('trace_s0', e, 'Stop hook')
+        brain._log_error('trace_s0', e, 'post_response_common')
 
-    # 4. Hebbian strengthening
+    # Hebbian strengthening
     try:
         _hebbian_strengthen(brain, session_id)
     except Exception as e:
-        brain._log_error('hebbian_surface_selected', e, 'Stop hook')
+        brain._log_error('hebbian_surface_selected', e, 'post_response_common')
 
-    # 5. Encoding agent gate (every 5th stop)
+    # Heartbeat
+    try:
+        brain.record_message()
+    except Exception as e:
+        brain._log_error('record_message', e, 'post_response_common')
+
+    # Stop counter increment
     ctx.increment_stop()
     ctx.save(brain.logs_conn)
+    return ctx
+
+
+def hook_post_response_track(brain, args, graph_changes):
+    """Stop event — store exchange, write traces, Hebbian strengthening, gate encoder.
+
+    Flow:
+    1. Shared post-response path (post_response_common)
+    2. Gate encoding agent (every 5th stop, background thread) — prod-only
+    """
+    ctx = post_response_common(
+        brain,
+        args.get('session_id', ''),
+        args.get("prompt", "") or args.get("message", ""),
+        args.get("last_assistant_message", "") or "",
+    )
+    session_id = ctx.session_id
     encoding_status = ""
     try:
         counter = ctx.stop_counter
@@ -440,12 +454,6 @@ def hook_post_response_track(brain, args, graph_changes):
     except Exception as e:
         brain._log_error('encoding_agent_gate', e, 'Stop hook')
         encoding_status = "encoding error: %s" % str(e)[:50]
-
-    # 6. Heartbeat
-    try:
-        brain.record_message()
-    except Exception as e:
-        brain._log_error('record_message', e, 'Stop hook')
 
     brain.save()
     return {"output": "(stored + %s)" % encoding_status}
