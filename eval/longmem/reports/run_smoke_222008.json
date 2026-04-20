@@ -1,0 +1,201 @@
+{
+  "run_name": "smoke_222008",
+  "items_count": 5,
+  "correct_count": 3,
+  "overall_score": 0.6,
+  "axis_scores": {
+    "info_extraction": 1.0,
+    "multi_session": 1.0,
+    "temporal": 0.0,
+    "knowledge_update": 0.0,
+    "abstention": 1.0
+  },
+  "axis_counts": {
+    "info_extraction": 1,
+    "multi_session": 1,
+    "temporal": 1,
+    "knowledge_update": 1,
+    "abstention": 1
+  },
+  "failure_buckets": {
+    "SURFACE_MISS": 1,
+    "PARTIAL_RECALL": 1
+  },
+  "total_ms": 851584,
+  "config": {
+    "items_per_axis": 1,
+    "seed": 42
+  },
+  "results": [
+    {
+      "question_id": "54026fce",
+      "question_type": "single-session-preference",
+      "axis": "info_extraction",
+      "question": "I've been thinking about ways to stay connected with my colleagues. Any suggestions?",
+      "answer_gold": "The user would prefer responses that acknowledge their desire for social interaction and collaboration while working remotely, utilizing their previous experiences with company initiatives and team collaborations. They might prefer suggestions of virtual team-building activities, regular check-ins, or joining interest-based groups within the company. The user may not prefer generic suggestions that do not take into account their specific work situation or previous attempts at staying connected with colleagues.",
+      "hypothesis": "Virtual coffee breaks work well for remote team connection \u2014 they're most successful when kept optional and structured with clear ground rules like no work talk, keeping things light and casual, respecting time limits, and using video for face-to-face connection. When proposing this to your team, frame it as an open-ended question about staying connected rather than a directive, share a personal observation, and invite feedback to make it feel collaborative rather than top-down.",
+      "abstained": false,
+      "has_context": true,
+      "correct": true,
+      "judge_raw": "YES",
+      "brain_errors_new": [],
+      "ingest": {
+        "turns": 12,
+        "user_turns": 6,
+        "s1e_runs": 2,
+        "s2_runs": 4,
+        "s1r_ms_total": 202,
+        "s1e_ms_total": 51683,
+        "s2_ms_total": 55970
+      },
+      "ingest_ms": 110715,
+      "query_s1r_ms": 4157,
+      "query_session_id": "query-aa3003b91c2a",
+      "answer_ms": 1465,
+      "answer_tokens_in": 1148,
+      "answer_tokens_out": 96,
+      "total_item_ms": 116337,
+      "brain_db_path": "/Users/tpac/AgentsContext/brain-eval-smoke_222008/54026fce"
+    },
+    {
+      "question_id": "2311e44b",
+      "question_type": "multi-session",
+      "axis": "multi_session",
+      "question": "How many pages do I have left to read in 'The Nightingale'?",
+      "answer_gold": "190",
+      "hypothesis": "You have 190 pages left to read in 'The Nightingale' (440 total pages minus 250 pages completed).",
+      "abstained": false,
+      "has_context": true,
+      "correct": true,
+      "judge_raw": "YES",
+      "brain_errors_new": [],
+      "ingest": {
+        "turns": 18,
+        "user_turns": 9,
+        "s1e_runs": 2,
+        "s2_runs": 4,
+        "s1r_ms_total": 453,
+        "s1e_ms_total": 115235,
+        "s2_ms_total": 72922
+      },
+      "ingest_ms": 192490,
+      "query_s1r_ms": 4777,
+      "query_session_id": "query-fa50eb190c2b",
+      "answer_ms": 1101,
+      "answer_tokens_in": 559,
+      "answer_tokens_out": 33,
+      "total_item_ms": 198368,
+      "brain_db_path": "/Users/tpac/AgentsContext/brain-eval-smoke_222008/2311e44b"
+    },
+    {
+      "question_id": "71017276",
+      "question_type": "temporal-reasoning",
+      "axis": "temporal",
+      "question": "How many weeks ago did I meet up with my aunt and receive the crystal chandelier?",
+      "answer_gold": 4,
+      "hypothesis": "I don't have information about that.",
+      "abstained": true,
+      "has_context": false,
+      "correct": false,
+      "judge_raw": "NO",
+      "brain_errors_new": [],
+      "failure_bucket": "SURFACE_MISS",
+      "failure_reason": "The retrieval system failed to return any of 4 available recall candidates matching the query about meeting an aunt and receiving a chandelier, indicating the semantic matching or ranking logic between query and stored memories needs improvement.",
+      "failure_evidence": {
+        "relevant_to_gold": [],
+        "recall_candidates_count": 4,
+        "selected_ids": [],
+        "context_chars": 0,
+        "query_fired": true
+      },
+      "ingest": {
+        "turns": 12,
+        "user_turns": 6,
+        "s1e_runs": 2,
+        "s2_runs": 4,
+        "s1r_ms_total": 259,
+        "s1e_ms_total": 16866,
+        "s2_ms_total": 55977
+      },
+      "ingest_ms": 75410,
+      "query_s1r_ms": 1959,
+      "query_session_id": "query-c220230dfa64",
+      "answer_ms": 509,
+      "answer_tokens_in": 273,
+      "answer_tokens_out": 11,
+      "total_item_ms": 77878,
+      "brain_db_path": "/Users/tpac/AgentsContext/brain-eval-smoke_222008/71017276"
+    },
+    {
+      "question_id": "cc5ded98",
+      "question_type": "knowledge-update",
+      "axis": "knowledge_update",
+      "question": "How much time do I dedicate to coding exercises each day?",
+      "answer_gold": "about two hours",
+      "hypothesis": "I don't have information about that.\n\nThe retrieved memory describes your progress tracking system (challenges, concepts, skills logs) and mentions timeframe goals, but doesn't specify how much daily time you dedicate to coding exercises.",
+      "abstained": true,
+      "has_context": true,
+      "correct": false,
+      "judge_raw": "NO",
+      "brain_errors_new": [],
+      "failure_bucket": "PARTIAL_RECALL",
+      "failure_reason": "The memory system retrieved a related but indirect document about progress tracking instead of the specific daily time allocation fact, indicating the indexing strategy needs to capture explicit time-commitment statements separately from general goal-setting records.",
+      "failure_evidence": {
+        "relevant_to_gold": [],
+        "recall_candidates_count": 5,
+        "selected_ids": [
+          "c94c5b70"
+        ],
+        "context_chars": 1380,
+        "query_fired": true
+      },
+      "ingest": {
+        "turns": 22,
+        "user_turns": 11,
+        "s1e_runs": 3,
+        "s2_runs": 4,
+        "s1r_ms_total": 533,
+        "s1e_ms_total": 129466,
+        "s2_ms_total": 82980
+      },
+      "ingest_ms": 216840,
+      "query_s1r_ms": 2627,
+      "query_session_id": "query-8402d45c6333",
+      "answer_ms": 858,
+      "answer_tokens_in": 596,
+      "answer_tokens_out": 49,
+      "total_item_ms": 220325,
+      "brain_db_path": "/Users/tpac/AgentsContext/brain-eval-smoke_222008/cc5ded98"
+    },
+    {
+      "question_id": "09ba9854_abs",
+      "question_type": "multi-session",
+      "axis": "abstention",
+      "question": "How much will I save by taking the bus from the airport to my hotel instead of a taxi?",
+      "answer_gold": "The information provided is not enough. You did not mention how much will the bus take.",
+      "hypothesis": "I don't have information about that.\n\nThe memories contain taxi and train costs from Tokyo airports, but don't include bus fares, so I cannot calculate the savings between a taxi and bus option.",
+      "abstained": true,
+      "has_context": true,
+      "correct": true,
+      "judge_raw": "YES",
+      "brain_errors_new": [],
+      "ingest": {
+        "turns": 22,
+        "user_turns": 11,
+        "s1e_runs": 3,
+        "s2_runs": 4,
+        "s1r_ms_total": 379,
+        "s1e_ms_total": 146858,
+        "s2_ms_total": 73215
+      },
+      "ingest_ms": 223854,
+      "query_s1r_ms": 3774,
+      "query_session_id": "query-d368884f3d4d",
+      "answer_ms": 1264,
+      "answer_tokens_in": 1074,
+      "answer_tokens_out": 44,
+      "total_item_ms": 228892,
+      "brain_db_path": "/Users/tpac/AgentsContext/brain-eval-smoke_222008/09ba9854_abs"
+    }
+  ]
+}

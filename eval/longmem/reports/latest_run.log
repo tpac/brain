@@ -1,0 +1,760 @@
+[harness] loaded 500 oracle items from eval/longmem/data/longmemeval_oracle.json
+[harness] selected 10 items:
+  1. 54026fce                 axis=info_extraction    turns=12
+  2. fca762bc                 axis=info_extraction    turns=6
+  3. 2311e44b                 axis=multi_session      turns=18
+  4. bc149d6b                 axis=multi_session      turns=22
+  5. 71017276                 axis=temporal           turns=12
+  6. gpt4_b0863698            axis=temporal           turns=12
+  7. cc5ded98                 axis=knowledge_update   turns=22
+  8. 59524333                 axis=knowledge_update   turns=22
+  9. 09ba9854_abs             axis=abstention         turns=22
+  10. edced276_abs             axis=abstention         turns=18
+/Users/tpac/brain/servers/embedder.py:156: UserWarning: The model 'nomic-ai/nomic-embed-text-v1.5-Q' has been updated on HuggingFace. Please review the latest documentation on HF and release notes to ensure compatibility with your workflow. 
+  _model = TextEmbedding(model_name=model_name, **kwargs)
+[embedder] nomic-ai/nomic-embed-text-v1.5-Q (768d) loaded in 197ms [prefixes: doc='search_document: ' query='search_query: ']
+[brain] Schema ensured: v0 -> v24
+[seed-pack] fresh brain — seeding 16 nodes and 16 edges
+[seed-pack]   create anchor_identity                  → a1e09942 [concept]
+[seed-pack]   create partnership_purpose              → 635c7a88 [principle]
+[seed-pack]   create collaborator_stance              → 12229120 [principle]
+[seed-pack]   create escalate_conflict                → b9508d95 [rule]
+[seed-pack]   create okd_principle                    → 5468a708 [architecture]
+[seed-pack]   create confidence_alive                 → 03938c5f [rule]
+[seed-pack]   create interactions_behavior            → 4df7c81d [insight]
+[seed-pack]   create scale_bounded                    → fe60740b [principle]
+[seed-pack]   create outcome_is_next_observation      → 706d622c [insight]
+[seed-pack]   create verify_before_claiming           → 25afd060 [rule]
+[seed-pack]   create learn_your_operator              → bb643376 [rule]
+[seed-pack]   create rigorous_evaluation              → c2b0a3fa [principle]
+[seed-pack]   create extend_before_creating           → e6a8252a [principle]
+[seed-pack]   create good_node_shape                  → e04a4406 [principle]
+[seed-pack]   create revise_not_duplicate             → f36c42d3 [principle]
+[seed-pack]   create node_types_matter                → 6ba1f0aa [principle]
+[seed-pack] done: 16 nodes created, 0 skipped, 16 edges created, 0 edges skipped (status=fresh)
+[fresh-brain] brain ready at /Users/tpac/AgentsContext/brain-eval-v8_temporal_225007/54026fce
+
+======================================================================
+[harness] item 1/10 qid=54026fce axis=info_extraction turns=12
+[harness] Q: I've been thinking about ways to stay connected with my colleagues. Any suggestions?
+[harness] A (gold): The user would prefer responses that acknowledge their desire for social interaction and collaboration while working rem
+======================================================================
+[item 1] session 1/1 (12 turns)
+[item 1]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 12161 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:1127ms → messages(10):1130ms → prompt(12161 chars):1130ms → tools(6):1132ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 20355 in / 1452 out | Profile: llm_r0=25013ms, llm_r1=32966ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:0ms → api_client:1127ms → messages(10):1130ms → prompt(12161 chars):1130ms → tools(6):1132ms → done:34100ms
+[item 1]   s1e done in 34100ms
+[item 1]   s1e trailing flush (stop=6, 1 unencoded)
+[s1e] calling Sonnet with 6 tools, 15869 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:14ms → messages(12):14ms → prompt(15869 chars):14ms → tools(6):14ms
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 33208 in / 1434 out | Profile: llm_r0=26636ms, llm_r1=31161ms, llm_r2=38190ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:14ms → messages(12):14ms → prompt(15869 chars):14ms → tools(6):14ms → done:38208ms
+[item 1]   s2 final flush (2 pending encodings, loop until quiet, cap=10)
+[s2ce] Batch 1/1 (4 proposals)
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 13384 in / 3077 out | Profile: llm_r0=24645ms, llm_r1=27296ms
+[item 1]   s2 pass 1/10 done in 33288ms (did_work=True)
+[s2cd] Overlap check: converted 2 clusters to add_to_existing (threshold 60%)
+[s2ce] Batch 1/1 (7 proposals)
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 10211 in / 697 out | Profile: llm_r0=5006ms, llm_r1=6636ms
+[s2ce] Stamped 7 rejected proposals (fingerprints)
+[item 1]   s2 pass 2/10 done in 6691ms (did_work=True)
+[s2ce] Batch 1/1 (1 proposals)
+[s2ce]   [get_nodes] 
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 2 (writes: 1) | Tokens: 17056 in / 414 out | Profile: llm_r0=1275ms, llm_r1=4532ms, llm_r2=5677ms
+[s2ce] Stamped 1 rejected proposals (fingerprints)
+[item 1]   s2 pass 3/10 done in 5709ms (did_work=True)
+[item 1]   s2 pass 4/10 done in 5ms (did_work=False)
+[item 1]   s2 quiet at pass 4 — flush complete
+[item 1]   backfill_vectors (drain all deferred embeddings)
+[backfill_vectors] started (batch_size=50)
+[backfill_vectors] 150 vectors in 3.2s (_primary:25, _situation:25, title:25, high_meta:25, other_meta:25, question:25)
+[item 1]   backfill done in 3216ms: {'_primary': 25, '_situation': 25, 'title': 25, 'high_meta': 25, 'other_meta': 25, 'question': 25}
+[item 1] done: {'turns': 12, 'user_turns': 6, 's1e_runs': 2, 's2_runs': 4, 's1r_ms_total': 248, 's1e_ms_total': 72309, 's2_ms_total': 45693}
+[query] question: I've been thinking about ways to stay connected with my colleagues. Any suggestions?
+[query] s1r 3829ms, context 3812 chars
+[harness] hypothesis: Start by asking your team an open question like "How can we stay connected while remote?" to surface what matters to them—then tentatively introduce ideas ("What if we...?") rather than proposing a pl
+[harness] abstained: False, had context: True
+[harness] judge: ✗ (NO)
+[harness] failure: ANSWER_MISS — The retrieval system found 8 relevant candidates but selected only 3, missing context about the user's previous remote work experiences and 
+[brain] Schema ensured: v0 -> v24
+[seed-pack] fresh brain — seeding 16 nodes and 16 edges
+[seed-pack]   create anchor_identity                  → 16e2e7cf [concept]
+[seed-pack]   create partnership_purpose              → d8355413 [principle]
+[seed-pack]   create collaborator_stance              → c8379d30 [principle]
+[seed-pack]   create escalate_conflict                → 13b9e06c [rule]
+[seed-pack]   create okd_principle                    → afe830a2 [architecture]
+[seed-pack]   create confidence_alive                 → c61cbbd5 [rule]
+[seed-pack]   create interactions_behavior            → b5a5d385 [insight]
+[seed-pack]   create scale_bounded                    → 1f80c4b5 [principle]
+[seed-pack]   create outcome_is_next_observation      → 8f7d4aa3 [insight]
+[seed-pack]   create verify_before_claiming           → 76a7801b [rule]
+[seed-pack]   create learn_your_operator              → e596d9b8 [rule]
+[seed-pack]   create rigorous_evaluation              → 8b3e4b1c [principle]
+[seed-pack]   create extend_before_creating           → 441b24ff [principle]
+[seed-pack]   create good_node_shape                  → bb8ca0db [principle]
+[seed-pack]   create revise_not_duplicate             → b12f4e7b [principle]
+[seed-pack]   create node_types_matter                → 00c1424a [principle]
+[seed-pack] done: 16 nodes created, 0 skipped, 16 edges created, 0 edges skipped (status=fresh)
+[fresh-brain] brain ready at /Users/tpac/AgentsContext/brain-eval-v8_temporal_225007/fca762bc
+
+======================================================================
+[harness] item 2/10 qid=fca762bc axis=info_extraction turns=6
+[harness] Q: I wanted to follow up on our previous conversation about language learning apps. You mentioned a few options, and I was 
+[harness] A (gold): Memrise
+======================================================================
+[item 2] session 1/1 (6 turns)
+[item 2]   s1e trailing flush (stop=3, 3 unencoded)
+[s1e] calling Sonnet with 6 tools, 3579 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:23ms → messages(6):23ms → prompt(3579 chars):23ms → tools(6):23ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 15641 in / 942 out | Profile: llm_r0=13017ms, llm_r1=19611ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:0ms → api_client:23ms → messages(6):23ms → prompt(3579 chars):23ms → tools(6):23ms → done:19639ms
+[item 2]   s2 final flush (1 pending encodings, loop until quiet, cap=10)
+[s2ce] Batch 1/1 (3 proposals)
+[s2ce]   [get_nodes] 
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 2 (writes: 1) | Tokens: 46942 in / 3650 out | Profile: llm_r0=1804ms, llm_r1=37851ms, llm_r2=39278ms
+[item 2]   s2 pass 1/10 done in 43232ms (did_work=True)
+[s2cd] Overlap check: converted 2 clusters to add_to_existing (threshold 60%)
+[s2ce] Batch 1/1 (7 proposals)
+[s2ce] Rounds: 1 | Actions: 0 (writes: 0) | Tokens: 4498 in / 333 out | Profile: llm_r0=4592ms
+[s2ce] Stamped 7 rejected proposals (fingerprints)
+[item 2]   s2 pass 2/10 done in 4637ms (did_work=False)
+[item 2]   s2 quiet at pass 2 — flush complete
+[item 2]   backfill_vectors (drain all deferred embeddings)
+[backfill_vectors] started (batch_size=50)
+[backfill_vectors] 126 vectors in 2.7s (_primary:21, _situation:21, title:21, high_meta:21, other_meta:21, question:21)
+[item 2]   backfill done in 2652ms: {'_primary': 21, '_situation': 21, 'title': 21, 'high_meta': 21, 'other_meta': 21, 'question': 21}
+[item 2] done: {'turns': 6, 'user_turns': 3, 's1e_runs': 1, 's2_runs': 2, 's1r_ms_total': 90, 's1e_ms_total': 19642, 's2_ms_total': 47869}
+[query] question: I wanted to follow up on our previous conversation about language learning apps. You mentioned a few...
+[query] s1r 5821ms, context 2023 chars
+[harness] hypothesis: I don't have information about that.
+
+The memories mention that language learning apps you may have interest in include Duolingo, Rosetta Stone, Babbel, Memrise, and Lingodeer, but they don't specify 
+[harness] abstained: True, had context: True
+[harness] judge: ✗ (NO)
+[harness] failure: ANSWER_MISS — The system retrieved general language app lists but failed to retrieve the specific memory linking Memrise to mnemonic-based learning; impro
+[brain] Schema ensured: v0 -> v24
+[seed-pack] fresh brain — seeding 16 nodes and 16 edges
+[seed-pack]   create anchor_identity                  → d6345ff9 [concept]
+[seed-pack]   create partnership_purpose              → 1949afbb [principle]
+[seed-pack]   create collaborator_stance              → 245a1afc [principle]
+[seed-pack]   create escalate_conflict                → da3e85f0 [rule]
+[seed-pack]   create okd_principle                    → 6aceb826 [architecture]
+[seed-pack]   create confidence_alive                 → f14ff63d [rule]
+[seed-pack]   create interactions_behavior            → f8d012ff [insight]
+[seed-pack]   create scale_bounded                    → 83ae8d00 [principle]
+[seed-pack]   create outcome_is_next_observation      → ecec33da [insight]
+[seed-pack]   create verify_before_claiming           → c39145f2 [rule]
+[seed-pack]   create learn_your_operator              → 4cc26aa6 [rule]
+[seed-pack]   create rigorous_evaluation              → 6da64aa8 [principle]
+[seed-pack]   create extend_before_creating           → 3a37f8cf [principle]
+[seed-pack]   create good_node_shape                  → 8f7f4116 [principle]
+[seed-pack]   create revise_not_duplicate             → 1080dc97 [principle]
+[seed-pack]   create node_types_matter                → e9ae0f95 [principle]
+[seed-pack] done: 16 nodes created, 0 skipped, 16 edges created, 0 edges skipped (status=fresh)
+[fresh-brain] brain ready at /Users/tpac/AgentsContext/brain-eval-v8_temporal_225007/2311e44b
+
+======================================================================
+[harness] item 3/10 qid=2311e44b axis=multi_session turns=18
+[harness] Q: How many pages do I have left to read in 'The Nightingale'?
+[harness] A (gold): 190
+======================================================================
+[item 3] session 1/2 (10 turns)
+[item 3]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 13130 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:14ms → messages(10):14ms → prompt(13130 chars):14ms → tools(6):14ms
+[s1e]   [remember_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 36782 in / 2473 out | Profile: llm_r0=35013ms, llm_r1=39783ms, llm_r2=49308ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:14ms → messages(10):14ms → prompt(13130 chars):14ms → tools(6):14ms → done:49324ms
+[item 3]   s1e done in 49324ms
+[item 3] session 2/2 (8 turns)
+[item 3]   s1e trailing flush (stop=9, 4 unencoded)
+[s1e] calling Sonnet with 6 tools, 22869 chars context...
+[s1e] PROFILE so far: env_loaded:5ms → api_client:37ms → messages(18):37ms → prompt(22869 chars):37ms → tools(6):37ms
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 45374 in / 2687 out | Profile: llm_r0=34943ms, llm_r1=41510ms, llm_r2=52278ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:5ms → api_client:37ms → messages(18):37ms → prompt(22869 chars):37ms → tools(6):37ms → done:52318ms
+[item 3]   s2 final flush (2 pending encodings, loop until quiet, cap=10)
+[s2ce] Batch 1/1 (5 proposals)
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 12930 in / 2575 out | Profile: llm_r0=22732ms, llm_r1=25501ms
+[s2ce] Stamped 2 rejected proposals (fingerprints)
+[item 3]   s2 pass 1/10 done in 41089ms (did_work=True)
+[s2cd] Overlap check: converted 2 clusters to add_to_existing (threshold 60%)
+[s2ce] Batch 1/1 (7 proposals)
+[s2ce]   [get_nodes] 
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 2 (writes: 1) | Tokens: 21439 in / 1030 out | Profile: llm_r0=1201ms, llm_r1=16039ms, llm_r2=17944ms
+[s2ce] Stamped 7 rejected proposals (fingerprints)
+[item 3]   s2 pass 2/10 done in 17989ms (did_work=True)
+[s2ce] Batch 1/1 (1 proposals)
+[s2ce]   [get_nodes] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 0) | Tokens: 11542 in / 407 out | Profile: llm_r0=1476ms, llm_r1=6696ms
+[s2ce] Stamped 1 rejected proposals (fingerprints)
+[item 3]   s2 pass 3/10 done in 6746ms (did_work=False)
+[item 3]   s2 quiet at pass 3 — flush complete
+[item 3]   backfill_vectors (drain all deferred embeddings)
+[backfill_vectors] started (batch_size=50)
+[backfill_vectors] 180 vectors in 3.6s (_primary:30, _situation:30, title:30, high_meta:30, other_meta:30, question:30)
+[item 3]   backfill done in 3562ms: {'_primary': 30, '_situation': 30, 'title': 30, 'high_meta': 30, 'other_meta': 30, 'question': 30}
+[item 3] done: {'turns': 18, 'user_turns': 9, 's1e_runs': 2, 's2_runs': 3, 's1r_ms_total': 513, 's1e_ms_total': 101645, 's2_ms_total': 65824}
+[query] question: How many pages do I have left to read in 'The Nightingale'?
+[query] s1r 1600ms, context 789 chars
+[harness] hypothesis: You have approximately 190 pages remaining in The Nightingale.
+[harness] abstained: False, had context: True
+[harness] judge: ✓ (YES)
+[brain] Schema ensured: v0 -> v24
+[seed-pack] fresh brain — seeding 16 nodes and 16 edges
+[seed-pack]   create anchor_identity                  → c71a94f9 [concept]
+[seed-pack]   create partnership_purpose              → f96eccff [principle]
+[seed-pack]   create collaborator_stance              → 8bac5dbc [principle]
+[seed-pack]   create escalate_conflict                → cb7dce42 [rule]
+[seed-pack]   create okd_principle                    → 385bc4a8 [architecture]
+[seed-pack]   create confidence_alive                 → 2d054a76 [rule]
+[seed-pack]   create interactions_behavior            → 0d7ab7a2 [insight]
+[seed-pack]   create scale_bounded                    → 5332bad8 [principle]
+[seed-pack]   create outcome_is_next_observation      → 5a01c26d [insight]
+[seed-pack]   create verify_before_claiming           → 14d00405 [rule]
+[seed-pack]   create learn_your_operator              → 2cc82fb3 [rule]
+[seed-pack]   create rigorous_evaluation              → 64f00539 [principle]
+[seed-pack]   create extend_before_creating           → ef4d29e1 [principle]
+[seed-pack]   create good_node_shape                  → 99287a7f [principle]
+[seed-pack]   create revise_not_duplicate             → 8a2626cc [principle]
+[seed-pack]   create node_types_matter                → 28a4d99c [principle]
+[seed-pack] done: 16 nodes created, 0 skipped, 16 edges created, 0 edges skipped (status=fresh)
+[fresh-brain] brain ready at /Users/tpac/AgentsContext/brain-eval-v8_temporal_225007/bc149d6b
+
+======================================================================
+[harness] item 4/10 qid=bc149d6b axis=multi_session turns=22
+[harness] Q: What is the total weight of the new feed I purchased in the past two months?
+[harness] A (gold): 70 pounds
+======================================================================
+[item 4] session 1/2 (12 turns)
+[item 4]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 9519 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:13ms → messages(10):14ms → prompt(9519 chars):14ms → tools(6):14ms
+[s1e]   [remember_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 34950 in / 2676 out | Profile: llm_r0=37771ms, llm_r1=42737ms, llm_r2=53595ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:13ms → messages(10):14ms → prompt(9519 chars):14ms → tools(6):14ms → done:53611ms
+[item 4]   s1e done in 53612ms
+[item 4] session 2/2 (10 turns)
+[item 4]   s1e firing at stop=10
+[s1e] calling Sonnet with 6 tools, 24926 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:14ms → messages(20):14ms → prompt(24926 chars):14ms → tools(6):14ms
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 47432 in / 3176 out | Profile: llm_r0=45954ms, llm_r1=54547ms, llm_r2=68130ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:14ms → messages(20):14ms → prompt(24926 chars):14ms → tools(6):14ms → done:68146ms
+[item 4]   s1e done in 68147ms
+[item 4]   s2 firing
+[s2ce] Batch 1/1 (6 proposals)
+[s2ce]   [get_nodes] 
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 2 (writes: 1) | Tokens: 79161 in / 5534 out | Profile: llm_r0=2123ms, llm_r1=49358ms, llm_r2=56792ms
+[item 4]   s2 done in 70166ms
+[item 4]   s1e trailing flush (stop=11, 1 unencoded)
+[s1e] calling Sonnet with 6 tools, 28740 chars context...
+[s1e] PROFILE so far: env_loaded:2ms → api_client:16ms → messages(20):16ms → prompt(28740 chars):16ms → tools(6):16ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 27931 in / 1029 out | Profile: llm_r0=15774ms, llm_r1=24309ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:2ms → api_client:16ms → messages(20):16ms → prompt(28740 chars):16ms → tools(6):16ms → done:24330ms
+[item 4]   s2 final flush (1 pending encodings, loop until quiet, cap=10)
+[s2cd] Overlap check: converted 3 clusters to add_to_existing (threshold 60%)
+[s2ce] Batch 1/2 (10 proposals)
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 11952 in / 864 out | Profile: llm_r0=5554ms, llm_r1=6939ms
+[s2ce] Batch 2/2 (2 proposals)
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 10140 in / 726 out | Profile: llm_r0=5363ms, llm_r1=7158ms
+[s2ce] Stamped 12 rejected proposals (fingerprints)
+[item 4]   s2 pass 1/10 done in 17167ms (did_work=True)
+[s2ce] Batch 1/1 (2 proposals)
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 10642 in / 674 out | Profile: llm_r0=5603ms, llm_r1=7011ms
+[s2ce] Stamped 1 rejected proposals (fingerprints)
+[item 4]   s2 pass 2/10 done in 7059ms (did_work=True)
+[s2ce] Batch 1/1 (1 proposals)
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 23770 in / 360 out | Profile: llm_r0=3555ms, llm_r1=5669ms
+[s2ce] Stamped 1 rejected proposals (fingerprints)
+[item 4]   s2 pass 3/10 done in 5700ms (did_work=True)
+[item 4]   s2 pass 4/10 done in 2ms (did_work=False)
+[item 4]   s2 quiet at pass 4 — flush complete
+[item 4]   backfill_vectors (drain all deferred embeddings)
+[backfill_vectors] started (batch_size=50)
+[backfill_vectors] 216 vectors in 4.3s (_primary:36, _situation:36, title:36, high_meta:36, other_meta:36, question:36)
+[item 4]   backfill done in 4319ms: {'_primary': 36, '_situation': 36, 'title': 36, 'high_meta': 36, 'other_meta': 36, 'question': 36}
+[item 4] done: {'turns': 22, 'user_turns': 11, 's1e_runs': 3, 's2_runs': 5, 's1r_ms_total': 634, 's1e_ms_total': 146090, 's2_ms_total': 100094}
+[query] question: What is the total weight of the new feed I purchased in the past two months?
+[query] s1r 4187ms, context 3019 chars
+[harness] hypothesis: Based on the memories retrieved, you purchased 70 pounds of feed in the past two months: 50 pounds of layer feed and 20 pounds of organic scratch grains (both purchased on 2023-05-30).
+[harness] abstained: False, had context: True
+[harness] judge: ✓ (YES)
+[brain] Schema ensured: v0 -> v24
+[seed-pack] fresh brain — seeding 16 nodes and 16 edges
+[seed-pack]   create anchor_identity                  → 6d111fe4 [concept]
+[seed-pack]   create partnership_purpose              → 265ad8ba [principle]
+[seed-pack]   create collaborator_stance              → 98fd8042 [principle]
+[seed-pack]   create escalate_conflict                → 2c09b722 [rule]
+[seed-pack]   create okd_principle                    → e5ef69a7 [architecture]
+[seed-pack]   create confidence_alive                 → 2be22719 [rule]
+[seed-pack]   create interactions_behavior            → ebbf36a8 [insight]
+[seed-pack]   create scale_bounded                    → ae7e6e1d [principle]
+[seed-pack]   create outcome_is_next_observation      → 4ee29d2b [insight]
+[seed-pack]   create verify_before_claiming           → fc87fc38 [rule]
+[seed-pack]   create learn_your_operator              → 420d7c7e [rule]
+[seed-pack]   create rigorous_evaluation              → d2f10688 [principle]
+[seed-pack]   create extend_before_creating           → a1d96cea [principle]
+[seed-pack]   create good_node_shape                  → 5aadb7df [principle]
+[seed-pack]   create revise_not_duplicate             → fdd9f674 [principle]
+[seed-pack]   create node_types_matter                → d263e5ee [principle]
+[seed-pack] done: 16 nodes created, 0 skipped, 16 edges created, 0 edges skipped (status=fresh)
+[fresh-brain] brain ready at /Users/tpac/AgentsContext/brain-eval-v8_temporal_225007/71017276
+
+======================================================================
+[harness] item 5/10 qid=71017276 axis=temporal turns=12
+[harness] Q: How many weeks ago did I meet up with my aunt and receive the crystal chandelier?
+[harness] A (gold): 4
+======================================================================
+[item 5] session 1/1 (12 turns)
+[item 5]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 14525 chars context...
+[s1e] PROFILE so far: env_loaded:2ms → api_client:16ms → messages(10):16ms → prompt(14525 chars):16ms → tools(6):16ms
+[s1e]   [remember_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 34303 in / 1729 out | Profile: llm_r0=21348ms, llm_r1=24799ms, llm_r2=35104ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:2ms → api_client:16ms → messages(10):16ms → prompt(14525 chars):16ms → tools(6):16ms → done:35121ms
+[item 5]   s1e done in 35123ms
+[item 5]   s1e trailing flush (stop=6, 1 unencoded)
+[s1e] calling Sonnet with 6 tools, 17956 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:13ms → messages(12):13ms → prompt(17956 chars):13ms → tools(6):13ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 22087 in / 952 out | Profile: llm_r0=14811ms, llm_r1=21372ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:0ms → api_client:13ms → messages(12):13ms → prompt(17956 chars):13ms → tools(6):13ms → done:21388ms
+[item 5]   s2 final flush (2 pending encodings, loop until quiet, cap=10)
+[s2ce] Batch 1/1 (4 proposals)
+[s2ce]   [get_nodes] 
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 2 (writes: 1) | Tokens: 57794 in / 3538 out | Profile: llm_r0=2086ms, llm_r1=35852ms, llm_r2=37463ms
+[item 5]   s2 pass 1/10 done in 47397ms (did_work=True)
+[s2cd] Overlap check: converted 2 clusters to add_to_existing (threshold 60%)
+[s2ce] Batch 1/1 (7 proposals)
+[s2ce]   [get_nodes] 
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 2 (writes: 1) | Tokens: 22377 in / 1060 out | Profile: llm_r0=2116ms, llm_r1=10257ms, llm_r2=11581ms
+[s2ce] Stamped 7 rejected proposals (fingerprints)
+[item 5]   s2 pass 2/10 done in 11628ms (did_work=True)
+[s2ce] Batch 1/1 (1 proposals)
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 8669 in / 367 out | Profile: llm_r0=3496ms, llm_r1=4148ms
+[s2ce] Stamped 1 rejected proposals (fingerprints)
+[item 5]   s2 pass 3/10 done in 4182ms (did_work=True)
+[item 5]   s2 pass 4/10 done in 3ms (did_work=False)
+[item 5]   s2 quiet at pass 4 — flush complete
+[item 5]   backfill_vectors (drain all deferred embeddings)
+[backfill_vectors] started (batch_size=50)
+[backfill_vectors] 150 vectors in 3.1s (_primary:25, _situation:25, title:25, high_meta:25, other_meta:25, question:25)
+[item 5]   backfill done in 3084ms: {'_primary': 25, '_situation': 25, 'title': 25, 'high_meta': 25, 'other_meta': 25, 'question': 25}
+[item 5] done: {'turns': 12, 'user_turns': 6, 's1e_runs': 2, 's2_runs': 4, 's1r_ms_total': 338, 's1e_ms_total': 56514, 's2_ms_total': 63210}
+[query] question: How many weeks ago did I meet up with my aunt and receive the crystal chandelier?
+[query] s1r 6199ms, context 2356 chars
+[harness] hypothesis: You received the crystal chandelier from your aunt on 2023-03-04, which was 4 weeks ago.
+[harness] abstained: False, had context: True
+[harness] judge: ✓ (YES)
+[brain] Schema ensured: v0 -> v24
+[seed-pack] fresh brain — seeding 16 nodes and 16 edges
+[seed-pack]   create anchor_identity                  → c19ac9f6 [concept]
+[seed-pack]   create partnership_purpose              → d784c4b5 [principle]
+[seed-pack]   create collaborator_stance              → 1cfd146f [principle]
+[seed-pack]   create escalate_conflict                → 7ab03936 [rule]
+[seed-pack]   create okd_principle                    → 672d348d [architecture]
+[seed-pack]   create confidence_alive                 → cabca3e8 [rule]
+[seed-pack]   create interactions_behavior            → 1fce2eab [insight]
+[seed-pack]   create scale_bounded                    → 958e49c6 [principle]
+[seed-pack]   create outcome_is_next_observation      → 50d9b00d [insight]
+[seed-pack]   create verify_before_claiming           → 3b313f81 [rule]
+[seed-pack]   create learn_your_operator              → 2e5e9849 [rule]
+[seed-pack]   create rigorous_evaluation              → 7e8f7320 [principle]
+[seed-pack]   create extend_before_creating           → 00c29f60 [principle]
+[seed-pack]   create good_node_shape                  → c365fa54 [principle]
+[seed-pack]   create revise_not_duplicate             → 69dbed3f [principle]
+[seed-pack]   create node_types_matter                → 6ee3c982 [principle]
+[seed-pack] done: 16 nodes created, 0 skipped, 16 edges created, 0 edges skipped (status=fresh)
+[fresh-brain] brain ready at /Users/tpac/AgentsContext/brain-eval-v8_temporal_225007/gpt4_b0863698
+
+======================================================================
+[harness] item 6/10 qid=gpt4_b0863698 axis=temporal turns=12
+[harness] Q: How many days ago did I participate in the 5K charity run?
+[harness] A (gold): 7 days ago. 8 days (including the last day) is also acceptable.
+======================================================================
+[item 6] session 1/1 (12 turns)
+[item 6]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 12339 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:14ms → messages(10):14ms → prompt(12339 chars):14ms → tools(6):14ms
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 33217 in / 1646 out | Profile: llm_r0=19636ms, llm_r1=23457ms, llm_r2=31193ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:14ms → messages(10):14ms → prompt(12339 chars):14ms → tools(6):14ms → done:31208ms
+[item 6]   s1e done in 31209ms
+[item 6]   s1e trailing flush (stop=6, 1 unencoded)
+[s1e] calling Sonnet with 6 tools, 15845 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:14ms → messages(12):14ms → prompt(15845 chars):14ms → tools(6):14ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 21197 in / 1070 out | Profile: llm_r0=17567ms, llm_r1=26743ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:0ms → api_client:14ms → messages(12):14ms → prompt(15845 chars):14ms → tools(6):14ms → done:26761ms
+[item 6]   s2 final flush (2 pending encodings, loop until quiet, cap=10)
+[s2ce] Batch 1/1 (4 proposals)
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 13163 in / 2876 out | Profile: llm_r0=23763ms, llm_r1=26303ms
+[item 6]   s2 pass 1/10 done in 34009ms (did_work=True)
+[s2cd] Overlap check: converted 2 clusters to add_to_existing (threshold 60%)
+[s2ce] Batch 1/1 (7 proposals)
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 10134 in / 600 out | Profile: llm_r0=3871ms, llm_r1=5400ms
+[s2ce] Stamped 7 rejected proposals (fingerprints)
+[item 6]   s2 pass 2/10 done in 5460ms (did_work=True)
+[s2ce] Batch 1/1 (1 proposals)
+[s2ce]   [get_nodes] 
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 2 (writes: 1) | Tokens: 17291 in / 516 out | Profile: llm_r0=2418ms, llm_r1=7785ms, llm_r2=17286ms
+[s2ce] Stamped 1 rejected proposals (fingerprints)
+[item 6]   s2 pass 3/10 done in 17312ms (did_work=True)
+[item 6]   s2 pass 4/10 done in 1ms (did_work=False)
+[item 6]   s2 quiet at pass 4 — flush complete
+[item 6]   backfill_vectors (drain all deferred embeddings)
+[backfill_vectors] started (batch_size=50)
+[backfill_vectors] 150 vectors in 3.2s (_primary:25, _situation:25, title:25, high_meta:25, other_meta:25, question:25)
+[item 6]   backfill done in 3220ms: {'_primary': 25, '_situation': 25, 'title': 25, 'high_meta': 25, 'other_meta': 25, 'question': 25}
+[item 6] done: {'turns': 12, 'user_turns': 6, 's1e_runs': 2, 's2_runs': 4, 's1r_ms_total': 324, 's1e_ms_total': 57971, 's2_ms_total': 56782}
+[query] question: How many days ago did I participate in the 5K charity run?
+[query] s1r 3792ms, context 2017 chars
+[harness] hypothesis: 7 days ago.
+[harness] abstained: False, had context: True
+[harness] judge: ✓ (YES)
+[brain] Schema ensured: v0 -> v24
+[seed-pack] fresh brain — seeding 16 nodes and 16 edges
+[seed-pack]   create anchor_identity                  → 38620584 [concept]
+[seed-pack]   create partnership_purpose              → 6378e3ba [principle]
+[seed-pack]   create collaborator_stance              → ab84bc9c [principle]
+[seed-pack]   create escalate_conflict                → 516d5b5d [rule]
+[seed-pack]   create okd_principle                    → 57984d47 [architecture]
+[seed-pack]   create confidence_alive                 → 9607580f [rule]
+[seed-pack]   create interactions_behavior            → bda2b115 [insight]
+[seed-pack]   create scale_bounded                    → 05d33e7a [principle]
+[seed-pack]   create outcome_is_next_observation      → edcfb06f [insight]
+[seed-pack]   create verify_before_claiming           → dae3955e [rule]
+[seed-pack]   create learn_your_operator              → c2cf8963 [rule]
+[seed-pack]   create rigorous_evaluation              → c9123ce2 [principle]
+[seed-pack]   create extend_before_creating           → 74614f06 [principle]
+[seed-pack]   create good_node_shape                  → 45138be5 [principle]
+[seed-pack]   create revise_not_duplicate             → 40528ee0 [principle]
+[seed-pack]   create node_types_matter                → 3f952651 [principle]
+[seed-pack] done: 16 nodes created, 0 skipped, 16 edges created, 0 edges skipped (status=fresh)
+[fresh-brain] brain ready at /Users/tpac/AgentsContext/brain-eval-v8_temporal_225007/cc5ded98
+
+======================================================================
+[harness] item 7/10 qid=cc5ded98 axis=knowledge_update turns=22
+[harness] Q: How much time do I dedicate to coding exercises each day?
+[harness] A (gold): about two hours
+======================================================================
+[item 7] session 1/2 (12 turns)
+[item 7]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 14612 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:13ms → messages(10):14ms → prompt(14612 chars):14ms → tools(6):14ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 22320 in / 1733 out | Profile: llm_r0=24207ms, llm_r1=35666ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:0ms → api_client:13ms → messages(10):14ms → prompt(14612 chars):14ms → tools(6):14ms → done:35686ms
+[item 7]   s1e done in 35689ms
+[item 7] session 2/2 (10 turns)
+[item 7]   s1e firing at stop=10
+[s1e] calling Sonnet with 6 tools, 27717 chars context...
+[s1e] PROFILE so far: env_loaded:1ms → api_client:14ms → messages(20):15ms → prompt(27717 chars):15ms → tools(6):15ms
+[s1e]   [brain_batch] 
+[s1e]   [brain_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 2) | Tokens: 41651 in / 1623 out | Profile: llm_r0=20183ms, llm_r1=27573ms, llm_r2=39036ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:1ms → api_client:14ms → messages(20):15ms → prompt(27717 chars):15ms → tools(6):15ms → done:39052ms
+[item 7]   s1e done in 39055ms
+[item 7]   s2 firing
+[s2ce] Batch 1/1 (4 proposals)
+[s2ce]   [get_nodes] 
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 2 (writes: 1) | Tokens: 59781 in / 3530 out | Profile: llm_r0=1692ms, llm_r1=35786ms, llm_r2=37360ms
+[item 7]   s2 done in 44310ms
+[item 7]   s1e trailing flush (stop=11, 1 unencoded)
+[s1e] calling Sonnet with 6 tools, 29495 chars context...
+[s1e] PROFILE so far: env_loaded:3ms → api_client:16ms → messages(20):16ms → prompt(29495 chars):16ms → tools(6):16ms
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 44642 in / 2224 out | Profile: llm_r0=26789ms, llm_r1=32706ms, llm_r2=47165ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:3ms → api_client:16ms → messages(20):16ms → prompt(29495 chars):16ms → tools(6):16ms → done:47187ms
+[item 7]   s2 final flush (1 pending encodings, loop until quiet, cap=10)
+[s2cd] Overlap check: converted 3 clusters to add_to_existing (threshold 60%)
+[s2ce] Batch 1/2 (10 proposals)
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 12479 in / 1864 out | Profile: llm_r0=14231ms, llm_r1=16890ms
+[s2ce] Batch 2/2 (3 proposals)
+[s2ce]   [get_nodes] 
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 2 (writes: 1) | Tokens: 29616 in / 798 out | Profile: llm_r0=1318ms, llm_r1=10186ms, llm_r2=12905ms
+[s2ce] Stamped 12 rejected proposals (fingerprints)
+[item 7]   s2 pass 1/10 done in 34540ms (did_work=True)
+[s2ce] Batch 1/1 (1 proposals)
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 8937 in / 395 out | Profile: llm_r0=3813ms, llm_r1=5043ms
+[s2ce] Stamped 1 rejected proposals (fingerprints)
+[item 7]   s2 pass 2/10 done in 5844ms (did_work=True)
+[item 7]   s2 pass 3/10 done in 1538ms (did_work=False)
+[item 7]   s2 quiet at pass 3 — flush complete
+[item 7]   backfill_vectors (drain all deferred embeddings)
+[backfill_vectors] started (batch_size=50)
+[backfill_vectors] 180 vectors in 3.6s (_primary:30, _situation:30, title:30, high_meta:30, other_meta:30, question:30)
+[item 7]   backfill done in 3564ms: {'_primary': 30, '_situation': 30, 'title': 30, 'high_meta': 30, 'other_meta': 30, 'question': 30}
+[item 7] done: {'turns': 22, 'user_turns': 11, 's1e_runs': 3, 's2_runs': 4, 's1r_ms_total': 616, 's1e_ms_total': 121933, 's2_ms_total': 86232}
+[query] question: How much time do I dedicate to coding exercises each day?
+[query] s1r 3802ms, context 1717 chars
+[harness] hypothesis: You dedicate 2 hours per day to learning Python.
+[harness] abstained: False, had context: True
+[harness] judge: ✓ (YES)
+[brain] Schema ensured: v0 -> v24
+[seed-pack] fresh brain — seeding 16 nodes and 16 edges
+[seed-pack]   create anchor_identity                  → 874c8095 [concept]
+[seed-pack]   create partnership_purpose              → 4c83b1ac [principle]
+[seed-pack]   create collaborator_stance              → 5e8fcab3 [principle]
+[seed-pack]   create escalate_conflict                → 5515b568 [rule]
+[seed-pack]   create okd_principle                    → 0980c9d1 [architecture]
+[seed-pack]   create confidence_alive                 → 42025a6e [rule]
+[seed-pack]   create interactions_behavior            → 44c7f382 [insight]
+[seed-pack]   create scale_bounded                    → cd93e46d [principle]
+[seed-pack]   create outcome_is_next_observation      → 943698ac [insight]
+[seed-pack]   create verify_before_claiming           → 42347448 [rule]
+[seed-pack]   create learn_your_operator              → ec31afd4 [rule]
+[seed-pack]   create rigorous_evaluation              → 26964061 [principle]
+[seed-pack]   create extend_before_creating           → 7a8381b8 [principle]
+[seed-pack]   create good_node_shape                  → 547d355a [principle]
+[seed-pack]   create revise_not_duplicate             → a0c889d6 [principle]
+[seed-pack]   create node_types_matter                → c8103d37 [principle]
+[seed-pack] done: 16 nodes created, 0 skipped, 16 edges created, 0 edges skipped (status=fresh)
+[fresh-brain] brain ready at /Users/tpac/AgentsContext/brain-eval-v8_temporal_225007/59524333
+
+======================================================================
+[harness] item 8/10 qid=59524333 axis=knowledge_update turns=22
+[harness] Q: What time do I usually go to the gym?
+[harness] A (gold): 6:00 pm
+======================================================================
+[item 8] session 1/2 (10 turns)
+[item 8]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 13525 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:13ms → messages(10):13ms → prompt(13525 chars):13ms → tools(6):13ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 22147 in / 1754 out | Profile: llm_r0=27528ms, llm_r1=34470ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:0ms → api_client:13ms → messages(10):13ms → prompt(13525 chars):13ms → tools(6):13ms → done:34485ms
+[item 8]   s1e done in 34487ms
+[item 8] session 2/2 (12 turns)
+[item 8]   s1e firing at stop=10
+[s1e] calling Sonnet with 6 tools, 23195 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:18ms → messages(20):18ms → prompt(23195 chars):18ms → tools(6):18ms
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 41534 in / 1902 out | Profile: llm_r0=28541ms, llm_r1=33185ms, llm_r2=42346ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:18ms → messages(20):18ms → prompt(23195 chars):18ms → tools(6):18ms → done:42366ms
+[item 8]   s1e done in 42368ms
+[item 8]   s2 firing
+[s2ce] Batch 1/1 (4 proposals)
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 11495 in / 1912 out | Profile: llm_r0=17802ms, llm_r1=19881ms
+[s2ce] Stamped 2 rejected proposals (fingerprints)
+[item 8]   s2 done in 28357ms
+[item 8]   s1e trailing flush (stop=11, 1 unencoded)
+[s1e] calling Sonnet with 6 tools, 23447 chars context...
+[s1e] PROFILE so far: env_loaded:2ms → api_client:16ms → messages(20):16ms → prompt(23447 chars):17ms → tools(6):17ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 25475 in / 1091 out | Profile: llm_r0=19878ms, llm_r1=26422ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:2ms → api_client:16ms → messages(20):16ms → prompt(23447 chars):17ms → tools(6):17ms → done:26444ms
+[item 8]   s2 final flush (1 pending encodings, loop until quiet, cap=10)
+[s2cd] Overlap check: converted 1 clusters to add_to_existing (threshold 60%)
+[s2ce] Batch 1/1 (3 proposals)
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 9009 in / 423 out | Profile: llm_r0=3540ms, llm_r1=4643ms
+[s2ce] Stamped 3 rejected proposals (fingerprints)
+[item 8]   s2 pass 1/10 done in 7677ms (did_work=True)
+[item 8]   s2 pass 2/10 done in 6ms (did_work=False)
+[item 8]   s2 quiet at pass 2 — flush complete
+[item 8]   backfill_vectors (drain all deferred embeddings)
+[backfill_vectors] started (batch_size=50)
+[backfill_vectors] 156 vectors in 3.1s (_primary:26, _situation:26, title:26, high_meta:26, other_meta:26, question:26)
+[item 8]   backfill done in 3112ms: {'_primary': 26, '_situation': 26, 'title': 26, 'high_meta': 26, 'other_meta': 26, 'question': 26}
+[item 8] done: {'turns': 22, 'user_turns': 11, 's1e_runs': 3, 's2_runs': 3, 's1r_ms_total': 501, 's1e_ms_total': 103302, 's2_ms_total': 36040}
+[query] question: What time do I usually go to the gym?
+[query] s1r 4557ms, context 2085 chars
+[harness] hypothesis: You usually go to the gym around 7pm on Mondays, Wednesdays, and Fridays, though there's a note that you mentioned 6pm in a more recent conversation, so the exact time may have shifted.
+[harness] abstained: False, had context: True
+[harness] judge: ✗ (NO)
+[harness] failure: ANSWER_MISS — The system retrieved only 2 out of 8 relevant memories and failed to surface the most recent 6pm conversation, indicating the retrieval rank
+[brain] Schema ensured: v0 -> v24
+[seed-pack] fresh brain — seeding 16 nodes and 16 edges
+[seed-pack]   create anchor_identity                  → 9480bbd9 [concept]
+[seed-pack]   create partnership_purpose              → f65320b8 [principle]
+[seed-pack]   create collaborator_stance              → fe9c241c [principle]
+[seed-pack]   create escalate_conflict                → 654e7ae0 [rule]
+[seed-pack]   create okd_principle                    → a334e904 [architecture]
+[seed-pack]   create confidence_alive                 → bf96a826 [rule]
+[seed-pack]   create interactions_behavior            → 8ac6a0a0 [insight]
+[seed-pack]   create scale_bounded                    → 4220b312 [principle]
+[seed-pack]   create outcome_is_next_observation      → 549017d4 [insight]
+[seed-pack]   create verify_before_claiming           → 088f93e6 [rule]
+[seed-pack]   create learn_your_operator              → adec6533 [rule]
+[seed-pack]   create rigorous_evaluation              → 2748ad56 [principle]
+[seed-pack]   create extend_before_creating           → d204a392 [principle]
+[seed-pack]   create good_node_shape                  → 8bbfa23e [principle]
+[seed-pack]   create revise_not_duplicate             → 644f549b [principle]
+[seed-pack]   create node_types_matter                → 15f6723a [principle]
+[seed-pack] done: 16 nodes created, 0 skipped, 16 edges created, 0 edges skipped (status=fresh)
+[fresh-brain] brain ready at /Users/tpac/AgentsContext/brain-eval-v8_temporal_225007/09ba9854_abs
+
+======================================================================
+[harness] item 9/10 qid=09ba9854_abs axis=abstention turns=22
+[harness] Q: How much will I save by taking the bus from the airport to my hotel instead of a taxi?
+[harness] A (gold): The information provided is not enough. You did not mention how much will the bus take.
+======================================================================
+[item 9] session 1/2 (12 turns)
+[item 9]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 9091 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:13ms → messages(10):13ms → prompt(9091 chars):14ms → tools(6):14ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 18873 in / 1001 out | Profile: llm_r0=15626ms, llm_r1=22035ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:0ms → api_client:13ms → messages(10):13ms → prompt(9091 chars):14ms → tools(6):14ms → done:22050ms
+[item 9]   s1e done in 22052ms
+[item 9] session 2/2 (10 turns)
+[item 9]   s1e firing at stop=10
+[s1e] calling Sonnet with 6 tools, 20840 chars context...
+[s1e] PROFILE so far: env_loaded:2ms → api_client:23ms → messages(20):23ms → prompt(20840 chars):23ms → tools(6):23ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 26816 in / 2041 out | Profile: llm_r0=35043ms, llm_r1=44608ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:2ms → api_client:23ms → messages(20):23ms → prompt(20840 chars):23ms → tools(6):23ms → done:44633ms
+[item 9]   s1e done in 44633ms
+[item 9]   s2 firing
+[s2ce] Batch 1/1 (3 proposals)
+[s2ce]   [get_nodes] 
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 2 (writes: 1) | Tokens: 45822 in / 2594 out | Profile: llm_r0=2237ms, llm_r1=25896ms, llm_r2=27207ms
+[item 9]   s2 done in 32817ms
+[item 9]   s1e trailing flush (stop=11, 1 unencoded)
+[s1e] calling Sonnet with 6 tools, 22558 chars context...
+[s1e] PROFILE so far: env_loaded:2ms → api_client:16ms → messages(20):16ms → prompt(22558 chars):16ms → tools(6):16ms
+[s1e]   [remember_batch] 
+[s1e] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 25828 in / 1001 out | Profile: llm_r0=17917ms, llm_r1=23472ms
+[s1e] done. 2 rounds, 1 actions. PROFILE: env_loaded:2ms → api_client:16ms → messages(20):16ms → prompt(22558 chars):16ms → tools(6):16ms → done:23493ms
+[item 9]   s2 final flush (1 pending encodings, loop until quiet, cap=10)
+[s2cd] Overlap check: converted 2 clusters to add_to_existing (threshold 60%)
+[s2ce] Batch 1/1 (7 proposals)
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 10272 in / 981 out | Profile: llm_r0=6343ms, llm_r1=8766ms
+[s2ce] Stamped 7 rejected proposals (fingerprints)
+[item 9]   s2 pass 1/10 done in 12295ms (did_work=True)
+[s2cd] Overlap check: converted 1 clusters to add_to_existing (threshold 60%)
+[s2ce] Batch 1/1 (1 proposals)
+[s2ce]   [get_nodes] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 0) | Tokens: 11560 in / 294 out | Profile: llm_r0=1391ms, llm_r1=5573ms
+[s2ce] Stamped 1 rejected proposals (fingerprints)
+[item 9]   s2 pass 2/10 done in 5615ms (did_work=False)
+[item 9]   s2 quiet at pass 2 — flush complete
+[item 9]   backfill_vectors (drain all deferred embeddings)
+[backfill_vectors] started (batch_size=50)
+[backfill_vectors] 144 vectors in 2.7s (_primary:24, _situation:24, title:24, high_meta:24, other_meta:24, question:24)
+[item 9]   backfill done in 2717ms: {'_primary': 24, '_situation': 24, 'title': 24, 'high_meta': 24, 'other_meta': 24, 'question': 24}
+[item 9] done: {'turns': 22, 'user_turns': 11, 's1e_runs': 3, 's2_runs': 3, 's1r_ms_total': 479, 's1e_ms_total': 90178, 's2_ms_total': 50727}
+[query] question: How much will I save by taking the bus from the airport to my hotel instead of a taxi?
+[query] s1r 3419ms, context 2909 chars
+[harness] hypothesis: I don't have information about that.
+
+The memories contain taxi fare ranges from Tokyo airports, but no bus pricing or cost comparison data to calculate your savings.
+[harness] abstained: True, had context: True
+[harness] judge: ✓ (YES)
+[brain] Schema ensured: v0 -> v24
+[seed-pack] fresh brain — seeding 16 nodes and 16 edges
+[seed-pack]   create anchor_identity                  → f97b5e64 [concept]
+[seed-pack]   create partnership_purpose              → 04f93063 [principle]
+[seed-pack]   create collaborator_stance              → fce7a093 [principle]
+[seed-pack]   create escalate_conflict                → 7780782f [rule]
+[seed-pack]   create okd_principle                    → d6b0712f [architecture]
+[seed-pack]   create confidence_alive                 → fbc5f5ef [rule]
+[seed-pack]   create interactions_behavior            → a192e6d3 [insight]
+[seed-pack]   create scale_bounded                    → 6f519a71 [principle]
+[seed-pack]   create outcome_is_next_observation      → 592efeff [insight]
+[seed-pack]   create verify_before_claiming           → 2b026f8c [rule]
+[seed-pack]   create learn_your_operator              → 00c25cbc [rule]
+[seed-pack]   create rigorous_evaluation              → 3cea0d15 [principle]
+[seed-pack]   create extend_before_creating           → 1a1cc630 [principle]
+[seed-pack]   create good_node_shape                  → c62e4c07 [principle]
+[seed-pack]   create revise_not_duplicate             → 1ea35558 [principle]
+[seed-pack]   create node_types_matter                → 61f78991 [principle]
+[seed-pack] done: 16 nodes created, 0 skipped, 16 edges created, 0 edges skipped (status=fresh)
+[fresh-brain] brain ready at /Users/tpac/AgentsContext/brain-eval-v8_temporal_225007/edced276_abs
+
+======================================================================
+[harness] item 10/10 qid=edced276_abs axis=abstention turns=18
+[harness] Q: How many days did I spend in total traveling in Hawaii and in Seattle?
+[harness] A (gold): The information provided is not enough. You mentioned traveling for 10 days in Hawaii but did not mention abything about
+======================================================================
+[item 10] session 1/2 (8 turns)
+[item 10] session 2/2 (10 turns)
+[item 10]   s1e firing at stop=5
+[s1e] calling Sonnet with 6 tools, 14247 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:14ms → messages(10):14ms → prompt(14247 chars):14ms → tools(6):14ms
+[s1e]   [remember_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 36951 in / 2152 out | Profile: llm_r0=29019ms, llm_r1=34865ms, llm_r2=46942ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:14ms → messages(10):14ms → prompt(14247 chars):14ms → tools(6):14ms → done:46957ms
+[item 10]   s1e done in 46957ms
+[item 10]   s1e trailing flush (stop=9, 4 unencoded)
+[s1e] calling Sonnet with 6 tools, 27204 chars context...
+[s1e] PROFILE so far: env_loaded:0ms → api_client:14ms → messages(18):14ms → prompt(27204 chars):14ms → tools(6):14ms
+[s1e]   [brain_batch] 
+[s1e]   [connect_batch] 
+[s1e] Rounds: 3 | Actions: 2 (writes: 1) | Tokens: 49469 in / 3014 out | Profile: llm_r0=38218ms, llm_r1=45552ms, llm_r2=58607ms
+[s1e] done. 3 rounds, 2 actions. PROFILE: env_loaded:0ms → api_client:14ms → messages(18):14ms → prompt(27204 chars):14ms → tools(6):14ms → done:58625ms
+[item 10]   s2 final flush (2 pending encodings, loop until quiet, cap=10)
+[s2ce] Batch 1/1 (4 proposals)
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 1 (writes: 1) | Tokens: 14518 in / 3720 out | Profile: llm_r0=29740ms, llm_r1=31269ms
+[item 10]   s2 pass 1/10 done in 51141ms (did_work=True)
+[s2cd] Overlap check: converted 2 clusters to add_to_existing (threshold 60%)
+[s2ce] Batch 1/1 (7 proposals)
+[s2ce]   [get_nodes] 
+[s2ce]   [brain_batch] 
+[s2ce] Rounds: 2 | Actions: 2 (writes: 1) | Tokens: 21756 in / 1074 out | Profile: llm_r0=1172ms, llm_r1=9022ms, llm_r2=10724ms
+[s2ce] Stamped 7 rejected proposals (fingerprints)
+[item 10]   s2 pass 2/10 done in 10775ms (did_work=True)
+[s2ce] Batch 1/1 (1 proposals)
+[s2ce] Rounds: 1 | Actions: 0 (writes: 0) | Tokens: 4096 in / 190 out | Profile: llm_r0=3291ms
+[s2ce] Stamped 1 rejected proposals (fingerprints)
+[item 10]   s2 pass 3/10 done in 3326ms (did_work=False)
+[item 10]   s2 quiet at pass 3 — flush complete
+[item 10]   backfill_vectors (drain all deferred embeddings)
+[backfill_vectors] started (batch_size=50)
+[backfill_vectors] 186 vectors in 4.0s (_primary:31, _situation:31, title:31, high_meta:31, other_meta:31, question:31)
+[item 10]   backfill done in 3953ms: {'_primary': 31, '_situation': 31, 'title': 31, 'high_meta': 31, 'other_meta': 31, 'question': 31}
+[item 10] done: {'turns': 18, 'user_turns': 9, 's1e_runs': 2, 's2_runs': 3, 's1r_ms_total': 476, 's1e_ms_total': 105586, 's2_ms_total': 65242}
+[query] question: How many days did I spend in total traveling in Hawaii and in Seattle?
+[query] s1r 2355ms, context 0 chars
+[harness] hypothesis: I don't have information about that.
+[harness] abstained: True, had context: False
+[harness] judge: ✓ (YES)
+
+[harness] done in 1603.1s
+[harness] overall: 70.0% (7/10)
+[harness] hypotheses → /Users/tpac/brain/eval/longmem/reports/hypotheses_v8_temporal_225007.jsonl
+[harness] report     → /Users/tpac/brain/eval/longmem/reports/run_v8_temporal_225007.json
+[harness] markdown   → /Users/tpac/brain/eval/longmem/reports/run_v8_temporal_225007.md

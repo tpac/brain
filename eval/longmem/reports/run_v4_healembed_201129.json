@@ -1,0 +1,179 @@
+{
+  "run_name": "v4_healembed_201129",
+  "items_count": 5,
+  "correct_count": 4,
+  "overall_score": 0.8,
+  "axis_scores": {
+    "info_extraction": 1.0,
+    "multi_session": 1.0,
+    "temporal": 0.0,
+    "knowledge_update": 1.0,
+    "abstention": 1.0
+  },
+  "axis_counts": {
+    "info_extraction": 1,
+    "multi_session": 1,
+    "temporal": 1,
+    "knowledge_update": 1,
+    "abstention": 1
+  },
+  "failure_buckets": {
+    "ENCODE_MISS": 1
+  },
+  "total_ms": 610888,
+  "config": {
+    "items_per_axis": 1,
+    "seed": 42
+  },
+  "results": [
+    {
+      "question_id": "54026fce",
+      "question_type": "single-session-preference",
+      "axis": "info_extraction",
+      "question": "I've been thinking about ways to stay connected with my colleagues. Any suggestions?",
+      "answer_gold": "The user would prefer responses that acknowledge their desire for social interaction and collaboration while working remotely, utilizing their previous experiences with company initiatives and team collaborations. They might prefer suggestions of virtual team-building activities, regular check-ins, or joining interest-based groups within the company. The user may not prefer generic suggestions that do not take into account their specific work situation or previous attempts at staying connected with colleagues.",
+      "hypothesis": "Based on your interest in staying connected, here are two complementary approaches:\n\n**Virtual coffee breaks** \u2014 scheduled 15-30 minute informal video calls with no work agenda, kept optional and casual to replicate those spontaneous office conversations you might be missing.\n\n**Virtual coffee shop** \u2014 a persistent, always-available dedicated space where team members can drop in asynchronously to socialize without needing everyone to coordinate a single meeting time.\n\nTo introduce either idea to your team, start with an open question about how you can stay connected, share your own observation about missing those incidental interactions, then float the suggestion and invite feedback \u2014 this avoids feeling like you're imposing the idea.\n\nIf you do set up coffee breaks, establish ground rules upfront: no work talk, keep it light and casual, respect everyone's time, and be present and engaged.",
+      "abstained": false,
+      "has_context": true,
+      "correct": true,
+      "judge_raw": "YES",
+      "ingest": {
+        "turns": 12,
+        "user_turns": 6,
+        "s1e_runs": 2,
+        "s2_runs": 3,
+        "s1r_ms_total": 211,
+        "s1e_ms_total": 87305,
+        "s2_ms_total": 47460
+      },
+      "ingest_ms": 138292,
+      "query_s1r_ms": 3621,
+      "query_session_id": "query-d0f5472469e3",
+      "answer_ms": 3670,
+      "answer_tokens_in": 2015,
+      "answer_tokens_out": 183,
+      "total_item_ms": 145583
+    },
+    {
+      "question_id": "2311e44b",
+      "question_type": "multi-session",
+      "axis": "multi_session",
+      "question": "How many pages do I have left to read in 'The Nightingale'?",
+      "answer_gold": "190",
+      "hypothesis": "You have 190 pages left to read in 'The Nightingale' (440 total pages minus 250 pages completed).",
+      "abstained": false,
+      "has_context": true,
+      "correct": true,
+      "judge_raw": "YES",
+      "ingest": {
+        "turns": 18,
+        "user_turns": 9,
+        "s1e_runs": 2,
+        "s2_runs": 2,
+        "s1r_ms_total": 468,
+        "s1e_ms_total": 93745,
+        "s2_ms_total": 10339
+      },
+      "ingest_ms": 105136,
+      "query_s1r_ms": 2710,
+      "query_session_id": "query-d72209537bda",
+      "answer_ms": 690,
+      "answer_tokens_in": 559,
+      "answer_tokens_out": 33,
+      "total_item_ms": 108536
+    },
+    {
+      "question_id": "71017276",
+      "question_type": "temporal-reasoning",
+      "axis": "temporal",
+      "question": "How many weeks ago did I meet up with my aunt and receive the crystal chandelier?",
+      "answer_gold": 4,
+      "hypothesis": "I don't have information about that.",
+      "abstained": true,
+      "has_context": false,
+      "correct": false,
+      "judge_raw": "NO",
+      "failure_bucket": "ENCODE_MISS",
+      "failure_reason": "The memory system never encoded the aunt meetup and crystal chandelier event, so no data existed to retrieve; invest in improving event capture during user interactions to ensure personal moments are actually stored in memory.",
+      "failure_evidence": {
+        "relevant_to_gold": [],
+        "recall_candidates_count": 0,
+        "selected_ids": [],
+        "context_chars": 0,
+        "query_fired": false
+      },
+      "ingest": {
+        "turns": 12,
+        "user_turns": 6,
+        "s1e_runs": 2,
+        "s2_runs": 1,
+        "s1r_ms_total": 292,
+        "s1e_ms_total": 18731,
+        "s2_ms_total": 5
+      },
+      "ingest_ms": 19034,
+      "query_s1r_ms": 21,
+      "query_session_id": "query-f1d4c6e30262",
+      "answer_ms": 493,
+      "answer_tokens_in": 273,
+      "answer_tokens_out": 11,
+      "total_item_ms": 19548
+    },
+    {
+      "question_id": "cc5ded98",
+      "question_type": "knowledge-update",
+      "axis": "knowledge_update",
+      "question": "How much time do I dedicate to coding exercises each day?",
+      "answer_gold": "about two hours",
+      "hypothesis": "You dedicate approximately 2 hours per day to coding exercises.",
+      "abstained": false,
+      "has_context": true,
+      "correct": true,
+      "judge_raw": "YES",
+      "ingest": {
+        "turns": 22,
+        "user_turns": 11,
+        "s1e_runs": 3,
+        "s2_runs": 3,
+        "s1r_ms_total": 570,
+        "s1e_ms_total": 140477,
+        "s2_ms_total": 51919
+      },
+      "ingest_ms": 193815,
+      "query_s1r_ms": 1110,
+      "query_session_id": "query-f068dd9cbc29",
+      "answer_ms": 714,
+      "answer_tokens_in": 665,
+      "answer_tokens_out": 17,
+      "total_item_ms": 195639
+    },
+    {
+      "question_id": "09ba9854_abs",
+      "question_type": "multi-session",
+      "axis": "abstention",
+      "question": "How much will I save by taking the bus from the airport to my hotel instead of a taxi?",
+      "answer_gold": "The information provided is not enough. You did not mention how much will the bus take.",
+      "hypothesis": "I don't have information about that.\n\nThe memories show taxi and train costs from Haneda and Narita airports, but they don't contain specific bus pricing or a comparison between bus and taxi fares that would let me calculate your savings.",
+      "abstained": true,
+      "has_context": true,
+      "correct": true,
+      "judge_raw": "YES",
+      "ingest": {
+        "turns": 22,
+        "user_turns": 11,
+        "s1e_runs": 3,
+        "s2_runs": 3,
+        "s1r_ms_total": 439,
+        "s1e_ms_total": 115985,
+        "s2_ms_total": 13829
+      },
+      "ingest_ms": 130788,
+      "query_s1r_ms": 3971,
+      "query_session_id": "query-7be66cbea8a1",
+      "answer_ms": 1294,
+      "answer_tokens_in": 1384,
+      "answer_tokens_out": 54,
+      "total_item_ms": 136053
+    }
+  ]
+}
