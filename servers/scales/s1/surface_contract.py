@@ -733,7 +733,15 @@ def format_surface_output(selected, candidates, graph_neighbors=None):
 
         # Per-node rendering — single formatter
         # _corrections and connections already present from get_rich_node
-        lines.append(render_rich_node(c, SURFACE_FORMAT))
+        is_locked_rule = (c.get('type') == 'rule' and c.get('locked'))
+        if is_locked_rule:
+            lines.append("━━━ ACTIVE RULE (locked, applies to this response) ━━━")
+            lines.append(render_rich_node(c, SURFACE_FORMAT))
+            lines.append("Before finalizing your response, check: does this rule apply? "
+                         "If you're about to do what the rule forbids or skip what it requires, stop and correct.")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        else:
+            lines.append(render_rich_node(c, SURFACE_FORMAT))
 
         # Surfacer's relevance reasoning (S1-specific, not in render_rich_node)
         if why:
