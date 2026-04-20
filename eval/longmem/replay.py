@@ -19,10 +19,9 @@ import time
 from typing import List, Dict, Any, Optional, Tuple
 
 
-S2_EVERY_N_ENCODINGS = 3   # S2 fires every 3 encodings during ingestion
-S2_FINAL_PASSES = 4        # S2 at end of ingestion: run N times to exhaust backlog
-                           # S2 consolidation caps at ~10 proposals per run — multiple passes
-                           # ensure it sees everything
+S2_EVERY_N_ENCODINGS = 2   # S2 fires every 2 encodings during ingestion
+S2_FINAL_MAX_PASSES = 10   # Safety cap — final flush loops until every unit reports
+                           # no-op (skipped / 0 actions) or this cap is hit
 
 
 def _make_local_dispatch(brain):
@@ -73,7 +72,7 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
         {"turns": N, "user_turns": N, "s1e_runs": N, "s2_runs": N,
          "s1r_ms_total": N, "s1e_ms_total": N, "s2_ms_total": N}
     """
-    from servers.daemon_hooks import hook_recall
+    from servers.daemon_hooks import hook_recall, post_response_common
 
     dispatch_fn = _make_local_dispatch(brain)
     ctx = brain.get_or_create_session(session_id)
@@ -111,27 +110,10 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
                 print(f"{log_prefix}   WARN s1r failed turn {stats['user_turns']}: {e}", flush=True)
             stats["s1r_ms_total"] += int((time.time() - t0) * 1000)
 
-            # S0 traces: write K=user_message and delta=assistant_message (same as Stop hook)
-            try:
-                brain._trace_dal.append(
-                    chain_id=ctx.s0_chain(), scale='s0', event_type='K',
-                    ref_type='user_message',
-                    summary=user_msg[:200],
-                    metadata={'content': user_msg[:4000]} if user_msg else None,
-                    session_id=session_id)
-                if assistant_msg:
-                    brain._trace_dal.append(
-                        chain_id=ctx.s0_chain(), scale='s0', event_type='delta',
-                        ref_type='assistant_message',
-                        summary=assistant_msg[:200],
-                        metadata={'content': assistant_msg[:4000]},
-                        session_id=session_id)
-            except Exception as e:
-                print(f"{log_prefix}   WARN s0 trace failed: {e}", flush=True)
-
-            # Increment stop counter (same as Stop hook)
-            ctx.increment_stop()
-            ctx.save(brain.logs_conn)
+            # Post-response path — S0 traces, Hebbian strengthening, heartbeat,
+            # stop counter increment. Calls the same code prod's Stop hook uses,
+            # so eval and prod share one write path (no divergence).
+            ctx = post_response_common(brain, session_id, user_msg, assistant_msg)
 
             # S1E gate: every 5th turn, foreground encoding
             if ctx.stop_counter % 5 == 0 and ctx.stop_counter > 0:
@@ -177,9 +159,44 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
         except Exception as e:
             print(f"{log_prefix}   WARN s1e trailing failed: {e}", flush=True)
 
-    # Backfill embeddings — production runs this during idle; eval must trigger explicitly.
-    # Without this, node_enrichments rows exist with NULL embeddings and recall returns 0.
-    print(f"{log_prefix}   backfill_vectors (compute deferred embeddings)", flush=True)
+    # Final S2 flush: loop until every unit reports no-op (skipped or 0 actions).
+    # S2 consolidation caps at ~10 proposals per run — multiple passes may be needed
+    # to exhaust the backlog for large ingestions. Cap at S2_FINAL_MAX_PASSES for safety.
+    # Healer writes happen in this phase and enqueue to embed_queue — the backfill
+    # below drains them before query fires.
+    print(f"{log_prefix}   s2 final flush ({encodings_since_s2} pending encodings, "
+          f"loop until quiet, cap={S2_FINAL_MAX_PASSES})", flush=True)
+    for pass_idx in range(S2_FINAL_MAX_PASSES):
+        t0s = time.time()
+        try:
+            s2_result = _run_s2_foreground(brain)
+            stats["s2_runs"] += 1
+            elapsed = int((time.time() - t0s) * 1000)
+            stats["s2_ms_total"] += elapsed
+
+            did_work = False
+            if isinstance(s2_result, dict):
+                for unit_name, unit_result in s2_result.items():
+                    if unit_name == "_elapsed_ms" or not isinstance(unit_result, dict):
+                        continue
+                    if unit_result.get("actions", 0) > 0:
+                        did_work = True
+                        break
+
+            print(f"{log_prefix}   s2 pass {pass_idx+1}/{S2_FINAL_MAX_PASSES} "
+                  f"done in {elapsed}ms (did_work={did_work})", flush=True)
+
+            if not did_work:
+                print(f"{log_prefix}   s2 quiet at pass {pass_idx+1} — flush complete", flush=True)
+                break
+        except Exception as e:
+            print(f"{log_prefix}   WARN s2 pass {pass_idx+1} failed: {e}", flush=True)
+            break
+
+    # Backfill AFTER all S1E + S2 writes (including healer) — production drains
+    # via embed_queue worker, but eval runs inline so we must trigger explicitly.
+    # Order matters: placed after S2 flush so healer's enqueued writes are included.
+    print(f"{log_prefix}   backfill_vectors (drain all deferred embeddings)", flush=True)
     t0b = time.time()
     try:
         bf_result = brain.backfill_vectors(batch_size=50)
@@ -187,22 +204,6 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
               flush=True)
     except Exception as e:
         print(f"{log_prefix}   WARN backfill failed: {e}", flush=True)
-
-    # Final S2 flush: run multiple passes. S2 caps at ~10 proposals per run, so one pass
-    # may not exhaust the backlog for large ingestions. Loop until no-op or cap hit.
-    print(f"{log_prefix}   s2 final flush ({encodings_since_s2} pending encodings, {S2_FINAL_PASSES} passes)",
-          flush=True)
-    for pass_idx in range(S2_FINAL_PASSES):
-        t0s = time.time()
-        try:
-            _run_s2_foreground(brain)
-            stats["s2_runs"] += 1
-            elapsed = int((time.time() - t0s) * 1000)
-            stats["s2_ms_total"] += elapsed
-            print(f"{log_prefix}   s2 pass {pass_idx+1}/{S2_FINAL_PASSES} done in {elapsed}ms", flush=True)
-        except Exception as e:
-            print(f"{log_prefix}   WARN s2 pass {pass_idx+1} failed: {e}", flush=True)
-            break
 
     print(f"{log_prefix} done: {stats}", flush=True)
     return stats

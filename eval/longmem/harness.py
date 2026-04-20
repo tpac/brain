@@ -68,14 +68,42 @@ def stratified_sample(data: List[Dict[str, Any]], per_axis: int = 2,
     return picked
 
 
+def _snapshot_error_count(brain) -> int:
+    """Count brain_errors rows now — returns a monotonic counter used to detect
+    errors logged during a single item's ingest/query phase."""
+    try:
+        return brain.logs_conn.execute("SELECT COUNT(*) FROM brain_errors").fetchone()[0]
+    except Exception:
+        return 0
+
+
+def _new_errors_since(brain, baseline_count: int) -> List[Dict[str, Any]]:
+    """Return error rows logged since baseline_count. Limited to 20 for sanity."""
+    try:
+        rows = brain.logs_conn.execute(
+            "SELECT error_type, error_message, context FROM brain_errors "
+            "ORDER BY id DESC LIMIT ?", (20,)).fetchall()
+    except Exception:
+        return []
+    current = _snapshot_error_count(brain)
+    n_new = max(0, current - baseline_count)
+    if n_new == 0:
+        return []
+    return [{"type": r[0], "message": (r[1] or "")[:200], "context": (r[2] or "")[:100]}
+            for r in rows[:n_new]]
+
+
 def run_item(brain, item: Dict[str, Any], item_idx: int, total: int) -> Dict[str, Any]:
-    """Run one item end-to-end. Returns result dict."""
+    """Run one item end-to-end. Returns result dict with inline judge + failure class."""
     from eval.longmem.replay import replay_item, query_brain
     from eval.longmem.answerer import answer_question
     from eval.longmem.fresh_brain import reset_to_seeds
+    from eval.longmem.judge import judge_one
+    from eval.longmem.classifier import classify_failure
 
     # Reset to seeds — each item is independent per LongMemEval semantics
     reset_to_seeds(brain)
+    err_baseline = _snapshot_error_count(brain)
 
     qid = item["question_id"]
     axis = _item_axis(item)
@@ -100,6 +128,28 @@ def run_item(brain, item: Dict[str, Any], item_idx: int, total: int) -> Dict[str
     print(f"[harness] hypothesis: {a_result['hypothesis'][:200]}", flush=True)
     print(f"[harness] abstained: {a_result['abstained']}, had context: {a_result['has_context']}", flush=True)
 
+    # Inline judge — grade now so classifier knows if this item needs diagnosis
+    j = judge_one(item["question"], item["answer"], a_result["hypothesis"])
+    correct = j["correct"]
+    print(f"[harness] judge: {'✓' if correct else '✗'} ({j['raw']})", flush=True)
+
+    # Classify failures while brain + traces are still live (before next reset_to_seeds)
+    failure_info = {}
+    if not correct:
+        failure_info = classify_failure(
+            brain, item["question"], item["answer"], a_result["hypothesis"],
+            q_result["query_session_id"], a_result["has_context"], a_result["abstained"])
+        print(f"[harness] failure: {failure_info['failure_bucket']} — {failure_info['failure_reason'][:140]}",
+              flush=True)
+
+    # Surface any silent errors logged during this item (prevents "passed the test
+    # but something broke mid-ingest" blind spots).
+    new_errors = _new_errors_since(brain, err_baseline)
+    if new_errors:
+        print(f"[harness] {len(new_errors)} new brain_error rows this item", flush=True)
+        for e in new_errors[:5]:
+            print(f"    {e['type']}: {e['message'][:120]}", flush=True)
+
     return {
         "question_id": qid,
         "question_type": item["question_type"],
@@ -109,9 +159,14 @@ def run_item(brain, item: Dict[str, Any], item_idx: int, total: int) -> Dict[str
         "hypothesis": a_result["hypothesis"],
         "abstained": a_result["abstained"],
         "has_context": a_result["has_context"],
+        "correct": correct,
+        "judge_raw": j["raw"],
+        "brain_errors_new": new_errors,
+        **failure_info,
         "ingest": ingest_stats,
         "ingest_ms": ingest_ms,
         "query_s1r_ms": q_result["s1r_ms"],
+        "query_session_id": q_result["query_session_id"],
         "answer_ms": a_result["elapsed_ms"],
         "answer_tokens_in": a_result.get("tokens_in", 0),
         "answer_tokens_out": a_result.get("tokens_out", 0),
@@ -176,19 +231,44 @@ def main():
             if "hypothesis" in r:
                 f.write(json.dumps({"question_id": r["question_id"], "hypothesis": r["hypothesis"]}) + "\n")
 
+    # Aggregate inline-graded results
+    graded = [r for r in results if "correct" in r]
+    correct_count = sum(1 for r in graded if r["correct"])
+    overall = correct_count / len(graded) if graded else 0
+    by_axis: Dict[str, List[bool]] = {}
+    by_bucket: Dict[str, int] = {}
+    for r in graded:
+        by_axis.setdefault(r["axis"], []).append(r["correct"])
+        if not r["correct"] and r.get("failure_bucket"):
+            by_bucket[r["failure_bucket"]] = by_bucket.get(r["failure_bucket"], 0) + 1
+
     report_path = os.path.join(reports_dir, f"run_{run_name}.json")
     with open(report_path, "w") as f:
         json.dump({
             "run_name": run_name,
             "items_count": len(results),
+            "correct_count": correct_count,
+            "overall_score": overall,
+            "axis_scores": {a: sum(v) / len(v) for a, v in by_axis.items() if v},
+            "axis_counts": {a: len(v) for a, v in by_axis.items()},
+            "failure_buckets": by_bucket,
             "total_ms": total_ms,
             "config": {"items_per_axis": args.items, "seed": args.seed},
             "results": results,
         }, f, indent=2)
 
     print(f"\n[harness] done in {total_ms/1000:.1f}s")
+    print(f"[harness] overall: {overall:.1%} ({correct_count}/{len(graded)})")
     print(f"[harness] hypotheses → {hypotheses_path}")
     print(f"[harness] report     → {report_path}")
+
+    # Render friendly markdown report
+    try:
+        from eval.longmem.report import render_report
+        md_path = render_report(report_path)
+        print(f"[harness] markdown   → {md_path}")
+    except Exception as e:
+        print(f"[harness] report render failed: {e}", flush=True)
 
 
 if __name__ == "__main__":
