@@ -718,16 +718,6 @@ def _handle_get_nodes(brain, args, graph_changes):
     return {"ok": True, "result": results}
 
 
-def _handle_encode_cluster(brain, args, graph_changes):
-    result = brain.encode_cluster(
-        nodes=args.get("nodes", []),
-        connect_to=args.get("connect_to"),
-        auto_connect=args.get("auto_connect", True))
-    n = result.get("nodes_created", 0)
-    graph_changes.append("ENCODE_CLUSTER: %d nodes" % n)
-    return {"ok": True, "result": result}
-
-
 def _handle_connect(brain, args, graph_changes):
     brain.connect_typed(
         source_id=_resolve_id(brain, args.get("source_id", "")),
@@ -943,8 +933,6 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "get_nodes":             CmdEntry(_handle_get_nodes,            is_write=False, marks_dirty=False),
     "recall_batch":          CmdEntry(_handle_recall_batch,         is_write=False, marks_dirty=False),
     "graph_expand":          CmdEntry(_handle_graph_expand,         is_write=False, marks_dirty=False),
-    # encode_cluster: DEPRECATED — use remember_batch() instead. Handler kept for backward compat.
-    # "encode_cluster":        CmdEntry(_handle_encode_cluster,      is_write=True, marks_dirty=True),
     "connect":               CmdEntry(_handle_connect,             is_write=True, marks_dirty=True),
     "connect_batch":         CmdEntry(_handle_connect_batch,       is_write=True, marks_dirty=True),
     "brain_batch":           CmdEntry(_handle_brain_batch,         is_write=True, marks_dirty=True),
