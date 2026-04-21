@@ -121,7 +121,8 @@ class BrainRememberMixin:
           1. Guards: rejects locked/critical nodes
           2. Sets archived=1, updated_at=now
           3. Stores audit metadata: archived_by, archived_reason, archived_at
-          4. Deletes edges (edges + edge_relations rows)
+          4. Soft-archives edge_relations (v25 — archived=1 preserves history
+             for future recovery; edges aggregate row stays for edge_id stability)
           5. Deletes vectors from node_enrichments (embeddings are expensive to keep)
           6. Removes from FTS5 index
 
@@ -180,7 +181,11 @@ class BrainRememberMixin:
             self._log_error('archive_metadata', _e,
                             'storing audit for %s' % node_id[:8])
 
-        # 3. Delete edges (edge_relations first, then edges)
+        # 3. Soft-archive edge_relations touching this node (v25). Preserves
+        # edge history so future rescue/reconstruction is possible — old
+        # hard-delete destroyed provenance irreversibly. The edges aggregate
+        # row is left intact; all reads filter via edge_relations joins,
+        # so archived edges stop joining in.
         edge_ids = [r[0] for r in self.conn.execute(
             'SELECT edge_id FROM edges WHERE source_id = ? OR target_id = ?',
             (full_id, full_id)).fetchall()]
@@ -189,11 +194,11 @@ class BrainRememberMixin:
             for i in range(0, len(edge_ids), 500):
                 chunk = edge_ids[i:i + 500]
                 ph = ','.join('?' * len(chunk))
-                self.conn.execute(
-                    'DELETE FROM edge_relations WHERE edge_id IN (%s)' % ph, chunk)
-                self.conn.execute(
-                    'DELETE FROM edges WHERE edge_id IN (%s)' % ph, chunk)
-                edges_deleted += len(chunk)
+                cur = self.conn.execute(
+                    'UPDATE edge_relations SET archived = 1, archived_at = ?, archived_by = ? '
+                    'WHERE edge_id IN (%s) AND archived = 0' % ph,
+                    [ts, archived_by] + chunk)
+                edges_deleted += cur.rowcount
 
         # 4. Delete vectors from node_enrichments
         vectors_deleted = self.conn.execute(
