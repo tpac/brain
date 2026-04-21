@@ -188,6 +188,9 @@ TABLES = {
             encoding_source TEXT DEFAULT '',
             decay_rate REAL DEFAULT NULL,
             created_at TEXT,
+            archived INTEGER DEFAULT 0,
+            archived_at TEXT DEFAULT NULL,
+            archived_by TEXT DEFAULT NULL,
             PRIMARY KEY (edge_id, relation)
         )""",
         'columns': {
@@ -195,6 +198,12 @@ TABLES = {
             'description': "''", 'weight': '0.5',
             'encoding_source': "''",
             'decay_rate': 'NULL', 'created_at': 'NULL',
+            # v25: soft-archive columns. PK stays (edge_id, relation);
+            # add_relation handles re-archive as un-archive (UPDATE
+            # archived=0) rather than requiring a composite PK.
+            'archived': '0',
+            'archived_at': 'NULL',
+            'archived_by': 'NULL',
         }
     },
 

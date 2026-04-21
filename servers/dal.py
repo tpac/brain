@@ -2026,26 +2026,34 @@ class GraphDAL:
                 'VALUES (?, ?, ?, ?, 0, ?, ?)',
                 (edge_id, source_id, target_id, weight, ts, ts))
 
-        # Check if this specific ACTIVE relation already exists (v25).
-        # Archived relations stay untouched; re-adding a previously archived
-        # relation creates a fresh active row (clean audit trail).
-        existing_rel = self.conn.execute(
-            'SELECT weight FROM edge_relations '
-            'WHERE edge_id = ? AND relation = ? AND archived = 0',
+        # Look up this (edge_id, relation) pair. PK is (edge_id, relation),
+        # so at most one row exists — may be active or archived.
+        existing = self.conn.execute(
+            'SELECT weight, archived FROM edge_relations '
+            'WHERE edge_id = ? AND relation = ?',
             (edge_id, relation)
         ).fetchone()
 
-        if existing_rel:
-            # Strengthen existing active relation
-            new_weight = min(MAX_WEIGHT, existing_rel[0] + LEARNING_RATE * 0.5)
+        if existing and existing[1] == 0:
+            # Active row exists → strengthen
+            new_weight = min(MAX_WEIGHT, existing[0] + LEARNING_RATE * 0.5)
             self.conn.execute(
                 'UPDATE edge_relations SET weight = ?, created_at = ? '
-                'WHERE edge_id = ? AND relation = ? AND archived = 0',
+                'WHERE edge_id = ? AND relation = ?',
                 (new_weight, ts, edge_id, relation))
-        else:
-            # Insert new relation
+        elif existing and existing[1] == 1:
+            # Archived row exists → un-archive with fresh weight/description
+            # (v25 — lets a previously-pruned or archived relation come back).
             self.conn.execute(
-                'INSERT OR IGNORE INTO edge_relations '
+                'UPDATE edge_relations '
+                'SET archived = 0, archived_at = NULL, archived_by = NULL, '
+                '    weight = ?, description = ?, encoding_source = ?, created_at = ? '
+                'WHERE edge_id = ? AND relation = ?',
+                (weight, description, encoding_source, ts, edge_id, relation))
+        else:
+            # No row → insert new
+            self.conn.execute(
+                'INSERT INTO edge_relations '
                 '(edge_id, relation, description, weight, encoding_source, created_at) '
                 'VALUES (?, ?, ?, ?, ?, ?)',
                 (edge_id, relation, description, weight, encoding_source, ts))
