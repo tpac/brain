@@ -1148,16 +1148,6 @@ class NodeDAL:
         )
         self.conn.commit()
 
-    def archive(self, node_id: str) -> None:
-        """DEPRECATED — use brain.archive_node() instead.
-        This only sets archived=1. The unified archive_node() also cleans
-        edges, vectors, FTS5, and writes audit metadata."""
-        self.conn.execute(
-            'UPDATE nodes SET archived = 1, updated_at = ? WHERE id = ?',
-            (_now(), node_id)
-        )
-        self.conn.commit()
-
     def purge(self, node_id: str) -> None:
         """Hard delete a node and ALL associated data.
         Removes: node, embeddings, enrichments, edges (both directions), metadata KV.
