@@ -673,6 +673,7 @@ def simulate_acceptance(brain, proposals, edges_by_node, accept_rate=0.6,
                         JOIN edge_relations er ON er.edge_id = e.edge_id
                         WHERE (e.source_id = ? OR e.target_id = ?)
                         AND er.relation = 'community_member'
+                        AND er.archived = 0
                     """, (smaller_id, smaller_id, smaller_id)).fetchall())
                     for mid in smaller_members:
                         try:
