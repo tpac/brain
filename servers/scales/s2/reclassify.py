@@ -116,7 +116,13 @@ class RelationReclassifier(IntegrationUnit):
         }
 
     def _gather_candidates(self):
-        """Find all generic relations with descriptions worth reclassifying."""
+        """Find all generic-relation edges with descriptions worth reclassifying.
+
+        Only active relations (archived=0). Archived rows are history
+        and shouldn't be re-classified back into service.
+        TODO(v25-dal): generic-relation reclassification is a one-off
+        upgrade pass; a dedicated DAL helper would be over-consolidation.
+        """
         rows = self.brain.conn.execute("""
             SELECT er.edge_id, er.relation, er.description,
                    e.source_id, e.target_id,
@@ -126,6 +132,7 @@ class RelationReclassifier(IntegrationUnit):
             JOIN nodes ns ON ns.id = e.source_id
             JOIN nodes nt ON nt.id = e.target_id
             WHERE er.relation IN ('related', 'related_to')
+            AND er.archived = 0
             AND er.description IS NOT NULL AND er.description != ''
             AND LENGTH(er.description) > 5
             AND er.encoding_source != 's2:relation_migration'

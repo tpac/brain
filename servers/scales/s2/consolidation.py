@@ -83,11 +83,16 @@ class Consolidation(ConsolidationDecoder):
         # the run is recorded as a rejection (SKIP path) — no edge written
         # on the graph, fingerprint in s2_rejections prevents re-proposal.
         def _snapshot_suppression_pairs():
+            # Active suppression edges only — archived rows don't count
+            # as current suppression. TODO(v25-dal): could migrate to a
+            # GraphDAL.get_pairs_with_relations helper if a second caller
+            # appears.
             pairs = set()
             for row in self.brain.conn.execute(
                 "SELECT e.source_id, e.target_id FROM edges e "
                 "JOIN edge_relations er ON er.edge_id = e.edge_id "
-                "WHERE er.relation IN ('similar_to','consolidated_into')"):
+                "WHERE er.relation IN ('similar_to','consolidated_into') "
+                "AND er.archived = 0"):
                 pairs.add((min(row[0], row[1]), max(row[0], row[1])))
             return pairs
 
