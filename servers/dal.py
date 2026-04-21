@@ -1818,8 +1818,42 @@ class GraphDAL:
         rows = self.conn.execute(sql, params).fetchall()
         return [r[0] for r in rows if r[0]]
 
-    def count_node_edges(self, node_id: str, min_weight: float = 0.1) -> int:
-        """Count edges touching a node (both directions)."""
+    def count_node_edges(self, node_id: str, min_weight: float = 0.1,
+                         relations=None,
+                         include_archived: bool = False) -> int:
+        """Count edges touching a node (both directions).
+
+        Args:
+            node_id: node whose edges to count. Empty → raises ValueError.
+            min_weight: edges-table weight floor. Default 0.1.
+            relations: iterable of relation names — if provided, only count
+                edges that carry at least one of these relations (via JOIN).
+                None → count the aggregate edges table, relation-agnostic.
+            include_archived: if False (default) and `relations` is set,
+                filters er.archived=0. Ignored when relations is None
+                (aggregate edges has no archived column).
+
+        Why two paths: when you don't care about relation, counting from
+        `edges` directly is cheap. When you do, the JOIN is needed.
+        """
+        if not node_id:
+            raise ValueError("count_node_edges: node_id required")
+
+        if relations:
+            rel_list = list(relations)
+            rel_ph = ','.join('?' * len(rel_list))
+            archived_clause = '' if include_archived else 'AND er.archived = 0'
+            row = self.conn.execute(
+                'SELECT COUNT(DISTINCT er.edge_id) FROM edges e '
+                'JOIN edge_relations er ON er.edge_id = e.edge_id '
+                'WHERE (e.source_id = ? OR e.target_id = ?) '
+                'AND e.weight >= ? '
+                'AND er.relation IN (%s) '
+                '%s' % (rel_ph, archived_clause),
+                [node_id, node_id, min_weight] + rel_list
+            ).fetchone()
+            return row[0] if row else 0
+
         row = self.conn.execute(
             'SELECT COUNT(*) FROM edges WHERE (source_id = ? OR target_id = ?) AND weight >= ?',
             (node_id, node_id, min_weight)

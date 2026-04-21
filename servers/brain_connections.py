@@ -121,13 +121,10 @@ class BrainConnectionsMixin:
         threshold = self.get_config('bridge_threshold', 2)
         max_per_node = self.get_config('bridge_max_per_node', 5)
 
-        # Check existing bridge count
-        existing = self.conn.execute('''
-            SELECT COUNT(*) FROM edges e
-            JOIN edge_relations er ON er.edge_id = e.edge_id
-            WHERE (e.source_id = ? OR e.target_id = ?) AND er.relation = 'emergent_bridge'
-        ''', (node_id, node_id)).fetchone()
-        current_bridge_count = existing[0] if existing else 0
+        # Check existing bridge count via GraphDAL (archived=0 default).
+        from .dal import GraphDAL
+        current_bridge_count = GraphDAL(self.conn).count_node_edges(
+            node_id, min_weight=0.0, relations={'emergent_bridge'})
 
         if current_bridge_count >= max_per_node:
             return []
