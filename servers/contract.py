@@ -268,6 +268,10 @@ def render_rich_node(node, config=None):
     meta_limit = cfg.get('metadata_limit', 300)
     skip_keys = set((
         'metadata_created_at',
+        # situation is rendered at top-level (line above) — skip here to
+        # avoid double-display. kv is canonical; promotion to top-level
+        # keeps code callers ergonomic.
+        'situation',
         # S2 community structural metrics — useful for S2CD/S3, not for Anchor
         'community_internal_edges', 'community_external_edges',
         'community_internal_fraction', 'community_is_corridor',

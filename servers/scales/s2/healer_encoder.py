@@ -51,6 +51,11 @@ class HealerEncoder(IntegrationUnit):
         for batch_start in range(0, len(proposals), batch_size):
             batches += 1
             batch = proposals[batch_start:batch_start + batch_size]
+            # Lookup table: match Haiku's node_id back to the proposal
+            # that triggered it (so we can enforce needs_* flags and reject
+            # any unsolicited fields Haiku regenerates).
+            by_full = {p['node_id']: p for p in batch}
+            by_short = {p['node_id'][:8]: p for p in batch}
 
             user_content = self._format_batch(batch)
             result = self._call_llm('s2_healer', user_content)
@@ -74,7 +79,8 @@ class HealerEncoder(IntegrationUnit):
                 if not nid:
                     continue
 
-                written = self._store_fields(nid, healing)
+                proposal = by_full.get(nid) or by_short.get(nid[:8])
+                written = self._store_fields(nid, healing, proposal)
                 if written > 0:
                     nodes_healed += 1
                     fields_written += written
@@ -232,12 +238,17 @@ class HealerEncoder(IntegrationUnit):
 
         return '\n'.join(lines)
 
-    def _store_fields(self, node_id, enrichment):
+    def _store_fields(self, node_id, enrichment, proposal=None):
         """Store healed fields via brain's standard write path (revise).
 
         Always uses revise() — handles metadata, situation embedding,
         group vectors, FTS5, everything in one call. Goes through dispatch
         (TCP to daemon) when available, direct brain.revise() when inline.
+
+        When `proposal` is provided, only fields flagged in the proposal's
+        needs_* set get written — Haiku-returned fields for slots that
+        already had content are rejected and logged. Prevents the renegade-
+        healer pattern (overwriting good data with freshly-generated text).
 
         Returns count of fields written.
         """
@@ -245,8 +256,17 @@ class HealerEncoder(IntegrationUnit):
 
         for field in ['question', 'situation', 'reasoning']:
             value = enrichment.get(field, '').strip()
-            if value and len(value) > 5:
-                fields_to_write[field] = value
+            if not (value and len(value) > 5):
+                continue
+            # Reject unsolicited fields — node already had this slot filled.
+            if proposal is not None and not proposal.get('needs_' + field, False):
+                self.brain._log_error(
+                    'healer_unsolicited_field',
+                    Exception('Haiku returned %s for %s but needs_%s=False' % (
+                        field, node_id[:8], field)),
+                    'rejecting — node already had %s, not overwriting' % field)
+                continue
+            fields_to_write[field] = value
 
         if not fields_to_write:
             return 0
