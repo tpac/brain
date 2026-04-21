@@ -223,59 +223,14 @@ class BrainRecallMixin:
                         corr['type'] = corr_node.get('type', '')
                 nodes[nid]['_corrections'] = node_corrs
 
-        # ── 5. Batch fetch all connections ──
-        # Read from edge_relations (source of truth) via edge_id JOIN.
-        # Single-direction storage: query both directions, detect outgoing/incoming.
-        edge_rows = conn.execute("""
-            SELECT e.source_id, e.target_id, e.weight,
-                   er.relation, er.description, er.weight as rel_weight,
-                   n1.id, n1.type, n1.title, n1.created_at, n1.revised_at, n1.confidence, n1.locked,
-                   n2.id, n2.type, n2.title, n2.created_at, n2.revised_at, n2.confidence, n2.locked
-            FROM edges e
-            JOIN edge_relations er ON er.edge_id = e.edge_id
-            JOIN nodes n1 ON n1.id = e.target_id
-            JOIN nodes n2 ON n2.id = e.source_id
-            WHERE (e.source_id IN ({ph}) OR e.target_id IN ({ph}))
-            AND er.relation NOT IN ('co_accessed', 'emergent_bridge')
-            AND n1.archived = 0 AND n2.archived = 0
-        """.format(ph=ph), found_ids + found_ids).fetchall()
-
-        # Group by (owner_node, neighbor_node) — collect all relations per neighbor
-        edges_by_node = {}  # {owner_id: {neighbor_id: {node_data, relations: [...]}}}
-        found_set = set(found_ids)
-        for row in edge_rows:
-            src, tgt = row[0], row[1]
-            agg_weight = row[2]
-            rel = row[3] or 'related'
-            desc = row[4] or ''
-            rel_weight = row[5] or agg_weight
-            # n1 = target node, n2 = source node
-            n1_data = {"id": row[6], "type": row[7], "title": row[8],
-                       "created_at": row[9], "revised_at": row[10],
-                       "confidence": row[11], "locked": row[12] == 1}
-            n2_data = {"id": row[13], "type": row[14], "title": row[15],
-                       "created_at": row[16], "revised_at": row[17],
-                       "confidence": row[18], "locked": row[19] == 1}
-            relation_entry = {"relation": rel, "description": desc, "weight": rel_weight}
-
-            # For source node looking outward → neighbor is target (n1) — outgoing
-            if src in found_set and tgt != src:
-                key = (src, n1_data['id'])
-                if key not in edges_by_node.setdefault(src, {}):
-                    edges_by_node[src][key] = {**n1_data, "weight": agg_weight,
-                                                "direction": "outgoing", "relations": []}
-                edges_by_node[src][key]["relations"].append(relation_entry)
-
-            # For target node looking outward → neighbor is source (n2) — incoming
-            if tgt in found_set and src != tgt:
-                key = (tgt, n2_data['id'])
-                if key not in edges_by_node.setdefault(tgt, {}):
-                    edges_by_node[tgt][key] = {**n2_data, "weight": agg_weight,
-                                                "direction": "incoming", "relations": []}
-                edges_by_node[tgt][key]["relations"].append(relation_entry)
+        # ── 5. Batch fetch all connections via GraphDAL (v25) ──
+        # DAL centralizes: archived=0 default, noise-relation exclusion,
+        # direction detection, per-neighbor relation grouping.
+        from .dal import GraphDAL
+        connections_by_owner = GraphDAL(conn).get_connections_bulk(found_ids)
 
         for nid in found_ids:
-            conns = list(edges_by_node.get(nid, {}).values())
+            conns = connections_by_owner.get(nid, [])
             # Sort by aggregate weight, set 'relation' to highest-weight relation for compat
             for c in conns:
                 rels = sorted(c['relations'], key=lambda r: r.get('weight', 0), reverse=True)
