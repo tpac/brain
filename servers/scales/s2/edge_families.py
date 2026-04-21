@@ -34,12 +34,12 @@ class EdgeFamilyIntegration(IntegrationUnit):
             if isinstance(members, list):
                 classified.update(members)
 
-        # Find all relation types in the graph
-        rows = self.brain.conn.execute("""
-            SELECT relation, COUNT(*) as cnt FROM edge_relations
-            GROUP BY relation ORDER BY cnt DESC
-        """).fetchall()
-        all_types = {r[0]: r[1] for r in rows}
+        # Find all relation types in the graph.
+        # GraphDAL.count_by_relation defaults archived=0 (v25); for family
+        # vocabulary we want only active relations — archived ones are
+        # history, not the current classification target.
+        from servers.dal import GraphDAL
+        all_types = GraphDAL(self.brain.conn).count_by_relation()
 
         # Find unclassified (excluding noise we always skip)
         noise = {'co_accessed', 'emergent_bridge', 'community_member'}

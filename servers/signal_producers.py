@@ -362,13 +362,14 @@ def deep_integrity_audit(brain):
         })
 
         # 6. Edge type distribution — are co_accessed dominating?
-        edge_types = brain.conn.execute("""
-            SELECT relation, COUNT(*) as cnt FROM edge_relations GROUP BY relation ORDER BY cnt DESC LIMIT 5
-        """).fetchall()
-        total_edges = sum(r[1] for r in edge_types)
-        for r in edge_types:
-            pct = r[1] / max(1, total_edges) * 100
-            if r[0] == 'co_accessed' and pct > 70:
+        # GraphDAL.count_by_relation defaults archived=0 (v25).
+        from .dal import GraphDAL
+        all_counts = GraphDAL(brain.conn).count_by_relation()
+        edge_types = list(all_counts.items())[:5]
+        total_edges = sum(cnt for _, cnt in edge_types)
+        for rel, cnt in edge_types:
+            pct = cnt / max(1, total_edges) * 100
+            if rel == 'co_accessed' and pct > 70:
                 findings.append({
                     "type": "edge_imbalance",
                     "severity": "info",

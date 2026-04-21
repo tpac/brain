@@ -63,7 +63,8 @@ def check_group_vector_coverage(brain):
         "SELECT COUNT(DISTINCT CASE WHEN e.source_id IN (SELECT id FROM nodes WHERE archived=0 AND type!='community') "
         "THEN e.source_id ELSE e.target_id END) "
         "FROM edges e JOIN edge_relations er ON er.edge_id = e.edge_id "
-        "WHERE er.description IS NOT NULL AND length(er.description) > 10 "
+        "WHERE er.archived = 0 "  # TODO(v25-dal): move to GraphDAL helper
+        "AND er.description IS NOT NULL AND length(er.description) > 10 "
         "AND er.relation NOT IN ('co_accessed', 'emergent_bridge', 'community_member')"
     ).fetchone()[0]
 
