@@ -1498,21 +1498,34 @@ class GraphDAL:
 
     def get_neighbors(self, node_id: str, limit: int = 8,
                       exclude_relations: set = None,
-                      exclude_node_ids: set = None) -> List[Dict[str, Any]]:
-        """Get neighbors with node + edge + relation data.
+                      exclude_node_ids: set = None,
+                      include_archived: bool = False,
+                      content_preview_chars: int = 0) -> List[Dict[str, Any]]:
+        """Get neighbors with node + edge + relation data (EDGE_ROW_SHAPE).
 
-        Single-direction storage: queries both directions, flags each as outgoing/incoming.
-        Relations from edge_relations via edge_id JOIN. Supports filtering.
+        Single-direction storage: queries both directions, flags each as
+        outgoing/incoming. Relations from edge_relations via edge_id JOIN.
 
         Args:
-            node_id: Node to find neighbors of
-            limit: Max neighbors to return
-            exclude_relations: Relation types to skip (e.g. {'co_accessed'})
-            exclude_node_ids: Node IDs to skip (already visited in traversal)
+            node_id: Node to find neighbors of. Empty → raises ValueError.
+            limit: Max neighbors (ordered by edge weight desc).
+            exclude_relations: Relation types to skip. None → no exclusion.
+                Pass DEFAULT_EXCLUDED_RELATIONS for the standard noise set.
+            exclude_node_ids: Node IDs to skip (already visited in traversal).
+            include_archived: if False (default), filters er.archived=0.
+                Enables forensic/recovery queries when True.
+            content_preview_chars: if > 0, adds `content_preview` field to
+                each row — substr(content, 1, N). Default 0 skips content
+                to keep result size small.
         """
-        # Build dynamic WHERE clauses
+        if not node_id:
+            raise ValueError("get_neighbors: node_id required")
+
         where_parts = ["n.archived = 0"]
         params = [node_id, node_id, node_id, node_id]
+
+        if not include_archived:
+            where_parts.append("er.archived = 0")
 
         if exclude_node_ids:
             placeholders = ",".join("?" * len(exclude_node_ids))
@@ -1527,6 +1540,10 @@ class GraphDAL:
         params.append(limit)
         where_clause = " AND ".join(where_parts)
 
+        preview_col = ''
+        if content_preview_chars and content_preview_chars > 0:
+            preview_col = ', substr(n.content, 1, %d) as content_preview' % int(content_preview_chars)
+
         rows = self.conn.execute("""
             SELECT
                 n.id, n.type, n.title, n.content_summary, n.confidence,
@@ -1535,25 +1552,33 @@ class GraphDAL:
                 er.relation, er.weight, er.description,
                 e.last_strengthened, e.co_access_count, e.edge_id,
                 CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction
+                {preview_col}
             FROM edges e
             JOIN edge_relations er ON er.edge_id = e.edge_id
             JOIN nodes n ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END
             WHERE (e.source_id = ? OR e.target_id = ?)
-            AND %s
+            AND {where_clause}
             ORDER BY e.weight DESC
             LIMIT ?
-        """ % where_clause, params).fetchall()
+        """.format(preview_col=preview_col, where_clause=where_clause),
+            params).fetchall()
 
-        return [{
-            'id': r[0], 'type': r[1], 'title': r[2], 'content_summary': r[3],
-            'confidence': r[4], 'revised_at': r[5], 'created_at': r[6],
-            'last_accessed': r[7], 'access_count': r[8], 'locked': r[9],
-            'emotion': r[10], 'emotion_label': r[11],
-            'relation': r[12] or '', 'weight': r[13],
-            'edge_description': r[14], 'last_strengthened': r[15],
-            'co_access_count': r[16], 'edge_id': r[17],
-            'direction': r[18],
-        } for r in rows]
+        out = []
+        for r in rows:
+            row = {
+                'id': r[0], 'type': r[1], 'title': r[2], 'content_summary': r[3],
+                'confidence': r[4], 'revised_at': r[5], 'created_at': r[6],
+                'last_accessed': r[7], 'access_count': r[8], 'locked': r[9],
+                'emotion': r[10], 'emotion_label': r[11],
+                'relation': r[12] or '', 'weight': r[13],
+                'edge_description': r[14], 'last_strengthened': r[15],
+                'co_access_count': r[16], 'edge_id': r[17],
+                'direction': r[18],
+            }
+            if preview_col:
+                row['content_preview'] = r[19] or ''
+            out.append(row)
+        return out
 
     def count_node_edges(self, node_id: str, min_weight: float = 0.1) -> int:
         """Count edges touching a node (both directions)."""
