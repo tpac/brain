@@ -1760,6 +1760,57 @@ class GraphDAL:
             'created_at': r[3], 'confidence': r[4], 'locked': r[5],
         } for r in rows]
 
+    def get_communities_for(self, node_ids,
+                            include_archived: bool = False,
+                            require_active_community: bool = True):
+        """Reverse of get_community_members: for each given node, list the
+        communities it belongs to via community_member edges.
+
+        Returns dict {node_id: [{id, title}, ...]} — symmetric to
+        get_community_members's shape. Used by consolidation_decoder to
+        enrich clusters with their community placement.
+
+        Raises ValueError on empty node_ids.
+        """
+        ids = list(node_ids)
+        if not ids:
+            raise ValueError("get_communities_for: node_ids is empty")
+
+        id_ph = ','.join('?' * len(ids))
+        archived_clause = '' if include_archived else 'AND er.archived = 0'
+        community_clause = 'AND n.archived = 0' if require_active_community else ''
+
+        sql = """
+            SELECT
+                CASE WHEN e.source_id IN ({id_ph}) THEN e.source_id
+                     ELSE e.target_id END as member,
+                CASE WHEN e.source_id IN ({id_ph}) THEN e.target_id
+                     ELSE e.source_id END as community,
+                n.title
+            FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
+            JOIN nodes n ON n.id = CASE
+                WHEN e.source_id IN ({id_ph}) THEN e.target_id
+                ELSE e.source_id END
+            WHERE (e.source_id IN ({id_ph}) OR e.target_id IN ({id_ph}))
+              AND er.relation = 'community_member'
+              AND n.type = 'community'
+              {archived_clause}
+              {community_clause}
+        """.format(
+            id_ph=id_ph,
+            archived_clause=archived_clause,
+            community_clause=community_clause,
+        )
+
+        rows = self.conn.execute(sql, ids * 5).fetchall()
+
+        from collections import defaultdict
+        membership = defaultdict(list)
+        for member_id, comm_id, comm_title in rows:
+            membership[member_id].append({'id': comm_id, 'title': comm_title})
+        return dict(membership)
+
     def count_by_relation(self, include_archived: bool = False):
         """Edge count grouped by relation type.
 

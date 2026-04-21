@@ -96,7 +96,11 @@ class ConsolidationDecoder(IntegrationUnit):
         """
         archived = []
 
-        # Find community nodes with no community_member edges
+        # Find community nodes with no active community_member edges.
+        # TODO(v25-dal): dedicated helper like
+        # GraphDAL.find_communities_without_members() — the NOT EXISTS
+        # shape doesn't fit any existing method cleanly and this is the
+        # only caller. Stay raw with archived=0 filter for now.
         orphan_communities = self.brain.conn.execute("""
             SELECT n.id, n.title FROM nodes n
             WHERE n.type = 'community' AND n.archived = 0
@@ -105,6 +109,7 @@ class ConsolidationDecoder(IntegrationUnit):
                 JOIN edge_relations er ON er.edge_id = e.edge_id
                 WHERE (e.source_id = n.id OR e.target_id = n.id)
                 AND er.relation = 'community_member'
+                AND er.archived = 0
             )
         """).fetchall()
 
@@ -213,16 +218,19 @@ class ConsolidationDecoder(IntegrationUnit):
         # cluster and relied on prompt compliance to stay consistent.
         already_reviewed = set()
         if suppression:
+            # TODO(v25-dal): dedicated helper like
+            # GraphDAL.nodes_touched_by_relations(relations). One caller
+            # today; migrate if a second appears. Stay raw + archived=0.
             placeholders = ','.join('?' * len(suppression))
             reviewed_rows = self.brain.conn.execute("""
                 SELECT DISTINCT node_id FROM (
                     SELECT e.source_id AS node_id FROM edges e
                     JOIN edge_relations er ON er.edge_id = e.edge_id
-                    WHERE er.relation IN (%s)
+                    WHERE er.relation IN (%s) AND er.archived = 0
                     UNION
                     SELECT e.target_id AS node_id FROM edges e
                     JOIN edge_relations er ON er.edge_id = e.edge_id
-                    WHERE er.relation IN (%s)
+                    WHERE er.relation IN (%s) AND er.archived = 0
                 )
             """ % (placeholders, placeholders),
                 list(suppression) + list(suppression)).fetchall()
@@ -675,28 +683,12 @@ class ConsolidationDecoder(IntegrationUnit):
         return catalog_data
 
     def _load_community_membership(self, node_ids):
-        """Load community membership for target nodes."""
-        membership = defaultdict(list)
-        placeholders = ','.join('?' * len(node_ids))
-
-        rows = self.brain.conn.execute("""
-            SELECT
-                CASE WHEN e.source_id IN (%s) THEN e.source_id ELSE e.target_id END as member,
-                CASE WHEN e.source_id IN (%s) THEN e.target_id ELSE e.source_id END as community,
-                n.title
-            FROM edges e
-            JOIN edge_relations er ON er.edge_id = e.edge_id
-            JOIN nodes n ON n.id = CASE WHEN e.source_id IN (%s) THEN e.target_id ELSE e.source_id END
-            WHERE (e.source_id IN (%s) OR e.target_id IN (%s))
-            AND er.relation = 'community_member'
-            AND n.type = 'community' AND n.archived = 0
-        """ % (placeholders, placeholders, placeholders, placeholders, placeholders),
-            list(node_ids) * 5).fetchall()
-
-        for member_id, comm_id, comm_title in rows:
-            membership[member_id].append({'id': comm_id, 'title': comm_title})
-
-        return dict(membership)
+        """Load community membership for target nodes via GraphDAL."""
+        ids = list(node_ids)
+        if not ids:
+            return {}
+        from servers.dal import GraphDAL
+        return GraphDAL(self.brain.conn).get_communities_for(ids)
 
     def _load_edge_data(self, node_ids):
         """Load typed edges per node via GraphDAL.
