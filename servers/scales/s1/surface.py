@@ -110,15 +110,14 @@ def _graph_expand(brain, selected_ids):
     Returns: list of neighbor dicts [{id, type, title, content, edge_type, ...}]
     """
     from servers.pipeline_contract import TRAVERSE_EXCLUDED_EDGES
-    from servers.dal import NodeDAL
+    from servers.dal import NodeDAL, GraphDAL
 
     conn = brain.conn
     ndal = NodeDAL(conn)
-    excluded = TRAVERSE_EXCLUDED_EDGES
-    excl_placeholders = ','.join('?' for _ in excluded)
+    graph_dal = GraphDAL(conn)
+    excluded = set(TRAVERSE_EXCLUDED_EDGES)
 
     seen = set()
-    # Resolve and track seed IDs
     resolved = set()
     for sid in selected_ids:
         full = ndal.resolve_id(sid) if len(str(sid)) < 16 else sid
@@ -129,32 +128,26 @@ def _graph_expand(brain, selected_ids):
 
     neighbors = []
     for full_id in resolved:
-        rows = conn.execute("""
-            SELECT n.id, n.type, n.title, substr(n.content, 1, 300),
-                   er.relation, e.weight, er.description,
-                   n.confidence, n.locked,
-                   CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction,
-                   n.created_at, n.revised_at
-            FROM edges e
-            JOIN edge_relations er ON er.edge_id = e.edge_id
-            JOIN nodes n ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END
-            WHERE (e.source_id = ? OR e.target_id = ?) AND n.archived = 0
-            AND n.id != ?
-            AND er.relation NOT IN ({excl})
-            ORDER BY e.weight DESC LIMIT 3
-        """.format(excl=excl_placeholders),
-            [full_id, full_id, full_id, full_id, full_id] + list(excluded)).fetchall()
-
+        rows = graph_dal.get_neighbors(
+            full_id,
+            limit=3,
+            exclude_relations=excluded,
+            exclude_node_ids=seen,
+            content_preview_chars=300,
+        )
         for r in rows:
-            if r[0] not in seen:
-                seen.add(r[0])
+            if r['id'] not in seen:
+                seen.add(r['id'])
                 neighbors.append({
-                    "id": r[0], "type": r[1], "title": r[2],
-                    "content": r[3], "edge_type": r[4],
-                    "edge_weight": r[5], "edge_description": r[6] or "",
-                    "confidence": r[7], "locked": r[8] == 1,
-                    "direction": r[9],
-                    "created_at": r[10], "revised_at": r[11],
+                    "id": r['id'], "type": r['type'], "title": r['title'],
+                    "content": r.get('content_preview', ''),
+                    "edge_type": r['relation'],
+                    "edge_weight": r['weight'],
+                    "edge_description": r.get('edge_description') or '',
+                    "confidence": r['confidence'],
+                    "locked": r['locked'] == 1,
+                    "direction": r['direction'],
+                    "created_at": r['created_at'], "revised_at": r['revised_at'],
                     "seed_id": full_id,
                 })
 
