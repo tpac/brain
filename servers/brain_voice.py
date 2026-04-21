@@ -491,7 +491,13 @@ class BrainVoice:
                     narrative = ccontent or ''
                     comm_by_id[cid] = (maturity, size, ctitle, narrative, cid)
 
-                # Find communities with recently accessed members
+                # Find communities with recently-accessed members.
+                # TODO(v25-dal): this is a reverse-direction community query
+                # (member → community) that doesn't fit get_community_members
+                # (which is community → members). A future DAL method like
+                # get_recently_active_communities(since_hours) would consolidate
+                # this + similar queries in dashboard/eval. For now: raw SQL
+                # with archived=0 filter and no silent failure.
                 recent_comm_ids = set()
                 try:
                     recent_member_rows = brain.conn.execute('''
@@ -504,12 +510,14 @@ class BrainVoice:
                             CASE WHEN e.source_id IN (SELECT id FROM nodes WHERE type = 'community')
                                  THEN e.target_id ELSE e.source_id END
                         WHERE er.relation = 'community_member'
+                        AND er.archived = 0
                         AND member.last_accessed > datetime('now', '-3 days')
                         AND member.type != 'community'
                     ''').fetchall()
                     recent_comm_ids = {r[0] for r in recent_member_rows}
-                except Exception:
-                    pass
+                except Exception as e:
+                    brain._log_error('brain_voice_recent_communities', e,
+                                     'building recent-community-member set for boot')
 
                 # Select: BOOT_COMMUNITY_RECENT recently active + BOOT_COMMUNITY_TOP by size
                 maturity_order = {'settled': 0, 'active': 1, 'forming': 2, 'corridor': 3}
