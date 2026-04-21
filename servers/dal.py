@@ -1381,11 +1381,67 @@ class Fts5DAL:
         return ' OR '.join('"%s"' % t.replace('"', '') for t in terms[:8])
 
 
-class GraphDAL:
-    """Access layer for brain.db graph tables: edges.
+# ═══════════════════════════════════════════════════════════════
+# GRAPH QUERY CONTRACT
+# ═══════════════════════════════════════════════════════════════
+# Every edge-reading method in GraphDAL conforms to this shape and
+# these defaults. Centralizes what the rest of the code can assume.
+# When we change what "an edge" means, we change it HERE once, and
+# every consumer inherits the update.
 
-    ALL edge SQL lives here. When we move to in-memory graph,
-    swap this implementation — nothing else changes.
+# Canonical edge-row shape returned by GraphDAL reads. Node-centric:
+# each row is a (owner → neighbor) relationship from the queried
+# node's perspective. Matches get_neighbors output.
+EDGE_ROW_SHAPE = {
+    # Neighbor node fields (the node on the OTHER side of the edge)
+    'id':                 'str  — neighbor node_id',
+    'type':               'str  — neighbor node type',
+    'title':              'str  — neighbor title',
+    'content_summary':    'str  — neighbor content summary (may be None)',
+    'confidence':         'float',
+    'locked':             'int (0|1)',
+    'created_at':         'str ISO',
+    'revised_at':         'str ISO or None',
+    # Edge metadata
+    'edge_id':            'str — stable pair hash',
+    'relation':           'str — typed relation name',
+    'edge_description':   'str — relation description',
+    'weight':             'float — edge-aggregate weight',
+    'direction':          "str — 'outgoing' | 'incoming' from queried node",
+    # Optional (present on richer methods)
+    'last_accessed':      'str ISO',
+    'access_count':       'int',
+    'emotion':            'float',
+    'emotion_label':      'str',
+    'last_strengthened':  'str ISO',
+    'co_access_count':    'int',
+    'content_preview':    'str — substr of content when caller requests',
+}
+
+# Relations considered noise for semantic edge queries. Default-excluded
+# by callers that want knowledge edges only. Override per-call when you
+# need co_accessed (fatigue) or emergent_bridge (auto-links).
+# community_member is NOT in this default — it's real thematic context,
+# just not migrated by consolidation.
+DEFAULT_EXCLUDED_RELATIONS = frozenset(['co_accessed', 'emergent_bridge'])
+
+# When `include_archived=False` is the default, every edge-reading method
+# filters `archived = 0` in its WHERE clause. v25 added the column;
+# this contract is the reason the filter lives in one place.
+
+
+class GraphDAL:
+    """Access layer for brain.db graph tables: edges + edge_relations.
+
+    ALL edge SQL lives here. When we move to in-memory graph, swap this
+    implementation — nothing else changes. Every edge-reading method
+    honors the GRAPH QUERY CONTRACT above:
+      - Returns EDGE_ROW_SHAPE dicts (node-centric, neighbor fields flat)
+      - Defaults include_archived=False (v25 soft-archive filter)
+      - Accepts exclude_relations set to drop noise (see
+        DEFAULT_EXCLUDED_RELATIONS for the standard noise set)
+
+    Raises on invalid args — no silent empty returns masking bad calls.
     """
 
     def __init__(self, conn: sqlite3.Connection):
