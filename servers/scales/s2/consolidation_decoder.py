@@ -699,47 +699,40 @@ class ConsolidationDecoder(IntegrationUnit):
         return dict(membership)
 
     def _load_edge_data(self, node_ids):
-        """Load typed edges per node.
+        """Load typed edges per node via GraphDAL.
 
-        Excludes only noise relations (co_accessed, emergent_bridge).
+        Uses DEFAULT_EXCLUDED_RELATIONS (co_accessed, emergent_bridge).
         community_member is kept so the encoder sees thematic neighborhood
         signals as first-class edges — it's context, not a migration target
         (S2 community detection manages placement on the next run).
 
-        Each edge record includes 'direction' (outgoing|incoming) from the
-        cluster member's perspective — required for correct edge migration
-        during ABSORB: outgoing edges migrate via survivor's connections,
-        incoming edges migrate via separate connect ops on the neighbor.
+        Returns {member_id: {neighbor_id: [edge_dicts]}} where each
+        edge_dict has relation/description/title/type/direction — the
+        nested shape the encoder's _format_clusters expects.
         """
+        ids = list(node_ids)
+        if not ids:
+            return {}
+
+        from servers.dal import GraphDAL
+        per_member = GraphDAL(self.brain.conn).get_neighbors_bulk(ids)
+        # exclude_relations defaults to DEFAULT_EXCLUDED_RELATIONS, so
+        # co_accessed / emergent_bridge are already out. archived=0 is the
+        # DAL default (v25).
+
         edges = defaultdict(dict)
-        placeholders = ','.join('?' * len(node_ids))
-
-        rows = self.brain.conn.execute("""
-            SELECT e.source_id, e.target_id, er.relation, er.description,
-                   n.title, n.type
-            FROM edges e
-            JOIN edge_relations er ON er.edge_id = e.edge_id
-            JOIN nodes n ON n.id = CASE WHEN e.source_id IN (%s) THEN e.target_id
-                                        ELSE e.source_id END
-            WHERE (e.source_id IN (%s) OR e.target_id IN (%s))
-            AND er.relation NOT IN ('co_accessed', 'emergent_bridge')
-            AND n.archived = 0
-        """ % (placeholders, placeholders, placeholders),
-            list(node_ids) * 3).fetchall()
-
-        for src, tgt, rel, desc, nbr_title, nbr_type in rows:
-            member = src if src in node_ids else tgt
-            neighbor = tgt if member == src else src
-            if neighbor not in edges[member]:
-                edges[member][neighbor] = []
-            edges[member][neighbor].append({
-                'relation': rel,
-                'description': (desc or '')[:80],
-                'title': nbr_title[:60],
-                'type': nbr_type,
-                'direction': 'outgoing' if member == src else 'incoming',
-            })
-
+        for member, flat_rows in per_member.items():
+            for r in flat_rows:
+                nbr_id = r['id']
+                if nbr_id not in edges[member]:
+                    edges[member][nbr_id] = []
+                edges[member][nbr_id].append({
+                    'relation': r['relation'],
+                    'description': (r.get('edge_description') or '')[:80],
+                    'title': (r['title'] or '')[:60],
+                    'type': r['type'],
+                    'direction': r['direction'],
+                })
         return dict(edges)
 
     def _has_correction_edge(self, node_ids):
@@ -748,19 +741,9 @@ class ConsolidationDecoder(IntegrationUnit):
             'correction_improvement', 'hierarchical_structure')
         if not correction_rels:
             correction_rels = {'corrects', 'corrected_by', 'supersedes', 'superseded_by'}
-
-        node_ph = ','.join('?' * len(node_ids))
-        rel_ph = ','.join('?' * len(correction_rels))
-
-        rows = self.brain.conn.execute("""
-            SELECT 1 FROM edges e
-            JOIN edge_relations er ON er.edge_id = e.edge_id
-            WHERE e.source_id IN (%s) AND e.target_id IN (%s)
-            AND er.relation IN (%s) LIMIT 1
-        """ % (node_ph, node_ph, rel_ph),
-            list(node_ids) * 2 + list(correction_rels)).fetchall()
-
-        return len(rows) > 0
+        from servers.dal import GraphDAL
+        return GraphDAL(self.brain.conn).has_edge_between(
+            node_ids, node_ids, relations=correction_rels)
 
     def _has_tension_edge(self, node_ids):
         """Check if any contradiction/challenge edge exists between cluster members.
@@ -773,19 +756,9 @@ class ConsolidationDecoder(IntegrationUnit):
         if not tension_rels:
             tension_rels = {'contradicts', 'challenges', 'conflicts_with',
                             'contrasts', 'undermines', 'violates'}
-
-        node_ph = ','.join('?' * len(node_ids))
-        rel_ph = ','.join('?' * len(tension_rels))
-
-        rows = self.brain.conn.execute("""
-            SELECT 1 FROM edges e
-            JOIN edge_relations er ON er.edge_id = e.edge_id
-            WHERE e.source_id IN (%s) AND e.target_id IN (%s)
-            AND er.relation IN (%s) LIMIT 1
-        """ % (node_ph, node_ph, rel_ph),
-            list(node_ids) * 2 + list(tension_rels)).fetchall()
-
-        return len(rows) > 0
+        from servers.dal import GraphDAL
+        return GraphDAL(self.brain.conn).has_edge_between(
+            node_ids, node_ids, relations=tension_rels)
 
     # ══════════════════════════════════════════════════════════
     # Step 4: Pre-classify
