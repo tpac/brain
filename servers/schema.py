@@ -40,7 +40,7 @@ import shutil
 import sqlite3
 from datetime import datetime, timezone
 
-BRAIN_VERSION = 24  # v24: situation text promoted from node_enrichments to node_metadata_kv
+BRAIN_VERSION = 25  # v25: edge_relations soft-archive (archived/archived_at/archived_by columns)
 BRAIN_VERSION_KEY = 'brain_schema_version'
 
 # ─── Allowed node types ───
@@ -586,6 +586,39 @@ def _backfill_data(conn, from_version):
     # node_embeddings into node_enrichments; v24 promoted situation text
     # from node_enrichments.text to node_metadata_kv. Both are the current
     # state of any fresh brain.
+
+    if from_version < 25:
+        # v25: edge_relations soft-archive — matches the node soft-archive
+        # pattern. Prevents the asymmetry where archive_node destroyed edge
+        # history forever. Three columns added to edge_relations: archived,
+        # archived_at, archived_by. archive_node and GraphDAL.remove_relation
+        # flip archived=1 instead of DELETEing.
+        _migrate_edge_soft_archive_v25(conn)
+
+
+def _migrate_edge_soft_archive_v25(conn):
+    """v25: add soft-archive columns to edge_relations.
+
+    Existing rows default to archived=0 (active). All future archive_node
+    and remove_relation calls set archived=1 instead of deleting. The
+    edges aggregate table is untouched — all reads filter via edge_relations
+    joins, so archived edges simply stop joining in.
+    """
+    existing = {row[1] for row in conn.execute(
+        "PRAGMA table_info(edge_relations)").fetchall()}
+    if 'archived' not in existing:
+        conn.execute("ALTER TABLE edge_relations ADD COLUMN archived INTEGER DEFAULT 0")
+    if 'archived_at' not in existing:
+        conn.execute("ALTER TABLE edge_relations ADD COLUMN archived_at TEXT")
+    if 'archived_by' not in existing:
+        conn.execute("ALTER TABLE edge_relations ADD COLUMN archived_by TEXT")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_edge_relations_active "
+        "ON edge_relations(edge_id, archived)")
+    conn.commit()
+    import sys
+    print("[schema] v25 migration: edge_relations now supports soft-archive",
+          file=sys.stderr)
 
 
 def _migrate_edges_v22(conn):
