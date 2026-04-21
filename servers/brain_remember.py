@@ -1122,22 +1122,19 @@ class BrainRememberMixin:
                         if k not in all_explicit and k not in ('title', 'content'):
                             parts.append(v[:EMBEDDING_FIELD_CHAR_LIMIT])
                 elif field_name == '_edge_descriptions':
-                    # Edge context: load descriptions from edge_relations table.
-                    # Only meaningful descriptions (>10 chars), excluding noise edges.
+                    # Edge context: descriptions via GraphDAL helper.
+                    # Centralizes: archived=0 (v25), noise exclusion
+                    # (co_accessed, emergent_bridge, community_member),
+                    # min_length, and the weight-ordered LIMIT.
                     try:
-                        edge_rows = self.conn.execute(
-                            "SELECT er.description FROM edges e "
-                            "JOIN edge_relations er ON er.edge_id = e.edge_id "
-                            "WHERE (e.source_id = ? OR e.target_id = ?) "
-                            "AND er.relation NOT IN ('co_accessed', 'emergent_bridge', 'community_member') "
-                            "AND er.description IS NOT NULL AND length(er.description) > 10 "
-                            "ORDER BY e.weight DESC LIMIT 5",
-                            (node_id, node_id)
-                        ).fetchall()
-                        for (desc,) in edge_rows:
+                        from .dal import GraphDAL
+                        descriptions = GraphDAL(self.conn).get_edge_descriptions_for(
+                            node_id, min_length=10, limit=5)
+                        for desc in descriptions:
                             parts.append(desc[:EMBEDDING_FIELD_CHAR_LIMIT])
-                    except Exception:
-                        pass  # No edges or DB error — skip silently, group skips below
+                    except Exception as _e:
+                        self._log_error('edge_context_descriptions', _e,
+                                        'building edge_context for %s' % node_id[:8])
                 else:
                     val = field_values.get(field_name, '')
                     if val:
