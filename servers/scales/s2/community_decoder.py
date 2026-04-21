@@ -228,19 +228,16 @@ class CommunityDecoder(IntegrationUnit):
                 except Exception:
                     pass
 
-            member_rows = self.brain.conn.execute("""
-                SELECT CASE WHEN e.source_id = ? THEN e.target_id
-                       ELSE e.source_id END
-                FROM edges e
-                JOIN edge_relations er ON er.edge_id = e.edge_id
-                WHERE (e.source_id = ? OR e.target_id = ?)
-                AND er.relation = 'community_member'
-            """, (nid, nid, nid)).fetchall()
+            # Member IDs via GraphDAL (archived=0 default, v25).
+            from servers.dal import GraphDAL
+            member_dicts = GraphDAL(self.brain.conn).get_community_members(
+                nid, require_active_member=False)
+            members = {m['id'] for m in member_dicts}
 
             communities.append({
                 'id': nid, 'title': title, 'content': content,
                 'keywords': keywords, 'confidence': conf,
-                'members': {r[0] for r in member_rows},
+                'members': members,
                 'centroid': centroid,
                 'edge_signature': meta.get('community_edge_signature', {}),
                 'health': meta.get('community_health', {}),
@@ -562,6 +559,10 @@ class CommunityDecoder(IntegrationUnit):
     # ── Step 1 ──
 
     def _build_typed_adjacency(self, rel_to_fam, skip_fams):
+        # TODO(v25-dal): graph-wide typed-edge scan has no existing DAL
+        # method and fits community detection's needs specifically. Keep
+        # raw with archived=0; consider GraphDAL.iter_semantic_edges()
+        # if a second caller appears.
         edges_by_node = defaultdict(list)
         rows = self.brain.conn.execute("""
             SELECT e.source_id, e.target_id, er.relation
@@ -571,7 +572,8 @@ class CommunityDecoder(IntegrationUnit):
                 AND ns.type != 'community'
             JOIN nodes nt ON nt.id = e.target_id AND nt.archived = 0
                 AND nt.type != 'community'
-            WHERE er.relation NOT IN (
+            WHERE er.archived = 0
+            AND er.relation NOT IN (
                 'co_accessed', 'emergent_bridge', 'community_member')
         """).fetchall()
 
@@ -1134,6 +1136,9 @@ class CommunityDecoder(IntegrationUnit):
 
     def _sample_internal_edges(self, members, limit=5):
         ms = set(members)
+        # TODO(v25-dal): internal-edge rendering with descriptions. Shape
+        # is close to has_edge_between but returns metadata, not a bool.
+        # Keep raw with archived=0 until a second caller surfaces.
         placeholders = ','.join('?' * len(ms))
         id_list = list(ms)
         rows = self.brain.conn.execute("""
@@ -1143,6 +1148,7 @@ class CommunityDecoder(IntegrationUnit):
             JOIN nodes ns ON ns.id = e.source_id
             JOIN nodes nt ON nt.id = e.target_id
             WHERE e.source_id IN (%s) AND e.target_id IN (%s)
+            AND er.archived = 0
             AND er.relation NOT IN (
                 'co_accessed', 'emergent_bridge', 'community_member',
                 'related_to', 'related')
