@@ -1580,6 +1580,244 @@ class GraphDAL:
             out.append(row)
         return out
 
+    # ──────────────────────────────────────────────────────────────
+    # v25 consolidated edge-read API — see GRAPH QUERY CONTRACT above.
+    # Every method defaults include_archived=False.
+    # ──────────────────────────────────────────────────────────────
+
+    def get_connections_bulk(self, node_ids,
+                             exclude_relations=None,
+                             include_archived: bool = False,
+                             include_neighbor_archived: bool = False):
+        """Grouped neighbor fetch — multiple relations per (owner, neighbor)
+        collapsed into a single entry with a `relations` list.
+
+        The rich-node builder in brain_recall needs this shape: one entry
+        per unique (owner, neighbor) pair, carrying aggregate edge weight
+        and all relations on that pair.
+
+        Returns dict {owner_id: [connection_dict, ...]} where each
+        connection_dict has:
+            id, type, title, created_at, revised_at, confidence, locked,
+            weight, direction, relations: [{relation, description, weight}, ...]
+
+        Raises ValueError on empty node_ids.
+        """
+        ids = list(node_ids)
+        if not ids:
+            raise ValueError("get_connections_bulk: node_ids is empty")
+
+        if exclude_relations is None:
+            exclude_relations = DEFAULT_EXCLUDED_RELATIONS
+
+        id_ph = ','.join('?' * len(ids))
+
+        archived_clause = '' if include_archived else 'AND er.archived = 0'
+        neighbor_archived_clause = (
+            'AND n1.archived = 0 AND n2.archived = 0'
+            if not include_neighbor_archived else ''
+        )
+        rel_clause = ''
+        rel_params = []
+        if exclude_relations:
+            rel_ph = ','.join('?' * len(exclude_relations))
+            rel_clause = 'AND er.relation NOT IN (%s)' % rel_ph
+            rel_params = list(exclude_relations)
+
+        sql = """
+            SELECT e.source_id, e.target_id, e.weight,
+                   er.relation, er.description, er.weight as rel_weight,
+                   n1.id, n1.type, n1.title, n1.created_at, n1.revised_at,
+                   n1.confidence, n1.locked,
+                   n2.id, n2.type, n2.title, n2.created_at, n2.revised_at,
+                   n2.confidence, n2.locked
+            FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
+            JOIN nodes n1 ON n1.id = e.target_id
+            JOIN nodes n2 ON n2.id = e.source_id
+            WHERE (e.source_id IN ({id_ph}) OR e.target_id IN ({id_ph}))
+              {archived_clause}
+              {neighbor_archived_clause}
+              {rel_clause}
+        """.format(
+            id_ph=id_ph,
+            archived_clause=archived_clause,
+            neighbor_archived_clause=neighbor_archived_clause,
+            rel_clause=rel_clause,
+        )
+
+        rows = self.conn.execute(sql, ids + ids + rel_params).fetchall()
+
+        owner_set = set(ids)
+        grouped = {nid: {} for nid in ids}
+
+        for row in rows:
+            src, tgt = row[0], row[1]
+            agg_weight = row[2]
+            rel = row[3] or 'related'
+            desc = row[4] or ''
+            rel_weight = row[5] if row[5] is not None else agg_weight
+            n1 = {'id': row[6], 'type': row[7], 'title': row[8],
+                  'created_at': row[9], 'revised_at': row[10],
+                  'confidence': row[11], 'locked': row[12] == 1}
+            n2 = {'id': row[13], 'type': row[14], 'title': row[15],
+                  'created_at': row[16], 'revised_at': row[17],
+                  'confidence': row[18], 'locked': row[19] == 1}
+            relation_entry = {'relation': rel, 'description': desc,
+                              'weight': rel_weight}
+
+            if src in owner_set and tgt != src:
+                entry = grouped[src].setdefault(n1['id'], {
+                    **n1, 'weight': agg_weight, 'direction': 'outgoing',
+                    'relations': [],
+                })
+                entry['relations'].append(relation_entry)
+
+            if tgt in owner_set and src != tgt:
+                entry = grouped[tgt].setdefault(n2['id'], {
+                    **n2, 'weight': agg_weight, 'direction': 'incoming',
+                    'relations': [],
+                })
+                entry['relations'].append(relation_entry)
+
+        return {owner: list(nbrs.values()) for owner, nbrs in grouped.items()}
+
+    def has_edge_between(self, source_ids, target_ids,
+                         relations=None,
+                         include_archived: bool = False) -> bool:
+        """Existence check — is there any edge with these relations between
+        any node in source_ids and any node in target_ids?
+
+        Used by correction/tension detection, bridge-count guards.
+        Raises ValueError if either set is empty.
+        """
+        src_list = list(source_ids)
+        tgt_list = list(target_ids)
+        if not src_list or not tgt_list:
+            raise ValueError(
+                "has_edge_between: source_ids and target_ids must both be non-empty")
+
+        src_ph = ','.join('?' * len(src_list))
+        tgt_ph = ','.join('?' * len(tgt_list))
+        params = src_list + tgt_list
+
+        rel_clause = ''
+        if relations:
+            rel_list = list(relations)
+            rel_ph = ','.join('?' * len(rel_list))
+            rel_clause = 'AND er.relation IN (%s)' % rel_ph
+            params += rel_list
+
+        archived_clause = '' if include_archived else 'AND er.archived = 0'
+
+        sql = """
+            SELECT 1 FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
+            WHERE e.source_id IN (%s) AND e.target_id IN (%s)
+              %s
+              %s
+            LIMIT 1
+        """ % (src_ph, tgt_ph, rel_clause, archived_clause)
+
+        return self.conn.execute(sql, params).fetchone() is not None
+
+    def get_community_members(self, community_id: str,
+                              include_archived: bool = False,
+                              require_active_member: bool = True):
+        """Members of a community via community_member edges.
+
+        Walks both directions of the edge to handle the historical mix
+        where some edges point node→community and others community→node.
+        Returns neighbor node dicts (subset of EDGE_ROW_SHAPE:
+        id, type, title, created_at, confidence, locked).
+
+        Raises ValueError if community_id is empty.
+        """
+        if not community_id:
+            raise ValueError("get_community_members: community_id required")
+
+        archived_clause = '' if include_archived else 'AND er.archived = 0'
+        member_archived_clause = 'AND member.archived = 0' if require_active_member else ''
+
+        sql = """
+            SELECT DISTINCT member.id, member.type, member.title,
+                            member.created_at, member.confidence, member.locked
+            FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
+            JOIN nodes member ON member.id = CASE
+                WHEN e.source_id = ? THEN e.target_id
+                ELSE e.source_id END
+            WHERE er.relation = 'community_member'
+              AND (e.source_id = ? OR e.target_id = ?)
+              AND member.type != 'community'
+              %s
+              %s
+        """ % (archived_clause, member_archived_clause)
+
+        rows = self.conn.execute(sql, (community_id, community_id, community_id)).fetchall()
+        return [{
+            'id': r[0], 'type': r[1], 'title': r[2],
+            'created_at': r[3], 'confidence': r[4], 'locked': r[5],
+        } for r in rows]
+
+    def count_by_relation(self, include_archived: bool = False):
+        """Edge count grouped by relation type.
+
+        Returns dict {relation: count}, ordered by count desc. Used by
+        signal_producers, edge_families, health_check.
+        """
+        where = '' if include_archived else 'WHERE archived = 0'
+        rows = self.conn.execute(
+            "SELECT relation, COUNT(*) as cnt FROM edge_relations %s "
+            "GROUP BY relation ORDER BY cnt DESC" % where
+        ).fetchall()
+        return {r[0]: r[1] for r in rows}
+
+    def get_edge_descriptions_for(self, node_id: str,
+                                  min_length: int = 10,
+                                  exclude_relations=None,
+                                  include_archived: bool = False,
+                                  limit: int = 5):
+        """Return meaningful edge descriptions for a node's edges.
+
+        Feeds edge_context embedding in _compute_group_vectors. Filters
+        out short/empty descriptions (below min_length) and noise relations.
+        Default exclusion: DEFAULT_EXCLUDED_RELATIONS + 'community_member'
+        (structural, not semantic text).
+
+        Returns list[str] of descriptions. Raises ValueError if node_id empty.
+        """
+        if not node_id:
+            raise ValueError("get_edge_descriptions_for: node_id required")
+        if exclude_relations is None:
+            exclude_relations = DEFAULT_EXCLUDED_RELATIONS | {'community_member'}
+
+        archived_clause = '' if include_archived else 'AND er.archived = 0'
+        rel_clause = ''
+        if exclude_relations:
+            rel_ph = ','.join('?' * len(exclude_relations))
+            rel_clause = 'AND er.relation NOT IN (%s)' % rel_ph
+
+        sql = """
+            SELECT er.description FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
+            WHERE (e.source_id = ? OR e.target_id = ?)
+              %s
+              %s
+              AND er.description IS NOT NULL
+              AND length(er.description) > ?
+            ORDER BY e.weight DESC
+            LIMIT ?
+        """ % (archived_clause, rel_clause)
+
+        params = [node_id, node_id]
+        if exclude_relations:
+            params += list(exclude_relations)
+        params += [min_length, limit]
+
+        rows = self.conn.execute(sql, params).fetchall()
+        return [r[0] for r in rows if r[0]]
+
     def count_node_edges(self, node_id: str, min_weight: float = 0.1) -> int:
         """Count edges touching a node (both directions)."""
         row = self.conn.execute(
