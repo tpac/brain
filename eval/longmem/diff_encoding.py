@@ -50,6 +50,7 @@ def dump_edges(brain, node_ids: list) -> list:
         FROM edges e
         JOIN edge_relations er ON er.edge_id = e.edge_id
         WHERE e.source_id IN ({phs}) AND e.target_id IN ({phs})
+        AND er.archived = 0
     """, node_ids * 2).fetchall()
     return [
         {"source": s[:8], "target": t[:8], "relation": r, "why": (d or "")[:80]}

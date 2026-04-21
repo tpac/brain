@@ -155,7 +155,9 @@ def step2_discover(brain, community_vec, node_vec, current_vec):
         member_rows = brain.conn.execute(
             "SELECT CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END "
             "FROM edges e JOIN edge_relations er ON er.edge_id = e.edge_id "
-            "WHERE (e.source_id = ? OR e.target_id = ?) AND er.relation = 'community_member'",
+            "WHERE (e.source_id = ? OR e.target_id = ?) "
+            "AND er.relation = 'community_member' "
+            "AND er.archived = 0",
             (cid, cid, cid)
         ).fetchall()
         for (mid,) in member_rows:
@@ -297,6 +299,7 @@ def _find_inter_candidate_edges(brain, candidate_ids):
         JOIN edge_relations er ON er.edge_id = e.edge_id
         WHERE e.source_id IN ({ids}) AND e.target_id IN ({ids})
         AND er.relation NOT IN ({excl})
+        AND er.archived = 0
     """.format(ids=ph, excl=excl_ph),
         id_list + id_list + list(excluded)
     ).fetchall()

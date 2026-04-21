@@ -106,6 +106,8 @@ def analyze_actions(conn, before_snapshot, clusters, all_ids_before=None):
 
     # Find ALL suppression edges (not just from this run — encoding_source
     # may not be set on connect operations routed through brain_batch)
+    # v25: forensic eval — see all suppression edges including archived
+    # (archive_node archives edges pointing at archived nodes).
     suppression_edges = conn.execute("""
         SELECT e.source_id, e.target_id, er.relation, er.description
         FROM edges e

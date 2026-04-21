@@ -110,6 +110,7 @@ def score_community(conn, community_id):
         JOIN edge_relations er ON er.edge_id = e.edge_id
         WHERE (e.source_id = ? OR e.target_id = ?)
         AND er.relation = 'community_member'
+        AND er.archived = 0
     """, (nid, nid)).fetchone()[0]
 
     scores['member_edges'] = min(1.0, member_edges / 3)

@@ -56,7 +56,9 @@ def load_graph(brain):
             SELECT CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END
             FROM edges e
             JOIN edge_relations er ON er.edge_id = e.edge_id
-            WHERE (e.source_id = ? OR e.target_id = ?) AND er.relation = 'community_member'
+            WHERE (e.source_id = ? OR e.target_id = ?)
+            AND er.relation = 'community_member'
+            AND er.archived = 0
         ''', (cid, cid, cid)).fetchall()
 
         member_ids = [m[0] for m in members]
@@ -104,6 +106,7 @@ def load_graph(brain):
         JOIN edge_relations er ON er.edge_id = e.edge_id
         WHERE e.source_id IN (%s) AND e.target_id IN (%s)
         AND er.relation NOT IN (%s)
+        AND er.archived = 0
     ''' % (ph, ph, ','.join('?' * len(NOISE_RELATIONS))),
         nl * 2 + list(NOISE_RELATIONS)).fetchall()
 

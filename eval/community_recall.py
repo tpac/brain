@@ -67,6 +67,7 @@ def _load_graph_edges(conn):
         JOIN edge_relations er ON er.edge_id = e.edge_id
         JOIN nodes n1 ON n1.id = e.source_id AND n1.archived = 0
         JOIN nodes n2 ON n2.id = e.target_id AND n2.archived = 0
+        WHERE er.archived = 0
     """).fetchall()
 
     adj = defaultdict(list)
@@ -88,6 +89,7 @@ def _load_community_membership(conn):
         FROM edges e
         JOIN edge_relations er ON er.edge_id = e.edge_id
         WHERE er.relation = 'community_member'
+        AND er.archived = 0
     """).fetchall()
 
     membership = defaultdict(set)
