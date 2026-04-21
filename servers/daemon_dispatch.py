@@ -425,9 +425,29 @@ def _handle_brain_batch(brain, args, graph_changes):
                         graph_changes.append("ARCHIVE: %s" % node_id[:8])
                     results.append({"op": "archive", "index": i, **r})
 
+            elif op == "disconnect":
+                # Remove a specific relation from an edge. If it was the last
+                # relation on the edge, the physical edge is removed too.
+                # Lets ABSORB encoders prune survivor edges that don't fit
+                # the new framing after revise.
+                from .dal import GraphDAL
+                source_id = op_spec.get("source_id")
+                target_id = op_spec.get("target_id")
+                relation = op_spec.get("relation")
+                if not (source_id and target_id and relation):
+                    results.append({"op": "disconnect", "index": i, "ok": False,
+                                    "error": "source_id, target_id, relation are required"})
+                else:
+                    GraphDAL(brain.conn).remove_relation(
+                        source_id, target_id, relation)
+                    brain.conn.commit()
+                    graph_changes.append("DISCONNECT: %s -[%s]-> %s" % (
+                        source_id[:8], relation, target_id[:8]))
+                    results.append({"op": "disconnect", "index": i, "ok": True})
+
             else:
                 results.append({"op": op, "index": i, "ok": False,
-                                "error": "Unknown op: %s (use remember, revise, connect, archive)" % op})
+                                "error": "Unknown op: %s (use remember, revise, connect, disconnect, archive)" % op})
         except Exception as e:
             results.append({"op": op, "index": i, "ok": False, "error": str(e)[:200]})
 

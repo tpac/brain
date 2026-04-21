@@ -699,7 +699,18 @@ class ConsolidationDecoder(IntegrationUnit):
         return dict(membership)
 
     def _load_edge_data(self, node_ids):
-        """Load typed edges per node (excluding noise relations)."""
+        """Load typed edges per node.
+
+        Excludes only noise relations (co_accessed, emergent_bridge).
+        community_member is kept so the encoder sees thematic neighborhood
+        signals as first-class edges — it's context, not a migration target
+        (S2 community detection manages placement on the next run).
+
+        Each edge record includes 'direction' (outgoing|incoming) from the
+        cluster member's perspective — required for correct edge migration
+        during ABSORB: outgoing edges migrate via survivor's connections,
+        incoming edges migrate via separate connect ops on the neighbor.
+        """
         edges = defaultdict(dict)
         placeholders = ','.join('?' * len(node_ids))
 
@@ -711,7 +722,7 @@ class ConsolidationDecoder(IntegrationUnit):
             JOIN nodes n ON n.id = CASE WHEN e.source_id IN (%s) THEN e.target_id
                                         ELSE e.source_id END
             WHERE (e.source_id IN (%s) OR e.target_id IN (%s))
-            AND er.relation NOT IN ('co_accessed', 'emergent_bridge', 'community_member')
+            AND er.relation NOT IN ('co_accessed', 'emergent_bridge')
             AND n.archived = 0
         """ % (placeholders, placeholders, placeholders),
             list(node_ids) * 3).fetchall()
@@ -726,6 +737,7 @@ class ConsolidationDecoder(IntegrationUnit):
                 'description': (desc or '')[:80],
                 'title': nbr_title[:60],
                 'type': nbr_type,
+                'direction': 'outgoing' if member == src else 'incoming',
             })
 
         return dict(edges)

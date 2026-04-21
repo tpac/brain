@@ -451,22 +451,29 @@ class ConsolidationEncoder(IntegrationUnit):
                 except Exception:
                     pass
 
-                # Unique edges (not shared with cluster mates)
-                unique_e = cluster.get('unique_edges', {}).get(nid, 0)
-                if unique_e > 0:
-                    lines.append('      %d unique edges (not shared with cluster)' % unique_e)
-
-                    # Show a few edge details
-                    edge_details = cluster.get('edge_details', {}).get(nid, {})
-                    shown = 0
-                    for nbr_id, edges in edge_details.items():
-                        if nbr_id not in cluster['nodes'] and shown < 3:
-                            for e in edges[:1]:
-                                lines.append('        → [%s] "%s" (%s)' % (
-                                    e.get('type', '?'),
-                                    e.get('title', '?')[:50],
-                                    e.get('relation', '?')))
-                            shown += 1
+                # External edges — every edge to a non-cluster-member
+                # neighbor, with direction, relation, and description.
+                # The encoder reads these to reason about ABSORB migration:
+                # survivor keeps its own, the peer's outgoing edges migrate
+                # via the survivor's connections list, and incoming edges
+                # migrate via separate `connect` ops from the neighbor.
+                edge_details = cluster.get('edge_details', {}).get(nid, {})
+                external = {nbr: es for nbr, es in edge_details.items()
+                            if nbr not in cluster['nodes']}
+                if external:
+                    total = sum(len(es) for es in external.values())
+                    lines.append('      External edges (%d):' % total)
+                    for nbr_id, edges_list in external.items():
+                        for e in edges_list:
+                            arrow = '→' if e.get('direction') == 'outgoing' else '←'
+                            desc = e.get('description', '')
+                            desc_str = ' — %s' % desc if desc else ''
+                            lines.append('        %s %s [%s] "%s" (%s)%s' % (
+                                arrow, nbr_id[:8],
+                                e.get('type', '?'),
+                                e.get('title', '?')[:50],
+                                e.get('relation', '?'),
+                                desc_str))
 
             lines.append('')
 
