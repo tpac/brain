@@ -580,55 +580,12 @@ def _backfill_data(conn, from_version):
         # clean columns (no deprecated relation/edge_type/description/stability).
         _migrate_edges_v22(conn)
 
-    if from_version < 23:
-        # v23: Consolidate node_embeddings into node_enrichments.
-        # Primary + situation embeddings become rows with vector_type '_primary' / '_situation'.
-        _migrate_vectors_v23(conn)
-
-    if from_version < 24:
-        # v24: Promote situation from node_enrichments.text to node_metadata_kv.
-        # situation is a first-class metadata field alongside question/reasoning,
-        # not a vector artifact. See recursive-hopping-mitten.md for the rationale.
-        _migrate_situation_to_kv_v24(conn)
-
-
-def _migrate_vectors_v23(conn):
-    """v23: node_embeddings → node_enrichments migration. Already ran. Source table dropped."""
-    pass
-
-
-def _migrate_situation_to_kv_v24(conn):
-    """v24: copy situation text from node_enrichments → node_metadata_kv.
-
-    Idempotent — INSERT OR IGNORE plus a NOT EXISTS guard. If the kv row
-    already has a situation value (e.g. a post-commit-1 write), leave it;
-    kv is the new source of truth. If kv is empty, populate from the
-    legacy enrichment row.
-
-    Embedding (BLOB) stays on the enrichment row untouched — only text is
-    promoted. Phase B (later, separate PR) NULLs the column to reclaim
-    disk once we've soaked the kv-only read path.
-    """
-    try:
-        cur = conn.execute('''
-            INSERT OR IGNORE INTO node_metadata_kv (node_id, key, value)
-            SELECT ne.node_id, 'situation', ne.text
-            FROM node_enrichments ne
-            WHERE ne.vector_type = '_situation'
-              AND ne.text IS NOT NULL AND length(ne.text) > 0
-              AND NOT EXISTS (
-                  SELECT 1 FROM node_metadata_kv kv
-                  WHERE kv.node_id = ne.node_id AND kv.key = 'situation'
-              )
-        ''')
-        rows_inserted = cur.rowcount if cur.rowcount is not None else 0
-        import sys
-        print('[schema] v24 migration: promoted %d situation entries to '
-              'node_metadata_kv' % rows_inserted, file=sys.stderr)
-    except Exception as e:
-        import sys
-        print('[schema] v24 migration FAILED: %s' % e, file=sys.stderr)
-        raise
+    # v23 / v24 migrations removed — this codebase never left tpac's laptop,
+    # so no external database ever needed the v23→v24 upgrade path. New DBs
+    # are created directly at BRAIN_VERSION. Historical note: v23 consolidated
+    # node_embeddings into node_enrichments; v24 promoted situation text
+    # from node_enrichments.text to node_metadata_kv. Both are the current
+    # state of any fresh brain.
 
 
 def _migrate_edges_v22(conn):

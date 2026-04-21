@@ -55,7 +55,7 @@ def score_community(conn, community_id):
 
     # ── 2. Situation quality (0-1) ──
     sit = conn.execute(
-        "SELECT situation_text FROM node_embeddings WHERE node_id = ?",
+        "SELECT value FROM node_metadata_kv WHERE node_id = ? AND key = 'situation'",
         (nid,)).fetchone()
     sit_text = sit[0] if sit and sit[0] else ''
     if len(sit_text) >= 50:

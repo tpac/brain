@@ -46,7 +46,8 @@ class BrainRememberMixin:
 
         Routes each field to the correct storage:
           - STRUCTURAL_FIELDS → already on nodes table (skip)
-          - situation → node_enrichments (text, vector deferred to backfill)
+          - situation → node_metadata_kv (canonical; _situation embedding
+            derived later by backfill)
           - PROMOTED metadata_kv fields → node_metadata_kv
           - Emergent/unknown fields → node_metadata_kv
           - Control fields → skip silently (connections, auto_connect, etc.)

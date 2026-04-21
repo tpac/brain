@@ -317,10 +317,23 @@ def _query_encoding_activity(since_ts="", limit=30):
             f"{where.replace('created_at', 'ne.created_at')} "
             f"ORDER BY ne.created_at DESC LIMIT ?",
             args_base + (limit,)).fetchall()
+        # For _situation events, text column is deprecated — pull the
+        # canonical value from node_metadata_kv (Phase 1 deprecation).
+        sit_ids = [r[0] for r in rows if r[1] == '_situation']
+        if sit_ids:
+            kv_rows = conn.execute(
+                "SELECT node_id, value FROM node_metadata_kv "
+                "WHERE key='situation' AND node_id IN (%s)"
+                % ','.join('?' * len(sit_ids)),
+                sit_ids).fetchall()
+            kv_sit = dict(kv_rows)
+        else:
+            kv_sit = {}
         for r in rows:
+            text = kv_sit.get(r[0], '') if r[1] == '_situation' else (r[2] or '')
             events.append({
                 "kind": "enriched", "node_title": r[4] or r[0][:12],
-                "vector_type": r[1], "text": (r[2] or "")[:200], "timestamp": r[3]})
+                "vector_type": r[1], "text": text[:200], "timestamp": r[3]})
 
         conn.close()
         # Sort all by timestamp descending

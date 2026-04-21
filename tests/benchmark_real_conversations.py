@@ -5,7 +5,8 @@ Tests how the brain handles messy, topic-jumping, non-engineering usage.
 
 Methodology:
   For each query, embed with Arctic v1.5, brute-force cosine against
-  all node_embeddings + node_enrichments, take MAX per node, return top 10.
+  all node_enrichments rows (consolidated from the former node_embeddings
+  table in v23), take MAX per node, return top 10.
   Judge relevance harshly: if a brain/engineering result appears for a
   personal query, that's a FAIL (context bleed).
 

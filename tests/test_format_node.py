@@ -94,18 +94,24 @@ class TestFormatNode(BrainTestBase):
     # ── Metadata ──
 
     def test_metadata_situation(self):
-        """Situation text from node_embeddings is rendered."""
-        nid = self._make_node()
-        # Insert situation directly — embedder is off in tests, so we need
-        # a dummy embedding blob to satisfy the NOT NULL constraint
-        self.brain.conn.execute(
-            "INSERT OR REPLACE INTO node_embeddings "
-            "(node_id, embedding, situation_text, model, created_at) "
-            "VALUES (?, X'00', ?, 'test', datetime('now'))",
-            (nid, 'When choosing a database for OLTP workloads'))
-        self.brain.conn.commit()
+        """Situation from node_metadata_kv (canonical store) is rendered.
+
+        v24+: situation lives in node_metadata_kv, not the removed
+        node_embeddings table. Stronger than the old test — verifies
+        both the canonical storage location AND the rendered output.
+        """
+        sit = 'When choosing a database for OLTP workloads'
+        nid = self._make_node(situation=sit)
+        # Verify storage location — situation must be in kv, not elsewhere
+        kv_row = self.brain.conn.execute(
+            "SELECT value FROM node_metadata_kv WHERE node_id=? AND key='situation'",
+            (nid,)).fetchone()
+        self.assertIsNotNone(kv_row, 'situation should be stored in node_metadata_kv')
+        self.assertEqual(kv_row[0], sit, 'kv value must match the written situation exactly')
+        # Verify render
         out = self._render(nid)
         self.assertIn('Situation: When choosing a database', out)
+        self.assertIn(sit, out)  # full exact-match, stronger than substring
 
     def test_metadata_reasoning(self):
         """Reasoning from metadata_kv is rendered."""

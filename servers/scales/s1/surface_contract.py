@@ -157,7 +157,7 @@ CANDIDATES_FILE = {
     'max_candidates': 25,
     'include_graph': True,      # _graph with degree 1/2/3 neighbors
     'include_metadata': True,   # situation, reasoning, user_raw_quote, correction_of
-    'metadata_fields': ['situation_text', 'reasoning', 'user_raw_quote', 'correction_of'],
+    'metadata_fields': ['situation', 'reasoning', 'user_raw_quote', 'correction_of'],
     'max_edges_described': 3,   # top edges with descriptions per candidate
 }
 
