@@ -1879,6 +1879,9 @@ class VectorDAL:
     After v23 migration, ALL vectors live in node_enrichments with vector_type:
       _primary    — title+content blend (was in node_embeddings)
       _situation  — situation embedding (was in node_embeddings.situation_embedding)
+                    NOTE: text column is DEPRECATED for _situation rows —
+                    kv is canonical (see contract.py PROMOTED_FIELDS.situation).
+                    Callers should pass empty string for text when storing _situation.
       title       — title-only diagnostic pointer
       high_meta   — situation + quotes
       other_meta  — reasoning + correction_pattern

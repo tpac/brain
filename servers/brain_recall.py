@@ -449,12 +449,21 @@ class BrainRecallMixin:
 
         def _store_batch(items, vector_type):
             """items = list of (node_id, text). One embed_batch + one
-            executemany store. Returns count of rows written."""
+            executemany store. Returns count of rows written.
+
+            For vector_type='_situation', the text column is deprecated — kv
+            is the single source of truth. Text is used to generate the
+            embedding, then discarded (empty string stored). Other vector_types
+            keep the text column (used by dashboard, debugging, recall group
+            reconstruction)."""
             if not items:
                 return 0
             texts = [t for _, t in items]
             blobs = embedder.embed_batch(texts, kind='document')
-            rows = [(nid, vector_type, text, blob)
+            store_text = '' if vector_type == '_situation' else None
+            rows = [(nid, vector_type,
+                     store_text if store_text is not None else text,
+                     blob)
                     for (nid, text), blob in zip(items, blobs)]
             stored = vdal.store_batch(rows, model=model)
             if stored:
@@ -472,15 +481,12 @@ class BrainRecallMixin:
         except Exception as e:
             self._log_error('backfill_primary_scan', e, 'scanning for missing primaries')
 
-        # 2. Situation vectors — nodes with situation text but no _situation
-        # vector for the active model. Stale-model rows count as missing.
-        # Source for situation text: metadata_kv['situation'] (canonical) OR
-        # any prior _situation enrichment row (migration path for pre-metadata_kv
-        # data where the text was only persisted on the enrichment row).
+        # 2. Situation vectors — nodes with situation in kv but no _situation
+        # embedding for the active model. Stale-model rows count as missing.
+        # Source: node_metadata_kv['situation'] (canonical, single source of
+        # truth). The enrichments row stores the embedding only; its text
+        # column is deprecated and written empty for _situation.
         try:
-            # v24: situation lives in node_metadata_kv. No more enrichment
-            # text fallback — the migration backfilled kv from enrichments,
-            # and commit 4/4 stops dual-writing. kv is the single source.
             sit_sql = '''
                 SELECT n.id, kv.value as situation_text
                 FROM nodes n

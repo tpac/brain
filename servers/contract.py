@@ -55,12 +55,11 @@ STRUCTURAL_FIELDS = {
 
 PROMOTED_FIELDS = {
     "situation": {
-        "store": "node_enrichments",
-        "column": "text",
-        "vector_type": "_situation",
+        "store": "metadata_kv",
         "type": "str",
         "embeds": True,
-        "description": "When is this knowledge relevant? One sentence.",
+        "derived_vector": "_situation",
+        "description": "When is this knowledge relevant? One sentence. Stored in node_metadata_kv (canonical); a derived _situation embedding row in node_enrichments provides recall scoring. Enrichment text column is deprecated for _situation — kv is the single source of truth.",
     },
     "reasoning": {
         "store": "metadata_kv",
