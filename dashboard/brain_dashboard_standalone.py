@@ -289,7 +289,8 @@ def _query_encoding_activity(since_ts="", limit=30):
                 "content": (r[3] or "")[:300], "confidence": r[4], "timestamp": r[5],
                 "encoding_source": r[6]})
 
-        # New connections (exclude co_accessed and emergent_bridge — organic noise)
+        # New connections — active-only timeline (v25 archived=0 filter).
+        # Excludes co_accessed and emergent_bridge as organic noise.
         rows = conn.execute(
             f"SELECT e.source_id, e.target_id, er.relation, e.weight, e.created_at, "
             f"n1.title, n2.title, n1.type, n2.type "
@@ -298,6 +299,7 @@ def _query_encoding_activity(since_ts="", limit=30):
             f"LEFT JOIN nodes n1 ON n1.id = e.source_id "
             f"LEFT JOIN nodes n2 ON n2.id = e.target_id "
             f"{where.replace('created_at', 'e.created_at')} "
+            f"AND er.archived = 0 "
             f"AND er.relation NOT IN ('co_accessed', 'emergent_bridge') "
             f"ORDER BY e.created_at DESC LIMIT ?",
             args_base + (limit,)).fetchall()
@@ -450,7 +452,7 @@ def _query_encoding_runs(limit=10, session_id='', hours=24):
                                                   "content": r[3], "timestamp": r[4],
                                                   "kind": "revised"})
 
-                    # Edges created in same window
+                    # Edges created in same window — active only (v25)
                     edges = bconn.execute(
                         "SELECT e.source_id, e.target_id, er.relation, e.weight, e.created_at, "
                         "n1.title, n2.title "
@@ -459,6 +461,7 @@ def _query_encoding_runs(limit=10, session_id='', hours=24):
                         "LEFT JOIN nodes n1 ON n1.id = e.source_id "
                         "LEFT JOIN nodes n2 ON n2.id = e.target_id "
                         "WHERE e.created_at BETWEEN ? AND ? "
+                        "AND er.archived = 0 "
                         "AND er.relation NOT IN ('co_accessed', 'emergent_bridge') "
                         "ORDER BY e.created_at", (ts_lo, ts_hi)).fetchall()
                     run['edges'] = [{"relation": e[2], "weight": e[3],
@@ -530,7 +533,10 @@ def _query_consolidation_runs(hours=24):
                 "AND created_at BETWEEN ? AND ? AND archived = 0 ORDER BY created_at",
                 (ts_lo, ts_hi)).fetchall()
 
-            # Archived originals (linked via consolidated_into edges to synth nodes)
+            # Archived originals (linked via consolidated_into edges to synth nodes).
+            # Forensic view: intentionally NO archived filter on edge_relations —
+            # in v25 these edges get archived when the target node is archived,
+            # and the dashboard needs to see them to show historical lineage.
             archived_nodes = []
             for sn in synth_nodes:
                 originals = bconn.execute(
@@ -542,7 +548,8 @@ def _query_consolidation_runs(hours=24):
                 for o in originals:
                     archived_nodes.append({"id": o[0], "type": o[1], "title": o[2], "content": o[3]})
 
-            # Also find archived nodes from supersedes edges (EVOLVE actions)
+            # Also find archived nodes from supersedes edges (EVOLVE actions).
+            # Forensic view — see note above; edge_relations may be archived=1.
             evolved_archived = bconn.execute(
                 "SELECT n.id, n.type, n.title, substr(n.content,1,300) "
                 "FROM edges e JOIN edge_relations er ON er.edge_id = e.edge_id "
@@ -553,16 +560,19 @@ def _query_consolidation_runs(hours=24):
                 if not any(a['id'] == o[0] for a in archived_nodes):
                     archived_nodes.append({"id": o[0], "type": o[1], "title": o[2], "content": o[3]})
 
-            # KEPT pairs (similar_to edges created in same window)
+            # KEPT pairs — similar_to edges on active nodes (v25 archived=0)
             kept_edges = bconn.execute(
                 "SELECT n1.title, n2.title, er.relation, er.description "
                 "FROM edges e JOIN edge_relations er ON er.edge_id = e.edge_id "
                 "JOIN nodes n1 ON n1.id = e.source_id "
                 "JOIN nodes n2 ON n2.id = e.target_id "
                 "WHERE er.relation = 'similar_to' AND e.created_at BETWEEN ? AND ? "
+                "AND er.archived = 0 "
                 "ORDER BY e.created_at", (ts_lo, ts_hi)).fetchall()
 
-            # EVOLVED (supersedes edges in same window, target archived)
+            # EVOLVED — supersedes edges pointing at archived nodes. Forensic
+            # view; edge_relations may be archived=1 if target was archived
+            # via archive_node, so no archived filter here (v25).
             evolved_edges = bconn.execute(
                 "SELECT n1.title, n2.title, er.description "
                 "FROM edges e JOIN edge_relations er ON er.edge_id = e.edge_id "
@@ -642,7 +652,8 @@ def _query_community_runs(hours=24):
                 "SELECT COUNT(*) FROM edges e "
                 "JOIN edge_relations er ON er.edge_id = e.edge_id "
                 "WHERE (e.source_id = ? OR e.target_id = ?) "
-                "AND er.relation = 'community_member'",
+                "AND er.relation = 'community_member' "
+                "AND er.archived = 0",
                 (cid, cid)).fetchone()[0]
             community_list.append({
                 "id": cid, "title": title, "content": content,
@@ -1185,7 +1196,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 # Promote situation to top-level (was in node_enrichments pre-v24).
                 if kv.get('situation'):
                     node["situation"] = kv['situation']
-            # Connections (both directions)
+            # Connections (both directions) — active only (v25)
             edges = _direct_query(
                 "SELECT n.id, er.relation, e.weight, n.type, n.title, "
                 "CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END as direction "
@@ -1193,6 +1204,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "JOIN edge_relations er ON er.edge_id = e.edge_id "
                 "JOIN nodes n ON n.id = CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END "
                 "WHERE (e.source_id = ? OR e.target_id = ?) AND n.archived = 0 "
+                "AND er.archived = 0 "
                 "ORDER BY e.weight DESC LIMIT 20",
                 args=(node_id, node_id, node_id, node_id), db_path=db)
             connections = [
@@ -1330,6 +1342,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     JOIN edge_relations er ON er.edge_id = e.edge_id
                     WHERE (e.source_id IN (%s) OR e.target_id IN (%s))
                     AND e.source_id IN (%s) AND e.target_id IN (%s)
+                    AND er.archived = 0
                 """ % (placeholders, placeholders, placeholders, placeholders)
                 id_list = list(node_ids)
                 edge_rows = _direct_query(edges_sql, id_list * 4, db_path=db)
@@ -1359,7 +1372,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             comm_edges = _direct_query(
                 "SELECT e.source_id, e.target_id "
                 "FROM edges e JOIN edge_relations er ON er.edge_id = e.edge_id "
-                "WHERE er.relation = 'community_member'",
+                "WHERE er.relation = 'community_member' "
+                "AND er.archived = 0",
                 db_path=db)
             for src, tgt in comm_edges:
                 # source is community node, target is member (or vice versa)
@@ -1437,7 +1451,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     """SELECT e.source_id, e.target_id, er.relation, e.weight
                     FROM edges e
                     JOIN edge_relations er ON er.edge_id = e.edge_id
-                    WHERE e.source_id IN (%s) AND e.target_id IN (%s)""" % (placeholders, placeholders),
+                    WHERE e.source_id IN (%s) AND e.target_id IN (%s)
+                    AND er.archived = 0""" % (placeholders, placeholders),
                     list(node_ids) * 2, db_path=db)
                 # Deduplicate edges (take strongest relation per pair)
                 seen_pairs = {}
@@ -1486,13 +1501,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "encoding_source, created_at, emotion, critical "
                 "FROM nodes WHERE archived = 0", db_path=db)
 
-            # Community membership from community_member edges
+            # Community membership from community_member edges (active only)
             comm_edges = _direct_query("""
                 SELECT e.source_id, e.target_id, n.title
                 FROM edges e
                 JOIN edge_relations er ON er.edge_id = e.edge_id
                 JOIN nodes n ON n.id = e.source_id AND n.type = 'community' AND n.archived = 0
                 WHERE er.relation = 'community_member'
+                AND er.archived = 0
             """, db_path=db)
 
             # Build member → community mapping
@@ -1555,6 +1571,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     FROM edges e
                     JOIN edge_relations er ON er.edge_id = e.edge_id
                     WHERE e.source_id IN (%s) AND e.target_id IN (%s)
+                    AND er.archived = 0
                 """ % (ph, ph), id_list * 2, db_path=db)
                 seen = {}
                 for src, tgt, rel, w in edge_rows:
