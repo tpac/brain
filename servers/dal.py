@@ -1579,20 +1579,30 @@ class GraphDAL:
         return 'strengthened' if existing else 'created'
 
     def delete_node_edges(self, node_id: str) -> int:
-        """Delete all edges AND their relations touching a node. Returns count deleted."""
-        # Get edge_ids first, then cascade
+        """Soft-archive all edge_relations touching a node (v25).
+
+        Was a hard DELETE prior to v25 — the asymmetry with node archive
+        destroyed edge provenance forever. Now sets archived=1 on the
+        relations and leaves the edges aggregate row intact. Returns count
+        of relations archived.
+        """
         edge_ids = [r[0] for r in self.conn.execute(
             'SELECT edge_id FROM edges WHERE source_id = ? OR target_id = ?',
             (node_id, node_id)
         ).fetchall()]
 
+        archived_count = 0
         if edge_ids:
+            ts = _now()
             ph = ','.join('?' * len(edge_ids))
-            self.conn.execute('DELETE FROM edge_relations WHERE edge_id IN (%s)' % ph, edge_ids)
-            self.conn.execute('DELETE FROM edges WHERE edge_id IN (%s)' % ph, edge_ids)
+            cur = self.conn.execute(
+                'UPDATE edge_relations SET archived = 1, archived_at = ?, archived_by = ? '
+                'WHERE edge_id IN (%s) AND archived = 0' % ph,
+                [ts, 'delete_node_edges'] + edge_ids)
+            archived_count = cur.rowcount
 
         self.conn.commit()
-        return len(edge_ids)
+        return archived_count
 
     def decay_edges(self) -> Dict[str, Any]:
         """Apply exponential decay to auto-generated edge relations.
@@ -1617,27 +1627,31 @@ class GraphDAL:
 
             half_life = config['halfLife']
 
-            # Apply decay on edge_relations
+            # Apply decay on active edge_relations only (v25)
             self.conn.execute("""
                 UPDATE edge_relations
                 SET weight = weight * power(0.5,
                     (julianday('now') - julianday(created_at)) * 24.0 / ?)
                 WHERE relation = ?
+                  AND archived = 0
                   AND created_at IS NOT NULL
                   AND (julianday('now') - julianday(created_at)) * 24.0 > 0
             """, (half_life, relation))
             decayed = self.conn.execute('SELECT changes()').fetchone()[0]
 
-            # Collect edge_ids that will be pruned
+            # Collect edge_ids that will be pruned (active only)
             pruned_edge_ids = [r[0] for r in self.conn.execute(
-                "SELECT edge_id FROM edge_relations WHERE relation = ? AND weight < ?",
+                "SELECT edge_id FROM edge_relations "
+                "WHERE relation = ? AND weight < ? AND archived = 0",
                 (relation, EDGE_PRUNE_THRESHOLD)
             ).fetchall()]
 
-            # Prune relations below threshold
+            # Soft-archive relations below threshold (v25 — was DELETE).
+            prune_ts = _now()
             self.conn.execute(
-                "DELETE FROM edge_relations WHERE relation = ? AND weight < ?",
-                (relation, EDGE_PRUNE_THRESHOLD))
+                "UPDATE edge_relations SET archived = 1, archived_at = ?, archived_by = ? "
+                "WHERE relation = ? AND weight < ? AND archived = 0",
+                (prune_ts, 'decay_pruned', relation, EDGE_PRUNE_THRESHOLD))
             pruned = self.conn.execute('SELECT changes()').fetchone()[0]
 
             if decayed or pruned:
@@ -1645,15 +1659,10 @@ class GraphDAL:
                 total_decayed += decayed
                 total_pruned += pruned
 
-            # Update aggregate weights for affected edges
+            # Recompute aggregate weight from remaining active relations.
+            # Edges aggregate row stays regardless — reads join on archived=0.
             for eid in set(pruned_edge_ids):
-                remaining = self.conn.execute(
-                    'SELECT COUNT(*) FROM edge_relations WHERE edge_id = ?', (eid,)
-                ).fetchone()[0]
-                if remaining == 0:
-                    self.conn.execute('DELETE FROM edges WHERE edge_id = ?', (eid,))
-                else:
-                    self._update_aggregate_weight(eid)
+                self._update_aggregate_weight(eid)
 
         self.conn.commit()
         return {'decayed': total_decayed, 'pruned': total_pruned, 'by_type': by_type}
@@ -1698,18 +1707,21 @@ class GraphDAL:
                 'VALUES (?, ?, ?, ?, 0, ?, ?)',
                 (edge_id, source_id, target_id, weight, ts, ts))
 
-        # Check if this specific relation already exists on this edge
+        # Check if this specific ACTIVE relation already exists (v25).
+        # Archived relations stay untouched; re-adding a previously archived
+        # relation creates a fresh active row (clean audit trail).
         existing_rel = self.conn.execute(
-            'SELECT weight FROM edge_relations WHERE edge_id = ? AND relation = ?',
+            'SELECT weight FROM edge_relations '
+            'WHERE edge_id = ? AND relation = ? AND archived = 0',
             (edge_id, relation)
         ).fetchone()
 
         if existing_rel:
-            # Strengthen existing relation
+            # Strengthen existing active relation
             new_weight = min(MAX_WEIGHT, existing_rel[0] + LEARNING_RATE * 0.5)
             self.conn.execute(
                 'UPDATE edge_relations SET weight = ?, created_at = ? '
-                'WHERE edge_id = ? AND relation = ?',
+                'WHERE edge_id = ? AND relation = ? AND archived = 0',
                 (new_weight, ts, edge_id, relation))
         else:
             # Insert new relation
@@ -1725,15 +1737,19 @@ class GraphDAL:
             'UPDATE edges SET last_strengthened = ? WHERE edge_id = ?', (ts, edge_id))
         self.conn.commit()
 
-    def get_relations(self, edge_id):
-        """Get all relations for an edge by edge_id.
+    def get_relations(self, edge_id, include_archived: bool = False):
+        """Get active relations for an edge by edge_id.
 
         Returns list of dicts: [{relation, description, weight, encoding_source, created_at}, ...]
+        include_archived=True surfaces archived rows too (forensics / recovery).
         """
+        where = 'WHERE edge_id = ?'
+        if not include_archived:
+            where += ' AND archived = 0'
         rows = self.conn.execute(
             'SELECT relation, description, weight, encoding_source, created_at '
-            'FROM edge_relations WHERE edge_id = ? '
-            'ORDER BY weight DESC',
+            'FROM edge_relations %s '
+            'ORDER BY weight DESC' % where,
             (edge_id,)
         ).fetchall()
         return [{'relation': r[0], 'description': r[1] or '',
@@ -1741,42 +1757,49 @@ class GraphDAL:
                  'created_at': r[4]}
                 for r in rows]
 
-    def remove_relation(self, source_id, target_id, relation):
-        """Remove a specific relation from a pair.
+    def remove_relation(self, source_id, target_id, relation, archived_by: str = 'unknown'):
+        """Soft-archive a specific relation on a pair (v25).
 
-        If this was the last relation, removes the physical edge too.
+        Flips archived=1 on the matching row. Previously hard-DELETEd; the
+        change preserves edge history for recovery. The edges aggregate row
+        stays regardless — reads filter via edge_relations joins.
         """
         edge_id = self.get_edge_id(source_id, target_id)
         if not edge_id:
             return
 
+        ts = _now()
         self.conn.execute(
-            'DELETE FROM edge_relations WHERE edge_id = ? AND relation = ?',
-            (edge_id, relation))
+            'UPDATE edge_relations SET archived = 1, archived_at = ?, archived_by = ? '
+            'WHERE edge_id = ? AND relation = ? AND archived = 0',
+            (ts, archived_by, edge_id, relation))
 
-        # Check if any relations remain
-        remaining = self.conn.execute(
-            'SELECT COUNT(*) FROM edge_relations WHERE edge_id = ?',
-            (edge_id,)
-        ).fetchone()[0]
-
-        if remaining == 0:
-            self.conn.execute('DELETE FROM edges WHERE edge_id = ?', (edge_id,))
-        else:
-            self._update_aggregate_weight(edge_id)
-
+        # Recompute aggregate weight from remaining active relations
+        self._update_aggregate_weight(edge_id)
         self.conn.commit()
 
     def _update_aggregate_weight(self, edge_id):
-        """Set edges.weight to max of all relation weights for this edge."""
+        """Set edges.weight to max weight across ACTIVE relation rows.
+
+        Archived relations do not contribute — they're history, not signal.
+        When all relations on an edge are archived, edges.weight is
+        explicitly set to 0 so weight-based reads (min_weight filters,
+        get_well_connected) skip the orphan edges row. The row itself
+        persists for edge_id stability; reads that JOIN edge_relations
+        with archived=0 already get zero rows regardless.
+
+        No silent no-op — the weight is always written (0 or max), so the
+        edges row state reflects the truth of its active relations.
+        """
         row = self.conn.execute(
-            'SELECT MAX(weight) FROM edge_relations WHERE edge_id = ?',
+            'SELECT MAX(weight) FROM edge_relations '
+            'WHERE edge_id = ? AND archived = 0',
             (edge_id,)
         ).fetchone()
-        if row and row[0] is not None:
-            self.conn.execute(
-                'UPDATE edges SET weight = ? WHERE edge_id = ?',
-                (row[0], edge_id))
+        new_weight = row[0] if row and row[0] is not None else 0.0
+        self.conn.execute(
+            'UPDATE edges SET weight = ? WHERE edge_id = ?',
+            (new_weight, edge_id))
 
 
 def _now() -> str:
