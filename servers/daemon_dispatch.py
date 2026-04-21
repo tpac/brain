@@ -589,7 +589,8 @@ def _handle_filter_nodes(brain, args, graph_changes):
         gt=args.get("gt"),
         limit=args.get("limit", 50),
         sort_by=args.get("sort_by", "created_at"),
-        sort_order=args.get("sort_order", "desc"))
+        sort_order=args.get("sort_order", "desc"),
+        rich=args.get("rich", True))
     if "error" in result:
         return {"ok": False, "error": result["error"]}
     return {"ok": True, "result": result}

@@ -299,7 +299,7 @@ def _build_tools():
          "limit": {"type": "integer", "description": "Max results per query (default 5)", "default": 5}}}},
 
     {"name": "filter_nodes",
-     "description": "Structured query: filter nodes by any structural field (type, encoding_source, locked, confidence, etc.). Use for bulk lookups that semantic recall can't do — 'all corrections', 'nodes by encoder', 'low confidence nodes'. If no include/exclude/lt/gt given, lists all distinct values for discovery.",
+     "description": "Structured query: filter nodes by any structural field (type, encoding_source, locked, confidence, etc.). Use for bulk lookups that semantic recall can't do — 'all corrections', 'nodes by encoder', 'low confidence nodes'. Returns full rich nodes (content, metadata, corrections, connections) by default — one call enriches all results. If no include/exclude/lt/gt given, lists all distinct values for discovery.",
      "inputSchema": {"type": "object", "required": ["field"], "properties": {
          "field": {"type": "string", "description": "Column to filter on (type, encoding_source, locked, confidence, project, etc.)"},
          "include": {"type": "array", "items": {"type": "string"}, "description": "Show only nodes where field matches one of these values"},
@@ -308,7 +308,8 @@ def _build_tools():
          "gt": {"description": "Greater than (for numeric fields, or ISO timestamps for created_at, updated_at)"},
          "limit": {"type": "integer", "description": "Max results (default 50, max 200)", "default": 50},
          "sort_by": {"type": "string", "description": "Sort column: created_at (default), confidence, access_count, title", "default": "created_at"},
-         "sort_order": {"type": "string", "description": "asc or desc (default)", "default": "desc"}}}},
+         "sort_order": {"type": "string", "description": "asc or desc (default)", "default": "desc"},
+         "rich": {"type": "boolean", "description": "Default true — returns full rich nodes. Set false for skinny shape (id/title/type/confidence/created_at only), useful for discovery scans or feeding IDs to other ops.", "default": True}}}},
 
     {"name": "clear_errors",
      "description": "Clear hook errors and optionally debug log entries. Use to clean up after investigating issues.",

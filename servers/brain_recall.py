@@ -292,12 +292,26 @@ class BrainRecallMixin:
 
     def filter_nodes(self, field: str, include=None, exclude=None,
                      lt=None, gt=None, limit: int = 50,
-                     sort_by: str = 'created_at', sort_order: str = 'desc'):
-        """Structured query: filter nodes by any structural field."""
+                     sort_by: str = 'created_at', sort_order: str = 'desc',
+                     rich: bool = True):
+        """Structured query: filter nodes by any structural field.
+
+        rich=True (default): full content, metadata, corrections, connections
+        via batched get_node() — 5 queries regardless of N. The consumer is a
+        reasoner; richness is the advantage (see node 9b938b91).
+        rich=False: skinny shape (id/title/type/confidence/created_at), for
+        discovery scans or feeding IDs to other ops.
+        """
         node_dal = NodeDAL(self.conn)
-        return node_dal.filter_nodes(
+        result = node_dal.filter_nodes(
             field=field, include=include, exclude=exclude,
             lt=lt, gt=gt, limit=limit, sort_by=sort_by, sort_order=sort_order)
+        if not rich or 'error' in result or not result.get('nodes'):
+            return result
+        ids = [n['id'] for n in result['nodes']]
+        rich_map = self.get_node(ids)
+        result['nodes'] = [rich_map[i] for i in ids if i in rich_map]
+        return result
 
     def query_logs(self, source: str = 'all', hours: int = 24,
                    level: str = 'all', hook_name: str = '',
