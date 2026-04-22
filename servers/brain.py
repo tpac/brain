@@ -1114,8 +1114,15 @@ class Brain(
     # ══════════════════════════════════════════════════════════════════
 
     # Thresholds — tune here, not in daemon_server.
-    MAINTENANCE_IDLE_THRESHOLD_SECONDS = 5 * 60   # 5 min idle before we even consider running
-    MAINTENANCE_MIN_INTERVAL_SECONDS = 60 * 60    # 1 hour minimum between runs
+    # In steady state (no new encoding → nothing to consolidate/place/heal)
+    # a fire is cheap: each decoder scans quickly, finds 0 work, encoders
+    # skip. So the correct tuning question is "how often do we want to
+    # catch new backlog during active use?" — not "how cheap is it when
+    # idle?" Hence the relatively aggressive 3min / 30min settings.
+    MAINTENANCE_IDLE_THRESHOLD_SECONDS = 3 * 60   # 3 min idle — more chances
+                                                  # to catch pauses during
+                                                  # active work
+    MAINTENANCE_MIN_INTERVAL_SECONDS = 30 * 60    # 30 min between runs
 
     def _maintenance_last_run_ts(self) -> float:
         """Epoch of the most recent maintenance run. Persisted in brain_meta."""
