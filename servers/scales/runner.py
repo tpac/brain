@@ -134,6 +134,13 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
     Used by all scale encode agents. Scale-specific logic is in what
     system_prompt, user_content, and tools contain — the loop is identical.
 
+    Prompt caching (enabled always): `cache_control` markers on system and
+    on the initial user message. System is 1h TTL for cross-call reuse
+    within long eval runs; user message is 5m TTL so the 2nd turn (after
+    tool result) hits the cache reliably. Net ~15-25% per-scribe cost
+    saving, ~40-50% input token reduction. Cache usage is reported via
+    cache_creation_tokens / cache_read_tokens in the return dict.
+
     Args:
         client: anthropic.Anthropic() instance
         model: Model ID (e.g. 'claude-sonnet-4-6')
@@ -146,7 +153,8 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         log_fn: Optional function(msg) for logging
 
     Returns:
-        dict with: rounds, actions, write_actions, action_details, final_text, profile
+        dict with: rounds, actions, write_actions, action_details,
+                   read_calls, final_text, profile, cache_*_tokens
     """
     def _log(msg):
         if log_fn:
@@ -161,6 +169,8 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
     profile = []
     total_input_tokens = 0
     total_output_tokens = 0
+    total_cache_creation = 0
+    total_cache_read = 0
 
     def _step(name):
         profile.append((name, int((time.time() - t0) * 1000)))
@@ -169,9 +179,12 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
 
     def _track_usage(resp, round_num):
         nonlocal total_input_tokens, total_output_tokens
+        nonlocal total_cache_creation, total_cache_read
         if hasattr(resp, 'usage'):
             total_input_tokens += getattr(resp.usage, 'input_tokens', 0)
             total_output_tokens += getattr(resp.usage, 'output_tokens', 0)
+            total_cache_creation += getattr(resp.usage, 'cache_creation_input_tokens', 0) or 0
+            total_cache_read += getattr(resp.usage, 'cache_read_input_tokens', 0) or 0
         if getattr(resp, 'stop_reason', None) == 'max_tokens':
             out_used = getattr(resp.usage, 'output_tokens', 0) if hasattr(resp, 'usage') else '?'
             truncations.append({
@@ -182,14 +195,36 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             _log("WARNING: max_tokens hit (round %d, %s/%d output tokens) — response truncated" % (
                 round_num, out_used, max_tokens))
 
+    # BP1 — tools + system cached at 1h TTL. System prompt is byte-identical
+    # across every call within a prompt version; 1h TTL keeps a whole eval or
+    # a long chat session warm. Writes cost 2× on the first call of the hour;
+    # amortizes after ~2 reads.
+    system_param = [{
+        "type": "text",
+        "text": system_prompt,
+        "cache_control": {"type": "ephemeral", "ttl": "1h"},
+    }]
+
     def _create_message(msgs):
         """Create message with streaming to avoid timeout on large contexts."""
         with client.messages.stream(
                 model=model, max_tokens=max_tokens,
-                system=system_prompt, messages=msgs, tools=tools) as stream:
+                system=system_param, messages=msgs, tools=tools) as stream:
             return stream.get_final_message()
 
-    api_messages = [{"role": "user", "content": user_content}]
+    # BP2 — entire turn-1 user content cached at 5m TTL. Within a single
+    # run_llm_loop invocation, turn 2 re-sends this exact block and reads
+    # from cache (always a hit, 0 seconds after turn 1 writes). Across
+    # calls this usually misses (journal/timeline shift) — but the within-
+    # call win is ~6k tokens on turn 2 which is where latency matters.
+    api_messages = [{
+        "role": "user",
+        "content": [{
+            "type": "text",
+            "text": user_content,
+            "cache_control": {"type": "ephemeral", "ttl": "5m"},
+        }],
+    }]
     response = _create_message(api_messages)
     _track_usage(response, 0)
     _step("llm_r0")
@@ -197,11 +232,11 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
     actions = []
     rounds = 0
 
-    for rounds in range(max_rounds):
-        tool_uses = [b for b in response.content if b.type == "tool_use"]
-        if not tool_uses:
-            break
-
+    def _dispatch_tool_uses(response_obj):
+        """Dispatch every tool_use block in response. Append to actions.
+        Returns a tool_results list usable as a user-role message block.
+        """
+        tool_uses = [b for b in response_obj.content if b.type == "tool_use"]
         tool_results = []
         for tu in tool_uses:
             result = dispatch_fn(tu.name, tu.input)
@@ -216,7 +251,6 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             })
             action_summary = tu.input.get("title", tu.input.get("query",
                 tu.input.get("node_id", "")))[:60]
-            # Capture node IDs from results for S2 trace consumption
             result_ids = []
             if result.get("ok"):
                 r = result.get("result", {})
@@ -225,22 +259,26 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                         result_ids.append(r["id"])
                     for item in r.get("results", []):
                         if isinstance(item, dict):
-                            # Direct ID (remember, revise)
                             if item.get("id"):
                                 result_ids.append(item["id"])
-                            # Nested ID (brain_batch: {op, index, ok, result: {id}})
                             elif isinstance(item.get("result"), dict) and item["result"].get("id"):
                                 result_ids.append(item["result"]["id"])
                 elif isinstance(r, list):
                     for item in r:
                         if isinstance(item, dict) and item.get("id"):
                             result_ids.append(item["id"])
-            # Store full tool input for trace recovery (dispatch bug taught us:
-            # if the input isn't logged, it's unrecoverable when things go wrong)
             actions.append({"tool": tu.name, "summary": action_summary,
                             "node_ids": result_ids,
                             "input": tu.input})
             _log("  [%s] %s" % (tu.name, action_summary))
+        return tool_results, tool_uses
+
+    for rounds in range(max_rounds):
+        tool_uses = [b for b in response.content if b.type == "tool_use"]
+        if not tool_uses:
+            break
+
+        tool_results, _ = _dispatch_tool_uses(response)
 
         api_messages.append({"role": "assistant", "content": [
             {"type": b.type, **({"text": b.text} if b.type == "text" else
@@ -253,10 +291,18 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
 
     final_text = "".join(b.text for b in response.content if b.type == "text")
     write_actions = [a for a in actions if a['tool'] in WRITE_TOOLS]
+    read_calls = [a for a in actions if a['tool'] not in WRITE_TOOLS]
 
-    _log("Rounds: %d | Actions: %d (writes: %d) | Tokens: %d in / %d out | Profile: %s" % (
-        rounds + 1, len(actions), len(write_actions),
-        total_input_tokens, total_output_tokens,
+    # Total "billed as fresh input" = uncached input. cache_read_input_tokens
+    # is read from cache at 0.1× cost; cache_creation_input_tokens is written
+    # at 1.25× (5min TTL) or 2× (1h TTL) cost. Report all three so the
+    # operator can see hit ratio over many runs.
+    total_cache_pool = total_cache_creation + total_cache_read
+    hit_rate = (total_cache_read / total_cache_pool * 100) if total_cache_pool else 0.0
+    _log("Rounds: %d | Actions: %d (writes: %d, reads: %d) | Tokens: %d fresh / %d cached-read / %d cached-write / %d out | hit=%.0f%% | Profile: %s" % (
+        rounds + 1, len(actions), len(write_actions), len(read_calls),
+        total_input_tokens, total_cache_read, total_cache_creation, total_output_tokens,
+        hit_rate,
         ', '.join('%s=%dms' % (n, t) for n, t in profile)))
 
     return {
@@ -264,9 +310,12 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         "actions": len(actions),
         "write_actions": len(write_actions),
         "action_details": write_actions,
+        "read_calls": read_calls,
         "final_text": final_text[:2000] if final_text else '',
         "profile": profile,
         "input_tokens": total_input_tokens,
         "output_tokens": total_output_tokens,
+        "cache_creation_tokens": total_cache_creation,
+        "cache_read_tokens": total_cache_read,
         "truncations": truncations,
     }
