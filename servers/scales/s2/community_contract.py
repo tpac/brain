@@ -67,7 +67,10 @@ COMMUNITY_DETECTION = {
     # with structured narratives in ~60s vs Sonnet's 0 writes in 2 rounds.)
     'model': 'claude-haiku-4-5-20251001',
     'max_tokens': 32768,
-    'max_proposals_per_call': 10,   # Smaller batches = richer per-community context
+    'max_proposals_per_call': 8,    # Smaller batches = richer per-community
+                                    # context AND lower round-2 generation
+                                    # load (10 was hitting the 180s client
+                                    # timeout on batch 1 consistently).
     'max_actionable_per_run': 30,   # Cap per idle cycle (was 60 for Sonnet)
     # Per-type quotas — priority order: merge > new_community > add_to_existing > health > drift
     'type_quotas': {
