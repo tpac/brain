@@ -1105,6 +1105,66 @@ class Brain(
         self._meta.set(key, str(value))
         return {'key': key, 'value': value, 'updated_at': self.now()}
 
+    # ══════════════════════════════════════════════════════════════════
+    # Maintenance scheduling — brain owns the decision, daemon owns only
+    # the polling cadence. Previously this logic sat in daemon_server._serve
+    # which mixed transport and domain concerns. State lives in brain_meta
+    # (s2_last_run_ts) so it survives daemon restarts cleanly; in-memory
+    # state in the daemon lost it on every process death.
+    # ══════════════════════════════════════════════════════════════════
+
+    # Thresholds — tune here, not in daemon_server.
+    MAINTENANCE_IDLE_THRESHOLD_SECONDS = 5 * 60   # 5 min idle before we even consider running
+    MAINTENANCE_MIN_INTERVAL_SECONDS = 60 * 60    # 1 hour minimum between runs
+
+    def _maintenance_last_run_ts(self) -> float:
+        """Epoch of the most recent maintenance run. Persisted in brain_meta."""
+        raw = self.get_config('s2_last_run_ts') or '0'
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _maintenance_set_last_run_ts(self, ts: float) -> None:
+        self.set_config('s2_last_run_ts', str(ts))
+
+    def run_maintenance_if_due(self, last_activity_ts: float,
+                               now: Optional[float] = None) -> Optional[Dict[str, Any]]:
+        """Run S2 maintenance iff idle and min-interval conditions are met.
+
+        Args:
+            last_activity_ts: Epoch seconds of last request the daemon saw.
+            now: Epoch seconds (default: time.time()). Injectable for tests.
+
+        Returns: S2 coordinator results dict when a run fired, None when
+            not due. Caller (daemon) is responsible for serializing calls;
+            this method is safe to call frequently — it no-ops cheaply when
+            not due.
+        """
+        import time as _time
+        now = now if now is not None else _time.time()
+        idle_seconds = now - (last_activity_ts or now)
+        last_run_ts = self._maintenance_last_run_ts()
+        since_last_run = now - last_run_ts if last_run_ts else float('inf')
+
+        if idle_seconds < self.MAINTENANCE_IDLE_THRESHOLD_SECONDS:
+            return None
+        if since_last_run < self.MAINTENANCE_MIN_INTERVAL_SECONDS:
+            return None
+
+        # Mark the run BEFORE executing so concurrent callers (via second
+        # poll) see the same timestamp and skip. The daemon's coarse
+        # _s2_running lock is belt-and-suspenders.
+        self._maintenance_set_last_run_ts(now)
+
+        from servers.scales.s2.coordinator import run_s2
+        results = run_s2(self)
+        return {
+            'ran_at_epoch': now,
+            'idle_seconds': idle_seconds,
+            'units': results,
+        }
+
 
     def get_debug_status(self) -> Dict[str, Any]:
         """Check if debug mode is enabled via DAL, falls back to env var."""

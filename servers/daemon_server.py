@@ -21,7 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Dict, Any
 
 from .daemon_config import (
-    IDLE_TIMEOUT_SECONDS, S2_IDLE_THRESHOLD, S2_MIN_INTERVAL, AUTOSAVE_INTERVAL_SECONDS,
+    IDLE_TIMEOUT_SECONDS, AUTOSAVE_INTERVAL_SECONDS,
     SOCKET_BACKLOG, MAX_MESSAGE_SIZE, THREAD_POOL_SIZE,
     DAEMON_HOST, DAEMON_PORT,
     _CODE_FINGERPRINT,
@@ -260,7 +260,6 @@ class BrainDaemon:
     def _serve(self):
         """Main event loop — accept connections, dispatch to thread pool."""
         last_idle_check = time.time()
-        self._last_s2_run = 0  # epoch — allows first run after S2_MIN_INTERVAL
         self._s2_running = False
         while self.running:
             # Check idle timeout every ~10 iterations (not every loop)
@@ -269,11 +268,13 @@ class BrainDaemon:
                 last_idle_check = now
                 idle = now - self.last_activity
 
-                # S2 maintenance: run when idle 5min+ AND at least 1h since last run
-                if (idle > S2_IDLE_THRESHOLD
-                        and now - self._last_s2_run > S2_MIN_INTERVAL
-                        and not self._s2_running):
-                    self._last_s2_run = now
+                # Maintenance decision lives in brain.run_maintenance_if_due().
+                # Daemon owns the polling cadence and the concurrency lock;
+                # brain owns "is it time?" (idle threshold + min interval +
+                # persisted last-run timestamp). This separation means
+                # restarting the daemon doesn't forget when maintenance
+                # last ran — the brain_meta record survives.
+                if not self._s2_running:
                     self._s2_running = True
                     self._pool.submit(self._run_idle_maintenance)
 
@@ -618,21 +619,31 @@ class BrainDaemon:
             self._write_status()
 
     def _run_idle_maintenance(self):
-        """Run S2 + maintenance when daemon is idle. Runs in thread pool.
+        """Poll brain's maintenance decision. Runs in thread pool.
 
-        Same work as hook_idle_maintenance but triggered internally —
-        no dependency on Claude Code idle_prompt notifications.
+        The polling cadence is the daemon's responsibility; the decision
+        (idle threshold, min interval, persisted last-run timestamp) is
+        the brain's. If the brain declines (returns None), this is a
+        cheap no-op and we try again on the next poll. Previously the
+        daemon owned this logic and lost its last-run state on restart —
+        brain.run_maintenance_if_due() persists via brain_meta instead.
         """
-        self._log("Idle maintenance triggered (%.0fs idle)" % (time.time() - self.last_activity))
         try:
-            from .daemon_hooks import hook_idle_maintenance
-            graph_changes = []
-            hook_idle_maintenance(self.brain, {"session_id": "daemon-idle"}, graph_changes)
-            if self.brain:
-                self.brain.save()
-            self._log("Idle maintenance complete: %s" % "; ".join(graph_changes) if graph_changes else "Idle maintenance complete (no changes)")
+            result = self.brain.run_maintenance_if_due(self.last_activity)
+            if result is None:
+                return  # not due — quiet no-op
+            self._log("Maintenance ran (idle %.0fs): %s" % (
+                result.get('idle_seconds', 0),
+                ", ".join("%s=%s" % (u, str(r)[:60])
+                          for u, r in result.get('units', {}).items())))
+            self.brain.save()
         except Exception as e:
-            self._log("Idle maintenance error: {}".format(e))
+            self._log("Maintenance error: {}".format(e))
+            try:
+                self.brain._log_error('daemon_maintenance_poll', e,
+                                      'brain.run_maintenance_if_due raised')
+            except Exception:
+                pass
         finally:
             self._s2_running = False
 
