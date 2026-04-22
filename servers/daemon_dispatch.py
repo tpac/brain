@@ -34,6 +34,33 @@ class CmdEntry(NamedTuple):
     handler: Callable
     is_write: bool
     marks_dirty: bool = False
+    # Optional contract: the set of top-level keys this handler knows how to
+    # consume. When set, the dispatcher logs an error for any arg key not in
+    # this set — surfaces silent drops (e.g. encoding_source being passed but
+    # not forwarded to the brain method). None = no check, opt-in per entry.
+    accepts: Optional[frozenset] = None
+
+
+def check_unknown_keys(cmd: str, entry: 'CmdEntry', args: Dict[str, Any], brain) -> None:
+    """Log an error if args contains keys the handler doesn't list as accepted.
+
+    Defensive: any `accepts` contract must allow all keys the handler reads —
+    if `accepts` is declared but the handler reads a field not in the set,
+    this function will (incorrectly) flag legitimate inputs as unknown. Update
+    `accepts` when you change what a handler reads.
+    """
+    if entry.accepts is None or not args:
+        return
+    unknown = set(args.keys()) - entry.accepts
+    if not unknown:
+        return
+    try:
+        brain._log_error(
+            'dispatch_unknown_keys',
+            ValueError('cmd=%s dropped keys=%s' % (cmd, sorted(unknown))),
+            'accepted=%s' % sorted(entry.accepts))
+    except Exception:
+        pass
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -405,6 +432,8 @@ def _handle_brain_batch(brain, args, graph_changes):
 
             elif op == "connect":
                 op_args = {k: v for k, v in op_spec.items() if k != "op"}
+                if top_encoding_source and "encoding_source" not in op_args:
+                    op_args["encoding_source"] = top_encoding_source
                 r = _handle_connect(brain, op_args, graph_changes)
                 results.append({"op": "connect", "index": i, **r})
 
@@ -415,9 +444,13 @@ def _handle_brain_batch(brain, args, graph_changes):
                                     "error": "node_id is required"})
                 else:
                     # Unified archive path — handles guards, edges, vectors, audit.
-                    # encoding_source is inherited from brain_batch caller context.
+                    # Fallback chain mirrors disconnect: op-level encoding_source
+                    # → op-level archived_by → top-level encoding_source →
+                    # 'unknown'. Lets top-level brain_batch tagging cascade to
+                    # archive audit without per-op injection.
                     archived_by = op_spec.get('encoding_source') or \
-                        op_spec.get('archived_by') or 'unknown'
+                        op_spec.get('archived_by') or \
+                        top_encoding_source or 'unknown'
                     reason = op_spec.get('reason', '')
                     r = brain.archive_node(
                         node_id, archived_by=archived_by, reason=reason)
@@ -434,12 +467,15 @@ def _handle_brain_batch(brain, args, graph_changes):
                 source_id = op_spec.get("source_id")
                 target_id = op_spec.get("target_id")
                 relation = op_spec.get("relation")
+                archived_by = op_spec.get('encoding_source') or \
+                    op_spec.get('archived_by') or \
+                    top_encoding_source or 'unknown'
                 if not (source_id and target_id and relation):
                     results.append({"op": "disconnect", "index": i, "ok": False,
                                     "error": "source_id, target_id, relation are required"})
                 else:
                     GraphDAL(brain.conn).remove_relation(
-                        source_id, target_id, relation)
+                        source_id, target_id, relation, archived_by=archived_by)
                     brain.conn.commit()
                     graph_changes.append("DISCONNECT: %s -[%s]-> %s" % (
                         source_id[:8], relation, target_id[:8]))
@@ -724,7 +760,8 @@ def _handle_connect(brain, args, graph_changes):
         target_id=_resolve_id(brain, args.get("target_id", "")),
         relation=args.get("relation", "related_to"),
         weight=args.get("weight", 0.5),
-        description=args.get("description", ""))
+        description=args.get("description", ""),
+        encoding_source=args.get("encoding_source", ""))
     graph_changes.append(
         "CONNECT: %s -[%s]-> %s" % (
             args.get("source_id", "?")[:8],
@@ -933,9 +970,13 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "get_nodes":             CmdEntry(_handle_get_nodes,            is_write=False, marks_dirty=False),
     "recall_batch":          CmdEntry(_handle_recall_batch,         is_write=False, marks_dirty=False),
     "graph_expand":          CmdEntry(_handle_graph_expand,         is_write=False, marks_dirty=False),
-    "connect":               CmdEntry(_handle_connect,             is_write=True, marks_dirty=True),
-    "connect_batch":         CmdEntry(_handle_connect_batch,       is_write=True, marks_dirty=True),
-    "brain_batch":           CmdEntry(_handle_brain_batch,         is_write=True, marks_dirty=True),
+    "connect":               CmdEntry(_handle_connect,             is_write=True, marks_dirty=True,
+                                      accepts=frozenset({"source_id", "target_id", "relation",
+                                                         "weight", "description", "encoding_source"})),
+    "connect_batch":         CmdEntry(_handle_connect_batch,       is_write=True, marks_dirty=True,
+                                      accepts=frozenset({"connections", "encoding_source"})),
+    "brain_batch":           CmdEntry(_handle_brain_batch,         is_write=True, marks_dirty=True,
+                                      accepts=frozenset({"operations", "encoding_source"})),
     "enrich":                CmdEntry(_handle_enrich,              is_write=True, marks_dirty=True),
     "eval":                  CmdEntry(_handle_eval,                is_write=True, marks_dirty=True),
     "diagnose":              CmdEntry(_handle_diagnose,            is_write=False, marks_dirty=False),

@@ -76,7 +76,7 @@ def make_scale_dispatch(read_brain, encoding_source='encoder:sonnet'):
     Returns:
         dispatch(cmd, args) -> dict
     """
-    from servers.daemon_dispatch import COMMAND_TABLE
+    from servers.daemon_dispatch import COMMAND_TABLE, check_unknown_keys
 
     def dispatch(cmd, cmd_args):
         if cmd in ('remember', 'remember_batch', 'revise'):
@@ -85,6 +85,7 @@ def make_scale_dispatch(read_brain, encoding_source='encoder:sonnet'):
             return daemon_tcp_send(cmd, cmd_args)
         entry = COMMAND_TABLE.get(cmd)
         if entry:
+            check_unknown_keys(cmd, entry, cmd_args, read_brain)
             return entry.handler(read_brain, cmd_args, [])
         return {"ok": False, "error": "Unknown command: %s" % cmd}
 

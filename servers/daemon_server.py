@@ -27,7 +27,7 @@ from .daemon_config import (
     _CODE_FINGERPRINT,
     get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
 )
-from .daemon_dispatch import COMMAND_TABLE
+from .daemon_dispatch import COMMAND_TABLE, check_unknown_keys
 
 
 class BrainDaemon:
@@ -459,6 +459,8 @@ class BrainDaemon:
             entry = COMMAND_TABLE.get(cmd)
             if entry is None:
                 return {"ok": False, "error": "Unknown command: {}".format(cmd)}
+
+            check_unknown_keys(cmd, entry, args, self.brain)
 
             if entry.is_write:
                 def _write():
