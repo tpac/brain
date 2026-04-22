@@ -109,39 +109,55 @@ class HealerDecoder(IntegrationUnit):
         Includes community nodes — they need question/situation/reasoning
         like any other node. The conversation loader handles missing
         conversation gracefully (communities have no conversation context).
+
+        Priority tiers (each capped at max_nodes_per_run, fall-through
+        fills remaining slots). Situation and reasoning are first-class
+        targets alongside question — earlier versions only targeted
+        question-missing nodes, which left a 600+ node backlog of
+        situation/reasoning gaps invisible to healing.
         """
         max_nodes = self.config['max_nodes_per_run']
 
-        # Nodes missing ALL three — highest priority
-        missing_all = self.brain.conn.execute("""
-            SELECT n.id FROM nodes n
-            WHERE n.archived=0
-            AND n.id NOT IN (SELECT node_id FROM node_metadata_kv WHERE key='question')
-            AND n.id NOT IN (SELECT node_id FROM node_metadata_kv WHERE key='situation' AND length(value) > 5)
-            AND n.id NOT IN (SELECT node_id FROM node_metadata_kv WHERE key='reasoning' AND length(value) > 5)
-            ORDER BY n.access_count DESC
-            LIMIT ?
-        """, (max_nodes,)).fetchall()
+        targets = []
+        seen = set()
 
-        targets = [r[0] for r in missing_all]
-
-        # Fill remaining slots with nodes missing at least question
-        if len(targets) < max_nodes:
-            remaining = max_nodes - len(targets)
-            seen = set(targets)
-            missing_q = self.brain.conn.execute("""
-                SELECT n.id FROM nodes n
-                WHERE n.archived=0
-                AND n.id NOT IN (SELECT node_id FROM node_metadata_kv WHERE key='question')
-                ORDER BY n.access_count DESC
-                LIMIT ?
-            """, (remaining * 2,)).fetchall()
-            for (nid,) in missing_q:
+        def _run(sql, limit):
+            if limit <= 0:
+                return
+            rows = self.brain.conn.execute(
+                sql + ' LIMIT ?', (limit,)).fetchall()
+            for (nid,) in rows:
                 if nid not in seen:
                     targets.append(nid)
                     seen.add(nid)
                     if len(targets) >= max_nodes:
-                        break
+                        return
+
+        # Shared subqueries
+        missing_q = ("n.id NOT IN (SELECT node_id FROM node_metadata_kv "
+                     "WHERE key='question')")
+        missing_s = ("n.id NOT IN (SELECT node_id FROM node_metadata_kv "
+                     "WHERE key='situation' AND length(value) > 5)")
+        missing_r = ("n.id NOT IN (SELECT node_id FROM node_metadata_kv "
+                     "WHERE key='reasoning' AND length(value) > 5)")
+        base = ("SELECT n.id FROM nodes n WHERE n.archived=0 AND %s "
+                "ORDER BY n.access_count DESC")
+
+        # Tier 1: missing all three
+        _run(base % ' AND '.join([missing_q, missing_s, missing_r]), max_nodes)
+
+        # Tier 2: missing any two
+        for combo in [(missing_q, missing_s), (missing_q, missing_r),
+                      (missing_s, missing_r)]:
+            _run(base % ' AND '.join(combo), max_nodes - len(targets))
+            if len(targets) >= max_nodes:
+                return targets
+
+        # Tier 3: missing any one
+        for single in (missing_q, missing_s, missing_r):
+            _run(base % single, max_nodes - len(targets))
+            if len(targets) >= max_nodes:
+                return targets
 
         return targets
 
