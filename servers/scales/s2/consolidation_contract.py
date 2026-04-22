@@ -108,7 +108,13 @@ CONSOLIDATION = {
                                         # similarity graph collapsed into a 2165-node giant
                                         # component (86% of corpus) — unprocessable as clusters.
                                         # 0.89 yields ~250 well-formed clusters with biggest ~12.
-    'max_cluster_size': 5,              # Larger = topic, not convergence
+    'max_cluster_size': 10,             # Larger clusters get dropped + logged.
+                                        # Historical note: 5 was too tight —
+                                        # genuine convergence across sessions
+                                        # routinely produced 6-9 member clusters
+                                        # that were silently lost. 10 covers the
+                                        # observed backlog; if clusters hit 15+,
+                                        # threshold is probably too permissive.
 
     # ── Behavioral trace lookback (decoder) ──
     'co_recall_lookback_hours': 168,    # 7 days of S1R traces
