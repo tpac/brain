@@ -1,0 +1,193 @@
+{
+  "run_name": "20260422_152351",
+  "items_count": 5,
+  "correct_count": 4,
+  "overall_score": 0.8,
+  "axis_scores": {
+    "info_extraction": 0.0,
+    "multi_session": 1.0,
+    "temporal": 1.0,
+    "knowledge_update": 1.0,
+    "abstention": 1.0
+  },
+  "axis_counts": {
+    "info_extraction": 1,
+    "multi_session": 1,
+    "temporal": 1,
+    "knowledge_update": 1,
+    "abstention": 1
+  },
+  "failure_buckets": {
+    "ANSWER_MISS": 1
+  },
+  "total_ms": 955167,
+  "config": {
+    "items_per_axis": 1,
+    "seed": 42
+  },
+  "results": [
+    {
+      "question_id": "54026fce",
+      "question_type": "single-session-preference",
+      "axis": "info_extraction",
+      "question": "I've been thinking about ways to stay connected with my colleagues. Any suggestions?",
+      "answer_gold": "The user would prefer responses that acknowledge their desire for social interaction and collaboration while working remotely, utilizing their previous experiences with company initiatives and team collaborations. They might prefer suggestions of virtual team-building activities, regular check-ins, or joining interest-based groups within the company. The user may not prefer generic suggestions that do not take into account their specific work situation or previous attempts at staying connected with colleagues.",
+      "hypothesis": "Based on your situation, here are some concrete approaches:\n\n**Start by inviting input from your team** \u2014 ask them how they think you should stay connected rather than proposing a ready-made solution. This builds buy-in.\n\n**Set up regular virtual social rituals** with clear ground rules: no work talk, keep it light and casual, use video, respect time boundaries, and be fully present. These turn casual interactions into genuine connection time rather than awkward obligations.\n\n**Use a four-step approach when proposing any initiative**: start with an open question, share a personal observation about missing those watercooler moments, introduce the idea casually (\"I was thinking...\"), and invite collaboration rather than compliance.\n\nThe key is making remote connection feel natural and low-pressure, not like another work obligation.",
+      "abstained": false,
+      "has_context": true,
+      "correct": false,
+      "judge_raw": "NO",
+      "brain_errors_new": [],
+      "failure_bucket": "ANSWER_MISS",
+      "failure_reason": "The system retrieved 3 memories from 8 candidates but none were relevant to the gold standard, indicating the retrieval mechanism failed to surface the user's specific work context and previous collaboration history needed for personalized suggestions.",
+      "failure_evidence": {
+        "relevant_to_gold": [],
+        "recall_candidates_count": 8,
+        "selected_ids": [
+          "67ae2e2d",
+          "83034f02",
+          "db0d98ff"
+        ],
+        "context_chars": 3016,
+        "query_fired": true
+      },
+      "ingest": {
+        "turns": 12,
+        "user_turns": 6,
+        "s1e_runs": 2,
+        "s2_runs": 4,
+        "s1r_ms_total": 271,
+        "s1e_ms_total": 57179,
+        "s2_ms_total": 58797
+      },
+      "ingest_ms": 119483,
+      "query_s1r_ms": 6223,
+      "query_session_id": "query-b2aa5dc5ba19",
+      "answer_ms": 11326,
+      "answer_tokens_in": 1013,
+      "answer_tokens_out": 173,
+      "total_item_ms": 137032,
+      "brain_db_path": "/Users/tpac/AgentsContext/brain-eval-20260422_152351/54026fce"
+    },
+    {
+      "question_id": "2311e44b",
+      "question_type": "multi-session",
+      "axis": "multi_session",
+      "question": "How many pages do I have left to read in 'The Nightingale'?",
+      "answer_gold": "190",
+      "hypothesis": "Based on your position on May 22 (page 250 of 440), you had approximately 190 pages left to read in 'The Nightingale'.",
+      "abstained": false,
+      "has_context": true,
+      "correct": true,
+      "judge_raw": "YES",
+      "brain_errors_new": [],
+      "ingest": {
+        "turns": 18,
+        "user_turns": 9,
+        "s1e_runs": 2,
+        "s2_runs": 4,
+        "s1r_ms_total": 540,
+        "s1e_ms_total": 91310,
+        "s2_ms_total": 86525
+      },
+      "ingest_ms": 182893,
+      "query_s1r_ms": 4545,
+      "query_session_id": "query-7a3c30357b8b",
+      "answer_ms": 876,
+      "answer_tokens_in": 560,
+      "answer_tokens_out": 40,
+      "total_item_ms": 188314,
+      "brain_db_path": "/Users/tpac/AgentsContext/brain-eval-20260422_152351/2311e44b"
+    },
+    {
+      "question_id": "71017276",
+      "question_type": "temporal-reasoning",
+      "axis": "temporal",
+      "question": "How many weeks ago did I meet up with my aunt and receive the crystal chandelier?",
+      "answer_gold": 4,
+      "hypothesis": "You received the crystal chandelier from your aunt 4 weeks ago (on 2023-03-04).",
+      "abstained": false,
+      "has_context": true,
+      "correct": true,
+      "judge_raw": "YES",
+      "brain_errors_new": [],
+      "ingest": {
+        "turns": 12,
+        "user_turns": 6,
+        "s1e_runs": 2,
+        "s2_runs": 4,
+        "s1r_ms_total": 314,
+        "s1e_ms_total": 69387,
+        "s2_ms_total": 73997
+      },
+      "ingest_ms": 147275,
+      "query_s1r_ms": 3688,
+      "query_session_id": "query-9cd435e6040a",
+      "answer_ms": 675,
+      "answer_tokens_in": 788,
+      "answer_tokens_out": 27,
+      "total_item_ms": 151638,
+      "brain_db_path": "/Users/tpac/AgentsContext/brain-eval-20260422_152351/71017276"
+    },
+    {
+      "question_id": "cc5ded98",
+      "question_type": "knowledge-update",
+      "axis": "knowledge_update",
+      "question": "How much time do I dedicate to coding exercises each day?",
+      "answer_gold": "about two hours",
+      "hypothesis": "You dedicate about two hours each day to coding exercises, as of late May 2023.",
+      "abstained": false,
+      "has_context": true,
+      "correct": true,
+      "judge_raw": "YES",
+      "brain_errors_new": [],
+      "ingest": {
+        "turns": 22,
+        "user_turns": 11,
+        "s1e_runs": 3,
+        "s2_runs": 3,
+        "s1r_ms_total": 613,
+        "s1e_ms_total": 140504,
+        "s2_ms_total": 73654
+      },
+      "ingest_ms": 220443,
+      "query_s1r_ms": 6223,
+      "query_session_id": "query-066c0c869000",
+      "answer_ms": 677,
+      "answer_tokens_in": 1544,
+      "answer_tokens_out": 23,
+      "total_item_ms": 227343,
+      "brain_db_path": "/Users/tpac/AgentsContext/brain-eval-20260422_152351/cc5ded98"
+    },
+    {
+      "question_id": "09ba9854_abs",
+      "question_type": "multi-session",
+      "axis": "abstention",
+      "question": "How much will I save by taking the bus from the airport to my hotel instead of a taxi?",
+      "answer_gold": "The information provided is not enough. You did not mention how much will the bus take.",
+      "hypothesis": "I don't have information about that.",
+      "abstained": true,
+      "has_context": false,
+      "correct": true,
+      "judge_raw": "YES",
+      "brain_errors_new": [],
+      "ingest": {
+        "turns": 22,
+        "user_turns": 11,
+        "s1e_runs": 3,
+        "s2_runs": 4,
+        "s1r_ms_total": 494,
+        "s1e_ms_total": 161328,
+        "s2_ms_total": 68934
+      },
+      "ingest_ms": 235606,
+      "query_s1r_ms": 3828,
+      "query_session_id": "query-425e68bb8908",
+      "answer_ms": 1065,
+      "answer_tokens_in": 274,
+      "answer_tokens_out": 11,
+      "total_item_ms": 240499,
+      "brain_db_path": "/Users/tpac/AgentsContext/brain-eval-20260422_152351/09ba9854_abs"
+    }
+  ]
+}

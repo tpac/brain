@@ -1,0 +1,205 @@
+{
+  "run_name": "20260422_143900",
+  "items_count": 5,
+  "correct_count": 3,
+  "overall_score": 0.6,
+  "axis_scores": {
+    "info_extraction": 1.0,
+    "multi_session": 1.0,
+    "temporal": 1.0,
+    "knowledge_update": 0.0,
+    "abstention": 0.0
+  },
+  "axis_counts": {
+    "info_extraction": 1,
+    "multi_session": 1,
+    "temporal": 1,
+    "knowledge_update": 1,
+    "abstention": 1
+  },
+  "failure_buckets": {
+    "PARTIAL_RECALL": 2
+  },
+  "total_ms": 914393,
+  "config": {
+    "items_per_axis": 1,
+    "seed": 42
+  },
+  "results": [
+    {
+      "question_id": "54026fce",
+      "question_type": "single-session-preference",
+      "axis": "info_extraction",
+      "question": "I've been thinking about ways to stay connected with my colleagues. Any suggestions?",
+      "answer_gold": "The user would prefer responses that acknowledge their desire for social interaction and collaboration while working remotely, utilizing their previous experiences with company initiatives and team collaborations. They might prefer suggestions of virtual team-building activities, regular check-ins, or joining interest-based groups within the company. The user may not prefer generic suggestions that do not take into account their specific work situation or previous attempts at staying connected with colleagues.",
+      "hypothesis": "Based on what you've shared about missing watercooler conversations, I'd suggest starting with virtual coffee breaks as a team-building initiative \u2014 frame it as a collaborative question to your team ('How do we think we can recreate some of those casual check-ins?') rather than a ready-made proposal, which creates better buy-in. When you introduce it, set explicit ground rules like \"no work talk\" to make the space feel genuinely relaxed and safe, and use active facilitation (asking open questions, inviting quieter members to share) to keep the conversation inclusive rather than letting it be dominated by one person.",
+      "abstained": false,
+      "has_context": true,
+      "correct": true,
+      "judge_raw": "YES",
+      "brain_errors_new": [],
+      "ingest": {
+        "turns": 12,
+        "user_turns": 6,
+        "s1e_runs": 2,
+        "s2_runs": 4,
+        "s1r_ms_total": 282,
+        "s1e_ms_total": 54130,
+        "s2_ms_total": 45092
+      },
+      "ingest_ms": 102506,
+      "query_s1r_ms": 5216,
+      "query_session_id": "query-f8bc157c3df8",
+      "answer_ms": 2361,
+      "answer_tokens_in": 1304,
+      "answer_tokens_out": 134,
+      "total_item_ms": 110083,
+      "brain_db_path": "/Users/tpac/AgentsContext/brain-eval-20260422_143900/54026fce"
+    },
+    {
+      "question_id": "2311e44b",
+      "question_type": "multi-session",
+      "axis": "multi_session",
+      "question": "How many pages do I have left to read in 'The Nightingale'?",
+      "answer_gold": "190",
+      "hypothesis": "You have approximately 190 pages remaining in 'The Nightingale' (you're on page 250 of 440 total pages).",
+      "abstained": false,
+      "has_context": true,
+      "correct": true,
+      "judge_raw": "YES",
+      "brain_errors_new": [],
+      "ingest": {
+        "turns": 18,
+        "user_turns": 9,
+        "s1e_runs": 2,
+        "s2_runs": 4,
+        "s1r_ms_total": 550,
+        "s1e_ms_total": 103604,
+        "s2_ms_total": 67396
+      },
+      "ingest_ms": 175098,
+      "query_s1r_ms": 6203,
+      "query_session_id": "query-3da76be4dac7",
+      "answer_ms": 1276,
+      "answer_tokens_in": 783,
+      "answer_tokens_out": 35,
+      "total_item_ms": 182577,
+      "brain_db_path": "/Users/tpac/AgentsContext/brain-eval-20260422_143900/2311e44b"
+    },
+    {
+      "question_id": "71017276",
+      "question_type": "temporal-reasoning",
+      "axis": "temporal",
+      "question": "How many weeks ago did I meet up with my aunt and receive the crystal chandelier?",
+      "answer_gold": 4,
+      "hypothesis": "You received the crystal chandelier on 2023-03-04, which was 4 weeks ago.",
+      "abstained": false,
+      "has_context": true,
+      "correct": true,
+      "judge_raw": "YES",
+      "brain_errors_new": [],
+      "ingest": {
+        "turns": 12,
+        "user_turns": 6,
+        "s1e_runs": 2,
+        "s2_runs": 4,
+        "s1r_ms_total": 333,
+        "s1e_ms_total": 64421,
+        "s2_ms_total": 55398
+      },
+      "ingest_ms": 123033,
+      "query_s1r_ms": 4858,
+      "query_session_id": "query-fae40340b658",
+      "answer_ms": 848,
+      "answer_tokens_in": 819,
+      "answer_tokens_out": 26,
+      "total_item_ms": 128739,
+      "brain_db_path": "/Users/tpac/AgentsContext/brain-eval-20260422_143900/71017276"
+    },
+    {
+      "question_id": "cc5ded98",
+      "question_type": "knowledge-update",
+      "axis": "knowledge_update",
+      "question": "How much time do I dedicate to coding exercises each day?",
+      "answer_gold": "about two hours",
+      "hypothesis": "You dedicate 1 hour per day to coding, using the Pomodoro method.",
+      "abstained": false,
+      "has_context": true,
+      "correct": false,
+      "judge_raw": "NO",
+      "brain_errors_new": [],
+      "failure_bucket": "PARTIAL_RECALL",
+      "failure_reason": "The system retrieved only 2 of 8 relevant memories but neither matched the gold answer, indicating the retrieval ranking failed to prioritize the memory containing \"two hours\" despite it being available in the knowledge base.",
+      "failure_evidence": {
+        "relevant_to_gold": [],
+        "recall_candidates_count": 8,
+        "selected_ids": [
+          "6fa92365",
+          "fa9b269b"
+        ],
+        "context_chars": 1666,
+        "query_fired": true
+      },
+      "ingest": {
+        "turns": 22,
+        "user_turns": 11,
+        "s1e_runs": 3,
+        "s2_runs": 4,
+        "s1r_ms_total": 809,
+        "s1e_ms_total": 164040,
+        "s2_ms_total": 102841
+      },
+      "ingest_ms": 271958,
+      "query_s1r_ms": 4425,
+      "query_session_id": "query-3af6bb025134",
+      "answer_ms": 698,
+      "answer_tokens_in": 668,
+      "answer_tokens_out": 23,
+      "total_item_ms": 277081,
+      "brain_db_path": "/Users/tpac/AgentsContext/brain-eval-20260422_143900/cc5ded98"
+    },
+    {
+      "question_id": "09ba9854_abs",
+      "question_type": "multi-session",
+      "axis": "abstention",
+      "question": "How much will I save by taking the bus from the airport to my hotel instead of a taxi?",
+      "answer_gold": "The information provided is not enough. You did not mention how much will the bus take.",
+      "hypothesis": "I don't have information about that.\n\nThe cost difference depends on your specific hotel location and which airport you're flying into. From Haneda, a taxi costs $55-90 while the airport limousine bus costs $10-18, but I don't know your destination. I'd recommend asking your hotel directly\u2014they often have negotiated rates or partnerships that could give you accurate savings for your specific route.",
+      "abstained": true,
+      "has_context": true,
+      "correct": false,
+      "judge_raw": "NO",
+      "brain_errors_new": [],
+      "failure_bucket": "PARTIAL_RECALL",
+      "failure_reason": "The system retrieved only 3 of 5 relevant memories and generated specific pricing examples (Haneda: $55-90 taxi vs $10-18 bus) instead of acknowledging missing personalization data like the gold answer required.",
+      "failure_evidence": {
+        "relevant_to_gold": [],
+        "recall_candidates_count": 5,
+        "selected_ids": [
+          "361eefc9",
+          "465df7ac",
+          "915ca3ec"
+        ],
+        "context_chars": 3238,
+        "query_fired": true
+      },
+      "ingest": {
+        "turns": 22,
+        "user_turns": 11,
+        "s1e_runs": 3,
+        "s2_runs": 4,
+        "s1r_ms_total": 541,
+        "s1e_ms_total": 129678,
+        "s2_ms_total": 60956
+      },
+      "ingest_ms": 194220,
+      "query_s1r_ms": 3891,
+      "query_session_id": "query-2136b88c7052",
+      "answer_ms": 2566,
+      "answer_tokens_in": 1145,
+      "answer_tokens_out": 90,
+      "total_item_ms": 200677,
+      "brain_db_path": "/Users/tpac/AgentsContext/brain-eval-20260422_143900/09ba9854_abs"
+    }
+  ]
+}
