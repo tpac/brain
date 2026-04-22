@@ -106,18 +106,10 @@ class LogsDAL:
 
     # ── miss_log — REMOVED 2026-04-05 (table dropped) ──
 
-    # ── dream_log ──
-
-    def log_dream(self, seed_id: str, connections_found: int,
-                  dreams_created: int, session_id: str = "") -> None:
-        """Record a dream event."""
-        now = datetime.now(timezone.utc).isoformat()
-        self.conn.execute(
-            'INSERT INTO dream_log (seed_id, connections_found, dreams_created, session_id, created_at) '
-            'VALUES (?, ?, ?, ?, ?)',
-            (seed_id, connections_found, dreams_created, session_id, now)
-        )
-        self.conn.commit()
+    # ── dream_log — REMOVED 2026-04-22 (dream system deleted, table kept for
+    # historical queries but no live writes). The INSERT helper was the last
+    # writer and had no live callers. DROP TABLE is a schema migration task
+    # not done here. ──
 
     # ── DB maintenance ──
 
