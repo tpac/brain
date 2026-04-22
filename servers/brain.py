@@ -1113,16 +1113,8 @@ class Brain(
     # state in the daemon lost it on every process death.
     # ══════════════════════════════════════════════════════════════════
 
-    # Thresholds — tune here, not in daemon_server.
-    # In steady state (no new encoding → nothing to consolidate/place/heal)
-    # a fire is cheap: each decoder scans quickly, finds 0 work, encoders
-    # skip. So the correct tuning question is "how often do we want to
-    # catch new backlog during active use?" — not "how cheap is it when
-    # idle?" Hence the relatively aggressive 3min / 30min settings.
-    MAINTENANCE_IDLE_THRESHOLD_SECONDS = 3 * 60   # 3 min idle — more chances
-                                                  # to catch pauses during
-                                                  # active work
-    MAINTENANCE_MIN_INTERVAL_SECONDS = 30 * 60    # 30 min between runs
+    # Thresholds imported from brain_constants (contract-first; tunables
+    # live next to other brain-wide config, not as class constants).
 
     def _maintenance_last_run_ts(self) -> float:
         """Epoch of the most recent maintenance run. Persisted in brain_meta."""
@@ -1149,14 +1141,18 @@ class Brain(
             not due.
         """
         import time as _time
+        from .brain_constants import (
+            MAINTENANCE_IDLE_THRESHOLD_SECONDS,
+            MAINTENANCE_MIN_INTERVAL_SECONDS,
+        )
         now = now if now is not None else _time.time()
         idle_seconds = now - (last_activity_ts or now)
         last_run_ts = self._maintenance_last_run_ts()
         since_last_run = now - last_run_ts if last_run_ts else float('inf')
 
-        if idle_seconds < self.MAINTENANCE_IDLE_THRESHOLD_SECONDS:
+        if idle_seconds < MAINTENANCE_IDLE_THRESHOLD_SECONDS:
             return None
-        if since_last_run < self.MAINTENANCE_MIN_INTERVAL_SECONDS:
+        if since_last_run < MAINTENANCE_MIN_INTERVAL_SECONDS:
             return None
 
         # Mark the run BEFORE executing so concurrent callers (via second

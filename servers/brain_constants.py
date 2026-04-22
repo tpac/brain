@@ -420,3 +420,25 @@ B: [one sentence connecting this node to its most important neighbor]
 K: [5 comma-separated keywords borrowed from neighbors that also describe this node]"""
 
 # Dream, Evolution, Curiosity constants removed 2026-04-13 — all systems deleted.
+
+
+# ═══════════════════════════════════════════════════════════════
+# S2 MAINTENANCE SCHEDULING — brain.run_maintenance_if_due()
+# ═══════════════════════════════════════════════════════════════
+# When does the brain consider running S2? Two conditions:
+#
+# 1. Daemon has been idle (no requests) for MAINTENANCE_IDLE_THRESHOLD_SECONDS.
+#    Pausing during active work is the signal the operator isn't typing —
+#    safer to spend API budget now than mid-turn.
+# 2. MAINTENANCE_MIN_INTERVAL_SECONDS have passed since the previous run,
+#    tracked in brain_meta (s2_last_run_ts). Persists across daemon
+#    restarts so reboots don't re-trigger maintenance immediately.
+#
+# In steady state — no new encoding → no new merge/place/heal candidates —
+# a fire is cheap: decoders scan, find 0 work, encoders skip. So tune these
+# for "how often to catch backlog during active use," not "how cheap is
+# a no-op fire."
+MAINTENANCE_IDLE_THRESHOLD_SECONDS = 3 * 60   # 3 min idle → more chances
+                                              # to fire during active work
+MAINTENANCE_MIN_INTERVAL_SECONDS = 30 * 60    # 30 min between runs
+                                              # (steady state caps ~48/day)
