@@ -107,7 +107,45 @@ def produce_system_health(brain, sq_dal):
     """
     _produce_hook_errors(brain, sq_dal)
     _produce_brain_errors(brain, sq_dal)
+    _produce_persistent_unit_failures(brain, sq_dal)
     # _produce_conflicts removed — conflict_log table dropped
+
+
+def _produce_persistent_unit_failures(brain, sq_dal):
+    """State-driven surfacing: any S2 unit with ≥3 consecutive coordinator
+    failures produces a PREEMPT signal. Unlike _produce_brain_errors (which
+    reads event logs with rate limits and surface caps), this reads live
+    brain_meta state — surfaces every single time the producer fires until
+    the counter resets on a successful run. Designed to defeat the class
+    of bug where a unit fails silently run after run.
+    """
+    try:
+        # brain_meta is small; scanning is cheap.
+        rows = brain.conn.execute(
+            "SELECT key, value FROM brain_meta WHERE key LIKE 's2_%_consecutive_failures'"
+        ).fetchall()
+        for key, value in rows:
+            try:
+                count = int(value or '0')
+            except (TypeError, ValueError):
+                count = 0
+            if count < 3:
+                continue
+            unit_name = key[len('s2_'):-len('_consecutive_failures')]
+            sq_dal.enqueue(
+                id='system_health:persistent_failure:%s' % unit_name,
+                producer='system_health',
+                signal_type='persistent_unit_failure',
+                priority=0.96,  # PREEMPT tier
+                content='🚨 S2 %s has failed %d runs in a row — investigate immediately' % (
+                    unit_name, count),
+                preempt=True,
+                cooldown_seconds=60,  # refreshable every minute
+                max_surfaces=9999,  # do not hide this
+                metadata=json.dumps({'unit': unit_name, 'consecutive_failures': count}),
+            )
+    except Exception as e:
+        log.warning('_produce_persistent_unit_failures failed: %s', e)
 
 
 def _produce_hook_errors(brain, sq_dal):

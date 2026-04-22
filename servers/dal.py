@@ -1575,6 +1575,104 @@ class GraphDAL:
     # Every method defaults include_archived=False.
     # ──────────────────────────────────────────────────────────────
 
+    def nodes_touched_by_relations(self, relations, include_archived: bool = False):
+        """Set of node IDs that participate (as source or target) in any edge
+        with one of the given relations.
+
+        Used by the 'Unreviewed Node' suppression pattern — any unit can ask
+        "which nodes have already been seen by this kind of edge?" without
+        writing raw SQL. Defaults to active (non-archived) edge_relations.
+        """
+        rels = list(relations)
+        if not rels:
+            return set()
+        ph = ','.join('?' * len(rels))
+        archived_clause = '' if include_archived else ' AND er.archived = 0'
+        rows = self.conn.execute("""
+            SELECT DISTINCT node_id FROM (
+                SELECT e.source_id AS node_id FROM edges e
+                JOIN edge_relations er ON er.edge_id = e.edge_id
+                WHERE er.relation IN (%s)%s
+                UNION
+                SELECT e.target_id AS node_id FROM edges e
+                JOIN edge_relations er ON er.edge_id = e.edge_id
+                WHERE er.relation IN (%s)%s
+            )
+        """ % (ph, archived_clause, ph, archived_clause),
+            rels + rels).fetchall()
+        return {r[0] for r in rows}
+
+    def get_neighbors_bulk(self, node_ids,
+                           exclude_relations=None,
+                           include_archived: bool = False):
+        """Bulk flat-row version of get_neighbors — one query for many owners.
+
+        Returns dict {owner_id: [row_dict, ...]} where each row_dict has
+        EDGE_ROW_SHAPE (one entry per edge_relation, not grouped). Use this
+        when the caller iterates relations individually; use
+        get_connections_bulk when the caller wants relations grouped per
+        (owner, neighbor).
+
+        Defaults to DEFAULT_EXCLUDED_RELATIONS when exclude_relations is None
+        (drops co_accessed, emergent_bridge). Pass an empty set to include all.
+        """
+        ids = list(node_ids)
+        if not ids:
+            return {}
+
+        if exclude_relations is None:
+            exclude_relations = DEFAULT_EXCLUDED_RELATIONS
+
+        owner_ph = ",".join("?" * len(ids))
+        where_parts = ["n.archived = 0"]
+        params = list(ids) + list(ids) + list(ids)
+
+        if not include_archived:
+            where_parts.append("er.archived = 0")
+
+        if exclude_relations:
+            rel_ph = ",".join("?" * len(exclude_relations))
+            where_parts.append("er.relation NOT IN (%s)" % rel_ph)
+            params.extend(exclude_relations)
+
+        where_clause = " AND ".join(where_parts)
+
+        rows = self.conn.execute("""
+            SELECT
+                CASE WHEN e.source_id IN ({owner_ph}) THEN e.source_id ELSE e.target_id END AS owner_id,
+                n.id, n.type, n.title, n.content_summary, n.confidence,
+                n.revised_at, n.created_at, n.last_accessed, n.access_count,
+                n.locked, n.emotion, n.emotion_label,
+                er.relation, er.weight, er.description,
+                e.last_strengthened, e.co_access_count, e.edge_id,
+                CASE WHEN e.source_id IN ({owner_ph}) THEN 'outgoing' ELSE 'incoming' END as direction
+            FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
+            JOIN nodes n ON n.id = CASE WHEN e.source_id IN ({owner_ph}) THEN e.target_id ELSE e.source_id END
+            WHERE (e.source_id IN ({owner_ph}) OR e.target_id IN ({owner_ph}))
+            AND {where_clause}
+            ORDER BY e.weight DESC
+        """.format(owner_ph=owner_ph, where_clause=where_clause),
+            params + list(ids) + list(ids)).fetchall()
+
+        result = {owner: [] for owner in ids}
+        for r in rows:
+            owner = r[0]
+            if owner not in result:
+                # Edge row where owner matched join but not in our list — skip
+                continue
+            result[owner].append({
+                'id': r[1], 'type': r[2], 'title': r[3], 'content_summary': r[4],
+                'confidence': r[5], 'revised_at': r[6], 'created_at': r[7],
+                'last_accessed': r[8], 'access_count': r[9], 'locked': r[10],
+                'emotion': r[11], 'emotion_label': r[12],
+                'relation': r[13] or '', 'weight': r[14],
+                'edge_description': r[15], 'last_strengthened': r[16],
+                'co_access_count': r[17], 'edge_id': r[18],
+                'direction': r[19],
+            })
+        return result
+
     def get_connections_bulk(self, node_ids,
                              exclude_relations=None,
                              include_archived: bool = False,
