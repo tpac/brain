@@ -405,6 +405,14 @@ def _handle_brain_batch(brain, args, graph_changes):
     if not operations:
         return {"ok": False, "error": "operations array is required"}
 
+    # Valid nested op names. Sonnet has been observed inventing structural
+    # op names like `consolidate` / `keep` / `evolve` / `skip` — these are
+    # prompt-level decisions, not dispatch ops. When invented names land
+    # here they silently go to the "Unknown op" branch below; surface them
+    # loudly so drift gets noticed immediately. (The historical 25 silent
+    # drops across consolidation runs is exactly this pattern.)
+    VALID_OPS = {"remember", "revise", "connect", "disconnect", "archive"}
+
     top_encoding_source = args.get("encoding_source")
     results = []
 
@@ -482,8 +490,20 @@ def _handle_brain_batch(brain, args, graph_changes):
                     results.append({"op": "disconnect", "index": i, "ok": True})
 
             else:
-                results.append({"op": op, "index": i, "ok": False,
-                                "error": "Unknown op: %s (use remember, revise, connect, disconnect, archive)" % op})
+                # Invalid op name — log loudly. Sonnet sometimes invents
+                # structural names (consolidate/keep/evolve/skip) that were
+                # never valid ops. Previously this returned ok=False and the
+                # caller moved on silently.
+                err_msg = ("Unknown op: %s (use remember, revise, connect, disconnect, archive)"
+                           % op)
+                try:
+                    brain._log_error(
+                        'brain_batch_invalid_op',
+                        ValueError(err_msg),
+                        'op_spec=%s' % str(op_spec)[:300])
+                except Exception:
+                    pass
+                results.append({"op": op, "index": i, "ok": False, "error": err_msg})
         except Exception as e:
             results.append({"op": op, "index": i, "ok": False, "error": str(e)[:200]})
 

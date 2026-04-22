@@ -252,11 +252,31 @@ def _build_tools():
                  "relation": {"type": "string", "default": "related_to"},
                  "weight": {"type": "number", "default": 0.5}}}}}}},
     {"name": "brain_batch",
-     "description": "Execute multiple brain operations in one call — remember, revise, and connect mixed together. Each operation runs sequentially. Use for efficient multi-step encoding.",
+     "description": ("Execute multiple brain operations in one call. "
+                     "Five (and only five) valid op values: "
+                     "'remember' creates a new node, "
+                     "'revise' updates an existing node, "
+                     "'connect' adds an edge between two nodes, "
+                     "'disconnect' removes an edge relation, "
+                     "'archive' soft-archives a node. "
+                     "Operations run sequentially. Do NOT invent structural "
+                     "op names like 'consolidate'/'evolve'/'keep'/'skip' — "
+                     "those are semantic decisions expressed through which "
+                     "of the 5 real ops you emit."),
      "inputSchema": {"type": "object", "required": ["operations"], "properties": {
-         "operations": {"type": "array", "description": "Array of operations. Each has 'op' field: 'remember', 'revise', or 'connect', plus the fields for that operation.", "items": {
-             "type": "object", "required": ["op"], "properties": {
-                 "op": {"type": "string", "description": "Operation type: remember, revise, or connect"}}}}}}},
+         "operations": {
+             "type": "array",
+             "description": ("Array of operations. Each object has an 'op' "
+                             "field (one of the 5 valid values) plus the "
+                             "fields that op needs."),
+             "items": {
+                 "type": "object", "required": ["op"], "properties": {
+                     "op": {
+                         "type": "string",
+                         "enum": ["remember", "revise", "connect",
+                                  "disconnect", "archive"],
+                         "description": ("The operation to execute. "
+                                         "Must be one of the 5 literal values.")}}}}}}},
     _generate_revise_schema(),
     _build_revise_batch_schema(),
     {"name": "enrich",
