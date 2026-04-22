@@ -149,6 +149,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None):
                 outcomes=outcomes,
                 journal_entry=journal_entry,
                 action_details=action_details,
+                read_calls=result.get('read_calls', []),
                 final_text=final_text,
                 stop_counter=counter,
             ),

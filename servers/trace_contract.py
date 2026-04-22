@@ -176,7 +176,8 @@ def build_delta_metadata(*,
                          actions=0, write_actions=0, rounds=0,
                          inputs_processed=0, outcomes=None,
                          rejection_skipped=0, journal_entry='',
-                         action_details=None, final_text='',
+                         action_details=None, read_calls=None,
+                         final_text='',
                          errors=None, **extras):
     """Build a unified delta trace metadata dict.
 
@@ -184,6 +185,10 @@ def build_delta_metadata(*,
     metadata payload for their `delta` trace event. Standardizes field
     names, applies truncation, and lets each unit pass additional keys
     via **extras (e.g. clusters_processed, batches).
+
+    read_calls captures non-write tool invocations (recall_batch, get_nodes,
+    etc.). Useful for observability — answering "what did the encoder ask
+    for that the catalog didn't already give it?" without parsing logs.
 
     Returns a dict ready to pass as the metadata kwarg to a trace writer.
     """
@@ -196,6 +201,7 @@ def build_delta_metadata(*,
         'rejection_skipped': int(rejection_skipped or 0),
         'journal_entry':     (journal_entry or '')[:DELTA_FINAL_TEXT_LIMIT],
         'action_details':    list(action_details or []),
+        'read_calls':        list(read_calls or []),
         'final_text':        (final_text or '')[:DELTA_FINAL_TEXT_LIMIT],
         'errors':            list(errors or [])[:DELTA_ERROR_LIST_LIMIT],
     }
