@@ -95,10 +95,27 @@ def run_in_background(name, brain_db_path, session_id, counter, lock,
                     })
                 except Exception as e:
                     print('[%s] TRACE ERROR (delta): %s' % (name, e), flush=True)
+                    if read_brain:
+                        try:
+                            read_brain._log_error(
+                                'scale_runner_trace_write', e,
+                                '%s delta trace write failed' % name)
+                        except Exception:
+                            pass
 
         except Exception as e:
             elapsed_ms = int((time.time() - t0) * 1000)
             print("[%s] FAILED after %dms: %s" % (name, elapsed_ms, e), flush=True)
+            # Background thread crash — the scale encoder silently stopped
+            # producing. Surface so operators see recurring failures the
+            # same way they see S2 coordinator crashes.
+            if read_brain:
+                try:
+                    read_brain._log_error(
+                        'scale_runner_thread_crash', e,
+                        '%s thread died after %dms' % (name, elapsed_ms))
+                except Exception:
+                    pass
         finally:
             if read_brain:
                 try:

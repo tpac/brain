@@ -82,6 +82,7 @@ REF_TYPES = {
                          "graph_stats",          # node/edge counts, density
                          "s1_delta",             # S1 encoding/surfacing traces since last run
                          "consolidation_candidates",  # embedding scan + behavioral evidence
+                         "heal_archive",         # decoder-level archive of broken artifacts (e.g. 0-member communities)
                          "correction_chains",    # brain-wide correction chain traversal
                          "healer_scan"],         # S2 Healer: gaps + flags scanned
     ("s2", "K"):       ["community_proposals",  # S2CD proposals (placements, overlaps, splits, seeds)

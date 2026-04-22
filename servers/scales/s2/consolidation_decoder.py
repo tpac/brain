@@ -125,7 +125,9 @@ class ConsolidationDecoder(IntegrationUnit):
         if archived:
             # Use 'O' not 'delta' — heal is an observation, not a consolidation action.
             # 'delta' would pollute _last_run_timestamp() and prevent cold start scan.
-            self.trace('O', 'consolidation_candidates',
+            # Distinct ref_type from the embedding-scan O trace so heal is
+            # greppable (prior design reused 'consolidation_candidates' for both).
+            self.trace('O', 'heal_archive',
                        'Healed %d broken artifacts: %s' % (
                            len(archived),
                            ', '.join(a['title'][:30] for a in archived[:5])),
@@ -165,6 +167,7 @@ class ConsolidationDecoder(IntegrationUnit):
 
         ids = []
         content_vecs = []
+        content_decode_failures = 0
         for nid, emb in content_rows:
             try:
                 v = np.frombuffer(emb, dtype=np.float32)
@@ -174,7 +177,14 @@ class ConsolidationDecoder(IntegrationUnit):
                         ids.append(nid)
                         content_vecs.append(v / norm)
             except Exception:
-                pass
+                content_decode_failures += 1
+
+        if content_decode_failures:
+            self.brain._log_error(
+                's2_consolidation_embedding_decode',
+                ValueError('%d content embeddings failed to decode'
+                           % content_decode_failures),
+                'total scanned=%d; kept=%d' % (len(content_rows), len(ids)))
 
         if len(content_vecs) < 2:
             return [], {'nodes_scanned': len(content_vecs), 'pairs_found': 0, 'mode': 'empty'}
@@ -183,6 +193,7 @@ class ConsolidationDecoder(IntegrationUnit):
 
         # Load title embeddings from node_enrichments
         title_vecs_by_id = {}
+        title_decode_failures = 0
         for row in self.brain.conn.execute("""
             SELECT node_id, embedding FROM node_enrichments
             WHERE vector_type = 'title'
@@ -195,7 +206,15 @@ class ConsolidationDecoder(IntegrationUnit):
                     if norm > 0:
                         title_vecs_by_id[row[0]] = v / norm
                 except Exception:
-                    pass
+                    title_decode_failures += 1
+
+        if title_decode_failures:
+            self.brain._log_error(
+                's2_consolidation_embedding_decode',
+                ValueError('%d title embeddings failed to decode'
+                           % title_decode_failures),
+                'kept=%d titles out of %d decoded ids'
+                % (len(title_vecs_by_id), len(id_to_idx)))
 
         # Build title matrix aligned with ids (zeros for missing)
         dim = len(content_vecs[0])
@@ -218,23 +237,9 @@ class ConsolidationDecoder(IntegrationUnit):
         # cluster and relied on prompt compliance to stay consistent.
         already_reviewed = set()
         if suppression:
-            # TODO(v25-dal): dedicated helper like
-            # GraphDAL.nodes_touched_by_relations(relations). One caller
-            # today; migrate if a second appears. Stay raw + archived=0.
-            placeholders = ','.join('?' * len(suppression))
-            reviewed_rows = self.brain.conn.execute("""
-                SELECT DISTINCT node_id FROM (
-                    SELECT e.source_id AS node_id FROM edges e
-                    JOIN edge_relations er ON er.edge_id = e.edge_id
-                    WHERE er.relation IN (%s) AND er.archived = 0
-                    UNION
-                    SELECT e.target_id AS node_id FROM edges e
-                    JOIN edge_relations er ON er.edge_id = e.edge_id
-                    WHERE er.relation IN (%s) AND er.archived = 0
-                )
-            """ % (placeholders, placeholders),
-                list(suppression) + list(suppression)).fetchall()
-            already_reviewed = {r[0] for r in reviewed_rows}
+            from servers.dal import GraphDAL
+            already_reviewed = GraphDAL(
+                self.brain.conn).nodes_touched_by_relations(suppression)
         # Retain per-pair suppression set for backward-compat with legacy
         # edges — drops to {} once the state check does the heavy lifting.
         suppressed = set()
@@ -403,8 +408,10 @@ class ConsolidationDecoder(IntegrationUnit):
             groups[find(nid)].add(nid)
 
         clusters = []
+        oversized_dropped = []
         for members in groups.values():
             if len(members) > max_size:
+                oversized_dropped.append(sorted(members))
                 continue
             member_list = sorted(members)
             content_scores = []
@@ -429,6 +436,23 @@ class ConsolidationDecoder(IntegrationUnit):
                     if k[0] in members and k[1] in members
                 },
             })
+
+        # Surface oversized-cluster drops so a bad encoder run or pool
+        # saturation is visible instead of silent. Log once per run with
+        # sample IDs — the full list is too noisy.
+        if oversized_dropped:
+            try:
+                sample = [m[:3] for m in oversized_dropped[:3]]
+                self.brain._log_error(
+                    's2_consolidation_oversized_cluster',
+                    ValueError(
+                        '%d clusters exceeded max_size=%d (dropped)'
+                        % (len(oversized_dropped), max_size)),
+                    'sample member IDs: %s; total members dropped=%d' % (
+                        sample,
+                        sum(len(m) for m in oversized_dropped)))
+            except Exception:
+                pass
 
         # Sort by highest similarity (max of either dimension)
         clusters.sort(key=lambda c: -max(c['content_cosine_max'], c['title_cosine_max']))

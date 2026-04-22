@@ -44,6 +44,17 @@ class IntegrationUnit:
     O_SOURCES = []               # e.g. ['graph_nodes', 'graph_edges']
     K_SOURCES = []               # e.g. ['leidenalg', 'resolution_param']
 
+    # Journal contract — continuity between stateless runs. Subclass that
+    # produces agent output with structured section markers overrides these.
+    # Empty JOURNAL_MARKERS = unit skips journaling (load returns '', save
+    # is a no-op). Config key defaults to `s2_{NAME}_journal`; override
+    # JOURNAL_KEY to preserve continuity when NAME doesn't match existing key.
+    JOURNAL_MARKERS = ()          # e.g. ('CONSOLIDATED:', 'OBSERVATIONS:')
+    JOURNAL_LABEL = ''            # e.g. 'CONSOLIDATION JOURNAL'
+    JOURNAL_RUN_HEADER = ''       # e.g. 'Consolidation Run'
+    JOURNAL_KEY = ''              # '' = derive from NAME
+    JOURNAL_MAX_CHARS = 14000
+
     def __init__(self, brain, dispatch_fn=None):
         """Initialize with brain instance and optional dispatch.
 
@@ -98,6 +109,148 @@ class IntegrationUnit:
 
     # ── Shared S2 infrastructure ──
 
+    @property
+    def journal_key(self):
+        """Config key for this unit's journal in brain_meta."""
+        return self.JOURNAL_KEY or ('s2_%s_journal' % self.NAME)
+
+    def _load_journal_prefix(self):
+        """Return the journal section for the encoder's user_content.
+
+        Empty string when the unit doesn't journal (JOURNAL_MARKERS unset)
+        or has never written one. Tails at JOURNAL_MAX_CHARS so old runs
+        roll off naturally.
+        """
+        if not self.JOURNAL_MARKERS:
+            return ''
+        journal = self.brain.get_config(self.journal_key) or ''
+        label = self.JOURNAL_LABEL or ('%s JOURNAL' % self.NAME.upper())
+        if not journal:
+            return '%s: First run — no previous encoding.\n\n' % label
+        return '%s:\n%s\n\n' % (label, journal[-self.JOURNAL_MAX_CHARS:])
+
+    def _save_journal(self, final_text):
+        """Extract journal entry from encoder final_text and persist it.
+
+        Returns the extracted entry (also embedded in delta trace metadata).
+        Unit skips when JOURNAL_MARKERS is empty. Logs a brain error when
+        final_text has content but no known marker fires — agent-drift
+        signal visible to the operator.
+        """
+        if not self.JOURNAL_MARKERS:
+            return ''
+        entry = self._extract_journal_entry(final_text)
+        if not entry:
+            if final_text and final_text.strip():
+                self.brain._log_error(
+                    's2_%s_journal_extraction' % self.NAME,
+                    ValueError('no journal markers found in %d-char final_text'
+                               % len(final_text)),
+                    'agent drifted from prompt format — first 200 chars: %s'
+                    % final_text[:200])
+            return ''
+
+        existing = self.brain.get_config(self.journal_key) or ''
+        header_prefix = self.JOURNAL_RUN_HEADER or ('%s Run' % self.NAME.capitalize())
+        run_header = '--- %s %s ---' % (header_prefix, self.brain.now()[:10])
+        new_journal = existing + '\n' + run_header + '\n' + entry
+
+        if len(new_journal) > self.JOURNAL_MAX_CHARS:
+            cutpoint = new_journal.find(
+                '--- %s' % header_prefix,
+                len(new_journal) - self.JOURNAL_MAX_CHARS)
+            if cutpoint > 0:
+                new_journal = new_journal[cutpoint:]
+
+        self.brain.set_config(self.journal_key, new_journal.strip())
+        return entry
+
+    def _extract_journal_entry(self, final_text):
+        """Isolate the journal section from a full encoder response.
+
+        Two strategies, in order:
+          1. If the text contains a `---` separator, everything after it is
+             journal. This matches prompts that explicitly separate narrative
+             from journal.
+          2. Otherwise scan for the first appearance of any JOURNAL_MARKERS
+             token and take from there to end.
+        Returns '' when neither strategy fires.
+        """
+        if not final_text:
+            return ''
+        if '---' in final_text:
+            _, journal_part = final_text.split('---', 1)
+            return journal_part.strip()
+        for marker in self.JOURNAL_MARKERS:
+            idx = final_text.find(marker)
+            if idx >= 0:
+                return final_text[idx:].strip()
+        return ''
+
+    def _make_encoder_dispatch(self, archive_guard=None):
+        """Build the dispatch function S2 encoders use for brain_batch calls.
+
+        Shared across consolidation/community/future encoders. Sets
+        `encoding_source` at the top level (handler cascades to each op)
+        and forces `skip_embedding=True` on remember/revise (ONNX multi-
+        thread spin guard — vectors filled by backfill_vectors() later).
+
+        Args:
+            archive_guard: Optional set of node IDs that archive ops are
+                allowed to target this batch. When set, archives of nodes
+                outside the set are dropped + logged. Used by consolidation
+                to prevent the encoder archiving nodes outside its cluster.
+                None → no guard.
+
+        Returns: dispatch(cmd, cmd_args) → handler result.
+        """
+        if self.dispatch:
+            return self.dispatch
+
+        from servers.daemon_dispatch import COMMAND_TABLE, check_unknown_keys
+
+        brain = self.brain
+        encoding_source = self.ENCODING_SOURCE
+        unit_name = self.NAME
+
+        def dispatch(cmd, cmd_args):
+            if isinstance(cmd_args, dict):
+                cmd_args.setdefault('encoding_source', encoding_source)
+
+            if cmd in ('remember', 'remember_batch', 'revise', 'revise_batch') \
+                    and isinstance(cmd_args, dict):
+                cmd_args['skip_embedding'] = True
+
+            if cmd == 'brain_batch' and isinstance(cmd_args, dict):
+                if archive_guard is not None:
+                    surviving_ops = []
+                    for op in cmd_args.get('operations', []):
+                        if isinstance(op, dict) and op.get('op') == 'archive':
+                            nid = op.get('node_id') or op.get('id')
+                            if nid and nid not in archive_guard:
+                                brain._log_error(
+                                    's2_%s_out_of_scope_archive' % unit_name,
+                                    ValueError(
+                                        'archive op for %s not in allowed set'
+                                        % nid),
+                                    'allowed=%d ids; rejected archive (encoder drift)'
+                                    % len(archive_guard))
+                                continue
+                        surviving_ops.append(op)
+                    cmd_args['operations'] = surviving_ops
+
+                for op in cmd_args.get('operations', []):
+                    if isinstance(op, dict) and op.get('op') in ('remember', 'revise'):
+                        op['skip_embedding'] = True
+
+            entry = COMMAND_TABLE.get(cmd)
+            if entry:
+                check_unknown_keys(cmd, entry, cmd_args, brain)
+                return entry.handler(brain, cmd_args, [])
+            return {'ok': False, 'error': 'Unknown command: %s' % cmd}
+
+        return dispatch
+
     def _last_run_timestamp(self):
         """Find this unit's most recent completed run timestamp.
 
@@ -113,8 +266,17 @@ class IntegrationUnit:
                 (self.SCALE, '%%-' + self.NAME)).fetchone()
             return row[0] if row else ''
         except Exception as e:
-            import sys
-            print('[%s] _last_run_timestamp error: %s' % (self.NAME, e), file=sys.stderr)
+            # Log to brain errors (not just stderr) so repeated failures
+            # surface via consciousness. A broken _last_run_timestamp makes
+            # every cold-start decision wrong — keep it visible.
+            try:
+                self.brain._log_error(
+                    's2_%s_last_run_timestamp' % self.NAME, e,
+                    'scale=%s name=%s' % (self.SCALE, self.NAME))
+            except Exception:
+                import sys
+                print('[%s] _last_run_timestamp error: %s' % (self.NAME, e),
+                      file=sys.stderr)
             return ''
 
     def _has_new_traces(self, scale, ref_type=None):
@@ -141,8 +303,17 @@ class IntegrationUnit:
             for t in traces:
                 if t.get('created_at', '') > last_ts:
                     return True
-        except Exception:
-            return True  # On error, run to be safe
+        except Exception as e:
+            # Fail-open to "run" is safer than stuck-idle, but log the
+            # underlying cause so the operator sees the trace-read outage
+            # instead of a silently-retriggering unit.
+            try:
+                self.brain._log_error(
+                    's2_%s_has_new_traces' % self.NAME, e,
+                    'trace read failed; falling back to run=True')
+            except Exception:
+                pass
+            return True
 
         return False
 

@@ -24,6 +24,11 @@ class ConsolidationEncoder(IntegrationUnit):
     O_SOURCES = ['consolidation_proposals']
     K_SOURCES = ['llm_enrichment', 'consolidation_journal']
 
+    # Journal contract (see IntegrationUnit.JOURNAL_* for semantics)
+    JOURNAL_MARKERS = ('CONSOLIDATED:', 'EVOLVED:', 'KEPT:', 'SKIPPED:', 'OBSERVATIONS:')
+    JOURNAL_LABEL = 'CONSOLIDATION JOURNAL'
+    JOURNAL_RUN_HEADER = 'Consolidation Run'
+
     def __init__(self, brain, dispatch_fn=None, config=None):
         super().__init__(brain, dispatch_fn)
         self.config = config or CONSOLIDATION
@@ -132,16 +137,12 @@ class ConsolidationEncoder(IntegrationUnit):
             load_env()
 
         tools = self._get_tool_schemas()
-        dispatch_fn = self._make_dispatch()
         # Single shared S2 timeout — see base.ANTHROPIC_CLIENT_TIMEOUT.
         from .base import ANTHROPIC_CLIENT_TIMEOUT
         client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
 
-        # Journal text
-        journal = self.brain.get_config('s2_consolidation_journal') or ''
-        journal_prefix = ("CONSOLIDATION JOURNAL:\n%s\n\n" % journal[
-            -self.config.get('journal_max_chars', 14000):]) if journal \
-            else "CONSOLIDATION JOURNAL: First run — no previous encoding.\n\n"
+        # Journal text — continuity between stateless runs, rendered by base.
+        journal_prefix = self._load_journal_prefix()
 
         # Batch clusters
         batch_size = self.config.get('max_proposals_per_call', 10)
@@ -157,6 +158,15 @@ class ConsolidationEncoder(IntegrationUnit):
 
             print('[s2-consolidation] Batch %d/%d (%d clusters)' % (
                 batch_num, total_batches, len(batch)), flush=True)
+
+            # Build the set of node IDs legal to archive in this batch.
+            # Defense against encoder drift: if Sonnet emits an archive op for
+            # a node NOT in the current batch's clusters, the dispatch closure
+            # rejects it. This guards against the class of bug where the
+            # encoder archived nodes from unrelated clusters (observed in
+            # pre-survive-and-absorb runs).
+            valid_archive_ids = {nid for c in batch for nid in c['nodes']}
+            dispatch_fn = self._make_dispatch(valid_archive_ids=valid_archive_ids)
 
             # Format this batch
             user_content = journal_prefix + self._format_clusters(batch)
@@ -229,92 +239,16 @@ class ConsolidationEncoder(IntegrationUnit):
                  "input_schema": t["inputSchema"]}
                 for t in brain_mcp.TOOLS if t["name"] in TOOLS]
 
-    def _make_dispatch(self):
-        """Create dispatch function for consolidation tool calls."""
-        if self.dispatch:
-            return self.dispatch
-
-        from servers.daemon_dispatch import COMMAND_TABLE
-
-        brain = self.brain
-        encoding_source = self.ENCODING_SOURCE
-
-        def dispatch(cmd, cmd_args):
-            # Force encoding_source + skip_embedding on S2 writes.
-            # skip_embedding prevents ONNX multi-thread spin — vectors
-            # computed by backfill_vectors() after S2 finishes.
-            # Revise ops should NOT get encoding_source — don't change who originally
-            # created a node just because S2 touched it.
-            if cmd in ('remember', 'remember_batch'):
-                if isinstance(cmd_args, dict):
-                    cmd_args['encoding_source'] = encoding_source
-                    cmd_args['skip_embedding'] = True
-            if cmd in ('revise', 'revise_batch'):
-                if isinstance(cmd_args, dict):
-                    cmd_args['skip_embedding'] = True
-            if cmd == 'brain_batch' and isinstance(cmd_args, dict):
-                for op in cmd_args.get('operations', []):
-                    if isinstance(op, dict):
-                        if op.get('op') == 'remember':
-                            op['encoding_source'] = encoding_source
-                        if op.get('op') in ('remember', 'revise'):
-                            op['skip_embedding'] = True
-                        if op.get('op') == 'archive':
-                            op['archived_by'] = encoding_source
-
-            entry = COMMAND_TABLE.get(cmd)
-            if entry:
-                return entry.handler(brain, cmd_args, [])
-            return {"ok": False, "error": "Unknown command: %s" % cmd}
-
-        return dispatch
-
-    # ══════════════════════════════════════════════════════════
-    # Journal
-    # ══════════════════════════════════════════════════════════
-
-    def _save_journal(self, final_text):
-        """Extract + persist journal entry. Returns extracted entry ('' if none).
-
-        Entry also appears in the delta trace — single source of truth for
-        per-run narrative, indexed in both brain_meta and trace_events.
-
-        If final_text is non-empty but no section marker is found, logs a
-        brain error — agent-drift signal the operator should see.
+    def _make_dispatch(self, valid_archive_ids=None):
+        """Consolidation dispatch — delegates to base `_make_encoder_dispatch`
+        with an archive guard restricting archives to current-batch cluster
+        members (prevents encoder drift archiving unrelated nodes).
         """
-        journal_entry = ''
-        if '---' in final_text:
-            _, journal_part = final_text.split('---', 1)
-            journal_entry = journal_part.strip()
-        elif 'CONSOLIDATED:' in final_text or 'EVOLVED:' in final_text:
-            for marker in ['CONSOLIDATED:', 'EVOLVED:', 'KEPT:', 'SKIPPED:',
-                           'OBSERVATIONS:']:
-                idx = final_text.find(marker)
-                if idx >= 0:
-                    journal_entry = final_text[idx:].strip()
-                    break
+        return self._make_encoder_dispatch(archive_guard=valid_archive_ids)
 
-        if not journal_entry:
-            if final_text.strip():
-                self.brain._log_error(
-                    's2_consolidation_journal_extraction',
-                    'no journal markers found in %d-char final_text' % len(final_text),
-                    'agent drifted from prompt format — first 200 chars: %s' % final_text[:200])
-            return ''
-
-        existing = self.brain.get_config('s2_consolidation_journal') or ''
-        run_header = '--- Consolidation Run %s ---' % self.brain.now()[:10]
-        new_journal = existing + '\n' + run_header + '\n' + journal_entry
-
-        max_chars = self.config.get('journal_max_chars', 14000)
-        if len(new_journal) > max_chars:
-            cutpoint = new_journal.find('--- Consolidation Run',
-                                        len(new_journal) - max_chars)
-            if cutpoint > 0:
-                new_journal = new_journal[cutpoint:]
-
-        self.brain.set_config('s2_consolidation_journal', new_journal.strip())
-        return journal_entry
+    # Journal save/load is inherited from IntegrationUnit.
+    # Class attributes JOURNAL_MARKERS / JOURNAL_LABEL / JOURNAL_RUN_HEADER
+    # configure the pattern; base owns the logic.
 
     # ══════════════════════════════════════════════════════════
     # Cluster formatting (text rendering for Sonnet)
@@ -448,8 +382,14 @@ class ConsolidationEncoder(IntegrationUnit):
                         lines.append('      Metadata:')
                         for k, v in kv_fields:
                             lines.append('        %s: %s' % (k, v[:200]))
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Metadata rendering is best-effort (decoder already has
+                    # the core cluster data), but a failing KV read means the
+                    # encoder sees the node stripped of emergent fields —
+                    # degrades consolidation quality silently. Log once.
+                    self.brain._log_error(
+                        's2_consolidation_metadata_kv_render', e,
+                        'node %s metadata skipped in cluster rendering' % nid[:8])
 
                 # External edges — every edge to a non-cluster-member
                 # neighbor, with direction, relation, and description.

@@ -225,8 +225,12 @@ class CommunityDecoder(IntegrationUnit):
             if centroid_b64 and isinstance(centroid_b64, str):
                 try:
                     centroid = base64.b64decode(centroid_b64)
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Corrupted centroid: a community loses overlap-scoring
+                    # ability without it — silent degradation. Surface it.
+                    self.brain._log_error(
+                        's2_community_centroid_decode', e,
+                        'community %s centroid unreadable' % nid[:8])
 
             # Member IDs via GraphDAL (archived=0 default, v25).
             from servers.dal import GraphDAL

@@ -32,6 +32,14 @@ class CommunityEncoder(IntegrationUnit):
     O_SOURCES = ['community_proposals']
     K_SOURCES = ['llm_enrichment', 'community_journal']
 
+    # Journal contract (see IntegrationUnit.JOURNAL_* for semantics).
+    # JOURNAL_KEY is pinned explicitly to preserve the existing brain_meta
+    # entry that predates this unit's rename ('community' → 'community_detection').
+    JOURNAL_MARKERS = ('ACCEPTED:', 'REJECTED:', 'CORRIDORS:', 'OBSERVATIONS:')
+    JOURNAL_LABEL = 'COMMUNITY JOURNAL'
+    JOURNAL_RUN_HEADER = 'S2C Run'
+    JOURNAL_KEY = 's2_community_journal'
+
     def __init__(self, brain, dispatch_fn=None, config=None):
         super().__init__(brain, dispatch_fn)
         self.config = config or COMMUNITY_DETECTION
@@ -217,11 +225,8 @@ class CommunityEncoder(IntegrationUnit):
         from .base import ANTHROPIC_CLIENT_TIMEOUT
         client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
 
-        # Journal text
-        journal = self.brain.get_config('s2_community_journal') or ''
-        journal_prefix = ("COMMUNITY JOURNAL:\n%s\n\n" % journal[
-            -self.config.get('journal_max_chars', 14000):]) if journal \
-            else "COMMUNITY JOURNAL: First run — no previous encoding.\n\n"
+        # Journal text — continuity between stateless runs, rendered by base.
+        journal_prefix = self._load_journal_prefix()
 
         # Batch proposals
         batch_size = self.config.get('max_proposals_per_call', 15)
@@ -326,88 +331,15 @@ class CommunityEncoder(IntegrationUnit):
                 for t in brain_mcp.TOOLS if t["name"] in S2CE_TOOLS]
 
     def _make_dispatch(self):
-        """Create dispatch function for S2CE tool calls."""
-        if self.dispatch:
-            return self.dispatch
-
-        from servers.daemon_dispatch import COMMAND_TABLE
-
-        brain = self.brain
-        encoding_source = self.ENCODING_SOURCE
-
-        def dispatch(cmd, cmd_args):
-            # Force encoding_source + skip_embedding on S2 writes.
-            # skip_embedding prevents ONNX multi-thread spin — vectors
-            # computed by backfill_vectors() after S2 finishes.
-            if cmd in ('remember', 'remember_batch'):
-                if isinstance(cmd_args, dict):
-                    cmd_args['encoding_source'] = encoding_source
-                    cmd_args['skip_embedding'] = True
-            if cmd in ('revise', 'revise_batch'):
-                if isinstance(cmd_args, dict):
-                    cmd_args['skip_embedding'] = True
-            if cmd == 'brain_batch' and isinstance(cmd_args, dict):
-                for op in cmd_args.get('operations', []):
-                    if isinstance(op, dict):
-                        if op.get('op') in ('remember',):
-                            op['encoding_source'] = encoding_source
-                        if op.get('op') in ('remember', 'revise'):
-                            op['skip_embedding'] = True
-                        if op.get('op') == 'archive':
-                            op['archived_by'] = encoding_source
-
-            entry = COMMAND_TABLE.get(cmd)
-            if entry:
-                return entry.handler(brain, cmd_args, [])
-            return {"ok": False, "error": "Unknown command: %s" % cmd}
-
-        return dispatch
-
-    # ══════════════════════════════════════════════════════════
-    # Journal
-    # ══════════════════════════════════════════════════════════
-
-    def _save_journal(self, final_text):
-        """Extract + persist journal entry. Returns extracted entry ('' if none).
-
-        The returned entry is what the delta trace carries so the same text
-        lives in both brain_meta (cumulative across runs) and traces
-        (per-run, substance-only — no other text bundled in).
-
-        If final_text is non-empty but no section marker is found, logs a
-        brain error — that's an agent-drift signal the operator should see.
+        """S2CE dispatch — inherits base `_make_encoder_dispatch` (no archive
+        guard; community encoder archives whole communities, not individual
+        members from a tracked batch).
         """
-        journal_entry = ''
-        if '---' in final_text:
-            _, journal_part = final_text.split('---', 1)
-            journal_entry = journal_part.strip()
-        elif 'ACCEPTED:' in final_text or 'OBSERVATIONS:' in final_text:
-            for marker in ['ACCEPTED:', 'REJECTED:', 'CORRIDORS:', 'OBSERVATIONS:']:
-                idx = final_text.find(marker)
-                if idx >= 0:
-                    journal_entry = final_text[idx:].strip()
-                    break
+        return self._make_encoder_dispatch()
 
-        if not journal_entry:
-            if final_text.strip():
-                self.brain._log_error(
-                    's2ce_journal_extraction',
-                    'no journal markers found in %d-char final_text' % len(final_text),
-                    'agent drifted from prompt format — first 200 chars: %s' % final_text[:200])
-            return ''
-
-        existing = self.brain.get_config('s2_community_journal') or ''
-        run_header = '--- S2C Run %s ---' % self.brain.now()[:10]
-        new_journal = existing + '\n' + run_header + '\n' + journal_entry
-
-        max_chars = self.config.get('journal_max_chars', 14000)
-        if len(new_journal) > max_chars:
-            cutpoint = new_journal.find('--- S2C Run', len(new_journal) - max_chars)
-            if cutpoint > 0:
-                new_journal = new_journal[cutpoint:]
-
-        self.brain.set_config('s2_community_journal', new_journal.strip())
-        return journal_entry
+    # Journal save/load is inherited from IntegrationUnit.
+    # Class attributes JOURNAL_MARKERS / JOURNAL_LABEL / JOURNAL_RUN_HEADER /
+    # JOURNAL_KEY configure the pattern; base owns the logic.
 
     # ══════════════════════════════════════════════════════════
     # Relevant community lookup
