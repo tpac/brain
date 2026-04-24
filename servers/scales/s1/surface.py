@@ -92,7 +92,18 @@ def _call_surface(brain, candidates_data, user_message, session_context,
     #   (c) JSON + trailing prose: {...}\n\nHere's why I picked...
     # `raw_decode` consumes the first valid JSON object and reports the
     # tail, which we discard — no "Extra data" crash on (c).
-    surfaced = _parse_surfacer_json(raw) or {"selected": []}
+    surfaced = _parse_surfacer_json(raw)
+    if surfaced is None and raw:
+        # We had a non-empty Haiku response but couldn't parse anything
+        # dict-shaped from it. Surface this — it's the silent-failure mode
+        # that produced empty additionalContext at N=15 (fishing query).
+        brain._log_error(
+            'surface_haiku_unparseable',
+            ValueError('Haiku response did not yield a parseable JSON dict'),
+            'first 300 chars: %r' % raw[:300])
+        surfaced = {"selected": []}
+    elif surfaced is None:
+        surfaced = {"selected": []}
 
     return surfaced, surface_prompt, max_tokens, interaction_id
 
@@ -359,11 +370,39 @@ def run_surface(brain, ctx, candidates_data, user_message, session_context,
         cid = c.get('id', '')
         if cid[:8] in selected_short_ids:
             short_to_full[cid[:8]] = cid
+    hallucinated_ids = []
     for s in selected:
         short_id = s.get('id', '')[:8]
         full_id = short_to_full.get(short_id)
         if full_id:
             selected_why[full_id] = s.get('why', '')
+        else:
+            # Haiku returned an ID not in its candidate menu — either a
+            # hallucination or a typo. Try to resolve it directly against
+            # the brain (the ID might happen to match a real node from
+            # session context). If found, use it; if not, log loudly so
+            # the failure isn't silent.
+            try:
+                from servers.dal import NodeDAL
+                ndal = NodeDAL(brain.conn)
+                resolved = ndal.resolve_id(short_id)
+            except Exception:
+                resolved = None
+            if resolved:
+                selected_why[resolved] = s.get('why', '')
+                brain._log_error(
+                    'haiku_id_outside_candidates',
+                    RuntimeError('Haiku selected an ID not in its candidate menu but it resolves to a real node'),
+                    'short_id=%s resolved=%s why=%r' % (short_id, resolved[:12], s.get('why', '')[:80]))
+            else:
+                hallucinated_ids.append(short_id)
+    if hallucinated_ids:
+        brain._log_error(
+            'haiku_id_unresolvable',
+            RuntimeError('Haiku selected IDs that exist nowhere in the brain'),
+            'ids=%s why_samples=%r' % (
+                ','.join(hallucinated_ids[:5]),
+                [s.get('why', '')[:80] for s in selected if s.get('id', '')[:8] in hallucinated_ids][:3]))
 
     # Graph expansion via spreading activation. The kernel replaces what
     # select_edges + per-seed top-3 neighbors + mutual-traversal used to do.

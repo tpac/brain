@@ -746,12 +746,24 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
                 meaning_by_family[fam] = meaning
             for m in members:
                 rel_to_family[m] = fam
-    except Exception:
-        pass  # family data is optional
+    except Exception as _e:
+        # Family data is optional but loading failure is worth noticing —
+        # if config exists and we fail to read it, family_boost dies silently.
+        brain._log_error('spread_family_config', _e,
+                         'loading s2_edge_families config in spread_activation')
 
     # ── Step 0: seeds' own activations (per-field cosines vs query) ──
     all_touched_ids = list(seed_ids)
     node_vectors = _batch_load_field_vectors(brain.conn, all_touched_ids)
+    # Silent-failure guard: if we got NO vectors for a seed, the kernel can't
+    # produce activation for it. This happened at N=15 once (seed had no
+    # vectors at all), which is the failure mode worth surfacing.
+    seeds_missing_vectors = [sid for sid in seed_ids if sid not in node_vectors]
+    if seeds_missing_vectors:
+        brain._log_error('spread_seed_no_vectors',
+                         RuntimeError('seeds without any vectors'),
+                         'seeds=%s (kernel will produce zero activation for these)' %
+                         ','.join(s[:8] for s in seeds_missing_vectors[:5]))
     node_activation = {}
     field_activation = {}
 
@@ -984,8 +996,9 @@ def select_edges(connections, query_vec, session=None, limit=3, prior_vecs=None,
                     meaning_by_family[fam] = meaning
                 for m in members:
                     rel_to_family[m] = fam
-        except Exception:
-            pass  # family data is optional
+        except Exception as _e:
+            brain._log_error('select_edges_family_config', _e,
+                             'loading s2_edge_families in select_edges')
 
     # Batch-load target node embeddings (one SQL round-trip)
     target_ids = [c.get('id', '')[:8] for c in connections]
