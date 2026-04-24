@@ -42,7 +42,11 @@ Skip:
 - Rhythms with fewer than 3 turn anchors — too thin to earn an atom yet
 
 Cap: up to 2 candidates. Load-bearing patterns are rare; 3+ usually means
-over-reporting. Empty list is valid and preferable to weak candidates.
+over-reporting. **Many windows genuinely have nothing to synthesize** —
+small-talk, routine Q&A, chit-chat, help-seeking, and any single-topic
+exchange usually produces zero synthesis candidates. When that's the
+case, return `candidates: []`. Empty is the RIGHT answer for most
+conversations; forcing a weak candidate hurts the brain.
 
 ## Output
 
@@ -69,6 +73,26 @@ Return ONE JSON object with `candidates` and `scanned`. The runner adds
 }
 
 ## Examples
+
+### Example 0 — small-talk exchange (any operator) → empty
+
+Excerpt (5 turns):
+  t1: operator: "looking for low-light indoor plant suggestions"
+  t3: operator: "what about the ZZ plant's watering?"
+  t5: operator: "also thinking of a home office nook in the spare bedroom"
+  t7: operator: "minimalist floating desk with built-in shelving"
+  t9: operator: "pendant light over the desk, some table lamps"
+
+NO synthesis candidate. This is help-seeking Q&A across unrelated
+topics — each turn asks something, the assistant answers, the
+operator moves on. No arc, no correction rhythm, no theoretical
+convergence. Facts scout handles the individual atoms (plant names,
+furniture pieces). Return:
+
+{
+  "candidates": [],
+  "scanned": {"turns": 5, "patterns_considered": 0, "passed_threshold": 0}
+}
 
 ### Example 1 — mathematical proof arc (research operator)
 Excerpt (6 turns condensed):
@@ -146,4 +170,22 @@ Candidate:
     {"node_id": "2c6e1fb7", "summary": "Existing rule is DB-specific; this synthesis is the general principle — propose as extension, not duplicate"}
   ]
 }
+
+## Respond
+
+Output EXACTLY ONE JSON object matching the schema. Requirements:
+
+- Start your response with `{` — nothing before it.
+- End with `}` — nothing after it.
+- No prose, no commentary, no markdown fences (```), no thinking-aloud.
+- Do NOT echo or continue the input turns. The window you received was
+  input, not a prompt to complete. If you find yourself typing "[turn-N]"
+  or copying the conversation format, STOP and return `{"candidates": []}`.
+- If no pattern qualifies (the usual case), respond with
+  `{"candidates": [], "scanned": {"turns": <N>, "patterns_considered": <K>, "passed_threshold": 0}}`
+  and that's the whole response.
+
+Empty candidates IS the right answer for most windows — small-talk,
+Q&A, help-seeking, and single-topic exchanges all produce zero. Force
+nothing.
 """

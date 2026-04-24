@@ -657,9 +657,29 @@ def run_temporal_scout(
         stub[SCOUT_ERROR_KEY].append({'type': 'extraction_error', 'msg': msg})
         return stub
 
-    # 4. Rank + cap
-    candidates.sort(key=lambda c: (-c['_specificity'], c['handle']))
-    capped = candidates[:max_candidates]
+    # 4. Dedup by ISO date — session-date tags prepended to every user turn
+    # produce N identical candidates for one anchor. Keep the highest-
+    # specificity version per date, merge evidence_turns to preserve where
+    # the date was referenced.
+    by_iso: Dict[str, Dict[str, Any]] = {}
+    for c in candidates:
+        key = c['handle']  # handle IS the ISO date
+        if key in by_iso:
+            # Merge turn references; keep the higher-specificity candidate
+            by_iso[key]['evidence_turns'] = list(dict.fromkeys(
+                by_iso[key]['evidence_turns'] + c['evidence_turns']))
+            if c['_specificity'] > by_iso[key]['_specificity']:
+                # Swap in the better candidate but preserve merged turns
+                turns_merged = by_iso[key]['evidence_turns']
+                by_iso[key] = dict(c)
+                by_iso[key]['evidence_turns'] = turns_merged
+        else:
+            by_iso[key] = dict(c)
+    deduped = list(by_iso.values())
+
+    # 5. Rank + cap
+    deduped.sort(key=lambda c: (-c['_specificity'], c['handle']))
+    capped = deduped[:max_candidates]
     for c in capped:
         c.pop('_specificity', None)  # internal field — don't emit
 
@@ -670,7 +690,7 @@ def run_temporal_scout(
         'passed_threshold': len(capped),
     }
 
-    # 5. Validate through the same contract as LLM scouts
+    # 6. Validate through the same contract as LLM scouts
     envelope = {
         'scout': scout_name,
         'category_statement': category_statement,

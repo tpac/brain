@@ -78,7 +78,7 @@ SCOUT_FIELD_SPECS: Dict[str, Dict[str, Tuple[str, ...]]] = {
     },
     "facts": {
         "required": ("entity", "feature", "value"),
-        "optional": ("unit", "catalog_match"),
+        "optional": ("unit", "catalog_match", "context_anchors"),
     },
     "synthesis": {
         "required": ("turn_evidence",),
@@ -90,7 +90,7 @@ SCOUT_FIELD_SPECS: Dict[str, Dict[str, Tuple[str, ...]]] = {
 # ─── Field char limits (soft) ──────────────────────────────────────────────
 
 FIELD_LIMITS = {
-    "handle":                120,
+    "handle":                160,
     "evidence_quote":        300,
     "why_candidate":         150,
     "source_phrase":          50,

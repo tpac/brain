@@ -75,18 +75,34 @@ def _temporal_runner(brain, ctx: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # Single dispatch point. Order doesn't matter — muster runs in parallel.
-# The dict's keys MUST match SCOUT_NAMES in contract.py; validated below.
-SCOUT_RUNNERS: Dict[str, Callable[[Any, Dict[str, Any]], Dict[str, Any]]] = {
+#
+# DISABLED_SCOUTS: scouts that stay in SCOUT_NAMES (so contract + validation
+# + tests continue to recognize them) but are removed from the runner
+# registry — muster won't call them. Synthesis moved back to S1S inline
+# (the scribe's ## Reading the conversation "Emerging patterns" section)
+# because integration-across-turns can't be extracted into a scout that
+# lacks catalog + other-scout context. On long assistant content Sonnet
+# synthesis drifted into role-continuation. Flip to [] to re-enable.
+DISABLED_SCOUTS = {'synthesis'}
+
+_ALL_RUNNERS: Dict[str, Callable[[Any, Dict[str, Any]], Dict[str, Any]]] = {
     'quote':     _quote_runner,
     'temporal':  _temporal_runner,
     'facts':     _facts_runner,
     'synthesis': _synthesis_runner,
 }
 
+SCOUT_RUNNERS: Dict[str, Callable[[Any, Dict[str, Any]], Dict[str, Any]]] = {
+    name: fn for name, fn in _ALL_RUNNERS.items()
+    if name not in DISABLED_SCOUTS
+}
+
 
 def _validate_registry():
-    """Guard against drift between contract.SCOUT_NAMES and this registry."""
-    missing = set(sc.SCOUT_NAMES) - set(SCOUT_RUNNERS)
+    """Guard against drift. Disabled scouts are allowed to be missing from
+    SCOUT_RUNNERS. Anything else missing/extra is a real bug."""
+    enabled = set(sc.SCOUT_NAMES) - DISABLED_SCOUTS
+    missing = enabled - set(SCOUT_RUNNERS)
     extra = set(SCOUT_RUNNERS) - set(sc.SCOUT_NAMES)
     if missing or extra:
         raise RuntimeError(

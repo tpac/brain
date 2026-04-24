@@ -18,7 +18,8 @@ from servers.scales.runner import run_llm_loop
 from servers.trace_contract import build_delta_metadata
 
 
-def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None):
+def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
+                 muster_enabled=None):
     """S1 turn encoder: gather → prompt → trace O/K → LLM loop → post-process.
 
     Args:
@@ -27,9 +28,15 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None):
         counter: Stop counter value
         session_id: Session ID (required)
         log_fn: Optional logging function
+        muster_enabled: Explicit override for the Phase-1 scouts muster. When
+            None (default), reads env BRAIN_MUSTER_ENABLED=1 to decide.
+            Passing True/False bypasses the env check — harnesses running
+            multiple encodings in one process should pass explicitly so
+            parallel jobs don't race the global env var.
 
     Returns:
-        dict with encoding results summary
+        dict with encoding results summary. When muster runs, also includes
+        'muster' key with per-scout metrics and any scout errors.
     """
     def _log(msg):
         print("[s1e] %s" % msg, flush=True)
@@ -69,22 +76,93 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None):
     enc_interaction = brain.get_interaction('s1e') or brain.get_interaction('encoding_agent')
     enc_instructions = enc_interaction.get('template', '') if enc_interaction else ''
     system_prompt = _build_system_prompt(prompt_instructions=enc_instructions or None)
-    user_content = _build_user_content(brain, messages, counter, session_id)
+    user_content, catalog_text, catalog_ids = _build_user_content(
+        brain, messages, counter, session_id)
     _step("prompt(%d chars)" % len(user_content))
+
+    # 2b. Muster phase — Phase-1 scouts (quote / temporal / facts / synthesis)
+    # fan out in parallel, emit O/K traces on the s1e chain, and produce a
+    # report block appended to user_content. When disabled (or muster raises)
+    # we fall back to the pre-scouts path: v12-style encoding with no scout
+    # reports, identical to what the scribe saw before this landed.
+    if muster_enabled is None:
+        muster_enabled = (os.environ.get('BRAIN_MUSTER_ENABLED', '') in ('1', 'true', 'True'))
+
+    muster_summary = None
+    if muster_enabled:
+        try:
+            from servers.scales.s1.scouts.muster import (
+                build_muster_context, run_muster)
+            muster_ctx = build_muster_context(
+                brain=brain, messages=messages, session_id=session_id,
+                counter=counter,
+                catalog_rendered=catalog_text,
+                catalog_node_ids=catalog_ids,
+                session_context=(brain.session_context or ''),
+                log_fn=log_fn,
+            )
+            _step("muster_ctx")
+            scout_report, scout_outputs, muster_metrics = run_muster(muster_ctx)
+            _step("muster_done(%dms,%dc)" % (
+                muster_metrics.get('elapsed_ms', 0),
+                muster_metrics.get('total_candidates', 0)))
+            if scout_report.strip():
+                user_content = user_content + "\n\n## Scout reports\n\n" + scout_report
+            muster_summary = {
+                'enabled': True,
+                'metrics': muster_metrics,
+                'scout_names': list(scout_outputs.keys()),
+            }
+        except Exception as muster_exc:
+            # Scouts are advisory — never block encoding. Log loud, proceed.
+            print('[s1e] MUSTER ERROR (falling back to no scouts): %s' %
+                  muster_exc, flush=True)
+            try:
+                # _log_error expects an Exception so its traceback formatter
+                # works — passing the caught exception directly.
+                brain._log_error('s1e_muster_fallback', muster_exc,
+                                 'muster raised; encoding continues without scout reports')
+            except Exception:
+                pass
+            muster_summary = {'enabled': True, 'error': str(muster_exc)}
+    else:
+        muster_summary = {'enabled': False}
 
     # 3. Get tools (S1-specific subset)
     tools = _get_tool_schemas()
     _step("tools(%d)" % len(tools))
 
-    # 4. Write prompt to tmp file (passive observer for dashboard)
+    # 4. Write prompt to tmp file (passive observer for dashboard + post-hoc
+    # eval inspection). Path includes FULL session_id + pid so parallel
+    # jobs don't clobber each other's files. 16-char prefix collided
+    # across jobs whose session_ids shared the same leading bytes — a real
+    # bug caught in the smoke_seed_2 run where arm-A jobs read arm-B's
+    # prompt files and wrongly flagged "scout_reports_absent" as failed.
+    _session_safe = (session_id or 'nosession').replace('/', '_').replace(' ', '_')
+    prompt_path = "/tmp/brain-encoding-prompt-%s-%d.json" % (
+        _session_safe, counter)
     try:
-        with open("/tmp/brain-encoding-prompt-%d.json" % counter, 'w') as f:
+        with open(prompt_path, 'w') as f:
             json.dump({
                 "counter": counter,
+                "session_id": session_id,
                 "system_prompt_chars": len(system_prompt),
                 "user_content": user_content,
                 "tools_count": len(tools),
             }, f)
+        # Legacy counter-only path for dashboards that still expect it —
+        # overwrite is acceptable for dashboards, not for parallel eval.
+        try:
+            with open("/tmp/brain-encoding-prompt-%d.json" % counter, 'w') as f:
+                json.dump({
+                    "counter": counter,
+                    "session_id": session_id,
+                    "system_prompt_chars": len(system_prompt),
+                    "user_content": user_content,
+                    "tools_count": len(tools),
+                }, f)
+        except Exception:
+            pass  # best-effort dashboard compat
     except Exception as e:
         print('[s1e] WARNING: could not write prompt file: %s' % e, flush=True)
 
@@ -157,6 +235,8 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None):
         })
 
         result['profile'] = profile
+        if muster_summary is not None:
+            result['muster'] = muster_summary
         return result
 
     except Exception as e:
@@ -219,7 +299,14 @@ def _build_system_prompt(prompt_instructions=None):
 
 
 def _build_user_content(brain, messages, counter, session_id):
-    """Assemble S1 encoding prompt: node catalog + timeline with references."""
+    """Assemble S1 encoding prompt: node catalog + timeline with references.
+
+    Returns:
+        (user_content, catalog_text, catalog_ids) — the full prompt string,
+        the rendered catalog block (reused by muster so it doesn't re-render),
+        and the set of node ids actually in the catalog (reused by temporal
+        scout for existing_anchor_id lookups).
+    """
     from servers.scales.s1.encode_contract import ENCODING_AGENT, build_node_catalog
     import re
 
@@ -285,7 +372,7 @@ def _build_user_content(brain, messages, counter, session_id):
         content += "### %s\n" % node_catalog
     content += "### Conversation Timeline\n\n%s\n" % timeline
     content += "---\nYou have all the nodes you need in the catalog above. Read what you got before calling any tools. Put ALL operations (creates + revises + connects) in ONE tool call. Target: 2 rounds — one tool call, then journal.\n"
-    return content
+    return content, node_catalog, cataloged_ids
 
 
 def _write_pre_traces(brain, dispatch_fn, messages, user_content, counter, session_id):

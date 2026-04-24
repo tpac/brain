@@ -76,7 +76,11 @@ def gather_messages(brain, session_id, limit=20):
 def build_content(brain, messages, counter, session_id):
     """Build encoder prompt using production code path."""
     from servers.scales.s1.encode import _build_user_content
-    return _build_user_content(brain, messages, counter, session_id)
+    # _build_user_content returns (user_content, catalog_text, catalog_ids) —
+    # this legacy eval only consumes the user_content string.
+    user_content, _catalog_text, _catalog_ids = _build_user_content(
+        brain, messages, counter, session_id)
+    return user_content
 
 
 def build_system_prompt(prompt_file=None):

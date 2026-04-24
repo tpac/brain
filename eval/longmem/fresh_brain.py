@@ -20,18 +20,24 @@ from typing import Optional
 EVAL_BRAIN_DIR = os.path.expanduser("~/AgentsContext/brain-eval")
 
 
-def per_item_brain_dir(qid: str, run_name: str = None) -> str:
+def per_item_brain_dir(qid: str, run_name: str = None, variance_idx: int = None) -> str:
     """Return a per-item eval brain path, isolated from other items and runs.
 
     Path shape: ~/AgentsContext/brain-eval-{run_name}/{qid}/
+    With variance_idx: ~/AgentsContext/brain-eval-{run_name}/{qid}-r{variance_idx}/
     If run_name is None, falls back to a generic per-item dir under
     ~/AgentsContext/brain-eval-items/{qid}/ — handy for one-off scripts.
+
+    variance_idx differentiates parallel runs of the same qid (e.g. 5x per axis
+    for statistics). Without it, multiple processes writing to the same qid
+    path race and corrupt state.
     """
     if run_name:
         base = os.path.expanduser(f"~/AgentsContext/brain-eval-{run_name}")
     else:
         base = os.path.expanduser("~/AgentsContext/brain-eval-items")
-    return os.path.join(base, qid)
+    leaf = qid if variance_idx is None else f"{qid}-r{variance_idx}"
+    return os.path.join(base, leaf)
 
 
 def wipe_eval_dir(path: str = EVAL_BRAIN_DIR) -> None:

@@ -197,19 +197,24 @@ def run_muster(
         except TypeError:  # Python < 3.9 fallback
             pool.shutdown(wait=False)
 
-    # Any scout that didn't return at all (shouldn't happen) — pad with a
-    # stub so formatter always sees four scouts.
-    for name in SCOUT_RUNNERS:
+    # Pad missing scouts so downstream iterations over SCOUT_NAMES are safe.
+    # We pad for SCOUT_NAMES (not SCOUT_RUNNERS) so disabled scouts still
+    # get a stub — the formatter and trace emitter iterate SCOUT_NAMES and
+    # need outputs[name] to exist. Disabled scouts get a marker stub so
+    # consumers can distinguish "didn't run" from "ran and found nothing".
+    for name in sc.SCOUT_NAMES:
         if name not in outputs:
-            outputs[name] = _exception_stub(name,
-                                            RuntimeError('no result'))
+            reason = 'disabled' if name not in SCOUT_RUNNERS else 'no result'
+            outputs[name] = _exception_stub(name, RuntimeError(reason))
 
     elapsed_ms = int((_time.time() - t0) * 1000)
     formatted = sc.format_scout_report_for_s1s(outputs)
     metrics = _metrics(outputs, elapsed_ms)
 
+    # Safe summary — use .get since disabled scouts may or may not be padded
+    # depending on invariants upstream.
     summary = ', '.join(
-        f'{n}={len(outputs[n].get("candidates") or [])}'
+        f'{n}={len(outputs.get(n, {}).get("candidates") or [])}'
         for n in sc.SCOUT_NAMES
     )
     log(f'[muster] done in {elapsed_ms}ms — candidates: {summary}')
@@ -376,16 +381,19 @@ def _emit_traces(ctx: Dict[str, Any],
     for name in sc.SCOUT_NAMES:
         out = outputs.get(name) or {}
         cands = out.get('candidates') or []
-        # O — scout saw this much input (scanned counts)
+        # O — scout saw this much input (scanned counts).
+        # Pass metadata as a dict; TraceDAL.append_batch serializes it.
+        # Previously this was pre-serialized here, producing a double-
+        # encoded string that decoded back to str instead of dict.
         events.append({
             'chain_id': chain, 'scale': 's1', 'event_type': 'O',
             'ref_type': 'scout_input',
             'summary': f'{name}: scanned {out.get("scanned", {}).get("turns", 0)} turns',
-            'metadata': _json.dumps({
+            'metadata': {
                 'scout': name,
                 'scanned': out.get('scanned', {}),
                 'latency_ms': out.get('_latency_ms', 0),
-            })[:4000],
+            },
             'session_id': session_id,
         })
         # K — what the scout selected
@@ -393,20 +401,30 @@ def _emit_traces(ctx: Dict[str, Any],
             'chain_id': chain, 'scale': 's1', 'event_type': 'K',
             'ref_type': 'scout_findings',
             'summary': f'{name}: {len(cands)} candidates',
-            'metadata': _json.dumps({
+            'metadata': {
                 'scout': name,
                 'category_statement': out.get('category_statement', ''),
                 'candidate_handles': [c.get('handle') for c in cands][:20],
                 'errors': out.get('_errors', []),
                 'warnings': out.get('_warnings', []),
-            })[:4000],
+            },
             'session_id': session_id,
         })
 
     try:
         dal.append_batch(events)
-    except Exception:
-        pass
+    except Exception as trace_exc:
+        # Loud-by-default: tracing is observability, not correctness, but a
+        # silent drop here hid the metadata-double-encode bug for days. Log
+        # to brain_errors so future breakage surfaces in consciousness.
+        try:
+            brain._log_error('s1_muster_trace_emit', trace_exc,
+                             'failed to emit scout_input/scout_findings events')
+        except Exception:
+            pass  # last-resort — if the error logger itself breaks, proceed
+        # Also print so the running process shows the failure in stdout
+        print(f'[muster] trace emit failed: {type(trace_exc).__name__}: {trace_exc}',
+              flush=True)
 
 
 __all__ = [
