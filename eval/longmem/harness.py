@@ -210,6 +210,8 @@ def main():
     parser.add_argument("--run_name", default=None, help="report file suffix (default: timestamp)")
     parser.add_argument("--keep_dbs", action="store_true",
                         help="keep per-item brain DBs after each item (for post-hoc inspection)")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="parallel worker processes (default 1 = serial). Each worker loads its own embedder (~1GB).")
     args = parser.parse_args()
 
     # Load env — override empty vars (setdefault skips empty strings, per known bug)
@@ -239,16 +241,44 @@ def main():
 
     results = []
     t_run0 = time.time()
-    for i, item in enumerate(picked):
-        try:
-            r = run_item(item, i, len(picked), run_name=run_name,
-                         keep_db=args.keep_dbs)
-            results.append(r)
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            print(f"[harness] item {i+1} FAILED: {e}", flush=True)
-            results.append({"question_id": item["question_id"], "error": str(e)})
+    if args.workers <= 1:
+        # Serial path (backward compatible)
+        for i, item in enumerate(picked):
+            try:
+                r = run_item(item, i, len(picked), run_name=run_name,
+                             keep_db=args.keep_dbs)
+                results.append(r)
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                print(f"[harness] item {i+1} FAILED: {e}", flush=True)
+                results.append({"question_id": item["question_id"], "error": str(e)})
+    else:
+        # Parallel path — ProcessPoolExecutor, each worker loads its own embedder.
+        # Per-item DBs are already isolated (brain-eval-{run_name}/{qid}/), so no contention.
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+        print(f"[harness] running {len(picked)} items across {args.workers} workers", flush=True)
+        results_by_idx: Dict[int, Dict[str, Any]] = {}
+        with ProcessPoolExecutor(max_workers=args.workers) as pool:
+            futures = {
+                pool.submit(run_item, item, i, len(picked), run_name, args.keep_dbs): (i, item)
+                for i, item in enumerate(picked)
+            }
+            done_count = 0
+            for fut in as_completed(futures):
+                i, item = futures[fut]
+                try:
+                    r = fut.result()
+                    results_by_idx[i] = r
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc()
+                    print(f"[harness] item {i+1} ({item['question_id']}) FAILED: {e}", flush=True)
+                    results_by_idx[i] = {"question_id": item["question_id"], "error": str(e)}
+                done_count += 1
+                print(f"[harness] progress: {done_count}/{len(picked)} done", flush=True)
+        # Preserve original order for reporting
+        results = [results_by_idx[i] for i in range(len(picked))]
     total_ms = int((time.time() - t_run0) * 1000)
 
     # Write outputs

@@ -2,20 +2,25 @@
 
 For each failed item, determine which layer dropped the ball:
 
-  ENCODE_MISS  — the gold fact was never encoded (no node covers it)
-  RECALL_MISS  — encoded, but not in S1R's top-25 candidates
-  SURFACE_MISS — in candidates, but surfacer didn't pick it
+  ENCODE_MISS  — the gold fact was never encoded (no node carries it)
+  RECALL_MISS  — encoded, but didn't land in the context delivered to the answerer
+  SURFACE_MISS — candidates existed, but surfacer selected none (context empty)
   ANSWER_MISS  — selected and in context, but answerer still failed
 
-Classification is trace-driven. Claude is used only for the actionable reason,
-not for the bucket (which is computable from O/K/Δ traces + a targeted recall
-against the brain using the gold answer as query).
+Classification is trace-driven + a direct brain scan for the gold fact.
+The brain scan is the ground-truth for "is the fact in the brain?" — more
+reliable than semantic recall for that question. Semantic recall stays as
+a diagnostic in evidence (how well the brain RETRIEVES the fact).
+
+Claude is used only for the actionable reason and the PRESENT/MISSING
+context sufficiency judgment — never for bucket selection itself.
 
 Runs inline per-item so the brain and traces are live. Results get embedded
 in each item dict — no separate storage layer.
 """
 import json
 import os
+import re
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -49,11 +54,210 @@ Context delivered to answerer:
 Reply with a single token: PRESENT (context contained the specific fact needed) or MISSING (context lacked the specific fact needed — e.g. mentioned the topic in general but not the specific value/name/quantity). No explanation."""
 
 
+# Function words and very common tokens — too generic to be recall signals.
+_STOPWORDS = frozenset([
+    "the", "and", "for", "with", "from", "that", "this", "these", "those",
+    "have", "has", "had", "will", "would", "could", "should", "might",
+    "about", "into", "than", "when", "where", "what", "which", "while",
+    "your", "yours", "their", "there", "them", "they", "been", "being",
+    "some", "many", "much", "very", "just", "also", "only", "even",
+    "what's", "don't", "didn't", "isn't", "wasn't", "won't",
+    "after", "before", "because", "since", "though",
+    "said", "says", "tell", "told", "going", "went",
+])
+
+
+def _extract_key_terms(gold: str, limit: int = 10) -> List[str]:
+    """Extract recall-signal terms from a gold answer string.
+
+    Keeps:
+    - Digit sequences (counts, IDs, amounts)
+    - Significant words (≥4 chars, not in stopwords)
+    - Two/three-letter uppercase tokens (AM/PM, USD, EU, etc.)
+
+    Lowercased, deduplicated, order-preserved, capped at `limit`.
+    """
+    if not gold:
+        return []
+
+    terms: List[str] = []
+
+    for m in re.finditer(r"\b\d+(?:[.,:]\d+)*\b", gold):
+        terms.append(m.group(0))
+
+    for w in re.findall(r"\b[A-Za-z]{2,3}\b", gold):
+        if w.isupper() and len(w) >= 2:
+            terms.append(w.lower())
+
+    for w in re.findall(r"\b[A-Za-z][A-Za-z'-]{3,}\b", gold):
+        wl = w.lower()
+        if wl not in _STOPWORDS:
+            terms.append(wl)
+
+    seen = set()
+    out = []
+    for t in terms:
+        if t in seen:
+            continue
+        seen.add(t)
+        out.append(t)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _scan_brain_for_gold(brain, gold: str) -> Dict[str, Any]:
+    """Direct keyword scan of brain nodes for gold-answer terms.
+
+    Ground-truth for "is the fact in any node of this brain?" — distinct
+    from semantic recall ranking. Scans:
+    - nodes.title, nodes.content (archived nodes excluded)
+    - node_metadata_kv.value for high-signal keys (situation, reasoning,
+      user_raw_quote, anchor_raw_quote, event_description, value, entity)
+
+    Match rule: ALL extracted terms must appear within a single node
+    (AND across terms, OR across fields). Prevents false positives when
+    only one common term from the answer happens to appear in a random
+    node. For single-term golds the AND reduces to OR naturally.
+
+    If the gold string as a whole (lowercased, trimmed) is distinctive
+    (>3 chars), also run a phrase-match pass — catches short answers like
+    "6 PM" that degrade under term extraction.
+
+    Returns:
+        {
+          found: bool,
+          matches: [{node_id, title_snippet, match_source, snippet}],
+          terms_used: [str, ...],
+          phrase_used: str | None
+        }
+
+    Never raises — on DB error returns {found: False, ...} and logs.
+    """
+    gold_str = (gold or "").strip()
+    terms = _extract_key_terms(gold_str)
+    phrase = gold_str.lower() if len(gold_str) > 3 else None
+
+    result: Dict[str, Any] = {
+        "found": False,
+        "matches": [],
+        "terms_used": terms,
+        "phrase_used": phrase,
+    }
+
+    if not terms and not phrase:
+        return result
+
+    try:
+        conn = brain.conn
+    except Exception:
+        return result
+
+    matches: List[Dict[str, Any]] = []
+
+    # Pass 1: phrase match on title + content
+    if phrase:
+        try:
+            rows = conn.execute(
+                "SELECT id, title, substr(content, 1, 200) "
+                "FROM nodes "
+                "WHERE archived = 0 "
+                "  AND (LOWER(title) LIKE ? OR LOWER(content) LIKE ?) "
+                "LIMIT 10",
+                (f"%{phrase}%", f"%{phrase}%"),
+            ).fetchall()
+            for nid, title, snippet in rows:
+                matches.append({
+                    "node_id": (nid or "")[:8],
+                    "title_snippet": (title or "")[:60],
+                    "match_source": "phrase:title_or_content",
+                    "snippet": (snippet or "")[:160],
+                })
+        except Exception as e:
+            result["db_error"] = f"phrase scan failed: {e}"
+
+    # Pass 2: AND-of-terms match on title + content
+    if terms and not matches:
+        try:
+            conditions = " AND ".join(
+                "(LOWER(title) LIKE ? OR LOWER(content) LIKE ?)" for _ in terms
+            )
+            params = [f"%{t}%" for t in terms for _ in range(2)]
+            rows = conn.execute(
+                f"SELECT id, title, substr(content, 1, 200) "
+                f"FROM nodes "
+                f"WHERE archived = 0 AND {conditions} "
+                f"LIMIT 10",
+                params,
+            ).fetchall()
+            for nid, title, snippet in rows:
+                matches.append({
+                    "node_id": (nid or "")[:8],
+                    "title_snippet": (title or "")[:60],
+                    "match_source": "terms:title_or_content",
+                    "snippet": (snippet or "")[:160],
+                })
+        except Exception as e:
+            result["db_error"] = f"terms scan failed: {e}"
+
+    # Pass 3: metadata_kv scan for high-signal keys, still AND across terms
+    if (terms or phrase) and not matches:
+        try:
+            kv_keys = (
+                "situation", "reasoning", "user_raw_quote", "anchor_raw_quote",
+                "event_description", "value", "entity", "handle",
+            )
+            key_placeholders = ",".join("?" * len(kv_keys))
+            if phrase:
+                rows = conn.execute(
+                    f"SELECT DISTINCT kv.node_id, kv.key, substr(kv.value, 1, 200), n.title "
+                    f"FROM node_metadata_kv kv "
+                    f"JOIN nodes n ON n.id = kv.node_id "
+                    f"WHERE n.archived = 0 "
+                    f"  AND kv.key IN ({key_placeholders}) "
+                    f"  AND LOWER(kv.value) LIKE ? "
+                    f"LIMIT 10",
+                    (*kv_keys, f"%{phrase}%"),
+                ).fetchall()
+                for nid, key, snippet, title in rows:
+                    matches.append({
+                        "node_id": (nid or "")[:8],
+                        "title_snippet": (title or "")[:60],
+                        "match_source": f"phrase:meta.{key}",
+                        "snippet": (snippet or "")[:160],
+                    })
+            if not matches and terms:
+                conditions = " AND ".join("LOWER(kv.value) LIKE ?" for _ in terms)
+                rows = conn.execute(
+                    f"SELECT DISTINCT kv.node_id, kv.key, substr(kv.value, 1, 200), n.title "
+                    f"FROM node_metadata_kv kv "
+                    f"JOIN nodes n ON n.id = kv.node_id "
+                    f"WHERE n.archived = 0 "
+                    f"  AND kv.key IN ({key_placeholders}) "
+                    f"  AND {conditions} "
+                    f"LIMIT 10",
+                    (*kv_keys, *(f"%{t}%" for t in terms)),
+                ).fetchall()
+                for nid, key, snippet, title in rows:
+                    matches.append({
+                        "node_id": (nid or "")[:8],
+                        "title_snippet": (title or "")[:60],
+                        "match_source": f"terms:meta.{key}",
+                        "snippet": (snippet or "")[:160],
+                    })
+        except Exception as e:
+            result["db_error"] = f"metadata scan failed: {e}"
+
+    result["matches"] = matches[:5]
+    result["found"] = bool(matches)
+    return result
+
+
 def _context_has_gold(question: str, gold: str, context: str) -> bool:
     """Judge whether the context delivered to the answerer actually contained
-    the specific fact needed for the gold answer. Distinguishes PARTIAL_RECALL
-    (context mentions topic but not the specific fact) from ANSWER_MISS
-    (context had the fact, answerer didn't use it)."""
+    the specific fact needed for the gold answer. Distinguishes RECALL_MISS
+    (context missed the specific fact) from ANSWER_MISS (context had the
+    fact, answerer didn't use it)."""
     import anthropic
     try:
         client = anthropic.Anthropic()
@@ -73,9 +277,9 @@ def _context_has_gold(question: str, gold: str, context: str) -> bool:
 def _recall_relevant_nodes(brain, gold: str, top_n: int = 15) -> List[Dict[str, Any]]:
     """Use the gold answer as a recall query against the brain.
 
+    Diagnostic only (NOT ground truth anymore — scan is ground truth).
     Returns the top-N node summaries ranked by the brain's own similarity.
-    If the brain can't recall anything semantically close to the gold,
-    the encoder likely never captured the fact.
+    Useful in evidence to show how the retrieval ranks vs how the scan matches.
     """
     try:
         results = brain.recall(gold, top_n=top_n) or []
@@ -125,7 +329,6 @@ def _read_s1r_trace(brain, query_session_id: str) -> Optional[Dict[str, Any]]:
         except Exception:
             meta = {}
         if etype == "O" and ref_type == "recall":
-            # candidates in metadata as ["id|title|score|type", ...]
             for item in meta.get("candidates", []) or []:
                 parts = item.split("|", 3)
                 if len(parts) >= 3:
@@ -150,39 +353,49 @@ def _read_s1r_trace(brain, query_session_id: str) -> Optional[Dict[str, Any]]:
     }
 
 
-def _bucket(relevant_nodes: List[Dict], trace: Optional[Dict],
+def _bucket(scan: Dict[str, Any], trace: Optional[Dict],
             has_context: bool, abstained: bool,
             question: str = "", gold: str = "") -> str:
-    """Pick the failure bucket from trace state.
+    """Pick the failure bucket from scan + trace state.
 
     Buckets:
-      ENCODE_MISS    - nothing scored against the query and nothing matches gold
-      RECALL_MISS    - gold-adjacent nodes exist but none ranked into top-25
-      SURFACE_MISS   - candidates existed but surfacer selected none (or ctx empty)
-      PARTIAL_RECALL - context delivered but the specific fact is absent
-      ANSWER_MISS    - context contained the fact, answerer still failed
+      ENCODE_MISS  — gold fact not in any node (scan.found == False)
+      RECALL_MISS  — fact in brain but didn't land in context
+                     (covers: 0 candidates, wrong candidates, or diluted context)
+      SURFACE_MISS — candidates existed, but surfacer returned nothing
+                     (context empty despite candidates — narrow, distinct)
+      ANSWER_MISS  — context had the fact, answerer still failed
 
-    The PARTIAL_RECALL vs ANSWER_MISS split requires reading the context,
-    so we ask Haiku for a 1-token judgment when we reach that branch.
+    Ground truth flow:
+      1. scan.found is authoritative for "is the fact encoded somewhere"
+      2. If scan.found == False  → ENCODE_MISS, always (regardless of trace)
+      3. If scan.found == True:
+         - If no trace or 0 candidates → RECALL_MISS (ranking didn't surface it)
+         - If candidates > 0 but selected empty / ctx empty → SURFACE_MISS
+         - If context delivered → ask Haiku if gold fact is in context:
+             PRESENT  → ANSWER_MISS
+             MISSING  → RECALL_MISS (wrong nodes selected, fact diluted)
     """
+    if not scan.get("found"):
+        return "ENCODE_MISS"
+
     if not trace:
-        return "RECALL_MISS" if relevant_nodes else "ENCODE_MISS"
+        return "RECALL_MISS"
 
     n_cand = len(trace["candidates"])
     n_sel = len(trace["selected"])
     ctx_chars = len(trace["context"])
 
     if n_cand == 0:
-        return "ENCODE_MISS" if not relevant_nodes else "RECALL_MISS"
+        return "RECALL_MISS"
 
     if n_sel == 0 or ctx_chars == 0:
         return "SURFACE_MISS"
 
-    # Context was delivered — did it actually contain the fact needed?
     gold_str = gold if isinstance(gold, str) else json.dumps(gold)
     if _context_has_gold(question, gold_str, trace["context"]):
         return "ANSWER_MISS"
-    return "PARTIAL_RECALL"
+    return "RECALL_MISS"
 
 
 def _reason(question: str, gold: str, hypothesis: str, bucket: str,
@@ -210,20 +423,28 @@ def _reason(question: str, gold: str, hypothesis: str, bucket: str,
 def classify_failure(brain, question: str, gold: str, hypothesis: str,
                      query_session_id: str, has_context: bool,
                      abstained: bool) -> Dict[str, Any]:
-    """Per-item classification. Called inline after query, before reset.
+    """Per-item classification. Called inline after query, before cleanup.
 
     Returns:
-        {bucket, reason, evidence: {relevant_nodes, candidates_count, selected, ...}}
+        {failure_bucket, failure_reason, failure_evidence: {...}}
     """
     gold_str = gold if isinstance(gold, str) else json.dumps(gold)
+
+    scan = _scan_brain_for_gold(brain, gold_str)
     relevant = _recall_relevant_nodes(brain, gold_str, top_n=15)
     trace = _read_s1r_trace(brain, query_session_id)
 
-    bucket = _bucket(relevant, trace, has_context, abstained,
+    bucket = _bucket(scan, trace, has_context, abstained,
                      question=question, gold=gold_str)
 
-    evidence = {
-        "relevant_to_gold": [  # top 5 most-relevant nodes from a gold-seeded recall
+    evidence: Dict[str, Any] = {
+        "gold_in_brain": {
+            "found": scan.get("found", False),
+            "terms_used": scan.get("terms_used", []),
+            "phrase_used": scan.get("phrase_used"),
+            "matches": scan.get("matches", []),
+        },
+        "relevant_to_gold": [  # semantic diagnostic — how does recall rank gold?
             {"id": n["id"], "title": n["title"][:80], "score": round(n["score"], 2)}
             for n in relevant[:5]
         ],
@@ -232,6 +453,8 @@ def classify_failure(brain, question: str, gold: str, hypothesis: str,
         "context_chars": len(trace["context"]) if trace else 0,
         "query_fired": bool(trace),
     }
+    if "db_error" in scan:
+        evidence["gold_in_brain"]["db_error"] = scan["db_error"]
 
     reason = _reason(question, gold_str, hypothesis, bucket, evidence)
 

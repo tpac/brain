@@ -10,42 +10,41 @@ from typing import Any, Dict, List
 
 
 BUCKET_LABELS = {
-    "ENCODE_MISS": "encode — the answer never made it into the brain",
-    "RECALL_MISS": "recall — encoded, but didn't score into the top-25 candidates",
-    "SURFACE_MISS": "surface — in candidates, but the surfacer passed it over",
-    "PARTIAL_RECALL": "partial recall — context delivered but the specific fact wasn't in it",
-    "ANSWER_MISS": "answer — the fact was in context, but the answerer didn't use it",
+    "ENCODE_MISS": "encode — gold fact not in any node (brain scan confirmed absent)",
+    "RECALL_MISS": "recall — fact is in brain but didn't land in delivered context",
+    "SURFACE_MISS": "surface — candidates existed, but surfacer returned nothing",
+    "ANSWER_MISS": "answer — context had the fact, answerer didn't use it",
+    # PARTIAL_RECALL kept for backward compat when reading older runs.
+    "PARTIAL_RECALL": "partial recall (legacy) — context delivered but specific fact missing",
 }
 
 BUCKET_INVEST_PROMPT = {
     "ENCODE_MISS": (
-        "Look at the S1E encoder — was the detail in the conversation timeline, "
-        "or did the encoder skip the turn? If detail was present, tighten the "
-        "prompt's attention to that question type. If absent, the encoder gate "
-        "(every 5 turns) may be missing context — consider wider message windows."
+        "The fact never reached the brain — brain scan finds no node carrying it. "
+        "This is the scribe's job: either the encoder skipped the turn, or paraphrased "
+        "the detail out, or the specific handle (number, name, phrase) was lost to "
+        "abstraction. Scouts (facts/quote/temporal) target this directly."
     ),
     "RECALL_MISS": (
-        "The node exists but scoring didn't rank it. Most likely: query terms "
-        "don't match title/situation embeddings (embedding mismatch) or "
-        "keyword fallback too weak. Check cosine scores in the candidates "
-        "list — if the relevant node is near the boundary, tune z-weights."
+        "The fact is in the brain but didn't land in the context delivered to the "
+        "answerer. Either zero candidates scored, the right node didn't rank top-8, "
+        "or the context was dominated by adjacent-but-wrong nodes. Evidence.relevant_to_gold "
+        "shows the semantic ranking; if the right node's score is low, tune "
+        "embeddings/weights. If the score is high but wasn't selected, surfacer issue."
     ),
     "SURFACE_MISS": (
-        "The surfacer (Haiku) had the node in candidates and rejected it. "
-        "That's a surfacer prompt / judgment issue. Review the surfacer "
-        "interaction prompt for this axis — it's dropping signal it should keep."
-    ),
-    "PARTIAL_RECALL": (
-        "The surfacer delivered adjacent/general nodes but not the one carrying "
-        "the specific fact — either the specific fact wasn't encoded as its own "
-        "node (encoder abstraction bias — tune S1E to keep specifics), OR the "
-        "specific node exists but didn't score into the top candidates "
-        "(recall scoring gap for fact-oriented queries)."
+        "Candidates existed, but the surfacer returned zero selections or empty context. "
+        "Narrow case — usually a surfacer prompt regression or an over-aggressive "
+        "abstain path. Inspect the surfacer trace for this item."
     ),
     "ANSWER_MISS": (
         "Context contained the fact, answerer still failed. Abstention threshold "
         "too aggressive OR context too noisy (too many neighbors diluting signal). "
         "Review the answerer prompt."
+    ),
+    "PARTIAL_RECALL": (
+        "Legacy bucket — re-run with current classifier to split into ENCODE_MISS "
+        "(fact not in brain) or RECALL_MISS (in brain, didn't land in context)."
     ),
 }
 
@@ -134,7 +133,7 @@ def render_report(run_json_path: str) -> str:
         lines.append("## Where we're losing")
         lines.append("")
         for bucket in ("ENCODE_MISS", "RECALL_MISS", "SURFACE_MISS",
-                       "PARTIAL_RECALL", "ANSWER_MISS", "UNCLASSIFIED"):
+                       "ANSWER_MISS", "PARTIAL_RECALL", "UNCLASSIFIED"):
             items = failures.get(bucket, [])
             if not items:
                 continue
