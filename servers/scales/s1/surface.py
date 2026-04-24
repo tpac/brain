@@ -86,18 +86,60 @@ def _call_surface(brain, candidates_data, user_message, session_context,
         messages=[{"role": "user", "content": surface_prompt}])
     raw = api_resp.content[0].text.strip()
 
-    # Parse JSON
-    json_str = raw
-    if json_str.startswith("```"):
-        json_str = json_str.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-    start = json_str.find("{")
-    end = json_str.rfind("}") + 1
-    if start >= 0 and end > start:
-        surfaced = json.loads(json_str[start:end])
-    else:
-        surfaced = {"selected": []}
+    # Parse JSON — robust to the three shapes Haiku sometimes returns:
+    #   (a) bare JSON: {"selected": [...]}
+    #   (b) fenced: ```json\n{...}\n```
+    #   (c) JSON + trailing prose: {...}\n\nHere's why I picked...
+    # `raw_decode` consumes the first valid JSON object and reports the
+    # tail, which we discard — no "Extra data" crash on (c).
+    surfaced = _parse_surfacer_json(raw) or {"selected": []}
 
     return surfaced, surface_prompt, max_tokens, interaction_id
+
+
+def _parse_surfacer_json(raw):
+    """Extract the {"selected": [...]} object from Haiku's response.
+
+    Returns the parsed dict, or None if no valid JSON object is found.
+    Strips ```-fenced blocks first, then uses raw_decode so trailing prose
+    after a valid JSON object doesn't trigger "Extra data" errors.
+    """
+    if not raw:
+        return None
+
+    text = raw.strip()
+
+    # Strip ```…``` fences if present (any language tag)
+    if text.startswith("```"):
+        # After the first newline, up to the last ``` fence
+        text = text.split("\n", 1)[-1] if "\n" in text else text
+        text = text.rsplit("```", 1)[0].strip()
+
+    decoder = json.JSONDecoder()
+
+    # First: try decoding from the first '{' we see. raw_decode parses
+    # the first valid object and returns how far it got — any trailing
+    # text is ignored. This is the common case when Haiku adds prose.
+    start = text.find("{")
+    if start < 0:
+        return None
+    try:
+        obj, _end = decoder.raw_decode(text[start:])
+        return obj if isinstance(obj, dict) else None
+    except json.JSONDecodeError:
+        pass
+
+    # Fallback: bracket-slice (handles malformed JSON inside but a clean
+    # outer pair of braces). Preserves the prior behavior for edge cases
+    # the raw_decode path doesn't cover.
+    end = text.rfind("}") + 1
+    if end > start:
+        try:
+            obj = json.loads(text[start:end])
+            return obj if isinstance(obj, dict) else None
+        except json.JSONDecodeError:
+            return None
+    return None
 
 
 def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):

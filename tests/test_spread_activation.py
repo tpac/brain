@@ -413,5 +413,68 @@ class TestActivationRenderingOnR3(unittest.TestCase):
             f'rendered output {len(rendered)} ballooned beyond 2x budget {budget}')
 
 
+
+class TestSurfacerJsonParser(unittest.TestCase):
+    """Part-K hardening: Haiku's response occasionally has trailing prose
+    after the JSON object. raw_decode consumes the first valid object
+    and ignores the tail — no more 'Extra data' JSONDecodeError crashes
+    that produce empty additionalContext."""
+
+    def test_bare_json(self):
+        from servers.scales.s1.surface import _parse_surfacer_json
+        result = _parse_surfacer_json('{"selected":[{"id":"abc","why":"x"}]}')
+        self.assertEqual(result, {"selected": [{"id": "abc", "why": "x"}]})
+
+    def test_fenced_json(self):
+        from servers.scales.s1.surface import _parse_surfacer_json
+        result = _parse_surfacer_json('```json\n{"selected":[]}\n```')
+        self.assertEqual(result, {"selected": []})
+
+    def test_json_plus_trailing_prose(self):
+        """The exact failure mode that broke fishing test — valid JSON
+        followed by an explanation paragraph. Must parse cleanly."""
+        from servers.scales.s1.surface import _parse_surfacer_json
+        raw = ('{"selected":[{"id":"abc","why":"b"}]}\n\n'
+               'Here is why I picked these memories: ...')
+        result = _parse_surfacer_json(raw)
+        self.assertEqual(result, {"selected": [{"id": "abc", "why": "b"}]})
+
+    def test_fenced_plus_trailing_prose(self):
+        from servers.scales.s1.surface import _parse_surfacer_json
+        result = _parse_surfacer_json(
+            '```\n{"selected":[]}\n```\nLet me explain...')
+        self.assertEqual(result, {"selected": []})
+
+    def test_multiline_json_plus_prose(self):
+        """The actual Haiku response shape that caused the 'Extra data'
+        error at char 627 — formatted multi-line JSON + explanation."""
+        from servers.scales.s1.surface import _parse_surfacer_json
+        raw = ('{"selected": [\n'
+               '  {"id": "abc12345", "why": "reason one"},\n'
+               '  {"id": "def67890", "why": "reason two"}\n'
+               ']}\n\n'
+               'The above shows my selections based on the query.')
+        result = _parse_surfacer_json(raw)
+        self.assertEqual(result, {"selected": [
+            {"id": "abc12345", "why": "reason one"},
+            {"id": "def67890", "why": "reason two"},
+        ]})
+
+    def test_no_json_returns_none(self):
+        from servers.scales.s1.surface import _parse_surfacer_json
+        self.assertIsNone(_parse_surfacer_json('I cannot find anything relevant.'))
+
+    def test_empty_string_returns_none(self):
+        from servers.scales.s1.surface import _parse_surfacer_json
+        self.assertIsNone(_parse_surfacer_json(''))
+
+    def test_non_dict_toplevel_returns_none(self):
+        """If Haiku returns an array or scalar, we reject — contract
+        requires a dict with 'selected' key."""
+        from servers.scales.s1.surface import _parse_surfacer_json
+        self.assertIsNone(_parse_surfacer_json('[1,2,3]'))
+
+
+
 if __name__ == '__main__':
     unittest.main()
