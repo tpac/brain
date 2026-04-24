@@ -34,6 +34,21 @@ SEED_PROMPTS = [
     ('s2_healer',
      'servers/scales/s2/healer_prompt.py',
      'SYSTEM_PROMPT'),
+    # S1 Scout prompts. Temporal is algo-first; its template is a Haiku
+    # fallback reserved for future use but kept in sync so the DB entry
+    # stays coherent if the fallback path is wired later.
+    ('s1_scout_quote',
+     'servers/scales/s1/scouts/prompts/quote_prompt.py',
+     'SYSTEM_PROMPT'),
+    ('s1_scout_temporal',
+     'servers/scales/s1/scouts/prompts/temporal_prompt.py',
+     'SYSTEM_PROMPT'),
+    ('s1_scout_facts',
+     'servers/scales/s1/scouts/prompts/facts_prompt.py',
+     'SYSTEM_PROMPT'),
+    ('s1_scout_synthesis',
+     'servers/scales/s1/scouts/prompts/synthesis_prompt.py',
+     'SYSTEM_PROMPT'),
 ]
 
 

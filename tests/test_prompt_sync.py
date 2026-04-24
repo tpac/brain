@@ -25,13 +25,21 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-# The four seed files under contract. Keep in sync with
+# The seed files under contract. Keep in sync with
 # servers/tools/sync_prompts.SEED_PROMPTS.
+#
+# Scout prompts (temporal is algo-first; its template is a shorter
+# Haiku-fallback block) have a lower min-length threshold than the
+# full encoder-agent prompts.
 SEED_FILES = [
     ('s1e', 'servers.scales.s1.encoding_prompt'),
     ('s2_community_enrichment', 'servers.scales.s2.community_enrichment_prompt'),
     ('s2_consolidation_enrichment', 'servers.scales.s2.consolidation_enrichment_prompt'),
     ('s2_healer', 'servers.scales.s2.healer_prompt'),
+    ('s1_scout_quote', 'servers.scales.s1.scouts.prompts.quote_prompt'),
+    ('s1_scout_temporal', 'servers.scales.s1.scouts.prompts.temporal_prompt'),
+    ('s1_scout_facts', 'servers.scales.s1.scouts.prompts.facts_prompt'),
+    ('s1_scout_synthesis', 'servers.scales.s1.scouts.prompts.synthesis_prompt'),
 ]
 
 

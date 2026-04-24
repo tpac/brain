@@ -84,7 +84,7 @@ SURFACE_CONFIG_V1 = {
 
 S1E_CONFIG_V1 = {
     "message_content_limit": 2500, "message_display_limit": 2500,
-    "max_messages": 20, "recall_candidates_limit": 5, "max_rounds": 5,
+    "max_messages": 10, "recall_candidates_limit": 5, "max_rounds": 5,
     "journal_max_chars": 8000, "journal_entry_limit": 2000,
     "max_tokens": 4096, "session_context_limit": 800,
     "encoding_state_compat": 500, "node_edge_limit": 5,
@@ -101,6 +101,81 @@ S2_CONSOLIDATION_ENRICHMENT_CONFIG_V1 = {
 
 S2_HEALER_CONFIG_V1 = {
     "model": "claude-haiku-4-5", "max_tokens": 4096,
+}
+
+# ── S1 Scout configs ──────────────────────────────────────────────────
+# Each scout is its own interaction (s1_scout_<name>). The `template` field
+# carries the per-scout task prompt (seeded from prompts/<name>_prompt.py).
+# `parameters.category_statement` is the single-line teaching the scout
+# emits verbatim — S1S reads it every cycle to internalize the atom-kind
+# palette without being taught a taxonomy. Temporal is algo-first; its
+# template is a Haiku fallback reserved for v2.
+
+S1_SCOUT_QUOTE_CATEGORY = (
+    "Phrases echoed across turns or that ground multiple concepts should be "
+    "quote atoms — title = the phrase verbatim. Operator voice signatures "
+    "and load-bearing phrasings carry recall weight that paraphrases can't "
+    "replace."
+)
+
+S1_SCOUT_TEMPORAL_CATEGORY = (
+    "Dates mentioned in conversation — relative ('2 weeks ago') or absolute "
+    "('March 15') — should become time_anchor bridges so events fan in around "
+    "shared date pivots. Reuse existing time_anchor nodes from the catalog; "
+    "create new ones only when absent."
+)
+
+S1_SCOUT_FACTS_CATEGORY = (
+    "Entity-feature-value facts with evidence — the specific things future "
+    "queries will ask for. When an entity is mentioned with a concrete "
+    "attribute (quantity, count, name, preference, setting), that triple "
+    "deserves its own handle in the graph."
+)
+
+S1_SCOUT_SYNTHESIS_CATEGORY = (
+    "Cross-turn synthesis — what emerges from the arc that no single turn "
+    "contains. When the operator and assistant are building something across "
+    "turns — a proof, a design, a poem revision, a hypothesis — the emerging "
+    "shape deserves its own node. Name the emergence, cite the turns, let the "
+    "writer type-tag."
+)
+
+S1_SCOUT_QUOTE_CONFIG_V1 = {
+    "model": "claude-haiku-4-5",
+    "max_candidates": 3,
+    "max_tokens": 2000,
+    "timeout_seconds": 25,
+    "category_statement": S1_SCOUT_QUOTE_CATEGORY,
+}
+
+S1_SCOUT_TEMPORAL_CONFIG_V1 = {
+    # Algorithmic scout — no primary LLM call. model reserved for fallback.
+    "model": "claude-haiku-4-5",
+    "max_candidates": 8,
+    "max_tokens": 1500,
+    "timeout_seconds": 10,
+    "category_statement": S1_SCOUT_TEMPORAL_CATEGORY,
+    # dateparser post-filter switches
+    "prefer_dates_from": "past",
+    "weekday_requires_modifier": True,
+    "filter_time_only_phrases": True,
+}
+
+S1_SCOUT_FACTS_CONFIG_V1 = {
+    "model": "claude-haiku-4-5",
+    "max_candidates": 6,
+    "max_tokens": 3000,
+    "timeout_seconds": 25,
+    "category_statement": S1_SCOUT_FACTS_CATEGORY,
+}
+
+S1_SCOUT_SYNTHESIS_CONFIG_V1 = {
+    "model": "claude-sonnet-4-6",
+    "max_candidates": 2,
+    "max_tokens": 3500,
+    "timeout_seconds": 45,
+    "category_statement": S1_SCOUT_SYNTHESIS_CATEGORY,
+    "min_turn_evidence": 3,
 }
 
 VOICE_CONFIG_V1 = {
@@ -146,6 +221,10 @@ def seed_interactions(brain):
     from .scales.s2.community_enrichment_prompt import SYSTEM_PROMPT as S2_COMMUNITY_PROMPT
     from .scales.s2.consolidation_enrichment_prompt import SYSTEM_PROMPT as S2_CONSOLIDATION_PROMPT
     from .scales.s2.healer_prompt import SYSTEM_PROMPT as S2_HEALER_PROMPT
+    from .scales.s1.scouts.prompts.quote_prompt import SYSTEM_PROMPT as S1_SCOUT_QUOTE_PROMPT
+    from .scales.s1.scouts.prompts.temporal_prompt import SYSTEM_PROMPT as S1_SCOUT_TEMPORAL_PROMPT
+    from .scales.s1.scouts.prompts.facts_prompt import SYSTEM_PROMPT as S1_SCOUT_FACTS_PROMPT
+    from .scales.s1.scouts.prompts.synthesis_prompt import SYSTEM_PROMPT as S1_SCOUT_SYNTHESIS_PROMPT
 
     dal = brain._interaction_dal
     existing = {i['name'] for i in dal.list_all()}
@@ -168,6 +247,20 @@ def seed_interactions(brain):
               S2_CONSOLIDATION_ENRICHMENT_CONFIG_V1, 's2:consolidation')
     _register('s2_healer', S2_HEALER_PROMPT,
               S2_HEALER_CONFIG_V1, 's2:healer')
+
+    # S1 Scouts — each is its own interaction entry. The runtime reads
+    # interaction.template for the per-scout task prompt (LLM scouts only;
+    # temporal is algo) and interaction.parameters.category_statement for
+    # the single-line teaching S1S sees in every scout report. Learnable
+    # boundary — S3 will optimize each scout independently once built.
+    _register('s1_scout_quote',     S1_SCOUT_QUOTE_PROMPT,
+              S1_SCOUT_QUOTE_CONFIG_V1,     'anchor')
+    _register('s1_scout_temporal',  S1_SCOUT_TEMPORAL_PROMPT,
+              S1_SCOUT_TEMPORAL_CONFIG_V1,  'anchor')
+    _register('s1_scout_facts',     S1_SCOUT_FACTS_PROMPT,
+              S1_SCOUT_FACTS_CONFIG_V1,     'anchor')
+    _register('s1_scout_synthesis', S1_SCOUT_SYNTHESIS_PROMPT,
+              S1_SCOUT_SYNTHESIS_CONFIG_V1, 'anchor')
 
     # Short-template / config-only interactions (prompts inline).
     if 'surface' not in existing and 'judge' not in existing:

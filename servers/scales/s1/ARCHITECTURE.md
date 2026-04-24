@@ -245,3 +245,117 @@ targeted.
 - `servers/scales/s1/surface_contract.py` — surface config + helpers
 - `servers/scales/runner.py` — `run_llm_loop` (target for cache_control)
 - `eval/longmem/` — eval harness for validating architecture changes
+
+
+## Scout architecture roadmap (2026-04-23)
+
+### Phase 1 — Muster-and-Scouts (current)
+
+Replace the monolithic S1 Scribe detection work (6 concurrent detection
+patterns embedded in the encoder prompt) with four parallel scouts, each
+with a bounded dimension. The scribe stays the integrator and only writer;
+scouts inspire via category-statement + evidence candidates.
+
+Scouts:
+- `s1_scout_quote` — phrases worth atomizing as quote nodes (Haiku)
+- `s1_scout_temporal` — date anchors → time_anchor bridges (algorithmic)
+- `s1_scout_facts` — entity-feature-value tuples (Haiku)
+- `s1_scout_synthesis` — cross-turn patterns no single turn names (Sonnet)
+
+Shared input (user content, 5m cache, byte-identical across scouts):
+orientation + session context + current date + node catalog + surfaced
+nodes + conversation window.
+
+Per-scout task (system prompt, 1h cache, per-scout) comes from the
+interaction template. Each scout has its own interaction entry so S3 can
+evolve them independently.
+
+The muster runs all four scouts in parallel at the start of `run_encoding`,
+collects envelope outputs, formats a SCOUT_REPORTS block that feeds into
+S1Scribe's prompt. Orientation is unified via `servers/scales/s1/orientation.py`.
+
+Event relations (`before`/`after` between events) are NOT scouted in
+Phase 1. Temporal emits date anchors with event_description sentences;
+S1S's prompt gets guidance to spot relational markers ("just before",
+"right after") and, when the reference event is in its catalog, compose
+an edge between them. Without enrichment (Phase 2) the catalog often
+lacks the reference event, so relations fire rarely in Phase 1 — that's
+expected; Phase 2 unlocks them.
+
+### Phase 2 — Scribe enrichment path (CONDITIONAL, not committed)
+
+**This only happens if the scribe proves insufficient after P1.** Symmetry
+between what S1R surfaces and what S1Scribe sees is valuable by default —
+same catalog, same framing, one source of truth. Splitting the paths is
+additional complexity we only pay for if data forces it.
+
+The condition: after P1's baseline run, if ENCODE_MISS failures persist
+specifically because the scribe lacked context that SHOULD have been in
+the catalog (entities mentioned but not surfaced, referenced events not
+picked for Anchor's reply), then Phase 2 is warranted. Otherwise skip.
+
+If we do activate Phase 2, the shape below is the starting proposal —
+don't treat as decided architecture:
+
+Today the scribe's catalog is exactly what the surfacer selected for
+Anchor's replies across the N-turn window. The surfacer is tuned for
+response-context ("what helps the operator's reply be sharp"), which is
+narrower than what the scribe might need to place new nodes well.
+
+The second retrieval path, if added, would fire once per encoding cycle
+and be deliberately broader:
+
+- Higher top_k per turn (e.g. 15-20 vs surface's 5-8)
+- Per-turn recall seeded from proper-noun mentions (entity-aware)
+- Lower noise floor — loose matches OK; scribe uses them as anchor
+  candidates, not as Anchor's context
+- Different fatigue policy — scribe WANTS to see repeated nodes to
+  notice repetition
+- Merged with the surface-selected catalog → scribe gets a richer
+  neighborhood
+
+If activated, this is also what would make event-relation encoding
+tractable. A turn saying "just before my trip to Portland" needs the
+prior "trip to Portland" node in the scribe's catalog to compose a
+`before` edge. Surface alone may not pick it up (peripheral to the
+reply); enrichment would.
+
+Expected lift if activated: multi_session and temporal axes on the
+longmem benchmark — these would benefit most from event+reference-event
+connectivity.
+
+**Decision rule:** wait for P1 baseline. If multi_session lift is
+materially lower than info_extraction and knowledge_update lifts, AND
+failure analysis points to scribe-side catalog gaps, consider P2.
+Otherwise: keep the symmetry, the simplicity wins.
+
+### Phase 3 — Tune (after P1 baseline, regardless of P2 status)
+
+After P1 baseline we read the data and iterate. Independent of whether
+P2 is activated:
+
+- Entity extraction quality — is proper-noun regex enough, or do we
+  need Haiku-extracted entity lists?
+- Scribe-specific scoring — different z-weights, different fatigue?
+- Catalog size caps — when does richer hurt vs help?
+- Temporal scout Haiku fallback — wire for phrases dateparser can't
+  resolve (liturgical dates, seasons with context-dependent meaning)
+- Temporal scout relation-marker detection — optionally emit
+  `has_relational_marker: true` when "just before / right after /
+  during" appears near a date phrase, so S1S knows this turn is a
+  candidate for a cross-event edge. Still algo; still not a scout
+  output kind.
+
+### What we deliberately rejected
+
+- **Option B (temporal scout owns event-relations with Haiku fallback).**
+  Adds multi-kind candidates to one scout, brings LLM flakiness into
+  the deterministic-by-design temporal path, and the reasoning needed
+  to parse "before X" into a node-to-node edge is exactly what S1S
+  does naturally given both endpoints. See 2026-04-23 scout design
+  discussion.
+- **Storing explicit `before`/`after` edges for every relational
+  marker.** Most temporal queries fall out of ANCHOR structure: two
+  events each with a date → subtract at query time. Only rare explicit
+  chaining ("it happened just before X") benefits from an edge, and
+  Phase 2 + S1S prompt guidance handles those without a dedicated scout.
