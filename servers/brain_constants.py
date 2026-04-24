@@ -440,5 +440,5 @@ K: [5 comma-separated keywords borrowed from neighbors that also describe this n
 # a no-op fire."
 MAINTENANCE_IDLE_THRESHOLD_SECONDS = 3 * 60   # 3 min idle → more chances
                                               # to fire during active work
-MAINTENANCE_MIN_INTERVAL_SECONDS = 30 * 60    # 30 min between runs
-                                              # (steady state caps ~48/day)
+MAINTENANCE_MIN_INTERVAL_SECONDS = 15 * 60    # 15 min between runs
+                                              # (steady state caps ~96/day)

@@ -22,6 +22,7 @@ revising its interaction entry.
 
 import json
 import os
+import time
 from datetime import date, datetime, timezone, timedelta
 
 
@@ -35,6 +36,74 @@ ANTHROPIC_CLIENT_TIMEOUT = 600.0  # 10 minutes. Community encoder round 2 on
                                   # lying about what's possible and producing
                                   # a consistent "batch 1/N FAILED: read
                                   # timeout" cascade every run.
+
+
+# Per-batch retry policy for transient API errors. The SDK's built-in
+# max_retries handles pre-stream failures (connect refused, 5xx before
+# body, rate-limit). It can't retry once a stream has started and stalls
+# mid-body (httpx ReadTimeout) — that's what this wrapper covers.
+#
+# attempts=2 means one retry. First failure => 8s backoff then retry.
+# Second failure => give up, batch fails, work moves on. This caps the
+# wall-clock cost of a stuck batch at ~2*timeout + backoff and recovers
+# the happy-path on transient blips.
+RETRY_ATTEMPTS = 2
+RETRY_BACKOFF_BASE_S = 8.0
+
+
+def retry_on_transient_api_error(fn, *, attempts=RETRY_ATTEMPTS,
+                                 base_backoff_s=RETRY_BACKOFF_BASE_S,
+                                 log_fn=None):
+    """Call fn() with retry on transient Anthropic SDK exceptions.
+
+    Retries on: APITimeoutError, APIConnectionError, InternalServerError
+    (5xx from Anthropic). Also catches httpx TimeoutException as a safety
+    net in case a raw httpx error leaks through streaming.
+
+    Does NOT retry on: BadRequestError, AuthenticationError, PermissionDenied,
+    NotFoundError, UnprocessableEntityError, RateLimitError. Those either
+    indicate a client bug (retry won't help) or are already handled by the
+    SDK's built-in max_retries (rate limit respects Retry-After header).
+
+    Args:
+        fn: zero-arg callable that makes the API call
+        attempts: total attempts including the first call; 2 = one retry
+        base_backoff_s: seconds to wait before first retry; doubles each attempt
+        log_fn: optional logger invoked on retry with a one-line message
+
+    Returns: whatever fn() returns
+
+    Raises: the last exception if all attempts fail (transient), or the
+        original exception immediately if non-transient
+    """
+    import anthropic
+    try:
+        import httpx
+        httpx_timeout = (httpx.TimeoutException,)
+    except Exception:
+        httpx_timeout = ()
+
+    transient = (
+        anthropic.APITimeoutError,
+        anthropic.APIConnectionError,
+        anthropic.InternalServerError,
+    ) + httpx_timeout
+
+    last_err = None
+    for i in range(attempts):
+        try:
+            return fn()
+        except transient as e:
+            last_err = e
+            if i < attempts - 1:
+                sleep_s = base_backoff_s * (2 ** i)
+                if log_fn:
+                    log_fn('transient API error (%s): %s — retrying in %.0fs '
+                           '(attempt %d/%d)' % (
+                               type(e).__name__, e, sleep_s, i + 2, attempts))
+                time.sleep(sleep_s)
+    # Exhausted retries — re-raise the last error so callers can log + skip
+    raise last_err
 
 
 class IntegrationUnit:

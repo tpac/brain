@@ -182,15 +182,18 @@ class ConsolidationEncoder(IntegrationUnit):
                 pass
 
             try:
-                result = run_llm_loop(
-                    client=client,
-                    model=model,
-                    max_tokens=max_tokens,
-                    max_rounds=self.config.get('max_rounds', 4),
-                    system_prompt=system_prompt,
-                    user_content=user_content,
-                    tools=tools,
-                    dispatch_fn=dispatch_fn,
+                from .base import retry_on_transient_api_error
+                result = retry_on_transient_api_error(
+                    lambda: run_llm_loop(
+                        client=client,
+                        model=model,
+                        max_tokens=max_tokens,
+                        max_rounds=self.config.get('max_rounds', 4),
+                        system_prompt=system_prompt,
+                        user_content=user_content,
+                        tools=tools,
+                        dispatch_fn=dispatch_fn,
+                        log_fn=lambda msg: print('[s2-consolidation] %s' % msg, flush=True)),
                     log_fn=lambda msg: print('[s2-consolidation] %s' % msg, flush=True))
 
                 total_result['rounds'] += result.get('rounds', 0)
