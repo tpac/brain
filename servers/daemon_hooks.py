@@ -229,7 +229,7 @@ def hook_recall(brain, args, graph_changes):
                 node_data['connections'] = select_edges(
                     node_data['connections'], _query_vec,
                     session=ctx, limit=10,  # keep 10, render truncates to 3
-                    prior_vecs=_prior_vecs, brain_conn=brain.conn)
+                    prior_vecs=_prior_vecs, brain_conn=brain.conn, brain=brain)
             # Attach recall-specific fields (not in DB — from scoring pipeline)
             node_data["score"] = r.get("effective_activation", 0)
             node_data["discovery"] = r.get("_discovery", "embedding")
@@ -312,7 +312,8 @@ def hook_recall(brain, args, graph_changes):
             recent_messages=recent_messages if 'recent_messages' in dir() else [],
             result=result, enriched=enriched, results=results,
             recall_ref=recall_ref, session_id=session_id,
-            graph_changes=graph_changes)
+            graph_changes=graph_changes,
+            query_vec=_query_vec, prior_vecs=_prior_vecs)
     except Exception as _surface_err:
         brain._log_error('daemon_surface', _surface_err,
                          'S1 Surface failed in daemon (query=%s)' % user_message[:100])

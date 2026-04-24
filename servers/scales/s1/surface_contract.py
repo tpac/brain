@@ -550,79 +550,444 @@ HAIKU_FORMAT = {'content_limit': 300, 'edge_limit': 3, 'metadata_limit': 120, 't
 
 
 # ═══════════════════════════════════════════════════════════════
-# EDGE SELECTION — query-aware scoring for S1 surface
+# SPREAD_ACTIVATION — the kernel that decides what surfaces
 #
-# Strategy D: 70% node embedding + 30% description embedding.
-# Weight as tiebreaker only (currently static ~0.60 for most edges).
-# Session fatigue rotates edges across repeated queries.
-# 3-message query blending for multi-turn context.
+# One mechanism, three granularities:
+#   • Nodes receive activation  (max over per-field cosines with query)
+#   • Edges transmit activation (cosine of query to enriched edge text)
+#   • Fields within a node hold per-field activation (for render budget)
 #
-# FUTURE: When S2 makes weight dynamic, restore weight's role
-# in the score formula (not just tiebreaker).
-# FUTURE: When description coverage exceeds 80%, switch to
-# strategy F (description-first) — see eval/EDGE_SELECTION_EVAL_SPEC.md.
-# FUTURE: When encoder uses real edge types (not 'related'),
-# edge_type becomes a scoring signal.
+# Depth is emergent — high-coefficient edges keep propagating, low-
+# coefficient edges stop on the first hop. Saturation (tanh) bounds
+# accumulation. The per-hop transmission gate is self-calibrating:
+# when no edges in the batch exceed the brain's noise floor, propagation
+# halts — the brain is allowed to be quiet.
+#
+# No static blend weights. No multiplicative family boost (family meaning
+# rides inside the enriched edge text). No count-based fatigue. The
+# activation map IS the ranking, the tiebreaker, and the render-budget
+# allocator, all in one.
 # ═══════════════════════════════════════════════════════════════
 
-# Fatigue constants (session-scoped edge rotation)
-K_EDGE_FATIGUE = 0.25   # Gentler than node fatigue — rotation, not suppression
-# Node fatigue K: 10.0 base, 10.0 scale — hardcoded in brain_recall.py:684
-# TODO: Extract node fatigue K here too.
+import numpy as np
 
-# Relevance blend weights
-EDGE_NODE_WEIGHT = 0.7    # Stored node embedding (title+content)
-EDGE_DESC_WEIGHT = 0.3    # Edge description embedding (when available)
+# Safety cap — if activation hasn't settled by 3 hops, force stop.
+# Real termination comes from the transmission gate + saturation, not this.
+_SPREAD_MAX_STEPS = 3
 
-# Weight role (tiebreaker until S2 makes weight dynamic)
-WEIGHT_TIEBREAKER = 0.01
+# Outer propagation gate: if the max transmission coefficient in the batch
+# falls below the brain's noise floor, nothing meaningful to spread —
+# halt rather than forcing below-noise edges through. Imported from
+# brain_constants to stay in sync with recall()'s own noise definition.
+from servers.brain_constants import NOISE_FLOOR_THRESHOLD as _SPREAD_NOISE_FLOOR
 
-# Multi-turn query blending
-TURN_WEIGHTS = [0.6, 0.3, 0.1]  # current, previous, two_back
+
+def _batch_load_field_vectors(brain_conn, node_ids):
+    """One SQL round-trip: all field-cohort + legacy vectors for given nodes.
+
+    Returns: {full_node_id: {vector_type: numpy.ndarray}}
+    Short-prefix matching handled by caller if needed; here we read full IDs.
+    """
+    if not brain_conn or not node_ids:
+        return {}
+    ids = list(node_ids)
+    placeholders = ','.join('?' * len(ids))
+    rows = brain_conn.execute(
+        "SELECT node_id, vector_type, embedding FROM node_enrichments "
+        "WHERE node_id IN (%s) AND embedding IS NOT NULL" % placeholders,
+        ids).fetchall()
+    out = {}
+    for nid, vtype, blob in rows:
+        vec = np.frombuffer(blob, dtype=np.float32)
+        out.setdefault(nid, {})[vtype] = vec
+    return out
+
+
+def _field_cosines_for_node(query_vec, node_vectors, norm_q=None):
+    """Cosines against query, per semantic field.
+
+    `node_vectors` = {vector_type: vec} from _batch_load_field_vectors.
+    For each field type in the field-cohort stable order, try the per-field
+    vector first; fall back to the blended legacy vector via
+    FIELD_VECTOR_FALLBACK. Missing field → not in the result (no cosine
+    fabricated).
+
+    Returns: {field_name: cosine} — order matches field_vector_types().
+    """
+    from servers.pipeline_contract import field_vector_types, FIELD_VECTOR_FALLBACK
+    out = {}
+    for field_type in field_vector_types():
+        # Field-cohort vector available?
+        vec = node_vectors.get(field_type)
+        # Fall back through legacy chain
+        if vec is None:
+            for fb in FIELD_VECTOR_FALLBACK.get(field_type, []):
+                vec = node_vectors.get(fb)
+                if vec is not None:
+                    break
+        if vec is None:
+            continue
+        out[field_type] = _cosine_nonneg(query_vec, vec, norm_a=norm_q)
+    return out
+
+
+def _build_edge_coeffs(brain, brain_conn, activated_nodes, query_vec,
+                      rel_to_family, meaning_by_family, cached_edge_coeffs):
+    """Collect outgoing edges from all currently activated nodes; compute
+    their transmission coefficients.
+
+    Returns list of (source_id, target_id, coeff, edge_dict).
+    Uses cached_edge_coeffs as an in-kernel memo so repeat edges in later
+    hops don't re-embed.
+    """
+    from servers.dal import GraphDAL
+    from servers.pipeline_contract import TRAVERSE_EXCLUDED_EDGES
+
+    gdal = GraphDAL(brain_conn)
+    excluded = set(TRAVERSE_EXCLUDED_EDGES)
+
+    # Gather ALL edges from activated sources in one pass
+    edges_out = []
+    enriched_to_embed = []  # texts needing embedding
+    enriched_keys = []      # parallel: (source, target, edge, enriched_text)
+
+    for source_id in activated_nodes:
+        rows = gdal.get_neighbors(
+            source_id, limit=50,
+            exclude_relations=excluded,
+            content_preview_chars=0,
+        )
+        for r in rows:
+            target_id = r.get('id', '')
+            # Compose edge's semantic identity text
+            enriched = _compose_enriched_edge_text(
+                {'title': r.get('title', ''),
+                 'relation': r.get('relation', ''),
+                 'description': r.get('edge_description') or ''},
+                rel_to_family, meaning_by_family)
+            cache_key = enriched
+
+            cached = cached_edge_coeffs.get(cache_key)
+            if cached is not None:
+                edges_out.append((source_id, target_id, cached, r))
+            else:
+                # Queue for batch embedding
+                enriched_to_embed.append(enriched)
+                enriched_keys.append((source_id, target_id, r, enriched))
+
+    # Batch-embed queued enriched texts (hits _desc_vecs_batched cache)
+    if enriched_to_embed:
+        blobs = _desc_vecs_batched(enriched_to_embed)
+        norm_q = float(np.linalg.norm(query_vec))
+        for (src, tgt, edge, text), blob in zip(enriched_keys, blobs):
+            if blob is None:
+                coeff = 0.0
+            else:
+                vec = np.frombuffer(blob, dtype=np.float32)
+                coeff = _cosine_nonneg(query_vec, vec, norm_a=norm_q)
+            cached_edge_coeffs[text] = coeff
+            edges_out.append((src, tgt, coeff, edge))
+
+    return edges_out
+
+
+def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
+    """Spreading activation from seed nodes through the graph.
+
+    One mechanism does what select_edges + _graph_expand + compute_shared_context
+    + fatigue were doing separately:
+      • Activation originates at each seed from its max field-cosine with query
+      • It flows through edges, weighted by the edge's own enriched-text cosine
+      • Nodes receiving activation from multiple paths accumulate (tanh-saturated)
+      • Depth is emergent — a strong-matching edge propagates far, a weak one
+        stops on hop 1. Mutual traversal is automatic: two seeds whose paths
+        meet at a neighbor boost that neighbor above singleton reach.
+
+    Args:
+        seed_ids: List of full node IDs to start activated (typically the set
+            Haiku selected from the 25 candidates).
+        query_vec: numpy array (768d) — current query embedding.
+        brain: Brain instance — needed for interaction_config (family map)
+            and conn access.
+        prior_vecs: Optional list of prior-turn query embeddings for
+            multi-turn blending (dampens one-word query ambiguity).
+
+    Returns:
+        dict with:
+          'node_activation':  {node_id: float in [0,1]}
+          'field_activation': {node_id: {field_name: float in [0,1]}}
+          'trace': list of per-step {step, new_nodes, edges_considered,
+                                     edges_transmitted, max_act}
+    """
+    if not seed_ids or query_vec is None:
+        return {'node_activation': {}, 'field_activation': {}, 'trace': []}
+
+    # ── Multi-turn query blend (existing pattern, kept) ──
+    if prior_vecs:
+        ws = TURN_WEIGHTS[:len([query_vec] + prior_vecs)]
+        total = sum(ws)
+        ws = [w / total for w in ws]
+        blended = sum(w * v for w, v in zip(ws, [query_vec] + prior_vecs))
+        nm = np.linalg.norm(blended)
+        if nm > 0:
+            blended = blended / nm
+    else:
+        blended = query_vec
+    norm_q = float(np.linalg.norm(blended))
+
+    # ── Load family map (family meaning composes into edge enriched text) ──
+    rel_to_family = {}
+    meaning_by_family = {}
+    try:
+        from servers.scales.s2.edge_families import iter_families
+        config = brain.get_interaction_config('s2_edge_families') or {}
+        for fam, members, meaning in iter_families(config):
+            if meaning:
+                meaning_by_family[fam] = meaning
+            for m in members:
+                rel_to_family[m] = fam
+    except Exception:
+        pass  # family data is optional
+
+    # ── Step 0: seeds' own activations (per-field cosines vs query) ──
+    all_touched_ids = list(seed_ids)
+    node_vectors = _batch_load_field_vectors(brain.conn, all_touched_ids)
+    node_activation = {}
+    field_activation = {}
+
+    for nid in seed_ids:
+        vecs = node_vectors.get(nid, {})
+        field_cos = _field_cosines_for_node(blended, vecs, norm_q=norm_q)
+        field_activation[nid] = field_cos
+        # MAX over signals, per TRIZ — best discriminating field wins
+        node_activation[nid] = max(field_cos.values()) if field_cos else 0.0
+
+    # ── Spread loop ──
+    trace_steps = []
+    cached_edge_coeffs = {}  # memo across hops: enriched_text → coeff
+
+    for step in range(_SPREAD_MAX_STEPS):
+        # Source nodes at this hop: whichever are currently activated above zero
+        active_sources = [n for n, a in node_activation.items() if a > 0]
+        if not active_sources:
+            break
+
+        edges = _build_edge_coeffs(
+            brain, brain.conn, active_sources, blended,
+            rel_to_family, meaning_by_family, cached_edge_coeffs)
+
+        if not edges:
+            break
+
+        # Outer gate: any meaningfully-matching edges at all?
+        max_coeff = max(e[2] for e in edges)
+        if max_coeff < _SPREAD_NOISE_FLOOR:
+            trace_steps.append({'step': step, 'new_nodes': 0,
+                               'edges_considered': len(edges),
+                               'edges_transmitted': 0,
+                               'max_act': max(node_activation.values())
+                                   if node_activation else 0.0,
+                               'halted': 'below_noise_floor'})
+            break
+
+        # Per-hop self-calibrating threshold: median of positive coeffs.
+        # Ensures only better-than-typical edges in THIS batch transmit.
+        threshold = float(np.percentile([e[2] for e in edges], 50))
+
+        # Accumulate contributions for each target
+        contributions = {}
+        transmitted_count = 0
+        for src, tgt, coeff, _edge in edges:
+            if coeff < threshold:
+                continue
+            transmitted_count += 1
+            source_act = node_activation.get(src, 0)
+            # Target hasn't been computed yet? Skip source-act lookup failures.
+            transferred = source_act * coeff
+            contributions[tgt] = contributions.get(tgt, 0.0) + transferred
+
+        if not contributions:
+            trace_steps.append({'step': step, 'new_nodes': 0,
+                               'edges_considered': len(edges),
+                               'edges_transmitted': 0,
+                               'max_act': max(node_activation.values()),
+                               'halted': 'all_below_threshold'})
+            break
+
+        # Load field vectors for any newly-touched targets (one round-trip)
+        new_target_ids = [t for t in contributions.keys() if t not in node_activation]
+        if new_target_ids:
+            fresh_vecs = _batch_load_field_vectors(brain.conn, new_target_ids)
+            node_vectors.update(fresh_vecs)
+            all_touched_ids.extend(new_target_ids)
+
+        # Apply saturation — tanh blends old activation + incoming contribution.
+        # Also seed target's own field-cosines (against query) so rendering has
+        # field-level signal for newly-activated targets.
+        pre_activation = dict(node_activation)
+        new_nodes_added = 0
+        for target, incoming in contributions.items():
+            prior = node_activation.get(target, 0.0)
+            saturated = float(np.tanh(prior + incoming))
+            node_activation[target] = saturated
+            if target not in field_activation:
+                new_nodes_added += 1
+                vecs = node_vectors.get(target, {})
+                field_activation[target] = _field_cosines_for_node(
+                    blended, vecs, norm_q=norm_q)
+
+        trace_steps.append({'step': step, 'new_nodes': new_nodes_added,
+                           'edges_considered': len(edges),
+                           'edges_transmitted': transmitted_count,
+                           'max_act': max(node_activation.values()),
+                           'threshold': threshold})
+
+        # No-change check: if nothing moved meaningfully, stop early
+        delta = max((node_activation[n] - pre_activation.get(n, 0.0)
+                    for n in node_activation), default=0.0)
+        if delta < 0.01:
+            break
+
+    return {
+        'node_activation': node_activation,
+        'field_activation': field_activation,
+        'trace': trace_steps,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# EDGE SELECTION — per-node edge ranking for DISPLAY
+#
+# Used when a single activated node is being rendered and we need to pick
+# which of its edges to show (typically 3). Scoring is the same MAX formula
+# as the spreading-activation kernel uses for transmission — one rule at
+# two granularities (node-level and edge-level).
+#
+#   edge_score = max(
+#       cos(query, target_node_embedding),
+#       cos(query, enriched_edge_text)
+#   )
+#
+# No blend weights. No family_boost term (family meaning is inlined into
+# the enriched text, so it rides inside the second signal). No fatigue
+# discount (novelty is handled at the activation-set level, not per edge).
+# No weight tiebreaker (edge weights are static ~0.6 across the graph
+# today — they're not signal yet).
+#
+# Multi-turn query blending is still applied: when a prior turn's query
+# vector is available, the effective query is a weighted average that
+# smooths single-word follow-ups.
+# ═══════════════════════════════════════════════════════════════
+
+# Multi-turn query blending (current turn, previous, two-back)
+TURN_WEIGHTS = [0.6, 0.3, 0.1]
+
+
+def _compose_enriched_edge_text(conn, rel_to_family, meaning_by_family):
+    """Compose the text embedded as the edge's semantic identity.
+
+    Pattern: "<target_title> [<relation>] <description>. family: <meaning>"
+    Parts that are missing are dropped silently — an edge with bare title
+    and no description still gets an embedding based on title + relation.
+    """
+    title = (conn.get('title') or conn.get('target_title') or '').strip()
+    rel = (conn.get('relation') or '').strip()
+    desc = (conn.get('description') or '').strip()
+    family = rel_to_family.get(rel, '') if rel_to_family else ''
+    meaning = meaning_by_family.get(family, '') if (family and meaning_by_family) else ''
+
+    parts = []
+    if title:
+        parts.append(title)
+    if rel:
+        parts.append('[%s]' % rel)
+    if desc:
+        parts.append(desc)
+    if meaning:
+        parts.append('family: ' + meaning)
+    return ' '.join(parts)
+
+
+def _cosine_nonneg(a, b, norm_a=None):
+    """Non-negative cosine. Computes norm_b on the fly; caller may pre-pass
+    norm_a since it's invariant across edges in a single select_edges call."""
+    import numpy as np
+    if a is None or b is None or len(a) != len(b):
+        return 0.0
+    if norm_a is None:
+        norm_a = float(np.linalg.norm(a))
+    norm_b = float(np.linalg.norm(b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return max(0.0, float(np.dot(a, b)) / (norm_a * norm_b))
 
 
 def select_edges(connections, query_vec, session=None, limit=3, prior_vecs=None,
-                 brain_conn=None):
-    """Select the best edges for a query from a node's full connection list.
+                 brain_conn=None, brain=None):
+    """Pick the top-N edges of a single node for display rendering.
 
-    This is S1's edge intelligence. It scores each edge by:
-      relevance × fatigue_discount + weight × tiebreaker
+    Used inside the activation renderer when laying out an activated node —
+    we have space for ~3 edges under the node header, and this function
+    picks the 3 that best fit the query.
 
-    Where relevance = 0.7 × cosine(query, stored_node_embedding)
-                    + 0.3 × cosine(query, embed(description))  [when desc exists]
+    Scoring: max(cos(query, target_node_embedding), cos(query, enriched_edge_text)).
+    Family meaning is composed into the enriched text via _compose_enriched_edge_text,
+    so it contributes automatically to the second term without a separate signal.
 
     Args:
-        connections: list of edge dicts from get_rich_node().connections
-        query_vec: numpy array (768d) — current query embedding
-        session: SessionContext — for edge fatigue tracking (optional)
-        limit: max edges to return
-        prior_vecs: list of previous query embeddings for multi-turn blend (optional)
-        brain_conn: sqlite3 connection — for loading stored embeddings
+        connections: list of edge dicts (from get_rich_node().connections OR
+            from GraphDAL.get_neighbors()). Required keys: id, relation;
+            useful keys: title/target_title, description.
+        query_vec: numpy array (768d) — current query embedding.
+        session: kept for signature compat; no longer used (fatigue dissolved).
+        limit: max edges to return.
+        prior_vecs: prior-turn query embeddings for multi-turn blending.
+        brain_conn: sqlite3 connection — used to load stored target node
+            embeddings. Without it, node_rel falls back to 0 and scoring
+            leans on enriched_edge only.
+        brain: Brain instance — used to load `s2_edge_families` config so
+            family meaning can be composed into enriched edge text.
 
     Returns:
-        list of edge dicts (top N by score), same shape as input
+        list of edge dicts (top N by score), same shape as input.
+        On empty input or missing query_vec, returns the input unchanged
+        (truncated to limit) — no graceful reordering.
     """
     import numpy as np
 
     if not connections or query_vec is None:
-        # No query context — fall back to weight order
-        return sorted(connections, key=lambda c: c.get('weight', 0), reverse=True)[:limit]
+        return connections[:limit]
 
-    # Multi-turn blend
+    # Multi-turn blend — fold prior queries into effective query vector
     if prior_vecs:
-        weights = TURN_WEIGHTS[:len([query_vec] + prior_vecs)]
-        total = sum(weights)
-        weights = [w / total for w in weights]
-        blended = sum(w * v for w, v in zip(weights, [query_vec] + prior_vecs))
-        norm = np.linalg.norm(blended)
-        if norm > 0:
-            blended = blended / norm
+        ws = TURN_WEIGHTS[:len([query_vec] + prior_vecs)]
+        total = sum(ws)
+        ws = [w / total for w in ws]
+        blended = sum(w * v for w, v in zip(ws, [query_vec] + prior_vecs))
+        nm = np.linalg.norm(blended)
+        if nm > 0:
+            blended = blended / nm
     else:
         blended = query_vec
+    norm_q = float(np.linalg.norm(blended))
 
-    # Batch-load all stored target embeddings in one SQL round-trip (v23:
-    # from node_enrichments). Short-prefix match kept for backward compat
-    # with 8-char connection IDs. Falls back silently if brain_conn missing.
+    # Load family context — family meaning is composed INTO the enriched text,
+    # not applied as a separate multiplicative signal.
+    rel_to_family = {}
+    meaning_by_family = {}
+    if brain is not None:
+        try:
+            from servers.scales.s2.edge_families import iter_families
+            config = brain.get_interaction_config('s2_edge_families') or {}
+            for fam, members, meaning in iter_families(config):
+                if meaning:
+                    meaning_by_family[fam] = meaning
+                for m in members:
+                    rel_to_family[m] = fam
+        except Exception:
+            pass  # family data is optional
+
+    # Batch-load target node embeddings (one SQL round-trip)
     target_ids = [c.get('id', '')[:8] for c in connections]
     stored_embeddings = {}
     if brain_conn is not None and target_ids:
@@ -635,65 +1000,222 @@ def select_edges(connections, query_vec, session=None, limit=3, prior_vecs=None,
         for full_id, blob in rows:
             vec = np.frombuffer(blob, dtype=np.float32)
             stored_embeddings[full_id[:8]] = vec
-            stored_embeddings[full_id] = vec
 
-    # Batch-embed edge descriptions in one embedder call (cache-aware).
-    descs = [c.get('description', '') for c in connections]
-    desc_blobs = _desc_vecs_batched(descs)
+    # Batch-embed composed edge texts (cache-aware)
+    enriched_texts = [
+        _compose_enriched_edge_text(c, rel_to_family, meaning_by_family)
+        for c in connections
+    ]
+    enriched_blobs = _desc_vecs_batched(enriched_texts)
 
-    # Pre-compute the blended-query norm once — it's invariant across edges.
-    norm_q = float(np.linalg.norm(blended))
-
-    # Score each edge
+    # Score each edge: MAX of node-target and enriched-edge cosines
     scored = []
-    for c, desc_blob in zip(connections, desc_blobs):
+    for c, enriched_blob in zip(connections, enriched_blobs):
         tid = c.get('id', '')[:8]
-        weight = c.get('weight', 0.5)
 
-        # Node relevance (stored embedding = title + content)
-        node_rel = 0.3  # default when embedding missing
         target_vec = stored_embeddings.get(tid)
-        if target_vec is not None and len(target_vec) == len(blended) and norm_q > 0:
-            norm_t = float(np.linalg.norm(target_vec))
-            if norm_t > 0:
-                dot = float(np.dot(blended, target_vec))
-                node_rel = max(0, dot / (norm_q * norm_t))
+        node_rel = (_cosine_nonneg(blended, target_vec, norm_a=norm_q)
+                    if target_vec is not None else 0.0)
 
-        # Description relevance (when available)
-        relevance = node_rel
-        if desc_blob is not None:
-            desc_vec = np.frombuffer(desc_blob, dtype=np.float32)
-            if len(desc_vec) == len(blended) and norm_q > 0:
-                norm_d = float(np.linalg.norm(desc_vec))
-                if norm_d > 0:
-                    dot = float(np.dot(blended, desc_vec))
-                    desc_rel = max(0, dot / (norm_q * norm_d))
-                    relevance = EDGE_NODE_WEIGHT * node_rel + EDGE_DESC_WEIGHT * desc_rel
+        if enriched_blob is not None:
+            enriched_vec = np.frombuffer(enriched_blob, dtype=np.float32)
+            enriched_rel = _cosine_nonneg(blended, enriched_vec, norm_a=norm_q)
+        else:
+            enriched_rel = 0.0
 
-        # Fatigue discount (session-scoped rotation)
-        fatigue_count = 0
-        if session is not None:
-            fatigue_count = session.get_edge_fatigue(tid)
-        fatigue_discount = 1.0 / (1.0 + K_EDGE_FATIGUE * fatigue_count)
+        scored.append((max(node_rel, enriched_rel), c))
 
-        # Final score: relevance-primary, weight as tiebreaker
-        score = relevance * fatigue_discount + weight * WEIGHT_TIEBREAKER
-        scored.append((score, c))
-
-    # Sort by score descending, take top N
     scored.sort(key=lambda x: x[0], reverse=True)
-    selected = [c for _, c in scored[:limit]]
+    return [c for _, c in scored[:limit]]
 
-    # Update fatigue for selected edges
-    if session is not None:
-        for c in selected:
-            session.increment_edge_fatigue(c.get('id', '')[:8])
 
-    return selected
+# ═══════════════════════════════════════════════════════════════
+# ACTIVATION-DRIVEN RENDERING
+#
+# Once spread_activation has produced {node_activation, field_activation},
+# format_surface_output_activation renders nodes by activation rank, with
+# each node's token budget proportional to its activation and each field
+# appearing only when its per-field activation clears a minimum threshold.
+#
+# No SURFACE_FORMAT whitelist. No hardcoded "show content but not reasoning."
+# Fields with high activation surface; fields with low activation don't.
+# Tom's framing: "fading means less and less data surfaced."
+# ═══════════════════════════════════════════════════════════════
+
+# Minimum field activation to render the field at all. Below this, the field
+# is masked out so render_rich_node drops it naturally.
+_FIELD_RENDER_THRESHOLD = 0.3
+
+# Minimum per-node budget — below this, we stop rendering further nodes
+# rather than emit a stub that can't carry meaning.
+_MIN_NODE_BUDGET_CHARS = 150
+
+
+def _allocate_budget_softmax(activations, total_budget):
+    """Softmax-weighted budget per node. High-activation nodes get more share;
+    saturated-at-1.0 nodes split evenly; weak nodes still get minimum viable.
+    Returns list of int budgets aligned with activations input.
+    """
+    if not activations:
+        return []
+    arr = np.array(activations, dtype=np.float64)
+    # Subtract max for numerical stability, then softmax
+    exps = np.exp(arr - arr.max())
+    weights = exps / exps.sum()
+    return [max(_MIN_NODE_BUDGET_CHARS, int(w * total_budget)) for w in weights]
+
+
+def _mask_node_by_field_activation(node, field_activation, threshold=_FIELD_RENDER_THRESHOLD):
+    """Return a copy of `node` with low-activation fields zeroed out.
+
+    Fields that score below threshold are removed so render_rich_node drops
+    them. This is how activation drives WHICH fields appear — no config
+    whitelist, just the field's own query-match deciding its visibility.
+    """
+    masked = dict(node)
+
+    # Top-level fields: content, situation
+    if field_activation.get('content', 1.0) < threshold:
+        masked['content'] = ''
+    if field_activation.get('situation', 1.0) < threshold:
+        masked['situation'] = ''
+
+    # Metadata-KV-backed fields: reasoning, user_raw_quote, anchor_raw_quote,
+    # question. render_rich_node reads these from node['_metadata'].
+    meta = dict(node.get('_metadata') or {})
+    for field_name in ('reasoning', 'user_raw_quote', 'anchor_raw_quote', 'question'):
+        if field_activation.get(field_name, 1.0) < threshold:
+            meta.pop(field_name, None)
+    masked['_metadata'] = meta
+
+    return masked
+
+
+def _render_node_activation(node, field_activation, budget, activation,
+                             is_seed=False, why='', query_vec=None, brain=None,
+                             session=None):
+    """Render a single activated node within a char budget.
+
+    • Fields below activation threshold are masked out — they simply don't
+      appear. This is the "fade" mechanism.
+    • Budget scales content / metadata / edges limits proportionally.
+    • Edges are picked query-aware via select_edges (top-3 by MAX formula).
+    """
+    from servers.contract import render_rich_node
+
+    # Budget allocation within a node (heuristics, tunable later)
+    content_budget = max(50, int(budget * 0.50))
+    meta_budget = max(30, int(budget * 0.10))  # per-field metadata limit
+
+    masked = _mask_node_by_field_activation(node, field_activation)
+
+    # Query-aware edge picking for the node's own connections (display order)
+    connections = masked.get('connections') or []
+    if query_vec is not None and connections:
+        masked = dict(masked)
+        masked['connections'] = select_edges(
+            connections, query_vec, session=session, limit=10,
+            brain_conn=brain.conn if brain is not None else None,
+            brain=brain)
+
+    cfg = {
+        'content_limit': content_budget,
+        'metadata_limit': meta_budget,
+        'edge_limit': 3,
+        'time_format': 'relative',
+        'show_confidence': False,
+        'show_encoding_source': False,
+        'show_keywords': field_activation.get('content', 0) > _FIELD_RENDER_THRESHOLD,
+    }
+
+    body = render_rich_node(masked, cfg)
+
+    # Annotate seeds (Haiku-selected) with their "why"
+    prefix_parts = []
+    prefix_parts.append('act=%.2f' % activation)
+    if is_seed:
+        prefix_parts.append('SEED')
+        if why:
+            prefix_parts.append('why: %s' % why[:80])
+    prefix_line = '  ↑ %s' % ' | '.join(prefix_parts)
+
+    return body + '\n' + prefix_line
+
+
+def format_surface_output_activation(node_activation, field_activation,
+                                      rich_nodes, selected_why=None,
+                                      query_vec=None, brain=None,
+                                      session=None, total_budget=4000):
+    """Render activated nodes as additionalContext, driven by activation.
+
+    Args:
+        node_activation:  {node_id: float} from spread_activation
+        field_activation: {node_id: {field_name: float}} from spread_activation
+        rich_nodes:       {node_id: rich_node_dict} from brain.get_node(ids)
+        selected_why:     {node_id: str} — Haiku's "why" annotation (seeds only)
+        query_vec:        query embedding, used to re-rank each node's own edges
+        brain:            Brain instance — for select_edges family lookup
+        session:          SessionContext — for select_edges fatigue (not used in
+                          new kernel but passed through for now)
+        total_budget:     int char budget for full output
+    """
+    if not node_activation:
+        return ""
+
+    selected_why = selected_why or {}
+
+    # Rank by (activation, mean_field_activation) — the second key breaks
+    # ties cleanly when many nodes hit saturation at 1.0.
+    def sort_key(item):
+        nid, act = item
+        fa = field_activation.get(nid, {})
+        mean_fa = (sum(fa.values()) / len(fa)) if fa else 0.0
+        return (act, mean_fa, nid)  # nid as stable final tiebreaker
+
+    ranked = sorted(node_activation.items(), key=sort_key, reverse=True)
+
+    # Filter to nodes we have full rich data for
+    ranked = [(nid, act) for nid, act in ranked if nid in rich_nodes]
+
+    if not ranked:
+        return ""
+
+    # Softmax budget allocation
+    acts = [a for _, a in ranked]
+    budgets = _allocate_budget_softmax(acts, total_budget)
+
+    lines = ['Brain activated %d memories:' % len(ranked), '']
+    remaining = total_budget - len(lines[0])
+
+    for (nid, activation), budget in zip(ranked, budgets):
+        if remaining < _MIN_NODE_BUDGET_CHARS:
+            break
+
+        node = rich_nodes[nid]
+        fa = field_activation.get(nid, {})
+        is_seed = nid in selected_why
+        why = selected_why.get(nid, '')
+
+        effective_budget = min(budget, remaining)
+        rendered = _render_node_activation(
+            node, fa, effective_budget, activation,
+            is_seed=is_seed, why=why, query_vec=query_vec,
+            brain=brain, session=session)
+
+        lines.append(rendered)
+        lines.append('')  # blank line between nodes
+        remaining -= len(rendered) + 2
+
+    return '\n'.join(lines)
 
 
 def format_surface_output(selected, candidates, graph_neighbors=None):
-    """Format surfaced selections into structured additionalContext for Claude.
+    """LEGACY: Format surfaced selections into structured additionalContext.
+
+    Kept temporarily for callers that haven't migrated to
+    format_surface_output_activation. New work should use the activation
+    renderer which replaces this function's combination of
+    SURFACE_FORMAT + inline-neighbor rendering.
 
     Per-node rendering delegates to render_rich_node() with SURFACE_FORMAT.
     Candidates must be in get_rich_node() shape (_metadata, _corrections, connections present).

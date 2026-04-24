@@ -267,16 +267,13 @@ def step2_discover(brain, community_vec, node_vec, current_vec):
 # ═══════════════════════════════════════════════════
 
 def _load_edge_families(brain):
-    """Load edge family classification from interactions table."""
+    """Load edge family classification from interactions table.
+    Shape-agnostic (handles legacy list + new nested-dict via iter_families)."""
+    from servers.scales.s2.edge_families import get_reverse_map
     config = brain.get_interaction_config('s2_edge_families')
     if not config:
         return {}
-    # Invert: relation → family
-    rel_to_family = {}
-    for family, relations in config.items():
-        if isinstance(relations, list):
-            for rel in relations:
-                rel_to_family[rel] = family
+    rel_to_family = get_reverse_map(config)
     return rel_to_family
 
 

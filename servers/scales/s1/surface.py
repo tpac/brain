@@ -100,64 +100,74 @@ def _call_surface(brain, candidates_data, user_message, session_context,
     return surfaced, surface_prompt, max_tokens, interaction_id
 
 
-def _graph_expand(brain, selected_ids):
-    """Fetch graph neighbors for selected nodes. Seeds already enriched via get_rich_node.
+def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
+    """Expand the graph from selected seeds via spreading activation.
 
-    Only discovers new neighbor nodes for the "Related knowledge" section.
-    No correction re-fetch (already in candidates_data._corrections).
-    No metadata re-fetch (already in candidates_data._metadata).
+    Replaces the old weight-sorted degree-1 expansion. The new mechanism
+    is one kernel (`spread_activation`) that does what select_edges,
+    per-seed top-3, and mutual-traversal-via-communities did separately.
 
-    Returns: list of neighbor dicts [{id, type, title, content, edge_type, ...}]
+    Depth is emergent — high-coefficient edges propagate further; low-
+    coefficient edges stop on the first hop. Two seeds whose paths meet
+    at a shared neighbor (e.g. community node) boost that neighbor above
+    singleton reach automatically.
+
+    Args:
+        brain: Brain instance (for interaction_config + conn)
+        selected_ids: list of seed node IDs (typically Haiku's ≤5 picks)
+        query_vec: numpy array (768d) — query embedding. Required for
+            meaningful activation; without it, returns empty.
+        prior_vecs: prior-turn query embeddings for multi-turn blend.
+
+    Returns dict:
+        'node_activation':  {full_node_id: float in [0,1]}
+        'field_activation': {full_node_id: {field_name: float}}
+        'rich_nodes':       {full_node_id: rich_node_dict} — from get_node batch
+        'trace':            per-hop diagnostics
     """
-    from servers.pipeline_contract import TRAVERSE_EXCLUDED_EDGES
-    from servers.dal import NodeDAL, GraphDAL
+    from servers.dal import NodeDAL
+    from servers.scales.s1.surface_contract import spread_activation
 
-    conn = brain.conn
-    ndal = NodeDAL(conn)
-    graph_dal = GraphDAL(conn)
-    excluded = set(TRAVERSE_EXCLUDED_EDGES)
+    if query_vec is None or not selected_ids:
+        return {'node_activation': {}, 'field_activation': {},
+                'rich_nodes': {}, 'trace': []}
 
-    seen = set()
-    resolved = set()
+    # Resolve to full IDs (the kernel reads vectors keyed on full id)
+    ndal = NodeDAL(brain.conn)
+    resolved = []
     for sid in selected_ids:
         full = ndal.resolve_id(sid) if len(str(sid)) < 16 else sid
         if full:
-            resolved.add(full)
-            seen.add(full)
-            seen.add(full[:8])
+            resolved.append(full)
 
-    neighbors = []
-    for full_id in resolved:
-        rows = graph_dal.get_neighbors(
-            full_id,
-            limit=3,
-            exclude_relations=excluded,
-            exclude_node_ids=seen,
-            content_preview_chars=300,
-        )
-        for r in rows:
-            if r['id'] not in seen:
-                seen.add(r['id'])
-                neighbors.append({
-                    "id": r['id'], "type": r['type'], "title": r['title'],
-                    "content": r.get('content_preview', ''),
-                    "edge_type": r['relation'],
-                    "edge_weight": r['weight'],
-                    "edge_description": r.get('edge_description') or '',
-                    "confidence": r['confidence'],
-                    "locked": r['locked'] == 1,
-                    "direction": r['direction'],
-                    "created_at": r['created_at'], "revised_at": r['revised_at'],
-                    "seed_id": full_id,
-                })
+    if not resolved:
+        return {'node_activation': {}, 'field_activation': {},
+                'rich_nodes': {}, 'trace': []}
 
-    return neighbors
+    result = spread_activation(resolved, query_vec, brain, prior_vecs=prior_vecs)
+
+    # Batch-load rich node data for everything activated
+    all_ids = list(result['node_activation'].keys())
+    rich_nodes = brain.get_node(all_ids) if all_ids else {}
+
+    return {
+        'node_activation':  result['node_activation'],
+        'field_activation': result['field_activation'],
+        'rich_nodes':       rich_nodes,
+        'trace':            result['trace'],
+    }
 
 
 def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
                   graph_neighbors, additional_context, enriched, results,
-                  recall_ref, interaction_id, session_id):
-    """Write S1 surface traces: O (candidates), K (surfaced), Δ (additionalContext)."""
+                  recall_ref, interaction_id, session_id, expansion=None):
+    """Write S1 surface traces: O (candidates), K (surfaced), Δ (additionalContext).
+
+    `expansion` carries activation data from spread_activation when present —
+    we attach per-node activation values and the kernel's per-hop trace to
+    the K-event metadata so dashboards / S3 can see which nodes lit up and
+    by how much, not just which were surfaced.
+    """
     recall_chain = ctx.s1r_chain()
 
     # O: candidates detail
@@ -176,9 +186,6 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
         for nb in graph_neighbors[:10]]
 
     # Selection delta metadata — unified shape for decode-style units.
-    # Candidates considered = all input results; selected = final picks;
-    # dropped = candidates not picked; outcomes map each candidate to
-    # selected/dropped so S3 can learn from the cut.
     candidate_ids = [c.get('id', '')[:8] for c in candidates_data]
     selected_short = sorted(selected_ids)
     dropped_short = [cid for cid in candidate_ids if cid not in selected_ids]
@@ -186,6 +193,34 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
         cid: ('selected' if cid in selected_ids else 'dropped')
         for cid in candidate_ids
     }
+
+    # Activation metadata — per-node activation values + kernel trace.
+    # Empty when no expansion ran (e.g. no selected seeds, query_vec absent).
+    activation_meta = {}
+    if expansion:
+        node_act = expansion.get('node_activation') or {}
+        field_act = expansion.get('field_activation') or {}
+        kernel_trace = expansion.get('trace') or []
+
+        # Compact: short-id → activation value. Sorted descending for readability.
+        activation_meta['activations'] = [
+            {'id': nid[:8], 'act': round(act, 3)}
+            for nid, act in sorted(node_act.items(), key=lambda x: x[1], reverse=True)
+        ][:30]  # cap to 30 for trace size
+        activation_meta['activation_count'] = len(node_act)
+
+        # Top-3 per-node field activations (which fields lit up, for render debug)
+        top_fields = {}
+        for nid, fa in field_act.items():
+            if not fa:
+                continue
+            top3 = sorted(fa.items(), key=lambda x: x[1], reverse=True)[:3]
+            top_fields[nid[:8]] = [(f, round(a, 3)) for f, a in top3]
+        # Cap at 10 nodes to bound trace size
+        activation_meta['top_fields'] = dict(list(top_fields.items())[:10])
+
+        # Kernel trace — hops, new nodes, threshold applied, edges transmitted
+        activation_meta['kernel_trace'] = kernel_trace
 
     # Batch all three trace writes in one transaction
     brain._trace_dal.append_batch([
@@ -197,8 +232,11 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
         dict(chain_id=recall_chain, scale='s1', event_type='K',
              ref_type='surface_selected',
              ref_id=json.dumps(list(selected_ids)),
-             summary='%d surfaced, %d expanded' % (len(selected), len(graph_neighbors)),
-             metadata={'selected': sel_detail, 'expanded': exp_detail},
+             summary='%d surfaced, %d expanded, %d activated' % (
+                 len(selected), len(graph_neighbors),
+                 activation_meta.get('activation_count', 0)),
+             metadata={'selected': sel_detail, 'expanded': exp_detail,
+                       **activation_meta},
              session_id=session_id),
         dict(chain_id=recall_chain, scale='s1', event_type='delta',
              ref_type='additionalContext',
@@ -233,28 +271,31 @@ def _write_surface_result_file(recall_ref, surface_prompt, output, brain):
 
 def run_surface(brain, ctx, candidates_data, user_message, session_context,
                 recent_messages, result, enriched, results, recall_ref,
-                session_id, graph_changes):
-    """S1 Surface: surface → expand → enrich → format → trace.
+                session_id, graph_changes, query_vec=None, prior_vecs=None):
+    """S1 Surface: Haiku-select → spread_activation → activation-render → trace.
 
     The complete S1 Surface chain. Called from hook_recall in daemon_hooks.py.
+    query_vec + prior_vecs are required for the spreading-activation kernel —
+    when absent, the surface falls back to Haiku-selected rendering only
+    (no graph expansion), which is degraded but safe.
+
     Returns: additional_context string or None.
     """
     load_env()
 
-    # Call the surfacer
+    # Call Haiku selector (unchanged — picks ≤5 from 25 candidates)
     surfaced, surface_prompt, max_tokens, interaction_id = _call_surface(
         brain, candidates_data, user_message, session_context, recent_messages,
         session_id, result)
 
     selected = surfaced.get("selected", [])
-    selected_ids = {s.get("id", "")[:8] for s in selected}
+    selected_short_ids = {s.get("id", "")[:8] for s in selected}
 
     # Write surfaced IDs for Hebbian + Stop hook.
-    # Filename must match daemon_hooks._hebbian_strengthen reader.
     try:
         surface_path = "/tmp/brain-%s-surface-selected.json" % session_id
         with open(surface_path, 'w') as f:
-            json.dump({"selected_ids": list(selected_ids)}, f)
+            json.dump({"selected_ids": list(selected_short_ids)}, f)
     except Exception as e:
         brain._log_error('surface_selected_write', e, 'writing surface-selected file')
 
@@ -268,18 +309,49 @@ def run_surface(brain, ctx, candidates_data, user_message, session_context,
         _write_surface_result_file(recall_ref, surface_prompt, "(no selection)", brain)
         return None
 
-    # Graph expansion — neighbors only (seeds already enriched via get_rich_node)
-    graph_neighbors = _graph_expand(brain, selected_ids)
+    # Map short-id → full-id + why using candidates_data (they were enriched
+    # with full IDs on the way in). Also collect Haiku's "why" per seed.
+    short_to_full = {}
+    selected_why = {}
+    for c in candidates_data:
+        cid = c.get('id', '')
+        if cid[:8] in selected_short_ids:
+            short_to_full[cid[:8]] = cid
+    for s in selected:
+        short_id = s.get('id', '')[:8]
+        full_id = short_to_full.get(short_id)
+        if full_id:
+            selected_why[full_id] = s.get('why', '')
 
-    # Format output — candidates already have _metadata, _corrections, connections
-    from servers.scales.s1.surface_contract import format_surface_output
-    additional_context = format_surface_output(selected, candidates_data, graph_neighbors)
+    # Graph expansion via spreading activation. The kernel replaces what
+    # select_edges + per-seed top-3 neighbors + mutual-traversal used to do.
+    expansion = _graph_expand(
+        brain, list(selected_why.keys()),
+        query_vec=query_vec, prior_vecs=prior_vecs)
 
-    # Write traces
+    # Activation-driven render — fields appear by their own per-field activation
+    # score, budget is allocated softmax-weighted by node activation.
+    from servers.scales.s1.surface_contract import format_surface_output_activation
+    additional_context = format_surface_output_activation(
+        node_activation=expansion['node_activation'],
+        field_activation=expansion['field_activation'],
+        rich_nodes=expansion['rich_nodes'],
+        selected_why=selected_why,
+        query_vec=query_vec,
+        brain=brain,
+        session=ctx,
+    )
+
+    # Trace writing — compat neighbor list for legacy readers, plus full
+    # activation data in metadata for S3 / dashboard observability.
     try:
-        _write_traces(brain, ctx, candidates_data, selected_ids, selected,
-                      graph_neighbors, additional_context, enriched, results,
-                      recall_ref, interaction_id, session_id)
+        graph_neighbors_compat = _activation_to_trace_list(
+            expansion, selected_why)
+        _write_traces(brain, ctx, candidates_data, selected_short_ids, selected,
+                      graph_neighbors_compat, additional_context,
+                      enriched, results,
+                      recall_ref, interaction_id, session_id,
+                      expansion=expansion)
     except Exception as e:
         brain._log_error('trace_s1_surface', e, 'S1 surface trace capture')
 
@@ -287,6 +359,33 @@ def run_surface(brain, ctx, candidates_data, user_message, session_context,
     _write_surface_result_file(recall_ref, surface_prompt, additional_context, brain)
 
     return additional_context
+
+
+def _activation_to_trace_list(expansion, selected_why):
+    """Convert activation expansion output to the legacy neighbor-list shape
+    the trace writer expects. Kept minimal — Part I will upgrade the trace
+    contract itself to carry activation data natively.
+    """
+    out = []
+    for nid, act in expansion['node_activation'].items():
+        if nid in selected_why:
+            continue  # seeds aren't "neighbors"
+        rich = expansion['rich_nodes'].get(nid, {})
+        out.append({
+            "id": nid,
+            "type": rich.get('type', ''),
+            "title": rich.get('title', ''),
+            "content": (rich.get('content') or '')[:300],
+            "relation": "activation_spread",
+            "edge_description": "activation=%.2f" % act,
+            "confidence": rich.get('confidence', 0),
+            "locked": rich.get('locked', 0) == 1,
+            "direction": "outgoing",
+            "created_at": rich.get('created_at'),
+            "revised_at": rich.get('revised_at'),
+            "seed_id": "(activation)",
+        })
+    return out
 
 
 # Backward compat — old name

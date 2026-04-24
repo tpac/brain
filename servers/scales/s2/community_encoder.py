@@ -203,13 +203,14 @@ class CommunityEncoder(IntegrationUnit):
             return None
 
         # Inject edge families from DB (shared vocabulary across S2 encoders)
+        from servers.scales.s2.edge_families import iter_families
         edge_families_config = self._get_interaction_config('s2_edge_families')
         if edge_families_config:
             family_lines = []
-            for family, types in sorted(edge_families_config.items()):
-                if isinstance(types, list) and family not in ('generic_relation', 'noise'):
+            for family, members, _meaning in sorted(iter_families(edge_families_config)):
+                if family not in ('generic_relation', 'noise'):
                     family_lines.append('- **%s**: %s' % (
-                        family, ', '.join(types[:8])))
+                        family, ', '.join(members[:8])))
             if family_lines:
                 families_section = ('\n\n## Edge Families (from brain — %d families)\n\n%s\n\n'
                                     'Avoid `related_to`. Pick specific types.' % (

@@ -215,13 +215,10 @@ def run_new_decoder(brain, config=None):
             already_placed.add(mid)
             node_to_community[mid] = comm
 
-    # Load edge families + build adjacency
+    # Load edge families + build adjacency (shape-agnostic via helper)
+    from servers.scales.s2.edge_families import get_reverse_map
     edge_families_config = decoder._get_interaction_config('s2_edge_families') or {}
-    rel_to_fam = {}
-    for fam, members in edge_families_config.items():
-        if isinstance(members, list):
-            for m in members:
-                rel_to_fam[m] = fam
+    rel_to_fam = get_reverse_map(edge_families_config)
     skip_fams = {'generic_relation', 'noise'}
 
     t_adj = time.time()

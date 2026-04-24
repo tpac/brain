@@ -52,22 +52,31 @@ Return ONLY JSON:
 If nothing relevant: {"selected":[],"reason":"brief reason"}"""
 
 
-S2_EDGE_FAMILIES_PROMPT = """You classify edge relation types from a knowledge graph into semantic families.
+S2_EDGE_FAMILIES_PROMPT = """You classify edge relation types from a knowledge graph into semantic families and provide a meaning for each family.
 
 This graph stores knowledge from an AI-human collaboration — decisions, lessons, corrections, mechanisms, rules, concepts. The relation types were written by an encoding agent (open text, no closed list). You receive each type with its frequency and up to 10 sample DESCRIPTIONS showing how it's actually used in context.
 
+Each family groups relations that share a semantic role in the graph. The `meaning` field will be embedded and used by the recall system to match queries to families — it should distinguish this family's relational pattern from others, written in natural language that a reader (or embedding model) would recognize.
+
 Group into semantic families based on what the relations ACTUALLY MEAN (use the descriptions, not just the type name):
 - A family represents a relational PATTERN — how two pieces of knowledge relate
-- Be specific enough that families are useful for community detection (not 3 mega-groups)
+- Be specific enough that families are useful for community detection AND Surface recall (not 3 mega-groups)
 - But not so specific that every type is its own family — aim for 15-25 families
 - "related_to" and "related" are GENERIC — their own family
 - Noise types (co_accessed, emergent_bridge, dreamed_from, dream_observation) — their own "noise" family
 - If a type's descriptions show inconsistent usage, put it in the family matching MAJORITY usage
 - Family names are lowercase_with_underscores, descriptive of the relational pattern
+- For every family you output, include a 1-2 sentence `meaning`
 
-Assign each type to an EXISTING family if it fits. Only create a NEW family if no existing one captures the pattern.
+Assign each type to an EXISTING family if it fits. Only create a NEW family if no existing one captures the pattern. When an existing family's MEANING is marked MISSING, include a meaning for it.
 
-Return ONLY JSON: {"family_name": ["type1", "type2", ...], ...}"""
+Return ONLY JSON in this shape:
+{
+  "family_name": {
+    "members": ["type1", "type2"],
+    "meaning": "Short semantic description of what this family represents."
+  }
+}"""
 
 
 # ═══════════════════════════════════════════════════════════════════════
