@@ -558,6 +558,7 @@ class BrainRememberMixin:
                  source_attribution: Optional[str] = None,
                  scope: Optional[str] = None,
                  auto_connect: bool = True,
+                 connect_to: Optional[List[Any]] = None,
                  **extra_fields) -> Dict[str, Any]:
         """
         Store a new memory node with semantic indexing and connections.
@@ -682,6 +683,13 @@ class BrainRememberMixin:
                     except (ValueError, Exception) as e:
                         self._log_error('remember_connection', e,
                                         'connecting %s → %s' % (node_id[:8], target_id[:8]))
+
+        # connect_to: title-resolved typed edges. When called standalone (not
+        # from a batch), there are no siblings — only catalog fallback applies.
+        # Inside remember_batch / brain_batch, connect_to is popped from the
+        # spec BEFORE this call and processed AFTER all siblings are created.
+        if connect_to:
+            self._apply_connect_to(node_id, connect_to, sibling_map=None)
 
         # v6→v7: Auto-connect to conversation context (Machine 1)
         # Connect new node to top 3 most semantically similar recently-accessed nodes.
@@ -820,6 +828,11 @@ class BrainRememberMixin:
         if not all_updates:
             return {'error': 'No updates provided', 'node_id': node_id}
 
+        # Capture the FULL field set NOW for vector invalidation. `all_updates`
+        # gets mutated below (content is popped, etc.), so we need the
+        # original set or the invalidation step misses fields.
+        fields_changed_for_invalidation = set(all_updates.keys())
+
         # Fetch existing node
         row = self.conn.execute(
             'SELECT id, type, title, content, archived FROM nodes WHERE id = ?',
@@ -900,6 +913,37 @@ class BrainRememberMixin:
         # Store metadata via unified path — handles promoted, emergent, situation.
         if all_updates:
             self._store_node_metadata(node_id, all_updates, caller='revise')
+
+        # Vector invalidation: when a source field changes, the corresponding
+        # embedding vector becomes stale. Delete the affected rows so the
+        # embed_queue's backfill scan re-embeds from the updated text.
+        # WITHOUT this, VectorDAL.find_missing() skips the row (it exists)
+        # and the vector keeps encoding outdated text indefinitely. Title
+        # changes invalidate the title slot too — collected via SQL UPDATE
+        # above and added to the field set here.
+        try:
+            from .pipeline_contract import vectors_affected_by
+            invalidated_vectors = set()
+            for field in fields_changed_for_invalidation:
+                invalidated_vectors |= vectors_affected_by(field)
+            if invalidated_vectors:
+                ph = ','.join('?' * len(invalidated_vectors))
+                self.conn.execute(
+                    'DELETE FROM node_enrichments WHERE node_id = ? '
+                    'AND vector_type IN (%s)' % ph,
+                    [node_id, *invalidated_vectors])
+                self.conn.commit()
+                # Invalidate the in-memory vector cache so recall doesn't
+                # serve stale embeddings between now and embed_queue's drain.
+                try:
+                    if hasattr(self._vec_dal, 'drop_node'):
+                        self._vec_dal.drop_node(node_id)
+                except Exception as _ce:
+                    self._log_error('revise_vector_cache_drop', _ce,
+                                    'cache drop for %s' % node_id[:8])
+        except Exception as e:
+            self._log_error('revise_vector_invalidate', e,
+                            'invalidating vectors for %s' % node_id[:8])
 
         # Vector (re)computation handled by the embed_queue worker — revisions
         # mark the node dirty so stale text→vector pairs get refreshed within ~5s.
@@ -1168,6 +1212,136 @@ class BrainRememberMixin:
         """Backward-compatible wrapper — remember() now handles all fields directly."""
         return self.remember(type=type, title=title, content=content, **kwargs)
 
+    # ═══════════════════════════════════════════════════════════════
+    # connect_to resolution — sibling-aware, sequencing-agnostic
+    # ═══════════════════════════════════════════════════════════════
+
+    def _resolve_connect_to_entry(self, entry, sibling_map=None, exclude_self=None):
+        """Resolve a connect_to entry to (target_id, relation_pairs).
+
+        sibling_map: {lowercased_title: node_id} for nodes created in the
+                     same batch. Sibling exact-match (case-insensitive) wins
+                     over catalog fuzzy-match — NEW wins on title collision.
+                     If you mean an existing catalog node, use revise on its
+                     id, not duplicate-title remember.
+        exclude_self: source node_id; resolution to this id is treated as a
+                      self-reference and rejected.
+
+        Returns (target_id, [(relation, description), ...]) or (None, []) on
+        any failure. All failures log loudly via _log_error so the dashboard
+        sees them — no silent skips.
+        """
+        # Parse entry shape (string or dict)
+        if isinstance(entry, str):
+            title_query = entry
+            relation_pairs = [('related', '')]
+        elif isinstance(entry, dict):
+            title_query = entry.get('title', '')
+            if not title_query:
+                self._log_error(
+                    'connect_to_invalid',
+                    ValueError("connect_to entry missing 'title' field"),
+                    'entry=%s' % str(entry)[:200])
+                return None, []
+            if isinstance(entry.get('relations'), list):
+                relation_pairs = []
+                for r in entry['relations']:
+                    if not isinstance(r, dict):
+                        continue
+                    rel = r.get('relation', 'related')
+                    desc = r.get('why', r.get('description', ''))
+                    relation_pairs.append((rel, desc))
+                if not relation_pairs:
+                    self._log_error(
+                        'connect_to_invalid',
+                        ValueError("connect_to relations array is empty or malformed"),
+                        'entry=%s' % str(entry)[:200])
+                    return None, []
+            else:
+                rel = entry.get('relation', 'related')
+                desc = entry.get('why', entry.get('description', ''))
+                relation_pairs = [(rel, desc)]
+        else:
+            self._log_error(
+                'connect_to_invalid',
+                TypeError("connect_to entry must be str or dict, got %s"
+                          % type(entry).__name__),
+                'entry=%s' % str(entry)[:200])
+            return None, []
+
+        target_id = None
+
+        # Pass 1: sibling map (NEW wins on title collision)
+        if sibling_map:
+            target_id = sibling_map.get(title_query.lower())
+
+        # Pass 2: catalog fallback via fuzzy title match
+        if not target_id:
+            try:
+                match = self.find_node_by_title(title_query, threshold=0.75)
+                if match:
+                    target_id = match.get('id')
+            except Exception as e:
+                self._log_error(
+                    'connect_to_failed', e,
+                    'find_node_by_title for %r' % title_query[:80])
+                return None, []
+
+        # Self-reference guard
+        if target_id and exclude_self and target_id == exclude_self:
+            self._log_error(
+                'connect_to_self',
+                ValueError("connect_to would create self-edge"),
+                'node=%s title=%s' % (exclude_self[:8], title_query[:80]))
+            return None, []
+
+        # Unresolved — neither sibling nor catalog matched
+        if not target_id:
+            self._log_error(
+                'connect_to_unresolved',
+                ValueError("connect_to title resolved to nothing"),
+                'title=%s' % title_query[:80])
+            return None, []
+
+        return target_id, relation_pairs
+
+    def _apply_connect_to(self, src_id, connect_to_spec, sibling_map=None):
+        """Resolve and create edges for each connect_to entry from src_id.
+
+        Each entry is independent — failures on one don't affect others.
+        All failures log loudly; the function never raises and never blocks
+        the surrounding write path.
+
+        Returns the count of edges created.
+        """
+        if not connect_to_spec:
+            return 0
+        if not isinstance(connect_to_spec, list):
+            self._log_error(
+                'connect_to_invalid',
+                TypeError("connect_to must be a list, got %s"
+                          % type(connect_to_spec).__name__),
+                'src=%s' % src_id[:8])
+            return 0
+
+        created = 0
+        for entry in connect_to_spec:
+            target_id, relation_pairs = self._resolve_connect_to_entry(
+                entry, sibling_map=sibling_map, exclude_self=src_id)
+            if target_id is None:
+                continue
+            for rel, desc in relation_pairs:
+                try:
+                    self.connect_typed(src_id, target_id, relation=rel,
+                                       weight=0.6, description=desc)
+                    created += 1
+                except Exception as e:
+                    self._log_error(
+                        'connect_to_failed', e,
+                        'src=%s target=%s rel=%s' % (
+                            src_id[:8], target_id[:8], rel))
+        return created
+
     def remember_batch(self, nodes: List[Dict],
                         connect_to: Optional[List[str]] = None,
                         auto_connect: bool = True) -> Dict[str, Any]:
@@ -1186,11 +1360,41 @@ class BrainRememberMixin:
         created_ids = []
         connections_created = 0
 
+        # Pass 1: create all nodes. Pop per-node connect_to BEFORE calling
+        # remember() so it doesn't fire there with an empty sibling_map —
+        # we'll process them all together once siblings exist (Pass 2).
+        # Build sibling_map: lowercased title → node_id for sequencing-
+        # agnostic resolution (B can connect_to A even if declared first).
+        sibling_map = {}
+        deferred_connects = []  # [(node_id, ct_spec)]
         for spec in nodes:
+            if isinstance(spec, dict):
+                ct_spec = spec.pop('connect_to', None)
+                # Disable inner remember()'s conversation-context auto_connect.
+                # The batch owns sibling connection logic (deferred connect_to +
+                # auto_connect-each-other below). Inner auto_connect creates
+                # co_accessed edges in the WRONG direction relative to typed
+                # connect_to (sibling-to-sibling), which causes get_edge_id to
+                # return the existing edge and the typed relation gets attached
+                # with the physical direction reversed. Caller can still opt in
+                # explicitly per node via spec['auto_connect'] = True.
+                spec.setdefault('auto_connect', False)
+            else:
+                ct_spec = None
             result = self.remember(**spec)
             results.append(result)
             if result.get('id'):
                 created_ids.append(result['id'])
+                title = (spec.get('title') or '').lower()
+                if title:
+                    sibling_map[title] = result['id']
+                if ct_spec:
+                    deferred_connects.append((result['id'], ct_spec))
+
+        # Pass 2: resolve per-node connect_to with full sibling_map populated.
+        for src_id, ct_spec in deferred_connects:
+            connections_created += self._apply_connect_to(
+                src_id, ct_spec, sibling_map=sibling_map)
 
         # Auto-connect new nodes to each other
         if auto_connect and len(created_ids) > 1:

@@ -185,6 +185,34 @@ def field_vector_types():
     return ['title', 'content', 'situation', 'reasoning',
             'user_raw_quote', 'anchor_raw_quote', 'question']
 
+
+def vectors_affected_by(field_name: str) -> set:
+    """Given a field name, return vector_types whose embedding text depends
+    on it — these go stale when the field is updated and must be deleted
+    so embed_queue's backfill creates fresh ones.
+
+    Derived from EMBEDDING_GROUPS — single source of truth. Special case:
+    `_situation` derives directly from node_metadata_kv['situation'] (the
+    EMBEDDING_GROUPS entry for it lives under group `field_situation` /
+    `high_meta` already, so the special case is just for the legacy
+    `_situation` vector_type that doesn't appear there).
+
+    Used by `brain.revise()` to invalidate stale vectors. Without this,
+    `VectorDAL.find_missing()` skips rows that exist (text in kv changed
+    but the row carries old embedding), and the vector permanently
+    encodes outdated text.
+    """
+    affected = set()
+    for spec in EMBEDDING_GROUPS.values():
+        if field_name in spec.get('fields', []):
+            affected.add(spec['vector_type'])
+    # `_situation` is a legacy vector derived from kv['situation'] — not
+    # represented as its own EMBEDDING_GROUPS entry (the field-cohort
+    # `field_situation` covers `situation` vector_type). Add explicitly.
+    if field_name == 'situation':
+        affected.add('_situation')
+    return affected
+
 # Scoring method for combining group vectors
 EMBEDDING_SCORING_METHOD = 'top2_avg'
 

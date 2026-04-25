@@ -64,20 +64,107 @@ def _generate_remember_schema():
     }
 
 
+_CONNECT_TO_ITEM_SCHEMA = {
+    "type": "object",
+    "required": ["title"],
+    "properties": {
+        "title": {
+            "type": "string",
+            "description": (
+                "Target node title. Resolution prefers same-batch siblings over catalog "
+                "matches (NEW wins on title collision — if you mean an existing catalog "
+                "node, use `revise` on its id, not duplicate-title `remember`). "
+                "Order-agnostic: a node can connect_to a sibling declared LATER in the "
+                "same batch. Unresolved titles are logged to debug_log and skipped — "
+                "they never fail the batch."
+            ),
+        },
+        "relation": {
+            "type": "string",
+            "description": (
+                "Edge relation, open text. Embedded for graph-walk semantics. "
+                "Vocabulary: refines, challenges, grounds, abstracts, triggers, "
+                "reframes, resolves, opens, strengthens, weakens, corrects, enables, "
+                "produces, contextualizes, synthesizes, implements, depends_on, "
+                "validates, supersedes, configures. Plus load-bearing inventions used "
+                "in this brain: anchored_to, correction_of, community_member, during. "
+                "Temporal sequence: before/after, meets/met_by, during. Invent freely "
+                "when a pair needs a relation that fits better — a specific invented "
+                "type beats a generic listed one. NEVER `related`, `related_to`, or "
+                "empty — they fail to match any query about the relationship and "
+                "pollute the activation kernel with junk edges."
+            ),
+        },
+        "why": {
+            "type": "string",
+            "description": (
+                "What the edge MEANS — the insight that lives between the two nodes, "
+                "not a summary of either. Embedded for query matching. Target ≥30 "
+                "chars; under 20 is dead weight. If you can't write something "
+                "specific, drop the edge."
+            ),
+        },
+        "relations": {
+            "type": "array",
+            "description": (
+                "Alternative to relation+why when the same pair carries multiple "
+                "distinct relationships. Each item is {relation, why}."
+            ),
+            "items": {
+                "type": "object",
+                "required": ["relation", "why"],
+                "properties": {
+                    "relation": {"type": "string"},
+                    "why": {"type": "string"},
+                },
+            },
+        },
+    },
+}
+
+
 def _generate_remember_batch_schema():
     """Generate the 'remember_batch' tool schema — array of remember() objects."""
     remember_schema = _generate_remember_schema()
-    node_properties = remember_schema["inputSchema"]["properties"]
+    node_properties = dict(remember_schema["inputSchema"]["properties"])
+    # Per-node connect_to: sibling-aware, sequencing-agnostic. Declaration order
+    # within the batch doesn't matter — sibling resolution runs after all nodes
+    # are created.
+    node_properties["connect_to"] = {
+        "type": "array",
+        "description": (
+            "Per-node typed edges from THIS node to siblings (created in the same "
+            "batch) or catalog nodes. Sibling-aware (NEW wins on title collision), "
+            "order-agnostic, fail-soft. "
+            "USE THIS for any edge involving a new node — never use a separate "
+            "`connect` op for new-node edges (`connect` requires ids that don't "
+            "exist until round 1 finishes, forcing a needless second LLM round). "
+            "DON'T DOUBLE-EMIT: an edge already in connect_to must NOT also appear "
+            "as a separate connect op for the same pair. "
+            "DON'T fake-revise: if the catalog has the title, use `revise` on its "
+            "id — duplicate-title `remember` + connect_to would resolve to the new "
+            "sibling (NEW wins) and leave the catalog version stale."
+        ),
+        "items": _CONNECT_TO_ITEM_SCHEMA,
+    }
+    node_properties["auto_connect"] = {
+        "type": "boolean",
+        "description": "Conversation-context co_accessed edges. Defaults false in batches.",
+    }
     return {
         "name": "remember_batch",
-        "description": "Create multiple nodes in one call. Each node uses the same fields as remember(). Auto-connects new nodes to each other and to existing nodes matched by title.",
+        "description": (
+            "Create multiple nodes in one call. Each node uses the same fields as "
+            "remember(), plus an optional per-node `connect_to` for typed edges to "
+            "siblings (in the same batch) and catalog nodes."
+        ),
         "inputSchema": {
             "type": "object",
             "required": ["nodes"],
             "properties": {
                 "nodes": {
                     "type": "array",
-                    "description": "Array of node specs — same fields as remember()",
+                    "description": "Array of node specs — same fields as remember(), plus optional per-node connect_to.",
                     "items": {
                         "type": "object",
                         "required": ["type", "title", "content"],
@@ -86,19 +173,15 @@ def _generate_remember_batch_schema():
                 },
                 "connect_to": {
                     "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "title": {"type": "string", "description": "Existing node title to fuzzy-match"},
-                            "why": {"type": "string", "description": "Why these are connected — what the relationship means"}
-                        },
-                        "required": ["title", "why"]
-                    },
-                    "description": "Existing node titles to connect to, with description of why they're connected.",
+                    "items": _CONNECT_TO_ITEM_SCHEMA,
+                    "description": (
+                        "Batch-level: applies the same edge from EVERY created node to one "
+                        "catalog target. Siblings excluded. For per-node edges, use node-level connect_to."
+                    ),
                 },
                 "auto_connect": {
                     "type": "boolean",
-                    "description": "Auto-connect new nodes to each other",
+                    "description": "Auto-connect siblings with generic `related_to` edges.",
                     "default": True,
                 },
             },
@@ -237,11 +320,16 @@ def _build_tools():
     _generate_remember_schema(),
     _generate_remember_batch_schema(),
     {"name": "connect",
-     "description": "Create a weighted edge between two brain nodes. Relations: related_to, caused_by, depends_on, contradicts, supports, produced, evolved_from, blocks, enables, example_of.",
+     "description": ("Create a typed edge between two EXISTING catalog nodes (both endpoints "
+                     "must already have ids). For an edge involving a node you're CREATING in "
+                     "this batch, use `connect_to` inside the `remember` op instead — separate "
+                     "`connect` ops require ids that don't exist until the create finishes, "
+                     "forcing a needless second LLM round. Never use generic `related`/"
+                     "`related_to` — pick a specific relation that names the actual relationship."),
      "inputSchema": {"type": "object", "required": ["source_id", "target_id"], "properties": {
-         "source_id": {"type": "string", "description": "Source node ID"},
-         "target_id": {"type": "string", "description": "Target node ID"},
-         "relation": {"type": "string", "description": "Edge relation type", "default": "related_to"},
+         "source_id": {"type": "string", "description": "Source node ID (catalog)"},
+         "target_id": {"type": "string", "description": "Target node ID (catalog)"},
+         "relation": {"type": "string", "description": "Edge relation (open text). See connect_to.relation for vocabulary."},
          "weight": {"type": "number", "description": "Edge weight 0.0-1.0", "default": 0.5}}}},
     {"name": "connect_batch",
      "description": "Create multiple edges in one call.",
@@ -252,12 +340,21 @@ def _build_tools():
                  "relation": {"type": "string", "default": "related_to"},
                  "weight": {"type": "number", "default": 0.5}}}}}}},
     {"name": "brain_batch",
-     "description": ("Execute multiple brain operations in one call. "
+     "description": ("Execute multiple brain operations in one call. **Default tool for "
+                     "MIXED operations** (any combination of remember + revise + connect + "
+                     "archive) — packs them into ONE LLM round instead of N. For pure "
+                     "single-type batches use `remember_batch` / `revise_batch` / "
+                     "`connect_batch`; the moment you have a mix, switch to brain_batch. "
                      "Five (and only five) valid op values: "
-                     "'remember' creates a new node, "
-                     "'revise' updates an existing node, "
-                     "'connect' adds an edge between two nodes, "
-                     "'disconnect' removes an edge relation, "
+                     "'remember' creates a new node — supports a per-op `connect_to: "
+                     "[{title, relation, why}]` for typed edges to siblings (created in the "
+                     "same batch, order-agnostic, NEW wins on title collision) and to "
+                     "catalog nodes; "
+                     "'revise' updates an existing node; "
+                     "'connect' adds an edge between two EXISTING catalog nodes (use "
+                     "`connect_to` inside the `remember` op for any edge involving a new "
+                     "node — never both for the same pair); "
+                     "'disconnect' removes an edge relation; "
                      "'archive' soft-archives a node. "
                      "Operations run sequentially. Do NOT invent structural "
                      "op names like 'consolidate'/'evolve'/'keep'/'skip' — "
@@ -268,7 +365,8 @@ def _build_tools():
              "type": "array",
              "description": ("Array of operations. Each object has an 'op' "
                              "field (one of the 5 valid values) plus the "
-                             "fields that op needs."),
+                             "fields that op needs. `remember` ops accept an "
+                             "optional `connect_to` array for sibling+catalog edges."),
              "items": {
                  "type": "object", "required": ["op"], "properties": {
                      "op": {

@@ -260,6 +260,16 @@ def _handle_backfill_summaries(brain, args, graph_changes):
         batch_size=args.get("batch_size", 50))}
 
 
+def _handle_backfill_vectors(brain, args, graph_changes):
+    """Run backfill_vectors over the graph. Computes ALL missing vector
+    types per EMBEDDING_GROUPS — `_primary`, `_situation`, `title`,
+    `high_meta`, `other_meta`, `edge_context`, `question`, plus the
+    field cohort. Returns counts per vector_type."""
+    return {"ok": True, "result": brain.backfill_vectors(
+        batch_size=args.get("batch_size", 100),
+        node_ids=args.get("node_ids"))}
+
+
 def _handle_remember(brain, args, graph_changes):
     from .contract import validate_field, get_remember_fields
 
@@ -416,6 +426,12 @@ def _handle_brain_batch(brain, args, graph_changes):
     top_encoding_source = args.get("encoding_source")
     results = []
 
+    # Sibling-aware connect_to: defer per-op connect_to from `remember` ops
+    # until ALL ops in this batch have run, so siblings declared in any order
+    # can resolve. NEW wins on title collision (sibling beats catalog).
+    sibling_map = {}  # lowercased title → new node_id
+    deferred_connects = []  # [(src_node_id, connect_to_spec)]
+
     for i, op_spec in enumerate(operations):
         if not isinstance(op_spec, dict):
             results.append({"op": "?", "index": i, "ok": False,
@@ -424,12 +440,30 @@ def _handle_brain_batch(brain, args, graph_changes):
         op = op_spec.get("op", "")
         try:
             if op == "remember":
-                # Route through existing remember handler
-                op_args = {k: v for k, v in op_spec.items() if k != "op"}
+                # Pop per-op connect_to BEFORE handler so it's not processed
+                # eagerly with an empty sibling_map — defer to after the loop.
+                ct_spec = op_spec.get("connect_to")
+                op_args = {k: v for k, v in op_spec.items()
+                           if k not in ("op", "connect_to")}
                 if top_encoding_source and "encoding_source" not in op_args:
                     op_args["encoding_source"] = top_encoding_source
+                # Same fix as remember_batch: disable inner remember()'s
+                # conversation-context auto_connect inside batches so it
+                # doesn't create reverse-direction co_accessed edges between
+                # siblings before deferred connect_to runs.
+                op_args.setdefault("auto_connect", False)
                 r = _handle_remember(brain, op_args, graph_changes)
                 results.append({"op": "remember", "index": i, **r})
+                # Capture for sibling_map + deferred resolution
+                if r.get("ok"):
+                    inner = r.get("result") or {}
+                    new_id = inner.get("id")
+                    if new_id:
+                        title = (op_args.get("title") or "").lower()
+                        if title:
+                            sibling_map[title] = new_id
+                        if ct_spec:
+                            deferred_connects.append((new_id, ct_spec))
 
             elif op == "revise":
                 op_args = {k: v for k, v in op_spec.items() if k != "op"}
@@ -507,11 +541,23 @@ def _handle_brain_batch(brain, args, graph_changes):
         except Exception as e:
             results.append({"op": op, "index": i, "ok": False, "error": str(e)[:200]})
 
+    # Pass 2: deferred per-op connect_to resolution. Runs AFTER all ops so
+    # siblings declared in any order resolve correctly. _apply_connect_to
+    # logs all failures to debug_log; this is sequencing-agnostic and never
+    # raises.
+    connect_to_edges = 0
+    for src_id, ct_spec in deferred_connects:
+        connect_to_edges += brain._apply_connect_to(
+            src_id, ct_spec, sibling_map=sibling_map)
+    if connect_to_edges:
+        graph_changes.append("CONNECT_TO: %d edges" % connect_to_edges)
+
     succeeded = sum(1 for r in results if r.get("ok"))
     return {"ok": True, "result": {
         "total": len(operations),
         "succeeded": succeeded,
         "failed": len(operations) - succeeded,
+        "connect_to_edges": connect_to_edges,
         "results": results,
     }}
 
@@ -971,6 +1017,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "log_debug":           CmdEntry(_handle_log_debug,          is_write=True, marks_dirty=True),
     "promote_staged":      CmdEntry(_handle_promote_staged,     is_write=True, marks_dirty=True),
     "backfill_summaries":  CmdEntry(_handle_backfill_summaries, is_write=True, marks_dirty=True),
+    "backfill_vectors":    CmdEntry(_handle_backfill_vectors,   is_write=True, marks_dirty=True),
     "remember":              CmdEntry(_handle_remember,             is_write=True, marks_dirty=True),
     "remember_batch":        CmdEntry(_handle_remember_batch,      is_write=True, marks_dirty=True),
     "revise":                CmdEntry(_handle_revise,               is_write=True, marks_dirty=True),
