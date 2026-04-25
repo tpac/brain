@@ -139,6 +139,7 @@ S2 operates when Tom is away. It sees the full graph, not just one turn. Multipl
 | Correction | correction chain | resolution rules | archive stale | not built |
 | Community Split | incoherent communities | re-cluster within community | split into focused children | not built |
 | Weaver | orphan nodes | content + embeddings | new typed edges | not built |
+| Vector Healer | revise traces + node_enrichments timestamps | `vectors_affected_by` map ([pipeline_contract.py](servers/pipeline_contract.py)) | re-embed stale vectors, detect drift | **not built** — backstops `revise()`'s inline invalidation; catches edge cases where source text changed without revise() noticing (direct DAL writes, schema changes, kv updates outside the standard write path). Loud-by-default signal when stale rows are found. |
 
 **Ordering matters:** Edge families → Consolidation → Community → Healer. Each benefits from the previous.
 

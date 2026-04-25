@@ -2471,7 +2471,8 @@ class VectorDAL:
 
     def find_missing(self, vector_type: str, limit: int = 50,
                      model: Optional[str] = None,
-                     node_ids: Optional[set] = None) -> List[Dict[str, Any]]:
+                     node_ids: Optional[set] = None,
+                     source_kv_keys: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Find active nodes whose vector for `vector_type` is missing or stale.
 
         A row is "present" only if it has a non-null embedding AND (if `model`
@@ -2480,6 +2481,12 @@ class VectorDAL:
 
         When `node_ids` is given, scope the scan to just those IDs (queue
         drain path — don't re-scan the whole graph on every tick).
+
+        When `source_kv_keys` is given, restrict to nodes that have at least
+        one of those keys present in node_metadata_kv with a non-empty value.
+        This prevents the field-cohort backfill from filling its top-N batch
+        with nodes that lack the source field — which would leave older
+        nodes-with-the-field stuck below the LIMIT cutoff and never embedded.
 
         Returns [{id, title, content}] ordered by recency of access.
         """
@@ -2506,6 +2513,14 @@ class VectorDAL:
             ph = ','.join('?' * len(ids))
             where.append('n.id IN (%s)' % ph)
             params.extend(ids)
+
+        if source_kv_keys:
+            ph = ','.join('?' * len(source_kv_keys))
+            where.append(
+                'EXISTS (SELECT 1 FROM node_metadata_kv kv '
+                'WHERE kv.node_id = n.id AND kv.key IN (%s) '
+                "AND kv.value IS NOT NULL AND kv.value != '')" % ph)
+            params.extend(source_kv_keys)
 
         sql = ('SELECT n.id, n.title, n.content FROM nodes n '
                'WHERE ' + ' AND '.join(where) +

@@ -471,15 +471,34 @@ class BrainRecallMixin:
         except Exception as e:
             self._log_error('backfill_situation_scan', e, 'scanning for missing situations')
 
-        # 3. Group vectors — title, high_meta, other_meta, edge_context
+        # 3. Group vectors — title, high_meta, other_meta, edge_context, field cohort
+        # Derive which fields live in node_metadata_kv (vs the nodes table) so
+        # find_missing can pre-filter to nodes that actually have at least one
+        # source field populated. Without this filter, the top-N batch fills
+        # with nodes lacking the field, the backfill skips them, and they stay
+        # in the missing pool while older nodes-WITH-the-field never reach the
+        # front (last_accessed DESC ordering). Result: incomplete coverage even
+        # after many passes.
+        from .contract import STRUCTURAL_FIELDS as _STRUCT_FIELDS
+        nodes_table_fields = set(_STRUCT_FIELDS.keys())
+
         for group_name, group_config in EMBEDDING_GROUPS.items():
             vector_type = group_config.get('vector_type')
             if not vector_type or vector_type == '_primary':
                 continue  # blend is the primary, already handled
 
+            # Identify which fields in this group are kv-stored. Skip:
+            #  - fields on the nodes table (always present, no filter needed)
+            #  - special markers like `_emergent` and `_edge_descriptions`
+            kv_source_keys = [
+                f for f in group_config.get('fields', [])
+                if f not in nodes_table_fields and not f.startswith('_')
+            ]
+
             try:
-                missing = vdal.find_missing(vector_type, batch_size,
-                                            model=model, node_ids=node_ids)
+                missing = vdal.find_missing(
+                    vector_type, batch_size, model=model, node_ids=node_ids,
+                    source_kv_keys=kv_source_keys if kv_source_keys else None)
                 if not missing:
                     continue
 

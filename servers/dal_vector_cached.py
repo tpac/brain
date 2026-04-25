@@ -178,11 +178,13 @@ class CachedVectorDAL:
 
     def find_missing(self, vector_type: str, limit: int = 50,
                      model: Optional[str] = None,
-                     node_ids: Optional[set] = None) -> List[Dict[str, Any]]:
+                     node_ids: Optional[set] = None,
+                     source_kv_keys: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Delegate — backfill path, cold, needs node.title/content."""
         with self._sql_lock:
             return self._inner.find_missing(vector_type, limit,
-                                            model=model, node_ids=node_ids)
+                                            model=model, node_ids=node_ids,
+                                            source_kv_keys=source_kv_keys)
 
     def get_coverage_stats(self) -> Dict[str, Any]:
         """Delegate — cold path, used by dashboard."""
