@@ -76,9 +76,10 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     enc_interaction = brain.get_interaction('s1e') or brain.get_interaction('encoding_agent')
     enc_instructions = enc_interaction.get('template', '') if enc_interaction else ''
     system_prompt = _build_system_prompt(prompt_instructions=enc_instructions or None)
-    user_content, catalog_text, catalog_ids = _build_user_content(
+    user_preamble, user_content, catalog_text, catalog_ids = _build_user_content(
         brain, messages, counter, session_id)
-    _step("prompt(%d chars)" % len(user_content))
+    _step("prompt(preamble=%d chars, body=%d chars)" % (
+        len(user_preamble), len(user_content)))
 
     # 2b. Muster phase — Phase-1 scouts (quote / temporal / facts / synthesis)
     # fan out in parallel, emit O/K traces on the s1e chain, and produce a
@@ -147,6 +148,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
                 "counter": counter,
                 "session_id": session_id,
                 "system_prompt_chars": len(system_prompt),
+                "user_preamble": user_preamble,
                 "user_content": user_content,
                 "tools_count": len(tools),
             }, f)
@@ -158,7 +160,8 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
                     "counter": counter,
                     "session_id": session_id,
                     "system_prompt_chars": len(system_prompt),
-                    "user_content": user_content,
+                    "user_preamble": user_preamble,
+                "user_content": user_content,
                     "tools_count": len(tools),
                 }, f)
         except Exception:
@@ -181,6 +184,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             max_rounds=ENCODING_AGENT.get('max_rounds', 5),
             system_prompt=system_prompt,
             user_content=user_content,
+            user_preamble=user_preamble,
             tools=tools,
             dispatch_fn=dispatch_fn,
             log_fn=_log)
@@ -299,13 +303,20 @@ def _build_system_prompt(prompt_instructions=None):
 
 
 def _build_user_content(brain, messages, counter, session_id):
-    """Assemble S1 encoding prompt: node catalog + timeline with references.
+    """Assemble S1 encoding prompt: stable preamble + dynamic body.
+
+    The split is deliberate for caching. The stable preamble (instructions
+    + format expectations + section legend) is byte-identical across every
+    encoding cycle and gets a 1h cache breakpoint via run_llm_loop's
+    `user_preamble` arg. The dynamic body (journal, catalog, timeline)
+    gets the 5m breakpoint.
 
     Returns:
-        (user_content, catalog_text, catalog_ids) — the full prompt string,
-        the rendered catalog block (reused by muster so it doesn't re-render),
-        and the set of node ids actually in the catalog (reused by temporal
-        scout for existing_anchor_id lookups).
+        (user_preamble, user_body, catalog_text, catalog_ids)
+        - user_preamble: stable instructions; safe to cache 1h.
+        - user_body: dynamic content for this cycle (5m cache).
+        - catalog_text: rendered catalog block (reused by muster).
+        - catalog_ids: set of node ids in the catalog (reused by temporal scout).
     """
     from servers.scales.s1.encode_contract import ENCODING_AGENT, build_node_catalog
     import re
@@ -362,17 +373,31 @@ def _build_user_content(brain, messages, counter, session_id):
     # Previous session context
     prev_context = brain.session_context
 
-    # Compute run sequence from journal
-    run_seq = journal.count('--- Run ') + 1 if journal != 'First run — no previous encoding in this session.' else 1
-    content = "## ENCODING RUN %d (stop #%d)\n\n" % (run_seq, counter)
-    content += "### Encoding Journal\n%s\n\n" % journal
+    # ── Stable preamble — byte-identical across encoding cycles.
+    # Cached at 1h TTL via run_llm_loop's user_preamble parameter. The
+    # only constraint: nothing here may vary per cycle. Section legend
+    # + format expectations live here. The "ENCODING RUN N" header
+    # was removed (was metadata; not load-bearing for the encoder).
+    preamble = (
+        "You are encoding what you've just observed. The sections below give you, "
+        "in order: prior encoding work this session (Encoding Journal), what the "
+        "session is about (Session Context), nodes the brain already knows pre-"
+        "loaded for this window (Node Catalog), and the actual turns with "
+        "references to surfaced nodes (Conversation Timeline).\n\n"
+        "Read what you got before calling any tools. Put ALL operations "
+        "(remember + revise + connect) in ONE tool call. Target: 2 rounds — "
+        "one tool call, then the journal.\n"
+    )
+
+    # ── Dynamic body — varies per cycle, 5m cache.
+    body = ""
+    body += "### Encoding Journal\n%s\n\n" % journal
     if prev_context:
-        content += "### Session Context\n%s\n\n" % prev_context
+        body += "### Session Context\n%s\n\n" % prev_context
     if node_catalog:
-        content += "### %s\n" % node_catalog
-    content += "### Conversation Timeline\n\n%s\n" % timeline
-    content += "---\nYou have all the nodes you need in the catalog above. Read what you got before calling any tools. Put ALL operations (creates + revises + connects) in ONE tool call. Target: 2 rounds — one tool call, then journal.\n"
-    return content, node_catalog, cataloged_ids
+        body += "### %s\n" % node_catalog
+    body += "### Conversation Timeline\n\n%s\n" % timeline
+    return preamble, body, node_catalog, cataloged_ids
 
 
 def _write_pre_traces(brain, dispatch_fn, messages, user_content, counter, session_id):

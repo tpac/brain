@@ -128,18 +128,22 @@ def run_in_background(name, brain_db_path, session_id, counter, lock,
 
 
 def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
-                 user_content, tools, dispatch_fn, log_fn=None):
+                 user_content, tools, dispatch_fn, log_fn=None,
+                 user_preamble=None):
     """Generic LLM tool loop — call model, process tool_use, dispatch, repeat.
 
     Used by all scale encode agents. Scale-specific logic is in what
     system_prompt, user_content, and tools contain — the loop is identical.
 
-    Prompt caching (enabled always): `cache_control` markers on system and
-    on the initial user message. System is 1h TTL for cross-call reuse
-    within long eval runs; user message is 5m TTL so the 2nd turn (after
-    tool result) hits the cache reliably. Net ~15-25% per-scribe cost
-    saving, ~40-50% input token reduction. Cache usage is reported via
-    cache_creation_tokens / cache_read_tokens in the return dict.
+    Prompt caching: up to 3 `cache_control` markers placed by stability:
+      - System (1h TTL): byte-identical across every call within a prompt
+        version. Whole eval / long session keeps system warm.
+      - User preamble (1h TTL, optional): stable instructions/format
+        reminders moved to the START of the user content. When provided,
+        creates a cross-call cached block that joins system in the cache.
+      - User content body (5m TTL): the dynamic per-cycle content
+        (catalog, journal, timeline). Cached within a single run so
+        round-2 hits cache reliably.
 
     Args:
         client: anthropic.Anthropic() instance
@@ -147,10 +151,13 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         max_tokens: Max output tokens
         max_rounds: Max tool-use rounds before stopping
         system_prompt: System prompt string
-        user_content: User content string
+        user_content: User content string (the dynamic body)
         tools: List of tool schema dicts
         dispatch_fn: function(cmd, args) -> dict for tool execution
         log_fn: Optional function(msg) for logging
+        user_preamble: Optional stable string to prefix the user content with
+            its own 1h cache breakpoint. Use for instructions/format that
+            don't change per call. None disables (single-block user content).
 
     Returns:
         dict with: rounds, actions, write_actions, action_details,
@@ -212,19 +219,25 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                 system=system_param, messages=msgs, tools=tools) as stream:
             return stream.get_final_message()
 
-    # BP2 — entire turn-1 user content cached at 5m TTL. Within a single
-    # run_llm_loop invocation, turn 2 re-sends this exact block and reads
-    # from cache (always a hit, 0 seconds after turn 1 writes). Across
-    # calls this usually misses (journal/timeline shift) — but the within-
-    # call win is ~6k tokens on turn 2 which is where latency matters.
-    api_messages = [{
-        "role": "user",
-        "content": [{
+    # User content. When `user_preamble` is provided, it forms a stable 1h
+    # block that joins system in the cache (cross-call reuse). The dynamic
+    # `user_content` body keeps a 5m breakpoint so within a single
+    # run_llm_loop, round-2 always reads from cache.
+    user_blocks = []
+    if user_preamble:
+        # BP-stable-user — 1h cached, byte-identical across calls
+        user_blocks.append({
             "type": "text",
-            "text": user_content,
-            "cache_control": {"type": "ephemeral", "ttl": "5m"},
-        }],
-    }]
+            "text": user_preamble,
+            "cache_control": {"type": "ephemeral", "ttl": "1h"},
+        })
+    # BP-dynamic-user — 5m cached, the per-cycle content
+    user_blocks.append({
+        "type": "text",
+        "text": user_content,
+        "cache_control": {"type": "ephemeral", "ttl": "5m"},
+    })
+    api_messages = [{"role": "user", "content": user_blocks}]
     response = _create_message(api_messages)
     _track_usage(response, 0)
     _step("llm_r0")

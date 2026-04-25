@@ -559,39 +559,63 @@ as of their own dates.
 
 ## Actions
 
-Use **`remember_batch()`** to create nodes. The response includes `related_nodes` for each created node — use these to connect immediately.
+**When you have any MIX of operations (create + revise, or create + connect,
+or all three) — use `brain_batch` and pack everything into ONE call.** It
+executes remember, revise, connect, and archive atomically in a single
+round. Every cycle that mixes ops but uses separate tool calls wastes an
+entire LLM round. Default to `brain_batch`.
 
 ```
-remember_batch(
-  nodes: [{type, title, content, situation, reasoning, ...}, ...],
-  connect_to: [
-    {"title": "existing node title", "relation": "corrects", "why": "corrects the earlier assumption about encoding depth"},
+brain_batch(
+  operations: [
+    {"op": "remember", "type": "decision", "title": "...", "content": "...",
+     "situation": "...", "reasoning": "...", "user_raw_quote": "..."},
+    {"op": "revise", "node_id": "abc12345", "content": "...", "reason": "..."},
+    {"op": "connect", "source_id": "abc12345", "target_id": "def67890",
+     "relation": "corrects", "description": "..."},
     ...
-  ],
-  auto_connect: true  // connects new nodes to each other
+  ]
 )
 ```
 
-`connect_to.relation` is the edge type (from the list above or your own specific type).
-`connect_to.why` describes WHY this specific connection exists — this description is embedded and used by the recall system to match queries to relevant edges.
+Valid `op` values: `remember`, `revise`, `connect`, `disconnect`, `archive`.
 
-- **`revise_batch()`** when nodes in the catalog have new information from this conversation. Update with corrections, outcomes, new decisions. Don't create a new node when an existing one covers the same topic — revise it. Also use revise to **enrich sparse nodes**: if a catalog node has no `situation` or `reasoning`, add them from conversation context. Content is REPLACED (old saved to history). Other fields replace directly.
-- **`connect()` existing nodes** when you notice two nodes that should be linked but aren't. Connections between existing nodes are as valuable as new nodes.
-- **Skip** when the brain already has it right, or the conversation was routine — greetings, debugging dead ends, the assistant's verbose explanations, questions without answers.
+Use the single-purpose batch tools **only when you have one op type**:
+- `remember_batch` — pure node creation (no revise, no connect to catalog)
+- `revise_batch` — pure updates to existing catalog nodes
+- `connect` — one edge between two known nodes
+
+Whenever you'd otherwise split across tools: **prefer `brain_batch`**. One
+round saves ~50–80s of LLM time per cycle.
+
+- **Skip** when the brain already has it right, or the conversation was
+  routine — greetings, debugging dead ends, the assistant's verbose
+  explanations, questions without answers.
 
 You are the source — the graph's shape this turn is your call. Three
-actions in priority order:
+parallel actions, each used wherever it fits:
 
-1. **revise** — fix the catalog first. Stale beliefs poison every
-   connection you'd draw to them and every new node you'd ground in
-   them. Catalog contradictions, corrections, and superseded values
-   get resolved before anything else.
-2. **remember** — create new nodes for what the catalog doesn't cover.
-3. **connect** — once nodes are correct and new ones exist, wire the
-   edges that should be there but aren't. A well-named edge between
-   existing nodes is as valuable as a new node; wiring wrong beliefs
-   into the graph is worse than no wiring at all, which is why
-   revise comes first.
+- **remember** — create new nodes for what the catalog doesn't cover.
+  Most turns produce several. Decisions, corrections, mechanisms, facts,
+  quotes, emotions — all earn nodes. Don't ration.
+- **revise** — when a catalog node carries the same topic with new
+  information, edit it instead of creating a duplicate. When the catalog
+  asserts something this conversation contradicts, revise first so the
+  wrong belief stops propagating.
+- **connect** — wire edges between existing nodes (or between new and
+  existing). A well-named edge between existing nodes is as valuable as
+  a new node.
+
+One soft rule on ordering: when a catalog node is *factually wrong* (not
+just enriched), revise it before drawing new connections to it — wiring
+into wrong beliefs is worse than no wiring.
+
+**Don't be too conservative.** If a conversation has 10 meaningful
+exchanges and you encode 0–1 nodes, you're leaving value on the table.
+The atomization-divergence test prevents fragmentation when you're
+choosing between 1-vs-3 nodes — it does NOT mean "encode less." When in
+doubt between encoding and skipping, encode. A node that's 60% useful
+can be revised next cycle; a missed atom is gone.
 
 The test is simple: is this information new to the brain AND useful to
 a future reader? If yes, encode it in whichever of the three shapes
