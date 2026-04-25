@@ -29,9 +29,35 @@ from servers.pipeline_contract import (
 class TestEmbeddingGroups(unittest.TestCase):
     """Verify embedding group contract integrity."""
 
-    def test_four_groups_exist(self):
-        self.assertEqual(set(EMBEDDING_GROUPS.keys()),
-                         {'title', 'blend', 'high_meta', 'other_meta'})
+    def test_all_groups_present(self):
+        self.assertEqual(set(EMBEDDING_GROUPS.keys()), {
+            'title', 'blend', 'high_meta', 'other_meta', 'edge_context', 'question',
+            'field_content', 'field_situation', 'field_reasoning',
+            'field_user_raw_quote', 'field_anchor_raw_quote',
+        })
+
+    def test_cohort_assignment(self):
+        legacy = {k for k, v in EMBEDDING_GROUPS.items() if v['cohort'] == 'legacy'}
+        field = {k for k, v in EMBEDDING_GROUPS.items() if v['cohort'] == 'field'}
+        self.assertEqual(legacy, {
+            'title', 'blend', 'high_meta', 'other_meta', 'edge_context', 'question'
+        })
+        self.assertEqual(field, {
+            'field_content', 'field_situation', 'field_reasoning',
+            'field_user_raw_quote', 'field_anchor_raw_quote'
+        })
+
+    def test_cohort_weight_invariants(self):
+        """Legacy weights > 0 (participate in recall top2_avg).
+        Field weights = 0 (kernel reads directly, must not ripple into scoring)."""
+        for name, group in EMBEDDING_GROUPS.items():
+            cohort = group.get('cohort')
+            if cohort == 'legacy':
+                self.assertGreater(group['weight'], 0, f"{name}: legacy must have weight>0")
+            elif cohort == 'field':
+                self.assertEqual(group['weight'], 0, f"{name}: field must have weight=0")
+            else:
+                self.fail(f"{name}: unknown cohort {cohort!r}")
 
     def test_weights_ordered(self):
         """Title > blend > high_meta > other_meta."""
