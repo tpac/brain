@@ -921,6 +921,12 @@ class BrainRememberMixin:
         # and the vector keeps encoding outdated text indefinitely. Title
         # changes invalidate the title slot too — collected via SQL UPDATE
         # above and added to the field set here.
+        #
+        # Failure here is a CORRECTNESS issue (recall serves stale embeddings
+        # until next backfill cycle). We log loudly AND surface the failure
+        # in the return dict so callers can detect partial-success — silent
+        # swallow would hide drift indefinitely.
+        vector_invalidation_failed = False
         try:
             from .pipeline_contract import vectors_affected_by
             invalidated_vectors = set()
@@ -935,15 +941,23 @@ class BrainRememberMixin:
                 self.conn.commit()
                 # Invalidate the in-memory vector cache so recall doesn't
                 # serve stale embeddings between now and embed_queue's drain.
+                # Replaced hasattr() guard with explicit AttributeError catch:
+                # property-access exceptions used to fall through hasattr() as
+                # False, silently skipping cache invalidation when a cache
+                # IS present but momentarily broken.
                 try:
-                    if hasattr(self._vec_dal, 'drop_node'):
-                        self._vec_dal.drop_node(node_id)
+                    self._vec_dal.drop_node(node_id)
+                except AttributeError:
+                    pass  # plain VectorDAL — no in-memory cache to drop
                 except Exception as _ce:
                     self._log_error('revise_vector_cache_drop', _ce,
                                     'cache drop for %s' % node_id[:8])
         except Exception as e:
+            vector_invalidation_failed = True
             self._log_error('revise_vector_invalidate', e,
-                            'invalidating vectors for %s' % node_id[:8])
+                            'invalidating vectors for %s — STALE EMBEDDINGS '
+                            'will be served by recall until next backfill '
+                            'cycle catches up' % node_id[:8])
 
         # Vector (re)computation handled by the embed_queue worker — revisions
         # mark the node dirty so stale text→vector pairs get refreshed within ~5s.
@@ -998,6 +1012,11 @@ class BrainRememberMixin:
                             verification_failures.append(field)
 
         # Situation embedding deferred to backfill — no inline verification needed
+
+        # Vector invalidation failure surfaces here too — same severity as a
+        # missed field write, since recall correctness depends on it.
+        if vector_invalidation_failed:
+            verification_failures.append('vector_invalidation')
 
         verified = len(verification_failures) == 0
 

@@ -259,10 +259,19 @@ def replay(snapshot: str, conversation: str, run_name: str) -> Dict[str, Any]:
     print(f"[replay] done — wrote {work}/summary.json ({elapsed_total:.1f}s)",
           flush=True)
 
+    # Explicit teardown — Brain instances hold SQLite connections, vector
+    # caches (~50-200MB), trace buffers, and references to the embedder
+    # singleton. Without explicit close + gc, in-process eval loops leak
+    # those across jobs (saw daemon-side 4GB+ growth across a session of
+    # back-to-back replays before this was added). gc.collect() forces the
+    # cycle collector to reap any orphan refs the embedder leaves behind.
     try:
         brain.close()
     except Exception:
         pass
+    del brain
+    import gc
+    gc.collect()
 
     return summary
 

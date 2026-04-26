@@ -344,9 +344,13 @@ def run_surface(brain, ctx, candidates_data, user_message, session_context,
     selected = surfaced.get("selected", [])
     selected_short_ids = {s.get("id", "")[:8] for s in selected}
 
-    # Write surfaced IDs for Hebbian + Stop hook.
+    # Write surfaced IDs for Hebbian + Stop hook. Path is scoped to
+    # session_id + stop_counter so consecutive turns don't overwrite each
+    # other's surface output before the Stop hook reads it. Hebbian on the
+    # same turn reads the same path (counter hasn't incremented yet at
+    # Stop time — increment happens AFTER post_response_common).
     try:
-        surface_path = "/tmp/brain-%s-surface-selected.json" % session_id
+        surface_path = "/tmp/brain-%s-%d-surface-selected.json" % (session_id, ctx.stop_counter)
         with open(surface_path, 'w') as f:
             json.dump({"selected_ids": list(selected_short_ids)}, f)
     except Exception as e:

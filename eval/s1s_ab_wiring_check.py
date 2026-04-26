@@ -235,6 +235,12 @@ def run_job(transcript: Dict[str, Any], arm: str, run_idx: int,
         brain.close()
     except Exception:
         pass
+    # Force GC — see eval/s1s_snapshot_replay.py for rationale.
+    # ProcessPoolExecutor isolates jobs in separate processes so this is
+    # mostly for the --serial path, but harmless in either case.
+    del brain
+    import gc
+    gc.collect()
 
     scout_summary = _summarize_scouts(scout_events)
 

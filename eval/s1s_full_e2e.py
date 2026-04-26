@@ -141,12 +141,20 @@ def run_item(item: Dict[str, Any], run_name: str, arm: str = 'B') -> Dict[str, A
         "SELECT COUNT(*) FROM trace_events WHERE ref_type IN "
         "('scout_input','scout_findings')").fetchone()[0]
 
-    # Close brain (keep dir)
+    # Close brain (keep dir) + force GC. Each item creates a new Brain with
+    # its own SQLite conns, vector cache, trace buffers; without explicit
+    # cleanup the parent process accumulates unbounded across longmem items
+    # (per-item brains + their cached vectors stay reachable until cycle
+    # collector runs). ProcessPoolExecutor isolates by process so this only
+    # matters when the harness runs serial / inside another worker.
     try:
         brain.save()
         brain.close()
     except Exception:
         pass
+    del brain
+    import gc
+    gc.collect()
 
     return {
         'qid': qid,

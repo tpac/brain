@@ -328,7 +328,7 @@ def hook_recall(brain, args, graph_changes):
 
 
 
-def _hebbian_strengthen(brain, session_id):
+def _hebbian_strengthen(brain, session_id, stop_counter):
     """Strengthen co_accessed edges between surface-selected nodes.
 
     Only nodes the S1 Surface selected get edges — meaningful co-activation.
@@ -336,9 +336,13 @@ def _hebbian_strengthen(brain, session_id):
     Every invocation emits an outcome counter to brain stats — previous
     "return silently" paths hid a filename bug for months. Now every call
     has a visible tally, so "why did Hebbian never run?" becomes answerable.
+
+    `stop_counter` is the same counter surface.py used when writing the
+    file — both producer and consumer must agree on the path so consecutive
+    turns don't read each other's files.
     """
     outcome = {'file_missing': 0, 'few_ids': 0, 'unresolved': 0, 'edges': 0}
-    surface_path = '/tmp/brain-%s-surface-selected.json' % session_id
+    surface_path = '/tmp/brain-%s-%d-surface-selected.json' % (session_id, stop_counter)
     try:
         if not os.path.exists(surface_path):
             outcome['file_missing'] = 1
@@ -416,9 +420,11 @@ def post_response_common(brain, session_id, user_message, assistant_response):
     except Exception as e:
         brain._log_error('trace_s0', e, 'post_response_common')
 
-    # Hebbian strengthening
+    # Hebbian strengthening — pass current stop_counter so it reads the
+    # surface file written by THIS turn's recall (counter hasn't been
+    # incremented yet — that happens below).
     try:
-        _hebbian_strengthen(brain, session_id)
+        _hebbian_strengthen(brain, session_id, ctx.stop_counter)
     except Exception as e:
         brain._log_error('hebbian_surface_selected', e, 'post_response_common')
 
