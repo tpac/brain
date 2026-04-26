@@ -418,8 +418,18 @@ def _write_pre_traces(brain, dispatch_fn, messages, user_content, counter, sessi
                         cid = c.get('id', '') if isinstance(c, dict) else ''
                         if cid:
                             node_ids.add(cid[:8])
-                except (ValueError, TypeError):
-                    pass
+                except (ValueError, TypeError) as _e:
+                    # Corrupt recalled_raw JSON silently dropped node IDs
+                    # from the encoding-prompt trace. Surface so we can spot
+                    # whether the producer side (recall result serialization)
+                    # is emitting malformed content.
+                    try:
+                        brain._log_error(
+                            'encoding_recall_parse', _e,
+                            'malformed recalled_raw — node refs missing from O-trace; sample=%r'
+                            % str(raw)[:160])
+                    except Exception:
+                        pass
 
         dispatch_fn('trace_append', {
             'chain_id': enc_chain, 'scale': 's1', 'event_type': 'O',

@@ -378,10 +378,16 @@ def _hebbian_strengthen(brain, session_id, stop_counter):
                     brain._log_error('hebbian_edge', e, 'creating co_accessed edge')
     finally:
         # Durable tally so "did Hebbian run?" is answerable without a debugger.
+        # If the log itself fails we surface that — silent pass would defeat
+        # the whole point of the visibility this block was added for.
         try:
             brain.log_debug('hebbian_run', 'post_response_common', **outcome)
-        except Exception:
-            pass
+        except Exception as _le:
+            try:
+                brain._log_error('hebbian_log_outcome', _le,
+                                 'log_debug failed; outcome=%s' % outcome)
+            except Exception:
+                pass  # last-resort safety; if even _log_error fails, swallow
 
 
 def _s1e_chain_id(session_id, counter):
@@ -455,6 +461,13 @@ def hook_post_response_track(brain, args, graph_changes):
     )
     session_id = ctx.session_id
     encoding_status = ""
+    # acquired_for_spawn tracks the window between lock.acquire() and the
+    # successful return of run_in_background (which transfers lock ownership
+    # to the spawned thread, whose finally releases it). If we acquire but
+    # then fail before the transfer (import error, Thread.start() raises),
+    # the outer finally below recovers the lock — otherwise the lock would
+    # be held indefinitely and ALL future encoding cycles would silently skip.
+    acquired_for_spawn = False
     try:
         counter = ctx.stop_counter
         position = counter % 5
@@ -464,6 +477,7 @@ def hook_post_response_track(brain, args, graph_changes):
                 encoding_status = "encoding skipped (previous still running)"
                 print("[brain-hooks] Encoding agent skipped — previous run still active", flush=True)
             else:
+                acquired_for_spawn = True
                 from .scales.runner import run_in_background
                 from .scales.s1.encode import run_encoding
                 run_in_background(
@@ -471,12 +485,28 @@ def hook_post_response_track(brain, args, graph_changes):
                     session_id=session_id, counter=counter,
                     lock=_encoding_lock, run_fn=run_encoding,
                     trace_scale='s1', trace_chain_fn=_s1e_chain_id)
+                # Thread.start() returned → ownership transferred. Thread's
+                # finally is now responsible for the release.
+                acquired_for_spawn = False
                 encoding_status = "encoding started (background)"
         else:
             encoding_status = "encoding %d/5" % position
     except Exception as e:
         brain._log_error('encoding_agent_gate', e, 'Stop hook')
         encoding_status = "encoding error: %s" % str(e)[:50]
+    finally:
+        # Recovery release: we acquired the lock but never successfully
+        # handed ownership to a background thread. Without this release,
+        # the daemon's encoder would be permanently jammed.
+        if acquired_for_spawn:
+            try:
+                _encoding_lock.release()
+            except Exception:
+                pass
+            brain._log_error(
+                'encoding_lock_leak_recovered',
+                RuntimeError("encoding lock acquired but spawn failed; released to prevent permanent jam"),
+                'session=%s counter=%s' % (session_id, ctx.stop_counter))
 
     brain.save()
     return {"output": "(stored + %s)" % encoding_status}

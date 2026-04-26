@@ -390,8 +390,20 @@ def run_surface(brain, ctx, candidates_data, user_message, session_context,
                 from servers.dal import NodeDAL
                 ndal = NodeDAL(brain.conn)
                 resolved = ndal.resolve_id(short_id)
-            except Exception:
+            except Exception as _re:
+                # A bare except here used to mask real DB errors as
+                # "ID is hallucinated" — a SQL/index issue would become
+                # indistinguishable from a Haiku confabulation, breaking
+                # the diagnostic value of the haiku_id_outside_candidates
+                # vs haiku_id_unresolvable distinction below.
                 resolved = None
+                try:
+                    brain._log_error(
+                        'haiku_id_resolve_failed', _re,
+                        'resolve_id raised for short_id=%s — treating as unresolvable but real cause logged'
+                        % short_id)
+                except Exception:
+                    pass
             if resolved:
                 selected_why[resolved] = s.get('why', '')
                 brain._log_error(
