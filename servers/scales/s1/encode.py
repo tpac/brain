@@ -28,11 +28,10 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         counter: Stop counter value
         session_id: Session ID (required)
         log_fn: Optional logging function
-        muster_enabled: Explicit override for the Phase-1 scouts muster. When
-            None (default), reads env BRAIN_MUSTER_ENABLED=1 to decide.
-            Passing True/False bypasses the env check — harnesses running
-            multiple encodings in one process should pass explicitly so
-            parallel jobs don't race the global env var.
+        muster_enabled: Explicit override for the Phase-1 scouts muster.
+            When None (default), muster runs — the v13 prompt is built
+            around scout reports. Passing False is for tests / ablation
+            harnesses that want to measure no-scout behavior.
 
     Returns:
         dict with encoding results summary. When muster runs, also includes
@@ -83,11 +82,12 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
 
     # 2b. Muster phase — Phase-1 scouts (quote / temporal / facts / synthesis)
     # fan out in parallel, emit O/K traces on the s1e chain, and produce a
-    # report block appended to user_content. When disabled (or muster raises)
-    # we fall back to the pre-scouts path: v12-style encoding with no scout
-    # reports, identical to what the scribe saw before this landed.
+    # report block appended to user_content. Architectural default: ON.
+    # The v13 prompt ships with `## Scout reports` as part of its expected
+    # input; running without scouts leaves a structural hole. The explicit
+    # `muster_enabled=False` kwarg remains for tests that need to toggle.
     if muster_enabled is None:
-        muster_enabled = (os.environ.get('BRAIN_MUSTER_ENABLED', '') in ('1', 'true', 'True'))
+        muster_enabled = True
 
     muster_summary = None
     if muster_enabled:

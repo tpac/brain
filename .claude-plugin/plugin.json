@@ -1,7 +1,7 @@
 {
   "name": "brain",
-  "version": "9.4.0",
-  "description": "Persistent shared brain between AI assistant and operator. Not a RAG system — a living knowledge graph that heals itself, learns from conversations, and activates the right knowledge at the right moment. v9.4: S2 Healer (Haiku generates missing findability vectors from conversation context), S0 conversation API (traces + historic JSONL), edge_context vectors (nodes findable through their relationships), situation scoring wired (1085 dormant embeddings activated), group vector 100% coverage, ONNX thread-safety fix, recall eval framework (25 scenarios, 10 KPIs, 122 real-trace validation).",
+  "version": "9.5.0",
+  "description": "Persistent shared brain between AI assistant and operator. Not a RAG system — a living knowledge graph that heals itself, learns from conversations, and activates the right knowledge at the right moment. v9.5: S1 Scribe v14+SPLIT prompt with unconditional muster (4 scouts: quote/temporal/facts/synthesis fan out in parallel before encoding); S1 Surface spreading-activation kernel with per-field vectors (single physics replacing select_edges + per-seed top-K + community-walk); S2 retry-on-transient-API + 15-min maintenance interval; encoding lock leak recovery + 5 silent-failure surfaces hardened.",
   "author": {
     "name": "Tom Pachys"
   },

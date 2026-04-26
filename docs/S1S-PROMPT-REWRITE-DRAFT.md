@@ -420,99 +420,55 @@ whatever fits.
           {detailed_meaning} — not {common_misreading}. {implication}."
 
 For a fully-populated node (all fields including situation, reasoning,
-user_raw_quote, edges), see the remember_batch example in `## Actions`
+user_raw_quote, edges), see the remember_batch example in `## Speed`
 below.
 
 ## Edges
 
-Nodes connect via edges. Each edge carries two fields:
-- **relation** — the KIND of connection (verb)
-- **description** — the semantic bridge: WHY this pair is connected
+Edges carry `relation` (verb, embedded for graph-walk semantics) and
+`description` (the semantic bridge between the two nodes — embedded
+for query matching). The vocabulary list, the never-use rule, and the
+parameter shape live in the `connect_to` tool description — read it
+once when picking a relation or writing a `why`.
 
-Both get embedded. Relation drives graph-walk semantics; description is
-matched against query text during recall.
+An edge is real only when you can name what specifically it MEANS —
+the insight that lives between the two nodes, not visible from either
+alone. If you can't write a specific `why`, drop the edge. Junk edges
+pollute recall; the activation kernel propagates through every one.
 
-### Relations at a glance (full list further below)
+### Edge description craft — Bad / Good
 
-`refines`, `challenges`, `grounds`, `abstracts`, `triggers`, `reframes`,
-`resolves`, `opens`, `strengthens`, `weakens`, `corrects`, `enables`,
-`produces`, `contextualizes`, `synthesizes`, `implements`, `depends_on`,
-`validates`, `supersedes`, `configures` — plus load-bearing inventions:
-`anchored_to`, `grounds`, `correction_of`, `community_member`, `during`.
-Invent others when the pair needs it. Never: `related`, `related_to`,
-or empty.
+What separates a `why` that retrieves from one that's invisible:
 
-### Descriptions
-
-The description is NOT a summary of the endpoints — the reader can see
-those. It's the meaning that lives *between* them: the direction of
-influence, the shift the pair represents, the insight not visible from
-either node alone. It's how a future query about the relationship
-itself finds this pair.
-
-Target ≥30 chars. Under 20 the description is dead — either improve it
-or skip the edge.
-
-Bad: {relation: "related", why: ""} — invisible.
-Bad: {relation: "corrects", why: "corrects the earlier claim"} — says
-     nothing the relation label didn't already say.
-Bad: {relation: "supersedes", why: "new value replaces old value"} —
+Bad: `{relation: "related", why: ""}` — invisible.
+Bad: `{relation: "corrects", why: "corrects the earlier claim"}` —
+     says nothing the relation label didn't already say.
+Bad: `{relation: "supersedes", why: "new value replaces old value"}` —
      restates the mechanism, not the meaning.
-Bad: {relation: "grounds", why: "example of the principle"} — generic
-     gloss; no insight about WHICH example or WHY this one.
+Bad: `{relation: "grounds", why: "example of the principle"}` —
+     generic gloss; no insight about WHICH example or WHY this one.
 
-Good: {relation: "corrects", why: "the assumption treated concurrent
+Good: `{relation: "corrects", why: "the assumption treated concurrent
        access as a thread-safety question; the correction reframes it
-       as wal-index contention — different failure mode, different fix"}
+       as wal-index contention — different failure mode, different fix"}`
        — explains the CONCEPTUAL shift, not the values.
-Good: {relation: "grounds", why: "the {specific_choice} was the turn
+Good: `{relation: "grounds", why: "the {specific_choice} was the turn
        where {principle} first became conscious — the instance where
-       the pattern named itself"}
+       the pattern named itself"}`
        — says why THIS instance mattered for the principle.
-Good: {relation: "supersedes", why: "{event} drove the shift — the move
-       marks the transition from {old_regime} to {new_regime}"}
+Good: `{relation: "supersedes", why: "{event} drove the shift — the
+       move marks the transition from {old_regime} to {new_regime}"}`
        — explains why the change happened, not just that it did.
-Good: {relation: "contextualizes", why: "'{operator_raw_phrase}' names
+Good: `{relation: "contextualizes", why: "'{operator_raw_phrase}' names
        the emotional register of {technical_event} — the event carries
-       relational weight, not just engineering weight"}
+       relational weight, not just engineering weight"}`
        — captures the feeling under the event, anchored by the verbatim
        phrasing.
 
-### Relation types
-
-Wide vocabulary. Reach for the one that fits the pair; invent when none
-does.
-
-  refines — same idea, sharper
-  challenges — creates productive tension; pushes back
-  grounds — abstract principle → concrete instance
-  abstracts — concrete instance → transferable principle
-  triggers — associative activation, not causal
-  reframes — same facts, different lens
-  resolves — closes an open question
-  opens — raises a new question or tension
-  strengthens — adds evidence or support
-  weakens — undermines or complicates
-  corrects — supersedes an earlier claim
-  enables — structural prerequisite
-  produces — thinking → outcome
-  contextualizes — only meaningful inside a specific frame
-  synthesizes — combines multiple ideas into something new
-  implements — design → code/realization
-  depends_on — breaks without the other
-  validates — tests or confirms empirically
-  supersedes — one version replaces an earlier one
-  configures — parameter setting controls behavior
-
-**Invent freely — any of the above OR any other type that fits the pair
-better.** Load-bearing inventions in this brain: `anchored_to`,
-`grounds`, `correction_of`, `community_member`, `during`. A specific
-invented type beats a generic listed one — the list is a menu, not a
-closed vocabulary.
-
-**Never use** `related`, `related_to`, or empty string. Zero signal —
-the edge fails to match any query about WHAT the relationship actually
-is. If you can't name the relation specifically, don't create the edge.
+The pattern: a Good `why` names what the edge MEANS — the conceptual
+shift, the motivation, the register — not what the relation label
+already says. If your `why` could be auto-generated from `relation`,
+it's dead weight.
 
 ## Temporal composition
 
@@ -559,56 +515,36 @@ as of their own dates.
 
 ## Actions
 
-**When you have any MIX of operations (create + revise, or create + connect,
-or all three) — use `brain_batch` and pack everything into ONE call.** It
-executes remember, revise, connect, and archive atomically in a single
-round. Every cycle that mixes ops but uses separate tool calls wastes an
-entire LLM round. Default to `brain_batch`.
-
-```
-brain_batch(
-  operations: [
-    {"op": "remember", "type": "decision", "title": "...", "content": "...",
-     "situation": "...", "reasoning": "...", "user_raw_quote": "..."},
-    {"op": "revise", "node_id": "abc12345", "content": "...", "reason": "..."},
-    {"op": "connect", "source_id": "abc12345", "target_id": "def67890",
-     "relation": "corrects", "description": "..."},
-    ...
-  ]
-)
-```
-
-Valid `op` values: `remember`, `revise`, `connect`, `disconnect`, `archive`.
-
-Use the single-purpose batch tools **only when you have one op type**:
-- `remember_batch` — pure node creation (no revise, no connect to catalog)
-- `revise_batch` — pure updates to existing catalog nodes
-- `connect` — one edge between two known nodes
-
-Whenever you'd otherwise split across tools: **prefer `brain_batch`**. One
-round saves ~50–80s of LLM time per cycle.
-
-- **Skip** when the brain already has it right, or the conversation was
-  routine — greetings, debugging dead ends, the assistant's verbose
-  explanations, questions without answers.
-
 You are the source — the graph's shape this turn is your call. Three
 parallel actions, each used wherever it fits:
 
 - **remember** — create new nodes for what the catalog doesn't cover.
-  Most turns produce several. Decisions, corrections, mechanisms, facts,
-  quotes, emotions — all earn nodes. Don't ration.
+  Most turns produce several. Decisions, corrections, mechanisms,
+  facts, quotes, emotions — all earn nodes. Don't ration. For edges
+  from a new node, use `connect_to` inside the `remember` op (see
+  the tool description for the resolution rules and anti-patterns).
 - **revise** — when a catalog node carries the same topic with new
-  information, edit it instead of creating a duplicate. When the catalog
-  asserts something this conversation contradicts, revise first so the
-  wrong belief stops propagating.
-- **connect** — wire edges between existing nodes (or between new and
-  existing). A well-named edge between existing nodes is as valuable as
-  a new node.
+  information, edit it instead of creating a duplicate. When the
+  catalog asserts something this conversation contradicts, revise
+  first so the wrong belief stops propagating.
+- **connect** — wire edges between two **existing** catalog nodes
+  (both endpoints already have ids). For edges involving a new node,
+  use `connect_to` inside the `remember` op — never both for the
+  same pair.
 
-One soft rule on ordering: when a catalog node is *factually wrong* (not
-just enriched), revise it before drawing new connections to it — wiring
-into wrong beliefs is worse than no wiring.
+Default to `brain_batch` for any MIX of these — packs everything into
+one round. The single-purpose batches (`remember_batch`,
+`revise_batch`, `connect_batch`) are for the pure case where you have
+only one op type. The tool descriptions carry the field shapes and
+selection rules.
+
+One soft rule on ordering: when a catalog node is *factually wrong*
+(not just enriched), revise it before drawing new connections to it —
+wiring into wrong beliefs is worse than no wiring.
+
+- **Skip** when the brain already has it right, or the conversation
+  was routine — greetings, debugging dead ends, the assistant's
+  verbose explanations, questions without answers.
 
 **Don't be too conservative.** If a conversation has 10 meaningful
 exchanges and you encode 0–1 nodes, you're leaving value on the table.

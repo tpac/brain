@@ -9,7 +9,7 @@ What this does differently from eval/s1s_ab_wiring_check.py:
   - Uses eval/longmem/replay.py for the full pipeline (S1R + S0 + S1E
     + S2 at every 2 encodings + final S2 flush + backfill_vectors)
   - Registers v14 prompt in each fresh brain before replay
-  - Enables muster via BRAIN_MUSTER_ENABLED=1 env var
+  - Muster runs unconditionally (architectural default since the v13 ship)
   - Single arm (v14 + muster), no A/B — the question this answers is
     "how does the full new stack perform", not "is B better than A"
   - Preserves ALL internals (brain DB, logs DB, traces, preserved
@@ -216,13 +216,10 @@ def main():
 
     _load_env()
 
-    # Muster enabled via env for arm B (replay.py does not accept muster_enabled
-    # kwarg; the env is read at run_encoding time). For parallel runs each
-    # worker inherits this env; for serial runs it's set once.
-    if args.arm == 'B':
-        os.environ['BRAIN_MUSTER_ENABLED'] = '1'
-    else:
-        os.environ['BRAIN_MUSTER_ENABLED'] = '0'
+    # Muster is now architecturally unconditional in run_encoding(); the
+    # `--arm` flag only controls which prompt gets registered (v12 default
+    # vs v14+SPLIT). Arm A no longer disables scouts — that distinction
+    # would require plumbing a muster_enabled kwarg through replay_item.
 
     run_name = args.run_name or f'full_e2e_{time.strftime("%Y%m%d_%H%M%S")}'
     reports_dir = ROOT / 'eval' / 'reports' / 's1s_full_e2e'
@@ -235,7 +232,7 @@ def main():
         items = items[:args.items]
 
     print(f'[e2e] run_name: {run_name}')
-    print(f'[e2e] arm: {args.arm}  muster_enabled: {os.environ.get("BRAIN_MUSTER_ENABLED")}')
+    print(f'[e2e] arm: {args.arm}  (muster is now architecturally unconditional)')
     print(f'[e2e] items: {len(items)} ({args.n_per_axis} per axis × '
           f'{len(set((i["_axis"]) for i in items))} axes)')
     print(f'[e2e] brains: ~/AgentsContext/brain-eval-{run_name}/{{qid}}/')
@@ -270,7 +267,7 @@ def main():
     else:
         from concurrent.futures import ProcessPoolExecutor, as_completed
         print(f'[e2e] running {len(items)} items across {args.workers} workers')
-        print(f'[e2e] each worker inherits BRAIN_MUSTER_ENABLED={os.environ.get("BRAIN_MUSTER_ENABLED")}')
+        print(f'[e2e] muster runs unconditionally in each worker via encode.run_encoding()')
         by_idx: Dict[int, Dict[str, Any]] = {}
         with ProcessPoolExecutor(max_workers=args.workers) as pool:
             futures = {
