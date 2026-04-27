@@ -29,12 +29,23 @@ class TestInteractionSeeding:
             yield
 
     def test_seed_creates_all_interactions(self):
+        """Seed registers the core S1/S2 interactions.
+
+        Asserts a core subset is present rather than exact equality —
+        the seed list grows as new boundaries get learnable prompts
+        (scouts were added 2026-04-23, healer earlier). A subset check
+        keeps this from breaking on every legitimate addition.
+        """
         from servers.interaction_seed import seed_interactions
         seed_interactions(self.brain)
         all_interactions = self.dal.list_all()
         names = {i['name'] for i in all_interactions}
-        assert names == {'surface', 'encoding_agent', 'voice_surface',
-                         'boot', 'pre_edit', 'signal_assembler', 's2_community'}
+        core_required = {'surface', 's1e', 's2_community',
+                         's2_community_enrichment',
+                         's2_consolidation_enrichment',
+                         's2_healer'}
+        missing = core_required - names
+        assert not missing, "Seed missing core interactions: %s" % missing
 
     def test_seed_is_idempotent(self):
         """Running seed twice doesn't create duplicates."""
@@ -55,9 +66,14 @@ class TestInteractionSeeding:
         assert 'max_selected' in config
 
     def test_encoding_agent_has_prompt_and_config(self):
+        """The S1 encoder interaction has a real prompt + config.
+
+        Renamed from `encoding_agent` to `s1e` when scale-name conventions
+        landed; runtime reads 's1e' (see scales/s1/encode.py).
+        """
         from servers.interaction_seed import seed_interactions
         seed_interactions(self.brain)
-        enc = self.dal.get_latest('encoding_agent')
+        enc = self.dal.get_latest('s1e')
         assert enc is not None
         assert len(enc['template']) > 100  # real prompt
         config = json.loads(enc['parameters'])

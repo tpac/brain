@@ -110,12 +110,15 @@ class TestFormatCandidateForSurface(unittest.TestCase):
         self.assertIn('abc12345', result)
 
     def test_metadata_included_when_present(self):
+        """Metadata fields are read from `_metadata` (get_rich_node shape)
+        as of the contract refactor. The old top-level keys are not honored."""
         c = {'id': 'abc12345', 'type': 'rule', 'title': 'Test',
-             'content': 'Content', 'situation': 'When debugging',
-             'reasoning': 'Important because...'}
+             'content': 'Content',
+             'situation': 'When debugging',  # situation is top-level for ergonomics
+             '_metadata': {'reasoning': 'Important because...'}}
         result = format_candidate_for_surface(c, 1)
         self.assertIn('Situation:', result)
-        self.assertIn('Reasoning:', result)
+        self.assertIn('reasoning:', result.lower())
 
     def test_metadata_omitted_when_empty(self):
         c = {'id': 'abc12345', 'type': 'rule', 'title': 'Test',
@@ -131,9 +134,28 @@ class TestFormatCandidateForSurface(unittest.TestCase):
         self.assertIn('locked', result)
 
     def test_edges_included(self):
+        """Edges live in `connections` (get_rich_node shape) and render as
+        natural-language relations like `this depends_on "Related node"`.
+
+        Renderer contract (servers/contract.py:render_rich_node):
+        - When connection has multiple relations → use `relations` array.
+        - When single relation → use top-level `relation` + `description`
+          on the connection (not nested in a `relations` list of one).
+
+        Was: pinned on the literal substring `Related node` from a top-level
+        `top_edges` array, which the formatter no longer reads.
+        """
         c = {'id': 'abc12345', 'type': 'rule', 'title': 'Test',
              'content': 'Content',
-             'top_edges': [{'title': 'Related node', 'type': 'depends_on', 'why': 'because', 'weight': 0.7}]}
+             'connections': [{
+                 'id': 'def67890',
+                 'title': 'Related node',
+                 'type': 'concept',
+                 'direction': 'outgoing',
+                 # Single-relation form: top-level relation + description.
+                 'relation': 'depends_on',
+                 'description': 'because',
+             }]}
         result = format_candidate_for_surface(c, 1)
         self.assertIn('Related node', result)
         self.assertIn('depends_on', result)

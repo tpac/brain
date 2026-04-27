@@ -315,6 +315,19 @@ class T9_Cascade(BrainTestBase):
     needs_embedder = False
 
     def test_delete_node_removes_relations(self):
+        """delete_node_edges() soft-archives all edge_relations for a node.
+
+        v25 contract change (see GraphDAL.delete_node_edges docstring):
+        was a hard DELETE, now sets archived=1 on the edge_relations and
+        leaves the edges aggregate row intact. The asymmetry with node
+        archive previously destroyed edge provenance forever; soft-archive
+        preserves it.
+
+        So the new contract is:
+          - edges row: still present (the physical pair survives)
+          - edge_relations: archived=1, still queryable for provenance
+          - active relation count for this edge: 0
+        """
         a = self.brain.remember(type='decision', title='Node A', content='A',
                                 auto_connect=False)['id']
         b = self.brain.remember(type='decision', title='Node B', content='B',
@@ -329,15 +342,21 @@ class T9_Cascade(BrainTestBase):
 
         dal.delete_node_edges(a)
 
-        # No edges or relations should remain
-        remaining_edges = self.brain.conn.execute(
-            'SELECT COUNT(*) FROM edges WHERE source_id = ? OR target_id = ?',
-            (a, a)).fetchone()[0]
-        remaining_rels = self.brain.conn.execute(
-            'SELECT COUNT(*) FROM edge_relations WHERE edge_id = ?',
+        # No ACTIVE relations for this edge (soft-archive contract).
+        active_rels = self.brain.conn.execute(
+            'SELECT COUNT(*) FROM edge_relations '
+            'WHERE edge_id = ? AND archived = 0',
             (edge_id,)).fetchone()[0]
-        self.assertEqual(remaining_edges, 0)
-        self.assertEqual(remaining_rels, 0)
+        self.assertEqual(active_rels, 0,
+                         "Active edge_relations should be 0 after delete_node_edges")
+
+        # The provenance row should still exist (archived=1).
+        archived_rels = self.brain.conn.execute(
+            'SELECT COUNT(*) FROM edge_relations '
+            'WHERE edge_id = ? AND archived = 1',
+            (edge_id,)).fetchone()[0]
+        self.assertGreaterEqual(archived_rels, 1,
+                                "Soft-archived relation row should survive for provenance")
 
 
 class T10_BackwardCompat(BrainTestBase):

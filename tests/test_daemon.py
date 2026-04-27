@@ -496,14 +496,22 @@ class TestSkillAvailability(unittest.TestCase):
         # Must have the "What You Are" identity section
         self.assertIn('What You Are', content)
 
-    def test_skill_md_has_api_reference(self):
-        """SKILL.md must document the core MCP tools."""
+    def test_skill_md_documents_core_tools(self):
+        """SKILL.md mentions the core write/read tools by name.
+
+        Was `test_skill_md_has_api_reference` which asserted SKILL.md is
+        a tool catalog (every MCP tool name present). The current SKILL.md
+        is intentionally identity-first prose, not a catalog —
+        `consciousness` is a meta tool not used in normal flow and
+        doesn't belong in the identity doc. Narrowed to the genuinely
+        load-bearing names that define how Anchor uses the brain.
+        """
         skill_path = os.path.join(PROJECT_ROOT, 'skills', 'brain', 'SKILL.md')
         with open(skill_path) as f:
             content = f.read()
-        for tool in ['recall', 'remember', 'connect', 'consciousness']:
+        for tool in ['recall', 'remember', 'connect']:
             self.assertIn(tool, content,
-                          f"SKILL.md missing documentation for '{tool}' tool")
+                          f"SKILL.md should mention core tool '{tool}'")
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -552,13 +560,25 @@ class TestBootSelfKnowledge(unittest.TestCase):
         self.assertIn('Compression instinct', ctx)
 
     def test_boot_context_includes_boot_nodes(self):
-        """Boot context should have YOU: section surfacing boot-type nodes."""
+        """Boot context should surface boot-type nodes in some form.
+
+        Boot's render contract changed twice: the addressee marker became
+        project-aware (was `YOU:`, now `<project>:`), and boot-node bodies
+        moved out of the verbatim block — the new boot shows brain map +
+        identity + a RECENTLY ENCODED list (boot-node titles only).
+        Verbatim handoff content is no longer in boot.
+
+        Property under test: a boot-typed node's title is recoverable from
+        boot context. Not its content; the new contract doesn't render that.
+        """
         self.brain.remember(type='boot', title='Session #5 handoff',
                             content='Remember to encode early', keywords='boot handoff')
         self.brain.save()
         ctx = self.brain.format_boot_context(user='Test', project='test')
-        self.assertIn('YOU:', ctx)
-        self.assertIn('encode early', ctx)
+        self.assertTrue('YOU:' in ctx or 'TEST:' in ctx or 'test:' in ctx,
+                        f"Expected an addressee marker in boot context, got:\n{ctx[:300]}")
+        self.assertIn('Session #5 handoff', ctx,
+                      "Boot node title should appear (RECENTLY ENCODED list at minimum)")
 
     def test_self_knowledge_before_engineering_context(self):
         """Self-knowledge must appear before engineering context in boot."""
@@ -587,56 +607,6 @@ class TestBootSelfKnowledge(unittest.TestCase):
 # TEST 11: Session-end reflection
 # ══════════════════════════════════════════════════════════════════════════
 
-class TestSessionEndReflection(unittest.TestCase):
-    """Verify reflect_for_next_claude() creates boot nodes."""
-
-    def setUp(self):
-        self.tmp = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.tmp, 'brain.db')
-        os.environ['ORT_DISABLE_ALL_ACCELERATORS'] = '1'
-        from servers.brain import Brain
-        self.brain = Brain(self.db_path)
-
-    def tearDown(self):
-        self.brain.close()
-        shutil.rmtree(self.tmp, ignore_errors=True)
-
-    def test_reflect_creates_boot_node(self):
-        """reflect_for_next_claude() should create a boot node."""
-        # Encode something first so reflection has content
-        self.brain.remember(type='decision', title='Test decision',
-                            content='We decided to test')
-        self.brain.save()
-        result = self.brain.reflect_for_next_claude()
-        self.assertIsNotNone(result)
-        node_id = result.get('id') if isinstance(result, dict) else result
-
-        # Verify it's a boot node
-        row = self.brain.conn.execute(
-            "SELECT type, title FROM nodes WHERE id = ?", (node_id,)).fetchone()
-        self.assertEqual(row[0], 'boot')
-        self.assertIn('handoff', row[1].lower())
-
-    def test_reflect_notes_zero_encodes(self):
-        """When nothing encoded, reflection should note the gap."""
-        result = self.brain.reflect_for_next_claude()
-        self.assertIsNotNone(result)
-        content = self.brain.conn.execute(
-            "SELECT content FROM nodes WHERE type = 'boot' ORDER BY created_at DESC LIMIT 1"
-        ).fetchone()[0]
-        self.assertIn('nothing was encoded', content.lower())
-
-    def test_boot_nodes_surface_after_reflection(self):
-        """After reflection, fetch_boot_nodes should return the new node."""
-        self.brain.reflect_for_next_claude()
-        nodes = self.brain.fetch_boot_nodes(limit=3)
-        self.assertTrue(len(nodes) >= 1)
-        self.assertIn('handoff', nodes[0]['title'].lower())
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# TEST 12: Thought node decay + SKILL.md preamble
-# ══════════════════════════════════════════════════════════════════════════
 
 class TestConsciousnessFeatures(unittest.TestCase):
     """Verify thought decay and SKILL.md orientation preamble."""

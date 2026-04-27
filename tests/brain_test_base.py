@@ -254,6 +254,51 @@ class BrainTestBase(unittest.TestCase):
         self.db_path = os.path.join(self.tmp, 'brain.db')
         self.brain = Brain(self.db_path, skip_embedder=not self.needs_embedder)
         self.brain.reset_session_activity()
+        # Auto-drain embeddings: the embed_queue worker only fires every
+        # 5 seconds, so a test that does remember() → recall() in 50ms
+        # never sees its own write because the embedding hasn't landed.
+        # Wrap the write APIs to synchronously drain after each call. Tests
+        # then behave as if embedding were synchronous, which matches the
+        # pre-deferral contract everything was written against.
+        if self.needs_embedder:
+            self._patch_writes_to_auto_drain()
+
+    def _drain_embeddings(self):
+        """Force-drain the embed_queue synchronously.
+
+        Normally called automatically after remember()/revise() via the
+        wrapper installed in setUp. Exposed for tests that bypass the
+        wrapper (direct DAL writes, raw SQL, etc).
+        """
+        from servers import embed_queue
+        embed_queue._drain_once(self.brain)
+
+    def _patch_writes_to_auto_drain(self):
+        """Wrap brain.remember and brain.revise so each call drains the
+        embed queue before returning. Tests see synchronous behavior."""
+        from servers import embed_queue
+
+        for method_name in ('remember', 'revise'):
+            original = getattr(self.brain, method_name, None)
+            if original is None or getattr(original, '_drain_wrapped', False):
+                continue
+
+            def _make_wrapper(orig, qname=method_name):
+                def wrapper(*args, **kwargs):
+                    result = orig(*args, **kwargs)
+                    try:
+                        embed_queue._drain_once(self.brain)
+                    except Exception as e:
+                        # Don't let drain failures hide real test results.
+                        import sys
+                        print('[brain_test_base] drain after %s failed: %s'
+                              % (qname, e), file=sys.stderr)
+                    return result
+                wrapper._drain_wrapped = True
+                wrapper.__wrapped__ = orig
+                return wrapper
+
+            setattr(self.brain, method_name, _make_wrapper(original))
 
     def tearDown(self):
         duration_ms = (time.time() - self._test_start) * 1000

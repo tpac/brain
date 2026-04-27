@@ -304,163 +304,28 @@ class TestDampening(BrainTestBase):
                              f'Alpha node should rank first with project filter, got project={first_project}')
 
 
-# ═══════════════════════════════════════════════════════════════
-# TestSpreadingActivation — verify multi-hop graph traversal
-# with exponential decay per hop
-# ═══════════════════════════════════════════════════════════════
+# Coverage moved 2026-04-26 to tests/test_spread_activation.py.
+# The old TestSpreadingActivation class called brain.spread_activation([seeds])
+# — a method-on-Brain API that no longer exists. The kernel was rewritten as
+# a query-aware module function `servers.scales.s1.surface_contract.spread_activation(
+# seed_ids, query_vec, brain, prior_vecs=None)`. The new contract requires a
+# query embedding (activation originates from max field-cosine with query),
+# making the old "spread without query" tests not translatable. The new
+# test_spread_activation.py covers the full kernel: edge enrichment text
+# composition, softmax budget allocation, field activation masking, and
+# end-to-end Hawaii→NYC seed propagation. The replacement tests assert
+# stricter properties than the originals (edge text compositions, budget
+# distributions, field masks) — not weaker.
 
-class TestSpreadingActivation(BrainTestBase):
-    """Verify that spreading activation traverses edges with proper decay."""
+class TestSpreadingActivationCoverageMoved(BrainTestBase):
+    """Sentinel — placeholder pointing to the new home (test_spread_activation.py)."""
 
-    def test_spread_reaches_2_hop(self):
-        """Activation should reach a node 2 hops away through graph edges.
+    def test_kernel_module_importable(self):
+        """The new spread_activation lives in surface_contract — verify the move landed."""
+        from servers.scales.s1.surface_contract import spread_activation
+        self.assertTrue(callable(spread_activation))
 
-        Creates chain A -> B -> C with 'related' edges. Seeds activation at A.
-        C should appear in the activation results via B.
-        """
-        a = self.brain.remember(
-            type='decision',
-            title='Adopt event sourcing for the order management service',
-            content='Orders are complex state machines. Event sourcing gives us a complete audit '
-                    'trail, enables temporal queries, and makes it trivial to rebuild projections '
-                    'when business rules change.',
-            keywords='event-sourcing orders audit-trail projections cqrs'
-        )
-        b = self.brain.remember(
-            type='mechanism',
-            title='Event store implementation with PostgreSQL append-only table',
-            content='Events are stored in a PostgreSQL table with columns: stream_id, version, '
-                    'event_type, payload (JSONB), metadata (JSONB), created_at. Optimistic '
-                    'concurrency uses the version column with unique constraint.',
-            keywords='event-store postgresql append-only jsonb optimistic-concurrency'
-        )
-        c = self.brain.remember(
-            type='lesson',
-            title='Projection rebuilds must be idempotent and versioned',
-            content='We learned the hard way that projections need version stamps. When rebuilding '
-                    'the order summary projection, duplicate events caused inflated revenue totals. '
-                    'Now every projection tracks its last processed event version.',
-            keywords='projection rebuild idempotent versioned event-sourcing'
-        )
-        self.brain.connect(a['id'], b['id'], 'related', 0.8)
-        self.brain.connect(b['id'], c['id'], 'related', 0.8)
-        self.brain.save()
 
-        activated = self.brain.spread_activation([a['id']])
-        activated_ids = [n['id'] for n in activated]
-
-        self.assertIn(c['id'], activated_ids,
-                      'Node C (2 hops from A) should receive spreading activation')
-
-    def test_spread_decays_by_hop(self):
-        """Activation should decay exponentially: C's activation ~= SPREAD_DECAY^2 * edge_weights.
-
-        With SPREAD_DECAY=0.5, 2 hops through weight-1.0 edges should give
-        C roughly 0.5^2 = 0.25 of A's initial activation (1.0).
-        """
-        a = self.brain.remember(
-            type='decision',
-            title='Use Redis Streams for real-time notification delivery',
-            content='Redis Streams provide ordered, persistent message delivery with consumer groups. '
-                    'Each notification channel maps to a stream key. Consumer groups handle fan-out '
-                    'to WebSocket server instances.',
-            keywords='redis streams notifications real-time consumer-groups websocket'
-        )
-        b = self.brain.remember(
-            type='mechanism',
-            title='Consumer group configuration for notification fan-out',
-            content='Each WebSocket server instance joins the NOTIFY consumer group. XREADGROUP '
-                    'with BLOCK 5000 provides efficient long-polling. Pending entries are claimed '
-                    'after 60 seconds of inactivity via XCLAIM.',
-            keywords='consumer-group xreadgroup xclaim fan-out websocket notification'
-        )
-        c = self.brain.remember(
-            type='lesson',
-            title='Redis Streams consumer groups need explicit ACK or messages pile up',
-            content='Unacknowledged messages in the PEL (pending entries list) grow unbounded. '
-                    'We hit 500MB of pending entries before realizing XACK was missing from the '
-                    'error handling path. Always ACK in a finally block.',
-            keywords='redis streams xack pending-entries-list memory-leak error-handling'
-        )
-
-        # Use weight=1.0 edges for predictable math
-        self.brain.connect(a['id'], b['id'], 'related', 1.0)
-        self.brain.connect(b['id'], c['id'], 'related', 1.0)
-        self.brain.save()
-
-        activated = self.brain.spread_activation([a['id']])
-        activation_map = {n['id']: n['spread_activation'] for n in activated}
-
-        a_act = activation_map.get(a['id'], 0)
-        c_act = activation_map.get(c['id'], 0)
-
-        # A starts at 1.0
-        self.assertAlmostEqual(a_act, 1.0, places=1,
-                               msg=f'Seed node A should have activation ~1.0, got {a_act}')
-        # C should be roughly SPREAD_DECAY^1 (hop 1: A->B) * SPREAD_DECAY^2 (hop 2: B->C)
-        # Actually: hop 1 gives B = 1.0 * 1.0 * 0.5 = 0.5, hop 2 gives C = 0.5 * 1.0 * 0.25 = 0.125
-        # But B's activation at hop 2 is the accumulated value (0.5), so C = 0.5 * 1.0 * 0.25 = 0.125
-        # The key assertion: C's activation should be significantly less than A's
-        self.assertGreater(c_act, 0, 'Node C should have some activation')
-        self.assertLess(c_act, a_act * 0.5,
-                        f'Node C ({c_act}) should have substantially less activation than A ({a_act})')
-
-    def test_spread_respects_max_hops(self):
-        """Activation should NOT reach nodes beyond MAX_HOPS (3) edges away.
-
-        Creates chain A -> B -> C -> D -> E. With MAX_HOPS=3, the spreading
-        algorithm runs 3 iterations. Hop 1: A->B, Hop 2: B->C, Hop 3: C->D.
-        E is 4 edges from A and should not receive meaningful activation.
-        """
-        nodes = []
-        titles = [
-            ('decision', 'Microservice boundary: separate billing from user management',
-             'Billing and user management have different scaling needs and deployment cadences. '
-             'Separating them lets billing scale horizontally during invoice generation while '
-             'user management stays on a single primary.',
-             'microservice billing user-management scaling deployment'),
-            ('mechanism', 'gRPC for inter-service communication between billing and users',
-             'gRPC with protobuf provides type-safe contracts and efficient binary serialization. '
-             'Bi-directional streaming is used for bulk user lookups during invoice generation.',
-             'grpc protobuf inter-service billing users streaming'),
-            ('constraint', 'Circuit breaker required on all cross-service calls',
-             'Every gRPC client must wrap calls in a circuit breaker (Resilience4j or Polly). '
-             'Open threshold: 5 failures in 30 seconds. Half-open: 1 probe request per 10 seconds.',
-             'circuit-breaker resilience4j grpc fault-tolerance timeout'),
-            ('lesson', 'Distributed tracing is mandatory before splitting a monolith',
-             'When we split auth from the monolith, debugging production issues tripled in difficulty. '
-             'We should have set up Jaeger distributed tracing first.',
-             'distributed-tracing jaeger monolith splitting debugging production'),
-            ('context', 'Future plan: extract notification service as fifth microservice',
-             'Notifications are currently embedded in the billing service. Extracting them would '
-             'decouple email/SMS delivery from invoice processing.',
-             'notification service extraction billing decoupling email sms'),
-        ]
-
-        for type_, title, content, keywords in titles:
-            n = self.brain.remember(type=type_, title=title, content=content, keywords=keywords)
-            nodes.append(n)
-
-        # Chain: A -> B -> C -> D -> E
-        for i in range(len(nodes) - 1):
-            self.brain.connect(nodes[i]['id'], nodes[i + 1]['id'], 'related', 1.0)
-        self.brain.save()
-
-        activated = self.brain.spread_activation([nodes[0]['id']])
-        activation_map = {n['id']: n['spread_activation'] for n in activated}
-
-        e_activation = activation_map.get(nodes[4]['id'], 0)
-        a_activation = activation_map.get(nodes[0]['id'], 0)
-
-        # E is 4 hops from A. Activation should decay significantly with distance.
-        # With SPREAD_DECAY=0.5, each hop halves activation, so E ≈ A * 0.5^4 = ~6% of A.
-        # Allow some tolerance since scoring involves multiple factors.
-        d_activation = activation_map.get(nodes[3]['id'], 0)
-        b_activation = activation_map.get(nodes[1]['id'], 0)
-        # At minimum: each hop should reduce activation
-        if b_activation > 0 and d_activation > 0:
-            self.assertGreater(b_activation, d_activation,
-                              'Closer nodes should have higher activation than distant ones')
 
 
 # ═══════════════════════════════════════════════════════════════

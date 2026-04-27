@@ -217,10 +217,11 @@ class TestMCPRoundTrip(BrainTestBase):
         result = self._dispatch("consciousness", {})
         self.assertIsInstance(result, dict)
 
-    def test_engineering_context(self):
-        """engineering_context returns project-scoped memory."""
-        result = self._dispatch("engineering_context", {"project": "brain"})
-        self.assertIsInstance(result, dict)
+    # NOTE: test_engineering_context removed 2026-04-26.
+    # The engineering_context tool was removed 2026-04-13 (was a stub
+    # returning {}). Three production-side comments confirm the deletion:
+    # daemon_dispatch.py:989, brain_mcp.py:504, brain_reminders.py:22.
+    # Roundtrip coverage of a removed tool is meaningless.
 
     def test_eval(self):
         """eval executes arbitrary Python on brain object."""
@@ -262,6 +263,24 @@ class TestMCPRoundTrip(BrainTestBase):
         result = self._dispatch("get_interaction", {"name": "surface"})
         # May return None if interactions not seeded in isolated brain
         self.assertTrue(result is None or isinstance(result, dict))
+
+    def test_register_interaction(self):
+        """register_interaction adds a new interaction version."""
+        result = self._dispatch("register_interaction", {
+            "name": "test_roundtrip_interaction",
+            "template": "Hello, {name}!",
+            "parameters": '{"max_messages": 5}',
+            "created_by": "roundtrip_test",
+        })
+        self.assertIsInstance(result, dict)
+        # Should return version info
+        self.assertTrue('version' in result or 'name' in result,
+                        f"Expected version/name in result, got: {result}")
+
+    def test_clear_errors(self):
+        """clear_errors empties the rate-limit cache for the brain errors table."""
+        result = self._dispatch("clear_errors", {})
+        self.assertIsInstance(result, dict)
 
     # ── Signal queue ──
 

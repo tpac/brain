@@ -103,6 +103,36 @@ class IsolatedBrain:
         from servers.brain import Brain
         self.brain = Brain(self.brain_db)
 
+        # Auto-drain embeddings after writes — same rationale as in
+        # BrainTestBase._patch_writes_to_auto_drain. The production embed
+        # queue worker fires every 5s; tests run faster, so a remember()
+        # → recall() in the same scope returns nothing. Wrap the write
+        # APIs to drain synchronously, restoring the pre-deferral
+        # contract that test code is written against.
+        from servers import embed_queue
+
+        def _wrap(name):
+            orig = getattr(self.brain, name, None)
+            if orig is None or getattr(orig, '_drain_wrapped', False):
+                return
+            brain = self.brain
+
+            def w(*args, **kwargs):
+                result = orig(*args, **kwargs)
+                try:
+                    embed_queue._drain_once(brain)
+                except Exception as e:
+                    import sys
+                    print('[isolated_brain] drain after %s failed: %s'
+                          % (name, e), file=sys.stderr)
+                return result
+            w._drain_wrapped = True
+            w.__wrapped__ = orig
+            setattr(self.brain, name, w)
+
+        for name in ('remember', 'revise'):
+            _wrap(name)
+
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):

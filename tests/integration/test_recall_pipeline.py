@@ -63,16 +63,33 @@ class TestRecallPipeline(unittest.TestCase):
         scores = [r['effective_activation'] for r in result['results']]
         self.assertEqual(scores, sorted(scores, reverse=True))
 
+    def _fatigue_dict(self):
+        """Read fatigue from session context (canonical) with Brain fallback.
+
+        Fatigue moved to SessionContext when sessions became first-class.
+        """
+        ctx = getattr(self.brain, '_fatigue_ctx', None)
+        if ctx is not None:
+            return ctx.fatigue
+        return getattr(self.brain, '_session_fatigue', {})
+
+    def _reset_fatigue(self):
+        ctx = getattr(self.brain, '_fatigue_ctx', None)
+        if ctx is not None:
+            ctx.fatigue.clear()
+        if hasattr(self.brain, '_session_fatigue'):
+            self.brain._session_fatigue = {}
+
     def test_fatigue_accumulates(self):
         """After multiple recalls, session fatigue dict should grow."""
-        self.brain._session_fatigue = {}
+        self._reset_fatigue()
         self.brain.recall("test query 1", limit=5)
         self.brain.recall("test query 2", limit=5)
-        self.assertGreater(len(self.brain._session_fatigue), 0)
+        self.assertGreater(len(self._fatigue_dict()), 0)
 
     def test_fatigue_dampens_scores(self):
         """A node recalled twice should have a lower score the second time."""
-        self.brain._session_fatigue = {}
+        self._reset_fatigue()
         r1 = self.brain.recall("daemon architecture", limit=25)
         first_id = r1['results'][0]['id']
         first_score = r1['results'][0]['effective_activation']
@@ -125,12 +142,19 @@ class TestGraphExpand(unittest.TestCase):
         os.remove(cls.test_db)
 
     def test_expand_returns_neighbors(self):
-        """graph_expand should return structural neighbors."""
+        """graph_expand should return structural neighbors.
+
+        v22 edge model: relation lives on edge_relations.relation, not on
+        edges.edge_type. Updated SQL accordingly.
+        """
         from servers.daemon_dispatch import _handle_graph_expand
-        # Get a node with known edges
+        # Get a node with known structural edges
         node_id = self.brain.conn.execute("""
-            SELECT source_id FROM edges
-            WHERE edge_type NOT IN ('co_accessed', 'emergent_bridge')
+            SELECT e.source_id
+            FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
+            WHERE er.relation NOT IN ('co_accessed', 'emergent_bridge')
+              AND er.archived = 0
             LIMIT 1
         """).fetchone()
         if not node_id:

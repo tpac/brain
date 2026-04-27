@@ -239,7 +239,8 @@ class TestDecodeTransitions(BrainTestBase):
                 (n3['id'], n3['id'])
             ).fetchone()[0]
 
-            _hebbian_strengthen(self.brain, session_id)
+            # _hebbian_strengthen now takes stop_counter for trace correlation.
+            _hebbian_strengthen(self.brain, session_id, stop_counter=1)
 
             # _hebbian_strengthen creates co_accessed edges between surface-selected nodes
             # Check that a co_accessed edge exists between n1 and n2
@@ -323,43 +324,38 @@ class TestDecodeTransitions(BrainTestBase):
                           'Candidate %s not found in surface prompt — '
                           'format_candidate_for_surface dropped it' % short_id)
 
-    def test_format_surface_output_corrections_wiring(self):
-        """format_surface_output + corrections: correction data must appear in output.
+    def test_corrections_render_via_rich_node_metadata(self):
+        """Corrections appear in surface output via the candidate's
+        `_corrections` field (populated by correction_enrich) and rendered
+        by render_rich_node — not via a `corrections=` kwarg on
+        format_surface_output (that wiring was removed when corrections
+        moved into the candidate object).
 
-        When correction_enrich returns data for a selected node,
-        format_surface_output must include the correction warning in the
-        additionalContext string. Tests the corrections kwarg wiring.
+        Was: test_format_surface_output_corrections_wiring, which called
+        `format_surface_output(selected, candidates, corrections=...)`.
+        That kwarg no longer exists. The new path is direct: enrichment
+        attaches `_corrections` to the candidate, and the renderer
+        consumes it. Coverage of correction_enrich itself lives in
+        tests/test_s1_data_assembly.py.
         """
-        from servers.scales.s1.surface_contract import format_surface_output
+        from servers.contract import render_rich_node
 
-        node_id = 'abc12345-full-uuid-here'
-        short_id = node_id[:8]
-
-        candidates = [{
-            'id': node_id,
+        node = {
+            'id': 'abc12345',
             'type': 'decision',
             'title': 'Use MySQL for everything',
             'content': 'MySQL handles all our data needs.',
             'confidence': 0.8,
-        }]
-        selected = [{'id': short_id, 'why': 'answers database question'}]
-
-        # Simulate correction_enrich output
-        corrections = {
-            node_id: [{
+            '_corrections': [{
                 'id': 'newer123',
                 'title': 'Switch to PostgreSQL for analytics',
                 'direction': 'corrected_by',
-            }]
+            }],
         }
-
-        output = format_surface_output(selected, candidates, corrections=corrections)
-
-        self.assertIn('Updated by', output,
-                      'Correction warning not in format_surface_output — '
-                      'corrections kwarg is not wired through')
+        output = render_rich_node(node)
+        # The renderer should surface the correction relationship.
         self.assertIn('PostgreSQL', output,
-                      'Correction title not shown in output')
+                      'Correction title should be visible in rendered output')
 
 
 if __name__ == '__main__':

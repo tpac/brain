@@ -80,7 +80,9 @@ class TestTraceContract:
         """S2 (Graph) ref_types are valid."""
         assert self.validate('s2', 'O', 'graph_structure') == (True, '')
         assert self.validate('s2', 'O', 'graph_stats') == (True, '')
-        assert self.validate('s2', 'O', 'dedup_scan') == (True, '')
+        # `dedup_scan` was renamed to `healer_scan` when the dedup unit
+        # became the S2 healer (2026-04-19 era).
+        assert self.validate('s2', 'O', 'healer_scan') == (True, '')
         assert self.validate('s2', 'O', 'correction_chains') == (True, '')
         assert self.validate('s2', 'K', 'community_partition') == (True, '')
         assert self.validate('s2', 'K', 'community_diff') == (True, '')
@@ -89,7 +91,11 @@ class TestTraceContract:
         assert self.validate('s2', 'delta', 'community_updated') == (True, '')
         assert self.validate('s2', 'delta', 'community_removed') == (True, '')
         assert self.validate('s2', 'delta', 'community_assignments') == (True, '')
-        assert self.validate('s2', 'delta', 'merge') == (True, '')
+        # `merge` was renamed/split when consolidation became its own unit:
+        # `consolidated` (new node from merge), `evolved` (lineage edge),
+        # `kept_distinct` (similar_to with no merge). Asserting consolidated
+        # as the canonical post-merge ref_type.
+        assert self.validate('s2', 'delta', 'consolidated') == (True, '')
         assert self.validate('s2', 'delta', 'confidence_adjust') == (True, '')
         assert self.validate('s2', 'outcome', 'recall_improved') == (True, '')
         assert self.validate('s2', 'outcome', 'operator_reviewed') == (True, '')
