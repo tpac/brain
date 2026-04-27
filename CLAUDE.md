@@ -40,6 +40,13 @@ Auto-starts on first hook fire. **Maintenance mode:** `touch /tmp/brain-maintena
 
 The dashboard (`dashboard/`) is a passive observer — reads from the same DBs + `/tmp/brain-surface-result-*.json` files, never writes.
 
+**Memory watchdog** ([servers/memory_watchdog.py](servers/memory_watchdog.py)): permanent opt-in profiling for diagnosing memory leaks. Off by default — zero overhead when disabled. Two layers, independently toggled via brain config:
+
+- `memory_watchdog.enabled` (bool) — RSS sampling: every `interval_seconds` (default 60) the watchdog logs current resident set size + delta vs previous sample + thread count to brain.log. A 50MB+ growth between samples gets a `⚠ growth` flag. Cheap.
+- `memory_watchdog.tracemalloc_enabled` (bool) — heavier: enables Python's `tracemalloc` and dumps top-N allocators to `/tmp/brain-tracemalloc-{uid}-{timestamp}.txt` every `tracemalloc_seconds` (default 600). Two snapshots N minutes apart, diffed offline, find the leak source.
+
+Toggle via `set_config`. Both flags are read at daemon start; flipping at runtime requires a daemon restart. Enable when something feels off (RSS climbing, slow recall, threads accumulating); leave off in steady state. Past leaks: 2026-04-26 grew to 4.6 GB in 4 hours — the watchdog exists so the next time we don't have to scramble for profiling.
+
 ## Scale 0: Exchange
 
 Every conversation turn. Tom's message is the observation (O). Everything the brain injects — boot context, recalled nodes, signals, rules — is knowledge (K). Anchor's response is the change (Δ). The response becomes part of the next O. This IS the loop.

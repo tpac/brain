@@ -186,6 +186,20 @@ class BrainDaemon:
         autosave_thread = threading.Thread(target=self._autosave_loop, daemon=True, name="autosave")
         autosave_thread.start()
 
+        # Memory watchdog — opt-in via config (memory_watchdog.enabled). Off by
+        # default. When the daemon leaks (it has — see brain memory `b6e32edd`
+        # category), flip the config to start RSS sampling + optional
+        # tracemalloc snapshots without restarting subsequent daemons. See
+        # servers/memory_watchdog.py for config keys.
+        try:
+            from .memory_watchdog import MemoryWatchdog
+            self._memory_watchdog = MemoryWatchdog.maybe_start(
+                self.brain, log_fn=lambda m: self._log("[mem] " + m))
+        except Exception as _wd_e:
+            # Watchdog must never block daemon startup.
+            self._log("memory_watchdog start failed: %s" % _wd_e)
+            self._memory_watchdog = None
+
         self._serve()
 
     def _bind_socket(self):
