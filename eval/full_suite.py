@@ -297,12 +297,19 @@ def aggregate(longmem_results, abstention_results, snapshot_results,
         },
     }
 
-    # Save full
+    # Save full — but DON'T clobber files that aren't in the current run.
+    # Bug caught 2026-04-27: an --skip-longmem rerun called aggregate() with
+    # an empty longmem_results list, which overwrote the prior run's 90-item
+    # longmem_results.jsonl with an empty file. Now: only write the .jsonl
+    # for a phase if that phase actually has results in this invocation.
+    # The summary.json/.md still reflect what THIS invocation produced.
     (report_dir / 'summary.json').write_text(json.dumps(summary, indent=2, default=str))
-    (report_dir / 'longmem_results.jsonl').write_text(
-        '\n'.join(json.dumps(r, default=str) for r in longmem_results) + '\n')
-    (report_dir / 'abstention_results.jsonl').write_text(
-        '\n'.join(json.dumps(r, default=str) for r in abstention_results) + '\n')
+    if longmem_results:
+        (report_dir / 'longmem_results.jsonl').write_text(
+            '\n'.join(json.dumps(r, default=str) for r in longmem_results) + '\n')
+    if abstention_results:
+        (report_dir / 'abstention_results.jsonl').write_text(
+            '\n'.join(json.dumps(r, default=str) for r in abstention_results) + '\n')
 
     # Markdown report
     lines = [f'# Full Suite Report — {run_name}', '',
