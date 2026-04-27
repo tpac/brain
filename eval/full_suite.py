@@ -351,10 +351,19 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--run-name', default=time.strftime('full_%Y%m%d_%H%M%S'))
     parser.add_argument('--variance', type=int, default=3)
-    parser.add_argument('--longmem-workers', type=int, default=25)
-    parser.add_argument('--abstention-workers', type=int, default=10)
+    # Worker defaults dropped from 25/10 to 15/5 after the 2026-04-25 run
+    # hit Sonnet rate-limits with 25+10+3 concurrent. Empirically 15+5
+    # serial holds steady. Override via flags if rate limits have grown.
+    parser.add_argument('--longmem-workers', type=int, default=15)
+    parser.add_argument('--abstention-workers', type=int, default=5)
     parser.add_argument('--snapshot', default=DEFAULT_SNAPSHOT)
-    parser.add_argument('--skip-snapshot', action='store_true')
+    # Snapshot lane is OFF by default. It compares v12 (gone) against v14
+    # (live), which is no longer a useful question. It was also the
+    # heaviest contention contributor — it died in two of three runs on
+    # 2026-04-25. Pass --enable-snapshot to opt in for archival comparison.
+    parser.add_argument('--enable-snapshot', action='store_true',
+                        help='Run snapshot replay lane (v12 baseline). '
+                             'Off by default — heavy + low signal post-v14.')
     parser.add_argument('--skip-longmem', action='store_true')
     parser.add_argument('--skip-abstention', action='store_true')
     args = parser.parse_args()
@@ -363,38 +372,61 @@ def main():
     report_dir.mkdir(parents=True, exist_ok=True)
     print(f'[full_suite] run_name: {args.run_name}', flush=True)
     print(f'[full_suite] reports → {report_dir}', flush=True)
+    print(f'[full_suite] workers: longmem={args.longmem_workers} '
+          f'abstention={args.abstention_workers} '
+          f'snapshot={"on" if args.enable_snapshot else "off"}', flush=True)
 
     t_start = time.time()
+    # Incremental aggregation — write summary.json/md after EACH phase so
+    # a kill mid-run preserves whatever finished. Matches what's actually
+    # there: the 2026-04-25 run had 90 longmem results in the log but
+    # zero summary files because aggregation only ran at the end.
+    longmem_results: List[Dict[str, Any]] = []
+    abstention_results: List[Dict[str, Any]] = []
+    snapshot_results: List[Dict[str, Any]] = []
 
-    # Phase 1: launch snapshot replays as subprocesses (run in background)
-    snapshot_procs = []
-    if not args.skip_snapshot:
-        snapshot_procs = launch_snapshot_replays(
-            args.snapshot, SNAPSHOT_REPLAY_CONVERSATIONS, args.run_name)
+    def _checkpoint(label: str):
+        elapsed = time.time() - t_start
+        try:
+            aggregate(longmem_results, abstention_results, snapshot_results,
+                      report_dir, args.run_name, elapsed)
+            print(f'[full_suite] checkpoint after {label}: '
+                  f'summary.json/md written ({elapsed/60:.1f} min in)',
+                  flush=True)
+        except Exception as e:
+            # Aggregation failures must not lose finished work.
+            print(f'[full_suite] checkpoint after {label} FAILED: {e}',
+                  flush=True)
 
-    # Phase 2: longmem broad in pool
-    longmem_results = []
+    # Phase 1: longmem broad. Heaviest, runs first so we get the
+    # most-informative number even if killed mid-suite.
     if not args.skip_longmem:
         items = build_longmem_broad_items(args.variance)
         longmem_results = run_pool(items, args.run_name, args.longmem_workers,
                                     'longmem_broad')
+        _checkpoint('longmem')
 
-    # Phase 3: abstention battery in pool
-    abstention_results = []
+    # Phase 2: abstention battery — sequential after longmem to avoid
+    # API contention. ~15 min, sized to recover even if interrupted.
     if not args.skip_abstention:
         items = build_abstention_items(args.variance)
-        abstention_results = run_pool(items, args.run_name, args.abstention_workers,
-                                       'abstention')
+        abstention_results = run_pool(items, args.run_name,
+                                       args.abstention_workers, 'abstention')
+        _checkpoint('abstention')
 
-    # Phase 4: collect snapshot replays (block on subprocesses)
-    snapshot_results = []
-    if snapshot_procs:
-        print('\n[full_suite] waiting for snapshot replays to finish...',
-              flush=True)
-        snapshot_results = collect_snapshot_replays(snapshot_procs)
+    # Phase 3 (opt-in): snapshot replays. Launch + collect SEQUENTIALLY,
+    # not concurrently with the pools, since we know that hit rate-limits.
+    if args.enable_snapshot:
+        snapshot_procs = launch_snapshot_replays(
+            args.snapshot, SNAPSHOT_REPLAY_CONVERSATIONS, args.run_name)
+        if snapshot_procs:
+            print('\n[full_suite] waiting for snapshot replays to finish...',
+                  flush=True)
+            snapshot_results = collect_snapshot_replays(snapshot_procs)
+            _checkpoint('snapshot')
 
     total_elapsed = time.time() - t_start
-
+    # Final write — same as the last checkpoint, but with definitive elapsed.
     aggregate(longmem_results, abstention_results, snapshot_results,
               report_dir, args.run_name, total_elapsed)
 

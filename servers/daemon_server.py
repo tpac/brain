@@ -443,11 +443,21 @@ class BrainDaemon:
                         % (project_dir, db_dir, self.db_path)
                     )
                     self._log("Spawning new daemon: %s -c ..." % sys.executable)
-                    # Spawn new process BEFORE cleanup — ensures new daemon starts
+                    # Spawn new process BEFORE cleanup — ensures new daemon starts.
+                    # stdout/stderr → daemon.log (append) so the new daemon's logs
+                    # remain visible. /dev/null was a footgun: every `Daemon
+                    # started` line, every encoding profile, every memory
+                    # watchdog sample was being silently dropped after each
+                    # restart, which is why the leak diagnostic was invisible.
+                    log_path = os.path.join(db_dir, 'daemon.log')
+                    try:
+                        log_fp = open(log_path, 'a', buffering=1)
+                    except Exception:
+                        log_fp = open('/dev/null', 'w')
                     subprocess.Popen([sys.executable, '-c', startup],
                                      start_new_session=True,
-                                     stdout=open('/dev/null', 'w'),
-                                     stderr=open('/dev/null', 'w'))
+                                     stdout=log_fp,
+                                     stderr=log_fp)
                     self._log("New daemon spawned. Shutting down old.")
                     self._cleanup()
                     os._exit(0)
