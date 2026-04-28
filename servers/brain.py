@@ -1288,6 +1288,16 @@ class Brain(
             val = self._meta.get(key, "")
             if not val:
                 return default_val
+            # Bool first — bool is a subclass of int in Python, so the
+            # isinstance(default_val, (int, float)) check below would catch
+            # bool defaults and try to parse "true"/"false" as int, throwing
+            # a benign-but-noisy error every read. Handle bool explicitly.
+            if isinstance(default_val, bool):
+                if val in ('true', '1', 'yes', 'on', True):
+                    return True
+                if val in ('false', '0', 'no', 'off', False):
+                    return False
+                return default_val
             # Auto-parse numbers
             if default_val is not None and isinstance(default_val, (int, float)):
                 try:
