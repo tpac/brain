@@ -199,6 +199,86 @@ def get_dim() -> Optional[int]:
     return stats.get('embedding_dim')
 
 
+# ─── Phase-2 bucketing: bound the (batch × seq) shapes ORT sees ──
+#
+# WHY: onnxruntime's mem_pattern optimizer caches allocation patterns
+# per input tensor shape. With variable-length inputs (every recall
+# embedded different-length edge descriptions), the cache grew without
+# bound — observed leak of 462MB → 5.43GB in 6 minutes. See brain
+# memory `7cb8e797` for the full diagnosis.
+#
+# THE FIX: pad each batch to one of a small fixed set of (B, T) shapes.
+# The mem_pattern cache then has at most ~9 entries (3 batch buckets ×
+# 3 length buckets) instead of thousands. Bounded shapes → bounded mem.
+#
+# WHITESPACE PADDING IS SEMANTICALLY FREE for nomic-embed-text-v1.5-Q.
+# Verified empirically: 105 paddings × 7 sample texts → cosine = 1.00000
+# in every test (eval/verify_padding_safe.py). Trailing whitespace gets
+# folded into the previous token by the WordPiece tokenizer; the model
+# never sees it as content.
+#
+# Tunables — kept conservative so adjustments are easy if the
+# distribution of input lengths shifts.
+
+# Char-length buckets. Approximation: ~3 chars/token (conservative
+# upper bound for English). 256→~85 tokens, 1024→~340 tokens,
+# 4096→~1365 tokens. Covers the brain's 70/25/5 length profile per
+# the use-case audit (queries small, edges small, content occasional
+# long-tail). Any text longer than the largest bucket gets truncated
+# to the bucket size — accept the content loss to keep shapes bounded.
+_LEN_BUCKET_CHARS = (256, 1024, 4096)
+
+# Batch-size buckets. Most calls are 1 (single embed) or small
+# (edge-description batch < 16). Larger sizes get bucketed up so
+# the encoded shape matches a previous run.
+_BATCH_BUCKETS = (1, 4, 16, 64)
+
+
+def _len_bucket(max_chars: int) -> int:
+    """Pick the smallest length-bucket that fits the longest text in a batch."""
+    for b in _LEN_BUCKET_CHARS:
+        if max_chars <= b:
+            return b
+    return _LEN_BUCKET_CHARS[-1]  # truncate at largest bucket
+
+
+def _batch_bucket(n: int) -> int:
+    """Pick the smallest batch-size bucket that fits."""
+    for b in _BATCH_BUCKETS:
+        if n <= b:
+            return b
+    return _BATCH_BUCKETS[-1]  # over-large batches: pad to max bucket;
+    # caller already chose a batch that fit memory, so this rarely fires
+
+
+def _bucket_pad(texts: List[str]) -> List[str]:
+    """Pad a batch to a (batch_bucket × char_bucket) shape via:
+       - extend each text with trailing spaces to the char-length bucket
+         (truncate longer texts at the largest bucket)
+       - pad batch to the next batch-size bucket with empty-padded strings
+
+    Returns a new list. Original texts are unchanged. Whitespace padding
+    is semantically free for our model (verified — see verify_padding_safe).
+    """
+    if not texts:
+        return texts
+    max_chars = max(len(t) for t in texts)
+    target_chars = _len_bucket(max_chars)
+
+    padded: List[str] = []
+    for t in texts:
+        if len(t) > target_chars:
+            padded.append(t[:target_chars])  # truncate to bucket
+        else:
+            padded.append(t + ' ' * (target_chars - len(t)))
+
+    target_batch = _batch_bucket(len(padded))
+    pad_text = ' ' * target_chars
+    while len(padded) < target_batch:
+        padded.append(pad_text)
+    return padded
+
+
 # ─── Core inference ──────────────────────────────────────────────
 
 def _embed_one(text: str, prefix: str) -> Optional[bytes]:
@@ -208,14 +288,22 @@ def _embed_one(text: str, prefix: str) -> Optional[bytes]:
 
     t0 = time.time()
     try:
-        vec = next(iter(_model.embed([prefix + text])))
+        # Single embed goes through the bucketing path too — a 1-text
+        # "batch" still pads to (1, len_bucket). Without this, single
+        # embeds would produce shape (1, T) for every distinct T and
+        # poison the mem_pattern cache as effectively as N-text batches.
+        prefixed = [prefix + text]
+        padded = _bucket_pad(prefixed)
+        vecs = list(_model.embed(padded))
+        # The padded batch may have extra entries (batch-bucket padding);
+        # we only want the first one (corresponds to the real input).
         elapsed_ms = round((time.time() - t0) * 1000)
         stats['total_embeddings'] += 1
         stats['total_embed_time_ms'] += elapsed_ms
         stats['last_embed_ms'] = elapsed_ms
         if elapsed_ms > stats['peak_embed_ms']:
             stats['peak_embed_ms'] = elapsed_ms
-        return _vec_to_blob(vec)
+        return _vec_to_blob(vecs[0])
     except Exception as e:
         stats['errors'] += 1
         print(f"[embedder] embed error: {e}", file=sys.stderr)
@@ -236,20 +324,29 @@ def embed_query(text: str) -> Optional[bytes]:
 
 
 def embed_batch(texts: List[str], kind: str = "document") -> List[Optional[bytes]]:
-    """Batch embed. `kind` is 'document' or 'query'."""
+    """Batch embed. `kind` is 'document' or 'query'.
+
+    Inputs are padded to (batch_bucket × len_bucket) shape before going
+    to ORT, bounding the distinct shapes the mem_pattern cache sees.
+    Real outputs are returned in original order; padding-only batch
+    entries are dropped.
+    """
     if not _model or not texts:
         return []
     prefix = _query_prefix if kind == "query" else _doc_prefix
     prefixed = [prefix + t for t in texts]
+    n_real = len(prefixed)
+    padded = _bucket_pad(prefixed)
 
     t0 = time.time()
     try:
-        vecs = list(_model.embed(prefixed))
-        results = [_vec_to_blob(v) for v in vecs]
+        vecs = list(_model.embed(padded))
+        # Drop padding-only batch entries — only return one blob per real input.
+        results = [_vec_to_blob(v) for v in vecs[:n_real]]
         elapsed_ms = round((time.time() - t0) * 1000)
-        stats['total_embeddings'] += len(texts)
+        stats['total_embeddings'] += n_real
         stats['total_embed_time_ms'] += elapsed_ms
-        stats['last_embed_ms'] = round(elapsed_ms / len(texts)) if texts else 0
+        stats['last_embed_ms'] = round(elapsed_ms / n_real) if n_real else 0
         if elapsed_ms > stats['peak_embed_ms']:
             stats['peak_embed_ms'] = elapsed_ms
         return results
