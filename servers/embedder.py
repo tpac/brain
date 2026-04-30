@@ -28,48 +28,61 @@ from typing import Optional, List, Dict, Any
 
 # ─── fastembed session-option polyfill ───────────────────────────
 # fastembed 0.8 accepts `extra_session_options={...}` but its
-# EXPOSED_SESSION_OPTIONS allowlist is hardcoded to ("enable_cpu_mem_arena",)
-# and the only applied key is the same. We need two additional session config
-# entries to prevent ORT WorkerLoop threads from busy-waiting idle CPU
-# (onnxruntime issue microsoft/onnxruntime#9313):
+# EXPOSED_SESSION_OPTIONS allowlist hardcodes ("enable_cpu_mem_arena",) and
+# its add_extra_session_options applies only that single key. We need three
+# more session knobs:
 #
-#   session.intra_op.allow_spinning = 0
-#   session.inter_op.allow_spinning = 0
+#   session.intra_op.allow_spinning = 0     (config entry, prevents busy-wait)
+#   session.inter_op.allow_spinning = 0     (config entry, prevents busy-wait)
+#   enable_mem_pattern              = False (attribute, bounds ORT arena)
 #
-# Without them, threads>1 pushes idle CPU to 250–290% on macOS ARM64. The
-# keys are applied via SessionOptions.add_session_config_entry() — a
-# different ORT API than fastembed's attribute-assignment code path.
+# Spin keys: without them, threads>1 pushes idle CPU to 250–290% on macOS
+# ARM64 (onnxruntime#9313). Applied via add_session_config_entry().
 #
-# This polyfill extends EXPOSED_SESSION_OPTIONS and wraps
-# add_extra_session_options to route spin keys through the correct ORT call.
-# Intended as a temporary bridge — upstream PR against fastembed tracks
-# this so the polyfill can be removed once merged.
+# enable_mem_pattern: ORT's mem_pattern optimizer caches allocation patterns
+# per distinct input tensor shape. With variable-length text inputs every
+# recall produced a new (B, T) shape and the cache grew without bound (RSS
+# 450 MB → 5+ GB observed). Disabling drops a small inference optimization
+# (designed for fixed-shape models like CNNs) in exchange for a bounded
+# arena. Set as a SessionOptions attribute, not a config entry.
+#
+# The polyfill extends EXPOSED_SESSION_OPTIONS so the new keys pass
+# fastembed's allowlist assertion, and routes each key to the correct ORT
+# API. Temporary — remove once fastembed exposes these upstream.
 def _install_fastembed_spin_polyfill() -> None:
     try:
         from fastembed.common.onnx_model import OnnxModel
     except ImportError:
         return
 
-    SPIN_KEYS = (
+    CONFIG_KEYS = (
         "session.intra_op.allow_spinning",
         "session.inter_op.allow_spinning",
     )
+    ATTR_KEYS = (
+        "enable_mem_pattern",
+    )
+    EXTRA_KEYS = CONFIG_KEYS + ATTR_KEYS
     exposed = set(OnnxModel.EXPOSED_SESSION_OPTIONS)
-    if all(k in exposed for k in SPIN_KEYS):
+    if all(k in exposed for k in EXTRA_KEYS):
         return  # fastembed merged equivalent upstream — no polyfill needed
 
     OnnxModel.EXPOSED_SESSION_OPTIONS = (
-        tuple(OnnxModel.EXPOSED_SESSION_OPTIONS) + SPIN_KEYS
+        tuple(OnnxModel.EXPOSED_SESSION_OPTIONS) + EXTRA_KEYS
     )
     original_add = OnnxModel.add_extra_session_options  # bound classmethod
 
     def _patched_add(cls, session_options, extra_options):
-        spin = {k: v for k, v in extra_options.items() if k in SPIN_KEYS}
-        rest = {k: v for k, v in extra_options.items() if k not in SPIN_KEYS}
+        config = {k: v for k, v in extra_options.items() if k in CONFIG_KEYS}
+        attrs = {k: v for k, v in extra_options.items() if k in ATTR_KEYS}
+        rest = {k: v for k, v in extra_options.items()
+                if k not in CONFIG_KEYS and k not in ATTR_KEYS}
         if rest:
             original_add.__func__(cls, session_options, rest)
-        for k, v in spin.items():
+        for k, v in config.items():
             session_options.add_session_config_entry(k, str(v))
+        for k, v in attrs.items():
+            setattr(session_options, k, v)
 
     OnnxModel.add_extra_session_options = classmethod(_patched_add)
 
@@ -144,16 +157,30 @@ def load_model(config: Optional[Dict[str, Any]] = None) -> None:
         if cache_dir:
             kwargs['cache_dir'] = cache_dir
 
-        # Disable ORT WorkerLoop spin-wait. Without this, threads>1 burns
-        # idle CPU at 250–290% while waiting for work. Values routed through
-        # our polyfill (see _install_fastembed_spin_polyfill above) until
-        # fastembed exposes these keys upstream.
-        kwargs['extra_session_options'] = {
+        # ORT session knobs. fastembed picks these up via
+        # _select_exposed_session_options(kwargs) — i.e., flat kwargs
+        # whose keys are in EXPOSED_SESSION_OPTIONS. Passing them inside
+        # an `extra_session_options={...}` dict does NOT work — fastembed
+        # has no such named param; the dict gets filtered out by name.
+        # Our polyfill above extends EXPOSED_SESSION_OPTIONS for the spin
+        # and mem_pattern keys.
+        #
+        #  - enable_cpu_mem_arena=False: ORT's arena pre-allocates per-shape
+        #    slabs and never releases them — drives multi-GB RSS growth on
+        #    long-running daemons with variable input shapes (fastembed
+        #    issue #570, ORT issue #11627). This is THE leak fix; the
+        #    other two are unrelated CPU-spin/memory hardening.
+        #  - allow_spinning=0: prevent WorkerLoop busy-wait (idle CPU sink)
+        #  - enable_mem_pattern=False: bound mem_pattern's per-shape cache
+        #    (independent from the arena — both must be off)
+        session_kwargs = {
+            "enable_cpu_mem_arena": False,
             "session.intra_op.allow_spinning": "0",
             "session.inter_op.allow_spinning": "0",
+            "enable_mem_pattern": False,
         }
 
-        _model = TextEmbedding(model_name=model_name, **kwargs)
+        _model = TextEmbedding(model_name=model_name, **kwargs, **session_kwargs)
 
         stats['load_time_ms'] = round((time.time() - t0) * 1000)
         stats['model_loaded'] = True
@@ -199,87 +226,13 @@ def get_dim() -> Optional[int]:
     return stats.get('embedding_dim')
 
 
-# ─── Phase-2 bucketing: bound the (batch × seq) shapes ORT sees ──
-#
-# WHY: onnxruntime's mem_pattern optimizer caches allocation patterns
-# per input tensor shape. With variable-length inputs (every recall
-# embedded different-length edge descriptions), the cache grew without
-# bound — observed leak of 462MB → 5.43GB in 6 minutes. See brain
-# memory `7cb8e797` for the full diagnosis.
-#
-# THE FIX: pad each batch to one of a small fixed set of (B, T) shapes.
-# The mem_pattern cache then has at most ~9 entries (3 batch buckets ×
-# 3 length buckets) instead of thousands. Bounded shapes → bounded mem.
-#
-# WHITESPACE PADDING IS SEMANTICALLY FREE for nomic-embed-text-v1.5-Q.
-# Verified empirically: 105 paddings × 7 sample texts → cosine = 1.00000
-# in every test (eval/verify_padding_safe.py). Trailing whitespace gets
-# folded into the previous token by the WordPiece tokenizer; the model
-# never sees it as content.
-#
-# Tunables — kept conservative so adjustments are easy if the
-# distribution of input lengths shifts.
-
-# Char-length buckets. Approximation: ~3 chars/token (conservative
-# upper bound for English). 256→~85 tokens, 1024→~340 tokens,
-# 4096→~1365 tokens. Covers the brain's 70/25/5 length profile per
-# the use-case audit (queries small, edges small, content occasional
-# long-tail). Any text longer than the largest bucket gets truncated
-# to the bucket size — accept the content loss to keep shapes bounded.
-_LEN_BUCKET_CHARS = (256, 1024, 4096)
-
-# Batch-size buckets. Most calls are 1 (single embed) or small
-# (edge-description batch < 16). Larger sizes get bucketed up so
-# the encoded shape matches a previous run.
-_BATCH_BUCKETS = (1, 4, 16, 64)
-
-
-def _len_bucket(max_chars: int) -> int:
-    """Pick the smallest length-bucket that fits the longest text in a batch."""
-    for b in _LEN_BUCKET_CHARS:
-        if max_chars <= b:
-            return b
-    return _LEN_BUCKET_CHARS[-1]  # truncate at largest bucket
-
-
-def _batch_bucket(n: int) -> int:
-    """Pick the smallest batch-size bucket that fits."""
-    for b in _BATCH_BUCKETS:
-        if n <= b:
-            return b
-    return _BATCH_BUCKETS[-1]  # over-large batches: pad to max bucket;
-    # caller already chose a batch that fit memory, so this rarely fires
-
-
-def _bucket_pad(texts: List[str]) -> List[str]:
-    """Pad a batch to a (batch_bucket × char_bucket) shape via:
-       - extend each text with trailing spaces to the char-length bucket
-         (truncate longer texts at the largest bucket)
-       - pad batch to the next batch-size bucket with empty-padded strings
-
-    Returns a new list. Original texts are unchanged. Whitespace padding
-    is semantically free for our model (verified — see verify_padding_safe).
-    """
-    if not texts:
-        return texts
-    max_chars = max(len(t) for t in texts)
-    target_chars = _len_bucket(max_chars)
-
-    padded: List[str] = []
-    for t in texts:
-        if len(t) > target_chars:
-            padded.append(t[:target_chars])  # truncate to bucket
-        else:
-            padded.append(t + ' ' * (target_chars - len(t)))
-
-    target_batch = _batch_bucket(len(padded))
-    pad_text = ' ' * target_chars
-    while len(padded) < target_batch:
-        padded.append(pad_text)
-    return padded
-
-
 # ─── Core inference ──────────────────────────────────────────────
+#
+# Variable-shape inputs are safe here because we set
+# `enable_mem_pattern=False` at session creation (see load_model).
+# With mem_pattern off, ORT does not cache allocation plans per
+# distinct (batch, seq) shape and the arena stays bounded. No need
+# to pad/bucket inputs.
 
 def _embed_one(text: str, prefix: str) -> Optional[bytes]:
     if not _model:
@@ -288,15 +241,7 @@ def _embed_one(text: str, prefix: str) -> Optional[bytes]:
 
     t0 = time.time()
     try:
-        # Single embed goes through the bucketing path too — a 1-text
-        # "batch" still pads to (1, len_bucket). Without this, single
-        # embeds would produce shape (1, T) for every distinct T and
-        # poison the mem_pattern cache as effectively as N-text batches.
-        prefixed = [prefix + text]
-        padded = _bucket_pad(prefixed)
-        vecs = list(_model.embed(padded))
-        # The padded batch may have extra entries (batch-bucket padding);
-        # we only want the first one (corresponds to the real input).
+        vecs = list(_model.embed([prefix + text]))
         elapsed_ms = round((time.time() - t0) * 1000)
         stats['total_embeddings'] += 1
         stats['total_embed_time_ms'] += elapsed_ms
@@ -323,30 +268,38 @@ def embed_query(text: str) -> Optional[bytes]:
     return _embed_one(text, _query_prefix)
 
 
+# Maximum texts per ORT inference call. Defensive cap so callers that
+# build large lists (e.g., S1 spreading activation can produce thousands
+# of unique enriched-edge texts) do not allocate a single (N, T) tensor
+# that ORT must materialize at once. Peak working memory is bounded by
+# this × max_seq_len × hidden_dim regardless of how many texts come in.
+# 64 keeps the per-inference tensor small (a few hundred KB of input_ids,
+# tens of MB of activations) while still amortizing call overhead.
+_EMBED_BATCH_CHUNK = 64
+
+
 def embed_batch(texts: List[str], kind: str = "document") -> List[Optional[bytes]]:
     """Batch embed. `kind` is 'document' or 'query'.
 
-    Inputs are padded to (batch_bucket × len_bucket) shape before going
-    to ORT, bounding the distinct shapes the mem_pattern cache sees.
-    Real outputs are returned in original order; padding-only batch
-    entries are dropped.
+    Chunks the input into sub-batches of `_EMBED_BATCH_CHUNK` so peak
+    memory stays bounded regardless of caller batch size.
     """
     if not _model or not texts:
         return []
     prefix = _query_prefix if kind == "query" else _doc_prefix
-    prefixed = [prefix + t for t in texts]
-    n_real = len(prefixed)
-    padded = _bucket_pad(prefixed)
+    n = len(texts)
+    results: List[Optional[bytes]] = []
 
     t0 = time.time()
     try:
-        vecs = list(_model.embed(padded))
-        # Drop padding-only batch entries — only return one blob per real input.
-        results = [_vec_to_blob(v) for v in vecs[:n_real]]
+        for start in range(0, n, _EMBED_BATCH_CHUNK):
+            chunk = [prefix + t for t in texts[start:start + _EMBED_BATCH_CHUNK]]
+            vecs = list(_model.embed(chunk))
+            results.extend(_vec_to_blob(v) for v in vecs)
         elapsed_ms = round((time.time() - t0) * 1000)
-        stats['total_embeddings'] += n_real
+        stats['total_embeddings'] += n
         stats['total_embed_time_ms'] += elapsed_ms
-        stats['last_embed_ms'] = round(elapsed_ms / n_real) if n_real else 0
+        stats['last_embed_ms'] = round(elapsed_ms / n) if n else 0
         if elapsed_ms > stats['peak_embed_ms']:
             stats['peak_embed_ms'] = elapsed_ms
         return results

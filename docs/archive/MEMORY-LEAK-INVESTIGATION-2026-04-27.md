@@ -1,4 +1,108 @@
-# Memory leak investigation — 2026-04-27 → 28
+# Memory leak investigation — 2026-04-27 → 28 (resolved 2026-04-30)
+
+> **STATUS: archived.** The leak fix below (Cause #1 — bucket-padded inputs)
+> never reached ORT. The actual fix was set later: `enable_cpu_mem_arena=False`
+> + `enable_mem_pattern=False` via flat kwargs to `TextEmbedding(...)` plus a
+> `_EMBED_BATCH_CHUNK=64` defensive cap on `embed_batch`. See the postmortem
+> below before relying on anything in the original write-up.
+>
+> Causes #2 (tracemalloc CPU) and #3 (self-referencing edge) were correctly
+> diagnosed and remain fixed.
+
+---
+
+## Postmortem (2026-04-30)
+
+Three layers of wrong landed in the original write-up. Recording them so
+the same trap doesn't get re-set.
+
+### What we thought
+
+ORT's `mem_pattern` cache grew unboundedly under variable input shapes →
+fix is to bucket-pad inputs to a small fixed set of `(B, T)` shapes →
+`verify_no_leak.py` (1000 mixed embeds) confirmed the fix.
+
+### What was actually true
+
+1. **The bucket pad never reached ORT.** Whitespace padding made inputs the
+   same *char length* — but the WordPiece tokenizer collapses trailing
+   whitespace into the previous token, so `'hello' + 1019 spaces` still
+   produces 7 tokens. ORT continued to see variable `(B, T)` tensor shapes.
+   The cosine=1.0 verification was a *symptom* of this — the model treats
+   the padding as nothing because the tokenizer strips it before inference.
+   The "padding is semantically free" finding and the "padding stabilizes
+   shapes" claim are two sides of the same fact, only one of which got
+   noticed.
+
+2. **The `extra_session_options={...}` API was silently dead.** fastembed
+   has no such named parameter; it filters session options out of `**kwargs`
+   via `_select_exposed_session_options`, which expects them as flat kwargs
+   whose keys are in `EXPOSED_SESSION_OPTIONS`. Passing a nested dict
+   meant fastembed read nothing — the spin keys were never applied either.
+   So the high idle CPU "fixed by polyfill" had also still been live.
+
+3. **mem_pattern was not the dominant cause.** `enable_mem_pattern=False`
+   alone (correctly applied via the polyfill + flat kwargs) does not
+   bound RSS. The real culprit is ORT's CPU memory **arena** —
+   `enable_cpu_mem_arena=True` pre-allocates per-shape slabs and never
+   releases them. Documented mitigation in
+   [fastembed#570](https://github.com/qdrant/fastembed/issues/570).
+   Arena and mem_pattern are independent ORT optimizers — disabling one
+   does nothing for the other.
+
+4. **Even with the arena disabled, peak transient memory was 6+ GB per
+   recall.** Not a leak (memory released between calls), but `embed_batch`
+   in `surface_contract.py:_desc_vecs_batched` was passing thousands of
+   unique enriched-edge texts to ORT in one shot — a single
+   `(N, max_seq_len)` tensor that ORT had to materialize all at once.
+   `_EMBED_BATCH_CHUNK=64` in `embedder.embed_batch` chunks defensively
+   so peak working set is bounded regardless of caller batch size.
+   Note: the *spread_activation breadth-first explosion* that produced
+   those large batches in the first place is a separate, still-open
+   architectural issue (Bug 2 — see session notes).
+
+### What's now true
+
+- `_install_fastembed_spin_polyfill` extends `EXPOSED_SESSION_OPTIONS` and
+  routes:
+  - `enable_cpu_mem_arena=False` (the leak fix; previously a no-op)
+  - `enable_mem_pattern=False` (cache cap; previously a no-op)
+  - `session.intra_op.allow_spinning="0"` / `inter_op` (the original spin
+    fix; previously a no-op)
+- All four are passed as flat kwargs to `TextEmbedding(...)`.
+- `embed_batch` chunks at 64 texts per ORT call.
+- Bucket-pad code (`_LEN_BUCKET_CHARS`, `_BATCH_BUCKETS`, `_bucket_pad`)
+  deleted as dead code.
+- `eval/verify_padding_safe.py` is now dead — the empirical finding (cosine
+  =1.0 under whitespace padding) is preserved in this postmortem.
+
+### Validation
+
+10-recall harness, real `hook_recall` path:
+
+| Stage | Peak RSS | Net delta | Trajectory |
+|---|---|---|---|
+| Pre-fix (live daemon at start of session) | 5786 MB | +5148 MB | monotonic climb |
+| + arena=False, mem_pattern=False | 6399 MB | +1463 MB | oscillates, releases |
+| + chunked embed_batch | **2668 MB** | +2217 MB | oscillates, releases |
+
+### Lesson
+
+`verify_no_leak.py` was a false-positive harness — it drove
+`embed_batch` directly with synthetic inputs that happened to have a
+small natural distribution of token lengths. It never exercised the
+real `brain.recall()` path. Any future leak-class verification must
+drive recall end-to-end. The harness is being replaced.
+
+The "loud-by-default" rule was also not loud enough here: a session-options
+allowlist that silently drops unknown keys is exactly the kind of
+contract that should fail loudly. Worth adding a self-test that asserts
+the four ORT flags are actually applied at session creation — would
+have caught all three layers of "fix" that didn't fix anything.
+
+---
+
+## Original write-up (preserved — read with the postmortem above)
 
 Pickup doc for the daemon memory + CPU investigation. Three independent
 root causes were diagnosed and fixed; two pre-existing bugs were surfaced
