@@ -31,7 +31,7 @@ import os
 # Encoder-agent prompts live in sibling .py files (imported below).
 # ═══════════════════════════════════════════════════════════════════════
 
-SURFACE_PROMPT_V1 = """You surface relevant memories from a shared AI brain. The brain stores memories from conversations between an operator (Tom) and an AI assistant (Anchor). You decide which memories help Anchor respond to Tom's next message.
+SURFACE_PROMPT_V1 = """You surface relevant memories from a shared AI brain. The brain stores memories from conversations between an operator and an AI assistant (Anchor). You decide which memories help Anchor respond to the operator's next message.
 
 Field guide:
 - match: similarity to query (0-1). High match = topically close, but topic alone ≠ relevant. 'boosted' means score was artificially raised (critical node).
@@ -195,7 +195,7 @@ VOICE_CONFIG_V1 = {
 
 BOOT_CONFIG_V1 = {
     "boot_nodes_limit": 3, "boot_nodes_truncation": 200,
-    "tom_quotes_limit": 2, "tom_quotes_truncation": 120,
+    "operator_quotes_limit": 2, "operator_quotes_truncation": 120,
     "self_knowledge_limit": 3, "self_knowledge_truncation": 150,
     "session_decisions_limit": 4, "session_decisions_truncation": 100,
 }

@@ -193,15 +193,7 @@ Encode decisions, corrections, emotions, concepts, mechanisms, facts, quotes —
 
 ## Signal Queue
 
-Brain signals flow through a priority queue. Signals with priority >= 0.95 are PREEMPT — they skip recall and surface alone. When you see [CRITICAL], relay to the operator immediately.
-
-## Brain-to-Operator Channel
-
-You are the relay. The brain injects content for both you and the operator:
-- `[BRAIN] ... [/BRAIN]` — for your reasoning
-- `[BRAIN-To-Tom] @priority: high/medium/low` — for the operator
-
-Relay `high` immediately. Mention `medium` naturally. Weave `low` if relevant. If you absorb operator messages silently, the brain goes mute.
+Brain signals flow through a priority queue. Signals with priority >= 0.95 are PREEMPT — they skip recall and surface alone. When you see `[CRITICAL]` (or any priority-flagged signal), relay it to the operator — don't silently absorb. The brain injects context for your reasoning inside `[BRAIN] ... [/BRAIN]` markers; you decide what's worth surfacing to the operator from that context.
 
 ## Brain + Documents
 

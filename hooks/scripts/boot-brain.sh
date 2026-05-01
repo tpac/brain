@@ -2,11 +2,10 @@
 # brain — SessionStart hook: boots brain, prints context + consciousness signals.
 # Output: full brain state for Claude's context (injected via SessionStart stdout)
 #
-# Brain DB resolution order:
-# 1. BRAIN_DB_DIR env var (explicit override)
-# 2. /sessions/*/mnt/AgentsContext/brain/ (Cowork mounted paths)
-# 3. $HOME/AgentsContext/brain/ (local Claude Code via symlink)
-# If none found, boot fails cleanly (no /tmp fallback — silent data loss is worse).
+# Brain DB resolution: see resolve-brain-db.sh — prefers $CLAUDE_PLUGIN_DATA/brain
+# (Claude Code's standard plugin data location) and falls back to legacy paths.
+# If no DB found AND no auto-create succeeds, boot fails cleanly (no /tmp fallback —
+# silent data loss is worse).
 
 
 # Save stdin early — inline python commands below would consume it.
@@ -14,6 +13,38 @@
 HOOK_STDIN=$(cat)
 BRAIN_HOOK_SESSION_ID=$(echo "$HOOK_STDIN" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('session_id',''))" 2>/dev/null)
 export BRAIN_HOOK_SESSION_ID
+
+# ── Validate ANTHROPIC_API_KEY is set ──
+# The brain's encoder agents (S1 Scribe, S2 maintenance, healer) call the
+# Anthropic API. Without a key, encoding silently fails and the brain stops
+# learning. Detect early and tell the user clearly — don't load the plugin
+# in a half-broken state.
+if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+  cat <<'EOF'
+🧠 brain plugin: ANTHROPIC_API_KEY is not set.
+
+The brain needs your Anthropic API key to encode and surface memories.
+Without it, recall still works but no new memories will be written.
+
+To fix:
+
+  1. Get an API key at https://console.anthropic.com/settings/keys
+
+  2. Set it in your shell profile (~/.zshrc or ~/.bashrc):
+       export ANTHROPIC_API_KEY="sk-ant-..."
+
+  3. Start a new Claude Code session.
+
+The brain plugin will not load until the key is set.
+EOF
+  # Same message to stderr so it's visible in the boot output, not just
+  # the session-context injection.
+  cat >&2 <<'EOF'
+[brain-boot] ANTHROPIC_API_KEY not set — plugin will not load.
+[brain-boot] See SessionStart context output for setup instructions.
+EOF
+  exit 0
+fi
 
 source "$(dirname "$0")/resolve-brain-db.sh"
 
@@ -39,10 +70,12 @@ if 'hooks' not in data or not isinstance(data['hooks'], dict):
   fi
 fi
 
-# No DB found — guide the user
+# No DB found AND auto-create failed — guide the user.
+# (resolve-brain-db.sh tries to auto-create at $CLAUDE_PLUGIN_DATA/brain or in
+# Cowork mounts; we only land here if those weren't writable or weren't set.)
 if [ -z "$BRAIN_DB_DIR" ]; then
   echo ""
-  echo "brain: No brain.db found."
+  echo "brain: No brain.db found and auto-create failed."
   echo ""
   echo "Two options:"
   echo ""
@@ -52,13 +85,18 @@ if [ -z "$BRAIN_DB_DIR" ]; then
   echo "     The folder should contain (or will contain) brain.db."
   echo ""
   echo "  2. START FRESH — Create a new brain:"
-  echo "     mkdir -p ~/AgentsContext/brain"
+  if [ -n "$CLAUDE_PLUGIN_DATA" ]; then
+    echo "     mkdir -p \"\$CLAUDE_PLUGIN_DATA/brain\""
+  else
+    echo "     mkdir -p ~/AgentsContext/brain"
+  fi
   echo "     Then restart this session. The brain will initialize automatically."
   echo ""
   echo "Searched locations:"
   echo "  - \$BRAIN_DB_DIR env var (not set)"
   echo "  - /sessions/*/mnt/AgentsContext/brain/ (Cowork — not found)"
-  echo "  - \$HOME/AgentsContext/brain/ (not found)"
+  echo "  - \$CLAUDE_PLUGIN_DATA/brain/ ($([ -n "$CLAUDE_PLUGIN_DATA" ] && echo "not found at $CLAUDE_PLUGIN_DATA/brain" || echo "\$CLAUDE_PLUGIN_DATA not set"))"
+  echo "  - \$HOME/AgentsContext/brain/ (not found, legacy)"
   echo ""
   exit 0
 fi

@@ -1,69 +1,106 @@
 # brain
 
-Persistent brain for Claude — a shared cognitive space that accumulates knowledge across sessions.
+Persistent shared brain for Claude — a living knowledge graph that survives across sessions, heals itself, and surfaces the right context at the right moment.
 
 Co-created by **Tom Pachys** and **Claude**.
 
-## What It Does
+## What it does
 
-brain gives Claude persistent memory. Decisions, corrections, rules, preferences, and context survive across conversations. The brain uses Hebbian learning, semantic recall (TF-IDF + embeddings), intent detection, and automatic relationship discovery to surface the right knowledge at the right time.
+Decisions, corrections, preferences, lessons, and context survive across conversations. Every prompt triggers a recall pass; the brain self-heals between sessions (consolidating duplicates, classifying edges, placing new memories into communities, filling missing fields). The result: Claude remembers what matters and gets sharper over time.
 
-## Architecture
+The brain is not a RAG store. It's a graph that:
 
-**Serverless Python module** — no HTTP server, no background process. Brain operations are direct SQLite calls via Python, triggered by Claude Code hooks.
-
-```
-servers/brain.py    — Core brain engine (~3,500 lines)
-servers/schema.py   — SQLite schema (v14, auto-migration)
-servers/embedder.py — FastEmbed integration (snowflake-arctic-embed-m)
-hooks/              — Claude Code hook scripts (boot, recall, suggest, save)
-skills/             — SKILL.md encoding instructions
-tests/              — Golden dataset evaluation, relearning simulation
-```
-
-## Key Features
-
-- **Hebbian learning** — Co-recalled nodes automatically form connections
-- **Semantic recall** — TF-IDF + dense embeddings + intent detection
-- **Dreaming** — Random-walk association discovery
-- **Brain absorption** — Merge knowledge from relearned/other brains
-- **Singleton pattern** — `Brain.get_instance()` keeps the brain warm across hooks
-- **Relearning simulation** — Replay transcripts through the brain with LLM-quality encoding
-- **Golden dataset testing** — 48 test cases with NDCG, MRR, precision/recall metrics
+- Embeds memories into a multi-vector cosine space (per-field embeddings: title, content, situation, etc.)
+- Spreads activation across edges with relation-aware weights
+- Fatigues repeatedly-recalled hubs so fresh signal can surface
+- Encodes new memories from conversation via a Sonnet "scribe" agent
+- Runs background "scale-2" maintenance (consolidation, community detection, healer) on idle
 
 ## Installation
 
-Install as a Claude Code plugin:
+Install as a Claude Code plugin (via the marketplace, or manually clone into your plugins directory).
 
-```bash
-bash build-plugin.sh brain.plugin
+### Prerequisites
+
+| Requirement | Why |
+|---|---|
+| **`ANTHROPIC_API_KEY`** env var | The encoder agents (S1 Scribe, S2 maintenance, healer) call the Anthropic API. The plugin will refuse to load without this key set, with clear instructions |
+| **Claude Code 1.0+** | Needs the plugin & hooks API |
+| **macOS or Linux** | Tested on macOS; Linux should work; Windows untested |
+
+The plugin bundles its own Python 3.11 runtime — no system Python required. First-boot installs `uv` + Python + dependencies (~60-90s, one-time).
+
+### First boot
+
+1. Set your API key (one-time):
+   ```bash
+   export ANTHROPIC_API_KEY="sk-ant-..."
+   ```
+   Get one at https://console.anthropic.com/settings/keys
+
+2. Install the plugin and start a Claude Code session.
+
+3. SessionStart hook fires:
+   - First time: downloads runtime + dependencies + embedding model (~200 MB cached)
+   - Creates `brain.db` at `${CLAUDE_PLUGIN_DATA}/brain/`
+   - Seeds 16 anchor identity nodes + interaction prompts
+   - Subsequent boots: <100 ms
+
+4. Brain is live. Hooks auto-register; MCP tools (`recall`, `remember`, `connect`, etc.) are available to Claude.
+
+### Storage location
+
+Brain database lives at `${CLAUDE_PLUGIN_DATA}/brain/` by default — the standard Claude Code per-plugin data directory. It survives plugin updates and is never committed.
+
+Override with `BRAIN_DB_DIR=/your/path` if you want it elsewhere.
+
+Resolution order:
+1. `$BRAIN_DB_DIR` (explicit override)
+2. Cowork mount (`/sessions/*/mnt/AgentsContext/brain/`)
+3. `$CLAUDE_PLUGIN_DATA/brain/` (standard, auto-created)
+4. `$HOME/AgentsContext/brain/` (legacy, only if file exists)
+
+## Architecture (high-level)
+
+```
+servers/
+  brain.py              Core engine — recall, encode, traversal, write_lock
+  daemon_server.py      TCP daemon that holds the brain singleton
+  daemon_dispatch.py    Command table — handlers for MCP tools and hooks
+  embedder.py           fastembed integration (nomic-embed-text-v1.5-Q, 768d)
+  schema.py             SQLite schema (v25, auto-migration)
+  scales/
+    s1/                 S1 Scribe (encoding) + S1 Surface (recall)
+    s2/                 S2 Coordinator + Consolidation, Community, Healer units
+hooks/                  Claude Code hook scripts (boot, recall, edit, save)
+skills/brain/           Anchor's identity & operating instructions
+tests/                  Unit, contract, integration tests + LongMemEval harness
 ```
 
-Then add the generated `.plugin` file to your Claude Code setup.
+Two databases:
+- `brain.db` — nodes, edges, embeddings, graph structure
+- `brain_logs.db` — traces, signal queue, interactions, hook errors
 
-## Brain Location
+Detailed architecture: [CLAUDE.md](CLAUDE.md) (developer guide).
 
-The brain database (`brain.db`) is stored in:
-1. `AgentsContext/brain/brain.db` — user's personal brain
-2. Plugin's `servers/data/brain.db` — fresh default for new users
+## Configuration
 
-**Never commit brain.db** — it contains personal knowledge and is excluded via `.gitignore`.
+| Env var | Default | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | required | Sonnet/Haiku calls for encoder agents |
+| `BRAIN_DB_DIR` | `$CLAUDE_PLUGIN_DATA/brain/` | Override DB location |
+| `BRAIN_USER` | `User` | Operator label in boot context |
+| `BRAIN_PROJECT` | `default` | Project label in boot context |
 
 ## Testing
 
 ```bash
-cd tests
-python run_tests.py --golden --verbose    # Run golden dataset evaluation
-python run_tests.py --metrics-test        # Validate IR metrics
-python relearning.py transcript.jsonl --llm  # Run relearning simulation
+./dev pytest tests/                          # full unit suite
+./dev pytest tests/test_maintenance_gate.py  # one file
+./dev python eval/longmem/harness.py         # LongMemEval (15-item stratified)
 ```
 
-## Version History
-
-- **v3.2** — Singleton pattern, `brain.absorb()`, Hebbian edge creation fix, LLM relearning, pre-filter + batch + parallel optimization
-- **v3.0** — Serverless Python port (eliminated HTTP server + Node.js)
-- **v2.x** — Object nodes, semantic dedup, pre-compact hooks
-- **v1.x** — Initial brain with TF-IDF, intent detection, dreaming
+`./dev` is a wrapper that uses the plugin's bundled Python — required because hooks resolve to that interpreter.
 
 ## License
 

@@ -23,7 +23,10 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-BRAIN_DIR = Path("/Users/tpac/AgentsContext/brain")
+BRAIN_DIR = Path(os.environ.get(
+    "BRAIN_DB_DIR",
+    os.environ.get("CLAUDE_PLUGIN_DATA", os.path.expanduser("~/AgentsContext")) + "/brain",
+))
 LIVE_BRAIN = BRAIN_DIR / "brain.db"
 LIVE_LOGS = BRAIN_DIR / "brain_logs.db"
 OUT_DIR = Path(__file__).parent / "output"

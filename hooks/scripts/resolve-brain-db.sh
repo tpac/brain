@@ -22,7 +22,11 @@ if [ -n "$BRAIN_DB_DIR" ] && [ -f "$BRAIN_DB_DIR/brain.db" ]; then
   return 0 2>/dev/null || true
 fi
 
-# Full resolution chain (runs at boot or if env not set)
+# Full resolution chain (runs at boot or if env not set).
+#
+# Priority is: existing-brain-found > standard-location > Cowork > legacy.
+# Auto-create only happens at the standard or Cowork location, never at the
+# legacy path (existing users who never migrated must opt in explicitly).
 DB_DIR=""
 
 # 1. Explicit override
@@ -30,19 +34,33 @@ if [ -n "$BRAIN_DB_DIR" ] && [ -d "$BRAIN_DB_DIR" ]; then
   DB_DIR="$BRAIN_DB_DIR"
 fi
 
-# 2. Cowork: search mounted AgentsContext directories
+# 2. Cowork: search mounted AgentsContext directories for an existing brain
 if [ -z "$DB_DIR" ] && [ -d "/sessions" ]; then
   for candidate in /sessions/*/mnt/AgentsContext/brain; do
     [ -f "$candidate/brain.db" ] 2>/dev/null && DB_DIR="$candidate" && break
   done 2>/dev/null
 fi
 
-# 3. Local Claude Code (symlink to Google Drive)
+# 3. Standard Claude Code plugin data location ($CLAUDE_PLUGIN_DATA is set
+#    by Claude Code per-plugin and survives plugin updates — the documented
+#    convention for plugin-owned runtime state).
+if [ -z "$DB_DIR" ] && [ -n "$CLAUDE_PLUGIN_DATA" ] && [ -f "$CLAUDE_PLUGIN_DATA/brain/brain.db" ]; then
+  DB_DIR="$CLAUDE_PLUGIN_DATA/brain"
+fi
+
+# 4. Legacy local path (~/AgentsContext/brain/) — supported for
+#    pre-CLAUDE_PLUGIN_DATA installs. New installs land at $CLAUDE_PLUGIN_DATA.
 if [ -z "$DB_DIR" ] && [ -f "$HOME/AgentsContext/brain/brain.db" ]; then
   DB_DIR="$HOME/AgentsContext/brain"
 fi
 
-# 4. Cowork first-run: create in mounted AgentsContext
+# 5. Standard first-run: create at $CLAUDE_PLUGIN_DATA/brain
+if [ -z "$DB_DIR" ] && [ -n "$CLAUDE_PLUGIN_DATA" ]; then
+  DB_DIR="$CLAUDE_PLUGIN_DATA/brain"
+  mkdir -p "$DB_DIR" 2>/dev/null
+fi
+
+# 6. Cowork first-run: create in mounted AgentsContext
 if [ -z "$DB_DIR" ] && [ -d "/sessions" ]; then
   for ac_dir in /sessions/*/mnt/AgentsContext; do
     if [ -d "$ac_dir" ] 2>/dev/null; then
