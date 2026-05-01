@@ -575,14 +575,18 @@ import numpy as np
 # Real termination comes from the transmission gate + saturation, not this.
 _SPREAD_MAX_STEPS = 3
 
-# Per-source neighbor cap during spread expansion. 2026-05-01 lowered
-# from 50 → 30 after prod-clone bench showed 47% latency reduction (avg
-# 11.2s → 5.9s on 3,221-node brain) with no quality regression on the
-# 15-item LongMemEval set (iter_M = 14/15 = 93%, parity with iter_J).
-# Lower bounds tested: 15 (E variant) starved encoder muster — too tight.
-# 30 is the sweet spot. Override via BRAIN_SPREAD_NEIGHBOR_LIMIT env var
-# for eval variants.
-SPREAD_NEIGHBOR_LIMIT_DEFAULT = 30
+# Per-source neighbor cap during spread expansion. Held at 50 after
+# 2026-05-01 partial-rollback: lim=30 was tried (variant C, iter_M
+# 14/15 on seed=42) but iter_O on a different sample (seed=1) revealed
+# the narrowing starves muster recall during ingestion → encoder
+# misses specific facts → quality drops 80%→60% on that sample. The
+# narrower lim hurt 5 items on seed=1, helped 0. Reverted.
+#
+# The latency win lives entirely in HOP_SCRUTINY_DEFAULT (variant D in
+# the bench): scrutiny alone reduces avg recall 11.2s → 6.3s (44%) by
+# narrowing only at hop 3, where the work doesn't bite encoder context.
+# Lim stays at production-original 50.
+SPREAD_NEIGHBOR_LIMIT_DEFAULT = 50
 
 # Per-hop scrutiny: at hop 3+ (step >= 2), only the top half of currently
 # active nodes by activation propagate further. Distribution-derived —
