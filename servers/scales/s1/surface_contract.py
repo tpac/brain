@@ -575,6 +575,23 @@ import numpy as np
 # Real termination comes from the transmission gate + saturation, not this.
 _SPREAD_MAX_STEPS = 3
 
+# Per-source neighbor cap during spread expansion. 2026-05-01 lowered
+# from 50 → 30 after prod-clone bench showed 47% latency reduction (avg
+# 11.2s → 5.9s on 3,221-node brain) with no quality regression on the
+# 15-item LongMemEval set (iter_M = 14/15 = 93%, parity with iter_J).
+# Lower bounds tested: 15 (E variant) starved encoder muster — too tight.
+# 30 is the sweet spot. Override via BRAIN_SPREAD_NEIGHBOR_LIMIT env var
+# for eval variants.
+SPREAD_NEIGHBOR_LIMIT_DEFAULT = 30
+
+# Per-hop scrutiny: at hop 3+ (step >= 2), only the top half of currently
+# active nodes by activation propagate further. Distribution-derived —
+# the threshold is the median of the current activation set, not a static
+# number. Forces narrowing as depth increases. Production default = ON
+# (variant C, the bench winner). Override BRAIN_SPREAD_HOP_SCRUTINY=off
+# to disable for comparison.
+HOP_SCRUTINY_DEFAULT = True
+
 # Outer propagation gate: if the max transmission coefficient in the batch
 # falls below the brain's noise floor, nothing meaningful to spread —
 # halt rather than forcing below-noise edges through. Imported from
@@ -651,11 +668,11 @@ def _build_edge_coeffs(brain, brain_conn, activated_nodes, query_vec,
     enriched_to_embed = []  # texts needing embedding
     enriched_keys = []      # parallel: (source, target, edge, enriched_text)
 
-    # Per-source neighbor cap. Env-configurable so eval variants can compare
-    # bounded breadth without code changes. Production default = 50 (the
-    # original behavior). Lower (e.g. 15) caps peak working set for spread.
+    # Per-source neighbor cap. Default from contract (SPREAD_NEIGHBOR_LIMIT_DEFAULT).
+    # Env override: BRAIN_SPREAD_NEIGHBOR_LIMIT — used by eval variants.
     import os as _os
-    _SPREAD_LIMIT = int(_os.environ.get('BRAIN_SPREAD_NEIGHBOR_LIMIT', '50'))
+    _SPREAD_LIMIT = int(_os.environ.get(
+        'BRAIN_SPREAD_NEIGHBOR_LIMIT', str(SPREAD_NEIGHBOR_LIMIT_DEFAULT)))
 
     for source_id in activated_nodes:
         rows = gdal.get_neighbors(
@@ -792,11 +809,33 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
     import os as _os
     _THICKNESS = 'thickness' in _os.environ.get('BRAIN_RECALL_VARIANT', '').lower()
 
+    # Hop scrutiny: at hop 3+ (step >= 2), only the top half of currently-
+    # active nodes by activation propagate further. Distribution-derived —
+    # the threshold is the median of the current activation set, not a
+    # static number. Default from contract (HOP_SCRUTINY_DEFAULT = True).
+    # Opt-out via BRAIN_SPREAD_HOP_SCRUTINY=off for A/B comparisons.
+    _scrutiny_env = _os.environ.get('BRAIN_SPREAD_HOP_SCRUTINY')
+    if _scrutiny_env is None:
+        _HOP_SCRUTINY = HOP_SCRUTINY_DEFAULT
+    else:
+        _HOP_SCRUTINY = _scrutiny_env.lower() == 'on'
+
     for step in range(_SPREAD_MAX_STEPS):
         # Source nodes at this hop: whichever are currently activated above zero
-        active_sources = [n for n, a in node_activation.items() if a > 0]
-        if not active_sources:
+        raw_active = [(n, a) for n, a in node_activation.items() if a > 0]
+        if not raw_active:
             break
+
+        # Per-hop scrutiny on the jump to hop 3+. The median of current
+        # activations becomes the floor — only above-median sources
+        # propagate further. The cost of going deeper is that you only
+        # follow strong activations, not all weak ones.
+        if _HOP_SCRUTINY and step >= 2 and len(raw_active) > 4:
+            sorted_acts = sorted([a for _, a in raw_active], reverse=True)
+            scrutiny_floor = sorted_acts[len(sorted_acts) // 2]
+            active_sources = [n for n, a in raw_active if a >= scrutiny_floor]
+        else:
+            active_sources = [n for n, _ in raw_active]
 
         edges = _build_edge_coeffs(
             brain, brain.conn, active_sources, blended,
