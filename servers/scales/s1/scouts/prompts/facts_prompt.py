@@ -27,12 +27,16 @@ Check the node catalog: does a node already describe this entity? Does it
 carry the same feature? If yes, flag for potential revision (especially when
 value_differs=true — that's a supersession signal).
 
-What qualifies:
+What qualifies (from EITHER speaker — operator OR assistant):
 - Named entities with quantitative values ("320 pages", "$400/night", "2,847 samples")
 - Preferences tied to specifics ("uses Memrise for language learning")
 - Settings and configs ("port 47247", "max_messages: 10")
 - Supersession-prone values (gym time, routines, preferences)
-- Proper nouns introduced for the first time (app names, book titles, place names)
+- Proper nouns introduced for the first time (app names, book titles, place names) —
+  including those the assistant introduces in lists, recommendations, or
+  enumerations. The operator may ask later "which app did you mention with X?"
+  so each named option becomes a future-query handle even if the operator
+  hasn't yet adopted it.
 
 Skip:
 - General principles ("prefer many focused nodes") — belongs to Synthesis scout
@@ -140,6 +144,54 @@ Candidates:
     "evidence_quote": "2,847 participants across 14 sites",
     "evidence_turns": ["t3"],
     "why_candidate": "Multi-site design parameter; affects clustering in analysis",
+    "catalog_match": null
+  }
+]
+
+### Example 4 — assistant-introduced named entities in a recommendation list
+Excerpt:
+  [t1] operator: Any apps you'd recommend for language learning?
+  [t2] assistant: Sure — a few options: Duolingo (gamified daily lessons),
+       Babbel (real-world conversations), Memrise (uses mnemonics for
+       memorization), Rosetta Stone (immersion-style).
+
+Each named app introduced in a recommendation list is a fact-worthy
+candidate even if the operator hasn't picked one yet, because the operator
+may later ask "which one used mnemonics?" or "what was the gamified one?".
+
+Candidates:
+[
+  {
+    "handle": "Memrise — language learning method",
+    "entity": "Memrise",
+    "feature": "language learning method",
+    "value": "mnemonics-based memorization",
+    "unit": null,
+    "evidence_quote": "Memrise (uses mnemonics for memorization)",
+    "evidence_turns": ["t2"],
+    "why_candidate": "Assistant-introduced app name with distinguishing feature; future-query handle",
+    "catalog_match": null
+  },
+  {
+    "handle": "Duolingo — language learning method",
+    "entity": "Duolingo",
+    "feature": "language learning method",
+    "value": "gamified daily lessons",
+    "unit": null,
+    "evidence_quote": "Duolingo (gamified daily lessons)",
+    "evidence_turns": ["t2"],
+    "why_candidate": "Assistant-introduced app name with distinguishing feature",
+    "catalog_match": null
+  },
+  {
+    "handle": "Babbel — language learning method",
+    "entity": "Babbel",
+    "feature": "language learning method",
+    "value": "real-world conversations",
+    "unit": null,
+    "evidence_quote": "Babbel (real-world conversations)",
+    "evidence_turns": ["t2"],
+    "why_candidate": "Assistant-introduced app name with distinguishing feature",
     "catalog_match": null
   }
 ]

@@ -784,6 +784,14 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
     trace_steps = []
     cached_edge_coeffs = {}  # memo across hops: enriched_text → coeff
 
+    # Variant 'thickness' (eval): multiply cosine by accumulated edge weight
+    # before any gating. Edges already track confirmation count via Hebbian
+    # strengthening on each repeat write (servers/dal.py:add_relation —
+    # weight grows by LEARNING_RATE × 0.5 per repeat, capped at MAX_WEIGHT).
+    # Today that signal is unused in spread; this variant uses it.
+    import os as _os
+    _THICKNESS = 'thickness' in _os.environ.get('BRAIN_RECALL_VARIANT', '').lower()
+
     for step in range(_SPREAD_MAX_STEPS):
         # Source nodes at this hop: whichever are currently activated above zero
         active_sources = [n for n, a in node_activation.items() if a > 0]
@@ -796,6 +804,16 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
 
         if not edges:
             break
+
+        # Apply thickness: cosine × edge_weight. A confirmed edge (weight=1.0)
+        # transmits at full cosine; a single-mention edge (weight=0.5)
+        # transmits at half. Weakened/contradicted edges (weight<0.3) drop out
+        # of the gate naturally without needing a separate suppression rule.
+        if _THICKNESS:
+            edges = [
+                (s, t, c * float(e.get('weight') or 0.5), e)
+                for (s, t, c, e) in edges
+            ]
 
         # Outer gate: any meaningfully-matching edges at all?
         max_coeff = max(e[2] for e in edges)

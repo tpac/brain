@@ -153,6 +153,11 @@ def _parse_surfacer_json(raw):
     return None
 
 
+# Module-level flag so variant verification logs once per process, not per
+# call. Reset on import (when the harness reloads modules between runs).
+_VARIANT_FIRST_CALL_LOGGED = False
+
+
 def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
     """Expand the graph from selected seeds via spreading activation.
 
@@ -200,6 +205,8 @@ def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
     #   spread:  'baseline' (default) | 'cluster' (cluster-completion v1)
     #   lane:    'l4' present in name = L4 identity lane on
     #   limit:   'lim15' / 'lim10' / 'lim20' set per-source neighbor cap
+    #   thickness: edge weight as transmission multiplier (read in spread)
+    #   lineage:   lineage families bypass median gate (read in spread)
     use_cluster = 'cluster' in raw_variant
     use_l4 = 'l4' in raw_variant
     if 'lim10' in raw_variant:
@@ -211,6 +218,22 @@ def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
     elif 'lim25' in raw_variant:
         os.environ['BRAIN_SPREAD_NEIGHBOR_LIMIT'] = '25'
     # else: unset, _build_edge_coeffs falls back to '50'
+
+    # Verification log — emit once per process so eval runs have proof the
+    # variant flag actually took effect at the surface layer (not just at
+    # harness invocation). Without this, the only evidence is timing
+    # differences which can be confounded.
+    global _VARIANT_FIRST_CALL_LOGGED
+    if not _VARIANT_FIRST_CALL_LOGGED:
+        import sys as _sys
+        limit_value = os.environ.get('BRAIN_SPREAD_NEIGHBOR_LIMIT', '50')
+        _sys.stderr.write(
+            "[surface-variant first-call pid=%d] raw=%r cluster=%s l4=%s "
+            "limit=%s thickness=%s lineage=%s\n" % (
+                os.getpid(), raw_variant, use_cluster, use_l4,
+                limit_value, 'thickness' in raw_variant,
+                'lineage' in raw_variant))
+        _VARIANT_FIRST_CALL_LOGGED = True
 
     # Resolve to full IDs (the kernel reads vectors keyed on full id)
     ndal = NodeDAL(brain.conn)

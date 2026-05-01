@@ -15,6 +15,23 @@ REPORT_DIR = Path("eval/longmem/reports")
 
 
 def load_run(run_name):
+    """Load a run's per-item results.
+
+    Reads run_{run_name}.json (the report file) which has the full result
+    dicts (correct, abstained, has_context, etc.). Falls back to
+    hypotheses_{run_name}.jsonl for the bare-bones shape if needed.
+    """
+    rpath = REPORT_DIR / f"run_{run_name}.json"
+    if rpath.exists():
+        try:
+            data = json.loads(rpath.read_text())
+            results = data.get("results") or data.get("items") or []
+            if results:
+                return {r["question_id"]: r for r in results}
+        except Exception:
+            pass
+
+    # Fallback: hypotheses jsonl (minimal — no correct flag)
     path = REPORT_DIR / f"hypotheses_{run_name}.jsonl"
     if not path.exists():
         return None
