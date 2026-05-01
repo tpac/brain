@@ -95,12 +95,16 @@ def _drain_once(brain) -> None:
         return
 
     t0 = time.time()
-    try:
-        result = brain.backfill_vectors(batch_size=max(50, len(drained)),
-                                        node_ids=drained)
-    except TypeError:
-        # backfill_vectors without node_ids param yet — fall back to full scan
-        result = brain.backfill_vectors(batch_size=max(50, len(drained)))
+    # Serialize against daemon dispatch + S2 encoder + autosave. backfill_vectors
+    # writes to node_enrichments + node_embeddings; without the lock these
+    # can race with concurrent revise/remember on the same nodes.
+    with brain.write_lock:
+        try:
+            result = brain.backfill_vectors(batch_size=max(50, len(drained)),
+                                            node_ids=drained)
+        except TypeError:
+            # backfill_vectors without node_ids param yet — fall back to full scan
+            result = brain.backfill_vectors(batch_size=max(50, len(drained)))
     elapsed_ms = int((time.time() - t0) * 1000)
 
     vectors = sum(v for v in (result or {}).values() if isinstance(v, int))

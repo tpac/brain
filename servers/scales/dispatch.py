@@ -1,8 +1,19 @@
 """Scale dispatch infrastructure — TCP communication and agent dispatch factory.
 
 Shared by all scale agents (S1 encode, S2 session encode, future scales).
-Scale agents run in background threads with read-only Brain instances.
-All writes go through daemon TCP (single-writer rule).
+
+Two write paths exist:
+
+1. **In-process (S2 encoder running in the daemon's pool)** — calls
+   COMMAND_TABLE handlers directly under `brain.write_lock` (acquired in
+   `scales/s2/base.py::_make_encoder_dispatch`). Same lock that
+   daemon_server.py uses for client requests, so cross-writer
+   serialization is guaranteed.
+2. **Out-of-process (S1 encode subprocess, future scales)** — calls
+   `daemon_tcp_send` here, which dispatches via the daemon and therefore
+   goes through `_locked_exec` → `brain.write_lock`.
+
+Either way, every write hits the same lock.
 """
 
 import json

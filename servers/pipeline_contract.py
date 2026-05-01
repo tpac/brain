@@ -292,7 +292,6 @@ def get_group_weight(vector_type):
 # ═══════════════════════════════════════════════════════════════
 
 PIPELINE = {
-    'user_message_store': 500,
     'user_message_query': 500,
     'assistant_response_store': 4000,
     'recent_message_content': 300,

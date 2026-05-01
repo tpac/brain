@@ -104,13 +104,6 @@ def hook_recall(brain, args, graph_changes):
     except Exception as e:
         brain._log_error('write_current_stop', e, 'hook_recall')
 
-    # Store last user message for operator voice capture
-    try:
-        from .pipeline_contract import PIPELINE as _PL
-        brain.set_config("last_user_message", user_message[:_PL['user_message_store']])
-    except Exception as e:
-        brain._log_error('set_last_user_message', e, 'hook_recall')
-
     # ── Explicit feedback detection ──
     # If the user says "useful", "not useful", "garbage", etc., process it as
     # feedback on the most recent ask_operator recall. This is ground truth.
@@ -140,6 +133,7 @@ def hook_recall(brain, args, graph_changes):
     # DEPRECATED 2026-04-01: Vocabulary expansion disabled. Vocab migrated to concept nodes
     # which surface through normal recall. Regex expansion added noise without measurable
     # recall improvement (confirmed by decode funnel — 0% impact from vocab expansion).
+    from .pipeline_contract import PIPELINE as _PL
     enriched = user_message[:_PL['user_message_query']]
 
     # Recall — logging happens inside brain.recall() (single source of truth)

@@ -320,7 +320,12 @@ class IntegrationUnit:
             entry = COMMAND_TABLE.get(cmd)
             if entry:
                 check_unknown_keys(cmd, entry, cmd_args, brain)
-                return entry.handler(brain, cmd_args, [])
+                # Serialize against daemon dispatch + autosave + embed_queue.
+                # S2 runs in-process but on a pool worker thread; without
+                # this, encoder writes can interleave with concurrent
+                # client writes (and with each other across S2 units).
+                with brain.write_lock:
+                    return entry.handler(brain, cmd_args, [])
             return {'ok': False, 'error': 'Unknown command: %s' % cmd}
 
         return dispatch

@@ -137,6 +137,15 @@ class Brain(
         self.db_path = db_path
         self._skip_embedder = skip_embedder
 
+        # Serializes all writers to brain.db / brain_logs.db. The lock lives
+        # on the brain (the resource it protects), not the daemon — this lets
+        # any caller that holds a brain reference participate in
+        # serialization: daemon dispatch, S2 encoder dispatch, embed_queue
+        # backfill, autosave. RLock so a thread that already holds it can
+        # call into a brain method that also wants to acquire it without
+        # deadlock.
+        self.write_lock = threading.RLock()
+
         # Open SQLite connection with WAL mode for concurrency
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.execute('PRAGMA journal_mode=WAL')
@@ -507,21 +516,39 @@ class Brain(
         This is the single entry point for session state. Hooks send
         session_id from Claude Code args. The brain holds the state.
 
-        If the session exists in DB (daemon restarted), loads it.
-        If new, creates and persists it.
+        Race-safe: two threads with the same brand-new session_id can call
+        this concurrently — `INSERT OR IGNORE` atomically claims the row,
+        then the subsequent load reads whatever ended up there (default
+        from us, default from a racing thread, or pre-existing modified
+        state).
+
+        Note: this does NOT serialize the read-modify-save sequence on a
+        SessionContext object — callers that read, mutate (e.g. increment
+        stop_counter), and save can still lose increments under
+        concurrent same-session activity. That's a separate concern and
+        is rare in practice (parallel sessions use different session_ids).
         """
         from .session_context import SessionContext
+        import json as _json
+        from datetime import datetime, timezone
         if not session_id:
             # Fallback: use brain_meta session_id (set at boot) rather than random UUID
             session_id = self.session_id
             if session_id == 'no_session':
                 session_id = uuid.uuid4().hex
-        ctx = SessionContext.load(self.logs_conn, session_id)
-        if ctx:
-            return ctx
-        ctx = SessionContext(session_id=session_id)
-        ctx.save(self.logs_conn)
-        return ctx
+        # Atomic create-if-missing — INSERT OR IGNORE is a single SQLite
+        # statement, so two racing threads both calling here for the same
+        # session_id can't both create.
+        default_data = _json.dumps({'stop_counter': 0, 'fatigue': {}, 'edge_fatigue': {}})
+        now = datetime.now(timezone.utc).isoformat()
+        self.logs_conn.execute(
+            'INSERT OR IGNORE INTO session_state (session_id, key, node_id, value, updated_at) '
+            'VALUES (?, ?, ?, ?, ?)',
+            (session_id, '_session_context', '', default_data, now))
+        self.logs_conn.commit()
+        # Row is guaranteed to exist now — load reads our default or a
+        # racing thread's already-modified state.
+        return SessionContext.load(self.logs_conn, session_id)
 
     @property
     def session_id(self):

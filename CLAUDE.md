@@ -34,7 +34,7 @@ Two databases:
 
 **Edge model (v22):** Physical edges (`edges` table) carry `edge_id`, `source_id` (actor), `target_id` (acted upon), aggregate `weight`. One row per pair — no mirrors. Semantic layer (`edge_relations` table) carries multiple relations per edge via `edge_id` FK: `relation` (open text), `description`, `weight`, `encoding_source`. Direction matters — source is the actor. Use `GraphDAL.add_relation()` for all edge writes.
 
-**Single-writer rule:** the daemon's main thread is the ONLY writer. Background threads (encoding agent, idle) route writes through TCP dispatch. Read operations: any thread can read (WAL mode).
+**Write serialization:** `brain.write_lock` (a re-entrant lock living on the Brain instance, not the daemon) serializes every writer in the process — daemon dispatch (`_locked_exec`), S2 encoder dispatch (`_make_encoder_dispatch`), embed_queue worker (`_drain_once`), autosave loop. The lock lives on the brain so any caller with a brain reference participates uniformly; pre-2026-05-01 it lived on the daemon and S2/embed_queue bypassed it. Read operations run without the lock under SQLite WAL — multiple readers OK alongside one writer.
 
 Auto-starts on first hook fire. **Maintenance mode:** `touch /tmp/brain-maintenance-{uid}.lock` prevents auto-restart during VACUUM, schema changes, bulk deletes. Remove lock when done.
 

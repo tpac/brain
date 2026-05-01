@@ -3,7 +3,10 @@ brain — Daemon Server
 
 BrainDaemon class: loads Brain, serves commands over TCP localhost.
 Thread pool (5 workers) handles concurrent connections.
-Reads run without lock, writes serialize via _write_lock.
+Reads run without lock; all writers (daemon dispatch, S2 encoder, embed
+queue, autosave) serialize via brain.write_lock — the lock lives on the
+brain itself, not the daemon, so any caller with a brain reference takes
+the same lock.
 """
 
 import sys
@@ -55,7 +58,8 @@ class BrainDaemon:
         self.last_user_activity = 0.0
         self.dirty = False
         self.graph_changes = []  # In-memory graph mutation log
-        self._write_lock = threading.Lock()
+        # Write serialization lives on the brain (brain.write_lock) — see
+        # Brain.__init__. Daemon acquires it via _locked_exec / autosave.
         self._pool = ThreadPoolExecutor(max_workers=THREAD_POOL_SIZE)
         self._restart_count = 0
 
@@ -408,14 +412,20 @@ class BrainDaemon:
                 pass
 
     def _locked_exec(self, fn, cmd, args):
-        """Acquire write lock with timeout, execute fn."""
-        if not self._write_lock.acquire(timeout=10.0):
+        """Acquire brain's write lock with 10s timeout, execute fn.
+
+        The 10s timeout is for client-facing dispatch — a hung write
+        returns an error rather than blocking the client. Background
+        writers (S2 encoder dispatch, embed_queue) acquire the same
+        brain.write_lock without timeout via `with brain.write_lock:`.
+        """
+        if not self.brain.write_lock.acquire(timeout=10.0):
             self._log("Write lock timeout (10s) for: {}".format(cmd))
             return {"ok": False, "error": "Write lock timeout — another operation is holding the lock"}
         try:
             return fn()
         finally:
-            self._write_lock.release()
+            self.brain.write_lock.release()
 
     def _dispatch(self, cmd: str, args: Dict[str, Any]) -> Dict[str, Any]:
         """Route command to handler with appropriate locking."""
@@ -611,7 +621,7 @@ class BrainDaemon:
         while self.running:
             time.sleep(AUTOSAVE_INTERVAL_SECONDS)
             if self.dirty:
-                if self._write_lock.acquire(timeout=5.0):
+                if self.brain.write_lock.acquire(timeout=5.0):
                     try:
                         self.brain.save()
                         self.dirty = False
@@ -619,7 +629,7 @@ class BrainDaemon:
                     except Exception as e:
                         self._log("Autosave error: {}".format(e))
                     finally:
-                        self._write_lock.release()
+                        self.brain.write_lock.release()
             # Internal health check — verify SQLite alive (skip during shutdown)
             if self.running and self.brain:
                 try:
