@@ -903,29 +903,10 @@ class BrainRecallMixin:
             result['_recall_mode'] = 'keyword_only_DEGRADED'
             return result
 
-        # STEP 1.5: Lexical bridge — Haiku-generated alternate phrasings.
-        # Cosine in our embedding space doesn't bridge synonyms (feed vs
-        # scratch grains) or contrastive cases (uncle vs niece), confirmed
-        # empirically by failing items in longmem eval. Haiku generates
-        # 2-3 alternate phrasings; each gets embedded; downstream cosine
-        # takes max across all phrasings. Opt-in via env var.
-        import os as _os
+        # Lexical bridge alternates — populated conditionally AFTER primary
+        # cosine completes (see post-STEP-3 expansion gate). Empty here so
+        # primary cosine runs unmodified.
         alternate_vecs = []
-        if _os.environ.get('BRAIN_QUERY_EXPANSION') == 'on':
-            try:
-                alternates = _expand_query_via_haiku(expanded_query)
-                for alt in alternates:
-                    av = embedder.embed_query(alt)
-                    if av:
-                        alternate_vecs.append(av)
-                if alternates:
-                    print('[recall] query-expansion: %r → %s' % (
-                        expanded_query[:60], [a[:50] for a in alternates]),
-                          file=sys.stderr)
-            except Exception as _expand_e:
-                self._log_error('query_expansion', _expand_e,
-                                'Haiku query expansion failed — '
-                                'proceeding with primary query only')
 
         # STEP 2: Intent classification — DEPRECATED 2026-04-12.
         # Regex patterns fire on 12% of queries and miscalibrate scores when they do
@@ -1061,6 +1042,70 @@ class BrainRecallMixin:
                     primary_scores[node_id] = sim
                     enrichment_hits[node_id] = 'primary'
                     nodes_with_embeddings += 1
+
+            # STEP 3.1: Conditional lexical bridge — Haiku query expansion
+            # gated on cosine flatness. The cost of expansion is dominated
+            # by the Haiku call (~800ms). Most queries have a clear winner
+            # in primary cosine and don't need it. Only when scores are
+            # genuinely flat does the lexical bridge add value.
+            #
+            # Modes (BRAIN_QUERY_EXPANSION env var):
+            #   off (default)     — no expansion, no Haiku call
+            #   on_flat           — expand only when top1 - top10 < gate
+            #   on                — expand always (research / eval; expensive)
+            #
+            # When expansion fires: re-iterate emb_rows with alternate
+            # vectors, taking max cosine. primary_scores updated in place
+            # so STEP 3.5 sees the boosted scores.
+            import os as _os
+            _expansion_mode = _os.environ.get(
+                'BRAIN_QUERY_EXPANSION', 'off').lower()
+            _do_expand = False
+            if _expansion_mode == 'on':
+                _do_expand = True
+            elif _expansion_mode == 'on_flat' and primary_scores:
+                _sorted = sorted(primary_scores.values(), reverse=True)
+                if len(_sorted) >= 10:
+                    _spread = _sorted[0] - _sorted[9]
+                    # Gate threshold: 0.05 — empirically chosen as the
+                    # boundary below which top-10 are visually flat (the
+                    # 0.09 spread pattern noted in dea1a002 falls below).
+                    # If the gate proves wrong, candidate replacements:
+                    # absolute top1 < 0.6, or std-dev-based.
+                    _do_expand = _spread < 0.05
+                else:
+                    _do_expand = True  # too few candidates → expand
+
+            if _do_expand:
+                try:
+                    _alts = _expand_query_via_haiku(expanded_query)
+                    for _alt in _alts:
+                        _av = embedder.embed_query(_alt)
+                        if _av:
+                            alternate_vecs.append(_av)
+                    if _alts:
+                        print('[recall] query-expansion (mode=%s): %r → %s' % (
+                            _expansion_mode, expanded_query[:60],
+                            [a[:50] for a in _alts]), file=sys.stderr)
+                except Exception as _expand_e:
+                    self._log_error('query_expansion', _expand_e,
+                                    'Haiku query expansion failed — '
+                                    'proceeding with primary query only')
+
+                # Re-iterate primary cosine with alternates, take max
+                if alternate_vecs:
+                    for row in emb_rows:
+                        nid = row['node_id']
+                        blob = row['embedding']
+                        if blob:
+                            current = primary_scores.get(nid, 0)
+                            for _av in alternate_vecs:
+                                _alt_sim = embedder.cosine_similarity(_av, blob)
+                                if _alt_sim > current:
+                                    current = _alt_sim
+                            if current != primary_scores.get(nid, 0):
+                                primary_scores[nid] = current
+                                embedding_scores[nid] = current
 
             # v10: STEP 3.5: Z-weighted multi-vector scoring
             # Each node has 2-4 group vectors (title, high_meta, other_meta) in
