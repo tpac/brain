@@ -1067,12 +1067,19 @@ class BrainRecallMixin:
                 _sorted = sorted(primary_scores.values(), reverse=True)
                 if len(_sorted) >= 10:
                     _spread = _sorted[0] - _sorted[9]
-                    # Gate threshold: 0.05 — empirically chosen as the
-                    # boundary below which top-10 are visually flat (the
-                    # 0.09 spread pattern noted in dea1a002 falls below).
-                    # If the gate proves wrong, candidate replacements:
-                    # absolute top1 < 0.6, or std-dev-based.
-                    _do_expand = _spread < 0.05
+                    _gate_str = _os.environ.get('BRAIN_EXPANSION_GATE', '0.05')
+                    try:
+                        _gate = float(_gate_str)
+                    except Exception:
+                        _gate = 0.05
+                    _do_expand = _spread < _gate
+                    # Telemetry: log every gate decision so we can tune.
+                    # Cheap (one stderr line per recall, no Haiku call).
+                    print('[recall] on_flat gate: top1=%.3f top10=%.3f '
+                          'spread=%.3f gate=%.3f → %s' % (
+                            _sorted[0], _sorted[9], _spread, _gate,
+                            'expand' if _do_expand else 'skip'),
+                          file=sys.stderr)
                 else:
                     _do_expand = True  # too few candidates → expand
 
