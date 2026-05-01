@@ -651,9 +651,15 @@ def _build_edge_coeffs(brain, brain_conn, activated_nodes, query_vec,
     enriched_to_embed = []  # texts needing embedding
     enriched_keys = []      # parallel: (source, target, edge, enriched_text)
 
+    # Per-source neighbor cap. Env-configurable so eval variants can compare
+    # bounded breadth without code changes. Production default = 50 (the
+    # original behavior). Lower (e.g. 15) caps peak working set for spread.
+    import os as _os
+    _SPREAD_LIMIT = int(_os.environ.get('BRAIN_SPREAD_NEIGHBOR_LIMIT', '50'))
+
     for source_id in activated_nodes:
         rows = gdal.get_neighbors(
-            source_id, limit=50,
+            source_id, limit=_SPREAD_LIMIT,
             exclude_relations=excluded,
             content_preview_chars=0,
         )
@@ -806,12 +812,27 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
         # Ensures only better-than-typical edges in THIS batch transmit.
         threshold = float(np.percentile([e[2] for e in edges], 50))
 
+        # Variant 'lineage' (eval): lineage-family edges bypass the median
+        # gate. The relation type itself encodes structural meaning the
+        # enriched-text cosine can't capture (corrects, extends, supersedes).
+        # This is opt-in via env var so production behavior is unchanged.
+        import os as _os
+        _LINEAGE_PASS = 'lineage' in _os.environ.get(
+            'BRAIN_RECALL_VARIANT', '').lower()
+
         # Accumulate contributions for each target
         contributions = {}
         transmitted_count = 0
         for src, tgt, coeff, _edge in edges:
             if coeff < threshold:
-                continue
+                if _LINEAGE_PASS:
+                    relation = (_edge.get('relation') or '').strip()
+                    family = rel_to_family.get(relation, '')
+                    if family not in LINEAGE_FAMILIES:
+                        continue
+                    # Else fall through — lineage edge bypasses the gate
+                else:
+                    continue
             transmitted_count += 1
             source_act = node_activation.get(src, 0)
             # Target hasn't been computed yet? Skip source-act lookup failures.
@@ -863,6 +884,268 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
     return {
         'node_activation': node_activation,
         'field_activation': field_activation,
+        'trace': trace_steps,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# SPREAD_ACTIVATION_CLUSTER — variant under eval (2026-04-30)
+#
+# Three principled changes from spread_activation, each derived from a
+# distribution or taxonomy already present in the brain:
+#
+#  1. Distribution-derived per-hop gate. Replace the median-threshold
+#     ("always 50% pass") and earlier draft's hardcoded fractions with a
+#     z-score gate within this hop's edge coefficients: pass iff
+#     coeff > μ_hop + k_hop·σ_hop. k narrows per hop (more strict deeper).
+#     If the distribution is tight (everything similar), the gate
+#     naturally lets more through; if wide (clear winners), it cuts hard.
+#     The cut is the derivative of the situation, per c2730676.
+#
+#  2. Family-aware ride-along. Instead of a hardcoded relation allowlist,
+#     read s2_edge_families config and treat edges whose family is in
+#     LINEAGE_FAMILIES as structural — they ride along even when their
+#     enriched-text cosine is weak. The classification logic already
+#     exists; we just consume it. New families added by S2 inherit the
+#     behavior automatically (assuming they map to one of the lineage
+#     families). Floor for lineage transmission is the per-hop 25th
+#     percentile of edge coefficients — distribution-derived, not 0.4.
+#
+#  3. Convergence as a tag, not a multiplier. When a target is reached by
+#     ≥2 distinct sources, mark it convergent and increment a per-node
+#     convergence count. Activation stays scalar (sum + tanh as before).
+#     The render layer can read the convergence map and prioritize cluster
+#     boundaries — that's qualitative information, not amplitude.
+#
+# Same return shape as spread_activation + an additional 'convergence'
+# field. Render layer can ignore it for compat.
+# ═══════════════════════════════════════════════════════════════
+
+# Family names from s2_edge_families taxonomy whose semantic role is
+# structural-lineage rather than topical-similarity. These edges ride
+# along even with weak enriched-text cosine, because their meaning is
+# carried by the relation type itself, not by the description embedding.
+#
+# The classification mirrors what the brain already has in interactions
+# table; if that taxonomy evolves, this allowlist may need updating.
+# Kept narrow on purpose — broader is "everything rides," which is the
+# current spread's behavior we're trying to bound.
+LINEAGE_FAMILIES = frozenset({
+    'correction_improvement',          # corrects, corrected_by — anti-staleness
+    'extension_refinement',            # extends, refines, evolves
+    'evolution_and_change',            # evolves_from, evolved_into
+    'version_and_replacement',         # supersedes, replaces
+    'composition_and_structure',       # part_of, contains, consolidated_into
+    'dependency_and_prerequisite',     # depends_on, requires
+    'hierarchical_structure',          # supersedes, contains, includes
+    'refinement_and_correction',       # refines, corrects, corrected_by
+})
+
+# Per-hop z-gate strictness. k controls how many σ above hop mean an edge
+# must be to transmit. Larger k = stricter cut = narrower spread. Hop 0
+# casts wide (k=0, anything above mean), hop 1 narrows (k=0.5), hop 2
+# only outliers (k=1.0). This is the only place a "tuning constant"
+# survives — and it's a strictness schedule, not a static threshold.
+# The actual cut value is computed from the hop's distribution.
+_CLUSTER_K_SCHEDULE = (0.0, 0.5, 1.0)
+
+# Safety cap on hops. Real termination comes from "no convergence + no
+# new high-activation" check inside the loop.
+_CLUSTER_MAX_STEPS = 3
+
+
+def spread_activation_cluster(seed_ids, query_vec, brain, prior_vecs=None):
+    """Cluster-completion variant of spread_activation.
+
+    See module-level comment above for the design rationale. Returns the
+    same shape as spread_activation plus a 'convergence' map that the
+    render layer can use to prioritize cluster-boundary nodes.
+    """
+    if not seed_ids or query_vec is None:
+        return {'node_activation': {}, 'field_activation': {},
+                'convergence': {}, 'trace': []}
+
+    # Multi-turn query blend (same pattern as the original kernel)
+    if prior_vecs:
+        ws = TURN_WEIGHTS[:len([query_vec] + prior_vecs)]
+        total = sum(ws)
+        ws = [w / total for w in ws]
+        blended = sum(w * v for w, v in zip(ws, [query_vec] + prior_vecs))
+        nm = np.linalg.norm(blended)
+        if nm > 0:
+            blended = blended / nm
+    else:
+        blended = query_vec
+    norm_q = float(np.linalg.norm(blended))
+
+    # Family map — read the live taxonomy, not a hardcoded list.
+    rel_to_family = {}
+    meaning_by_family = {}
+    try:
+        from servers.scales.s2.edge_families import iter_families
+        config = brain.get_interaction_config('s2_edge_families') or {}
+        for fam, members, meaning in iter_families(config):
+            if meaning:
+                meaning_by_family[fam] = meaning
+            for m in members:
+                rel_to_family[m] = fam
+    except Exception as _e:
+        brain._log_error('cluster_spread_family_config', _e,
+                         'loading s2_edge_families config in spread_activation_cluster')
+
+    # Seed activation (same as original)
+    all_touched_ids = list(seed_ids)
+    node_vectors = _batch_load_field_vectors(brain.conn, all_touched_ids)
+    seeds_missing_vectors = [sid for sid in seed_ids if sid not in node_vectors]
+    if seeds_missing_vectors:
+        brain._log_error('cluster_seed_no_vectors',
+                         RuntimeError('seeds without any vectors'),
+                         'seeds=%s' % ','.join(s[:8] for s in seeds_missing_vectors[:5]))
+    node_activation = {}
+    field_activation = {}
+    for nid in seed_ids:
+        vecs = node_vectors.get(nid, {})
+        field_cos = _field_cosines_for_node(blended, vecs, norm_q=norm_q)
+        field_activation[nid] = field_cos
+        node_activation[nid] = max(field_cos.values()) if field_cos else 0.0
+
+    # Spread loop with distribution-gated narrowing + family-aware lineage
+    # + convergence tagging
+    trace_steps = []
+    cached_edge_coeffs = {}
+    convergence_count = {}  # node_id → number of distinct sources that reached it
+
+    for step in range(_CLUSTER_MAX_STEPS):
+        active_sources = [n for n, a in node_activation.items() if a > 0]
+        if not active_sources:
+            break
+
+        edges = _build_edge_coeffs(
+            brain, brain.conn, active_sources, blended,
+            rel_to_family, meaning_by_family, cached_edge_coeffs)
+
+        if not edges:
+            break
+
+        # Classify: lineage = ride-along by family; semantic = subject to
+        # distribution-derived gate.
+        lineage = []
+        semantic = []
+        for src, tgt, coeff, edge in edges:
+            relation = (edge.get('relation') or '').strip()
+            family = rel_to_family.get(relation, '')
+            if family in LINEAGE_FAMILIES:
+                lineage.append((src, tgt, coeff, edge, family))
+            else:
+                semantic.append((src, tgt, coeff, edge, family))
+
+        # Distribution-derived gate on semantic edges. Compute mean+std
+        # from this hop's coefficients and require coeff > μ + k·σ.
+        # If σ is tiny (everything similar), only just-above-mean pass —
+        # which is fine, those are the cluster's coherent fringe. If σ is
+        # wide (mixed quality), the cut is harder.
+        if semantic:
+            sem_coeffs = np.array([c for _, _, c, _, _ in semantic])
+            mu = float(np.mean(sem_coeffs))
+            sigma = float(np.std(sem_coeffs))
+            k = _CLUSTER_K_SCHEDULE[min(step, len(_CLUSTER_K_SCHEDULE) - 1)]
+            cut = mu + k * sigma
+            transmitting_sem = [(s, t, c, e, f) for s, t, c, e, f in semantic
+                                if c >= cut]
+        else:
+            mu = sigma = 0.0
+            transmitting_sem = []
+
+        # Distribution-derived floor for lineage: per-hop p25 of all edge
+        # coefficients (semantic + lineage). Lineage with raw coeff below
+        # this floor transmits AT the floor — the family carries the
+        # meaning. With no semantic edges, lineage transmits at its own
+        # coeff or a nominal small value, whichever is greater.
+        all_coeffs = [c for _, _, c, _, _ in edges]
+        floor = float(np.percentile(all_coeffs, 25)) if all_coeffs else 0.0
+        transmitting_lin = [
+            (s, t, max(c, floor), e, f)
+            for s, t, c, e, f in lineage
+        ]
+
+        # Outer halt: if neither path will transmit anything meaningful,
+        # the brain's allowed to be quiet.
+        if not transmitting_sem and not transmitting_lin:
+            trace_steps.append({'step': step, 'new_nodes': 0,
+                               'edges_considered': len(edges),
+                               'edges_transmitted': 0,
+                               'mu': round(mu, 3), 'sigma': round(sigma, 3),
+                               'cut': round(mu + (_CLUSTER_K_SCHEDULE[min(step, len(_CLUSTER_K_SCHEDULE)-1)] * sigma), 3),
+                               'max_act': max(node_activation.values())
+                                   if node_activation else 0.0,
+                               'halted': 'gate_closed'})
+            break
+
+        transmitting = transmitting_sem + transmitting_lin
+
+        # Accumulate contributions per target. Track distinct sources for
+        # convergence tagging (NOT amplification).
+        contributions = {}
+        sources_per_target = {}
+        families_per_target = {}
+        for src, tgt, coeff, _edge, family in transmitting:
+            source_act = node_activation.get(src, 0)
+            transferred = source_act * coeff
+            contributions[tgt] = contributions.get(tgt, 0.0) + transferred
+            sources_per_target.setdefault(tgt, set()).add(src)
+            if family:
+                families_per_target.setdefault(tgt, set()).add(family)
+
+        # Convergence: count distinct sources reaching each target. Tag,
+        # don't amplify — render layer reads this map.
+        for tgt, srcs in sources_per_target.items():
+            if len(srcs) >= 2:
+                convergence_count[tgt] = convergence_count.get(tgt, 0) + len(srcs)
+
+        # Load field vectors for new targets (one round-trip)
+        new_target_ids = [t for t in contributions.keys() if t not in node_activation]
+        if new_target_ids:
+            fresh_vecs = _batch_load_field_vectors(brain.conn, new_target_ids)
+            node_vectors.update(fresh_vecs)
+            all_touched_ids.extend(new_target_ids)
+
+        # Apply with tanh saturation; seed targets' field activations
+        pre_activation = dict(node_activation)
+        new_nodes_added = 0
+        for target, incoming in contributions.items():
+            prior = node_activation.get(target, 0.0)
+            saturated = float(np.tanh(prior + incoming))
+            node_activation[target] = saturated
+            if target not in field_activation:
+                new_nodes_added += 1
+                vecs = node_vectors.get(target, {})
+                field_activation[target] = _field_cosines_for_node(
+                    blended, vecs, norm_q=norm_q)
+
+        n_converged = sum(1 for s in sources_per_target.values() if len(s) >= 2)
+        trace_steps.append({'step': step,
+                           'new_nodes': new_nodes_added,
+                           'edges_considered': len(edges),
+                           'edges_transmitted': len(transmitting),
+                           'edges_lineage': len(transmitting_lin),
+                           'edges_semantic': len(transmitting_sem),
+                           'mu': round(mu, 3), 'sigma': round(sigma, 3),
+                           'cut': round(mu + (_CLUSTER_K_SCHEDULE[min(step, len(_CLUSTER_K_SCHEDULE)-1)] * sigma), 3),
+                           'floor_p25': round(floor, 3),
+                           'targets_converged': n_converged,
+                           'max_act': max(node_activation.values())})
+
+        # Convergence-stop: cluster boundary reached when no target this
+        # hop saw ≥2 sources AND no new high-activation node added.
+        any_new_high = any(node_activation[t] > 0.3 and t not in pre_activation
+                           for t in contributions)
+        if n_converged == 0 and not any_new_high and step > 0:
+            break
+
+    return {
+        'node_activation': node_activation,
+        'field_activation': field_activation,
+        'convergence': convergence_count,
         'trace': trace_steps,
     }
 

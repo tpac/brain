@@ -156,14 +156,14 @@ def _parse_surfacer_json(raw):
 def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
     """Expand the graph from selected seeds via spreading activation.
 
-    Replaces the old weight-sorted degree-1 expansion. The new mechanism
-    is one kernel (`spread_activation`) that does what select_edges,
-    per-seed top-3, and mutual-traversal-via-communities did separately.
-
-    Depth is emergent — high-coefficient edges propagate further; low-
-    coefficient edges stop on the first hop. Two seeds whose paths meet
-    at a shared neighbor (e.g. community node) boost that neighbor above
-    singleton reach automatically.
+    Variant selection via BRAIN_RECALL_VARIANT env var:
+      - 'baseline' (default): spread_activation — depth-emergent breadth-first
+        traversal with median-threshold gate.
+      - 'cluster': spread_activation_cluster — cluster-completion variant
+        with distribution-derived per-hop gate, family-aware lineage
+        ride-along, and convergence tagging.
+      - 'cluster_l4': cluster + L4 identity lane (locked nodes always-include,
+        corrects-of-touched edges, recent-session moments).
 
     Args:
         brain: Brain instance (for interaction_config + conn)
@@ -176,14 +176,41 @@ def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
         'node_activation':  {full_node_id: float in [0,1]}
         'field_activation': {full_node_id: {field_name: float}}
         'rich_nodes':       {full_node_id: rich_node_dict} — from get_node batch
+        'convergence':      {full_node_id: int} — count of distinct sources
+                            that reached this target (cluster variants only).
+                            Render layer can use to prioritize cluster boundaries.
+        'l4_lane':          {full_node_id: str} — origin tag for L4 nodes
+                            ('locked' / 'correction_of:<id>' / 'session_moment')
+                            (cluster_l4 only).
         'trace':            per-hop diagnostics
     """
+    import os
     from servers.dal import NodeDAL
-    from servers.scales.s1.surface_contract import spread_activation
+    from servers.scales.s1.surface_contract import (
+        spread_activation, spread_activation_cluster)
 
     if query_vec is None or not selected_ids:
         return {'node_activation': {}, 'field_activation': {},
-                'rich_nodes': {}, 'trace': []}
+                'rich_nodes': {}, 'convergence': {}, 'l4_lane': {}, 'trace': []}
+
+    raw_variant = os.environ.get('BRAIN_RECALL_VARIANT', 'baseline').lower()
+
+    # Variant names are composable tags: e.g. 'baseline_l4_lim15' means
+    # original spread + L4 lane + per-source neighbor limit 15. Three knobs:
+    #   spread:  'baseline' (default) | 'cluster' (cluster-completion v1)
+    #   lane:    'l4' present in name = L4 identity lane on
+    #   limit:   'lim15' / 'lim10' / 'lim20' set per-source neighbor cap
+    use_cluster = 'cluster' in raw_variant
+    use_l4 = 'l4' in raw_variant
+    if 'lim10' in raw_variant:
+        os.environ['BRAIN_SPREAD_NEIGHBOR_LIMIT'] = '10'
+    elif 'lim15' in raw_variant:
+        os.environ['BRAIN_SPREAD_NEIGHBOR_LIMIT'] = '15'
+    elif 'lim20' in raw_variant:
+        os.environ['BRAIN_SPREAD_NEIGHBOR_LIMIT'] = '20'
+    elif 'lim25' in raw_variant:
+        os.environ['BRAIN_SPREAD_NEIGHBOR_LIMIT'] = '25'
+    # else: unset, _build_edge_coeffs falls back to '50'
 
     # Resolve to full IDs (the kernel reads vectors keyed on full id)
     ndal = NodeDAL(brain.conn)
@@ -195,20 +222,102 @@ def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
 
     if not resolved:
         return {'node_activation': {}, 'field_activation': {},
-                'rich_nodes': {}, 'trace': []}
+                'rich_nodes': {}, 'convergence': {}, 'l4_lane': {}, 'trace': []}
 
-    result = spread_activation(resolved, query_vec, brain, prior_vecs=prior_vecs)
+    if use_cluster:
+        result = spread_activation_cluster(resolved, query_vec, brain,
+                                           prior_vecs=prior_vecs)
+        convergence = result.get('convergence', {})
+    else:
+        result = spread_activation(resolved, query_vec, brain,
+                                   prior_vecs=prior_vecs)
+        convergence = {}
+
+    node_activation = result['node_activation']
+    field_activation = result['field_activation']
+
+    # L4 — identity lane. Augment node_activation with always-include nodes
+    # whose presence is identity-determined, not relevance-determined.
+    l4_lane = {}
+    if use_l4:
+        l4_nodes = _l4_identity_lane(brain, resolved + list(node_activation.keys()))
+        for nid, origin in l4_nodes.items():
+            l4_lane[nid] = origin
+            # Set activation high enough to render but not above the kernel's
+            # peak (so render budget still favors strongly-activated nodes
+            # over identity-lane ones in tight budgets). 0.5 is a placeholder
+            # until we measure how the renderer actually uses these.
+            if nid not in node_activation:
+                node_activation[nid] = max(node_activation.get(nid, 0.0), 0.5)
+                # No field_activation for L4-only nodes — render layer
+                # will fall back to title+content.
 
     # Batch-load rich node data for everything activated
-    all_ids = list(result['node_activation'].keys())
+    all_ids = list(node_activation.keys())
     rich_nodes = brain.get_node(all_ids) if all_ids else {}
 
     return {
-        'node_activation':  result['node_activation'],
-        'field_activation': result['field_activation'],
+        'node_activation':  node_activation,
+        'field_activation': field_activation,
         'rich_nodes':       rich_nodes,
+        'convergence':      convergence,
+        'l4_lane':          l4_lane,
         'trace':            result['trace'],
     }
+
+
+def _l4_identity_lane(brain, touched_ids):
+    """L4 — surface identity-determined nodes regardless of relevance score.
+
+    Three sources, each with a different origin tag for traceability:
+      - 'locked': all locked nodes (axioms — Anchor identity rules)
+      - 'correction_of:<id>': any node that `corrects` a touched node, so
+        Anchor doesn't speak from outdated knowledge.
+      - 'session_moment': recent S0 message-stream entries from this session
+        (handled separately at the surface layer; not yet wired here).
+
+    Returns: {full_node_id: origin_tag}
+
+    Cheap by design — three SQL queries, no embeddings, no traversal.
+    Touched_ids is the set of nodes already surfaced by L0-L3, used to
+    target the corrections lookup.
+    """
+    out = {}
+
+    try:
+        # 1. Locked nodes — identity axioms, always present.
+        locked_rows = brain.conn.execute(
+            "SELECT id FROM nodes WHERE locked = 1 AND archived = 0"
+        ).fetchall()
+        for row in locked_rows:
+            out[row[0]] = 'locked'
+    except Exception as e:
+        brain._log_error('l4_locked_query', e, 'L4 identity lane: locked nodes')
+
+    # 2. Corrections OF touched nodes. The brain's design rule
+    # ([ec1ef964](https://example/node/ec1ef964)): corrections are a
+    # traversal rule, not a judge rule. If something Anchor's about to
+    # speak from has been corrected, the correction comes too.
+    if touched_ids:
+        try:
+            placeholders = ','.join('?' * len(touched_ids))
+            # source corrects target — surface the source (the correction)
+            # when target is a touched node.
+            correction_rows = brain.conn.execute(
+                "SELECT DISTINCT e.source_id, e.target_id "
+                "FROM edges e JOIN edge_relations er ON er.edge_id = e.edge_id "
+                "WHERE er.relation IN ('corrects', 'corrected_by', 'updates', 'supersedes') "
+                "AND er.archived = 0 "
+                "AND e.target_id IN (%s)" % placeholders,
+                touched_ids).fetchall()
+            for source_id, target_id in correction_rows:
+                if source_id not in out:
+                    out[source_id] = 'correction_of:' + target_id[:8]
+        except Exception as e:
+            brain._log_error('l4_correction_query', e,
+                             'L4 identity lane: corrections of touched')
+
+    return out
 
 
 def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
