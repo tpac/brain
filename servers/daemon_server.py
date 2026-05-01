@@ -47,27 +47,38 @@ class BrainDaemon:
         self.server_socket = None
         self.running = False
         self.last_activity = time.time()
+        # Distinct from last_activity: only updated by hook_recall
+        # (UserPromptSubmit). Drives S2 maintenance gating — Claude editing
+        # files between prompts shouldn't reset the "user is active" clock.
+        # Init to 0 so a freshly-restarted daemon can fire S2 immediately
+        # (subject to the persisted s2_last_run_ts min_interval).
+        self.last_user_activity = 0.0
         self.dirty = False
         self.graph_changes = []  # In-memory graph mutation log
         self._write_lock = threading.Lock()
         self._pool = ThreadPoolExecutor(max_workers=THREAD_POOL_SIZE)
         self._restart_count = 0
 
-    # Hook dispatch table: hook_name → (module_attr, marks_dirty)
+    # Hook dispatch table: hook_name → (is_write, marks_dirty)
+    #   is_write     — True takes _write_lock; False runs concurrently
+    #   marks_dirty  — True sets self.dirty so autosave persists soon
+    # Single source of truth for hook routing — no parallel "read_hooks"
+    # list to keep in sync. Function name in daemon_hooks always matches
+    # the cmd name; getattr(_hooks, cmd) resolves it.
     HOOK_TABLE = {
-        "hook_recall": ("hook_recall", True),
-        "hook_post_response_track": ("hook_post_response_track", True),
-        "hook_idle_maintenance": ("hook_idle_maintenance", True),
-        "hook_post_compact_reboot": ("hook_post_compact_reboot", True),
-        "hook_pre_edit": ("hook_pre_edit", True),
-        "hook_pre_bash_safety": ("hook_pre_bash_safety", False),
-        "hook_pre_compact_save": ("hook_pre_compact_save", True),
-        "hook_session_end": ("hook_session_end", True),
-        "hook_stop_failure_log": ("hook_stop_failure_log", True),
-        "hook_config_change_host": ("hook_config_change_host", True),
-        "hook_post_bash_host_check": ("hook_post_bash_host_check", True),
-        "hook_worktree_context": ("hook_worktree_context", True),
-        "hook_worktree_cleanup": ("hook_worktree_cleanup", True),
+        "hook_recall":               (False, True),
+        "hook_post_response_track":  (True,  True),
+        "hook_idle_maintenance":     (True,  True),
+        "hook_post_compact_reboot":  (True,  True),
+        "hook_pre_edit":             (False, True),
+        "hook_pre_bash_safety":      (False, False),
+        "hook_pre_compact_save":     (True,  True),
+        "hook_session_end":          (True,  True),
+        "hook_stop_failure_log":     (True,  True),
+        "hook_config_change_host":   (True,  True),
+        "hook_post_bash_host_check": (False, True),
+        "hook_worktree_context":     (False, True),
+        "hook_worktree_cleanup":     (True,  True),
     }
 
     def start(self):
@@ -359,7 +370,13 @@ class BrainDaemon:
 
             args = msg.get("args", {})
 
-            self.last_activity = time.time()
+            # last_activity was already set pre-parse (line above) — that
+            # covers IDLE_TIMEOUT_SECONDS shutdown. Only thing to update
+            # here is the user-prompt clock that gates S2 maintenance.
+            # Tool-use hooks, internal IPC, pings are noise from S2's
+            # perspective. See run_maintenance_if_due in brain.py.
+            if cmd == "hook_recall":
+                self.last_user_activity = time.time()
 
             # Direct dispatch — no watchdog thread.
             # The old pattern spawned a thread per request and joined with 20s timeout.
@@ -390,19 +407,13 @@ class BrainDaemon:
             except Exception:
                 pass
 
-    def _observe_command(self, cmd, args, result=None):
-        """Emit command to dashboard observer channel. DEPRECATED — brain_dashboard.py removed."""
-        pass
-
     def _locked_exec(self, fn, cmd, args):
-        """Acquire write lock with timeout, execute fn, observe result."""
+        """Acquire write lock with timeout, execute fn."""
         if not self._write_lock.acquire(timeout=10.0):
             self._log("Write lock timeout (10s) for: {}".format(cmd))
             return {"ok": False, "error": "Write lock timeout — another operation is holding the lock"}
         try:
-            result = fn()
-            self._observe_command(cmd, args, result)
-            return result
+            return fn()
         finally:
             self._write_lock.release()
 
@@ -466,19 +477,16 @@ class BrainDaemon:
                 _t.Thread(target=_do_restart, daemon=False).start()
                 return {"ok": True, "result": {"status": "restarting"}}
 
-            # Hook commands — read hooks run without lock, write hooks serialize
+            # Hook commands — HOOK_TABLE is the single source of truth
+            # for is_write (lock or concurrent) and marks_dirty.
             if cmd.startswith("hook_"):
-                # Read-only hooks run without lock — safe to run concurrently
-                read_hooks = (
-                    "hook_recall",             # cosine scan, candidates file
-                    "hook_pre_edit",           # reads rules, returns context
-                    "hook_pre_bash_safety",    # reads rules, returns context
-                    "hook_post_bash_host_check",  # checks env, returns context
-                    "hook_worktree_context",   # returns context
-                )
-                if cmd in read_hooks:
-                    return self._dispatch_hook(cmd, args)
-                return self._locked_exec(lambda: self._dispatch_hook(cmd, args), cmd, args)
+                entry = self.HOOK_TABLE.get(cmd)
+                if entry is None:
+                    return {"ok": False, "error": "Unknown hook: %s" % cmd}
+                is_write, _marks_dirty = entry
+                if is_write:
+                    return self._locked_exec(lambda: self._dispatch_hook(cmd, args), cmd, args)
+                return self._dispatch_hook(cmd, args)
 
             # Table-driven dispatch
             entry = COMMAND_TABLE.get(cmd)
@@ -495,9 +503,7 @@ class BrainDaemon:
                     return result
                 return self._locked_exec(_write, cmd, args)
             else:
-                result = entry.handler(self.brain, args, self.graph_changes)
-                self._observe_command(cmd, args, result)
-                return result
+                return entry.handler(self.brain, args, self.graph_changes)
 
         except Exception as e:
             tb = traceback.format_exc()
@@ -510,15 +516,16 @@ class BrainDaemon:
             return {"ok": False, "error": str(e)}
 
     def _dispatch_hook(self, cmd: str, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Dispatch hook with telemetry. Must be called under _write_lock."""
+        """Dispatch hook with telemetry. Caller (_dispatch) handles locking
+        based on HOOK_TABLE.is_write — this function trusts that decision."""
         import servers.daemon_hooks as _hooks
 
         entry = self.HOOK_TABLE.get(cmd)
         if not entry:
             return {"error": "Unknown hook: %s" % cmd}
 
-        func_name, marks_dirty = entry
-        hook_func = getattr(_hooks, func_name)
+        _is_write, marks_dirty = entry
+        hook_func = getattr(_hooks, cmd)
 
         start_t = time.time()
         result = hook_func(self.brain, args, self.graph_changes)
@@ -653,7 +660,7 @@ class BrainDaemon:
         brain.run_maintenance_if_due() persists via brain_meta instead.
         """
         try:
-            result = self.brain.run_maintenance_if_due(self.last_activity)
+            result = self.brain.run_maintenance_if_due(self.last_user_activity)
             if result is None:
                 return  # not due — quiet no-op
             self._log("Maintenance ran (idle %.0fs): %s" % (

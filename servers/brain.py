@@ -1147,15 +1147,29 @@ class Brain(
         from .brain_constants import (
             MAINTENANCE_IDLE_THRESHOLD_SECONDS,
             MAINTENANCE_MIN_INTERVAL_SECONDS,
+            MAINTENANCE_FORCE_FIRE_SECONDS,
         )
         now = now if now is not None else _time.time()
-        idle_seconds = now - (last_activity_ts or now)
+        # last_activity_ts == 0.0 means "daemon just booted, no user
+        # prompts yet" — treat as infinitely idle so S2 can fire
+        # immediately (subject to min_interval). Logging idle_seconds = inf
+        # is clearer than "1777647345s" (epoch literal).
+        if last_activity_ts is None or last_activity_ts == 0.0:
+            idle_seconds = float('inf')
+        else:
+            idle_seconds = now - last_activity_ts
         last_run_ts = self._maintenance_last_run_ts()
         since_last_run = now - last_run_ts if last_run_ts else float('inf')
 
-        if idle_seconds < MAINTENANCE_IDLE_THRESHOLD_SECONDS:
-            return None
+        # Min-interval gate is absolute — never fire more often than this.
         if since_last_run < MAINTENANCE_MIN_INTERVAL_SECONDS:
+            return None
+        # Idle gate is the normal trigger, BUT a stale-S2 safety valve
+        # overrides it: if maintenance hasn't fired in FORCE_FIRE_SECONDS
+        # the graph is going stale regardless of whether the user is at
+        # the keyboard, so we fire anyway.
+        if (idle_seconds < MAINTENANCE_IDLE_THRESHOLD_SECONDS and
+                since_last_run < MAINTENANCE_FORCE_FIRE_SECONDS):
             return None
 
         # Mark the run BEFORE executing so concurrent callers (via second

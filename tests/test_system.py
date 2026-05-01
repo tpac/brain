@@ -98,15 +98,20 @@ class TestDaemonDispatch(unittest.TestCase):
                          f"Missing hook in HOOK_TABLE: {hook_name}")
 
     def test_hook_table_functions_exist(self):
-        """All functions in HOOK_TABLE exist in daemon_hooks."""
+        """All cmd names in HOOK_TABLE resolve to callables in daemon_hooks.
+
+        HOOK_TABLE entries are (is_write, marks_dirty); the daemon does
+        getattr(_hooks, cmd), so the cmd name itself must be the function
+        name in daemon_hooks.
+        """
         import servers.daemon_hooks as dh
-        for hook_name, (func_name, _) in BrainDaemon.HOOK_TABLE.items():
-            self.assertTrue(hasattr(dh, func_name),
-                           f"daemon_hooks missing: {func_name}")
+        for hook_name, _meta in BrainDaemon.HOOK_TABLE.items():
+            self.assertTrue(hasattr(dh, hook_name),
+                           f"daemon_hooks missing: {hook_name}")
 
     def test_hook_table_dirty_flags(self):
         """Only pre_bash_safety should be non-dirty (read-only)."""
-        non_dirty = [name for name, (_, dirty) in BrainDaemon.HOOK_TABLE.items() if not dirty]
+        non_dirty = [name for name, (_iw, dirty) in BrainDaemon.HOOK_TABLE.items() if not dirty]
         self.assertEqual(non_dirty, ['hook_pre_bash_safety'])
 
 

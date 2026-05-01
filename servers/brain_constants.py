@@ -442,3 +442,7 @@ MAINTENANCE_IDLE_THRESHOLD_SECONDS = 3 * 60   # 3 min idle → more chances
                                               # to fire during active work
 MAINTENANCE_MIN_INTERVAL_SECONDS = 15 * 60    # 15 min between runs
                                               # (steady state caps ~96/day)
+# Safety valve: if maintenance hasn't fired in this long, force-fire on the
+# next poll regardless of idle. Catches multi-day stalls (observed 2.5d gaps
+# between 04-28 and 04-30 when the idle gate never opened).
+MAINTENANCE_FORCE_FIRE_SECONDS = 24 * 60 * 60

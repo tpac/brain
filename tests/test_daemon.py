@@ -78,16 +78,24 @@ class TestIntegrity(unittest.TestCase):
                                  f"Read command '{cmd}' marks_dirty=True — reads shouldn't mutate")
 
     def test_hook_table_matches_daemon_hooks_module(self):
-        """Every hook in HOOK_TABLE must exist as a function in daemon_hooks."""
+        """Every hook in HOOK_TABLE must exist as a function in daemon_hooks.
+
+        HOOK_TABLE entries are (is_write, marks_dirty); the daemon resolves
+        the handler via getattr(_hooks, cmd), so the cmd name itself must
+        be a callable attribute on daemon_hooks.
+        """
         from servers.daemon_server import BrainDaemon
         import servers.daemon_hooks as hooks_module
 
-        for hook_cmd, (func_name, marks_dirty) in BrainDaemon.HOOK_TABLE.items():
-            self.assertTrue(hasattr(hooks_module, func_name),
-                            f"Hook '{hook_cmd}' references '{func_name}' "
-                            f"which doesn't exist in daemon_hooks")
-            self.assertTrue(callable(getattr(hooks_module, func_name)),
-                            f"'{func_name}' in daemon_hooks is not callable")
+        for hook_cmd, (is_write, marks_dirty) in BrainDaemon.HOOK_TABLE.items():
+            self.assertIsInstance(is_write, bool,
+                                  f"HOOK_TABLE['{hook_cmd}'][0] must be bool (is_write)")
+            self.assertIsInstance(marks_dirty, bool,
+                                  f"HOOK_TABLE['{hook_cmd}'][1] must be bool (marks_dirty)")
+            self.assertTrue(hasattr(hooks_module, hook_cmd),
+                            f"Hook '{hook_cmd}' has no matching function in daemon_hooks")
+            self.assertTrue(callable(getattr(hooks_module, hook_cmd)),
+                            f"'{hook_cmd}' in daemon_hooks is not callable")
 
     def test_no_duplicate_commands(self):
         """Dispatch table should have no duplicate command names."""
