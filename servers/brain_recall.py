@@ -53,6 +53,87 @@ from .brain_constants import (
 from .dal import GraphDAL, NodeDAL, TfIdfDAL, LogsDAL, Fts5DAL, VectorDAL
 
 
+# ── Lexical bridge — Haiku-generated query expansion ───────────────
+# Cosine in our embedding space is flat (top-25 spread ~0.09) and doesn't
+# bridge synonyms (feed/scratch grains) or contrastive cases (uncle/niece).
+# This helper asks Haiku for 2-3 alternate phrasings — synonyms, related
+# entities, and explicit contrasts (for abstention queries). Each phrasing
+# gets embedded; downstream cosine takes max across all phrasings.
+#
+# Opt-in via env var BRAIN_QUERY_EXPANSION=on. Failure modes are non-fatal:
+# Haiku error → skip expansion, recall continues with primary query only.
+
+_EXPANSION_PROMPT = """Generate 2-3 alternate query phrasings that bridge LEXICAL GAPS — vocabulary differences between how the user asks and how the memory was originally stored. Don't paraphrase. Don't say the same thing in different words.
+
+Each alternate MUST drop or replace at least one specific term from the original query, choosing one of these strategies:
+
+1. STRIP the specific entity, keep the activity:
+   "What did I bake for my uncle's birthday party?" → "what I baked for a birthday party"
+   "Where did I attend study abroad?" → "country I studied in", "university I went to"
+
+2. REPLACE the specific entity with a category or sibling entity (in case the memory is about a related entity):
+   "uncle's birthday" → "family member's birthday", "niece's birthday"
+   "feed" → "feed for chickens", "scratch grains for chickens"
+   "Memrise" → "language learning apps with mnemonics", "apps for memorization"
+
+3. BROADEN to the category the original is in:
+   "siblings count" → "brothers and sisters family"
+   "gym time" → "evening workout schedule"
+
+The original query gets searched separately. Your alternates must reach memories the original would NOT.
+
+Return ONLY a JSON array of 2-3 strings, no prose, no explanation.
+
+Query: "{query}"
+"""
+
+
+def _expand_query_via_haiku(query: str) -> List[str]:
+    """Ask Haiku for 2-3 alternate phrasings to bridge lexical gaps in cosine.
+
+    Returns list of strings (may be empty on any failure). Cost: 1 Haiku
+    call (~1s, ~300 tokens). Caller is expected to embed each separately.
+    """
+    if not query or len(query.strip()) < 3:
+        return []
+    try:
+        import anthropic
+        client = anthropic.Anthropic()
+    except Exception:
+        return []
+    try:
+        resp = client.messages.create(
+            model='claude-haiku-4-5',
+            max_tokens=200,
+            messages=[{'role': 'user',
+                       'content': _EXPANSION_PROMPT.format(query=query)}],
+        )
+        text = ''.join(b.text for b in resp.content if hasattr(b, 'text')).strip()
+    except Exception:
+        return []
+    # Tolerate Haiku wrapping the array in code fences or extra prose.
+    if '```' in text:
+        # Strip markdown code fences
+        parts = text.split('```')
+        for p in parts:
+            p = p.strip()
+            if p.startswith('json'):
+                p = p[4:].strip()
+            if p.startswith('['):
+                text = p
+                break
+    # Find JSON array bounds
+    start = text.find('[')
+    end = text.rfind(']')
+    if start < 0 or end < 0 or end <= start:
+        return []
+    try:
+        arr = json.loads(text[start:end + 1])
+        return [s for s in arr if isinstance(s, str) and s.strip()][:3]
+    except Exception:
+        return []
+
+
 # Node table columns — filter checks these on the result dict.
 # Anything not in this set is looked up as a metadata key.
 _NODE_COLUMNS = frozenset({
@@ -822,6 +903,30 @@ class BrainRecallMixin:
             result['_recall_mode'] = 'keyword_only_DEGRADED'
             return result
 
+        # STEP 1.5: Lexical bridge — Haiku-generated alternate phrasings.
+        # Cosine in our embedding space doesn't bridge synonyms (feed vs
+        # scratch grains) or contrastive cases (uncle vs niece), confirmed
+        # empirically by failing items in longmem eval. Haiku generates
+        # 2-3 alternate phrasings; each gets embedded; downstream cosine
+        # takes max across all phrasings. Opt-in via env var.
+        import os as _os
+        alternate_vecs = []
+        if _os.environ.get('BRAIN_QUERY_EXPANSION') == 'on':
+            try:
+                alternates = _expand_query_via_haiku(expanded_query)
+                for alt in alternates:
+                    av = embedder.embed_query(alt)
+                    if av:
+                        alternate_vecs.append(av)
+                if alternates:
+                    print('[recall] query-expansion: %r → %s' % (
+                        expanded_query[:60], [a[:50] for a in alternates]),
+                          file=sys.stderr)
+            except Exception as _expand_e:
+                self._log_error('query_expansion', _expand_e,
+                                'Haiku query expansion failed — '
+                                'proceeding with primary query only')
+
         # STEP 2: Intent classification — DEPRECATED 2026-04-12.
         # Regex patterns fire on 12% of queries and miscalibrate scores when they do
         # (how_to boosted irrelevant rules to 0.943). Replaced by z-score contrastive
@@ -889,6 +994,15 @@ class BrainRecallMixin:
                 node_access_count[node_id] = row.get('access_count', 0)
                 if blob:
                     sim = embedder.cosine_similarity(query_vec, blob)
+                    # Lexical bridge: take max cosine across all phrasings
+                    # (primary + Haiku-expanded alternates). This is the
+                    # mechanism that makes "uncle's birthday party" reach
+                    # "niece's birthday party" nodes — Haiku generated
+                    # the contrastive phrasing, embedding bridged the gap.
+                    for _av in alternate_vecs:
+                        _alt_sim = embedder.cosine_similarity(_av, blob)
+                        if _alt_sim > sim:
+                            sim = _alt_sim
 
                     # v11: Z-score contrastive normalization (BEFORE fatigue).
                     # Measures SURPRISE: how unusual is this cosine for this node?
@@ -996,6 +1110,11 @@ class BrainRecallMixin:
                         continue
 
                     e_sim = embedder.cosine_similarity(query_vec, e_blob)
+                    # Lexical bridge: max over query + alternate phrasings
+                    for _av in alternate_vecs:
+                        _alt = embedder.cosine_similarity(_av, e_blob)
+                        if _alt > e_sim:
+                            e_sim = _alt
 
                     # Get z-index weight: known group types get their contract weight,
                     # old enrichment types (question, anchor, etc.) get other_meta weight
