@@ -905,8 +905,12 @@ class BrainRecallMixin:
 
         # Lexical bridge alternates — populated conditionally AFTER primary
         # cosine completes (see post-STEP-3 expansion gate). Empty here so
-        # primary cosine runs unmodified.
+        # primary cosine runs unmodified. Both lists feed STEP 4.5 so
+        # alternates are searched via BOTH cosine (alternate_vecs) AND FTS5
+        # keyword (alternate_strings) — the latter catches lexical matches
+        # cosine collapses on (e.g. "scratch grains" vs "feed").
         alternate_vecs = []
+        alternate_strings = []
 
         # STEP 2: Intent classification — DEPRECATED 2026-04-12.
         # Regex patterns fire on 12% of queries and miscalibrate scores when they do
@@ -1086,6 +1090,7 @@ class BrainRecallMixin:
             if _do_expand:
                 try:
                     _alts = _expand_query_via_haiku(expanded_query)
+                    alternate_strings = list(_alts)  # for FTS5 path in STEP 4.5
                     for _alt in _alts:
                         _av = embedder.embed_query(_alt)
                         if _av:
@@ -1252,17 +1257,29 @@ class BrainRecallMixin:
         # STEP 4.5: FTS5 independent candidate net
         # FTS5 catches nodes where words match but embeddings didn't connect.
         # These go to the surfacer as fts5_only candidates (no blended score needed).
+        # Lexical bridge: when alternate_strings is non-empty (gate fired),
+        # also run FTS5 for each alternate. Cheap (~10ms per query) and
+        # specifically catches token-level matches the cosine collapses on.
         fts5_only_ids = set()
         fts5_all_ids = set()
         try:
             fts5_dal = Fts5DAL(self.conn)
-            fts5_hits = fts5_dal.search(query, FTS5_SEARCH_LIMIT)
-            fts5_all_ids = set(fts5_hits)
-            for nid in fts5_hits:
-                if nid not in embedding_scores and nid not in keyword_scores:
-                    fts5_only_ids.add(nid)
-                    if len(fts5_only_ids) >= FTS5_CANDIDATE_LIMIT:
-                        break
+            _fts5_queries = [query] + alternate_strings
+            for _fq in _fts5_queries:
+                if not _fq or not _fq.strip():
+                    continue
+                fts5_hits = fts5_dal.search(_fq, FTS5_SEARCH_LIMIT)
+                fts5_all_ids.update(fts5_hits)
+                for nid in fts5_hits:
+                    if nid not in embedding_scores and nid not in keyword_scores:
+                        fts5_only_ids.add(nid)
+                        if len(fts5_only_ids) >= FTS5_CANDIDATE_LIMIT:
+                            break
+                if len(fts5_only_ids) >= FTS5_CANDIDATE_LIMIT:
+                    break
+            if alternate_strings:
+                print('[recall] FTS5 lexical bridge: %d alternates → %d total fts5_only ids' % (
+                    len(alternate_strings), len(fts5_only_ids)), file=sys.stderr)
         except Exception as e:
             self._log_error('recall_fts5', e, 'FTS5 candidate search')
 
