@@ -62,6 +62,7 @@
 15. Appendix A — Today's failure cases as test corpus
 16. Appendix B — Files / commits to know
 17. Appendix C — Onboarding for stateless Anchor
+18. Appendix D — Discussion: spread activation in Phase 4
 
 ---
 
@@ -401,6 +402,7 @@ Marked priorities: 🔴 blocks build · 🟡 needs decision before phase · 🟢
 | Q10 | Replay test corpus — which conversation queries to use as the validation set? | Need a fixed set to compare versions against | 🟡 (Phase 1) |
 | Q11 | Caching path strategy — when does surface prompt grow past 1024 tokens to unlock Anthropic prompt caching? | Caching is the single biggest latency win (Section 14.1). Currently prompt is 750 tokens, just under threshold. Should we add tool descriptions early (Phase 4 prep) to push past, or wait for natural growth? | 🟡 (Phase 4 prep) |
 | Q12 | Vector cascade-delete on archive — keep grace window, or fix call site? | Today's `01402942` race: node archived 44s after creation, vectors deleted, Haiku later picked it from prior-turn context, spread crashed gracefully. Should archive keep vectors for 24h, or should Haiku-pick-validator catch archived nodes first? | 🟢 (cleanup workstream) |
+| Q13 | **Does automatic spread activation survive Phase 4?** Today: Haiku picks 5 → spread expands to ~10-30 activated nodes via 3-4s graph propagation. In Phase 4 (agentic recall + 7 tools), Haiku requests expansion intentionally — `find_about`, `get_community`, `trace_lineage`, etc. Auto-spread becomes redundant for most cases AND eats the latency budget needed for Frame-skip target (Section 14.2). Full analysis in **Appendix D**. | 🟡 (Phase 4 design decision — needs resolution before tool surface ships) |
 
 ---
 
@@ -773,6 +775,99 @@ Tom can feel when the brain works. You can't, from inside. He's the sensor. When
 - **The Frame is the noun the architecture organizes around.** Other components are verbs on it.
 - **Tools are sensory modalities.** Each tool is a different way of sensing the graph.
 - **The encoder has been the de-facto Frame Constructor for months.** Phase 1 just stopped starving the surface of what the encoder produces.
+
+---
+
+## Appendix D — Discussion: spread activation in Phase 4
+
+**Status:** Open discussion (Q13). No decision. Captured 2026-05-02 for future deliberation.
+**Question:** Does automatic post-pick spread activation survive into Phase 4 (agentic recall), survive in modified form, or get retired?
+
+### What spread does today
+
+Lives in [surface_contract.py:751](servers/scales/s1/surface_contract.py:751) — `spread_activation(seed_ids, query_vec, brain, prior_vecs)`. Runs after Haiku selects ≤5 candidates from the 30 surfaced.
+
+1. **Seed activation** — each pick's per-field cosine vs query becomes its starting activation
+2. **Edge propagation** — activation flows through graph edges, weighted by `cosine(query, edge_enriched_text)`
+3. **Per-hop median gate** — only above-median edges (by coefficient this batch) transmit
+4. **Optional hop-3+ scrutiny** — currently OFF (`HOP_SCRUTINY_DEFAULT = False` since 2026-05-02). When on, additionally filters source nodes by median activation
+5. **Mutual traversal** — when two seeds' paths converge on a neighbor, that neighbor accumulates activation from both
+6. **Multi-hop reach** — runs up to `_SPREAD_MAX_STEPS` (5) hops
+7. **Activation-weighted rendering** — `format_surface_output_activation` uses the activation map to decide what nodes to render and how much detail per node
+
+**Current cost:** 3-4s per recall. Often more than the Haiku call itself.
+
+### What it solves vs what it breaks
+
+| Solves | Breaks |
+|---|---|
+| Haiku only picks 5 → spread expands awareness to ~10-30 nodes | Hub bias amplifies — well-connected nodes accumulate activation from many seeds, dominate render |
+| Mutual traversal surfaces convergence-points neither seed alone reaches | Black box from Haiku's perspective — no control or visibility into what spread will surface |
+| Activation-weighted rendering more nuanced than flat "show these 5" | Adds noise to surface — many activated nodes turn out unrelated to current intent |
+| Cheap (no LLM call needed for the propagation itself) | 3-4s latency per recall — eats the budget needed for Frame-skip target |
+| Bridges the "Haiku picks 5 from 30 candidates" bottleneck | Implicit expansion that Haiku can't reason about |
+
+### Phase 4 redundancy map
+
+| Spread function | Phase 4 replacement |
+|---|---|
+| Expand from picks | Haiku requests via `find_about(entity)`, `find_open_loops`, `get_community(query=X)` — intentional, scoped |
+| Multi-hop reach | `trace_lineage(node_id, depth=N)` — explicit walk along a known relation family |
+| Mutual traversal (multi-seed convergence) | New `find_convergence(node_ids)` tool — given anchors, find shared neighborhood. Same value, intentional. |
+| Activation-weighted rendering | Renderer renders fetched results; weighting comes from the tool's own returned scores (each tool defines its own relevance signal) |
+
+### Three options for the disposition
+
+**Option A — Keep automatic spread (status quo).**
+- Pro: Haiku doesn't have to think about expansion; mutual traversal still surfaces things Haiku didn't request.
+- Con: 3-4s baseline latency stays; black-box expansion fights the intentional-recognition framing of Phase 4.
+- Cost to ship: zero (already there).
+
+**Option B — Make spread an opt-in tool (`find_neighbors(seeds, depth?)`).**
+- Pro: Haiku can request spread when it wants it; intentional; no baseline latency cost.
+- Con: Haiku must know when to call it (more decisions); we lose mutual traversal as automatic background behavior.
+- Cost to ship: small — wrap existing `spread_activation` as a tool, remove the auto-call from `run_surface`.
+
+**Option C — Retire spread entirely.**
+- Pro: Cleanest. Tools cover the explicit expansion needs. Latency budget freed.
+- Con: Lose mutual traversal as a primitive; some Phase 4 tools may need internal small-spread mechanisms (e.g., `find_about` may want to do a 1-hop expansion from anchor nodes). The kernel survives only as a tool-internal helper, not as a pipeline stage.
+- Cost to ship: small (delete the auto-call); medium (any tool that wants internal spread reimplements or imports the kernel).
+
+### What might survive regardless of the decision
+
+- The **activation-weighted rendering** logic (`format_surface_output_activation`) — useful for any node-set output where some nodes are more relevant than others. Lives independently of spread.
+- The **spread kernel itself** as an internal helper — even if not auto-called, tools that need 1-hop expansion (e.g., entity → contexts where it appears) can import it.
+
+### What dies in any non-A option
+
+- Spread as an automatic post-pick stage in `run_surface`
+- The implicit expansion pattern Haiku currently relies on without knowing
+- 3-4s of baseline latency per recall
+
+### My (Anchor's) lean — for the future deliberation
+
+**Option C, with kernel surviving as tool-internal.** Reasons:
+
+1. **Recognition-over-search framing wants intentional, not implicit.** If Frame already covers most queries (Phase 4 thesis), spreading from Haiku's picks toward unrelated neighbors is exactly the noise we're trying to eliminate. When Haiku DOES want expansion, it asks via `find_neighbors` or similar — explicit.
+
+2. **The 3-4s is the latency budget for Frame-skip.** Section 14.2 target is 50% of turns under 500ms because Frame covers and we skip the slow path. We can't get there if every recall pays a 3-4s spread tax. Removing automatic spread is the structural enabler.
+
+3. **Mutual traversal is genuinely useful, but not as background magic.** Better as `find_convergence(node_ids)` — Haiku decides "I have these multiple anchors, what do they share?" Intentional, scoped.
+
+4. **Hub bias in the current spread is an active problem.** Removing the auto-spread eliminates one major path for hubs to dominate.
+
+### What needs to be true before the decision
+
+- Phase 4 tools have to actually cover the use cases spread serves today (test required)
+- A `find_convergence` or equivalent tool needs design (extends the 7-tool surface to 8?)
+- The activation-weighted renderer needs to work with tool-returned scores, not just spread output (decoupling)
+- A test corpus of "spread surfaced X, would Phase 4 tools also surface X?" — replay validation
+
+### When this question gets revisited
+
+- Before Phase 4 tool surface ships (the answer determines whether `find_neighbors` is in the kit)
+- After Phase 1-3 are validated — once Frame is real, we know if it actually covers most queries
+- If hub bias measurably drops with Frame loaded, retirement becomes more attractive
 
 ---
 
