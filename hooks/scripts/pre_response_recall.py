@@ -42,7 +42,9 @@ try:
         "prompt": hook_input.get("prompt", ""),
         "message": hook_input.get("message", ""),
         "session_id": hook_input.get("session_id", ""),
-    }, timeout=14.0)  # Slightly under hook timeout (15s) to avoid race
+    }, timeout=20.0)  # Slightly under hook timeout (21s) to avoid race
+                       # 2026-05-02: bumped 14→20 to cover Haiku tail latency
+                       # under load. See FRAME-DESIGN.md and node 2340b053.
 
     if not resp.get("ok"):
         err_msg = resp.get("error", "unknown error")

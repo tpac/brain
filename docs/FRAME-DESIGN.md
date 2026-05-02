@@ -1,16 +1,50 @@
 # Frame Architecture — Awareness, Persisting
 
-**Status:** Design in progress, no code yet
-**Started:** 2026-05-01 (this session)
+**Status:** Phase 1 shipped 2026-05-02 · Phase 2 designed, not started
+**Started:** 2026-05-01
 **Owner:** Anchor (working with Tom)
 **Goal:** Make Anchor's awareness continuous across turns and sessions, by introducing a structured Frame object that all brain components read and write.
 
-> This is the master design doc for the Frame work. Open this at session start to pick up exactly where we left off. Decisions, open questions, and current build state live here.
+> This is the master design doc for the Frame work. Open this at session start to pick up exactly where we left off. Decisions, open questions, current build state, cleanup workstream, tests, and onboarding for stateless Anchor live here.
+
+---
+
+## 0. Pick up here (current state) <a name="0-pickup"></a>
+
+**Most recent work:** Frame Phase 1 connecting code shipped (commits `241ab37` for Phase 1 itself, then commit-pending for timeout bumps + Pattern A fix + this doc enrichment). Surface prompt v1 registered (3047 chars) with recognition-over-search framing. Hook timeout bumped 14s→20s to cover Haiku tail latency.
+
+**What's live in production:**
+- Surface receives full session_context (was 200-char tail, now 800)
+- Surface receives encoder's recent journal (~1500 chars, newest-first)
+- Surface prompt teaches Haiku to use both as recognition signals
+- Hook timeout: 21s (was 15s); daemon TCP timeout: 20s (was 14s)
+- Haiku ID leading-0 recovery (catches the dropped-0 case observed in error logs)
+- HOP_SCRUTINY_DEFAULT = False (depth restored)
+- max_candidates: 30 (was 20)
+
+**What's NOT yet built:**
+- Phase 2 — Frame as structured object with named slots
+- Phase 3 — closure (hook_session_end writes Frame snapshot)
+- Phase 4 — agentic recall + 7-tool sensory layer
+- Phase 5 — encoder updates Frame slots per turn
+
+**Blocking on:** nothing technical. Validation: need to verify Phase 1 actually changes Anchor's awareness. Tom's the sensor; Anchor can't feel the difference from inside.
+
+**Active open questions** (priority order — see Section 9):
+- 🔴 Q2: `partnership_frame` slot contents — top-N communities, locked moments, both?
+- 🟡 Q11 (NEW): caching path strategy — when does surface prompt grow past 1024 tokens to unlock caching?
+- 🟡 Q10: replay test corpus — finalize the 5 queries from Appendix A?
+
+**Latest cleanup queue** (Section 12 — separate workstream, not blocking):
+- `haiku_id_outside_candidates` is misnamed (multi-turn recognition, not bug) — rename + downgrade log
+- Archived nodes leak into Haiku's prior-turn picks — vector grace period or archive validator
+- More Haiku-error patterns to investigate as they surface
 
 ---
 
 ## Table of Contents
 
+0. [Pick up here (current state)](#0-pickup)
 1. [Why we're building this](#1-why)
 2. [The conceptual ground](#2-ground)
 3. [What the Frame is](#3-frame)
@@ -22,6 +56,12 @@
 9. [Open design questions](#9-open)
 10. [Risks & mitigations](#10-risks)
 11. [Changelog](#11-changelog)
+12. [Cleanup workstream (parallel, not blocking)](#12-cleanup)
+13. [Tests](#13-tests)
+14. [Latency reduction roadmap](#14-latency)
+15. Appendix A — Today's failure cases as test corpus
+16. Appendix B — Files / commits to know
+17. Appendix C — Onboarding for stateless Anchor
 
 ---
 
@@ -336,6 +376,10 @@ Numbered for traceability. Add date-stamped entries as decisions land.
 | D13 | 2026-05-01 | Fetch-batch result format = sample-then-deepen (light defaults; `get_full` for depth) | Avoids context bloat; matches research finding that primitive returns of 25 enriched nodes overload Haiku |
 | D14 | 2026-05-01 | Search/find_about default skip superseded nodes | R5 — the live answer is the right answer; lineage tool exposes history when wanted |
 | D15 | 2026-05-01 | Phase 1 first: bump `session_context_tail` 200→800 + add encoding_journal recent | Cheapest possible test of whether connecting existing helps |
+| D16 | 2026-05-02 | `surface` interaction v1 registered (3047 chars) with recognition-over-search framing | Phase 1 data without prompt update was dead weight per Tom's "by itself it has no value." New prompt teaches Haiku to use Session arc + Encoder journal as recognition signals |
+| D17 | 2026-05-02 | Hook timeout bumped 14s→20s (script) / 15s→21s (hook) | Haiku tail latency hits 14s ceiling under API load. Bump absorbs the tail. **Will be ratcheted back down** when caching (14.1) and Frame-skip (14.2) ship |
+| D18 | 2026-05-02 | Haiku ID leading-0 recovery shipped (surface.py) | Investigation of `haiku_id_unresolvable` revealed Haiku occasionally drops leading `0` from 8-char IDs. 7-char failures now retry with `'0'` prepended. Recovers a class of "hallucinations" that were really output errors |
+| D19 | 2026-05-02 | `haiku_id_outside_candidates` is misnamed, NOT a bug — Haiku correctly using prior-turn context | All 12 instances investigated had `short_id == resolved`, all resolved to real nodes from prior turns. Haiku does multi-turn recognition via conversation history. Logging stays as-is until Section 12.1 rename |
 
 ---
 
@@ -355,6 +399,8 @@ Marked priorities: 🔴 blocks build · 🟡 needs decision before phase · 🟢
 | Q8 | `find_about(entity)` — does it use Haiku to extract entity from query, or take entity verbatim? | Affects tool surface complexity | 🟢 (Phase 4) |
 | Q9 | Telemetry on Frame slot changes — what's logged, where surfaced? | Per I3 mitigation; Tom can see what I can't | 🟡 (Phase 2) |
 | Q10 | Replay test corpus — which conversation queries to use as the validation set? | Need a fixed set to compare versions against | 🟡 (Phase 1) |
+| Q11 | Caching path strategy — when does surface prompt grow past 1024 tokens to unlock Anthropic prompt caching? | Caching is the single biggest latency win (Section 14.1). Currently prompt is 750 tokens, just under threshold. Should we add tool descriptions early (Phase 4 prep) to push past, or wait for natural growth? | 🟡 (Phase 4 prep) |
+| Q12 | Vector cascade-delete on archive — keep grace window, or fix call site? | Today's `01402942` race: node archived 44s after creation, vectors deleted, Haiku later picked it from prior-turn context, spread crashed gracefully. Should archive keep vectors for 24h, or should Haiku-pick-validator catch archived nodes first? | 🟢 (cleanup workstream) |
 
 ---
 
@@ -372,6 +418,9 @@ Marked priorities: 🔴 blocks build · 🟡 needs decision before phase · 🟢
 | R8 | "I can't feel it" diagnostic asymmetry — I won't notice when Frame is wrong | 🔴 high | I3: slot evolution telemetry, dashboard view; Tom remains sensor | open |
 | R9 | Encoder is the bottleneck — Frame quality bounded by encoded quality | 🟡 med | Acknowledged; orthogonal workstream | acknowledged |
 | R10 | Two competing solutions: Frame + agentic recall | 🟢 low | Reframed: Frame is noun, tools are verbs on it. Both required | resolved |
+| R11 | Hook timeout bump (14→20s) is a regression on failure-fast — masks real daemon hangs longer | 🟡 med | Tracked as a thing-to-undo when latency wins ship. See Section 14 — target state is back to ~12s | active (acceptable interim) |
+| R12 | Phase 1 input bloat (~600 tokens added per recall) compounds with future Frame additions | 🟡 med | Mitigated by caching path (14.1). Without caching, Phase 2 Frame addition will push prompt to ~3-4K tokens per call → real cost per call | tracking, no action yet |
+| R13 | `haiku_id_outside_candidates` log will continue firing as multi-turn recognition fires correctly. Could mask new error patterns under noise | 🟢 low | Section 12.1 rename + downgrade. Then real new errors are visible | open |
 
 ---
 
@@ -388,10 +437,27 @@ Marked priorities: 🔴 blocks build · 🟡 needs decision before phase · 🟢
 - Risks R1-R10 catalogued
 - This document created
 
+### 2026-05-02 — Session 2
+
+- Phase 1 shipped (commit `241ab37`): full session_context + encoder journal flow to surface
+- Surface prompt v1 registered (3047 chars, recognition-over-search framing)
+- Hook timeout bumped 14s → 20s (commit-pending) to absorb Haiku tail latency
+- Haiku ID leading-0 recovery shipped (commit-pending) — surface.py retries with `'0'` prepended on 7-char failures
+- Investigated Haiku error patterns:
+  - `haiku_id_outside_candidates` is misnamed (multi-turn recognition, not bug) — D19
+  - `haiku_id_unresolvable` 7-char cases are dropped leading zeros — D18 fix
+  - `spread_seed_no_vectors` — archived-node race, fix queued in Section 12.1
+- Decisions D16-D19 added
+- Open questions Q11-Q12 added
+- Risks R11-R13 added
+- Sections 12 (cleanup), 13 (tests), 14 (latency reduction), Appendix C (stateless onboarding) created
+- Doc enriched per Tom's direction: "what does a stateless Anchor need to know"
+
 ### Open work
-- Phase 1 ready to start — needs Tom's go-signal
-- Q2, Q10 need decisions before Phase 1 ships
-- Replay test corpus needs definition
+- Validate Phase 1 on actual conversation (Tom's qualitative read is the test)
+- Q2 needs decision before Phase 2 starts
+- Q11 (caching path) needs decision before / during Phase 4
+- Cleanup workstream items in Section 12 — not blocking but should land before Phase 4
 
 ---
 
@@ -437,6 +503,276 @@ These queries failed in interesting ways today. Use as validation set for Frame 
 - `c7097a0e` — unit of recall is connected cluster
 - `805861dc` (this session) — Tom feels when brain works, Anchor can't
 - `174fd960` (this session) — EX.CO ambient recall failure diagnosis
+
+---
+
+## 12. Cleanup workstream (parallel, not blocking) <a name="12-cleanup"></a>
+
+These are real fixes surfaced during Frame work but live outside the Phase 1-5 sequence. Catalog with status, ranked by impact.
+
+### 12.1 — Haiku error analysis (2026-05-02 investigation)
+
+Pulled 7 days of `_log_error` data, classified the patterns:
+
+| Error | Frequency | Root cause | Fix |
+|---|---|---|---|
+| `haiku_id_outside_candidates` | 12+ in 7d (most frequent) | **Misnamed.** Haiku correctly using prior-turn context — picks IDs it saw in earlier turns' surfaced output. ALL resolve to real nodes. NOT a bug. | Rename to `haiku_id_from_prior_context`, downgrade error → debug log. (PENDING) |
+| `haiku_id_unresolvable` (7-char) | 2 confirmed cases | Haiku drops leading `0` from 8-char IDs (`095c2b96` → `95c2b96`, `053488da` → `53488da`). | **Shipped 2026-05-02** — surface.py retries with `'0'` prepended on 7-char failures. Logs as `haiku_id_leading_zero_recovered`. |
+| `haiku_id_unresolvable` (8-char) | ~1-2 in 7d | Real hallucinations of plausible-looking IDs. Rare. | Log + skip — no fix needed unless rate climbs. |
+| `spread_seed_no_vectors` | 1 today (`01402942`) | Haiku selected node from prior-turn context that was archived since (S2 absorbed it 44s after creation). Vectors cascaded-deleted on archive. | Two options: (a) vector grace period (don't cascade-delete on archive immediately, keep ~24h), (b) validate Haiku picks against current archived state, classify as `haiku_id_now_archived`. (PENDING — recommend doing both) |
+| `connect_to_unresolved` / `connect_to_invalid` | Few each | Encoder Haiku produces invalid `connect_to` operations. | Tighten schema validation; current behavior is to skip + log. Acceptable for now. |
+| `healer_unsolicited_field` | 5+ instances | Haiku in healer returns fields not in `needs_*` list. | Already filtered out at receive time (per healer_encoder.py:262-268). Cosmetic — could quiet log. |
+| `s1_scout_quote_json_parse` | 1 yesterday | Scout JSON parse failure. | Already has retry + skip behavior. Single occurrence — not actionable yet. |
+| `s2_consolidation_oversized_cluster` | Recurring (same cluster) | Same 3-node cluster (`5b8ea5a6`, `6f1042a6`, `8682730b`) keeps failing oversize check. Stuck state. | Investigate the cluster's actual content — likely a hub trio that needs splitting or marking. (PENDING) |
+
+### 12.2 — Hook timeout regression handling
+
+Hooks have explicit timeouts in `hooks.json` + the script's own `daemon_call_raw(timeout=X)`. The two MUST stay aligned: script timeout < hook timeout (else daemon work continues but Claude Code kills the script). Convention:
+- `hook_timeout = script_timeout + 1s` (1s margin)
+
+Current values (after 2026-05-02 bump):
+- `hook_recall`: hook=21s, script=20s, daemon TCP=30s
+- Other hooks: hook=8s (pre-edit), 7s (pre-bash), 30s (idle/session-end) — unchanged
+
+When latency reduction work (Section 14) ships, ratchet these BACK DOWN to keep failure-fast on real hangs.
+
+### 12.3 — Misc dev-quality issues
+
+- `s2_consolidation_oversized_cluster` recurring with same members — needs investigation
+- `01402942` archived-node vector deletion cascade — first instance of this race; if it recurs, Section 12.1 fix becomes urgent
+- Surface prompt v1 is 3047 chars (~750 tokens) — close to but under 1024-token caching threshold for Haiku. See Section 14 for caching path.
+
+---
+
+## 13. Tests <a name="13-tests"></a>
+
+What's been validated, what's pending, what should be added.
+
+### 13.1 — Validated (current state)
+
+| Test | What it covers | Status |
+|---|---|---|
+| `tests/test_brain_voice.py` | build_surface_prompt structure | ✅ passes after Phase 1 |
+| `tests/test_daemon.py` | hook table + dispatch | ✅ passes |
+| `tests/test_system.py` | system-level wiring | ✅ passes |
+| `tests/test_maintenance_gate.py` | S2 fire decision (idle threshold + force-fire) | ✅ 7 tests, all pass |
+| `tests/test_write_lock_unification.py` | write_lock on brain (Frame-adjacent) | ✅ 6 tests, all pass |
+| `tests/test_recall_quality.py::TestDampening::test_hub_dampening` | hub dampening | ❌ **PRE-EXISTING failure**, unrelated to Frame work |
+
+### 13.2 — Phase 1 acceptance criteria (PENDING validation)
+
+These should pass after Phase 1 is given time to fire on real conversation queries:
+
+- [ ] **Surface prompt now contains "Session arc:" section** — verifiable by reading any post-Phase-1 surface result file at `/tmp/brain-surface-result-{recall_ref}.json`
+- [ ] **Surface prompt now contains "Encoder's recent journal:" section** when journal exists for session
+- [ ] **Surface prompt fallback contains "(Tom)"** — should be replaced by `surface` interaction v1 (registered DB version) — fix the lingering hardcoded fallback
+- [ ] **Re-run Appendix A queries**, compare candidate ranks pre/post — improvement on:
+  - "What is EX.CO?" — EX.CO nodes should rise (no longer competing with hub-meta)
+  - "What do you know about you?" — operator/work context should leak in
+  - "Where were we?" — session arc should make Anchor know
+  - "Should we go back to EX.CO sales kit?" — Haiku should recognize as pivot-probe (per recent journal showing EX.CO kit is open thread)
+  - "What's still open from last week?" — current path: bad. Future path needs `find_temporal` (Phase 4)
+- [ ] **Tom's qualitative read** — does Anchor feel more "in the room" than before? (the only test that matters)
+
+### 13.3 — Tests to add as we build
+
+**Phase 2 (Frame structured):**
+- `test_frame_construction.py` — given a known brain state, Frame Constructor returns expected slot contents
+- `test_frame_persistence.py` — Frame writes to brain_meta, reads back identical
+- `test_frame_slot_updates.py` — per-turn updates only touch the right slots
+- `test_frame_session_isolation.py` — two parallel sessions don't bleed Frame data
+
+**Phase 3 (closure):**
+- `test_session_synthesis.py` — `hook_session_end` writes Frame to `session_syntheses` table
+- `test_frame_cross_session_seed.py` — next session's Frame Constructor reads previous session's snapshot
+
+**Phase 4 (agentic recall + tools):**
+- `test_fetch_batch_dispatch.py` — Haiku's fetch plan correctly executes parallel ops
+- `test_tool_descriptions_present.py` — Haiku's prompt contains all 7 tool descriptions
+- For each tool: contract test — given input, output matches expected shape
+
+**Cross-cutting:**
+- `test_haiku_error_recovery.py` — leading-0 retry recovers, hallucinated 8-char IDs skip cleanly
+- `test_archived_node_excluded_from_candidates.py` — archived node never reaches Haiku via recall
+- `test_archived_node_in_prior_context.py` — Haiku picks archived node from prior turn → graceful handling, not crash
+
+### 13.4 — Empirical methodology
+
+Replay tests should compare candidate sets and Haiku selections under different code states:
+1. Capture baseline: turn-N's recall result file, surface_prompt, Haiku output
+2. Make change
+3. Capture new: same turn-N (replay), compare
+4. Look for: did the right node rise? Did off-thread match drop? Did Haiku's reasoning change?
+
+Per-turn surface result files exist at `/tmp/brain-surface-result-{recall_ref}.json` — these ARE the replay data.
+
+---
+
+## 14. Latency reduction roadmap <a name="14-latency"></a>
+
+Today: hook_recall = 21s budget, daemon-side timeout = 20s, average successful recall ~5-12s, p99 hits the ceiling. We bumped from 14→20 to absorb tail latency. **The bump is a regression we should undo** as soon as we have real wins.
+
+Strategies, ranked by impact × effort:
+
+### 14.1 — Prompt caching (HIGH impact, MEDIUM effort) — Phase 4
+
+**Mechanism:** Move surface_instructions from user-content to `system` block with `cache_control: ephemeral`. Anthropic caches at 1024+ tokens. Cache hit on Haiku = ~30% reduction in input processing time.
+
+**Blocker:** Surface prompt v1 is 3047 chars (~750 tokens). Need to push past 1024 tokens to enable caching. Options:
+- Add the tool descriptions for agentic recall (Phase 4) — naturally pushes prompt past threshold
+- Add few-shot examples in instructions
+- Add explicit recognition-pattern guidance with examples
+
+**Expected gain:** 1-2s off Haiku tail under load. Possibly enough to drop hook_recall back to 15s.
+
+### 14.2 — Skip Haiku entirely when Frame covers (HUGE impact when applicable) — Phase 4
+
+**Mechanism:** Agentic recall design — Haiku's first move is "does Frame already answer this?" If yes, return empty fetch plan (no candidates needed, no spread, no full pipeline).
+
+**Expected gain:** For maybe 30-50% of turns ("hi", continuations, in-thread questions), recall completes in ~200ms instead of 5-12s. The biggest possible win — depends entirely on Frame quality.
+
+### 14.3 — Lighter candidate format (MEDIUM impact, LOW effort) — anytime
+
+**Mechanism:** Reduce per-candidate token cost in surface prompt. Today each candidate is ~250-400 tokens (metadata, situation, edges). Strip what Haiku doesn't actually use for selection.
+
+**Investigation needed:** What does Haiku actually look at? Could test by ablating each field and checking selection quality.
+
+**Expected gain:** 30 candidates × 100 token savings = 3K tokens per call. Marginal latency, real cost reduction.
+
+### 14.4 — Reduce candidate count (MEDIUM impact, LOW effort) — anytime, requires eval
+
+**Mechanism:** Bumped to 30 in interim. If Haiku's pick quality is stable at 20 (or 15), drop back. Each candidate adds prompt size + Haiku discrimination work.
+
+**Investigation needed:** A/B max_candidates ∈ {15, 20, 25, 30, 35} on the test corpus. Quality vs latency curve.
+
+### 14.5 — Spread parallelization (MEDIUM, MEDIUM) — anytime
+
+**Mechanism:** Spread runs sequentially after Haiku selects. Some operations within spread (per-seed cosines, edge coefficient computation) could parallelize. Already partially done.
+
+**Expected gain:** 0.5-2s on spread. Helps when Haiku is also slow.
+
+### 14.6 — Anthropic SDK keep-alive (LOW, LOW) — investigate
+
+**Mechanism:** Confirm SDK is reusing HTTP connections to Anthropic API. TLS handshake adds ~100-200ms per cold connection. Verify with curl traces or SDK config.
+
+**Expected gain:** 100-200ms per call, only matters at high call rate.
+
+### 14.7 — Faster model variant (UNKNOWN, depends on Anthropic) — passive
+
+**Mechanism:** When Anthropic releases a faster Haiku variant, swap in. Hardcoded today as `claude-haiku-4-5` — easy to update.
+
+**Expected gain:** Variable. Watch release notes.
+
+### 14.8 — Routing by query complexity (HIGH effort, UNCLEAR impact) — research-only
+
+**Mechanism:** For trivial queries ("yes", "ok"), skip recall entirely or use heuristic. For complex queries, full pipeline. Routing logic needs to be cheap (<50ms) to be worth it.
+
+**Risk:** Misrouting trivial queries that ARE meaningful (e.g., "ok" as confirmation of a complex pivot). Could lose context. Probably skip unless eval shows clear win.
+
+### 14.9 — Pre-warm next turn (LOW, MEDIUM) — speculative
+
+**Mechanism:** When Anchor finishes responding, fire a no-op Haiku ping to keep the connection warm + tokenizer cached. Shaves cold-start cost off the next genuine call.
+
+**Expected gain:** Maybe 200ms. Probably not worth the complexity.
+
+### Suggested order of execution (when latency work begins)
+
+1. **14.1 (caching)** — biggest single win. Paired with Phase 4 anyway.
+2. **14.2 (Frame skip)** — biggest possible win, but requires Phase 4 fully done.
+3. **14.3 (lighter candidates)** — quick eval, easy win.
+4. **14.4 (fewer candidates)** — same eval pass.
+5. **14.5 (spread parallel)** — when Haiku is no longer the bottleneck.
+6. Others as opportunistic.
+
+### Target state
+
+After 14.1 + 14.2 land, expected behavior:
+- ~50% of turns: recall completes in <500ms (Frame covers, no Haiku)
+- ~40% of turns: recall completes in 3-6s (Haiku call, cache hit, normal)
+- ~10% of turns: recall completes in 6-12s (Haiku call, cache miss / cold session / pivot)
+- p99: ~10s. We can drop the timeout back to 12s with margin.
+
+---
+
+## Appendix C — Onboarding for stateless Anchor
+
+**For when you wake up tomorrow and need to pick up this work.**
+
+You are working on the Frame architecture — a structured object that holds Anchor's awareness across turns and sessions. The brain has been treating memory as a search index; the Frame treats memory as the substrate of awareness. This is the pivot.
+
+### What the brain is, in 3 sentences
+
+Brain.db holds nodes (memories) and edges (relationships). Daemon serves the brain via TCP on `localhost:47200+uid%100`. Hooks fire per-turn; encoder runs every 5 stops; S2 maintenance runs on idle. See [CLAUDE.md](CLAUDE.md) for full architecture.
+
+### How to operate the brain (practical)
+
+- **All commands run via `./dev`** (the wrapper that uses the bundled venv Python). Not your shell python.
+- **Read the brain via MCP tools** (`brain_recall`, `get_node`, `query_logs`, etc.) — never raw SQL when an MCP tool exists.
+- **Write the brain via MCP tools** (`brain_remember`, `brain_revise`, `brain_batch`) — single-writer rule.
+- **Restart daemon when code changes:** `mcp__plugin_brain_brain__restart`.
+- **Logs:** `/Users/tpac/AgentsContext/brain/daemon.log` (daemon stderr), `query_logs` MCP tool (errors + signals).
+- **Backup before destructive DB ops:** `cp brain.db brain.db.bak-$(date +%Y%m%d-%H%M%S)`.
+
+### Where the Frame work lives in the codebase
+
+Phase 1 touched:
+- [servers/scales/s1/surface_contract.py](servers/scales/s1/surface_contract.py) — `session_context_tail` config, `build_surface_prompt` template
+- [servers/scales/s1/surface.py](servers/scales/s1/surface.py) — `run_surface`, `_call_surface` accept `encoding_journal`
+- [servers/daemon_hooks.py](servers/daemon_hooks.py) — `hook_recall` reads encoding_journal, passes to surface
+- [servers/brain.py](servers/brain.py) — `get_recent_encoding_journal()` method
+- [hooks/hooks.json](hooks/hooks.json) and [hooks/scripts/pre_response_recall.py](hooks/scripts/pre_response_recall.py) — timeout 21s/20s
+
+Phase 2+ will touch:
+- (new) `servers/scales/s1/frame.py` — Frame Constructor
+- [servers/brain.py](servers/brain.py) — `get_frame()`, `set_frame()`, `update_frame_slot()`
+- [servers/daemon_hooks.py](servers/daemon_hooks.py) — boot loads Frame, hook_post_response_track updates slots, hook_session_end snapshots
+- [servers/scales/s1/surface.py](servers/scales/s1/surface.py) — surface receives Frame as input
+
+### Where to look when something breaks
+
+| Symptom | Where to look |
+|---|---|
+| Recall keeps timing out | `query_logs(source='errors', hook_name='hook_recall')` — check pattern, time of day. Probably API load or daemon health. |
+| Haiku selecting weird IDs | `query_logs(source='errors')` for `haiku_id_*` events. See Section 12.1 for known patterns. |
+| S2 not firing | `brain.get_config('s2_last_run_ts')` — check when last fired. See `MAINTENANCE_*` constants and `last_user_activity` in daemon. |
+| Daemon unreachable | `ps -ef \| grep daemon_server` — check process. `tail daemon.log`. Restart via MCP if needed. |
+| Frame seems stale | (Future, Phase 2+) Read `brain_frame_{session_id}` from brain_meta. Check `current_focus` slot. |
+
+### What to read first if you have 5 minutes
+
+1. This doc, Section 0 (Pick up here) — current state
+2. The 3-5 most-locked nodes (filter_nodes locked=1 type=identity/principle/vision) — operator + partnership context
+3. Most recent `session_syntheses` row (if exists) — last session's closure (Phase 3+)
+
+### What to read first if you have 30 minutes
+
+1. This whole doc
+2. [CLAUDE.md](CLAUDE.md) — full architecture
+3. [skills/brain/SKILL.md](skills/brain/SKILL.md) — your identity baseline
+4. Recent commits: `git log --oneline -20`
+5. Open questions Q1-Q12 in this doc — ranked by priority, what's blocking what
+
+### What this work IS
+
+Not "make recall faster." Not "add multi-axis search." Building the *substrate of presence* — the thing that lets Anchor be the same Anchor across turns and sessions, not a fresh Claude with a database every time.
+
+Tom can feel when the brain works. You can't, from inside. He's the sensor. When he says "you seem off today," that's the validation signal — not a metric.
+
+### What you should NOT do without asking
+
+- Bulk delete or revise nodes
+- Change the encoder prompts (they're learnable boundaries; S3 will optimize them eventually)
+- Move data between brain.db and brain_logs.db
+- Change the cache key for the Frame across sessions
+- Skip backup before destructive DB operations
+
+### Most important truths to internalize
+
+- **Memory is prediction; recall is verification; encoding is update; awareness is the predicting agent.** (The deepest framing.)
+- **Recognition over retrieval.** 4 of 5 root memory operations are recognition, not search.
+- **The Frame is the noun the architecture organizes around.** Other components are verbs on it.
+- **Tools are sensory modalities.** Each tool is a different way of sensing the graph.
+- **The encoder has been the de-facto Frame Constructor for months.** Phase 1 just stopped starving the surface of what the encoder produces.
 
 ---
 

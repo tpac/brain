@@ -524,6 +524,24 @@ def run_surface(brain, ctx, candidates_data, user_message, session_context,
                 from servers.dal import NodeDAL
                 ndal = NodeDAL(brain.conn)
                 resolved = ndal.resolve_id(short_id)
+                # 2026-05-02: Haiku occasionally drops a leading '0' from
+                # 8-char IDs, producing a 7-char output (e.g. '95c2b96'
+                # instead of '095c2b96'). Verified via brain error logs:
+                # 2 of 4 'unresolvable' cases were leading-0 drops to real
+                # nodes. When the short_id is 7 chars and doesn't resolve,
+                # retry with '0' prepended. If THAT resolves, recover the
+                # selection and log it as a leading-zero recovery (distinct
+                # from real hallucinations).
+                if not resolved and len(short_id) == 7:
+                    resolved = ndal.resolve_id('0' + short_id)
+                    if resolved:
+                        try:
+                            brain._log_error(
+                                'haiku_id_leading_zero_recovered',
+                                RuntimeError('Haiku dropped leading 0 — recovered'),
+                                'short_id=%s recovered_as=%s' % (short_id, resolved[:8]))
+                        except Exception:
+                            pass
             except Exception as _re:
                 # A bare except here used to mask real DB errors as
                 # "ID is hallucinated" — a SQL/index issue would become
