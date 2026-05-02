@@ -165,7 +165,9 @@ CANDIDATES_FILE = {
 # v9: max_candidates 25→20, Anchor truncation 150→400, recent_messages 5→7
 SURFACE = {
     'content_limit': 300,           # shorter per node since more candidates
-    'max_candidates': 20,           # v9: was 25. FTS5 adds up to 5 more = 25 max total
+    'max_candidates': 30,           # 2026-05-01: was 20. FTS5 adds up to 5 more = 35 max total.
+                                    # Bumped to give Haiku more axis-of-context room while
+                                    # multi-axis candidate generation is being designed.
     'max_selected': 5,              # Haiku picks at most this many (was 8 — reduced for 10K hook cap)
     'user_message_limit': 300,
     'anchor_message_limit': 400,    # v9: was 150. Anchor responses carry design context
@@ -591,10 +593,16 @@ SPREAD_NEIGHBOR_LIMIT_DEFAULT = 50
 # Per-hop scrutiny: at hop 3+ (step >= 2), only the top half of currently
 # active nodes by activation propagate further. Distribution-derived —
 # the threshold is the median of the current activation set, not a static
-# number. Forces narrowing as depth increases. Production default = ON
-# (variant C, the bench winner). Override BRAIN_SPREAD_HOP_SCRUTINY=off
-# to disable for comparison.
-HOP_SCRUTINY_DEFAULT = True
+# number. Forces narrowing as depth increases.
+#
+# Production default = OFF (2026-05-01): scrutiny was shipped on the
+# strength of LongMemEval iter_M (14/15) but the eval is N=15 with ~20pp
+# variance, and scrutiny was never A/B'd in isolation against baseline.
+# Real-world conversational use (where ambient context lives 2-3 hops out)
+# regressed — see the ex.co class of failure: the brain held rich operator
+# context but it lived past the scrutiny cut and stopped surfacing.
+# Override BRAIN_SPREAD_HOP_SCRUTINY=on to re-enable for benchmarking.
+HOP_SCRUTINY_DEFAULT = False
 
 # Outer propagation gate: if the max transmission coefficient in the batch
 # falls below the brain's noise floor, nothing meaningful to spread —
