@@ -99,7 +99,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
                 counter=counter,
                 catalog_rendered=catalog_text,
                 catalog_node_ids=catalog_ids,
-                session_context=(brain.session_context or ''),
+                session_context=brain.session_context_for(session_id),
                 log_fn=log_fn,
             )
             _step("muster_ctx")
@@ -205,7 +205,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         # 7. Post-process (S1-specific: journal, session context)
         final_text = result.get('final_text', '')
         journal_entry = _save_journal(brain, dispatch_fn, session_id, counter, final_text) or ''
-        _save_session_context(brain, dispatch_fn, final_text)
+        _save_session_context(brain, dispatch_fn, session_id, final_text)
 
         # 8. Delta trace — unified shape across S1E + S2 encoders.
         # Outcomes: count write actions by tool (remember / revise / connect / …).
@@ -370,8 +370,8 @@ def _build_user_content(brain, messages, counter, session_id):
             timeline += "\n"
         i += 1
 
-    # Previous session context
-    prev_context = brain.session_context
+    # Previous session context (per-session — no global leak across parallel sessions)
+    prev_context = brain.session_context_for(session_id)
 
     # ── Stable preamble — byte-identical across encoding cycles.
     # Cached at 1h TTL via run_llm_loop's user_preamble parameter. The
@@ -493,16 +493,26 @@ def _save_journal(brain, dispatch_fn, session_id, counter, final_text):
     return entry_body
 
 
-def _save_session_context(brain, dispatch_fn, final_text):
-    """Extract SESSION_CONTEXT from encoder output and append to session journey."""
+def _save_session_context(brain, dispatch_fn, session_id, final_text):
+    """Extract SESSION_CONTEXT from encoder output, append to per-session journey.
+
+    2026-05-02 (Frame Phase 2.5): writes per-session key
+    `session_context_{session_id}` instead of the global `session_context`.
+    The previous global was a parallel-session leak — encoder writes from
+    session A and session B clobbered each other. Per-session keys mirror
+    the existing `encoding_journal_{session_id}` pattern.
+    """
     from servers.scales.s1.encode_contract import ENCODING_AGENT
+    if not session_id:
+        return  # nowhere to write — should not happen in production paths
     limit = ENCODING_AGENT.get('session_context_limit', 800)
+    key = 'session_context_' + session_id
     for line in final_text.split('\n'):
         stripped = line.strip()
         if stripped.upper().startswith('SESSION_CONTEXT:'):
             new_context = stripped[len('SESSION_CONTEXT:'):].strip()
             if new_context:
-                existing = brain.session_context
+                existing = brain.session_context_for(session_id)
                 # Newline-separated entries instead of pipe noise
                 combined = (existing + '\n' + new_context) if existing else new_context
                 if len(combined) > limit:
@@ -512,7 +522,7 @@ def _save_session_context(brain, dispatch_fn, final_text):
                     if nl_idx >= 0 and nl_idx < 60:
                         truncated = truncated[nl_idx + 1:]
                     combined = truncated
-                dispatch_fn('set_config', {'key': 'session_context', 'value': combined})
+                dispatch_fn('set_config', {'key': key, 'value': combined})
                 return
 
 

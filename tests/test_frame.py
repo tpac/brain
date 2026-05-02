@@ -145,6 +145,36 @@ class TestNodeFamiliesSeed(BrainTestBase):
         self.assertIsInstance(family['meaning'], str)
 
 
+class TestSessionContextPerSession(BrainTestBase):
+    """session_context must be per-session — no parallel-session leak."""
+    needs_embedder = False
+
+    def test_session_context_for_returns_per_session(self):
+        # Two distinct sessions write different contexts via direct config
+        self.brain.set_config('session_context_session_a', 'arc for session A')
+        self.brain.set_config('session_context_session_b', 'arc for session B')
+
+        self.assertEqual(
+            self.brain.session_context_for('session_a'),
+            'arc for session A')
+        self.assertEqual(
+            self.brain.session_context_for('session_b'),
+            'arc for session B')
+
+    def test_session_context_for_unknown_returns_empty(self):
+        self.assertEqual(
+            self.brain.session_context_for('never_written'), '')
+
+    def test_session_context_for_no_session_id_returns_empty(self):
+        # Defensive: don't read a global key when session_id is missing
+        self.assertEqual(self.brain.session_context_for(''), '')
+
+    def test_global_session_context_property_removed(self):
+        # The leaky global property must not exist — replaced by session_context_for
+        self.assertFalse(hasattr(self.brain, 'session_context'),
+                        "brain.session_context property should be removed (leaked across parallel sessions)")
+
+
 class TestSurfacePromptAcceptsFrame(BrainTestBase):
     """build_surface_prompt accepts frame and renders it as 'Partnership context:'."""
     needs_embedder = False

@@ -248,8 +248,8 @@ def hook_recall(brain, args, graph_changes):
         except Exception as _e:
             brain._log_error('surface_recent_messages', _e, 'fetching recent messages from traces')
 
-        # Session context from last encoding agent run (S1 Surface needs this)
-        session_context = brain.session_context
+        # Session context from last encoding agent run (per-session — no leak)
+        session_context = brain.session_context_for(session_id)
 
         with open(candidates_path, 'w') as f:
             json.dump({

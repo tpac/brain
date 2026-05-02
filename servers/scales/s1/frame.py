@@ -3,8 +3,8 @@
 Phase 2 of the Frame architecture (see docs/FRAME-DESIGN.md). Produces a
 markdown text Frame composed of five sections, deterministically queried
 from the brain's existing API. No LLM call. No new SQL. Pure composition
-over `brain.filter_nodes`, `brain.session_context`, and
-`brain.get_recent_encoding_journal`.
+over `brain.filter_nodes`, `brain.session_context_for(session_id)`, and
+`brain.get_recent_encoding_journal(session_id)`.
 
 Sections:
     Operator      — locked identity-bearing nodes (principle/identity/vision)
@@ -169,9 +169,15 @@ def _render_active_threads(brain) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _render_current_focus(brain) -> str:
-    """Encoder's rolling session arc — already maintained as a brain config."""
-    ctx = (brain.session_context or '').strip()
+def _render_current_focus(brain, session_id: str) -> str:
+    """Encoder's rolling session arc — per-session key (no parallel-session leak).
+
+    2026-05-02 (Frame Phase 2.5): switched from `brain.session_context`
+    (global, leaked across parallel sessions) to `brain.session_context_for
+    (session_id)`. Cross-session continuity is now a deliberate query at
+    boot, not an accidental side-effect of a leaky global.
+    """
+    ctx = (brain.session_context_for(session_id) or '').strip()
     if not ctx:
         return "## Current focus\n(fresh session)\n"
     return "## Current focus\n%s\n" % ctx
@@ -212,7 +218,7 @@ def build_frame(brain, session_id: str) -> str:
         _render_operator(brain, locked_nodes),
         _render_partnership(brain, locked_nodes),
         _render_active_threads(brain),
-        _render_current_focus(brain),
+        _render_current_focus(brain, session_id),
         _render_recent_moves(brain, session_id),
     ]
     return "\n".join(sections).strip() + "\n"

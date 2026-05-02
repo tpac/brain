@@ -415,7 +415,15 @@ class BrainVoice:
             return (r.get('results', r) if isinstance(r, dict) else r)[:limit]
 
         self_knowledge = brain.fetch_self_knowledge(limit=5)
-        session_context = brain.get_config('session_context', '')
+        # 2026-05-02 (Frame Phase 2.5): the global 'session_context' key was
+        # a parallel-session leak — encoder writes from session A and B
+        # clobbered each other. Per-session keys now used everywhere
+        # (session_context_{session_id}). Boot's "LAST SESSION" section
+        # is left empty in this transitional state; the Frame-centered boot
+        # rewrite (next punch list item) replaces this block entirely with
+        # ctx.get_frame(brain), which contains current_focus + recent_moves
+        # as proper sections.
+        session_context = ''
         recent_nodes = ctx.get("recent", [])[:5]
         cs = {"reminders": brain.get_due_reminders()}
         health = brain.health_check(session_id="session_boot", auto_fix=True)

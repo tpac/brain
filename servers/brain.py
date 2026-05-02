@@ -456,14 +456,25 @@ class Brain(
         """Write session activity to brain_meta via DAL."""
         self._meta.set(key, str(value))
 
-    @property
-    def session_context(self):
-        """Single accessor for session context (running journey summary).
+    def session_context_for(self, session_id: str) -> str:
+        """Per-session running journey summary (encoder's session arc).
 
-        v9.2: Replaces 4 scattered get_config("session_context", "") reads
-        across daemon_hooks.py and encoding_agent.py.
+        2026-05-02 (Frame Phase 2.5): replaces the global `session_context`
+        property. The previous shape (single brain_meta key, leaked across
+        parallel sessions — last-writer-wins, two Claude Code instances
+        scrambled each other's arc) is gone. Each session writes/reads
+        its own `session_context_{session_id}` key, mirroring the existing
+        per-session `encoding_journal_{session_id}` pattern.
+
+        Cross-session continuity (e.g., boot pulling the previous session's
+        context) becomes a deliberate query — not an accidental side-effect
+        of a leaky global. See docs/FRAME-DESIGN.md Phase 3 work.
+
+        Returns empty string if no context for this session yet.
         """
-        return self.get_config('session_context', '') or ''
+        if not session_id:
+            return ''
+        return self.get_config('session_context_' + session_id, '') or ''
 
     def get_recent_encoding_journal(self, session_id: str, max_chars: int = 1500) -> str:
         """Read the most recent portion of the encoder's per-session journal.

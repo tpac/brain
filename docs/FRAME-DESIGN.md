@@ -54,6 +54,13 @@
 - Defensive fallback in `frame.py` (`_FALLBACK_FAMILIES`) handles "interaction missing" but not "type unclassified."
 - Bounded impact — most types covered by v1 seed; load-bearing cases (principle, rule, moment, community, open, insight) all in seed.
 
+**Phase 2.5 leak fix landed (2026-05-02 same session) — prerequisite for boot wire-up:**
+- Encoder's `session_context` was a GLOBAL `brain_meta` key — parallel sessions clobbered each other (last-writer-wins; two Claude Code instances scrambled each other's session arc). Real bug, undiagnosed before this session.
+- Fix: per-session keys mirror the existing `encoding_journal_{session_id}` pattern. `brain.session_context` property removed entirely; replaced with `brain.session_context_for(session_id)`. Encoder writes to `session_context_{session_id}`.
+- All 6 callers updated: encoder reads/writes (3 sites), daemon_hooks, frame.py, brain_voice (transitionally neutralized — boot rewrite next replaces the LAST SESSION block with the Frame).
+- 4 new contract tests in `tests/test_frame.py::TestSessionContextPerSession` lock the per-session shape and assert the leaky property is gone.
+- Cross-session continuity reinstates as a deliberate Phase 3 query (look up most-recent prior session's context) rather than an accidental side-effect of a leaky global. Tom's framing: "S1 scale per-session, S2/S3 scale integration."
+
 **Phase 2 cleanup landed (2026-05-02 same session):**
 - Removed dual-mode plumbing: `session_context` and `encoding_journal` are no longer passed to surface as separate fallback parameters. Frame is the canonical session prior; if Frame Constructor fails, surface runs WITHOUT a partnership context section (explicit degraded mode, logged loudly via `frame_build_failed`). No silent fallback to Phase 1 layout.
 - `build_surface_prompt`, `_call_surface`, `run_surface` signatures dropped `session_context` and `encoding_journal` params — clean unification.
@@ -98,6 +105,10 @@ These are real gaps from Phase 2. Each one was discussed and consciously deferre
 ### Calibration / validation
 
 11. **"Fresh Claude vs Anchor" calibration test** — Tom's idea from this session, parked for after Phase 2-3 ship. Run a wakeup probe ("Who am I working with? What's open? Where are we?") through fresh Claude (no brain) and Anchor (Frame loaded). Compare the felt difference. The realistic version of the validation R8 names — what the brain ACTUALLY buys at the wakeup moment.
+
+### Documentation drift
+
+12. **Update CLAUDE.md and skills/brain/SKILL.md to reflect Frame architecture** — both predate Phase 2 and don't mention Frame, the s2_node_families pattern, ctx.get_frame, or the recognition-loop framing. CLAUDE.md is the developer guide, SKILL.md is Anchor's identity baseline. Both need a Frame section so future-Anchor and future-developer pick up the right mental model from the docs, not by reading code.
 
 **Deferred (Phase 2 scope-creep risk, push to Phase 2.5 or later):**
 - Build the actual `s2_node_families` S2 maintenance unit (Tom only asked for the storage pattern in Phase 2; the maintenance loop is its own work, ~2hr, mirrors `EdgeFamilyIntegration`)
