@@ -298,11 +298,20 @@ def hook_recall(brain, args, graph_changes):
     brain.save()
 
     # ── S1 Surface: push relevant memories into awareness ──
-    # 2026-05-02 (Frame Phase 1): also pass the encoder's recent journal so
-    # surface sees what the encoder is currently tracking, not just the
-    # rolling 800-char session_context blob. See docs/FRAME-DESIGN.md.
+    # 2026-05-02 (Frame Phase 1): pass session_context + encoding_journal.
+    # 2026-05-02 (Frame Phase 2): build the Frame via SessionContext and pass
+    # it through. When frame is non-empty, surface_contract uses it as the
+    # "Partnership context:" prior in place of the separate session_context +
+    # encoding_journal blocks (Frame already contains both). Falls back to
+    # Phase 1 layout when frame is empty (defensive). See docs/FRAME-DESIGN.md.
     additional_context = None
     try:
+        try:
+            _frame = ctx.get_frame(brain)
+        except Exception as _frame_err:
+            brain._log_error('frame_build_failed', _frame_err,
+                             'Frame Constructor failed — falling back to Phase 1 layout')
+            _frame = ''
         additional_context = _run_surface(
             brain, ctx, candidates_data, user_message,
             session_context=brain.session_context,
@@ -311,7 +320,8 @@ def hook_recall(brain, args, graph_changes):
             result=result, enriched=enriched, results=results,
             recall_ref=recall_ref, session_id=session_id,
             graph_changes=graph_changes,
-            query_vec=_query_vec, prior_vecs=_prior_vecs)
+            query_vec=_query_vec, prior_vecs=_prior_vecs,
+            frame=_frame)
     except Exception as _surface_err:
         brain._log_error('daemon_surface', _surface_err,
                          'S1 Surface failed in daemon (query=%s)' % user_message[:100])

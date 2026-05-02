@@ -52,6 +52,30 @@ Return ONLY JSON:
 If nothing relevant: {"selected":[],"reason":"brief reason"}"""
 
 
+S2_NODE_FAMILIES_PROMPT = """You classify node types from a knowledge graph into semantic families and provide a meaning for each family.
+
+This graph stores knowledge from an AI-human collaboration — decisions, lessons, corrections, mechanisms, rules, concepts. The node types were written by an encoding agent (open text — the schema's NODE_TYPES list is documentation only, not enforced). You receive each type with its frequency and up to 10 sample TITLES showing how it's actually used.
+
+Each family groups types that share a semantic role — what KIND of knowledge the type represents. The `meaning` field will be embedded and used by consumers (Frame, voice rendering, signal producers) to route queries by family — it should distinguish this family's role from others, written in natural language a reader (or embedding model) would recognize.
+
+Group into semantic families based on what the types ACTUALLY MEAN (use the sample titles, not just the type name):
+- A family represents a knowledge ROLE — what part of the partnership's understanding this type captures
+- Be specific enough that families are useful for routing (Frame asking "which types are identity-bearing" must get a clean answer)
+- But not so specific that every type is its own family — aim for 10-20 families
+- Family names are lowercase_with_underscores, descriptive of the knowledge role
+- For every family you output, include a 1-2 sentence `meaning`
+
+Assign each type to an EXISTING family if it fits. Only create a NEW family if no existing one captures the role. When an existing family's MEANING is marked MISSING, include a meaning for it.
+
+Return ONLY JSON in this shape:
+{
+  "family_name": {
+    "members": ["type1", "type2"],
+    "meaning": "Short semantic description of what this family represents."
+  }
+}"""
+
+
 S2_EDGE_FAMILIES_PROMPT = """You classify edge relation types from a knowledge graph into semantic families and provide a meaning for each family.
 
 This graph stores knowledge from an AI-human collaboration — decisions, lessons, corrections, mechanisms, rules, concepts. The relation types were written by an encoding agent (open text, no closed list). You receive each type with its frequency and up to 10 sample DESCRIPTIONS showing how it's actually used in context.
@@ -301,3 +325,20 @@ def seed_interactions(brain):
                      template=S2_EDGE_FAMILIES_PROMPT,
                      parameters=json.dumps(initial_families),
                      created_by='s2:edge_families')
+
+    # Node families — initial mapping seeded from JSON file. Mirrors edge
+    # families pattern. Storage shape, prompt structure, and consumer-read
+    # path are identical (`brain.get_interaction_config('s2_node_families')`).
+    # The maintenance S2 unit (parallel to EdgeFamilyIntegration) is not
+    # built yet — when it lands, it updates the same key. See FRAME-DESIGN.md.
+    if 's2_node_families' not in existing:
+        v1_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               'scales', 's2', 'node_families_v1.json')
+        initial_families = {}
+        if os.path.exists(v1_path):
+            with open(v1_path) as f:
+                initial_families = json.load(f)
+        dal.register('s2_node_families',
+                     template=S2_NODE_FAMILIES_PROMPT,
+                     parameters=json.dumps(initial_families),
+                     created_by='s2:node_families')

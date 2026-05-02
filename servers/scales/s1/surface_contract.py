@@ -384,7 +384,7 @@ def build_surface_prompt(candidates, user_message, session_context="",
                        encoding_journal="",
                        recent_messages=None, recently_recalled=None,
                        retrieval_stats=None, intent=None,
-                       prompt_instructions=None):
+                       prompt_instructions=None, frame=""):
     """Build the S1 recall surface prompt. Single entry point.
 
     v9: Added retrieval_stats, intent, score normalization, conversation
@@ -394,6 +394,12 @@ def build_surface_prompt(candidates, user_message, session_context="",
     most recent journal pass (ENCODED/SKIPPED/WATCHING + SESSION CONTEXT)
     so surface sees what the encoder is currently tracking, not just
     the rolling 800-char session_context blob.
+    Frame Phase 2 (2026-05-02): added `frame` param. When provided, the
+    Frame replaces session_context + encoding_journal as the prior — the
+    Frame already contains both as its current_focus and recent_moves
+    sections, plus the partnership/operator/active-threads context that
+    session_context alone never carried. Falls back to v1/Phase-1 behavior
+    when frame is empty (defensive — supports rollback / unseeded brains).
 
     Args:
         candidates: List of candidate node dicts (enriched with metadata)
@@ -435,24 +441,25 @@ def build_surface_prompt(candidates, user_message, session_context="",
     if user_message:
         conversation += "Tom: %s\n" % (user_message or "")[:cfg['user_message_limit']]
 
-    # 2026-05-02 (Frame Phase 1): pass the full session_context blob, not the tail.
-    # The encoder maintains this as a rolling session arc (~768 chars currently).
-    # Surface was seeing only the last 200 chars (~25%) — most of the encoder's
-    # session understanding never reached Anchor's awareness. See FRAME-DESIGN.md.
+    # 2026-05-02 (Frame Phase 2): if Frame is provided, it carries
+    # session_context AND encoding_journal as its inner sections (current_focus,
+    # recent_moves) AND the partnership/operator/active-threads context that
+    # neither blob carried before. Replaces both. Falls back to Phase 1 layout
+    # when frame is empty.
     surface_session_context = ""
-    if session_context:
-        tail_limit = cfg.get('session_context_tail', 800)
-        if len(session_context) > tail_limit:
-            surface_session_context = "Session arc (tail): ..." + session_context[-tail_limit:]
-        else:
-            surface_session_context = "Session arc:\n" + session_context
-
-    # 2026-05-02 (Frame Phase 1): also pass the encoder's recent journal —
-    # the most recent encoding pass (ENCODED/SKIPPED/WATCHING + SESSION CONTEXT
-    # field). Newest first, capped ~1500 chars upstream. Empty on first turn.
     encoder_journal_block = ""
-    if encoding_journal:
-        encoder_journal_block = "Encoder's recent journal (newest first):\n%s\n" % encoding_journal
+    if frame:
+        surface_session_context = "Partnership context (your prior — what's currently in awareness):\n" + frame
+    else:
+        # Phase 1 fallback: session_context + encoding_journal injected separately
+        if session_context:
+            tail_limit = cfg.get('session_context_tail', 800)
+            if len(session_context) > tail_limit:
+                surface_session_context = "Session arc (tail): ..." + session_context[-tail_limit:]
+            else:
+                surface_session_context = "Session arc:\n" + session_context
+        if encoding_journal:
+            encoder_journal_block = "Encoder's recent journal (newest first):\n%s\n" % encoding_journal
 
     # Format recently recalled (lightweight — id + title only)
     recalled_text = ""

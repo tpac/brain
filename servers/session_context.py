@@ -67,6 +67,31 @@ class SessionContext:
         """S1 encode chain: encoding run triggered at this stop."""
         return 's1e-%s-%d' % (self.session_short, self.stop_counter)
 
+    # ── Frame ──
+
+    def get_frame(self, brain) -> str:
+        """Build and return Anchor's structured awareness Frame for this session.
+
+        Phase 2 (2026-05-02): Frame Constructor — markdown text with five
+        sections (Operator / Partnership / Active threads / Current focus /
+        Recent moves), composed deterministically from existing brain queries
+        plus this session's encoder state.
+
+        Brain is passed as a dependency rather than stored on SessionContext —
+        SessionContext is a per-request data carrier, brain is the singleton.
+
+        v1: rebuilt fresh on every call (no caching). The slow-changing slots
+        (operator/partnership/active-threads come from brain state) and the
+        fast-changing slots (current_focus/recent_moves come from session
+        state) are already separated at the data-source layer in build_frame —
+        a future split into brain-level vs session-level caching slots in
+        cleanly without restructuring the renderer.
+
+        See servers/scales/s1/frame.py and docs/FRAME-DESIGN.md.
+        """
+        from servers.scales.s1.frame import build_frame
+        return build_frame(brain, self.session_id)
+
     # ── Persistence ──
 
     def increment_fatigue(self, node_id: str) -> int:

@@ -43,7 +43,8 @@ def _get_recently_surfaced(brain, session_id):
 
 
 def _call_surface(brain, candidates_data, user_message, session_context,
-                  recent_messages, session_id, result, encoding_journal=''):
+                  recent_messages, session_id, result, encoding_journal='',
+                  frame=''):
     """Call Haiku to surface relevant nodes from candidates.
 
     Returns: (surfaced_dict, surface_prompt, max_tokens, interaction_id)
@@ -78,7 +79,8 @@ def _call_surface(brain, candidates_data, user_message, session_context,
         recently_recalled=recently_surfaced,
         retrieval_stats=retrieval_stats,
         intent=intent,
-        prompt_instructions=surface_instructions or None)
+        prompt_instructions=surface_instructions or None,
+        frame=frame)
 
     client = anthropic.Anthropic()
     api_resp = client.messages.create(
@@ -458,7 +460,7 @@ def _write_surface_result_file(recall_ref, surface_prompt, output, brain):
 def run_surface(brain, ctx, candidates_data, user_message, session_context,
                 recent_messages, result, enriched, results, recall_ref,
                 session_id, graph_changes, query_vec=None, prior_vecs=None,
-                encoding_journal=''):
+                encoding_journal='', frame=''):
     """S1 Surface: Haiku-select → spread_activation → activation-render → trace.
 
     The complete S1 Surface chain. Called from hook_recall in daemon_hooks.py.
@@ -473,7 +475,7 @@ def run_surface(brain, ctx, candidates_data, user_message, session_context,
     # Call Haiku selector (unchanged — picks ≤5 from 25 candidates)
     surfaced, surface_prompt, max_tokens, interaction_id = _call_surface(
         brain, candidates_data, user_message, session_context, recent_messages,
-        session_id, result, encoding_journal=encoding_journal)
+        session_id, result, encoding_journal=encoding_journal, frame=frame)
 
     selected = surfaced.get("selected", [])
     selected_short_ids = {s.get("id", "")[:8] for s in selected}

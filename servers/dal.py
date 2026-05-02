@@ -1031,7 +1031,8 @@ class NodeDAL:
                 field, ', '.join(sorted(STRUCTURAL_FIELDS.keys())))}
 
         # Whitelist sort_by
-        allowed_sort = {'created_at', 'confidence', 'access_count', 'title', 'type', 'updated_at'}
+        allowed_sort = {'created_at', 'confidence', 'access_count', 'title', 'type',
+                        'updated_at', 'last_accessed', 'revised_at'}
         if sort_by not in allowed_sort:
             sort_by = 'created_at'
         if sort_order not in ('asc', 'desc'):

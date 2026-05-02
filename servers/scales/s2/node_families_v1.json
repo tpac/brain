@@ -1,0 +1,137 @@
+{
+  "identity_bearing": {
+    "members": [
+      "principle",
+      "identity",
+      "vision",
+      "rule",
+      "operator",
+      "capability"
+    ],
+    "meaning": "Nodes that define who Anchor is, how Tom expects work done, or what the partnership stands for. These types carry the identity baseline — locked instances of these are axioms that should always be present in awareness."
+  },
+  "episodic_anchor": {
+    "members": [
+      "moment",
+      "anchor_quote",
+      "user_quote",
+      "quote",
+      "catalyst"
+    ],
+    "meaning": "Episodic snapshots — specific moments, quoted phrases, or inflection points. These types represent things that happened at a specific time and shaped what came after. Voice signatures and load-bearing phrasings live here."
+  },
+  "active_thread": {
+    "members": [
+      "open",
+      "tension",
+      "hypothesis",
+      "aspiration"
+    ],
+    "meaning": "Unresolved threads — things still being worked through. Open items, contradictions to resolve, untested beliefs, directional goals. These types signal 'work in progress' to consumers asking what's currently active."
+  },
+  "decided_committed": {
+    "members": [
+      "decision",
+      "handoff",
+      "milestone"
+    ],
+    "meaning": "Committed positions — what was settled, what was shipped, what was handed off. These types represent closure points distinct from active threads. A decision becomes part of identity once it stops being contested."
+  },
+  "integrated_knowledge": {
+    "members": [
+      "community"
+    ],
+    "meaning": "S2-synthesized cluster nodes that integrate many member nodes into a single conceptual handle. Communities ARE the partnership's accumulated knowledge — what we've built together as named topics."
+  },
+  "architecture_design": {
+    "members": [
+      "architecture",
+      "mechanism",
+      "pattern",
+      "convention",
+      "mental_model",
+      "purpose",
+      "constraint",
+      "arch_constraint"
+    ],
+    "meaning": "How things are built and why — the structural and procedural understanding of systems, components, and their interactions. Distinct from facts (these are HOW; facts are WHAT)."
+  },
+  "conceptual_knowledge": {
+    "members": [
+      "concept",
+      "code_concept",
+      "fn_reasoning",
+      "vocabulary",
+      "comment_anchor",
+      "intuition",
+      "thought"
+    ],
+    "meaning": "Conceptual handles — vocabulary, mental constructs, intuitions, and the language used to talk about the work. The shared vocabulary of the partnership lives here."
+  },
+  "factual_knowledge": {
+    "members": [
+      "fact",
+      "finding",
+      "observation",
+      "event",
+      "state",
+      "performance"
+    ],
+    "meaning": "Concrete facts, observations, and events with grounded evidence. The 'what' layer — what is/was true at a specific point. Distinct from insights (these are observations; insights are inferences)."
+  },
+  "lesson_insight": {
+    "members": [
+      "lesson",
+      "insight",
+      "validation",
+      "meta_learning",
+      "reflection"
+    ],
+    "meaning": "What was learned from experience — reusable principles extracted from specific episodes, validations of approaches, methods that proved themselves. The meta-knowledge layer."
+  },
+  "diagnostic": {
+    "members": [
+      "bug",
+      "warning",
+      "diagnosis",
+      "failure_mode",
+      "causal_chain",
+      "incident",
+      "uncertainty"
+    ],
+    "meaning": "Problems and their analyses — what went wrong, why it went wrong, what we don't yet understand. Operational-state knowledge, distinct from learned lessons (which are post-mortem syntheses)."
+  },
+  "correction_supersession": {
+    "members": [
+      "correction",
+      "bug_lesson"
+    ],
+    "meaning": "Knowledge that explicitly replaces or amends prior knowledge — the brain's self-correction layer. These types signal 'this updates what we previously held.'"
+  },
+  "task_artifact": {
+    "members": [
+      "task",
+      "procedure",
+      "file",
+      "project",
+      "person",
+      "object",
+      "requirement",
+      "context",
+      "artifact",
+      "param_influence",
+      "interaction"
+    ],
+    "meaning": "Work objects and contextual handles — files, tasks, people, projects, request contexts. These types reference concrete things in the world or workspace, distinct from conceptual or evaluative knowledge."
+  },
+  "boot_meta": {
+    "members": [
+      "boot"
+    ],
+    "meaning": "Boot-shaping nodes — written by previous sessions to seed the next session's context. Self-referential infrastructure for session continuity."
+  },
+  "noise": {
+    "members": [],
+    "meaning": "Type strings that don't carry semantic weight — placeholder, generic, or system-internal. Consumers should generally skip these. Empty in v1; future S2 unit may populate as patterns emerge."
+  }
+}
