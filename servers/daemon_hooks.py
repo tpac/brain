@@ -298,11 +298,15 @@ def hook_recall(brain, args, graph_changes):
     brain.save()
 
     # ── S1 Surface: push relevant memories into awareness ──
+    # 2026-05-02 (Frame Phase 1): also pass the encoder's recent journal so
+    # surface sees what the encoder is currently tracking, not just the
+    # rolling 800-char session_context blob. See docs/FRAME-DESIGN.md.
     additional_context = None
     try:
         additional_context = _run_surface(
             brain, ctx, candidates_data, user_message,
             session_context=brain.session_context,
+            encoding_journal=brain.get_recent_encoding_journal(session_id),
             recent_messages=recent_messages if 'recent_messages' in dir() else [],
             result=result, enriched=enriched, results=results,
             recall_ref=recall_ref, session_id=session_id,

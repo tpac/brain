@@ -465,6 +465,26 @@ class Brain(
         """
         return self.get_config('session_context', '') or ''
 
+    def get_recent_encoding_journal(self, session_id: str, max_chars: int = 1500) -> str:
+        """Read the most recent portion of the encoder's per-session journal.
+
+        The journal is the encoder's running log of what it ENCODED / SKIPPED /
+        is WATCHING this session, plus the SESSION CONTEXT field. It's
+        prepended (newest first) with "--- Run N (stop #X) ---" delimiters,
+        so the first max_chars naturally capture the most recent encoding
+        pass.
+
+        Used by surface (Phase 1 of Frame work, 2026-05-02) to give Haiku
+        the encoder's current understanding of the session — not just the
+        rolling 800-char session_context blob.
+
+        Returns empty string if no journal exists for this session.
+        """
+        if not session_id:
+            return ''
+        full = self.get_config('encoding_journal_' + session_id, '') or ''
+        return full[:max_chars] if full else ''
+
     def get_interaction_config(self, name: str) -> dict:
         """Get the latest config for an interaction. Returns {} if not found."""
         interaction = self._interaction_dal.get_latest(name)

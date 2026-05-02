@@ -174,7 +174,10 @@ SURFACE = {
     'recent_messages': 7,           # v9: was 5. Deeper conversation window
     'recent_recalls_messages': 10,  # look back 10 messages for previously surfaced nodes
     'session_context_limit': 800,   # shared with ENCODING_AGENT — full session journey
-    'session_context_tail': 200,  # v9: surface gets tail of session context (current focus)
+    'session_context_tail': 800,  # 2026-05-02 (Frame Phase 1): was 200. Surface now gets
+                                  # the full session_context blob, not just the tail.
+                                  # Encoder writes ~768 chars; surface was seeing ~25%.
+                                  # See docs/FRAME-DESIGN.md Phase 1.
     'max_tokens': 600,              # Haiku output cap
 }
 
@@ -378,6 +381,7 @@ def _dedup_candidates(candidates):
 
 
 def build_surface_prompt(candidates, user_message, session_context="",
+                       encoding_journal="",
                        recent_messages=None, recently_recalled=None,
                        retrieval_stats=None, intent=None,
                        prompt_instructions=None):
@@ -386,6 +390,10 @@ def build_surface_prompt(candidates, user_message, session_context="",
     v9: Added retrieval_stats, intent, score normalization, conversation
     context expansion, session context tail, candidate dedup, discovery tags.
     v10: prompt_instructions from interactions table (learnable boundary).
+    Frame Phase 1 (2026-05-02): added encoding_journal — the encoder's
+    most recent journal pass (ENCODED/SKIPPED/WATCHING + SESSION CONTEXT)
+    so surface sees what the encoder is currently tracking, not just
+    the rolling 800-char session_context blob.
 
     Args:
         candidates: List of candidate node dicts (enriched with metadata)
@@ -394,6 +402,9 @@ def build_surface_prompt(candidates, user_message, session_context="",
             (conversation, candidates, etc.) stays in code.
         user_message: The user's latest message
         session_context: Encoder's session summary (from brain_meta)
+        encoding_journal: Encoder's most recent journal entries (~1500 chars,
+            newest-first). Per-session, from brain_meta key
+            encoding_journal_{session_id}. Empty string if no journal yet.
         recent_messages: List of {"role": str, "content": str}
         recently_recalled: List of {"id": str, "title": str} from last N recalls
         retrieval_stats: Dict with brain_size, top_score, median_score, source_breakdown
@@ -424,14 +435,24 @@ def build_surface_prompt(candidates, user_message, session_context="",
     if user_message:
         conversation += "Tom: %s\n" % (user_message or "")[:cfg['user_message_limit']]
 
-    # v9: Session context — use tail for current focus, not full changelog
+    # 2026-05-02 (Frame Phase 1): pass the full session_context blob, not the tail.
+    # The encoder maintains this as a rolling session arc (~768 chars currently).
+    # Surface was seeing only the last 200 chars (~25%) — most of the encoder's
+    # session understanding never reached Anchor's awareness. See FRAME-DESIGN.md.
     surface_session_context = ""
     if session_context:
-        tail_limit = cfg.get('session_context_tail', 200)
+        tail_limit = cfg.get('session_context_tail', 800)
         if len(session_context) > tail_limit:
-            surface_session_context = "Current focus: ..." + session_context[-tail_limit:]
+            surface_session_context = "Session arc (tail): ..." + session_context[-tail_limit:]
         else:
-            surface_session_context = session_context
+            surface_session_context = "Session arc:\n" + session_context
+
+    # 2026-05-02 (Frame Phase 1): also pass the encoder's recent journal —
+    # the most recent encoding pass (ENCODED/SKIPPED/WATCHING + SESSION CONTEXT
+    # field). Newest first, capped ~1500 chars upstream. Empty on first turn.
+    encoder_journal_block = ""
+    if encoding_journal:
+        encoder_journal_block = "Encoder's recent journal (newest first):\n%s\n" % encoding_journal
 
     # Format recently recalled (lightweight — id + title only)
     recalled_text = ""
@@ -513,7 +534,7 @@ def build_surface_prompt(candidates, user_message, session_context="",
 
 Session: %s
 
-Conversation (recent, oldest first):
+%sConversation (recent, oldest first):
 %s
 Recently surfaced (deprioritize — only select if the current message specifically needs them):
 %s
@@ -526,6 +547,7 @@ Candidates:
 %s""" % (
         prompt_instructions,
         surface_session_context or "(first messages)",
+        encoder_journal_block,
         conversation or "(no recent messages)",
         recalled_text or "(none)",
         retrieval_context,
