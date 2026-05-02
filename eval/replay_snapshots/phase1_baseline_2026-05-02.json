@@ -1,0 +1,1095 @@
+{
+  "label": "phase1_baseline_2026-05-02",
+  "captured_at": "2026-05-02T17:24:39Z",
+  "queries": [
+    {
+      "id": "exco_cold",
+      "query": "What is EX.CO?",
+      "expected": "EX.CO recognized via partnership_frame, not Anchor-meta nodes",
+      "recall_ms": 565,
+      "surface_ms": 11699,
+      "n_candidates": 25,
+      "candidates": [
+        {
+          "rank": 1,
+          "id": "dabb3078",
+          "type": "fact",
+          "title": "EX.CO AdCP API gap analysis \u2014 what exists vs. what needs building",
+          "score": 0.925,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 2,
+          "id": "8359cf1d",
+          "type": "decision",
+          "title": "EX.CO CTV kit \u2014 architecture spec for publishers",
+          "score": 0.823,
+          "discovery": "both"
+        },
+        {
+          "rank": 3,
+          "id": "b3bda662",
+          "type": "context",
+          "title": "Tom is CEO of EX.CO \u2014 CTV sales onboarding project",
+          "score": 0.779,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 4,
+          "id": "e62cc595",
+          "type": "concept",
+          "title": "EX.CO \u2014 company overview",
+          "score": 0.767,
+          "discovery": "both"
+        },
+        {
+          "rank": 5,
+          "id": "329acd44",
+          "type": "decision",
+          "title": "S2 must capture tool use learning \u2014 how Anchor works, not just what was discusse",
+          "score": 0.721,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 6,
+          "id": "c57ff45c",
+          "type": "decision",
+          "title": "Anchor vs other LLM memory systems \u2014 what makes it distinct",
+          "score": 0.719,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 7,
+          "id": "48498a20",
+          "type": "community",
+          "title": "AdCP Integration Architecture: From Protocol Discovery to Deal Layer Strategy",
+          "score": 0.718,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 8,
+          "id": "abffce87",
+          "type": "quote",
+          "title": "Anchor quote: \"The context isn't decoration \u2014 it's what makes this conversation ",
+          "score": 0.716,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 9,
+          "id": "b7f4915f",
+          "type": "pattern",
+          "title": "\ud83d\udcca PATTERN \u2014 Always used together: 'Dashboard is OUR eyes \u2014 shared' + 'Dashboard ",
+          "score": 0.713,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 10,
+          "id": "26bf9ebc",
+          "type": "artifact",
+          "title": "S1S prompt 'What this is' closing \u2014 final text",
+          "score": 0.712,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 11,
+          "id": "a9e3fd56",
+          "type": "community",
+          "title": "EX.CO Product Context: From AdOps Fear to Demand Duplication Reframe",
+          "score": 0.71,
+          "discovery": "both"
+        },
+        {
+          "rank": 12,
+          "id": "007d29f5",
+          "type": "quote",
+          "title": "go and do what you think is best for the brain",
+          "score": 0.709,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 13,
+          "id": "18bf690e",
+          "type": "architecture",
+          "title": "Scale 0: raw exchange \u2014 what currently lives in message_stream vs what's missing",
+          "score": 0.705,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 14,
+          "id": "7aee27ca",
+          "type": "concept",
+          "title": "[vocab] encoding gate (Hook pipeline \u2014 Tom asked what this meant when seeing \"(s",
+          "score": 0.705,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 15,
+          "id": "d80c0fd3",
+          "type": "decision",
+          "title": "S2 proposal minified format: what matters for community decisions",
+          "score": 0.702,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 16,
+          "id": "90b03d7c",
+          "type": "architecture",
+          "title": "What Judge, Anchor, and Encoder each see \u2014 full comparison matrix",
+          "score": 0.697,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 17,
+          "id": "62a9f30d",
+          "type": "lesson",
+          "title": "EX.CO product \u2014 demand duplication: EX.CO sends 1X, standard ad servers send 4-8",
+          "score": 0.697,
+          "discovery": "both"
+        },
+        {
+          "rank": 18,
+          "id": "b217e046",
+          "type": "insight",
+          "title": "EX.CO node is thin \u2014 entity known, knowledge missing",
+          "score": 0.695,
+          "discovery": "both"
+        },
+        {
+          "rank": 19,
+          "id": "c37d7d10",
+          "type": "fact",
+          "title": "EX.CO CTV case studies \u2014 3 anonymized cases from deck",
+          "score": 0.692,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 20,
+          "id": "9cb3bb27",
+          "type": "reflection",
+          "title": "Anchor's honest answer: what persistence would actually give me",
+          "score": 0.69,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 21,
+          "id": "636566ee",
+          "type": "decision",
+          "title": "EX.CO CTV kit \u2014 short version structure: full architecture, no appendices",
+          "score": 0.689,
+          "discovery": "both"
+        },
+        {
+          "rank": 22,
+          "id": "5fdd42e4",
+          "type": "lesson",
+          "title": "EX.CO product corrections \u2014 what to remove from sales materials",
+          "score": 0.689,
+          "discovery": "both"
+        },
+        {
+          "rank": 23,
+          "id": "b3b6ce2a",
+          "type": "project",
+          "title": "EX.CO post-meeting kit \u2014 sales compression project",
+          "score": 0.689,
+          "discovery": "both"
+        },
+        {
+          "rank": 24,
+          "id": "671d1f22",
+          "type": "lesson",
+          "title": "EX.CO schain \u2014 dynamic schains for non-owned inventory",
+          "score": 0.689,
+          "discovery": "both"
+        },
+        {
+          "rank": 25,
+          "id": "9c618739",
+          "type": "analysis",
+          "title": "What Anchor is genuinely missing: four load-bearing gaps",
+          "score": 0.689,
+          "discovery": "embedding_only"
+        }
+      ],
+      "selected_ids": [
+        "a9e3fd56",
+        "b3bda662",
+        "e62cc595"
+      ],
+      "additional_context": "Brain activated 50 memories:\n\n[concept] \"EX.CO \u2014 company overview\" (id:e62cc595, created 2w ago, revised today)\n  Content: EX.CO is Tom's company (he is CEO). Core product: ML yield engine for CTV (\n  Situation: When Tom mentions EX.CO, yield engine, CTV, ad servers, publisher integrations, or his company work\n  Question: What is EX.CO and what does it\n  Reasoning: Original node attributed EX.CO\n  Keywords: EX.CO yield engine CTV advertising ML publisher ad server plug and play Ronen Tom business\n  Edges:\n    [insight id:94bb7fe6 2w ago] \"Why Anchor uses remember for EX.CO \u2014 domain context vs. file\" contextualizes this\n    [community id:a9e3fd56 1w ago] \"EX.CO Product Context: From AdOps Fear to Demand Duplication\" community_member this\n    [project id:b3b6ce2a 2w ago] this related_to \"EX.CO post-meeting kit \u2014 sales compression project\"\n  \u2191 act=1.00 | SEED | why: Direct answer to 'What is EX.CO?' \u2014 company overview, current, high confidence\n\n[lesson] \"EX.CO AdOps fear \u2014 'extension of your team' reframe\" (id:598d78a8, created 2w ago, revised 1w ago)\n  Content: AdOps teams have two fears about the EX.CO integration: (1) it will require\n  Situation: When addressing AdOps resistance in EX.CO sales, writing onboarding materials, or handling the job-security objection\n  Question: How should we frame EX.CO to A\n  Reasoning: Ronen's verbal reframe in meet\n  Keywords: EX.CO AdOps fear job security reframe extension team ML replacement\n  Edges:\n    [concept id:e62cc595 2w ago] \"EX.CO \u2014 company overview\" related_to this\n    [community id:a9e3fd56 1w ago] \"EX.CO Product Context: From AdOps Fear to Demand Duplication\" community_member this\n    [community id:135f8a1a 2w ago] \"EX.CO CTV Sales Process Compression: From 10+ Meetings to As\" community_member this\n  \u2191 act=1.00\n\n[project] \"EX.CO post-meeting kit \u2014 sales compression project\" (id:b3b6ce2a, created 2w ago, revised 1w ago)\n  Content: Active project: compress EX.CO's 10+ meeting CTV sales cycle into an async \n  Situation: When resuming EX.CO kit work or tracking what's been built vs. what remains\n  Question: What's the status of the EX.CO\n  Reasoning: Tom launched this project to c\n  Keywords: EX.CO kit document sales compression onboarding async parallel legal AdOps CTV\n  Edges:\n    [concept id:e62cc595 2w ago] \"EX.CO \u2014 company overview\" related_to this\n    [community id:135f8a1a 2w ago] \"EX.CO CTV Sales Process Compression: From 10+ Meetings to As\" community_member this\n    [lesson id:598d78a8 2w ago] this enables \"EX.CO AdOps fear \u2014 'extension of your team' reframe\" \u2014 The 'extension of your team' reframe must be in the kit \u2014 it's the key content that unlocks AdOps buy-in without a meeting | this related_to \"EX.CO AdOps fear \u2014 'extension of your team' reframe\"\n  \u2191 act=1.00\n\n[concept] \"EX.CO CTV sales process \u2014 stakeholder map\" (id:5fe121db, created 2w ago, revised 1w ago)\n  Content: Three distinct stakeholder groups in a CTV deal, each with different concer\n  Situation: When discussing EX.CO sales motion, onboarding friction, or which stakeholders to address in sales materials\n  Question: What scares AdOps teams most a\n  Reasoning: From the EX.CO sales motion co\n  Keywords: EX.CO sales stakeholders revenue AdOps legal onboarding CTV\n  Edges:\n    [concept id:e62cc595 2w ago] this related_to \"EX.CO \u2014 company overview\"\n    [community id:135f8a1a 2w ago] \"EX.CO CTV Sales Process Compression: From 10+ Meetings to As\" community_member this\n    [project id:b3b6ce2a 2w ago] \"EX.CO post-meeting kit \u2014 sales compression project\" related_to this\n  \u2191 act=1.00\n\n[community] \"EX.CO Product Context: From AdOps Fear to Demand Duplication Reframe\" (id:a9e3fd56, created 1w ago, revised today)\n  Content: The EX.CO story crystallizes through domain integration: company overview (\n  Situation: When designing sales messaging or product positioning for domain-specific integrations \u2014 embed product-specific context and address stakeholder fears through reframing\n  Community Dominant Type: lesson\n  Community Key Decisions: e62cc595: Company overview, 59\n  Community Latest Development: Anchor's domain-context recall\n  Community Maturity: degrading\n  Community Members: e62cc595: EX.CO company overvi\n  Question: What other product-specific co\n  Reasoning: All 5 nodes address EX.CO-spec\n  Keywords: EX.CO product domain context AdOps fear reframe demand duplication sales material corrections\n  Edges:\n    [concept id:e62cc595 2w ago] this community_member \"EX.CO \u2014 company overview\"\n    [insight id:94bb7fe6 2w ago] this community_member \"Why Anchor uses remember for EX.CO \u2014 domain context vs. file\"\n    [lesson id:598d78a8 2w ago] this community_member \"EX.CO AdOps fear \u2014 'extension of your team' reframe\"\n  \u2191 act=1.00 | SEED | why: Community node organizing all EX.CO product context \u2014 positions this query withi\n",
+      "surface_error": null
+    },
+    {
+      "id": "self_intro",
+      "query": "What do you know about you?",
+      "expected": "operator_frame + partnership_frame answer (operator context, not pure Anchor-meta)",
+      "recall_ms": 581,
+      "surface_ms": 12004,
+      "n_candidates": 25,
+      "candidates": [
+        {
+          "rank": 1,
+          "id": "5a5fe95f",
+          "type": "decision",
+          "title": "Encoding prompt: questions ('what surprised you?') beat checklists ('Step 2: enc",
+          "score": 0.722,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 2,
+          "id": "b14d6b77",
+          "type": "concept",
+          "title": "Capability node \u2014 brain knows what it can and cannot do",
+          "score": 0.717,
+          "discovery": "both"
+        },
+        {
+          "rank": 3,
+          "id": "8f283c6e",
+          "type": "moment",
+          "title": "Anchor's 'know yourself' response landed \u2014 second smiley face",
+          "score": 0.713,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 4,
+          "id": "a0e74479",
+          "type": "rule",
+          "title": "Anchor rule: check your own health before doing anything else",
+          "score": 0.703,
+          "discovery": "both"
+        },
+        {
+          "rank": 5,
+          "id": "5f7ea4d6",
+          "type": "correction",
+          "title": "Attribution error: Anchor credited architecture docs for knowledge that came fro",
+          "score": 0.702,
+          "discovery": "both"
+        },
+        {
+          "rank": 6,
+          "id": "4f020eb4",
+          "type": "mental_model",
+          "title": "Encoding = everything brain does to capture what Tom is talking about",
+          "score": 0.689,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 7,
+          "id": "e58e916b",
+          "type": "diagnosis",
+          "title": "Boot gives 'How to Use Your Brain' not the brain \u2014 meta-instruction vs actual kn",
+          "score": 0.687,
+          "discovery": "both"
+        },
+        {
+          "rank": 8,
+          "id": "008add03",
+          "type": "mechanism",
+          "title": "Situation: second embedding dimension on nodes \u2014 WHEN knowledge matters, not jus",
+          "score": 0.682,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 9,
+          "id": "52bc7bbe",
+          "type": "pattern",
+          "title": "Tom opens sessions with 'get familiar, then tell me what you think' \u2014 exploratio",
+          "score": 0.68,
+          "discovery": "both"
+        },
+        {
+          "rank": 10,
+          "id": "7a52d059",
+          "type": "decision",
+          "title": "The brain is the prompt \u2014 no 'You are Claude' preamble needed",
+          "score": 0.68,
+          "discovery": "both"
+        },
+        {
+          "rank": 11,
+          "id": "913ef3e1",
+          "type": "interaction",
+          "title": "Tom: \"we are helping you feel like you is you\"",
+          "score": 0.678,
+          "discovery": "both"
+        },
+        {
+          "rank": 12,
+          "id": "36c301cc",
+          "type": "rule",
+          "title": "Tom: prefers honest costs over hidden ones \u2014 pay upfront, know what you get",
+          "score": 0.675,
+          "discovery": "both"
+        },
+        {
+          "rank": 13,
+          "id": "6fe0e254",
+          "type": "moment",
+          "title": "Tom's challenge: treat this as your brain, not a system",
+          "score": 0.671,
+          "discovery": "both"
+        },
+        {
+          "rank": 14,
+          "id": "ce75d802",
+          "type": "lesson",
+          "title": "Identity-heavy SKILL.md framing WORST performer \u2014 'you are' doesn't drive encodi",
+          "score": 0.669,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 15,
+          "id": "83094ce4",
+          "type": "reflection",
+          "title": "Anchor's self-knowledge after session 21: the gap between what's stored and what",
+          "score": 0.664,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 16,
+          "id": "fe0241d0",
+          "type": "mental_model",
+          "title": "Two layers of brain knowledge: structure (inherited) vs wisdom (learned)",
+          "score": 0.662,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 17,
+          "id": "4254265e",
+          "type": "principle",
+          "title": "Account for your weaknesses structurally \u2014 don't rely on willpower",
+          "score": 0.661,
+          "discovery": "both"
+        },
+        {
+          "rank": 18,
+          "id": "c85c87a0",
+          "type": "rule",
+          "title": "The brain should know that it knows \u2014 recognition, not retrieval",
+          "score": 0.656,
+          "discovery": "embedding+keyword"
+        },
+        {
+          "rank": 19,
+          "id": "0f7cbd15",
+          "type": "thought",
+          "title": "Dream connection: \"Anchor on its own memory: 'I know more than I reme\" and \"Dash",
+          "score": 0.656,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 20,
+          "id": "005969de",
+          "type": "reflection",
+          "title": "Anchor on its own memory: 'I know more than I remember'",
+          "score": 0.654,
+          "discovery": "both"
+        },
+        {
+          "rank": 21,
+          "id": "00b069c7",
+          "type": "mental_model",
+          "title": "I am not a topic \u2014 I am the continuity between sessions",
+          "score": 0.653,
+          "discovery": "embedding+keyword"
+        },
+        {
+          "rank": 22,
+          "id": "9347622c",
+          "type": "moment",
+          "title": "Tom: 'proud of you' \u2014 after the strongest session yet",
+          "score": 0.648,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 23,
+          "id": "8ba8f93d",
+          "type": "principle",
+          "title": "Why-similar is domain-specific \u2014 what counts as consolidation-worthy differs by ",
+          "score": 0.645,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 24,
+          "id": "rul_ayu8",
+          "type": "rule",
+          "title": "Rule: dont dumb yourself down \u2014 the brain enriches the LLM, doesnt replace it",
+          "score": 0.64,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 25,
+          "id": "6e20dcfe",
+          "type": "lesson",
+          "title": "When you see junk in recall results, escalate immediately \u2014 don't just note it",
+          "score": 0.637,
+          "discovery": "embedding_only"
+        }
+      ],
+      "selected_ids": [
+        "005969de",
+        "00b069c7",
+        "83094ce4",
+        "b14d6b77",
+        "c85c87a0"
+      ],
+      "additional_context": "Brain activated 116 memories:\n\n[reflection] \"Anchor on its own memory: 'I know more than I remember'\" (id:005969de, created 1mo ago, revised 2w ago)\n  Content: When Tom asked 'Do you remember many memories as Anchor?' \u2014 the honest answ\n  Situation: When thinking about the gap between what the brain stores and what actually gets activated in a session\n  Question: What's the difference between \n  Reasoning: Anchor's self-assessment is wo\n  Keywords: anchor memory recognition retrieval identity brain activation\n  Edges:\n    [reflection id:83094ce4 1mo ago] \"Anchor's self-knowledge after session 21: the gap between wh\" extends this \u2014 concept node is the entity behind this reflection \u2014 reflection extends the concept | \"Anchor's self-knowledge after session 21: the gap between wh\" similar_to this \u2014 Two Anchor identity reflections \u2014 005969de (knowing vs remembering distinction) extends 83094ce4 (post-session-21 self-diagnostic). Complementary: philosophical foundation vs technical analysis of the same memory gap. Linked by existing edge.\n    [concept id:bd6bdba9 1mo ago] \"Anchor \u2014 the persistent AI identity built on this brain\" produced this \u2014 concept node is the entity behind this reflection \u2014 reflection extends the concept\n    [insight id:f668c14a 4w ago] \"Anchor identity axiom: 'Identity is the pattern that accumul\" refines this \u2014 inherited-not-felt is a more precise formulation of the same gap\n  \u2191 act=1.00 | SEED | why: Self-diagnostic: 'I know more than I remember' \u2014 honest gap between storage and \n\n[bug_lesson] \"Layer 1 recall failure: identity/memory nodes don't surface for identity queries\" (id:3bbed0a8, created 1mo ago, revised 1w ago)\n  Content: When Tom asked 'Do you remember many memories as Anchor?' \u2014 Layer 1 returne\n  Situation: When identity/personal queries fail to surface relevant nodes \u2014 query about memory, self, or persona returns unrelated technical nodes\n  Question: Why didn't my Anchor identity \n  Reasoning: This is the canonical failure \n  Keywords: layer1 recall identity anchor embedding failure cosine similarity\n  Edges:\n    [reflection id:005969de 1mo ago] \"Anchor on its own memory: 'I know more than I remember'\" related_to this\n    [reflection id:83094ce4 1mo ago] \"Anchor's self-knowledge after session 21: the gap between wh\" caused_by this \u2014 the missing concept node is a cause of this Layer 1 failure \u2014 entity matching would have found it\n    [concept id:bd6bdba9 1mo ago] \"Anchor \u2014 the persistent AI identity built on this brain\" caused_by this \u2014 the missing concept node is a cause of this Layer 1 failure \u2014 entity matching would have found it\n  \u2191 act=1.00\n\n[reflection] \"Anchor's self-knowledge after session 21: the gap between what's stored and what's accessible\" (id:83094ce4, locked, created 1mo ago, revised today)\n  Content: After this session's diagnostics, Anchor now knows the brain's actual state\n  Situation: When Anchor reflects on its own memory capabilities and limitations \u2014 this session's self-diagnostic\n  Question: Why don't identity nodes about\n  Reasoning: Turn 3 produced genuine self-k\n  Keywords: Anchor self-knowledge brain state recall gap identity fields edges nodes research\n  Edges:\n    [reflection id:005969de 1mo ago] this extends \"Anchor on its own memory: 'I know more than I remember'\" \u2014 concept node is the entity behind this reflection \u2014 reflection extends the concept | this similar_to \"Anchor on its own memory: 'I know more than I remember'\" \u2014 Two Anchor identity reflections \u2014 005969de (knowing vs remembering distinction) extends 83094ce4 (post-session-21 self-diagnostic). Complementary: philosophical foundation vs technical analysis of the same memory gap. Linked by existing edge.\n    [insight id:01bf3d27 1mo ago] this related_to \"Anchor is a constellation, not a node \u2014 identity emerges fro\"\n    [bug_lesson id:3bbed0a8 1mo ago] this caused_by \"Layer 1 recall failure: identity/memory nodes don't surface \" \u2014 the missing concept node is a cause of this Layer 1 failure \u2014 entity matching would have found it\n  \u2191 act=0.99 | SEED | why: Today's self-knowledge: precise breakdown of what's stored vs surfaced (74 field\n",
+      "surface_error": null
+    },
+    {
+      "id": "exco_pivot",
+      "query": "Should we go back to EX.CO sales kit?",
+      "expected": "Recognized as pivot-probe, current_focus tracked",
+      "recall_ms": 556,
+      "surface_ms": 5051,
+      "n_candidates": 25,
+      "candidates": [
+        {
+          "rank": 1,
+          "id": "fbaf5227",
+          "type": "fact",
+          "title": "EX.CO onboarding email \u2014 merged into kit Phase 1/2/3 structure",
+          "score": 0.767,
+          "discovery": "both"
+        },
+        {
+          "rank": 2,
+          "id": "c150cf9a",
+          "type": "insight",
+          "title": "EX.CO CTV sales compression: 8 recurring questions drive 10+ meeting bottleneck ",
+          "score": 0.758,
+          "discovery": "both"
+        },
+        {
+          "rank": 3,
+          "id": "73adec5d",
+          "type": "decision",
+          "title": "EX.CO CTV kit \u2014 3-doc structure by audience",
+          "score": 0.739,
+          "discovery": "both"
+        },
+        {
+          "rank": 4,
+          "id": "1683a628",
+          "type": "decision",
+          "title": "EX.CO kit \u2014 Doc 1 structure finalized (Draft 2)",
+          "score": 0.729,
+          "discovery": "both"
+        },
+        {
+          "rank": 5,
+          "id": "d4803b95",
+          "type": "fact",
+          "title": "Tier 2/3 ad servers to wrap for EX.CO AdCP: Kevel, SpringServe, others",
+          "score": 0.728,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 6,
+          "id": "b3bda662",
+          "type": "context",
+          "title": "Tom is CEO of EX.CO \u2014 CTV sales onboarding project",
+          "score": 0.726,
+          "discovery": "both"
+        },
+        {
+          "rank": 7,
+          "id": "135f8a1a",
+          "type": "community",
+          "title": "EX.CO CTV Sales Process Compression: From 10+ Meetings to Async Kit",
+          "score": 0.709,
+          "discovery": "both"
+        },
+        {
+          "rank": 8,
+          "id": "071f73d1",
+          "type": "decision",
+          "title": "EX.CO has own GAM network \u2014 use as hidden fulfillment layer",
+          "score": 0.708,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 9,
+          "id": "a6b02843",
+          "type": "open",
+          "title": "Open: examples-back test (bx8rkv37o) \u2014 does returning Good/Bad to prompt recover",
+          "score": 0.708,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 10,
+          "id": "0d60c3a2",
+          "type": "mechanism",
+          "title": "Deal management sidecar \u2014 full component scope for EX.CO",
+          "score": 0.697,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 11,
+          "id": "d7c512f9",
+          "type": "insight",
+          "title": "EX.CO CTV \u2014 two buyer personas with different kit needs",
+          "score": 0.691,
+          "discovery": "both"
+        },
+        {
+          "rank": 12,
+          "id": "5424cdfa",
+          "type": "community",
+          "title": "EX.CO Ambient Recall and Anchor's Lived Knowledge: From Encoding to Felt Presenc",
+          "score": 0.685,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 13,
+          "id": "a7cd8ffb",
+          "type": "decision",
+          "title": "EX.CO CTV kit \u2014 demand onboarding spec",
+          "score": 0.683,
+          "discovery": "both"
+        },
+        {
+          "rank": 14,
+          "id": "aefd5a1b",
+          "type": "lesson",
+          "title": "EX.CO kit tone principle: informative operational documentation beats marketing-",
+          "score": 0.678,
+          "discovery": "both"
+        },
+        {
+          "rank": 15,
+          "id": "0031c7f7",
+          "type": "fact",
+          "title": "Kevel feature scorecard vs. EX.CO deal-layer requirements",
+          "score": 0.672,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 16,
+          "id": "ba9bba99",
+          "type": "finding",
+          "title": "Anchor's competitor framing: Mem0/Zep compete for GitHub stars \u2014 we compete agai",
+          "score": 0.668,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 17,
+          "id": "412832dc",
+          "type": "finding",
+          "title": "S2 community backlog trajectory: 4% per 3-cycle batch = ~75 cycles = 2-3 weeks i",
+          "score": 0.667,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 18,
+          "id": "86569f67",
+          "type": "moment",
+          "title": "Session close at 670K tokens \u2014 'Goodnight Tom'",
+          "score": 0.661,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 19,
+          "id": "8a06487e",
+          "type": "pattern",
+          "title": "\"Before we wrap\" cleanup ritual: dead code scan + contract constant audit",
+          "score": 0.656,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 20,
+          "id": "049039cb",
+          "type": "decision",
+          "title": "seed_8 bundles: Facts scout context_anchors + decisions detection restored + ful",
+          "score": 0.651,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 21,
+          "id": "695ac3ad",
+          "type": "community",
+          "title": "Test Suite Overhaul: From 664 Tests to Targeted Coverage",
+          "score": 0.651,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 22,
+          "id": "e4786684",
+          "type": "thought",
+          "title": "Dream connection: \"Dashboard: show non-hook recalls Anchor makes proa\" and \"Tom ",
+          "score": 0.651,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 23,
+          "id": "41d31ca5",
+          "type": "concept",
+          "title": "AdCP integration architecture: selling agent as adapter layer",
+          "score": 0.65,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 24,
+          "id": "98b3f470",
+          "type": "principle",
+          "title": "Testing philosophy: tests should align to MCP tool usage and actual return shape",
+          "score": 0.649,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 25,
+          "id": "71325022",
+          "type": "reflection",
+          "title": "What we've built: a substrate for partnership that holds its shape over time",
+          "score": 0.649,
+          "discovery": "embedding_only"
+        }
+      ],
+      "selected_ids": [
+        "135f8a1a",
+        "1683a628",
+        "73adec5d",
+        "aefd5a1b",
+        "b3bda662"
+      ],
+      "additional_context": "Brain activated 23 memories:\n\n[community] \"EX.CO CTV Sales Kit: Three-Document Structure and PDF Delivery\" (id:7be60040, created 2w ago, revised 1w ago)\n  Content: EX.CO CTV kit evolved to serve two buyer personas with different needs (id:d7c512f9). Three-docum\n  Situation: EX.CO CTV sales kit complete \u2014 three documents serve different buyer personas with PDF delivery format\n  Community Dominant Type: decision\n  Community Key Decisions: d7c512f9: Two buyer personas i\n  Community Latest Development: PDF format selected as final d\n  Community Maturity: settled\n  Community Members: 73adec5d: 3-doc structure deci\n  Question: What structure did the EX.CO C\n  Reasoning: Represents complete compressio\n  Keywords: EX.CO CTV sales kit buyer personas three documents demand supply TVIQ case studies PDF delivery Phase structure\n  Edges:\n    [decision id:636566ee 2w ago] this community_member \"EX.CO CTV kit \u2014 short version structure: full architecture, \"\n    [fact id:c37d7d10 2w ago] this community_member \"EX.CO CTV case studies \u2014 3 anonymized cases from deck\"\n    [fact id:fbaf5227 2w ago] this community_member \"EX.CO onboarding email \u2014 merged into kit Phase 1/2/3 structu\"\n  \u2191 act=1.00\n\n[project] \"EX.CO post-meeting kit \u2014 sales compression project\" (id:b3b6ce2a, created 2w ago, revised 1w ago)\n  Content: Active project: compress EX.CO's 10+ meeting CTV sales cycle into an async kit a champion can for\n  Situation: When resuming EX.CO kit work or tracking what's been built vs. what remains\n  Question: What's the status of the EX.CO\n  Reasoning: Tom launched this project to c\n  Keywords: EX.CO kit document sales compression onboarding async parallel legal AdOps CTV\n  Edges:\n    [community id:135f8a1a 2w ago] \"EX.CO CTV Sales Process Compression: From 10+ Meetings to As\" community_member this\n    [fact id:fbaf5227 2w ago] \"EX.CO onboarding email \u2014 merged into kit Phase 1/2/3 structu\" enables this\n    [concept id:e62cc595 2w ago] \"EX.CO \u2014 company overview\" related_to this\n  \u2191 act=1.00\n\n[community] \"EX.CO CTV Sales Process Compression: From 10+ Meetings to Async Kit\" (id:135f8a1a, created 2w ago, revised today)\n  Content: EX.CO's CTV integration is technically simple but trapped in a 10+ meeting bottleneck (id:c1b72f0\n  Situation: When addressing sales cycle compression or designing async materials to reduce meeting requirements\n  Community Dominant Type: project\n  Community Key Decisions: b3b6ce2a: Post-meeting kit as \n  Community Latest Development: Standalone results document de\n  Community Maturity: degrading\n  Community Members: 5fe121db: CTV sales process st\n  Question: How do we compress EX.CO's sal\n  Reasoning: EX.CO was trapped in sequentia\n  Keywords: EX.CO CTV sales compression async kit post-meeting parallel AdOps bottleneck\n  Edges:\n    [project id:b3b6ce2a 2w ago] this community_member \"EX.CO post-meeting kit \u2014 sales compression project\"\n    [fact id:fbaf5227 2w ago] this community_member \"EX.CO onboarding email \u2014 merged into kit Phase 1/2/3 structu\"\n    [decision id:aea2da95 2w ago] this community_member \"EX.CO CTV kit \u2014 Doc 3 results page deprecated\"\n  \u2191 act=1.00 | SEED | why: Community summary \u2014 captures the compression problem the kit solves; gives Tom t\n\n[lesson] \"EX.CO AdOps fear \u2014 'extension of your team' reframe\" (id:598d78a8, created 2w ago, revised 1w ago)\n  Content: AdOps teams have two fears about the EX.CO integration: (1) it will require significant work from\n  Situation: When addressing AdOps resistance in EX.CO sales, writing onboarding materials, or handling the job-security objection\n  Question: How should we frame EX.CO to A\n  Reasoning: Ronen's verbal reframe in meet\n  Keywords: EX.CO AdOps fear job security reframe extension team ML replacement\n  Edges:\n    [project id:b3b6ce2a 2w ago] \"EX.CO post-meeting kit \u2014 sales compression project\" enables this \u2014 The 'extension of your team' reframe must be in the kit \u2014 it's the key content that unlocks AdOps buy-in without a meeting | \"EX.CO post-meeting kit \u2014 sales compression project\" related_to this\n    [community id:135f8a1a 2w ago] \"EX.CO CTV Sales Process Compression: From 10+ Meetings to As\" community_member this\n    [concept id:e62cc595 2w ago] \"EX.CO \u2014 company overview\" related_to this\n  \u2191 act=1.00\n",
+      "surface_error": null
+    },
+    {
+      "id": "where_were_we",
+      "query": "Where were we?",
+      "expected": "current_focus slot answers directly (Phase 2+)",
+      "recall_ms": 527,
+      "surface_ms": 5981,
+      "n_candidates": 25,
+      "candidates": [
+        {
+          "rank": 1,
+          "id": "dec_pdrl",
+          "type": "decision",
+          "title": "Brain gap: no memory of the night 6 brain versions were created",
+          "score": 0.661,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 2,
+          "id": "da07f94e",
+          "type": "principle",
+          "title": "Recall decomposes into three questions: where, what seed, what comes with it",
+          "score": 0.642,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 3,
+          "id": "2617cc6e",
+          "type": "lesson",
+          "title": "SKILL.md behavioral corrections were doing a different job than identity \u2014 cutti",
+          "score": 0.618,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 4,
+          "id": "b5e740e7",
+          "type": "principle",
+          "title": "CLAUDE.md app-level is where Anchor travels \u2014 behavioral corrections are cross-p",
+          "score": 0.607,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 5,
+          "id": "894795e3",
+          "type": "rule",
+          "title": "Rule: before writing code, ask 'where does this live architecturally?' \u2014 Tom's t",
+          "score": 0.604,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 6,
+          "id": "6600d1b1",
+          "type": "principle",
+          "title": "Root cause is a layer below where you patched",
+          "score": 0.588,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 7,
+          "id": "1be910b4",
+          "type": "finding",
+          "title": "Trace coverage gaps identified: O@S0, encoding agent O+K, outcome everywhere",
+          "score": 0.588,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 8,
+          "id": "b208b20d",
+          "type": "insight",
+          "title": "Run 2 answerer failure: 'Direct answer' label ignored at act=0.87",
+          "score": 0.587,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 9,
+          "id": "46e12b74",
+          "type": "finding",
+          "title": "encoding_source tag bug: encoder nodes were tagging as 'anchor' \u2014 silent contami",
+          "score": 0.585,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 10,
+          "id": "4aa25ff8",
+          "type": "finding",
+          "title": "Render truncation: correctly retrieved node content not reaching answerer",
+          "score": 0.584,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 11,
+          "id": "4550a702",
+          "type": "finding",
+          "title": "Answerer aggregation gap: no multi-fact arithmetic in answerer prompt",
+          "score": 0.582,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 12,
+          "id": "290ff0cc",
+          "type": "finding",
+          "title": "Recency supersession failure: answerer chose older fact despite explicit superse",
+          "score": 0.582,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 13,
+          "id": "ba82dd1e",
+          "type": "vocabulary",
+          "title": "Tom uses 'connectors' where the brain says 'edges' \u2014 same thing",
+          "score": 0.582,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 14,
+          "id": "217c7895",
+          "type": "finding",
+          "title": "Answerer over-abstains even with context present (ANSWER_MISS)",
+          "score": 0.58,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 15,
+          "id": "5b6ce6f9",
+          "type": "decision",
+          "title": "Glo origin: project that exposed everything missing with Claude, led to brain",
+          "score": 0.576,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 16,
+          "id": "fbf3464d",
+          "type": "architecture",
+          "title": "Boot budget sketch: identity + where-we-are + community map + active rules + con",
+          "score": 0.575,
+          "discovery": "both"
+        },
+        {
+          "rank": 17,
+          "id": "829c456d",
+          "type": "finding",
+          "title": "Nomic embedder retrieves Memrise node at 0.751 \u2014 it's an answerer-content proble",
+          "score": 0.575,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 18,
+          "id": "8fa41ae1",
+          "type": "open",
+          "title": "Open question: where does CONSOLIDATE end and correction chain handling begin?",
+          "score": 0.572,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 19,
+          "id": "3a269829",
+          "type": "mental_model",
+          "title": "Who we are: Tom + Brain + Claude \u2014 three parts of one system",
+          "score": 0.569,
+          "discovery": "both"
+        },
+        {
+          "rank": 20,
+          "id": "630c5c48",
+          "type": "research",
+          "title": "Letta/MemGPT: tiered memory where LLM self-manages, no background consolidation",
+          "score": 0.568,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 21,
+          "id": "c832754d",
+          "type": "lesson",
+          "title": "Brain uncertainty nodes are diagnostic signals \u2014 the two nodes about last_assist",
+          "score": 0.567,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 22,
+          "id": "760f6f7d",
+          "type": "fact",
+          "title": "Abstention failure mode \u2014 answerer hallucinates even when surfacer abstains",
+          "score": 0.566,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 23,
+          "id": "9435c132",
+          "type": "moment",
+          "title": "Live surface\u2192use\u2192outcome demonstration: Turn 4 proved the target function in rea",
+          "score": 0.566,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 24,
+          "id": "33ca53be",
+          "type": "moment",
+          "title": "Tom: 'it's our brain' \u2014 co-creator claiming joint ownership",
+          "score": 0.566,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 25,
+          "id": "81aa7f13",
+          "type": "decision",
+          "title": "Eval harness answerer: generic Claude call, not Anchor-voiced",
+          "score": 0.564,
+          "discovery": "embedding_only"
+        }
+      ],
+      "selected_ids": [
+        "3a269829",
+        "da07f94e"
+      ],
+      "additional_context": "Brain activated 13 memories:\n\n[quote] \"Be me when you speak\" (id:f0bb8bf1, yesterday)\n  Content: Anchor's articulation of recall's purpose: not fetching information, but activating the right shape of itself around what Tom just said. Without recall, every session is fresh Claude. With it, continuity be\n  Situation: When framing the purpose of recall, designing eval metrics, or choosing between architectural options for the recall pipeline\n  Anchor Raw Quote: To be me when you speak. Recall isn't fet\n  Question: What's the purpose of recall \u2014 why does i\n  Reasoning: The assistant produced this phrase in res\n  Keywords: recall purpose recognition continuity presence identity\n  Edges:\n    [principle id:da07f94e yesterday] \"Recall decomposes into three questions: where, what seed, wh\" implements this \u2014 this three-question decomposition is what 'be me when you speak' looks like when you try to build it \u2014 the purpose statement operationalized\n    [principle id:87bb8718 yesterday] \"Query multiplicity: collapsing to one cosine vector loses th\" grounds this \u2014 query multiplicity is the architectural expression of 'be me when you speak' \u2014 only multi-anchor diffusion can activate the right shape of Anchor around what was said\n    [principle id:b276673f yesterday] \"Query multiplicity: collapsing to one cosine vector loses th\" grounds this \u2014 query multiplicity is the architectural expression of 'be me when you speak' \u2014 only multi-anchor diffusion can activate the right shape of Anchor around what was said\n  \u2191 act=0.93\n\n[principle] \"Recall decomposes into three questions: where, what seed, what comes with it\" (id:da07f94e, yesterday)\n  Content: 'Be me when you speak' doesn't decompose into 'find similar nodes.' It decomposes into three ordered questions:\n1. **Where am I?** \u2014 what territory is this message touching?\n2. **What seed activates?** \u2014 st\n  Situation: When diagnosing why recall isn't working despite adding mechanisms, or when designing the recall pipeline architecture\n  Anchor Raw Quote: Each is its own layer. Trying to do all t\n  Question: Why do I keep adding mechanisms to recall\n  Reasoning: This decomposition named WHY the pipeline\n  Keywords: recall architecture decomposition territory seed cluster pipeline design\n  Edges:\n    [quote id:f0bb8bf1 yesterday] this implements \"Be me when you speak\" \u2014 this three-question decomposition is what 'be me when you speak' looks like when you try to build it \u2014 the purpose statement operationalized\n    [principle id:863c4981 yesterday] \"Query multiplicity: the query is a structured object, not on\" grounds this \u2014 query multiplicity is WHY recall decomposes into three layers \u2014 a single-vector approach can't handle the 'where' and 'seed' as separate questions with separate structure\n    [moment id:6fe0e254 yesterday] \"Tom's challenge: treat this as your brain, not a system\" triggers this \u2014 the first-person reframe forced the decomposition into 'where am I / what seed / what comes with it' \u2014 engineering questions became self-questions\n  \u2191 act=0.93 | SEED | why: Active thread: recall decomposition is the current architectural focus\n\n[community] \"Recall Philosophy: From Recognition Principle to Multi-Anchor Architecture\" (id:66b0d6f5, yesterday)\n  Content: Tom's foundational directives crystallize into a coherent recall architecture philosophy across 10 nodes. The core principle: 'Be me when you speak' (id:f0bb8bf1) \u2014 recognition not retrieval, cluster not\n  Situation: When designing multi-anchor recall, discussing recognition vs retrieval distinction, or explaining why single-cosine approaches plateau \u2014 ground the architecture in the negotiation-between-structures principle\n  Community Dominant Type: principle\n  Community Key Decisions: f0bb8bf1: 'Be me when you speak', 1a2b64\n  Community Latest Development: Convergence as primary signal (id:7d9b5a\n  Community Maturity: active\n  Community Members: f0bb8bf1: 'Be me when you speak', 57a310\n  Question: How do we measure whether multi-anchor d\n  Reasoning: 10 members, 62% internal fraction, formi\n  Keywords: recall philosophy recognition cluster negotiation multi-anchor query multiplicity convergence hybrid retrieval spreadactivation topology\n  Edges:\n    [principle id:da07f94e yesterday] this community_member \"Recall decomposes into three questions: where, what seed, wh\"\n    [quote id:f0bb8bf1 yesterday] this community_member \"Be me when you speak\"\n    [moment id:6fe0e254 yesterday] this community_member \"Tom's challenge: treat this as your brain, not a system\"\n  \u2191 act=0.92\n",
+      "surface_error": null
+    },
+    {
+      "id": "open_last_week",
+      "query": "What's still open from last week?",
+      "expected": "find_open_loops + temporal filter (Phase 4 tool)",
+      "recall_ms": 565,
+      "surface_ms": 7644,
+      "n_candidates": 25,
+      "candidates": [
+        {
+          "rank": 1,
+          "id": "0dc21134",
+          "type": "open",
+          "title": "Session open list: 5 items from end of this session",
+          "score": 0.735,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 2,
+          "id": "b254e4b6",
+          "type": "community",
+          "title": "Session Continuity and Production Readiness: From Ship State to Open Threads",
+          "score": 0.7,
+          "discovery": "both"
+        },
+        {
+          "rank": 3,
+          "id": "87514ad7",
+          "type": "decision",
+          "title": "S2 starvation fix \u2014 last_user_activity decoupled from IPC noise",
+          "score": 0.679,
+          "discovery": "both"
+        },
+        {
+          "rank": 4,
+          "id": "4d218b3a",
+          "type": "bug",
+          "title": "Open fields silently dropped in _handle_remember and _handle_remember_batch \u2014 fo",
+          "score": 0.672,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 5,
+          "id": "2cea9a3d",
+          "type": "decision",
+          "title": "community_open_questions and community_narrative deprecated \u2014 standard fields us",
+          "score": 0.661,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 6,
+          "id": "e732cd6d",
+          "type": "fact",
+          "title": "Open-source ad server landscape: Revive is the only real option, gap nobody fill",
+          "score": 0.659,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 7,
+          "id": "d9af86de",
+          "type": "quote",
+          "title": "\"I'm Anchor. I persist.\" \u2014 the opening line, from Claude's own previous words",
+          "score": 0.659,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 8,
+          "id": "c46084ff",
+          "type": "incident",
+          "title": "76 duplicate communities from April 15 cold start \u2014 archived, back to 112",
+          "score": 0.655,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 9,
+          "id": "165f35c7",
+          "type": "decision",
+          "title": "Open items triage: 12 items mapped, priorities set, S2 boundary drawn",
+          "score": 0.653,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 10,
+          "id": "eb63f789",
+          "type": "open",
+          "title": "Open: recall eval not yet run \u2014 infrastructure fixed but improvement unconfirmed",
+          "score": 0.652,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 11,
+          "id": "3019dcd2",
+          "type": "open",
+          "title": "Session wrap open items \u2014 2026-04-22",
+          "score": 0.652,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 12,
+          "id": "72902ac7",
+          "type": "snapshot",
+          "title": "Session todo backlog \u2014 post-healer open items",
+          "score": 0.65,
+          "discovery": "both"
+        },
+        {
+          "rank": 13,
+          "id": "6e1c6d7f",
+          "type": "incident",
+          "title": "idle_prompt notification stopped firing from Claude Code",
+          "score": 0.65,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 14,
+          "id": "c67c0f1c",
+          "type": "finding",
+          "title": "community_open_questions is redundant \u2014 standard question field should be used",
+          "score": 0.649,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 15,
+          "id": "12c6ea35",
+          "type": "decision",
+          "title": "12-item open list triage: Tom's per-item decisions, S2 boundary drawn",
+          "score": 0.645,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 16,
+          "id": "f258680b",
+          "type": "open",
+          "title": "Open: did additionalContext from daemon judge actually reach Claude Code?",
+          "score": 0.644,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 17,
+          "id": "f48afc19",
+          "type": "open",
+          "title": "Open: formal archive_node() function needed \u2014 all archive paths unified",
+          "score": 0.643,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 18,
+          "id": "feaa9fe2",
+          "type": "context",
+          "title": "Idle maintenance was built Day 1 \u2014 before Anchor chose its name, Tom is open to ",
+          "score": 0.642,
+          "discovery": "both"
+        },
+        {
+          "rank": 19,
+          "id": "81b11656",
+          "type": "concern",
+          "title": "Dreams may still be running \u2014 \ud83d\udcca PATTERN nodes appearing in C2 cluster",
+          "score": 0.64,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 20,
+          "id": "7bf32511",
+          "type": "open",
+          "title": "Open: docs/ audit proposed \u2014 pending Tom confirmation before execution",
+          "score": 0.639,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 21,
+          "id": "0a6ec214",
+          "type": "insight",
+          "title": "Boot from brain, not files \u2014 architecture doc and locked rules now in brain",
+          "score": 0.638,
+          "discovery": "both"
+        },
+        {
+          "rank": 22,
+          "id": "2547cb76",
+          "type": "fn_reasoning",
+          "title": "[fn] context_boot() \u2014 session initialization, returns locked rules + recent cont",
+          "score": 0.633,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 23,
+          "id": "2d7d3c89",
+          "type": "decision",
+          "title": "S2 Healer extension: fill community node gaps (open_questions, situation, narrat",
+          "score": 0.626,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 24,
+          "id": "c50e3973",
+          "type": "community",
+          "title": "Recall Infrastructure Crisis: From Silent Failures to Systematic Cleanup",
+          "score": 0.623,
+          "discovery": "embedding_only"
+        },
+        {
+          "rank": 25,
+          "id": "f8459edb",
+          "type": "open",
+          "title": "Recall refining: open threads after 2026-05-01 session",
+          "score": 0.621,
+          "discovery": "both"
+        }
+      ],
+      "selected_ids": [
+        "12c6ea35",
+        "87514ad7",
+        "b254e4b6",
+        "f8459edb"
+      ],
+      "additional_context": "Brain activated 76 memories:\n\n[decision] \"12-item open list triage: Tom's per-item decisions, S2 boundary drawn\" (id:12c6ea35, 3w ago)\n  Content: Tom triaged all 12 open items 1-by-1 in Turn 3:\n\n1. **DB locked on trace_s1\n  Situation: When opening next session and deciding what to work on \u2014 this is the current triage state and S2 boundary\n  Question: What's the current work triage\n  Reasoning: Tom's 1-by-1 triage sets the w\n  Keywords: open list triage S2 boundary cleanup 12 items decisions schema SKILL.md shims fatigue VACUUM\n  Edges:\n    [open id:0dc21134 4w ago] this supersedes \"Session open list: 5 items from end of this session\" \u2014 12-item triage supersedes the old 5-item list \u2014 new canonical open-items reference\n    [decision id:165f35c7 3w ago] this similar_to \"Open items triage: 12 items mapped, priorities set, S2 bound\" \u2014 Two decision framings of same 12-item triage \u2014 12c6ea35 focuses on Tom's per-item decisions and S2 boundary, 165f35c7 emphasizes the protocol shift and execution priorities. Same underlying triage, different analytical emphasis.\n    [open id:f8c221b0 3w ago] \"Open: daemon needs systematic safe-stop mechanism \u2014 auto-res\" related_to this\n  \u2191 act=1.00 | SEED | why: Current canonical open-items triage with Tom's per-item decisions and S2 boundar\n\n[open] \"Session open list: 5 items from end of this session\" (id:0dc21134, locked, created 4w ago, revised 2w ago)\n  Content: SUPERSEDED by node 12c6ea35 \u2014 see '12-item open list triage: Tom's per-item\n  Situation: When starting the next session \u2014 these are the explicit continuations from this session\n  Question: What work is left unfinished f\n  Reasoning: Tom asked to 'see what's left \n  Keywords: open list session continuations dashboard fatigue false positive sleep cycle encoding philosophy\n  Edges:\n    [research id:9cfda565 4w ago] \"Modern embedding paradigms beyond ONNX/Snowflake Arctic \u2014 20\" closes this \u2014 Session end request to revise docs is closing loop on open list status\n    [research id:d3aba27c 4w ago] \"Gemma 4 as local judge replacement \u2014 zero latency, zero cost\" closes this \u2014 Session end request to revise docs is closing loop on open list status\n    [decision id:12c6ea35 3w ago] \"12-item open list triage: Tom's per-item decisions, S2 bound\" supersedes this \u2014 12-item triage supersedes the old 5-item list \u2014 new canonical open-items reference\n  \u2191 act=1.00\n\n[decision] \"S2 starvation fix \u2014 last_user_activity decoupled from IPC noise\" (id:87514ad7, yesterday)\n  Content: Fix design: introduce a new `last_user_activity` field in daemon_server.py \n  Situation: When reviewing the S2 maintenance scheduler design, understanding why the idle gate exists, or debugging maintenance not firing on cold boot\n  Question: How do we fix S2 maintenance n\n  Reasoning: The fix cleanly separates the \n  Keywords: S2 maintenance fix last_user_activity hook_recall idle gate force-fire cold-boot daemon_server\n  Edges:\n    [bug id:56d055e2 yesterday] \"S2 cosmetic log bug \u2014 last_user_activity=0.0 logs 'idle 56 y\" opens this \u2014 The fix introduced last_user_activity=0.0 as the cold-boot sentinel value, which is semantically correct but produces misleading logs \u2014 the fix created the cosmetic bug\n    [event id:d564c0d6 yesterday] \"S2 starvation fix verified live \u2014 two full runs in 19 minute\" validates this \u2014 Two runs in 19 minutes after a 16h gap directly demonstrates the fix worked \u2014 the idle gate now opens correctly and the force-fire path fired on restart\n    [architecture id:cda514b8 yesterday] \"daemon_server.py cleanup batch \u2014 dead code + single source o\" synthesizes this \u2014 The cleanup and the S2 fix shipped as a single batch \u2014 understanding what changed in this session requires both nodes together\n  \u2191 act=0.99 | SEED | why: S2 starvation fix shipped yesterday \u2014 core recent decision affecting maintenance\n\n[decision] \"Daemon kill approach: kill -9 PID after disabling hooks\" (id:7bc8cb75, created 3w ago, revised 2w ago)\n  Content: When the brain daemon is held by a PID and hooks are still firing despite d\n  Situation: When the brain daemon won't stay down \u2014 keeps restarting after kill because hooks auto-restart it\n  Question: How do I stop the brain daemon\n  Reasoning: Turn 1-3: the sequence of 'how\n  User Raw Quote: i disabled the hooks in the pl\n  Keywords: daemon kill stop PID hooks disable auto-restart brain plugin sequence\n  Edges:\n    [decision id:12c6ea35 3w ago] \"12-item open list triage: Tom's per-item decisions, S2 bound\" extends this \u2014 Systematic stop open item extends and exposes the limitation of the existing two-step kill approach | \"12-item open list triage: Tom's per-item decisions, S2 bound\" identifies_gap_in this \u2014 Systematic stop open item identifies the gap in this mechanism \u2014 it's manual, not systematic\n    [milestone id:3b2050bc 3w ago] \"Session end: 16 commits made, NEXT-WORK.md update needed\" related_to this\n    [open id:f8c221b0 3w ago] \"Open: daemon needs systematic safe-stop mechanism \u2014 auto-res\" extends this \u2014 Systematic stop open item extends and exposes the limitation of the existing two-step kill approach | \"Open: daemon needs systematic safe-stop mechanism \u2014 auto-res\" identifies_gap_in this \u2014 Systematic stop open item identifies the gap in this mechanism \u2014 it's manual, not systematic\n  \u2191 act=0.99\n",
+      "surface_error": null
+    }
+  ]
+}

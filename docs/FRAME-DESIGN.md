@@ -11,7 +11,64 @@
 
 ## 0. Pick up here (current state) <a name="0-pickup"></a>
 
-**Most recent work:** Frame Phase 1 connecting code shipped (commits `241ab37` for Phase 1 itself, then commit-pending for timeout bumps + Pattern A fix + this doc enrichment). Surface prompt v1 registered (3047 chars) with recognition-over-search framing. Hook timeout bumped 14s→20s to cover Haiku tail latency.
+**Most recent work:** Frame Phase 1 connecting code shipped (commits `241ab37` for Phase 1 itself, then commit-pending for timeout bumps + Pattern A fix + this doc enrichment). Surface prompt v1 registered (3047 chars) with recognition-over-search framing. Hook timeout bumped 14s→20s to cover Haiku tail latency. **2026-05-02 (later):** validation harness shipped — `eval/frame_replay.py` runs the Appendix A corpus against an isolated brain copy, captures labeled snapshots, diffs two snapshots side-by-side. Phase 1 baseline captured as `phase1_baseline_2026-05-02`. Q2 proposal drafted in Section 9.1 — three-layer partnership_frame (integrated + permanent + warm), awaiting Tom's react.
+
+**2026-05-02 (Phase 2 in-progress, NOT shipped):**
+- Built `servers/scales/s1/frame.py` — Frame Constructor with five sections (Operator / Partnership-3-layer / Active threads / Current focus / Recent moves). Uses only `brain.filter_nodes`, `brain.session_context`, `brain.get_recent_encoding_journal` — no new SQL, no LLM call.
+- Smoke-tested: ~7700 chars (~1900 tokens), all sections render against live brain copy.
+- Discovered: `access_count` sort is a recipe for stagnation (rewards historic obsessions like 10-session hook deep-dives forever). Switched all sorts to `last_accessed` for fluid, recency-driven Frame content. Empirically dramatic: Operator went 2→9 entries; Communities went infrastructure-heavy ("Mixin Decomposition") → topic-current ("Frame Design and Build" #1, "Validation Before Iteration"). Frame now reflects WHERE WE ARE, not WHERE WE'VE BEEN MOST.
+- Added `last_accessed` and `revised_at` to DAL `filter_nodes` allowed_sort whitelist (one-line completion of an existing function — Tom: "DAL should be convenient for whatever purpose").
+- Discovered: **node types are open text, not closed enum** (CHECK constraint removed in v8.3, NODE_TYPES list in schema.py is vestigial documentation). Most types in active use (open, milestone, architecture, principle, fact, moment, quote, community, event, etc.) aren't in the documented list. This means node-type families are the SAME problem shape as edge relation families — both classify open text.
+
+**Phase 2 progress — what's shipped this session:**
+1. ✅ **`s2_node_families` interaction seeded** mirroring s2_edge_families pattern:
+   - `servers/scales/s2/node_families_v1.json` — 14 families covering identity_bearing, episodic_anchor, active_thread, decided_committed, integrated_knowledge, architecture_design, conceptual_knowledge, factual_knowledge, lesson_insight, diagnostic, correction_supersession, task_artifact, boot_meta, noise
+   - `interaction_seed.py` registers `s2_node_families` with template (S2_NODE_FAMILIES_PROMPT) + seed JSON on fresh brains
+   - Verified in IsolatedBrain — fresh brain copy seeds the interaction correctly on first instantiation
+2. ✅ **`frame.py` refactored** to read families via `brain.get_interaction_config('s2_node_families')` (with fallback to hardcoded defaults for unseeded brains)
+   - OPERATOR_TYPES → reads `identity_bearing` family
+   - PERMANENT_MOMENT_TYPES → reads `episodic_anchor` family
+   - WARM_MOMENT_TYPES → reads `episodic_anchor` + `lesson_insight` families
+   - ACTIVE_THREAD_TYPES → reads `active_thread` family
+   - Smoke test: Operator section grew from 9 → 10 entries (now includes `rule` and `capability` types via family expansion)
+
+**Phase 2 wire-up shipped:**
+- ✅ `SessionContext.get_frame(brain)` — session-scoped entry point (Tom's call: Frame is per-session, brain is the singleton dependency)
+- ✅ `daemon_hooks.hook_recall` calls `ctx.get_frame(brain)`, passes through `_run_surface(frame=...)`
+- ✅ `run_surface` and `_call_surface` thread `frame` through to `build_surface_prompt`
+- ✅ `build_surface_prompt(frame=...)` renders Frame as "Partnership context (your prior):" — replaces session_context + encoding_journal blocks when Frame is non-empty (defensive fallback to Phase 1 layout otherwise)
+- ✅ Tests: `tests/test_frame.py` (13 tests, all pass) — covers build_frame, family resolution + fallback, ctx.get_frame, seed presence, surface_prompt-accepts-frame
+- ✅ Regression check: 98/98 passed on contract_sync + brain_voice + dispatch_contract_sync + daemon tests
+
+**Phase 2 validation:**
+- ✅ Captured `phase2_v1_unified` via harness, compared to `phase1_baseline_2026-05-02`
+- Real Frame-driven changes observed: 3 of 5 queries showed selection shifts, latency mostly stable, context size 4-7% smaller on stable selections (Frame replaces session_context block more efficiently)
+- Quality of selection changes is qualitative — needs Tom's eye on actual selections to declare improvement vs regression
+
+**Phase 2 still NOT in production:**
+- Daemon hasn't been restarted — wire-up exists in source but live daemon runs pre-Phase-2 code. Restart via `mcp__plugin_brain_brain__restart` to make Frame live.
+- All commits pending — should batch the Frame work into one or two commits before restart.
+
+**Known cold-start gap (accepted for Phase 2 — option 1 of 3):**
+- v1 `s2_node_families` seed covers ~50 observed node types across 14 families. Encoder may generate new types not in the seed; those nodes become invisible to Frame's family-based queries until the seed JSON is manually updated OR a S2 maintenance unit is built (deferred — see below).
+- Defensive fallback in `frame.py` (`_FALLBACK_FAMILIES`) handles "interaction missing" but not "type unclassified."
+- Bounded impact — most types covered by v1 seed; load-bearing cases (principle, rule, moment, community, open, insight) all in seed.
+
+**Phase 2.5 — open follow-ups (next session candidates):**
+1. **Build the s2_node_families maintenance unit (~2hr):**
+   - Mirror `EdgeFamilyIntegration`: scan distinct node types, find unclassified, prompt LLM with seed + samples, merge into config, write back
+   - Need a `NodeDAL.count_by_type()` method (parallel to `GraphDAL.count_by_relation()`)
+   - Once shipped, families auto-update from observed data instead of relying on manual seed
+2. **Generalize s2_type_families** — once both EdgeFamilyIntegration and NodeFamilyIntegration exist, refactor shared structure into a base/helper. Rule of three principle. Don't generalize from one example.
+3. **Brain-level vs session-level Frame caching split** — Tom's note: operator/partnership/active-threads come from brain state and don't change per-session; current_focus/recent_moves are genuinely per-session. v1 rebuilds the whole Frame each call; future split could cache the brain-level slow-changing parts on Brain (refreshed on S2 cycles or encoder writes) and keep the fast-changing slots on SessionContext. Data sources are already separated in `build_frame`, so the caching split slots in cleanly.
+4. **Encoder's `session_context` blob format** — currently dense pipe-separated, hard for Anchor at boot to parse. Encoder-output-format issue, not Frame issue, but visible through Frame's "Current focus" section.
+
+**Deferred (Phase 2 scope-creep risk, push to Phase 2.5 or later):**
+- Build the actual `s2_node_families` S2 maintenance unit (Tom only asked for the storage pattern in Phase 2; the maintenance loop is its own work, ~2hr, mirrors `EdgeFamilyIntegration`)
+- Per-turn slot updates — current plan is full Frame rebuild on every `hook_recall`. If profiling shows it's slow (>200ms), add slot-update infrastructure
+- Permanent-moments layer in Frame is genuinely thin (1 entry on average — moments are rarely locked). Consider dropping or broadening.
+
+**Current focus blob (encoder's `session_context`) is dense/cryptic** — pipe-separated compressed format. Hard for Anchor at boot to parse. Encoder-output-format issue, not Frame issue. Tracked as separate concern.
 
 **What's live in production:**
 - Surface receives full session_context (was 200-char tail, now 800)
@@ -317,7 +374,7 @@ The encoder has been the **de-facto Frame Constructor for months.** It writes a 
 
 **Validates:** Phase 2 + 3 worth building.
 
-### Phase 2 — Frame as structured assembly (~1-2 days) ❓
+### Phase 2 — Frame as structured assembly (~1-2 days) ✅ SHIPPED 2026-05-02 (functionally complete; daemon restart pending) — see Section 0
 
 **Goal:** Build the Frame as a structured object, persisted, available as input to surface (and tools when ready).
 
@@ -399,10 +456,65 @@ Marked priorities: 🔴 blocks build · 🟡 needs decision before phase · 🟢
 | Q7 | Does Frame survive daemon restart, or rebuild fresh? | Design choice with operational implications | 🟢 (Phase 2) |
 | Q8 | `find_about(entity)` — does it use Haiku to extract entity from query, or take entity verbatim? | Affects tool surface complexity | 🟢 (Phase 4) |
 | Q9 | Telemetry on Frame slot changes — what's logged, where surfaced? | Per I3 mitigation; Tom can see what I can't | 🟡 (Phase 2) |
-| Q10 | Replay test corpus — which conversation queries to use as the validation set? | Need a fixed set to compare versions against | 🟡 (Phase 1) |
+| Q10 | Replay test corpus — which conversation queries to use as the validation set? | Need a fixed set to compare versions against | ✅ closed 2026-05-02 — corpus = Appendix A (5 queries), harness = `eval/frame_replay.py`, baseline = `phase1_baseline_2026-05-02.json` |
 | Q11 | Caching path strategy — when does surface prompt grow past 1024 tokens to unlock Anthropic prompt caching? | Caching is the single biggest latency win (Section 14.1). Currently prompt is 750 tokens, just under threshold. Should we add tool descriptions early (Phase 4 prep) to push past, or wait for natural growth? | 🟡 (Phase 4 prep) |
 | Q12 | Vector cascade-delete on archive — keep grace window, or fix call site? | Today's `01402942` race: node archived 44s after creation, vectors deleted, Haiku later picked it from prior-turn context, spread crashed gracefully. Should archive keep vectors for 24h, or should Haiku-pick-validator catch archived nodes first? | 🟢 (cleanup workstream) |
 | Q13 | **Does automatic spread activation survive Phase 4?** Today: Haiku picks 5 → spread expands to ~10-30 activated nodes via 3-4s graph propagation. In Phase 4 (agentic recall + 7 tools), Haiku requests expansion intentionally — `find_about`, `get_community`, `trace_lineage`, etc. Auto-spread becomes redundant for most cases AND eats the latency budget needed for Frame-skip target (Section 14.2). Full analysis in **Appendix D**. | 🟡 (Phase 4 design decision — needs resolution before tool surface ships) |
+
+### 9.1 — Q2 proposal (drafted 2026-05-02, awaiting Tom's react)
+
+**Recommendation: BOTH, composed of three temporal layers.**
+
+The partnership has memory at three time-scales — they answer different questions and shouldn't collapse into one slot:
+
+| Layer | Source query | Answers | Token budget |
+|---|---|---|---|
+| **Integrated** | Top-N `community` nodes by `(access_count × recency)` | "What have we built together?" | ~60% (~900 tok) |
+| **Permanent** | All `locked=1` nodes of type ∈ {moment, identity, principle, vision} | "What defines who we are?" | ~30% (~450 tok) |
+| **Warm** | Top-N moment/insight where `last_accessed > now − 7d`, sorted by `access_count` | "What's been alive lately?" | ~10% (~150 tok) |
+
+**Why three layers, not one:**
+- Communities are S2's integrated knowledge — the substrate Anchor reasons FROM. Without them, partnership_frame is just "recent stuff."
+- Locked nodes are axioms — Tom locked them because they matter. They're cheap (likely <30 in the brain), should always be present.
+- Warm moments capture what's *currently in mind* across recent sessions, before the Frame snapshot path is built. Replaceable by closure (Phase 3) once that's wired, but valuable as a v1 stopgap.
+
+**Concrete shape** (pseudo-SQL):
+```sql
+-- Integrated: top communities (composite score balances depth and recency)
+SELECT id, title, content_summary, situation
+FROM nodes
+WHERE type = 'community' AND archived = 0
+ORDER BY access_count * (1.0 / (julianday('now') - julianday(last_accessed) + 1)) DESC
+LIMIT 8;
+
+-- Permanent: all locked identity-bearing nodes
+SELECT id, title, content_summary
+FROM nodes
+WHERE locked = 1 AND archived = 0
+  AND type IN ('moment', 'identity', 'principle', 'vision');
+
+-- Warm: top recently-touched moments/insights
+SELECT id, title, content_summary
+FROM nodes
+WHERE type IN ('moment', 'insight') AND archived = 0
+  AND last_accessed > datetime('now', '-7 days')
+ORDER BY access_count DESC
+LIMIT 10;
+```
+
+**Render shape:** three labeled sections in the Frame markdown, not three separate slots — keeps the slot vocabulary clean.
+
+**What this rules out:**
+- *Just communities*: misses the axioms. Anchor would forget locked rules at session start.
+- *Just locked moments*: misses the integration. Anchor would have axioms but no thematic shape.
+- *All recent activity*: doesn't separate "what we've built" from "what we touched yesterday." Loses signal.
+
+**Open sub-questions for Tom's react:**
+1. Are 8 communities the right N, or should it scale with brain size?
+2. Should the warm layer be retired the moment Phase 3 closure ships, or kept as a recency floor?
+3. The recency formula above is a starting point — is `access_count × decay` the right composite, or should community `maturity` participate?
+
+If Tom signs off on the three-layer shape, this becomes **D20** and Phase 2 unblocks.
 
 ---
 
