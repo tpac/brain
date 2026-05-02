@@ -42,9 +42,8 @@ def _get_recently_surfaced(brain, session_id):
     return recently_surfaced
 
 
-def _call_surface(brain, candidates_data, user_message, session_context,
-                  recent_messages, session_id, result, encoding_journal='',
-                  frame=''):
+def _call_surface(brain, candidates_data, user_message,
+                  recent_messages, session_id, result, frame=''):
     """Call Haiku to surface relevant nodes from candidates.
 
     Returns: (surfaced_dict, surface_prompt, max_tokens, interaction_id)
@@ -73,8 +72,6 @@ def _call_surface(brain, candidates_data, user_message, session_context,
     interaction_id = surface_interaction.get('id') if surface_interaction else None
     surface_prompt, max_tokens = build_surface_prompt(
         candidates_data, user_message,
-        session_context=session_context,
-        encoding_journal=encoding_journal,
         recent_messages=recent_messages,
         recently_recalled=recently_surfaced,
         retrieval_stats=retrieval_stats,
@@ -348,7 +345,8 @@ def _l4_identity_lane(brain, touched_ids):
 
 def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
                   graph_neighbors, additional_context, enriched, results,
-                  recall_ref, interaction_id, session_id, expansion=None):
+                  recall_ref, interaction_id, session_id, expansion=None,
+                  frame=''):
     """Write S1 surface traces: O (candidates), K (surfaced), Δ (additionalContext).
 
     `expansion` carries activation data from spread_activation when present —
@@ -381,6 +379,20 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
         cid: ('selected' if cid in selected_ids else 'dropped')
         for cid in candidate_ids
     }
+
+    # Frame metadata — how much partnership context was injected this turn.
+    # Tracking the size + section count gives the dashboard observability into
+    # what Anchor's prior actually looked like, without bloating traces with
+    # the full Frame text. Empty dict when frame was unavailable (degraded).
+    frame_meta = {}
+    if frame:
+        frame_meta = {
+            'frame_chars': len(frame),
+            'frame_tokens_est': len(frame) // 4,
+            'frame_sections': frame.count('\n## ') + (1 if frame.startswith('## ') else 0),
+        }
+    else:
+        frame_meta = {'frame_chars': 0, 'frame_unavailable': True}
 
     # Activation metadata — per-node activation values + kernel trace.
     # Empty when no expansion ran (e.g. no selected seeds, query_vec absent).
@@ -424,7 +436,7 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
                  len(selected), len(graph_neighbors),
                  activation_meta.get('activation_count', 0)),
              metadata={'selected': sel_detail, 'expanded': exp_detail,
-                       **activation_meta},
+                       **frame_meta, **activation_meta},
              session_id=session_id),
         dict(chain_id=recall_chain, scale='s1', event_type='delta',
              ref_type='additionalContext',
@@ -457,10 +469,10 @@ def _write_surface_result_file(recall_ref, surface_prompt, output, brain):
         brain._log_error('surface_result_write', e, 'writing surface result file')
 
 
-def run_surface(brain, ctx, candidates_data, user_message, session_context,
+def run_surface(brain, ctx, candidates_data, user_message,
                 recent_messages, result, enriched, results, recall_ref,
                 session_id, graph_changes, query_vec=None, prior_vecs=None,
-                encoding_journal='', frame=''):
+                frame=''):
     """S1 Surface: Haiku-select → spread_activation → activation-render → trace.
 
     The complete S1 Surface chain. Called from hook_recall in daemon_hooks.py.
@@ -474,8 +486,8 @@ def run_surface(brain, ctx, candidates_data, user_message, session_context,
 
     # Call Haiku selector (unchanged — picks ≤5 from 25 candidates)
     surfaced, surface_prompt, max_tokens, interaction_id = _call_surface(
-        brain, candidates_data, user_message, session_context, recent_messages,
-        session_id, result, encoding_journal=encoding_journal, frame=frame)
+        brain, candidates_data, user_message, recent_messages,
+        session_id, result, frame=frame)
 
     selected = surfaced.get("selected", [])
     selected_short_ids = {s.get("id", "")[:8] for s in selected}
@@ -496,7 +508,8 @@ def run_surface(brain, ctx, candidates_data, user_message, session_context,
         try:
             _write_traces(brain, ctx, candidates_data, set(), [], [],
                           None, enriched, results,
-                          recall_ref, interaction_id, session_id)
+                          recall_ref, interaction_id, session_id,
+                          frame=frame)
         except Exception as e:
             brain._log_error('trace_s1_surface_empty', e, 'S1 surface trace (no selection)')
         _write_surface_result_file(recall_ref, surface_prompt, "(no selection)", brain)
@@ -602,7 +615,7 @@ def run_surface(brain, ctx, candidates_data, user_message, session_context,
                       graph_neighbors_compat, additional_context,
                       enriched, results,
                       recall_ref, interaction_id, session_id,
-                      expansion=expansion)
+                      expansion=expansion, frame=frame)
     except Exception as e:
         brain._log_error('trace_s1_surface', e, 'S1 surface trace capture')
 

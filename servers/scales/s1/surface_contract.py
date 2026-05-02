@@ -380,26 +380,21 @@ def _dedup_candidates(candidates):
     return result
 
 
-def build_surface_prompt(candidates, user_message, session_context="",
-                       encoding_journal="",
+def build_surface_prompt(candidates, user_message,
                        recent_messages=None, recently_recalled=None,
                        retrieval_stats=None, intent=None,
                        prompt_instructions=None, frame=""):
     """Build the S1 recall surface prompt. Single entry point.
 
     v9: Added retrieval_stats, intent, score normalization, conversation
-    context expansion, session context tail, candidate dedup, discovery tags.
+    context expansion, candidate dedup, discovery tags.
     v10: prompt_instructions from interactions table (learnable boundary).
-    Frame Phase 1 (2026-05-02): added encoding_journal — the encoder's
-    most recent journal pass (ENCODED/SKIPPED/WATCHING + SESSION CONTEXT)
-    so surface sees what the encoder is currently tracking, not just
-    the rolling 800-char session_context blob.
-    Frame Phase 2 (2026-05-02): added `frame` param. When provided, the
-    Frame replaces session_context + encoding_journal as the prior — the
-    Frame already contains both as its current_focus and recent_moves
-    sections, plus the partnership/operator/active-threads context that
-    session_context alone never carried. Falls back to v1/Phase-1 behavior
-    when frame is empty (defensive — supports rollback / unseeded brains).
+    Frame Phase 2 (2026-05-02): `frame` is the canonical session prior.
+    Replaces the Phase 1 separate session_context + encoding_journal blocks
+    — Frame contains both as its current_focus and recent_moves sections,
+    plus operator/partnership/active-threads context. When frame is empty
+    (Frame Constructor failed), surface runs WITHOUT a partnership context
+    section — explicit degraded mode, not silent fallback to old layout.
 
     Args:
         candidates: List of candidate node dicts (enriched with metadata)
@@ -441,25 +436,15 @@ def build_surface_prompt(candidates, user_message, session_context="",
     if user_message:
         conversation += "Tom: %s\n" % (user_message or "")[:cfg['user_message_limit']]
 
-    # 2026-05-02 (Frame Phase 2): if Frame is provided, it carries
-    # session_context AND encoding_journal as its inner sections (current_focus,
-    # recent_moves) AND the partnership/operator/active-threads context that
-    # neither blob carried before. Replaces both. Falls back to Phase 1 layout
-    # when frame is empty.
-    surface_session_context = ""
-    encoder_journal_block = ""
+    # 2026-05-02 (Frame Phase 2): Frame is the canonical session prior.
+    # When non-empty, it's the "Partnership context:" block — rich content
+    # carrying operator + partnership + active-threads + current focus +
+    # recent moves. When empty (Frame Constructor failed), surface runs
+    # without any partnership context — explicit degraded mode, logged
+    # upstream by daemon_hooks. No silent fallback to a different layout.
+    partnership_block = ""
     if frame:
-        surface_session_context = "Partnership context (your prior — what's currently in awareness):\n" + frame
-    else:
-        # Phase 1 fallback: session_context + encoding_journal injected separately
-        if session_context:
-            tail_limit = cfg.get('session_context_tail', 800)
-            if len(session_context) > tail_limit:
-                surface_session_context = "Session arc (tail): ..." + session_context[-tail_limit:]
-            else:
-                surface_session_context = "Session arc:\n" + session_context
-        if encoding_journal:
-            encoder_journal_block = "Encoder's recent journal (newest first):\n%s\n" % encoding_journal
+        partnership_block = "Partnership context (your prior — what's currently in awareness):\n" + frame
 
     # Format recently recalled (lightweight — id + title only)
     recalled_text = ""
@@ -539,9 +524,9 @@ def build_surface_prompt(candidates, user_message, session_context="",
 
     prompt = """%s
 
-Session: %s
+%s
 
-%sConversation (recent, oldest first):
+Conversation (recent, oldest first):
 %s
 Recently surfaced (deprioritize — only select if the current message specifically needs them):
 %s
@@ -553,8 +538,7 @@ Candidates:
 
 %s""" % (
         prompt_instructions,
-        surface_session_context or "(first messages)",
-        encoder_journal_block,
+        partnership_block or "(no partnership context — fresh session or Frame unavailable)",
         conversation or "(no recent messages)",
         recalled_text or "(none)",
         retrieval_context,

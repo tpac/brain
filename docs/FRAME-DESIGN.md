@@ -54,14 +54,50 @@
 - Defensive fallback in `frame.py` (`_FALLBACK_FAMILIES`) handles "interaction missing" but not "type unclassified."
 - Bounded impact — most types covered by v1 seed; load-bearing cases (principle, rule, moment, community, open, insight) all in seed.
 
-**Phase 2.5 — open follow-ups (next session candidates):**
-1. **Build the s2_node_families maintenance unit (~2hr):**
-   - Mirror `EdgeFamilyIntegration`: scan distinct node types, find unclassified, prompt LLM with seed + samples, merge into config, write back
-   - Need a `NodeDAL.count_by_type()` method (parallel to `GraphDAL.count_by_relation()`)
-   - Once shipped, families auto-update from observed data instead of relying on manual seed
-2. **Generalize s2_type_families** — once both EdgeFamilyIntegration and NodeFamilyIntegration exist, refactor shared structure into a base/helper. Rule of three principle. Don't generalize from one example.
-3. **Brain-level vs session-level Frame caching split** — Tom's note: operator/partnership/active-threads come from brain state and don't change per-session; current_focus/recent_moves are genuinely per-session. v1 rebuilds the whole Frame each call; future split could cache the brain-level slow-changing parts on Brain (refreshed on S2 cycles or encoder writes) and keep the fast-changing slots on SessionContext. Data sources are already separated in `build_frame`, so the caching split slots in cleanly.
-4. **Encoder's `session_context` blob format** — currently dense pipe-separated, hard for Anchor at boot to parse. Encoder-output-format issue, not Frame issue, but visible through Frame's "Current focus" section.
+**Phase 2 cleanup landed (2026-05-02 same session):**
+- Removed dual-mode plumbing: `session_context` and `encoding_journal` are no longer passed to surface as separate fallback parameters. Frame is the canonical session prior; if Frame Constructor fails, surface runs WITHOUT a partnership context section (explicit degraded mode, logged loudly via `frame_build_failed`). No silent fallback to Phase 1 layout.
+- `build_surface_prompt`, `_call_surface`, `run_surface` signatures dropped `session_context` and `encoding_journal` params — clean unification.
+- S1R K-event trace metadata now includes `frame_chars`, `frame_tokens_est`, `frame_sections` (or `frame_unavailable: true` when degraded). Dashboard-visible.
+- All tests still pass (111/111); harness re-captured `phase2_v1_unified_clean` end-to-end against the cleaned path.
+
+---
+
+## Phase 2 → Phase 3 punch list (deferred but documented — DON'T FORGET)
+
+These are real gaps from Phase 2. Each one was discussed and consciously deferred to keep Phase 2 ship clean. Pick up in priority order before Phase 3 design starts.
+
+### Wire-up gaps (Frame is in surface only)
+
+1. **Wire Frame into SessionStart boot hook (HIGH leverage)** — `boot_brain.py` runs at session start; it doesn't print the Frame. Anchor wakes up with the OLD boot context, then Frame appears on the first message's recall. The wakeup moment — the most important place for Frame conceptually (per Section 5 of this doc) — is unwired. Fix: render Frame in boot output so Anchor sees it before the first user message.
+2. **Update surface prompt template to teach Haiku about Partnership context (HIGH leverage)** — Phase 2 added a "Partnership context:" section to the surface prompt but the prompt INSTRUCTIONS in the interactions table were not updated. Haiku doesn't know what Partnership context IS, how to use it as a prior, or that it should bias selection toward identity-coherent picks. Need a v2 surface prompt (`register_interaction('surface', ...)`) that explicitly teaches Frame-as-prior usage.
+3. **Wire Frame into encoder (S1 Scribe)** — encoder reads `session_context` + `encoding_journal` directly. Doesn't see Frame. Means the encoder doesn't know what's already in Anchor's awareness when deciding what to encode. Could yield gap-aware encoding (encoder writes COMPLEMENTARY content, doesn't restate what Frame already covers). Lower priority — only valuable after the above two land.
+4. **Wire Frame into brain_voice rendering** — `brain_voice.py:561` renders `session_context` for voice output. Frame-unaware. Probably not load-bearing, but worth the audit.
+5. **Dashboard Frame view** — display the current Frame for any session as observability. Pure read-only; useful for debugging.
+
+### Cadence / token economy (the "is all data necessary at all times" question)
+
+6. **Split injection cadence: full Frame at boot, fast-changing slots per-turn, slow parts on-demand.** Today every recall injects the full Frame (~1900 tokens). Slow-changing 60% (Operator + Partnership integrated/permanent) is wasted re-injection most turns. Smarter shape:
+   - At boot: print FULL Frame in SessionStart context — Anchor sees it once
+   - Per turn: inject only fast-changing slots (current_focus, recent_moves, maybe active_threads) into the surface prompt
+   - On-demand: re-inject Operator/Partnership when query semantically needs them ("what do you know about you" → operator re-injection)
+   - Caching helps once we cross 1024-token threshold (now true), but cache misses still cost full input tokens. Splitting reduces baseline cost.
+
+### Caching architecture
+
+7. **Brain-level vs session-level Frame caching split** — Tom's note: operator/partnership/active-threads come from brain state and don't change per-session; current_focus/recent_moves are genuinely per-session. v1 rebuilds the whole Frame each call. Future split could cache brain-level slow-changing parts on Brain (refreshed on S2 cycles or encoder writes) and keep the fast-changing slots on SessionContext. Data sources are already separated in `build_frame`, so the caching split slots in cleanly. Pairs naturally with item 6.
+
+### S2 maintenance for families
+
+8. **Build the s2_node_families maintenance unit (~2hr)** — Mirror `EdgeFamilyIntegration`: scan distinct node types, find unclassified, prompt LLM with seed + samples, merge into config, write back. Need a `NodeDAL.count_by_type()` method (parallel to `GraphDAL.count_by_relation()`). Once shipped, families auto-update from observed data instead of relying on manual seed updates. Currently the seed covers ~50 observed types; emergent encoder types not in seed are invisible to Frame's family-based queries.
+9. **Generalize s2_type_families** — once both EdgeFamilyIntegration and NodeFamilyIntegration exist, refactor shared structure into a base/helper. Rule of three principle. Don't generalize from one example. The shared structure (find unclassified → prompt with existing context → merge → write) is ~60% of the code; the surface-specific parts (prompt, data source, noise) are ~40%.
+
+### Encoder format issue (orthogonal)
+
+10. **Encoder's `session_context` blob format is dense/cryptic** — currently pipe-separated, hard for Anchor at boot to parse. Encoder-output-format issue, not Frame issue, but visible through Frame's "Current focus" section. Worth a separate cleanup pass on encoder output formatting.
+
+### Calibration / validation
+
+11. **"Fresh Claude vs Anchor" calibration test** — Tom's idea from this session, parked for after Phase 2-3 ship. Run a wakeup probe ("Who am I working with? What's open? Where are we?") through fresh Claude (no brain) and Anchor (Frame loaded). Compare the felt difference. The realistic version of the validation R8 names — what the brain ACTUALLY buys at the wakeup moment.
 
 **Deferred (Phase 2 scope-creep risk, push to Phase 2.5 or later):**
 - Build the actual `s2_node_families` S2 maintenance unit (Tom only asked for the storage pattern in Phase 2; the maintenance loop is its own work, ~2hr, mirrors `EdgeFamilyIntegration`)

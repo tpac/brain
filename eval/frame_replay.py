@@ -134,8 +134,6 @@ def _capture_one(brain, ctx, spec):
     try:
         additional_context = run_surface(
             brain, ctx, candidates_data, query,
-            session_context=brain.session_context,
-            encoding_journal=brain.get_recent_encoding_journal(ctx.session_id),
             recent_messages=[],
             result=result, enriched=query, results=results,
             recall_ref=recall_ref, session_id=ctx.session_id,

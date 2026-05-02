@@ -149,22 +149,7 @@ class TestSurfacePromptAcceptsFrame(BrainTestBase):
     """build_surface_prompt accepts frame and renders it as 'Partnership context:'."""
     needs_embedder = False
 
-    def test_frame_replaces_session_context_when_provided(self):
-        from servers.scales.s1.surface_contract import build_surface_prompt
-
-        candidates = [{'id': 'abcd1234', 'title': 'Test',
-                       'type': 'fact', 'content': 'x',
-                       'confidence': 0.5, 'score': 0.8}]
-        prompt_with_frame, _ = build_surface_prompt(
-            candidates, "test query",
-            session_context="THIS SHOULD NOT APPEAR",
-            encoding_journal="THIS EITHER",
-            frame="THE FRAME PRIOR")
-        self.assertIn('THE FRAME PRIOR', prompt_with_frame)
-        self.assertNotIn('THIS SHOULD NOT APPEAR', prompt_with_frame)
-        self.assertNotIn('THIS EITHER', prompt_with_frame)
-
-    def test_frame_falls_back_to_session_context_when_empty(self):
+    def test_frame_renders_as_partnership_context(self):
         from servers.scales.s1.surface_contract import build_surface_prompt
 
         candidates = [{'id': 'abcd1234', 'title': 'Test',
@@ -172,11 +157,24 @@ class TestSurfacePromptAcceptsFrame(BrainTestBase):
                        'confidence': 0.5, 'score': 0.8}]
         prompt, _ = build_surface_prompt(
             candidates, "test query",
-            session_context="THE OLD SESSION ARC",
-            encoding_journal="THE OLD JOURNAL",
-            frame="")  # empty frame triggers Phase 1 fallback layout
-        self.assertIn('THE OLD SESSION ARC', prompt)
-        self.assertIn('THE OLD JOURNAL', prompt)
+            frame="THE FRAME PRIOR CONTENT")
+        self.assertIn('THE FRAME PRIOR CONTENT', prompt)
+        self.assertIn('Partnership context', prompt)
+
+    def test_empty_frame_renders_explicit_degraded_marker(self):
+        from servers.scales.s1.surface_contract import build_surface_prompt
+
+        candidates = [{'id': 'abcd1234', 'title': 'Test',
+                       'type': 'fact', 'content': 'x',
+                       'confidence': 0.5, 'score': 0.8}]
+        prompt, _ = build_surface_prompt(
+            candidates, "test query",
+            frame="")
+        # Explicit degraded marker — no silent fallback to old layout
+        self.assertIn('no partnership context', prompt.lower())
+        # Make sure no Phase 1 layout artifacts appear
+        self.assertNotIn('Session arc', prompt)
+        self.assertNotIn("Encoder's recent journal", prompt)
 
 
 if __name__ == '__main__':
