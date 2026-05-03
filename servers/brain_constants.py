@@ -162,11 +162,10 @@ CONTEXT_BOOT_LOCKED_LIMIT = 50
 CONTEXT_BOOT_RECALL_LIMIT = 15
 CONTEXT_BOOT_RECENT_LIMIT = 10
 
-# Boot context rendering
-BOOT_COMMUNITY_TOP = 18            # Top communities by size/maturity
-BOOT_COMMUNITY_RECENT = 2          # Recently worked-on communities
-BOOT_IDENTITY_LIMIT = 3            # Identity nodes in YOU section
-BOOT_IDENTITY_CONTENT_LIMIT = 300  # Content chars per identity node
+# 2026-05-02 (Frame Phase 2.5): BOOT_COMMUNITY_TOP, BOOT_COMMUNITY_RECENT,
+# BOOT_IDENTITY_LIMIT, BOOT_IDENTITY_CONTENT_LIMIT removed — they sized
+# the old recall-driven YOU/OPERATOR/BRAIN MAP boot sections that the
+# Frame-centered render_boot_v2 replaced. No callers left.
 
 # Embeddings weights
 EMBEDDING_PRIMARY_WEIGHT = 0.90

@@ -210,6 +210,80 @@ def _apply_filter(nodes: list, filter_dict: dict, conn) -> list:
     return out
 
 
+def _rerank_by_relevance(conn, rich_nodes: list, query_text: str, limit: int,
+                         vector_type: str = '_primary') -> list:
+    """Re-rank a list of rich nodes by cosine similarity to the query embedding.
+
+    Frame Phase 2.5 helper. Hybrid output: top half by relevance, remainder by
+    the order the caller passed in (which is the structural sort — recency,
+    typically). Lets relevance lift the most-meaningful candidates while
+    preserving the structural recency floor.
+
+    vector_type: which `node_enrichments.vector_type` to score against.
+    Default `_primary` (canonical single-vector encoding, full coverage). v2
+    callers may pass other types or, eventually, request multi-field
+    z-weighted scoring (mirroring surface).
+
+    Nodes without an embedding fall through to the recency tail. Cost: 1
+    embed call + N cosine ops + 1 SQL query for embeddings (single batch).
+    """
+    if not query_text or not rich_nodes:
+        return rich_nodes[:limit]
+    try:
+        import numpy as np
+        from . import embedder as _emb
+        if not _emb.is_ready():
+            return rich_nodes[:limit]
+        query_blob = _emb.embed_query(query_text)
+        if not query_blob:
+            return rich_nodes[:limit]
+        query_vec = np.frombuffer(query_blob, dtype=np.float32) \
+            if isinstance(query_blob, bytes) else np.array(query_blob, dtype=np.float32)
+        norm = float(np.linalg.norm(query_vec))
+        if norm < 1e-9:
+            return rich_nodes[:limit]
+        query_vec = query_vec / norm
+
+        # Batch fetch _primary embeddings for all rich nodes
+        ids = [n['id'] for n in rich_nodes if n.get('id')]
+        if not ids:
+            return rich_nodes[:limit]
+        placeholders = ','.join('?' * len(ids))
+        rows = conn.execute(
+            'SELECT node_id, embedding FROM node_enrichments '
+            'WHERE node_id IN (%s) AND vector_type = ?' % placeholders,
+            ids + [vector_type]).fetchall()
+        emb_by_id = {nid: blob for nid, blob in rows}
+
+        # Score
+        scored = []
+        unscored = []
+        for n in rich_nodes:
+            blob = emb_by_id.get(n.get('id'))
+            if not blob:
+                unscored.append(n)
+                continue
+            nv = np.frombuffer(blob, dtype=np.float32)
+            nnorm = float(np.linalg.norm(nv))
+            if nnorm < 1e-9:
+                unscored.append(n)
+                continue
+            score = float(np.dot(query_vec, nv / nnorm))
+            scored.append((score, n))
+
+        # Hybrid: top half by relevance, remainder by original (structural) order
+        relevance_slots = max(1, limit // 2)
+        relevant = [n for _, n in sorted(scored, key=lambda x: -x[0])[:relevance_slots]]
+        relevant_ids = {n.get('id') for n in relevant}
+        # Remainder preserves the input order (which is the structural sort)
+        remainder = [n for n in rich_nodes if n.get('id') not in relevant_ids]
+        return (relevant + remainder)[:limit]
+    except Exception as e:
+        # Loud but not fatal — rerank failure falls back to structural order
+        print('[brain] _rerank_by_relevance failed: %s' % e, file=sys.stderr)
+        return rich_nodes[:limit]
+
+
 class BrainRecallMixin:
     """Recall methods for Brain."""
 
@@ -329,7 +403,10 @@ class BrainRecallMixin:
     def filter_nodes(self, field: str, include=None, exclude=None,
                      lt=None, gt=None, limit: int = 50,
                      sort_by: str = 'created_at', sort_order: str = 'desc',
-                     rich: bool = True):
+                     rich: bool = True,
+                     relevance_query: str = None,
+                     relevance_pool_multiplier: int = 3,
+                     relevance_vector_type: str = '_primary'):
         """Structured query: filter nodes by any structural field.
 
         rich=True (default): full content, metadata, corrections, connections
@@ -337,16 +414,43 @@ class BrainRecallMixin:
         reasoner; richness is the advantage (see node 9b938b91).
         rich=False: skinny shape (id/title/type/confidence/created_at), for
         discovery scans or feeding IDs to other ops.
+
+        relevance_query (Frame Phase 2.5): when provided, the result is
+        re-ranked by semantic relevance to the query text. The DAL pulls a
+        wider candidate pool (limit * relevance_pool_multiplier), the brain
+        embeds the query once and scores each candidate by cosine similarity
+        against its `_primary` embedding, then returns the top-`limit`
+        candidates as a hybrid: top half by relevance + remainder by the
+        original sort order (deduped).
+
+        Lets consumers (Frame, future agentic recall) ask for "nodes of type
+        X most relevant to my current arc" without owning the embedding
+        mechanics. Cost: 1 embed call (~50ms) + N cosine ops (cheap matrix
+        math). When relevance_query is empty/None, behavior is unchanged.
         """
         node_dal = NodeDAL(self.conn)
+        # Widen the pool when relevance ranking is requested
+        dal_limit = limit * relevance_pool_multiplier if relevance_query else limit
         result = node_dal.filter_nodes(
             field=field, include=include, exclude=exclude,
-            lt=lt, gt=gt, limit=limit, sort_by=sort_by, sort_order=sort_order)
+            lt=lt, gt=gt, limit=dal_limit, sort_by=sort_by, sort_order=sort_order)
         if not rich or 'error' in result or not result.get('nodes'):
+            # rich=False or no results — apply pool truncation if relevance was
+            # requested but skipped (still want `limit` results, not pool size)
+            if relevance_query and result.get('nodes'):
+                result['nodes'] = result['nodes'][:limit]
             return result
         ids = [n['id'] for n in result['nodes']]
         rich_map = self.get_node(ids)
-        result['nodes'] = [rich_map[i] for i in ids if i in rich_map]
+        rich_nodes = [rich_map[i] for i in ids if i in rich_map]
+
+        # Optional relevance re-rank
+        if relevance_query and rich_nodes:
+            rich_nodes = _rerank_by_relevance(
+                self.conn, rich_nodes, relevance_query, limit,
+                vector_type=relevance_vector_type)
+
+        result['nodes'] = rich_nodes
         return result
 
     def query_logs(self, source: str = 'all', hours: int = 24,

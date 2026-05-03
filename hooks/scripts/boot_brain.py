@@ -57,11 +57,16 @@ def _boot_via_daemon():
             project = stored["value"]
 
     # Get formatted boot context (retry once if daemon just started)
-    result = daemon_call("context_boot", {"user": user, "project": project})
+    # 2026-05-02 (Frame Phase 2.5): pass session_id so render_boot_v2 can
+    # build the Frame for THIS session via ctx.get_frame(brain).
+    boot_args = {"user": user, "project": project}
+    if _sid:
+        boot_args["session_id"] = _sid
+    result = daemon_call("context_boot", boot_args)
     if not result:
         import time
         time.sleep(1)
-        result = daemon_call("context_boot", {"user": user, "project": project})
+        result = daemon_call("context_boot", boot_args)
     if isinstance(result, dict):
         text = result.get("for_claude", "") or result.get("text", "")
         if text:

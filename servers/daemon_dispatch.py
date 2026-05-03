@@ -84,7 +84,8 @@ def _handle_context_boot(brain, args, graph_changes):
     text = brain.format_boot_context(
         user=args.get("user", "User"),
         project=args.get("project", "default"),
-        db_dir=args.get("db_dir", ""))
+        db_dir=args.get("db_dir", ""),
+        session_id=args.get("session_id", ""))
     return {"ok": True, "result": text}
 
 

@@ -720,24 +720,13 @@ class BrainAssemblyMixin:
         ''', (limit,)).fetchall()
         return [{'id': r[0], 'title': r[1], 'content': r[2], 'created_at': r[3]} for r in rows]
 
-    def fetch_self_knowledge(self, limit: int = 3) -> list:
-        """Fetch Claude's self-reflective nodes — behavioral patterns, corrections, lessons about itself."""
-        # Query for nodes that are about Claude's own behavior
-        self_keywords = ('encoding', 'drift', 'instinct', 'compress', 'claude',
-                         'agreeab', 'bias', 'failure mode', 'self-correct')
-        keyword_clause = ' OR '.join('keywords LIKE ?' for _ in self_keywords)
-        params = [f'%{kw}%' for kw in self_keywords]
-        params.append(limit)
-        rows = self.conn.execute(f'''
-            SELECT id, type, title, content, keywords, confidence FROM nodes
-            WHERE type IN ('lesson', 'correction', 'pattern', 'mental_model', 'failure_mode')
-              AND archived = 0
-              AND ({keyword_clause})
-            ORDER BY confidence DESC, updated_at DESC
-            LIMIT ?
-        ''', params).fetchall()
-        return [{'id': r[0], 'type': r[1], 'title': r[2], 'content': r[3],
-                 'keywords': r[4], 'confidence': r[5]} for r in rows]
+    # 2026-05-02 (Frame Phase 2.5): fetch_self_knowledge removed — was the
+    # data source for the old boot's "PATTERNS YOU FALL INTO" section.
+    # Frame's Operator section (read via the identity_bearing family from
+    # s2_node_families) covers the same need with a cleaner abstraction.
+    # If a future consumer wants self-reflective node lookup, prefer
+    # filter_nodes(field='type', include=['correction','lesson',...])
+    # filtered by the identity_bearing family or a dedicated family.
 
 
 
@@ -745,17 +734,21 @@ class BrainAssemblyMixin:
     # ── Formatted boot context ──────────────
 
     def format_boot_context(self, user: str = 'User', project: str = 'default',
-                            db_dir: str = '') -> str:
+                            db_dir: str = '', session_id: str = '') -> str:
         """
         Gather all boot data and return formatted text for Claude's context window.
         Delegates to BrainVoice.render_boot() — thin wrapper for backwards compat.
 
         Returns a single string with both [BRAIN] and [BRAIN-To-*] channels merged.
         For raw channel dict, call BrainVoice(self).render_boot() directly.
+
+        2026-05-02 (Frame Phase 2.5): session_id threaded through so
+        render_boot_v2 can build the Frame for THIS session via
+        ctx.get_frame(brain).
         """
         from .brain_voice import BrainVoice
         voice = BrainVoice(self)
-        rendered = voice.render_boot_v2(user, project, db_dir)
+        rendered = voice.render_boot_v2(user, project, db_dir, session_id=session_id)
         return voice.wrap_for_hook(rendered['for_claude'], rendered.get('for_operator'))
 
 

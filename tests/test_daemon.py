@@ -549,58 +549,16 @@ class TestBootSelfKnowledge(unittest.TestCase):
         self.assertEqual(len(nodes), 1)
         self.assertIn('handoff', nodes[0]['title'])
 
-    def test_fetch_self_knowledge_finds_behavioral_nodes(self):
-        """fetch_self_knowledge() should find nodes about Claude's behavior."""
-        self.brain.remember(type='lesson', title='Encoding drift pattern',
-                            content='I drift when building', keywords='encoding drift claude instinct')
-        self.brain.save()
-        nodes = self.brain.fetch_self_knowledge(limit=3)
-        self.assertTrue(len(nodes) >= 1)
-        self.assertIn('drift', nodes[0]['title'].lower())
-
-    def test_boot_context_includes_self_knowledge(self):
-        """Boot context should have PATTERNS YOU FALL INTO section."""
-        self.brain.remember(type='lesson', title='Compression instinct',
-                            content='I compress by instinct', keywords='compression instinct claude')
-        self.brain.save()
-        ctx = self.brain.format_boot_context(user='Test', project='test')
-        self.assertIn("PATTERNS YOU FALL INTO:", ctx)
-        self.assertIn('Compression instinct', ctx)
-
-    def test_boot_context_includes_boot_nodes(self):
-        """Boot context should surface boot-type nodes in some form.
-
-        Boot's render contract changed twice: the addressee marker became
-        project-aware (was `YOU:`, now `<project>:`), and boot-node bodies
-        moved out of the verbatim block — the new boot shows brain map +
-        identity + a RECENTLY ENCODED list (boot-node titles only).
-        Verbatim handoff content is no longer in boot.
-
-        Property under test: a boot-typed node's title is recoverable from
-        boot context. Not its content; the new contract doesn't render that.
-        """
-        self.brain.remember(type='boot', title='Session #5 handoff',
-                            content='Remember to encode early', keywords='boot handoff')
-        self.brain.save()
-        ctx = self.brain.format_boot_context(user='Test', project='test')
-        self.assertTrue('YOU:' in ctx or 'TEST:' in ctx or 'test:' in ctx,
-                        f"Expected an addressee marker in boot context, got:\n{ctx[:300]}")
-        self.assertIn('Session #5 handoff', ctx,
-                      "Boot node title should appear (RECENTLY ENCODED list at minimum)")
-
-    def test_self_knowledge_before_engineering_context(self):
-        """Self-knowledge must appear before engineering context in boot."""
-        self.brain.remember(type='lesson', title='Agreeability bias',
-                            content='I agree too easily', keywords='agreeab bias claude')
-        self.brain.remember(type='purpose', title='API gateway',
-                            content='Routes requests', keywords='api gateway purpose')
-        self.brain.save()
-        ctx = self.brain.format_boot_context(user='Test', project='test')
-        sk_pos = ctx.find("WHAT YOU'VE LEARNED ABOUT YOURSELF")
-        eng_pos = ctx.find('PROJECT UNDERSTANDING')
-        if sk_pos >= 0 and eng_pos >= 0:
-            self.assertLess(sk_pos, eng_pos,
-                            "Self-knowledge should appear before engineering context")
+    # 2026-05-02 (Frame Phase 2.5): four tests removed — they asserted the
+    # old recall-driven boot contract (YOU: / OPERATOR: / PATTERNS YOU FALL
+    # INTO / RECENTLY ENCODED / WHAT YOU'VE LEARNED ABOUT YOURSELF /
+    # PROJECT UNDERSTANDING sections) that the Frame-centered render_boot_v2
+    # replaced. The Frame's contract is exercised by tests/test_frame.py.
+    # Removed:
+    #   test_fetch_self_knowledge_finds_behavioral_nodes — method deleted
+    #   test_boot_context_includes_self_knowledge — section gone
+    #   test_boot_context_includes_boot_nodes — YOU:/RECENTLY ENCODED gone
+    #   test_self_knowledge_before_engineering_context — sections gone
 
 
 # ══════════════════════════════════════════════════════════════════════════

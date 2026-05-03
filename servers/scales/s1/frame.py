@@ -52,30 +52,48 @@ _FALLBACK_FAMILIES = {
 }
 
 
-def _family_members(brain, family_name: str) -> List[str]:
-    """Resolve a family name to its member type strings.
+def _resolve_families(brain) -> dict:
+    """Load s2_node_families ONCE per Frame build, return family→members map.
 
-    Reads from `s2_node_families` interaction; falls back to hardcoded defaults
-    if the interaction is absent (fresh brain that hasn't been seeded yet, or
-    test environments).
+    Pre-Phase-2.5 each renderer called _family_members independently and each
+    call did its own get_interaction_config — 4 DB reads of the same config
+    per build_frame. This loads it once, all renderers share the result. Falls
+    back to hardcoded defaults if the interaction is absent (fresh brain or
+    test environment).
     """
     from servers.scales.s2.edge_families import iter_families
     config = brain.get_interaction_config('s2_node_families') or {}
+    out = {}
     for fam, members, _meaning in iter_families(config):
-        if fam == family_name:
-            return list(members)
-    # Fallback
-    return list(_FALLBACK_FAMILIES.get(family_name, []))
+        out[fam] = list(members)
+    # Layer fallbacks for any family Frame uses but the seed didn't populate
+    for fam, members in _FALLBACK_FAMILIES.items():
+        out.setdefault(fam, list(members))
+    return out
 
 
-def _members_in_families(brain, family_names: List[str]) -> List[str]:
-    """Union of member types across multiple families."""
+def _members(families: dict, family_name: str) -> List[str]:
+    """Get one family's members from the resolved map (already loaded)."""
+    return list(families.get(family_name, _FALLBACK_FAMILIES.get(family_name, [])))
+
+
+def _members_union(families: dict, family_names: List[str]) -> List[str]:
+    """Union of member types across multiple families (from resolved map)."""
     seen = []
     for fname in family_names:
-        for m in _family_members(brain, fname):
+        for m in _members(families, fname):
             if m not in seen:
                 seen.append(m)
     return seen
+
+
+# Backwards-compat shims for callers/tests that still use the old names.
+def _family_members(brain, family_name: str) -> List[str]:
+    return _members(_resolve_families(brain), family_name)
+
+
+def _members_in_families(brain, family_names: List[str]) -> List[str]:
+    return _members_union(_resolve_families(brain), family_names)
 
 
 def _short_content(node: dict, limit: int = 180) -> str:
@@ -86,9 +104,9 @@ def _short_content(node: dict, limit: int = 180) -> str:
     return (node.get('content') or '')[:limit].rstrip()
 
 
-def _render_operator(brain, locked_nodes: List[dict]) -> str:
+def _render_operator(brain, locked_nodes: List[dict], families: dict) -> str:
     """Operator section — who Tom is, what locked principles Anchor lives by."""
-    operator_types = set(_family_members(brain, OPERATOR_FAMILY))
+    operator_types = set(_members(families, OPERATOR_FAMILY))
     operator_nodes = [n for n in locked_nodes
                       if n.get('type') in operator_types]
     if not operator_nodes:
@@ -101,7 +119,7 @@ def _render_operator(brain, locked_nodes: List[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _render_partnership(brain, locked_nodes: List[dict]) -> str:
+def _render_partnership(brain, locked_nodes: List[dict], families: dict) -> str:
     """Partnership section — three layers: integrated, permanent, warm."""
     lines = ["## Partnership"]
 
@@ -120,7 +138,7 @@ def _render_partnership(brain, locked_nodes: List[dict]) -> str:
             lines.append("- **%s** — %s" % (c.get('title', ''), snippet))
 
     # Permanent: locked moments / identity
-    permanent_types = set(_family_members(brain, PERMANENT_FAMILY))
+    permanent_types = set(_members(families, PERMANENT_FAMILY))
     permanent = [n for n in locked_nodes
                  if n.get('type') in permanent_types]
     if permanent:
@@ -132,7 +150,7 @@ def _render_partnership(brain, locked_nodes: List[dict]) -> str:
     # Warm: recently-accessed nodes from episodic + lesson families. Recency-
     # first sort means what's been touched recently rises naturally — no
     # separate cutoff needed because the sort already orders by what matters.
-    warm_types = _members_in_families(brain, WARM_FAMILIES)
+    warm_types = _members_union(families, WARM_FAMILIES)
     warm_result = brain.filter_nodes(
         field='type', include=warm_types,
         sort_by='last_accessed', sort_order='desc',
@@ -149,13 +167,20 @@ def _render_partnership(brain, locked_nodes: List[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _render_active_threads(brain) -> str:
-    """Open work — types in the active_thread family, sorted by recency."""
-    active_types = _family_members(brain, ACTIVE_FAMILY)
+def _render_active_threads(brain, families: dict, arc_text: str = '') -> str:
+    """Open work — types in the active_thread family.
+
+    When arc_text is non-empty (the session's current focus blob), the result
+    is relevance-ranked against it — top half by relevance to today's arc,
+    remainder by raw recency. Lifts threads semantically connected to current
+    work above unrelated brain-wide noise. See FRAME-DESIGN.md Phase 2.5.
+    """
+    active_types = _members(families, ACTIVE_FAMILY)
     res = brain.filter_nodes(
         field='type', include=active_types,
         sort_by='last_accessed', sort_order='desc',
-        limit=ACTIVE_THREAD_PULL, rich=True)
+        limit=ACTIVE_THREAD_PULL, rich=True,
+        relevance_query=arc_text or None)
     nodes = res.get('nodes', []) if isinstance(res, dict) else []
     # Only keep unresolved — skip nodes with resolved_at set
     open_nodes = [n for n in nodes if not n.get('resolved_at')]
@@ -204,6 +229,11 @@ def build_frame(brain, session_id: str) -> str:
     Returns:
         Markdown string. ~1500-2000 tokens typical.
     """
+    # Load families ONCE per build — passed to all renderers. Pre-Phase-2.5
+    # each renderer fetched the s2_node_families config independently (4 DB
+    # reads of the same data per build). Single fetch, all renderers share.
+    families = _resolve_families(brain)
+
     # One pull, two consumers — reuse locked-nodes between operator + permanent.
     # Sort by last_accessed: locked nodes are curated, but recency reveals which
     # are still ALIVE in the partnership vs which have gone dormant.
@@ -214,10 +244,15 @@ def build_frame(brain, session_id: str) -> str:
     locked_nodes = (locked_result.get('nodes', [])
                     if isinstance(locked_result, dict) else [])
 
+    # Arc text: this session's compressed-down current focus. Used as the
+    # relevance pivot for Active threads (and later, Warm/Integrated). When
+    # empty (fresh session), relevance ranking falls back to pure recency.
+    arc_text = brain.session_context_for(session_id)
+
     sections = [
-        _render_operator(brain, locked_nodes),
-        _render_partnership(brain, locked_nodes),
-        _render_active_threads(brain),
+        _render_operator(brain, locked_nodes, families),
+        _render_partnership(brain, locked_nodes, families),
+        _render_active_threads(brain, families, arc_text=arc_text),
         _render_current_focus(brain, session_id),
         _render_recent_moves(brain, session_id),
     ]

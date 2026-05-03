@@ -54,6 +54,15 @@
 - Defensive fallback in `frame.py` (`_FALLBACK_FAMILIES`) handles "interaction missing" but not "type unclassified."
 - Bounded impact — most types covered by v1 seed; load-bearing cases (principle, rule, moment, community, open, insight) all in seed.
 
+**Phase 2.5 boot wire-up + arc-relevance landed (2026-05-02 same session):**
+- `render_boot_v2` rewritten as Frame-centered: 6 ad-hoc recall-driven sections (YOU / OPERATOR / PATTERNS YOU FALL INTO / BRAIN MAP / LAST SESSION / RECENTLY ENCODED) replaced by a single `ctx.get_frame(brain)` block. ~6800 chars vs ~14500 before — about half the tokens at boot, structurally clean, deterministic.
+- `session_id` threaded through args chain: `boot_brain.py → context_boot dispatch → format_boot_context → render_boot_v2`. The boot Frame is THIS session's Frame (not a global render).
+- Boot is now identical in shape to surface — Anchor's wakeup uses the same prior surface uses every turn.
+- Dead code cleaned: `fetch_self_knowledge` method removed, `BOOT_COMMUNITY_TOP/RECENT/IDENTITY_LIMIT/IDENTITY_CONTENT_LIMIT` constants removed, 4 obsolete boot tests in test_daemon.py removed (they asserted the dead old contract).
+- `brain.filter_nodes(relevance_query=...)` extension shipped (in `brain_recall.py`). Frame stays out of embedding mechanics. Cost: 1 embed call (~50ms) + N cosine ops + 1 SQL query for embeddings. Hybrid output: top half by relevance to query, remainder by structural sort. `relevance_vector_type` parameter exposed but defaults to `_primary` (single canonical embedding) for v1 simplicity.
+- Frame's Active threads section uses arc-relevance — embeds the session's `current_focus` blob and ranks active threads by similarity. Lifts threads semantically connected to current work above unrelated brain-wide noise. Fresh sessions (empty arc) fall back to pure recency.
+- `_resolve_families()` loads `s2_node_families` once per build_frame and passes the resolved map to all renderers — eliminated the redundant 4-DB-reads-per-build of the same config.
+
 **Phase 2.5 leak fix landed (2026-05-02 same session) — prerequisite for boot wire-up:**
 - Encoder's `session_context` was a GLOBAL `brain_meta` key — parallel sessions clobbered each other (last-writer-wins; two Claude Code instances scrambled each other's session arc). Real bug, undiagnosed before this session.
 - Fix: per-session keys mirror the existing `encoding_journal_{session_id}` pattern. `brain.session_context` property removed entirely; replaced with `brain.session_context_for(session_id)`. Encoder writes to `session_context_{session_id}`.

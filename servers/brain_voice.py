@@ -397,187 +397,68 @@ class BrainVoice:
     # ── Clean boot (v2) — wake-up, not system report ──
 
     def render_boot_v2(self, user: str = 'User', project: str = 'default',
-                       db_dir: str = '') -> Dict[str, Optional[str]]:
-        """Dynamic boot — pulls personality from the brain, not static text.
+                       db_dir: str = '', session_id: str = '') -> Dict[str, Optional[str]]:
+        """Frame-centered boot — Anchor wakes up with the same prior surface uses.
 
-        Every section is a live query. Different brain, different boot.
+        2026-05-02 (Frame Phase 2.5): rewritten from a 6-section recall-driven
+        render (YOU / OPERATOR / PATTERNS / BRAIN MAP / LAST SESSION / RECENTLY
+        ENCODED — each its own ad-hoc query) to a single Frame block built via
+        ctx.get_frame(brain). The Frame's named sections (Operator / Partnership
+        / Active threads / Current focus / Recent moves) subsume the previous
+        six. ~48% smaller, structurally cleaner, deterministic across calls,
+        and identical to what surface uses every turn — Anchor's wakeup is the
+        same prior as its turn-by-turn awareness.
+
+        What's preserved: header line (memory/locked counts), embedder line,
+        [BRAIN] envelope, operator channel (for_operator).
+
+        What's gone: ad-hoc recall queries for identity/operator/community
+        listings; maturity/size tags on communities; verbose render_rich_node
+        dumps with full content+metadata+edges per node; PATTERNS YOU FALL
+        INTO listing; explicit RECENTLY ENCODED section. All replaced by Frame.
+        See FRAME-DESIGN.md Phase 2.5.
         """
         brain = self.brain
-        _t = self.trunc
         out = []
 
         # ── Gather data ──
         ctx = brain.context_boot(user=user, project=project, task="session start")
         brain.reset_session_activity()
 
-        def _recall(query, filt=None, limit=3):
-            r = brain.recall(query=query, filter=filt, limit=limit, source='internal')
-            return (r.get('results', r) if isinstance(r, dict) else r)[:limit]
-
-        self_knowledge = brain.fetch_self_knowledge(limit=5)
-        # 2026-05-02 (Frame Phase 2.5): the global 'session_context' key was
-        # a parallel-session leak — encoder writes from session A and B
-        # clobbered each other. Per-session keys now used everywhere
-        # (session_context_{session_id}). Boot's "LAST SESSION" section
-        # is left empty in this transitional state; the Frame-centered boot
-        # rewrite (next punch list item) replaces this block entirely with
-        # ctx.get_frame(brain), which contains current_focus + recent_moves
-        # as proper sections.
-        session_context = ''
-        recent_nodes = ctx.get("recent", [])[:5]
         cs = {"reminders": brain.get_due_reminders()}
         health = brain.health_check(session_id="session_boot", auto_fix=True)
-        brain.save()
 
-        # ── Identity (one line) ──
+        # ── Header ──
         out.append("[BRAIN]")
         out.append("")
         out.append("Anchor. The brain is yours — %s memories, %s locked." % (
             ctx.get("total_nodes", "?"), ctx.get("total_locked", "?")))
         out.append("")
 
-        # ── Your words (brain.get_node + render) ──
-        from .contract import render_rich_node
-        from .brain_constants import (BOOT_IDENTITY_LIMIT, BOOT_IDENTITY_CONTENT_LIMIT,
-                                      BOOT_COMMUNITY_TOP, BOOT_COMMUNITY_RECENT)
-
-        BOOT_FORMAT = {'content_limit': 400, 'edge_limit': 3, 'metadata_limit': 150, 'time_format': 'relative'}
-        BOOT_YOU_FORMAT = {'content_limit': BOOT_IDENTITY_CONTENT_LIMIT, 'edge_limit': 2, 'metadata_limit': 100, 'time_format': 'relative'}
-
-        anchor_nodes = _recall("who I am, what I've learned, my identity", limit=BOOT_IDENTITY_LIMIT)
-        if anchor_nodes:
-            out.append("YOU:")
-            for n in anchor_nodes:
-                rich = brain.get_node(n['id'])
-                if rich:
-                    out.append(render_rich_node(rich, BOOT_YOU_FORMAT))
-                    out.append("")
-            out.append("")
-
-        # ── Operator's words ──
-        operator_nodes = _recall("operator partnership vision corrections teaching", limit=3)
-        if operator_nodes:
-            out.append("%s:" % user.upper())
-            for n in operator_nodes:
-                rich = brain.get_node(n['id'])
-                if rich:
-                    out.append(render_rich_node(rich, BOOT_FORMAT))
-                    out.append("")
-            out.append("")
-
-        # ── Patterns you fall into (self-knowledge) ──
-        if self_knowledge:
-            out.append("PATTERNS YOU FALL INTO:")
-            for sk in self_knowledge[:3]:
-                out.append("  %s" % _t(sk.get('title', ''), 100))
-            out.append("")
-
-        # ── What the brain knows (community map) ──
-        # Top communities by size + recently worked on. Gives Anchor the SHAPE of what it knows.
+        # ── The Frame — single canonical prior, same shape surface uses ──
+        # Built via SessionContext to honor the per-session shape: current_focus
+        # and recent_moves are session-scoped (per-session keys); operator,
+        # partnership, active threads are brain-scoped (filter_nodes reads).
+        # When session_id is missing or Frame Constructor fails, log loudly
+        # and continue without the prior — explicit degraded mode.
         try:
-            communities = brain.conn.execute('''
-                SELECT n.id, n.title, n.content
-                FROM nodes n
-                WHERE n.type = 'community' AND n.archived = 0
-                ORDER BY n.confidence DESC, n.updated_at DESC
-            ''').fetchall()
-
-            if communities:
-                # Load maturity + member count per community.
-                # Narrative comes from the community node's own content field
-                # (legacy community_narrative metadata key was removed in the
-                # 2026-04-17 migration; it was always a duplicate of content).
-                comm_by_id = {}
-                for cid, ctitle, ccontent in communities:
-                    meta = dict(brain.conn.execute(
-                        "SELECT key, value FROM node_metadata_kv "
-                        "WHERE node_id = ? AND key IN "
-                        "('community_maturity', 'community_size')",
-                        (cid,)).fetchall())
-                    maturity = meta.get('community_maturity', '?')
-                    size = meta.get('community_size', '?')
-                    narrative = ccontent or ''
-                    comm_by_id[cid] = (maturity, size, ctitle, narrative, cid)
-
-                # Find communities with recently-accessed members.
-                # TODO(v25-dal): this is a reverse-direction community query
-                # (member → community) that doesn't fit get_community_members
-                # (which is community → members). A future DAL method like
-                # get_recently_active_communities(since_hours) would consolidate
-                # this + similar queries in dashboard/eval. For now: raw SQL
-                # with archived=0 filter and no silent failure.
-                recent_comm_ids = set()
-                try:
-                    recent_member_rows = brain.conn.execute('''
-                        SELECT DISTINCT
-                            CASE WHEN e.source_id IN (SELECT id FROM nodes WHERE type = 'community')
-                                 THEN e.source_id ELSE e.target_id END as comm_id
-                        FROM edges e
-                        JOIN edge_relations er ON er.edge_id = e.edge_id
-                        JOIN nodes member ON member.id =
-                            CASE WHEN e.source_id IN (SELECT id FROM nodes WHERE type = 'community')
-                                 THEN e.target_id ELSE e.source_id END
-                        WHERE er.relation = 'community_member'
-                        AND er.archived = 0
-                        AND member.last_accessed > datetime('now', '-3 days')
-                        AND member.type != 'community'
-                    ''').fetchall()
-                    recent_comm_ids = {r[0] for r in recent_member_rows}
-                except Exception as e:
-                    brain._log_error('brain_voice_recent_communities', e,
-                                     'building recent-community-member set for boot')
-
-                # Select: BOOT_COMMUNITY_RECENT recently active + BOOT_COMMUNITY_TOP by size
-                maturity_order = {'settled': 0, 'active': 1, 'forming': 2, 'corridor': 3}
-                def size_key(item):
-                    raw = item[1]
-                    if not raw or raw == '?':
-                        return 0
-                    try:
-                        return -int(raw)
-                    except (TypeError, ValueError):
-                        # One bad row shouldn't nuke the whole map. Log the
-                        # specific offender so it's visible, then sort it last.
-                        brain._log_error(
-                            'boot_community_map',
-                            ValueError('non-integer community_size=%r on %s' % (raw, item[4])),
-                            'bad community_size metadata')
-                        return 0
-
-                recent_items = [comm_by_id[cid] for cid in recent_comm_ids if cid in comm_by_id]
-                recent_items.sort(key=size_key)
-                recent_items = recent_items[:BOOT_COMMUNITY_RECENT]
-                recent_ids = {item[4] for item in recent_items}
-
-                top_items = [item for item in comm_by_id.values() if item[4] not in recent_ids]
-                top_items.sort(key=lambda x: (maturity_order.get(x[0], 4), size_key(x)))
-                top_items = top_items[:BOOT_COMMUNITY_TOP]
-
-                selected = recent_items + top_items
-                if selected:
-                    out.append("BRAIN MAP (%d communities):" % len(comm_by_id))
-                    for maturity, size, title, summary, cid in selected:
-                        mat_tag = maturity[:1].upper() if maturity and maturity != '?' else '?'
-                        out.append("  [%s|%s] %s (id:%s)" % (mat_tag, size, _t(title, 70), cid[:8]))
-                        if summary:
-                            out.append("    %s" % _t(summary, 120))
-                    out.append("")
+            session_ctx = brain.get_or_create_session(session_id) if session_id else None
+            frame_md = session_ctx.get_frame(brain) if session_ctx else ''
         except Exception as e:
-            brain._log_error('boot_community_map', e, 'loading community map')
+            brain._log_error('boot_frame_build_failed', e,
+                             'render_boot_v2: Frame Constructor raised — boot continues without prior')
+            frame_md = ''
 
-        # ── Where we left off ──
-        if session_context:
-            out.append("LAST SESSION:")
-            out.append("  %s" % _t(session_context, 400))
+        if frame_md:
+            out.append(frame_md.rstrip())
+            out.append("")
+        else:
+            out.append("(no partnership context — Frame unavailable at boot)")
             out.append("")
 
-        # ── Recently encoded ──
-        if recent_nodes:
-            out.append("RECENTLY ENCODED:")
-            for rn in recent_nodes:
-                out.append("  [%s] %s" % (rn.get('type', '?'), _t(rn.get('title', ''), 100)))
-            out.append("")
+        brain.save()
 
+        # ── Embedder status ──
         if embedder.is_ready():
             es = embedder.get_stats()
             out.append("Embedder: %s (%sd, %sms)" % (es["model_name"], es["embedding_dim"], es["load_time_ms"]))
