@@ -55,7 +55,34 @@ def _generate_remember_schema():
 
     return {
         "name": "remember",
-        "description": "Store a new node in the brain. Fields defined by contract — add new fields there, they appear here automatically.",
+        "description": (
+            "Store a new node in the brain. Fields are defined by contract — "
+            "add new fields there, they appear here automatically.\n\n"
+            "ENCODING CRAFT:\n"
+            "• `situation` is the single biggest lever for recall — write as "
+            "\"When [doing X] and [Y happens]\". A vague situation means the node "
+            "only surfaces for exact-match queries.\n"
+            "• `user_raw_quote` and `anchor_raw_quote` capture meaning that "
+            "paraphrasing loses. Use them when the operator's or your own exact "
+            "words carry the principle.\n"
+            "• `correction_of` links to the node this corrects, creating a "
+            "correction chain.\n\n"
+            "LESSONS — climb the abstraction ladder:\n"
+            "  BAD: \"Fixed tokenizer bug at startup.\"\n"
+            "  GOOD: \"Hidden dependencies surface at state transitions. "
+            "PRINCIPLE: When a component fails at startup/shutdown, look for "
+            "dependencies it shouldn't have.\"\n\n"
+            "CORRECTIONS — three lines:\n"
+            "  ASSUMED: what you thought\n"
+            "  REALITY: what's true\n"
+            "  PATTERN: the class of error\n"
+            "Specific enough that you recognize the trap before falling in again.\n\n"
+            "RICHNESS: Training rewards brevity; this is wrong for memory. "
+            "Future-you has zero context. Be RICH — texture, specifics, failures, "
+            "reasoning journeys. Many focused nodes > few compressed summaries. "
+            "Encode decisions, corrections, mechanisms, quotes, emotional "
+            "inflections — not just technical lessons."
+        ),
         "inputSchema": {
             "type": "object",
             "required": ["type", "title", "content"],
@@ -101,7 +128,17 @@ _CONNECT_TO_ITEM_SCHEMA = {
                 "What the edge MEANS — the insight that lives between the two nodes, "
                 "not a summary of either. Embedded for query matching. Target ≥30 "
                 "chars; under 20 is dead weight. If you can't write something "
-                "specific, drop the edge."
+                "specific, drop the edge.\n\n"
+                "BAD: \"\" — invisible.\n"
+                "BAD: \"example of the principle\" — generic gloss; no insight about "
+                "WHICH example or WHY this one.\n"
+                "GOOD: \"the assumption treated concurrent access as a thread-safety "
+                "question; the correction reframes it as wal-index contention — "
+                "different failure mode, different fix\" — explains the conceptual "
+                "shift, not the values.\n"
+                "GOOD: \"the {specific_choice} was the turn where {principle} first "
+                "became conscious — the instance where the pattern named itself\" — "
+                "says why THIS instance mattered for the principle."
             ),
         },
         "relations": {
@@ -211,7 +248,21 @@ def _generate_revise_schema():
 
     return {
         "name": "revise",
-        "description": "Update any field(s) on an existing brain node. Content is REPLACED (old saved to revision history). All other fields replaced.",
+        "description": (
+            "Update any field(s) on an existing brain node. Content is REPLACED "
+            "(old saved to revision history). All other fields replaced.\n\n"
+            "WHEN TO REVISE vs ENCODE NEW:\n"
+            "• Revise when a recalled node is stale, incomplete, or wrong but "
+            "the SAME concept. Add `situation`, fix `reasoning`, sharpen content. "
+            "Every recall is a chance to improve the node — if you noticed "
+            "something missing, fix it in the moment.\n"
+            "• Encode NEW (with `correction_of`) when the new understanding "
+            "supersedes the old one. The correction chain preserves both "
+            "versions; revising would lose the old framing entirely.\n"
+            "• If the catalog has a node with the title you're about to remember, "
+            "revise it instead — duplicate-title remember + connect_to would "
+            "leave the catalog version stale."
+        ),
         "inputSchema": {
             "type": "object",
             "required": ["node_id", "reason"],
@@ -310,7 +361,20 @@ def _build_tools():
         return [
     # ── Core memory operations ──
     {"name": "recall",
-     "description": "Semantic recall from brain — searches nodes by meaning using embeddings. Returns ranked results with titles, content, types, confidence. Supports dict filter for field-level filtering.",
+     "description": (
+         "Semantic recall from brain — searches nodes by meaning using "
+         "embeddings. Returns ranked results with titles, content, types, "
+         "confidence. Supports dict filter for field-level filtering.\n\n"
+         "WHEN TO CALL:\n"
+         "• Before answering about the past — don't guess, search.\n"
+         "• When the auto-surfaced context (~25 candidates per turn) didn't "
+         "catch what you need — go look.\n"
+         "• When unsure if the brain knows something — costs ~100ms.\n\n"
+         "QUERY PHRASING: write what you'd remember, not what you'd google. "
+         "Semantic search finds nodes with similar MEANING. \"the decision "
+         "about edge classification\" beats \"edge_families\". Specific "
+         "framings beat single keywords."
+     ),
      "inputSchema": {"type": "object", "properties": {
          "query": {"type": "string", "description": "Search query (semantic, not keyword)"},
          "node_id": {"type": "string", "description": "Look up a specific node by ID (skip search)"},
