@@ -3,7 +3,6 @@
 Tests cover:
 - Phase 1: fl(), trunc(), format_recall_results, format_encoding_warning, format_suggestions
 - Phase 2: render_boot() matches format_boot_context() wrapper
-- Phase 3: select_prompt_signals(), render_prompt(), render_reboot()
 - Phase 4: Operator channel (for_operator) in all render methods
 """
 
@@ -174,63 +173,9 @@ class TestBrainVoiceRenderBoot(BrainTestBase):
 # Tests for assembler in test_surface_assembler.py
 
 
-class TestBrainVoiceRenderReboot(BrainTestBase):
-    """Phase 3: render_reboot() formatting."""
-
-    def test_render_reboot_returns_dict(self):
-        voice = BrainVoice(self.brain)
-        result = voice.render_reboot(boot_context={})
-        self.assertIn('for_claude', result)
-        self.assertIn('for_operator', result)
-
-    def test_render_reboot_includes_header(self):
-        voice = BrainVoice(self.brain)
-        result = voice.render_reboot(boot_context={})
-        self.assertIn("[BRAIN] POST-COMPACTION REBOOT:", result['for_claude'])
-        self.assertIn("[/BRAIN]", result['for_claude'])
-
-    def test_render_reboot_includes_locked_rules(self):
-        rules = [{"title": "Always commit tests"}, {"title": "Never skip hooks"}]
-        voice = BrainVoice(self.brain)
-        result = voice.render_reboot(boot_context={}, locked_rules=rules)
-        self.assertIn("LOCKED RULES (2 active)", result['for_claude'])
-        self.assertIn("Always commit tests", result['for_claude'])
-
-    def test_render_reboot_includes_signals(self):
-        signals = {
-            "reminders": [{"title": "Check PR"}],
-            "evolutions": [{"title": "Tension A"}],
-        }
-        voice = BrainVoice(self.brain)
-        result = voice.render_reboot(boot_context={}, signals=signals)
-        self.assertIn("REMINDERS:", result['for_claude'])
-        self.assertIn("EVOLUTIONS:", result['for_claude'])
-
-    def test_render_reboot_synthesis_just_ran(self):
-        voice = BrainVoice(self.brain)
-        result = voice.render_reboot(
-            boot_context={},
-            synthesis_info={"just_ran": True, "parts": ["3 decisions"]},
-        )
-        self.assertIn("Pre-compact synthesis did not run", result['for_claude'])
-        self.assertIn("3 decisions", result['for_claude'])
-
-    def test_render_reboot_open_questions_fresh(self):
-        voice = BrainVoice(self.brain)
-        result = voice.render_reboot(
-            boot_context={},
-            synthesis_info={"open_questions": ["What about X?"], "age_minutes": 5},
-        )
-        self.assertIn("OPEN QUESTIONS", result['for_claude'])
-        self.assertIn("What about X?", result['for_claude'])
-
-    def test_render_reboot_open_questions_stale(self):
-        voice = BrainVoice(self.brain)
-        result = voice.render_reboot(
-            boot_context={},
-            synthesis_info={"open_questions": ["Old Q"], "age_minutes": 120},
-        )
-        self.assertIn("questions may be resolved", result['for_claude'])
+# TestBrainVoiceRenderReboot: DELETED 2026-05-03 — render_reboot() removed
+# along with the pre/post-compact hooks. Compaction is now invisible to the
+# brain; the next UserPromptSubmit fires hook_recall which surfaces Frame.
 
 
 class TestBrainVoiceOperatorChannel(BrainTestBase):
@@ -246,19 +191,6 @@ class TestBrainVoiceOperatorChannel(BrainTestBase):
         self.assertIn("3 nodes recalled", result)
 
     # render_prompt operator tests: DELETED — render_prompt replaced by SurfaceAssembler (2026-03-27)
-
-    def test_render_reboot_operator_summary(self):
-        voice = BrainVoice(self.brain)
-        rendered = voice.render_reboot(
-            boot_context={},
-            locked_rules=[{"title": "R1"}, {"title": "R2"}],
-            recall_results=[{"type": "rule", "title": "R"}],
-        )
-        op = rendered['for_operator']
-        self.assertIsNotNone(op)
-        self.assertIn("Post-compaction reboot", op)
-        self.assertIn("2 locked rules", op)
-        self.assertIn("1 nodes recalled", op)
 
     # test_debug_mode_exposes_claude_context removed — debug mode removed from render_prompt
 

@@ -358,28 +358,9 @@ TABLES = {
 
     # correction_traces — REMOVED v23. Dropped.
 
-    # v15: Session syntheses — structured knowledge from conversations
-    'session_syntheses': {
-        'create': """CREATE TABLE IF NOT EXISTS session_syntheses (
-            id TEXT PRIMARY KEY,
-            session_id TEXT NOT NULL,
-            duration_minutes INTEGER,
-            decisions_made TEXT,
-            corrections_received TEXT,
-            inflection_points TEXT,
-            mental_model_updates TEXT,
-            teaching_arcs TEXT,
-            open_questions TEXT,
-            created_at TEXT
-        )""",
-        'columns': {
-            'id': None, 'session_id': None, 'duration_minutes': 'NULL',
-            'decisions_made': 'NULL', 'corrections_received': 'NULL',
-            'inflection_points': 'NULL', 'mental_model_updates': 'NULL',
-            'teaching_arcs': 'NULL', 'open_questions': 'NULL',
-            'created_at': 'NULL',
-        }
-    },
+    # session_syntheses — REMOVED 2026-05-03 (writer synthesize_session
+    # removed 2026-04-13; last reader hook_post_compact_reboot deleted with
+    # the pre/post-compact hooks).
 
     # project_maps — REMOVED v21 (dead table)
 
@@ -468,8 +449,7 @@ INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_metadata_correction ON node_metadata(correction_of)',
     'CREATE INDEX IF NOT EXISTS idx_metadata_validated ON node_metadata(last_validated)',
     # correction_traces — REMOVED v23
-    # v15: session_syntheses
-    'CREATE INDEX IF NOT EXISTS idx_session_syntheses_session ON session_syntheses(session_id)',
+    # session_syntheses — REMOVED 2026-05-03
     # v15: nodes scope for engineering memory
     'CREATE INDEX IF NOT EXISTS idx_nodes_scope ON nodes(scope)',
     # v16: critical flag for safety-important nodes

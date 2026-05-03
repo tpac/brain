@@ -88,8 +88,8 @@ class TestDaemonDispatch(unittest.TestCase):
         """HOOK_TABLE has entries for all hook functions."""
         expected_hooks = [
             'hook_recall', 'hook_post_response_track', 'hook_idle_maintenance',
-            'hook_post_compact_reboot', 'hook_pre_edit', 'hook_pre_bash_safety',
-            'hook_pre_compact_save', 'hook_session_end', 'hook_stop_failure_log',
+            'hook_pre_edit', 'hook_pre_bash_safety',
+            'hook_session_end', 'hook_stop_failure_log',
             'hook_config_change_host', 'hook_post_bash_host_check',
             'hook_worktree_context', 'hook_worktree_cleanup',
         ]

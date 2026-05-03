@@ -131,8 +131,6 @@ class TestWorktreeHooks(unittest.TestCase):
         'SessionStart',       # Boot brain
         'UserPromptSubmit',   # Recall before responding — CRITICAL
         'PreToolUse',         # Pre-edit suggestions
-        'PreCompact',         # Save before compaction
-        'PostCompact',        # Reboot after compaction
     }
 
     def _load_worktree_hooks(self):
@@ -171,7 +169,7 @@ class TestWorktreeHooks(unittest.TestCase):
         hooks = hooks_config.get('hooks', {})
         required_main = {
             'SessionStart', 'UserPromptSubmit', 'PreToolUse',
-            'PreCompact', 'PostCompact', 'SessionEnd', 'Stop',
+            'SessionEnd', 'Stop',
         }
         for event in required_main:
             self.assertIn(event, hooks,

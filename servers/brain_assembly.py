@@ -393,31 +393,18 @@ class BrainAssemblyMixin:
 
     def health_check(self, session_id: str = 'boot', auto_fix: bool = True) -> Dict[str, Any]:
         """
-        Check brain health: unresolved compaction boundaries, high miss rate,
-        orphaned locked nodes, stale contexts, stale staged learnings.
+        Check brain health: orphaned locked nodes, stale contexts, stale staged learnings.
         Auto-fix: enrich missed nodes, promote staged learnings.
         """
         issues = []
         actions = []
         ts = self.now()
 
-        # 1. Check for unresolved compaction boundary warnings
-        boundaries = self.conn.execute('''
-            SELECT id, title, created_at FROM nodes
-            WHERE type = 'context' AND title LIKE '%Compaction boundary%' AND archived = 0
-        ''').fetchall()
+        # compaction_boundary node check REMOVED 2026-05-03 — pre/post-compact
+        # hooks deleted; legacy node-style boundaries (pre-2026-04-13) no
+        # longer produced. miss_log check REMOVED 2026-04-06.
 
-        for row in boundaries:
-            issues.append({
-                'type': 'compaction_boundary',
-                'severity': 'high',
-                'message': f'Unresolved compaction boundary from {row[2]}. Recap encoding may have been skipped.',
-                'node_id': row[0]
-            })
-
-        # 2. miss_log check REMOVED 2026-04-06 — table dropped
-
-        # 3. Check for orphaned locked nodes
+        # Check for orphaned locked nodes
         orphaned = self.conn.execute('''
             SELECT n.id, n.title FROM nodes n
             WHERE n.locked = 1 AND n.archived = 0

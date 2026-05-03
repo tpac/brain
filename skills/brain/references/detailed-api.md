@@ -137,7 +137,7 @@ When matched: recalls critical nodes, returns risk level (high/medium/low).
 
 ## Database Schema (v16)
 
-**Main tables:** nodes, edges, access_log, brain_meta, summaries, version_history, emotion_calibration, dream_log, node_metadata, node_embeddings, reasoning_chains, reasoning_steps, session_syntheses, correction_traces, bridge_proposals, staged_learnings, project_maps, procedures
+**Main tables:** nodes, edges, access_log, brain_meta, summaries, version_history, emotion_calibration, dream_log, node_metadata, node_embeddings, reasoning_chains, reasoning_steps, bridge_proposals, staged_learnings, procedures
 
 **Key node columns:** id, type, title, content, keywords, activation, stability, access_count, locked, archived, critical, recency_score, emotion, emotion_label, confidence, personal, personal_context, project, last_accessed, created_at, updated_at
 

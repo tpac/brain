@@ -5,13 +5,12 @@
 
 ## How Hook Output Reaches Claude
 
-**Only 3 event types inject stdout into Claude's context:**
+**Only 2 event types inject stdout into Claude's context:**
 
 | Event | Stdout → Claude? | JSON fields | Can block? |
 |-------|------------------|-------------|-----------|
 | **SessionStart** | ✅ YES | `additionalContext` | Yes |
 | **UserPromptSubmit** | ✅ YES | `additionalContext` | Yes |
-| **PostCompact** | ✅ YES | `additionalContext` | No |
 
 **All other events: stdout is invisible to Claude** (logged in verbose mode only).
 
@@ -21,7 +20,7 @@ For **Stop**: Claude gets feedback only via JSON `decision` field. Plain stdout 
 
 ---
 
-## Registered Hooks (15 total)
+## Registered Hooks (13 total)
 
 ### 1. SessionStart → `boot-brain.sh` (15s)
 - **Purpose:** Boot brain, print context + consciousness signals
@@ -59,55 +58,43 @@ For **Stop**: Claude gets feedback only via JSON `decision` field. Plain stdout 
 - **What Claude sees:** ❌ NOTHING — Notification stdout is NOT injected
 - **Status:** ❌ OUTPUT IS DEAD — maintenance runs but results are invisible
 
-### 7. PreCompact → `pre-compact-save.sh` (10s)
-- **Purpose:** Synthesize session + save before compaction
-- **Output:** `{"decision":"approve"}` + stderr logging
-- **What Claude sees:** Nothing (no context to inject, just saving)
-- **Status:** ✅ WORKING (correctly — no output needed)
-
-### 8. PostCompact → `post-compact-reboot.sh` (10s)
-- **Purpose:** Re-inject brain context after compaction
-- **Output:** Plain stdout → ✅ injected into Claude's context
-- **What Claude sees:** Locked rules, consciousness signals, recalled context (v5.3+)
-- **Status:** ✅ WORKING (improved v5.3 — now includes recall)
-
-### 9. Stop → `post-response-track.sh` (5s)
+### 7. Stop → `post-response-track.sh` (5s)
 - **Purpose:** Encoding checkpoint on Stop events
 - **Output:** Plain stdout
 - **What Claude sees:** ❌ NOTHING — Stop stdout is NOT injected
 - **Status:** ❌ OUTPUT IS DEAD on this event — checkpoints only work via UserPromptSubmit (#3)
 
-### 10. StopFailure → `stop-failure-log.sh` (5s)
+### 8. StopFailure → `stop-failure-log.sh` (5s)
 - **Purpose:** Log API failures to brain for pattern detection
 - **Output:** None (logging only)
 - **What Claude sees:** Nothing (correct — logging only)
 - **Status:** ✅ WORKING
 
-### 11. SessionEnd → `session-end.sh` (10s)
+### 9. SessionEnd → `session-end.sh` (10s)
 - **Purpose:** Session synthesis + consolidation + clean shutdown
 - **Output:** stderr logging only
 - **What Claude sees:** Nothing (correct — session is ending)
 - **Status:** ✅ WORKING
 
-### 12. ConfigChange → `config-change-host.sh` (5s)
+### 10. ConfigChange → `config-change-host.sh` (5s)
 - **Purpose:** Detect host environment changes
 - **Output:** Plain stdout
 - **What Claude sees:** ❌ NOTHING — ConfigChange stdout is NOT injected
 - **Status:** ❌ OUTPUT IS DEAD — changes detected but never surfaced
 
-### 13. PostToolUse(Bash) → `post-bash-host-check.sh` (5s)
+### 11. PostToolUse(Bash) → `post-bash-host-check.sh` (5s)
 - **Purpose:** Detect env changes after pip install, brew, etc.
 - **Output:** Plain stdout
 - **What Claude sees:** ❌ NOTHING — PostToolUse stdout is NOT injected
 - **Status:** ❌ OUTPUT IS DEAD — changes detected but never surfaced
 
-### 14. WorktreeCreate → `worktree-context.sh` (5s)
+### 12. WorktreeCreate → `worktree-context.sh` (5s)
 - **Purpose:** Track git branch/worktree info
 - **Output:** Plain stdout (git context info)
 - **What Claude sees:** ❓ UNCLEAR — WorktreeCreate stdout is structural (path), not context
 - **Status:** ⚠️ VERIFY — may need to store in brain config and surface via recall instead
 
-### 15. WorktreeRemove → `worktree-cleanup.sh` (5s)
+### 13. WorktreeRemove → `worktree-cleanup.sh` (5s)
 - **Purpose:** Clear worktree config from brain
 - **Output:** None
 - **What Claude sees:** Nothing (correct — cleanup only)
@@ -119,7 +106,7 @@ For **Stop**: Claude gets feedback only via JSON `decision` field. Plain stdout 
 
 | Status | Count | Hooks |
 |--------|-------|-------|
-| ✅ Working | 8 | boot, recall, pre-edit, pre-bash, pre-compact, post-compact, stop-failure, session-end |
+| ✅ Working | 6 | boot, recall, pre-edit, pre-bash, stop-failure, session-end |
 | ⚠️ Partial | 2 | post-response-track (Stop path dead), worktree-context (verify) |
 | ❌ Dead output | 4 | idle-maintenance, config-change, post-bash-host, Stop path of track |
 
@@ -162,8 +149,8 @@ Claude finishes responding
   └→ post-response-track.sh ── encoding checkpoint (❌ output dead on Stop)
 
 Context fills up
-  └→ pre-compact-save.sh ── synthesize + save
-  └→ post-compact-reboot.sh ── re-inject context + recall
+  └→ (no brain hooks — compaction is invisible to the brain;
+      the next UserPromptSubmit fires hook_recall and surfaces Frame)
 
 Session ends
   └→ session-end.sh ── final synthesis + consolidation + shutdown
