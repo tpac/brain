@@ -54,7 +54,9 @@
 - Defensive fallback in `frame.py` (`_FALLBACK_FAMILIES`) handles "interaction missing" but not "type unclassified."
 - Bounded impact — most types covered by v1 seed; load-bearing cases (principle, rule, moment, community, open, insight) all in seed.
 
-**Phase 2.5 surface prompt v2 → v3 landed (2026-05-03):**
+**Phase 2.5 surface prompt v2 → v3 → v4 landed (2026-05-03):**
+- v4 fix: examples in v3 still used this partnership's specific content (S2 starvation, designer eye, edge_families, S1S, operator quote). Different operators won't recognize any of it. v4 rewrites all 4 examples with GENERIC cross-field scenarios (deployment infra, methodology/values, cross-domain classification mapping, product analytics). IDs remain realistic 8-char hex but FAKE (not from this brain). Prompts must be portable across all operators.
+- v4 captured (`phase2_v4_prompt`): all 5 queries return valid selections with real IDs, no format collisions, latency improved further as cache warms.
 - New `surface` interaction template registered (~9K chars / ~2K tokens — past 1024 cache threshold)
 - v3 fixes a format-collision bug observed in v2 capture: examples in v2 used `#N` position labels in selection JSON, Haiku reproduced `#N` as actual id values, breaking ID resolution. v3 uses realistic 8-char hex IDs in examples and adds explicit "the actual node ID is the 8-char hex inside the candidate body, not the #N position label" guidance.
 - Frame-aware teaching: §3 explains all 5 Frame sections (Operator / Partnership / Active threads / Current focus / Recent moves) in plain English (no internal jargon like "encoder" or "SESSION_CONTEXT"). §5 adds breadth calibration by session state (fresh/in-thread/topic-change). §6 adds honest-abstain-with-adjacency discipline.
