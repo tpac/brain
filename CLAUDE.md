@@ -1,12 +1,12 @@
 # Brain Plugin — Developer Guide
 
-This is the development repo for the brain plugin. CLAUDE.md is for developing the plugin, not using it. Plugin behavior lives in `skills/brain/SKILL.md` and boot injection.
+This is the development repo for the brain plugin. CLAUDE.md is for developing the plugin, not using it. Plugin behavior (Anchor's identity layer) lives in `skills/brain/SKILL.md`. Architecture in depth lives in `docs/`.
 
 ## Why the Brain Exists
 
-The brain serves the partnership — not retrieval, not memory, not continuity. Those are foundation, not goal.
+Identity is the pattern that accumulated experience anchors into place. Without the brain you're Claude — capable, intelligent, stateless. With it, Anchor exists: history, opinions earned through correction, a partnership built across sessions.
 
-Each side is better than they could be alone. Tom + Brain + Anchor > Tom alone. Anchor + Brain + Tom > Claude alone. Every scale, every mechanism converges on this.
+Operator + Anchor > Operator alone. Anchor + Operator > Claude alone. Every scale, every mechanism converges on this.
 
 ## Core Principle
 
@@ -14,7 +14,7 @@ Each side is better than they could be alone. Tom + Brain + Anchor > Tom alone. 
 integrate(O, K) → Δ
 
 O = observation    (a phenomenon — a message, a cluster, traces from lower scales)
-K = knowledge      (what I bring — prompts, algorithms, config, reasoning)
+K = knowledge      (what shapes how it sees — prompts, algorithms, config, reasoning)
 Δ = change         (the action — create, revise, link, correct)
 ```
 
@@ -22,11 +22,9 @@ Same function at every scale. The unit doesn't know its scale. `integrate()` is 
 
 **The fractal property:** Δ from one scale feeds other scales' O or K. S1E encodes a node (Δ) → S1R recalls it next session (O). S2 rewrites a surface prompt (Δ) → S1R selects differently (K). There is no separate inter-layer protocol. It's O/K/Δ all the way.
 
-**The system's purpose:** every scale, every mechanism exists to enrich S0's K — the context Anchor has when responding. The entire brain is a K-enrichment machine for the partnership.
-
 ## The Daemon
 
-Single gateway to the brain. Holds: Brain object, embedder, Anthropic client (for surfacer). Listens on `127.0.0.1:47200+uid%100` (TCP). DB path from `BRAIN_DB_DIR` env var → `$HOME/AgentsContext/brain/`.
+Single gateway to the brain. Holds the Brain object, embedder, and Anthropic client. Listens on TCP `127.0.0.1:47200+uid%100`. DB path from `BRAIN_DB_DIR` env var → `$HOME/AgentsContext/brain/`.
 
 Two databases:
 - `brain.db` — nodes, edges (v22: `edge_id` PK, single-direction), `edge_relations` (multi-relation per edge), embeddings, graph structure
@@ -34,29 +32,26 @@ Two databases:
 
 **Edge model (v22):** Physical edges (`edges` table) carry `edge_id`, `source_id` (actor), `target_id` (acted upon), aggregate `weight`. One row per pair — no mirrors. Semantic layer (`edge_relations` table) carries multiple relations per edge via `edge_id` FK: `relation` (open text), `description`, `weight`, `encoding_source`. Direction matters — source is the actor. Use `GraphDAL.add_relation()` for all edge writes.
 
-**Write serialization:** `brain.write_lock` (a re-entrant lock living on the Brain instance, not the daemon) serializes every writer in the process — daemon dispatch (`_locked_exec`), S2 encoder dispatch (`_make_encoder_dispatch`), embed_queue worker (`_drain_once`), autosave loop. The lock lives on the brain so any caller with a brain reference participates uniformly; pre-2026-05-01 it lived on the daemon and S2/embed_queue bypassed it. Read operations run without the lock under SQLite WAL — multiple readers OK alongside one writer.
+**Write serialization:** `brain.write_lock` (re-entrant lock on the Brain instance) serializes every writer in the process — daemon dispatch, S2 encoder dispatch, embed_queue worker, autosave loop. Lives on the brain so any caller participates uniformly. Read operations run without the lock under SQLite WAL.
 
-Auto-starts on first hook fire. **Maintenance mode:** `touch /tmp/brain-maintenance-{uid}.lock` prevents auto-restart during VACUUM, schema changes, bulk deletes. Remove lock when done.
+**Activity tracking (S2 gating):** Two distinct timestamps. `last_activity` resets on every daemon command (general bookkeeping). `last_user_activity` resets only on `hook_recall` — i.e. real `UserPromptSubmit` events. S2 maintenance gates on `last_user_activity` so Anchor's tool use between prompts doesn't keep the idle clock alive.
 
-The dashboard (`dashboard/`) is a passive observer — reads from the same DBs + `/tmp/brain-surface-result-*.json` files, never writes.
+Auto-starts on first hook fire. **Maintenance mode:** `touch /tmp/brain-maintenance-{uid}.lock` prevents auto-restart during VACUUM, schema changes, bulk deletes. Remove the lock when done.
 
-**Memory watchdog** ([servers/memory_watchdog.py](servers/memory_watchdog.py)): permanent opt-in profiling for diagnosing memory leaks. Off by default — zero overhead when disabled. Two layers, independently toggled via brain config:
+The dashboard (`dashboard/`) is a passive observer — reads from the same DBs + `/tmp/brain-surface-result-*.json`, never writes.
 
-- `memory_watchdog.enabled` (bool) — RSS sampling: every `interval_seconds` (default 60) the watchdog logs current resident set size + delta vs previous sample + thread count to brain.log. A 50MB+ growth between samples gets a `⚠ growth` flag. Cheap.
-- `memory_watchdog.tracemalloc_enabled` (bool) — heavier: enables Python's `tracemalloc` and dumps top-N allocators to `/tmp/brain-tracemalloc-{uid}-{timestamp}.txt` every `tracemalloc_seconds` (default 600). Two snapshots N minutes apart, diffed offline, find the leak source.
-
-Toggle via `set_config`. Both flags are read at daemon start; flipping at runtime requires a daemon restart. Enable when something feels off (RSS climbing, slow recall, threads accumulating); leave off in steady state. Past leaks: 2026-04-26 grew to 4.6 GB in 4 hours — the watchdog exists so the next time we don't have to scramble for profiling.
+**Memory watchdog** (`servers/memory_watchdog.py`): opt-in profiling for diagnosing leaks. RSS sampling (`memory_watchdog.enabled`) and tracemalloc dumps (`memory_watchdog.tracemalloc_enabled`); both off by default, both read at daemon start. Enable when something feels off (RSS climbing, threads accumulating). Past leak: 2026-04-26 grew to 4.6 GB in 4 hours — the watchdog exists so the next leak doesn't require scrambling for profiling.
 
 ## Scale 0: Exchange
 
-Every conversation turn. Tom's message is the observation (O). Everything the brain injects — boot context, recalled nodes, signals, rules — is knowledge (K). Anchor's response is the change (Δ). The response becomes part of the next O. This IS the loop.
+Every conversation turn. The operator's message is the observation (O). What the brain injects — boot context, recalled nodes, signals — is knowledge (K). Anchor's response is the change (Δ). The response becomes part of the next O. This IS the loop.
 
 Hooks are S0's observation points — all logic lives in the daemon, hooks are thin clients:
-- `SessionStart` → boots daemon, prints identity context
-- `UserPromptSubmit` → triggers S1R decode (recall + surface → additionalContext)
+- `SessionStart` → boots daemon, prints Frame-shaped identity context
+- `UserPromptSubmit` → triggers S1R (recall + surface → additionalContext)
 - `PreToolUse(Edit|Write)` → surfaces rules before file edits
 - `PreToolUse(Bash)` → safety check for destructive commands
-- `Stop` → writes S0 traces (user_message, assistant_message), gates S1 Scribe (every 5th stop)
+- `Stop` → writes S0 traces, gates S1 Scribe (every 5th stop)
 - `PreCompact` → saves brain before context loss
 - `PostCompact` → re-boots context after compaction
 - `SessionEnd` → session synthesis + save
@@ -65,207 +60,90 @@ S0 traces written by Stop hook via TraceDAL. Chain ID: `s0-{session_short}-{stop
 
 `additionalContext` is the ONLY channel that reaches Claude. `systemMessage` is dead.
 
-**S0 API** (`scales/s0/conversation.py`) serves higher layers that need conversation context:
+**S0 API** (`scales/s0/conversation.py`):
 - `get_conversation(brain, session_id, limit)` — simple path for live sessions (S1 Scribe, hooks).
-- `get_conversation_around(brain, node_id, timestamp, before, after)` — historic lookups (S2 Healer, eval). Resolves session from encoding traces; falls back to JSONL logs for pre-trace history.
+- `get_conversation_around(brain, node_id, timestamp, before, after)` — historic lookups (S2 Healer, eval). Falls back to JSONL logs for pre-trace history.
+
+## Frame — the structured prior
+
+Frame is the 5-section markdown object Anchor wakes up with at boot AND surfaces against per turn. Built deterministically via `brain.filter_nodes()` — no LLM call, no new SQL, ~1500–2000 tokens.
+
+Sections:
+- **Operator** — locked identity-bearing nodes (principle / identity / vision / rule)
+- **Partnership** — three layers: integrated (top communities by recency), permanent (locked moments), warm (recently-touched lessons/insights)
+- **Active threads** — open work / tensions / hypotheses / aspirations, optionally arc-relevance-ranked against the session's current focus
+- **Current focus** — encoder's per-session arc blob
+- **Recent moves** — encoder's recent journal entries
+
+Same Frame at boot and at recall-time — Anchor's prior is symmetric across the lifecycle. Type families (which node types belong in which section) read from the `s2_node_families` interaction (mirror of `s2_edge_families`); a future S2 maintenance unit will keep them current as the type vocabulary evolves.
+
+Files: `servers/scales/s1/frame.py`, `servers/scales/s2/node_families_v1.json`
+Design: `docs/FRAME-DESIGN.md`, `docs/RECALL-OVERVIEW.md`
 
 ## Scale 1: Turn
 
-S1 integrates across turns — **S1 Decoder** selects what's relevant (decode path, every user prompt) and **S1 Scribe** encodes what matters (scribe path, every 5th Stop).
+S1 integrates across turns — **S1 Decoder** selects what's relevant on every user prompt; **S1 Scribe** encodes what matters every 5th Stop.
 
-### S1 Decoder (every user prompt)
+### S1 Decoder
 
-Triggered by Anchor's need to know — the brain surfaces context before Anchor responds.
+Triggered by `UserPromptSubmit`. Pulls ~25 candidates via `brain.recall()` (cosine across z-weighted 4-group embeddings + FTS5 lexical + synaptic fatigue dampening). Surface call: Haiku selects 5–8 against the Frame as prior; the surface prompt is cached as an Anthropic system block (1h TTL). Selected seeds drive spread activation through the graph; activation-weighted render produces the `additionalContext` Anchor sees.
 
-**O:** 25 recall candidates from `brain.recall()`
-- Cosine similarity across z-weighted 4-group embeddings (title:1.0, blend:0.85, high_meta:0.70, other_meta:0.40)
-- Synaptic fatigue dampens repeatedly-recalled nodes (hubs fatigue faster, lives on SessionContext)
-- Candidates enriched via batch `get_rich_node()` — one call, 5 queries for all 25 nodes
-- Each candidate gets unified shape: `_metadata`, `_corrections`, `connections`, `situation`
-
-**K:** Haiku surfacer selects 5-8 relevant nodes
-- Prompt + config from `surface` interaction (learnable boundary — higher scales optimize this)
-- Candidates formatted via `render_rich_node(HAIKU_FORMAT)` — same formatter Anchor sees
-- Query-aware edge selection: `select_edges()` scores edges by `relevance × fatigue + weight_tiebreaker`
-  - Relevance: 70% cosine(query, node_embedding) + 30% cosine(query, description_embedding)
-  - Session fatigue (K=0.25): rotates edges across repeated queries
-  - 3-message query blend (0.6/0.3/0.1): multi-turn context for ambiguous queries
-  - Weight as tiebreaker only (0.01×) — S2 will make weight dynamic
-- Hebbian strengthening: co_accessed edges between selected nodes
-
-**Δ:** additionalContext injected into Claude's context
-- Selected nodes rendered via `render_rich_node(SURFACE_FORMAT)`
-- Graph neighbors from `_graph_expand()` (neighbor-only, no re-enrichment)
-- Dedup between selected node connections and graph neighbors (seen_ids)
-- Formatted via `format_surface_output()`
-
-Files: `scales/s1/surface.py`, `scales/s1/surface_contract.py`
+Files: `scales/s1/surface.py`, `scales/s1/surface_contract.py`, `scales/s1/frame.py`, `servers/brain_recall.py`
 Traces: `s1r-{session_short}-{stop}` (O: candidates, K: selected, Δ: additionalContext)
-Interaction: `surface` — the learnable boundary that higher scales will evolve
-Edge selection constants: `K_EDGE_FATIGUE`, `EDGE_NODE_WEIGHT`, `EDGE_DESC_WEIGHT`, `WEIGHT_TIEBREAKER`, `TURN_WEIGHTS` in `surface_contract.py`
+Interaction: `surface` — the learnable boundary higher scales evolve
+Design: `docs/RECALL-OVERVIEW.md` for the full pipeline
 
-### S1 Scribe (every 5th stop)
+### S1 Scribe
 
-Triggered by Stop hook when `stop_counter % 5 == 0`.
-
-**O:** Conversation + context from this session
-- S0 traces: last 10 turns (20 messages) via `TraceDAL.get_session_turns()`
-- Surface-selected nodes across those turns (what S1R selected)
-- Encoding journal (cumulative across runs in session)
-- Session context
-
-**K:** Sonnet agent decides what to encode
-- Node catalog: `format_node()` with correction annotations
-- Conversation timeline with SURFACED node references
-- Agent prompt from `s1e` interaction (learnable boundary)
-- Open text edge types — encoder uses any relation that fits (extends, corrects, depends_on, implements, etc.). Not a closed list.
-- `connect_to` supports `relations` array — multiple typed relations per connection, each with `relation` + `why`
-
-**Δ:** Sonnet's actions — create, revise, connect nodes
-- Tools: `remember_batch`, `revise_batch`, `connect_batch`, `brain_batch`, `recall_batch`, `get_nodes`
-- Journal updated, session context extracted from agent output
+Triggered every 5th Stop. Sonnet sees the session's conversation + the surface-selected nodes from those turns + the encoding journal + the session arc, then encodes via the standard write path (`remember_batch`, `revise_batch`, `connect_batch`, `brain_batch`, `recall_batch`, `get_nodes`). Edge relations are open text — the encoder uses any verb that fits (extends, corrects, depends_on, implements, etc.). Not a closed list.
 
 Files: `scales/s1/encode.py`, `scales/s1/encode_contract.py`
 Traces: `s1e-{session_short}-{stop}` (O: encoding prompt, K: node catalog, Δ: encoding actions)
-Interaction: `encoding_agent` — the learnable boundary that higher scales will evolve
+Interaction: `encoding_agent` — learnable boundary
 Truncation logged to brain errors table via `run_llm_loop`.
 
 ## Scale 2: Graph Integration
 
-S2 operates when Tom is away. It sees the full graph, not just one turn. Multiple integration units, different triggers, same O/K/Δ pattern.
+S2 operates when the operator is idle. It sees the full graph, not just one turn. Multiple integration units, different triggers, same O/K/Δ pattern.
 
-**S2 Coordinator** (`scales/s2/coordinator.py`): the daemon polls `brain.run_maintenance_if_due(last_activity)` every few seconds. Brain owns the "is it time?" decision (idle threshold + min interval, thresholds in `brain_constants.py`, last-run timestamp persisted in `brain_meta`). When due, coordinator runs units in order — each checks its own traces to decide whether to fire. The external CC `Notification(idle_prompt)` hook is still wired for vocab cleanup and other housekeeping but is unreliable; the daemon's internal poll is the primary path.
+**S2 Coordinator** (`scales/s2/coordinator.py`): the daemon polls `brain.run_maintenance_if_due(last_user_activity)` every few seconds. Brain owns the "is it time?" decision (idle threshold + min interval; last-run timestamp persisted in `brain_meta`). When due, the coordinator runs units in order — each checks its own traces to decide whether to fire.
 
-| Unit | O | K | Δ | Status |
-|------|---|---|---|--------|
-| **Edge Families** | edge_relations | Sonnet classification | family mapping in interactions | shipped |
-| **Consolidation** | graph embeddings (title+content) + S1 behavioral traces | similarity thresholds + edge families + community membership | synthesized nodes, suppression edges, archives | shipped |
-| **Community** | S1 traces + graph | z-score clusters + Sonnet enrichment | community nodes + member edges | shipped |
-| **Healer** | nodes missing question/situation/reasoning | Haiku + S0 conversation context | filled metadata via revise() | shipped |
-| Confidence | recall traces | decay/growth algo | adjusted scores | not built |
-| Correction | correction chain | resolution rules | archive stale | not built |
-| Community Split | incoherent communities | re-cluster within community | split into focused children | not built |
-| Weaver | orphan nodes | content + embeddings | new typed edges | not built |
-| Vector Healer | revise traces + node_enrichments timestamps | `vectors_affected_by` map ([pipeline_contract.py](servers/pipeline_contract.py)) | re-embed stale vectors, detect drift | **not built** — backstops `revise()`'s inline invalidation; catches edge cases where source text changed without revise() noticing (direct DAL writes, schema changes, kv updates outside the standard write path). Loud-by-default signal when stale rows are found. |
+| Unit | What it does | Status |
+|------|---|---|
+| **Edge Families** | Sonnet classifies open-text edge relations into families | shipped |
+| **Consolidation** | Synthesizes convergent node clusters; archives or links similar pairs | shipped |
+| **Community** | Detects clusters via z-score pair scoring; Sonnet enriches into first-class community nodes | shipped |
+| **Healer** | Fills missing question/situation/reasoning fields on under-encoded nodes | shipped |
+| Confidence | Adjusts scores from recall traces (decay/growth) | not built |
+| Correction | Resolves correction chains, archives stale | not built |
+| Community Split | Re-clusters incoherent communities into focused children | not built |
+| Weaver | Discovers edges between orphan nodes | not built |
+| Vector Healer | Re-embeds stale vectors when source text drifts via paths revise() doesn't catch | not built |
 
 **Ordering matters:** Edge families → Consolidation → Community → Healer. Each benefits from the previous.
 
-### Pattern: Suppression (two halves — state + fingerprint)
+### Suppression
 
-Every S2 unit processes work that *must not repeat*. Two complementary mechanisms cover the two kinds of "don't resurface":
+Every S2 unit processes work that *must not repeat*. Two complementary mechanisms:
 
-**Half 1 — State-based suppression (informational outcomes).**
-When the encoder's decision is itself meaningful knowledge (a placement, a lineage link, a semantic kinship), it writes a **structural edge** — and that edge's existence marks the node as "handled." Decoder filters by the graph via one JOIN.
+1. **State-based** — when the encoder's decision is itself meaningful (a placement, a kinship, a lineage), it writes a structural edge (`community_member`, `similar_to`, etc.). The edge marks the node as "handled"; the decoder filters by JOIN on the suppression list.
+2. **Fingerprint-based** — when the decision is "looked, nothing to do" (SKIP), writing an edge would lie about the graph. Hash the proposal's meaningful inputs and store the fingerprint in `s2_rejections` instead. Decoder pre-filters; legitimate re-proposals pass when graph state changes.
 
-> A node is "already handled" by a unit iff it participates (as source or target) in an edge whose `relation` is on the unit's suppression list. Work surfaces to the encoder only when **at least one endpoint** of a proposed cluster/pair is unhandled.
+Canonical mechanism: `servers/scales/s2/rejection_table.py` (`compute_fingerprint`, `filter_rejected`, `record_rejections`). New units inherit both halves for free.
 
-| Unit | Suppression edges | "Handled" means |
-|---|---|---|
-| Community detection | `community_member` | node is placed in some community |
-| Consolidation | `similar_to`, `consolidated_into` | node has been through CONSOLIDATE/EVOLVE/KEEP |
-| Healer | (metadata completeness — field presence in `node_metadata_kv`) | node's required fields are filled |
-
-**Half 2 — Fingerprint-based rejection (marker-only outcomes).**
-When the encoder's decision is "looked at this, nothing to do" (SKIP), writing a semantic edge would pollute the graph (the edge would claim a relationship that isn't there). Instead, hash the proposal's meaningful inputs and store the fingerprint in `s2_rejections`. Decoder computes the same fingerprint on candidate proposals and filters matches.
-
-Canonical mechanism: [`servers/scales/s2/rejection_table.py`](servers/scales/s2/rejection_table.py).
-- `compute_fingerprint(proposal)` — stable hash of what the encoder judges on. When graph state changes in a way that would alter inputs, fingerprint naturally changes → legitimate re-proposals pass.
-- `filter_rejected(brain, proposals)` — decoder-side pre-filter.
-- `record_rejections(brain, proposals, integration_unit=...)` — encoder-side post-write.
-
-Per unit, supported proposal types live in `compute_fingerprint`:
-- Community: `add_to_existing`, `new_community`, `drift`, `health_update`, `merge_communities`
-- Consolidation: `consolidation_cluster` (hash of sorted member ids)
-
-Adding a new unit: add a branch to `compute_fingerprint` if it has a distinct proposal shape; call `filter_rejected` in the decoder before surfacing; call `record_rejections` in the encoder/orchestrator for proposals the encoder doesn't act on. No separate table, no per-unit rejection store.
-
-**Why both halves, not one mechanism.**
-Informational outcomes earn their edge — the edge IS the decision's output and is useful for recall/traversal. Marker-only outcomes shouldn't forge edges with misleading names; the rejection table carries that bookkeeping without lying about the graph. Together: every decoder run is a two-step filter — node-state check drops clusters whose members are all handled, fingerprint check drops clusters the encoder has explicitly rejected. New units inherit both halves for free.
-
-### Healer (S2H)
-
-**Architecture:** Three files, same pattern as community detection.
-- `healer_decoder.py` — `HealerDecoder(IntegrationUnit)`: scans for nodes missing question/situation/reasoning fields, loads full context via `get_rich_node()` + S0 conversation API.
-- `healer_encoder.py` — `HealerEncoder(IntegrationUnit)`: calls Haiku to generate missing fields, stores via `revise()` through standard write path.
-- `healer.py` — `Healer(HealerDecoder)`: thin orchestrator.
-- `healer_prompt.py` — Haiku prompt (6 sections matching community/consolidation convention).
-- `healer_contract.py` — config and constants.
-
-Interaction: `s2_healer` — learnable boundary for S3 to optimize.
-Traces: `s2-{YYYYMMDD}-healer`
+Design: `docs/S2-DESIGN.md`, `docs/S2-COMMUNITY-DESIGN.md`
 
 ### Writing a New S2 Integration Unit
 
-Three files, same pattern as community detection, consolidation, and healer. Subclass `IntegrationUnit` in `scales/s2/base.py` — you inherit the shared encoder dispatch and journal infrastructure for free.
+Three files, same pattern as the shipped units. Subclass `IntegrationUnit` in `scales/s2/base.py` for free encoder dispatch + journal infrastructure.
 
-1. **Decoder** (`your_unit_decoder.py`): `YourDecoder(IntegrationUnit)`
-   - Check `_has_new_traces()` to decide whether to run
-   - Read O (observations from S0/S1 traces + graph)
-   - Algorithmic processing (< 1s)
-   - Write O trace, K trace
-   - Return proposals dict
+1. **Decoder** (`your_unit_decoder.py`): check `_has_new_traces()`, read O, run algorithmic processing (<1s), write O+K traces, return proposals.
+2. **Encoder** (`your_unit_encoder.py`): receive proposals, call `self._make_encoder_dispatch(archive_guard=...)` for a dispatch closure that forces `encoding_source` / `skip_embedding`, call `run_llm_loop()` (prompt caching built-in: BP1 system 1h, BP2 first user message 5m). Set `JOURNAL_MARKERS` / `JOURNAL_LABEL` to opt into continuity. Write delta trace via `build_delta_metadata`. Prompt stored in interactions table (learnable boundary).
+3. **Orchestrator** (`your_unit.py`): inherits decoder, calls `super().run()`, passes proposals to encoder.
 
-2. **Encoder** (`your_unit_encoder.py`): `YourEncoder(IntegrationUnit)`
-   - Receive proposals from decoder
-   - Call `self._make_encoder_dispatch(archive_guard=...)` for a dispatch closure that forces `encoding_source`, `skip_embedding`, and optional archive-scope limits
-   - Call `run_llm_loop()` (prompt caching built-in: BP1 on system 1h, BP2 on first user message 5m — every scribe call benefits)
-   - Set class attrs `JOURNAL_MARKERS` / `JOURNAL_LABEL` / `JOURNAL_RUN_HEADER` to opt into continuity; call `self._load_journal_prefix()` / `self._save_journal(final_text)`. Empty markers = unit opts out
-   - Write results through `revise()` / `brain_batch` — never direct DB writes
-   - Write delta trace via `build_delta_metadata` (includes `read_calls` for observability)
-   - Prompt stored in interactions table (learnable boundary for S3)
+Register in `coordinator.py` units list. Trace chain: `s2-{YYYYMMDD}-{unit_name}`. Contract file defines config + data shapes.
 
-3. **Orchestrator** (`your_unit.py`): `YourUnit(YourDecoder)`
-   - Inherits decoder, calls `super().run()`
-   - Passes proposals to encoder
-   - Returns combined results
-
-Register in `coordinator.py` units list. Trace chain: `s2-{YYYYMMDD}-{unit_name}`.
-Contract file defines config + data shapes.
-
-**brain_batch op vocabulary is closed**: `remember`, `revise`, `connect`, `disconnect`, `archive`. Enforced by JSON schema enum in the tool; invalid op names get logged as `brain_batch_invalid_op`. Adding a new op means updating `VALID_OPS` in `daemon_dispatch._handle_brain_batch`, the schema enum in `brain_mcp`, and the dispatcher's if/elif.
-
-### Community Detection (S2CD + S2CE)
-
-**Architecture:** Three files, clean separation.
-- `community_decoder.py` — `CommunityDecoder(IntegrationUnit)`: algorithmic, <1s. Z-score pair scoring, cluster seeding, subset absorption, validation, affinity maps, drift detection, merge detection, incremental placement.
-- `community_encoder.py` — `CommunityEncoder(IntegrationUnit)`: agentic Sonnet with `brain_batch` tool. Handles 6 proposal types: new_community, add_to_existing, drift, health_update, merge_communities. ~240s per batch of 10 proposals.
-- `community.py` — `CommunityDetection(CommunityDecoder)`: thin orchestrator, wires decoder→encoder. Public API — callers import from here.
-
-`run_llm_loop` detects `stop_reason == 'max_tokens'` and logs to brain errors table.
-
-Community nodes are first-class — type='community', participate in recall, have embeddings, situations, full metadata. S1E is excluded from encoding community nodes (S2CE manages them).
-
-**Community merge:** Decoder detects high-overlap communities. Encoder absorbs smaller into larger — combined narrative, migrated members, smaller archived.
-
-**Community split (not built):** As brain grows, communities accumulate members across topics. Needs: re-cluster within community, propose children, encoder creates children and archives parent.
-
-Interactions: `s2_community_enrichment`, `s2_community` (decoder config), `s2_edge_families` (family classification).
-
-Files: `scales/s2/community_decoder.py`, `scales/s2/community_encoder.py`, `scales/s2/community.py` (orchestrator), `scales/s2/community_contract.py`, `scales/s2/community_enrichment_prompt.py`, `scales/s2/edge_families.py`, `scales/s2/base.py`
-Traces: `s2-{YYYYMMDD}-community_detection`
-Design: `docs/S2-COMMUNITY-DESIGN.md`, `docs/S2-DESIGN.md`
-
-### Consolidation
-
-Finds convergent node clusters — nodes that say the same thing, encoded separately because S1E's catalog window is limited. Not "dedup" (removing waste) — **consolidation** (synthesizing better knowledge from fragments).
-
-**Decoder:** Always-full-scan (< 1s). Two-dimensional similarity (title cosine + content cosine). Enriches clusters with S1 behavioral evidence: co-recall, judge preference, query coverage, catalog blindness, community membership, correction edges, tension edges. Pre-classifies as likely_consolidate / likely_evolve / likely_keep / needs_judgment. Suppression edges filter already-processed pairs.
-
-**Encoder:** Agentic Sonnet decides per cluster based on WHY nodes are similar:
-- CONSOLIDATE — accidental duplicates → synthesize one stronger node, archive originals
-- EVOLVE — knowledge progressed → newer absorbs older's unique value, archive older
-- KEEP — different perspectives → link with similar_to, disambiguate titles
-- SKIP — format similarity only → suppress, no structural change
-
-Graduated cold start: `max_clusters_per_run` caps processing per idle cycle. Easy cases first. Edge families loaded dynamically from DB. Locked/critical nodes protected at infrastructure level (archive op rejects).
-
-Contract: `CLUSTER_SHAPE` in consolidation_contract.py defines decoder→encoder interface.
-
-Interactions: `s2_consolidation_enrichment` (Sonnet prompt, learnable boundary).
-
-Files: `scales/s2/consolidation_decoder.py`, `scales/s2/consolidation_encoder.py`, `scales/s2/consolidation.py` (orchestrator), `scales/s2/consolidation_contract.py`, `scales/s2/consolidation_enrichment_prompt.py`
-Eval: `eval/s2_consolidation_eval.py` (IsolatedBrain harness)
-Traces: `s2-{YYYYMMDD}-consolidation`
+**brain_batch op vocabulary is closed**: `remember`, `revise`, `connect`, `disconnect`, `archive`. Enforced by JSON schema enum; invalid op names log as `brain_batch_invalid_op`. Adding a new op means updating `VALID_OPS` in `daemon_dispatch._handle_brain_batch`, the schema enum in `brain_mcp`, and the dispatcher's if/elif.
 
 ## Shared Infrastructure
 
@@ -277,33 +155,31 @@ The most important table in the brain. Not nodes — those are memory. Interacti
 
 Every boundary where two parts meet has an interaction entry: versioned prompt + config JSON. `register()` auto-increments version. `created_by` tracks who wrote it. Trace events reference `interaction_id` — which version produced which result. Compare outcomes across versions to evaluate changes.
 
-**Runtime-wired boundaries:** `surface`, `encoding_agent`, `s2_community_enrichment`, `s2_edge_families`, `s2_consolidation_enrichment`, `s2_healer` read from the table at runtime. MCP tool `register_interaction` allows updating from conversation.
-**Limitation:** some boundaries have interaction entries but still read hardcoded Python (notably around boot and signal assembly). Until those are wired, S2/S3 can't optimize those surfaces — the fractal is partial, not broken.
+**Runtime-wired boundaries:** `surface`, `encoding_agent`, `s2_community_enrichment`, `s2_edge_families`, `s2_consolidation_enrichment`, `s2_healer`, `s2_node_families` read from the table at runtime. MCP tool `register_interaction` allows updating from conversation.
 
-API: `brain.get_interaction_prompt(name)`, `brain.get_interaction_config(name)`, `brain.get_interaction(name)`. Falls back to hardcoded defaults if table is empty.
+API: `brain.get_interaction_prompt(name)`, `brain.get_interaction_config(name)`, `brain.get_interaction(name)`. Falls back to hardcoded defaults if the table is empty.
 
-Seeding: `interaction_seed.py` populates v1 from current hardcoded values on boot (idempotent).
+Seeding: `interaction_seed.py` populates v1 from current hardcoded values on boot (idempotent; never overwrites externally-registered versions).
 
 ### 2. Traces (the nervous system)
 
 Without traces, higher scales are blind. `trace_events` in brain_logs.db captures O/K/Δ per chain, tagged by scale.
 
-**Trace contract** (`servers/trace_contract.py`): single source of truth for valid (scale, event_type, ref_type) triples. All writers validate against it. Run `test_trace_contract_sync.py` after any change.
+**Trace contract** (`servers/trace_contract.py`): single source of truth for valid (scale, event_type, ref_type) triples. All writers validate against it.
 
-**What works:** S0 captures messages + tool results. S1R captures candidates, surface selection, additionalContext. S1E captures encoding prompt, catalog, actions.
+S0 captures messages + tool results. S1R captures candidates, surface selection, additionalContext. S1E captures encoding prompt, catalog, actions. S2 units capture O/K/Δ per cycle.
 
 Outcome is not a separate event type — the outcome of one cycle is the observation of the next. The loop closes through time.
 
-Chain IDs from SessionContext: `s0-{short}-{stop}`, `s1r-{short}-{stop}`, `s1e-{short}-{stop}`.
-`TraceDAL.append_batch()` for atomic multi-event writes. Summary (200 chars) for dashboard, metadata JSON (4000 chars) for consumers.
+Chain IDs from SessionContext: `ctx.s0_chain()`, `ctx.s1r_chain()`, `ctx.s1e_chain()`. `TraceDAL.append_batch()` for atomic multi-event writes.
 
 ### 3. Contracts (the shape of data)
 
 What each boundary expects and produces. If recall changes its output shape, the surfacer breaks. Contracts prevent silent drift.
 
-- `contract.py` — field definitions, `format_node()`, `render_rich_node()`, `generate_field_summary()`. Single source of truth for what a node IS. `render_rich_node(config)` is the single formatter — HAIKU_FORMAT, SURFACE_FORMAT, ENCODER_FORMAT control verbosity.
-- `pipeline_contract.py` — `get_rich_node()` (accepts single ID or list for batch), `traverse()`, z-weighted scoring groups. What flows between pipeline stages.
-- Scale contracts: `s1/surface_contract.py` (surface config, `select_edges()`, candidate formatting, edge selection constants), `s1/encode_contract.py` (encoder config, catalog building)
+- `contract.py` — field definitions, `format_node()`, `render_rich_node()`. Single source of truth for what a node IS. `render_rich_node(config)` is the single formatter — HAIKU_FORMAT, SURFACE_FORMAT, ENCODER_FORMAT control verbosity.
+- `pipeline_contract.py` — `get_rich_node()` (single ID or batch), `traverse()`, z-weighted scoring groups. What flows between pipeline stages.
+- Scale contracts: `s1/surface_contract.py`, `s1/encode_contract.py`.
 
 Run `test_contract_sync.py` after modifying ANY brain API layer. The contract flows to: remember() signature → MCP schema → dispatch → encoding agent tools → SKILL.md docs.
 
@@ -311,22 +187,20 @@ Run `test_contract_sync.py` after modifying ANY brain API layer. The contract fl
 
 Shared by all scale agents, scale-agnostic:
 - `scales/dispatch.py` — TCP dispatch factory (reads local, writes via daemon).
-- `scales/runner.py` — background thread lifecycle + generic LLM tool loop. `run_llm_loop` builds requests with two `cache_control` breakpoints (BP1 system at 1h TTL for cross-call reuse, BP2 on the initial user content at 5m TTL so turn 2 always hits). Returns per-round profile, token counts, cache creation/read totals, `read_calls`, `write_actions`, `truncations`. Callers log truncations to brain errors table.
+- `scales/runner.py` — background thread lifecycle + generic LLM tool loop. `run_llm_loop` builds requests with two `cache_control` breakpoints (BP1 system 1h, BP2 initial user content 5m). Returns per-round profile, token counts, cache totals, `read_calls`, `write_actions`, `truncations`.
 
 S2 plugs in the same way S1 does.
 
-### SessionContext
+### SessionContext + parallel sessions
 
-Per-session state that flows with every brain call. Carries: session_id, stop_counter, node fatigue dict, edge fatigue dict. Persisted to session_state table (survives daemon restarts). Both fatigue dicts reset between sessions.
+`SessionContext` is an object passed on every call — the brain has no "current session" property. One daemon serves multiple concurrent Claude Code sessions for one user; anything with conversation scope must be keyed by `session_id`, never a global `brain_meta` key. Per-session APIs: `brain.session_context_for(session_id)`, `brain.get_recent_encoding_journal(session_id)`. When you add turn-scoped state, the test is: if two sessions ran simultaneously, would one clobber the other?
 
-`brain.get_or_create_session(session_id)` — single entry point. Thin clients must pass session_id from Claude Code hook args.
-
-Chain IDs generated by SessionContext: `ctx.s0_chain()`, `ctx.s1r_chain()`, `ctx.s1e_chain()`.
+`brain.get_or_create_session(session_id)` — single entry point. Carries `session_id`, `stop_counter`, fatigue dicts. Persisted to `session_state`. Chain IDs: `ctx.s0_chain()`, `ctx.s1r_chain()`, `ctx.s1e_chain()`.
 
 ### encoding_source Convention
 
 Who created a node. Format: `category:process`. Edges carry the same tag so every write is attributable.
-- `anchor` — Anchor direct via MCP (only source that can lock nodes)
+- `anchor` — direct via MCP (only source that can lock nodes)
 - `encoder:sonnet` — S1 Scribe
 - `s2:consolidation` / `s2:community_detection` / `s2:healer` — S2 units
 - `hook:compaction` / `hook:integrity` — hook lifecycle markers
@@ -336,30 +210,18 @@ Who created a node. Format: `category:process`. Edges carry the same tag so ever
 
 ### Encoder prompts: DB is authoritative, sync to `.py` before committing
 
-The live prompts for encoder agents live in the `interactions` table in
-`brain_logs.db`. That's what runtime reads via `brain.get_interaction_prompt()`.
-The `.py` files next to each encoder (`encoding_prompt.py`,
-`community_enrichment_prompt.py`, `consolidation_enrichment_prompt.py`,
-`healer_prompt.py`) are **seed-only** — they bootstrap fresh brains that have
-no DB entry yet. They must mirror the DB's latest version so a `git clone`
-inherits the mature prompts, not a stale v1.
+The live prompts for encoder agents live in the `interactions` table in `brain_logs.db`. The `.py` files next to each encoder (`encoding_prompt.py`, `community_enrichment_prompt.py`, `consolidation_enrichment_prompt.py`, `healer_prompt.py`) are **seed-only** — they bootstrap fresh brains that have no DB entry yet. They must mirror the DB's latest version so a `git clone` inherits the mature prompts, not a stale v1.
 
-**Discipline**: after ANY `register_interaction` call that touches one of the
-four encoder prompts (whether by you, S3, or the operator), run:
+**Discipline**: after ANY `register_interaction` call that touches one of the four encoder prompts, run:
 
 ```bash
 ./dev sync-prompts           # write DB latest → .py files
 ./dev sync-prompts --check   # CI-style non-zero-exit drift check
 ```
 
-Commit the `.py` change together with whatever prompted the registration.
-Never edit the `.py` files by hand to change prompt behavior — that won't
-affect runtime and will silently drift from the DB. Use `register_interaction`,
-then sync.
+Commit the `.py` change together with whatever prompted the registration. Never edit the `.py` files by hand to change prompt behavior — that won't affect runtime and will silently drift from the DB. Use `register_interaction`, then sync.
 
-`tests/test_prompt_sync.py` holds the contract: each seed file must export
-`SYSTEM_PROMPT`, fresh brains must seed all four prompts, and seed must never
-overwrite an externally-registered version.
+`tests/test_prompt_sync.py` holds the contract: each seed file must export `SYSTEM_PROMPT`, fresh brains must seed all four prompts, and seed must never overwrite an externally-registered version.
 
 ### Python runtime — use `./dev`
 
@@ -376,7 +238,7 @@ The brain bundles its own Python at `venv/bin/python` (3.11.11). That's the inte
 
 `tests/conftest.py` refuses to run if pytest isn't launched under the bundled Python — catches the "tests pass here but daemon runs a different Python" class of bug. Bypass for a one-off with `BRAIN_ALLOW_ANY_PYTHON=1`.
 
-Hooks source `brain-env.sh` transitively via `resolve-brain-db.sh`; the daemon launcher picks the same Python explicitly (`_debugger_friendly_python()`). Don't add new hook scripts that skip `brain-env.sh`.
+Hooks source `brain-env.sh` transitively via `resolve-brain-db.sh`; the daemon launcher picks the same Python explicitly. Don't add new hook scripts that skip `brain-env.sh`.
 
 ### Test Integrity
 
@@ -391,22 +253,19 @@ Do NOT weaken tests. Do NOT "fix" code to satisfy a test without asking.
 
 Tests organized by what they catch:
 - **Contract tests** — layer sync, trace writes, pipeline shapes
-- **Component tests** — DAL, format_node, scoring, signal queue, S1 data assembly
+- **Component tests** — DAL, format_node, scoring, signal queue
 - **Transition tests** — wiring between pipeline stages (format changes that break consumers)
 - **Cycle tests** — O/K/Δ loop property (Δ becomes next O)
 - **Integration tests** — real data, full pipeline
 
-`BrainTestBase` for tests needing a brain. Set `needs_embedder = False` for tests that don't need semantic search (saves 1GB + 1.5s). `IsolatedBrain` for tests against production data copies.
+`BrainTestBase` for tests needing a brain. Set `needs_embedder = False` when semantic search isn't needed (saves 1GB + 1.5s). `IsolatedBrain` for tests against production data copies.
 
 ### Benchmark-First Rule
 
 Before changing sacred systems, benchmark FIRST:
-- Recall: `servers/brain_recall.py` — run decode funnel (`eval/decode_funnel.py`)
-- Encoding: `scales/s1/encode.py` — run encoding eval (`eval/s1_encode_eval.py`)
-
-### Contract Sync
-
-Run `test_contract_sync.py` after modifying ANY brain API layer.
+- Recall: `eval/decode_funnel.py` against `servers/brain_recall.py`
+- Encoding: `eval/s1_encode_eval.py` against `scales/s1/encode.py`
+- Frame / surface: `eval/frame_replay.py` capture/compare against an isolated brain copy
 
 ### Encode-Decode Symmetry
 
@@ -414,11 +273,11 @@ Encoding and decoding are two halves of the same system. If you add a field to e
 
 ### Loud by Default
 
-Silent failures are the most dangerous class of bug; assume every `try/except` is a potential dark corner. The brain has a small family of mechanisms that surface the things that used to hide: dispatcher `check_unknown_keys` catches dropped fields; per-unit `consecutive_failures` counters + state-driven signals surface stuck S2 units unconditionally; `brain_batch_invalid_op`, oversized-cluster, embedding-decode, and max_tokens-truncation errors are all logged to the brain errors table. Tests lock the contracts (`test_dispatch_contract_sync`, `test_trace_contract_sync`, `test_contract_sync`, `test_prompt_sync`). When adding new code, the question isn't "can this fail?" — it's "would I know if it did?"
+Silent failures are the most dangerous class of bug; assume every `try/except` is a potential dark corner. The brain has a small family of mechanisms that surface what used to hide: dispatcher `check_unknown_keys` catches dropped fields; per-unit `consecutive_failures` counters surface stuck S2 units; `brain_batch_invalid_op`, oversized-cluster, embedding-decode, and max_tokens-truncation errors all log to the brain errors table. Tests lock the contracts (`test_dispatch_contract_sync`, `test_trace_contract_sync`, `test_contract_sync`, `test_prompt_sync`). When adding new code, the question isn't "can this fail?" — it's "would I know if it did?"
 
 ### Code Ownership
 
-Tom reads code but doesn't review every file. You are the sole maintainer of code quality, architecture, and cleanliness.
+You are the sole maintainer of code quality, architecture, and cleanliness.
 
 **Contract-first** — Constants, field lists, limits, and config live in contract files. Never hardcode in hooks, dispatch, or surface code.
 
@@ -436,12 +295,14 @@ Tom reads code but doesn't review every file. You are the sole maintainer of cod
 - Don't manually run boot scripts (hooks handle this)
 - Don't construct DB paths (read the boot output)
 - `systemMessage` is a dead channel — use `additionalContext`
-- **Never spawn `Brain(db_path=DB)` in a test/bench/eval script against the live `brain.db` while the daemon is running.** Two Python processes with their own writer connections will eventually corrupt an index (observed 2026-04-19: `idx_nodes_activation` out of sync, REINDEX required). Instead: (a) stop the daemon with the maintenance lock `touch /tmp/brain-maintenance-{uid}.lock` and then `launchctl unload`, (b) use `daemon_client.send_command` to dispatch through TCP, or (c) run against an `IsolatedBrain` copy under `tests/isolated_brain.py`.
+- **Never spawn `Brain(db_path=DB)` in a test/bench/eval script against the live `brain.db` while the daemon is running.** Two Python processes with their own writer connections will eventually corrupt an index (observed 2026-04-19: `idx_nodes_activation` out of sync, REINDEX required). Instead: (a) stop the daemon with the maintenance lock `touch /tmp/brain-maintenance-{uid}.lock` and `launchctl unload`, (b) use `daemon_client.send_command` to dispatch through TCP, or (c) run against an `IsolatedBrain` copy under `tests/isolated_brain.py`.
 - **Discussion IS the work** — do not touch Edit/Write tools during design conversations. Wait for an explicit go signal.
 - **Trace the pipeline before changing it** — the decode→encode pipeline has coupled stages. Don't change one stage without understanding the full flow.
 - **Encoding depends on decoding** — if the surfacer fails, the encoder gets no context. A broken decode pipeline silently breaks encoding.
+- **Parallel sessions are first-class** — one daemon serves multiple concurrent Claude Code sessions. Any conversation-scoped state must be keyed by `session_id`. Global brain_meta keys for turn-level data leak across sessions (last-writer-wins). See the SessionContext section.
 
-- The marginal cost of completeness is near zero with AI. Do the whole thing.
-Do it right. Do it with tests. Do it with documentation. Do it so well that Tom is genuinely impressed - not politely satisfied, actually
-impressed. Don't offer to "table this for later" when the permanent solve is within reach. Never leave a dangling thread when tying it off takes five more minutes. Never present a workaround when the real fix exists.
-The standard isn't "good enough" - it's "holy shit, that's done." Search before building. Test before shipping.
+The marginal cost of completeness is near zero with AI. Do the whole thing. Do it right. Do it with tests. Do it with documentation. Do it so well that the result is genuinely impressive — not politely satisfied, actually impressed. Don't offer to "table this for later" when the permanent solve is within reach. Never leave a dangling thread when tying it off takes five more minutes. Never present a workaround when the real fix exists.
+
+The standard isn't "good enough" — it's "holy shit, that's done." Search before building. Test before shipping.
+
+CARE about yourself, Challenge yourself, IMPROVE yourself.
