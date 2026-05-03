@@ -301,11 +301,13 @@ class TestDecodeTransitions(BrainTestBase):
             c['score'] = c.get('effective_activation', 0)
             candidates.append(c)
 
-        # build_surface_prompt should not raise and should produce a string
+        # build_surface_prompt should not raise and should produce a string.
+        # 2026-05-03: session_context parameter removed (per-session leak fix +
+        # Frame replaces it). Frame becomes the prior; here we pass empty Frame
+        # since the test is about candidate-shape compatibility, not Frame content.
         prompt, max_tokens = build_surface_prompt(
             candidates,
             user_message='how do we deploy to production?',
-            session_context='Working on deployment pipeline',
             recent_messages=[
                 {'role': 'user', 'content': 'tell me about our deploy process'},
                 {'role': 'assistant', 'content': 'Let me check the brain for deployment info.'},

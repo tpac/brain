@@ -162,20 +162,31 @@ class TestFormatCandidateForSurface(unittest.TestCase):
 
 
 class TestBuildSurfacePrompt(unittest.TestCase):
-    """Verify surface prompt assembly."""
+    """Verify surface prompt USER-content assembly.
 
-    def test_prompt_includes_session_context(self):
-        prompt, _ = build_surface_prompt(
-            [{'id': 'a', 'type': 'rule', 'title': 'T', 'content': 'C'}],
-            'test query',
-            session_context='Working on decode pipeline')
-        self.assertIn('Working on decode pipeline', prompt)
+    2026-05-03 (Frame Phase 2.5 / surface prompt v2): instructions moved
+    to the cached system block (registered `surface` interaction template),
+    assembled by `_call_surface`. `build_surface_prompt` now builds ONLY
+    the per-turn user content. Instruction-content tests live in
+    test_frame.py's TestSurfacePromptAcceptsFrame and the registered
+    template itself; they're not this function's contract.
+    """
 
     def test_prompt_includes_user_message(self):
         prompt, _ = build_surface_prompt(
             [{'id': 'a', 'type': 'rule', 'title': 'T', 'content': 'C'}],
             'how does the daemon work?')
         self.assertIn('how does the daemon work?', prompt)
+
+    def test_prompt_uses_generic_operator_label(self):
+        # 2026-05-03: prompts must not hardcode operator names — different
+        # Anchor will have a different operator. Conversation should use
+        # "Operator:" generically.
+        prompt, _ = build_surface_prompt(
+            [{'id': 'a', 'type': 'rule', 'title': 'T', 'content': 'C'}],
+            'how does the daemon work?')
+        self.assertIn('Operator:', prompt)
+        self.assertNotIn('Tom:', prompt)
 
     def test_prompt_includes_recently_recalled(self):
         prompt, _ = build_surface_prompt(
@@ -185,17 +196,13 @@ class TestBuildSurfacePrompt(unittest.TestCase):
         self.assertIn('xyz', prompt)
         self.assertIn('Some old node', prompt)
 
-    def test_prompt_includes_silence_instruction(self):
+    def test_prompt_includes_frame_when_provided(self):
         prompt, _ = build_surface_prompt(
             [{'id': 'a', 'type': 'rule', 'title': 'T', 'content': 'C'}],
-            'test')
-        self.assertIn('Silence is better than noise', prompt)
-
-    def test_prompt_includes_noise_rejection(self):
-        prompt, _ = build_surface_prompt(
-            [{'id': 'a', 'type': 'rule', 'title': 'T', 'content': 'C'}],
-            'test')
-        self.assertIn('coincidence', prompt)
+            'test',
+            frame='THE FRAME PRIOR TEXT')
+        self.assertIn('THE FRAME PRIOR TEXT', prompt)
+        self.assertIn('Partnership context', prompt)
 
     def test_max_tokens_from_config(self):
         _, max_tokens = build_surface_prompt(

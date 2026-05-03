@@ -63,27 +63,42 @@ def _call_surface(brain, candidates_data, user_message,
     retrieval_stats = result.get('_retrieval_stats') if isinstance(result, dict) else None
     intent = result.get('intent') if isinstance(result, dict) else None
 
-    # Build prompt — instructions from interactions table (learnable boundary)
-    surface_interaction = brain.get_interaction('surface')
-    # Backward compat: fall back to 'judge' interaction if 'surface' not found
-    if not surface_interaction:
-        surface_interaction = brain.get_interaction('judge')
+    # 2026-05-03 (Frame Phase 2.5 / surface prompt v2): instructions move
+    # to the system block with cache_control: ephemeral. The registered
+    # 'surface' interaction template lives in the cached prefix (1h TTL,
+    # ~2K tokens — past the 1024 caching threshold). Per-turn delta
+    # (Frame, conversation, candidates, message) goes in the user message.
+    # Backward compat: fall back to 'judge' interaction if 'surface' missing.
+    surface_interaction = brain.get_interaction('surface') or brain.get_interaction('judge')
     surface_instructions = surface_interaction.get('template', '') if surface_interaction else ''
     interaction_id = surface_interaction.get('id') if surface_interaction else None
-    surface_prompt, max_tokens = build_surface_prompt(
+
+    user_content, max_tokens = build_surface_prompt(
         candidates_data, user_message,
         recent_messages=recent_messages,
         recently_recalled=recently_surfaced,
         retrieval_stats=retrieval_stats,
         intent=intent,
-        prompt_instructions=surface_instructions or None,
         frame=frame)
 
+    # surface_prompt kept for trace/debug (concatenation of system + user)
+    surface_prompt = (surface_instructions + "\n\n---\n\n" + user_content) \
+        if surface_instructions else user_content
+
     client = anthropic.Anthropic()
-    api_resp = client.messages.create(
-        model="claude-haiku-4-5",
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": surface_prompt}])
+    if surface_instructions:
+        api_resp = client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=max_tokens,
+            system=[{"type": "text", "text": surface_instructions,
+                     "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": user_content}])
+    else:
+        # Defensive fallback: no template registered → all-in-user-message
+        api_resp = client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": user_content}])
     raw = api_resp.content[0].text.strip()
 
     # Parse JSON — robust to the three shapes Haiku sometimes returns:

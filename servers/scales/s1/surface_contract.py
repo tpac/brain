@@ -382,59 +382,53 @@ def _dedup_candidates(candidates):
 
 def build_surface_prompt(candidates, user_message,
                        recent_messages=None, recently_recalled=None,
-                       retrieval_stats=None, intent=None,
-                       prompt_instructions=None, frame=""):
-    """Build the S1 recall surface prompt. Single entry point.
+                       retrieval_stats=None, intent=None, frame=""):
+    """Build the S1 recall surface USER message — per-turn delta only.
 
-    v9: Added retrieval_stats, intent, score normalization, conversation
-    context expansion, candidate dedup, discovery tags.
-    v10: prompt_instructions from interactions table (learnable boundary).
-    Frame Phase 2 (2026-05-02): `frame` is the canonical session prior.
-    Replaces the Phase 1 separate session_context + encoding_journal blocks
-    — Frame contains both as its current_focus and recent_moves sections,
-    plus operator/partnership/active-threads context. When frame is empty
-    (Frame Constructor failed), surface runs WITHOUT a partnership context
-    section — explicit degraded mode, not silent fallback to old layout.
+    v11 (2026-05-03, Frame Phase 2.5 / surface prompt v2): instructions
+    moved to the cached system block (in `_call_surface`). This function
+    now builds ONLY the per-turn user content: Frame, conversation,
+    recently surfaced, retrieval stats, intent, candidates. The registered
+    `surface` interaction template is the system block; this is the user
+    block. Two parts → two-block API call → caching becomes possible.
+
+    Operator name is rendered generically as "Operator:" — the brain plugin
+    ships to different operators, prompts must not hardcode personal names.
 
     Args:
         candidates: List of candidate node dicts (enriched with metadata)
-        prompt_instructions: Optional surface instructions from interactions table.
-            If provided, replaces the hardcoded prompt text. Data assembly
-            (conversation, candidates, etc.) stays in code.
-        user_message: The user's latest message
-        session_context: Encoder's session summary (from brain_meta)
-        encoding_journal: Encoder's most recent journal entries (~1500 chars,
-            newest-first). Per-session, from brain_meta key
-            encoding_journal_{session_id}. Empty string if no journal yet.
+        user_message: The operator's latest message
         recent_messages: List of {"role": str, "content": str}
         recently_recalled: List of {"id": str, "title": str} from last N recalls
         retrieval_stats: Dict with brain_size, top_score, median_score, source_breakdown
-        intent: Query intent from STEP 2 classification (e.g. 'reasoning_chain', 'how_to')
+        intent: Query intent from STEP 2 classification
+        frame: Markdown Frame (Anchor's prior). When non-empty becomes the
+            "Partnership context:" block. When empty, explicit degraded marker.
 
-    Returns: (prompt_string, max_tokens)
+    Returns: (user_content_string, max_tokens)
     """
     cfg = SURFACE
 
     # v9: Deduplicate candidates (remove near-identical titles)
     candidates = _dedup_candidates(candidates[:cfg['max_candidates']])
 
-    # Format conversation context (both roles, asymmetric truncation)
-    # v9: Anchor responses now 400 chars (was 150), 7 messages (was 5)
+    # Format conversation context (both roles, asymmetric truncation).
+    # 2026-05-03: "Operator:" is generic — prompts ship to different operators.
     conversation = ""
     if recent_messages:
         for msg in recent_messages[-(cfg['recent_messages']):]:
             role = msg.get("role", "?")
             if role == "user":
-                label = "Tom"
+                label = "Operator"
                 content = (msg.get("content") or "")[:cfg['user_message_limit']]
             else:
                 label = "Anchor"
                 content = (msg.get("content") or "")[:cfg['anchor_message_limit']]
             conversation += "%s: %s\n" % (label, content)
 
-    # Append current user message (not yet in message_stream — stored on Stop, not Submit)
+    # Append current user message (not yet in message_stream — stored on Stop)
     if user_message:
-        conversation += "Tom: %s\n" % (user_message or "")[:cfg['user_message_limit']]
+        conversation += "Operator: %s\n" % (user_message or "")[:cfg['user_message_limit']]
 
     # 2026-05-02 (Frame Phase 2): Frame is the canonical session prior.
     # When non-empty, it's the "Partnership context:" block — rich content
@@ -480,11 +474,12 @@ def build_surface_prompt(candidates, user_message,
                 "\nNOTE: Top score %.2f is low for %d memories — "
                 "brain likely has nothing relevant. Prefer selecting 0." % (top, brain_sz))
 
-    # v9: Intent context (from STEP 2 classification)
+    # v9: Intent context (from STEP 2 classification). 2026-05-03: generalized
+    # — no operator name hardcoded.
     intent_context = ""
     if intent and intent != 'general':
         _intent_guidance = {
-            'decision_lookup': 'Tom is looking for a past decision — prioritize decision, rule, and correction nodes.',
+            'decision_lookup': 'Operator is looking for a past decision — prioritize decision, rule, and correction nodes.',
             'reasoning_chain': 'Design/reasoning task — architecture, mechanism, and pattern nodes most helpful.',
             'correction_lookup': 'Looking for a correction — prioritize correction and lesson nodes.',
             'how_to': 'How-to question — mechanism, convention, and lesson nodes most helpful.',
@@ -499,32 +494,10 @@ def build_surface_prompt(candidates, user_message,
     for i, c in enumerate(candidates, 1):
         candidates_text += format_candidate_for_surface(c, i) + "\n\n"
 
-    # Instructions: from interactions table (learnable) or hardcoded default
-    if not prompt_instructions:
-        prompt_instructions = (
-            "You surface relevant memories from a shared AI brain. The brain stores "
-            "memories from conversations between an operator (Tom) and an AI assistant "
-            "(Anchor). You decide which memories help Anchor respond to Tom's next message.\n\n"
-            "Field guide:\n"
-            "- match: similarity to query (0-1). High match = topically close, but topic alone ≠ relevant. "
-            "'boosted' means score was artificially raised (critical node).\n"
-            "- conf: system confidence (0-1). Higher = more established.\n"
-            "- locked: operator-confirmed important.\n"
-            "- via:fts5_only: found by word match only — no semantic similarity. May be coincidence. Verify carefully.\n"
-            "- via:both: found by word match AND semantic similarity. Strong convergence signal.\n"
-            "- Situation: WHEN this memory applies — match to current context.\n"
-            "- Reasoning: WHY stored. Corrects: replaces this ID. Edges: connections (type tells HOW related).\n\n"
-            "Selection rules:\n"
-            "- Short confirmations (\"yes\", \"ok\", \"thanks\") → select 0.\n"
-            "- Word coincidence without meaning overlap → select 0. (\"React hooks\" ≠ \"brain hooks\")\n"
-            "- Unsure? Don't select. No context > wrong context. Silence is better than noise.\n\n"
-            "Return ONLY JSON:\n"
-            "{\"selected\":[{\"id\":\"...\",\"why\":\"one phrase\"}]}\n"
-            "If nothing relevant: {\"selected\":[],\"reason\":\"brief reason\"}")
-
-    prompt = """%s
-
-%s
+    # User content — per-turn delta only. Instructions live in the cached
+    # system block (the registered `surface` interaction template), assembled
+    # in _call_surface. This function builds ONLY what changes per turn.
+    user_content = """%s
 
 Conversation (recent, oldest first):
 %s
@@ -537,7 +510,6 @@ Recently surfaced (deprioritize — only select if the current message specifica
 Candidates:
 
 %s""" % (
-        prompt_instructions,
         partnership_block or "(no partnership context — fresh session or Frame unavailable)",
         conversation or "(no recent messages)",
         recalled_text or "(none)",
@@ -548,7 +520,7 @@ Candidates:
         candidates_text,
     )
 
-    return prompt, cfg['max_tokens']
+    return user_content, cfg['max_tokens']
 
 
 SURFACE_FORMAT = {

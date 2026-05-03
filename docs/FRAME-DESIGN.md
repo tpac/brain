@@ -54,6 +54,16 @@
 - Defensive fallback in `frame.py` (`_FALLBACK_FAMILIES`) handles "interaction missing" but not "type unclassified."
 - Bounded impact — most types covered by v1 seed; load-bearing cases (principle, rule, moment, community, open, insight) all in seed.
 
+**Phase 2.5 surface prompt v2 → v3 landed (2026-05-03):**
+- New `surface` interaction template registered (~9K chars / ~2K tokens — past 1024 cache threshold)
+- v3 fixes a format-collision bug observed in v2 capture: examples in v2 used `#N` position labels in selection JSON, Haiku reproduced `#N` as actual id values, breaking ID resolution. v3 uses realistic 8-char hex IDs in examples and adds explicit "the actual node ID is the 8-char hex inside the candidate body, not the #N position label" guidance.
+- Frame-aware teaching: §3 explains all 5 Frame sections (Operator / Partnership / Active threads / Current focus / Recent moves) in plain English (no internal jargon like "encoder" or "SESSION_CONTEXT"). §5 adds breadth calibration by session state (fresh/in-thread/topic-change). §6 adds honest-abstain-with-adjacency discipline.
+- 4 cross-field examples (Frame coverage / voice signal / structural recognition / coverage discipline) — Good-only with named axis lines that explicitly NAME the temptation. No Bad outputs (combines Anthropic best-practice "minimize patterns to avoid" with LCP discrimination teaching by naming the temptation in the axis line).
+- All operator-personal naming removed: "Operator:" instead of "Tom:" everywhere — prompt portable across operators.
+- `_call_surface` now uses Anthropic system block with `cache_control: ephemeral` for the prompt instructions (1h TTL). Per-turn delta (Frame, conversation, candidates, message) is the user message. `build_surface_prompt` now builds USER content only; instructions live in the registered template.
+- Validation: re-captured `phase2_v3_prompt` snapshot. Real Frame-driven selection shifts on 4 of 5 queries vs v1. `open_last_week` latency dropped 17.3s → 6.1s (cache hit). `where_were_we` correctly abstained on fresh-session harness state (0 selected, 0c — Frame's Current focus said "fresh session," nothing to surface).
+- 145 tests pass; 4 broken tests in test_pipeline_contract.py + test_surface_transitions.py updated to reflect new contract (instructions in system block, not user content).
+
 **Phase 2.5 boot wire-up + arc-relevance landed (2026-05-02 same session):**
 - `render_boot_v2` rewritten as Frame-centered: 6 ad-hoc recall-driven sections (YOU / OPERATOR / PATTERNS YOU FALL INTO / BRAIN MAP / LAST SESSION / RECENTLY ENCODED) replaced by a single `ctx.get_frame(brain)` block. ~6800 chars vs ~14500 before — about half the tokens at boot, structurally clean, deterministic.
 - `session_id` threaded through args chain: `boot_brain.py → context_boot dispatch → format_boot_context → render_boot_v2`. The boot Frame is THIS session's Frame (not a global render).
