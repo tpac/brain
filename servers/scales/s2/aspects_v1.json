@@ -97,7 +97,7 @@
   },
   "hierarchical_structure": {
     "node_types": [],
-    "edge_relations": ["part_of", "includes", "contains", "follows", "supersedes", "superseded_by", "section_of", "centers_on", "crowns"],
+    "edge_relations": ["part_of", "includes", "contains", "supersedes", "superseded_by", "section_of", "centers_on", "crowns"],
     "meaning": "Edges expressing containment or supersession — part_of, includes, supersedes. The skeleton of what contains what and what replaces what.",
     "dimension": "semantic",
     "locked": true,
