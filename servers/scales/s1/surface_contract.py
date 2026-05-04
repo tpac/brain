@@ -755,22 +755,22 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
         blended = query_vec
     norm_q = float(np.linalg.norm(blended))
 
-    # ── Load family map (family meaning composes into edge enriched text) ──
+    # ── Load aspect map (aspect meaning composes into edge enriched text) ──
+    # AspectRegistry replaced the old s2_edge_families interaction lookup
+    # (Step 7 of unified-aspects). Same data, single source of truth.
     rel_to_family = {}
     meaning_by_family = {}
     try:
-        from servers.scales.s2.edge_families import iter_families
-        config = brain.get_interaction_config('s2_edge_families') or {}
-        for fam, members, meaning in iter_families(config):
-            if meaning:
-                meaning_by_family[fam] = meaning
-            for m in members:
-                rel_to_family[m] = fam
+        for name, aspect in brain.aspects.all().items():
+            if aspect.meaning:
+                meaning_by_family[name] = aspect.meaning
+            for r in aspect.edge_relations:
+                rel_to_family[r] = name
     except Exception as _e:
-        # Family data is optional but loading failure is worth noticing —
-        # if config exists and we fail to read it, family_boost dies silently.
-        brain._log_error('spread_family_config', _e,
-                         'loading s2_edge_families config in spread_activation')
+        # Aspect data is optional but loading failure is worth noticing —
+        # if registry exists and we fail to read it, family_boost dies silently.
+        brain._log_error('spread_aspect_config', _e,
+                         'loading brain.aspects in spread_activation')
 
     # ── Step 0: seeds' own activations (per-field cosines vs query) ──
     all_touched_ids = list(seed_ids)
