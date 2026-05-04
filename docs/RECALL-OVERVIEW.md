@@ -58,13 +58,13 @@ Naming these explicitly because they're the load-bearing claims everything else 
 - **Current focus** — the encoder's compressed view of what's progressed this session
 - **Recent moves** — this session's encoding journal (what was stored, watched, passed over)
 
-**Built deterministically** via `brain.filter_nodes()`. No LLM call. Mirrors the existing `s2_edge_families` pattern via `s2_node_families` — node-type families now live in interactions table, Frame reads them via `brain.get_interaction_config()`.
+**Built deterministically** via `brain.filter_nodes()`. No LLM call. Type routing reads from `brain.aspects` (the AspectRegistry — first-class on every Brain instance, see Phase 3 below).
 
 **Wired into surface:** Frame is passed as the "Partnership context" prior in the surface prompt every turn. Replaces the Phase 1 separate session_context + encoding_journal blocks (Frame contains both as inner sections).
 
 **Boot rewrite:** `render_boot_v2()` was 6 ad-hoc recall queries (YOU / OPERATOR / PATTERNS / BRAIN MAP / LAST SESSION / RECENTLY ENCODED). Replaced by single `ctx.get_frame(brain)` call. ~48% smaller boot output (~14.5K → ~7.4K chars). Anchor wakes up with the same prior surface uses every turn — symmetric.
 
-**Files touched:** `servers/scales/s1/frame.py` (new), `servers/scales/s2/node_families_v1.json` (new), `servers/interaction_seed.py`, `servers/dal.py` (added `last_accessed`/`revised_at` to allowed_sort), `servers/scales/s1/surface_contract.py`, `servers/scales/s1/surface.py`, `servers/daemon_hooks.py`, `servers/brain.py`, `servers/session_context.py`, `servers/brain_voice.py`, `servers/brain_assembly.py`.
+**Files touched:** `servers/scales/s1/frame.py` (new), `servers/interaction_seed.py`, `servers/dal.py` (added `last_accessed`/`revised_at` to allowed_sort), `servers/scales/s1/surface_contract.py`, `servers/scales/s1/surface.py`, `servers/daemon_hooks.py`, `servers/brain.py`, `servers/session_context.py`, `servers/brain_voice.py`, `servers/brain_assembly.py`. (Originally created `node_families_v1.json` for the routing taxonomy; superseded by Phase 3 — see below.)
 
 ### Phase 2.5: Cleanup, leak fix, arc-relevance (May 2-3)
 
@@ -100,6 +100,47 @@ Naming these explicitly because they're the load-bearing claims everything else 
 **`eval/frame_replay.py`.** Capture/compare harness against an isolated brain copy (DB copy via `IsolatedBrain` per the "never spawn Brain() against live DB while daemon running" rule). Test corpus: 5 queries from FRAME-DESIGN.md Appendix A — `exco_cold` ("What is EX.CO?"), `self_intro` ("What do you know about you?"), `exco_pivot` ("Should we go back to EX.CO sales kit?"), `where_were_we` ("Where were we?"), `open_last_week` ("What's still open from last week?"). Each capture saves: candidates list (id/title/score/type), Haiku selected (id+why), additionalContext rendered, latency_ms, prompt char count.
 
 **5 captured snapshots** tracking the trajectory: `phase1_baseline_2026-05-02` → `phase2_v1_unified` → `phase2_v1_unified_clean` (post-cleanup) → `phase2_v3_prompt` → `phase2_v4_prompt`. Each one diffable against the previous via `compare label_a label_b`.
+
+### Phase 3: Unified aspects — families collapse into one first-class system (May 4)
+
+**The thesis:** node families and edge families were two parallel systems doing
+the same conceptual work — assigning semantic role labels. Same bootstrap
+problem (code referenced names by string), same ripple risk on changes, same
+maintenance unit shape. Collapse into one system, lift it to first-class on
+the brain.
+
+**What shipped (13 commits):**
+
+- **AspectRegistry** (`servers/aspects.py`) — `brain.aspects` exposed on every Brain
+  instance. Eager validation at `Brain.__init__`; auto-heals from `aspects_v1.json`
+  if any of the 14 required aspects are missing. Single source of truth for
+  routing across Frame, surface, S2, MCP.
+- **Aspect = node** (`type='aspect'`) — same fractal shape as communities.
+  Member lists in metadata as JSON-encoded lists. Standard lifecycle (recall,
+  revise, lock). No special storage.
+- **14 required aspects** locked + seeded from `aspects_v1.json`. Test asserts
+  `set(REQUIRED_ASPECTS) ≡ set(aspects_v1.json keys)`.
+- **5 consumers migrated** to `brain.aspects`: frame, surface_contract,
+  consolidation enc+dec, community_decoder, community_encoder, eval scripts.
+- **Legacy deleted:** `edge_families.py` module, `iter_families` /
+  `get_reverse_map` helpers, `_FALLBACK_FAMILIES`, `OPERATOR_FAMILY` /
+  `PERMANENT_FAMILY` constants, `EDGE_TYPE_GROUPS` dead dicts,
+  `HEALER_EDGE_FAMILIES` dead dict, `node_families_v1.json` +
+  `edge_families_v1.json` seed files.
+- **Foundation: `MetadataDAL` JSON-encoding** — `set_many` now JSON-encodes
+  list/dict values for clean round-trip (was Python repr, broken). Strict
+  improvement; backward-compatible with all string callers.
+- **EdgeFamilyIntegration disabled** in coordinator (its source interaction
+  was retired with Step 12); `AspectIntegration` planned to replace it.
+- **Migration tool** (`scripts/migrate_to_aspects.py`) — backup + flush WAL +
+  daemon dispatch. Idempotent. Tom's brain post-migration: 68 aspect-nodes
+  (14 locked + 54 emergent from accumulated EdgeFamilyIntegration history).
+
+**Files (new):** `servers/aspects.py`, `servers/aspect_migration.py`,
+`servers/scales/s2/aspects_v1.json`, `scripts/migrate_to_aspects.py`,
+`tests/test_aspects.py`, `tests/test_aspects_contract.py`,
+`tests/test_aspect_migration.py`, `tests/test_aspect_registry_wired.py`,
+`tests/test_metadata_encoding.py`, `docs/SESSION-HANDOFF-2026-05-04.md`.
 
 ---
 
@@ -162,8 +203,7 @@ All wrapped in single `fetch_batch` tool — one Haiku turn, multiple parallel o
 
 **MEDIUM-leverage:**
 - Wire Frame into `brain_voice` / dashboard view
-- Build `s2_node_families` maintenance unit (mirror of `EdgeFamilyIntegration`); needs `NodeDAL.count_by_type()`
-- Generalize `s2_type_families` after rule-of-three with two concrete units exist
+- Build `AspectIntegration` maintenance unit (replaces disabled `EdgeFamilyIntegration`) — single Sonnet pass classifies new node types AND new edge relations into the unified aspect taxonomy. Required-aspect guards. See `docs/SESSION-HANDOFF-2026-05-04.md` for the design.
 - Encoder `session_context` format cleanup (currently dense pipe-separated, hard for Anchor at boot to parse)
 - `brain_batch` description enrichment (deferred — high-traffic, careful pass)
 - CLAUDE.md update (queued for next session)
@@ -250,7 +290,7 @@ Spread activation broke (precision-over-reach was the wrong tradeoff) → recogn
 - `servers/daemon_hooks.py:hook_recall` — recall entry point
 - `servers/brain_recall.py` — `filter_nodes` (with `relevance_query`), `recall`, `_rerank_by_relevance`
 - `servers/brain_voice.py:render_boot_v2` — Frame-centered boot
-- `servers/scales/s2/node_families_v1.json`, `edge_families_v1.json` — family seeds
+- `servers/scales/s2/aspects_v1.json` — unified aspect seed (replaces both old `node_families_v1.json` + `edge_families_v1.json`)
 
 **Validation:**
 - `eval/frame_replay.py` — capture/compare harness

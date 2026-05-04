@@ -414,14 +414,15 @@ All units use:
 **Foundation (complete):**
 - `IntegrationUnit` base class (`scales/s2/base.py`) — O/K/Δ contract, trace writing, chain ID, shared S2 infra (_has_new_traces, _read_traces_since, _call_llm)
 - Edge model v22 — `edge_id`, single-direction, `edge_relations` with 224 typed relations
-- Interactions registered: `s2_community`, `s2_community_enrichment` (v6), `s2_edge_families`
+- Interactions registered: `s2_community`, `s2_community_enrichment` (v6); legacy `s2_edge_families` retired in the unified-aspects refactor (2026-05-04)
 - Trace contract updated with S2 community ref_types
 - MCP `register_interaction` tool for managing learnable boundaries
 - Eval harness: `eval/s2_community_eval.py`
+- **Aspects system** (2026-05-04) — `brain.aspects` exposes 14 required + emergent aspect-nodes as the unified taxonomy for both node types AND edge relations. See `docs/SESSION-HANDOFF-2026-05-04.md` and `CLAUDE.md` Aspects section.
 
 **Units built and SHIPPED:**
 - `CommunityDetection` (`scales/s2/community.py`) — Full S2CD/S2CE decoder-encoder pair. Z-score seeding, adaptive thresholds, agentic Sonnet encoder. **55 communities in production.**
-- `EdgeFamilyIntegration` (`scales/s2/edge_families.py`) — Classifies 224 edge types into 21 semantic families. Sonnet classification with description samples. Runs before community detection.
+- ~~`EdgeFamilyIntegration`~~ — DISABLED 2026-05-04 in coordinator; module deleted. Replaced by the aspects system as the source of truth for edge-relation taxonomy. `AspectIntegration` (planned, see Open Questions below) will take over the maintenance role for both types and relations in one pass.
 - `RelationReclassifier` (`scales/s2/reclassify.py`) — One-time operation, complete. 2,621 edges reclassified.
 
 **Dashboard shipped:**
@@ -442,8 +443,8 @@ All units use:
 
 ## Open Questions (Updated)
 
-1. ~~Community detection algorithm~~ **RESOLVED**: Neither SLPA nor Leiden. Activation-pattern-based detection using z-score pair scoring + edge families. Overlapping membership via LLM judgment.
-2. ~~Edge embedding for community detection~~ **RESOLVED**: Embedding relation names alone can't discriminate (all cluster at 0.65). Edge families classified by Sonnet with descriptions. Shared neighbors + typed edges are the primary signals.
+1. ~~Community detection algorithm~~ **RESOLVED**: Neither SLPA nor Leiden. Activation-pattern-based detection using z-score pair scoring + aspect-typed adjacency (post-2026-05-04: aspects via `brain.aspects` replace the old s2_edge_families lookup). Overlapping membership via LLM judgment.
+2. ~~Edge embedding for community detection~~ **RESOLVED**: Embedding relation names alone can't discriminate (all cluster at 0.65). Aspects classified by Sonnet with descriptions (`AspectIntegration`, planned, replaces the disabled `EdgeFamilyIntegration`). Shared neighbors + typed edges are the primary signals.
 3. **Unit coordination:** Independent for now. Community detection runs in idle hook. Future: dedup reads community membership to scope search.
 4. **Interaction evolution safety:** Eval harness built. A/B testing possible via `register_interaction`. S3 can revise prompts when built.
 5. **Cross-project recall:** Community nodes have `situation` fields that discriminate. When brain has multiple projects, communities will naturally separate by topic. Untested — brain currently single-project.

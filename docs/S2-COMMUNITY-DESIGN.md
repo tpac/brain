@@ -13,7 +13,7 @@ Same pattern as S1R/S1E. Decoder finds structure, encoder characterizes it.
 
 ```
 _decode()
-├── _build_typed_adjacency()         → non-noise edges by family
+├── _build_typed_adjacency()         → non-noise edges by aspect (via brain.aspects)
 ├── _compute_pair_scores()           → z-scores by degree bucket
 ├── _seed_clusters()                 → z≥1.0 + direct edges
 ├── _validate_clusters()             → dissolve fragments, flag corridors
@@ -71,11 +71,14 @@ Type `community`, encoding_source `s2:community_detection`.
 
 ## Supporting Infrastructure
 
-### S2 Edge Family Integration (`edge_families.py`)
-- Classifies 224 edge relation types into 21 semantic families
-- Sonnet classification with description samples
-- Stored in `s2_edge_families` interaction (versioned, S3-editable)
-- Used by decoder for relational signal analysis
+### Aspects (`servers/aspects.py`, `servers/scales/s2/aspects_v1.json`)
+- Unified taxonomy for both node TYPES and edge RELATIONS (replaces the
+  retired `EdgeFamilyIntegration` + `s2_edge_families` interaction)
+- 14 required aspects locked + auto-healed at boot; emergent aspects
+  discovered by `AspectIntegration` (planned, see SESSION-HANDOFF-2026-05-04)
+- Decoder uses `brain.aspects.all()` to build `{relation: aspect_name}` map
+  for typed adjacency; `noise` + `generic_relation` skipped as low-signal
+- Single API: `brain.aspects.<name>.edge_relations`, `brain.aspects.relations_in([...])`
 
 ### Shared S2 Base (`base.py`)
 - `_has_new_traces()`, `_read_traces_since()`, `_last_run_timestamp()`
@@ -130,14 +133,16 @@ Type `community`, encoding_source `s2:community_detection`.
 | `servers/scales/s2/community.py` | Full rewrite — S2CD + S2CE pipeline |
 | `servers/scales/s2/community_contract.py` | Config, metadata schema, node rendering |
 | `servers/scales/s2/community_enrichment_prompt.py` | S2CE Sonnet prompt (v6) |
-| `servers/scales/s2/edge_families.py` | Edge type classification unit |
-| `servers/scales/s2/edge_families_v1.json` | Initial 21-family classification |
+| ~~`servers/scales/s2/edge_families.py`~~ | Edge type classification unit (DELETED 2026-05-04 — replaced by aspects) |
+| ~~`servers/scales/s2/edge_families_v1.json`~~ | Initial 21-family classification (DELETED 2026-05-04 — replaced by `aspects_v1.json`) |
+| `servers/aspects.py` | AspectRegistry + Aspect value object (post-2026-05-04) |
+| `servers/scales/s2/aspects_v1.json` | Unified seed for 14 required aspects (post-2026-05-04) |
 | `servers/scales/s2/base.py` | Shared S2 infrastructure |
 | `servers/scales/runner.py` | Structured trace metadata + full tool input logging |
 | `servers/scales/s1/encode_contract.py` | Exclude community nodes from S1E catalog |
 | `servers/daemon_dispatch.py` | Open fields pass-through fix + register_interaction |
-| `servers/daemon_hooks.py` | Simplified idle hook + edge family integration |
-| `servers/interaction_seed.py` | S2CE + edge families interaction seeding |
+| `servers/daemon_hooks.py` | Simplified idle hook |
+| `servers/interaction_seed.py` | S2CE interaction seeding (legacy s2_*_families seeds removed 2026-05-04) |
 | `servers/trace_contract.py` | S2 community ref_types |
 | `servers/contract.py` | Metadata render filtering for community nodes |
 | `servers/redistribution.py` | Edge-based community lookup |

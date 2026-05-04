@@ -1,11 +1,29 @@
 # Frame Architecture — Awareness, Persisting
 
-**Status:** Phase 1 shipped 2026-05-02 · Phase 2 designed, not started
+**Status:** Phase 1 shipped 2026-05-02 · Phase 2 shipped + 2.5 cleanup · **Phase 3 (aspects) shipped 2026-05-04**
 **Started:** 2026-05-01
 **Owner:** Anchor (working with Tom)
 **Goal:** Make Anchor's awareness continuous across turns and sessions, by introducing a structured Frame object that all brain components read and write.
 
 > This is the master design doc for the Frame work. Open this at session start to pick up exactly where we left off. Decisions, open questions, current build state, cleanup workstream, tests, and onboarding for stateless Anchor live here.
+
+---
+
+## 2026-05-04 update — Phase 3 supersedes Phase 2's families layer
+
+**The whole Phase 2 "node families via `s2_node_families` interaction" layer has been replaced by the unified aspects system.** Frame still routes by semantic role (identity_bearing → Operator section, etc.) — the routing target moved from `brain.get_interaction_config('s2_node_families')` + `_FALLBACK_FAMILIES` dict to `brain.aspects.<name>.node_types` (a first-class API on every Brain instance).
+
+Practically: every reference below to `s2_node_families`, `_FALLBACK_FAMILIES`, `_resolve_families()`, `OPERATOR_FAMILY` constants, etc. is **historical context, not current code**. Read those for the journey; for current state read:
+
+- `CLAUDE.md` — Aspects section (developer-facing summary)
+- `docs/SESSION-HANDOFF-2026-05-04.md` — what shipped, what's left
+- `docs/RECALL-OVERVIEW.md` Phase 3 section — recall map updated
+- `servers/aspects.py` — Registry + value object source
+- `servers/scales/s2/aspects_v1.json` — the 14 required aspects (single seed)
+
+The cold-start gap noted in this doc (Phase 2's "deferred S2 maintenance unit") is now: build `AspectIntegration` (Step 13). When it ships, both new node types AND new edge relations get classified into the unified taxonomy in one pass.
+
+The rest of this doc is preserved as the Phase 1/2 journey record. Don't update Phase 2 prose to use aspect terminology — that erases history.
 
 ---
 

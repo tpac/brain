@@ -64,6 +64,61 @@ S0 traces written by Stop hook via TraceDAL. Chain ID: `s0-{session_short}-{stop
 - `get_conversation(brain, session_id, limit)` — simple path for live sessions (S1 Scribe, hooks).
 - `get_conversation_around(brain, node_id, timestamp, before, after)` — historic lookups (S2 Healer, eval). Falls back to JSONL logs for pre-trace history.
 
+## Aspects — semantic roles for types and relations
+
+Every node in the brain has a `type` (`principle`, `correction`, `moment`, ...)
+and every edge has a `relation` (`extends`, `corrects`, `validates`, ...).
+Both vocabularies are open text. **Aspects** group these strings by semantic
+role: `identity_bearing` covers the types that anchor identity; `correction_improvement`
+covers types AND relations that express correction; `noise` covers structural-only
+edges with no semantic claim.
+
+An aspect is itself a brain node (`type='aspect'`). Member lists
+(`node_types`, `edge_relations`) live in `node_metadata_kv` as JSON-encoded
+lists. Standard fields (title, content, situation, locked, dimension, etc.).
+No parallel storage — same fractal pattern as communities: nodes about nodes.
+
+**Two tiers:**
+
+| Tier | Locked | Seeded by | Mutable by |
+|------|--------|-----------|------------|
+| **Required** (14, code-routed) | True | `seed_required_aspects` from `aspects_v1.json` (`anchor:seed_aspects`) | Members can drift; aspect can't be archived/renamed (locked + REQUIRED contract) |
+| **Emergent** (any) | False | `AspectIntegration` (S2 unit) discovers from observed types/relations | Free creation/revision by S2; lock requires anchor or operator |
+
+The 14 required aspects are the names code routes on by string. A test
+asserts `set(REQUIRED_ASPECTS) ≡ set(aspects_v1.json keys)` — adding a name
+to one without the other fails.
+
+**Single API:** `brain.aspects` (an `AspectRegistry` instance, eager-validated
+at `Brain.__init__`, auto-heals from seed if any required aspect is missing).
+Every consumer flows through it.
+
+```python
+brain.aspects.identity_bearing.node_types       # tuple
+brain.aspects.correction_improvement.edge_relations
+brain.aspects.by_name('emergent_xyz')           # Optional[Aspect]
+brain.aspects.by_node_type('principle')         # reverse lookup
+brain.aspects.by_edge_relation('corrects')      # reverse lookup
+brain.aspects.types_in(['episodic_anchor', 'lesson_insight'])  # union
+brain.aspects.relations_in(['noise', 'generic_relation'])
+brain.aspects.relation_meaning_map()            # for surface edge enrichment
+brain.aspects.all_with_counts()                 # for list_aspects MCP
+```
+
+**Auto-heal at boot:** if any of the 14 required aspects are missing,
+`AspectRegistry._validate` logs `_log_warning('aspect_contract', ...)` and
+calls `seed_required_aspects(brain)` which reads `aspects_v1.json` and
+creates the missing aspect-nodes via `brain.remember(type='aspect', locked=True,
+encoding_source='anchor:seed_aspects', ...)`. Idempotent — already-present
+required aspects are skipped.
+
+Files:
+- `servers/aspects.py` — Aspect value object + AspectRegistry
+- `servers/aspect_migration.py` — seed + migrate-from-legacy
+- `servers/scales/s2/aspects_v1.json` — the 14 required aspects (seed)
+- `scripts/migrate_to_aspects.py` — one-shot CLI for existing brains
+- Tests: `tests/test_aspects*.py`, `tests/test_aspect_*.py`
+
 ## Frame — the structured prior
 
 Frame is the 5-section markdown object Anchor wakes up with at boot AND surfaces against per turn. Built deterministically via `brain.filter_nodes()` — no LLM call, no new SQL, ~1500–2000 tokens.
@@ -75,9 +130,9 @@ Sections:
 - **Current focus** — encoder's per-session arc blob
 - **Recent moves** — encoder's recent journal entries
 
-Same Frame at boot and at recall-time — Anchor's prior is symmetric across the lifecycle. Type families (which node types belong in which section) read from the `s2_node_families` interaction (mirror of `s2_edge_families`); a future S2 maintenance unit will keep them current as the type vocabulary evolves.
+Same Frame at boot and at recall-time — Anchor's prior is symmetric across the lifecycle. Type routing (which node types belong in which section) reads from `brain.aspects.<name>.node_types` — see the Aspects section above.
 
-Files: `servers/scales/s1/frame.py`, `servers/scales/s2/node_families_v1.json`
+Files: `servers/scales/s1/frame.py`
 Design: `docs/FRAME-DESIGN.md`, `docs/RECALL-OVERVIEW.md`
 
 ## Scale 1: Turn
@@ -110,7 +165,7 @@ S2 operates when the operator is idle. It sees the full graph, not just one turn
 
 | Unit | What it does | Status |
 |------|---|---|
-| **Edge Families** | Sonnet classifies open-text edge relations into families | shipped |
+| **AspectIntegration** | Sonnet classifies open-text node types AND edge relations into shared aspect taxonomy | not built (replaces disabled EdgeFamilyIntegration) |
 | **Consolidation** | Synthesizes convergent node clusters; archives or links similar pairs | shipped |
 | **Community** | Detects clusters via z-score pair scoring; Sonnet enriches into first-class community nodes | shipped |
 | **Healer** | Fills missing question/situation/reasoning fields on under-encoded nodes | shipped |
@@ -120,7 +175,7 @@ S2 operates when the operator is idle. It sees the full graph, not just one turn
 | Weaver | Discovers edges between orphan nodes | not built |
 | Vector Healer | Re-embeds stale vectors when source text drifts via paths revise() doesn't catch | not built |
 
-**Ordering matters:** Edge families → Consolidation → Community → Healer. Each benefits from the previous.
+**Ordering matters:** Consolidation → Community → Healer. (`EdgeFamilyIntegration` was the historical first unit but its source interaction was retired with the unified-aspects refactor; `AspectIntegration` will take its place when built.) Each subsequent unit benefits from the previous.
 
 ### Suppression
 
@@ -155,7 +210,7 @@ The most important table in the brain. Not nodes — those are memory. Interacti
 
 Every boundary where two parts meet has an interaction entry: versioned prompt + config JSON. `register()` auto-increments version. `created_by` tracks who wrote it. Trace events reference `interaction_id` — which version produced which result. Compare outcomes across versions to evaluate changes.
 
-**Runtime-wired boundaries:** `surface`, `encoding_agent`, `s2_community_enrichment`, `s2_edge_families`, `s2_consolidation_enrichment`, `s2_healer`, `s2_node_families` read from the table at runtime. MCP tool `register_interaction` allows updating from conversation.
+**Runtime-wired boundaries:** `surface`, `encoding_agent`, `s2_community_enrichment`, `s2_consolidation_enrichment`, `s2_healer` read from the table at runtime. MCP tool `register_interaction` allows updating from conversation. (When `AspectIntegration` ships, `s2_aspects` joins this list; the legacy `s2_edge_families` and `s2_node_families` interactions are no longer the source of truth — `brain.aspects` is.)
 
 API: `brain.get_interaction_prompt(name)`, `brain.get_interaction_config(name)`, `brain.get_interaction(name)`. Falls back to hardcoded defaults if the table is empty.
 
