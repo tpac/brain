@@ -1,0 +1,114 @@
+{
+  "identity_bearing": {
+    "node_types": ["principle", "identity", "vision", "rule", "operator", "capability"],
+    "edge_relations": [],
+    "meaning": "Nodes that anchor identity — locked principles, identity statements, visions, rules, operator-defined values. The axioms always present in awareness; what the partnership stands for and how work gets done.",
+    "dimension": "semantic",
+    "locked": true,
+    "metadata": {}
+  },
+  "episodic_anchor": {
+    "node_types": ["moment", "anchor_quote", "user_quote", "quote", "catalyst"],
+    "edge_relations": [],
+    "meaning": "Episodic snapshots — specific moments, quoted phrases, inflection points. These types represent things that happened at a specific time and shaped what came after. Voice signatures and load-bearing phrasings live here.",
+    "dimension": "semantic",
+    "locked": true,
+    "metadata": {}
+  },
+  "active_thread": {
+    "node_types": ["open", "tension", "hypothesis", "aspiration"],
+    "edge_relations": [],
+    "meaning": "Unresolved threads — things still being worked through. Open items, contradictions to resolve, untested beliefs, directional goals. These signal 'work in progress' to consumers asking what's currently active.",
+    "dimension": "semantic",
+    "locked": true,
+    "metadata": {}
+  },
+  "lesson_insight": {
+    "node_types": ["lesson", "insight", "validation", "meta_learning", "reflection"],
+    "edge_relations": [],
+    "meaning": "What was learned from experience — reusable principles extracted from specific episodes, validations of approaches, methods that proved themselves. The meta-knowledge layer.",
+    "dimension": "semantic",
+    "locked": true,
+    "metadata": {}
+  },
+  "generic_relation": {
+    "node_types": [],
+    "edge_relations": ["related_to", "related", "same_root_cause", "co_occurred_with", "co_shipped_with", "has_impact", "synthesizes", "summarizes"],
+    "meaning": "Edges connecting related ideas without a specific relational role — generic association with no distinguishing pattern beyond co-relevance. Skipped by community/consolidation as low-signal.",
+    "dimension": "semantic",
+    "locked": true,
+    "metadata": {}
+  },
+  "noise": {
+    "node_types": [],
+    "edge_relations": ["dreamed_from", "dream_observation", "co_accessed", "emergent_bridge"],
+    "meaning": "Structural edges detected by graph mechanics (co-access, shared-neighbor overlap, dream associations) rather than semantic claims. Fallback signals, not first-choice activation.",
+    "dimension": "semantic",
+    "locked": true,
+    "metadata": {}
+  },
+  "correction_improvement": {
+    "node_types": ["correction", "bug_lesson"],
+    "edge_relations": ["corrects", "corrected_by", "addressed_by", "improves", "reframes", "protects", "resolves_constraint", "restates", "preferred_over"],
+    "meaning": "Knowledge that explicitly updates or amends prior knowledge — nodes that ARE corrections (correction, bug_lesson) and edges that supersede or improve another node. Catching these prevents the brain from surfacing stale truths.",
+    "dimension": "semantic",
+    "locked": true,
+    "metadata": {"display_label": "corrects/improves"}
+  },
+  "extension_refinement": {
+    "node_types": [],
+    "edge_relations": ["extends", "refines", "elaborates", "expands", "evolves", "evolves_into", "derived_from", "influenced", "implementation_attempt_for", "implements_tradeoff_against"],
+    "meaning": "Edges where one node extends, refines, elaborates, or evolves from another — the relationship tracks how an idea grew sharper or more developed.",
+    "dimension": "semantic",
+    "locked": true,
+    "metadata": {"display_label": "extends/refines"}
+  },
+  "explanation_causation": {
+    "node_types": [],
+    "edge_relations": ["explains", "caused_by", "explains_why", "justifies", "motivates", "grounds", "contributes_to", "motivated", "motivated_by", "caused_during", "causes", "necessitated", "provides_root_cause_for"],
+    "meaning": "Edges explaining WHY — one node provides the cause, reason, root, or motivating force behind another. Explanatory and causal relationships.",
+    "dimension": "semantic",
+    "locked": true,
+    "metadata": {"display_label": "explains/causes"}
+  },
+  "dependency_flow": {
+    "node_types": [],
+    "edge_relations": ["depends_on", "prerequisite_for", "enables", "requires", "blocks", "constrains", "required_for", "requires_understanding_of", "requires_followup", "should_feed_into", "should_use_instead"],
+    "meaning": "Edges expressing structural prerequisite — one node depends on, enables, requires, or is blocked by another for existence or correctness.",
+    "dimension": "semantic",
+    "locked": true,
+    "metadata": {"display_label": "depends on/enables"}
+  },
+  "contradiction_conflict": {
+    "node_types": [],
+    "edge_relations": ["contradicts", "violates", "challenges", "contrasts", "contrasts_with", "distorts", "masked_by", "undermines", "violates_when_unfixed", "risks"],
+    "meaning": "Edges where one node contradicts, challenges, or undermines another — productive tension between opposing claims or approaches.",
+    "dimension": "semantic",
+    "locked": true,
+    "metadata": {"display_label": "contradicts/challenges"}
+  },
+  "validation_evidence": {
+    "node_types": [],
+    "edge_relations": ["validates", "confirms", "demonstrates", "evidences", "supports", "proves", "exemplifies", "strengthens", "validated_by", "adds_evidence_for"],
+    "meaning": "Edges where one node validates, confirms, or provides empirical or logical evidence for a claim, hypothesis, or design in another.",
+    "dimension": "semantic",
+    "locked": true,
+    "metadata": {"display_label": "validates/demonstrates"}
+  },
+  "hierarchical_structure": {
+    "node_types": [],
+    "edge_relations": ["part_of", "includes", "contains", "follows", "supersedes", "superseded_by", "section_of", "centers_on", "crowns"],
+    "meaning": "Edges expressing containment or supersession — part_of, includes, supersedes. The skeleton of what contains what and what replaces what.",
+    "dimension": "semantic",
+    "locked": true,
+    "metadata": {"display_label": "part of/supersedes"}
+  },
+  "temporal_sequence": {
+    "node_types": [],
+    "edge_relations": ["follows_from", "leads_to", "triggered_by", "follows", "continues", "concluded_by", "resulted_from", "revealed", "interrupted", "emerged_from", "evolved_into", "followed", "led_to", "recovered_from", "shipped_with"],
+    "meaning": "Edges expressing temporal order — follows_from, leads_to, triggered_by. The relationship is chronological or causal-sequential across time.",
+    "dimension": "semantic",
+    "locked": true,
+    "metadata": {"display_label": "follows from/leads to"}
+  }
+}
