@@ -254,11 +254,15 @@ class CommunityDecoder(IntegrationUnit):
     # ══════════════════════════════════════════════════════════
 
     def _decode(self, s1_delta, community_state, is_cold_start=False):
-        # Load edge families (shape-agnostic via helper)
-        from servers.scales.s2.edge_families import get_reverse_map
-        edge_families_config = self._get_interaction_config(
-            's2_edge_families') or {}
-        rel_to_fam = get_reverse_map(edge_families_config)
+        # Load aspect map for typed adjacency (Step 9 of unified-aspects).
+        # rel_to_fam: every edge relation → aspect name. skip_fams: noise +
+        # generic_relation are filtered out so community detection routes on
+        # specific semantic edges, not generic association.
+        rel_to_fam = {
+            relation: name
+            for name, aspect in self.brain.aspects.all().items()
+            for relation in aspect.edge_relations
+        }
         skip_fams = {'generic_relation', 'noise'}
 
         # Step 1: Typed adjacency (ALL nodes — placed nodes' edges matter)
