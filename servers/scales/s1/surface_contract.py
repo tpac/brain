@@ -956,14 +956,14 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
 #     naturally lets more through; if wide (clear winners), it cuts hard.
 #     The cut is the derivative of the situation, per c2730676.
 #
-#  2. Family-aware ride-along. Instead of a hardcoded relation allowlist,
-#     read s2_edge_families config and treat edges whose family is in
-#     LINEAGE_FAMILIES as structural — they ride along even when their
-#     enriched-text cosine is weak. The classification logic already
-#     exists; we just consume it. New families added by S2 inherit the
-#     behavior automatically (assuming they map to one of the lineage
-#     families). Floor for lineage transmission is the per-hop 25th
-#     percentile of edge coefficients — distribution-derived, not 0.4.
+#  2. Aspect-aware ride-along. Instead of a hardcoded relation allowlist,
+#     read brain.aspects (the AspectRegistry) and treat edges whose aspect
+#     is in LINEAGE_FAMILIES as structural — they ride along even when
+#     their enriched-text cosine is weak. New aspects emerging via
+#     AspectIntegration inherit the behavior automatically (when they map
+#     to one of the lineage names). Floor for lineage transmission is the
+#     per-hop 25th percentile of edge coefficients — distribution-derived,
+#     not 0.4.
 #
 #  3. Convergence as a tag, not a multiplier. When a target is reached by
 #     ≥2 distinct sources, mark it convergent and increment a per-node
@@ -975,15 +975,16 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
 # field. Render layer can ignore it for compat.
 # ═══════════════════════════════════════════════════════════════
 
-# Family names from s2_edge_families taxonomy whose semantic role is
-# structural-lineage rather than topical-similarity. These edges ride
-# along even with weak enriched-text cosine, because their meaning is
-# carried by the relation type itself, not by the description embedding.
+# Aspect names whose semantic role is structural-lineage rather than
+# topical-similarity. These edges ride along even with weak enriched-text
+# cosine, because their meaning is carried by the relation type itself,
+# not by the description embedding.
 #
-# The classification mirrors what the brain already has in interactions
-# table; if that taxonomy evolves, this allowlist may need updating.
-# Kept narrow on purpose — broader is "everything rides," which is the
-# current spread's behavior we're trying to bound.
+# The classification mirrors what the brain already has in
+# brain.aspects (AspectRegistry); if the taxonomy evolves via
+# AspectIntegration, this allowlist may need updating. Kept narrow on
+# purpose — broader is "everything rides," which is the current
+# spread's behavior we're trying to bound.
 LINEAGE_FAMILIES = frozenset({
     'correction_improvement',          # corrects, corrected_by — anti-staleness
     'extension_refinement',            # extends, refines, evolves

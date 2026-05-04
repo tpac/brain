@@ -354,15 +354,20 @@ class TestCoordinator(unittest.TestCase):
         self.assertTrue(callable(run_s2))
 
     def test_unit_ordering(self):
-        """Coordinator runs units in correct order."""
+        """Coordinator runs units in correct order.
+
+        EdgeFamilyIntegration disabled 2026-05-04 — its source interaction
+        was removed in Step 12 of unified-aspects, AspectIntegration (Step 13)
+        will replace it. Test now verifies the ACTIVE units only.
+        """
         from servers.scales.s2.coordinator import run_s2
-        from servers.scales.s2.edge_families import EdgeFamilyIntegration
         from servers.scales.s2.consolidation import Consolidation
         from servers.scales.s2.community import CommunityDetection
+        from servers.scales.s2.healer import Healer
         # Verify imports work — ordering is enforced by coordinator code
-        self.assertEqual(EdgeFamilyIntegration.NAME, 'edge_family_integration')
         self.assertEqual(Consolidation.NAME, 'consolidation')
         self.assertEqual(CommunityDetection.NAME, 'community_detection')
+        self.assertEqual(Healer.NAME, 'healer')
 
 
 if __name__ == '__main__':

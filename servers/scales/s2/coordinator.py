@@ -20,13 +20,17 @@ def run_s2(brain):
     Returns:
         dict of {unit_name: result_dict}
     """
-    from .edge_families import EdgeFamilyIntegration
     from .consolidation import Consolidation
     from .community import CommunityDetection
     from .healer import Healer
 
+    # EdgeFamilyIntegration disabled 2026-05-04 — its source interaction
+    # (s2_edge_families) was removed in Step 12 of unified-aspects. Letting
+    # the unit run would re-seed the dead interaction on next idle cycle,
+    # drifting the system back toward the old taxonomy. Step 13 of the
+    # aspects work replaces it with AspectIntegration which writes
+    # aspect-nodes via brain_batch instead.
     units = [
-        EdgeFamilyIntegration(brain),
         Consolidation(brain),
         CommunityDetection(brain),
         Healer(brain),

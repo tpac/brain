@@ -263,24 +263,11 @@ S2CE_COMMUNITY_FORMAT = {
 #       ...
 
 
-# ═══════════════════════════════════════════════════════════════
-# EDGE TYPE GROUPINGS (legacy — now in s2_edge_families interaction)
-# Kept for reference. Runtime reads from interactions table.
-# ═══════════════════════════════════════════════════════════════
-
-EDGE_TYPE_GROUPS = {
-    'evolution': {'corrects', 'extends', 'evolved_from', 'supersedes', 'refines'},
-    'dependency': {'depends_on', 'implements', 'requires', 'prerequisite_for'},
-    'causation': {'caused_by', 'enables', 'blocks', 'produced'},
-    'evaluation': {'validates', 'contradicts', 'challenges', 'supports'},
-    'context': {'contextualizes', 'example_of', 'part_of', 'elaborates'},
-    'structural': {'co_accessed', 'community_member', 'emergent_bridge'},
-}
-
-RELATION_TO_GROUP = {}
-for group, relations in EDGE_TYPE_GROUPS.items():
-    for rel in relations:
-        RELATION_TO_GROUP[rel] = group
+# EDGE_TYPE_GROUPS + RELATION_TO_GROUP — REMOVED 2026-05-04
+# (Step 12 cleanup of unified-aspects). Were "legacy reference" dicts
+# pre-dating the s2_edge_families interaction; never read by runtime
+# since that interaction landed. brain.aspects now owns the equivalent
+# data — consumers iterate brain.aspects.all() and read .edge_relations.
 
 
 # ═══════════════════════════════════════════════════════════════

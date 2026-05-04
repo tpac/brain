@@ -27,7 +27,9 @@ TRACE_WRITER_FILES = [
     'servers/scales/s2/consolidation_encoder.py',
     'servers/scales/s2/healer_decoder.py',
     'servers/scales/s2/healer_encoder.py',
-    'servers/scales/s2/edge_families.py',
+    # edge_families.py removed 2026-05-04 — disabled in coordinator + file
+    # deleted as part of unified-aspects Step 12 cleanup. Step 13 will add
+    # servers/scales/s2/aspect_integration.py to this list.
     'servers/scales/s2/reclassify.py',
     'hooks/scripts/post_tool_trace.py',
 ]

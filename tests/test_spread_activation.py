@@ -2,7 +2,6 @@
 
 Contract checks (fast, no LLM, no daemon):
   • Per-field vector split exists in EMBEDDING_GROUPS
-  • iter_families handles legacy + new shape
   • _compose_enriched_edge_text produces expected text
   • _allocate_budget_softmax respects minimum per node + total budget
   • _mask_node_by_field_activation masks below-threshold fields
@@ -16,6 +15,11 @@ Behavioral checks (use r3 preserved brain from N=5 run — read-only):
 Skipped when:
   • r3 brain isn't preserved on disk
   • embedder can't load the nomic model
+
+TestIterFamiliesShape (4 tests) removed 2026-05-04 — exercised iter_families
+which lived in servers/scales/s2/edge_families.py, deleted alongside
+EdgeFamilyIntegration in Step 12 of unified-aspects. Aspect data now flows
+through brain.aspects.all() directly.
 """
 from __future__ import annotations
 
@@ -63,45 +67,6 @@ class TestEmbeddingGroupsExtension(unittest.TestCase):
         from servers.pipeline_contract import FIELD_VECTOR_FALLBACK, field_vector_types
         for t in field_vector_types():
             self.assertIn(t, FIELD_VECTOR_FALLBACK)
-
-
-class TestIterFamiliesShape(unittest.TestCase):
-    """Part 1 helper: iter_families handles both legacy list + new dict shapes."""
-
-    def test_legacy_list_shape(self):
-        from servers.scales.s2.edge_families import iter_families
-        legacy = {'correction': ['corrects', 'supersedes']}
-        out = list(iter_families(legacy))
-        self.assertEqual(out, [('correction', ['corrects', 'supersedes'], '')])
-
-    def test_new_dict_shape(self):
-        from servers.scales.s2.edge_families import iter_families
-        new = {'correction': {'members': ['corrects'], 'meaning': 'deltas'}}
-        out = list(iter_families(new))
-        self.assertEqual(out, [('correction', ['corrects'], 'deltas')])
-
-    def test_mixed_shapes_coexist(self):
-        """Migration-in-progress: some families migrated, others not."""
-        from servers.scales.s2.edge_families import iter_families
-        mixed = {
-            'new': {'members': ['a'], 'meaning': 'x'},
-            'old': ['b', 'c'],
-        }
-        out = sorted(iter_families(mixed))
-        self.assertEqual(out[0], ('new', ['a'], 'x'))
-        self.assertEqual(out[1], ('old', ['b', 'c'], ''))
-
-    def test_malformed_entries_silently_skipped(self):
-        from servers.scales.s2.edge_families import iter_families
-        bad = {
-            'good': {'members': ['x'], 'meaning': 'm'},
-            'malformed': {'members': 'not_a_list'},
-            'also_bad': 42,
-            '__meta__': {'members': ['skip']},  # metadata prefix
-        }
-        out = list(iter_families(bad))
-        self.assertEqual(len(out), 1)
-        self.assertEqual(out[0][0], 'good')
 
 
 class TestEnrichedEdgeText(unittest.TestCase):

@@ -709,11 +709,11 @@ class BrainAssemblyMixin:
 
     # 2026-05-02 (Frame Phase 2.5): fetch_self_knowledge removed — was the
     # data source for the old boot's "PATTERNS YOU FALL INTO" section.
-    # Frame's Operator section (read via the identity_bearing family from
-    # s2_node_families) covers the same need with a cleaner abstraction.
-    # If a future consumer wants self-reflective node lookup, prefer
-    # filter_nodes(field='type', include=['correction','lesson',...])
-    # filtered by the identity_bearing family or a dedicated family.
+    # Frame's Operator section (read via brain.aspects.identity_bearing)
+    # covers the same need with a cleaner abstraction. If a future consumer
+    # wants self-reflective node lookup, prefer filter_nodes(field='type',
+    # include=brain.aspects.identity_bearing.node_types) or similar via
+    # AspectRegistry.
 
 
 
