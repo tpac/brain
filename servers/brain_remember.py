@@ -78,15 +78,20 @@ class BrainRememberMixin:
             # Situation lives in node_metadata_kv as of v24 — alongside
             # question, reasoning, etc. The embedding (BLOB) is generated
             # later by backfill_vectors() reading from kv.
+            #
+            # Pass raw values through to set_many — its _encode_value handles
+            # str / list / dict / primitives consistently. Doing str(value)
+            # here would str()-ify lists into Python repr (`"['a','b']"`)
+            # which isn't JSON-parseable. Aspects (Step 5b) need clean lists.
             if field == 'situation':
-                kv_fields['situation'] = str(value)
+                kv_fields['situation'] = value
                 continue
 
             # Promoted metadata_kv field — store in KV
             if field in PROMOTED_FIELDS:
                 pf = PROMOTED_FIELDS[field]
                 if pf.get('store') == 'metadata_kv':
-                    kv_fields[field] = str(value)
+                    kv_fields[field] = value
                     continue
                 # Promoted field with different store — log error so it's visible
                 self._log_error('store_metadata_unhandled',
@@ -96,7 +101,7 @@ class BrainRememberMixin:
                 continue
 
             # Emergent field — any unknown field goes to metadata_kv
-            kv_fields[field] = str(value)
+            kv_fields[field] = value
 
         if kv_fields:
             try:
