@@ -29,6 +29,21 @@ class TestSeedRequiredAspects(BrainTestBase):
             "DELETE FROM interactions WHERE name IN ('s2_node_families', 's2_edge_families')"
         )
         self.brain.logs_conn.commit()
+        # Step 6 wires AspectRegistry which auto-heals at Brain.__init__.
+        # For migration tests we want to verify seed/migrate FROM SCRATCH —
+        # so wipe the auto-healed aspect-nodes + their metadata so each test
+        # exercises the migration logic itself, not residual state.
+        ids = [r[0] for r in self.brain.conn.execute(
+            "SELECT id FROM nodes WHERE type='aspect'").fetchall()]
+        if ids:
+            placeholders = ','.join('?' for _ in ids)
+            self.brain.conn.execute(
+                "DELETE FROM nodes WHERE id IN (%s)" % placeholders, ids)
+            self.brain.conn.execute(
+                "DELETE FROM node_metadata_kv WHERE node_id IN (%s)" % placeholders, ids)
+            self.brain.conn.commit()
+            # Drop the cached registry too — next access reloads
+            self.brain.aspects.invalidate()
 
     def _aspect_titles_in_db(self):
         res = self.brain.filter_nodes(field='type', include=['aspect'],
@@ -224,6 +239,18 @@ class TestMigrateOrchestrator(BrainTestBase):
             "DELETE FROM interactions WHERE name IN ('s2_node_families', 's2_edge_families')"
         )
         self.brain.logs_conn.commit()
+        # Wipe auto-healed aspect-nodes so the orchestrator test can verify
+        # both halves (required + emergent) creation from scratch.
+        ids = [r[0] for r in self.brain.conn.execute(
+            "SELECT id FROM nodes WHERE type='aspect'").fetchall()]
+        if ids:
+            placeholders = ','.join('?' for _ in ids)
+            self.brain.conn.execute(
+                "DELETE FROM nodes WHERE id IN (%s)" % placeholders, ids)
+            self.brain.conn.execute(
+                "DELETE FROM node_metadata_kv WHERE node_id IN (%s)" % placeholders, ids)
+            self.brain.conn.commit()
+            self.brain.aspects.invalidate()
 
     def test_full_orchestrator(self):
         # Seed legacy interactions

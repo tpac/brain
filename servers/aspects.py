@@ -132,29 +132,130 @@ class AspectRegistry:
     # ── Loading + invalidation ──
 
     def _load(self) -> None:
-        """Load aspects from the brain.
+        """Load aspects from the brain — reads filter_nodes(type='aspect').
 
-        Step 2 stub: returns empty. Step 6 implements the production path:
-            res = self._brain.filter_nodes(field='type', include=['aspect'], rich=True)
-            for node in res['nodes']:
-                aspect = _aspect_from_node(node)
-                self._aspects[aspect.name] = aspect
-                self._populate_reverse(aspect)
-        Auto-heal from seed JSON wires in alongside.
+        Each aspect-node carries:
+          - title → aspect name
+          - content → meaning text
+          - locked → locked flag
+          - _metadata.node_types → JSON-encoded list of node-type strings
+          - _metadata.edge_relations → JSON-encoded list of relation strings
+          - _metadata.dimension → dimension string ('semantic' in v1)
+          - _metadata.{display_label, ...} → other per-aspect metadata
+
+        decode_value() (from MetadataDAL) parses the JSON-encoded list values.
         """
+        from servers.dal_metadata import decode_value
+
         self._aspects = {}
         self._reverse_node = {}
         self._reverse_edge = {}
+
+        try:
+            res = self._brain.filter_nodes(
+                field='type', include=['aspect'], rich=True, limit=1000)
+        except Exception as e:
+            # If filter_nodes itself fails, leave registry empty + log loudly
+            try:
+                self._brain._log_warning(
+                    'aspect_registry_load',
+                    'filter_nodes(type=aspect) raised — registry empty',
+                    repr(e))
+            except Exception:
+                pass
+            self._dirty = False
+            return
+
+        nodes = res.get('nodes', []) if isinstance(res, dict) else []
+
+        # Skip-keys that aren't structural metadata fields on the aspect
+        # (situation is the canonical KV-stored field for all nodes; we don't
+        # carry it through onto Aspect.metadata since it's universal).
+        _RESERVED_META_KEYS = frozenset({
+            'node_types', 'edge_relations', 'dimension', 'situation'
+        })
+
+        for node in nodes:
+            name = node.get('title') or ''
+            if not name:
+                continue
+            meta_raw = node.get('_metadata') or {}
+
+            node_types_raw = meta_raw.get('node_types') or '[]'
+            edge_relations_raw = meta_raw.get('edge_relations') or '[]'
+
+            node_types = decode_value(node_types_raw)
+            edge_relations = decode_value(edge_relations_raw)
+
+            # Defensive: if decode produced a non-list, treat as empty rather
+            # than crash the whole registry.
+            if not isinstance(node_types, list):
+                node_types = []
+            if not isinstance(edge_relations, list):
+                edge_relations = []
+
+            extras = {k: v for k, v in meta_raw.items()
+                      if k not in _RESERVED_META_KEYS}
+
+            aspect = Aspect(
+                name=name,
+                node_types=tuple(node_types),
+                edge_relations=tuple(edge_relations),
+                meaning=node.get('content') or '',
+                dimension=meta_raw.get('dimension') or 'semantic',
+                locked=bool(node.get('locked')),
+                metadata=extras,
+            )
+            self._aspects[name] = aspect
+            for t in aspect.node_types:
+                self._reverse_node[t] = name
+            for r in aspect.edge_relations:
+                self._reverse_edge[r] = name
+
         self._dirty = False
 
     def _validate(self) -> None:
-        """Assert all REQUIRED_ASPECTS are present.
+        """Check REQUIRED_ASPECTS are present. Auto-heal if any are missing.
 
-        Step 2 stub: no-op (the empty registry would fail every required
-        check, which would be noise during the staged rollout). Step 6
-        enables the validation + auto-heal path.
+        Per Tom's call: warning-not-blocking (uses _log_warning, not _log_error)
+        + auto-heal from aspects_v1.json. Logs both the missing names and the
+        auto-heal outcome so drift is visible without crashing the daemon.
         """
-        pass
+        missing = [n for n in REQUIRED_ASPECTS if n not in self._aspects]
+        if not missing:
+            return
+
+        # Log loudly (warning, not error)
+        try:
+            self._brain._log_warning(
+                'aspect_contract',
+                'Required aspects missing — auto-healing from aspects_v1.json seed',
+                'missing=%s' % missing)
+        except Exception:
+            pass  # never let logging block validation
+
+        # Auto-heal — lazy import to avoid circular (aspect_migration imports aspects)
+        try:
+            from servers.aspect_migration import seed_required_aspects
+            result = seed_required_aspects(self._brain)
+            if result.get('errors'):
+                try:
+                    self._brain._log_warning(
+                        'aspect_auto_heal_errors',
+                        'Auto-heal completed with errors',
+                        str(result['errors']))
+                except Exception:
+                    pass
+            # Reload now that aspects exist
+            self._load()
+        except Exception as e:
+            try:
+                self._brain._log_warning(
+                    'aspect_auto_heal_failed',
+                    'Auto-heal raised — registry may be incomplete',
+                    repr(e))
+            except Exception:
+                pass
 
     def invalidate(self) -> None:
         """Mark cache stale. Next access reloads from brain.

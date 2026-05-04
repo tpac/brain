@@ -219,6 +219,22 @@ class Brain(
             except Exception as _e:
                 print('[brain] WARNING: seed_pack failed: %s' % _e, flush=True)
 
+        # AspectRegistry — first-class semantic-role API exposed as
+        # brain.aspects. Eager validation: loads all type='aspect' nodes,
+        # checks REQUIRED_ASPECTS present, auto-heals from aspects_v1.json
+        # if any are missing (logs warning, doesn't block). Read-only Brain
+        # instances (skip_embedder=True for background scale runs in
+        # runner.py) still validate — _load is cheap once aspects exist
+        # in the DB, and auto-heal is idempotent (skips already-present).
+        try:
+            from .aspects import AspectRegistry
+            self.aspects = AspectRegistry(self)
+        except Exception as _e:
+            # Never let registry init crash Brain init. Log + leave aspects
+            # unset; consumers that read brain.aspects will get AttributeError
+            # which is louder than a silent empty registry.
+            print('[brain] WARNING: AspectRegistry init failed: %s' % _e, flush=True)
+
     def _post_schema_init(self):
         """
         Build TF-IDF index if node_vectors is empty but nodes exist.
