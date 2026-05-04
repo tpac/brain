@@ -165,55 +165,10 @@ Candidates: #1 (match:0.62) [finding] (id:d084bcae) "search ranking A/B: variant
 </examples>"""
 
 
-S2_NODE_FAMILIES_PROMPT = """You classify node types from a knowledge graph into semantic families and provide a meaning for each family.
-
-This graph stores knowledge from an AI-human collaboration — decisions, lessons, corrections, mechanisms, rules, concepts. The node types were written by an encoding agent (open text — the schema's NODE_TYPES list is documentation only, not enforced). You receive each type with its frequency and up to 10 sample TITLES showing how it's actually used.
-
-Each family groups types that share a semantic role — what KIND of knowledge the type represents. The `meaning` field will be embedded and used by consumers (Frame, voice rendering, signal producers) to route queries by family — it should distinguish this family's role from others, written in natural language a reader (or embedding model) would recognize.
-
-Group into semantic families based on what the types ACTUALLY MEAN (use the sample titles, not just the type name):
-- A family represents a knowledge ROLE — what part of the partnership's understanding this type captures
-- Be specific enough that families are useful for routing (Frame asking "which types are identity-bearing" must get a clean answer)
-- But not so specific that every type is its own family — aim for 10-20 families
-- Family names are lowercase_with_underscores, descriptive of the knowledge role
-- For every family you output, include a 1-2 sentence `meaning`
-
-Assign each type to an EXISTING family if it fits. Only create a NEW family if no existing one captures the role. When an existing family's MEANING is marked MISSING, include a meaning for it.
-
-Return ONLY JSON in this shape:
-{
-  "family_name": {
-    "members": ["type1", "type2"],
-    "meaning": "Short semantic description of what this family represents."
-  }
-}"""
-
-
-S2_EDGE_FAMILIES_PROMPT = """You classify edge relation types from a knowledge graph into semantic families and provide a meaning for each family.
-
-This graph stores knowledge from an AI-human collaboration — decisions, lessons, corrections, mechanisms, rules, concepts. The relation types were written by an encoding agent (open text, no closed list). You receive each type with its frequency and up to 10 sample DESCRIPTIONS showing how it's actually used in context.
-
-Each family groups relations that share a semantic role in the graph. The `meaning` field will be embedded and used by the recall system to match queries to families — it should distinguish this family's relational pattern from others, written in natural language that a reader (or embedding model) would recognize.
-
-Group into semantic families based on what the relations ACTUALLY MEAN (use the descriptions, not just the type name):
-- A family represents a relational PATTERN — how two pieces of knowledge relate
-- Be specific enough that families are useful for community detection AND Surface recall (not 3 mega-groups)
-- But not so specific that every type is its own family — aim for 15-25 families
-- "related_to" and "related" are GENERIC — their own family
-- Noise types (co_accessed, emergent_bridge, dreamed_from, dream_observation) — their own "noise" family
-- If a type's descriptions show inconsistent usage, put it in the family matching MAJORITY usage
-- Family names are lowercase_with_underscores, descriptive of the relational pattern
-- For every family you output, include a 1-2 sentence `meaning`
-
-Assign each type to an EXISTING family if it fits. Only create a NEW family if no existing one captures the pattern. When an existing family's MEANING is marked MISSING, include a meaning for it.
-
-Return ONLY JSON in this shape:
-{
-  "family_name": {
-    "members": ["type1", "type2"],
-    "meaning": "Short semantic description of what this family represents."
-  }
-}"""
+# S2_NODE_FAMILIES_PROMPT and S2_EDGE_FAMILIES_PROMPT — REMOVED 2026-05-04
+# (Step 12 of unified-aspects). Replaced by aspect-nodes seeded directly
+# from aspects_v1.json. Step 13 will register a unified s2_aspects prompt
+# for the AspectIntegration maintenance unit.
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -426,32 +381,11 @@ def seed_interactions(brain):
                      parameters=json.dumps(COMMUNITY_DETECTION),
                      created_by='s2:community_detection')
 
-    # Edge families — initial mapping seeded from JSON file.
-    if 's2_edge_families' not in existing:
-        v1_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               'scales', 's2', 'edge_families_v1.json')
-        initial_families = {}
-        if os.path.exists(v1_path):
-            with open(v1_path) as f:
-                initial_families = json.load(f)
-        dal.register('s2_edge_families',
-                     template=S2_EDGE_FAMILIES_PROMPT,
-                     parameters=json.dumps(initial_families),
-                     created_by='s2:edge_families')
-
-    # Node families — initial mapping seeded from JSON file. Mirrors edge
-    # families pattern. Storage shape, prompt structure, and consumer-read
-    # path are identical (`brain.get_interaction_config('s2_node_families')`).
-    # The maintenance S2 unit (parallel to EdgeFamilyIntegration) is not
-    # built yet — when it lands, it updates the same key. See FRAME-DESIGN.md.
-    if 's2_node_families' not in existing:
-        v1_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               'scales', 's2', 'node_families_v1.json')
-        initial_families = {}
-        if os.path.exists(v1_path):
-            with open(v1_path) as f:
-                initial_families = json.load(f)
-        dal.register('s2_node_families',
-                     template=S2_NODE_FAMILIES_PROMPT,
-                     parameters=json.dumps(initial_families),
-                     created_by='s2:node_families')
+    # s2_edge_families and s2_node_families seeds — REMOVED 2026-05-04
+    # (Step 12 of unified-aspects). Replaced by aspect-nodes auto-healed by
+    # AspectRegistry at Brain.__init__ from servers/scales/s2/aspects_v1.json
+    # (single seed, both kinds). Migration script for existing brains:
+    # scripts/migrate_to_aspects.py reads any leftover s2_*_families
+    # interactions and converts them into emergent aspect-nodes.
+    # Step 13 will replace EdgeFamilyIntegration with AspectIntegration and
+    # register the new s2_aspects interaction prompt here.

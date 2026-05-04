@@ -215,10 +215,12 @@ def run_new_decoder(brain, config=None):
             already_placed.add(mid)
             node_to_community[mid] = comm
 
-    # Load edge families + build adjacency (shape-agnostic via helper)
-    from servers.scales.s2.edge_families import get_reverse_map
-    edge_families_config = decoder._get_interaction_config('s2_edge_families') or {}
-    rel_to_fam = get_reverse_map(edge_families_config)
+    # Load aspect map for typed adjacency (Step 12 of unified-aspects)
+    rel_to_fam = {
+        relation: name
+        for name, aspect in brain.aspects.all().items()
+        for relation in aspect.edge_relations
+    }
     skip_fams = {'generic_relation', 'noise'}
 
     t_adj = time.time()

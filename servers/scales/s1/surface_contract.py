@@ -1032,20 +1032,18 @@ def spread_activation_cluster(seed_ids, query_vec, brain, prior_vecs=None):
         blended = query_vec
     norm_q = float(np.linalg.norm(blended))
 
-    # Family map — read the live taxonomy, not a hardcoded list.
+    # Aspect map — single source of truth via brain.aspects.
     rel_to_family = {}
     meaning_by_family = {}
     try:
-        from servers.scales.s2.edge_families import iter_families
-        config = brain.get_interaction_config('s2_edge_families') or {}
-        for fam, members, meaning in iter_families(config):
-            if meaning:
-                meaning_by_family[fam] = meaning
-            for m in members:
-                rel_to_family[m] = fam
+        for name, aspect in brain.aspects.all().items():
+            if aspect.meaning:
+                meaning_by_family[name] = aspect.meaning
+            for r in aspect.edge_relations:
+                rel_to_family[r] = name
     except Exception as _e:
-        brain._log_error('cluster_spread_family_config', _e,
-                         'loading s2_edge_families config in spread_activation_cluster')
+        brain._log_error('cluster_spread_aspect_config', _e,
+                         'loading brain.aspects in spread_activation_cluster')
 
     # Seed activation (same as original)
     all_touched_ids = list(seed_ids)
@@ -1326,16 +1324,14 @@ def select_edges(connections, query_vec, session=None, limit=3, prior_vecs=None,
     meaning_by_family = {}
     if brain is not None:
         try:
-            from servers.scales.s2.edge_families import iter_families
-            config = brain.get_interaction_config('s2_edge_families') or {}
-            for fam, members, meaning in iter_families(config):
-                if meaning:
-                    meaning_by_family[fam] = meaning
-                for m in members:
-                    rel_to_family[m] = fam
+            for name, aspect in brain.aspects.all().items():
+                if aspect.meaning:
+                    meaning_by_family[name] = aspect.meaning
+                for r in aspect.edge_relations:
+                    rel_to_family[r] = name
         except Exception as _e:
-            brain._log_error('select_edges_family_config', _e,
-                             'loading s2_edge_families in select_edges')
+            brain._log_error('select_edges_aspect_config', _e,
+                             'loading brain.aspects in select_edges')
 
     # Batch-load target node embeddings (one SQL round-trip)
     target_ids = [c.get('id', '')[:8] for c in connections]

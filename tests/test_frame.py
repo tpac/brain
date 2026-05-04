@@ -111,33 +111,10 @@ class TestSessionContextGetFrame(BrainTestBase):
         self.assertIn('## Recent moves', frame)
 
 
-class TestNodeFamiliesSeed(BrainTestBase):
-    """The s2_node_families interaction is seeded on fresh brain."""
-    needs_embedder = False
-
-    def test_s2_node_families_present_after_init(self):
-        config = self.brain.get_interaction_config('s2_node_families')
-        self.assertIsInstance(config, dict)
-        self.assertGreater(len(config), 0,
-                          's2_node_families should be seeded on Brain.__init__')
-
-    def test_s2_node_families_has_expected_v1_families(self):
-        config = self.brain.get_interaction_config('s2_node_families')
-        # v1 seed must cover the families Frame depends on
-        self.assertIn('identity_bearing', config)
-        self.assertIn('episodic_anchor', config)
-        self.assertIn('active_thread', config)
-        self.assertIn('lesson_insight', config)
-
-    def test_s2_node_families_shape_is_v2_nested(self):
-        config = self.brain.get_interaction_config('s2_node_families')
-        family = config['identity_bearing']
-        # v2 nested shape: {members: [...], meaning: "..."}
-        self.assertIsInstance(family, dict)
-        self.assertIn('members', family)
-        self.assertIn('meaning', family)
-        self.assertIsInstance(family['members'], list)
-        self.assertIsInstance(family['meaning'], str)
+# TestNodeFamiliesSeed: REMOVED 2026-05-04 (Step 12 of unified-aspects).
+# Tested that s2_node_families interaction was seeded on fresh brain.
+# Replaced by aspect-nodes seeded via AspectRegistry auto-heal — coverage
+# moved to test_aspect_registry_wired.py (TestAspectRegistryWired suite).
 
 
 class TestSessionContextPerSession(BrainTestBase):

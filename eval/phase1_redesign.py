@@ -267,14 +267,16 @@ def step2_discover(brain, community_vec, node_vec, current_vec):
 # ═══════════════════════════════════════════════════
 
 def _load_edge_families(brain):
-    """Load edge family classification from interactions table.
-    Shape-agnostic (handles legacy list + new nested-dict via iter_families)."""
-    from servers.scales.s2.edge_families import get_reverse_map
-    config = brain.get_interaction_config('s2_edge_families')
-    if not config:
-        return {}
-    rel_to_family = get_reverse_map(config)
-    return rel_to_family
+    """Build {relation: aspect_name} reverse map from brain.aspects.
+
+    Step 12 migration — replaces s2_edge_families interaction lookup. Same
+    data shape (relation_string → name), now sourced from AspectRegistry.
+    """
+    return {
+        relation: name
+        for name, aspect in brain.aspects.all().items()
+        for relation in aspect.edge_relations
+    }
 
 
 def _find_inter_candidate_edges(brain, candidate_ids):

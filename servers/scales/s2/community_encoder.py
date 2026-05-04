@@ -202,20 +202,22 @@ class CommunityEncoder(IntegrationUnit):
             print('[s2ce] WARNING: no enrichment prompt', flush=True)
             return None
 
-        # Inject edge families from DB (shared vocabulary across S2 encoders)
-        from servers.scales.s2.edge_families import iter_families
-        edge_families_config = self._get_interaction_config('s2_edge_families')
-        if edge_families_config:
-            family_lines = []
-            for family, members, _meaning in sorted(iter_families(edge_families_config)):
-                if family not in ('generic_relation', 'noise'):
-                    family_lines.append('- **%s**: %s' % (
-                        family, ', '.join(members[:8])))
-            if family_lines:
-                families_section = ('\n\n## Edge Families (from brain — %d families)\n\n%s\n\n'
-                                    'Avoid `related_to`. Pick specific types.' % (
-                                        len(family_lines), '\n'.join(family_lines)))
-                system_prompt = system_prompt + families_section
+        # Inject edge aspects (Step 12 of unified-aspects). Same skip pattern
+        # as consolidation_encoder + surface — generic_relation/noise excluded
+        # from the prompt, node-only aspects skipped (no edge_relations).
+        family_lines = []
+        for name, aspect in sorted(self.brain.aspects.all().items()):
+            if name in ('generic_relation', 'noise'):
+                continue
+            if not aspect.edge_relations:
+                continue
+            family_lines.append('- **%s**: %s' % (
+                name, ', '.join(list(aspect.edge_relations[:8]))))
+        if family_lines:
+            families_section = ('\n\n## Edge Families (from brain.aspects — %d aspects)\n\n%s\n\n'
+                                'Avoid `related_to`. Pick specific types.' % (
+                                    len(family_lines), '\n'.join(family_lines)))
+            system_prompt = system_prompt + families_section
 
         if not os.environ.get('ANTHROPIC_API_KEY'):
             load_env()

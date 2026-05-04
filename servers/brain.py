@@ -529,27 +529,11 @@ class Brain(
             return ''
         return interaction.get('template', '')
 
-    def get_relations_for_families(self, *family_names) -> set:
-        """Get all edge relation types belonging to the given families.
-
-        Reads from s2_edge_families interaction (source of truth).
-        Shape-agnostic via iter_families — handles legacy list shape and
-        new nested-object shape uniformly.
-        Returns a set of relation strings.
-
-        Usage:
-            correction_rels = brain.get_relations_for_families(
-                'correction_improvement', 'hierarchical_structure')
-            # → {'corrects', 'corrected_by', 'supersedes', 'superseded_by', ...}
-        """
-        from servers.scales.s2.edge_families import iter_families
-        config = self.get_interaction_config('s2_edge_families') or {}
-        wanted = set(family_names)
-        relations = set()
-        for family, members, _meaning in iter_families(config):
-            if family in wanted:
-                relations.update(members)
-        return relations
+    # get_relations_for_families — REMOVED 2026-05-04 (Step 12 of unified-aspects).
+    # Replaced by brain.aspects.<name>.edge_relations (single name) or
+    # brain.aspects.relations_in([names]) (multi-name union). All callers
+    # migrated through Steps 7-11; the legacy s2_edge_families interaction
+    # is no longer the source of truth.
 
     def get_interaction(self, name: str, version: int = 0) -> dict:
         """Get interaction by name. version=0 (default) returns latest, else specific version."""
