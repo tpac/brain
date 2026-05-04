@@ -116,23 +116,26 @@ class ConsolidationEncoder(IntegrationUnit):
             print('[s2-consolidation] WARNING: no enrichment prompt', flush=True)
             return None
 
-        # Inject edge families from DB (latest classification, shape-agnostic)
-        from servers.scales.s2.edge_families import iter_families
-        edge_families_config = self._get_interaction_config('s2_edge_families')
-        if edge_families_config:
-            # Build compact family reference for the prompt
-            family_lines = []
-            for family, members, _meaning in sorted(iter_families(edge_families_config)):
-                if family not in ('generic_relation', 'noise'):
-                    family_lines.append('- **%s**: %s' % (
-                        family, ', '.join(members[:8])))
-            if family_lines:
-                system_prompt = system_prompt.replace(
-                    '## Edge Families',
-                    '## Edge Families (loaded from brain — %d families)\n\n%s' % (
-                        len(family_lines), '\n'.join(family_lines)),
-                    1) if '## Edge Families' in system_prompt else (
-                    system_prompt + '\n\n## Edge Families\n\n' + '\n'.join(family_lines))
+        # Inject edge aspects (Step 8 of unified-aspects). Same data the old
+        # s2_edge_families interaction held, now read from brain.aspects.
+        # Skip the two no-signal aspects (generic_relation, noise) and any
+        # aspect with empty edge_relations (node-only — irrelevant to a
+        # cluster-merge prompt).
+        family_lines = []
+        for name, aspect in sorted(self.brain.aspects.all().items()):
+            if name in ('generic_relation', 'noise'):
+                continue
+            if not aspect.edge_relations:
+                continue
+            family_lines.append('- **%s**: %s' % (
+                name, ', '.join(list(aspect.edge_relations[:8]))))
+        if family_lines:
+            system_prompt = system_prompt.replace(
+                '## Edge Families',
+                '## Edge Families (loaded from brain.aspects — %d aspects)\n\n%s' % (
+                    len(family_lines), '\n'.join(family_lines)),
+                1) if '## Edge Families' in system_prompt else (
+                system_prompt + '\n\n## Edge Families\n\n' + '\n'.join(family_lines))
 
         if not os.environ.get('ANTHROPIC_API_KEY'):
             load_env()

@@ -753,8 +753,8 @@ class ConsolidationDecoder(IntegrationUnit):
 
     def _has_correction_edge(self, node_ids):
         """Check if any correction edge exists between cluster members."""
-        correction_rels = self.brain.get_relations_for_families(
-            'correction_improvement', 'hierarchical_structure')
+        correction_rels = set(self.brain.aspects.relations_in(
+            ['correction_improvement', 'hierarchical_structure']))
         if not correction_rels:
             correction_rels = {'corrects', 'corrected_by', 'supersedes', 'superseded_by'}
         from servers.dal import GraphDAL
@@ -767,8 +767,7 @@ class ConsolidationDecoder(IntegrationUnit):
         Tensions are productive — they represent opposing views on the same topic.
         NEVER consolidate these. Always KEEP both sides of a tension.
         """
-        tension_rels = self.brain.get_relations_for_families(
-            'contradiction_conflict')
+        tension_rels = set(self.brain.aspects.contradiction_conflict.edge_relations)
         if not tension_rels:
             tension_rels = {'contradicts', 'challenges', 'conflicts_with',
                             'contrasts', 'undermines', 'violates'}
