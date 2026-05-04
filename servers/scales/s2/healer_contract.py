@@ -34,14 +34,11 @@ HEALER = {
     'trace_lookback_hours': 720,     # 30 days of traces to search
 }
 
-# Edge family context for prompt: which families produce distinctive anchor/bridge text
-HEALER_EDGE_FAMILIES = {
-    'correction_improvement':  'corrects/improves',
-    'extension_refinement':    'extends/refines',
-    'explanation_causation':   'explains/causes',
-    'dependency_flow':         'depends on/enables',
-    'contradiction_conflict':  'contradicts/challenges',
-    'validation_evidence':     'validates/demonstrates',
-    'hierarchical_structure':  'part of/supersedes',
-    'temporal_sequence':       'follows from/leads to',
-}
+# HEALER_EDGE_FAMILIES — REMOVED 2026-05-04 (Step 10 of unified-aspects).
+# Was a dict of {family_name: display_label} for the healer prompt. Per a
+# pre-removal grep, nothing imported it — the dict was already dead code.
+# Display-label data now lives on each aspect-node's metadata:
+#     brain.aspects.correction_improvement.metadata.get('display_label')
+#       → 'corrects/improves'
+# Healer prompts that want the labels back should iterate brain.aspects.all()
+# and read each aspect's metadata.
