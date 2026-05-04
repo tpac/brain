@@ -2,10 +2,8 @@
 
 Phase 2 of the Frame architecture. Tests cover:
 - build_frame returns a markdown string with all five sections
-- _family_members reads from s2_node_families interaction
-- _family_members falls back to hardcoded defaults when interaction is empty
+- Frame routes by brain.aspects (post Step 11 of unified-aspects)
 - ctx.get_frame(brain) is the session-scoped entry point
-- s2_node_families seeds correctly on a fresh brain
 - build_surface_prompt accepts and renders the frame param
 """
 
@@ -16,11 +14,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from tests.brain_test_base import BrainTestBase
-from servers.scales.s1.frame import (
-    build_frame, _family_members, _members_in_families,
-    _FALLBACK_FAMILIES,
-    OPERATOR_FAMILY, PERMANENT_FAMILY, WARM_FAMILIES, ACTIVE_FAMILY,
-)
+from servers.scales.s1.frame import build_frame
 
 
 class TestFrameConstruction(BrainTestBase):
@@ -60,37 +54,38 @@ class TestFrameConstruction(BrainTestBase):
         self.assertNotIn('Error', frame)
 
 
-class TestFamilyResolution(BrainTestBase):
-    """Family lookup reads interactions table with hardcoded fallback."""
+class TestAspectRoutingForFrame(BrainTestBase):
+    """Frame routes via brain.aspects — replaces the old s2_node_families lookup.
+
+    Step 11 of unified-aspects swapped frame.py from a families-dict shape
+    + hardcoded _FALLBACK_FAMILIES + _resolve_families helper to direct
+    AspectRegistry attribute access. These tests verify the data Frame
+    needs is reachable through the new path.
+    """
     needs_embedder = False
 
-    def test_family_members_reads_seeded_families(self):
-        # On a fresh brain, seed_interactions should have populated s2_node_families
-        members = _family_members(self.brain, OPERATOR_FAMILY)
-        self.assertIsInstance(members, list)
-        self.assertGreater(len(members), 0)
-        # The seeded identity_bearing family should include 'principle'
+    def test_aspects_identity_bearing_includes_principle(self):
+        # Frame's Operator section depends on this routing
+        members = self.brain.aspects.identity_bearing.node_types
         self.assertIn('principle', members)
+        self.assertIn('rule', members)
 
-    def test_family_members_falls_back_when_family_missing(self):
-        # Ask for a family that doesn't exist in seed
-        members = _family_members(self.brain, 'nonexistent_family_xyz')
-        # Should return the fallback (empty for unknown family)
-        self.assertEqual(members, [])
+    def test_aspects_episodic_anchor_includes_moment(self):
+        # Partnership.permanent layer depends on this
+        members = self.brain.aspects.episodic_anchor.node_types
+        self.assertIn('moment', members)
 
-    def test_family_members_uses_fallback_when_interaction_empty(self):
-        # Wipe the interaction so the interaction lookup returns empty config
-        self.brain._interaction_dal.register(
-            's2_node_families', template='', parameters='{}',
-            created_by='test')
-        # Now _family_members should fall back to _FALLBACK_FAMILIES
-        members = _family_members(self.brain, OPERATOR_FAMILY)
-        # Fallback for identity_bearing exists — verify it's used
-        self.assertEqual(set(members), set(_FALLBACK_FAMILIES['identity_bearing']))
+    def test_aspects_active_thread_includes_open(self):
+        # Active threads section depends on this
+        members = self.brain.aspects.active_thread.node_types
+        self.assertIn('open', members)
+        self.assertIn('tension', members)
+        self.assertIn('hypothesis', members)
 
-    def test_members_in_families_unions_multiple(self):
-        members = _members_in_families(self.brain, WARM_FAMILIES)
-        # Union should include moment (from episodic_anchor) AND insight (from lesson_insight)
+    def test_aspects_warm_union_dedups(self):
+        # Partnership.warm layer unions episodic_anchor + lesson_insight
+        members = self.brain.aspects.types_in(
+            ['episodic_anchor', 'lesson_insight'])
         self.assertIn('moment', members)
         self.assertIn('insight', members)
         # No duplicates

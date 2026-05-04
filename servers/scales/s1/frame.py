@@ -3,8 +3,9 @@
 Phase 2 of the Frame architecture (see docs/FRAME-DESIGN.md). Produces a
 markdown text Frame composed of five sections, deterministically queried
 from the brain's existing API. No LLM call. No new SQL. Pure composition
-over `brain.filter_nodes`, `brain.session_context_for(session_id)`, and
-`brain.get_recent_encoding_journal(session_id)`.
+over `brain.filter_nodes`, `brain.session_context_for(session_id)`,
+`brain.get_recent_encoding_journal(session_id)`, and `brain.aspects`
+(the AspectRegistry — Step 11 of unified-aspects).
 
 Sections:
     Operator      — locked identity-bearing nodes (principle/identity/vision)
@@ -19,6 +20,12 @@ Sections:
 Same Frame is rendered at boot (via SessionStart hook) and during
 conversation (via hook_recall → run_surface). Unified per Tom's call
 2026-05-02 — splits into boot/live variants only if measurement says so.
+
+Aspect routing:
+    brain.aspects.identity_bearing → Operator section
+    brain.aspects.episodic_anchor  → Partnership.permanent
+    brain.aspects.episodic_anchor + lesson_insight → Partnership.warm (union)
+    brain.aspects.active_thread    → Active threads
 """
 
 from typing import Dict, List
@@ -32,69 +39,6 @@ LOCKED_PULL_LIMIT = 200        # 342 total locked exist — pull wide so type-fi
 ACTIVE_THREAD_PULL = 10
 WARM_PULL = 8
 
-# ── Family routing ──
-# Type lists no longer inline — Frame reads them from the s2_node_families
-# interaction (parallel to s2_edge_families). The future S2 maintenance unit
-# updates the families from observed data; Frame and other consumers just
-# read names. See servers/scales/s2/node_families_v1.json for v1 seed.
-OPERATOR_FAMILY = 'identity_bearing'
-PERMANENT_FAMILY = 'episodic_anchor'
-WARM_FAMILIES = ['episodic_anchor', 'lesson_insight']
-ACTIVE_FAMILY = 'active_thread'
-
-# Fallback type lists — used if interaction is missing or empty (defensive,
-# also lets the module work in tests with an unseeded brain).
-_FALLBACK_FAMILIES = {
-    'identity_bearing': ['principle', 'identity', 'vision', 'rule', 'operator'],
-    'episodic_anchor': ['moment', 'anchor_quote', 'user_quote', 'quote'],
-    'active_thread': ['open', 'tension', 'hypothesis', 'aspiration'],
-    'lesson_insight': ['lesson', 'insight', 'reflection'],
-}
-
-
-def _resolve_families(brain) -> dict:
-    """Load s2_node_families ONCE per Frame build, return family→members map.
-
-    Pre-Phase-2.5 each renderer called _family_members independently and each
-    call did its own get_interaction_config — 4 DB reads of the same config
-    per build_frame. This loads it once, all renderers share the result. Falls
-    back to hardcoded defaults if the interaction is absent (fresh brain or
-    test environment).
-    """
-    from servers.scales.s2.edge_families import iter_families
-    config = brain.get_interaction_config('s2_node_families') or {}
-    out = {}
-    for fam, members, _meaning in iter_families(config):
-        out[fam] = list(members)
-    # Layer fallbacks for any family Frame uses but the seed didn't populate
-    for fam, members in _FALLBACK_FAMILIES.items():
-        out.setdefault(fam, list(members))
-    return out
-
-
-def _members(families: dict, family_name: str) -> List[str]:
-    """Get one family's members from the resolved map (already loaded)."""
-    return list(families.get(family_name, _FALLBACK_FAMILIES.get(family_name, [])))
-
-
-def _members_union(families: dict, family_names: List[str]) -> List[str]:
-    """Union of member types across multiple families (from resolved map)."""
-    seen = []
-    for fname in family_names:
-        for m in _members(families, fname):
-            if m not in seen:
-                seen.append(m)
-    return seen
-
-
-# Backwards-compat shims for callers/tests that still use the old names.
-def _family_members(brain, family_name: str) -> List[str]:
-    return _members(_resolve_families(brain), family_name)
-
-
-def _members_in_families(brain, family_names: List[str]) -> List[str]:
-    return _members_union(_resolve_families(brain), family_names)
-
 
 def _short_content(node: dict, limit: int = 180) -> str:
     """Prefer content_summary; fall back to content snippet."""
@@ -104,9 +48,13 @@ def _short_content(node: dict, limit: int = 180) -> str:
     return (node.get('content') or '')[:limit].rstrip()
 
 
-def _render_operator(brain, locked_nodes: List[dict], families: dict) -> str:
-    """Operator section — who Tom is, what locked principles Anchor lives by."""
-    operator_types = set(_members(families, OPERATOR_FAMILY))
+def _render_operator(brain, locked_nodes: List[dict]) -> str:
+    """Operator section — who the operator is, what locked principles Anchor lives by.
+
+    Reads `brain.aspects.identity_bearing.node_types` to know which types
+    qualify (principle, identity, vision, rule, operator, capability).
+    """
+    operator_types = set(brain.aspects.identity_bearing.node_types)
     operator_nodes = [n for n in locked_nodes
                       if n.get('type') in operator_types]
     if not operator_nodes:
@@ -119,8 +67,12 @@ def _render_operator(brain, locked_nodes: List[dict], families: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _render_partnership(brain, locked_nodes: List[dict], families: dict) -> str:
-    """Partnership section — three layers: integrated, permanent, warm."""
+def _render_partnership(brain, locked_nodes: List[dict]) -> str:
+    """Partnership section — three layers: integrated, permanent, warm.
+
+    Permanent uses `brain.aspects.episodic_anchor.node_types`. Warm unions
+    types from episodic_anchor + lesson_insight via `aspects.types_in(...)`.
+    """
     lines = ["## Partnership"]
 
     # Integrated: top communities by RECENCY (last_accessed). Pure access_count
@@ -137,8 +89,8 @@ def _render_partnership(brain, locked_nodes: List[dict], families: dict) -> str:
             snippet = _short_content(c, 140)
             lines.append("- **%s** — %s" % (c.get('title', ''), snippet))
 
-    # Permanent: locked moments / identity
-    permanent_types = set(_members(families, PERMANENT_FAMILY))
+    # Permanent: locked moments / identity (episodic_anchor types only)
+    permanent_types = set(brain.aspects.episodic_anchor.node_types)
     permanent = [n for n in locked_nodes
                  if n.get('type') in permanent_types]
     if permanent:
@@ -147,10 +99,11 @@ def _render_partnership(brain, locked_nodes: List[dict], families: dict) -> str:
             snippet = _short_content(n, 140)
             lines.append("- **%s** — %s" % (n.get('title', ''), snippet))
 
-    # Warm: recently-accessed nodes from episodic + lesson families. Recency-
+    # Warm: recently-accessed nodes from episodic + lesson aspects. Recency-
     # first sort means what's been touched recently rises naturally — no
     # separate cutoff needed because the sort already orders by what matters.
-    warm_types = _members_union(families, WARM_FAMILIES)
+    warm_types = list(brain.aspects.types_in(
+        ['episodic_anchor', 'lesson_insight']))
     warm_result = brain.filter_nodes(
         field='type', include=warm_types,
         sort_by='last_accessed', sort_order='desc',
@@ -167,15 +120,15 @@ def _render_partnership(brain, locked_nodes: List[dict], families: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _render_active_threads(brain, families: dict, arc_text: str = '') -> str:
-    """Open work — types in the active_thread family.
+def _render_active_threads(brain, arc_text: str = '') -> str:
+    """Open work — types in the active_thread aspect.
 
     When arc_text is non-empty (the session's current focus blob), the result
     is relevance-ranked against it — top half by relevance to today's arc,
     remainder by raw recency. Lifts threads semantically connected to current
     work above unrelated brain-wide noise. See FRAME-DESIGN.md Phase 2.5.
     """
-    active_types = _members(families, ACTIVE_FAMILY)
+    active_types = list(brain.aspects.active_thread.node_types)
     res = brain.filter_nodes(
         field='type', include=active_types,
         sort_by='last_accessed', sort_order='desc',
@@ -220,6 +173,10 @@ def build_frame(brain, session_id: str) -> str:
     """Construct the Frame as markdown text.
 
     Five sections, deterministic SQL via brain.filter_nodes, no LLM call.
+    Type-routing for sections reads `brain.aspects` (the AspectRegistry —
+    single source of truth for which node types qualify as identity-bearing,
+    episodic, lesson-insight, active-thread).
+
     Reuses one locked-nodes pull for both Operator and Partnership-permanent
     sections.
 
@@ -229,11 +186,6 @@ def build_frame(brain, session_id: str) -> str:
     Returns:
         Markdown string. ~1500-2000 tokens typical.
     """
-    # Load families ONCE per build — passed to all renderers. Pre-Phase-2.5
-    # each renderer fetched the s2_node_families config independently (4 DB
-    # reads of the same data per build). Single fetch, all renderers share.
-    families = _resolve_families(brain)
-
     # One pull, two consumers — reuse locked-nodes between operator + permanent.
     # Sort by last_accessed: locked nodes are curated, but recency reveals which
     # are still ALIVE in the partnership vs which have gone dormant.
@@ -250,9 +202,9 @@ def build_frame(brain, session_id: str) -> str:
     arc_text = brain.session_context_for(session_id)
 
     sections = [
-        _render_operator(brain, locked_nodes, families),
-        _render_partnership(brain, locked_nodes, families),
-        _render_active_threads(brain, families, arc_text=arc_text),
+        _render_operator(brain, locked_nodes),
+        _render_partnership(brain, locked_nodes),
+        _render_active_threads(brain, arc_text=arc_text),
         _render_current_focus(brain, session_id),
         _render_recent_moves(brain, session_id),
     ]
