@@ -1302,6 +1302,45 @@ class Brain(
             print('brain: error in %s: %s (context: %s)' % (source, error, context),
                   file=sys.stderr)
 
+    def _log_warning(self, source: str, message: str, context: str = ''):
+        """Log a non-blocking warning to brain_logs.db + brain.log.
+
+        For signals that are worth surfacing but aren't errors — empty-husk
+        required aspect, auto-heal events, deprecated path used, etc. Different
+        from _log_error: takes a string message rather than an Exception, and
+        writes event_type='warning' so consumers can distinguish signal severity.
+
+        Rate-limited via the same machinery as _log_error.
+        """
+        try:
+            # Rate limit check — compute fingerprint
+            fingerprint = '%s:warning:%s' % (source, message[:100])
+            if self._check_rate_limit(source, fingerprint):
+                return  # suppressed
+
+            # Write to logs DB
+            self._check_logs_db_size()
+            self.logs_conn.execute('''
+                INSERT INTO debug_log
+                  (session_id, event_type, source, metadata, created_at)
+                VALUES (?, 'warning', ?, ?, ?)
+            ''', (
+                self._get_session_activity().get('session_id', 'unknown'),
+                source,
+                json.dumps({
+                    'message': message,
+                    'context': context,
+                }),
+                self.now()
+            ))
+
+            # Write to human-readable log file
+            self._write_to_file_log('WARNING', source, message, context)
+        except Exception:
+            # Last resort — can't even log. Print to stderr.
+            print('brain: warning in %s: %s (context: %s)' % (source, message, context),
+                  file=sys.stderr)
+
     def get_recent_errors(self, hours: int = 24, limit: int = 10) -> List[Dict[str, Any]]:
         """Get recent errors from brain_logs.db via DAL."""
         try:

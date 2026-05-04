@@ -68,6 +68,26 @@ class TestErrorLogging(BrainTestBase):
         self.assertTrue(len(errors) > 0, 'Should have logged error')
         self.assertEqual(errors[0]['source'], 'test_source')
 
+    def test_log_warning_writes_to_db(self):
+        """_log_warning writes a non-blocking signal with event_type='warning'."""
+        self.brain._log_warning("test_warn_source", "test warning message", "warn ctx")
+
+        # Query debug_log directly — warnings live in the unified debug_log
+        # table with event_type='warning' (distinct from event_type='error').
+        row = self.brain.logs_conn.execute(
+            "SELECT event_type, source, metadata FROM debug_log "
+            "WHERE source = 'test_warn_source' AND event_type = 'warning' "
+            "ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        self.assertIsNotNone(row, 'Should have logged warning to debug_log')
+        self.assertEqual(row[0], 'warning')
+        self.assertEqual(row[1], 'test_warn_source')
+        # metadata is JSON with message + context
+        import json as _json
+        meta = _json.loads(row[2])
+        self.assertEqual(meta['message'], 'test warning message')
+        self.assertEqual(meta['context'], 'warn ctx')
+
     # test_errors_surface_in_consciousness removed — consciousness signals migrated to signal queue
 
 
