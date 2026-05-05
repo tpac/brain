@@ -420,6 +420,8 @@ All units use:
 - Eval harness: `eval/s2_community_eval.py`
 - **Aspects system** (2026-05-04) — `brain.aspects` exposes 14 required + emergent aspect-nodes as the unified taxonomy for both node types AND edge relations. See `docs/SESSION-HANDOFF-2026-05-04.md` and `CLAUDE.md` Aspects section.
 
+> **⚠ Stage 2 direction (in progress):** Aspects move OUT of brain to `aspects_v1.json` as sole source of truth. AspectIntegration encoder will produce JSON proposal deltas (not brain mutations); operator reviews + applies. Public `brain.aspects.<name>` API surface stays identical. Eval-driven: `eval/aspect_encoder_eval.py` measures encoder quality vs. ground truth. See `docs/STAGE-2-ASPECTS-AS-JSON-CONFIG.md`.
+
 **Units built and SHIPPED:**
 - `CommunityDetection` (`scales/s2/community.py`) — Full S2CD/S2CE decoder-encoder pair. Z-score seeding, adaptive thresholds, agentic Sonnet encoder. **55 communities in production.**
 - ~~`EdgeFamilyIntegration`~~ — DISABLED 2026-05-04 in coordinator; module deleted. Replaced by the aspects system as the source of truth for edge-relation taxonomy. `AspectIntegration` (planned, see Open Questions below) will take over the maintenance role for both types and relations in one pass.

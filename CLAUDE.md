@@ -68,6 +68,8 @@ S0 traces written by Stop hook via TraceDAL. Chain ID: `s0-{session_short}-{stop
 
 ## Aspects — semantic roles for types and relations
 
+*Stage 2 direction in progress — see [docs/STAGE-2-ASPECTS-AS-JSON-CONFIG.md](docs/STAGE-2-ASPECTS-AS-JSON-CONFIG.md). Section below describes current state.*
+
 Every node in the brain has a `type` (`principle`, `correction`, `moment`, ...)
 and every edge has a `relation` (`extends`, `corrects`, `validates`, ...).
 Both vocabularies are open text. **Aspects** group these strings by semantic

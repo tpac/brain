@@ -103,6 +103,8 @@ Naming these explicitly because they're the load-bearing claims everything else 
 
 ### Phase 3: Unified aspects — families collapse into one first-class system (May 4)
 
+> **⚠ Stage 2 direction (in progress):** Aspects move OUT of brain to `aspects_v1.json` as sole source of truth. AspectRegistry switches to JSON-only loading; brain aspect-nodes archived; AspectIntegration encoder produces JSON proposal deltas (not brain mutations). Public `brain.aspects.<name>` API surface stays identical. See `docs/STAGE-2-ASPECTS-AS-JSON-CONFIG.md`. The shipped state described below is what's CURRENTLY live, not the Stage 2 target.
+
 **The thesis:** node families and edge families were two parallel systems doing
 the same conceptual work — assigning semantic role labels. Same bootstrap
 problem (code referenced names by string), same ripple risk on changes, same

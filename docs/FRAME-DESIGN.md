@@ -1,6 +1,6 @@
 # Frame Architecture — Awareness, Persisting
 
-**Status:** Phase 1 shipped 2026-05-02 · Phase 2 shipped + 2.5 cleanup · **Phase 3 (aspects) shipped 2026-05-04**
+**Status:** Phase 1 shipped 2026-05-02 · Phase 2 shipped + 2.5 cleanup · **Phase 3 (aspects) shipped 2026-05-04** · **Stage 2 in-progress: aspects → JSON config — see `docs/STAGE-2-ASPECTS-AS-JSON-CONFIG.md`**
 **Started:** 2026-05-01
 **Owner:** Anchor (working with Tom)
 **Goal:** Make Anchor's awareness continuous across turns and sessions, by introducing a structured Frame object that all brain components read and write.
@@ -10,6 +10,8 @@
 ---
 
 ## 2026-05-04 update — Phase 3 supersedes Phase 2's families layer
+
+> **⚠ Stage 2 direction (in progress, designed 2026-05-04 evening):** The "aspects-as-nodes" model below is being retired. Aspects move OUT of brain to `aspects_v1.json` as the sole source of truth. AspectRegistry switches to JSON-only loading; brain aspect-nodes get archived; AspectIntegration encoder produces JSON proposal deltas. Frame's routing via `brain.aspects.<name>.node_types` continues to work — the public API surface stays identical, only the underlying storage changes. See `docs/STAGE-2-ASPECTS-AS-JSON-CONFIG.md` for the full Stage 2 plan.
 
 **The whole Phase 2 "node families via `s2_node_families` interaction" layer has been replaced by the unified aspects system.** Frame still routes by semantic role (identity_bearing → Operator section, etc.) — the routing target moved from `brain.get_interaction_config('s2_node_families')` + `_FALLBACK_FAMILIES` dict to `brain.aspects.<name>.node_types` (a first-class API on every Brain instance).
 
