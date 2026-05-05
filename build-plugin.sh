@@ -49,6 +49,9 @@ FILES=(
   servers/session_context.py
   servers/trace_contract.py
   servers/brain_cli.py
+  # Aspects (unified taxonomy — replaces former families layer)
+  servers/aspects.py
+  servers/aspect_migration.py
   # Scale modules
   servers/scales/__init__.py
   servers/scales/dispatch.py
@@ -73,8 +76,7 @@ FILES=(
   servers/scales/s2/consolidation_decoder.py
   servers/scales/s2/consolidation_encoder.py
   servers/scales/s2/consolidation_enrichment_prompt.py
-  servers/scales/s2/edge_families.py
-  servers/scales/s2/edge_families_v1.json
+  servers/scales/s2/aspects_v1.json
   servers/scales/s2/healer.py
   servers/scales/s2/healer_contract.py
   servers/scales/s2/healer_decoder.py
@@ -89,13 +91,11 @@ FILES=(
   hooks/scripts/brain-env.sh
   hooks/scripts/mcp-launch.sh
   hooks/scripts/boot-brain.sh
-  hooks/scripts/pre-compact-save.sh
   hooks/scripts/pre-edit-suggest.sh
   hooks/scripts/pre-bash-safety.sh
   hooks/scripts/pre-response-recall.sh
   hooks/scripts/post-response-track.sh
   hooks/scripts/idle-maintenance.sh
-  hooks/scripts/post-compact-reboot.sh
   hooks/scripts/session-end.sh
   hooks/scripts/stop-failure-log.sh
   hooks/scripts/config-change-host.sh
@@ -111,13 +111,11 @@ FILES=(
   # Hook scripts — Python logic
   hooks/scripts/hook_common.py
   hooks/scripts/boot_brain.py
-  hooks/scripts/pre_compact_save.py
   hooks/scripts/pre_edit_suggest.py
   hooks/scripts/pre_bash_safety.py
   hooks/scripts/pre_response_recall.py
   hooks/scripts/post_response_track.py
   hooks/scripts/idle_maintenance.py
-  hooks/scripts/post_compact_reboot.py
   hooks/scripts/session_end.py
   hooks/scripts/stop_failure_log.py
   hooks/scripts/config_change_host.py
