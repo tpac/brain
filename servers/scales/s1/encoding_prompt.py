@@ -157,7 +157,7 @@ those lessons.
 The full field list is appended below (from the contract). Key
 properties that matter for recall:
 - **content** is **replaced** on revise — write the updated version.
-  Old content is saved to revision history automatically.
+  Revision history lives in trace events; the node always reflects current truth.
 - **situation** gets its own embedding — it directly improves recall
   matching. Vague situation → node only surfaces for exact title matches.
 - **correction_of** creates a structural link, not just a label.
@@ -540,7 +540,7 @@ revise_batch(
   ]
 )
 ```
-Content is REPLACED (old version saved to revision history). Other fields (situation, reasoning, etc.) are replaced directly. One call revises all nodes.
+Specified fields are REPLACED on revise; unspecified fields are PRESERVED (only the keys you pass are touched). One call revises all nodes. Revision history is in trace events — no per-node history blob.
 
 ## Encoding Journal
 

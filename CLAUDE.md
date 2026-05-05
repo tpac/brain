@@ -32,6 +32,8 @@ Two databases:
 
 **Edge model (v22):** Physical edges (`edges` table) carry `edge_id`, `source_id` (actor), `target_id` (acted upon), aggregate `weight`. One row per pair — no mirrors. Semantic layer (`edge_relations` table) carries multiple relations per edge via `edge_id` FK: `relation` (open text), `description`, `weight`, `encoding_source`. Direction matters — source is the actor. Use `GraphDAL.add_relation()` for all edge writes.
 
+**Edge mutation contract (Stage 1B):** `add_relation` is idempotent field-preserving upsert — repeated calls update only the fields you pass; unspecified fields preserve existing values on update. No more auto-strengthen on repeat (encoder-explicit calls are clean idempotents). Hebbian co-access strengthening is explicit via `GraphDAL.strengthen_relation()` — use it where you want repeated writes to grow the weight (e.g. `daemon_hooks` co_accessed path). Archived row + connect → revives the row with passed values; the lifecycle (archive at T1, create-via-upsert at T2) is captured in trace events (`event_type='delta'`, `ref_type='edge_relation_revised'`).
+
 **Write serialization:** `brain.write_lock` (re-entrant lock on the Brain instance) serializes every writer in the process — daemon dispatch, S2 encoder dispatch, embed_queue worker, autosave loop. Lives on the brain so any caller participates uniformly. Read operations run without the lock under SQLite WAL.
 
 **Activity tracking (S2 gating):** Two distinct timestamps. `last_activity` resets on every daemon command (general bookkeeping). `last_user_activity` resets only on `hook_recall` — i.e. real `UserPromptSubmit` events. S2 maintenance gates on `last_user_activity` so Anchor's tool use between prompts doesn't keep the idle clock alive.

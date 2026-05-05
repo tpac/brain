@@ -324,6 +324,78 @@ def _handle_remember_batch(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
+def _emit_revise_trace(brain, node_id, reason, encoding_source, deltas,
+                       warnings=None, chain_id_override='', session_id=''):
+    """Emit a node_revised trace event for a revise() call.
+
+    Trace replaces the legacy _sys_revision_history KV blob as the canonical
+    revision history substrate. Emitted when EITHER deltas or warnings is
+    non-empty — so audit history captures both successful changes AND
+    attempted-but-rejected operations (immutable field passed, archive
+    blocked on locked node).
+
+    Scale inference from encoding_source:
+      - 's2:*' → 's2' (S2 maintenance units)
+      - 'encoder:*' → 's1' (S1 encoder)
+      - 'hook:*' → 's0' (lifecycle hooks)
+      - else → 's0' (direct MCP, anchor, default)
+
+    chain_id strategy (per Stage 1A spec):
+      - Caller-provided `chain_id_override` wins (encoder cycles pass theirs;
+        revises join the encoder's chain for grouped querying).
+      - Otherwise fall back to a date-based per-scale chain
+        (`{scale}-{YYYYMMDD}-revise`) so direct/operator revises group by day.
+    """
+    warnings = warnings or []
+    if not deltas and not warnings:
+        return  # nothing to record
+
+    from .trace_contract import build_revise_metadata
+
+    # Infer scale from encoding_source
+    if encoding_source.startswith('s2:'):
+        scale = 's2'
+    elif encoding_source.startswith('encoder:'):
+        scale = 's1'
+    else:
+        scale = 's0'
+
+    if chain_id_override:
+        chain_id = chain_id_override
+    else:
+        from datetime import datetime
+        chain_id = '%s-%s-revise' % (
+            scale, datetime.utcnow().strftime('%Y%m%d'))
+
+    metadata = build_revise_metadata(
+        node_id=node_id, reason=reason,
+        encoding_source=encoding_source,
+        deltas=deltas, warnings=warnings)
+
+    parts = []
+    if deltas:
+        parts.append('revised %d field(s): %s' % (
+            len(deltas), ', '.join(d['field'] for d in deltas)))
+    if warnings:
+        parts.append('%d warning(s)' % len(warnings))
+    summary = '; '.join(parts) if parts else 'revise no-op'
+
+    try:
+        brain._trace_dal.append(
+            chain_id=chain_id,
+            scale=scale,
+            event_type='delta',
+            ref_type='node_revised',
+            ref_id=node_id,
+            summary=summary,
+            metadata=metadata,
+            session_id=session_id,
+        )
+    except Exception as e:
+        brain._log_error('revise_trace_emit', e,
+                         'failed to emit trace for revise of %s' % node_id[:8])
+
+
 def _handle_revise(brain, args, graph_changes):
     """Update any field(s) on an existing node via revise()."""
     from .contract import validate_field, ALL_FIELDS
@@ -335,8 +407,9 @@ def _handle_revise(brain, args, graph_changes):
     if not reason:
         return {"ok": False, "error": "reason is required"}
 
-    # Validate all update fields against contract
-    updates = {k: v for k, v in args.items() if k not in ("node_id", "reason")}
+    # Reserve known dispatch keys so they don't get treated as field updates.
+    DISPATCH_KEYS = {"node_id", "reason", "encoding_source", "chain_id", "session_id"}
+    updates = {k: v for k, v in args.items() if k not in DISPATCH_KEYS}
     for field, value in updates.items():
         ok, err = validate_field(field, value)
         if not ok:
@@ -359,6 +432,17 @@ def _handle_revise(brain, args, graph_changes):
                 'Fields claimed updated but read-back shows mismatch')
         except Exception as e2:
             print('[daemon_dispatch] ERROR logging write_verification: %s' % e2, file=__import__('sys').stderr)
+
+    # Emit node_revised trace event (replaces _sys_revision_history substrate).
+    # Includes warnings so audit history captures attempted-but-rejected ops.
+    _emit_revise_trace(
+        brain, node_id, reason,
+        args.get('encoding_source', ''),
+        result.get('deltas', []),
+        warnings=result.get('warnings', []),
+        chain_id_override=args.get('chain_id', ''),
+        session_id=args.get('session_id', ''),
+    )
 
     graph_changes.append("REVISE: [%s] %s" % (
         result.get("type", "?"), result.get("title", "")[:50]))
@@ -399,6 +483,22 @@ def _handle_revise_batch(brain, args, graph_changes):
 
     result = brain.revise_batch(resolved)
     graph_changes.append("REVISE_BATCH: %d revised" % result.get("revised", 0))
+
+    # Emit one node_revised trace event per revised row.
+    # Includes warnings so audit history captures attempted-but-rejected ops.
+    chain_id_override = args.get('chain_id', '')
+    session_id = args.get('session_id', '')
+    for row, spec in zip(result.get('results', []), resolved):
+        if row.get('status') == 'revised':
+            _emit_revise_trace(
+                brain, row['node_id'], spec.get('reason', ''),
+                spec.get('encoding_source', '') or top_encoding_source or '',
+                row.get('deltas', []),
+                warnings=row.get('warnings', []),
+                chain_id_override=chain_id_override,
+                session_id=session_id,
+            )
+
     return {"ok": True, "result": result}
 
 
@@ -822,13 +922,15 @@ def _handle_get_nodes(brain, args, graph_changes):
 
 
 def _handle_connect(brain, args, graph_changes):
+    # Stage 1B: pass description/encoding_source through only when caller
+    # specified them. None preserves existing on update (idempotent upsert).
     brain.connect_typed(
         source_id=_resolve_id(brain, args.get("source_id", "")),
         target_id=_resolve_id(brain, args.get("target_id", "")),
         relation=args.get("relation", "related_to"),
         weight=args.get("weight", 0.5),
-        description=args.get("description", ""),
-        encoding_source=args.get("encoding_source", ""))
+        description=args.get("description"),
+        encoding_source=args.get("encoding_source"))
     graph_changes.append(
         "CONNECT: %s -[%s]-> %s" % (
             args.get("source_id", "?")[:8],
@@ -846,12 +948,14 @@ def _handle_connect_batch(brain, args, graph_changes):
     created = 0
     for c in connections:
         try:
+            # Stage 1B: pass description through only when specified
+            # (None → preserve existing on update).
             brain.connect_typed(
                 source_id=_resolve_id(brain, c.get("source_id", "")),
                 target_id=_resolve_id(brain, c.get("target_id", "")),
                 relation=c.get("relation", "related_to"),
                 weight=c.get("weight", 0.5),
-                description=c.get("description", ""))
+                description=c.get("description"))
             created += 1
         except Exception:
             pass
@@ -1000,6 +1104,45 @@ def _handle_migrate_to_aspects(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
+def _handle_drop_sys_revision_history(brain, args, graph_changes):
+    """Stage 1A migration: drop legacy _sys_revision_history KV blobs.
+
+    Revision history moved to trace events (event_type='delta',
+    ref_type='node_revised'). The legacy _sys_revision_history JSON blob in
+    node_metadata_kv is no longer written (see brain_remember.py:revise) and
+    is never read by anything (audit confirmed).
+
+    Per Stage 1A spec: drop the data, no retroactive trace conversion.
+
+    Args:
+        commit: bool — if False (default), reports count without deleting.
+
+    Returns: {commit, count_found, count_deleted}.
+    Idempotent — safe to re-run.
+    """
+    commit = bool(args.get('commit', False))
+
+    count = brain.conn.execute(
+        "SELECT COUNT(*) FROM node_metadata_kv WHERE key = '_sys_revision_history'"
+    ).fetchone()[0]
+
+    deleted = 0
+    if commit and count > 0:
+        cursor = brain.conn.execute(
+            "DELETE FROM node_metadata_kv WHERE key = '_sys_revision_history'")
+        brain.conn.commit()
+        deleted = cursor.rowcount
+
+    graph_changes.append("DROP_REVHISTORY: found=%d deleted=%d (commit=%s)" % (
+        count, deleted, commit))
+
+    return {"ok": True, "result": {
+        'commit': commit,
+        'count_found': count,
+        'count_deleted': deleted,
+    }}
+
+
 # ═══════════════════════════════════════════════════════════════
 # COMMAND TABLE — the single source of truth for routing
 # ═══════════════════════════════════════════════════════════════
@@ -1067,6 +1210,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "eval":                  CmdEntry(_handle_eval,                is_write=True, marks_dirty=True),
     "diagnose":              CmdEntry(_handle_diagnose,            is_write=False, marks_dirty=False),
     "migrate_to_aspects":    CmdEntry(_handle_migrate_to_aspects,  is_write=True,  marks_dirty=True),
+    "drop_sys_revision_history": CmdEntry(_handle_drop_sys_revision_history, is_write=True, marks_dirty=True),
 }
 
 # "shutdown" is handled directly by daemon_server (needs to set self.running)

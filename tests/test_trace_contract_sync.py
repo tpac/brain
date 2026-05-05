@@ -218,3 +218,189 @@ class TestTraceContractSync:
                             "Unexpected trace write in %s line %d: %s\n" \
                             "Add to TRACE_WRITER_FILES in test_trace_contract_sync.py" % (
                                 os.path.basename(py_file), i + 1, stripped[:80])
+
+
+# ═══════════════════════════════════════════════════════
+# Revise contract (Stage 1A — added 2026-05-04)
+# ═══════════════════════════════════════════════════════
+
+class TestReviseContract:
+    """Verify the node_revised event contract.
+
+    Stage 1A: every revise() call emits a (delta, node_revised) trace event
+    carrying field-level deltas + reason. Replaces the old _sys_revision_history
+    KV blob as the canonical revision history substrate.
+    """
+
+    def test_node_revised_registered_for_all_revise_origins(self):
+        """node_revised must be a valid ref_type for s0/s1/s2 delta events.
+
+        Revisions originate at every scale: S0 (operator via MCP), S1 (encoder),
+        S2 (healer, consolidation, future aspect_integration).
+        """
+        from servers.trace_contract import REF_TYPES
+        for scale in ('s0', 's1', 's2'):
+            ref_types = REF_TYPES[(scale, 'delta')]
+            assert 'node_revised' in ref_types, (
+                "node_revised missing from (%s, delta) ref_types: %s" % (
+                    scale, ref_types))
+
+    def test_validate_accepts_node_revised(self):
+        """validate_trace_event accepts (scale, 'delta', 'node_revised') for s0/s1/s2."""
+        from servers.trace_contract import validate_trace_event
+        for scale in ('s0', 's1', 's2'):
+            ok, err = validate_trace_event(scale, 'delta', 'node_revised')
+            assert ok, "Validation failed for (%s, delta, node_revised): %s" % (
+                scale, err)
+
+    def test_revise_metadata_shape_exists(self):
+        """REVISE_METADATA_SHAPE is exported with the expected keys."""
+        from servers.trace_contract import REVISE_METADATA_SHAPE
+        expected_keys = {'node_id', 'reason', 'encoding_source',
+                         'deltas', 'warnings'}
+        assert set(REVISE_METADATA_SHAPE.keys()) == expected_keys, (
+            "REVISE_METADATA_SHAPE keys: %s, expected: %s" % (
+                set(REVISE_METADATA_SHAPE.keys()), expected_keys))
+
+    def test_build_revise_metadata_full_call(self):
+        """build_revise_metadata preserves all passed values."""
+        from servers.trace_contract import build_revise_metadata
+        meta = build_revise_metadata(
+            node_id='test123',
+            reason='unit test',
+            encoding_source='test:phase_a',
+            deltas=[{'field': 'situation', 'old': 'before', 'new': 'after'}],
+            warnings=['immutable field skipped: id'],
+        )
+        assert meta['node_id'] == 'test123'
+        assert meta['reason'] == 'unit test'
+        assert meta['encoding_source'] == 'test:phase_a'
+        assert meta['deltas'] == [
+            {'field': 'situation', 'old': 'before', 'new': 'after'}]
+        assert meta['warnings'] == ['immutable field skipped: id']
+
+    def test_build_revise_metadata_defaults(self):
+        """build_revise_metadata fills sensible defaults for omitted args."""
+        from servers.trace_contract import build_revise_metadata
+        meta = build_revise_metadata(node_id='test', reason='r')
+        assert meta['node_id'] == 'test'
+        assert meta['reason'] == 'r'
+        assert meta['encoding_source'] == ''
+        assert meta['deltas'] == []
+        assert meta['warnings'] == []
+
+    def test_build_revise_metadata_handles_none(self):
+        """build_revise_metadata coerces None values to safe defaults."""
+        from servers.trace_contract import build_revise_metadata
+        meta = build_revise_metadata(
+            node_id='test', reason=None,
+            encoding_source=None, deltas=None, warnings=None)
+        assert meta['reason'] == ''
+        assert meta['encoding_source'] == ''
+        assert meta['deltas'] == []
+        assert meta['warnings'] == []
+
+
+# ═══════════════════════════════════════════════════════
+# Edge revise contract (Stage 1B — added 2026-05-04)
+# ═══════════════════════════════════════════════════════
+
+class TestEdgeReviseContract:
+    """Verify the edge_relation_revised event contract.
+
+    Stage 1B: every connect upsert (create or field update) and every
+    archive that targets an edge_relation emits one trace event with
+    field-level deltas, mirroring node revise semantics. Single ref_type
+    covers create-via-upsert AND update-via-upsert AND polymorphic archive.
+
+    ref_id encoding: f"{edge_id}:{relation}".
+    """
+
+    def test_edge_relation_revised_registered_for_all_revise_origins(self):
+        """edge_relation_revised must be a valid ref_type for s0/s1/s2 delta."""
+        from servers.trace_contract import REF_TYPES
+        for scale in ('s0', 's1', 's2'):
+            ref_types = REF_TYPES[(scale, 'delta')]
+            assert 'edge_relation_revised' in ref_types, (
+                "edge_relation_revised missing from (%s, delta) ref_types: %s" % (
+                    scale, ref_types))
+
+    def test_validate_accepts_edge_relation_revised(self):
+        """validate_trace_event accepts (scale, 'delta', 'edge_relation_revised')."""
+        from servers.trace_contract import validate_trace_event
+        for scale in ('s0', 's1', 's2'):
+            ok, err = validate_trace_event(scale, 'delta', 'edge_relation_revised')
+            assert ok, "Validation failed for (%s, delta, edge_relation_revised): %s" % (
+                scale, err)
+
+    def test_edge_revise_metadata_shape_exists(self):
+        """EDGE_REVISE_METADATA_SHAPE is exported with the expected keys."""
+        from servers.trace_contract import EDGE_REVISE_METADATA_SHAPE
+        expected_keys = {'edge_id', 'relation', 'reason',
+                         'encoding_source', 'deltas', 'warnings'}
+        assert set(EDGE_REVISE_METADATA_SHAPE.keys()) == expected_keys, (
+            "EDGE_REVISE_METADATA_SHAPE keys: %s, expected: %s" % (
+                set(EDGE_REVISE_METADATA_SHAPE.keys()), expected_keys))
+
+    def test_build_edge_revise_metadata_full_call(self):
+        """build_edge_revise_metadata preserves all passed values."""
+        from servers.trace_contract import build_edge_revise_metadata
+        meta = build_edge_revise_metadata(
+            edge_id='edg_a3f12c',
+            relation='extends',
+            reason='upsert via connect',
+            encoding_source='encoder:sonnet',
+            deltas=[{'field': 'description', 'old': 'old', 'new': 'new'}],
+            warnings=[],
+        )
+        assert meta['edge_id'] == 'edg_a3f12c'
+        assert meta['relation'] == 'extends'
+        assert meta['reason'] == 'upsert via connect'
+        assert meta['encoding_source'] == 'encoder:sonnet'
+        assert meta['deltas'] == [
+            {'field': 'description', 'old': 'old', 'new': 'new'}]
+        assert meta['warnings'] == []
+
+    def test_build_edge_revise_metadata_defaults(self):
+        """build_edge_revise_metadata fills sensible defaults for omitted args."""
+        from servers.trace_contract import build_edge_revise_metadata
+        meta = build_edge_revise_metadata(
+            edge_id='edg_a3f12c', relation='extends', reason='r')
+        assert meta['edge_id'] == 'edg_a3f12c'
+        assert meta['relation'] == 'extends'
+        assert meta['reason'] == 'r'
+        assert meta['encoding_source'] == ''
+        assert meta['deltas'] == []
+        assert meta['warnings'] == []
+
+    def test_build_edge_revise_metadata_handles_none(self):
+        """build_edge_revise_metadata coerces None values to safe defaults."""
+        from servers.trace_contract import build_edge_revise_metadata
+        meta = build_edge_revise_metadata(
+            edge_id='edg_x', relation='r', reason=None,
+            encoding_source=None, deltas=None, warnings=None)
+        assert meta['reason'] == ''
+        assert meta['encoding_source'] == ''
+        assert meta['deltas'] == []
+        assert meta['warnings'] == []
+
+    def test_create_via_upsert_uses_same_ref_type(self):
+        """Create-via-upsert uses edge_relation_revised with empty `old` in deltas.
+
+        Single ref_type for create + update is the design call (Stage 1B Option A —
+        mirror node pattern). Empty `old` in a delta semantically means 'created'.
+        """
+        from servers.trace_contract import build_edge_revise_metadata, validate_trace_event
+        # Validates the contract supports it
+        ok, _ = validate_trace_event('s2', 'delta', 'edge_relation_revised')
+        assert ok
+        # Builder accepts create-style deltas (old=None)
+        meta = build_edge_revise_metadata(
+            edge_id='edg_new', relation='extends', reason='created',
+            encoding_source='encoder:sonnet',
+            deltas=[
+                {'field': 'description', 'old': None, 'new': 'new desc'},
+                {'field': 'weight', 'old': None, 'new': 0.7},
+            ])
+        assert len(meta['deltas']) == 2
+        assert all(d['old'] is None for d in meta['deltas'])

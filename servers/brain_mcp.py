@@ -239,18 +239,23 @@ def _generate_revise_schema():
     for name, spec in get_writable_fields().items():
         prop = {"type": TYPE_MAP.get(spec.get("type", "str"), "string")}
         desc = spec.get("description", "")
-        if spec.get("append_on_revise"):
-            desc = (desc + " " if desc else "") + "(appended on revise, preserves history)"
-        else:
-            desc = (desc + " " if desc else "") + "(replaces existing value)"
+        # All revisable fields use REPLACE semantics — specified fields
+        # update, unspecified preserve. Revision history lives in trace
+        # events (event_type='delta', ref_type='node_revised').
+        desc = (desc + " " if desc else "") + "(replaces existing value)"
         prop["description"] = desc.strip()
         properties[name] = prop
 
     return {
         "name": "revise",
         "description": (
-            "Update any field(s) on an existing brain node. Content is REPLACED "
-            "(old saved to revision history). All other fields replaced.\n\n"
+            "Update fields on an existing brain node. Specified fields are "
+            "REPLACED with the passed value; unspecified fields are PRESERVED "
+            "(only the keys you pass are touched). Immutable fields "
+            "({id, created_at, locked}) are skipped with a warning — call "
+            "still succeeds for the other fields. Revision history lives in "
+            "trace events — query via `query_traces` with "
+            "ref_type='node_revised' to see what changed when.\n\n"
             "WHEN TO REVISE vs ENCODE NEW:\n"
             "• Revise when a recalled node is stale, incomplete, or wrong but "
             "the SAME concept. Add `situation`, fix `reasoning`, sharpen content. "
@@ -275,7 +280,7 @@ def _build_revise_batch_schema():
     """Generate the 'revise_batch' MCP tool schema."""
     return {
         "name": "revise_batch",
-        "description": "Revise multiple brain nodes in one call. Each revision can update content (replaced, history saved), metadata (reasoning, situation, etc.), or any revisable field. Use this instead of multiple revise() calls.",
+        "description": "Revise multiple brain nodes in one call. Same per-field replace contract as `revise()` — specified fields are REPLACED, unspecified fields are PRESERVED. Immutable fields ({id, created_at, locked}) skipped with warning. Each row emits its own trace event for revision history (queryable via `query_traces` with ref_type='node_revised'). Use this instead of multiple `revise` calls.",
         "inputSchema": {
             "type": "object",
             "required": ["revisions"],
@@ -384,19 +389,25 @@ def _build_tools():
     _generate_remember_schema(),
     _generate_remember_batch_schema(),
     {"name": "connect",
-     "description": ("Create a typed edge between two EXISTING catalog nodes (both endpoints "
-                     "must already have ids). For an edge involving a node you're CREATING in "
-                     "this batch, use `connect_to` inside the `remember` op instead — separate "
-                     "`connect` ops require ids that don't exist until the create finishes, "
-                     "forcing a needless second LLM round. Never use generic `related`/"
-                     "`related_to` — pick a specific relation that names the actual relationship."),
+     "description": ("Create or update a typed edge between two EXISTING catalog nodes "
+                     "(both endpoints must already have ids). Idempotent upsert: calling "
+                     "for a (source, target, relation) tuple that already has an active "
+                     "row updates only the fields you pass — unspecified fields preserve "
+                     "their existing values. Repeated calls do NOT auto-strengthen weight "
+                     "(Hebbian co-access lives on a separate path). Calling on a previously-"
+                     "archived row revives it with the passed values. For an edge involving "
+                     "a node you're CREATING in this batch, use `connect_to` inside the "
+                     "`remember` op instead — separate `connect` ops require ids that don't "
+                     "exist until the create finishes, forcing a needless second LLM round. "
+                     "Never use generic `related`/`related_to` — pick a specific relation "
+                     "that names the actual relationship."),
      "inputSchema": {"type": "object", "required": ["source_id", "target_id"], "properties": {
          "source_id": {"type": "string", "description": "Source node ID (catalog)"},
          "target_id": {"type": "string", "description": "Target node ID (catalog)"},
          "relation": {"type": "string", "description": "Edge relation (open text). See connect_to.relation for vocabulary."},
-         "weight": {"type": "number", "description": "Edge weight 0.0-1.0", "default": 0.5}}}},
+         "weight": {"type": "number", "description": "Edge weight 0.0-1.0 — set on create, replaces on update", "default": 0.5}}}},
     {"name": "connect_batch",
-     "description": "Create multiple edges in one call.",
+     "description": "Create or update multiple edges in one call. Same idempotent-upsert + field-preservation contract as `connect` — specified fields update on existing rows, unspecified preserve.",
      "inputSchema": {"type": "object", "required": ["connections"], "properties": {
          "connections": {"type": "array", "description": "Array of connections to create", "items": {
              "type": "object", "required": ["source_id", "target_id"], "properties": {
@@ -422,13 +433,14 @@ def _build_tools():
                      "pair carrying multiple distinct relationships, use `relations: "
                      "[{relation, why}, ...]` in place of `relation`+`why`; "
                      "'revise' updates an existing node; "
-                     "'connect' adds an edge between two EXISTING catalog nodes — both "
-                     "ids must already exist in the brain. NEVER use `connect` for an "
-                     "edge involving a new node (its id doesn't exist until this round "
-                     "finishes — forces a wasted second round); use `connect_to` inside "
-                     "the `remember` op instead. Don't double-emit: an edge already in "
-                     "`connect_to` must NOT also appear as a separate `connect` op for "
-                     "the same pair; "
+                     "'connect' creates OR updates an edge between two EXISTING catalog "
+                     "nodes — both ids must already exist in the brain. Idempotent upsert: "
+                     "specified fields update existing rows, unspecified preserve. Does NOT "
+                     "auto-strengthen weight on repeat. NEVER use `connect` for an edge "
+                     "involving a new node (its id doesn't exist until this round finishes — "
+                     "forces a wasted second round); use `connect_to` inside the `remember` "
+                     "op instead. Don't double-emit: an edge already in `connect_to` must "
+                     "NOT also appear as a separate `connect` op for the same pair; "
                      "'disconnect' removes an edge relation; "
                      "'archive' soft-archives a node. "
                      "Operations run sequentially. Do NOT invent structural "

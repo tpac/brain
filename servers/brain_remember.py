@@ -812,15 +812,22 @@ class BrainRememberMixin:
 
     def revise(self, node_id: str, content: str = None, reason: str = '',
                updates: Dict[str, Any] = None, **kwargs) -> Dict[str, Any]:
-        """Update any field(s) on an existing node. Generic revision.
+        """Update fields on an existing node. Per-field replace semantics.
 
-        Three ways to call:
-          revise(node_id, content="new text", reason="why")  — append content (legacy)
+        Three ways to call (all equivalent):
+          revise(node_id, content="new text", reason="why")
           revise(node_id, updates={"confidence": 0.9, "keywords": "new kw"}, reason="why")
-          revise(node_id, situation="When debugging", reason="adding situation")  — kwargs
+          revise(node_id, situation="When debugging", reason="adding situation")
 
-        Content is special: it APPENDS with a revision divider (preserves history).
-        All other fields REPLACE the existing value.
+        Behavior contract:
+        - Immutable fields ({id, created_at, locked}) are skipped with a
+          warning. Other fields in the same call still process; the skipped
+          field surfaces in the result dict's `warnings` list.
+        - Specified fields are REPLACED with the passed value.
+        - Unspecified fields are PRESERVED (only the keys you pass are touched).
+        - Returns deltas in the result dict — caller (typically daemon_dispatch)
+          emits a trace event with these deltas as the canonical revision
+          history. There is no per-node history blob; query traces instead.
 
         After any revision: re-embeds, re-indexes TF-IDF, updates timestamps.
         """
@@ -851,50 +858,30 @@ class BrainRememberMixin:
         old_content = old_content or ''
         ts = self.now()
 
-        # Content: REPLACE with new version. Old version saved to revision_history.
-        # The node always reflects current truth. History lives in metadata, not embeddings.
-        new_content = old_content
-        if 'content' in all_updates:
-            new_content = all_updates.pop('content')
-            # Save old content to revision log (metadata KV)
-            if old_content and old_content != new_content:
-                import json as _json
-                try:
-                    existing_history = self.conn.execute(
-                        "SELECT value FROM node_metadata_kv WHERE node_id = ? AND key = '_sys_revision_history'",
-                        (node_id,)).fetchone()
-                    history = _json.loads(existing_history[0]) if existing_history and existing_history[0] else []
-                    history.append({"timestamp": ts, "reason": reason, "old_content": old_content[:2000]})
-                    # Keep last 5 revisions
-                    history = history[-5:]
-                    self.conn.execute(
-                        "INSERT OR REPLACE INTO node_metadata_kv (node_id, key, value) VALUES (?, '_sys_revision_history', ?)",
-                        (node_id, _json.dumps(history)))
-                except Exception as _e:
-                    self._log_error('revision_history', _e, 'saving revision history for %s' % node_id[:8])
-
-        # Build SQL UPDATE for all fields
-        # Always update: content, content_summary, updated_at, revised_at
-        set_parts = ['content = ?', 'content_summary = ?', 'updated_at = ?', 'revised_at = ?']
-        params = [new_content, self._generate_summary(title, new_content), ts, ts]
-
-        # Fields that live on the nodes table (updatable via SQL)
+        # ── Field classification ──
+        # Top-level fields live on the nodes table (updatable via SQL).
+        # Immutable fields are silently skipped with a warning.
         NODES_TABLE_FIELDS = {
             'title', 'type', 'keywords', 'confidence', 'emotion',
             'emotion_label', 'project', 'personal', 'personal_context',
             'critical', 'evolution_status', 'encoding_source',
             'archived',  # allows revise(archived=True) for consolidation
         }
-        # Immutable — never revisable
         IMMUTABLE = {'id', 'created_at', 'locked'}
 
+        # ── Filter skipped fields (immutable, locked-archive) ──
+        # Skipped fields don't write to nodes/KV/SQL and don't appear in
+        # deltas. They surface in the return dict's `warnings` list so
+        # callers can detect partial-success without parsing logs.
+        skipped_fields = []  # list of (field, reason)
+        writable = {}
         for field, value in all_updates.items():
             if field in IMMUTABLE:
                 self._log_error('revise_immutable',
                                 ValueError('Cannot revise immutable field: %s' % field),
                                 'node %s attempted to revise %s' % (node_id[:8], field))
+                skipped_fields.append((field, 'immutable'))
                 continue
-            # Guard: never archive locked/critical nodes via revise(archived=True)
             if field == 'archived' and value:
                 lock_row = self.conn.execute(
                     'SELECT locked, critical FROM nodes WHERE id = ?',
@@ -903,7 +890,49 @@ class BrainRememberMixin:
                     self._log_error('revise_archive_locked',
                                     ValueError('Cannot archive locked/critical node'),
                                     'node %s' % node_id[:8])
+                    skipped_fields.append((field, 'locked_or_critical'))
                     continue
+            writable[field] = value
+
+        # ── Capture old values for delta computation (before any write) ──
+        # Used by callers (typically dispatch) to emit trace events with
+        # field-level history. Replaces the old _sys_revision_history blob.
+        old_values = {}
+        if 'content' in writable:
+            old_values['content'] = old_content
+
+        top_level_to_capture = [k for k in writable if k in NODES_TABLE_FIELDS]
+        if top_level_to_capture:
+            cols = ', '.join(top_level_to_capture)
+            old_row = self.conn.execute(
+                'SELECT %s FROM nodes WHERE id = ?' % cols, (node_id,)
+            ).fetchone()
+            if old_row:
+                for i, k in enumerate(top_level_to_capture):
+                    old_values[k] = old_row[i]
+
+        kv_to_capture = [
+            k for k in writable
+            if k not in NODES_TABLE_FIELDS and k != 'content'
+        ]
+        if kv_to_capture:
+            from .dal_metadata import MetadataDAL
+            kv_old = MetadataDAL(self.conn).get_fields(node_id, kv_to_capture)
+            for k in kv_to_capture:
+                old_values[k] = kv_old.get(k)  # None if not previously set
+
+        # Content: replace with new value (history lives in trace deltas now,
+        # not the legacy _sys_revision_history KV blob).
+        new_content = old_content
+        if 'content' in writable:
+            new_content = writable.pop('content')
+
+        # Build SQL UPDATE for all fields.
+        # Always update: content, content_summary, updated_at, revised_at.
+        set_parts = ['content = ?', 'content_summary = ?', 'updated_at = ?', 'revised_at = ?']
+        params = [new_content, self._generate_summary(title, new_content), ts, ts]
+
+        for field, value in writable.items():
             if field in NODES_TABLE_FIELDS:
                 set_parts.append('%s = ?' % field)
                 params.append(value)
@@ -916,8 +945,9 @@ class BrainRememberMixin:
         self.conn.commit()
 
         # Store metadata via unified path — handles promoted, emergent, situation.
-        if all_updates:
-            self._store_node_metadata(node_id, all_updates, caller='revise')
+        # Only writable (non-skipped) fields get persisted.
+        if writable:
+            self._store_node_metadata(node_id, writable, caller='revise')
 
         # Vector invalidation: when a source field changes, the corresponding
         # embedding vector becomes stale. Delete the affected rows so the
@@ -1004,17 +1034,21 @@ class BrainRememberMixin:
         from .dal import NodeDAL
         readback = NodeDAL(self.conn).get_naked_node(node_id)
         if readback:
-            for field in list(all_updates.keys()):
+            for field in list(writable.keys()):
                 if field in readback:
-                    # Content is appended, not replaced — check it contains the new text
-                    if field == 'content' and content:
-                        if content not in (readback.get('content') or ''):
-                            verification_failures.append(field)
-                    else:
-                        expected = all_updates[field]
-                        actual = readback.get(field)
-                        if actual != expected and str(actual) != str(expected):
-                            verification_failures.append(field)
+                    expected = writable[field]
+                    actual = readback.get(field)
+                    if actual != expected and str(actual) != str(expected):
+                        verification_failures.append(field)
+            # Content was popped from `writable` earlier; verify separately
+            # (REPLACE semantic — readback must equal new_content exactly).
+            # Use old_values to detect that content was actually a write target —
+            # `content` named-arg path AND `updates={'content': ...}` path both
+            # populate old_values['content'], so this catches either.
+            if 'content' in old_values:
+                actual_content = readback.get('content') or ''
+                if actual_content != new_content:
+                    verification_failures.append('content')
 
         # Situation embedding deferred to backfill — no inline verification needed
 
@@ -1025,14 +1059,50 @@ class BrainRememberMixin:
 
         verified = len(verification_failures) == 0
 
+        # ── Build deltas for trace event emission ──
+        # Caller (typically daemon_dispatch) uses these to write a single
+        # node_revised trace event capturing what changed in this call.
+        deltas = []
+        for field, new_val in writable.items():
+            old_val = old_values.get(field)
+            if old_val != new_val:
+                deltas.append({
+                    'field': field,
+                    'old': old_val,
+                    'new': new_val,
+                })
+        # Content was popped from `writable` earlier; check separately.
+        if 'content' in old_values and old_values['content'] != new_content:
+            deltas.append({
+                'field': 'content',
+                'old': old_values['content'],
+                'new': new_content,
+            })
+
+        # Warnings surface skipped fields without requiring log parsing.
+        warnings = []
+        for field, _reason in skipped_fields:
+            if _reason == 'immutable':
+                warnings.append('immutable field skipped: %s' % field)
+            elif _reason == 'locked_or_critical':
+                warnings.append('archive blocked (locked/critical): %s' % field)
+
+        # fields_updated: what was actually written. Excludes skipped fields.
+        # Includes 'content' if it was passed (popped from writable earlier).
+        fields_updated = list(writable.keys())
+        if 'content' in old_values:
+            fields_updated.append('content')
+
         return {
             'id': node_id,
-            'type': all_updates.get('type', node_type),
+            'type': writable.get('type', node_type),
             'title': title,
             'revised_at': ts,
             'content_length': len(new_content),
             'embedding_updated': embedding_updated,
-            'fields_updated': list(all_updates.keys()),
+            'fields_updated': fields_updated,
+            'deltas': deltas,
+            'warnings': warnings,
             'verified': verified,
             'verification_failures': verification_failures if not verified else [],
             'pending_resolved': 0,
@@ -1480,14 +1550,15 @@ class BrainRememberMixin:
         }
 
     def revise_batch(self, revisions: List[Dict]) -> Dict[str, Any]:
-        """Revise multiple nodes in one call. Each revision uses the same contract as revise().
+        """Revise multiple nodes in one call. Each revision uses the same
+        contract as revise() — per-field replace, immutable fields skipped
+        with warning, deltas captured for trace history.
 
         Args:
             revisions: List of dicts, each with:
                 - node_id (required): ID of node to revise
                 - reason (required): why this revision
-                - content: new content (replaces old, history saved)
-                - situation, reasoning, user_raw_quote, etc.: any revisable field
+                - content, situation, reasoning, etc.: any revisable field
 
         Example:
             revise_batch(revisions=[
@@ -1497,7 +1568,12 @@ class BrainRememberMixin:
             ])
 
         Returns:
-            {revised: count, results: [{node_id, status, error?}]}
+            {revised: count,
+             results: [{node_id, status, error?, deltas?, warnings?}]}
+
+            Per-result `deltas` and `warnings` mirror what revise() returns —
+            callers (typically dispatch) use them to emit one trace event per
+            revised node.
         """
         results = []
         revised_count = 0
@@ -1521,7 +1597,12 @@ class BrainRememberMixin:
                 if result.get('error'):
                     results.append({'node_id': node_id, 'status': 'error', 'error': result['error']})
                 else:
-                    results.append({'node_id': node_id, 'status': 'revised'})
+                    results.append({
+                        'node_id': node_id,
+                        'status': 'revised',
+                        'deltas': result.get('deltas', []),
+                        'warnings': result.get('warnings', []),
+                    })
                     revised_count += 1
             except Exception as e:
                 self._log_error('revise_batch', e, 'revising %s' % node_id[:8])

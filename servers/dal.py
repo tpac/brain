@@ -2161,74 +2161,206 @@ class GraphDAL:
         h = hashlib.md5((source_id + ':' + target_id).encode()).hexdigest()[:8]
         return 'edg_' + h
 
-    def add_relation(self, source_id, target_id, relation, description='',
-                     weight=0.5, encoding_source=''):
-        """Add a relation to an edge pair. Creates the physical edge if needed.
+    # Sentinel for distinguishing "field not specified" (preserve existing)
+    # from "explicit value passed" (replace). Plain default values can't
+    # express this distinction.
+    _UNSET = object()
 
-        If this exact (edge_id, relation) already exists, strengthens it.
-        Does NOT overwrite other relations on the same edge.
-        Updates edges.weight to the max of all relation weights.
+    def add_relation(self, source_id, target_id, relation,
+                     description=_UNSET, weight=_UNSET, encoding_source=_UNSET):
+        """Upsert a relation on an edge pair. Creates the physical edge if needed.
+
+        Stage 1B contract — field-preserving upsert + lifecycle audit via traces.
+
+        Three branches by row state for (edge_id, relation):
+          - No row              → INSERT with passed values + sensible defaults
+          - Active row exists   → field-preserving UPDATE (only specified fields update)
+          - Archived row exists → REVIVE: archived=0, fresh created_at, all fields
+                                  reset to passed values + defaults (semantic
+                                  fresh row; PK forces row reuse, trace events
+                                  capture the lifecycle)
+
+        Auto-strengthen behavior dropped (Stage 1B Option α). Use the
+        sibling `strengthen_relation()` method for Hebbian weight bumps —
+        encoder-explicit connect calls are now idempotent.
+
+        Field-preservation rule (active row branch): caller passes _UNSET
+        (the default) for a field → existing value preserved. Caller passes
+        an explicit value → that value replaces existing.
+
+        Returns:
+            {'edge_id': str,
+             'created': bool,              # new INSERT or revived archive
+             'revived_from_archive': bool, # subset of created
+             'updated': bool,              # active row had specified fields update
+             'deltas': [{'field', 'old', 'new'}, ...],  # for trace emission
+             'warnings': []}               # reserved for future warnings
 
         Raises ValueError if source or target node doesn't exist.
         """
-        from .brain_constants import LEARNING_RATE, MAX_WEIGHT
         ts = _now()
+
+        # Resolve defaults for fields that get a value-or-default (used in
+        # INSERT and revive branches; active-update preserves unspecified).
+        desc_specified = (description is not GraphDAL._UNSET)
+        weight_specified = (weight is not GraphDAL._UNSET)
+        es_specified = (encoding_source is not GraphDAL._UNSET)
+        desc_value = description if desc_specified else ''
+        weight_value = weight if weight_specified else 0.5
+        es_value = encoding_source if es_specified else ''
 
         # Validate both nodes exist
         for nid, label in [(source_id, 'source'), (target_id, 'target')]:
-            exists = self.conn.execute('SELECT 1 FROM nodes WHERE id = ?', (nid,)).fetchone()
+            exists = self.conn.execute(
+                'SELECT 1 FROM nodes WHERE id = ?', (nid,)).fetchone()
             if not exists:
-                raise ValueError("Cannot create edge: %s node '%s' does not exist" % (label, nid[:12]))
+                raise ValueError("Cannot create edge: %s node '%s' does not exist" % (
+                    label, nid[:12]))
 
         # Find or create the physical edge (check both directions)
         edge_id = self.get_edge_id(source_id, target_id)
 
         if not edge_id:
-            # Create new edge — source_id is the caller's intended source
+            # Create new physical edge row
             edge_id = self._generate_edge_id(source_id, target_id)
             self.conn.execute(
                 'INSERT OR IGNORE INTO edges '
                 '(edge_id, source_id, target_id, weight, co_access_count, last_strengthened, created_at) '
                 'VALUES (?, ?, ?, ?, 0, ?, ?)',
-                (edge_id, source_id, target_id, weight, ts, ts))
+                (edge_id, source_id, target_id, weight_value, ts, ts))
 
         # Look up this (edge_id, relation) pair. PK is (edge_id, relation),
         # so at most one row exists — may be active or archived.
         existing = self.conn.execute(
-            'SELECT weight, archived FROM edge_relations '
-            'WHERE edge_id = ? AND relation = ?',
+            'SELECT description, weight, encoding_source, archived '
+            'FROM edge_relations WHERE edge_id = ? AND relation = ?',
             (edge_id, relation)
         ).fetchone()
 
-        if existing and existing[1] == 0:
-            # Active row exists → strengthen
-            new_weight = min(MAX_WEIGHT, existing[0] + LEARNING_RATE * 0.5)
-            self.conn.execute(
-                'UPDATE edge_relations SET weight = ?, created_at = ? '
-                'WHERE edge_id = ? AND relation = ?',
-                (new_weight, ts, edge_id, relation))
-        elif existing and existing[1] == 1:
-            # Archived row exists → un-archive with fresh weight/description
-            # (v25 — lets a previously-pruned or archived relation come back).
-            self.conn.execute(
-                'UPDATE edge_relations '
-                'SET archived = 0, archived_at = NULL, archived_by = NULL, '
-                '    weight = ?, description = ?, encoding_source = ?, created_at = ? '
-                'WHERE edge_id = ? AND relation = ?',
-                (weight, description, encoding_source, ts, edge_id, relation))
-        else:
-            # No row → insert new
+        result = {
+            'edge_id': edge_id,
+            'created': False,
+            'revived_from_archive': False,
+            'updated': False,
+            'deltas': [],
+            'warnings': [],
+        }
+
+        if existing is None:
+            # Branch 1: No row → INSERT
             self.conn.execute(
                 'INSERT INTO edge_relations '
                 '(edge_id, relation, description, weight, encoding_source, created_at) '
                 'VALUES (?, ?, ?, ?, ?, ?)',
-                (edge_id, relation, description, weight, encoding_source, ts))
+                (edge_id, relation, desc_value, weight_value, es_value, ts))
+            result['created'] = True
+            # Treat all initial fields as create-deltas (old=None)
+            result['deltas'] = [
+                {'field': 'description', 'old': None, 'new': desc_value},
+                {'field': 'weight', 'old': None, 'new': weight_value},
+                {'field': 'encoding_source', 'old': None, 'new': es_value},
+            ]
+
+        elif existing[3] == 0:
+            # Branch 2: Active row → field-preserving UPDATE
+            old_desc, old_weight, old_es, _archived = existing
+            updates = {}
+            if desc_specified and description != old_desc:
+                updates['description'] = description
+                result['deltas'].append({
+                    'field': 'description', 'old': old_desc, 'new': description})
+            if weight_specified and weight != old_weight:
+                updates['weight'] = weight
+                result['deltas'].append({
+                    'field': 'weight', 'old': old_weight, 'new': weight})
+            if es_specified and encoding_source != old_es:
+                updates['encoding_source'] = encoding_source
+                result['deltas'].append({
+                    'field': 'encoding_source', 'old': old_es, 'new': encoding_source})
+
+            if updates:
+                set_clause = ', '.join('%s = ?' % k for k in updates)
+                self.conn.execute(
+                    'UPDATE edge_relations SET %s '
+                    'WHERE edge_id = ? AND relation = ?' % set_clause,
+                    [*updates.values(), edge_id, relation])
+                result['updated'] = True
+            # If no specified fields differ → true no-op (no SQL write).
+
+        else:
+            # Branch 3: Archived row → revive with fresh state
+            # Semantic 'fresh row': all fields reset to passed values + defaults.
+            # Schema PK forces row reuse; trace events tell the lifecycle.
+            old_desc, old_weight, old_es, _archived = existing
+            self.conn.execute(
+                'UPDATE edge_relations '
+                'SET archived = 0, archived_at = NULL, archived_by = NULL, '
+                '    description = ?, weight = ?, encoding_source = ?, '
+                '    created_at = ? '
+                'WHERE edge_id = ? AND relation = ?',
+                (desc_value, weight_value, es_value, ts, edge_id, relation))
+            result['created'] = True
+            result['revived_from_archive'] = True
+            result['deltas'] = [
+                {'field': 'description', 'old': None, 'new': desc_value},
+                {'field': 'weight', 'old': None, 'new': weight_value},
+                {'field': 'encoding_source', 'old': None, 'new': es_value},
+            ]
 
         # Update aggregate weight + last_strengthened on physical edge
         self._update_aggregate_weight(edge_id)
         self.conn.execute(
             'UPDATE edges SET last_strengthened = ? WHERE edge_id = ?', (ts, edge_id))
         self.conn.commit()
+        return result
+
+    def strengthen_relation(self, source_id, target_id, relation):
+        """Hebbian strengthening — bump weight on existing active relation.
+
+        Used by callers that want to record co-access / repeated reinforcement
+        without changing description or encoding_source. Replaces the implicit
+        auto-strengthen behavior that used to live inside add_relation().
+
+        Behavior:
+          - Active row exists → bump weight by LEARNING_RATE * 0.5 (capped at MAX_WEIGHT)
+          - Archived row exists → no-op (won't resurrect via Hebbian)
+          - No row → no-op
+
+        Returns:
+            {'strengthened': bool, 'old_weight': float|None, 'new_weight': float|None}
+        """
+        from .brain_constants import LEARNING_RATE, MAX_WEIGHT
+
+        edge_id = self.get_edge_id(source_id, target_id)
+        if not edge_id:
+            return {'strengthened': False, 'old_weight': None, 'new_weight': None}
+
+        row = self.conn.execute(
+            'SELECT weight FROM edge_relations '
+            'WHERE edge_id = ? AND relation = ? AND archived = 0',
+            (edge_id, relation)
+        ).fetchone()
+        if not row:
+            return {'strengthened': False, 'old_weight': None, 'new_weight': None}
+
+        old_weight = row[0]
+        new_weight = min(MAX_WEIGHT, old_weight + LEARNING_RATE * 0.5)
+        if new_weight == old_weight:
+            return {'strengthened': False, 'old_weight': old_weight,
+                    'new_weight': old_weight}
+
+        ts = _now()
+        self.conn.execute(
+            'UPDATE edge_relations SET weight = ?, created_at = ? '
+            'WHERE edge_id = ? AND relation = ?',
+            (new_weight, ts, edge_id, relation))
+        self._update_aggregate_weight(edge_id)
+        self.conn.execute(
+            'UPDATE edges SET last_strengthened = ? WHERE edge_id = ?',
+            (ts, edge_id))
+        self.conn.commit()
+        return {'strengthened': True, 'old_weight': old_weight,
+                'new_weight': new_weight}
 
     def get_relations(self, edge_id, include_archived: bool = False):
         """Get active relations for an edge by edge_id.

@@ -373,12 +373,18 @@ def _hebbian_strengthen(brain, session_id, stop_counter):
             return
 
         from .brain_constants import LEARNING_RATE
+        from .dal import GraphDAL
+        gdal = GraphDAL(brain.conn)
         for i in range(len(full_ids)):
             for j in range(i + 1, min(len(full_ids), i + 8)):
                 try:
+                    # Stage 1B: connect_typed is now idempotent upsert (no
+                    # auto-strengthen). For Hebbian co-access we explicitly
+                    # ensure the edge exists, then strengthen its weight.
                     brain.connect_typed(full_ids[i], full_ids[j],
                                         relation='co_accessed', weight=LEARNING_RATE * 0.15,
                                         edge_type='co_accessed', description='surface-selected')
+                    gdal.strengthen_relation(full_ids[i], full_ids[j], 'co_accessed')
                     outcome['edges'] += 1
                 except Exception as e:
                     brain._log_error('hebbian_edge', e, 'creating co_accessed edge')

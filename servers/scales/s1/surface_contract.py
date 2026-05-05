@@ -799,9 +799,10 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
     cached_edge_coeffs = {}  # memo across hops: enriched_text → coeff
 
     # Variant 'thickness' (eval): multiply cosine by accumulated edge weight
-    # before any gating. Edges already track confirmation count via Hebbian
-    # strengthening on each repeat write (servers/dal.py:add_relation —
-    # weight grows by LEARNING_RATE × 0.5 per repeat, capped at MAX_WEIGHT).
+    # before any gating. Edges accumulate weight via explicit Hebbian
+    # strengthening (servers/dal.py:GraphDAL.strengthen_relation — bumps
+    # weight by LEARNING_RATE × 0.5 per call, capped at MAX_WEIGHT).
+    # Called by daemon_hooks for co_accessed edges per surface event.
     # Today that signal is unused in spread; this variant uses it.
     import os as _os
     _THICKNESS = 'thickness' in _os.environ.get('BRAIN_RECALL_VARIANT', '').lower()

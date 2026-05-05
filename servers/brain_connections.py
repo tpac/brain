@@ -23,45 +23,60 @@ class BrainConnectionsMixin:
     """Connections methods for Brain."""
 
     def connect(self, source_id: str, target_id: str, relation: str = 'related', weight: float = 0.5):
-        """
-        Create or add a relation between two nodes.
-        Bidirectional. Does NOT overwrite existing relations — adds alongside them.
+        """Add a relation between two nodes (idempotent upsert).
+
+        Stage 1B: add_relation is field-preserving — repeated calls do NOT
+        auto-strengthen weight (use GraphDAL.strengthen_relation() for Hebbian
+        bumps), and unspecified fields preserve existing values on update.
 
         Args:
             source_id: Source node ID
             target_id: Target node ID
             relation: Relation type (e.g., 'related', 'co_accessed')
-            weight: Edge weight (0-1)
+            weight: Edge weight (0-1) — set on create; replaces existing weight on update
         """
         from .dal import GraphDAL
         graph_dal = GraphDAL(self.conn)
-        graph_dal.add_relation(source_id, target_id, relation, description='', weight=weight)
+        # description omitted so add_relation's sentinel default kicks in
+        # (preserves existing on update; defaults to '' on create).
+        graph_dal.add_relation(source_id, target_id, relation, weight=weight)
 
     def connect_typed(self, source_id: str, target_id: str, relation: str = 'related',
                      weight: Optional[float] = None, edge_type: Optional[str] = None,
-                     description: str = '', encoding_source: str = ''):
-        """
-        Add a typed relation with description between two nodes.
-        Bidirectional. Does NOT overwrite existing relations — adds alongside them.
-        Recomputes edge_context vectors for both endpoints when description is provided.
+                     description: Optional[str] = None,
+                     encoding_source: Optional[str] = None):
+        """Add a typed relation (idempotent upsert).
+
+        Stage 1B: field-preserving upsert. None defaults mean 'preserve existing
+        on update' — pass empty string '' explicitly if you want to clear a
+        field. Repeated calls do NOT auto-strengthen weight; use
+        GraphDAL.strengthen_relation() for Hebbian bumps.
 
         Args:
             source_id: Source node ID
             target_id: Target node ID
             relation: Relation name (open text — any string)
-            weight: Edge weight (optional; uses EDGE_TYPES default if not provided)
+            weight: Edge weight (uses EDGE_TYPES default if None — always passed)
             edge_type: DEPRECATED — ignored, kept for backward compat
-            description: Why this relation exists (rich text)
-            encoding_source: Who created this edge (e.g. 'encoder:sonnet', 's2:healer')
+            description: Why this relation exists. None preserves existing on update.
+            encoding_source: Who created this edge. None preserves existing on update.
         """
         # Known types get configured weight; unknown types get 0.5 default
         edge_def = EDGE_TYPES.get(relation)
-        actual_weight = weight if weight is not None else (edge_def.get('defaultWeight', 0.5) if edge_def else 0.5)
+        actual_weight = weight if weight is not None else (
+            edge_def.get('defaultWeight', 0.5) if edge_def else 0.5)
 
         from .dal import GraphDAL
         graph_dal = GraphDAL(self.conn)
-        graph_dal.add_relation(source_id, target_id, relation, description=description,
-                               weight=actual_weight, encoding_source=encoding_source)
+        # Build kwargs: only pass explicitly-provided fields so add_relation's
+        # sentinel-based field-preservation propagates cleanly through this
+        # layer. weight is always passed (resolved above).
+        kwargs = {'weight': actual_weight}
+        if description is not None:
+            kwargs['description'] = description
+        if encoding_source is not None:
+            kwargs['encoding_source'] = encoding_source
+        graph_dal.add_relation(source_id, target_id, relation, **kwargs)
 
         # v23: edge_context vectors deferred to idle backfill.
         # Previously recomputed inline here, causing ONNX multi-thread spinning.

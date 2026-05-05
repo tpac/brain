@@ -60,7 +60,8 @@ EVENT_TYPES = {
 REF_TYPES = {
     # Scale 0: raw exchange
     ("s0", "K"):       ["user_message"],
-    ("s0", "delta"):   ["assistant_message", "tool_result"],
+    ("s0", "delta"):   ["assistant_message", "tool_result",
+                         "node_revised", "edge_relation_revised"],
     ("s0", "outcome"): ["correction", "follow_up"],
 
     # Scale 1: turn integration
@@ -72,8 +73,10 @@ REF_TYPES = {
     ("s1", "K"):       ["surface_selected",  # what the surfacer picked
                          "node_catalog",       # which nodes available to encoder
                          "scout_findings"],    # muster scouts: their candidates
-    ("s1", "delta"):   ["additionalContext",  # what reached Anchor
-                         "encoding_run"],      # what the encoder produced
+    ("s1", "delta"):   ["additionalContext",       # what reached Anchor
+                         "encoding_run",            # what the encoder produced
+                         "node_revised",            # field-level revise emitted by S1 encoder
+                         "edge_relation_revised"],  # connect upsert / archive emitted by S1 encoder
     ("s1", "outcome"): ["correction",         # Tom corrected something that was recalled
                          "recall_hit"],        # node was recalled in a future turn
 
@@ -102,8 +105,10 @@ REF_TYPES = {
                          "consolidated",         # new node from smart merge
                          "evolved",              # evolution edge added
                          "kept_distinct",        # similar_to edge, no merge
-                         "confidence_adjust",    # adjusted confidence scores
-                         "healer_generated"],    # S2 Healer: missing fields generated + stored
+                         "confidence_adjust",       # adjusted confidence scores
+                         "healer_generated",        # S2 Healer: missing fields generated + stored
+                         "node_revised",            # field-level revise emitted by S2 units (healer, consolidation, future aspect_integration)
+                         "edge_relation_revised"],  # connect upsert / archive emitted by S2 units
     ("s2", "outcome"): ["recall_improved",      # community nodes improved recall
                          "operator_reviewed"],   # Tom reviewed S2 output
 
@@ -246,6 +251,89 @@ def build_selection_metadata(*,
         if k not in metadata:
             metadata[k] = v
     return metadata
+
+
+# ── REVISE METADATA SHAPE ──
+# Field-level revise events (event_type='delta', ref_type='node_revised')
+# carry per-field deltas + warnings instead of the LLM-loop shape. Used by
+# every caller of revise() — direct MCP, S1 encoder, S2 units. Same shape
+# whether the caller is dispatch, an encoder, or the operator via MCP.
+#
+# Warnings carry attempts that didn't land (immutable field passed,
+# archive blocked on locked/critical node). The trace event is emitted
+# even when deltas is empty as long as warnings is non-empty — so that
+# audit history captures attempted-but-rejected operations, not just
+# successful changes.
+
+REVISE_METADATA_SHAPE = {
+    'node_id':         str,    # which node was revised
+    'reason':          str,    # human-readable reason (required at API)
+    'encoding_source': str,    # who made the change (anchor, encoder:sonnet, s2:healer, ...)
+    'deltas':          list,   # [{'field': str, 'old': any, 'new': any}, ...]
+    'warnings':        list,   # ['immutable field skipped: id', 'archive blocked (locked/critical): archived', ...]
+}
+
+
+def build_revise_metadata(*, node_id, reason, encoding_source='',
+                          deltas=None, warnings=None):
+    """Build trace metadata for a node revise event.
+
+    Caller responsibility: collect (old, new) pairs for each field that
+    actually changed, pass them as `deltas`. Pass `warnings` for fields
+    that were rejected (immutable, locked-archive). The trace event is
+    worth emitting whenever EITHER deltas or warnings is non-empty.
+
+    Used by daemon_dispatch._handle_revise / _handle_revise_batch and any
+    direct caller of brain.revise(). Returns a dict ready to pass as the
+    metadata kwarg to a trace writer.
+    """
+    return {
+        'node_id':         node_id,
+        'reason':          reason or '',
+        'encoding_source': encoding_source or '',
+        'deltas':          list(deltas or []),
+        'warnings':        list(warnings or []),
+    }
+
+
+# ── EDGE REVISE METADATA SHAPE (Stage 1B) ──
+# Edge-level revise events (event_type='delta', ref_type='edge_relation_revised')
+# carry the same delta+warnings shape as node revises but identified by
+# (edge_id, relation) tuple. ref_id encoding: f"{edge_id}:{relation}".
+#
+# Single ref_type covers both create-via-upsert and update-via-upsert from
+# `connect()`, plus archive via polymorphic `archive` op. Empty `old` in a
+# delta means the field was just created; populated `old` means update.
+
+EDGE_REVISE_METADATA_SHAPE = {
+    'edge_id':         str,    # physical edge id (deterministic from source+target)
+    'relation':        str,    # which specific relation on that edge
+    'reason':          str,    # human-readable reason (required at API)
+    'encoding_source': str,    # who made the change
+    'deltas':          list,   # [{'field': str, 'old': any, 'new': any}, ...]
+    'warnings':        list,   # any skipped/blocked operations
+}
+
+
+def build_edge_revise_metadata(*, edge_id, relation, reason, encoding_source='',
+                               deltas=None, warnings=None):
+    """Build trace metadata for an edge_relation revise event.
+
+    Mirrors build_revise_metadata for nodes; same delta shape captures
+    connect-upsert outcomes (empty `old` = create, populated `old` = update)
+    and polymorphic archive (deltas show archived flag flipping).
+
+    Used by daemon_dispatch handlers for `connect` and `archive` (when
+    archive targets an edge_relation).
+    """
+    return {
+        'edge_id':         edge_id,
+        'relation':        relation,
+        'reason':          reason or '',
+        'encoding_source': encoding_source or '',
+        'deltas':          list(deltas or []),
+        'warnings':        list(warnings or []),
+    }
 
 
 def validate_trace_event(scale, event_type, ref_type=""):
