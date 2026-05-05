@@ -396,6 +396,69 @@ def _emit_revise_trace(brain, node_id, reason, encoding_source, deltas,
                          'failed to emit trace for revise of %s' % node_id[:8])
 
 
+def _emit_edge_revise_trace(brain, edge_id, relation, reason, encoding_source,
+                            deltas, warnings=None,
+                            chain_id_override='', session_id=''):
+    """Emit an edge_relation_revised trace event.
+
+    Mirrors _emit_revise_trace for nodes. Same emit-on-deltas-or-warnings
+    behavior, same scale inference, same chain_id strategy. ref_id encodes
+    the (edge_id, relation) tuple as f"{edge_id}:{relation}".
+
+    Used by the connect upsert path (deltas show create-via-INSERT or
+    field-preserving update) and the disconnect path (deltas show the
+    archived flag flip).
+    """
+    warnings = warnings or []
+    if not deltas and not warnings:
+        return  # nothing to record
+
+    from .trace_contract import build_edge_revise_metadata
+
+    if encoding_source.startswith('s2:'):
+        scale = 's2'
+    elif encoding_source.startswith('encoder:'):
+        scale = 's1'
+    else:
+        scale = 's0'
+
+    if chain_id_override:
+        chain_id = chain_id_override
+    else:
+        from datetime import datetime
+        chain_id = '%s-%s-revise' % (
+            scale, datetime.utcnow().strftime('%Y%m%d'))
+
+    metadata = build_edge_revise_metadata(
+        edge_id=edge_id, relation=relation, reason=reason,
+        encoding_source=encoding_source,
+        deltas=deltas, warnings=warnings)
+
+    parts = []
+    if deltas:
+        parts.append('%d field(s): %s' % (
+            len(deltas), ', '.join(d['field'] for d in deltas)))
+    if warnings:
+        parts.append('%d warning(s)' % len(warnings))
+    summary = '; '.join(parts) if parts else 'edge revise no-op'
+
+    try:
+        brain._trace_dal.append(
+            chain_id=chain_id,
+            scale=scale,
+            event_type='delta',
+            ref_type='edge_relation_revised',
+            ref_id='%s:%s' % (edge_id, relation),
+            summary=summary,
+            metadata=metadata,
+            session_id=session_id,
+        )
+    except Exception as e:
+        brain._log_error('edge_revise_trace_emit', e,
+                         'failed to emit trace for edge %s:%s' % (
+                             edge_id[:12], relation))
+
+
 def _handle_revise(brain, args, graph_changes):
     """Update any field(s) on an existing node via revise()."""
     from .contract import validate_field, ALL_FIELDS
@@ -602,8 +665,9 @@ def _handle_brain_batch(brain, args, graph_changes):
                     results.append({"op": "archive", "index": i, **r})
 
             elif op == "disconnect":
-                # Remove a specific relation from an edge. If it was the last
-                # relation on the edge, the physical edge is removed too.
+                # Soft-archive a specific relation on an edge. Other relations
+                # on the same edge survive. v25 — archived row preserved for
+                # forensics/recovery; reads filter via JOIN.
                 # Lets ABSORB encoders prune survivor edges that don't fit
                 # the new framing after revise.
                 from .dal import GraphDAL
@@ -617,11 +681,27 @@ def _handle_brain_batch(brain, args, graph_changes):
                     results.append({"op": "disconnect", "index": i, "ok": False,
                                     "error": "source_id, target_id, relation are required"})
                 else:
-                    GraphDAL(brain.conn).remove_relation(
+                    gdal = GraphDAL(brain.conn)
+                    edge_id = gdal.get_edge_id(source_id, target_id)
+                    gdal.remove_relation(
                         source_id, target_id, relation, archived_by=archived_by)
                     brain.conn.commit()
                     graph_changes.append("DISCONNECT: %s -[%s]-> %s" % (
                         source_id[:8], relation, target_id[:8]))
+
+                    # Emit edge_relation_revised trace event capturing the
+                    # archived flag flip. Mirrors connect upsert trace shape.
+                    if edge_id:
+                        _emit_edge_revise_trace(
+                            brain, edge_id, relation,
+                            op_spec.get('reason', '') or args.get('reason', ''),
+                            archived_by,
+                            deltas=[{'field': 'archived',
+                                     'old': 0, 'new': 1}],
+                            chain_id_override=args.get('chain_id', ''),
+                            session_id=args.get('session_id', ''),
+                        )
+
                     results.append({"op": "disconnect", "index": i, "ok": True})
 
             else:
@@ -924,17 +1004,32 @@ def _handle_get_nodes(brain, args, graph_changes):
 def _handle_connect(brain, args, graph_changes):
     # Stage 1B: pass description/encoding_source through only when caller
     # specified them. None preserves existing on update (idempotent upsert).
-    brain.connect_typed(
+    relation = args.get("relation", "related_to")
+    encoding_source = args.get("encoding_source", "")
+    result = brain.connect_typed(
         source_id=_resolve_id(brain, args.get("source_id", "")),
         target_id=_resolve_id(brain, args.get("target_id", "")),
-        relation=args.get("relation", "related_to"),
+        relation=relation,
         weight=args.get("weight", 0.5),
         description=args.get("description"),
         encoding_source=args.get("encoding_source"))
+
+    # Emit edge_relation_revised trace event capturing create-or-update deltas.
+    if result and (result.get('deltas') or result.get('warnings')):
+        _emit_edge_revise_trace(
+            brain, result['edge_id'], relation,
+            args.get('reason', ''),
+            encoding_source,
+            result.get('deltas', []),
+            warnings=result.get('warnings', []),
+            chain_id_override=args.get('chain_id', ''),
+            session_id=args.get('session_id', ''),
+        )
+
     graph_changes.append(
         "CONNECT: %s -[%s]-> %s" % (
             args.get("source_id", "?")[:8],
-            args.get("relation", "related_to"),
+            relation,
             args.get("target_id", "?")[:8]))
     return {"ok": True, "result": {"connected": True}}
 
@@ -945,18 +1040,36 @@ def _handle_connect_batch(brain, args, graph_changes):
     if not connections:
         return {"ok": False, "error": "connections array is required"}
 
+    chain_id_override = args.get('chain_id', '')
+    session_id = args.get('session_id', '')
+    top_encoding_source = args.get('encoding_source', '')
+
     created = 0
     for c in connections:
         try:
             # Stage 1B: pass description through only when specified
             # (None → preserve existing on update).
-            brain.connect_typed(
+            relation = c.get("relation", "related_to")
+            encoding_source = c.get("encoding_source", "") or top_encoding_source
+            result = brain.connect_typed(
                 source_id=_resolve_id(brain, c.get("source_id", "")),
                 target_id=_resolve_id(brain, c.get("target_id", "")),
-                relation=c.get("relation", "related_to"),
+                relation=relation,
                 weight=c.get("weight", 0.5),
                 description=c.get("description"))
             created += 1
+
+            # Emit one edge_relation_revised trace per row that actually changed.
+            if result and (result.get('deltas') or result.get('warnings')):
+                _emit_edge_revise_trace(
+                    brain, result['edge_id'], relation,
+                    c.get('reason', '') or args.get('reason', ''),
+                    encoding_source,
+                    result.get('deltas', []),
+                    warnings=result.get('warnings', []),
+                    chain_id_override=chain_id_override,
+                    session_id=session_id,
+                )
         except Exception:
             pass
     graph_changes.append("CONNECT_BATCH: %d edges" % created)

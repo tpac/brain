@@ -34,12 +34,17 @@ class BrainConnectionsMixin:
             target_id: Target node ID
             relation: Relation type (e.g., 'related', 'co_accessed')
             weight: Edge weight (0-1) — set on create; replaces existing weight on update
+
+        Returns:
+            The result dict from GraphDAL.add_relation() (edge_id, created,
+            revived_from_archive, updated, deltas, warnings) — used by callers
+            that want to emit trace events.
         """
         from .dal import GraphDAL
         graph_dal = GraphDAL(self.conn)
         # description omitted so add_relation's sentinel default kicks in
         # (preserves existing on update; defaults to '' on create).
-        graph_dal.add_relation(source_id, target_id, relation, weight=weight)
+        return graph_dal.add_relation(source_id, target_id, relation, weight=weight)
 
     def connect_typed(self, source_id: str, target_id: str, relation: str = 'related',
                      weight: Optional[float] = None, edge_type: Optional[str] = None,
@@ -60,6 +65,11 @@ class BrainConnectionsMixin:
             edge_type: DEPRECATED — ignored, kept for backward compat
             description: Why this relation exists. None preserves existing on update.
             encoding_source: Who created this edge. None preserves existing on update.
+
+        Returns:
+            The result dict from GraphDAL.add_relation() (edge_id, created,
+            revived_from_archive, updated, deltas, warnings) — used by callers
+            that want to emit trace events.
         """
         # Known types get configured weight; unknown types get 0.5 default
         edge_def = EDGE_TYPES.get(relation)
@@ -76,7 +86,7 @@ class BrainConnectionsMixin:
             kwargs['description'] = description
         if encoding_source is not None:
             kwargs['encoding_source'] = encoding_source
-        graph_dal.add_relation(source_id, target_id, relation, **kwargs)
+        return graph_dal.add_relation(source_id, target_id, relation, **kwargs)
 
         # v23: edge_context vectors deferred to idle backfill.
         # Previously recomputed inline here, causing ONNX multi-thread spinning.
