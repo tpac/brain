@@ -207,6 +207,18 @@ GET_NODES_COMPACT_FORMAT = {
 }
 
 
+def _truncate(s: str, limit: int) -> str:
+    """Cap `s` at `limit` chars, ending in '…' when truncation occurred.
+
+    Mid-word cuts without ellipsis are confusing — readers don't know if
+    the original text ended naturally or got chopped. The single-char
+    ellipsis is unambiguous and respects the limit (returned len ≤ limit).
+    """
+    if not s or limit <= 0 or len(s) <= limit:
+        return s
+    return s[:max(1, limit - 1)] + '…'
+
+
 def render_rich_node(node, config=None):
     """Render a get_rich_node() dict as a formatted string.
 
@@ -254,7 +266,7 @@ def render_rich_node(node, config=None):
     if content_limit != 0:
         content = node.get('content', '')
         if content_limit and content_limit > 0:
-            content = content[:content_limit]
+            content = _truncate(content, content_limit)
         if content:
             lines.append('  Content: %s' % content)
 
@@ -291,7 +303,7 @@ def render_rich_node(node, config=None):
             if key == 'correction_of':
                 # Corrections are in _corrections with full context
                 continue
-            lines.append('  %s: %s' % (key.replace('_', ' ').title(), str(val)[:meta_limit]))
+            lines.append('  %s: %s' % (key.replace('_', ' ').title(), _truncate(str(val), meta_limit)))
 
     # Keywords
     if cfg.get('show_keywords', True):

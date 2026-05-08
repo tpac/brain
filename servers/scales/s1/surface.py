@@ -27,11 +27,21 @@ def _get_recently_surfaced(brain, session_id):
             'judge_selected', scale='s1', hours=24, limit=lookback)
     seen_ids = set()
     for evt in recent_k:
+        raw = evt.get('ref_id', '[]')
         try:
-            for nid in json.loads(evt.get('ref_id', '[]')):
+            for nid in json.loads(raw):
                 seen_ids.add(nid)
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as _e:
+            # Malformed ref_id silently dropped node IDs from the
+            # surfaced-recently dedup set — Haiku could re-surface nodes
+            # we already showed. Log so a corrupt producer surfaces.
+            try:
+                brain._log_error(
+                    'surface_seen_ids_parse', _e,
+                    'malformed ref_id in judge_selected trace; sample=%r'
+                    % str(raw)[:120])
+            except Exception:
+                pass
     from servers.dal import NodeDAL
     dal = NodeDAL(brain.conn)
     recently_surfaced = []
