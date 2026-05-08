@@ -68,60 +68,65 @@ S0 traces written by Stop hook via TraceDAL. Chain ID: `s0-{session_short}-{stop
 
 ## Aspects — semantic roles for types and relations
 
-*Stage 2 direction in progress — see [docs/STAGE-2-ASPECTS-AS-JSON-CONFIG.md](docs/STAGE-2-ASPECTS-AS-JSON-CONFIG.md). Section below describes current state.*
+Every node has a `type` (`principle`, `correction`, `moment`, ...) and every
+edge has a `relation` (`extends`, `corrects`, `validates`, ...). Both
+vocabularies are open text. **Aspects** group these strings by semantic role:
+`identity_bearing` covers types that anchor identity; `correction_improvement`
+covers types AND relations that express correction; `noise` covers
+structural-only strings with no semantic claim.
 
-Every node in the brain has a `type` (`principle`, `correction`, `moment`, ...)
-and every edge has a `relation` (`extends`, `corrects`, `validates`, ...).
-Both vocabularies are open text. **Aspects** group these strings by semantic
-role: `identity_bearing` covers the types that anchor identity; `correction_improvement`
-covers types AND relations that express correction; `noise` covers structural-only
-edges with no semantic claim.
+The taxonomy is a **closed list of 14 required aspects**, defined in
+`servers/scales/s2/aspects_v1.json`. The encoder cannot propose new aspects;
+adding a 15th aspect is a deliberate human edit to the JSON.
 
-An aspect is itself a brain node (`type='aspect'`). Member lists
-(`node_types`, `edge_relations`) live in `node_metadata_kv` as JSON-encoded
-lists. Standard fields (title, content, situation, locked, dimension, etc.).
-No parallel storage — same fractal pattern as communities: nodes about nodes.
+**Source of truth: `aspects_v1.json`** (since 2026-05-08). The file holds:
+- aspect `name`, `meaning` (description), `locked`, `dimension`, `metadata`
+- `node_types` and `edge_relations` member lists (the work product —
+  classifications grow over time as new strings appear)
 
-**Two tiers:**
+`AspectRegistry` reads the JSON file directly at `Brain.__init__`. Old
+brain-aspect-nodes (`type='aspect'`) are archived legacy and not consulted.
 
-| Tier | Locked | Seeded by | Mutable by |
-|------|--------|-----------|------------|
-| **Required** (14, code-routed) | True | `seed_required_aspects` from `aspects_v1.json` (`anchor:seed_aspects`) | Members can drift; aspect can't be archived/renamed (locked + REQUIRED contract) |
-| **Emergent** (any) | False | `AspectIntegration` (S2 unit) discovers from observed types/relations | Free creation/revision by S2; lock requires anchor or operator |
+**Multi-membership.** A string can belong to multiple aspects when its role
+legitimately spans them — `corrects` is in both `correction_improvement`
+and `temporal_sequence`. Reverse lookups (`by_node_type`, `by_edge_relation`)
+return the FIRST aspect to claim the string in JSON iteration order, so
+single-result API consumers (Frame placement) stay deterministic while
+multi-aspect queries can union the full set.
 
-The 14 required aspects are the names code routes on by string. A test
-asserts `set(REQUIRED_ASPECTS) ≡ set(aspects_v1.json keys)` — adding a name
-to one without the other fails.
-
-**Single API:** `brain.aspects` (an `AspectRegistry` instance, eager-validated
-at `Brain.__init__`, auto-heals from seed if any required aspect is missing).
-Every consumer flows through it.
+**Single API:** `brain.aspects` (an `AspectRegistry` instance).
 
 ```python
 brain.aspects.identity_bearing.node_types       # tuple
 brain.aspects.correction_improvement.edge_relations
-brain.aspects.by_name('emergent_xyz')           # Optional[Aspect]
-brain.aspects.by_node_type('principle')         # reverse lookup
-brain.aspects.by_edge_relation('corrects')      # reverse lookup
+brain.aspects.by_name('correction_improvement') # Optional[Aspect]
+brain.aspects.by_node_type('principle')         # reverse lookup (first aspect)
+brain.aspects.by_edge_relation('corrects')      # reverse lookup (first aspect)
 brain.aspects.types_in(['episodic_anchor', 'lesson_insight'])  # union
 brain.aspects.relations_in(['noise', 'generic_relation'])
 brain.aspects.relation_meaning_map()            # for surface edge enrichment
 brain.aspects.all_with_counts()                 # for list_aspects MCP
 ```
 
-**Auto-heal at boot:** if any of the 14 required aspects are missing,
-`AspectRegistry._validate` logs `_log_warning('aspect_contract', ...)` and
-calls `seed_required_aspects(brain)` which reads `aspects_v1.json` and
-creates the missing aspect-nodes via `brain.remember(type='aspect', locked=True,
-encoding_source='anchor:seed_aspects', ...)`. Idempotent — already-present
-required aspects are skipped.
+**`AspectIntegration` S2 unit** (`servers/scales/s2/aspect_integration.py`)
+classifies new strings into the 14 aspects via Sonnet, writes JSON-only output
+back to `aspects_v1.json` (no brain mutations). Built and tested on a clone
+(78.2% routing accuracy at cold start). **NOT WIRED into the coordinator yet
+(2026-05-08)** — the decoder writes an O trace even when nothing's
+unclassified, which interacts badly with downstream S2 unit gating. Two fixes
+needed before re-wiring:
+1. Decoder must early-out before writing the O trace when batch is empty
+2. Downstream gating shouldn't treat `aspect_scan` as new s1 work
 
 Files:
-- `servers/aspects.py` — Aspect value object + AspectRegistry
-- `servers/aspect_migration.py` — seed + migrate-from-legacy
-- `servers/scales/s2/aspects_v1.json` — the 14 required aspects (seed)
-- `scripts/migrate_to_aspects.py` — one-shot CLI for existing brains
-- Tests: `tests/test_aspects*.py`, `tests/test_aspect_*.py`
+- `servers/aspects.py` — Aspect value object + AspectRegistry (JSON-source loader)
+- `servers/scales/s2/aspects_v1.json` — single source of truth
+- `servers/scales/s2/aspect_{decoder,encoder,integration}.py` — S2 unit (paused)
+- `servers/scales/s2/aspect_prompt.py` — encoder system prompt seed
+- `scripts/run_aspect_cycles_on_clone.py` — clone-eval harness
+- `scripts/eval_aspect_classifications.py` — routing-accuracy comparator
+- `eval/aspects_ground_truth.json` — hand-classified eval baseline
+- Tests: `tests/test_aspects*.py`, `tests/test_aspect_registry_wired.py`
 
 ## Frame — the structured prior
 

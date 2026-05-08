@@ -10,6 +10,7 @@ The actual prompt text for the four encoder agents lives in sibling files:
     servers/scales/s2/community_enrichment_prompt.py     (s2_community_enrichment)
     servers/scales/s2/consolidation_enrichment_prompt.py (s2_consolidation_enrichment)
     servers/scales/s2/healer_prompt.py                   (s2_healer)
+    servers/scales/s2/aspect_prompt.py                   (s2_aspects)
 
 Those files are mirrored FROM the DB's latest version by:
     ./dev python3 -m servers.tools.sync_prompts
@@ -204,6 +205,10 @@ S2_HEALER_CONFIG_V1 = {
     "model": "claude-haiku-4-5", "max_tokens": 4096,
 }
 
+S2_ASPECTS_CONFIG_V1 = {
+    "model": "claude-sonnet-4-5-20250929", "max_tokens": 8192,
+}
+
 # ── S1 Scout configs ──────────────────────────────────────────────────
 # Each scout is its own interaction (s1_scout_<name>). The `template` field
 # carries the per-scout task prompt (seeded from prompts/<name>_prompt.py).
@@ -322,6 +327,7 @@ def seed_interactions(brain):
     from .scales.s2.community_enrichment_prompt import SYSTEM_PROMPT as S2_COMMUNITY_PROMPT
     from .scales.s2.consolidation_enrichment_prompt import SYSTEM_PROMPT as S2_CONSOLIDATION_PROMPT
     from .scales.s2.healer_prompt import SYSTEM_PROMPT as S2_HEALER_PROMPT
+    from .scales.s2.aspect_prompt import SYSTEM_PROMPT as S2_ASPECTS_PROMPT
     from .scales.s1.scouts.prompts.quote_prompt import SYSTEM_PROMPT as S1_SCOUT_QUOTE_PROMPT
     from .scales.s1.scouts.prompts.temporal_prompt import SYSTEM_PROMPT as S1_SCOUT_TEMPORAL_PROMPT
     from .scales.s1.scouts.prompts.facts_prompt import SYSTEM_PROMPT as S1_SCOUT_FACTS_PROMPT
@@ -348,6 +354,8 @@ def seed_interactions(brain):
               S2_CONSOLIDATION_ENRICHMENT_CONFIG_V1, 's2:consolidation')
     _register('s2_healer', S2_HEALER_PROMPT,
               S2_HEALER_CONFIG_V1, 's2:healer')
+    _register('s2_aspects', S2_ASPECTS_PROMPT,
+              S2_ASPECTS_CONFIG_V1, 's2:aspect_integration')
 
     # S1 Scouts — each is its own interaction entry. The runtime reads
     # interaction.template for the per-scout task prompt (LLM scouts only;

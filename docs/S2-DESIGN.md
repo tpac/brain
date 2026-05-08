@@ -420,11 +420,11 @@ All units use:
 - Eval harness: `eval/s2_community_eval.py`
 - **Aspects system** (2026-05-04) — `brain.aspects` exposes 14 required + emergent aspect-nodes as the unified taxonomy for both node types AND edge relations. See `docs/SESSION-HANDOFF-2026-05-04.md` and `CLAUDE.md` Aspects section.
 
-> **⚠ Stage 2 direction (in progress):** Aspects move OUT of brain to `aspects_v1.json` as sole source of truth. AspectIntegration encoder will produce JSON proposal deltas (not brain mutations); operator reviews + applies. Public `brain.aspects.<name>` API surface stays identical. Eval-driven: `eval/aspect_encoder_eval.py` measures encoder quality vs. ground truth. See `docs/STAGE-2-ASPECTS-AS-JSON-CONFIG.md`.
+> **Status update (2026-05-08):** Aspects-as-JSON-config shipped. AspectRegistry reads `aspects_v1.json` directly; 60 brain aspect-nodes archived. Closed list of 14 aspects, multi-membership. AspectIntegration unit built + eval-tested (78.2% routing accuracy on clone) but **NOT wired into the coordinator yet** — decoder writes an O trace even when nothing's unclassified, which trips downstream gating. Two fixes needed before re-wiring (CLAUDE.md aspects section). The archived design plan is at `docs/archive/STAGE-2-ASPECTS-AS-JSON-CONFIG.md`.
 
 **Units built and SHIPPED:**
 - `CommunityDetection` (`scales/s2/community.py`) — Full S2CD/S2CE decoder-encoder pair. Z-score seeding, adaptive thresholds, agentic Sonnet encoder. **55 communities in production.**
-- ~~`EdgeFamilyIntegration`~~ — DISABLED 2026-05-04 in coordinator; module deleted. Replaced by the aspects system as the source of truth for edge-relation taxonomy. `AspectIntegration` (planned, see Open Questions below) will take over the maintenance role for both types and relations in one pass.
+- ~~`EdgeFamilyIntegration`~~ — DISABLED 2026-05-04 in coordinator; module deleted. Replaced by the aspects system as the source of truth for edge-relation taxonomy. `AspectIntegration` built 2026-05-08 (`servers/scales/s2/aspect_{decoder,encoder,integration}.py`) but currently NOT wired into the coordinator (see Stage 2 status note above).
 - `RelationReclassifier` (`scales/s2/reclassify.py`) — One-time operation, complete. 2,621 edges reclassified.
 
 **Dashboard shipped:**

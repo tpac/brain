@@ -4,7 +4,7 @@ The idle hook calls run_s2() once. S2 decides what to run.
 Each unit checks its own traces to decide whether it should fire.
 
 Ordering matters:
-1. Edge families — classify new relation types (other units depend on this)
+1. AspectIntegration — classify new node types / edge relations into the 14 aspects
 2. Consolidation — clean the graph (merge convergent nodes)
 3. Community detection — detect structure on clean graph
 4. Healer — fill missing findability fields on nodes that lack them (uses community context)
@@ -24,12 +24,18 @@ def run_s2(brain):
     from .community import CommunityDetection
     from .healer import Healer
 
-    # EdgeFamilyIntegration disabled 2026-05-04 — its source interaction
-    # (s2_edge_families) was removed in Step 12 of unified-aspects. Letting
-    # the unit run would re-seed the dead interaction on next idle cycle,
-    # drifting the system back toward the old taxonomy. Step 13 of the
-    # aspects work replaces it with AspectIntegration which writes
-    # aspect-nodes via brain_batch instead.
+    # AspectIntegration intentionally NOT wired here yet (2026-05-08).
+    # It's been migrated and tested in eval (78.2% routing accuracy on the
+    # clone), but on production it triggered a runaway S2 cascade — the
+    # decoder writes an O trace even when nothing is unclassified, which
+    # downstream units (community_detection, consolidation) read as "new
+    # work" and re-fire on. Result: community_detection looped 224× in 3
+    # minutes, daemon RSS hit 2.2GB in 51s. Rolled back pending two fixes:
+    #   (1) decoder must early-out without writing the O trace when batch
+    #       is empty, AND
+    #   (2) downstream gating shouldn't treat aspect_scan as new s1 work.
+    # AspectRegistry still reads aspects_v1.json (no rollback there) — the
+    # taxonomy is shipped; only the maintenance unit is paused.
     units = [
         Consolidation(brain),
         CommunityDetection(brain),

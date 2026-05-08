@@ -11,19 +11,19 @@
 
 ## 2026-05-04 update — Phase 3 supersedes Phase 2's families layer
 
-> **⚠ Stage 2 direction (in progress, designed 2026-05-04 evening):** The "aspects-as-nodes" model below is being retired. Aspects move OUT of brain to `aspects_v1.json` as the sole source of truth. AspectRegistry switches to JSON-only loading; brain aspect-nodes get archived; AspectIntegration encoder produces JSON proposal deltas. Frame's routing via `brain.aspects.<name>.node_types` continues to work — the public API surface stays identical, only the underlying storage changes. See `docs/STAGE-2-ASPECTS-AS-JSON-CONFIG.md` for the full Stage 2 plan.
+> **Status update (2026-05-08):** Aspects-as-JSON-config shipped. AspectRegistry now reads `aspects_v1.json` directly; 60 brain aspect-nodes archived. The "aspects-as-nodes" model below describes the historical (Phase 3, May 4) design — Frame's `brain.aspects.<name>.node_types` API surface is unchanged, only the underlying storage. Multi-membership now allowed. AspectIntegration S2 unit built + eval-tested but not wired into coordinator (cascade fix pending). See CLAUDE.md aspects section for current state.
 
 **The whole Phase 2 "node families via `s2_node_families` interaction" layer has been replaced by the unified aspects system.** Frame still routes by semantic role (identity_bearing → Operator section, etc.) — the routing target moved from `brain.get_interaction_config('s2_node_families')` + `_FALLBACK_FAMILIES` dict to `brain.aspects.<name>.node_types` (a first-class API on every Brain instance).
 
 Practically: every reference below to `s2_node_families`, `_FALLBACK_FAMILIES`, `_resolve_families()`, `OPERATOR_FAMILY` constants, etc. is **historical context, not current code**. Read those for the journey; for current state read:
 
-- `CLAUDE.md` — Aspects section (developer-facing summary)
-- `docs/SESSION-HANDOFF-2026-05-04.md` — what shipped, what's left
+- `CLAUDE.md` — Aspects section (developer-facing summary, current state)
 - `docs/RECALL-OVERVIEW.md` Phase 3 section — recall map updated
-- `servers/aspects.py` — Registry + value object source
-- `servers/scales/s2/aspects_v1.json` — the 14 required aspects (single seed)
+- `servers/aspects.py` — Registry + value object source (JSON-source loader)
+- `servers/scales/s2/aspects_v1.json` — single source of truth (descriptions + member lists)
+- `docs/archive/SESSION-HANDOFF-2026-05-04.md`, `docs/archive/STAGE-2-ASPECTS-AS-JSON-CONFIG.md` — historical context
 
-The cold-start gap noted in this doc (Phase 2's "deferred S2 maintenance unit") is now: build `AspectIntegration` (Step 13). When it ships, both new node types AND new edge relations get classified into the unified taxonomy in one pass.
+The cold-start gap noted in this doc (Phase 2's "deferred S2 maintenance unit") is addressed by `AspectIntegration` (built 2026-05-08, eval-tested at 78.2% routing accuracy). Currently NOT wired into the coordinator — cascade fix pending. When re-wired, new node types AND new edge relations get classified into the closed-list 14-aspect taxonomy in one pass.
 
 The rest of this doc is preserved as the Phase 1/2 journey record. Don't update Phase 2 prose to use aspect terminology — that erases history.
 

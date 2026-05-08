@@ -101,48 +101,45 @@ Naming these explicitly because they're the load-bearing claims everything else 
 
 **5 captured snapshots** tracking the trajectory: `phase1_baseline_2026-05-02` → `phase2_v1_unified` → `phase2_v1_unified_clean` (post-cleanup) → `phase2_v3_prompt` → `phase2_v4_prompt`. Each one diffable against the previous via `compare label_a label_b`.
 
-### Phase 3: Unified aspects — families collapse into one first-class system (May 4)
+### Phase 3: Unified aspects (May 4) → JSON-source migration (May 8)
 
-> **⚠ Stage 2 direction (in progress):** Aspects move OUT of brain to `aspects_v1.json` as sole source of truth. AspectRegistry switches to JSON-only loading; brain aspect-nodes archived; AspectIntegration encoder produces JSON proposal deltas (not brain mutations). Public `brain.aspects.<name>` API surface stays identical. See `docs/STAGE-2-ASPECTS-AS-JSON-CONFIG.md`. The shipped state described below is what's CURRENTLY live, not the Stage 2 target.
+**Phase 3 thesis (May 4):** node families and edge families were two parallel
+systems doing the same conceptual work. Collapsed them into one — aspects.
+Implemented as brain-nodes (`type='aspect'`) with member lists in metadata,
+auto-healed from a JSON seed. 5 consumers migrated to `brain.aspects.<name>`.
+Worked, shipped, ran in production for 4 days.
 
-**The thesis:** node families and edge families were two parallel systems doing
-the same conceptual work — assigning semantic role labels. Same bootstrap
-problem (code referenced names by string), same ripple risk on changes, same
-maintenance unit shape. Collapse into one system, lift it to first-class on
-the brain.
+**JSON-source migration (May 8) — what's live now:**
 
-**What shipped (13 commits):**
+- **`aspects_v1.json` is the single source of truth.** AspectRegistry reads
+  the file directly at `Brain.__init__`. Brain aspect-nodes are no longer
+  consulted.
+- **60 brain aspect-nodes archived** (14 required + 46 emergent legacy from
+  EdgeFamilyIntegration history). Backup at
+  `~/AgentsContext/brain/brain.db.bak-20260508-145220`.
+- **Closed list of 14 aspects.** No emergent aspects. Adding a 15th is a
+  deliberate human JSON edit, not encoder behavior.
+- **Multi-membership.** A string can belong to multiple aspects (e.g.,
+  `corrects` is in both `correction_improvement` and `temporal_sequence`).
+  Reverse lookups return the first aspect in JSON iteration order, so the
+  single-result API contract is preserved while richer multi-aspect data
+  can power future recall.
+- **`AspectIntegration` S2 unit built and eval-tested** (78.2% routing
+  accuracy on a 260-string corpus from a clone of the production brain).
+  **Currently NOT wired into the coordinator** — the decoder writes an O
+  trace even when nothing's unclassified, which trips downstream S2 unit
+  gating. Two fixes needed before re-wiring (see `CLAUDE.md` Aspects
+  section).
+- **API surface unchanged.** All 5 consumers (Frame, surface_contract,
+  consolidation, community, healer) use `brain.aspects.<name>` exactly as
+  before. The migration was internal.
 
-- **AspectRegistry** (`servers/aspects.py`) — `brain.aspects` exposed on every Brain
-  instance. Eager validation at `Brain.__init__`; auto-heals from `aspects_v1.json`
-  if any of the 14 required aspects are missing. Single source of truth for
-  routing across Frame, surface, S2, MCP.
-- **Aspect = node** (`type='aspect'`) — same fractal shape as communities.
-  Member lists in metadata as JSON-encoded lists. Standard lifecycle (recall,
-  revise, lock). No special storage.
-- **14 required aspects** locked + seeded from `aspects_v1.json`. Test asserts
-  `set(REQUIRED_ASPECTS) ≡ set(aspects_v1.json keys)`.
-- **5 consumers migrated** to `brain.aspects`: frame, surface_contract,
-  consolidation enc+dec, community_decoder, community_encoder, eval scripts.
-- **Legacy deleted:** `edge_families.py` module, `iter_families` /
-  `get_reverse_map` helpers, `_FALLBACK_FAMILIES`, `OPERATOR_FAMILY` /
-  `PERMANENT_FAMILY` constants, `EDGE_TYPE_GROUPS` dead dicts,
-  `HEALER_EDGE_FAMILIES` dead dict, `node_families_v1.json` +
-  `edge_families_v1.json` seed files.
-- **Foundation: `MetadataDAL` JSON-encoding** — `set_many` now JSON-encodes
-  list/dict values for clean round-trip (was Python repr, broken). Strict
-  improvement; backward-compatible with all string callers.
-- **EdgeFamilyIntegration disabled** in coordinator (its source interaction
-  was retired with Step 12); `AspectIntegration` planned to replace it.
-- **Migration tool** (`scripts/migrate_to_aspects.py`) — backup + flush WAL +
-  daemon dispatch. Idempotent. Tom's brain post-migration: 68 aspect-nodes
-  (14 locked + 54 emergent from accumulated EdgeFamilyIntegration history).
+**Eval artifacts:** `eval/aspect_inventory.json`, `eval/aspects_ground_truth.json`,
+`eval/aspects_v1_classified.json`, `scripts/run_aspect_cycles_on_clone.py`,
+`scripts/eval_aspect_classifications.py`.
 
-**Files (new):** `servers/aspects.py`, `servers/aspect_migration.py`,
-`servers/scales/s2/aspects_v1.json`, `scripts/migrate_to_aspects.py`,
-`tests/test_aspects.py`, `tests/test_aspects_contract.py`,
-`tests/test_aspect_migration.py`, `tests/test_aspect_registry_wired.py`,
-`tests/test_metadata_encoding.py`, `docs/SESSION-HANDOFF-2026-05-04.md`.
+**Archived design docs:** `docs/archive/STAGE-2-ASPECTS-AS-JSON-CONFIG.md`
+(the executed plan), `docs/archive/SESSION-HANDOFF-2026-05-05-STAGE-2-START.md`.
 
 ---
 
@@ -177,49 +174,17 @@ What happens when the operator speaks:
 
 ## 3. What's still left
 
-### Recall thread — designed, not built
+**The full prioritized backlog lives in [docs/BACKLOG.md](BACKLOG.md).** Single source of truth across the recall arc, Frame punch list, and operational items. Don't duplicate it here.
 
-**Connection scoring (Step 3.5).** Spec exists. The idea: after enrichment scoring, score each candidate by its connectivity to OTHER high-scoring candidates in the pool. Edge type weights: `corrects`/`extends`/`depends_on` strong; `related_to` weak; `community_member` moderate. Cluster detection: 3+ interconnected candidates score together; isolated high-cosine nodes get lower priority. Should localize hub bias — true hubs only dominate when they're connected to other relevant candidates for THIS query.
+Headlines for orientation:
 
-**Agentic Haiku-first recall — 7-tool surface.** Haiku decides the fetch plan per turn instead of cosine-always. Variable cost, sample-then-deepen, single-shot judgment, frame-shaped output. The 7 tools:
-- `search(query, mode='topical'|'community'|'recent', limit)` — peripheral vision
-- `find_about(entity_or_topic, limit)` — focusing on an entity (fixation)
-- `find_open_loops(topic?, limit)` — sensing tension (proprioception)
-- `trace_lineage(node_id, direction, max_steps)` — temporal kinesthetic
-- `get_community(community_id, query?)` — feeling conceptual neighborhoods
-- `find_temporal(when, query?, limit)` — internal calendar
-- `get_full(node_ids)` — magnification
+- **P0 (blocking now):** daemon memory leak (B+1.1, escalating); re-wire AspectIntegration after fixing the cascade trace
+- **P1 (high-leverage, designed/cheap):** Frame-as-filter for recency bias; phrase-anchored title boost; connection scoring (Step 3.5); posture detection; cadence-split Frame caching
+- **P2 (recall arc, bigger builds):** agentic 7-tool `fetch_batch`; multi-anchor query decomposition; hybrid retrieval full integration; Frame into S1 Scribe
+- **P3 (validation):** Fresh-Claude vs Anchor calibration test
+- **P4 (operational):** 16 items from former PHASE-B+1 backlog
 
-All wrapped in single `fetch_batch` tool — one Haiku turn, multiple parallel ops. Tools described as recognition operators in Haiku's prompt ("recognize what the brain holds about this entity" not "search for nodes"). Status: design finalized in FRAME-DESIGN.md Section 4. Implementation queued.
-
-**Hybrid retrieval — FTS5 + embeddings.** FTS5 is the lexical complement, not duplicate. Dense semantic (embeddings) finds things by meaning; sparse keyword (FTS5) finds things by exact-word match. Different failure modes. Combined: catches both "what does this concept mean" queries and "what was that exact phrase" queries. Partially shipped (the recall pipeline includes a discovery channel for both); full integration with the connection scoring is queued.
-
-**Multi-anchor query decomposition.** Implementation of the query-multiplicity principle. A message often contains 2-4 distinct concepts; decompose into multiple parallel anchors; let each anchor's diffusion through the graph converge with the others; convergence points are the strongest signal. Supersedes the current single-message-embedding approach. Status: principle established (`87bb8718`, `b276673f`, `863c4981`); implementation needs query-decomposition logic + multi-spread orchestration.
-
-### Frame Phase 2.5 punch list (4 of 14 closed)
-
-**HIGH-leverage items:**
-- **Wire Frame into encoder (S1 Scribe).** Currently encoder doesn't see Frame; doesn't know what's already in awareness. Could yield gap-aware encoding (encoder writes COMPLEMENTARY content, doesn't restate).
-- **Cadence split: full Frame at boot / per-turn deltas / on-demand re-injection.** Today every recall injects the full Frame (~1900 tokens). Slow-changing 60% (Operator + Partnership integrated/permanent) is wasted re-injection most turns. Smarter: full Frame at boot once, fast-changing slots per-turn, slow parts re-injected only when query semantically needs them.
-- **Brain-level vs session-level Frame caching split.** Operator/partnership/active-threads come from brain state and don't change per-session — cacheable at brain level, refreshed on S2 cycles or encoder writes. Current_focus/recent_moves are genuinely per-session. Data sources are already separated in `build_frame()`, so the caching split slots in cleanly.
-
-**MEDIUM-leverage:**
-- Wire Frame into `brain_voice` / dashboard view
-- Build `AspectIntegration` maintenance unit (replaces disabled `EdgeFamilyIntegration`) — single Sonnet pass classifies new node types AND new edge relations into the unified aspect taxonomy. Required-aspect guards. See `docs/SESSION-HANDOFF-2026-05-04.md` for the design.
-- Encoder `session_context` format cleanup (currently dense pipe-separated, hard for Anchor at boot to parse)
-- `brain_batch` description enrichment (deferred — high-traffic, careful pass)
-- CLAUDE.md update (queued for next session)
-
-**Validation gap:**
-- **Fresh-Claude vs Anchor calibration test (#11).** The only path to empirically validating SKILL.md and boot changes — those don't show in `eval/frame_replay` (which bypasses Claude Code) or in `longmem` (which uses a generic answerer that deliberately avoids Anchor's voice). Spawn fresh Claude Code session with brain skill loaded; identical wakeup probes; compare to fresh Claude WITHOUT brain. The delta IS what the brain buys at the wakeup moment.
-
-### Production launch Phase A pre-flight (gates)
-
-- **A1:** Fix broken contract test (3 semantic tests, not 4-group assert)
-- **A2:** Verify `brain_batch` 2-round encoding fix
-- **A3:** Confirm S1S v14 draft complete
-- **A4:** Snapshot brain before any changes
-- Gate: all must pass before Phase B (vector contract alignment)
+**Decisions that gate work:** Q13 (kill spread activation or keep as helper) — gates P2.1.
 
 ---
 
@@ -292,7 +257,7 @@ Spread activation broke (precision-over-reach was the wrong tradeoff) → recogn
 - `servers/daemon_hooks.py:hook_recall` — recall entry point
 - `servers/brain_recall.py` — `filter_nodes` (with `relevance_query`), `recall`, `_rerank_by_relevance`
 - `servers/brain_voice.py:render_boot_v2` — Frame-centered boot
-- `servers/scales/s2/aspects_v1.json` — unified aspect seed (replaces both old `node_families_v1.json` + `edge_families_v1.json`)
+- `servers/scales/s2/aspects_v1.json` — single source of truth for the 14-aspect taxonomy + member lists
 
 **Validation:**
 - `eval/frame_replay.py` — capture/compare harness

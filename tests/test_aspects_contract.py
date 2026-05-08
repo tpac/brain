@@ -198,34 +198,43 @@ class TestSeedLoadsViaRegistry(unittest.TestCase):
                 self.assertGreater(len(aspect.metadata['display_label']), 0)
 
 
-class TestNoMemberOverlap(unittest.TestCase):
-    """A single type/relation should appear in only one aspect — otherwise
-    the reverse-lookup map is ambiguous."""
+class TestMultiMembershipShape(unittest.TestCase):
+    """Multi-membership is allowed (a string can appear in 2+ aspects).
+    Reverse lookup remains deterministic — the FIRST aspect to list a
+    string in JSON iteration order wins for `by_node_type`/`by_edge_relation`.
+
+    Was previously TestNoMemberOverlap, which enforced single-membership.
+    Single-membership was dropped 2026-05-08 — recall expressivity (one
+    edge serving multiple aspect-filtered queries) beats reverse-lookup
+    determinism. The deterministic-lookup property is now achieved by
+    JSON-iteration-order convention rather than uniqueness.
+    """
 
     def setUp(self):
         self.seed = _load_seed()
 
-    def test_no_node_type_appears_in_two_aspects(self):
-        seen = {}  # type → first aspect that claims it
+    def test_member_strings_are_well_formed(self):
+        # Lists of strings, no nested structure, no empty strings
         for name, spec in self.seed.items():
             for t in spec['node_types']:
-                if t in seen:
-                    self.fail(
-                        "Node type '%s' appears in both '%s' and '%s' — "
-                        "reverse lookup would be ambiguous" % (t, seen[t], name)
-                    )
-                seen[t] = name
-
-    def test_no_edge_relation_appears_in_two_aspects(self):
-        seen = {}
-        for name, spec in self.seed.items():
+                self.assertIsInstance(t, str, '%s node_type entry not a string' % name)
+                self.assertTrue(t, '%s has empty node_type entry' % name)
             for r in spec['edge_relations']:
-                if r in seen:
-                    self.fail(
-                        "Edge relation '%s' appears in both '%s' and '%s' — "
-                        "reverse lookup would be ambiguous" % (r, seen[r], name)
-                    )
-                seen[r] = name
+                self.assertIsInstance(r, str, '%s edge_relation entry not a string' % name)
+                self.assertTrue(r, '%s has empty edge_relation entry' % name)
+
+    def test_reverse_lookup_resolves_deterministically(self):
+        # If a string is in N aspects, by_X should still resolve to ONE.
+        # The contract: first aspect to claim it (JSON iteration order) wins.
+        from servers.aspects import AspectRegistry
+        registry = AspectRegistry.from_dict(brain=None, data=self.seed)
+        for name, spec in self.seed.items():
+            for t in spec['node_types']:
+                resolved = registry.by_node_type(t)
+                self.assertIsNotNone(resolved, 'by_node_type(%s) returned None' % t)
+            for r in spec['edge_relations']:
+                resolved = registry.by_edge_relation(r)
+                self.assertIsNotNone(resolved, 'by_edge_relation(%s) returned None' % r)
 
 
 if __name__ == '__main__':

@@ -89,13 +89,15 @@ REF_TYPES = {
                          "consolidation_candidates",  # embedding scan + behavioral evidence
                          "heal_archive",         # decoder-level archive of broken artifacts (e.g. 0-member communities)
                          "correction_chains",    # brain-wide correction chain traversal
-                         "healer_scan"],         # S2 Healer: gaps + flags scanned
+                         "healer_scan",          # S2 Healer: gaps + flags scanned
+                         "aspect_scan"],         # S2 AspectIntegration: distinct types/relations vs aspects_v1.json
     ("s2", "K"):       ["community_proposals",  # S2CD proposals (placements, overlaps, splits, seeds)
                          "community_partition",  # algorithm output (communities + membership)
                          "community_diff",       # comparison with previous run
                          "consolidation_proposals",   # enriched clusters with pre-classification
                          "stale_nodes",          # nodes not accessed recently
-                         "healer_proposals"],    # S2 Healer: nodes to heal (fill missing fields)
+                         "healer_proposals",     # S2 Healer: nodes to heal (fill missing fields)
+                         "aspect_proposals"],    # S2 AspectIntegration: candidate strings + example records
     ("s2", "delta"):   ["community_enriched",   # S2CE enrichment results (accepted, rejected, placed)
                          "community_created",    # new community node
                          "community_updated",    # revised community node
@@ -107,7 +109,8 @@ REF_TYPES = {
                          "kept_distinct",        # similar_to edge, no merge
                          "confidence_adjust",       # adjusted confidence scores
                          "healer_generated",        # S2 Healer: missing fields generated + stored
-                         "node_revised",            # field-level revise emitted by S2 units (healer, consolidation, future aspect_integration)
+                         "aspect_classified",       # S2 AspectIntegration: candidates merged into aspects_v1.json
+                         "node_revised",            # field-level revise emitted by S2 units (healer, consolidation)
                          "edge_relation_revised"],  # connect upsert / archive emitted by S2 units
     ("s2", "outcome"): ["recall_improved",      # community nodes improved recall
                          "operator_reviewed"],   # Tom reviewed S2 output
