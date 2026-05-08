@@ -2605,6 +2605,7 @@ class VectorDAL:
     def find_missing(self, vector_type: str, limit: int = 50,
                      model: Optional[str] = None,
                      node_ids: Optional[set] = None,
+                     require_kv_keys_any: Optional[List[str]] = None,
                      source_kv_keys: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Find active nodes whose vector for `vector_type` is missing or stale.
 
@@ -2615,14 +2616,24 @@ class VectorDAL:
         When `node_ids` is given, scope the scan to just those IDs (queue
         drain path — don't re-scan the whole graph on every tick).
 
-        When `source_kv_keys` is given, restrict to nodes that have at least
-        one of those keys present in node_metadata_kv with a non-empty value.
-        This prevents the field-cohort backfill from filling its top-N batch
-        with nodes that lack the source field — which would leave older
-        nodes-with-the-field stuck below the LIMIT cutoff and never embedded.
+        When `require_kv_keys_any` is given, restrict to nodes that have at
+        least one of those keys present in node_metadata_kv with a non-empty
+        value. **OR semantics** — node passes if ANY listed key matches; the
+        list is *required-any-of*, not *all-of-these*. This prevents the
+        field-cohort backfill from filling its top-N batch with nodes that
+        lack the source field — older nodes-with-the-field would otherwise
+        be stuck below the LIMIT cutoff and never embedded.
+
+        `source_kv_keys` is an accepted alias for `require_kv_keys_any`
+        (the prior name was misleading — sounded like "the keys that ARE
+        the source" rather than "keys that must exist"). Either kwarg works;
+        if both are provided, `require_kv_keys_any` wins.
 
         Returns [{id, title, content}] ordered by recency of access.
         """
+        # Resolve alias: prefer the new explicit name; fall back to the old.
+        if require_kv_keys_any is None:
+            require_kv_keys_any = source_kv_keys
         where = ['n.archived = 0']
         params: list = []
 
@@ -2647,13 +2658,13 @@ class VectorDAL:
             where.append('n.id IN (%s)' % ph)
             params.extend(ids)
 
-        if source_kv_keys:
-            ph = ','.join('?' * len(source_kv_keys))
+        if require_kv_keys_any:
+            ph = ','.join('?' * len(require_kv_keys_any))
             where.append(
                 'EXISTS (SELECT 1 FROM node_metadata_kv kv '
                 'WHERE kv.node_id = n.id AND kv.key IN (%s) '
                 "AND kv.value IS NOT NULL AND kv.value != '')" % ph)
-            params.extend(source_kv_keys)
+            params.extend(require_kv_keys_any)
 
         sql = ('SELECT n.id, n.title, n.content FROM nodes n '
                'WHERE ' + ' AND '.join(where) +

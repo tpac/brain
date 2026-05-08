@@ -725,13 +725,20 @@ def _handle_brain_batch(brain, args, graph_changes):
     # Pass 2: deferred per-op connect_to resolution. Runs AFTER all ops so
     # siblings declared in any order resolve correctly. _apply_connect_to
     # logs all failures to debug_log; this is sequencing-agnostic and never
-    # raises.
+    # raises. Returns (edges_created, failures_logged) — both surfaced in
+    # the batch result so a cycle with N requested connect_to and 0 edges
+    # has a visible "connect_to_failures=N" reason.
     connect_to_edges = 0
+    connect_to_failures = 0
     for src_id, ct_spec in deferred_connects:
-        connect_to_edges += brain._apply_connect_to(
+        edges, fails = brain._apply_connect_to(
             src_id, ct_spec, sibling_map=sibling_map)
+        connect_to_edges += edges
+        connect_to_failures += fails
     if connect_to_edges:
         graph_changes.append("CONNECT_TO: %d edges" % connect_to_edges)
+    if connect_to_failures:
+        graph_changes.append("CONNECT_TO_FAILURES: %d" % connect_to_failures)
 
     succeeded = sum(1 for r in results if r.get("ok"))
     return {"ok": True, "result": {
@@ -739,6 +746,7 @@ def _handle_brain_batch(brain, args, graph_changes):
         "succeeded": succeeded,
         "failed": len(operations) - succeeded,
         "connect_to_edges": connect_to_edges,
+        "connect_to_failures": connect_to_failures,
         "results": results,
     }}
 

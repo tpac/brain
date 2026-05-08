@@ -694,6 +694,8 @@ class BrainRememberMixin:
         # Inside remember_batch / brain_batch, connect_to is popped from the
         # spec BEFORE this call and processed AFTER all siblings are created.
         if connect_to:
+            # remember() (single-node path) doesn't track connect_to failures
+            # in its return shape; per-call logging via _log_error covers that.
             self._apply_connect_to(node_id, connect_to, sibling_map=None)
 
         # v6→v7: Auto-connect to conversation context (Machine 1)
@@ -1314,10 +1316,15 @@ class BrainRememberMixin:
         """Resolve a connect_to entry to (target_id, relation_pairs).
 
         sibling_map: {lowercased_title: node_id} for nodes created in the
-                     same batch. Sibling exact-match (case-insensitive) wins
-                     over catalog fuzzy-match — NEW wins on title collision.
-                     If you mean an existing catalog node, use revise on its
-                     id, not duplicate-title remember.
+                     same batch. Sibling matching is CASE-INSENSITIVE —
+                     keys are lowered when the map is built (see
+                     remember_batch sibling_map construction) AND lowered
+                     again at lookup. Sibling exact-match (case-insensitive)
+                     wins over catalog fuzzy-match — NEW wins on title
+                     collision. If you mean an existing catalog node, use
+                     revise on its id, not duplicate-title remember.
+                     (Catalog fuzzy-match itself preserves case — only the
+                     batch-sibling lookup is normalized.)
         exclude_self: source node_id; resolution to this id is treated as a
                       self-reference and rejected.
 
@@ -1406,23 +1413,32 @@ class BrainRememberMixin:
         All failures log loudly; the function never raises and never blocks
         the surrounding write path.
 
-        Returns the count of edges created.
+        Returns (edges_created, failures) — failures is the count of
+        connect_to entries that failed (resolve returned None OR the
+        connect_typed call raised). The encoder uses this so a cycle
+        with N requested connect_to and 0 connect_to_edges has a visible
+        reason ("connect_to_failures=N") in the batch result.
         """
         if not connect_to_spec:
-            return 0
+            return 0, 0
         if not isinstance(connect_to_spec, list):
             self._log_error(
                 'connect_to_invalid',
                 TypeError("connect_to must be a list, got %s"
                           % type(connect_to_spec).__name__),
                 'src=%s' % src_id[:8])
-            return 0
+            return 0, 0
 
         created = 0
+        failures = 0
         for entry in connect_to_spec:
             target_id, relation_pairs = self._resolve_connect_to_entry(
                 entry, sibling_map=sibling_map, exclude_self=src_id)
             if target_id is None:
+                # Resolution failed — _resolve_connect_to_entry already
+                # logged via _log_error. Count it so the batch result can
+                # surface "tried N, failed M" instead of just "0 created".
+                failures += 1
                 continue
             for rel, desc in relation_pairs:
                 try:
@@ -1430,11 +1446,12 @@ class BrainRememberMixin:
                                        weight=0.6, description=desc)
                     created += 1
                 except Exception as e:
+                    failures += 1
                     self._log_error(
                         'connect_to_failed', e,
                         'src=%s target=%s rel=%s' % (
                             src_id[:8], target_id[:8], rel))
-        return created
+        return created, failures
 
     def remember_batch(self, nodes: List[Dict],
                         connect_to: Optional[List[str]] = None,
@@ -1486,9 +1503,12 @@ class BrainRememberMixin:
                     deferred_connects.append((result['id'], ct_spec))
 
         # Pass 2: resolve per-node connect_to with full sibling_map populated.
+        connect_to_failures = 0
         for src_id, ct_spec in deferred_connects:
-            connections_created += self._apply_connect_to(
+            edges, fails = self._apply_connect_to(
                 src_id, ct_spec, sibling_map=sibling_map)
+            connections_created += edges
+            connect_to_failures += fails
 
         # Auto-connect new nodes to each other
         if auto_connect and len(created_ids) > 1:
@@ -1547,6 +1567,7 @@ class BrainRememberMixin:
             'nodes_created': len(created_ids),
             'results': results,
             'connections_created': connections_created,
+            'connect_to_failures': connect_to_failures,
         }
 
     def revise_batch(self, revisions: List[Dict]) -> Dict[str, Any]:
