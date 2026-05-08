@@ -207,94 +207,19 @@ def _handle_enrichment_coverage(brain, args, graph_changes):
     return {"ok": True, "result": brain.get_enrichment_coverage()}
 
 
-# pre_edit dispatch-level cache (2026-05-08).
-# Wraps the FULL handler result (pre_edit + change_impacts) so cache hits
-# avoid the call to brain.pre_edit() AND to brain.get_change_impact().
-#
-# Why a second cache layer here, when brain.pre_edit() already caches
-# internally? Because:
-#   1. brain.pre_edit() doesn't see change_impacts — that's added by this
-#      handler. Inner cache hits would still pay the SQL for change_impacts.
-#   2. This cache lives at the same layer as the daemon's TCP dispatch, so
-#      a cache hit returns to the client almost immediately. The pool worker
-#      that handled the request frees fast, doesn't pile up under load.
-#   3. The brain-level cache stays for direct callers (tests, relearning)
-#      that bypass dispatch.
-#
-# Both layers share the same TTL and a lock-protected dict on the brain
-# instance. ~95% of the work-skip happens at this outer layer in production.
-_DISPATCH_PRE_EDIT_TTL_S = 5.0
-_DISPATCH_PRE_EDIT_MAX = 50
-
-
-def _dispatch_pre_edit_cache_get(brain, file: str):
-    """Return cached full handler result for file if within TTL, else None.
-
-    Returns a deepcopy so callers (the dispatcher serializer, MCP plugin
-    framing) can mutate freely.
-    """
-    import time as _time
-    import copy as _copy
-    if not hasattr(brain, '_pre_edit_dispatch_cache'):
-        return None
-    now = _time.time()
-    with brain._pre_edit_dispatch_cache_lock:
-        entry = brain._pre_edit_dispatch_cache.get(file)
-        if entry is None:
-            return None
-        result, ts = entry
-        if now - ts > _DISPATCH_PRE_EDIT_TTL_S:
-            del brain._pre_edit_dispatch_cache[file]
-            return None
-        return _copy.deepcopy(result)
-
-
-def _dispatch_pre_edit_cache_put(brain, file: str, result: dict) -> None:
-    """Cache full handler result for file. Lazy-inits + LRU caps."""
-    import time as _time
-    import threading
-    if not hasattr(brain, '_pre_edit_dispatch_cache'):
-        brain._pre_edit_dispatch_cache = {}
-        brain._pre_edit_dispatch_cache_lock = threading.Lock()
-    now = _time.time()
-    with brain._pre_edit_dispatch_cache_lock:
-        brain._pre_edit_dispatch_cache[file] = (result, now)
-        if len(brain._pre_edit_dispatch_cache) > _DISPATCH_PRE_EDIT_MAX:
-            oldest = min(brain._pre_edit_dispatch_cache,
-                         key=lambda f: brain._pre_edit_dispatch_cache[f][1])
-            del brain._pre_edit_dispatch_cache[oldest]
-
-
 def _handle_pre_edit(brain, args, graph_changes):
+    """Pre-edit handler. The expensive recall under suggest() is
+    deduplicated at the recall layer (brain.recall result cache + single
+    flight) so concurrent / repeat pre_edit calls collapse there. This
+    handler stays simple."""
     file = args.get("file", "")
     tool_name = args.get("tool_name", "Edit")
-
-    # Dispatch-level cache check — short-circuits both brain.pre_edit() and
-    # brain.get_change_impact() on cache hit, freeing the pool worker fast.
-    if file:
-        cached = _dispatch_pre_edit_cache_get(brain, file)
-        if cached is not None:
-            # Annotate so dashboards can see when hits fired, mirroring the
-            # inner cache's timings annotation.
-            cached.setdefault('timings', {})['dispatch_cache_hit'] = True
-            # Bookkeeping that the brain's own pre_edit would have done — so
-            # encoding-health stats stay accurate even on cache hits.
-            try:
-                brain.record_edit_check()
-            except Exception as _e:
-                brain._log_error("pre_edit_record_edit_check", _e,
-                                 "incrementing edit check counter on cache hit")
-            return {"ok": True, "result": cached}
-
     data = brain.pre_edit(file=file, tool_name=tool_name)
     try:
         data["change_impacts"] = brain.get_change_impact(file)
     except Exception as e:
         brain._log_error("pre_edit_change_impact", e, "fetching change impacts for %s" % file[:60])
         data["change_impacts"] = []
-
-    if file:
-        _dispatch_pre_edit_cache_put(brain, file, data)
     return {"ok": True, "result": data}
 
 

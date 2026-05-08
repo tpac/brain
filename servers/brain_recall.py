@@ -14,6 +14,16 @@ import math
 import struct
 import sys
 import time
+# Recall result cache (2026-05-08) — short-TTL dedup on top of the
+# single-flight gate. 10s window covers multi-hook bursts (pre_edit +
+# pre_bash_safety + hook_recall fire on every tool call) without
+# letting suggestions go stale on natural pauses. Tom: "let's increase
+# pre_edit and bash cache to 10 seconds" — both go through this single
+# recall layer now, so one TTL knob covers both.
+_RECALL_CACHE_TTL_S = 10.0
+_RECALL_CACHE_MAX_ENTRIES = 100
+
+
 from .brain_constants import (
     CRITICAL_BOOST,
     CRITICAL_SIMILARITY_THRESHOLD,
@@ -968,7 +978,172 @@ class BrainRecallMixin:
 
         Returns:
             Dict with results, recall_ref, _embedding_stats, intent, _recall_mode
+
+        Two layers of dedup (2026-05-08):
+        1. Result cache (5s TTL) — repeat identical recalls return cached
+           result without re-running. Deepcopy on read so callers are
+           isolated.
+        2. Single-flight gate — concurrent identical recalls share work:
+           one becomes leader, others wait for its result.
+
+        Both keyed by (query, filter, limit, offset, include_archived,
+        min_recency, project, session_id, situation_vec). session_id is
+        in the key because synaptic fatigue is per-session.
+
+        Replaces the dispatch + brain.pre_edit caches: every recall caller
+        (pre_edit, pre_bash_safety, hook_recall, MCP) now benefits.
         """
+        # Build dedup key from result-affecting params.
+        try:
+            filter_key = json.dumps(filter, sort_keys=True, default=str) if filter else None
+            sit_key = bytes(situation_vec) if situation_vec is not None else None
+            dedup_key = (
+                query, int(min(limit, MAX_PAGE_SIZE)), int(offset),
+                bool(include_archived), float(min_recency or 0),
+                project, session_id, filter_key, sit_key,
+            )
+        except Exception:
+            # If key construction fails, skip dedup — better to do
+            # redundant work than crash the recall path.
+            dedup_key = None
+
+        # Layer 1: result cache fast path
+        if dedup_key is not None:
+            cached = self._recall_cache_get(dedup_key)
+            if cached is not None:
+                return cached
+
+        # Layer 2: single-flight gate
+        if dedup_key is not None:
+            inflight, leader = self._recall_inflight_acquire(dedup_key)
+            if not leader:
+                # Wait for leader. .result() blocks until set_result/
+                # set_exception fires; deepcopy keeps callers isolated.
+                import copy as _copy
+                return _copy.deepcopy(inflight.result())
+
+            # Leader path — compute, populate cache, fan out, clean up.
+            try:
+                result = self._run_recall_with_commit(
+                    query=query, filter=filter, limit=limit, offset=offset,
+                    include_archived=include_archived, min_recency=min_recency,
+                    project=project, session_id=session_id,
+                    situation_vec=situation_vec, source=source)
+                self._recall_cache_put(dedup_key, result)
+                inflight.set_result(result)
+                return result
+            except Exception as e:
+                inflight.set_exception(e)
+                raise
+            finally:
+                self._recall_inflight_release(dedup_key, inflight)
+
+        # Dedup disabled (key construction failed) — fall through.
+        return self._run_recall_with_commit(
+            query=query, filter=filter, limit=limit, offset=offset,
+            include_archived=include_archived, min_recency=min_recency,
+            project=project, session_id=session_id,
+            situation_vec=situation_vec, source=source)
+
+    def _run_recall_with_commit(self, **kwargs):
+        """Wrapper around _recall_impl that commits ONCE at the end of any
+        path (success, early return, or exception).
+
+        Why this exists: _mark_accessed accumulates UPDATEs without
+        committing (the commit storm was the root cause of spinning CPU
+        under concurrent recall load — see commit log 2026-05-08). The
+        single end-of-recall commit holds the SQLite write lock briefly
+        once instead of N times. Try/finally ensures we don't leak an
+        open transaction on early returns or exceptions.
+        """
+        try:
+            return self._recall_impl(**kwargs)
+        finally:
+            try:
+                self.conn.commit()
+            except Exception as _e:
+                self._log_error('recall_final_commit', _e,
+                                'committing post-recall writes')
+
+    # ─── recall result cache (5s TTL) ─────────────────────────────────
+
+    def _recall_cache_get(self, key):
+        """Return cached recall result if present + within TTL, else None.
+
+        Returns deepcopy so callers can mutate freely.
+        """
+        import time as _time
+        import copy as _copy
+        if not hasattr(self, '_recall_cache'):
+            return None
+        now = _time.time()
+        with self._recall_cache_lock:
+            entry = self._recall_cache.get(key)
+            if entry is None:
+                return None
+            result, ts = entry
+            if now - ts > _RECALL_CACHE_TTL_S:
+                del self._recall_cache[key]
+                return None
+            return _copy.deepcopy(result)
+
+    def _recall_cache_put(self, key, result) -> None:
+        """Cache a recall result with current timestamp. Lazy-init + LRU cap."""
+        import time as _time
+        import threading
+        if not hasattr(self, '_recall_cache'):
+            self._recall_cache = {}
+            self._recall_cache_lock = threading.Lock()
+        now = _time.time()
+        with self._recall_cache_lock:
+            self._recall_cache[key] = (result, now)
+            if len(self._recall_cache) > _RECALL_CACHE_MAX_ENTRIES:
+                oldest = min(self._recall_cache,
+                             key=lambda k: self._recall_cache[k][1])
+                del self._recall_cache[oldest]
+
+    def _recall_inflight_acquire(self, key):
+        """Return (future, is_leader). Lazy-inits inflight state on first call.
+
+        is_leader=True → caller computes the result + sets the future.
+        is_leader=False → caller waits on the existing future for the result.
+        """
+        import threading
+        from concurrent.futures import Future
+        if not hasattr(self, '_recall_inflight'):
+            self._recall_inflight = {}
+            self._recall_inflight_lock = threading.Lock()
+        with self._recall_inflight_lock:
+            existing = self._recall_inflight.get(key)
+            if existing is not None:
+                return existing, False
+            fut = Future()
+            self._recall_inflight[key] = fut
+            return fut, True
+
+    def _recall_inflight_release(self, key, fut) -> None:
+        """Drop the inflight slot. Defensive: ensure future is set so any
+        waiters that arrived AFTER set_result/set_exception don't deadlock
+        (shouldn't happen — they'd see existing fut and wait — but the
+        cost of guarding is one cheap check)."""
+        with self._recall_inflight_lock:
+            # Only delete if it's still the same future (defensive against
+            # a different recall having taken the slot, which shouldn't
+            # be possible but guard anyway).
+            if self._recall_inflight.get(key) is fut:
+                del self._recall_inflight[key]
+        if not fut.done():
+            fut.set_exception(RuntimeError(
+                'recall leader exited without setting result'))
+
+    def _recall_impl(self, query: str, filter=None, limit: int = 20,
+                     offset: int = 0, include_archived: bool = False,
+                     min_recency: float = 0, project=None,
+                     session_id=None, situation_vec=None,
+                     source: str = 'unknown') -> Dict[str, Any]:
+        """Actual recall implementation — hot path. Single-flight wrapper
+        in recall() ensures only one of these runs per (query, scope) at
+        a time across the daemon."""
         t0 = time.time()
         limit = min(limit, MAX_PAGE_SIZE)
 
@@ -1826,11 +2001,21 @@ class BrainRecallMixin:
             return []
 
     def _mark_accessed(self, node_id: str, session_id: str):
-        """Mark a node as accessed, log it, and increment synaptic fatigue."""
+        """Mark a node as accessed, increment synaptic fatigue.
+
+        Commit-batched (2026-05-08): the per-node `self.conn.commit()`
+        was removed. Each recall returns N nodes and used to commit N
+        times, which serialized concurrent recalls on the SQLite write
+        lock and was the root cause of sustained 100% CPU spinning under
+        hook-driven load. The pending UPDATE now batches into either:
+          - the _hebbian_strengthen commit at the end of recall, OR
+          - the explicit final commit in _recall_impl when Hebbian skipped
+        Both produce one commit per recall instead of N.
+        """
         node_dal = NodeDAL(self.conn)
         node_dal.mark_accessed(node_id)
-        self.conn.commit()
         # access_log write removed 2026-04-05 — table dropped
+        # commit deferred — see docstring
 
         # Increment session fatigue counter — next recall will dampen this node's cosine
         # Fatigue lives on SessionContext, persisted via ctx.save() on stop

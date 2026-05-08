@@ -22,18 +22,6 @@ from .brain_constants import (
     CONTEXT_BOOT_RECENT_LIMIT,
 )
 
-# Pre_edit result cache — debounce repeated calls on the same file during
-# multi-edit bursts. Watchdog (2026-05-08) showed pre_edit-driven recall
-# was the dominant CPU/memory pressure source: every Edit fires the hook,
-# the hook calls pre_edit, pre_edit calls suggest() → recall (O(N) cosine
-# scan over ~73K vectors). Tom rapidly editing the same file produced
-# parallel recall calls that piled up. With the suggest() fan-out cut
-# (1 query instead of 7) AND this debounce, the same-file-twice-in-5s
-# case becomes a no-op.
-_PRE_EDIT_CACHE_TTL_S = 5.0
-_PRE_EDIT_CACHE_MAX_ENTRIES = 50
-
-
 DESTRUCTIVE_PATTERNS = [
     re.compile(r'rm\s+(-[rf]+\s+|.*--force)', re.IGNORECASE),
     re.compile(r'git\s+worktree\s+remove', re.IGNORECASE),
@@ -490,27 +478,16 @@ class BrainAssemblyMixin:
         Returns:
             Dict with suggestions, procedures, context_files, encoding health, timings
 
-        Debounce (2026-05-08): repeat calls for the same file within
-        _PRE_EDIT_CACHE_TTL_S seconds return the cached result without
-        re-running suggest/procedure_trigger/context_files. record_edit_check
-        still fires on every call so encoding-health counters stay accurate.
+        Note (2026-05-08): the pre_edit-level cache that lived here was
+        removed in favor of a recall-layer cache (brain.recall now has a
+        result cache + single-flight gate). The recall-layer cache covers
+        every recall caller (pre_edit, pre_bash_safety, hook_recall,
+        manual MCP) instead of just pre_edit, and the cache is keyed by
+        the actual recall query — more correct than caching by filename.
         """
         import time as _time
         t0 = _time.time()
         timings = {}
-
-        # Always count the edit check, even on cache hit, so encoding-
-        # health stats (edits_since_last_remember) stay accurate.
-        self.record_edit_check()
-
-        # Cache check — same file in last few seconds returns cached result
-        # immediately, skipping the expensive recall path.
-        if file:
-            cached = self._pre_edit_cache_get(file)
-            if cached is not None:
-                cached['timings'] = {'total_ms': round((_time.time() - t0) * 1000),
-                                     'cache_hit': True}
-                return cached
 
         # 1. Suggest
         t1 = _time.time()
@@ -579,7 +556,7 @@ class BrainAssemblyMixin:
 
         timings['total_ms'] = round((_time.time() - t0) * 1000)
 
-        result = {
+        return {
             'suggestions': suggest_result.get('suggestions', []),
             'procedures': proc_result.get('matched', []),
             'context_files': context_files,
@@ -594,56 +571,6 @@ class BrainAssemblyMixin:
             'debug_enabled': self.get_debug_status(),
             'timings': timings,
         }
-        if file:
-            self._pre_edit_cache_put(file, result)
-        return result
-
-    # ─── pre_edit debounce cache helpers ─────────────────────────────────
-
-    def _pre_edit_cache_get(self, file: str):
-        """Return cached pre_edit result for file if within TTL, else None.
-
-        Returns a DEEP COPY so callers can freely mutate any nested list
-        or dict without affecting the cached entry. The result dict has
-        nested lists (suggestions, procedures, context_files) and a
-        nested dict (encoding) — shallow copy would leak mutations into
-        the cached entry. Lazy-inits cache state on first call.
-        """
-        import time as _time
-        import copy as _copy
-        if not hasattr(self, '_pre_edit_cache'):
-            return None
-        now = _time.time()
-        with self._pre_edit_cache_lock:
-            entry = self._pre_edit_cache.get(file)
-            if entry is None:
-                return None
-            result, ts = entry
-            if now - ts > _PRE_EDIT_CACHE_TTL_S:
-                # Stale — drop and miss
-                del self._pre_edit_cache[file]
-                return None
-            return _copy.deepcopy(result)
-
-    def _pre_edit_cache_put(self, file: str, result: dict) -> None:
-        """Cache a pre_edit result for the given file with current timestamp.
-
-        Lazy-inits cache state on first call. Caps total entries at
-        _PRE_EDIT_CACHE_MAX_ENTRIES via simple LRU-by-timestamp eviction.
-        """
-        import time as _time
-        import threading
-        if not hasattr(self, '_pre_edit_cache'):
-            self._pre_edit_cache = {}
-            self._pre_edit_cache_lock = threading.Lock()
-        now = _time.time()
-        with self._pre_edit_cache_lock:
-            self._pre_edit_cache[file] = (result, now)
-            if len(self._pre_edit_cache) > _PRE_EDIT_CACHE_MAX_ENTRIES:
-                # Evict oldest by ts
-                oldest = min(self._pre_edit_cache,
-                             key=lambda f: self._pre_edit_cache[f][1])
-                del self._pre_edit_cache[oldest]
 
     def safety_check(self, command: str) -> dict:
         """
