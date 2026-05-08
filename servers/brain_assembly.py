@@ -50,22 +50,29 @@ class BrainAssemblyMixin:
         if limit is None:
             limit = self.get_config('suggestion_limit', 5)
 
+        # Pre_edit cost surgery (2026-05-08): suggest() previously fanned out
+        # the inputs into up to 7 separate full recalls per call (context +
+        # joined filename tokens + each individual token > 2 chars + screen +
+        # action). Single-word tokens like 'servers', 'scales', 'edit'
+        # produced thousands of low-signal matches per query, and 7×O(N)
+        # cosine scans per Edit was the dominant CPU + memory pressure
+        # source (watchdog confirmed). Now: ONE query — the most-specific
+        # input available. context (e.g., "editing path/to/file.py") wins
+        # because it's the whole signal in one string; the fan-out lost
+        # precision while burning compute.
         queries = []
-
         if context:
             queries.append(context)
-        if file:
-            # Split filename into search tokens using camelCase-aware splitter
+        elif file:
+            # Fallback when caller didn't compose a context — use the joined
+            # tokens. Skip the per-token fan-out for the same precision-vs-
+            # cost reason.
             file_tokens = split_identifier(file)
             if file_tokens:
                 queries.append(' '.join(file_tokens))
-                # Individual tokens as separate queries for broader recall
-                if len(file_tokens) > 1:
-                    queries.extend(t for t in file_tokens if len(t) > 2)
-
-        if screen:
+        elif screen:
             queries.append(screen)
-        if action:
+        elif action:
             queries.append(action)
 
         if not queries:
