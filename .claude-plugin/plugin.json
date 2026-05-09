@@ -23,6 +23,14 @@
     "hooks"
   ],
   "mcpServers": "./.mcp.json",
+  "userConfig": {
+    "anthropic_api_key": {
+      "type": "string",
+      "title": "Anthropic API Key",
+      "description": "Used by the brain daemon to encode memories (S1 Scribe, Sonnet) and select recall candidates (S1 Surface, Haiku). Stored in your OS keychain. Get one at https://console.anthropic.com/settings/keys.",
+      "sensitive": true
+    }
+  },
   "config": {
     "embedder": {
       "model_name": "nomic-ai/nomic-embed-text-v1.5-Q",

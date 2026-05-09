@@ -21,18 +21,52 @@ import os
 
 
 def load_env():
-    """Load .env file for API key. Shared by all scale agents."""
-    env_path = os.path.join(os.path.dirname(os.path.dirname(
-        os.path.dirname(os.path.abspath(__file__)))), '.env')
-    if os.path.exists(env_path):
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    k, v = line.split('=', 1)
-                    k, v = k.strip(), v.strip()
-                    if not os.environ.get(k):  # override empty strings too
-                        os.environ[k] = v
+    """Load .env file for API key. Shared by all scale agents.
+
+    Search order (first existing file wins for any given key):
+      1. ${BRAIN_DB_DIR}/.env   — runtime cache populated by boot-brain.sh
+                                  from userConfig.anthropic_api_key (the
+                                  Claude Code keychain). The standard path.
+      2. ~/AgentsContext/brain/.env — same as (1) when BRAIN_DB_DIR is unset
+                                      (e.g. ad-hoc scripts started outside
+                                      the launchd plist).
+      3. <plugin_root>/.env    — legacy in-repo .env, kept as fallback so
+                                 pre-migration installs keep working until
+                                 the user moves to userConfig via /plugin.
+
+    A key already present in os.environ (real shell env, or a higher
+    -priority earlier file) is never overwritten by a later source.
+    """
+    plugin_root = os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__))))
+    candidates = []
+    db_dir = os.environ.get('BRAIN_DB_DIR')
+    if db_dir:
+        candidates.append(os.path.join(db_dir, '.env'))
+    candidates.append(os.path.join(
+        os.path.expanduser('~'), 'AgentsContext', 'brain', '.env'))
+    candidates.append(os.path.join(plugin_root, '.env'))
+
+    seen = set()
+    for env_path in candidates:
+        if env_path in seen or not os.path.exists(env_path):
+            continue
+        seen.add(env_path)
+        try:
+            with open(env_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        k, v = line.split('=', 1)
+                        k, v = k.strip(), v.strip()
+                        # Don't overwrite a key already set by an earlier
+                        # (higher-priority) source.
+                        if not os.environ.get(k):
+                            os.environ[k] = v
+        except Exception:
+            # A profile-resolution failure must never crash an LLM call.
+            # If a file is unreadable, fall through to the next candidate.
+            continue
 
 
 def daemon_tcp_send(cmd, args):

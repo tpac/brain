@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/boot-brain.sh",
+            "command": "ANTHROPIC_API_KEY=\"${user_config.anthropic_api_key}\" bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/boot-brain.sh",
             "timeout": 15
           }
         ]
