@@ -199,11 +199,14 @@ class BrainDaemon:
         autosave_thread = threading.Thread(target=self._autosave_loop, daemon=True, name="autosave")
         autosave_thread.start()
 
-        # Memory watchdog — opt-in via config (memory_watchdog.enabled). Off by
-        # default. When the daemon leaks (it has — see brain memory `b6e32edd`
-        # category), flip the config to start RSS sampling + optional
-        # tracemalloc snapshots without restarting subsequent daemons. See
-        # servers/memory_watchdog.py for config keys.
+        # Memory watchdog — opt-in via config (memory_watchdog.enabled). Off
+        # by default. When the daemon leaks (it has — see brain memory
+        # `b6e32edd` category), flip the config to start RSS sampling so the
+        # next leak shows up in daemon.log without instrumenting allocations.
+        # Allocation-level profiling is intentionally NOT in the watchdog —
+        # tracemalloc inside the daemon turned recall into a 5-min spin
+        # (2026-05-08); use a one-shot diagnostic script or `py-spy` instead.
+        # See servers/memory_watchdog.py for config keys.
         try:
             from .memory_watchdog import MemoryWatchdog
             self._memory_watchdog = MemoryWatchdog.maybe_start(

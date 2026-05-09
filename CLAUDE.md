@@ -42,7 +42,7 @@ Auto-starts on first hook fire. **Maintenance mode:** `touch /tmp/brain-maintena
 
 The dashboard (`dashboard/`) is a passive observer — reads from the same DBs + `/tmp/brain-surface-result-*.json`, never writes.
 
-**Memory watchdog** (`servers/memory_watchdog.py`): opt-in profiling for diagnosing leaks. RSS sampling (`memory_watchdog.enabled`) and tracemalloc dumps (`memory_watchdog.tracemalloc_enabled`); both off by default, both read at daemon start. Enable when something feels off (RSS climbing, threads accumulating). Past leak: 2026-04-26 grew to 4.6 GB in 4 hours — the watchdog exists so the next leak doesn't require scrambling for profiling.
+**Memory watchdog** (`servers/memory_watchdog.py`): opt-in RSS + thread-count sampler. One config key (`memory_watchdog.enabled`), off by default, read at daemon start. Enable when something feels off (RSS climbing, threads accumulating) and the next leak will show up in daemon.log without instrumenting allocations. Past leak: 2026-04-26 grew to 4.6 GB in 4 hours — the watchdog exists so the next leak doesn't require scrambling for profiling. The watchdog is intentionally cheap-only: no in-process tracemalloc, no allocation tracking. A previous version had those (snapshot every 30s, 25-frame depth) and turned every recall into a 5-min spin because the recall hot path is allocation-heavy. If you need allocation-level profiling, run a one-shot script or attach `py-spy`/`lldb` to the live daemon — don't bake a profiler into the watchdog.
 
 ## Scale 0: Exchange
 
