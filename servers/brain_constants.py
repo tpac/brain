@@ -445,3 +445,13 @@ MAINTENANCE_MIN_INTERVAL_SECONDS = 15 * 60    # 15 min between runs
 # next poll regardless of idle. Catches multi-day stalls (observed 2.5d gaps
 # between 04-28 and 04-30 when the idle gate never opened).
 MAINTENANCE_FORCE_FIRE_SECONDS = 24 * 60 * 60
+
+# Boot grace period (added 2026-05-08): never fire S2 maintenance during the
+# first N seconds after daemon start, regardless of idle/min-interval state.
+# Why: maintenance with `last_activity_ts == 0.0` was treated as infinitely
+# idle and fired on the very first daemon poll, which made first-recall-
+# after-restart consistently time out (consolidation encoder held the write
+# lock for tens of seconds while making LLM calls). Boot should not be
+# overloaded with many things — the user gets a working brain immediately;
+# maintenance can wait its turn after the first interaction.
+MAINTENANCE_BOOT_GRACE_SECONDS = 90

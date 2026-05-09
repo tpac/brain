@@ -152,6 +152,27 @@ class Brain(
         self.conn.execute('PRAGMA busy_timeout = 30000')
         self.conn.execute('PRAGMA foreign_keys=ON')
 
+        # Separate write connection used ONLY by recall's _mark_accessed
+        # writes (2026-05-08). Decouples recall's frequent small UPDATE +
+        # COMMIT from any long-running write transaction on `self.conn`
+        # (consolidation/community/healer encoders, hooks, MCP writes).
+        # WAL mode lets two writer connections coordinate at the WAL layer
+        # in sub-ms; without this split, recall.commit() blocks for
+        # ~30s busy_timeout when consolidation holds the lock — first
+        # recall after boot timed out at ~261s observed.
+        self.conn_recall_write = sqlite3.connect(db_path, check_same_thread=False)
+        self.conn_recall_write.execute('PRAGMA journal_mode=WAL')
+        self.conn_recall_write.execute('PRAGMA busy_timeout = 30000')
+        self.conn_recall_write.execute('PRAGMA foreign_keys=ON')
+
+        # Daemon boot timestamp — used by run_maintenance_if_due to enforce
+        # MAINTENANCE_BOOT_GRACE_SECONDS so maintenance never fires during
+        # the first N seconds after start. Boot already runs schema +
+        # migrations + S0/S1 startup paths; piling consolidation on top
+        # makes first-user-recall consistently time out.
+        import time as _time
+        self._boot_time = _time.time()
+
         # Create schema if needed
         ensure_schema(self.conn, db_path=db_path)
 
@@ -1206,8 +1227,19 @@ class Brain(
             MAINTENANCE_IDLE_THRESHOLD_SECONDS,
             MAINTENANCE_MIN_INTERVAL_SECONDS,
             MAINTENANCE_FORCE_FIRE_SECONDS,
+            MAINTENANCE_BOOT_GRACE_SECONDS,
         )
         now = now if now is not None else _time.time()
+
+        # Boot grace gate (2026-05-08): never fire maintenance for the first
+        # N seconds after daemon start. Without this, the previous logic
+        # below (idle == inf when last_activity_ts is 0.0) made maintenance
+        # fire on the very first daemon poll, blocking the first user
+        # recall behind a long consolidation cycle.
+        boot_age = now - getattr(self, '_boot_time', now)
+        if boot_age < MAINTENANCE_BOOT_GRACE_SECONDS:
+            return None
+
         # last_activity_ts == 0.0 means "daemon just booted, no user
         # prompts yet" — treat as infinitely idle so S2 can fire
         # immediately (subject to min_interval). Logging idle_seconds = inf
@@ -1459,9 +1491,14 @@ class Brain(
                 print(f'[brain] Backup failed: {e}')
 
     def close(self):
-        """Commit, close both database connections, and remove from singleton cache."""
+        """Commit, close all database connections, and remove from singleton cache."""
         self.conn.commit()
         self.conn.close()
+        try:
+            self.conn_recall_write.commit()
+            self.conn_recall_write.close()
+        except Exception:
+            pass
         try:
             self.logs_conn.commit()
             self.logs_conn.close()

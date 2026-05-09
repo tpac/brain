@@ -1049,21 +1049,26 @@ class BrainRecallMixin:
         """Wrapper around _recall_impl that commits ONCE at the end of any
         path (success, early return, or exception).
 
-        Why this exists: _mark_accessed accumulates UPDATEs without
-        committing (the commit storm was the root cause of spinning CPU
-        under concurrent recall load — see commit log 2026-05-08). The
-        single end-of-recall commit holds the SQLite write lock briefly
-        once instead of N times. Try/finally ensures we don't leak an
-        open transaction on early returns or exceptions.
+        Why this exists: _mark_accessed accumulates UPDATEs on
+        self.conn_recall_write without committing (the commit storm
+        was the root cause of spinning CPU under concurrent recall
+        load — see commit log 2026-05-08). The single end-of-recall
+        commit on the recall write connection holds that connection's
+        write lock briefly once instead of N times, AND doesn't
+        contend with the main connection's long writes (consolidation
+        encoder LLM cycles).
+
+        Try/finally ensures we don't leak an open transaction on
+        early returns or exceptions.
         """
         try:
             return self._recall_impl(**kwargs)
         finally:
             try:
-                self.conn.commit()
+                self.conn_recall_write.commit()
             except Exception as _e:
                 self._log_error('recall_final_commit', _e,
-                                'committing post-recall writes')
+                                'committing post-recall writes on recall write conn')
 
     # ─── recall result cache (5s TTL) ─────────────────────────────────
 
@@ -2003,19 +2008,22 @@ class BrainRecallMixin:
     def _mark_accessed(self, node_id: str, session_id: str):
         """Mark a node as accessed, increment synaptic fatigue.
 
-        Commit-batched (2026-05-08): the per-node `self.conn.commit()`
-        was removed. Each recall returns N nodes and used to commit N
-        times, which serialized concurrent recalls on the SQLite write
-        lock and was the root cause of sustained 100% CPU spinning under
-        hook-driven load. The pending UPDATE now batches into either:
-          - the _hebbian_strengthen commit at the end of recall, OR
-          - the explicit final commit in _recall_impl when Hebbian skipped
-        Both produce one commit per recall instead of N.
+        Architecture (2026-05-08):
+        - Writes go to `self.conn_recall_write` (separate connection),
+          not the main `self.conn`. WAL mode lets the two writer
+          connections coordinate at the SQLite WAL layer in sub-ms,
+          so recall is no longer blocked by long write transactions
+          on the main connection (consolidation, hooks, MCP writes).
+        - Per-node commit removed (was the commit storm causing CPU
+          spin under concurrent hook-driven recall). The single final
+          commit happens in _run_recall_with_commit on the same
+          recall write connection, batching all _mark_accessed UPDATEs
+          from this recall.
         """
-        node_dal = NodeDAL(self.conn)
+        node_dal = NodeDAL(self.conn_recall_write)
         node_dal.mark_accessed(node_id)
         # access_log write removed 2026-04-05 — table dropped
-        # commit deferred — see docstring
+        # commit deferred — see _run_recall_with_commit
 
         # Increment session fatigue counter — next recall will dampen this node's cosine
         # Fatigue lives on SessionContext, persisted via ctx.save() on stop
