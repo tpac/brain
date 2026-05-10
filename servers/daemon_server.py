@@ -216,7 +216,31 @@ class BrainDaemon:
             self._log("memory_watchdog start failed: %s" % _wd_e)
             self._memory_watchdog = None
 
+        # Brain warmup — fault embeddings into mmap + build structural degree
+        # cache off the user's critical path. The first recall before this
+        # was paying ~15-20s and a ~2 GB RSS spike (observed 2026-05-09 with
+        # brain.db at 218 MB, 3 reproductions across daemon restarts). Both
+        # bills belong to boot, not the user's first prompt.
+        #
+        # Background thread: boot-blocking would re-introduce latency at a
+        # different lifecycle point. The recall hot path's lazy paths are
+        # idempotence guards — if the user prompts before warmup finishes,
+        # recall finishes the work itself.
+        warmup_thread = threading.Thread(
+            target=self._run_warmup, daemon=True, name="warmup")
+        warmup_thread.start()
+
         self._serve()
+
+    def _run_warmup(self):
+        """Background warmup. See Brain.warm_up() for what's covered."""
+        try:
+            timings = self.brain.warm_up()
+            self._log("Warmup done: %s" % timings)
+        except Exception as e:
+            # Warmup failure must never affect the daemon. Falling through
+            # to the recall hot path's lazy guards is acceptable degradation.
+            self._log("Warmup failed: %s" % e)
 
     def _bind_socket(self):
         """Bind TCP socket with retry for TIME_WAIT recovery."""

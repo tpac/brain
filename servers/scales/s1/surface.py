@@ -21,10 +21,6 @@ def _get_recently_surfaced(brain, session_id):
     lookback = SURFACE.get('recent_recalls_messages', 10)
     recent_k = brain._trace_dal.get_by_ref_type(
         'surface_selected', scale='s1', hours=24, limit=lookback)
-    # Backward compat: also check old 'judge_selected' ref_type
-    if not recent_k:
-        recent_k = brain._trace_dal.get_by_ref_type(
-            'judge_selected', scale='s1', hours=24, limit=lookback)
     seen_ids = set()
     for evt in recent_k:
         raw = evt.get('ref_id', '[]')
@@ -38,8 +34,8 @@ def _get_recently_surfaced(brain, session_id):
             try:
                 brain._log_error(
                     'surface_seen_ids_parse', _e,
-                    'malformed ref_id in judge_selected trace; sample=%r'
-                    % str(raw)[:120])
+                    'malformed ref_id in surface_selected trace; '
+                    'sample=%r' % str(raw)[:120])
             except Exception:
                 pass
     from servers.dal import NodeDAL
@@ -59,8 +55,8 @@ def _call_surface(brain, candidates_data, user_message,
     Returns: (surfaced_dict, surface_prompt, max_tokens, interaction_id)
         surfaced_dict has 'selected' list. Empty on failure.
     """
-    import anthropic
-    from servers.scales.s1.surface_contract import build_surface_prompt
+    from servers.scales.s1.surface_contract import (
+        build_surface_prompt, SURFACE_MODEL)
 
     # Recently surfaced (for dedup)
     recently_surfaced = []
@@ -73,15 +69,26 @@ def _call_surface(brain, candidates_data, user_message,
     retrieval_stats = result.get('_retrieval_stats') if isinstance(result, dict) else None
     intent = result.get('intent') if isinstance(result, dict) else None
 
-    # 2026-05-03 (Frame Phase 2.5 / surface prompt v2): instructions move
-    # to the system block with cache_control: ephemeral. The registered
-    # 'surface' interaction template lives in the cached prefix (1h TTL,
-    # ~2K tokens — past the 1024 caching threshold). Per-turn delta
-    # (Frame, conversation, candidates, message) goes in the user message.
-    # Backward compat: fall back to 'judge' interaction if 'surface' missing.
-    surface_interaction = brain.get_interaction('surface') or brain.get_interaction('judge')
-    surface_instructions = surface_interaction.get('template', '') if surface_interaction else ''
-    interaction_id = surface_interaction.get('id') if surface_interaction else None
+    # Instructions live in the system block; per-turn delta (Frame,
+    # conversation, candidates, message) goes in the user message. The
+    # earlier design relied on cache_control: ephemeral to amortize the
+    # prefix — removed 2026-05-09 after measuring the prefix at ~2390
+    # tokens, below Haiku 4.5's 4096-token cacheable minimum. See the
+    # client-construction comment below for the full reasoning.
+    #
+    # interaction_seed.py guarantees 'surface' is registered on every boot.
+    # If it's missing here, that's a real bug in the seed path, not
+    # something to silently degrade past — crash loudly and let the seed
+    # be fixed. (Loud-by-Default: silent fallbacks are how the prior
+    # cache_control marker stayed broken for six days.)
+    surface_interaction = brain.get_interaction('surface')
+    if not surface_interaction or not surface_interaction.get('template'):
+        raise RuntimeError(
+            "S1 Surface: no 'surface' interaction registered in "
+            "brain_logs.db. interaction_seed should have populated "
+            "this on Brain construction — check seed/DAL state.")
+    surface_instructions = surface_interaction['template']
+    interaction_id = surface_interaction.get('id')
 
     user_content, max_tokens = build_surface_prompt(
         candidates_data, user_message,
@@ -95,20 +102,34 @@ def _call_surface(brain, candidates_data, user_message,
     surface_prompt = (surface_instructions + "\n\n---\n\n" + user_content) \
         if surface_instructions else user_content
 
-    client = anthropic.Anthropic()
-    if surface_instructions:
-        api_resp = client.messages.create(
-            model="claude-haiku-4-5",
-            max_tokens=max_tokens,
-            system=[{"type": "text", "text": surface_instructions,
-                     "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": user_content}])
-    else:
-        # Defensive fallback: no template registered → all-in-user-message
-        api_resp = client.messages.create(
-            model="claude-haiku-4-5",
-            max_tokens=max_tokens,
-            messages=[{"role": "user", "content": user_content}])
+    # Reuse the daemon-lifetime client constructed in Brain.warm_up(). The
+    # client holds the warm httpx connection pool + already-handshaken TLS
+    # session to api.anthropic.com — constructing per call here would re-pay
+    # those costs. Falls back to a fresh client only if warmup didn't run
+    # (e.g. early test harness, warmup raised, brain freshly loaded outside
+    # the daemon path) — degrades gracefully to the old behavior.
+    #
+    # The cache_control: ephemeral marker that used to live on the system
+    # block was removed 2026-05-09 — measured by count_tokens, the prefix is
+    # ~2390 tokens, below Haiku 4.5's 4096-token minimum cacheable prefix.
+    # The marker silently no-ops at that size (cache_creation_input_tokens=0
+    # on every call). It was scaffolding that lied about runtime behavior.
+    # If the system block ever grows past 4096, add it back; until then,
+    # don't claim a feature we don't have.
+    client = getattr(brain, 'anthropic_client', None)
+    if client is None:
+        # warmup didn't run (test harness, ad-hoc Brain instance, or
+        # warmup raised) — construct on-demand and pay cold-start. Keeps
+        # the call site working in environments where Brain.warm_up()
+        # isn't on the boot path. The daemon always has it.
+        import anthropic
+        client = anthropic.Anthropic()
+
+    api_resp = client.messages.create(
+        model=SURFACE_MODEL,
+        max_tokens=max_tokens,
+        system=surface_instructions,
+        messages=[{"role": "user", "content": user_content}])
     raw = api_resp.content[0].text.strip()
 
     # Parse JSON — robust to the three shapes Haiku sometimes returns:

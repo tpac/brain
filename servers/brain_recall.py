@@ -297,6 +297,45 @@ def _rerank_by_relevance(conn, rich_nodes: list, query_text: str, limit: int,
 class BrainRecallMixin:
     """Recall methods for Brain."""
 
+    def _ensure_structural_degree_cache(self) -> None:
+        """Build the per-node structural degree cache used by fatigue.
+
+        Idempotent — returns immediately if already built. Called by:
+          - the recall hot path (lazy on first use)
+          - Brain.warm_up()  (eager at boot, off the user's critical path)
+
+        Reads `edges` × `edge_relations`, excluding `co_accessed` /
+        `emergent_bridge` (those are dynamic Hebbian edges, not structural
+        topology). The result feeds the fatigue formula
+        `K = 10 / (1 + degree/10)` — hubs fatigue fast, peripherals slow.
+
+        Hoisted out of the per-node cosine loop (was an `if not hasattr`
+        check inside an N-row loop) so the lazy guard is paid once, not
+        N times. Stores the dict on `self._structural_degree_cache`.
+        Failures are logged and result in an empty cache — fatigue then
+        defaults to maximum K (no dampening), which degrades gracefully.
+        """
+        if hasattr(self, '_structural_degree_cache'):
+            return
+        cache: Dict[str, int] = {}
+        try:
+            for row in self.conn.execute("""
+                SELECT node_id, COUNT(*) FROM (
+                    SELECT e.source_id as node_id FROM edges e
+                    JOIN edge_relations er ON er.edge_id = e.edge_id
+                    WHERE er.relation NOT IN ('co_accessed','emergent_bridge')
+                    UNION ALL
+                    SELECT e.target_id as node_id FROM edges e
+                    JOIN edge_relations er ON er.edge_id = e.edge_id
+                    WHERE er.relation NOT IN ('co_accessed','emergent_bridge')
+                ) GROUP BY node_id"""):
+                cache[row[0]] = cache.get(row[0], 0) + row[1]
+        except Exception as e:
+            self._log_error(
+                'fatigue_degree_cache', e,
+                'building structural degree cache')
+        self._structural_degree_cache = cache
+
     def get_node(self, node_id_or_ids):
         """Fully assembled node(s): content + metadata + correction chain + connections.
 
@@ -1244,6 +1283,11 @@ class BrainRecallMixin:
                 exclude_archived=not include_archived,
                 types=_types_filter, project=project,
                 model=_active_model)
+            # Hoisted out of the per-row loop — these were `if not hasattr`
+            # guards behind the cosine inner loop, so paid N times for no
+            # reason. Now paid once. Idempotent if Brain.warm_up() already
+            # built the structural cache during daemon boot.
+            self._ensure_structural_degree_cache()
             # Per-node data collected here for unified_score() in STEP 6.
             # created_at/emotion/access_count feed the modulator formula.
             node_created_at = {}    # node_id → ISO timestamp (for freshness)
@@ -1301,23 +1345,6 @@ class BrainRecallMixin:
                         except Exception:
                             self._session_fatigue = {}
                             self._fatigue_ctx = None
-                    if not hasattr(self, '_structural_degree_cache'):
-                        self._structural_degree_cache = {}
-                        try:
-                            for _row in self.conn.execute("""
-                                SELECT node_id, COUNT(*) FROM (
-                                    SELECT e.source_id as node_id FROM edges e
-                                    JOIN edge_relations er ON er.edge_id = e.edge_id
-                                    WHERE er.relation NOT IN ('co_accessed','emergent_bridge')
-                                    UNION ALL
-                                    SELECT e.target_id as node_id FROM edges e
-                                    JOIN edge_relations er ON er.edge_id = e.edge_id
-                                    WHERE er.relation NOT IN ('co_accessed','emergent_bridge')
-                                ) GROUP BY node_id"""):
-                                self._structural_degree_cache[_row[0]] = \
-                                    self._structural_degree_cache.get(_row[0], 0) + _row[1]
-                        except Exception as _e:
-                            self._log_error('fatigue_degree_cache', _e, 'building structural degree cache')
 
                     _fatigue_count = self._session_fatigue.get(node_id, 0)
                     if _fatigue_count > 0:

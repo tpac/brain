@@ -161,6 +161,14 @@ CANDIDATES_FILE = {
     'max_edges_described': 3,   # top edges with descriptions per candidate
 }
 
+# The model used by the S1 surface step. Single source of truth — read by:
+#   - surface.py:_call_surface (the actual selection call)
+#   - brain.py:warm_up (the boot-time ping that pre-pays SDK + TLS + Haiku
+#     route cold-start so the user's first prompt doesn't carry it)
+# Kept as a flat constant rather than buried in SURFACE so the warmup path
+# doesn't have to reach into surface-call config to know which model to ping.
+SURFACE_MODEL = 'claude-haiku-4-5'
+
 # Judge (Haiku) — selects relevant nodes with reasoning
 # v9: max_candidates 25→20, Anchor truncation 150→400, recent_messages 5→7
 SURFACE = {

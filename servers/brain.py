@@ -1469,6 +1469,154 @@ class Brain(
 
 
 
+    def warm_up(self) -> Dict[str, Any]:
+        """First-call-only work, paid at boot instead of on the first prompt.
+
+        Daemon boot announces ready and binds the socket immediately. This
+        method runs in a background thread (see `BrainDaemon._run_warmup`)
+        so the user never waits on it. By the time their first prompt
+        arrives — they have to open Claude Code, see the splash, type —
+        warmup is typically already done.
+
+        What's covered:
+
+          1. SQLite mmap warmup. The recall scan reads every non-archived
+             primary embedding row from `node_enrichments`. The first such
+             read faults ~hundreds of MB of pages from disk into RSS (a
+             ~2 GB transient was observed at brain.db=218 MB pre-fix).
+             Subsequent reads find pages already in the OS page cache.
+             We pre-touch every blob byte so SQLite actually decodes the
+             BLOB column, not just the row metadata.
+
+          2. Structural degree cache. Used by the fatigue formula in the
+             cosine loop. A single SQL UNION ALL across edges × edge_relations.
+             Pre-built here so the recall hot path skips the lazy guard.
+
+          3. Anthropic SDK + Haiku connection. The S1 surface step calls
+             Haiku on every recall via the Anthropic Python SDK. The first
+             call in any process pays import (~350ms) + httpx pool init +
+             TLS handshake to api.anthropic.com + Haiku route warmup. We
+             pay all of that here, store the warm client on
+             `self.anthropic_client`, and `surface.py` reuses it. Measured
+             win: ~720ms (48%) off the user's first surface call (see
+             scripts/bench_anthropic_warmup.py).
+
+             Three sub-phases: (a) eager import + client construction;
+             (b) `models.retrieve` — free, warms TLS + httpx pool;
+             (c) 1-token `messages.create` — ~$0.001, warms the inference
+             route. (a)+(b) are the bigger win; (c) only saved ~30ms in
+             the bench but is cheap enough to keep.
+
+        Note: cache_control / prompt-caching warmup is NOT here. The
+        surface system block is ~2390 tokens, below Haiku 4.5's 4096-token
+        minimum cacheable prefix. A cache warmup call would silently
+        no-op. If the surface prefix grows past 4096, add it back.
+
+        Idempotent and safe to race against a concurrent first recall —
+        the recall hot path's lazy paths are guards, not initializers, so
+        if warmup hasn't finished when the prompt arrives, recall will
+        finish the work itself and warmup becomes a no-op on its second
+        try. Last-writer-wins on dict assignment is fine because the data
+        is identical. The Anthropic phase is similarly graceful: surface.py
+        falls back to constructing its own client if `anthropic_client`
+        isn't set yet.
+
+        Failures are caught and logged. A warmup failure must never
+        affect the daemon — falling through to lazy paths is acceptable
+        degradation.
+
+        Returns a dict of timings/sizes for daemon.log telemetry.
+        """
+        import time as _time
+        t0 = _time.monotonic()
+        timings: Dict[str, Any] = {}
+
+        # 1. Embeddings mmap warmup.
+        try:
+            t = _time.monotonic()
+            active_model = embedder.stats.get('model_name') or None
+            rows = self._vec_dal.get_all_with_context(
+                exclude_archived=True, model=active_model)
+            # Touch every blob's bytes so SQLite actually decodes the BLOB
+            # column. Iterating the row list alone may not — some bindings
+            # defer BLOB materialization until you read the bytes.
+            total_bytes = 0
+            for r in rows:
+                blob = r.get('embedding')
+                if blob:
+                    total_bytes += len(blob)
+            timings['embeddings_loaded'] = len(rows)
+            timings['embeddings_bytes'] = total_bytes
+            timings['embeddings_ms'] = int((_time.monotonic() - t) * 1000)
+        except Exception as e:
+            self._log_error(
+                'warmup_embeddings', e, 'mmap warmup failed')
+            timings['embeddings_error'] = str(e)
+
+        # 2. Structural degree cache.
+        try:
+            t = _time.monotonic()
+            self._ensure_structural_degree_cache()
+            timings['degree_cache_size'] = len(
+                getattr(self, '_structural_degree_cache', {}) or {})
+            timings['degree_cache_ms'] = int((_time.monotonic() - t) * 1000)
+        except Exception as e:
+            self._log_error(
+                'warmup_degree_cache', e, 'degree cache build failed')
+            timings['degree_cache_error'] = str(e)
+
+        # 3. Anthropic SDK + Haiku connection.
+        try:
+            t = _time.monotonic()
+            # Eager import + lifetime client. httpx.Client (under the hood)
+            # is documented thread-safe; one instance shared across the
+            # daemon's ThreadPoolExecutor workers reuses the connection
+            # pool instead of every recall thread building its own.
+            #
+            # load_env() resolves ANTHROPIC_API_KEY from the four
+            # supported sources (runtime cache, legacy in-repo .env, real
+            # shell env). The daemon is launched by launchd with no shell,
+            # so without this call os.environ has no API key and the
+            # client construction would itself succeed but fail on first
+            # use with "Could not resolve authentication method." Other
+            # callers (encoder, S2 units) follow the same import-and-call
+            # pattern — see scales/s1/encode.py and scales/s2/base.py.
+            from .scales.dispatch import load_env
+            load_env()
+            import anthropic
+            from .scales.s1.surface_contract import SURFACE_MODEL
+            self.anthropic_client = anthropic.Anthropic()
+            timings['anthropic_client_ms'] = int(
+                (_time.monotonic() - t) * 1000)
+
+            # Free warmup: warms TLS handshake + httpx connection pool +
+            # DNS to api.anthropic.com. Doesn't bill.
+            t = _time.monotonic()
+            self.anthropic_client.models.retrieve(SURFACE_MODEL)
+            timings['anthropic_models_retrieve_ms'] = int(
+                (_time.monotonic() - t) * 1000)
+
+            # Inference-path warmup: warms whatever LB / route Anthropic
+            # uses for Haiku. Bills ~$0.001 per daemon restart, negligible
+            # given the daemon restarts a few times a day at most.
+            t = _time.monotonic()
+            self.anthropic_client.messages.create(
+                model=SURFACE_MODEL, max_tokens=1,
+                messages=[{'role': 'user', 'content': '.'}])
+            timings['anthropic_haiku_ping_ms'] = int(
+                (_time.monotonic() - t) * 1000)
+        except Exception as e:
+            # SDK warmup failure must not crash the daemon — surface.py's
+            # graceful-fallback path will construct a fresh client on first
+            # call and pay the cold-start tax. Same as pre-warmup behavior.
+            self._log_error(
+                'warmup_anthropic', e, 'Anthropic SDK warmup failed')
+            timings['anthropic_error'] = str(e)
+            self.anthropic_client = None
+
+        timings['total_ms'] = int((_time.monotonic() - t0) * 1000)
+        return timings
+
     def save(self, backup: bool = False):
         """
         Commit pending changes and optionally back up database.

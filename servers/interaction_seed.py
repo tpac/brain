@@ -372,7 +372,10 @@ def seed_interactions(brain):
               S1_SCOUT_SYNTHESIS_CONFIG_V1, 'anchor')
 
     # Short-template / config-only interactions (prompts inline).
-    if 'surface' not in existing and 'judge' not in existing:
+    # 'judge' was renamed to 'surface' in commit 620fb4f (2026-05-03);
+    # this seed only knows about 'surface'. Old 'judge' rows in older
+    # brains are orphans — clean them out manually if they exist.
+    if 'surface' not in existing:
         dal.register('surface', template=SURFACE_PROMPT_V1,
                      parameters=json.dumps(SURFACE_CONFIG_V1),
                      created_by='anchor')
