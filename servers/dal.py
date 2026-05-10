@@ -2029,8 +2029,18 @@ class GraphDAL:
                     weight: float = 0.5, description: str = '') -> bool:
         """Create a bidirectional edge with one relation. Returns False if already exists.
 
-        DEPRECATED: prefer add_relation() which supports multi-relation edges.
-        Kept for callers that haven't migrated yet.
+        DEPRECATED: prefer brain.connect_typed() which goes through the
+        write-path embed hook (`_maybe_embed_edge_relation`).
+
+        WARNING — embedding bypass: this method calls GraphDAL.add_relation
+        directly, NOT through brain.connect_typed, so it does NOT populate
+        edge_relations.embedding. Spread/select_edges will fall through to
+        the on-demand embed path for any edge created via this method.
+        Currently the only production caller is brain_recall.py's Hebbian
+        path, which only creates `co_accessed` edges — those are excluded
+        from spread/select_edges by DEFAULT_EXCLUDED_RELATIONS, so the
+        bypass is harmless. If you call this with any other relation, the
+        bypass becomes a real perf regression.
         """
         if self.get_edge(source_id, target_id) is not None:
             return False
@@ -2041,8 +2051,13 @@ class GraphDAL:
                         amount: float = 0.1, relation: Optional[str] = None) -> bool:
         """Strengthen an existing edge.
 
-        DEPRECATED: Prefer add_relation() which handles strengthening automatically.
-        Delegates to add_relation if relation is specified.
+        DEPRECATED: Prefer brain.strengthen_relation_typed (or the explicit
+        GraphDAL.strengthen_relation) which handles weight bumps without
+        touching description, so the stored embedding stays valid.
+
+        WARNING — embedding bypass: same as create_edge — calls add_relation
+        directly, bypassing the write-path embed hook. Hebbian-only in
+        practice (co_accessed, excluded from spread). See create_edge.
         """
         row = self.get_edge(source_id, target_id)
         if not row:
@@ -2050,18 +2065,6 @@ class GraphDAL:
         if relation:
             self.add_relation(source_id, target_id, relation)
         return True
-
-    def create_or_strengthen(self, source_id: str, target_id: str,
-                             relation: str = 'related', weight: float = 0.5,
-                             strengthen_amount: float = 0.1,
-                             description: str = '') -> str:
-        """Create edge if new, strengthen if exists. Returns 'created' or 'strengthened'.
-
-        Delegates to add_relation() which handles both cases.
-        """
-        existing = self.get_edge(source_id, target_id)
-        self.add_relation(source_id, target_id, relation, description, weight)
-        return 'strengthened' if existing else 'created'
 
     def delete_node_edges(self, node_id: str) -> int:
         """Soft-archive all edge_relations touching a node (v25).

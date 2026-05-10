@@ -70,28 +70,56 @@ class TestEmbeddingGroupsExtension(unittest.TestCase):
 
 
 class TestEnrichedEdgeText(unittest.TestCase):
-    """Edge text composition: target+relation+desc+family_meaning."""
+    """Edge text composition (post-v26): relation + description + family_meaning.
+
+    The composer was moved to AspectRegistry.compose_edge_text in 2026-05-09
+    when edges got first-class stored embeddings. The format DROPPED
+    partner_title intentionally — including it would cascade-stale every
+    edge embedding when a partner node's title revised. Partner content
+    contributes via the partner node's own embedding; the edge's intrinsic
+    semantic identity is just relation + description + family meaning.
+    """
 
     def test_composes_all_parts(self):
-        from servers.scales.s1.surface_contract import _compose_enriched_edge_text
-        edge = {'title': 'NYC trip', 'relation': 'contextualizes',
-                'description': 'Hawaii is the contrastive frame'}
-        rel_to_family = {'contextualizes': 'bridge'}
-        meanings = {'bridge': 'edges where the relationship is explained'}
-        text = _compose_enriched_edge_text(edge, rel_to_family, meanings)
-        self.assertIn('NYC trip', text)
-        self.assertIn('contextualizes', text)
+        # Build a minimal AspectRegistry-shaped object for testing the
+        # composer in isolation. The real registry is exercised via the
+        # integration tests in test_edge_embedding.py.
+        class _StubRegistry:
+            def __init__(self, family_map):
+                self._family_map = family_map  # relation -> aspect-meaning
+            def by_edge_relation(self, rel):
+                m = self._family_map.get(rel)
+                if m is None:
+                    return None
+                # Tiny aspect surrogate exposing .meaning
+                class _A:
+                    pass
+                a = _A()
+                a.meaning = m
+                return a
+
+        from servers.aspects import AspectRegistry
+        # Use the real method via duck-typed `self`
+        reg = _StubRegistry({'contextualizes': 'edges where the relationship is explained'})
+        text = AspectRegistry.compose_edge_text(reg, 'contextualizes',
+                                                'Hawaii is the contrastive frame')
+        self.assertIn('[contextualizes]', text)
         self.assertIn('Hawaii', text)
         self.assertIn('family:', text)
         self.assertIn('explained', text)
+        # The intrinsic property — partner title is NOT in the composed text.
+        # See edges-as-stored-embeddings architecture (2026-05-09).
+        self.assertNotIn('NYC trip', text)
 
     def test_missing_parts_drop_silently(self):
-        from servers.scales.s1.surface_contract import _compose_enriched_edge_text
-        edge = {'title': 'Bare node', 'relation': 'related'}
-        text = _compose_enriched_edge_text(edge, {}, {})
-        # No description, no family meaning — just title + [relation]
-        self.assertIn('Bare node', text)
-        self.assertIn('[related]', text)
+        from servers.aspects import AspectRegistry
+        class _EmptyRegistry:
+            def by_edge_relation(self, rel):
+                return None
+        reg = _EmptyRegistry()
+        text = AspectRegistry.compose_edge_text(reg, 'related', '')
+        # No description, no family meaning — just [relation].
+        self.assertEqual(text.strip(), '[related]')
         self.assertNotIn('family:', text)
 
 

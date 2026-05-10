@@ -639,6 +639,75 @@ def _field_cosines_for_node(query_vec, node_vectors, norm_q=None):
     return out
 
 
+def _bulk_load_stored_edge_embeddings(brain_conn, edge_keys,
+                                       brain=None, error_label=None):
+    """Bulk-load (edge_id, relation) → embedding blob, filtered by active model.
+
+    Used by both `_build_edge_coeffs` (spread) and `select_edges`
+    (per-candidate render). Single SQL round-trip per chunk via
+    `(edge_id, relation) IN (VALUES (?, ?), ...)`. Filters out:
+      - Rows with NULL embedding (predates v26 backfill / write-path failure)
+      - Rows where embedding_model ≠ active model (stale after model swap;
+        same staleness pattern node_enrichments uses)
+
+    Stale and NULL rows fall through to the on-demand embed path in the
+    caller — correctness preserved at the cost of a fastembed call.
+
+    Args:
+        brain_conn: sqlite3 connection.
+        edge_keys: iterable of (edge_id, relation) tuples — duplicates fine.
+        brain: optional Brain — used only for error logging via _log_error.
+            Function works without it (errors silently swallowed) but
+            production callers should pass it.
+        error_label: brain._log_error tag for failures (e.g.
+            'edge_embedding_read_spread'). None disables the log.
+
+    Returns:
+        Dict[(edge_id, relation), bytes]. Empty if no input or all stale.
+    """
+    if not edge_keys:
+        return {}
+    valid = [(eid, rel) for eid, rel in edge_keys if eid and rel]
+    if not valid:
+        return {}
+
+    from servers import embedder as _embedder_mod
+    active_model = _embedder_mod.stats.get('model_name') or ''
+
+    out: dict = {}  # (edge_id, relation) -> embedding blob
+    # SQLite parameter limit is 999 (default; some builds 32766). With
+    # 2 params per pair + 1 for active_model, chunk_size=400 → 801 params,
+    # safely under 999.
+    chunk_size = 400
+    keys = list(valid)
+    try:
+        for i in range(0, len(keys), chunk_size):
+            chunk = keys[i:i + chunk_size]
+            ph = ','.join(['(?, ?)'] * len(chunk))
+            params = [v for pair in chunk for v in pair] + [active_model]
+            rows = brain_conn.execute(
+                'SELECT edge_id, relation, embedding FROM edge_relations '
+                'WHERE (edge_id, relation) IN (VALUES %s) '
+                'AND embedding IS NOT NULL '
+                'AND embedding_model = ?' % ph, params).fetchall()
+            for eid, rel, blob in rows:
+                if blob:
+                    out[(eid, rel)] = blob
+    except Exception as e:
+        # Stored-embedding lookup failure: caller's loop falls through to
+        # on-demand embed for everything it didn't get back here. Log if
+        # we have a brain to log against; otherwise swallow (defensive).
+        if brain is not None and error_label:
+            try:
+                brain._log_error(
+                    error_label, e,
+                    'bulk fetch of stored edge embeddings — '
+                    'falling back to on-demand embed')
+            except Exception:
+                pass
+    return out
+
+
 def _build_edge_coeffs(brain, brain_conn, activated_nodes, query_vec,
                       cached_edge_coeffs):
     """Collect outgoing edges from all currently activated nodes; compute
@@ -704,41 +773,13 @@ def _build_edge_coeffs(brain, brain_conn, activated_nodes, query_vec,
             if eid and rel:
                 edge_keys.add((eid, rel))
 
-    # ── Bulk fetch stored embeddings (schema v26+). ──
-    # SQLite parameter limit ~999 — chunk if needed. With typical hop
-    # sizes (≤500 unique edge_ids per hop) we usually hit it in one query.
-    # Filter by `embedding_model = active_model` so a model swap doesn't
-    # serve vectors from the wrong geometry — same staleness pattern
-    # node_enrichments uses. Stale rows fall through to live embed.
-    stored_embeddings = {}  # (edge_id, relation) -> blob
-    if edge_keys:
-        from servers import embedder as _embedder_mod
-        active_model = _embedder_mod.stats.get('model_name') or ''
-        try:
-            keys = list(edge_keys)
-            chunk_size = 400  # 2 params per pair × 400 = 800, +1 model = 801, safe under 999
-            for i in range(0, len(keys), chunk_size):
-                chunk = keys[i:i + chunk_size]
-                ph = ','.join(['(?, ?)'] * len(chunk))
-                params = [v for pair in chunk for v in pair] + [active_model]
-                rows = brain_conn.execute(
-                    'SELECT edge_id, relation, embedding FROM edge_relations '
-                    'WHERE (edge_id, relation) IN (VALUES %s) '
-                    'AND embedding IS NOT NULL '
-                    'AND embedding_model = ?' % ph, params).fetchall()
-                for eid, rel, blob in rows:
-                    if blob:
-                        stored_embeddings[(eid, rel)] = blob
-        except Exception as _e:
-            # Stored-embedding lookup failure: log and fall through to
-            # on-demand embed for everything (correctness preserved).
-            try:
-                brain._log_error(
-                    'edge_embedding_read', _e,
-                    'bulk fetch of stored edge embeddings — '
-                    'falling back to on-demand embed')
-            except Exception:
-                pass
+    # Bulk-load stored embeddings (schema v26+) via the shared helper.
+    # See _bulk_load_stored_edge_embeddings docstring for SQL/staleness
+    # semantics. Empty result on any failure — caller falls through to
+    # on-demand embed for all edges (correctness preserved).
+    stored_embeddings = _bulk_load_stored_edge_embeddings(
+        brain_conn, edge_keys, brain=brain,
+        error_label='edge_embedding_read_spread')
 
     edges_out = []
     enriched_to_embed = []  # texts still needing embedding (NULL in DB)
@@ -1372,6 +1413,21 @@ def select_edges(connections, query_vec, session=None, limit=3, prior_vecs=None,
     if not connections or query_vec is None:
         return connections[:limit]
 
+    # `brain` is required: fallback path calls brain.aspects.compose_edge_text
+    # when a stored edge embedding is missing. Production callers
+    # (daemon_hooks.py, format_surface_output_activation, frame_replay)
+    # always pass brain. The silent fallback that produced a parts-list
+    # without family meaning was removed 2026-05-09 — it produced a
+    # different text than the AspectRegistry composer, so the embedding
+    # geometry would silently drift. Loud-by-default: crash if missing.
+    if brain is None:
+        raise ValueError(
+            "select_edges requires a Brain instance — the fallback edge-text "
+            "composer used to silently drop family meaning, producing a "
+            "different vector than the AspectRegistry composer. If you're "
+            "calling this from a test or eval script, pass the same brain you "
+            "loaded the connections from.")
+
     # Multi-turn blend — fold prior queries into effective query vector
     if prior_vecs:
         ws = TURN_WEIGHTS[:len([query_vec] + prior_vecs)]
@@ -1394,54 +1450,44 @@ def select_edges(connections, query_vec, session=None, limit=3, prior_vecs=None,
     # Connections carry full UUIDs, so use IN with full IDs — indexed
     # lookup. Previous version used `LIKE prefix% OR LIKE prefix% ...`
     # which couldn't use the node_enrichments index efficiently
-    # (2026-05-09 candidates phase 4-8s, removed).
-    full_target_ids = [c.get('id', '') for c in connections if c.get('id')]
+    # (2026-05-09 candidates phase 4-8s, removed). Dedupe so two
+    # connections to the same target only consume one SQL parameter.
+    full_target_ids = list({c.get('id', '') for c in connections
+                            if c.get('id')})
     stored_embeddings = {}
     if brain_conn is not None and full_target_ids:
-        ph = ','.join(['?'] * len(full_target_ids))
-        rows = brain_conn.execute(
-            "SELECT node_id, embedding FROM node_enrichments "
-            "WHERE vector_type = '_primary' AND node_id IN (%s)" % ph,
-            full_target_ids).fetchall()
-        for full_id, blob in rows:
-            vec = np.frombuffer(blob, dtype=np.float32)
-            # Index by both 8-char prefix (legacy) and full id so the
-            # scoring loop below works either way.
-            stored_embeddings[full_id[:8]] = vec
-            stored_embeddings[full_id] = vec
+        try:
+            ph = ','.join(['?'] * len(full_target_ids))
+            rows = brain_conn.execute(
+                "SELECT node_id, embedding FROM node_enrichments "
+                "WHERE vector_type = '_primary' AND node_id IN (%s)" % ph,
+                full_target_ids).fetchall()
+            for full_id, blob in rows:
+                vec = np.frombuffer(blob, dtype=np.float32)
+                # Index by both 8-char prefix (legacy) and full id so the
+                # scoring loop below works either way.
+                stored_embeddings[full_id[:8]] = vec
+                stored_embeddings[full_id] = vec
+        except Exception as _e:
+            # node_enrichments query failure: log and proceed without
+            # node-cosine signal. Scoring falls back to enriched-edge
+            # cosine alone. Symmetric with the edge_relations fetch
+            # below — both are best-effort, neither breaks recall.
+            try:
+                brain._log_error(
+                    'select_edges_node_embed', _e,
+                    'bulk fetch of target node embeddings — '
+                    'falling back to enriched-edge-only scoring')
+            except Exception:
+                pass
 
-    # Batch-load stored edge embeddings (schema v26+). Skip fastembed
-    # for any edge whose embedding is already stored AND was written by
-    # the currently-active embedder model (filters out stale rows after
-    # a model swap — same pattern node_enrichments uses).
+    # Bulk-load stored edge embeddings (schema v26+) via the shared
+    # helper. See _bulk_load_stored_edge_embeddings docstring.
     edge_keys = [(c.get('edge_id'), c.get('relation') or '')
                  for c in connections]
-    stored_edge_embeddings = {}  # (edge_id, relation) -> blob
-    if brain_conn is not None and edge_keys:
-        valid = [(eid, rel) for eid, rel in edge_keys if eid and rel]
-        if valid:
-            try:
-                from servers import embedder as _embedder_mod
-                active_model = _embedder_mod.stats.get('model_name') or ''
-                ph = ','.join(['(?, ?)'] * len(valid))
-                params = [v for pair in valid for v in pair] + [active_model]
-                rows = brain_conn.execute(
-                    'SELECT edge_id, relation, embedding FROM edge_relations '
-                    'WHERE (edge_id, relation) IN (VALUES %s) '
-                    'AND embedding IS NOT NULL '
-                    'AND embedding_model = ?' % ph, params).fetchall()
-                for eid, rel, blob in rows:
-                    if blob:
-                        stored_edge_embeddings[(eid, rel)] = blob
-            except Exception as _e:
-                if brain is not None:
-                    try:
-                        brain._log_error(
-                            'select_edges_stored_embed', _e,
-                            'bulk fetch stored edge embeddings — '
-                            'falling back to live compose')
-                    except Exception:
-                        pass
+    stored_edge_embeddings = _bulk_load_stored_edge_embeddings(
+        brain_conn, edge_keys, brain=brain,
+        error_label='edge_embedding_read_select_edges')
 
     # Edges WITHOUT a stored embedding fall through to live compose +
     # fastembed (legacy path). Build the enriched text only for those.
@@ -1450,31 +1496,20 @@ def select_edges(connections, query_vec, session=None, limit=3, prior_vecs=None,
     enriched_blobs = [None] * len(connections)
     needs_embed_idx = []
     needs_embed_text = []
-    use_aspects = brain is not None and hasattr(brain, 'aspects')
     for i, c in enumerate(connections):
         key = (c.get('edge_id'), c.get('relation') or '')
         stored = stored_edge_embeddings.get(key)
         if stored is not None:
             enriched_blobs[i] = stored
         else:
-            # Live compose. Connections come from get_neighbors (key
-            # 'edge_description') or get_rich_node (key 'description');
-            # accept either so this path works for both surfaces.
+            # Live compose for the rare missing-blob case (predates
+            # backfill, or write-path skipped this edge). Connections
+            # come from get_neighbors (key 'edge_description') OR
+            # get_rich_node (key 'description'); accept either.
             rel = c.get('relation', '') or ''
             desc = (c.get('description') or
                     c.get('edge_description') or '')
-            if use_aspects:
-                text = brain.aspects.compose_edge_text(rel, desc)
-            else:
-                # Defensive fallback for callers that didn't pass brain.
-                # Production paths always pass it; this is for ad-hoc
-                # tooling that imports select_edges directly.
-                parts = []
-                if rel:
-                    parts.append('[%s]' % rel)
-                if desc:
-                    parts.append(desc)
-                text = ' '.join(parts)
+            text = brain.aspects.compose_edge_text(rel, desc)
             needs_embed_idx.append(i)
             needs_embed_text.append(text)
     if needs_embed_text:
