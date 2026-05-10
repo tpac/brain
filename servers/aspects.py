@@ -376,6 +376,40 @@ class AspectRegistry:
                 out[r] = a.meaning
         return out
 
+    def compose_edge_text(self, relation: str, description: str) -> str:
+        """Compose the canonical text embedded as an edge's semantic identity.
+
+        Pattern: "[<relation>] <description> family: <meaning>"
+
+        INTRINSIC to the edge — does NOT include partner node title. The
+        partner's content lives in its own stored embedding; including it
+        here would (a) couple the edge embedding to the partner's title
+        (cascade-stale on node revise) and (b) double-count partner signal.
+
+        Stable per `(relation, description, family meaning)` triple, so a
+        single embedding can be stored on `edge_relations.embedding`
+        (schema v26+) and reused across partner revisions.
+
+        Used by:
+          - `GraphDAL.add_relation` (write path) — compute + store at write
+          - `surface_contract._compose_enriched_edge_text` (legacy read
+            path, falls through to live compose when stored embedding NULL)
+          - `scripts/backfill_edge_embeddings.py` (one-shot migration)
+        """
+        rel = (relation or '').strip()
+        desc = (description or '').strip()
+        family_aspect = self.by_edge_relation(rel) if rel else None
+        meaning = (family_aspect.meaning or '') if family_aspect else ''
+
+        parts = []
+        if rel:
+            parts.append('[%s]' % rel)
+        if desc:
+            parts.append(desc)
+        if meaning:
+            parts.append('family: ' + meaning)
+        return ' '.join(parts)
+
     def type_meaning_map(self) -> dict:
         """{type_string: meaning_text} — symmetric to relation_meaning_map."""
         self._refresh_if_dirty()

@@ -40,7 +40,7 @@ import shutil
 import sqlite3
 from datetime import datetime, timezone
 
-BRAIN_VERSION = 25  # v25: edge_relations soft-archive (archived/archived_at/archived_by columns)
+BRAIN_VERSION = 26  # v26: edge_relations stored embedding (embedding/embedding_model columns)
 BRAIN_VERSION_KEY = 'brain_schema_version'
 
 # ─── Allowed node types ───
@@ -191,6 +191,8 @@ TABLES = {
             archived INTEGER DEFAULT 0,
             archived_at TEXT DEFAULT NULL,
             archived_by TEXT DEFAULT NULL,
+            embedding BLOB DEFAULT NULL,
+            embedding_model TEXT DEFAULT NULL,
             PRIMARY KEY (edge_id, relation)
         )""",
         'columns': {
@@ -204,6 +206,15 @@ TABLES = {
             'archived': '0',
             'archived_at': 'NULL',
             'archived_by': 'NULL',
+            # v26: stored edge embedding for surface_spread. Computed at
+            # add_relation time from `_compose_enriched_edge_text`
+            # (intrinsic — relation + description + family meaning, no
+            # partner title). NULL until backfilled by
+            # scripts/backfill_edge_embeddings.py or a future write.
+            # embedding_model carries the model name so cross-model
+            # staleness is detectable on swap.
+            'embedding': 'NULL',
+            'embedding_model': 'NULL',
         }
     },
 
@@ -583,6 +594,40 @@ def _backfill_data(conn, from_version):
         # archived_at, archived_by. archive_node and GraphDAL.remove_relation
         # flip archived=1 instead of DELETEing.
         _migrate_edge_soft_archive_v25(conn)
+
+    if from_version < 26:
+        # v26: edge_relations stored embedding — closes the asymmetry
+        # where nodes had stored embeddings (one-time write at create,
+        # free reads forever) but edges did not (recomputed via fastembed
+        # on every spread call, dominating surface_spread phase at ~24s
+        # cold). The embedding column holds the vector for
+        # `_compose_enriched_edge_text` output, computed at add_relation
+        # time. Backfill of existing rows is done by
+        # scripts/backfill_edge_embeddings.py (one-shot, idempotent).
+        _migrate_edge_embedding_v26(conn)
+
+
+def _migrate_edge_embedding_v26(conn):
+    """v26: add embedding + embedding_model columns to edge_relations.
+
+    Existing rows get NULL for both. Backfill is offline via
+    scripts/backfill_edge_embeddings.py — kept out of the migration
+    path because embedding 21K rows takes minutes of fastembed work
+    and shouldn't block daemon boot. Spread reads tolerate NULL by
+    falling through to the on-demand embed path (same as before).
+    """
+    existing = {row[1] for row in conn.execute(
+        "PRAGMA table_info(edge_relations)").fetchall()}
+    if 'embedding' not in existing:
+        conn.execute("ALTER TABLE edge_relations ADD COLUMN embedding BLOB")
+    if 'embedding_model' not in existing:
+        conn.execute(
+            "ALTER TABLE edge_relations ADD COLUMN embedding_model TEXT")
+    conn.commit()
+    import sys
+    print("[schema] v26 migration: edge_relations.embedding column added "
+          "(NULL until backfill — run scripts/backfill_edge_embeddings.py)",
+          file=sys.stderr, flush=True)
 
 
 def _migrate_edge_soft_archive_v25(conn):

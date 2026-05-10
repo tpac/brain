@@ -1492,20 +1492,34 @@ class Brain(
              cosine loop. A single SQL UNION ALL across edges × edge_relations.
              Pre-built here so the recall hot path skips the lazy guard.
 
-          3. Anthropic SDK + Haiku connection. The S1 surface step calls
-             Haiku on every recall via the Anthropic Python SDK. The first
-             call in any process pays import (~350ms) + httpx pool init +
-             TLS handshake to api.anthropic.com + Haiku route warmup. We
-             pay all of that here, store the warm client on
-             `self.anthropic_client`, and `surface.py` reuses it. Measured
-             win: ~720ms (48%) off the user's first surface call (see
-             scripts/bench_anthropic_warmup.py).
+          3. Anthropic SDK + httpx pool. The S1 surface step calls Haiku
+             on every recall via the Anthropic Python SDK. The first call
+             in any process pays import (~350ms) + httpx pool init + TLS
+             handshake to api.anthropic.com. We pay that here, store the
+             warm client on `self.anthropic_client`, and `surface.py`
+             reuses it across the daemon's ThreadPoolExecutor workers
+             (httpx.Client is documented thread-safe).
 
-             Three sub-phases: (a) eager import + client construction;
-             (b) `models.retrieve` — free, warms TLS + httpx pool;
-             (c) 1-token `messages.create` — ~$0.001, warms the inference
-             route. (a)+(b) are the bigger win; (c) only saved ~30ms in
-             the bench but is cheap enough to keep.
+             Two sub-phases: (a) eager import + client construction;
+             (b) `models.retrieve` — free, warms TLS + httpx pool + DNS.
+             That's enough.
+
+             A 1-token `messages.create` was tried (2026-05-09) as a
+             "Haiku route warmup". Removed: phase-timer data showed the
+             daemon's surface_haiku phase is a stable ~5s whether the
+             route is warmed or not. The ping wasn't buying real work.
+
+        Note: an in-memory edge-text embedding pre-warm was tried here
+        (2026-05-09, removed same day). It populated `_DESC_VEC_CACHE`
+        with 1500 highest-weight edge texts so the first surface_spread
+        phase wouldn't pay fastembed cost. Removed because it treated
+        the symptom (cold cache on restart) instead of the underlying
+        asymmetry: nodes have stored embeddings (one-time write, free
+        reads forever), but edges did not — every spread call recomputed
+        them. The fix was to give edges first-class stored embeddings
+        like nodes (Option B in the design discussion); see
+        `_compose_enriched_edge_text` in surface_contract.py and the
+        `embedding` column on `edge_relations`.
 
         Note: cache_control / prompt-caching warmup is NOT here. The
         surface system block is ~2390 tokens, below Haiku 4.5's 4096-token
@@ -1595,16 +1609,11 @@ class Brain(
             self.anthropic_client.models.retrieve(SURFACE_MODEL)
             timings['anthropic_models_retrieve_ms'] = int(
                 (_time.monotonic() - t) * 1000)
-
-            # Inference-path warmup: warms whatever LB / route Anthropic
-            # uses for Haiku. Bills ~$0.001 per daemon restart, negligible
-            # given the daemon restarts a few times a day at most.
-            t = _time.monotonic()
-            self.anthropic_client.messages.create(
-                model=SURFACE_MODEL, max_tokens=1,
-                messages=[{'role': 'user', 'content': '.'}])
-            timings['anthropic_haiku_ping_ms'] = int(
-                (_time.monotonic() - t) * 1000)
+            # No Haiku route ping. The ping was here briefly (2026-05-09)
+            # but phase-timer data showed surface_haiku is a stable ~5s
+            # whether the route is "warmed" or not — the ping wasn't
+            # buying real latency. models.retrieve() warms TLS + pool +
+            # DNS, which is the only first-call-only work that matters.
         except Exception as e:
             # SDK warmup failure must not crash the daemon — surface.py's
             # graceful-fallback path will construct a fresh client on first
@@ -1613,6 +1622,10 @@ class Brain(
                 'warmup_anthropic', e, 'Anthropic SDK warmup failed')
             timings['anthropic_error'] = str(e)
             self.anthropic_client = None
+
+        # (Edge-text embedding pre-warm was here briefly on 2026-05-09;
+        # removed when edges got first-class stored embeddings — see
+        # the docstring above.)
 
         timings['total_ms'] = int((_time.monotonic() - t0) * 1000)
         return timings

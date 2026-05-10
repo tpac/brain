@@ -518,7 +518,7 @@ def _write_surface_result_file(recall_ref, surface_prompt, output, brain):
 def run_surface(brain, ctx, candidates_data, user_message,
                 recent_messages, result, enriched, results, recall_ref,
                 session_id, graph_changes, query_vec=None, prior_vecs=None,
-                frame=''):
+                frame='', pt=None):
     """S1 Surface: Haiku-select → spread_activation → activation-render → trace.
 
     The complete S1 Surface chain. Called from hook_recall in daemon_hooks.py.
@@ -526,14 +526,24 @@ def run_surface(brain, ctx, candidates_data, user_message,
     when absent, the surface falls back to Haiku-selected rendering only
     (no graph expansion), which is degraded but safe.
 
+    `pt` (optional PhaseTimer): when supplied by hook_recall, surface marks
+    its internal phases on the same timer so the daemon log line splits
+    `surface_haiku`, `surface_spread`, `surface_render`, `surface_trace`.
+    No-op if None — surface still runs, just without the breakdown.
+
     Returns: additional_context string or None.
     """
     load_env()
+
+    def _mark(label):
+        if pt is not None:
+            pt.mark(label)
 
     # Call Haiku selector (unchanged — picks ≤5 from 25 candidates)
     surfaced, surface_prompt, max_tokens, interaction_id = _call_surface(
         brain, candidates_data, user_message, recent_messages,
         session_id, result, frame=frame)
+    _mark('surface_haiku')
 
     selected = surfaced.get("selected", [])
     selected_short_ids = {s.get("id", "")[:8] for s in selected}
@@ -633,11 +643,14 @@ def run_surface(brain, ctx, candidates_data, user_message,
                 ','.join(hallucinated_ids[:5]),
                 [s.get('why', '')[:80] for s in selected if s.get('id', '')[:8] in hallucinated_ids][:3]))
 
+    _mark('surface_id_resolve')
+
     # Graph expansion via spreading activation. The kernel replaces what
     # select_edges + per-seed top-3 neighbors + mutual-traversal used to do.
     expansion = _graph_expand(
         brain, list(selected_why.keys()),
         query_vec=query_vec, prior_vecs=prior_vecs)
+    _mark('surface_spread')
 
     # Activation-driven render — fields appear by their own per-field activation
     # score, budget is allocated softmax-weighted by node activation.
@@ -651,6 +664,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
         brain=brain,
         session=ctx,
     )
+    _mark('surface_render')
 
     # Trace writing — compat neighbor list for legacy readers, plus full
     # activation data in metadata for S3 / dashboard observability.
@@ -667,6 +681,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
 
     # Dashboard file
     _write_surface_result_file(recall_ref, surface_prompt, additional_context, brain)
+    _mark('surface_trace')
 
     return additional_context
 

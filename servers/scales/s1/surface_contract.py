@@ -29,22 +29,11 @@ from servers import embedder as _embedder
 _DESC_VEC_CACHE: "OrderedDict[tuple, bytes]" = OrderedDict()
 _DESC_VEC_CACHE_MAX = 5000
 _DESC_CACHE_LOCK = threading.Lock()
-_DESC_CACHE_HITS = 0
-_DESC_CACHE_MISSES = 0
-
-
-def get_desc_cache_stats() -> dict:
-    """Cache diagnostics — surfaced through embedder stats / logs."""
-    with _DESC_CACHE_LOCK:
-        total = _DESC_CACHE_HITS + _DESC_CACHE_MISSES
-        hit_rate = (_DESC_CACHE_HITS / total) if total else 0.0
-        return {
-            'size': len(_DESC_VEC_CACHE),
-            'max': _DESC_VEC_CACHE_MAX,
-            'hits': _DESC_CACHE_HITS,
-            'misses': _DESC_CACHE_MISSES,
-            'hit_rate': round(hit_rate, 3),
-        }
+# Note (2026-05-09): the hit/miss counters and the get_desc_cache_stats()
+# diagnostic that read them were removed when edges got first-class stored
+# embeddings (schema v26). The cache below is now a fallback path only —
+# fired for edges whose stored embedding is NULL — so the hit-rate metric
+# became uninteresting in production. Re-add if/when there's a consumer.
 
 
 def _desc_vecs_batched(descs):
@@ -54,8 +43,13 @@ def _desc_vecs_batched(descs):
     Keys the cache by active model name so model swaps don't hand out stale
     geometry. Dedupes within a single call so a batch with duplicates only
     pays one embed per unique text.
+
+    Post-v26 this function is FALLBACK-ONLY for edges whose stored
+    `edge_relations.embedding` is NULL — production write paths populate
+    the column at write time. If the cache is fielding many calls in
+    production, that's a signal that backfill is incomplete or the
+    write-path embed hook is failing.
     """
-    global _DESC_CACHE_HITS, _DESC_CACHE_MISSES
     if not descs:
         return []
 
@@ -67,8 +61,6 @@ def _desc_vecs_batched(descs):
     unique_texts: list = []
     text_to_unique_idx: dict = {}
     indices_for_unique: list = []  # list of lists of original indices per unique text
-    hits = 0
-    misses = 0
     with _DESC_CACHE_LOCK:
         for i, d in enumerate(descs):
             if not d:
@@ -78,9 +70,7 @@ def _desc_vecs_batched(descs):
             if blob is not None:
                 out[i] = blob
                 _DESC_VEC_CACHE.move_to_end(key)
-                hits += 1
                 continue
-            misses += 1
             u_idx = text_to_unique_idx.get(d)
             if u_idx is None:
                 u_idx = len(unique_texts)
@@ -104,10 +94,6 @@ def _desc_vecs_batched(descs):
             while len(_DESC_VEC_CACHE) > _DESC_VEC_CACHE_MAX:
                 _DESC_VEC_CACHE.popitem(last=False)
 
-    if hits or misses:
-        with _DESC_CACHE_LOCK:
-            _DESC_CACHE_HITS += hits
-            _DESC_CACHE_MISSES += misses
     return out
 
 
@@ -654,13 +640,30 @@ def _field_cosines_for_node(query_vec, node_vectors, norm_q=None):
 
 
 def _build_edge_coeffs(brain, brain_conn, activated_nodes, query_vec,
-                      rel_to_family, meaning_by_family, cached_edge_coeffs):
+                      cached_edge_coeffs):
     """Collect outgoing edges from all currently activated nodes; compute
     their transmission coefficients.
 
     Returns list of (source_id, target_id, coeff, edge_dict).
     Uses cached_edge_coeffs as an in-kernel memo so repeat edges in later
-    hops don't re-embed.
+    hops don't recompute cosine.
+
+    Implementation note (schema v26+): edges have stored embeddings on
+    `edge_relations.embedding` (computed at write time by
+    `BrainConnectionsMixin._maybe_embed_edge_relation`). For each edge
+    we look up the stored blob by `edge_id` and skip fastembed entirely.
+    Edges whose row predates v26 (or whose write failed to populate the
+    blob) fall through to the legacy on-demand embed path; recall stays
+    correct, just pays the per-edge fastembed cost like before. Run
+    `scripts/backfill_edge_embeddings.py` to populate NULLs in bulk.
+
+    Enriched-text composition delegates to
+    `brain.aspects.compose_edge_text(relation, description)` — single
+    source of truth for the embed format.
+
+    Bulk SQL: get_neighbors_bulk for all sources in one round-trip (3 SQL
+    queries per recall instead of 200+). Per-owner neighbor cap enforced
+    in Python.
     """
     from servers.dal import GraphDAL
     from servers.pipeline_contract import TRAVERSE_EXCLUDED_EDGES
@@ -668,45 +671,114 @@ def _build_edge_coeffs(brain, brain_conn, activated_nodes, query_vec,
     gdal = GraphDAL(brain_conn)
     excluded = set(TRAVERSE_EXCLUDED_EDGES)
 
-    # Gather ALL edges from activated sources in one pass
-    edges_out = []
-    enriched_to_embed = []  # texts needing embedding
-    enriched_keys = []      # parallel: (source, target, edge, enriched_text)
-
     # Per-source neighbor cap. Default from contract (SPREAD_NEIGHBOR_LIMIT_DEFAULT).
     # Env override: BRAIN_SPREAD_NEIGHBOR_LIMIT — used by eval variants.
     import os as _os
     _SPREAD_LIMIT = int(_os.environ.get(
         'BRAIN_SPREAD_NEIGHBOR_LIMIT', str(SPREAD_NEIGHBOR_LIMIT_DEFAULT)))
 
+    # ── ONE SQL round-trip for all sources ──
+    bulk = gdal.get_neighbors_bulk(
+        activated_nodes, exclude_relations=excluded)
+
+    # Collect every edge first; we'll fetch stored embeddings in bulk.
+    pending = []  # list of (source_id, target_id, edge_dict, enriched_text)
+    edge_keys = set()  # set of (edge_id, relation) for the bulk lookup
     for source_id in activated_nodes:
-        rows = gdal.get_neighbors(
-            source_id, limit=_SPREAD_LIMIT,
-            exclude_relations=excluded,
-            content_preview_chars=0,
-        )
+        rows = bulk.get(source_id, [])
+        if len(rows) > _SPREAD_LIMIT:
+            rows = sorted(rows, key=lambda r: r.get('weight') or 0,
+                          reverse=True)[:_SPREAD_LIMIT]
         for r in rows:
             target_id = r.get('id', '')
-            # Compose edge's semantic identity text
-            enriched = _compose_enriched_edge_text(
-                {'title': r.get('title', ''),
-                 'relation': r.get('relation', ''),
-                 'description': r.get('edge_description') or ''},
-                rel_to_family, meaning_by_family)
-            cache_key = enriched
+            # Compose enriched text via AspectRegistry (single source of
+            # truth for the format — see aspects.py:compose_edge_text).
+            # Used as the in-call memo key + as the input to the on-demand
+            # embed fallback if the stored blob is NULL.
+            enriched = brain.aspects.compose_edge_text(
+                r.get('relation', ''),
+                r.get('edge_description') or '')
+            pending.append((source_id, target_id, r, enriched))
+            eid = r.get('edge_id')
+            rel = r.get('relation') or ''
+            if eid and rel:
+                edge_keys.add((eid, rel))
 
-            cached = cached_edge_coeffs.get(cache_key)
-            if cached is not None:
-                edges_out.append((source_id, target_id, cached, r))
-            else:
-                # Queue for batch embedding
-                enriched_to_embed.append(enriched)
-                enriched_keys.append((source_id, target_id, r, enriched))
+    # ── Bulk fetch stored embeddings (schema v26+). ──
+    # SQLite parameter limit ~999 — chunk if needed. With typical hop
+    # sizes (≤500 unique edge_ids per hop) we usually hit it in one query.
+    # Filter by `embedding_model = active_model` so a model swap doesn't
+    # serve vectors from the wrong geometry — same staleness pattern
+    # node_enrichments uses. Stale rows fall through to live embed.
+    stored_embeddings = {}  # (edge_id, relation) -> blob
+    if edge_keys:
+        from servers import embedder as _embedder_mod
+        active_model = _embedder_mod.stats.get('model_name') or ''
+        try:
+            keys = list(edge_keys)
+            chunk_size = 400  # 2 params per pair × 400 = 800, +1 model = 801, safe under 999
+            for i in range(0, len(keys), chunk_size):
+                chunk = keys[i:i + chunk_size]
+                ph = ','.join(['(?, ?)'] * len(chunk))
+                params = [v for pair in chunk for v in pair] + [active_model]
+                rows = brain_conn.execute(
+                    'SELECT edge_id, relation, embedding FROM edge_relations '
+                    'WHERE (edge_id, relation) IN (VALUES %s) '
+                    'AND embedding IS NOT NULL '
+                    'AND embedding_model = ?' % ph, params).fetchall()
+                for eid, rel, blob in rows:
+                    if blob:
+                        stored_embeddings[(eid, rel)] = blob
+        except Exception as _e:
+            # Stored-embedding lookup failure: log and fall through to
+            # on-demand embed for everything (correctness preserved).
+            try:
+                brain._log_error(
+                    'edge_embedding_read', _e,
+                    'bulk fetch of stored edge embeddings — '
+                    'falling back to on-demand embed')
+            except Exception:
+                pass
 
-    # Batch-embed queued enriched texts (hits _desc_vecs_batched cache)
+    edges_out = []
+    enriched_to_embed = []  # texts still needing embedding (NULL in DB)
+    enriched_keys = []      # parallel: (source, target, edge, text)
+    norm_q = float(np.linalg.norm(query_vec))
+
+    for source_id, target_id, r, enriched in pending:
+        # Per-call memo (in-kernel cache across hops in this recall) —
+        # avoids cosine recomputation when the same edge appears as a
+        # source-target reverse in a later hop.
+        cached = cached_edge_coeffs.get(enriched)
+        if cached is not None:
+            edges_out.append((source_id, target_id, cached, r))
+            continue
+
+        # Stored embedding (schema v26+): skip fastembed entirely.
+        # `_maybe_embed_edge_relation` populates this on every write that
+        # affects (relation, description) — see brain_connections.py.
+        eid = r.get('edge_id')
+        rel = r.get('relation') or ''
+        blob = stored_embeddings.get((eid, rel)) if eid and rel else None
+        if blob is not None:
+            vec = np.frombuffer(blob, dtype=np.float32)
+            coeff = _cosine_nonneg(query_vec, vec, norm_a=norm_q)
+            cached_edge_coeffs[enriched] = coeff
+            edges_out.append((source_id, target_id, coeff, r))
+            continue
+
+        # Fallback: row predates v26 backfill or write failed to populate.
+        # Queue for the legacy on-demand embed path. After
+        # `scripts/backfill_edge_embeddings.py` runs against the brain,
+        # this branch should be cold.
+        enriched_to_embed.append(enriched)
+        enriched_keys.append((source_id, target_id, r, enriched))
+
+    # Batch-embed queued enriched texts (hits _desc_vecs_batched cache).
+    # On a fully-backfilled brain this list is empty and the fastembed
+    # call is skipped entirely.
     if enriched_to_embed:
         blobs = _desc_vecs_batched(enriched_to_embed)
-        norm_q = float(np.linalg.norm(query_vec))
         for (src, tgt, edge, text), blob in zip(enriched_keys, blobs):
             if blob is None:
                 coeff = 0.0
@@ -845,7 +917,7 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
 
         edges = _build_edge_coeffs(
             brain, brain.conn, active_sources, blended,
-            rel_to_family, meaning_by_family, cached_edge_coeffs)
+            cached_edge_coeffs)
 
         if not edges:
             break
@@ -1084,7 +1156,7 @@ def spread_activation_cluster(seed_ids, query_vec, brain, prior_vecs=None):
 
         edges = _build_edge_coeffs(
             brain, brain.conn, active_sources, blended,
-            rel_to_family, meaning_by_family, cached_edge_coeffs)
+            cached_edge_coeffs)
 
         if not edges:
             break
@@ -1240,29 +1312,11 @@ def spread_activation_cluster(seed_ids, query_vec, brain, prior_vecs=None):
 TURN_WEIGHTS = [0.6, 0.3, 0.1]
 
 
-def _compose_enriched_edge_text(conn, rel_to_family, meaning_by_family):
-    """Compose the text embedded as the edge's semantic identity.
-
-    Pattern: "<target_title> [<relation>] <description>. family: <meaning>"
-    Parts that are missing are dropped silently — an edge with bare title
-    and no description still gets an embedding based on title + relation.
-    """
-    title = (conn.get('title') or conn.get('target_title') or '').strip()
-    rel = (conn.get('relation') or '').strip()
-    desc = (conn.get('description') or '').strip()
-    family = rel_to_family.get(rel, '') if rel_to_family else ''
-    meaning = meaning_by_family.get(family, '') if (family and meaning_by_family) else ''
-
-    parts = []
-    if title:
-        parts.append(title)
-    if rel:
-        parts.append('[%s]' % rel)
-    if desc:
-        parts.append(desc)
-    if meaning:
-        parts.append('family: ' + meaning)
-    return ' '.join(parts)
+# `_compose_enriched_edge_text` removed 2026-05-09 — the format lives in
+# AspectRegistry.compose_edge_text (see servers/aspects.py). Keeping two
+# implementations of the same string format created drift risk; the
+# AspectRegistry version owns it. `_build_edge_coeffs` and `select_edges`
+# call `brain.aspects.compose_edge_text(relation, description)` directly.
 
 
 def _cosine_nonneg(a, b, norm_a=None):
@@ -1288,8 +1342,11 @@ def select_edges(connections, query_vec, session=None, limit=3, prior_vecs=None,
     picks the 3 that best fit the query.
 
     Scoring: max(cos(query, target_node_embedding), cos(query, enriched_edge_text)).
-    Family meaning is composed into the enriched text via _compose_enriched_edge_text,
-    so it contributes automatically to the second term without a separate signal.
+    Family meaning is composed into the enriched text via
+    AspectRegistry.compose_edge_text (see aspects.py), so it contributes
+    automatically to the second term without a separate signal. After
+    schema v26, the edge text vector is read from edge_relations.embedding;
+    only rows with NULL embedding fall through to live compose + fastembed.
 
     Args:
         connections: list of edge dicts (from get_rich_node().connections OR
@@ -1328,41 +1385,102 @@ def select_edges(connections, query_vec, session=None, limit=3, prior_vecs=None,
         blended = query_vec
     norm_q = float(np.linalg.norm(blended))
 
-    # Load family context — family meaning is composed INTO the enriched text,
-    # not applied as a separate multiplicative signal.
-    rel_to_family = {}
-    meaning_by_family = {}
-    if brain is not None:
-        try:
-            for name, aspect in brain.aspects.all().items():
-                if aspect.meaning:
-                    meaning_by_family[name] = aspect.meaning
-                for r in aspect.edge_relations:
-                    rel_to_family[r] = name
-        except Exception as _e:
-            brain._log_error('select_edges_aspect_config', _e,
-                             'loading brain.aspects in select_edges')
+    # Family meaning composition is owned by AspectRegistry — see
+    # aspects.py:compose_edge_text. The fallback path below calls
+    # brain.aspects.compose_edge_text(rel, desc) directly when a stored
+    # edge embedding is missing; no per-call dict-building needed.
 
-    # Batch-load target node embeddings (one SQL round-trip)
-    target_ids = [c.get('id', '')[:8] for c in connections]
+    # Batch-load target node embeddings (one SQL round-trip).
+    # Connections carry full UUIDs, so use IN with full IDs — indexed
+    # lookup. Previous version used `LIKE prefix% OR LIKE prefix% ...`
+    # which couldn't use the node_enrichments index efficiently
+    # (2026-05-09 candidates phase 4-8s, removed).
+    full_target_ids = [c.get('id', '') for c in connections if c.get('id')]
     stored_embeddings = {}
-    if brain_conn is not None and target_ids:
-        like_clauses = ' OR '.join(['node_id LIKE ?'] * len(target_ids))
-        params = [tid + '%' for tid in target_ids]
+    if brain_conn is not None and full_target_ids:
+        ph = ','.join(['?'] * len(full_target_ids))
         rows = brain_conn.execute(
             "SELECT node_id, embedding FROM node_enrichments "
-            "WHERE vector_type = '_primary' AND (%s)" % like_clauses,
-            params).fetchall()
+            "WHERE vector_type = '_primary' AND node_id IN (%s)" % ph,
+            full_target_ids).fetchall()
         for full_id, blob in rows:
             vec = np.frombuffer(blob, dtype=np.float32)
+            # Index by both 8-char prefix (legacy) and full id so the
+            # scoring loop below works either way.
             stored_embeddings[full_id[:8]] = vec
+            stored_embeddings[full_id] = vec
 
-    # Batch-embed composed edge texts (cache-aware)
-    enriched_texts = [
-        _compose_enriched_edge_text(c, rel_to_family, meaning_by_family)
-        for c in connections
-    ]
-    enriched_blobs = _desc_vecs_batched(enriched_texts)
+    # Batch-load stored edge embeddings (schema v26+). Skip fastembed
+    # for any edge whose embedding is already stored AND was written by
+    # the currently-active embedder model (filters out stale rows after
+    # a model swap — same pattern node_enrichments uses).
+    edge_keys = [(c.get('edge_id'), c.get('relation') or '')
+                 for c in connections]
+    stored_edge_embeddings = {}  # (edge_id, relation) -> blob
+    if brain_conn is not None and edge_keys:
+        valid = [(eid, rel) for eid, rel in edge_keys if eid and rel]
+        if valid:
+            try:
+                from servers import embedder as _embedder_mod
+                active_model = _embedder_mod.stats.get('model_name') or ''
+                ph = ','.join(['(?, ?)'] * len(valid))
+                params = [v for pair in valid for v in pair] + [active_model]
+                rows = brain_conn.execute(
+                    'SELECT edge_id, relation, embedding FROM edge_relations '
+                    'WHERE (edge_id, relation) IN (VALUES %s) '
+                    'AND embedding IS NOT NULL '
+                    'AND embedding_model = ?' % ph, params).fetchall()
+                for eid, rel, blob in rows:
+                    if blob:
+                        stored_edge_embeddings[(eid, rel)] = blob
+            except Exception as _e:
+                if brain is not None:
+                    try:
+                        brain._log_error(
+                            'select_edges_stored_embed', _e,
+                            'bulk fetch stored edge embeddings — '
+                            'falling back to live compose')
+                    except Exception:
+                        pass
+
+    # Edges WITHOUT a stored embedding fall through to live compose +
+    # fastembed (legacy path). Build the enriched text only for those.
+    # After `scripts/backfill_edge_embeddings.py` runs against the brain,
+    # this loop's `else` branch is cold.
+    enriched_blobs = [None] * len(connections)
+    needs_embed_idx = []
+    needs_embed_text = []
+    use_aspects = brain is not None and hasattr(brain, 'aspects')
+    for i, c in enumerate(connections):
+        key = (c.get('edge_id'), c.get('relation') or '')
+        stored = stored_edge_embeddings.get(key)
+        if stored is not None:
+            enriched_blobs[i] = stored
+        else:
+            # Live compose. Connections come from get_neighbors (key
+            # 'edge_description') or get_rich_node (key 'description');
+            # accept either so this path works for both surfaces.
+            rel = c.get('relation', '') or ''
+            desc = (c.get('description') or
+                    c.get('edge_description') or '')
+            if use_aspects:
+                text = brain.aspects.compose_edge_text(rel, desc)
+            else:
+                # Defensive fallback for callers that didn't pass brain.
+                # Production paths always pass it; this is for ad-hoc
+                # tooling that imports select_edges directly.
+                parts = []
+                if rel:
+                    parts.append('[%s]' % rel)
+                if desc:
+                    parts.append(desc)
+                text = ' '.join(parts)
+            needs_embed_idx.append(i)
+            needs_embed_text.append(text)
+    if needs_embed_text:
+        live_blobs = _desc_vecs_batched(needs_embed_text)
+        for idx, blob in zip(needs_embed_idx, live_blobs):
+            enriched_blobs[idx] = blob
 
     # Score each edge: MAX of node-target and enriched-edge cosines
     scored = []

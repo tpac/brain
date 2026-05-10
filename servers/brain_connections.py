@@ -22,6 +22,85 @@ from .brain_constants import (
 class BrainConnectionsMixin:
     """Connections methods for Brain."""
 
+    def _maybe_embed_edge_relation(self, edge_id: str, relation: str,
+                                    add_result: dict) -> None:
+        """Compute + store the edge's enriched-text embedding when a write
+        actually changed the (relation, description, family meaning) tuple.
+
+        Stored on `edge_relations.embedding` (schema v26+). Read by
+        `_build_edge_coeffs` and `select_edges` instead of running fastembed
+        at recall time. The 'edges have stored embeddings like nodes'
+        symmetry — see docs/aspects.py compose_edge_text.
+
+        Skipped when:
+          - The write was a no-op (no fields changed) — existing embedding
+            is still valid.
+          - The 'description' field wasn't part of the deltas — only changes
+            that affect `compose_edge_text(relation, description)` invalidate
+            the stored embedding.
+          - Embedding fails (logged; row keeps NULL or stale; spread falls
+            back to live compose for that edge).
+
+        Layer note: lives in BrainConnectionsMixin (not GraphDAL) because
+        the embedding work needs `brain.aspects` (for family meaning) and
+        the embedder — neither belongs in DAL. GraphDAL stays storage-only.
+        """
+        # Skip relations that are never read by surface_spread or
+        # select_edges (DEFAULT_EXCLUDED_RELATIONS = {co_accessed,
+        # emergent_bridge}). Hebbian fires on every recall; embedding
+        # those edges is pure wasted work.
+        from .dal import DEFAULT_EXCLUDED_RELATIONS
+        if relation in DEFAULT_EXCLUDED_RELATIONS:
+            return
+        # Skip if write was a no-op
+        if not (add_result.get('created') or add_result.get('updated') or
+                add_result.get('revived_from_archive')):
+            return
+        # Skip if description wasn't part of the change set (and this is an
+        # update, not a fresh insert). New rows always need embedding.
+        if add_result.get('updated') and not add_result.get('created'):
+            desc_changed = any(
+                d.get('field') == 'description'
+                for d in add_result.get('deltas') or [])
+            if not desc_changed:
+                return
+
+        try:
+            row = self.conn.execute(
+                'SELECT description FROM edge_relations '
+                'WHERE edge_id = ? AND relation = ?',
+                (edge_id, relation)).fetchone()
+            if row is None:
+                return
+            description = row[0] or ''
+            text = self.aspects.compose_edge_text(relation, description)
+            if not text:
+                return
+            from . import embedder as _embedder
+            # 'document' kind matches the prefix used at recall time
+            # (`_desc_vecs_batched` calls `embed_batch(kind='document')`).
+            # Mismatched prefixes produce different vectors for the same
+            # text — would break the read path's cosine score.
+            blobs = _embedder.embed_batch([text], kind='document')
+            blob = blobs[0] if blobs else None
+            if not blob:
+                return
+            model = (_embedder.stats.get('model_name') or '') if hasattr(
+                _embedder, 'stats') else ''
+            self.conn.execute(
+                'UPDATE edge_relations SET embedding = ?, embedding_model = ? '
+                'WHERE edge_id = ? AND relation = ?',
+                (blob, model, edge_id, relation))
+            # commit happens via the brain's normal commit cycle
+        except Exception as e:
+            # Embedding failure must NOT fail the connect — the row exists,
+            # spread will fall through to the on-demand embed path. Log
+            # loudly so a systemic embed failure is visible.
+            self._log_error(
+                'edge_embedding_write', e,
+                'compute+store edge embedding for %s/%s' %
+                (edge_id[:12] if edge_id else '?', relation))
+
     def connect(self, source_id: str, target_id: str, relation: str = 'related', weight: float = 0.5):
         """Add a relation between two nodes (idempotent upsert).
 
@@ -44,7 +123,9 @@ class BrainConnectionsMixin:
         graph_dal = GraphDAL(self.conn)
         # description omitted so add_relation's sentinel default kicks in
         # (preserves existing on update; defaults to '' on create).
-        return graph_dal.add_relation(source_id, target_id, relation, weight=weight)
+        result = graph_dal.add_relation(source_id, target_id, relation, weight=weight)
+        self._maybe_embed_edge_relation(result.get('edge_id'), relation, result)
+        return result
 
     def connect_typed(self, source_id: str, target_id: str, relation: str = 'related',
                      weight: Optional[float] = None, edge_type: Optional[str] = None,
@@ -86,10 +167,9 @@ class BrainConnectionsMixin:
             kwargs['description'] = description
         if encoding_source is not None:
             kwargs['encoding_source'] = encoding_source
-        return graph_dal.add_relation(source_id, target_id, relation, **kwargs)
-
-        # v23: edge_context vectors deferred to idle backfill.
-        # Previously recomputed inline here, causing ONNX multi-thread spinning.
+        result = graph_dal.add_relation(source_id, target_id, relation, **kwargs)
+        self._maybe_embed_edge_relation(result.get('edge_id'), relation, result)
+        return result
 
     def _random_walk(self, start_id: str, steps: int) -> List[str]:
         """
