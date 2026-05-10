@@ -68,6 +68,76 @@ from .scales.dispatch import daemon_tcp_send as _daemon_tcp_send
 from .scales.s1.surface import run_surface as _run_surface
 
 
+class PhaseTimer:
+    """Lightweight per-call phase timer — emits one log line at the end.
+
+    Usage:
+        pt = PhaseTimer(enabled=brain.get_config('phase_timing.enabled', True))
+        ... work ...
+        pt.mark('recall')
+        ... work ...
+        pt.mark('candidates')
+        ...
+        pt.log(brain, 'hook_recall')      # emits a single debug line
+
+    Each mark records elapsed-since-last-mark in milliseconds. Order is
+    preserved. Total wall time is also reported.
+
+    Why it exists: hook_recall has ~14 phases (recall, segment boundary,
+    candidates, enrichment, edge selection, traces, signal producers,
+    Frame build, surface call, etc.). When the end-to-end takes 12 s we
+    need to know which phase ate the budget. Single log line keeps the
+    daemon log readable without a per-phase line storm.
+
+    Cost when enabled: ~1µs per mark, ~50µs for the final log line. 14
+    phases ≈ 14µs of CPU and one log line per recall. Default ON because
+    the diagnostic value swamps the overhead — you should know where
+    recall's seconds went, always.
+
+    Disable via `brain.get_config('phase_timing.enabled', False)` or via
+    `phase_timing.enabled = False` in the config table. When disabled,
+    `mark()` and `log()` are no-ops and the timer holds no state — the
+    cost goes to zero.
+    """
+
+    __slots__ = ('_enabled', '_t0', '_last', '_phases')
+
+    def __init__(self, enabled: bool = True):
+        self._enabled = enabled
+        if not enabled:
+            self._t0 = 0.0
+            self._last = 0.0
+            self._phases = []
+            return
+        now = time.monotonic()
+        self._t0 = now
+        self._last = now
+        self._phases: list[tuple[str, int]] = []
+
+    def mark(self, label: str) -> None:
+        if not self._enabled:
+            return
+        now = time.monotonic()
+        self._phases.append((label, int((now - self._last) * 1000)))
+        self._last = now
+
+    def log(self, brain, hook_name: str, **extras) -> None:
+        """Emit one debug line. extras land as key=value pairs at the end."""
+        if not self._enabled:
+            return
+        total_ms = int((time.monotonic() - self._t0) * 1000)
+        body = ' '.join('%s:%dms' % (label, ms) for label, ms in self._phases)
+        if extras:
+            body += ' ' + ' '.join('%s=%s' % (k, v) for k, v in extras.items())
+        msg = '[%s] total:%dms %s' % (hook_name, total_ms, body)
+        try:
+            brain.log_debug('hook_phase_timing', msg)
+        except Exception:
+            # Logging must never affect the hook path. If brain.log_debug
+            # is unavailable (test harness, unusual init) fall back to print.
+            print(msg, flush=True)
+
+
 
 
 
@@ -91,7 +161,18 @@ def hook_recall(brain, args, graph_changes):
     5. Priming check, gap logging, signal producers
     6. S1 Surface (Haiku) → select → expand → format → trace
     7. Return additionalContext or approve
+
+    Phase timing: every recall emits a single 'hook_phase_timing' debug
+    line splitting the total wall time across phases. See PhaseTimer.
+    Use it to find which phase ate the budget when latencies spike;
+    don't waste time guessing where seconds went.
+
+    Gated by `phase_timing.enabled` in brain config (default True).
+    Flip to False to silence the per-recall log line entirely; mark/log
+    become no-ops and the cost goes to zero.
     """
+    pt = PhaseTimer(
+        enabled=bool(brain.get_config('phase_timing.enabled', True)))
     user_message = args.get("prompt", "") or args.get("message", "")
     ctx = brain.get_or_create_session(args.get('session_id', ''))
     session_id = ctx.session_id
@@ -135,6 +216,7 @@ def hook_recall(brain, args, graph_changes):
     # recall improvement (confirmed by decode funnel — 0% impact from vocab expansion).
     from .pipeline_contract import PIPELINE as _PL
     enriched = user_message[:_PL['user_message_query']]
+    pt.mark('setup')
 
     # Recall — logging happens inside brain.recall() (single source of truth)
     try:
@@ -148,6 +230,7 @@ def hook_recall(brain, args, graph_changes):
                               session_id=session_id, source='hook')
 
     results = result.get("results", [])
+    pt.mark('recall')
 
     # recall_ref removed — use stop counter for tmp file naming and trace refs
     recall_ref = '%s-%s' % (session_id[:8], _current_stop)
@@ -165,6 +248,7 @@ def hook_recall(brain, args, graph_changes):
                 brain.add_to_segment(r.get("id", ""))
     except Exception as e:
         brain._log_error('segment_boundary', e, 'hook_recall')
+    pt.mark('segment')
 
     # Gap detection (needed by candidates file + later logging)
     gap = result.get('_gap') if isinstance(result, dict) else None
@@ -239,6 +323,8 @@ def hook_recall(brain, args, graph_changes):
         # v8.8: Include vocab context — connectors surfaced separately
         # DEPRECATED 2026-04-01: vocab_context removed (vocab → concept migration)
 
+        pt.mark('candidates')
+
         # Recent messages for surface context — from traces
         recent_messages = []
         try:
@@ -247,9 +333,11 @@ def hook_recall(brain, args, graph_changes):
                                for t in turns]
         except Exception as _e:
             brain._log_error('surface_recent_messages', _e, 'fetching recent messages from traces')
+        pt.mark('traces')
 
         # Session context from last encoding agent run (per-session — no leak)
         session_context = brain.session_context_for(session_id)
+        pt.mark('session_ctx')
 
         with open(candidates_path, 'w') as f:
             json.dump({
@@ -261,11 +349,13 @@ def hook_recall(brain, args, graph_changes):
                 "recent_messages": recent_messages,
                 "recall_ref": recall_ref,
             }, f, default=str)
+        pt.mark('file_write')
     except Exception as e:
         brain._log_error('recall_candidates_write', e, 'Failed to write candidates file')
 
     if not results:
         brain.save()
+        pt.log(brain, 'hook_recall', n_results=0)
         return {"json": {"decision": "approve"}}
 
     # Gap detection: log gaps for trend analysis
@@ -289,6 +379,7 @@ def hook_recall(brain, args, graph_changes):
     produce_encoding_gap(brain, sq_dal)
     produce_system_health(brain, sq_dal)
     produce_integrity(brain, sq_dal)
+    pt.mark('signals')
 
     # ── ASSEMBLE: budget-aware output ──
     assembler = SurfaceAssembler(sq_dal, budget_chars=6000)
@@ -312,6 +403,11 @@ def hook_recall(brain, args, graph_changes):
             brain._log_error('frame_build_failed', _frame_err,
                              'Frame Constructor failed — surface runs without partnership context')
             _frame = ''
+        pt.mark('frame')
+        # Thread the same PhaseTimer into surface so it splits the surface
+        # phase into haiku / id_resolve / spread / render / trace marks
+        # on the same final log line. Without this we only know "surface
+        # took N ms" without knowing which sub-phase ate the budget.
         additional_context = _run_surface(
             brain, ctx, candidates_data, user_message,
             recent_messages=recent_messages if 'recent_messages' in dir() else [],
@@ -319,11 +415,12 @@ def hook_recall(brain, args, graph_changes):
             recall_ref=recall_ref, session_id=session_id,
             graph_changes=graph_changes,
             query_vec=_query_vec, prior_vecs=_prior_vecs,
-            frame=_frame)
+            frame=_frame, pt=pt)
     except Exception as _surface_err:
         brain._log_error('daemon_surface', _surface_err,
                          'S1 Surface failed in daemon (query=%s)' % user_message[:100])
 
+    pt.log(brain, 'hook_recall', n_results=len(results))
     if additional_context:
         return {"json": {"additionalContext": additional_context}, "session_id": session_id}
     else:
