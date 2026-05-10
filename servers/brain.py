@@ -232,14 +232,6 @@ class Brain(
             except Exception as e:
                 print(f'[brain] Embedder load failed (optional): {e}')
 
-        # Seed baby brain nodes if missing (runs AFTER embedder — remember() needs it)
-        if not skip_embedder:
-            try:
-                from .seed_pack import seed_baby_brain
-                seed_baby_brain(self)
-            except Exception as _e:
-                print('[brain] WARNING: seed_pack failed: %s' % _e, flush=True)
-
         # AspectRegistry — first-class semantic-role API exposed as
         # brain.aspects. Eager validation: loads all type='aspect' nodes,
         # checks REQUIRED_ASPECTS present, auto-heals from aspects_v1.json
@@ -247,6 +239,14 @@ class Brain(
         # instances (skip_embedder=True for background scale runs in
         # runner.py) still validate — _load is cheap once aspects exist
         # in the DB, and auto-heal is idempotent (skips already-present).
+        #
+        # MUST come before seed_baby_brain — seed creates 16 edges via
+        # connect_typed, which hits _maybe_embed_edge_relation
+        # (BrainConnectionsMixin), which dereferences brain.aspects to
+        # compose edge text for the embedding. Pre-fix, AspectRegistry
+        # was initialized AFTER seed_pack, so seed edges silently failed
+        # to embed (caught in try/except, logged as
+        # 'edge_embedding_write: AttributeError').
         try:
             from .aspects import AspectRegistry
             self.aspects = AspectRegistry(self)
@@ -255,6 +255,14 @@ class Brain(
             # unset; consumers that read brain.aspects will get AttributeError
             # which is louder than a silent empty registry.
             print('[brain] WARNING: AspectRegistry init failed: %s' % _e, flush=True)
+
+        # Seed baby brain nodes if missing (runs AFTER embedder — remember() needs it)
+        if not skip_embedder:
+            try:
+                from .seed_pack import seed_baby_brain
+                seed_baby_brain(self)
+            except Exception as _e:
+                print('[brain] WARNING: seed_pack failed: %s' % _e, flush=True)
 
     def _post_schema_init(self):
         """

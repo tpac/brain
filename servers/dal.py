@@ -2080,8 +2080,18 @@ class GraphDAL:
         if edge_ids:
             ts = _now()
             ph = ','.join('?' * len(edge_ids))
+            # NULL the stored embedding on archive — same pattern node
+            # archive uses (DELETE FROM node_enrichments). Archived edges
+            # are never read by spread/select_edges (every read filters
+            # archived=0), so the blob is dead weight in the table. If
+            # the relation is later revived via add_relation Branch 3,
+            # _maybe_embed_edge_relation re-embeds because revive sets
+            # created=True. Symmetric with nodes; storage isn't burned
+            # on history that no one queries.
             cur = self.conn.execute(
-                'UPDATE edge_relations SET archived = 1, archived_at = ?, archived_by = ? '
+                'UPDATE edge_relations '
+                'SET archived = 1, archived_at = ?, archived_by = ?, '
+                '    embedding = NULL, embedding_model = NULL '
                 'WHERE edge_id IN (%s) AND archived = 0' % ph,
                 [ts, 'delete_node_edges'] + edge_ids)
             archived_count = cur.rowcount
@@ -2132,9 +2142,13 @@ class GraphDAL:
             ).fetchall()]
 
             # Soft-archive relations below threshold (v25 — was DELETE).
+            # NULL the embedding too — see delete_node_edges for rationale
+            # (archived edges are unread; revive re-embeds via add_relation).
             prune_ts = _now()
             self.conn.execute(
-                "UPDATE edge_relations SET archived = 1, archived_at = ?, archived_by = ? "
+                "UPDATE edge_relations "
+                "SET archived = 1, archived_at = ?, archived_by = ?, "
+                "    embedding = NULL, embedding_model = NULL "
                 "WHERE relation = ? AND weight < ? AND archived = 0",
                 (prune_ts, 'decay_pruned', relation, EDGE_PRUNE_THRESHOLD))
             pruned = self.conn.execute('SELECT changes()').fetchone()[0]
@@ -2394,8 +2408,13 @@ class GraphDAL:
             return
 
         ts = _now()
+        # NULL the embedding too — same pattern as delete_node_edges and
+        # decay_edges. Symmetric with node archive (which DELETEs from
+        # node_enrichments). Revive via add_relation Branch 3 re-embeds.
         self.conn.execute(
-            'UPDATE edge_relations SET archived = 1, archived_at = ?, archived_by = ? '
+            'UPDATE edge_relations '
+            'SET archived = 1, archived_at = ?, archived_by = ?, '
+            '    embedding = NULL, embedding_model = NULL '
             'WHERE edge_id = ? AND relation = ? AND archived = 0',
             (ts, archived_by, edge_id, relation))
 

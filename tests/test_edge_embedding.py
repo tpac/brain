@@ -123,6 +123,76 @@ class TestEdgeEmbedding(BrainTestBase):
                             'description change should produce a new '
                             'edge embedding (new input → new vector)')
 
+    def test_archive_clears_embedding(self):
+        """Archived edges must NULL their embedding (parallel to node
+        archive's DELETE FROM node_enrichments). Archived rows are
+        never read by spread/select_edges, so the blob is dead weight.
+        Revive via add_relation Branch 3 re-embeds, so this is safe."""
+        from servers.dal import GraphDAL
+        a, b = self._create_pair()
+        self.brain.connect_typed(a, b, relation='extends',
+                                 description='A extends B')
+        blob_before, model_before = self._read_embedding(a, b, 'extends')
+        self.assertIsNotNone(blob_before, 'embedding should be populated at write')
+        self.assertIsNotNone(model_before)
+
+        # Archive via the explicit per-relation path.
+        gdal = GraphDAL(self.brain.conn)
+        gdal.remove_relation(a, b, 'extends', archived_by='test')
+
+        blob_after, model_after = self._read_embedding(a, b, 'extends')
+        self.assertIsNone(blob_after,
+                          'archived edge_relations.embedding must be NULL — '
+                          'archived rows are unread; blob is wasted storage')
+        self.assertIsNone(model_after,
+                          'archived edge_relations.embedding_model must be '
+                          'NULL too (paired with embedding)')
+
+        # The row itself should still exist (soft-archive, not hard-delete)
+        # so decay/audit/revive paths still find it. Filter by relation
+        # because the same edge_id can carry multiple relations (the
+        # daemon's Hebbian path adds 'co_accessed' on the same edge).
+        edge_row = self.brain.conn.execute(
+            'SELECT er.archived FROM edges e '
+            'JOIN edge_relations er ON er.edge_id = e.edge_id '
+            'WHERE er.relation = ? '
+            'AND ((e.source_id = ? AND e.target_id = ?) '
+            '     OR (e.source_id = ? AND e.target_id = ?))',
+            ('extends', a, b, b, a)).fetchone()
+        self.assertIsNotNone(edge_row,
+                             'archived edge_relations row should still exist '
+                             '(soft-archive, not hard-delete)')
+        self.assertEqual(edge_row[0], 1, 'row should be archived=1')
+
+    def test_revive_re_embeds_after_archive(self):
+        """When an archived edge is revived via add_relation, the
+        embedding must be repopulated. Without this, archived → revived
+        edges stay NULL and fall through to the on-demand fastembed path
+        forever — a slow leak back into the bug we just fixed."""
+        from servers.dal import GraphDAL
+        a, b = self._create_pair()
+        self.brain.connect_typed(a, b, relation='extends',
+                                 description='original description')
+        blob_v1, _ = self._read_embedding(a, b, 'extends')
+        self.assertIsNotNone(blob_v1)
+
+        # Archive
+        gdal = GraphDAL(self.brain.conn)
+        gdal.remove_relation(a, b, 'extends', archived_by='test')
+        self.assertIsNone(self._read_embedding(a, b, 'extends')[0])
+
+        # Revive (add_relation Branch 3 — fresh state, created=True)
+        self.brain.connect_typed(a, b, relation='extends',
+                                 description='revived description')
+        blob_v2, model_v2 = self._read_embedding(a, b, 'extends')
+        self.assertIsNotNone(blob_v2,
+                             'revived edge must get a fresh embedding')
+        self.assertIsNotNone(model_v2)
+        # New description → new vector
+        self.assertNotEqual(blob_v1, blob_v2,
+                            'revived edge with new description should '
+                            'produce a new vector')
+
 
 if __name__ == '__main__':
     unittest.main()
