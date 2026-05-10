@@ -41,6 +41,26 @@ class BrainConnectionsMixin:
           - Embedding fails (logged; row keeps NULL or stale; spread falls
             back to live compose for that edge).
 
+        Concurrency: assumes the caller holds `brain.write_lock` (the
+        daemon dispatch wrapper acquires it for the whole `fn()`, so
+        connect_typed → add_relation → this method all serialize on
+        the same lock). Two concurrent revisions are fully ordered;
+        last writer wins, embedding always matches the description it
+        was computed from. A reader running concurrently sees snapshot
+        consistency (WAL) — there's a brief window between
+        add_relation's commit (description=new) and the embedding
+        UPDATE+commit landing where the reader observes `description=new`
+        with `embedding=embed(old)`. That's transient and harmless: the
+        cosine score is slightly off for one recall, self-heals next call.
+
+        Durability: explicit commit at the end. Without it, the embedding
+        UPDATE stayed uncommitted until the next writer's
+        `add_relation.commit()` or the autosave loop — meaning the LAST
+        embedding in a brain_batch (or any single connect_typed call
+        that wasn't followed by another writer) had a gap where a daemon
+        crash would lose the embedding. add_relation already commits its
+        own writes; this method now matches that contract.
+
         Layer note: lives in BrainConnectionsMixin (not GraphDAL) because
         the embedding work needs `brain.aspects` (for family meaning) and
         the embedder — neither belongs in DAL. GraphDAL stays storage-only.
@@ -91,7 +111,12 @@ class BrainConnectionsMixin:
                 'UPDATE edge_relations SET embedding = ?, embedding_model = ? '
                 'WHERE edge_id = ? AND relation = ?',
                 (blob, model, edge_id, relation))
-            # commit happens via the brain's normal commit cycle
+            # Explicit commit so the embedding write is durable on its own
+            # — the caller holds brain.write_lock, so this is a fast WAL
+            # commit without contention. add_relation commits the
+            # description; this commits the embedding. Symmetric with
+            # node_enrichments writes which commit per node.
+            self.conn.commit()
         except Exception as e:
             # Embedding failure must NOT fail the connect — the row exists,
             # spread will fall through to the on-demand embed path. Log
