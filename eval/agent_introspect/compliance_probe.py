@@ -50,25 +50,54 @@ from eval.agent_introspect._common import (
 SYSTEM_PROMPT = (
     "You are auditing whether an encoder agent complied with specific "
     "rules from its prompt. You will be given (1) the encoder's full "
-    "system prompt, (2) the conversation it encoded, (3) the actions it "
-    "emitted, and (4) a list of rules to audit. For each rule, judge: "
-    "DID the agent's actions comply? Answer for each rule with: status "
-    "(comply|partial|skip), evidence (concrete from the actions), and "
-    "reasoning. When non-compliant, quote the part of the prompt or the "
-    "conversation that explains the choice — if you can find one. If "
-    "the prompt CONTRADICTS itself between the rule and somewhere else, "
-    "name the contradiction and quote both sides verbatim."
+    "system prompt, (2) the temporal context the encoder ran in "
+    "(conversation_now — the date the encoder treats as 'today'; eval "
+    "question_date and haystack_dates as reference), (3) the conversation "
+    "it encoded, (4) the actions it emitted, and (5) a list of rules to "
+    "audit. The encoder anchors relative phrases ('yesterday', 'last "
+    "month', 'three weeks ago', 'just got back') against conversation_now "
+    "— treat conversation_now as the truth-of-record for relative date "
+    "resolution. For each rule, judge: DID the agent's actions comply? "
+    "Answer for each rule with: status (comply|partial|skip|not_applicable), "
+    "evidence (concrete from the actions), and reasoning. When "
+    "non-compliant, quote the part of the prompt or the conversation that "
+    "explains the choice — if you can find one. If the prompt CONTRADICTS "
+    "itself between the rule and somewhere else, name the contradiction "
+    "and quote both sides verbatim."
 )
 
 
+def _build_context_block(meta: dict) -> str:
+    """Render the temporal context the encoder ran in.
+
+    Encoder uses conversation_now (= the haystack session's date for eval
+    items) to resolve relative phrases. Without this, the auditor cannot
+    judge anchoring rules — 'is event_time the right date for X' is
+    undefined when the encoder's notion of "today" is unknown.
+    """
+    haystack_dates = meta.get('haystack_dates') or []
+    # conversation_now = haystack session date (the date the encoder was
+    # treating as "today" when ingesting these turns). For multi-session
+    # haystacks the encoder re-anchors per session; for the eval cohort
+    # most items are single-session.
+    conv_now = haystack_dates[-1] if haystack_dates else '(unknown)'
+    question_date = meta.get('question_date', '(unknown)')
+    return (f'conversation_now (encoder treats this as "today"): {conv_now}\n'
+            f'haystack_dates (all sessions in chronological order): '
+            f'{haystack_dates or "(unknown)"}\n'
+            f'question_date (when the eval question was asked, AFTER '
+            f'ingest): {question_date}')
+
+
 def build_audit_user_message(item: dict, rules: list[dict]) -> str:
-    """Assemble the body Sonnet sees: prompt + conversation + actions + rules."""
+    """Assemble the body Sonnet sees: prompt + context + conversation + actions + rules."""
     conv_text = []
     for turn in item['conversation']:
         role = turn['role'].upper()
         content = turn['content']
         conv_text.append(f'\n--- {role} ---\n{content}')
     actions_block = format_actions_for_review(item['action_details'])
+    context_block = _build_context_block(item.get('meta') or {})
 
     bar = '=' * 70
     rules_text = '\n'.join(
@@ -85,17 +114,22 @@ PART 1 — THE ENCODER'S FULL SYSTEM PROMPT
 {item['encoder_prompt']}
 
 {bar}
-PART 2 — THE CONVERSATION THE ENCODER SAW (question_id={item['qid']})
+PART 2 — TEMPORAL CONTEXT (the encoder's "now")
+{bar}
+{context_block}
+
+{bar}
+PART 3 — THE CONVERSATION THE ENCODER SAW (question_id={item['qid']})
 {bar}
 {''.join(conv_text)}
 
 {bar}
-PART 3 — THE ACTIONS THE ENCODER EMITTED
+PART 4 — THE ACTIONS THE ENCODER EMITTED
 {bar}
 {actions_block}
 
 {bar}
-PART 4 — RULES TO AUDIT
+PART 5 — RULES TO AUDIT
 {bar}
 {rules_text}
 

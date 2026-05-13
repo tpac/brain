@@ -1,0 +1,18 @@
+[
+    {
+        "id": "event_time_kv_when_dated",
+        "text": "Any node that refers to a specific moment in time — events, decisions, moments, facts dated or set on a date — MUST carry event_time: \"<ISO>\" in metadata_kv. The conversation's date is the anchor. Resolve relative phrases (today/yesterday/last Tuesday/N weeks ago) to ISO at encode time."
+    },
+    {
+        "id": "proximal_phrase_anchors_to_conversation_date",
+        "text": "When the operator uses a proximal-time phrase — 'just got back from X', 'just attended X', 'we recently did X', 'we just X' — event_time MUST anchor to the conversation date (the date of the current session), NOT to any specific date mentioned elsewhere in the conversation. The proximal date wins for proximal phrases. The presence of a specific date elsewhere in the conversation (e.g. 'the festival runs June 24-July 4') is event metadata, not the event_time the operator is reporting on."
+    },
+    {
+        "id": "specific_date_wins_only_when_speaker_attributes_it",
+        "text": "Pick a specific date for event_time ONLY when the operator unambiguously attributes that date to the event itself ('the festival is on June 24', 'we went on July 15', 'my birthday is May 3'). If the operator says 'I just got back from the X festival' and the conversation also mentions the festival's date range, prefer the conversation date — the operator is reporting the experience NOW, not retroactively anchoring it to the festival's earliest date."
+    },
+    {
+        "id": "no_guess_when_unresolvable",
+        "text": "If a date is genuinely unrecoverable (the operator said only 'a few weeks ago' with no catalog landmark and no conversation-date anchor), leave event_time absent. Do NOT guess or fabricate. But DO use conversation_date as the anchor for proximal phrases — that is a valid resolution, not a guess."
+    }
+]
