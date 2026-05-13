@@ -67,7 +67,13 @@ def build_muster_context(
     required at the call site beyond passing these in.
     """
     if current_date is None:
-        current_date = _dt.date.today().isoformat()
+        # Fall back to brain_now() (operator wall-clock) when caller didn't
+        # provide a conversation date. encode.py should normally pass one
+        # via conversation_now(messages). Loud fallback so a missing-date
+        # plumbing regression doesn't silently corrupt scout candidates.
+        # See servers/clock.py + brain memory 6d5b789e for context.
+        from servers.clock import brain_today
+        current_date = brain_today().isoformat()
 
     # Turn-typed view — scout runners consume turns with (turn_id, role, text)
     turns = [{

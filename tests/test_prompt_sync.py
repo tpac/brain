@@ -103,12 +103,12 @@ class TestFreshBrainSeeding:
         brain = Brain(db_path=db)
         try:
             versions_before = {
-                i['name']: i['latest_version']
+                i['name']: i['max_version']
                 for i in brain._interaction_dal.list_all()
             }
             seed_interactions(brain)
             versions_after = {
-                i['name']: i['latest_version']
+                i['name']: i['max_version']
                 for i in brain._interaction_dal.list_all()
             }
             assert versions_after == versions_before, (
@@ -118,31 +118,36 @@ class TestFreshBrainSeeding:
             brain.close()
 
     def test_seed_doesnt_override_externally_registered_version(self, tmp_path):
-        """After an external register_interaction bumps a prompt to v2,
-        a subsequent seed call must leave v2 as the latest — not clobber
-        with v1 content from the .py file. This is the core guarantee that
-        lets S3 evolve prompts without fighting the seed.
+        """After an external register + set_active bumps a prompt to v2,
+        a subsequent seed call must leave v2 as the active version — not
+        clobber with v1 content from the .py file. This is the core
+        guarantee that lets S3 evolve prompts without fighting the seed.
+
+        Note: under the active-version model (2026-05-10), register alone
+        doesn't change runtime — must call set_active. This test verifies
+        the FULL externally-evolved path survives seed re-runs.
         """
         from servers.brain import Brain
         from servers.interaction_seed import seed_interactions
         db = str(tmp_path / 'brain.db')
         brain = Brain(db_path=db)
         try:
-            # v1 is seeded by Brain.__init__.
+            # v1 is seeded by Brain.__init__ and auto-activated.
             v1_prompt = brain.get_interaction_prompt('s1e')
             assert v1_prompt
 
-            # Simulate an external update (operator or S3).
+            # Simulate an external update (operator or S3): register + activate.
             custom_v2 = 'CUSTOM v2 — do not overwrite me with the .py seed.\n' * 20
-            brain._interaction_dal.register(
+            result = brain._interaction_dal.register(
                 name='s1e', template=custom_v2,
                 parameters='{}', created_by='test')
+            brain._interaction_dal.set_active('s1e', result['version'], set_by='test')
 
-            # Re-run seed. Must NOT revert or bump.
+            # Re-run seed. Must NOT revert active back to v1 or bump it.
             seed_interactions(brain)
             active = brain.get_interaction_prompt('s1e')
             assert active == custom_v2, (
-                'Seed clobbered an externally-registered v2. The guard in '
+                'Seed clobbered an externally-activated v2. The guard in '
                 "seed_interactions() must skip any interaction already in the DB.")
         finally:
             brain.close()

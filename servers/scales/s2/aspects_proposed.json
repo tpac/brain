@@ -1,0 +1,14 @@
+{
+  "cycle_at": "2026-05-12T00:45:16.951432+00:00",
+  "classifications_accepted": [
+    {
+      "category": "node_types",
+      "value": "technique",
+      "aspects": [
+        "lesson_insight"
+      ],
+      "rationale": "Techniques are reusable methods derived from experience \u2014 AAAK compression and diagnostic isolation are both earned knowledge about how to do specific tasks effectively, making them lesson_insight rather than identity_bearing procedures."
+    }
+  ],
+  "classifications_rejected": []
+}

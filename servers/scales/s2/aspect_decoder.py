@@ -71,15 +71,21 @@ class AspectDecoder(IntegrationUnit):
         batch_size = self.config['max_candidates_per_call']
         batch = all_unclassified[:batch_size]
 
+        # Empty-batch early-out BEFORE any trace write. The O trace marks
+        # "I observed unclassified work" — when there's none, writing it is
+        # noise that historically caused a runaway S2 cascade (downstream
+        # units re-fired treating empty scans as fresh work, rolled back
+        # 2026-05-08 in coordinator.py). The unit is a true no-op when
+        # everything is classified.
+        if not batch:
+            return {'proposals': [], 'stats': stats, 'skipped': 'nothing unclassified'}
+
         self.trace('O', 'aspect_scan',
                    '%d unclassified types + %d unclassified relations → batch of %d' % (
                        stats['unclassified_types'],
                        stats['unclassified_relations'],
                        len(batch)),
                    metadata=stats)
-
-        if not batch:
-            return {'proposals': [], 'stats': stats, 'skipped': 'nothing unclassified'}
 
         # Attach example records to each candidate
         proposals = self._build_proposals(batch)

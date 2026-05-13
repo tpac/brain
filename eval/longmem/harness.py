@@ -4,21 +4,33 @@ Orchestrates:
   1. Load LongMemEval oracle JSON
   2. Select stratified N items (default: 10 = 2 per axis × 5 axes)
   3. For each item: fresh brain (reset to seeds) → replay haystack → query → answerer → record
-  4. Write hypothesis.jsonl + a run report
+  4. Stream hypotheses + per-item results to JSONL as items complete
+  5. Write aggregate report.json at the end
 
 Usage:
   python3 eval/longmem/harness.py              # run with defaults
   python3 eval/longmem/harness.py --items 5    # smaller for debugging
   python3 eval/longmem/harness.py --seed 42    # reproducible selection
+  python3 eval/longmem/harness.py --smoke-test # 1 item per axis, fail-fast preflight
+
+Reliability guardrails (so a 30+ min run doesn't fail 20 min deep):
+  - _preflight() validates env, oracle, disk, embedder importability before
+    any work happens. Run automatically at main() start.
+  - --smoke-test runs 1 item per axis (5 items, ~3-5 min wall) and exits
+    non-zero on any pipeline failure. Do this BEFORE any long run.
+  - Per-item streaming writes: hypotheses_{run}.jsonl and results_{run}.jsonl
+    are appended after each item completes, so a crash at item N preserves
+    items 1..N-1.
 """
 import argparse
 import json
 import os
 import random
+import shutil
 import sys
 import time
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, TextIO
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
@@ -93,8 +105,157 @@ def _new_errors_since(brain, baseline_count: int) -> List[Dict[str, Any]]:
             for r in rows[:n_new]]
 
 
+def _preflight(oracle_path: str, min_oracle_items: int = 100,
+               min_disk_gb: float = 1.0) -> None:
+    """Validate environment + dependencies before launching a long run.
+
+    Raises RuntimeError with a clear message on any failure. Catches the
+    "20 min deep then we discover X is broken" class of bug — every check
+    here is for something that, if broken, fails ALL items not just one.
+
+    Args:
+        oracle_path: Path to oracle JSON to validate.
+        min_oracle_items: Lower bound on oracle item count (sanity, not strict).
+        min_disk_gb: Minimum free space in ~/AgentsContext/ before run.
+    """
+    failures = []
+
+    # 1. ANTHROPIC_API_KEY — judge + answerer both need it. Tested AFTER .env
+    #    load so the standard project setup works.
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        failures.append(
+            "ANTHROPIC_API_KEY not set — judge + answerer will fail every item. "
+            "Either export it or put it in .env at the repo root."
+        )
+
+    # 2. Oracle JSON — exists, parses, has reasonable item count.
+    if not os.path.exists(oracle_path):
+        failures.append(f"Oracle JSON not found at {oracle_path}")
+    else:
+        try:
+            with open(oracle_path) as f:
+                data = json.load(f)
+            if not isinstance(data, list):
+                failures.append(f"Oracle JSON is not a list (got {type(data).__name__})")
+            elif len(data) < min_oracle_items:
+                failures.append(
+                    f"Oracle has {len(data)} items, expected >= {min_oracle_items}")
+        except json.JSONDecodeError as e:
+            failures.append(f"Oracle JSON parse error: {e}")
+        except Exception as e:
+            failures.append(f"Oracle JSON read error: {e}")
+
+    # 3. Disk space at ~/AgentsContext/ — each per-item brain takes ~5–10 MB,
+    #    50 items in flight ≈ 500 MB peak before cleanup. Be conservative.
+    base = os.path.expanduser("~/AgentsContext")
+    try:
+        os.makedirs(base, exist_ok=True)
+        usage = shutil.disk_usage(base)
+        free_gb = usage.free / (1024 ** 3)
+        if free_gb < min_disk_gb:
+            failures.append(
+                f"~/AgentsContext/ has {free_gb:.2f} GB free, need >= {min_disk_gb} GB. "
+                f"Per-item brains accumulate even with cleanup if items run in parallel.")
+    except Exception as e:
+        failures.append(f"Disk-space check failed at {base}: {e}")
+
+    # 4. Embedder importable — model load itself is slow, so we just check
+    #    the import path, which catches most "module renamed / venv broken"
+    #    failures without paying the 1.5s load cost.
+    try:
+        import importlib
+        importlib.import_module("servers.embedder")
+    except Exception as e:
+        failures.append(f"servers.embedder import failed: {e}")
+
+    if failures:
+        msg = "\n  - ".join(["[preflight] FAILED:"] + failures)
+        raise RuntimeError(msg)
+    print("[preflight] OK — env + oracle + disk + embedder import all good", flush=True)
+
+
+def _open_streaming_writers(reports_dir: str, run_name: str) -> Dict[str, TextIO]:
+    """Open append-mode writers for hypotheses + per-item results.
+
+    Returns dict with 'hypotheses' and 'results' keys, each a file handle
+    that the loop can append-and-flush to. Caller is responsible for
+    closing them.
+    """
+    hypotheses_path = os.path.join(reports_dir, f"hypotheses_{run_name}.jsonl")
+    results_path = os.path.join(reports_dir, f"results_{run_name}.jsonl")
+    return {
+        'hypotheses': open(hypotheses_path, "a", buffering=1),  # line-buffered
+        'results': open(results_path, "a", buffering=1),
+        'hypotheses_path': hypotheses_path,
+        'results_path': results_path,
+    }
+
+
+def _stream_write_result(writers: Dict, result: Dict[str, Any]) -> None:
+    """Append one result to both jsonl streams. Flushes on each write so a
+    process crash preserves what completed."""
+    if "hypothesis" in result:
+        writers['hypotheses'].write(json.dumps({
+            "question_id": result["question_id"],
+            "hypothesis": result["hypothesis"]}) + "\n")
+        writers['hypotheses'].flush()
+    writers['results'].write(json.dumps(result) + "\n")
+    writers['results'].flush()
+
+
+def _apply_s1e_override(brain, override_path: str) -> None:
+    """Register a new s1e prompt version over the seeded v1 in this brain
+    AND set it active so the encoder actually picks it up.
+
+    Used by --s1e-override to test a candidate prompt against the eval
+    without modifying the seed file (which would affect all future fresh
+    brains). Preserves the seeded v1's parameters; only the template
+    changes. After this call, brain.get_interaction('s1e') returns the
+    override (active version flipped).
+
+    Since 2026-05-10 the activation step is explicit (register no longer
+    auto-activates non-v1 versions).
+    """
+    new_template = open(override_path).read()
+    existing = brain._interaction_dal.get_active('s1e')
+    params = existing.get('parameters', '') if existing else ''
+    result = brain._interaction_dal.register(
+        's1e', template=new_template, parameters=params,
+        created_by='eval-s1e-override')
+    # register() auto-activates only v1. For overrides on a seeded brain
+    # (which already has v1 active), flip the pointer explicitly.
+    if result.get('version', 1) > 1:
+        brain._interaction_dal.set_active(
+            's1e', result['version'], set_by='eval-s1e-override')
+
+
+def _apply_surface_override(brain, override_path: str) -> None:
+    """Register a new surface prompt version AND activate it in this brain.
+
+    Used by --surface-override to test surface v5 (agentic, with tools) on
+    the eval without registering against the live brain. Each fresh eval
+    brain gets v5 registered + activated; live daemon never sees it.
+
+    Companion to BRAIN_SURFACE_VARIANT=v5_agentic env var (set by main()
+    when --surface-override is passed) — the env var picks the tool-use
+    loop in surface.py; this DAL action makes the v5 prompt the one Haiku
+    actually reads.
+    """
+    new_template = open(override_path).read()
+    existing = brain._interaction_dal.get_active('surface')
+    params = existing.get('parameters', '') if existing else ''
+    result = brain._interaction_dal.register(
+        'surface', template=new_template, parameters=params,
+        created_by='eval-surface-override')
+    if result.get('version', 1) > 1:
+        brain._interaction_dal.set_active(
+            'surface', result['version'], set_by='eval-surface-override')
+
+
 def run_item(item: Dict[str, Any], item_idx: int, total: int,
-             run_name: str = None, keep_db: bool = False) -> Dict[str, Any]:
+             run_name: str = None, keep_db: bool = False,
+             s1e_override: Optional[str] = None,
+             surface_override: Optional[str] = None) -> Dict[str, Any]:
     """Run one item end-to-end. Each item gets its OWN brain DB for isolation.
 
     Per-item DB (brain-eval-{run_name}/{qid}/) means:
@@ -102,17 +263,47 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
       - Inspectable post-hoc (keep_db=True preserves the DB for debugging)
       - Prerequisite for parallel execution (each process writes to its own file)
 
+    Per-item ARTIFACTS (eval/longmem/reports/{run}/items/{qid}/) are dumped
+    BEFORE the brain handles close — durable post-hoc analysis without
+    re-running. See eval/ARTIFACTS.md.
+
     Returns result dict with inline judge + failure class.
     """
     from eval.longmem.replay import replay_item, query_brain
     from eval.longmem.answerer import answer_question
     from eval.longmem.fresh_brain import create_fresh_eval_brain, per_item_brain_dir
     from eval.longmem.judge import judge_one
-    from eval.longmem.classifier import classify_failure
+    from eval.longmem.classifier import classify_failure, _read_s1r_trace
+    from eval.longmem.artifacts import EvalArtifactsDumper
 
     qid = item["question_id"]
     item_db_path = per_item_brain_dir(qid, run_name=run_name)
     brain = create_fresh_eval_brain(path=item_db_path, wipe=True)
+
+    # Optional s1e prompt override — register a new version over the seeded
+    # v1 BEFORE haystack replay so the override is what the encoder uses.
+    if s1e_override:
+        try:
+            _apply_s1e_override(brain, s1e_override)
+            print(f"[harness] item {item_idx+1}: s1e override applied from "
+                  f"{s1e_override}", flush=True)
+        except Exception as e:
+            print(f"[harness] item {item_idx+1}: s1e override FAILED: {e}",
+                  flush=True)
+
+    # Optional surface prompt override — register + activate v5 in this
+    # eval brain. Companion env var BRAIN_SURFACE_VARIANT=v5_agentic is
+    # set by main() when --surface-override is passed, so this brain's
+    # surface call uses the agentic tool-use loop reading the v5 prompt.
+    if surface_override:
+        try:
+            _apply_surface_override(brain, surface_override)
+            print(f"[harness] item {item_idx+1}: surface override applied from "
+                  f"{surface_override}", flush=True)
+        except Exception as e:
+            print(f"[harness] item {item_idx+1}: surface override FAILED: {e}",
+                  flush=True)
+
     err_baseline = _snapshot_error_count(brain)
 
     axis = _item_axis(item)
@@ -123,6 +314,28 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
     print(f"[harness] Q: {item['question'][:120]}", flush=True)
     print(f"[harness] A (gold): {gold_str[:120]}", flush=True)
     print(f"{'='*70}", flush=True)
+
+    # Artifacts dumper — writes durable per-item bytes to eval/longmem/reports/.
+    # Calls are no-ops if the dumper itself fails; an artifact failure must
+    # NEVER kill the eval. Wrap each dump call in try/except.
+    dumper: Optional[EvalArtifactsDumper] = None
+    try:
+        dumper = EvalArtifactsDumper(run_name=run_name or 'adhoc', qid=qid)
+        dumper.dump_meta(
+            axis=axis,
+            question=item["question"],
+            gold=gold_str,
+            question_date=item.get("question_date"),
+            haystack_dates=item.get("haystack_dates", []),
+            haystack_session_ids=item.get("haystack_session_ids", []),
+            haystack_turn_count=n_turns,
+        )
+        # Snapshot interactions BEFORE ingest — captures the prompt versions
+        # the encoder/surfacer will use during this run. (Re-dumped after
+        # ingest is overkill — interactions don't mutate during eval.)
+        dumper.dump_interactions(brain)
+    except Exception as e:
+        print(f"[harness] artifacts init failed (non-fatal): {e}", flush=True)
 
     t0 = time.time()
     ingest_session_id = f"ingest-{qid}"
@@ -160,6 +373,39 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
         for e in new_errors[:5]:
             print(f"    {e['type']}: {e['message'][:120]}", flush=True)
 
+    # Artifacts dumps — happen AFTER classify (so we can include classifier
+    # evidence in recall.json) but BEFORE brain.close + cleanup.
+    if dumper:
+        try:
+            dumper.dump_traces(brain)
+            dumper.dump_nodes(brain)
+            dumper.dump_edges(brain)
+            # Recall trace — re-read here so artifacts have the parsed shape;
+            # classifier already read it once for failure_evidence, but the
+            # parse is cheap and decouples this dump from classifier internals.
+            s1r = _read_s1r_trace(brain, q_result["query_session_id"]) or {}
+            dumper.dump_recall(
+                query_session_id=q_result["query_session_id"],
+                query=s1r.get("query", item["question"]),
+                candidates=s1r.get("candidates", []),
+                selected=s1r.get("selected", []),
+                dropped=s1r.get("dropped", []),
+                context=s1r.get("context", q_result.get("additional_context", "")),
+                classifier_evidence=failure_info.get("failure_evidence"),
+                answerer_response={
+                    "hypothesis": a_result["hypothesis"],
+                    "abstained": a_result["abstained"],
+                    "has_context": a_result["has_context"],
+                    "tokens_in": a_result.get("tokens_in", 0),
+                    "tokens_out": a_result.get("tokens_out", 0),
+                    "elapsed_ms": a_result.get("elapsed_ms", 0),
+                },
+                tool_trace=s1r.get("tool_trace", []),
+                surface_variant=s1r.get("surface_variant", ""),
+            )
+        except Exception as e:
+            print(f"[harness] artifacts dump failed (non-fatal): {e}", flush=True)
+
     result = {
         "question_id": qid,
         "question_type": item["question_type"],
@@ -184,6 +430,15 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
         "brain_db_path": item_db_path,
     }
 
+    # Mirror the result dict to artifacts dir — final piece of the per-item
+    # bundle for retrospective analysis (analyzer.py loads this alongside
+    # traces/nodes/edges/recall).
+    if dumper:
+        try:
+            dumper.dump_result(result)
+        except Exception as e:
+            print(f"[harness] artifacts result dump failed (non-fatal): {e}", flush=True)
+
     # Release the per-item brain's handles before any cleanup.
     try:
         brain.close()
@@ -202,6 +457,39 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
     return result
 
 
+def _summarize_smoke(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Inspect smoke-test results — return {ok, failures} for exit-code decision.
+
+    A smoke item PASSES the pipeline if (regardless of correct/incorrect):
+      - no top-level exception ('error' key absent)
+      - hypothesis was produced
+      - judge returned a verdict ('correct' key present)
+      - brain_errors_new is small enough to suggest a working ingest
+
+    Correctness is NOT a smoke-test criterion — we're proving the pipeline
+    runs end-to-end, not that the brain is good at the task.
+    """
+    failures = []
+    PIPELINE_ERROR_THRESHOLD = 10  # >10 brain_errors in one item == something broke
+    for r in results:
+        qid = r.get("question_id", "?")
+        if "error" in r:
+            failures.append(f"{qid}: top-level exception: {r['error'][:120]}")
+            continue
+        if "hypothesis" not in r:
+            failures.append(f"{qid}: no hypothesis produced")
+            continue
+        if "correct" not in r:
+            failures.append(f"{qid}: judge did not return verdict")
+            continue
+        n_err = len(r.get("brain_errors_new") or [])
+        if n_err > PIPELINE_ERROR_THRESHOLD:
+            sample = "; ".join(e["type"] for e in (r.get("brain_errors_new") or [])[:3])
+            failures.append(
+                f"{qid}: {n_err} brain_errors during item (>{PIPELINE_ERROR_THRESHOLD}) — {sample}")
+    return {"ok": not failures, "failures": failures, "total": len(results)}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--items", type=int, default=2, help="per-axis item count (total = items × 5)")
@@ -212,7 +500,35 @@ def main():
                         help="keep per-item brain DBs after each item (for post-hoc inspection)")
     parser.add_argument("--workers", type=int, default=1,
                         help="parallel worker processes (default 1 = serial). Each worker loads its own embedder (~1GB).")
+    parser.add_argument("--smoke-test", action="store_true",
+                        help="Run 1 item per axis (~3-5 min), validate the pipeline end-to-end, "
+                             "exit non-zero on any pipeline failure. Run BEFORE long runs.")
+    parser.add_argument("--skip-preflight", action="store_true",
+                        help="Skip env/oracle/disk/embedder health checks (debug only).")
+    parser.add_argument("--min-oracle-items", type=int, default=10,
+                        help="Preflight floor on oracle item count (default 10 — small corpora "
+                             "like realchat_oracle.json have 15 items; longmem oracle has 500).")
+    parser.add_argument("--qids", default=None,
+                        help="Comma-separated qids to run (overrides stratified sampling). "
+                             "Use to re-run specific failures with rich artifacts: "
+                             "--qids 58470ed2,b86304ba,852ce960. Order is preserved.")
+    parser.add_argument("--s1e-override", default=None,
+                        help="Path to s1e prompt file to register over the seeded v1 in "
+                             "each fresh eval brain (e.g. eval/prompts/s1e_v15_3.txt). "
+                             "Used to test prompt revisions on the eval before launching.")
+    parser.add_argument("--surface-override", default=None,
+                        help="Path to surface prompt file to register AND activate in each "
+                             "fresh eval brain (e.g. eval/surface_v5_prompt.txt). "
+                             "Auto-sets BRAIN_SURFACE_VARIANT=v5_agentic in the harness env "
+                             "so the agentic tool-use loop runs. Live brain is untouched.")
     args = parser.parse_args()
+
+    # If --surface-override is set, opt the harness into the agentic variant.
+    # Live daemon is unaffected — this only sets the env var for THIS process.
+    if args.surface_override:
+        os.environ['BRAIN_SURFACE_VARIANT'] = 'v5_agentic'
+        print('[harness] BRAIN_SURFACE_VARIANT=v5_agentic '
+              '(surface-override active: %s)' % args.surface_override, flush=True)
 
     # Load env — override empty vars (setdefault skips empty strings, per known bug)
     from pathlib import Path
@@ -225,11 +541,51 @@ def main():
                 if not os.environ.get(key):  # missing OR empty
                     os.environ[key] = val
 
+    # Preflight — fail fast BEFORE we burn time loading data, picking items,
+    # or starting the loop. The whole point is to surface config bugs in the
+    # first 2 seconds, not 20 minutes deep.
+    if not args.skip_preflight:
+        try:
+            _preflight(args.oracle, min_oracle_items=args.min_oracle_items)
+        except RuntimeError as e:
+            print(str(e), file=sys.stderr, flush=True)
+            sys.exit(2)
+
+    # Smoke-test mode: override args for a fast, fail-fast end-to-end check.
+    # 1 item per axis × 5 axes = 5 items. Serial. Keep DBs for post-mortem.
+    if args.smoke_test:
+        print("[harness] SMOKE TEST mode: 1 item per axis, serial, keep DBs", flush=True)
+        args.items = 1
+        args.workers = 1
+        args.keep_dbs = True
+        if not args.run_name:
+            args.run_name = "smoke_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+
     with open(args.oracle) as f:
         data = json.load(f)
     print(f"[harness] loaded {len(data)} oracle items from {args.oracle}", flush=True)
 
-    picked = stratified_sample(data, per_axis=args.items, seed=args.seed)
+    # --qids overrides stratified_sample for targeted re-runs (e.g. when
+    # investigating specific failures with rich artifacts).
+    if args.qids:
+        wanted = [q.strip() for q in args.qids.split(",") if q.strip()]
+        by_id = {item["question_id"]: item for item in data}
+        picked = []
+        missing = []
+        for q in wanted:
+            if q in by_id:
+                picked.append(by_id[q])
+            else:
+                missing.append(q)
+        if missing:
+            print(f"[harness] WARN qids not in oracle: {missing}", flush=True)
+        if not picked:
+            print("[harness] no valid qids — exiting", file=sys.stderr)
+            sys.exit(1)
+        print(f"[harness] --qids picked {len(picked)} items "
+              f"(skipping stratified sampling)", flush=True)
+    else:
+        picked = stratified_sample(data, per_axis=args.items, seed=args.seed)
     print(f"[harness] selected {len(picked)} items:", flush=True)
     for i, item in enumerate(picked):
         axis = _item_axis(item)
@@ -239,57 +595,90 @@ def main():
     # Compute run_name up front — each item's brain lives under brain-eval-{run_name}/{qid}/
     run_name = args.run_name or datetime.now().strftime("%Y%m%d_%H%M%S")
 
+    # Reports dir + streaming writers — open BEFORE the loop so partial
+    # progress is preserved if the process dies. JSONL append + flush per
+    # item; aggregate report.json still gets written at the end.
+    reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
+    os.makedirs(reports_dir, exist_ok=True)
+    writers = _open_streaming_writers(reports_dir, run_name)
+    print(f"[harness] streaming results → {writers['results_path']}", flush=True)
+
     results = []
     t_run0 = time.time()
-    if args.workers <= 1:
-        # Serial path (backward compatible)
-        for i, item in enumerate(picked):
-            try:
-                r = run_item(item, i, len(picked), run_name=run_name,
-                             keep_db=args.keep_dbs)
-                results.append(r)
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
-                print(f"[harness] item {i+1} FAILED: {e}", flush=True)
-                results.append({"question_id": item["question_id"], "error": str(e)})
-    else:
-        # Parallel path — ProcessPoolExecutor, each worker loads its own embedder.
-        # Per-item DBs are already isolated (brain-eval-{run_name}/{qid}/), so no contention.
-        from concurrent.futures import ProcessPoolExecutor, as_completed
-        print(f"[harness] running {len(picked)} items across {args.workers} workers", flush=True)
-        results_by_idx: Dict[int, Dict[str, Any]] = {}
-        with ProcessPoolExecutor(max_workers=args.workers) as pool:
-            futures = {
-                pool.submit(run_item, item, i, len(picked), run_name, args.keep_dbs): (i, item)
-                for i, item in enumerate(picked)
-            }
-            done_count = 0
-            for fut in as_completed(futures):
-                i, item = futures[fut]
+    s1e_override_path = args.s1e_override or None
+    if s1e_override_path:
+        # Verify file exists at startup so we fail-fast, not per-item
+        from pathlib import Path
+        if not Path(s1e_override_path).exists():
+            print(f"[harness] --s1e-override path not found: {s1e_override_path}",
+                  file=sys.stderr)
+            sys.exit(2)
+        print(f"[harness] s1e override active: {s1e_override_path}", flush=True)
+
+    surface_override_path = args.surface_override or None
+    if surface_override_path:
+        from pathlib import Path
+        if not Path(surface_override_path).exists():
+            print(f"[harness] --surface-override path not found: {surface_override_path}",
+                  file=sys.stderr)
+            sys.exit(2)
+        print(f"[harness] surface override active: {surface_override_path}", flush=True)
+
+    try:
+        if args.workers <= 1:
+            # Serial path (backward compatible)
+            for i, item in enumerate(picked):
                 try:
-                    r = fut.result()
-                    results_by_idx[i] = r
+                    r = run_item(item, i, len(picked), run_name=run_name,
+                                 keep_db=args.keep_dbs,
+                                 s1e_override=s1e_override_path,
+                                 surface_override=surface_override_path)
                 except Exception as e:
                     import traceback
                     traceback.print_exc()
-                    print(f"[harness] item {i+1} ({item['question_id']}) FAILED: {e}", flush=True)
-                    results_by_idx[i] = {"question_id": item["question_id"], "error": str(e)}
-                done_count += 1
-                print(f"[harness] progress: {done_count}/{len(picked)} done", flush=True)
-        # Preserve original order for reporting
-        results = [results_by_idx[i] for i in range(len(picked))]
+                    print(f"[harness] item {i+1} FAILED: {e}", flush=True)
+                    r = {"question_id": item["question_id"], "error": str(e)}
+                results.append(r)
+                _stream_write_result(writers, r)
+        else:
+            # Parallel path — ProcessPoolExecutor, each worker loads its own embedder.
+            # Per-item DBs are already isolated (brain-eval-{run_name}/{qid}/), so no contention.
+            from concurrent.futures import ProcessPoolExecutor, as_completed
+            print(f"[harness] running {len(picked)} items across {args.workers} workers", flush=True)
+            results_by_idx: Dict[int, Dict[str, Any]] = {}
+            with ProcessPoolExecutor(max_workers=args.workers) as pool:
+                futures = {
+                    pool.submit(run_item, item, i, len(picked), run_name,
+                                args.keep_dbs, s1e_override_path,
+                                surface_override_path): (i, item)
+                    for i, item in enumerate(picked)
+                }
+                done_count = 0
+                for fut in as_completed(futures):
+                    i, item = futures[fut]
+                    try:
+                        r = fut.result()
+                    except Exception as e:
+                        import traceback
+                        traceback.print_exc()
+                        print(f"[harness] item {i+1} ({item['question_id']}) FAILED: {e}", flush=True)
+                        r = {"question_id": item["question_id"], "error": str(e)}
+                    results_by_idx[i] = r
+                    # Stream as completed (out of order is fine for jsonl)
+                    _stream_write_result(writers, r)
+                    done_count += 1
+                    print(f"[harness] progress: {done_count}/{len(picked)} done", flush=True)
+            # Preserve original order for the aggregate report
+            results = [results_by_idx[i] for i in range(len(picked))]
+    finally:
+        # Always close streams — guarantees the partial jsonl is on disk.
+        try:
+            writers['hypotheses'].close()
+            writers['results'].close()
+        except Exception:
+            pass
     total_ms = int((time.time() - t_run0) * 1000)
-
-    # Write outputs
-    reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
-    os.makedirs(reports_dir, exist_ok=True)
-
-    hypotheses_path = os.path.join(reports_dir, f"hypotheses_{run_name}.jsonl")
-    with open(hypotheses_path, "w") as f:
-        for r in results:
-            if "hypothesis" in r:
-                f.write(json.dumps({"question_id": r["question_id"], "hypothesis": r["hypothesis"]}) + "\n")
+    hypotheses_path = writers['hypotheses_path']
 
     # Aggregate inline-graded results
     graded = [r for r in results if "correct" in r]
@@ -337,6 +726,22 @@ def main():
         print(f"[harness] markdown   → {md_path}")
     except Exception as e:
         print(f"[harness] report render failed: {e}", flush=True)
+
+    # Smoke-test exit logic — non-zero on any pipeline failure (independent
+    # of correctness). Correctness rate is information; pipeline integrity
+    # is the gate.
+    if args.smoke_test:
+        smoke = _summarize_smoke(results)
+        print(f"\n[smoke] {smoke['total']} items, {len(smoke['failures'])} pipeline failure(s)",
+              flush=True)
+        if smoke['ok']:
+            print("[smoke] PASS — pipeline runs end-to-end on every axis", flush=True)
+            sys.exit(0)
+        else:
+            print("[smoke] FAIL — fix these before launching a long run:", flush=True)
+            for f in smoke['failures']:
+                print(f"  - {f}", flush=True)
+            sys.exit(1)
 
 
 if __name__ == "__main__":

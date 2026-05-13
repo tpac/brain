@@ -1,0 +1,9 @@
+[
+  {
+    "name": "canonical_example_rebuild_v15_8",
+    "target_behavior": "Sonnet writes event_time in metadata_kv on dated nodes (events, moments, decisions). Currently 20% compliance; the canonical 'five nodes' example is stale and doesn't demonstrate event_time. v15.8 rebuilds the canonical example to include event_time on event and moment nodes plus anchor_raw_quote on principle/moment/correction.",
+    "location_hint": "## Speed → 'Example round 1 — five nodes showing full shape'",
+    "before_text": "The canonical 'five nodes' example shows: principle, fact (with `question` field), moment (no event_time, no anchor_raw_quote), correction (no anchor_raw_quote), quote. None of the nodes have event_time. The dated moment ('Three years of pushback... tonight's calibrated data settled it') lacks event_time despite clearly being dated. anchor_raw_quote appears nowhere. Numbers like the daemon port appear only in title/content, not in user_raw_quote.",
+    "after_text": "The canonical 'five nodes' example shows: principle (WITH user_raw_quote AND anchor_raw_quote demonstrating the cross-context insight), event (NEW node demonstrating event_time='2023-03-19', specific number '27:12' in title/content/user_raw_quote — cross-redundancy), moment (WITH event_time='2026-04-15', user_raw_quote='we were right', anchor_raw_quote framing the emotional event), correction (WITH user_raw_quote AND anchor_raw_quote on Anchor's acknowledgment of the reframe), quote. Plus a preamble paragraph stating: 'dated nodes carry event_time kv', 'specific numbers appear in BOTH the raw quote AND title/content', 'voice symmetry: operator, Anchor, third-party each first-class'. Per-node connect_to inside each node (not batch-level)."
+  }
+]

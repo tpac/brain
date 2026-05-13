@@ -10,6 +10,7 @@ Writes: S1 traces (O/K/Δ), tmp files for Hebbian + dashboard
 """
 
 import json
+import os
 
 from servers.scales.dispatch import load_env
 from servers.trace_contract import build_selection_metadata
@@ -54,6 +55,13 @@ def _call_surface(brain, candidates_data, user_message,
 
     Returns: (surfaced_dict, surface_prompt, max_tokens, interaction_id)
         surfaced_dict has 'selected' list. Empty on failure.
+
+    Surface variant gating (2026-05-10):
+      BRAIN_SURFACE_VARIANT=v4 (default) — current path, single Haiku call,
+        no tools. Production default. Byte-identical to pre-2026-05-10.
+      BRAIN_SURFACE_VARIANT=v5_agentic — agentic loop with 6 fetch tools.
+        Eval-only until explicitly opted in. Reads surface prompt v5 from
+        the active version pointer (must be activated separately).
     """
     from servers.scales.s1.surface_contract import (
         build_surface_prompt, SURFACE_MODEL)
@@ -69,18 +77,7 @@ def _call_surface(brain, candidates_data, user_message,
     retrieval_stats = result.get('_retrieval_stats') if isinstance(result, dict) else None
     intent = result.get('intent') if isinstance(result, dict) else None
 
-    # Instructions live in the system block; per-turn delta (Frame,
-    # conversation, candidates, message) goes in the user message. The
-    # earlier design relied on cache_control: ephemeral to amortize the
-    # prefix — removed 2026-05-09 after measuring the prefix at ~2390
-    # tokens, below Haiku 4.5's 4096-token cacheable minimum. See the
-    # client-construction comment below for the full reasoning.
-    #
     # interaction_seed.py guarantees 'surface' is registered on every boot.
-    # If it's missing here, that's a real bug in the seed path, not
-    # something to silently degrade past — crash loudly and let the seed
-    # be fixed. (Loud-by-Default: silent fallbacks are how the prior
-    # cache_control marker stayed broken for six days.)
     surface_interaction = brain.get_interaction('surface')
     if not surface_interaction or not surface_interaction.get('template'):
         raise RuntimeError(
@@ -98,39 +95,41 @@ def _call_surface(brain, candidates_data, user_message,
         intent=intent,
         frame=frame)
 
-    # surface_prompt kept for trace/debug (concatenation of system + user)
     surface_prompt = (surface_instructions + "\n\n---\n\n" + user_content) \
         if surface_instructions else user_content
 
-    # Reuse the daemon-lifetime client constructed in Brain.warm_up(). The
-    # client holds the warm httpx connection pool + already-handshaken TLS
-    # session to api.anthropic.com — constructing per call here would re-pay
-    # those costs. Falls back to a fresh client only if warmup didn't run
-    # (e.g. early test harness, warmup raised, brain freshly loaded outside
-    # the daemon path) — degrades gracefully to the old behavior.
-    #
-    # The cache_control: ephemeral marker that used to live on the system
-    # block was removed 2026-05-09 — measured by count_tokens, the prefix is
-    # ~2390 tokens, below Haiku 4.5's 4096-token minimum cacheable prefix.
-    # The marker silently no-ops at that size (cache_creation_input_tokens=0
-    # on every call). It was scaffolding that lied about runtime behavior.
-    # If the system block ever grows past 4096, add it back; until then,
-    # don't claim a feature we don't have.
+    # Variant gate — env var picks the path. v4 is the production default.
+    variant = os.environ.get('BRAIN_SURFACE_VARIANT', 'v4').strip().lower()
+
     client = getattr(brain, 'anthropic_client', None)
     if client is None:
-        # warmup didn't run (test harness, ad-hoc Brain instance, or
-        # warmup raised) — construct on-demand and pay cold-start. Keeps
-        # the call site working in environments where Brain.warm_up()
-        # isn't on the boot path. The daemon always has it.
         import anthropic
         client = anthropic.Anthropic()
 
-    api_resp = client.messages.create(
-        model=SURFACE_MODEL,
-        max_tokens=max_tokens,
-        system=surface_instructions,
-        messages=[{"role": "user", "content": user_content}])
-    raw = api_resp.content[0].text.strip()
+    if variant == 'v5_agentic':
+        # Agentic path: Haiku has tools, can extend the candidate pool
+        # before final selection. Tool-fetched candidates are appended to
+        # `candidates_data` in place so the downstream short_to_full
+        # mapping resolves them.
+        raw, tool_trace = _call_surface_agentic(
+            client, brain, candidates_data, surface_instructions,
+            user_content, max_tokens, session_id, SURFACE_MODEL)
+        # Attach tool trace to brain for the caller to write into K trace.
+        # Stashed on the brain instance per-session-id so parallel sessions
+        # don't clobber each other.
+        try:
+            if not hasattr(brain, '_surface_tool_traces'):
+                brain._surface_tool_traces = {}
+            brain._surface_tool_traces[session_id] = tool_trace
+        except Exception:
+            pass
+    else:
+        api_resp = client.messages.create(
+            model=SURFACE_MODEL,
+            max_tokens=max_tokens,
+            system=surface_instructions,
+            messages=[{"role": "user", "content": user_content}])
+        raw = api_resp.content[0].text.strip()
 
     # Parse JSON — robust to the three shapes Haiku sometimes returns:
     #   (a) bare JSON: {"selected": [...]}
@@ -152,6 +151,104 @@ def _call_surface(brain, candidates_data, user_message,
         surfaced = {"selected": []}
 
     return surfaced, surface_prompt, max_tokens, interaction_id
+
+
+def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
+                           user_content, max_tokens, session_id, model,
+                           max_rounds=3):
+    """Agentic surface call: Haiku may use fetch tools to extend the candidate
+    pool before final JSON selection.
+
+    Returns: (raw_final_text, tool_trace) where tool_trace is a list of
+    per-round dicts {round, tool_calls: [...]} for trace observability.
+
+    Mutates `candidates_data` IN PLACE — tool-fetched candidates are appended
+    so the downstream short_to_full ID mapping (in run_surface) can resolve them.
+    """
+    from servers.scales.s1.fetch_tools import (
+        TOOL_DEFINITIONS, execute_tool, format_tool_result_for_haiku,
+    )
+
+    # Track existing IDs to dedupe tool-fetched candidates against cosine pool
+    existing_ids = {c.get('id') for c in candidates_data if isinstance(c, dict)}
+
+    messages = [{"role": "user", "content": user_content}]
+    tool_trace = []
+    raw_final = ''
+
+    for round_idx in range(max_rounds):
+        try:
+            api_resp = client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                system=surface_instructions,
+                tools=TOOL_DEFINITIONS,
+                messages=messages,
+            )
+        except Exception as e:
+            brain._log_error('surface_agentic_api', e,
+                              'agentic Haiku call round=%d' % round_idx)
+            return raw_final, tool_trace
+
+        stop_reason = api_resp.stop_reason
+        round_record = {'round': round_idx, 'stop_reason': stop_reason,
+                         'tool_calls': []}
+
+        # Collect any text content from this round (last round usually has it)
+        for block in api_resp.content:
+            if getattr(block, 'type', None) == 'text':
+                raw_final = block.text.strip()
+
+        if stop_reason != 'tool_use':
+            tool_trace.append(round_record)
+            break
+
+        # Append Haiku's full assistant message (with tool_use blocks) to history.
+        assistant_blocks = []
+        tool_results = []
+        for block in api_resp.content:
+            btype = getattr(block, 'type', None)
+            if btype == 'text':
+                assistant_blocks.append({"type": "text", "text": block.text})
+            elif btype == 'tool_use':
+                # Convert to dict for the message history
+                tool_use_id = block.id
+                tool_name = block.name
+                tool_input = block.input or {}
+                assistant_blocks.append({
+                    "type": "tool_use",
+                    "id": tool_use_id,
+                    "name": tool_name,
+                    "input": tool_input,
+                })
+                # Execute the tool
+                exec_result = execute_tool(brain, tool_name, tool_input,
+                                            session_id=session_id)
+                # Append fetched results to candidates_data (dedupe)
+                for cand in exec_result.get('results') or []:
+                    cid = cand.get('id') if isinstance(cand, dict) else None
+                    if cid and cid not in existing_ids:
+                        candidates_data.append(cand)
+                        existing_ids.add(cid)
+                # Record for trace
+                round_record['tool_calls'].append({
+                    'tool': tool_name,
+                    'args': tool_input,
+                    'result_count': len(exec_result.get('results') or []),
+                    'latency_ms': exec_result.get('latency_ms', 0),
+                    'error': exec_result.get('error'),
+                })
+                # Compose tool_result message block
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tool_use_id,
+                    "content": format_tool_result_for_haiku(exec_result),
+                })
+        messages.append({"role": "assistant", "content": assistant_blocks})
+        messages.append({"role": "user", "content": tool_results})
+        tool_trace.append(round_record)
+
+    return raw_final, tool_trace
 
 
 def _parse_surfacer_json(raw):
@@ -482,7 +579,12 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
                  len(selected), len(graph_neighbors),
                  activation_meta.get('activation_count', 0)),
              metadata={'selected': sel_detail, 'expanded': exp_detail,
-                       **frame_meta, **activation_meta},
+                       **frame_meta, **activation_meta,
+                       # Agentic surface tool trace (v5 only; empty for v4).
+                       # Stashed by _call_surface_agentic on the brain instance
+                       # so we don't change the run_surface signature.
+                       'tool_trace': (getattr(brain, '_surface_tool_traces', {}) or {}).get(session_id) or [],
+                       'surface_variant': os.environ.get('BRAIN_SURFACE_VARIANT', 'v4')},
              session_id=session_id),
         dict(chain_id=recall_chain, scale='s1', event_type='delta',
              ref_type='additionalContext',
@@ -580,11 +682,18 @@ def run_surface(brain, ctx, candidates_data, user_message,
         if cid[:8] in selected_short_ids:
             short_to_full[cid[:8]] = cid
     hallucinated_ids = []
+    # selected_mode: per-node render mode (fact|arc|background), default 'arc'.
+    # Surface v5 may emit `mode` per selected item; v4 omits it → all 'arc'.
+    selected_mode = {}
     for s in selected:
         short_id = s.get('id', '')[:8]
         full_id = short_to_full.get(short_id)
         if full_id:
             selected_why[full_id] = s.get('why', '')
+            mode = (s.get('mode') or 'arc').strip().lower()
+            if mode not in ('fact', 'arc', 'background'):
+                mode = 'arc'
+            selected_mode[full_id] = mode
         else:
             # Haiku returned an ID not in its candidate menu — either a
             # hallucination or a typo. Try to resolve it directly against
@@ -629,6 +738,10 @@ def run_surface(brain, ctx, candidates_data, user_message,
                     pass
             if resolved:
                 selected_why[resolved] = s.get('why', '')
+                mode = (s.get('mode') or 'arc').strip().lower()
+                if mode not in ('fact', 'arc', 'background'):
+                    mode = 'arc'
+                selected_mode[resolved] = mode
                 brain._log_error(
                     'haiku_id_outside_candidates',
                     RuntimeError('Haiku selected an ID not in its candidate menu but it resolves to a real node'),
@@ -660,6 +773,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
         field_activation=expansion['field_activation'],
         rich_nodes=expansion['rich_nodes'],
         selected_why=selected_why,
+        selected_mode=selected_mode,
         query_vec=query_vec,
         brain=brain,
         session=ctx,

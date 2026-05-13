@@ -20,23 +20,21 @@ def run_s2(brain):
     Returns:
         dict of {unit_name: result_dict}
     """
+    from .aspect_integration import AspectIntegration
     from .consolidation import Consolidation
     from .community import CommunityDetection
     from .healer import Healer
 
-    # AspectIntegration intentionally NOT wired here yet (2026-05-08).
-    # It's been migrated and tested in eval (78.2% routing accuracy on the
-    # clone), but on production it triggered a runaway S2 cascade — the
-    # decoder writes an O trace even when nothing is unclassified, which
-    # downstream units (community_detection, consolidation) read as "new
-    # work" and re-fire on. Result: community_detection looped 224× in 3
-    # minutes, daemon RSS hit 2.2GB in 51s. Rolled back pending two fixes:
-    #   (1) decoder must early-out without writing the O trace when batch
-    #       is empty, AND
-    #   (2) downstream gating shouldn't treat aspect_scan as new s1 work.
-    # AspectRegistry still reads aspects_v1.json (no rollback there) — the
-    # taxonomy is shipped; only the maintenance unit is paused.
+    # AspectIntegration re-wired 2026-05-10. The cascade rollback (2026-05-08)
+    # was caused by the decoder writing an O trace even when nothing was
+    # unclassified. Fixed in aspect_decoder.py: empty-batch early-out moved
+    # BEFORE the trace write — when there's no work, the unit is a true
+    # no-op (no proposals, no trace). Contract locked by
+    # tests/test_aspect_decoder.py. Downstream gating concern (#2 in the
+    # backlog) was already moot — none of the other decoders read
+    # aspect_scan traces; they gate on their own internal state.
     units = [
+        AspectIntegration(brain),
         Consolidation(brain),
         CommunityDetection(brain),
         Healer(brain),

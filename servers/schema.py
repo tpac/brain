@@ -1049,6 +1049,20 @@ LOG_TABLES = {
             UNIQUE(name, version)
         )""",
     },
+
+    # interaction_active — pointer per name to the currently-active version.
+    # Separates "register a new version" from "make it live." Without this,
+    # any register_interaction call silently changed Anchor's runtime behavior.
+    # Now: register inserts a row; set_active flips the pointer; runtime reads
+    # the active pointer. Schema added 2026-05-10.
+    'interaction_active': {
+        'create': """CREATE TABLE IF NOT EXISTS interaction_active (
+            name TEXT PRIMARY KEY,
+            version INTEGER NOT NULL,
+            set_at TEXT NOT NULL,
+            set_by TEXT NOT NULL
+        )""",
+    },
     'trace_events': {
         'create': """CREATE TABLE IF NOT EXISTS trace_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1100,6 +1114,22 @@ def ensure_logs_schema(conn):
         conn.execute(spec['create'])
 
     _add_column_if_missing(conn, 'trace_events', 'interaction_id', 'INTEGER')
+
+    # Initial population for interaction_active — one-time migration.
+    # For brains created before the active-version split, populate the pointer
+    # with the current MAX(version) per name so runtime semantics stay
+    # byte-identical until someone explicitly registers a new version.
+    # Idempotent: INSERT OR IGNORE skips names that already have a pointer.
+    try:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            'INSERT OR IGNORE INTO interaction_active (name, version, set_at, set_by) '
+            'SELECT name, MAX(version), ?, ? FROM interactions GROUP BY name',
+            (now, 'migration:initial_active')
+        )
+    except Exception:
+        pass  # No interactions table yet — fresh brain; seed will populate.
 
     for idx in LOG_INDEXES:
         try:

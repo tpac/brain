@@ -94,12 +94,26 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         try:
             from servers.scales.s1.scouts.muster import (
                 build_muster_context, run_muster)
+            # conversation_now resolves the date THIS conversation thinks
+            # it's happening: eval replay reads [Current date: ...] prefix;
+            # production reads SessionContext.created_at; falls back to
+            # operator wall-clock. Critical for temporal scout — without it,
+            # "today/yesterday" in historical conversations resolve to NOW.
+            # See servers/clock.py + brain memory 6d5b789e.
+            from servers.clock import conversation_now
+            session_ctx_obj = brain.get_or_create_session(session_id)
+            conv_started = getattr(session_ctx_obj, 'started_at', None)
+            conv_dt = conversation_now(
+                messages=messages,
+                session_started_at=conv_started,
+                brain=brain)
             muster_ctx = build_muster_context(
                 brain=brain, messages=messages, session_id=session_id,
                 counter=counter,
                 catalog_rendered=catalog_text,
                 catalog_node_ids=catalog_ids,
                 session_context=brain.session_context_for(session_id),
+                current_date=conv_dt.date().isoformat(),
                 log_fn=log_fn,
             )
             _step("muster_ctx")

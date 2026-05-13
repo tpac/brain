@@ -355,7 +355,7 @@ class AspectEncoder(IntegrationUnit):
         """
         from datetime import datetime, timezone
         record = {
-            'cycle_at': datetime.now(timezone.utc).isoformat(),
+            'cycle_at': datetime.now(timezone.utc).isoformat(),  # clock-ok — S2 cycle telemetry
             'classifications_accepted': accepted,
             'classifications_rejected': rejected,
         }

@@ -322,6 +322,8 @@ def _read_s1r_trace(brain, query_session_id: str) -> Optional[Dict[str, Any]]:
     dropped = []
     context = ""
     query = ""
+    tool_trace: List[Any] = []
+    surface_variant = ""
 
     for chain_id, etype, ref_type, summary, meta_json, _ in row:
         try:
@@ -339,6 +341,11 @@ def _read_s1r_trace(brain, query_session_id: str) -> Optional[Dict[str, Any]]:
                         "type": parts[3] if len(parts) > 3 else "",
                     })
             query = meta.get("query", "")
+        elif etype == "K" and ref_type == "surface_selected":
+            # Agentic surface (v5) writes its tool-use trace into this K event;
+            # v4 surface writes an empty list. surface_variant identifies which.
+            tool_trace = meta.get("tool_trace", []) or []
+            surface_variant = meta.get("surface_variant", "") or ""
         elif etype == "delta" and ref_type == "additionalContext":
             selected = meta.get("selected", []) or []
             dropped = meta.get("dropped", []) or []
@@ -350,6 +357,8 @@ def _read_s1r_trace(brain, query_session_id: str) -> Optional[Dict[str, Any]]:
         "selected": selected,
         "dropped": dropped,
         "context": context,
+        "tool_trace": tool_trace,
+        "surface_variant": surface_variant,
     }
 
 

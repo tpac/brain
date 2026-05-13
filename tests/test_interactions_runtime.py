@@ -58,7 +58,7 @@ class TestInteractionSeeding:
     def test_surface_has_prompt_and_config(self):
         from servers.interaction_seed import seed_interactions
         seed_interactions(self.brain)
-        surface = self.dal.get_latest('surface')
+        surface = self.dal.get_active('surface')
         assert surface is not None
         assert len(surface['template']) > 100  # real prompt, not placeholder
         config = json.loads(surface['parameters'])
@@ -73,7 +73,7 @@ class TestInteractionSeeding:
         """
         from servers.interaction_seed import seed_interactions
         seed_interactions(self.brain)
-        enc = self.dal.get_latest('s1e')
+        enc = self.dal.get_active('s1e')
         assert enc is not None
         assert len(enc['template']) > 100  # real prompt
         config = json.loads(enc['parameters'])
@@ -85,7 +85,7 @@ class TestInteractionSeeding:
         from servers.interaction_seed import seed_interactions
         seed_interactions(self.brain)
         for name in ('voice_surface', 'boot', 'pre_edit', 'signal_assembler'):
-            interaction = self.dal.get_latest(name)
+            interaction = self.dal.get_active(name)
             assert interaction['template'] == '', \
                 "%s should have empty template, got %d chars" % (name, len(interaction['template']))
 
@@ -94,8 +94,8 @@ class TestInteractionSeeding:
         from servers.interaction_seed import seed_interactions
         seed_interactions(self.brain)
         for interaction in self.dal.list_all():
-            latest = self.dal.get_latest(interaction['name'])
-            config = json.loads(latest['parameters'])
+            active = self.dal.get_active(interaction['name'])
+            config = json.loads(active['parameters'])
             assert isinstance(config, dict), "%s config is not a dict" % interaction['name']
             assert len(config) > 0, "%s config is empty" % interaction['name']
 
@@ -136,15 +136,44 @@ class TestBrainInteractionMethods:
         prompt = self.brain.get_interaction_prompt('nonexistent')
         assert prompt == ''
 
-    def test_get_latest_version(self):
-        """After registering v2, get_interaction_config returns v2."""
+    def test_register_v2_does_not_auto_activate(self):
+        """After registering v2, runtime still reads v1 until set_active is called.
+
+        This locks the active-version semantic (2026-05-10): registration
+        creates a version row but does NOT change the runtime pointer.
+        """
         self.brain._interaction_dal.register(
             'evolving', template='', parameters=json.dumps({'threshold': 0.5}))
+        # v1 should be auto-active
+        config = self.brain.get_interaction_config('evolving')
+        assert config['threshold'] == 0.5
+
+        # Register v2 — must NOT change what runtime reads
         self.brain._interaction_dal.register(
             'evolving', template='', parameters=json.dumps({'threshold': 0.8}),
             created_by='sleep:s3')
         config = self.brain.get_interaction_config('evolving')
+        assert config['threshold'] == 0.5, \
+            "v2 register should NOT auto-activate; runtime should still see v1"
+
+        # Now explicitly activate v2 — runtime flips
+        self.brain._interaction_dal.set_active('evolving', 2, set_by='test')
+        config = self.brain.get_interaction_config('evolving')
         assert config['threshold'] == 0.8
+
+        # Rollback to v1 by re-activating
+        self.brain._interaction_dal.set_active('evolving', 1, set_by='test')
+        config = self.brain.get_interaction_config('evolving')
+        assert config['threshold'] == 0.5
+
+    def test_set_active_rejects_unknown_version(self):
+        """set_active raises when target version isn't registered."""
+        self.brain._interaction_dal.register(
+            'one_version', template='', parameters=json.dumps({'k': 1}))
+        with pytest.raises(ValueError):
+            self.brain._interaction_dal.set_active('one_version', 99, set_by='test')
+        with pytest.raises(ValueError):
+            self.brain._interaction_dal.set_active('never_registered', 1, set_by='test')
 
 
 # ═══════════════════════════════════════════════════════

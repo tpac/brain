@@ -273,9 +273,35 @@ class TestMCPRoundTrip(BrainTestBase):
             "created_by": "roundtrip_test",
         })
         self.assertIsInstance(result, dict)
-        # Should return version info
-        self.assertTrue('version' in result or 'name' in result,
-                        f"Expected version/name in result, got: {result}")
+        # Should return version info (registered_version since 2026-05-10)
+        self.assertTrue(
+            'registered_version' in result or 'version' in result or 'name' in result,
+            f"Expected version info in result, got: {result}")
+
+    def test_set_interaction_active(self):
+        """set_interaction_active flips the active version pointer."""
+        # First register two versions so we have something to flip between
+        self._dispatch("register_interaction", {
+            "name": "test_active_flip",
+            "template": "v1 content",
+            "parameters": '{}',
+            "created_by": "roundtrip_test",
+        })
+        self._dispatch("register_interaction", {
+            "name": "test_active_flip",
+            "template": "v2 content",
+            "parameters": '{}',
+            "created_by": "roundtrip_test",
+        })
+        # Now flip active to v2
+        result = self._dispatch("set_interaction_active", {
+            "name": "test_active_flip",
+            "version": 2,
+            "set_by": "roundtrip_test",
+        })
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result.get("version"), 2,
+                         f"Expected version 2, got: {result}")
 
     def test_clear_errors(self):
         """clear_errors empties the rate-limit cache for the brain errors table."""

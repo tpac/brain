@@ -864,11 +864,42 @@ def _handle_get_interaction(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
+def _handle_set_interaction_active(brain, args, graph_changes):
+    """Flip the active version pointer for an interaction.
+
+    After this call, the runtime path (brain.get_interaction_prompt /
+    get_interaction_config) reads the chosen version. The version must
+    already be registered. Use after register_interaction to make a
+    newly-registered version live, OR to roll back to a previous version.
+    """
+    name = args.get("name", "")
+    version = args.get("version")
+    set_by = args.get("set_by", "anchor")
+    if not name or version is None:
+        return {"ok": False, "error": "name and version are required"}
+    try:
+        version = int(version)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "version must be an integer"}
+    try:
+        result = brain._interaction_dal.set_active(name, version, set_by)
+        return {"ok": True, "result": result}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def _handle_register_interaction(brain, args, graph_changes):
     """Register a new version of an interaction (prompt + config).
 
     Creates a new version if the interaction exists, or version 1 if new.
     Used by S2/S3 to evolve learnable boundaries.
+
+    NOTE: Registration does NOT activate the new version (since 2026-05-10).
+    Call set_interaction_active to flip the runtime pointer. Exception:
+    version 1 (first registration of a name) auto-activates — otherwise
+    nothing would be readable for that name.
     """
     name = args.get("name", "")
     template = args.get("template", "")
@@ -879,16 +910,26 @@ def _handle_register_interaction(brain, args, graph_changes):
         return {"ok": False, "error": "name is required"}
 
     try:
-        brain._interaction_dal.register(
+        result = brain._interaction_dal.register(
             name=name,
             template=template,
             parameters=parameters,
             created_by=created_by)
-        latest = brain._interaction_dal.get_latest(name)
+        # Registration does NOT activate. Return the newly-registered version
+        # plus the currently-active version so the caller knows whether it
+        # took effect at runtime.
+        active = brain._interaction_dal.get_active(name)
         return {"ok": True, "result": {
             "name": name,
-            "version": latest.get("version") if latest else 1,
+            "registered_version": result.get("version"),
+            "active_version": active.get("version") if active else None,
             "template_length": len(template),
+            "note": (
+                "Registration created a new version but did NOT activate it. "
+                "Call set_interaction_active to flip the runtime pointer."
+                if active and active.get("version") != result.get("version")
+                else "First version of this interaction; auto-activated."
+            ),
         }}
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
@@ -1319,6 +1360,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "list_interactions":     CmdEntry(_handle_list_interactions,   is_write=False, marks_dirty=False),
     "get_interaction":       CmdEntry(_handle_get_interaction,     is_write=False, marks_dirty=False),
     "register_interaction":  CmdEntry(_handle_register_interaction,is_write=True,  marks_dirty=False),
+    "set_interaction_active": CmdEntry(_handle_set_interaction_active, is_write=True,  marks_dirty=False),
     "trace_append":          CmdEntry(_handle_trace_append,        is_write=True,  marks_dirty=False),
     "get_node":              CmdEntry(_handle_get_node,             is_write=False, marks_dirty=False),
     "get_nodes":             CmdEntry(_handle_get_nodes,            is_write=False, marks_dirty=False),

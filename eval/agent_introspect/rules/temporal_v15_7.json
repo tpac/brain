@@ -1,0 +1,22 @@
+[
+  {
+    "id": "event_time_kv_when_dated",
+    "text": "Any node that refers to a specific moment in time — events, decisions, moments, facts dated or set on a date — MUST carry event_time: \"<ISO>\" in metadata_kv. The conversation's date is the anchor. Resolve relative phrases (today/yesterday/last Tuesday/N weeks ago) to ISO at encode time."
+  },
+  {
+    "id": "time_anchor_only_when_hub",
+    "text": "Create a dedicated time_anchor node ONLY when the date is itself the TOPIC (named day, anniversary), 3+ events already anchor to that date, OR operator names the date as a noun. Otherwise the event_time kv stamp is the spine — do NOT create a time_anchor node for bookkeeping dates."
+  },
+  {
+    "id": "anchored_to_edge_when_anchor_exists",
+    "text": "When a time_anchor node IS created (or exists in catalog), the dated event/moment/decision MUST connect to it via an anchored_to edge."
+  },
+  {
+    "id": "cross_event_allen_relations",
+    "text": "When two events you're encoding share a temporal relationship (sequential, adjacent, or nested), compose a temporal_sequence edge from the Allen vocabulary: before/after (non-adjacent ordering), meets/met_by (adjacent), during (nested). Compose even when the scout did NOT flag a relational_marker, as long as temporal flow is clear in the text."
+  },
+  {
+    "id": "no_guess_when_unresolvable",
+    "text": "If a date is genuinely unrecoverable (the operator said only \"a few weeks ago\" with no catalog landmark), leave event_time absent. Do NOT guess or fabricate."
+  }
+]

@@ -606,9 +606,13 @@ def run_temporal_scout(
     max_candidates = int(params.get('max_candidates', 8))
     stub['category_statement'] = category_statement
 
-    # 2. Base date
+    # 2. Base date — fall back to operator wall-clock if caller didn't pass
+    # one. Production: this is correct. Eval: caller MUST pass the
+    # conversation date via conversation_now(messages) to avoid resolving
+    # historical "today/yesterday" against real now. See servers/clock.py.
     if current_date is None:
-        current_date = _dt.datetime.now().date().isoformat()
+        from servers.clock import brain_today
+        current_date = brain_today().isoformat()
     try:
         base_date = _parse_current_date(current_date)
     except Exception as e:

@@ -542,8 +542,13 @@ class Brain(
         return full[:max_chars] if full else ''
 
     def get_interaction_config(self, name: str) -> dict:
-        """Get the latest config for an interaction. Returns {} if not found."""
-        interaction = self._interaction_dal.get_latest(name)
+        """Get the active config for an interaction. Returns {} if not found.
+
+        Reads the currently-active version via interaction_active pointer.
+        Registering a new version does NOT change what this returns —
+        call set_interaction_active() to flip the runtime to a new version.
+        """
+        interaction = self._interaction_dal.get_active(name)
         if not interaction or not interaction.get('parameters'):
             return {}
         try:
@@ -552,8 +557,12 @@ class Brain(
             return {}
 
     def get_interaction_prompt(self, name: str) -> str:
-        """Get the latest prompt text for an LLM interaction. Returns '' if not found."""
-        interaction = self._interaction_dal.get_latest(name)
+        """Get the active prompt text for an LLM interaction. Returns '' if not found.
+
+        Reads the currently-active version via interaction_active pointer.
+        See get_interaction_config() for the activation model.
+        """
+        interaction = self._interaction_dal.get_active(name)
         if not interaction:
             return ''
         return interaction.get('template', '')
@@ -565,10 +574,18 @@ class Brain(
     # is no longer the source of truth.
 
     def get_interaction(self, name: str, version: int = 0) -> dict:
-        """Get interaction by name. version=0 (default) returns latest, else specific version."""
+        """Get interaction by name. version=0 (default) returns active, else specific version."""
         if version:
             return self._interaction_dal.get_version(name, version)
-        return self._interaction_dal.get_latest(name)
+        return self._interaction_dal.get_active(name)
+
+    def set_interaction_active(self, name: str, version: int,
+                                set_by: str = 'anchor') -> dict:
+        """Flip the active version pointer for `name`. Runtime picks up
+        the new active version on the next read of get_interaction_prompt
+        or get_interaction_config. See InteractionDAL.set_active.
+        """
+        return self._interaction_dal.set_active(name, version, set_by)
 
     def get_or_create_session(self, session_id: str) -> 'SessionContext':
         """Get or create a SessionContext for a given session_id.

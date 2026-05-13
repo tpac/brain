@@ -564,22 +564,29 @@ def _build_tools():
          "hours": {"type": "integer", "description": "Look back window in hours (default 24)", "default": 24}}}},
 
     {"name": "list_interactions",
-     "description": "List all registered interactions — versioned templates for every learnable boundary in the system (surfacer, encoder, voice, boot, etc.). Shows name, latest version, and total versions.",
+     "description": "List all registered interactions — versioned templates for every learnable boundary in the system (surfacer, encoder, voice, boot, etc.). Returns per name: max_version (highest registered), total_versions, and active_version (which one runtime currently reads).",
      "inputSchema": {"type": "object", "properties": {}}},
 
     {"name": "get_interaction",
-     "description": "Get a specific interaction template by name. Returns the template text, parameters, version, and who created it. Use to inspect or reference the current prompt/template for any system boundary.",
+     "description": "Get a specific interaction template by name. Returns the template text, parameters, version, and who created it. Default returns the ACTIVE version (what the runtime currently reads). Pass a version number to inspect a specific version.",
      "inputSchema": {"type": "object", "required": ["name"], "properties": {
          "name": {"type": "string", "description": "Interaction name (e.g. 'surface', 'encoding_agent', 'voice_surface', 'boot')"},
-         "version": {"type": "integer", "description": "Specific version (default: latest)", "default": 0}}}},
+         "version": {"type": "integer", "description": "Specific version (default 0 = currently-active version)", "default": 0}}}},
 
     {"name": "register_interaction",
-     "description": "Register a new version of an interaction (prompt template + config). Creates version N+1 if the interaction exists, or version 1 if new. Used to evolve learnable boundaries — surface prompts, encoder prompts, community enrichment, edge families. S3 uses this to optimize S1/S2 behavior.",
+     "description": "Register a new version of an interaction (prompt template + config). Creates version N+1 if the interaction exists, or version 1 if new. **Does NOT activate** the new version — call set_interaction_active to flip the runtime pointer. Exception: version 1 (first registration of a name) auto-activates. Used to evolve learnable boundaries — surface prompts, encoder prompts, community enrichment, etc.",
      "inputSchema": {"type": "object", "required": ["name"], "properties": {
          "name": {"type": "string", "description": "Interaction name (e.g. 's2_community_enrichment', 'surface', 'encoding_agent')"},
          "template": {"type": "string", "description": "The prompt/template text. This is the learnable content."},
          "parameters": {"type": "string", "description": "JSON config string (model, max_tokens, thresholds, etc.)"},
          "created_by": {"type": "string", "description": "Who created this version (e.g. 'anchor', 's2:community_detection', 's3:optimization')"}}}},
+
+    {"name": "set_interaction_active",
+     "description": "Flip the active version pointer for an interaction. Runtime path (get_interaction_prompt / get_interaction_config) reads the chosen version on the next call. Use after register_interaction to make a newly-registered version live, or to roll back to a previous version. Refuses to activate a version that wasn't registered.",
+     "inputSchema": {"type": "object", "required": ["name", "version"], "properties": {
+         "name": {"type": "string", "description": "Interaction name (e.g. 'surface', 's1e')"},
+         "version": {"type": "integer", "description": "Version number to activate. Must already be registered."},
+         "set_by": {"type": "string", "description": "Who flipped the pointer (default 'anchor')"}}}},
 
     # ── Introspection ──
     {"name": "consciousness",

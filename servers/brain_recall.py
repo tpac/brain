@@ -551,10 +551,15 @@ class BrainRecallMixin:
         return self._interaction_dal.list_all()
 
     def get_interaction(self, name: str, version: int = 0):
-        """Get an interaction by name, optionally a specific version."""
+        """Get an interaction by name, optionally a specific version.
+
+        version=0 (default) returns the currently-active version (via the
+        interaction_active pointer), NOT the max-numbered version. See
+        InteractionDAL.get_active.
+        """
         if version:
             return self._interaction_dal.get_version(name, version)
-        return self._interaction_dal.get_latest(name)
+        return self._interaction_dal.get_active(name)
 
     def semantic_recall(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """

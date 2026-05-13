@@ -321,6 +321,14 @@ class InteractionDAL:
     Every learnable boundary (surface prompt, encoding prompt, voice format,
     signal assembly) is an interaction. Versioned, traceable, optimizable
     by higher scales.
+
+    Active-version model (2026-05-10):
+      - `register()` inserts a new version row. Does NOT change which version
+        the runtime reads. Decoupled by design.
+      - `set_active()` flips the per-name active pointer to a chosen version.
+      - `get_active()` reads the active version. Falls back to MAX(version)
+        when no pointer exists (covers fresh brains pre-seed).
+      - `get_version()` reads a specific version (used by eval overrides).
     """
 
     def __init__(self, conn: sqlite3.Connection):
@@ -328,7 +336,15 @@ class InteractionDAL:
 
     def register(self, name: str, template: str, parameters: str = '',
                  created_by: str = 'anchor') -> Dict[str, Any]:
-        """Register a new version of an interaction. Auto-increments version."""
+        """Register a new version of an interaction. Auto-increments version.
+
+        Activation semantics:
+          - If this is version 1 (first registration for this name), AUTO-ACTIVATE.
+            Otherwise nothing is reading anything for this name — making it
+            active is the right default.
+          - If this is version 2 or later, do NOT activate. Caller must call
+            `set_active()` explicitly to flip the runtime pointer.
+        """
         now = datetime.now(timezone.utc).isoformat()
         # Get current max version
         row = self.conn.execute(
@@ -340,12 +356,63 @@ class InteractionDAL:
             'INSERT INTO interactions (name, version, template, parameters, created_at, created_by, parent_version) '
             'VALUES (?, ?, ?, ?, ?, ?, ?)',
             (name, version, template, parameters, now, created_by, parent))
+        new_id = self.conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        # Auto-activate v1 ONLY. Subsequent versions require explicit set_active.
+        was_activated = False
+        if version == 1:
+            self.conn.execute(
+                'INSERT OR REPLACE INTO interaction_active (name, version, set_at, set_by) '
+                'VALUES (?, ?, ?, ?)',
+                (name, version, now, 'register:auto_v1'))
+            was_activated = True
         self.conn.commit()
-        return {'name': name, 'version': version, 'id': self.conn.execute(
-            'SELECT last_insert_rowid()').fetchone()[0]}
+        return {'name': name, 'version': version, 'id': new_id,
+                'auto_activated': was_activated}
 
-    def get_latest(self, name: str) -> Optional[Dict[str, Any]]:
-        """Get the latest version of an interaction."""
+    def set_active(self, name: str, version: int,
+                   set_by: str = 'anchor') -> Dict[str, Any]:
+        """Flip the active pointer for `name` to `version`.
+
+        UPSERT into interaction_active. Verifies the (name, version) pair
+        actually exists in `interactions` before flipping — refuses to activate
+        a non-existent version.
+        """
+        # Verify the target version exists
+        row = self.conn.execute(
+            'SELECT 1 FROM interactions WHERE name = ? AND version = ?',
+            (name, version)).fetchone()
+        if not row:
+            raise ValueError(
+                "Cannot activate %s v%d: no such version registered" % (name, version))
+        now = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            'INSERT INTO interaction_active (name, version, set_at, set_by) '
+            'VALUES (?, ?, ?, ?) '
+            'ON CONFLICT(name) DO UPDATE SET '
+            'version = excluded.version, set_at = excluded.set_at, set_by = excluded.set_by',
+            (name, version, now, set_by))
+        self.conn.commit()
+        return {'name': name, 'version': version, 'set_at': now, 'set_by': set_by}
+
+    def get_active(self, name: str) -> Optional[Dict[str, Any]]:
+        """Get the currently-active version of an interaction.
+
+        Reads via interaction_active pointer. Falls back to MAX(version) when
+        no pointer exists (fresh brain, mid-seed, or unmigrated state).
+        Returns None when no version exists at all.
+        """
+        # Try the pointer first
+        row = self.conn.execute(
+            'SELECT i.id, i.name, i.version, i.template, i.parameters, '
+            'i.created_at, i.created_by '
+            'FROM interaction_active a '
+            'JOIN interactions i ON i.name = a.name AND i.version = a.version '
+            'WHERE a.name = ?', (name,)).fetchone()
+        if row:
+            return {'id': row[0], 'name': row[1], 'version': row[2],
+                    'template': row[3], 'parameters': row[4],
+                    'created_at': row[5], 'created_by': row[6]}
+        # Fallback: MAX(version) — covers pre-seed bootstrap windows
         row = self.conn.execute(
             'SELECT id, name, version, template, parameters, created_at, created_by '
             'FROM interactions WHERE name = ? ORDER BY version DESC LIMIT 1',
@@ -369,13 +436,25 @@ class InteractionDAL:
                 'created_at': row[5], 'created_by': row[6],
                 'parent_version': row[7]}
 
-    def list_all(self) -> List[Dict[str, Any]]:
-        """List all interactions with their latest version."""
+    def list_versions(self, name: str) -> List[Dict[str, Any]]:
+        """List all versions of a single interaction, oldest → newest."""
         rows = self.conn.execute(
-            'SELECT name, MAX(version) as v, COUNT(*) as versions '
-            'FROM interactions GROUP BY name ORDER BY name').fetchall()
-        return [{'name': r[0], 'latest_version': r[1], 'total_versions': r[2]}
-                for r in rows]
+            'SELECT version, template, parameters, created_at, created_by, parent_version '
+            'FROM interactions WHERE name = ? ORDER BY version ASC',
+            (name,)).fetchall()
+        return [{'version': r[0], 'template': r[1], 'parameters': r[2],
+                 'created_at': r[3], 'created_by': r[4],
+                 'parent_version': r[5]} for r in rows]
+
+    def list_all(self) -> List[Dict[str, Any]]:
+        """List all interactions: name, max_version, total_versions, active_version."""
+        rows = self.conn.execute(
+            'SELECT i.name, MAX(i.version) as v, COUNT(*) as versions, a.version '
+            'FROM interactions i '
+            'LEFT JOIN interaction_active a ON a.name = i.name '
+            'GROUP BY i.name ORDER BY i.name').fetchall()
+        return [{'name': r[0], 'max_version': r[1], 'total_versions': r[2],
+                 'active_version': r[3]} for r in rows]
 
 
 class TraceDAL:

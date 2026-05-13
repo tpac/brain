@@ -157,7 +157,7 @@ class IntegrationUnit:
         Format: {scale}-{YYYYMMDD}-{name}
         S2 chains are date-based, not session-based.
         """
-        return '%s-%s-%s' % (self.SCALE, date.today().strftime('%Y%m%d'), self.NAME)
+        return '%s-%s-%s' % (self.SCALE, date.today().strftime('%Y%m%d'), self.NAME)  # clock-ok — S2 idle-cycle chain id uses the date the cycle ran
 
     def trace(self, event_type, ref_type, summary, ref_id='', metadata=None):
         """Write a trace event for this unit's current run.

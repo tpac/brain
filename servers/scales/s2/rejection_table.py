@@ -196,7 +196,7 @@ def record_rejections(brain, proposals, integration_unit='s2:community_detection
     """
     if not proposals:
         return 0
-    ts = datetime.now(timezone.utc).isoformat()
+    ts = datetime.now(timezone.utc).isoformat()  # clock-ok — bookkeeping timestamp for rejection record
     count = 0
     for p in proposals:
         fp = compute_fingerprint(p)

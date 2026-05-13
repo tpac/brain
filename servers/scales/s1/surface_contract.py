@@ -112,7 +112,11 @@ def _relative_time(iso_str):
         ts = datetime.fromisoformat(ts_str)
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
-        now = datetime.now(timezone.utc)
+        # brain_now() in operator's TZ — relative-time labels ("today",
+        # "yesterday") must reflect the operator's day boundaries, not the
+        # daemon host's UTC day boundaries. See servers/clock.py.
+        from servers.clock import brain_now
+        now = brain_now()
         delta = now - ts
         hours = delta.total_seconds() / 3600
         days = delta.days
@@ -1600,25 +1604,117 @@ def _mask_node_by_field_activation(node, field_activation, threshold=_FIELD_REND
     return masked
 
 
+def _event_time_line(node):
+    """If node has event_time in kv metadata, return a structured render line
+    exposing it (absolute + relative). Added 2026-05-11 to address v15.8
+    L4 bottleneck: encoder writes event_time kv but answerer never sees the
+    date as a structured field — it lives buried in content prose.
+
+    Returns '' when no event_time is present, so callers can unconditionally
+    prepend without guarding.
+
+    Future generalization (per Tom): query-aware kv field promotion. A query
+    asking 'what did X say' should promote user_raw_quote / anchor_raw_quote
+    similarly; 'when' queries promote event_time/created_at. Current scope:
+    event_time only — surgical change to test L4-fix in isolation.
+    """
+    kv = (node.get('metadata_kv') or node.get('kv') or {})
+    if not isinstance(kv, dict):
+        return ''
+    et = kv.get('event_time') or kv.get('event_date')
+    if not et:
+        # Also peek into _metadata where some render paths copy kv
+        m = node.get('_metadata') or {}
+        if isinstance(m, dict):
+            et = m.get('event_time') or m.get('event_date')
+    if not et:
+        return ''
+    et_str = str(et).strip()
+    if not et_str:
+        return ''
+    # Absolute date only — no relative-to-wall-clock gloss.
+    # The relative would anchor to brain_now() (real today) which is the
+    # WRONG reference frame for the answerer: in eval the conversation's
+    # question_date is its "now"; in production it's wall-clock and the
+    # answerer can derive the delta from created_at/updated_at if needed.
+    # Adding "X mo ago" relative-to-wall-clock is noise, not signal.
+    return '  Event date: %s' % et_str
+
+
 def _render_node_activation(node, field_activation, budget, activation,
                              is_seed=False, why='', query_vec=None, brain=None,
-                             session=None):
+                             session=None, mode='arc'):
     """Render a single activated node within a char budget.
 
-    • Fields below activation threshold are masked out — they simply don't
-      appear. This is the "fade" mechanism.
-    • Budget scales content / metadata / edges limits proportionally.
-    • Edges are picked query-aware via select_edges (top-3 by MAX formula).
+    `mode` (added 2026-05-10 for agentic surface v5; default 'arc' preserves
+    v4 behavior byte-identically):
+      - 'arc' (default): current activation-thresholded path. Fields below
+        threshold are masked. Used for state-of-mind / identity nodes.
+      - 'fact': emit content VERBATIM, no field masking, no abbreviation.
+        Used for verbatim quotes / specific values / exact wording.
+      - 'background': title + 1-line summary only. Low-weight context.
+
+    Common behavior:
+      • Budget scales content / metadata / edges limits proportionally.
+      • Edges are picked query-aware via select_edges (top-3 by MAX formula).
+      • Structured event_time kv (when present) is rendered as a dedicated
+        line via _event_time_line, ABOVE activation-masking. Added 2026-05-11
+        to address L4 bottleneck — encoder writes event_time but render
+        wasn't exposing it as queryable structured data.
     """
     from servers.contract import render_rich_node
+    event_line = _event_time_line(node)
 
-    # Budget allocation within a node (heuristics, tunable later)
+    if mode == 'background':
+        # Background — title + 1-line situation only. Low budget.
+        title = node.get('title', '')
+        kv = node.get('metadata_kv') or node.get('kv') or {}
+        situation = (kv.get('situation') or '')[:200]
+        body_lines = ['[%s] %s' % (node.get('type', '?'), title)]
+        if event_line:
+            body_lines.append(event_line)
+        if situation:
+            body_lines.append('  ' + situation)
+        body = '\n'.join(body_lines)
+        prefix_parts = ['act=%.2f' % activation, 'BG']
+        if is_seed and why:
+            prefix_parts.append('why: %s' % why[:80])
+        return body + '\n  ↑ ' + ' | '.join(prefix_parts)
+
+    if mode == 'fact':
+        # Fact mode — emit verbatim, NO field masking, NO activation threshold.
+        # Larger content budget (1.5x) to ensure facts survive truncation.
+        content_budget = max(120, int(budget * 0.75))
+        meta_budget = max(60, int(budget * 0.15))
+        cfg = {
+            'content_limit': content_budget,
+            'metadata_limit': meta_budget,
+            'edge_limit': 3,
+            'time_format': 'relative',
+            'show_confidence': False,
+            'show_encoding_source': False,
+            'show_keywords': True,  # facts always show keywords
+        }
+        body = render_rich_node(node, cfg)
+        if event_line:
+            # Inject the structured event_time line after the title line
+            # so the answerer can see it without parsing prose
+            body_lines = body.split('\n', 1)
+            if len(body_lines) == 2:
+                body = body_lines[0] + '\n' + event_line + '\n' + body_lines[1]
+            else:
+                body = body + '\n' + event_line
+        prefix_parts = ['act=%.2f' % activation, 'FACT']
+        if is_seed and why:
+            prefix_parts.append('why: %s' % why[:80])
+        return body + '\n  ↑ ' + ' | '.join(prefix_parts)
+
+    # Default: 'arc' — current path (unchanged behavior)
     content_budget = max(50, int(budget * 0.50))
-    meta_budget = max(30, int(budget * 0.10))  # per-field metadata limit
+    meta_budget = max(30, int(budget * 0.10))
 
     masked = _mask_node_by_field_activation(node, field_activation)
 
-    # Query-aware edge picking for the node's own connections (display order)
     connections = masked.get('connections') or []
     if query_vec is not None and connections:
         masked = dict(masked)
@@ -1638,21 +1734,26 @@ def _render_node_activation(node, field_activation, budget, activation,
     }
 
     body = render_rich_node(masked, cfg)
+    if event_line:
+        # Inject event_time line into arc render too — bypasses activation
+        # masking because temporal anchors are structural, not state-of-mind
+        body_lines = body.split('\n', 1)
+        if len(body_lines) == 2:
+            body = body_lines[0] + '\n' + event_line + '\n' + body_lines[1]
+        else:
+            body = body + '\n' + event_line
 
-    # Annotate seeds (Haiku-selected) with their "why"
-    prefix_parts = []
-    prefix_parts.append('act=%.2f' % activation)
+    prefix_parts = ['act=%.2f' % activation]
     if is_seed:
         prefix_parts.append('SEED')
         if why:
             prefix_parts.append('why: %s' % why[:80])
-    prefix_line = '  ↑ %s' % ' | '.join(prefix_parts)
-
-    return body + '\n' + prefix_line
+    return body + '\n  ↑ ' + ' | '.join(prefix_parts)
 
 
 def format_surface_output_activation(node_activation, field_activation,
                                       rich_nodes, selected_why=None,
+                                      selected_mode=None,
                                       query_vec=None, brain=None,
                                       session=None, total_budget=4000):
     """Render activated nodes as additionalContext, driven by activation.
@@ -1662,6 +1763,8 @@ def format_surface_output_activation(node_activation, field_activation,
         field_activation: {node_id: {field_name: float}} from spread_activation
         rich_nodes:       {node_id: rich_node_dict} from brain.get_node(ids)
         selected_why:     {node_id: str} — Haiku's "why" annotation (seeds only)
+        selected_mode:    {node_id: str} — per-seed render mode (fact/arc/background).
+                          Added 2026-05-10 for surface v5 agentic. Omitted → 'arc'.
         query_vec:        query embedding, used to re-rank each node's own edges
         brain:            Brain instance — for select_edges family lookup
         session:          SessionContext — for select_edges fatigue (not used in
@@ -1672,6 +1775,7 @@ def format_surface_output_activation(node_activation, field_activation,
         return ""
 
     selected_why = selected_why or {}
+    selected_mode = selected_mode or {}
 
     # Rank by (activation, mean_field_activation) — the second key breaks
     # ties cleanly when many nodes hit saturation at 1.0.
@@ -1704,12 +1808,16 @@ def format_surface_output_activation(node_activation, field_activation,
         fa = field_activation.get(nid, {})
         is_seed = nid in selected_why
         why = selected_why.get(nid, '')
+        mode = selected_mode.get(nid, 'arc')
 
-        effective_budget = min(budget, remaining)
+        # Fact-mode gets a 1.5× budget bump — ensures verbatim content
+        # survives truncation when many candidates compete for budget.
+        effective_budget = min(int(budget * 1.5) if mode == 'fact' else budget,
+                                remaining)
         rendered = _render_node_activation(
             node, fa, effective_budget, activation,
             is_seed=is_seed, why=why, query_vec=query_vec,
-            brain=brain, session=session)
+            brain=brain, session=session, mode=mode)
 
         lines.append(rendered)
         lines.append('')  # blank line between nodes
