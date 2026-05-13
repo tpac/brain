@@ -69,20 +69,48 @@ def _interaction_used(interactions, name):
     return (latest.get('version'), len(latest.get('template') or ''))
 
 
+def _summarize_tool_trace(recall):
+    """Count agentic-surface tool invocations from recall.json tool_trace.
+
+    tool_trace shape (from servers/scales/s1/surface.py::_call_surface_agentic):
+      [{round, stop_reason, tool_calls: [{tool, args, result_count, ...}, ...]}, ...]
+
+    Returns dict: {tool_name: count, '_total': n, '_rounds': r,
+                   '_variant': surface_variant}. v4 surface emits an empty
+    list; v5 agentic emits one entry per round.
+    """
+    out = {'_total': 0, '_rounds': 0,
+           '_variant': (recall or {}).get('surface_variant', '')}
+    for round_entry in (recall or {}).get('tool_trace') or []:
+        if not isinstance(round_entry, dict):
+            continue
+        out['_rounds'] += 1
+        for tc in round_entry.get('tool_calls') or []:
+            name = (tc.get('tool') if isinstance(tc, dict) else None) or '?'
+            out[name] = out.get(name, 0) + 1
+            out['_total'] += 1
+    return out
+
+
 def _gather_item_signals(bundle):
     """Per-item behavioral signal sample."""
     nodes = bundle.get('nodes') or []
     interactions = bundle.get('interactions') or []
+    recall = bundle.get('recall') or {}
     s1e_v, s1e_chars = _interaction_used(interactions, 's1e')
+    surface_v, _ = _interaction_used(interactions, 'surface')
     return {
         'node_count': len(nodes),
         'with_user_raw_quote': _count_nodes_with_field(nodes, 'user_raw_quote'),
         'with_anchor_raw_quote': _count_nodes_with_field(nodes, 'anchor_raw_quote'),
         'with_entity_field': _count_nodes_with_field(nodes, 'entity'),  # scout handoff
+        'with_event_time': _count_nodes_with_field(nodes, 'event_time'),  # L4 + v15.8 temporal
         'open_nodes': _count_open_nodes(nodes),
         'third_party_quote_nodes': _count_third_party_quotes(nodes),
         's1e_version': s1e_v,
         's1e_chars': s1e_chars,
+        'surface_version': surface_v,
+        'surface_tools': _summarize_tool_trace(recall),
     }
 
 
@@ -196,6 +224,10 @@ def diff_runs(run_a: str, run_b: str) -> dict:
             'b_third_party_quotes': sig_b['third_party_quote_nodes'],
             'a_entity_nodes': sig_a['with_entity_field'],
             'b_entity_nodes': sig_b['with_entity_field'],
+            'a_event_time': sig_a['with_event_time'],
+            'b_event_time': sig_b['with_event_time'],
+            'a_surface_tools': sig_a.get('surface_tools') or {},
+            'b_surface_tools': sig_b.get('surface_tools') or {},
             'b_s1e_version': sig_b['s1e_version'],
             'b_s1e_chars': sig_b['s1e_chars'],
         })
@@ -305,16 +337,58 @@ def render_md(diff: dict) -> str:
         'with_user_raw_quote': 'Nodes preserving operator voice',
         'with_anchor_raw_quote': 'Nodes preserving Anchor voice (v15+ behavior)',
         'with_entity_field': 'Nodes with entity field — scout-handoff signal',
+        'with_event_time': 'Nodes with event_time kv — temporal anchor (v15.8 + L4)',
         'open_nodes': 'Open-type nodes — live-contradiction encoding (v15+)',
         'third_party_quote_nodes': 'Quote nodes with no participant attribution — third-party verbatim (v15.2+)',
     }
     for k in ['node_count', 'with_user_raw_quote', 'with_anchor_raw_quote',
-              'with_entity_field', 'open_nodes', 'third_party_quote_nodes']:
+              'with_entity_field', 'with_event_time', 'open_nodes',
+              'third_party_quote_nodes']:
         a_v = sa.get(k, 0)
         b_v = sb.get(k, 0)
         delta = b_v - a_v
         lines.append(f"| {k} | {a_v} | {b_v} | {delta:+d} | {explanations[k]} |")
     lines.append('')
+
+    # Agentic-surface tool usage (per-arm). v4 surface is single-shot (no
+    # tool_trace); v5 agentic emits tool_use blocks recorded per item.
+    tool_counts_a = Counter()
+    tool_counts_b = Counter()
+    items_with_tools_a = items_with_tools_b = 0
+    variants_a = Counter()
+    variants_b = Counter()
+    for r in diff['rows']:
+        sa_t = r.get('a_surface_tools') or {}
+        sb_t = r.get('b_surface_tools') or {}
+        for k, v in sa_t.items():
+            if k.startswith('_'): continue
+            tool_counts_a[k] += v
+        for k, v in sb_t.items():
+            if k.startswith('_'): continue
+            tool_counts_b[k] += v
+        if sa_t.get('_total', 0) > 0:
+            items_with_tools_a += 1
+        if sb_t.get('_total', 0) > 0:
+            items_with_tools_b += 1
+        if sa_t.get('_variant'):
+            variants_a[sa_t['_variant']] += 1
+        if sb_t.get('_variant'):
+            variants_b[sb_t['_variant']] += 1
+
+    lines.append('## Surface tool usage')
+    lines.append('')
+    lines.append('| | A | B |')
+    lines.append('|---|---|---|')
+    lines.append(f"| Surface variant(s) | {dict(variants_a) or '-'} | {dict(variants_b) or '-'} |")
+    lines.append(f"| Items where surface invoked tools | {items_with_tools_a}/{diff['common_count']} | {items_with_tools_b}/{diff['common_count']} |")
+    lines.append(f"| Total tool calls | {sum(tool_counts_a.values())} | {sum(tool_counts_b.values())} |")
+    lines.append('')
+    if tool_counts_a or tool_counts_b:
+        lines.append('| Tool | A calls | B calls |')
+        lines.append('|---|---:|---:|')
+        for tool in sorted(set(tool_counts_a) | set(tool_counts_b)):
+            lines.append(f"| `{tool}` | {tool_counts_a.get(tool, 0)} | {tool_counts_b.get(tool, 0)} |")
+        lines.append('')
 
     # Movement-specific item lists
     lines.append('## Items that flipped')
