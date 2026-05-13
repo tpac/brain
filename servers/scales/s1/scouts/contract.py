@@ -73,8 +73,14 @@ SCOUT_FIELD_SPECS: Dict[str, Dict[str, Tuple[str, ...]]] = {
     },
     "temporal": {
         "required": ("source_phrase",),
+        # source_role + evidence_roles tag who attributed the date — user
+        # (operator-stated) vs assistant (paraphrased/inferred by the prior
+        # AI turn). Encoder uses this to weight proximal-phrase resolution:
+        # an assistant-only date for a phrase the user never said should
+        # not anchor an event the user described with a proximal phrase.
         "optional": ("resolution", "event_description", "existing_anchor_id",
-                     "catalog_tension", "precision", "relational_marker"),
+                     "catalog_tension", "precision", "relational_marker",
+                     "source_role", "evidence_roles"),
     },
     "facts": {
         "required": ("entity", "feature", "value"),

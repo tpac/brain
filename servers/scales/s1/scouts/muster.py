@@ -402,7 +402,14 @@ def _emit_traces(ctx: Dict[str, Any],
             },
             'session_id': session_id,
         })
-        # K — what the scout selected
+        # K — what the scout selected. candidate_handles is kept for
+        # backward compatibility with analyzers grepping for ISO dates;
+        # candidates_detail is the richer per-candidate dump (source_phrase,
+        # source_role, evidence_turns, precision, ...) that lets post-hoc
+        # diagnosis answer "which turn / role attributed this date" without
+        # re-running scouts. Diagnosed regression 2026-05-13: lack of
+        # source_role made the gpt4_85da3956 root-cause investigation take
+        # an hour instead of seconds.
         events.append({
             'chain_id': chain, 'scale': 's1', 'event_type': 'K',
             'ref_type': 'scout_findings',
@@ -411,6 +418,16 @@ def _emit_traces(ctx: Dict[str, Any],
                 'scout': name,
                 'category_statement': out.get('category_statement', ''),
                 'candidate_handles': [c.get('handle') for c in cands][:20],
+                'candidates_detail': [
+                    {k: v for k, v in c.items()
+                     if k in ('handle', 'evidence_turns', 'evidence_roles',
+                              'source_phrase', 'source_role', 'precision',
+                              'resolution', 'event_description',
+                              'why_candidate', 'entity', 'feature', 'value',
+                              'speaker', 'turn_evidence')
+                     and v not in (None, '', [], {})}
+                    for c in cands[:20]
+                ],
                 'errors': out.get('_errors', []),
                 'warnings': out.get('_warnings', []),
             },

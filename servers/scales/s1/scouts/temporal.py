@@ -629,6 +629,17 @@ def run_temporal_scout(
         for turn in (turns or []):
             tid = turn.get('turn_id') or turn.get('id') or ''
             text = turn.get('text') or turn.get('content') or ''
+            # source_role attribution — 'user' (operator-stated dates) vs
+            # 'assistant' (paraphrases / fabricated dates the assistant
+            # added). Without this tag, S1E can't distinguish operator-
+            # attributed temporal anchors from assistant retrospective
+            # inferences. The Universal Studios regression (gpt4_85da3956,
+            # 2026-05-13 comparison) was exactly this: the assistant said
+            # "you went three weeks ago" paraphrasing the user's "just got
+            # back", and the encoder treated that as gospel. Tagging here
+            # lets the encoder choose conversation_now over assistant-only
+            # dates for proximal phrases.
+            role = turn.get('role') or turn.get('speaker') or ''
             if not text or not tid:
                 continue
             extracted = _extract_candidates_from_text(text, base_date)
@@ -644,6 +655,8 @@ def run_temporal_scout(
                     'evidence_turns': [tid],
                     'why_candidate': _why_candidate(ext, existing_id, marker),
                     'source_phrase': ext['phrase_clean'][:50],
+                    'source_role': role,  # 'user' | 'assistant' | ''
+                    'evidence_roles': [role] if role else [],
                     'resolution': _resolution_summary(base_date, ext['resolved']),
                     'event_description': event,
                     'existing_anchor_id': existing_id,
@@ -663,20 +676,35 @@ def run_temporal_scout(
 
     # 4. Dedup by ISO date — session-date tags prepended to every user turn
     # produce N identical candidates for one anchor. Keep the highest-
-    # specificity version per date, merge evidence_turns to preserve where
-    # the date was referenced.
+    # specificity version per date, merge evidence_turns + evidence_roles
+    # to preserve where the date was referenced and by whom. If the same
+    # date appears in BOTH a user and an assistant turn, source_role
+    # promotes to 'user' (operator attribution wins) — even when the
+    # highest-specificity wording came from the assistant turn — because
+    # the encoder treats user attribution as authoritative.
     by_iso: Dict[str, Dict[str, Any]] = {}
     for c in candidates:
         key = c['handle']  # handle IS the ISO date
         if key in by_iso:
-            # Merge turn references; keep the higher-specificity candidate
-            by_iso[key]['evidence_turns'] = list(dict.fromkeys(
-                by_iso[key]['evidence_turns'] + c['evidence_turns']))
-            if c['_specificity'] > by_iso[key]['_specificity']:
-                # Swap in the better candidate but preserve merged turns
-                turns_merged = by_iso[key]['evidence_turns']
+            existing = by_iso[key]
+            # Merge turn references
+            existing['evidence_turns'] = list(dict.fromkeys(
+                existing['evidence_turns'] + c['evidence_turns']))
+            # Merge role references
+            existing['evidence_roles'] = list(dict.fromkeys(
+                (existing.get('evidence_roles') or []) +
+                (c.get('evidence_roles') or [])))
+            if c['_specificity'] > existing['_specificity']:
+                # Swap in the better candidate but preserve merged turns/roles
+                turns_merged = existing['evidence_turns']
+                roles_merged = existing['evidence_roles']
                 by_iso[key] = dict(c)
                 by_iso[key]['evidence_turns'] = turns_merged
+                by_iso[key]['evidence_roles'] = roles_merged
+            # User attribution wins for source_role even when the
+            # higher-specificity wording came from a different role.
+            if 'user' in by_iso[key].get('evidence_roles', []):
+                by_iso[key]['source_role'] = 'user'
         else:
             by_iso[key] = dict(c)
     deduped = list(by_iso.values())

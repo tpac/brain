@@ -268,6 +268,60 @@ class TestScoutOutput(BrainTestBase):
         self.assertIn('2026-04-21', by_handle)
         self.assertEqual(by_handle['2026-04-21']['evidence_turns'], ['t5'])
 
+    def test_assistant_only_date_tags_source_role_assistant(self):
+        """Regression for gpt4_85da3956 (2026-05-13): when only the assistant
+        mentions a date phrase ('three weeks ago' paraphrasing a user's
+        proximal phrase), source_role MUST be 'assistant' so downstream
+        S1E can choose conversation_now over assistant-attributed dates."""
+        turns = [
+            {'turn_id': 't0', 'role': 'user',
+             'text': 'I just got back from an amazing day at Universal.'},
+            {'turn_id': 't1', 'role': 'assistant',
+             'text': "I didn't know you went to Universal three weeks ago."},
+        ]
+        out = self._run(turns)
+        # Find the 'three weeks ago' candidate (3 weeks before base = 2026-04-02)
+        cand = next((c for c in out['candidates']
+                     if c['source_phrase'].lower().startswith('three weeks')),
+                    None)
+        self.assertIsNotNone(cand, 'three-weeks-ago candidate missing')
+        self.assertEqual(cand['source_role'], 'assistant',
+                         'date came from assistant turn — must be tagged')
+        self.assertEqual(cand['evidence_roles'], ['assistant'])
+
+    def test_user_attribution_wins_when_both_roles_mention_same_date(self):
+        """When the same date appears in both user and assistant turns,
+        source_role promotes to 'user' (operator attribution wins) even
+        if the assistant-turn wording happens to be more specific. The
+        encoder reads source_role as the authority for resolution."""
+        turns = [
+            {'turn_id': 't0', 'role': 'assistant',
+             'text': "OK so on April 21 you did the thing."},
+            {'turn_id': 't1', 'role': 'user',
+             'text': "Yeah, last Tuesday I did it."},
+        ]
+        out = self._run(turns)
+        # Both phrases resolve to 2026-04-21 against base 2026-04-23.
+        cand = next((c for c in out['candidates']
+                     if c['handle'] == '2026-04-21'), None)
+        self.assertIsNotNone(cand, 'April 21 candidate missing')
+        self.assertEqual(cand['source_role'], 'user',
+                         'user attribution must win over assistant')
+        # evidence_roles should show both
+        self.assertIn('user', cand['evidence_roles'])
+        self.assertIn('assistant', cand['evidence_roles'])
+
+    def test_role_missing_in_turn_yields_blank_source_role(self):
+        """Defensive: turns without a role key still produce candidates;
+        source_role is just empty for those (probably a caller bug, but
+        the scout doesn't crash and doesn't lie about attribution)."""
+        turns = [{'turn_id': 't1', 'text': 'I met her 2 weeks ago.'}]
+        out = self._run(turns)
+        self.assertTrue(len(out['candidates']) >= 1)
+        c = out['candidates'][0]
+        self.assertEqual(c.get('source_role', '_missing'), '')
+        self.assertEqual(c.get('evidence_roles', '_missing'), [])
+
     def test_empty_turns_yields_empty_candidates(self):
         out = self._run([])
         self.assertEqual(out['candidates'], [])
