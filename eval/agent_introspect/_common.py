@@ -149,6 +149,32 @@ def load_item_artifact(run_dir: str, qid: str) -> Dict[str, Any]:
     }
 
 
+def build_context_block(meta: Dict[str, Any]) -> str:
+    """Render the temporal context the encoder ran in.
+
+    Encoder uses conversation_now (= the haystack session's date for eval
+    items) to resolve relative phrases. Without this, auditors cannot
+    judge anchoring rules — 'is event_time the right date for X' is
+    undefined when the encoder's notion of "today" is unknown.
+
+    Used by every agent-introspect probe whose audit involves date
+    resolution or temporal rule compliance. Shared here so probes don't
+    drift on what "temporal context" means.
+    """
+    haystack_dates = (meta or {}).get('haystack_dates') or []
+    # conversation_now = haystack session date (the date the encoder
+    # treated as "today" when ingesting these turns). For multi-session
+    # haystacks the encoder re-anchors per session; for the eval cohort
+    # most items are single-session.
+    conv_now = haystack_dates[-1] if haystack_dates else '(unknown)'
+    question_date = (meta or {}).get('question_date', '(unknown)')
+    return (f'conversation_now (encoder treats this as "today"): {conv_now}\n'
+            f'haystack_dates (all sessions in chronological order): '
+            f'{haystack_dates or "(unknown)"}\n'
+            f'question_date (when the eval question was asked, AFTER '
+            f'ingest): {question_date}')
+
+
 def write_report(path: Path, content: str):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)

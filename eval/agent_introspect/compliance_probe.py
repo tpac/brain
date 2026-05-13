@@ -43,7 +43,7 @@ sys.path.insert(0, str(ROOT))
 
 from eval.agent_introspect._common import (
     load_env, call_sonnet, format_actions_for_review,
-    load_item_artifact, write_report, write_json,
+    load_item_artifact, write_report, write_json, build_context_block,
 )
 
 
@@ -67,28 +67,6 @@ SYSTEM_PROMPT = (
 )
 
 
-def _build_context_block(meta: dict) -> str:
-    """Render the temporal context the encoder ran in.
-
-    Encoder uses conversation_now (= the haystack session's date for eval
-    items) to resolve relative phrases. Without this, the auditor cannot
-    judge anchoring rules — 'is event_time the right date for X' is
-    undefined when the encoder's notion of "today" is unknown.
-    """
-    haystack_dates = meta.get('haystack_dates') or []
-    # conversation_now = haystack session date (the date the encoder was
-    # treating as "today" when ingesting these turns). For multi-session
-    # haystacks the encoder re-anchors per session; for the eval cohort
-    # most items are single-session.
-    conv_now = haystack_dates[-1] if haystack_dates else '(unknown)'
-    question_date = meta.get('question_date', '(unknown)')
-    return (f'conversation_now (encoder treats this as "today"): {conv_now}\n'
-            f'haystack_dates (all sessions in chronological order): '
-            f'{haystack_dates or "(unknown)"}\n'
-            f'question_date (when the eval question was asked, AFTER '
-            f'ingest): {question_date}')
-
-
 def build_audit_user_message(item: dict, rules: list[dict]) -> str:
     """Assemble the body Sonnet sees: prompt + context + conversation + actions + rules."""
     conv_text = []
@@ -97,7 +75,7 @@ def build_audit_user_message(item: dict, rules: list[dict]) -> str:
         content = turn['content']
         conv_text.append(f'\n--- {role} ---\n{content}')
     actions_block = format_actions_for_review(item['action_details'])
-    context_block = _build_context_block(item.get('meta') or {})
+    context_block = build_context_block(item.get('meta') or {})
 
     bar = '=' * 70
     rules_text = '\n'.join(

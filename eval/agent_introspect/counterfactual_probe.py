@@ -37,20 +37,23 @@ sys.path.insert(0, str(ROOT))
 
 from eval.agent_introspect._common import (
     load_env, call_sonnet, format_actions_for_review,
-    load_item_artifact, write_report, write_json,
+    load_item_artifact, write_report, write_json, build_context_block,
 )
 
 
 SYSTEM_PROMPT = (
     "You are evaluating a proposed prompt revision. Given (1) an encoder "
-    "prompt as-is, (2) the conversation an agent encoded, (3) the actions "
-    "it actually took (with omissions/skips), and (4) a proposed change "
-    "to the prompt — judge whether the change would have produced "
-    "different actions. Be concrete: name which action would change, "
-    "which field would now appear, which edge would now be composed. "
-    "If the change would NOT shift behavior, say so and explain what's "
-    "missing. If the change MIGHT shift behavior but only sometimes, "
-    "say so."
+    "prompt as-is, (2) the temporal context (conversation_now — the date "
+    "the encoder treats as 'today' when resolving relative phrases), "
+    "(3) the conversation an agent encoded, (4) the actions it actually "
+    "took (with omissions/skips), and (5) a proposed change to the "
+    "prompt — judge whether the change would have produced different "
+    "actions. The encoder anchors relative phrases to conversation_now; "
+    "treat it as the truth-of-record for resolution. Be concrete: name "
+    "which action would change, which field would now appear, which "
+    "edge would now be composed. If the change would NOT shift behavior, "
+    "say so and explain what's missing. If the change MIGHT shift "
+    "behavior but only sometimes, say so."
 )
 
 
@@ -60,6 +63,7 @@ def build_audit(item: dict, change: dict) -> str:
         role = turn['role'].upper()
         conv_text.append(f'\n--- {role} ---\n{turn["content"]}')
     actions_block = format_actions_for_review(item['action_details'])
+    context_block = build_context_block(item.get('meta') or {})
 
     bar = '=' * 70
     target = change.get('target_behavior', '(unspecified)')
@@ -71,6 +75,11 @@ THE ORIGINAL PROMPT (excerpt — focus on rules near the proposed change)
 {bar}
 
 {item['encoder_prompt']}
+
+{bar}
+TEMPORAL CONTEXT (the encoder's "now")
+{bar}
+{context_block}
 
 {bar}
 THE CONVERSATION (qid={item['qid']})
