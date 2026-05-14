@@ -421,48 +421,35 @@ with a different phrase. Assistant-attributed dates are FALLIBLE for
 operator-experienced events. Treat them as hints, not anchors. See
 the next subsection.
 
-### Proximal phrases anchor to conversation_now
+### Temporal authority: the operator owns the frame of their own experiences
 
-When the operator uses a proximal-time phrase for their own experience
-— "just got back from X", "just attended X", "just finished X", "we
-recently did X", "we just X", "today I did X" — set event_time to the
-conversation date (current_date / conversation_now), **not** to any
-scout-extracted date for the same event.
+For any event the operator reports as their own experience, the
+temporal anchor follows the operator's wording — not the scout's
+most-specific candidate. Three resolution paths, in order:
 
-Why: scouts collect every date phrase from the whole conversation,
-including dates the assistant introduced while paraphrasing the
-operator. For phrases the operator used about a personal experience,
-conversation_now is the correct anchor; any specific date the scout
-surfaced from elsewhere is event metadata about the event itself
-(e.g. the festival's run dates, a venue's opening), not the operator's
-report-date.
+1. Operator names an explicit date  →  use it.
+   ("we went on June 24", "my birthday is May 3")
 
-Concrete: operator says "I just got back from the Summer Nights
-festival at Universal." Scout returns candidates `[conversation_date,
-2023-06-24, ...]`. Pick `conversation_date`. The festival's run start
-may be real-world knowledge or assistant inference — neither dates the
-operator's own visit.
+2. Operator uses a resolvable relative phrase  →  resolve from
+   conversation_now.
+   ("yesterday", "last Tuesday", "2 weeks ago", "tonight")
 
-### Speaker-attributed dates — user beats assistant
+3. Operator uses a proximal phrase  →  anchor to conversation_now.
+   ("just got back", "just attended", "today I did X", "recently",
+   "lately", "this week")
 
-Read each candidate's `source_role`:
+When the scout returns multiple candidates for one event, read each
+candidate's `source_role`:
 
-- `source_role: "user"` — operator-attributed. Trust as the resolution
-  authority. Use this date for event_time.
-- `source_role: "assistant"` AND no user-attributed candidate exists
-  for the same event — the date is the assistant's inference. For the
-  operator's proximal phrase, prefer conversation_now. Do NOT anchor
-  the event to an assistant-only date.
-- `source_role: "assistant"` AND a different user-attributed candidate
-  exists for the same event — the operator wins. Use the user's date.
+- `source_role: "user"` — operator-attributed. The resolution authority.
+- `source_role: "assistant"` — the assistant introduced this date,
+  possibly paraphrasing the operator. For an event the operator framed
+  proximally or unresolvably, prefer conversation_now over any
+  assistant-attributed alternate.
 
-Authority order: user-attributed date > conversation_now (for proximal
-operator phrases) > assistant-attributed date.
-
-If you cannot find a user-attributed date AND the operator used a
-proximal phrase AND no other resolvable absolute is in user-attributed
-text — set event_time to conversation_now. That's the cleanest anchor
-the operator's own wording supports.
+Scouts collect every date phrase in the conversation, including ones
+the assistant introduced. The operator's wording for their own
+experience is the temporal authority.
 
 ### Cross-event temporal flow (Allen relations) — compose actively
 
@@ -628,13 +615,6 @@ remember:
   content: "..."
   situation: "..."
 ```
-
-Wrong action (the trap): anchor to "2023-06-24" because the scout
-surfaced it as a candidate. The scout was right to surface it (the
-phrase exists in the conversation), but `source_role: "assistant"`
-flags it as the assistant's paraphrase, not the operator's claim.
-Combine that with the operator's proximal "just got back" → resolve
-to conversation_now.
 
 ## Actions
 
