@@ -329,6 +329,63 @@ class EvalArtifactsDumper:
         """Mirror the harness result dict to the artifacts dir."""
         self._write_json('result.json', result)
 
+    def dump_agent_calls(self, session_ids: List[str]) -> Dict[str, int]:
+        """Collect per-call encoder + surface dumps from /tmp into agent_calls/.
+
+        encode.py writes /tmp/brain-encoding-prompt-{session_id}-{counter}.json
+        per encoder call, capturing user_content + user_preamble + tools_count.
+        surface.py writes /tmp/brain-{session_id}-{counter}-surface-selected.json
+        per surface call, capturing the selected node IDs and surface reasoning.
+
+        Together with interactions.jsonl (which captures the system prompt
+        version active at each call), this gives us full replay-ability:
+        take any saved agent_call, swap in a new system prompt from a future
+        registered version, re-run client.messages.create(...) and observe
+        the new behavior — no need to re-run the eval pipeline.
+
+        Returns: {'encoder_calls': N, 'surface_calls': M, 'errors': E}
+        """
+        import glob
+        import shutil
+        out_dir = self.run_dir / 'agent_calls'
+        out_dir.mkdir(exist_ok=True)
+        encoder_n = 0
+        surface_n = 0
+        errors = 0
+        for sid in (session_ids or []):
+            # Encoder dumps — one per encoding window (counter stops 5, 10, ...)
+            for src in glob.glob(f'/tmp/brain-encoding-prompt-{sid}-*.json'):
+                try:
+                    name = os.path.basename(src).replace(
+                        f'brain-encoding-prompt-{sid}-', f's1e_{sid[:8]}_stop')
+                    shutil.copy2(src, out_dir / name)
+                    encoder_n += 1
+                except Exception:
+                    errors += 1
+            # Surface dumps — one per query (typically 1 per item but eval may
+            # have multiple if the query phase re-fires).
+            for src in glob.glob(f'/tmp/brain-{sid}-*-surface-selected.json'):
+                try:
+                    name = os.path.basename(src).replace(
+                        f'brain-{sid}-', f'surface_{sid[:8]}_')
+                    shutil.copy2(src, out_dir / name)
+                    surface_n += 1
+                except Exception:
+                    errors += 1
+            # Judge results — agentic surface tool-trace + final selection
+            for src in glob.glob(f'/tmp/brain-judge-result-{sid}*.json'):
+                try:
+                    name = os.path.basename(src).replace(
+                        f'brain-judge-result-{sid}', f'judge_{sid[:8]}')
+                    shutil.copy2(src, out_dir / name)
+                    surface_n += 1
+                except Exception:
+                    errors += 1
+        stats = {'encoder_calls': encoder_n, 'surface_calls': surface_n,
+                 'errors': errors}
+        self._write_json('agent_calls/_manifest.json', stats)
+        return stats
+
     # ─── lower-level helpers ─────────────────────────────────────────
 
     @staticmethod
