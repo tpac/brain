@@ -1372,8 +1372,39 @@ class BrainRememberMixin:
 
         target_id = None
 
+        # Pass 0: ID-shape pre-check. The encoder sometimes passes an 8+ char
+        # hex ID in the `title` field when it really means "connect to this
+        # specific known node by id" — e.g. when an ID was visible in the
+        # conversation (recalled context, prior tool result, surfaced trace).
+        # Without this check, sibling-map and fuzzy-title both miss because
+        # neither matches an opaque hash. Resolve via id-prefix lookup; if
+        # found, prefer it over the title-based passes. Log a soft warning
+        # so we can see how often the encoder does this (signal for prompt
+        # tuning, not a hard error).
+        import re as _re
+        if _re.fullmatch(r'[0-9a-fA-F]{8,}', title_query.strip()):
+            try:
+                row = self.conn.execute(
+                    'SELECT id FROM nodes WHERE id LIKE ? LIMIT 2',
+                    (title_query.strip().lower() + '%',)).fetchall()
+                if len(row) == 1:
+                    target_id = row[0][0]
+                elif len(row) > 1:
+                    # Ambiguous prefix — log and fall through to title path.
+                    self._log_error(
+                        'connect_to_id_prefix_ambiguous',
+                        ValueError(
+                            "connect_to title looked like an id but matched "
+                            "multiple nodes; falling back to title search"),
+                        'prefix=%s matches=%d' % (title_query[:16], len(row)))
+            except Exception as e:
+                self._log_error(
+                    'connect_to_id_lookup_failed', e,
+                    'id-prefix lookup for %r' % title_query[:80])
+                # fall through to the title path
+
         # Pass 1: sibling map (NEW wins on title collision)
-        if sibling_map:
+        if not target_id and sibling_map:
             target_id = sibling_map.get(title_query.lower())
 
         # Pass 2: catalog fallback via fuzzy title match
