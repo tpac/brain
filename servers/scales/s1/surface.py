@@ -155,7 +155,7 @@ def _call_surface(brain, candidates_data, user_message,
 
 def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                            user_content, max_tokens, session_id, model,
-                           max_rounds=3):
+                           max_rounds=2):
     """Agentic surface call: Haiku may use fetch tools to extend the candidate
     pool before final JSON selection.
 

@@ -359,7 +359,10 @@ def recall_recent(brain, session_id: str = '', window: str = 'last 10 hours',
         until_iso = until.isoformat()
         # Strategy: filter_nodes by updated_at in the window, sort recent first.
         # Filter on 'updated_at' to catch revised nodes too, not just created.
-        rows = brain.filter_nodes(field='updated_at', gte=since_iso, lte=until_iso,
+        # filter_nodes exposes gt/lt (exclusive); for window queries the
+        # exclusive vs inclusive distinction at second-level boundaries is
+        # noise. Use gt/lt with the parsed window endpoints.
+        rows = brain.filter_nodes(field='updated_at', gt=since_iso, lt=until_iso,
                                    sort_by='updated_at', sort_order='desc',
                                    limit=int(k), rich=True)
         nodes = rows.get('nodes') if isinstance(rows, dict) else rows
@@ -389,10 +392,12 @@ def recall_by_date(brain, when: Any = '', k: int = 25, **_) -> List[Dict[str, An
             'limit': int(k),
             'rich': True,
         }
+        # filter_nodes API uses gt/lt (exclusive). Boundary precision at
+        # second-level resolution is irrelevant for date-window recall.
         if since:
-            kwargs['gte'] = since.isoformat()
+            kwargs['gt'] = since.isoformat()
         if until:
-            kwargs['lte'] = until.isoformat()
+            kwargs['lt'] = until.isoformat()
         rows = brain.filter_nodes(**kwargs)
         nodes = rows.get('nodes') if isinstance(rows, dict) else rows
         if not nodes:
