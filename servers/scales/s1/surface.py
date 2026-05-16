@@ -177,14 +177,25 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
     raw_final = ''
 
     for round_idx in range(max_rounds):
+        # On the FINAL iteration of the cap, disable tools. This forces
+        # Haiku to emit selection JSON instead of firing more tool_use
+        # blocks — without this, when Haiku's last available round comes
+        # back as tool_use, the loop exits with raw_final='' and we get
+        # selected=[]. Observed deterministic failure mode on items
+        # like 54026fce (16 strong candidates, surface selects 0).
+        is_final = (round_idx == max_rounds - 1)
+        api_kwargs = {
+            'model': model,
+            'max_tokens': max_tokens,
+            'system': surface_instructions,
+            'messages': messages,
+        }
+        if not is_final:
+            api_kwargs['tools'] = TOOL_DEFINITIONS
+        # else: omit tools entirely so the API can't return tool_use.
+
         try:
-            api_resp = client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                system=surface_instructions,
-                tools=TOOL_DEFINITIONS,
-                messages=messages,
-            )
+            api_resp = client.messages.create(**api_kwargs)
         except Exception as e:
             brain._log_error('surface_agentic_api', e,
                               'agentic Haiku call round=%d' % round_idx)
@@ -238,11 +249,15 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                     'latency_ms': exec_result.get('latency_ms', 0),
                     'error': exec_result.get('error'),
                 })
-                # Compose tool_result message block
+                # Compose tool_result message block. Pass `brain` so tool
+                # results are rendered with the SAME formatter that produced
+                # the initial 25 cosine candidates (content + situation +
+                # edges + _corrections) — no data-richness asymmetry.
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tool_use_id,
-                    "content": format_tool_result_for_haiku(exec_result),
+                    "content": format_tool_result_for_haiku(
+                        exec_result, brain=brain),
                 })
         messages.append({"role": "assistant", "content": assistant_blocks})
         messages.append({"role": "user", "content": tool_results})

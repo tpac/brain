@@ -76,26 +76,67 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
         },
     },
     {
-        "name": "recall_by_date",
+        "name": "recall_by_time",
         "description": (
-            "Date-bounded recall. Use for specific date queries: 'on 2026-05-09', "
-            "'since the start of May', 'before yesterday', 'last week's work'. Different "
-            "from recall_recent (which is rolling from now) — this is anchored."
+            "Time-bounded recall, optionally combined with a semantic query. "
+            "Use when the user asks about a specific time window — 'what did we "
+            "do in March 2023', 'Q1 2024 launch work', 'before May 2024'. "
+            "Distinct from recall_recent (which is rolling from now). "
+            "Distinct from recall_by_date (REMOVED) — this version filters on "
+            "extracted EVENT time (when something happened) by default, not "
+            "when the node was encoded.\n\n"
+            "Ranking tiers when both `query` and time are given:\n"
+            "  1. Entities matching BOTH query and time range (top)\n"
+            "  2. Entities matching just the query (no time match)\n"
+            "  3. Entities matching just the time range\n\n"
+            "If an edge is matched by time, the response also includes its "
+            "source and target nodes so the relation has context."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "when": {
+                "start_when": {
                     "type": "string",
                     "description": (
-                        "Date expression. Examples: 'yesterday', 'today', 'last week', "
-                        "'this morning', 'on 2026-05-09', 'since 2026-05-01', "
-                        "'before 2026-04-30'. Tool parses — you do NOT need timestamps."
+                        "Range start. Natural language ok: 'January 2023', "
+                        "'last month', 'Q1 2024', '2024-05'. Omit / empty "
+                        "string = open-ended past."
                     ),
                 },
-                "k": {"type": "integer", "description": "Max results (default 25)", "default": 25},
+                "end_when": {
+                    "type": "string",
+                    "description": (
+                        "Range end. Natural language ok: 'before May', "
+                        "'March 2024', '2024-03-31'. Omit / empty string = "
+                        "open-ended future."
+                    ),
+                },
+                "time_anchor": {
+                    "type": "string",
+                    "enum": ["event", "created", "updated"],
+                    "default": "event",
+                    "description": (
+                        "Which date to filter on:\n"
+                        "  event   — extracted event time (default; matches "
+                        "what the user usually means)\n"
+                        "  created — when the node/edge was first encoded\n"
+                        "  updated — when last revised / strengthened"
+                    ),
+                },
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Optional semantic filter. When provided, results "
+                        "are tiered: query∩time first, query-only second, "
+                        "time-only third."
+                    ),
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 20,
+                    "description": "Max results (default 20)",
+                },
             },
-            "required": ["when"],
         },
     },
     {
@@ -381,36 +422,278 @@ def recall_recent(brain, session_id: str = '', window: str = 'last 10 hours',
         return []
 
 
-def recall_by_date(brain, when: Any = '', k: int = 25, **_) -> List[Dict[str, Any]]:
-    """Date-bounded recall via filter_nodes on created_at."""
+def _parse_when_to_ts(when: str, default_to_end: bool = False) -> Optional[int]:
+    """Convert a natural-language time expression to Unix seconds.
+
+    `default_to_end`: when the parsed expression has month/year precision
+    and represents an endpoint, push to end-of-period (e.g. 'March 2023'
+    as end_when -> 2023-03-31T23:59:59 vs 2023-03-01 as start_when).
+
+    Returns None if `when` is empty or unparseable.
+    """
+    if not when or not when.strip():
+        return None
+    try:
+        from servers.temporal_extraction import (
+            extract_intervals_from_text,
+        )
+        intervals = extract_intervals_from_text(when)
+        if intervals:
+            start_ts, end_ts, _ = intervals[0]
+            return end_ts if default_to_end else start_ts
+    except Exception:
+        pass
+    # Fallback: existing date-expr parser (handles 'yesterday', 'last
+    # week', etc. via dateutil).
     try:
         since, until = _parse_date_expr(when)
-        kwargs = {
-            'field': 'created_at',
-            'sort_by': 'created_at',
-            'sort_order': 'desc',
-            'limit': int(k),
-            'rich': True,
-        }
-        # filter_nodes API uses gt/lt (exclusive). Boundary precision at
-        # second-level resolution is irrelevant for date-window recall.
-        if since:
-            kwargs['gt'] = since.isoformat()
-        if until:
-            kwargs['lt'] = until.isoformat()
-        rows = brain.filter_nodes(**kwargs)
-        nodes = rows.get('nodes') if isinstance(rows, dict) else rows
-        if not nodes:
-            return []
-        out = []
-        for i, n in enumerate(nodes):
-            score = 1.0 - (0.5 * i / max(1, len(nodes)))
-            cand = _to_candidate(n, score, 'recall_by_date')
+        if default_to_end:
+            target = until or since
+        else:
+            target = since or until
+        if target is None:
+            return None
+        return int(target.timestamp())
+    except Exception:
+        return None
+
+
+def _fetch_edges_with_endpoints(brain, edge_ids: List[str]) -> List[Dict[str, Any]]:
+    """For each edge_id, return [edge_synthetic_candidate, source_node,
+    target_node]. The edge candidate is synthetic — title carries the
+    relation, content carries the description, type='edge_relation'.
+
+    Endpoint nodes are fetched in ONE batch via brain.get_node(list),
+    not per-endpoint, to avoid N+1 lookups when an operator's question
+    surfaces many edges in the same time window.
+    """
+    if not edge_ids:
+        return []
+    out = []
+    conn = brain.conn
+    placeholders = ','.join('?' * len(edge_ids))
+    rows = conn.execute(
+        f'''SELECT e.edge_id, e.source_id, e.target_id,
+                   er.relation, er.description
+            FROM edges e
+            JOIN edge_relations er ON er.edge_id = e.edge_id
+            WHERE e.edge_id IN ({placeholders})
+              AND (er.archived IS NULL OR er.archived = 0)''',
+        edge_ids,
+    ).fetchall()
+    if not rows:
+        return []
+
+    # One batch fetch for every endpoint we'll need.
+    endpoint_ids: set = set()
+    for _, source_id, target_id, _, _ in rows:
+        endpoint_ids.add(source_id)
+        endpoint_ids.add(target_id)
+    try:
+        nodes_map = brain.get_node(list(endpoint_ids))
+        if not isinstance(nodes_map, dict):
+            nodes_map = {}
+    except Exception:
+        nodes_map = {}
+
+    seen_endpoint_ids: set = set()
+    for edge_id, source_id, target_id, relation, description in rows:
+        # Synthetic edge candidate.
+        out.append({
+            'id': edge_id,
+            'title': '%s → %s : %s' % (
+                source_id[:8], target_id[:8], (relation or '')[:60]),
+            'type': 'edge_relation',
+            'content': description or '',
+            'score': 0.5,
+            'source_tool': 'recall_by_time',
+            'kv': {
+                'edge_relation': relation,
+                'source_id': source_id,
+                'target_id': target_id,
+            },
+            'tier': 'edge_time',
+        })
+        # Source / target as context candidates (one per endpoint, dedup'd).
+        for endpoint_id, role in [(source_id, 'edge_source'),
+                                    (target_id, 'edge_target')]:
+            if endpoint_id in seen_endpoint_ids:
+                continue
+            seen_endpoint_ids.add(endpoint_id)
+            node = nodes_map.get(endpoint_id)
+            if not node:
+                continue
+            cand = _to_candidate(node, 0.4, 'recall_by_time')
             if cand:
+                cand['tier'] = role
                 out.append(cand)
-        return out[:int(k)]
+    return out
+
+
+def recall_by_time(brain, start_when: str = '', end_when: str = '',
+                    time_anchor: str = 'event', query: Optional[str] = None,
+                    limit: int = 20, **_) -> List[Dict[str, Any]]:
+    """Time-bounded recall with optional semantic ranking.
+
+    Ranking tiers (when query provided):
+      1. query AND time match — top
+      2. query only — middle
+      3. time only — bottom (edges include their source/target nodes)
+
+    When query is empty/None, returns only tier 3 (time matches).
+    When both start_when and end_when are empty, returns []
+    (no scope to filter on).
+    """
+    try:
+        # 1. Parse time range. Use very wide bounds for open-ended sides.
+        start_ts = _parse_when_to_ts(start_when, default_to_end=False)
+        end_ts = _parse_when_to_ts(end_when, default_to_end=True)
+        if start_ts is None and end_ts is None:
+            return []
+        if start_ts is None:
+            start_ts = 0
+        if end_ts is None:
+            end_ts = 9_999_999_999  # year 2286
+
+        # 2. Get time-matching entity ids based on anchor.
+        time_node_ids: set = set()
+        time_edge_ids: set = set()
+        conn = brain.conn
+        if time_anchor == 'event':
+            from servers.temporal_extraction import _SENTINEL_SOURCE
+            # Nodes: filter archived via JOIN. Archived nodes' entity_dates
+            # rows are stale and must not surface. Sentinel rows (marking
+            # "processed, no dates") are filtered via extraction_source.
+            for r in conn.execute(
+                '''SELECT DISTINCT ed.entity_id
+                   FROM entity_dates ed
+                   JOIN nodes n ON n.id = ed.entity_id
+                   WHERE ed.entity_kind = 'node'
+                     AND ed.extraction_source != ?
+                     AND ed.start_ts <= ?
+                     AND ed.end_ts >= ?
+                     AND n.archived = 0''',
+                (_SENTINEL_SOURCE, end_ts, start_ts),
+            ):
+                time_node_ids.add(r[0])
+            # Edges: archived-relation filter applied downstream by
+            # _fetch_edges_with_endpoints (it joins active edge_relations
+            # only). Pulling all edge entity_ids here is cheap.
+            for r in conn.execute(
+                '''SELECT DISTINCT entity_id FROM entity_dates
+                   WHERE entity_kind = 'edge'
+                     AND extraction_source != ?
+                     AND start_ts <= ?
+                     AND end_ts >= ?''',
+                (_SENTINEL_SOURCE, end_ts, start_ts),
+            ):
+                time_edge_ids.add(r[0])
+        elif time_anchor == 'created':
+            # Point-in-time anchors use exclusive bounds (gt/lt), matching
+            # the prior `recall_by_date` semantics via `filter_nodes`.
+            # Second-level boundary precision is irrelevant for date windows
+            # and keeping the legacy bounds avoids surprises for callers
+            # that depended on exclusive-boundary behavior.
+            from datetime import datetime as _dt, timezone as _tz
+            start_iso = _dt.fromtimestamp(start_ts, tz=_tz.utc).isoformat()
+            end_iso = _dt.fromtimestamp(end_ts, tz=_tz.utc).isoformat()
+            for r in conn.execute(
+                "SELECT id FROM nodes WHERE archived = 0 "
+                "AND created_at > ? AND created_at < ?",
+                (start_iso, end_iso),
+            ):
+                time_node_ids.add(r[0])
+            for r in conn.execute(
+                "SELECT edge_id FROM edges "
+                "WHERE created_at > ? AND created_at < ?",
+                (start_iso, end_iso),
+            ):
+                time_edge_ids.add(r[0])
+        elif time_anchor == 'updated':
+            from datetime import datetime as _dt, timezone as _tz
+            start_iso = _dt.fromtimestamp(start_ts, tz=_tz.utc).isoformat()
+            end_iso = _dt.fromtimestamp(end_ts, tz=_tz.utc).isoformat()
+            for r in conn.execute(
+                "SELECT id FROM nodes WHERE archived = 0 "
+                "AND COALESCE(revised_at, created_at) > ? "
+                "AND COALESCE(revised_at, created_at) < ?",
+                (start_iso, end_iso),
+            ):
+                time_node_ids.add(r[0])
+            for r in conn.execute(
+                "SELECT edge_id FROM edges "
+                "WHERE COALESCE(last_strengthened, created_at) > ? "
+                "AND COALESCE(last_strengthened, created_at) < ?",
+                (start_iso, end_iso),
+            ):
+                time_edge_ids.add(r[0])
+        else:
+            return []  # unknown anchor
+
+        # 3. Semantic matches (if query). Over-fetch so tiers can fill.
+        semantic_results: List[Dict[str, Any]] = []
+        if query and query.strip():
+            try:
+                raw = brain.recall(query=query, limit=int(limit) * 3)
+                if isinstance(raw, dict):
+                    raw = raw.get('results') or raw.get('items') or []
+                semantic_results = list(raw or [])
+            except Exception:
+                semantic_results = []
+        semantic_node_ids = {
+            r.get('id') for r in semantic_results if r.get('id')
+        }
+
+        # 4. Compute tiers.
+        out: List[Dict[str, Any]] = []
+
+        def _emit(node_or_dict, tier: str, score: float) -> None:
+            if len(out) >= limit:
+                return
+            cand = _to_candidate(node_or_dict, score, 'recall_by_time')
+            if cand:
+                cand['tier'] = tier
+                out.append(cand)
+
+        # Tier 1: query ∩ time (semantic_results filtered to time-matched ids)
+        for r in semantic_results:
+            if len(out) >= limit:
+                break
+            if r.get('id') in time_node_ids:
+                _emit(r, 'query+time', r.get('score', 0.7))
+
+        # Tier 2: query only (semantic_results not in time)
+        for r in semantic_results:
+            if len(out) >= limit:
+                break
+            if r.get('id') not in time_node_ids:
+                _emit(r, 'query', r.get('score', 0.6) * 0.9)
+
+        # Tier 3: time only — nodes not already covered + edges with endpoints
+        if len(out) < limit:
+            tier3_node_ids = list(time_node_ids - semantic_node_ids)
+            if tier3_node_ids:
+                try:
+                    nodes_map = brain.get_node(tier3_node_ids[:limit])
+                    if isinstance(nodes_map, dict):
+                        for nid, node in nodes_map.items():
+                            if len(out) >= limit:
+                                break
+                            _emit(node, 'time', 0.5)
+                except Exception:
+                    pass
+
+        if len(out) < limit and time_edge_ids:
+            edge_cands = _fetch_edges_with_endpoints(
+                brain, list(time_edge_ids)[:limit])
+            for c in edge_cands:
+                if len(out) >= limit:
+                    break
+                out.append(c)
+
+        return out[:int(limit)]
     except Exception as e:
-        print('[fetch_tools] recall_by_date failed: %s' % e, file=sys.stderr)
+        print('[fetch_tools] recall_by_time failed: %s' % e, file=sys.stderr)
         return []
 
 
@@ -521,7 +804,7 @@ def expand_node(brain, node_ref: str = '', hops: int = 1, **_) -> List[Dict[str,
 _TOOL_FN_MAP = {
     'recall_topical':    recall_topical,
     'recall_recent':     recall_recent,
-    'recall_by_date':    recall_by_date,
+    'recall_by_time':    recall_by_time,
     'recall_verbatim':   recall_verbatim,
     'recall_by_aspect':  recall_by_aspect,
     'expand_node':       expand_node,
@@ -548,26 +831,76 @@ def execute_tool(brain, tool_name: str, tool_input: Dict[str, Any],
                 'error': str(e)[:200]}
 
 
-def format_tool_result_for_haiku(result: Dict[str, Any]) -> str:
-    """Format a tool's output as a compact text block Haiku reads as tool_result.
+def format_tool_result_for_haiku(result: Dict[str, Any], brain=None) -> str:
+    """Format a tool's output using the SAME function that renders the
+    initial 25 cosine candidates — `format_candidate_for_surface` →
+    `render_rich_node(HAIKU_FORMAT)`. Same shape, same fields (content,
+    situation, edges, corrections, metadata) — no asymmetry.
 
-    Lists each candidate with id/title/type/score so Haiku can select from
-    them in the next round.
+    Why this matters: when tool results come back as one-line stubs while
+    cosine candidates are rendered richly (content + edges + corrections),
+    Haiku has nothing to evaluate the tool results on and systematically
+    dismisses them — observed deterministically on items like 37f165cf
+    where 8 tool results were ignored in favor of weaker cosine picks.
+
+    `brain` is required for the rich path (enriches each result via
+    `brain.get_node()` + `correction_enrich()` to the shape
+    `format_candidate_for_surface` expects). If brain is None, falls
+    back to a thin one-liner per result for legacy callers.
     """
     results = result.get('results') or []
     if result.get('error'):
         return 'ERROR: %s' % result['error']
     if not results:
         return 'No results.'
-    lines = ['%d results:' % len(results)]
-    for r in results[:25]:
-        nid = (r.get('id') or '')[:8]
-        title = (r.get('title') or '')[:100]
-        typ = r.get('type') or ''
-        score = r.get('score', 0.0)
-        lines.append('  [%s] %.2f [%s] %s' % (nid, score, typ, title))
+
+    lines = ['%d results (evaluate on the same merit as the initial 25):'
+             % len(results)]
+
+    if brain is not None:
+        # Rich path — same renderer as the initial 25 candidates.
+        from servers.scales.s1.surface_contract import (
+            format_candidate_for_surface, correction_enrich,
+        )
+        ids = [r.get('id') or '' for r in results[:25] if isinstance(r, dict)]
+        try:
+            corrections_map = correction_enrich(ids, brain.conn) or {}
+        except Exception:
+            corrections_map = {}
+
+        for i, r in enumerate(results[:25], start=1):
+            nid = r.get('id') or ''
+            try:
+                rich = brain.get_node(nid)
+                if isinstance(rich, dict) and nid in rich:
+                    rich = rich[nid]
+            except Exception:
+                rich = None
+            if not isinstance(rich, dict):
+                rich = dict(r)  # fall back to thin shape
+
+            # Recall-specific fields format_candidate_for_surface expects
+            # are score (for header) and discovery (for via:source marker).
+            rich.setdefault('score', r.get('score', 0.0))
+            rich.setdefault('discovery', r.get('source_tool', 'tool'))
+            corrections = corrections_map.get(nid)
+            if corrections:
+                rich['_corrections'] = corrections
+
+            lines.append('')
+            lines.append(format_candidate_for_surface(rich, i))
+    else:
+        # Thin fallback for callers without brain access.
+        for r in results[:25]:
+            nid = (r.get('id') or '')[:8]
+            title = (r.get('title') or '')[:100]
+            typ = r.get('type') or ''
+            score = r.get('score', 0.0)
+            lines.append('  [%s] %.2f [%s] %s' % (nid, score, typ, title))
+
     if len(results) > 25:
-        lines.append('  ... (%d more truncated)' % (len(results) - 25))
+        lines.append('')
+        lines.append('... (%d more truncated)' % (len(results) - 25))
     return '\n'.join(lines)
 
 
@@ -575,6 +908,6 @@ __all__ = [
     'TOOL_DEFINITIONS',
     'execute_tool',
     'format_tool_result_for_haiku',
-    'recall_topical', 'recall_recent', 'recall_by_date',
+    'recall_topical', 'recall_recent', 'recall_by_time',
     'recall_verbatim', 'recall_by_aspect', 'expand_node',
 ]
