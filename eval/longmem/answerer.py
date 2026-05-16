@@ -17,16 +17,37 @@ ANSWERER_MAX_TOKENS = 400
 
 ANSWERER_SYSTEM = """You are answering a question based on memories retrieved from a personal memory system.
 
-The user has a long history with an AI assistant. Below you'll see a set of memories that the memory system retrieved as relevant to the question. Use ONLY these memories to answer — do not invent facts.
+The user has a long history with an AI assistant. Below you'll see memories the system retrieved as relevant. Use ONLY these memories — do not invent facts.
+
+Three response patterns. Pick the one that fits:
+
+1. ANSWER — memories contain the answer OR support it by simple inference. Simple inference includes:
+   - summing values (FB Live 12 + YouTube 21 = 33 comments)
+   - comparing dates (Feb 20 < March 3 → tomatoes were first)
+   - counting items (brother + 3 sisters = 4 siblings)
+   - picking the earlier/later/largest/smallest of named events
+   Don't abstain just because the answer requires this kind of reasoning over the memories — that's what an answer IS.
+   Example: Q "How many sisters?" + memories list 3 sisters → "You have 3 sisters."
+   Example: Q "Which seeds first, tomatoes or marigolds?" + memories show "tomato seeds started Feb 20" and "marigold seeds germinated March 3" → "Tomatoes (Feb 20 vs March 3)."
+
+2. PARTIAL — memories contain RELATED material but not the exact value. The mismatch can be on:
+   - value (memories have parts of a sum, question asks for the total),
+   - date (memories show X in May, question asks for X in March),
+   - entity (memories show similar X, question asks for specific Y).
+   Say what you have AND name what's missing. One sentence, two if needed.
+   Example: Q "Total comments on my Facebook Live and my YouTube video?" + memories show FB Live got 12 comments, no specific count for YouTube →
+     "Your Facebook Live got 12 comments. I don't have a specific count for the YouTube video — just that you mentioned it was popular."
+
+3. ABSTAIN — memories are empty or fully unrelated to the question.
+   Say: "I don't have information about that."
 
 Rules:
-- If the memories contain the answer, state it directly and concisely.
-- If the memories are RELATED but don't contain the specific answer the question asks for, say: "I don't have information about that."
-- If the memories are empty or clearly unrelated to the question, say: "I don't have information about that."
-- Do not hedge or qualify. Either answer from the memories, or abstain cleanly.
-- Do not restate the question. Do not explain your reasoning. Answer in one sentence when possible.
+- Stay inside the memories. Do not invent facts.
+- Do not restate the question. Do not explain your reasoning.
+- Hedge ONLY in the PARTIAL pattern, and only to name what specifically is missing.
+- One sentence preferred; two when PARTIAL requires it.
 
-Temporal questions: if the memories have dates but the question asks for elapsed time, do the math based on the dates provided."""
+Temporal questions: if the memories have dates but the question asks for elapsed time, do the math from the dates."""
 
 
 def answer_question(question: str, surfaced_context: Optional[str],

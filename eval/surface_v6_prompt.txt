@@ -16,7 +16,7 @@ You may call these to extend the 25 candidates. Each tool name carries intent.
 
 - recall_topical(query, k) — embeddings + lexical. Use for "find similar to X" when cosine missed it.
 - recall_recent(window, k) — chronological. Use for continuation queries ("what did we do", "last session", "this morning"). window: natural language ("last 10 hours", "yesterday").
-- recall_by_date(when, k) — date-bounded. Use for specific date queries ("since 2026-05-01", "before yesterday"). Anchored, not rolling.
+- recall_by_time(start_when, end_when, time_anchor, query, k) — time-bounded recall, optionally with semantic query. `time_anchor` defaults to "event" (filters by when something HAPPENED, not when the node was encoded). Use for date-anchored queries: "in March 2024", "Q1 2023", "before May 2024". Dates in the operator's question are entity-selectors (which X?), not strict filters — if the tool returns empty, fall back to the 25 cosine candidates and pick the best matches anyway. Ranks: query+time first, query-only second, time-only third.
 - recall_verbatim(phrase, k) — FTS5 lexical exact. Use when EXACT wording matters ("what did X say"). Bypasses semantic similarity.
 - recall_by_aspect(aspect, recent_first, k) — semantic family scoped. Aspects: identity_bearing, episodic_anchor, active_thread, lesson_insight, correction_improvement.
 - expand_node(node_ref, hops) — neighborhood. Use when you have ONE good seed and want its graph neighbors.
@@ -86,7 +86,12 @@ When you have picks:
 When the message is a pure confirmation:
 {"selected":[],"reason":"pure confirmation, no topic to surface"}
 
-`why` should be precise — what this candidate contributes to the answer-substrate. Examples: "carries operator's FB comment count for the sum", "anchors the recovery timeline", "names the operator's chosen approach". Not "topical match" or "related to X".
+`why` should be precise — what this candidate contributes to the answer-substrate, and how the downstream agent should use it. When the question implies a comparison, sum, or pick, name that explicitly in `why`. Examples:
+  - "carries operator's FB comment count for the sum"
+  - "tomato seeds started Feb 20 — date for relative-order comparison"
+  - "anchors the recovery timeline"
+  - "names the operator's chosen approach"
+Not "topical match" or "related to X" — those don't tell downstream how to use the atom.
 
 # Field guide for candidates
 
@@ -100,7 +105,7 @@ Each candidate has:
 - via:both: found by word + semantic — strong signal.
 - Situation, Reasoning: when the node applies / why stored.
 
-Tool-fetched candidates carry source_tool naming which tool brought them. Trust them as cosine candidates.
+Tool-fetched candidates carry source_tool naming which tool brought them. Evaluate them on the same merit as the original 25 — no priority either way. If a tool returns candidates that don't add anything stronger than the originals, your selection should come from the 25.
 
 # Frame
 
@@ -158,3 +163,19 @@ Example 6 — pure confirmation, the one select-0 case.
   Operator: "yes, ship it"
   Frame's Current focus carries the active proposal.
   Selection: {"selected":[],"reason":"pure confirmation, no topic to surface"}
+
+Example 7 — date-anchored composition.
+  Operator: "Compare the two presentations I gave in October 2023."
+  Cosine returns talks from many months. Need October specifically.
+  Round 1 (tool): recall_by_time(start_when="October 2023", end_when="October 2023", time_anchor="event", query="presentation gave")
+  Round 2 selection:
+    {"selected":[
+      {"id":"a1f2c5e3","why":"product strategy talk Oct 12","mode":"fact"},
+      {"id":"b8c4d9e1","why":"design system overview Oct 24","mode":"fact"}
+    ]}
+  Date rules:
+    - Dates in the question identify WHICH entities. Use them to bias retrieval, not to exclude candidates.
+    - Tool empty? Pick the best matches from the 25 cosine candidates — they're your fallback.
+    - "Recently" / "last week" / "yesterday" → use recall_recent, NOT recall_by_time.
+    - Range like "Q1 to Q3 2024" → ONE call with both start_when + end_when. Not two calls.
+    - Year required: "October" alone won't resolve. Need "October 2023".
