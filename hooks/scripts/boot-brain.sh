@@ -14,85 +14,36 @@ HOOK_STDIN=$(cat)
 BRAIN_HOOK_SESSION_ID=$(echo "$HOOK_STDIN" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('session_id',''))" 2>/dev/null)
 export BRAIN_HOOK_SESSION_ID
 
-# ── Resolve ANTHROPIC_API_KEY across the four supported sources ──
-# Priority (highest to lowest):
-#   1. userConfig.anthropic_api_key  — Claude Code keychain (the standard).
-#                                      Substituted into $ANTHROPIC_API_KEY by
-#                                      the hook command line; see hooks.json.
-#   2. ${BRAIN_DB_DIR}/.env          — runtime cache, written below from (1).
-#                                      Read by the launchd-spawned daemon via
-#                                      servers/scales/dispatch.load_env (the
-#                                      daemon has no shell + no userConfig
-#                                      substitution, so it needs this file).
-#   3. ${PLUGIN_ROOT}/.env           — legacy in-repo location (pre-migration).
-#                                      Kept as a fallback so existing setups
-#                                      keep working until users move to (1).
-#   4. shell env                     — for users who export it in ~/.zshrc.
-#
-# Source (1) is the standard. We sync it down to (2) so the daemon, which
-# runs outside Claude Code's spawn tree under launchd, finds the same key
-# without having to be aware of Claude Code's substitution mechanism.
-PLUGIN_ROOT_FOR_ENV="$(cd "$(dirname "$0")/../.." && pwd)"
-RUNTIME_ENV_FILE="${BRAIN_DB_DIR:-$HOME/AgentsContext/brain}/.env"
-
-# Did the hook get a real key from userConfig? Variable substitution on an
-# unset userConfig value typically yields the empty string, but be paranoid
-# and reject anything that isn't a recognizable key prefix.
-if [ -n "${ANTHROPIC_API_KEY:-}" ] && [[ "${ANTHROPIC_API_KEY}" == sk-* ]]; then
-  # (1) → (2): sync to runtime .env if value differs. Idempotent on rerun.
-  mkdir -p "$(dirname "$RUNTIME_ENV_FILE")"
-  EXISTING_RUNTIME_KEY=""
-  if [ -f "$RUNTIME_ENV_FILE" ]; then
-    EXISTING_RUNTIME_KEY="$(awk -F= '/^ANTHROPIC_API_KEY=/{print substr($0, index($0,"=")+1); exit}' "$RUNTIME_ENV_FILE")"
-  fi
-  if [ "$EXISTING_RUNTIME_KEY" != "$ANTHROPIC_API_KEY" ]; then
-    # Atomic rewrite, mode 0600. Preserve any other keys already in the
-    # file (e.g. GITHUB_API_KEY, future additions).
-    TMP_ENV="${RUNTIME_ENV_FILE}.tmp.$$"
-    {
-      if [ -f "$RUNTIME_ENV_FILE" ]; then
-        grep -v '^ANTHROPIC_API_KEY=' "$RUNTIME_ENV_FILE" || true
-      fi
-      printf 'ANTHROPIC_API_KEY=%s\n' "$ANTHROPIC_API_KEY"
-    } > "$TMP_ENV"
-    chmod 600 "$TMP_ENV"
-    mv "$TMP_ENV" "$RUNTIME_ENV_FILE"
-  fi
+# ── Resolve ANTHROPIC_API_KEY from canonical config location ──
+# Single source: ${XDG_CONFIG_HOME:-$HOME/.config}/brain/env (mode 600,
+# dotenv format). Matches the CLI-tool convention (gh, stripe, kubectl, ...).
+# Env-var override: a key already in ANTHROPIC_API_KEY (shell export) wins.
+# The daemon mirrors this resolution via servers/scales/dispatch.load_env.
+BRAIN_ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/brain/env"
+if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -f "$BRAIN_ENV_FILE" ]; then
+  set -a
+  . "$BRAIN_ENV_FILE"
+  set +a
 fi
 
-# Resolve effective key from (1)→(4). Used only to decide whether to fail
-# loud below; the daemon itself loads via dispatch.load_env at LLM-call time.
-EFFECTIVE_KEY="${ANTHROPIC_API_KEY:-}"
-if [ -z "$EFFECTIVE_KEY" ] || [[ "${EFFECTIVE_KEY}" != sk-* ]]; then
-  EFFECTIVE_KEY=""
-  if [ -f "$RUNTIME_ENV_FILE" ]; then
-    EFFECTIVE_KEY="$(awk -F= '/^ANTHROPIC_API_KEY=/{print substr($0, index($0,"=")+1); exit}' "$RUNTIME_ENV_FILE")"
-  fi
-fi
-if [ -z "$EFFECTIVE_KEY" ] && [ -f "$PLUGIN_ROOT_FOR_ENV/.env" ]; then
-  EFFECTIVE_KEY="$(awk -F= '/^ANTHROPIC_API_KEY=/{print substr($0, index($0,"=")+1); exit}' "$PLUGIN_ROOT_FOR_ENV/.env")"
-fi
-
-if [ -z "$EFFECTIVE_KEY" ]; then
-  cat <<'EOF'
+if [ -z "${ANTHROPIC_API_KEY:-}" ] || [[ "${ANTHROPIC_API_KEY}" != sk-* ]]; then
+  cat <<EOF
 🧠 brain plugin: ANTHROPIC_API_KEY is not set.
 
 The brain needs your Anthropic API key to encode and surface memories.
 Without it, recall still works but no new memories will be written.
 
-To fix (preferred — uses your OS keychain):
+To fix:
 
-  1. Run /plugin in Claude Code and reconfigure the brain plugin.
-  2. Paste your key when prompted.
-     Get one at https://console.anthropic.com/settings/keys.
-  3. Start a new Claude Code session.
+  mkdir -p "${XDG_CONFIG_HOME:-\$HOME/.config}/brain"
+  printf 'ANTHROPIC_API_KEY=sk-ant-...\n' > "${XDG_CONFIG_HOME:-\$HOME/.config}/brain/env"
+  chmod 600 "${XDG_CONFIG_HOME:-\$HOME/.config}/brain/env"
 
-Alternative: export ANTHROPIC_API_KEY in your shell profile
-(~/.zshrc / ~/.bashrc) and start a new session.
+Get a key at https://console.anthropic.com/settings/keys, then start a new session.
 EOF
-  cat >&2 <<'EOF'
+  cat >&2 <<EOF
 [brain-boot] ANTHROPIC_API_KEY not set — plugin will not load.
-[brain-boot] Run /plugin to store the key in the Claude Code keychain.
+[brain-boot] Expected at: $BRAIN_ENV_FILE
 EOF
   exit 0
 fi
