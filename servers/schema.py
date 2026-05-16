@@ -429,6 +429,31 @@ TABLES = {
             'created_at': 'TEXT NOT NULL',
         }
     },
+
+    # Temporal index — interval-based date extraction for nodes and edges.
+    # One row per (entity, extracted_date_interval, source). Populated by the
+    # embed_queue worker at write time via dateparser scan of title/content/KV
+    # for nodes and description/relation for edges. Queried by recall_by_time.
+    # Intervals are half-open Unix-second pairs: "May 2023" -> (1682899200,
+    # 1685577599); exact dates have start_ts == end_ts. See temporal_extraction.py.
+    'entity_dates': {
+        'create': """CREATE TABLE IF NOT EXISTS entity_dates (
+            entity_kind TEXT NOT NULL CHECK(entity_kind IN ('node','edge')),
+            entity_id TEXT NOT NULL,
+            start_ts INTEGER NOT NULL,
+            end_ts INTEGER NOT NULL,
+            extraction_source TEXT NOT NULL,
+            raw_text TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (entity_kind, entity_id, start_ts, end_ts, extraction_source)
+        )""",
+        'columns': {
+            'entity_kind': None, 'entity_id': None,
+            'start_ts': None, 'end_ts': None,
+            'extraction_source': None, 'raw_text': 'NULL',
+            'created_at': 'CURRENT_TIMESTAMP',
+        }
+    },
 }
 
 # ─── Canonical indexes ───
@@ -473,6 +498,10 @@ INDEXES = [
     # s2_rejections — per-unit queries for cleanup/analysis
     'CREATE INDEX IF NOT EXISTS idx_s2_rejections_unit ON s2_rejections(integration_unit)',
     'CREATE INDEX IF NOT EXISTS idx_s2_rejections_created ON s2_rejections(created_at)',
+    # entity_dates — interval overlap queries (recall_by_time)
+    'CREATE INDEX IF NOT EXISTS idx_entity_dates_start ON entity_dates(start_ts)',
+    'CREATE INDEX IF NOT EXISTS idx_entity_dates_end ON entity_dates(end_ts)',
+    'CREATE INDEX IF NOT EXISTS idx_entity_dates_kind_id ON entity_dates(entity_kind, entity_id)',
     # brain_telemetry indexes — moved to LOG_INDEXES (brain_logs.db)
 ]
 

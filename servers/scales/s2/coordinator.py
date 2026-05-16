@@ -8,6 +8,11 @@ Ordering matters:
 2. Consolidation — clean the graph (merge convergent nodes)
 3. Community detection — detect structure on clean graph
 4. Healer — fill missing findability fields on nodes that lack them (uses community context)
+
+Note: temporal interval extraction is NOT an S2 unit. It runs in
+embed_queue alongside vector backfill — every remember/revise/add_relation
+enqueues, the worker drains in batches. Conceptually the same kind of
+enrichment as embeddings, in the same pipeline.
 """
 
 

@@ -2408,6 +2408,19 @@ class GraphDAL:
         self.conn.execute(
             'UPDATE edges SET last_strengthened = ? WHERE edge_id = ?', (ts, edge_id))
         self.conn.commit()
+
+        # Enqueue for temporal extraction if description or relation text
+        # changed — embed_queue.enqueue_edge() is a cheap set.add. Lazy
+        # import to avoid module-load circular dependency.
+        if result['created'] or any(
+            d.get('field') == 'description' for d in result['deltas']
+        ):
+            try:
+                from . import embed_queue
+                embed_queue.enqueue_edge(edge_id)
+            except Exception:
+                pass
+
         return result
 
     def strengthen_relation(self, source_id, target_id, relation):

@@ -311,6 +311,41 @@ class BrainDaemon:
         except Exception as e:
             self._log("embed_queue start failed: {}".format(e))
 
+        # Cold-start auto-enqueue: any entity lacking entity_dates rows
+        # (no real intervals, no sentinel) gets enqueued for processing
+        # by the embed_queue worker. Idempotent: re-runs at every boot
+        # find only NEW gaps because the worker writes either real
+        # intervals or sentinel rows. After first full pass this is a
+        # cheap LEFT-JOIN scan returning empty.
+        try:
+            self._enqueue_temporal_backfill_gaps()
+        except Exception as e:
+            self._log("temporal backfill enqueue failed: {}".format(e))
+
+    def _enqueue_temporal_backfill_gaps(self):
+        """Find entities without entity_dates rows and enqueue them."""
+        from servers import embed_queue
+        node_ids = [r[0] for r in self.brain.conn.execute('''
+            SELECT n.id FROM nodes n
+            LEFT JOIN entity_dates e
+                   ON e.entity_id = n.id AND e.entity_kind = 'node'
+            WHERE n.archived = 0 AND e.entity_id IS NULL
+        ''').fetchall()]
+        edge_ids = [r[0] for r in self.brain.conn.execute('''
+            SELECT DISTINCT er.edge_id FROM edge_relations er
+            LEFT JOIN entity_dates e
+                   ON e.entity_id = er.edge_id AND e.entity_kind = 'edge'
+            WHERE (er.archived IS NULL OR er.archived = 0)
+              AND e.entity_id IS NULL
+        ''').fetchall()]
+        for nid in node_ids:
+            embed_queue.enqueue(nid)
+        for eid in edge_ids:
+            embed_queue.enqueue_edge(eid)
+        if node_ids or edge_ids:
+            self._log("Temporal backfill enqueued {} nodes + {} edges".format(
+                len(node_ids), len(edge_ids)))
+
     def _serve(self):
         """Main event loop — accept connections, dispatch to thread pool."""
         last_idle_check = time.time()
