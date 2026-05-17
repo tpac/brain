@@ -278,7 +278,6 @@ def hook_recall(brain, args, graph_changes):
             _query_vec = np.frombuffer(_query_emb, dtype=np.float32) if isinstance(_query_emb, bytes) else np.array(_query_emb, dtype=np.float32)
             # Get prior user messages for multi-turn context
             try:
-                from .scales.s1.surface_contract import select_edges
                 _prior_turns = brain._trace_dal.get_session_turns(session_id, limit=4)
                 _user_turns = [t for t in _prior_turns if t.get('role') == 'user'][:2]
                 for _t in _user_turns:
@@ -309,7 +308,7 @@ def hook_recall(brain, args, graph_changes):
                 from .scales.s1.surface_contract import select_edges
                 node_data['connections'] = select_edges(
                     node_data['connections'], _query_vec,
-                    session=ctx, limit=10,  # keep 10, render truncates to 3
+                    limit=10,  # keep 10, render truncates to 3
                     prior_vecs=_prior_vecs, brain_conn=brain.conn, brain=brain)
             # Attach recall-specific fields (not in DB — from scoring pipeline)
             node_data["score"] = r.get("effective_activation", 0)

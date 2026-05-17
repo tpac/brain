@@ -1426,7 +1426,7 @@ def _cosine_nonneg(a, b, norm_a=None):
     return max(0.0, float(np.dot(a, b)) / (norm_a * norm_b))
 
 
-def select_edges(connections, query_vec, session=None, limit=3, prior_vecs=None,
+def select_edges(connections, query_vec, limit=3, prior_vecs=None,
                  brain_conn=None, brain=None):
     """Pick the top-N edges of a single node for display rendering.
 
@@ -1446,7 +1446,6 @@ def select_edges(connections, query_vec, session=None, limit=3, prior_vecs=None,
             from GraphDAL.get_neighbors()). Required keys: id, relation;
             useful keys: title/target_title, description.
         query_vec: numpy array (768d) — current query embedding.
-        session: kept for signature compat; no longer used (fatigue dissolved).
         limit: max edges to return.
         prior_vecs: prior-turn query embeddings for multi-turn blending.
         brain_conn: sqlite3 connection — used to load stored target node
@@ -1690,8 +1689,7 @@ def _event_time_line(node):
 
 
 def _render_node_activation(node, field_activation, budget, activation,
-                             is_seed=False, why='', query_vec=None, brain=None,
-                             session=None, mode='arc'):
+                             why='', query_vec=None, brain=None, mode='arc'):
     """Render a single activated node within a char budget.
 
     `mode` (added 2026-05-10 for agentic surface v5; default 'arc' preserves
@@ -1752,7 +1750,7 @@ def _render_node_activation(node, field_activation, budget, activation,
     if query_vec is not None and connections:
         masked = dict(masked)
         masked['connections'] = select_edges(
-            connections, query_vec, session=session, limit=10,
+            connections, query_vec, limit=10,
             brain_conn=brain.conn if brain is not None else None,
             brain=brain)
 
@@ -1764,7 +1762,7 @@ def format_surface_output_activation(node_activation, field_activation,
                                       rich_nodes, selected_why=None,
                                       selected_mode=None,
                                       query_vec=None, brain=None,
-                                      session=None, total_budget=4000):
+                                      total_budget=4000):
     """Render activated nodes as additionalContext, driven by activation.
 
     Args:
@@ -1815,7 +1813,6 @@ def format_surface_output_activation(node_activation, field_activation,
 
         node = rich_nodes[nid]
         fa = field_activation.get(nid, {})
-        is_seed = nid in selected_why
         why = selected_why.get(nid, '')
         mode = selected_mode.get(nid, 'arc')
 
@@ -1825,8 +1822,7 @@ def format_surface_output_activation(node_activation, field_activation,
                                 remaining)
         rendered = _render_node_activation(
             node, fa, effective_budget, activation,
-            is_seed=is_seed, why=why, query_vec=query_vec,
-            brain=brain, session=session, mode=mode)
+            why=why, query_vec=query_vec, brain=brain, mode=mode)
 
         lines.append(rendered)
         lines.append('')  # blank line between nodes
