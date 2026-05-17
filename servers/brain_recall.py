@@ -31,12 +31,16 @@ from .brain_constants import (
     EDGE_TYPES,
     EMBEDDING_PRIMARY_WEIGHT,
     GRAPH_AUGMENT_TOP_N,
+    HUB_DEGREE_THRESHOLD,
+    IDENTITY_INITIAL_BOOST,
+    IDENTITY_REPEAT_DAMPEN,
     INTENTIONAL_EDGE_TYPES,
     KEYWORD_FALLBACK_WEIGHT,
     LEARNING_RATE,
     MAX_PAGE_SIZE,
     MAX_WEIGHT,
     PRUNE_THRESHOLD,
+    RECENCY_BOOST,
     RELEVANCE_FLOOR_ENRICHED,
     RELEVANCE_FLOOR_PRIMARY,
     TRAVERSE_DAMPEN,
@@ -1286,22 +1290,30 @@ class BrainRecallMixin:
             # reason. Now paid once. Idempotent if Brain.warm_up() already
             # built the structural cache during daemon boot.
             self._ensure_structural_degree_cache()
-            # Per-session fatigue snapshot — prefer the SessionContext the
-            # caller passed in (Tom's convention); otherwise load fresh from
-            # session_id. ctx is saved at end of _recall_impl so fatigue
-            # increments (via _mark_accessed below) persist for the next
-            # recall in this session.
+            # Per-session score modulation — three regimes (see brain_constants
+            # for thresholds):
+            #   1. Identity-bearing aspect (locked rule/principle/identity/vision):
+            #      boost on first touch, suppress hard after → show once per session
+            #   2. Hubs (structural_degree >= HUB_DEGREE_THRESHOLD): degree-aware
+            #      fatigue dampening so they don't crowd every turn
+            #   3. Other touched-this-session: small recency boost for working-
+            #      thread continuity
+            #   4. Untouched: cosine alone (no modulation)
             _recall_ctx = ctx
             _recall_fatigue: Dict[str, int] = {}
             if _recall_ctx is None and session_id:
                 try:
                     _recall_ctx = self.get_or_create_session(session_id)
                 except Exception as _ferr:
-                    self._log_error('recall_fatigue_ctx', _ferr,
-                                    'loading session ctx for fatigue dampening — '
-                                    'falling back to empty fatigue')
+                    self._log_error('recall_ctx_modulation', _ferr,
+                                    'loading session ctx for score modulation — '
+                                    'falling back to no modulation')
             if _recall_ctx is not None:
                 _recall_fatigue = _recall_ctx.fatigue
+            # Cache identity-aspect type membership as a frozenset for the
+            # per-row scoring inner loop (avoids tuple `in` per node).
+            _identity_types = frozenset(self.aspects.identity_bearing.node_types) \
+                if hasattr(self, 'aspects') else frozenset()
             # Per-node data collected here for unified_score() in STEP 6.
             # created_at/emotion/access_count feed the modulator formula.
             node_created_at = {}    # node_id → ISO timestamp (for freshness)
@@ -1343,21 +1355,26 @@ class BrainRecallMixin:
                     # compete in a global pool (eval artifact, not production).
                     # The real lever is V5 enrichment coverage (S2 enrichment unit).
 
-                    # v10: Synaptic fatigue — AFTER z-score normalization.
-                    # Dampens the surprise-score for nodes recalled repeatedly
-                    # this session. _recall_fatigue is the per-call snapshot
-                    # of this session's ctx.fatigue (loaded above). Resets
-                    # between sessions.
-                    # K (fatigue resistance) scales with structural degree:
-                    #   Hub (30 edges): K=2.5, fatigues fast
-                    #   Peripheral (3 edges): K=7.7, fatigues slow
-                    #   New node (0 edges): K=10, barely fatigues
+                    # Score modulation — see _recall_ctx setup above for
+                    # the four regimes. Identity nodes get show-once-per-
+                    # session lifecycle; hubs get degree-aware fatigue;
+                    # other touched-this-session get a small recency boost
+                    # for working-thread continuity.
                     _fatigue_count = _recall_fatigue.get(node_id, 0)
-                    if _fatigue_count > 0:
+                    _node_type = node_types.get(node_id, '')
+                    if _node_type in _identity_types:
+                        if _fatigue_count == 0:
+                            sim *= IDENTITY_INITIAL_BOOST
+                        else:
+                            sim *= IDENTITY_REPEAT_DAMPEN
+                    else:
                         _degree = self._structural_degree_cache.get(node_id, 0)
-                        _K = 10.0 / (1.0 + _degree / 10.0)
-                        _fatigue = _fatigue_count / (_fatigue_count + _K)
-                        sim *= (1.0 - _fatigue)
+                        if _degree >= HUB_DEGREE_THRESHOLD and _fatigue_count > 0:
+                            _K = 10.0 / (1.0 + _degree / 10.0)
+                            _fatigue = _fatigue_count / (_fatigue_count + _K)
+                            sim *= (1.0 - _fatigue)
+                        elif _fatigue_count > 0:
+                            sim *= RECENCY_BOOST
 
                     embedding_scores[node_id] = sim
                     primary_scores[node_id] = sim
@@ -1521,18 +1538,28 @@ class BrainRecallMixin:
                 if 'no such table' not in str(e):
                     self._log_error("recall_enrichment_scan", e, "STEP 3.5 z-weighted scoring")
 
-            # v9.2: Apply fatigue AFTER z-weighted scoring (not before).
-            # Fatigue was previously applied to primary sim only, but STEP 3.5
-            # could overwrite with unfatigued z-weighted scores. Now fatigue
-            # dampens the final embedding score regardless of which vector won.
-            if _recall_fatigue:
+            # Apply session-history modulation AFTER z-weighted scoring,
+            # mirroring the per-row modulation above. STEP 3.5 may overwrite
+            # primary sim with z-weighted scores, so we re-apply the same
+            # identity / hub / recency regimes to the final embedding_scores
+            # to keep behavior consistent regardless of which vector won.
+            if _recall_fatigue or _identity_types:
                 for nid in list(embedding_scores.keys()):
                     _fc = _recall_fatigue.get(nid, 0)
-                    if _fc > 0:
+                    _nt = node_types.get(nid, '')
+                    if _nt in _identity_types:
+                        if _fc == 0:
+                            embedding_scores[nid] *= IDENTITY_INITIAL_BOOST
+                        else:
+                            embedding_scores[nid] *= IDENTITY_REPEAT_DAMPEN
+                    elif _fc > 0:
                         _deg = self._structural_degree_cache.get(nid, 0) if hasattr(self, '_structural_degree_cache') else 0
-                        _K = 10.0 / (1.0 + _deg / 10.0)
-                        _fat = _fc / (_fc + _K)
-                        embedding_scores[nid] *= (1.0 - _fat)
+                        if _deg >= HUB_DEGREE_THRESHOLD:
+                            _K = 10.0 / (1.0 + _deg / 10.0)
+                            _fat = _fc / (_fc + _K)
+                            embedding_scores[nid] *= (1.0 - _fat)
+                        else:
+                            embedding_scores[nid] *= RECENCY_BOOST
 
         except Exception as e:
             print(f'[brain] Embedding scan error: {e}', file=sys.stderr)
