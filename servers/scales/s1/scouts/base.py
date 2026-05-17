@@ -133,6 +133,12 @@ def run_llm_scout(
     model = params.get('model', 'claude-haiku-4-5')
     max_tokens = int(params.get('max_tokens', 2000))
     timeout_seconds = float(params.get('timeout_seconds', 25))
+    # Optional: Anthropic Structured Outputs schema. When present,
+    # output_config={'format':{'type':'json_schema','schema':...}} is passed
+    # to the messages.create call and the response is guaranteed to match.
+    # Closes the format-mirror drift class where Haiku returns chat-style
+    # prose instead of JSON when the conversation context is markdown-heavy.
+    output_schema = params.get('output_schema')
 
     if not template.strip():
         msg = f'empty template for {interaction_name}'
@@ -170,13 +176,21 @@ def run_llm_scout(
 
     # 5. API call
     t0 = time.time()
+    api_kwargs = {
+        'model': model,
+        'max_tokens': max_tokens,
+        'system': system,
+        'messages': [{'role': 'user', 'content': user_content}],
+    }
+    if output_schema:
+        api_kwargs['output_config'] = {
+            'format': {
+                'type': 'json_schema',
+                'schema': output_schema,
+            },
+        }
     try:
-        response = anthropic_client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=[{'role': 'user', 'content': user_content}],
-        )
+        response = anthropic_client.messages.create(**api_kwargs)
     except Exception as e:
         elapsed = int((time.time() - t0) * 1000)
         _log(f'API call failed in {elapsed}ms: {type(e).__name__}: {e}')

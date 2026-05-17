@@ -16,6 +16,37 @@ from servers.scales.dispatch import load_env
 from servers.trace_contract import build_selection_metadata
 
 
+# Surface output schema for Anthropic Structured Outputs (output_config).
+# Mirrors the contract documented in the surface prompt:
+#   Picks:        {"selected":[{"id":<8hex>,"why":"...","mode":"fact|arc|background"}]}
+#   Confirmation: {"selected":[],"reason":"..."}
+# All fields required for non-empty picks; `reason` is optional (only for
+# pure-confirmation select-0 case). Strict additionalProperties=false keeps
+# Haiku from inventing fields.
+SURFACE_SELECTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "selected": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "why": {"type": "string"},
+                    "mode": {"type": "string",
+                             "enum": ["fact", "arc", "background"]},
+                },
+                "required": ["id", "why", "mode"],
+                "additionalProperties": False,
+            },
+        },
+        "reason": {"type": "string"},
+    },
+    "required": ["selected"],
+    "additionalProperties": False,
+}
+
+
 def _get_recently_surfaced(brain, session_id):
     """Get recently surfaced node IDs from S1 traces (for dedup)."""
     from servers.scales.s1.surface_contract import SURFACE
@@ -177,51 +208,33 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
     raw_final = ''
 
     for round_idx in range(max_rounds):
-        # On the FINAL iteration of the cap, disable tools. This forces
-        # Haiku to emit selection JSON instead of firing more tool_use
-        # blocks — without this, when Haiku's last available round comes
-        # back as tool_use, the loop exits with raw_final='' and we get
-        # selected=[]. Observed deterministic failure mode on items
-        # like 54026fce (16 strong candidates, surface selects 0).
+        # On the FINAL iteration of the cap, disable tools and force JSON
+        # schema compliance via Anthropic's Structured Outputs feature.
+        # Without this, Haiku's final-round response drifts into prose
+        # narration ("I need to understand what the operator is asking...")
+        # when the conversation context contains heavy markdown — observed
+        # 5× in a 2-hour window. Anthropic shipped Structured Outputs GA
+        # for Haiku 4.5 (Nov 2025); schema compliance is enforced during
+        # generation, no prompt-engineering tricks needed.
         is_final = (round_idx == max_rounds - 1)
-
-        # On the final round, Haiku's most recent context is prose-rich
-        # tool results — the system-prompt JSON directive gets crowded
-        # out by recency. Two-layer reinforcement:
-        #   1. Append a user-turn nudge: "tool rounds done, emit ONLY JSON"
-        #   2. Prefill assistant with `{` so the API physically can't
-        #      start with prose. Anthropic preserves prefill in stop
-        #      reasoning so a continuation like `{"selected":...}` returns
-        #      with the prefill prepended.
-        # Closes the surface_haiku_unparseable drift on long sessions
-        # where the conversation context contains heavy markdown
-        # (observed 5× in a 2-hour window before this fix).
-        prefill_text = ''
-        if is_final:
-            messages_for_call = messages + [{
-                "role": "user",
-                "content": (
-                    "Tool rounds done. Emit ONLY the JSON selection now. "
-                    "Start your response with `{`. No prose, no preamble, "
-                    "no analysis of the operator's message, no narration "
-                    "of your reasoning. Pure JSON object only."),
-            }, {
-                "role": "assistant",
-                "content": "{",
-            }]
-            prefill_text = '{'
-        else:
-            messages_for_call = messages
 
         api_kwargs = {
             'model': model,
             'max_tokens': max_tokens,
             'system': surface_instructions,
-            'messages': messages_for_call,
+            'messages': messages,
         }
         if not is_final:
             api_kwargs['tools'] = TOOL_DEFINITIONS
-        # else: omit tools entirely so the API can't return tool_use.
+        else:
+            # Final round: no tools, Anthropic Structured Outputs forces
+            # the response to match SURFACE_SELECTION_SCHEMA exactly.
+            api_kwargs['output_config'] = {
+                'format': {
+                    'type': 'json_schema',
+                    'schema': SURFACE_SELECTION_SCHEMA,
+                },
+            }
 
         try:
             api_resp = client.messages.create(**api_kwargs)
@@ -235,14 +248,9 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                          'tool_calls': []}
 
         # Collect any text content from this round (last round usually has it).
-        # If we prefilled with `{`, prepend it to recover the full JSON shape
-        # (Anthropic returns only the continuation, not the prefill).
         for block in api_resp.content:
             if getattr(block, 'type', None) == 'text':
-                text = block.text.strip()
-                if prefill_text and not text.startswith(prefill_text):
-                    text = prefill_text + text
-                raw_final = text
+                raw_final = block.text.strip()
 
         if stop_reason != 'tool_use':
             tool_trace.append(round_record)
