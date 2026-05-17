@@ -118,16 +118,17 @@ def _handle_recall(brain, args, graph_changes):
             node_id, neighbor_limit=args.get("neighbor_limit", 3))
         return {"ok": True, "result": result}
 
+    sid = args.get("session_id", "")
     # By-query recall: semantic search with keyword fallback
     try:
         result = brain.recall(
             query=args.get("query", ""), filter=args.get("filter"),
-            limit=args.get("limit", 8), source='mcp')
+            limit=args.get("limit", 8), session_id=sid, source='mcp')
     except Exception as e:
         # Degraded: fall back to keyword-only recall
         result = brain.recall(
             query=args.get("query", ""), filter=args.get("filter"),
-            limit=args.get("limit", 8), source='mcp')
+            limit=args.get("limit", 8), session_id=sid, source='mcp')
         try:
             brain._log_error("recall_degraded", e, "Fell back to keyword-only recall")
         except Exception as e2:

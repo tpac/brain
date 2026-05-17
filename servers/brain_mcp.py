@@ -314,12 +314,27 @@ def _build_revise_batch_schema():
 
 
 def daemon_send(cmd, args=None, timeout=30.0):
-    """Send command to brain daemon via TCP, return result dict."""
+    """Send command to brain daemon via TCP, return result dict.
+
+    Auto-injects session_id from CLAUDE_CODE_SESSION_ID (the env var
+    Claude Code sets per session) when the caller didn't supply one.
+    The daemon is a singleton per user; each MCP subprocess has its own
+    env, so this gives every tool call the calling session's identity
+    without requiring every tool schema to surface session_id.
+    Handlers that ignore session_id (most reads) cost nothing; handlers
+    that use it (recall, record_message, pre_edit, ...) get correct
+    per-session behavior under parallel Claude Code sessions.
+    """
+    args = dict(args) if args else {}
+    if not args.get("session_id"):
+        sid = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+        if sid:
+            args["session_id"] = sid
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(timeout)
     try:
         sock.connect((DAEMON_HOST, DAEMON_PORT))
-        msg = json.dumps({"cmd": cmd, "args": args or {}}) + "\n"
+        msg = json.dumps({"cmd": cmd, "args": args}) + "\n"
         sock.sendall(msg.encode("utf-8"))
         data = b""
         while True:
