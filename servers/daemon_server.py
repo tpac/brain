@@ -677,7 +677,7 @@ class BrainDaemon:
             pass  # Status file is best-effort
 
     def _autosave_loop(self):
-        """Periodically save brain if dirty + run internal health check + thread monitor."""
+        """Periodically save brain if dirty + flush SessionContexts + health check + thread monitor."""
         while self.running:
             time.sleep(AUTOSAVE_INTERVAL_SECONDS)
             if self.dirty:
@@ -690,6 +690,14 @@ class BrainDaemon:
                         self._log("Autosave error: {}".format(e))
                     finally:
                         self.brain.write_lock.release()
+            # Flush cached SessionContexts (fatigue + counters) regardless of
+            # self.dirty — ctx mutations don't toggle the main dirty flag, and
+            # losing fatigue / counters on crash is acceptable but losing 60s
+            # of message_count drift would mis-time the encoding heartbeat.
+            try:
+                self.brain.save_session_contexts()
+            except Exception as e:
+                self._log("SessionContext autosave error: {}".format(e))
             # Internal health check — verify SQLite alive (skip during shutdown)
             if self.running and self.brain:
                 try:

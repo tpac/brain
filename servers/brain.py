@@ -293,6 +293,12 @@ class Brain(
         self._error_suppressed = {}    # source -> suppressed_count
         self._circuit_open_until = {}  # source -> monotonic time when circuit closes
         self._last_db_size_check = 0.0
+        # SessionContext in-memory cache — keyed by session_id. Mutations
+        # (fatigue, counters) live here across hooks within the same session;
+        # autosave loop persists every AUTOSAVE_INTERVAL_SECONDS. Cleared
+        # entries on SessionEnd hook.
+        from typing import Dict as _Dict
+        self._session_contexts: _Dict[str, 'SessionContext'] = {}
         # Limits (tunable via brain_meta)
         self._error_rate_window = 3600     # 1 hour
         self._error_max_per_source = 50    # per source per window
@@ -584,20 +590,23 @@ class Brain(
     def get_or_create_session(self, session_id: str) -> 'SessionContext':
         """Get or create a SessionContext for a given session_id.
 
-        This is the single entry point for session state. Hooks send
-        session_id from Claude Code args. The brain holds the state.
+        Single entry point for session state. Hooks send session_id from
+        Claude Code args. The brain holds the state.
 
-        Race-safe: two threads with the same brand-new session_id can call
-        this concurrently — `INSERT OR IGNORE` atomically claims the row,
-        then the subsequent load reads whatever ended up there (default
-        from us, default from a racing thread, or pre-existing modified
-        state).
+        In-memory cache (2026-05-17): SessionContext instances are cached
+        on `self._session_contexts` and returned by reference. Mutations
+        to fatigue / counters live in memory across hooks in the same
+        session; the autosave loop persists every
+        `AUTOSAVE_INTERVAL_SECONDS` via `save_session_contexts()`. The
+        cache entry is cleared on SessionEnd hook (clean shutdown of
+        that session) — see daemon_hooks.hook_session_end.
 
-        Note: this does NOT serialize the read-modify-save sequence on a
-        SessionContext object — callers that read, mutate (e.g. increment
-        stop_counter), and save can still lose increments under
-        concurrent same-session activity. That's a separate concern and
-        is rare in practice (parallel sessions use different session_ids).
+        Race-safe on first load: two threads with the same brand-new
+        session_id can call concurrently — `INSERT OR IGNORE` atomically
+        claims the row, then the subsequent load reads whatever ended up
+        there. After first load, both threads operate on the same cached
+        instance (Python attribute access — `Brain.write_lock` serializes
+        actual mutations).
         """
         from .session_context import SessionContext
         import json as _json
@@ -607,6 +616,10 @@ class Brain(
             session_id = self.session_id
             if session_id == 'no_session':
                 session_id = uuid.uuid4().hex
+        # Fast path: already cached
+        cached = self._session_contexts.get(session_id)
+        if cached is not None:
+            return cached
         # Atomic create-if-missing — INSERT OR IGNORE is a single SQLite
         # statement, so two racing threads both calling here for the same
         # session_id can't both create.
@@ -619,7 +632,48 @@ class Brain(
         self.logs_conn.commit()
         # Row is guaranteed to exist now — load reads our default or a
         # racing thread's already-modified state.
-        return SessionContext.load(self.logs_conn, session_id)
+        ctx = SessionContext.load(self.logs_conn, session_id)
+        if ctx is None:
+            ctx = SessionContext(session_id=session_id)
+        self._session_contexts[session_id] = ctx
+        return ctx
+
+    def save_session_contexts(self) -> int:
+        """Persist all cached SessionContexts to session_state.
+
+        Called by the daemon autosave loop every
+        AUTOSAVE_INTERVAL_SECONDS. Cheap — one row write per active
+        session, idempotent. Mutations (fatigue, counters) accumulate
+        in memory between autosaves; this is the timely persistence
+        boundary. Returns the count of saves attempted.
+        """
+        n = 0
+        for ctx in list(self._session_contexts.values()):
+            try:
+                ctx.save(self.logs_conn)
+                n += 1
+            except Exception as _e:
+                try:
+                    self._log_error('session_context_autosave', _e,
+                                    'persisting cached SessionContext')
+                except Exception:
+                    pass
+        return n
+
+    def discard_session_context(self, session_id: str) -> None:
+        """Save + drop a session's cached SessionContext. Called from
+        SessionEnd hook for clean shutdown of that session.
+        """
+        ctx = self._session_contexts.pop(session_id, None)
+        if ctx is not None:
+            try:
+                ctx.save(self.logs_conn)
+            except Exception as _e:
+                try:
+                    self._log_error('session_context_discard', _e,
+                                    'final save before dropping cache entry')
+                except Exception:
+                    pass
 
     @property
     def session_id(self):
@@ -649,11 +703,14 @@ class Brain(
         # brain.session_id property + _log_error/_log_warning). C-refactor
         # threads session_id through every call site and drops this write.
         self._meta.set('session_id', sid)
-        # Persist SessionContext with fresh counters
+        # Persist SessionContext with fresh counters. Save immediately
+        # (and replace cache entry) — operator-visible reset semantics
+        # should land in DB right away, not wait for autosave.
         from .session_context import SessionContext
         ctx = SessionContext(session_id=sid)
         ctx.boot_time = self.now()
         ctx.save(self.logs_conn)
+        self._session_contexts[sid] = ctx
         # v5.1: Reset segment state (per-session keys — parallel sessions safe)
         suffix = '_' + sid
         self.set_config('segment_id' + suffix, '0')

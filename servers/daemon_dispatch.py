@@ -262,7 +262,7 @@ def _handle_record_message(brain, args, graph_changes):
     ctx = brain.get_or_create_session(sid)
     brain.record_message(ctx)
     nudge = brain.get_encoding_heartbeat(ctx)
-    ctx.save(brain.logs_conn)
+    # ctx mutation persists via autosave loop.
     return {"ok": True, "result": {"nudge": nudge}}
 
 
@@ -323,12 +323,8 @@ def _handle_remember(brain, args, graph_changes):
     # Don't filter — remember() handles routing via **extra_fields kwargs.
     remember_args = {k: v for k, v in args.items() if v is not None}
     result = brain.remember(**remember_args, ctx=ctx)
-    if ctx is not None:
-        try:
-            ctx.save(brain.logs_conn)
-        except Exception as _se:
-            brain._log_error('dispatch_ctx_save', _se,
-                             'persisting session activity after remember')
+    # ctx is cached on Brain; remember's record_remember mutation persists
+    # via the autosave loop (no per-call save).
     node_id = result.get("id", "?")[:8] if isinstance(result, dict) else "?"
     graph_changes.append(
         "REMEMBER: [%s] %s (%s...)" % (
@@ -371,12 +367,7 @@ def _handle_remember_batch(brain, args, graph_changes):
         connect_to=args.get("connect_to"),
         auto_connect=args.get("auto_connect", True),
         ctx=ctx)
-    if ctx is not None:
-        try:
-            ctx.save(brain.logs_conn)
-        except Exception as _se:
-            brain._log_error('dispatch_ctx_save', _se,
-                             'persisting session activity after remember_batch')
+    # ctx mutations persist via autosave (no per-call save).
     graph_changes.append("REMEMBER_BATCH: %d nodes" % result.get("nodes_created", 0))
     return {"ok": True, "result": result}
 

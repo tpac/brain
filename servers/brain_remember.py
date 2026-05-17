@@ -770,10 +770,9 @@ class BrainRememberMixin:
         if _ctx_for_attr is not None:
             try:
                 self.record_remember(_ctx_for_attr)
-                # Caller saves ctx (dispatch handler does it after the
-                # write); fallback ctx loaded here we save inline.
-                if ctx is None:
-                    _ctx_for_attr.save(self.logs_conn)
+                # ctx mutation persists via daemon autosave loop —
+                # _ctx_for_attr is the cached instance on brain so the
+                # autosave picks it up.
             except Exception as e:
                 self._log_error('record_remember', e, 'tracking encoding for heartbeat')
         try:

@@ -546,15 +546,16 @@ def post_response_common(brain, session_id, user_message, assistant_response):
     except Exception as e:
         brain._log_error('hebbian_surface_selected', e, 'post_response_common')
 
-    # Heartbeat — mutates ctx; saved below alongside stop counter increment
+    # Heartbeat — mutates ctx in memory; autosave loop persists
     try:
         brain.record_message(ctx)
     except Exception as e:
         brain._log_error('record_message', e, 'post_response_common')
 
-    # Stop counter increment — single save captures all turn mutations
+    # Stop counter increment — in-memory; autosave persists every minute.
+    # If the daemon crashes mid-turn, at most ~60s of stop_counter / fatigue
+    # is lost; encoding gates are approximate so this is acceptable.
     ctx.increment_stop()
-    ctx.save(brain.logs_conn)
     return ctx
 
 
@@ -1009,6 +1010,15 @@ def hook_session_end(brain, args, graph_changes):
 
     # reflect_for_next_claude removed 2026-04-13 — boot nodes nothing read.
     # consolidate() removed 2026-04-13 — wrote to deprecated stability field, created noise.
+
+    # Final save + drop the cached SessionContext for this session so
+    # the in-memory cache doesn't accumulate ended-session entries.
+    sid = args.get("session_id", "")
+    if sid:
+        try:
+            brain.discard_session_context(sid)
+        except Exception as e:
+            brain._log_error('session_context_discard', e, 'hook_session_end')
 
     brain.save()
     # Note: the hook client sends "shutdown" separately after this returns

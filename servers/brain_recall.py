@@ -1852,20 +1852,10 @@ class BrainRecallMixin:
             except Exception as _e:
                 self._log_error("recall", _e, "marking node as accessed for Hebbian learning")
 
-        # Persist fatigue increments at recall boundary. Save unconditionally
-        # even when the caller passed `ctx` — hooks are stateless dispatches,
-        # so a caller-side save would need to be added in every entry point
-        # that touches recall (hook_recall, MCP _handle_recall, brain_assembly
-        # internal calls, ...). The save is one row INSERT OR REPLACE on
-        # session_state — sub-ms, cheap. The next post_response_common's
-        # ctx load picks up these increments and persists them again as part
-        # of its own turn-end save; harmless double-write.
-        if _recall_ctx is not None:
-            try:
-                _recall_ctx.save(self.logs_conn)
-            except Exception as _se:
-                self._log_error('recall_ctx_save', _se,
-                                'persisting fatigue increments to session_state')
+        # Fatigue increments live on the cached SessionContext (mutations
+        # in memory). Persistence happens via the daemon autosave loop
+        # every AUTOSAVE_INTERVAL_SECONDS — fatigue is approximate and
+        # self-healing, so per-recall saves are unnecessary churn.
 
         # STEP 9: Log recall to recall_log (single source of truth)
         recall_ms = (time.time() - t0) * 1000
