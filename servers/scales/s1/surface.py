@@ -16,37 +16,8 @@ from servers.scales.dispatch import load_env
 from servers.trace_contract import build_selection_metadata
 
 
-# Surface output schema for Anthropic Structured Outputs (output_config).
-# Mirrors the contract documented in the surface prompt:
-#   Picks:        {"selected":[{"id":<8hex>,"why":"...","mode":"fact|arc|background"}]}
-#   Confirmation: {"selected":[],"reason":"..."}
-# All fields required for non-empty picks; `reason` is optional (only for
-# pure-confirmation select-0 case). Strict additionalProperties=false keeps
-# Haiku from inventing fields.
-SURFACE_SELECTION_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "selected": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "string"},
-                    "why": {"type": "string"},
-                    "mode": {"type": "string",
-                             "enum": ["fact", "arc", "background"]},
-                },
-                "required": ["id", "why", "mode"],
-                "additionalProperties": False,
-            },
-        },
-        "reason": {"type": "string"},
-    },
-    "required": ["selected"],
-    "additionalProperties": False,
-}
-
-
+# SURFACE_SELECTION_SCHEMA lives in surface_contract.py alongside the other
+# surface I/O contracts (the render formats for each mode). Imported below.
 def _get_recently_surfaced(brain, session_id):
     """Get recently surfaced node IDs from S1 traces (for dedup)."""
     from servers.scales.s1.surface_contract import SURFACE
@@ -199,6 +170,7 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
     from servers.scales.s1.fetch_tools import (
         TOOL_DEFINITIONS, execute_tool, format_tool_result_for_haiku,
     )
+    from servers.scales.s1.surface_contract import SURFACE_SELECTION_SCHEMA
 
     # Track existing IDs to dedupe tool-fetched candidates against cosine pool
     existing_ids = {c.get('id') for c in candidates_data if isinstance(c, dict)}

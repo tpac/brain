@@ -608,12 +608,92 @@ Candidates:
     return user_content, cfg['max_tokens']
 
 
-# `SURFACE_FORMAT` removed 2026-05-17 — only ever used by the dead
-# `format_surface_output` legacy renderer. The live path is
-# `format_surface_output_activation` (called from surface.py:835), which
-# builds its own per-mode config dicts in `_render_node_activation`. The
-# legacy constant + function misled a code review into believing the
-# config was authoritative when it wasn't reached at runtime.
+# ───────────────────────────────────────────────────────────────────────
+# Surface render contract — format constants per render mode.
+#
+# `format_surface_output_activation` is the live path; it picks a mode
+# based on Haiku's per-pick `mode` annotation, looks up the matching
+# `SURFACE_*_FORMAT` constant, then resolves it to a concrete
+# `render_rich_node` cfg via `resolve_surface_format(fmt, budget)`.
+#
+# Constants here use *proportions* (of the per-node budget) rather than
+# absolute char limits — the budget allocator decides how many chars
+# each node gets; the format decides the within-node split. Floors
+# (min_*_chars) prevent micro-budgets from producing empty renders.
+# ───────────────────────────────────────────────────────────────────────
+
+# Arc mode — DEFAULT for surfaced nodes. State-of-mind framing: Anchor
+# reads the gist + situation + voice fields; low-activation fields are
+# masked out so noise drops cleanly.
+SURFACE_ARC_FORMAT = {
+    'content_proportion':  0.60,
+    'metadata_proportion': 0.15,
+    'min_content_chars':   50,
+    'min_metadata_chars':  40,
+    'edge_limit':          3,
+    'time_format':         'relative',
+    'show_confidence':     False,
+    'show_encoding_source': False,
+    'show_keywords':       False,           # recall scaffold, not reader signal
+    'extra_skip_keys':     ('question',),   # recall scaffold
+    'correction_render':   'balanced',
+}
+
+# Fact mode — verbatim content. Used when Haiku tags a pick as carrying
+# a specific value/quote/date the operator literally asked for. Larger
+# content budget; no field masking.
+SURFACE_FACT_FORMAT = {
+    'content_proportion':  0.75,
+    'metadata_proportion': 0.15,
+    'min_content_chars':   120,
+    'min_metadata_chars':  60,
+    'edge_limit':          3,
+    'time_format':         'relative',
+    'show_confidence':     False,
+    'show_encoding_source': False,
+    'show_keywords':       False,
+    'extra_skip_keys':     ('question',),
+    'correction_render':   'balanced',
+}
+
+# Background mode — title + 1-line situation only. Cheap context.
+# Doesn't go through render_rich_node (too minimal); inline-rendered.
+SURFACE_BACKGROUND_FORMAT = {
+    'situation_max_chars': 200,
+}
+
+# Valid render modes Haiku may emit in selection JSON. Default 'arc'
+# when a pick has no `mode` field.
+SURFACE_MODES = ('arc', 'fact', 'background')
+SURFACE_MODE_DEFAULT = 'arc'
+
+
+def resolve_surface_format(fmt, budget):
+    """Resolve a SURFACE_*_FORMAT contract into a concrete render_rich_node cfg.
+
+    Translates proportional fields (content_proportion, metadata_proportion)
+    into absolute char limits using the per-node budget. Honours min_*
+    floors so micro-budgets don't produce empty renders. Returns a cfg
+    dict ready to pass to `render_rich_node(node, cfg)`.
+    """
+    cfg = {k: v for k, v in fmt.items()
+           if k not in ('content_proportion', 'metadata_proportion',
+                        'min_content_chars', 'min_metadata_chars',
+                        'situation_max_chars')}
+    if 'content_proportion' in fmt:
+        cfg['content_limit'] = max(
+            fmt.get('min_content_chars', 50),
+            int(budget * fmt['content_proportion']))
+    if 'metadata_proportion' in fmt:
+        cfg['metadata_limit'] = max(
+            fmt.get('min_metadata_chars', 30),
+            int(budget * fmt['metadata_proportion']))
+    return cfg
+
+
+# Picker-side candidate render — what Haiku sees when selecting 3-5 from
+# 25. Distinct from the surface-OUTPUT formats above: this is the IN
+# (what Haiku reads), those are the OUT (what Anchor reads).
 HAIKU_FORMAT = {
     'content_limit': 300, 'edge_limit': 3, 'metadata_limit': 120,
     'time_format': 'relative',
@@ -627,6 +707,33 @@ HAIKU_FORMAT = {
     # selection signal. Haiku already sees title + content + edges; the
     # keyword line would just add noise to the 25-candidate prompt.
     'show_keywords': False,
+}
+
+
+# Surface output JSON schema — what Haiku must produce.
+# Lives here (in the surface contract module) next to the render configs
+# so all surface I/O contracts are one place. Anthropic Structured
+# Outputs enforces this schema during generation; see surface.py:185.
+SURFACE_SELECTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "selected": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id":   {"type": "string"},
+                    "why":  {"type": "string"},
+                    "mode": {"type": "string", "enum": list(SURFACE_MODES)},
+                },
+                "required": ["id", "why", "mode"],
+                "additionalProperties": False,
+            },
+        },
+        "reason": {"type": "string"},
+    },
+    "required": ["selected"],
+    "additionalProperties": False,
 }
 
 
@@ -1761,11 +1868,23 @@ def _render_node_activation(node, field_activation, budget, activation,
     from servers.contract import render_rich_node
     event_line = _event_time_line(node)
 
+    def _inject_event_line(body):
+        """Place the structured event_time line right after the title."""
+        if not event_line:
+            return body
+        body_lines = body.split('\n', 1)
+        if len(body_lines) == 2:
+            return body_lines[0] + '\n' + event_line + '\n' + body_lines[1]
+        return body + '\n' + event_line
+
     if mode == 'background':
-        # Background — title + 1-line situation only. Low budget.
+        # Background — title + 1-line situation only. No render_rich_node
+        # round-trip (output is too minimal to benefit). Reads
+        # SURFACE_BACKGROUND_FORMAT for the situation char cap.
         title = node.get('title', '')
         kv = node.get('metadata_kv') or node.get('kv') or {}
-        situation = (kv.get('situation') or '')[:200]
+        sit_max = SURFACE_BACKGROUND_FORMAT['situation_max_chars']
+        situation = (kv.get('situation') or '')[:sit_max]
         body_lines = ['[%s] %s' % (node.get('type', '?'), title)]
         if event_line:
             body_lines.append(event_line)
@@ -1774,41 +1893,16 @@ def _render_node_activation(node, field_activation, budget, activation,
         return '\n'.join(body_lines)
 
     if mode == 'fact':
-        # Fact mode — emit verbatim, NO field masking, NO activation threshold.
-        # Larger content budget (1.5x) to ensure facts survive truncation.
-        content_budget = max(120, int(budget * 0.75))
-        meta_budget = max(60, int(budget * 0.15))
-        cfg = {
-            'content_limit': content_budget,
-            'metadata_limit': meta_budget,
-            'edge_limit': 3,
-            'time_format': 'relative',
-            'show_confidence': False,
-            'show_encoding_source': False,
-            'show_keywords': False,  # recall scaffold, not reader signal
-            'extra_skip_keys': ('question',),
-        }
-        body = render_rich_node(node, cfg)
-        if event_line:
-            # Inject the structured event_time line after the title line
-            # so the answerer can see it without parsing prose
-            body_lines = body.split('\n', 1)
-            if len(body_lines) == 2:
-                body = body_lines[0] + '\n' + event_line + '\n' + body_lines[1]
-            else:
-                body = body + '\n' + event_line
-        return body
+        # Fact mode — verbatim content, no field masking.
+        # Format contract: SURFACE_FACT_FORMAT.
+        cfg = resolve_surface_format(SURFACE_FACT_FORMAT, budget)
+        return _inject_event_line(render_rich_node(node, cfg))
 
-    # Default: 'arc' — current path.
-    # Anchor-read budget split: content gets the lion's share (it's the
-    # actual claim), metadata gets enough for situation + reasoning + quotes
-    # (which render_rich_node treats specially: user_raw_quote and
-    # anchor_raw_quote bypass meta_limit per the high-signal-quote rule).
-    content_budget = max(50, int(budget * 0.60))
-    meta_budget = max(40, int(budget * 0.15))
-
+    # Default 'arc' — state-of-mind framing. Format: SURFACE_ARC_FORMAT.
+    # Fields below activation threshold are masked out before render so
+    # noise drops cleanly; voice fields (user_raw_quote, anchor_raw_quote)
+    # bypass meta_limit per render_rich_node's high-signal rule.
     masked = _mask_node_by_field_activation(node, field_activation)
-
     connections = masked.get('connections') or []
     if query_vec is not None and connections:
         masked = dict(masked)
@@ -1817,33 +1911,8 @@ def _render_node_activation(node, field_activation, budget, activation,
             brain_conn=brain.conn if brain is not None else None,
             brain=brain)
 
-    cfg = {
-        'content_limit': content_budget,
-        'metadata_limit': meta_budget,
-        'edge_limit': 3,
-        'time_format': 'relative',
-        'show_confidence': False,
-        'show_encoding_source': False,
-        # `keywords` is recall scaffolding (vector input), not reader signal —
-        # never useful when Anchor reads the inject. Dropped unconditionally.
-        'show_keywords': False,
-        # `question` is recall-side ("when asked this, surface me") — also
-        # not reader signal. reasoning + user_raw_quote + anchor_raw_quote
-        # stay (the encoder/operator's voice and intent).
-        'extra_skip_keys': ('question',),
-    }
-
-    body = render_rich_node(masked, cfg)
-    if event_line:
-        # Inject event_time line into arc render too — bypasses activation
-        # masking because temporal anchors are structural, not state-of-mind
-        body_lines = body.split('\n', 1)
-        if len(body_lines) == 2:
-            body = body_lines[0] + '\n' + event_line + '\n' + body_lines[1]
-        else:
-            body = body + '\n' + event_line
-
-    return body
+    cfg = resolve_surface_format(SURFACE_ARC_FORMAT, budget)
+    return _inject_event_line(render_rich_node(masked, cfg))
 
 
 def format_surface_output_activation(node_activation, field_activation,
