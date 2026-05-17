@@ -78,14 +78,13 @@ class TestDecodeTransitions(BrainTestBase):
                       'Missing effective_activation — surface needs this as candidate score')
 
     def test_correction_enrich_finds_correction_chains(self):
-        """correction_enrich: node B corrects node A must be discoverable.
+        """brain.correction_enrich: node B corrects node A must be discoverable.
 
         The encoder writes correction-aspect edges (corrects, supersedes,
-        reframes, ...). correction_enrich walks those edges so the surface
-        and downstream consumers can warn Claude about superseded knowledge.
+        reframes, ...). brain.correction_enrich walks those edges so the
+        surface and downstream consumers can warn Claude about superseded
+        knowledge.
         """
-        from servers.scales.s1.surface_contract import correction_enrich
-
         node_a = self.brain.remember(
             type='decision',
             title='Use REST API for all endpoints',
@@ -103,9 +102,8 @@ class TestDecodeTransitions(BrainTestBase):
             description='GraphQL handles the cross-table queries REST struggled with',
             encoding_source='test:correction_chains')
 
-        # correction_enrich now takes node IDs and the brain instance
-        # It should find that node_a has a correction (node_b corrects it)
-        corrections = correction_enrich({node_a['id']}, self.brain)
+        # brain.correction_enrich finds node_a's correction (node_b corrects it)
+        corrections = self.brain.correction_enrich({node_a['id']})
 
         # Result keyed by both full and short id — accept either
         chain = corrections.get(node_a['id']) or corrections.get(node_a['id'][:8])

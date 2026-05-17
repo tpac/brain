@@ -352,21 +352,29 @@ def _parse_date_expr(expr: Any, now: Optional[datetime] = None) -> Tuple[Optiona
 # ─── Candidate shape normalization ──────────────────────────────────────
 
 def _to_candidate(node: Dict[str, Any], score: float, source_tool: str) -> Dict[str, Any]:
-    """Normalize any node row/dict into the candidate shape Haiku + render expect."""
+    """Attach recall-specific fields (score, source_tool, discovery) to a node dict.
+
+    Preserves the full rich shape — every field the fetcher provided rides
+    through to the formatter. execute_tool() runs a batched brain.get_node
+    pass after this so the final candidate is fully enriched (_corrections,
+    _metadata, connections), keeping tool-fetched results symmetric with
+    the initial cosine 25.
+    """
     if not isinstance(node, dict):
         return None
     nid = node.get('id') or node.get('node_id')
     if not nid:
         return None
-    return {
-        'id': nid,
-        'title': (node.get('title') or '')[:120],
-        'type': node.get('type') or '',
-        'score': float(score),
-        'content': node.get('content') or '',
-        'kv': node.get('kv') or {},
-        'source_tool': source_tool,
-    }
+    cand = dict(node)
+    cand['id'] = nid
+    cand['score'] = float(score)
+    cand['source_tool'] = source_tool
+    # `discovery` is what format_candidate_for_surface reads for the
+    # `via:<tool>` header. Set here so the initial-25 vs tool-fetched
+    # rendering is symmetric without format_tool_result_for_haiku
+    # having to setdefault later.
+    cand.setdefault('discovery', source_tool)
+    return cand
 
 
 # ─── The six tools ───────────────────────────────────────────────────────
@@ -813,7 +821,13 @@ _TOOL_FN_MAP = {
 
 def execute_tool(brain, tool_name: str, tool_input: Dict[str, Any],
                  session_id: str = '') -> Dict[str, Any]:
-    """Execute a single tool call. Returns {results, latency_ms, error?}."""
+    """Execute a single tool call. Returns {results, latency_ms, error?}.
+
+    Every tool's output passes through one batched brain.get_node() pass —
+    so _corrections, full metadata, and connections come along regardless
+    of which tool fired. Tool authors only need to return ID-bearing dicts;
+    they can't forget to enrich because the boundary does it.
+    """
     fn = _TOOL_FN_MAP.get(tool_name)
     if fn is None:
         return {'results': [], 'latency_ms': 0,
@@ -825,28 +839,49 @@ def execute_tool(brain, tool_name: str, tool_input: Dict[str, Any],
         kwargs.setdefault('session_id', session_id)
     try:
         results = fn(brain, **kwargs)
-        return {'results': results or [], 'latency_ms': int((time.time() - t0) * 1000)}
     except Exception as e:
         return {'results': [], 'latency_ms': int((time.time() - t0) * 1000),
                 'error': str(e)[:200]}
 
+    # Unified enrichment — single source of "tool results are fully rich".
+    # Rich fields from get_node fill missing keys; recall-specific fields
+    # set by _to_candidate (score, source_tool, discovery) are preserved.
+    if results and brain is not None:
+        ids = [r.get('id') for r in results
+               if isinstance(r, dict) and r.get('id')]
+        if ids:
+            try:
+                rich_map = brain.get_node(ids) or {}
+            except Exception as e:
+                # Best-effort: if enrichment fails, fall back to whatever the
+                # tool returned. Log so the failure surfaces.
+                try:
+                    brain._log_error(
+                        'execute_tool_enrich', e,
+                        'batched get_node enrichment for tool=%s' % tool_name)
+                except Exception:
+                    pass
+                rich_map = {}
+            for r in results:
+                rid = r.get('id') if isinstance(r, dict) else None
+                if rid and rid in rich_map:
+                    for k, v in rich_map[rid].items():
+                        if k not in r:
+                            r[k] = v
+
+    return {'results': results or [], 'latency_ms': int((time.time() - t0) * 1000)}
+
 
 def format_tool_result_for_haiku(result: Dict[str, Any], brain=None) -> str:
-    """Format a tool's output using the SAME function that renders the
-    initial 25 cosine candidates — `format_candidate_for_surface` →
-    `render_rich_node(HAIKU_FORMAT)`. Same shape, same fields (content,
-    situation, edges, corrections, metadata) — no asymmetry.
+    """Format a tool's output using the SAME renderer as the initial 25
+    cosine candidates — `format_candidate_for_surface`. Tool results have
+    already been fully enriched by `execute_tool()` (batched brain.get_node
+    pass attaches _corrections, _metadata, connections), so this function
+    just hands the rich shape to the formatter.
 
-    Why this matters: when tool results come back as one-line stubs while
-    cosine candidates are rendered richly (content + edges + corrections),
-    Haiku has nothing to evaluate the tool results on and systematically
-    dismisses them — observed deterministically on items like 37f165cf
-    where 8 tool results were ignored in favor of weaker cosine picks.
-
-    `brain` is required for the rich path (enriches each result via
-    `brain.get_node()` + `correction_enrich()` to the shape
-    `format_candidate_for_surface` expects). If brain is None, falls
-    back to a thin one-liner per result for legacy callers.
+    `brain` parameter is retained for signature stability; the rich path
+    no longer needs it. Thin fallback runs when results lack rich fields
+    (legacy callers not going through execute_tool).
     """
     results = result.get('results') or []
     if result.get('error'):
@@ -854,49 +889,16 @@ def format_tool_result_for_haiku(result: Dict[str, Any], brain=None) -> str:
     if not results:
         return 'No results.'
 
+    from servers.scales.s1.surface_contract import format_candidate_for_surface
+
     lines = ['%d results (evaluate on the same merit as the initial 25):'
              % len(results)]
 
-    if brain is not None:
-        # Rich path — same renderer as the initial 25 candidates.
-        from servers.scales.s1.surface_contract import (
-            format_candidate_for_surface, correction_enrich,
-        )
-        ids = [r.get('id') or '' for r in results[:25] if isinstance(r, dict)]
-        try:
-            corrections_map = correction_enrich(ids, brain) or {}
-        except Exception:
-            corrections_map = {}
-
-        for i, r in enumerate(results[:25], start=1):
-            nid = r.get('id') or ''
-            try:
-                rich = brain.get_node(nid)
-                if isinstance(rich, dict) and nid in rich:
-                    rich = rich[nid]
-            except Exception:
-                rich = None
-            if not isinstance(rich, dict):
-                rich = dict(r)  # fall back to thin shape
-
-            # Recall-specific fields format_candidate_for_surface expects
-            # are score (for header) and discovery (for via:source marker).
-            rich.setdefault('score', r.get('score', 0.0))
-            rich.setdefault('discovery', r.get('source_tool', 'tool'))
-            corrections = corrections_map.get(nid)
-            if corrections:
-                rich['_corrections'] = corrections
-
-            lines.append('')
-            lines.append(format_candidate_for_surface(rich, i))
-    else:
-        # Thin fallback for callers without brain access.
-        for r in results[:25]:
-            nid = (r.get('id') or '')[:8]
-            title = (r.get('title') or '')[:100]
-            typ = r.get('type') or ''
-            score = r.get('score', 0.0)
-            lines.append('  [%s] %.2f [%s] %s' % (nid, score, typ, title))
+    for i, r in enumerate(results[:25], start=1):
+        if not isinstance(r, dict):
+            continue
+        lines.append('')
+        lines.append(format_candidate_for_surface(r, i))
 
     if len(results) > 25:
         lines.append('')

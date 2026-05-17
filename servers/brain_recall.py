@@ -358,7 +358,6 @@ class BrainRecallMixin:
         This is the canonical way to get a node. For the bare DB row, use NodeDAL.get_naked_node().
         """
         from .dal_metadata import MetadataDAL
-        from .scales.s1.surface_contract import correction_enrich
 
         conn = self.conn
         ndal = NodeDAL(conn)
@@ -405,12 +404,9 @@ class BrainRecallMixin:
                     nodes[nid]['situation'] = sit
 
         # ── 4. Batch corrections via aspect-edge walk ──
-        # correction_enrich() now reads correction-aspect edges (corrects,
-        # supersedes, reframes, resolves, ...) and returns heavy payload
-        # per item (content, reasoning, user_raw_quote inlined). The
-        # renderer slices per consumer (HAIKU_FORMAT balanced,
-        # ENCODER_FORMAT heavy).
-        corrections = correction_enrich(found_ids, self)
+        # Renderer slices the heavy payload per consumer (HAIKU_FORMAT
+        # balanced, ENCODER_FORMAT heavy).
+        corrections = self.correction_enrich(found_ids)
         for nid in found_ids:
             node_corrs = corrections.get(nid) or corrections.get(nid[:8]) or []
             if node_corrs:

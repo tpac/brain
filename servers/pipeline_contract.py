@@ -412,7 +412,6 @@ def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
     """
     from .dal import NodeDAL
     from .dal_metadata import MetadataDAL
-    from .scales.s1.surface_contract import correction_enrich
 
     conn = brain.conn
     ndal = NodeDAL(conn)
@@ -464,7 +463,7 @@ def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
     for nb in neighbors:
         all_ids.add(nb['id'])
 
-    corrections = correction_enrich(all_ids, brain)
+    corrections = brain.correction_enrich(all_ids)
 
     # ── Metadata for seeds ──
     metadata = {}
@@ -498,7 +497,6 @@ from .scales.s1.surface_contract import (  # noqa: E402, F401
     format_candidate_for_surface,
     build_surface_prompt,
     enrich_candidate_metadata,
-    correction_enrich,
 )
 JUDGE = SURFACE  # legacy alias
 format_candidate_for_judge = format_candidate_for_surface

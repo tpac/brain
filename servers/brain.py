@@ -36,6 +36,7 @@ from .brain_remember import BrainRememberMixin
 from .brain_connections import BrainConnectionsMixin
 from .brain_reminders import BrainRemindersMixin
 from .brain_assembly import BrainAssemblyMixin
+from .brain_corrections import BrainCorrectionsMixin
 from . import embedder
 
 
@@ -55,6 +56,7 @@ class Brain(
     BrainConnectionsMixin,
     BrainRemindersMixin,
     BrainAssemblyMixin,
+    BrainCorrectionsMixin,
 ):
     """
     Core brain engine.
