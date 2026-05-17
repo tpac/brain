@@ -703,19 +703,16 @@ class Brain(
         # brain.session_id property + _log_error/_log_warning). C-refactor
         # threads session_id through every call site and drops this write.
         self._meta.set('session_id', sid)
-        # Persist SessionContext with fresh counters. Save immediately
-        # (and replace cache entry) — operator-visible reset semantics
-        # should land in DB right away, not wait for autosave.
+        # Persist SessionContext with fresh counters + segment state
+        # (segment_id=0, segment_embeddings=[], segment_node_ids=[] are
+        # the SessionContext defaults). Save immediately and replace the
+        # cache entry — operator-visible reset semantics should land in
+        # DB right away, not wait for autosave.
         from .session_context import SessionContext
         ctx = SessionContext(session_id=sid)
         ctx.boot_time = self.now()
         ctx.save(self.logs_conn)
         self._session_contexts[sid] = ctx
-        # v5.1: Reset segment state (per-session keys — parallel sessions safe)
-        suffix = '_' + sid
-        self.set_config('segment_id' + suffix, '0')
-        self.set_config('segment_embeddings' + suffix, '[]')
-        self.set_config('segment_node_ids' + suffix, '[]')
 
     def check_segment_boundary(self, query_embedding, session_id: str):
         """Detect if a new message represents a context/topic shift.
@@ -724,10 +721,15 @@ class Brain(
         message embeddings (sliding window). If similarity drops below
         threshold, declares a new segment boundary.
 
-        State is keyed per-session (`segment_*_{session_id}`) so parallel
-        sessions don't mix embeddings into each other's centroids — a
-        cross-topic similarity would otherwise force a false boundary on
-        every prompt.
+        State lives on the cached SessionContext (segment_id /
+        segment_embeddings / segment_node_ids). All reads and writes are
+        in-memory; autosave persists every AUTOSAVE_INTERVAL_SECONDS.
+
+        Pre-2026-05-17 this method wrote 1-3 set_config calls to brain_meta
+        on every hook_recall, saturating brain.db locks under parallel
+        sessions and surfacing the `another row available` cursor race.
+        Moving the state to SessionContext eliminates that hot-path write
+        entirely.
 
         Args:
             query_embedding: bytes blob from embedder.embed()
@@ -741,16 +743,10 @@ class Brain(
 
         import base64
 
-        suffix = '_' + session_id
-        current_seg = int(self.get_config('segment_id' + suffix, 0) or 0)
+        ctx = self.get_or_create_session(session_id)
+        current_seg = ctx.segment_id
 
-        # Decode stored embeddings from brain_meta (per-session)
-        stored_json = self.get_config('segment_embeddings' + suffix, '[]') or '[]'
-        try:
-            stored_b64 = json.loads(stored_json)
-        except Exception:
-            stored_b64 = []
-
+        stored_b64 = list(ctx.segment_embeddings)
         stored_blobs = []
         for b64 in stored_b64:
             try:
@@ -763,7 +759,7 @@ class Brain(
         if len(stored_blobs) < window_size:
             new_b64 = base64.b64encode(query_embedding).decode('ascii')
             stored_b64.append(new_b64)
-            self.set_config('segment_embeddings' + suffix, json.dumps(stored_b64))
+            ctx.segment_embeddings = stored_b64
             return {
                 'is_boundary': False,
                 'similarity': 1.0,
@@ -784,9 +780,9 @@ class Brain(
         if is_boundary:
             new_seg = current_seg + 1
             new_b64 = base64.b64encode(query_embedding).decode('ascii')
-            self.set_config('segment_id' + suffix, str(new_seg))
-            self.set_config('segment_embeddings' + suffix, json.dumps([new_b64]))
-            self.set_config('segment_node_ids' + suffix, '[]')
+            ctx.segment_id = new_seg
+            ctx.segment_embeddings = [new_b64]
+            ctx.segment_node_ids = []
             return {
                 'is_boundary': True,
                 'similarity': round(sim, 3),
@@ -797,7 +793,7 @@ class Brain(
             new_b64 = base64.b64encode(query_embedding).decode('ascii')
             stored_b64.append(new_b64)
             stored_b64 = stored_b64[-window_size:]
-            self.set_config('segment_embeddings' + suffix, json.dumps(stored_b64))
+            ctx.segment_embeddings = stored_b64
             return {
                 'is_boundary': False,
                 'similarity': round(sim, 3),
@@ -809,20 +805,16 @@ class Brain(
         """Get node IDs created/accessed in the current segment for a session."""
         if not session_id:
             return []
-        raw = self.get_config('segment_node_ids_' + session_id, '[]') or '[]'
-        try:
-            return json.loads(raw)
-        except Exception:
-            return []
+        ctx = self.get_or_create_session(session_id)
+        return list(ctx.segment_node_ids)
 
     def add_to_segment(self, node_id, session_id: str):
-        """Add a node ID to the current segment's tracking list (per-session)."""
-        if not session_id:
+        """Add a node ID to the current segment's tracking list (in-memory)."""
+        if not session_id or not node_id:
             return
-        current = self.get_segment_node_ids(session_id)
-        if node_id not in current:
-            current.append(node_id)
-            self.set_config('segment_node_ids_' + session_id, json.dumps(current))
+        ctx = self.get_or_create_session(session_id)
+        if node_id not in ctx.segment_node_ids:
+            ctx.segment_node_ids.append(node_id)
 
     def record_remember(self, ctx):
         """Increment remember counter and mark last encode position.

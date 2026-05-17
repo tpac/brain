@@ -43,6 +43,14 @@ class SessionContext:
         self.edit_check_count: int = 0
         self.last_encode_at_message: int = 0
         self.boot_time: str = ''  # ISO timestamp; empty means not booted yet
+        # Segment / conversation-shift state. Were brain_meta keys
+        # (`segment_*_{session_id}`); moved here 2026-05-17 because those
+        # writes on the hook_recall hot path were saturating brain.db
+        # locks and racing with concurrent writers (the `another row
+        # available` SQL contract bug). In-memory, autosave persists.
+        self.segment_id: int = 0
+        self.segment_embeddings: list = []  # list[str] (base64-encoded vectors)
+        self.segment_node_ids: list = []    # list[str] (node ids surfaced this segment)
 
     @classmethod
     def from_hook_args(cls, args: dict) -> 'SessionContext':
@@ -134,6 +142,9 @@ class SessionContext:
             'edit_check_count': self.edit_check_count,
             'last_encode_at_message': self.last_encode_at_message,
             'boot_time': self.boot_time,
+            'segment_id': self.segment_id,
+            'segment_embeddings': self.segment_embeddings,
+            'segment_node_ids': self.segment_node_ids,
         })
         conn.execute(
             'INSERT OR REPLACE INTO session_state (session_id, key, node_id, value, updated_at) '
@@ -162,6 +173,9 @@ class SessionContext:
             ctx.edit_check_count = int(data.get('edit_check_count', 0))
             ctx.last_encode_at_message = int(data.get('last_encode_at_message', 0))
             ctx.boot_time = data.get('boot_time', '') or ''
+            ctx.segment_id = int(data.get('segment_id', 0))
+            ctx.segment_embeddings = list(data.get('segment_embeddings', []) or [])
+            ctx.segment_node_ids = list(data.get('segment_node_ids', []) or [])
             return ctx
         except (json.JSONDecodeError, TypeError):
             return None
