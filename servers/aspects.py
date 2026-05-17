@@ -138,6 +138,12 @@ class AspectRegistry:
         (type='aspect') with member lists in metadata. Now reads JSON file
         directly. The brain aspect-nodes are legacy and slated for archive.
 
+        Per-operator state (2026-05-17): the working file lives next to
+        brain.db ($BRAIN_DB_DIR/aspects_v1.json), not in the repo. On
+        first boot the repo seed is copied to the user dir; all subsequent
+        encoder writes stay there. The repo file is the shipped baseline,
+        never touched by runtime.
+
         Multi-membership: a string can appear in multiple aspects' member
         lists. Reverse maps (_reverse_node, _reverse_edge) store the FIRST
         aspect that claimed the string in JSON-iteration order — preserves
@@ -146,11 +152,24 @@ class AspectRegistry:
         """
         import json
         import os
-        from servers.scales.s2.aspect_contract import ASPECTS_JSON_PATH
+        from servers.scales.s2.aspect_contract import (
+            ASPECTS_JSON_PATH, ensure_aspects_user_copy)
 
         self._aspects = {}
         self._reverse_node = {}
         self._reverse_edge = {}
+
+        # First-boot: seed user-dir copy from the repo baseline if missing
+        try:
+            ensure_aspects_user_copy()
+        except Exception as e:
+            try:
+                self._brain._log_warning(
+                    'aspect_registry_seed',
+                    'failed to seed user-dir aspects_v1.json from repo baseline',
+                    repr(e))
+            except Exception:
+                pass
 
         if not os.path.exists(ASPECTS_JSON_PATH):
             try:
