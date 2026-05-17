@@ -523,7 +523,7 @@ class TraceDAL:
     def get_chain(self, chain_id: str) -> List[Dict[str, Any]]:
         """Get all events in a trace chain, ordered by time."""
         rows = self.conn.execute(
-            'SELECT id, scale, event_type, ref_type, ref_id, summary, metadata, created_at '
+            'SELECT id, scale, event_type, ref_type, ref_id, summary, metadata, created_at, session_id '
             'FROM trace_events WHERE chain_id = ? ORDER BY created_at ASC',
             (chain_id,)).fetchall()
         results = []
@@ -536,7 +536,7 @@ class TraceDAL:
             results.append({
                 'id': r[0], 'scale': r[1], 'event_type': r[2],
                 'ref_type': r[3], 'ref_id': r[4], 'summary': r[5],
-                'metadata': meta, 'created_at': r[7]})
+                'metadata': meta, 'created_at': r[7], 'session_id': r[8] or ''})
         return results
 
     def get_recent(self, scale: str = '', hours: int = 24,
@@ -552,11 +552,12 @@ class TraceDAL:
             params.append(event_type)
         where = ' AND '.join(conditions)
         rows = self.conn.execute(
-            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, created_at '
+            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, created_at, session_id '
             'FROM trace_events WHERE %s ORDER BY created_at DESC LIMIT ?' % where,
             params + [limit]).fetchall()
         return [{'id': r[0], 'chain_id': r[1], 'scale': r[2], 'event_type': r[3],
-                 'ref_type': r[4], 'ref_id': r[5], 'summary': r[6], 'created_at': r[7]}
+                 'ref_type': r[4], 'ref_id': r[5], 'summary': r[6], 'created_at': r[7],
+                 'session_id': r[8] or ''}
                 for r in rows]
 
     def get_chains_for_session(self, session_id: str) -> List[str]:
@@ -593,17 +594,20 @@ class TraceDAL:
         where = ' AND '.join(conditions)
 
         rows = self.conn.execute(
-            'SELECT chain_id, scale, event_type, ref_type, ref_id, summary, metadata, created_at '
+            'SELECT chain_id, scale, event_type, ref_type, ref_id, summary, metadata, created_at, session_id '
             'FROM trace_events WHERE %s ORDER BY created_at DESC' % where,
             params).fetchall()
 
-        # Group by chain_id, preserve order of first appearance
+        # Group by chain_id, preserve order of first appearance.
+        # A chain belongs to one session; we record the session_id from
+        # the first event seen in each chain.
         chains = {}
         chain_order = []
         for r in rows:
             cid = r[0]
             if cid not in chains:
-                chains[cid] = {'chain_id': cid, 'scale': r[1], 'events': []}
+                chains[cid] = {'chain_id': cid, 'scale': r[1],
+                               'session_id': r[8] or '', 'events': []}
                 chain_order.append(cid)
             meta = {}
             try:
@@ -635,7 +639,7 @@ class TraceDAL:
         where = ' AND '.join(conditions)
 
         rows = self.conn.execute(
-            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, created_at '
+            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, created_at, session_id '
             'FROM trace_events WHERE %s ORDER BY created_at DESC LIMIT ?' % where,
             params + [limit]).fetchall()
 
@@ -649,7 +653,7 @@ class TraceDAL:
             results.append({
                 'id': r[0], 'chain_id': r[1], 'scale': r[2], 'event_type': r[3],
                 'ref_type': r[4] or '', 'ref_id': r[5] or '', 'summary': r[6] or '',
-                'metadata': meta, 'created_at': r[8]})
+                'metadata': meta, 'created_at': r[8], 'session_id': r[9] or ''})
         return results
 
     def get_outcomes(self, chain_id: str = '', scale: str = '',
