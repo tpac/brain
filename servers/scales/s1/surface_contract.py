@@ -1778,11 +1778,7 @@ def _render_node_activation(node, field_activation, budget, activation,
             body_lines.append(event_line)
         if situation:
             body_lines.append('  ' + situation)
-        body = '\n'.join(body_lines)
-        prefix_parts = ['act=%.2f' % activation, 'BG']
-        if is_seed and why:
-            prefix_parts.append('why: %s' % why[:80])
-        return body + '\n  ↑ ' + ' | '.join(prefix_parts)
+        return '\n'.join(body_lines)
 
     if mode == 'fact':
         # Fact mode — emit verbatim, NO field masking, NO activation threshold.
@@ -1796,7 +1792,8 @@ def _render_node_activation(node, field_activation, budget, activation,
             'time_format': 'relative',
             'show_confidence': False,
             'show_encoding_source': False,
-            'show_keywords': True,  # facts always show keywords
+            'show_keywords': False,  # recall scaffold, not reader signal
+            'extra_skip_keys': ('question',),
         }
         body = render_rich_node(node, cfg)
         if event_line:
@@ -1807,14 +1804,15 @@ def _render_node_activation(node, field_activation, budget, activation,
                 body = body_lines[0] + '\n' + event_line + '\n' + body_lines[1]
             else:
                 body = body + '\n' + event_line
-        prefix_parts = ['act=%.2f' % activation, 'FACT']
-        if is_seed and why:
-            prefix_parts.append('why: %s' % why[:80])
-        return body + '\n  ↑ ' + ' | '.join(prefix_parts)
+        return body
 
-    # Default: 'arc' — current path (unchanged behavior)
-    content_budget = max(50, int(budget * 0.50))
-    meta_budget = max(30, int(budget * 0.10))
+    # Default: 'arc' — current path.
+    # Anchor-read budget split: content gets the lion's share (it's the
+    # actual claim), metadata gets enough for situation + reasoning + quotes
+    # (which render_rich_node treats specially: user_raw_quote and
+    # anchor_raw_quote bypass meta_limit per the high-signal-quote rule).
+    content_budget = max(50, int(budget * 0.60))
+    meta_budget = max(40, int(budget * 0.15))
 
     masked = _mask_node_by_field_activation(node, field_activation)
 
@@ -1833,7 +1831,13 @@ def _render_node_activation(node, field_activation, budget, activation,
         'time_format': 'relative',
         'show_confidence': False,
         'show_encoding_source': False,
-        'show_keywords': field_activation.get('content', 0) > _FIELD_RENDER_THRESHOLD,
+        # `keywords` is recall scaffolding (vector input), not reader signal —
+        # never useful when Anchor reads the inject. Dropped unconditionally.
+        'show_keywords': False,
+        # `question` is recall-side ("when asked this, surface me") — also
+        # not reader signal. reasoning + user_raw_quote + anchor_raw_quote
+        # stay (the encoder/operator's voice and intent).
+        'extra_skip_keys': ('question',),
     }
 
     body = render_rich_node(masked, cfg)
@@ -1846,12 +1850,7 @@ def _render_node_activation(node, field_activation, budget, activation,
         else:
             body = body + '\n' + event_line
 
-    prefix_parts = ['act=%.2f' % activation]
-    if is_seed:
-        prefix_parts.append('SEED')
-        if why:
-            prefix_parts.append('why: %s' % why[:80])
-    return body + '\n  ↑ ' + ' | '.join(prefix_parts)
+    return body
 
 
 def format_surface_output_activation(node_activation, field_activation,

@@ -385,8 +385,13 @@ def render_rich_node(node, config=None):
         'community_growth_rate', 'community_edge_signature',
         'community_last_change',
     ))
-    # Caller-supplied extra skips (e.g. SURFACE drops 'question', 'reasoning')
+    # Caller-supplied extra skips (e.g. surface drops 'question')
     skip_keys.update(cfg.get('extra_skip_keys', ()))
+    # Voice fields bypass meta_limit — operator and Anchor verbatim
+    # quotes are high-signal-per-char and naturally short. Truncating
+    # them at 150 chars loses the actual words. Cap defensively at 600.
+    _VOICE_KEYS = ('user_raw_quote', 'anchor_raw_quote')
+    _VOICE_LIMIT = 600
     if meta_limit > 0:
         for key, val in meta.items():
             if not val or key in skip_keys:
@@ -394,7 +399,8 @@ def render_rich_node(node, config=None):
             # _sys_ prefix = system/infrastructure fields, never shown to LLMs
             if key.startswith('_sys_'):
                 continue
-            lines.append('  %s: %s' % (key.replace('_', ' ').title(), _truncate(str(val), meta_limit)))
+            limit = _VOICE_LIMIT if key in _VOICE_KEYS else meta_limit
+            lines.append('  %s: %s' % (key.replace('_', ' ').title(), _truncate(str(val), limit)))
 
     # Keywords
     if cfg.get('show_keywords', True):
@@ -425,7 +431,10 @@ def render_rich_node(node, config=None):
         content_limit_heavy=max(meta_limit, 400),
         meta_limit_heavy=meta_limit))
 
-    # Edges — direction as natural language for contextless LLM understanding
+    # Edges — direction as natural language for contextless LLM understanding.
+    # Title gets 100 chars (was 60) — the "why" description is the load-bearing
+    # signal, and a 60-char title truncation often dropped the meaningful tail
+    # ("Always used together: 'Tom correction: don't mak..." vs full).
     edge_limit = cfg.get('edge_limit', 5)
     connections = node.get('connections', [])[:edge_limit]
     if connections:
@@ -433,7 +442,7 @@ def render_rich_node(node, config=None):
         for e in connections:
             target_id = e.get('id', '?')[:8]
             time_str = _fmt_time(e.get('created_at')) or '?'
-            title = e.get('title', '')[:60]
+            title = e.get('title', '')[:100]
             ntype = e.get('type', '?')
             incoming = e.get('direction') == 'incoming'
 
