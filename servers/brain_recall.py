@@ -380,36 +380,19 @@ class BrainRecallMixin:
         if not full_ids:
             return None if single else {}
 
-        # ── 1. Batch fetch all nodes ──
-        ph = ','.join('?' for _ in full_ids)
-        cols = [desc[0] for desc in conn.execute('SELECT * FROM nodes LIMIT 0').description]
-        rows = conn.execute(
-            'SELECT * FROM nodes WHERE id IN (%s)' % ph, full_ids
-        ).fetchall()
-
-        nodes = {}
-        for row in rows:
-            d = dict(zip(cols, row))
-            for bf in ('locked', 'archived', 'critical'):
-                d[bf] = d.get(bf) == 1
-            d['emotion'] = d.get('emotion') or 0
-            d['emotion_label'] = d.get('emotion_label') or 'neutral'
-            nodes[d['id']] = d
+        # ── 1. Batch fetch all nodes (via NodeDAL — single SQL source) ──
+        nodes = ndal.get_bulk(full_ids)
 
         if not nodes:
             return None if single else {}
 
         found_ids = list(nodes.keys())
-        ph = ','.join('?' for _ in found_ids)
 
-        # ── 2. Batch fetch all metadata (includes situation as of v24) ──
-        meta_rows = conn.execute(
-            'SELECT node_id, key, value FROM node_metadata_kv WHERE node_id IN (%s)' % ph,
-            found_ids
-        ).fetchall()
-        meta_by_node = {}
-        for nid, key, value in meta_rows:
-            meta_by_node.setdefault(nid, {})[key] = value
+        # ── 2. Batch fetch all metadata via MetadataDAL.get_all_bulk.
+        # Single SQL source for KV reads — same DAL the correction-enrich
+        # pipeline uses for its scoped fetch.
+        from .dal_metadata import MetadataDAL
+        meta_by_node = MetadataDAL(conn).get_all_bulk(found_ids)
         for nid in found_ids:
             if nid in meta_by_node:
                 nodes[nid]['_metadata'] = meta_by_node[nid]

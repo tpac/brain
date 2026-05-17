@@ -123,6 +123,26 @@ class MetadataDAL:
             out.setdefault(nid, {})[k] = v
         return out
 
+    def get_all_bulk(self, node_ids: List[str]) -> Dict[str, Dict[str, str]]:
+        """Bulk-fetch ALL metadata fields for multiple nodes.
+
+        Returns {node_id: {key: value}} — same shape as get_fields_bulk
+        but without a key whitelist. Used by callers that need the full
+        K/V slice (e.g. brain_recall.get_node assembling a rich node).
+        Single SQL source for the "all metadata for these nodes" pattern.
+        """
+        if not node_ids:
+            return {}
+        ph = ','.join('?' * len(node_ids))
+        rows = self.conn.execute(
+            'SELECT node_id, key, value FROM node_metadata_kv '
+            'WHERE node_id IN (%s)' % ph,
+            list(node_ids)).fetchall()
+        out: Dict[str, Dict[str, str]] = {}
+        for nid, k, v in rows:
+            out.setdefault(nid, {})[k] = v
+        return out
+
     def set(self, node_id: str, key: str, value: Any) -> None:
         """Set a single metadata field. Overwrites if exists.
 

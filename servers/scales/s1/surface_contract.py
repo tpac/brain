@@ -340,11 +340,14 @@ def _correction_enrich_impl(node_ids, brain):
     if not neighbor_ids:
         return {}
 
-    # ── 3. Bulk fetch neighbor naked rows (content, type) + metadata
+    # ── 3. Bulk fetch neighbor naked rows (content, type) + metadata.
+    # Keys must mirror render_corrections's heavy-mode render list, otherwise
+    # the renderer reads a key the data layer never fetched.
     naked_by_id = ndal.get_bulk(list(neighbor_ids))
     meta_dal = MetadataDAL(conn)
     meta_by_id = meta_dal.get_fields_bulk(
-        list(neighbor_ids), ['reasoning', 'user_raw_quote'])
+        list(neighbor_ids),
+        ['reasoning', 'user_raw_quote', 'anchor_raw_quote'])
 
     # ── 4. Assemble per-owner correction lists, expanded per relation.
     #    A single (owner, neighbor) pair carrying multiple correction verbs
@@ -373,6 +376,7 @@ def _correction_enrich_impl(node_ids, brain):
                     'content': content,
                     'reasoning': meta.get('reasoning') or '',
                     'user_raw_quote': meta.get('user_raw_quote') or '',
+                    'anchor_raw_quote': meta.get('anchor_raw_quote') or '',
                 })
 
         if not bucket:

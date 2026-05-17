@@ -220,18 +220,12 @@ def _truncate(s: str, limit: int) -> str:
     return s[:max(1, limit - 1)] + '…'
 
 
-# ── Default skip set for corrector K/V rendering (heavy mode) ──
-# Matches the noise filter applied to the surfaced node's metadata: drops
-# system/community/structural fields. Used by render_corrections so corrector
-# rendering inherits the same noise discipline as node rendering.
-_CORRECTION_KV_SKIP = frozenset((
-    'metadata_created_at', 'situation',
-    'community_internal_edges', 'community_external_edges',
-    'community_internal_fraction', 'community_is_corridor',
-    'community_centroid', 'community_size', 'community_run_count',
-    'community_growth_rate', 'community_edge_signature',
-    'community_last_change',
-))
+# ── Corrector K/V allowlist for render_corrections heavy mode ──
+# Three keys carry meaningful correction context: the corrector's stored
+# reasoning, the operator's words, and Anchor's words. Anything else on
+# the corrector's metadata is either bookkeeping or downstream-of-surface
+# context the heavy render shouldn't replay.
+_CORRECTION_HEAVY_KV_KEYS = ('reasoning', 'user_raw_quote', 'anchor_raw_quote')
 
 
 def render_corrections(corrections, mode='lean',
@@ -309,9 +303,7 @@ def render_corrections(corrections, mode='lean',
         content = (corr.get('content') or '').strip()
         if content:
             lines.append('%sContent: %s' % (sub_indent, _truncate(content, content_limit_heavy)))
-        for kv_key in ('reasoning', 'user_raw_quote', 'anchor_raw_quote'):
-            if kv_key in _CORRECTION_KV_SKIP:
-                continue
+        for kv_key in _CORRECTION_HEAVY_KV_KEYS:
             val = corr.get(kv_key)
             if not val:
                 continue
