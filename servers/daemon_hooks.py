@@ -240,12 +240,12 @@ def hook_recall(brain, args, graph_changes):
     try:
         query_emb = result.get("_query_embedding")
         if query_emb:
-            seg = brain.check_segment_boundary(query_emb)
+            seg = brain.check_segment_boundary(query_emb, session_id)
             if seg.get("is_boundary"):
                 segment_note = "--- CONTEXT SHIFT (segment %d, sim=%.2f) ---" % (
                     seg["segment_id"], seg["similarity"])
             for r in results:
-                brain.add_to_segment(r.get("id", ""))
+                brain.add_to_segment(r.get("id", ""), session_id)
     except Exception as e:
         brain._log_error('segment_boundary', e, 'hook_recall')
     pt.mark('segment')

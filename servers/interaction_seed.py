@@ -246,7 +246,7 @@ S1E_CONFIG_V1 = {
     "max_messages": 10, "recall_candidates_limit": 5, "max_rounds": 5,
     "journal_max_chars": 8000, "journal_entry_limit": 2000,
     "max_tokens": 4096, "session_context_limit": 800,
-    "encoding_state_compat": 500, "node_edge_limit": 5,
+    "node_edge_limit": 5,
     "timeline_snippet_limit": 200,
 }
 

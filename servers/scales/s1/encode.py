@@ -498,12 +498,6 @@ def _save_journal(brain, dispatch_fn, session_id, counter, final_text):
         updated = truncated
 
     dispatch_fn('set_config', {'key': journal_key, 'value': updated})
-
-    # Backward compat key
-    from servers.pipeline_contract import PIPELINE
-    dispatch_fn('set_config', {'key': 'encoding_agent_state',
-                               'value': final_text[:PIPELINE['encoding_state_compat']]})
-
     return entry_body
 
 

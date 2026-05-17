@@ -298,7 +298,6 @@ PIPELINE = {
     'recall_log_query': 500,
     'recall_log_title': 80,
     'recall_log_snippet': 150,
-    'encoding_state_compat': 2000,
 }
 
 

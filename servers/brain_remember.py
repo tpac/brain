@@ -760,9 +760,15 @@ class BrainRememberMixin:
         except Exception as e:
             self._log_error('record_remember', e, 'tracking encoding for heartbeat')
 
-        # v5.1: Track node in current conversation segment
+        # v5.1: Track node in current conversation segment.
+        # XXX parallel-session leak: remember() has no session_id parameter,
+        # so we fall back to the deprecated singleton. Under parallel
+        # sessions, last-writer-wins on `brain.session_id` routes new nodes
+        # into the wrong session's segment. Empty session_id is a silent
+        # no-op (add_to_segment guards). Fix: thread session_id through
+        # remember() the same way encode.py threads it through dispatch.
         try:
-            self.add_to_segment(node_id)
+            self.add_to_segment(node_id, self.session_id)
         except Exception as e:
             self._log_error('add_to_segment', e, 'tracking node %s in conversation segment' % node_id[:12])
 
