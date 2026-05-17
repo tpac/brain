@@ -64,7 +64,7 @@ These units observe the graph itself — what S1 produced.
 
 | | |
 |---|---|
-| **O** | Nodes linked by `correction_of` edges |
+| **O** | Nodes linked by correction_improvement-aspect edges (`corrects`, `supersedes`, `reframes`, `resolves`, `fixes`, ...) |
 | **K** | The chain — original → correction → possible meta-correction |
 | **Δ** | Archived superseded nodes, boosted survivors, cleaned edges |
 | **Autonomy** | Simple chains: auto-commit. Ambiguous chains: signal queue |
@@ -76,7 +76,7 @@ These units observe the graph itself — what S1 produced.
 **Pros:**
 - Algorithmic for simple chains (A corrects B, no further corrections)
 - Directly prevents the confusion of surfacing contradictory nodes
-- Correction metadata already exists — `correction_of` field, `_corrections` enrichment
+- Correction substrate already exists — `correction_improvement`-aspect edges (22 verbs walked by `correction_enrich()`), `_corrections` enrichment, `render_corrections()` per-consumer rendering
 
 **Cons:**
 - Some corrections are context-dependent, not absolute — what's "wrong" in one situation may be right in another

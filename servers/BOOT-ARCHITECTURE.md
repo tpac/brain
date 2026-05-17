@@ -152,8 +152,9 @@ not filled with noise.
 - Fresh brain fallback: empty section, omitted.
 
 **4. Recent recovery trajectories** (~1500 chars, 2-3 items)
-- Extractor: correction chains in last N sessions — `correction_of`
-  edges where the corrected node's subsequent access pattern
+- Extractor: correction chains in last N sessions —
+  correction_improvement-aspect edges (`corrects`/`supersedes`/
+  `reframes`/...) where the corrected node's subsequent access pattern
   suggests it's being used correctly now. Show the trajectory:
   failure → correction → recovery.
 - Frame line: *"How you've been failing and recovering. The

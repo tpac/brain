@@ -124,7 +124,9 @@
       "case",
       "knowledge",
       "reference_cluster",
-      "technique"
+      "technique",
+      "reference_list",
+      "overview"
     ],
     "edge_relations": [],
     "meaning": "Reusable knowledge derived from experience \u2014 decisions, findings, lessons, insights, validations, mental models, mechanisms, patterns. The brain LEARNED these from specific situations and they're now usable across contexts. NOT: declared values that didn't have to be earned (identity_bearing) or moments themselves (episodic_anchor). Test: was this EARNED through doing the work? If yes \u2192 lesson_insight.",
@@ -153,7 +155,8 @@
       "concerns",
       "coexists_with",
       "same_domain_as",
-      "shares_pattern_with"
+      "shares_pattern_with",
+      "relevant_to"
     ],
     "meaning": "Edges with REAL but VAGUE semantic content \u2014 'X is related to Y' where there's a genuine connection but no specific role to claim. Catch-all for legitimate associations that don't fit a more specific aspect. NOT: graph mechanics with no semantic claim (those go to noise). Test: is there ANY semantic intent here? If yes but unspecific \u2192 generic_relation. If no semantic claim, just structural/system-derived \u2192 noise.",
     "dimension": "semantic",
