@@ -155,9 +155,9 @@ class TestDecodeTransitions(BrainTestBase):
     def test_correction_enrich_finds_correction_chains(self):
         """correction_enrich: node B corrects node A must be discoverable.
 
-        The encoding agent sets correction_of when creating corrections.
-        correction_enrich must find these relationships so the voice surface
-        can warn Claude about superseded knowledge.
+        The encoder writes correction-aspect edges (corrects, supersedes,
+        reframes, ...). correction_enrich walks those edges so the surface
+        and downstream consumers can warn Claude about superseded knowledge.
         """
         from servers.scales.s1.surface_contract import correction_enrich
 
@@ -170,27 +170,36 @@ class TestDecodeTransitions(BrainTestBase):
             type='decision',
             title='Use GraphQL for complex queries',
             content='Switched to GraphQL for queries needing joins across 3+ tables.',
-            correction_of=node_a['id'],
         )
+        # Edge: node_b corrects node_a
+        self.brain.connect_typed(
+            source_id=node_b['id'], target_id=node_a['id'],
+            relation='corrects', weight=0.5,
+            description='GraphQL handles the cross-table queries REST struggled with',
+            encoding_source='test:correction_chains')
 
-        # correction_enrich takes a set of node IDs and the db connection
+        # correction_enrich now takes node IDs and the brain instance
         # It should find that node_a has a correction (node_b corrects it)
-        corrections = correction_enrich({node_a['id']}, self.brain.conn)
+        corrections = correction_enrich({node_a['id']}, self.brain)
 
-        self.assertIn(node_a['id'], corrections,
-                      'correction_enrich did not find correction for node A')
+        # Result keyed by both full and short id — accept either
+        chain = corrections.get(node_a['id']) or corrections.get(node_a['id'][:8])
+        self.assertTrue(chain, 'correction_enrich did not find correction for node A')
 
         # Verify the correction info has the expected shape
-        chain = corrections[node_a['id']]
         self.assertTrue(len(chain) > 0, 'No correction entries found')
 
-        # Check all entries have the required fields format_judge_output reads
+        # Check all entries carry the required fields downstream consumers read
         for entry in chain:
             self.assertIn('id', entry, 'Correction entry missing "id"')
             self.assertIn('title', entry, 'Correction entry missing "title"')
             self.assertIn('direction', entry, 'Correction entry missing "direction"')
             self.assertIn(entry['direction'], ('corrects', 'corrected_by'),
                           'Unknown correction direction: %s' % entry['direction'])
+            # Heavy payload now also carries relation + edge_description
+            self.assertIn('relation', entry, 'Correction entry missing "relation"')
+            self.assertIn('edge_description', entry,
+                          'Correction entry missing "edge_description"')
 
         # node_b's ID must appear somewhere in the correction chain
         correction_ids = {e['id'] for e in chain}

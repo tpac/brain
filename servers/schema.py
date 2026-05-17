@@ -327,31 +327,12 @@ TABLES = {
 
     # DEPRECATED 2026-04-02: Fixed-column metadata. Replaced by node_metadata_kv.
     # Kept for backward compat — migration 008 copies data to KV. Stop writing here.
-    'node_metadata': {
-        'create': """CREATE TABLE IF NOT EXISTS node_metadata (
-            node_id TEXT PRIMARY KEY,
-            reasoning TEXT,
-            alternatives TEXT,
-            user_raw_quote TEXT,
-            correction_of TEXT,
-            correction_pattern TEXT,
-            source_context TEXT,
-            confidence_rationale TEXT,
-            last_validated TEXT,
-            validation_count INTEGER DEFAULT 0,
-            change_impacts TEXT,
-            created_at TEXT,
-            FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
-        )""",
-        'columns': {
-            'node_id': None, 'reasoning': 'NULL', 'alternatives': 'NULL',
-            'user_raw_quote': 'NULL', 'correction_of': 'NULL',
-            'correction_pattern': 'NULL', 'source_context': 'NULL',
-            'confidence_rationale': 'NULL', 'last_validated': 'NULL',
-            'validation_count': '0', 'change_impacts': 'NULL',
-            'created_at': 'NULL',
-        }
-    },
+    # `node_metadata` table REMOVED 2026-05-17 — its fixed-column layout
+    # was superseded by `node_metadata_kv` (decision 6bfe45d5, ~2026-04-15).
+    # The migration to KV happened ~1 month before this comment; this entry
+    # was vestigial schema-create scaffolding that produced an empty table
+    # on every fresh brain. Live + clone brains have the table dropped;
+    # fresh brains will no longer create it.
 
     # v21: Key-value metadata — extensible without schema changes
     'node_metadata_kv': {
@@ -481,9 +462,9 @@ INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_bridge_proposals_status ON bridge_proposals(status)',
     'CREATE INDEX IF NOT EXISTS idx_bridge_proposals_matures ON bridge_proposals(matures_at)',
     # node_embeddings — REMOVED v23 (table deprecated, index not maintained)
-    # v15: node_metadata
-    'CREATE INDEX IF NOT EXISTS idx_metadata_correction ON node_metadata(correction_of)',
-    'CREATE INDEX IF NOT EXISTS idx_metadata_validated ON node_metadata(last_validated)',
+    # v15: node_metadata — REMOVED 2026-05-17 (table dropped; KV table is
+    # canonical, see decision 6bfe45d5). Indexes idx_metadata_correction
+    # and idx_metadata_validated removed alongside.
     # correction_traces — REMOVED v23
     # session_syntheses — REMOVED 2026-05-03
     # v15: nodes scope for engineering memory

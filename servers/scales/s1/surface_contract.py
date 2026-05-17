@@ -146,8 +146,8 @@ CANDIDATES_FILE = {
     'content_limit': 1000,
     'max_candidates': 25,
     'include_graph': True,      # _graph with degree 1/2/3 neighbors
-    'include_metadata': True,   # situation, reasoning, user_raw_quote, correction_of
-    'metadata_fields': ['situation', 'reasoning', 'user_raw_quote', 'correction_of'],
+    'include_metadata': True,   # situation, reasoning, user_raw_quote
+    'metadata_fields': ['situation', 'reasoning', 'user_raw_quote'],
     'max_edges_described': 3,   # top edges with descriptions per candidate
 }
 
@@ -240,76 +240,159 @@ def enrich_candidate_metadata(brain, node_id, node_data, config):
 # CORRECTION ENRICHMENT — shared by surface and encoding
 # ═══════════════════════════════════════════════════════════════
 
-def correction_enrich(node_ids, db_conn):
-    """Find corrections for a set of nodes. Both directions.
+def correction_enrich(node_ids, brain):
+    """Find corrections for a set of nodes via the correction_improvement aspect.
 
-    Returns dict: {node_id: [{"id", "title", "direction"}]}
-    - direction "corrected_by": this node was superseded by another
-    - direction "corrects": this node corrects another
+    Walks edge_relations whose `relation` is in
+    `brain.aspects.correction_improvement.edge_relations` (~22 verbs:
+    corrects, supersedes, reframes, resolves, addresses, fixes, ...).
+    Bidirectional — both incoming and outgoing edges.
 
-    Checks two data sources:
-    1. edges table: relation='corrected_by' (bidirectional pairs)
-    2. node_metadata: correction_of field (node → what it corrects)
+    Returns dict {node_id_short: [correction_dict, ...]} keyed by the
+    8-char-short form (callers index by both full and short ids).
+
+    Each correction_dict carries the HEAVY payload — renderer slices it
+    per consumer (HAIKU_FORMAT: balanced, ENCODER/HEALER_FORMAT: full).
+
+        id              (str)  neighbor short id
+        title           (str)  neighbor title
+        type            (str)  neighbor node type
+        direction       (str)  'corrects' (this node is the corrector) |
+                               'corrected_by' (this node was corrected)
+        relation        (str)  specific aspect verb (corrects / supersedes /
+                               reframes / resolves / ...)
+        edge_description (str) the edge's `why` text
+        content         (str)  neighbor's full content (renderer slices)
+        reasoning       (str)  neighbor's reasoning metadata (may be '')
+        user_raw_quote  (str)  neighbor's user_raw_quote metadata (may be '')
+
+    Pre-April-2026 this function read `node_metadata_kv.correction_of` — a
+    field the encoder never wrote into in 99%+ of cases. The aspect-edge
+    walk now picks up the 700+ correction-aspect edges the encoder actually
+    produces. See live brain audit 2026-05-16: 38× more correction signal in
+    edges than in the legacy metadata field.
     """
-    if not node_ids or not db_conn:
+    if not node_ids or brain is None:
         return {}
 
-    corrections = {}  # node_id → list of correction info dicts
+    # Loud-by-default: any failure inside the aspect walk gets logged via
+    # brain._log_error AND returns an empty dict so the calling pipeline
+    # (get_node, traverse, fetch_tools) degrades gracefully instead of
+    # taking the whole query down. The logged error becomes a brain
+    # signal — visible at next boot.
     try:
-        placeholders = ','.join('?' for _ in node_ids)
+        return _correction_enrich_impl(node_ids, brain)
+    except Exception as e:
+        try:
+            brain._log_error('correction_enrich', e,
+                             'aspect-edge walk failed for %d ids' % len(list(node_ids)))
+        except Exception:
+            # _log_error itself failing is rare (rate limit / DB issue) —
+            # don't cascade; print to stderr so it shows in daemon.log.
+            import sys
+            print('[correction_enrich] error + _log_error failed: %r' % e,
+                  file=sys.stderr, flush=True)
+        return {}
 
-        # 1. REMOVED: Edge-based correction lookup.
-        # In an open relation system, corrections are tracked via the correction_of
-        # metadata field, not hardcoded edge relation types. The encoder can use
-        # any relation name (corrects, supersedes, challenges, replaces, etc.)
-        # and those show up naturally in edge rendering.
-        # Correction_of metadata (below) is the authoritative signal.
 
-        # 2. node_metadata_kv: correction_of field (forward: which of our nodes correct something)
-        from servers.dal import NodeDAL
-        dal = NodeDAL(db_conn)
+def _correction_enrich_impl(node_ids, brain):
+    """Body of correction_enrich — separated so the public function can wrap
+    it in a single try/except + visible logging without indentation pyramid.
+    """
+    from servers.dal import NodeDAL, GraphDAL
+    from servers.dal_metadata import MetadataDAL
 
-        meta_rows = db_conn.execute(
-            """SELECT node_id, value FROM node_metadata_kv
-               WHERE key = 'correction_of' AND node_id IN (%s)
-               AND value IS NOT NULL AND value != ''""" % placeholders,
-            list(node_ids)
-        ).fetchall()
+    # ── Resolve any short ids to full so DAL queries work, but keep a short-id
+    #    map for the return key (downstream callers index by both forms).
+    conn = brain.conn
+    ndal = NodeDAL(conn)
+    full_to_short = {}
+    full_ids = []
+    for nid in node_ids:
+        if not nid:
+            continue
+        full = ndal.resolve_id(nid) if len(str(nid)) < 16 else nid
+        if full and full not in full_to_short:
+            full_to_short[full] = full[:8]
+            full_ids.append(full)
+    if not full_ids:
+        return {}
 
-        for nid, corrects_id in meta_rows:
-            title = dal.get_title(corrects_id[:8])
-            if title:
-                corrections.setdefault(nid, []).append({
-                    "id": corrects_id[:8], "title": title, "direction": "corrects"})
+    # ── Correction-aspect relation whitelist
+    correction_relations = tuple(brain.aspects.correction_improvement.edge_relations)
+    if not correction_relations:
+        return {}
 
-        # 3. Reverse: find nodes that correct OUR nodes (via correction_of field)
-        meta_reverse = db_conn.execute(
-            """SELECT node_id, value FROM node_metadata_kv
-               WHERE key = 'correction_of'
-               AND value IS NOT NULL AND value != ''"""
-        ).fetchall()
-        for nid, corrects_id in meta_reverse:
-            for our_id in node_ids:
-                if our_id.startswith(corrects_id[:8]) or corrects_id.startswith(our_id[:8]):
-                    title = db_conn.execute(
-                        "SELECT title FROM nodes WHERE id = ?", (nid,)).fetchone()
-                    if title:
-                        corrections.setdefault(our_id, []).append({
-                            "id": nid[:8], "title": title[0], "direction": "corrected_by"})
+    # ── 1. Aspect-scoped neighbor walk (bidirectional, active edges only)
+    graph_dal = GraphDAL(conn)
+    connections = graph_dal.get_connections_bulk(
+        full_ids,
+        include_relations=correction_relations,
+        include_archived=False,
+        include_neighbor_archived=False)
 
-    except Exception:
-        pass
+    # ── 2. Collect neighbor ids for heavy fetch
+    neighbor_ids = set()
+    for owner_id, conns in connections.items():
+        for c in conns:
+            neighbor_ids.add(c['id'])
 
-    # Deduplicate per node
-    for nid in corrections:
+    if not neighbor_ids:
+        return {}
+
+    # ── 3. Bulk fetch neighbor naked rows (content, type) + metadata
+    naked_by_id = ndal.get_bulk(list(neighbor_ids))
+    meta_dal = MetadataDAL(conn)
+    meta_by_id = meta_dal.get_fields_bulk(
+        list(neighbor_ids), ['reasoning', 'user_raw_quote'])
+
+    # ── 4. Assemble per-owner correction lists, expanded per relation.
+    #    A single (owner, neighbor) pair carrying multiple correction verbs
+    #    emits one entry per verb so downstream rendering can name each.
+    corrections = {}
+    for owner_full, conns in connections.items():
+        owner_short = full_to_short[owner_full]
+        bucket = []
+        for c in conns:
+            neighbor_id = c['id']
+            naked = naked_by_id.get(neighbor_id) or {}
+            meta = meta_by_id.get(neighbor_id) or {}
+            content = naked.get('content') or ''
+            ntype = naked.get('type') or c.get('type') or ''
+            title = c.get('title') or naked.get('title') or ''
+            edge_dir = c.get('direction')  # 'outgoing' | 'incoming'
+            direction = 'corrects' if edge_dir == 'outgoing' else 'corrected_by'
+            for rel in c.get('relations', []) or []:
+                bucket.append({
+                    'id': neighbor_id[:8],
+                    'title': title,
+                    'type': ntype,
+                    'direction': direction,
+                    'relation': rel.get('relation') or '',
+                    'edge_description': rel.get('description') or '',
+                    'content': content,
+                    'reasoning': meta.get('reasoning') or '',
+                    'user_raw_quote': meta.get('user_raw_quote') or '',
+                })
+
+        if not bucket:
+            continue
+
+        # Dedup on (neighbor_id, direction, relation) — same triple shouldn't
+        # appear twice (defensive; get_connections_bulk groups but a future
+        # change could break that).
         seen = set()
         deduped = []
-        for c in corrections[nid]:
-            key = (c["id"], c["direction"])
-            if key not in seen:
-                seen.add(key)
-                deduped.append(c)
-        corrections[nid] = deduped
+        for item in bucket:
+            key = (item['id'], item['direction'], item['relation'])
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+        # Key by short id — matches callers' expectations
+        corrections[owner_short] = deduped
+        # Also key by full id so callers indexing by full work too
+        corrections[owner_full] = deduped
 
     return corrections
 
@@ -530,8 +613,24 @@ SURFACE_FORMAT = {
     'show_encoding_source': False,
     'show_keywords': False,
     'extra_skip_keys': ('question', 'reasoning'),
+    # Corrections render with relation verb + edge_description + ~150-char
+    # content excerpt. Cheap upgrade from legacy title-only render.
+    'correction_render': 'balanced',
 }
-HAIKU_FORMAT = {'content_limit': 300, 'edge_limit': 3, 'metadata_limit': 120, 'time_format': 'relative'}
+HAIKU_FORMAT = {
+    'content_limit': 300, 'edge_limit': 3, 'metadata_limit': 120,
+    'time_format': 'relative',
+    # Haiku surface receives correction context at balanced fidelity:
+    # relation + edge_description + content excerpt (~150 chars). Enough
+    # for picks to factor in superseded knowledge without bloating the
+    # 25-candidate prompt.
+    'correction_render': 'balanced',
+    # No keywords for the surface picker — keywords are an encoder/recall
+    # signal (they're vectorized as part of the search surface), not a
+    # selection signal. Haiku already sees title + content + edges; the
+    # keyword line would just add noise to the 25-candidate prompt.
+    'show_keywords': False,
+}
 
 
 # ═══════════════════════════════════════════════════════════════

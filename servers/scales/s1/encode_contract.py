@@ -44,10 +44,22 @@ ENCODING_AGENT = {
 # NODE CATALOG — uses system format_node() with S1 config
 # ═══════════════════════════════════════════════════════════════
 
-# S1 encoder node config — full depth, no truncation
+# S1 encoder node config — full depth, no truncation.
+# Correction render: 'heavy' — full corrector content + reasoning +
+# user_raw_quote. The 2026-05-17 three-way A/B (lean vs balanced vs heavy)
+# on 3 items showed heavy was actually CHEAPER than balanced on both
+# encoder time (+8.1% vs lean, vs balanced's +11.4%) AND answerer tokens
+# (+1.0% vs balanced's +17.5%) at equal pass rate. Correction context is
+# targeted signal, not noise — heavy lets the encoder converge faster, not
+# flood it. The locked principle (id:eaf833c5) "more signal ≠ better
+# encoding" still holds for ARBITRARY signal flooding; correction-aspect
+# context is the structured exception that demonstrably helps.
+# Healer also uses 'heavy' (set in HealerEncoder._format_batch).
+# Surface (HAIKU/SURFACE) stays at 'balanced' — latency-critical, smaller pool gain.
 S1_NODE_CONFIG = {
     'content_limit': ENCODING_AGENT.get('node_content_limit'),
     'edge_limit': ENCODING_AGENT.get('node_edge_limit', 5),
+    'correction_render': 'heavy',
 }
 
 

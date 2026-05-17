@@ -213,15 +213,18 @@ class TestBuildNodeCatalog:
         """Nodes with corrected_by edges get Updated by annotation in catalog."""
         from servers.scales.s1.encode_contract import build_node_catalog
 
-        # Create a correcting node and a corrected_by edge
+        # Create a correcting node and a `corrects` edge.
+        # correction_enrich walks correction_improvement-aspect edges
+        # (corrects, supersedes, reframes, ...), so we set up via a typed
+        # edge rather than the legacy correction_of metadata field.
         _insert_hex_node(self.conn, self.NODE_C, 'rule', 'Updated version of rule',
                          'New improved content.')
-        # Create correction: NODE_C corrects NODE_A
-        # correction_enrich uses metadata (node_metadata_kv), not edge relations
-        self.conn.execute(
-            "INSERT OR REPLACE INTO node_metadata_kv (node_id, key, value) VALUES (?, 'correction_of', ?)",
-            (self.NODE_C, self.NODE_A))
-        self.conn.commit()
+        # Edge: NODE_C corrects NODE_A
+        self.brain.connect_typed(
+            source_id=self.NODE_C, target_id=self.NODE_A,
+            relation='corrects', weight=0.5,
+            description='Test setup: NODE_C supersedes NODE_A',
+            encoding_source='test:correction_annotation')
 
         judge_output = '[rule] "Test" (id:%s)' % self.NODE_A
         text, ids = build_node_catalog([judge_output], self.brain)

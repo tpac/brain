@@ -65,8 +65,10 @@ def _generate_remember_schema():
             "• `user_raw_quote` and `anchor_raw_quote` capture meaning that "
             "paraphrasing loses. Use them when the operator's or your own exact "
             "words carry the principle.\n"
-            "• `correction_of` links to the node this corrects, creating a "
-            "correction chain.\n\n"
+            "• To link a node as a correction of another, use `connect_to` "
+            "with a correction-aspect relation (`corrects`, `supersedes`, "
+            "`reframes`, `resolves`, `fixes`, ...) and a specific `why` — that "
+            "edge becomes the recall-time correction signal.\n\n"
             "LESSONS — climb the abstraction ladder:\n"
             "  BAD: \"Fixed tokenizer bug at startup.\"\n"
             "  GOOD: \"Hidden dependencies surface at state transitions. "
@@ -114,7 +116,7 @@ _CONNECT_TO_ITEM_SCHEMA = {
                 "reframes, resolves, opens, strengthens, weakens, corrects, enables, "
                 "produces, contextualizes, synthesizes, implements, depends_on, "
                 "validates, supersedes, configures. Plus load-bearing inventions used "
-                "in this brain: anchored_to, correction_of, community_member, during. "
+                "in this brain: anchored_to, community_member, during. "
                 "Temporal sequence: before/after, meets/met_by, during. Invent freely "
                 "when a pair needs a relation that fits better — a specific invented "
                 "type beats a generic listed one. NEVER `related`, `related_to`, or "
@@ -261,9 +263,11 @@ def _generate_revise_schema():
             "the SAME concept. Add `situation`, fix `reasoning`, sharpen content. "
             "Every recall is a chance to improve the node — if you noticed "
             "something missing, fix it in the moment.\n"
-            "• Encode NEW (with `correction_of`) when the new understanding "
-            "supersedes the old one. The correction chain preserves both "
-            "versions; revising would lose the old framing entirely.\n"
+            "• Encode NEW + add a correction-aspect edge (`corrects`, "
+            "`supersedes`, `reframes`, ...) from the new node to the old one "
+            "when the new understanding supersedes the old. The edge preserves "
+            "both versions and surfaces the relationship at recall time via "
+            "render_corrections; revising the old node would lose its framing.\n"
             "• If the catalog has a node with the title you're about to remember, "
             "revise it instead — duplicate-title remember + connect_to would "
             "leave the catalog version stale."
@@ -400,20 +404,47 @@ def _build_tools():
                      "`remember` op instead — separate `connect` ops require ids that don't "
                      "exist until the create finishes, forcing a needless second LLM round. "
                      "Never use generic `related`/`related_to` — pick a specific relation "
-                     "that names the actual relationship."),
+                     "that names the actual relationship. ALWAYS provide a specific "
+                     "`description` (≥30 chars naming the insight between the two nodes); "
+                     "edge descriptions are embedded for recall and a bare edge with no "
+                     "description is dead weight on the activation kernel."),
      "inputSchema": {"type": "object", "required": ["source_id", "target_id"], "properties": {
          "source_id": {"type": "string", "description": "Source node ID (catalog)"},
          "target_id": {"type": "string", "description": "Target node ID (catalog)"},
          "relation": {"type": "string", "description": "Edge relation (open text). See connect_to.relation for vocabulary."},
-         "weight": {"type": "number", "description": "Edge weight 0.0-1.0 — set on create, replaces on update", "default": 0.5}}}},
+         "description": {"type": "string",
+                         "description": ("What the edge MEANS — the insight that lives between "
+                                         "the two nodes, embedded for query matching. Target "
+                                         "≥30 chars; under 20 is dead weight. Don't restate "
+                                         "either node's title. See connect_to.why for BAD/GOOD "
+                                         "examples.")},
+         "weight": {"type": "number", "description": "Edge weight 0.0-1.0 — set on create, replaces on update", "default": 0.5},
+         "encoding_source": {"type": "string",
+                             "description": "Provenance tag (e.g. 'anchor', 'encoder:sonnet')."},
+         "chain_id": {"type": "string", "description": "Trace chain id for cross-event correlation (optional)."},
+         "session_id": {"type": "string", "description": "Session id for activity tracking (optional)."}}}},
     {"name": "connect_batch",
-     "description": "Create or update multiple edges in one call. Same idempotent-upsert + field-preservation contract as `connect` — specified fields update on existing rows, unspecified preserve.",
+     "description": ("Create or update multiple edges in one call. Same idempotent-upsert + "
+                     "field-preservation contract as `connect` — specified fields update on "
+                     "existing rows, unspecified preserve. Each connection entry MUST provide "
+                     "a specific `description` (≥30 chars naming the insight between the "
+                     "two nodes); bare edges with empty descriptions are recall dead weight."),
      "inputSchema": {"type": "object", "required": ["connections"], "properties": {
          "connections": {"type": "array", "description": "Array of connections to create", "items": {
              "type": "object", "required": ["source_id", "target_id"], "properties": {
                  "source_id": {"type": "string"}, "target_id": {"type": "string"},
                  "relation": {"type": "string", "default": "related_to"},
-                 "weight": {"type": "number", "default": 0.5}}}}}}},
+                 "description": {"type": "string",
+                                 "description": ("What the edge MEANS — embedded for recall. "
+                                                 "Target ≥30 chars. Don't restate node titles. "
+                                                 "See connect_to.why for BAD/GOOD examples.")},
+                 "weight": {"type": "number", "default": 0.5},
+                 "encoding_source": {"type": "string"}}}},
+         "encoding_source": {"type": "string",
+                             "description": "Default provenance tag applied to all connections lacking their own."},
+         "chain_id": {"type": "string", "description": "Trace chain id for cross-event correlation (optional)."},
+         "session_id": {"type": "string", "description": "Session id for activity tracking (optional)."},
+         "reason": {"type": "string", "description": "Optional batch-level reason recorded in trace events."}}}},
     {"name": "brain_batch",
      "description": ("Execute multiple brain operations in one call. **Default tool for "
                      "MIXED operations** (any combination of remember + revise + connect + "

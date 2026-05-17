@@ -120,16 +120,28 @@ class TestFormatNode(BrainTestBase):
         self.assertIn('Reasoning:', out)
         self.assertIn('Postgres has better JSON support', out)
 
-    def test_metadata_correction_of(self):
-        """correction_of links the correcting node to what it supersedes."""
+    def test_correction_edge_annotations(self):
+        """A `corrects` edge surfaces correction context on both endpoints.
+
+        correction_enrich walks correction_improvement-aspect edges
+        (corrects, supersedes, reframes, ...). The renderer annotates
+        the corrector's view with 'Corrects:' and the corrected node's
+        view with 'Updated by:'.
+        """
         original_id = self._make_node(title='Use MySQL')
-        correction_id = self._make_node(
-            title='Use Postgres instead', correction_of=original_id)
-        # Check from the correcting node's perspective: it corrects the original
+        correction_id = self._make_node(title='Use Postgres instead')
+        # Edge: correction_id corrects original_id
+        self.brain.connect_typed(
+            source_id=correction_id, target_id=original_id,
+            relation='corrects', weight=0.5,
+            description='Postgres reliability beats MySQL for this workload',
+            encoding_source='test:correction_edge_annotations')
+
+        # Corrector's view: 'Corrects:' the original
         out_corrector = self._render(correction_id)
         self.assertIn('Corrects:', out_corrector)
         self.assertIn('Use MySQL', out_corrector)
-        # Check from the corrected node's perspective: it was updated by the correction
+        # Corrected node's view: 'Updated by:' the correction
         out_original = self._render(original_id)
         self.assertIn('Updated by:', out_original)
         self.assertIn('Use Postgres', out_original)

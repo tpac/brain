@@ -76,11 +76,12 @@ PROMOTED_FIELDS = {
         "type": "str",
         "description": "Anchor's exact words — reflections, realizations, insights.",
     },
-    "correction_of": {
-        "store": "metadata_kv",
-        "type": "str",
-        "description": "Node ID this corrects.",
-    },
+    # `correction_of` removed 2026-05-17 — corrections are tracked via
+    # correction_improvement-aspect edges (corrects, supersedes, reframes,
+    # ...), walked by correction_enrich() and rendered by render_corrections().
+    # The legacy metadata field's 19 live rows were migrated to `corrects`
+    # edges; the SQLite column drop is deferred to a follow-up schema
+    # migration. See community node 0769ccec for the full kill plan.
     "correction_pattern": {
         "store": "metadata_kv",
         "type": "str",
@@ -219,6 +220,107 @@ def _truncate(s: str, limit: int) -> str:
     return s[:max(1, limit - 1)] + '…'
 
 
+# ── Default skip set for corrector K/V rendering (heavy mode) ──
+# Matches the noise filter applied to the surfaced node's metadata: drops
+# system/community/structural fields. Used by render_corrections so corrector
+# rendering inherits the same noise discipline as node rendering.
+_CORRECTION_KV_SKIP = frozenset((
+    'metadata_created_at', 'situation',
+    'community_internal_edges', 'community_external_edges',
+    'community_internal_fraction', 'community_is_corridor',
+    'community_centroid', 'community_size', 'community_run_count',
+    'community_growth_rate', 'community_edge_signature',
+    'community_last_change',
+))
+
+
+def render_corrections(corrections, mode='lean',
+                       content_limit_balanced=150,
+                       content_limit_heavy=400,
+                       meta_limit_heavy=300,
+                       indent='  '):
+    """Render a node's `_corrections` list as formatted lines.
+
+    Single rendering path — both render_rich_node and consumer-specific
+    formatters (HealerEncoder._format_batch) call this. Per the data/format
+    separation contract (decision id:3c3a3046): one formatter, configs drive
+    verbosity.
+
+    Args:
+        corrections: list of correction dicts (output of correction_enrich).
+            Each carries: id, title, type, direction, relation,
+            edge_description, content, reasoning, user_raw_quote.
+        mode: 'none' | 'lean' | 'balanced' | 'heavy'.
+              none     → no lines emitted
+              lean     → header line only (title + id) — legacy default
+              balanced → + relation verb + edge_description + content excerpt
+              heavy    → + full content + corrector K/V (reasoning,
+                         user_raw_quote, anchor_raw_quote) honouring the
+                         noise filter.
+        content_limit_balanced: char cap for content excerpt in balanced mode
+        content_limit_heavy: char cap for content in heavy mode
+        meta_limit_heavy: char cap per K/V value in heavy mode
+        indent: line prefix for nested values (default '  ')
+
+    Returns list[str] of lines (no leading section header — caller can
+    prepend 'CORRECTIONS:' or similar).
+    """
+    if mode == 'none' or not corrections:
+        return []
+
+    lines = []
+    sub_indent = indent + '   '
+    for corr in corrections:
+        direction = corr.get('direction')
+        title = (corr.get('title') or '')[:60]
+        corr_id = (corr.get('id') or '')[:8]
+        verb = corr.get('relation') or direction or 'corrects'
+        edge_desc = corr.get('edge_description') or ''
+
+        if direction == 'corrected_by':
+            header = '%s⚠ Updated by: "%s" (id:%s)' % (indent, title, corr_id)
+        elif direction == 'corrects':
+            header = '%s⚠ Corrects: "%s" (id:%s)' % (indent, title, corr_id)
+        else:
+            header = '%s⚠ Correction: "%s" (id:%s)' % (indent, title, corr_id)
+
+        if mode == 'lean':
+            lines.append(header)
+            continue
+
+        # balanced/heavy share the relation + edge_desc preamble
+        preamble_bits = []
+        if verb and verb not in ('corrects', 'corrected_by'):
+            preamble_bits.append('relation=%s' % verb)
+        if edge_desc:
+            preamble_bits.append('why: %s' % _truncate(edge_desc, 200))
+        if preamble_bits:
+            lines.append('%s — %s' % (header, '  '.join(preamble_bits)))
+        else:
+            lines.append(header)
+
+        if mode == 'balanced':
+            content = (corr.get('content') or '').strip()
+            if content:
+                lines.append('%s%s' % (sub_indent, _truncate(content, content_limit_balanced)))
+            continue
+
+        # heavy
+        content = (corr.get('content') or '').strip()
+        if content:
+            lines.append('%sContent: %s' % (sub_indent, _truncate(content, content_limit_heavy)))
+        for kv_key in ('reasoning', 'user_raw_quote', 'anchor_raw_quote'):
+            if kv_key in _CORRECTION_KV_SKIP:
+                continue
+            val = corr.get(kv_key)
+            if not val:
+                continue
+            label = kv_key.replace('_', ' ').title()
+            lines.append('%s%s: %s' % (sub_indent, label, _truncate(str(val), meta_limit_heavy)))
+
+    return lines
+
+
 def render_rich_node(node, config=None):
     """Render a get_rich_node() dict as a formatted string.
 
@@ -300,9 +402,6 @@ def render_rich_node(node, config=None):
             # _sys_ prefix = system/infrastructure fields, never shown to LLMs
             if key.startswith('_sys_'):
                 continue
-            if key == 'correction_of':
-                # Corrections are in _corrections with full context
-                continue
             lines.append('  %s: %s' % (key.replace('_', ' ').title(), _truncate(str(val), meta_limit)))
 
     # Keywords
@@ -324,12 +423,15 @@ def render_rich_node(node, config=None):
                 date_str += ' | Revised: %s' % revised
             lines.append('  %s' % date_str)
 
-    # Corrections
-    for corr in node.get('_corrections', []):
-        if corr.get('direction') == 'corrected_by':
-            lines.append('  ⚠ Updated by: "%s" (id:%s)' % (corr.get('title', '')[:60], corr.get('id', '')[:8]))
-        elif corr.get('direction') == 'corrects':
-            lines.append('  ⚠ Corrects: "%s" (id:%s)' % (corr.get('title', '')[:60], corr.get('id', '')[:8]))
+    # Corrections — unified rendering via render_corrections().
+    # Config knob: 'correction_render' ∈ {'none','lean','balanced','heavy'}.
+    # Heavy content cap respects metadata_limit so consumers with tight
+    # token budgets stay consistent.
+    lines.extend(render_corrections(
+        node.get('_corrections', []),
+        mode=cfg.get('correction_render', 'lean'),
+        content_limit_heavy=max(meta_limit, 400),
+        meta_limit_heavy=meta_limit))
 
     # Edges — direction as natural language for contextless LLM understanding
     edge_limit = cfg.get('edge_limit', 5)

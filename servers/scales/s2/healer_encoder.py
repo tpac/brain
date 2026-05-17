@@ -185,16 +185,23 @@ class HealerEncoder(IntegrationUnit):
             if metadata.get('question'):
                 lines.append('EXISTING QUESTION: %s' % metadata['question'])
 
-            # Corrections
+            # Corrections — heavy slice via the unified render_corrections().
+            # Single source of truth (contract.py:render_corrections) — same
+            # function render_rich_node uses, just called directly here because
+            # HealerEncoder builds its own framing (NEEDS, NODE_ID, etc.) and
+            # doesn't go through render_rich_node.
             corrections = node.get('_corrections', [])
             if corrections:
-                lines.append('')
-                lines.append('CORRECTIONS:')
-                for c in corrections[:3]:
-                    direction = c.get('direction', '?')
-                    lines.append('  [%s] %s "%s"' % (
-                        direction, c.get('id', '')[:8],
-                        c.get('title', c.get('content', ''))[:60]))
+                from servers.contract import render_corrections
+                corr_lines = render_corrections(
+                    corrections[:3], mode='heavy',
+                    content_limit_heavy=500,
+                    meta_limit_heavy=400,
+                    indent='  ')
+                if corr_lines:
+                    lines.append('')
+                    lines.append('CORRECTIONS:')
+                    lines.extend(corr_lines)
 
             # Connections
             connections = node.get('connections', [])

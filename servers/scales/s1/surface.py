@@ -343,7 +343,7 @@ def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
                             that reached this target (cluster variants only).
                             Render layer can use to prioritize cluster boundaries.
         'l4_lane':          {full_node_id: str} — origin tag for L4 nodes
-                            ('locked' / 'correction_of:<id>' / 'session_moment')
+                            ('locked' / 'corrects:<id>' / 'session_moment')
                             (cluster_l4 only).
         'trace':            per-hop diagnostics
     """
@@ -452,7 +452,8 @@ def _l4_identity_lane(brain, touched_ids):
 
     Three sources, each with a different origin tag for traceability:
       - 'locked': all locked nodes (axioms — Anchor identity rules)
-      - 'correction_of:<id>': any node that `corrects` a touched node, so
+      - 'corrects:<id>': any node that corrects a touched node (via any
+        correction-aspect edge — corrects/supersedes/reframes/...), so
         Anchor doesn't speak from outdated knowledge.
       - 'session_moment': recent S0 message-stream entries from this session
         (handled separately at the surface layer; not yet wired here).
@@ -481,19 +482,25 @@ def _l4_identity_lane(brain, touched_ids):
     # speak from has been corrected, the correction comes too.
     if touched_ids:
         try:
-            placeholders = ','.join('?' * len(touched_ids))
             # source corrects target — surface the source (the correction)
-            # when target is a touched node.
-            correction_rows = brain.conn.execute(
-                "SELECT DISTINCT e.source_id, e.target_id "
-                "FROM edges e JOIN edge_relations er ON er.edge_id = e.edge_id "
-                "WHERE er.relation IN ('corrects', 'corrected_by', 'updates', 'supersedes') "
-                "AND er.archived = 0 "
-                "AND e.target_id IN (%s)" % placeholders,
-                touched_ids).fetchall()
-            for source_id, target_id in correction_rows:
-                if source_id not in out:
-                    out[source_id] = 'correction_of:' + target_id[:8]
+            # when target is a touched node. Aspect-driven relation list so
+            # any correction_improvement verb (corrects/supersedes/reframes/
+            # resolves/fixes/...) counts, not just a hardcoded short list.
+            correction_relations = list(
+                brain.aspects.correction_improvement.edge_relations)
+            if correction_relations:
+                placeholders = ','.join('?' * len(touched_ids))
+                rel_ph = ','.join('?' * len(correction_relations))
+                correction_rows = brain.conn.execute(
+                    "SELECT DISTINCT e.source_id, e.target_id "
+                    "FROM edges e JOIN edge_relations er ON er.edge_id = e.edge_id "
+                    "WHERE er.relation IN (%s) "
+                    "AND er.archived = 0 "
+                    "AND e.target_id IN (%s)" % (rel_ph, placeholders),
+                    correction_relations + list(touched_ids)).fetchall()
+                for source_id, target_id in correction_rows:
+                    if source_id not in out:
+                        out[source_id] = 'corrects:' + target_id[:8]
         except Exception as e:
             brain._log_error('l4_correction_query', e,
                              'L4 identity lane: corrections of touched')

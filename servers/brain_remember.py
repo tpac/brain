@@ -554,7 +554,10 @@ class BrainRememberMixin:
                  reasoning: Optional[str] = None,
                  user_raw_quote: Optional[str] = None,
                  anchor_raw_quote: Optional[str] = None,
-                 correction_of: Optional[str] = None,
+                 # `correction_of` parameter removed 2026-05-17 — corrections
+                 # tracked via correction_improvement-aspect edges
+                 # (corrects/supersedes/reframes/...). See render_corrections()
+                 # + correction_enrich() for the read path.
                  correction_pattern: Optional[str] = None,
                  source_context: Optional[str] = None,
                  confidence_rationale: Optional[str] = None,
@@ -636,7 +639,7 @@ class BrainRememberMixin:
         # Promoted fields passed as explicit args
         for _name, _val in [
             ('reasoning', reasoning), ('user_raw_quote', user_raw_quote),
-            ('anchor_raw_quote', anchor_raw_quote), ('correction_of', correction_of),
+            ('anchor_raw_quote', anchor_raw_quote),
             ('correction_pattern', correction_pattern), ('source_context', source_context),
             ('confidence_rationale', confidence_rationale), ('scope', scope),
             ('source_attribution', source_attribution), ('situation', situation),

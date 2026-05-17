@@ -864,7 +864,7 @@ def format_tool_result_for_haiku(result: Dict[str, Any], brain=None) -> str:
         )
         ids = [r.get('id') or '' for r in results[:25] if isinstance(r, dict)]
         try:
-            corrections_map = correction_enrich(ids, brain.conn) or {}
+            corrections_map = correction_enrich(ids, brain) or {}
         except Exception:
             corrections_map = {}
 

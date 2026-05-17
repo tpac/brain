@@ -99,6 +99,30 @@ class MetadataDAL:
             [node_id] + keys).fetchall()
         return {r[0]: r[1] for r in rows}
 
+    def get_fields_bulk(self, node_ids: List[str],
+                        keys: List[str]) -> Dict[str, Dict[str, str]]:
+        """Bulk-fetch specific metadata fields for multiple nodes.
+
+        Returns {node_id: {key: value}} — outer dict only contains nodes
+        that have at least one of the requested keys; inner dict only
+        contains keys actually present (matching get_fields semantics).
+
+        Used by correction-enrichment and other bulk consumers that would
+        otherwise N+1 over get_fields().
+        """
+        if not node_ids or not keys:
+            return {}
+        node_ph = ','.join('?' * len(node_ids))
+        key_ph = ','.join('?' * len(keys))
+        rows = self.conn.execute(
+            'SELECT node_id, key, value FROM node_metadata_kv '
+            'WHERE node_id IN (%s) AND key IN (%s)' % (node_ph, key_ph),
+            list(node_ids) + list(keys)).fetchall()
+        out: Dict[str, Dict[str, str]] = {}
+        for nid, k, v in rows:
+            out.setdefault(nid, {})[k] = v
+        return out
+
     def set(self, node_id: str, key: str, value: Any) -> None:
         """Set a single metadata field. Overwrites if exists.
 

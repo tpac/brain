@@ -1038,6 +1038,32 @@ class NodeDAL:
         d['emotion_label'] = d.get('emotion_label') or 'neutral'
         return d
 
+    def get_bulk(self, node_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+        """Bulk-fetch naked node rows. Returns {node_id: row_dict}.
+
+        Same shape as get_naked_node() per row. Missing/invalid ids are
+        silently omitted from the result. Used by callers that need many
+        nodes in one query (recall enrichment, correction enrichment,
+        rich-node assembly) — replaces the N+1 get_naked_node loop.
+        """
+        if not node_ids:
+            return {}
+        ph = ','.join('?' * len(node_ids))
+        cols = [desc[0] for desc in self.conn.execute(
+            'SELECT * FROM nodes LIMIT 0').description]
+        rows = self.conn.execute(
+            'SELECT * FROM nodes WHERE id IN (%s)' % ph,
+            list(node_ids)).fetchall()
+        out: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            d = dict(zip(cols, row))
+            for bool_field in ('locked', 'archived', 'critical'):
+                d[bool_field] = d.get(bool_field) == 1
+            d['emotion'] = d.get('emotion') or 0
+            d['emotion_label'] = d.get('emotion_label') or 'neutral'
+            out[d['id']] = d
+        return out
+
     def resolve_id(self, prefix: str) -> Optional[str]:
         """Resolve a short ID prefix (e.g. 8-char) to a full node ID."""
         if not prefix:
@@ -1747,6 +1773,7 @@ class GraphDAL:
 
     def get_connections_bulk(self, node_ids,
                              exclude_relations=None,
+                             include_relations=None,
                              include_archived: bool = False,
                              include_neighbor_archived: bool = False):
         """Grouped neighbor fetch — multiple relations per (owner, neighbor)
@@ -1755,6 +1782,17 @@ class GraphDAL:
         The rich-node builder in brain_recall needs this shape: one entry
         per unique (owner, neighbor) pair, carrying aggregate edge weight
         and all relations on that pair.
+
+        Args:
+            node_ids: owner node ids to walk from
+            exclude_relations: relations to skip (defaults to noise-relation list).
+                Ignored if include_relations is set.
+            include_relations: when set, ONLY relations in this iterable are
+                returned. Use for aspect-scoped walks (e.g. correction-aspect
+                relations only). Mutually exclusive with exclude_relations —
+                if include_relations is provided, exclude_relations is ignored.
+            include_archived: include archived edge_relations rows
+            include_neighbor_archived: include edges whose neighbor node is archived
 
         Returns dict {owner_id: [connection_dict, ...]} where each
         connection_dict has:
@@ -1767,9 +1805,6 @@ class GraphDAL:
         if not ids:
             raise ValueError("get_connections_bulk: node_ids is empty")
 
-        if exclude_relations is None:
-            exclude_relations = DEFAULT_EXCLUDED_RELATIONS
-
         id_ph = ','.join('?' * len(ids))
 
         archived_clause = '' if include_archived else 'AND er.archived = 0'
@@ -1779,10 +1814,21 @@ class GraphDAL:
         )
         rel_clause = ''
         rel_params = []
-        if exclude_relations:
-            rel_ph = ','.join('?' * len(exclude_relations))
-            rel_clause = 'AND er.relation NOT IN (%s)' % rel_ph
-            rel_params = list(exclude_relations)
+        if include_relations is not None:
+            inc_list = list(include_relations)
+            if not inc_list:
+                # Empty whitelist → no edges match. Return empty grouping.
+                return {nid: [] for nid in ids}
+            rel_ph = ','.join('?' * len(inc_list))
+            rel_clause = 'AND er.relation IN (%s)' % rel_ph
+            rel_params = inc_list
+        else:
+            if exclude_relations is None:
+                exclude_relations = DEFAULT_EXCLUDED_RELATIONS
+            if exclude_relations:
+                rel_ph = ','.join('?' * len(exclude_relations))
+                rel_clause = 'AND er.relation NOT IN (%s)' % rel_ph
+                rel_params = list(exclude_relations)
 
         sql = """
             SELECT e.source_id, e.target_id, e.weight,
@@ -1841,6 +1887,40 @@ class GraphDAL:
                 entry['relations'].append(relation_entry)
 
         return {owner: list(nbrs.values()) for owner, nbrs in grouped.items()}
+
+    def archive_dangling_edges(self, archived_by: str) -> int:
+        """Archive active edge_relations rows whose source or target node is archived.
+
+        Invariant restorer: the brain's rule is `Archive edges alongside nodes —
+        no dangling edges after committing`. Historical leak paths
+        (pre-April-2026 archive_node deletion bug, mid-migration races) can
+        leave active edges pointing at archived nodes; this method scrubs them.
+
+        Args:
+            archived_by: encoding_source-style tag for the archive action
+                (e.g. 's2:healer', 'migration:cleanup_2026_05_16').
+
+        Returns count of edge_relations rows newly archived.
+        """
+        # archived_at uses unix-ms (consistent with brain_remember.archive_node)
+        import time as _time
+        ts_ms = int(_time.time() * 1000)
+        cur = self.conn.execute("""
+            UPDATE edge_relations
+               SET archived = 1,
+                   archived_at = ?,
+                   archived_by = ?
+             WHERE archived = 0
+               AND edge_id IN (
+                 SELECT er.edge_id FROM edge_relations er
+                 JOIN edges e ON e.edge_id = er.edge_id
+                 JOIN nodes n_src ON n_src.id = e.source_id
+                 JOIN nodes n_tgt ON n_tgt.id = e.target_id
+                 WHERE er.archived = 0
+                   AND (n_src.archived = 1 OR n_tgt.archived = 1)
+               )
+        """, (ts_ms, archived_by))
+        return cur.rowcount
 
     def has_edge_between(self, source_ids, target_ids,
                          relations=None,

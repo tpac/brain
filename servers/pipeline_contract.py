@@ -459,16 +459,12 @@ def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
                     "seed_id": full_id,
                 })
 
-    # ── Correction chains (seeds + neighbors) ──
-    all_ids = set()
-    for sid in resolved_ids:
-        all_ids.add(sid)
-        all_ids.add(sid[:8])
+    # ── Correction chains (seeds + neighbors) — aspect-edge walk
+    all_ids = set(resolved_ids)
     for nb in neighbors:
         all_ids.add(nb['id'])
-        all_ids.add(nb['id'][:8])
 
-    corrections = correction_enrich(all_ids, conn)
+    corrections = correction_enrich(all_ids, brain)
 
     # ── Metadata for seeds ──
     metadata = {}

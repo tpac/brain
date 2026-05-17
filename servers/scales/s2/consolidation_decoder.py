@@ -582,7 +582,7 @@ class ConsolidationDecoder(IntegrationUnit):
             SELECT node_id, key, value FROM node_metadata_kv
             WHERE node_id IN (%s)
             AND key IN ('user_raw_quote', 'anchor_raw_quote', 'situation',
-                        'reasoning', 'correction_of')
+                        'reasoning')
         """ % placeholders, list(node_ids)).fetchall():
             if row[0] in data:
                 data[row[0]][row[1]] = row[2]

@@ -36,8 +36,7 @@ CLUSTER_SHAPE = {
     'node_details': 'dict[str, dict]',  # node_id → {
     #   title, type, content, confidence, encoding_source,
     #   keywords, locked, critical, created_at, updated_at,
-    #   reasoning*, user_raw_quote*, anchor_raw_quote*,
-    #   situation*, correction_of*
+    #   reasoning*, user_raw_quote*, anchor_raw_quote*, situation*
     #   (* = from node_metadata_kv, may be absent)
     # }
 

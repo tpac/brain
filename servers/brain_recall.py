@@ -410,21 +410,16 @@ class BrainRecallMixin:
                 if sit:
                     nodes[nid]['situation'] = sit
 
-        # ── 4. Batch corrections (already set-based) ──
-        all_ids_for_corrections = set()
-        for fid in found_ids:
-            all_ids_for_corrections.add(fid)
-            all_ids_for_corrections.add(fid[:8])
-        corrections = correction_enrich(all_ids_for_corrections, conn)
+        # ── 4. Batch corrections via aspect-edge walk ──
+        # correction_enrich() now reads correction-aspect edges (corrects,
+        # supersedes, reframes, resolves, ...) and returns heavy payload
+        # per item (content, reasoning, user_raw_quote inlined). The
+        # renderer slices per consumer (HAIKU_FORMAT balanced,
+        # ENCODER_FORMAT heavy).
+        corrections = correction_enrich(found_ids, self)
         for nid in found_ids:
-            node_corrs = corrections.get(nid, []) or corrections.get(nid[:8], [])
+            node_corrs = corrections.get(nid) or corrections.get(nid[:8]) or []
             if node_corrs:
-                for corr in node_corrs:
-                    corr_full = ndal.resolve_id(corr['id']) or corr['id']
-                    corr_node = ndal.get_naked_node(corr_full)
-                    if corr_node:
-                        corr['content'] = corr_node.get('content', '')
-                        corr['type'] = corr_node.get('type', '')
                 nodes[nid]['_corrections'] = node_corrs
 
         # ── 5. Batch fetch all connections via GraphDAL (v25) ──
