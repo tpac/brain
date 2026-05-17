@@ -184,11 +184,40 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
         # selected=[]. Observed deterministic failure mode on items
         # like 54026fce (16 strong candidates, surface selects 0).
         is_final = (round_idx == max_rounds - 1)
+
+        # On the final round, Haiku's most recent context is prose-rich
+        # tool results — the system-prompt JSON directive gets crowded
+        # out by recency. Two-layer reinforcement:
+        #   1. Append a user-turn nudge: "tool rounds done, emit ONLY JSON"
+        #   2. Prefill assistant with `{` so the API physically can't
+        #      start with prose. Anthropic preserves prefill in stop
+        #      reasoning so a continuation like `{"selected":...}` returns
+        #      with the prefill prepended.
+        # Closes the surface_haiku_unparseable drift on long sessions
+        # where the conversation context contains heavy markdown
+        # (observed 5× in a 2-hour window before this fix).
+        prefill_text = ''
+        if is_final:
+            messages_for_call = messages + [{
+                "role": "user",
+                "content": (
+                    "Tool rounds done. Emit ONLY the JSON selection now. "
+                    "Start your response with `{`. No prose, no preamble, "
+                    "no analysis of the operator's message, no narration "
+                    "of your reasoning. Pure JSON object only."),
+            }, {
+                "role": "assistant",
+                "content": "{",
+            }]
+            prefill_text = '{'
+        else:
+            messages_for_call = messages
+
         api_kwargs = {
             'model': model,
             'max_tokens': max_tokens,
             'system': surface_instructions,
-            'messages': messages,
+            'messages': messages_for_call,
         }
         if not is_final:
             api_kwargs['tools'] = TOOL_DEFINITIONS
@@ -205,10 +234,15 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
         round_record = {'round': round_idx, 'stop_reason': stop_reason,
                          'tool_calls': []}
 
-        # Collect any text content from this round (last round usually has it)
+        # Collect any text content from this round (last round usually has it).
+        # If we prefilled with `{`, prepend it to recover the full JSON shape
+        # (Anthropic returns only the continuation, not the prefill).
         for block in api_resp.content:
             if getattr(block, 'type', None) == 'text':
-                raw_final = block.text.strip()
+                text = block.text.strip()
+                if prefill_text and not text.startswith(prefill_text):
+                    text = prefill_text + text
+                raw_final = text
 
         if stop_reason != 'tool_use':
             tool_trace.append(round_record)
