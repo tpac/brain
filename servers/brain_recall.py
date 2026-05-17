@@ -117,13 +117,25 @@ def _expand_query_via_haiku(query: str) -> List[str]:
             max_tokens=200,
             messages=[{'role': 'user',
                        'content': _EXPANSION_PROMPT.format(query=query)}],
+            # Anthropic Structured Outputs — guarantees a JSON array of
+            # strings. Closes the drift class where Haiku returns prose
+            # or markdown-fenced JSON on long-context queries.
+            output_config={
+                'format': {
+                    'type': 'json_schema',
+                    'schema': {
+                        'type': 'array',
+                        'items': {'type': 'string'},
+                    },
+                },
+            },
         )
         text = ''.join(b.text for b in resp.content if hasattr(b, 'text')).strip()
     except Exception:
         return []
-    # Tolerate Haiku wrapping the array in code fences or extra prose.
+    # With Structured Outputs the response is a guaranteed JSON array, but
+    # keep the fence/bounds fallback in case output_config is ever rejected.
     if '```' in text:
-        # Strip markdown code fences
         parts = text.split('```')
         for p in parts:
             p = p.strip()
@@ -132,7 +144,6 @@ def _expand_query_via_haiku(query: str) -> List[str]:
             if p.startswith('['):
                 text = p
                 break
-    # Find JSON array bounds
     start = text.find('[')
     end = text.rfind(']')
     if start < 0 or end < 0 or end <= start:
