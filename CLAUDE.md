@@ -79,7 +79,7 @@ The taxonomy is a **closed list of 14 required aspects**, defined in
 `servers/scales/s2/aspects_v1.json`. The encoder cannot propose new aspects;
 adding a 15th aspect is a deliberate human edit to the JSON.
 
-**Source of truth: `aspects_v1.json`** (since 2026-05-08). The file holds:
+**Source of truth: `aspects_v1.json`.** The file holds:
 - aspect `name`, `meaning` (description), `locked`, `dimension`, `metadata`
 - `node_types` and `edge_relations` member lists (the work product —
   classifications grow over time as new strings appear)
@@ -109,24 +109,79 @@ brain.aspects.all_with_counts()                 # for list_aspects MCP
 ```
 
 **`AspectIntegration` S2 unit** (`servers/scales/s2/aspect_integration.py`)
-classifies new strings into the 14 aspects via Sonnet, writes JSON-only output
-back to `aspects_v1.json` (no brain mutations). Built and tested on a clone
-(78.2% routing accuracy at cold start). **NOT WIRED into the coordinator yet
-(2026-05-08)** — the decoder writes an O trace even when nothing's
-unclassified, which interacts badly with downstream S2 unit gating. Two fixes
-needed before re-wiring:
-1. Decoder must early-out before writing the O trace when batch is empty
-2. Downstream gating shouldn't treat `aspect_scan` as new s1 work
+classifies new node_types and edge_relations into the 14 aspects via Sonnet,
+writes JSON-only output back to `aspects_v1.json` (no brain mutations). Runs
+in the coordinator after Healer.
 
 Files:
 - `servers/aspects.py` — Aspect value object + AspectRegistry (JSON-source loader)
 - `servers/scales/s2/aspects_v1.json` — single source of truth
-- `servers/scales/s2/aspect_{decoder,encoder,integration}.py` — S2 unit (paused)
+- `servers/scales/s2/aspect_{decoder,encoder,integration}.py` — S2 unit
 - `servers/scales/s2/aspect_prompt.py` — encoder system prompt seed
-- `scripts/run_aspect_cycles_on_clone.py` — clone-eval harness
-- `scripts/eval_aspect_classifications.py` — routing-accuracy comparator
 - `eval/aspects_ground_truth.json` — hand-classified eval baseline
 - Tests: `tests/test_aspects*.py`, `tests/test_aspect_registry_wired.py`
+
+## Correction substrate — edges, walked at every pull
+
+Corrections live as aspect-tagged edges. `brain.correction_enrich(node_ids)`
+walks the `correction_improvement` aspect's edge_relations (22 verbs:
+`corrects`, `supersedes`, `reframes`, `resolves`, `addresses`, `fixes`, ...)
+bidirectionally via `GraphDAL.get_connections_bulk(include_relations=...)`.
+Returns heavy payload per item: id, title, type, direction, relation,
+edge_description, content, reasoning, user_raw_quote, anchor_raw_quote.
+
+`brain.get_node()` calls `self.correction_enrich()` on every canonical pull,
+attaching `_corrections` to every returned node. `pipeline_contract.traverse()`
+calls it on neighbors. `execute_tool()` in fetch_tools runs a batched
+`brain.get_node()` on every tool's output so tool-fetched candidates inherit
+the same enrichment. Forgetting corrections requires explicitly bypassing the
+canonical pull.
+
+**Rendering:** `render_corrections(corrections, mode, ...)` is the single
+unified path. Both `render_rich_node` and `HealerEncoder._format_batch` route
+through it. Modes:
+- `none` — drop entirely
+- `lean` — title + id
+- `balanced` — + relation verb + edge description + 150-char content excerpt
+- `heavy` — + full content + corrector K/V (reasoning, user_raw_quote, anchor_raw_quote)
+
+Consumer mapping:
+- Haiku surface → `balanced` (latency-critical)
+- Sonnet encoder (S1 Scribe) → `heavy`
+- S2 Healer → `heavy`
+
+**Invariant restorer:** `GraphDAL.archive_dangling_edges('s2:healer')` runs on
+every Healer cycle to archive edges touching archived nodes.
+
+Files: `servers/brain_corrections.py` (`BrainCorrectionsMixin`),
+`servers/contract.py:render_corrections`,
+`servers/dal.py:GraphDAL.{get_connections_bulk,archive_dangling_edges}`,
+`servers/dal_metadata.py:MetadataDAL.{get_fields_bulk,get_all_bulk}`,
+`servers/dal.py:NodeDAL.get_bulk`.
+
+## Structured Outputs — Anthropic API enforces JSON schema
+
+Every Haiku JSON producer uses Anthropic Structured Outputs for API-level
+schema enforcement instead of prompt-engineering tricks.
+
+```python
+client.messages.create(
+    ...,
+    output_config={
+        'format': {'type': 'json_schema', 'schema': SCHEMA_DICT}
+    },
+)
+```
+
+| Site | Schema source |
+|---|---|
+| Surface (every agentic round, not just final) | `SURFACE_SELECTION_SCHEMA` in `surface_contract.py` |
+| Facts / quote / temporal scouts | `params['output_schema']` in each scout's interaction params; `scouts/base.py:run_llm_scout` passes it through |
+| `brain_recall._expand_query_via_haiku` | inline schema (top-level array of strings) |
+
+**Key constraint:** apply `output_config` on EVERY round of an agentic loop, not just the final one. Round 1 can return text (when Haiku skips tools), and that text path is unprotected without schema enforcement. `tools` and `output_config` coexist on the same API call — Haiku can tool-use OR finalize-with-JSON, never drift to prose.
+
+Sonnet call sites (S2 reclassify, S2 base, S1 Scribe encoder) use tool-use shape rather than `output_config` — `brain_batch`'s nested schema would need `oneOf` per op-type before Strict Tool Use fits.
 
 ## Frame — the structured prior
 
@@ -150,11 +205,14 @@ S1 integrates across turns — **S1 Decoder** selects what's relevant on every u
 
 ### S1 Decoder
 
-Triggered by `UserPromptSubmit`. Pulls ~25 candidates via `brain.recall()` (cosine across z-weighted 4-group embeddings + FTS5 lexical + synaptic fatigue dampening). Surface call: Haiku selects 5–8 against the Frame as prior; the surface prompt is cached as an Anthropic system block (1h TTL). Selected seeds drive spread activation through the graph; activation-weighted render produces the `additionalContext` Anchor sees.
+Triggered by `UserPromptSubmit`. Pulls ~25 candidates via `brain.recall()` (cosine across z-weighted 4-group embeddings + FTS5 lexical + synaptic fatigue dampening). Surface call: Haiku selects 3–5 against the Frame as prior; the surface prompt is cached as an Anthropic system block (1h TTL). The output JSON is schema-enforced via Anthropic Structured Outputs (`output_config={'format':{'type':'json_schema','schema':SURFACE_SELECTION_SCHEMA}}`) on every agentic round — `tools` and `output_config` coexist on the same API call, so Haiku can tool-use OR finalize with valid JSON, never drift to prose. Selected seeds drive spread activation through the graph; activation-weighted render produces the `additionalContext` Anchor sees.
+
+**Render contract** (single source in `surface_contract.py`): per-mode constants `SURFACE_ARC_FORMAT` (default), `SURFACE_FACT_FORMAT` (verbatim), `SURFACE_BACKGROUND_FORMAT` (title + situation). Each is resolved to a concrete `render_rich_node` cfg via `resolve_surface_format(fmt, budget)`. Inject drops recall-side scaffolding (`keywords`, `question`) — those fields exist for vector recall, not for Anchor's read. Voice fields (`user_raw_quote`, `anchor_raw_quote`) bypass meta_limit and cap at 600 chars.
 
 Files: `scales/s1/surface.py`, `scales/s1/surface_contract.py`, `scales/s1/frame.py`, `servers/brain_recall.py`
 Traces: `s1r-{session_short}-{stop}` (O: candidates, K: selected, Δ: additionalContext)
 Interaction: `surface` — the learnable boundary higher scales evolve
+Env var: `BRAIN_SURFACE_VARIANT=v5_agentic` (exported from `hooks/scripts/brain-env.sh`) enables the agentic tool-use loop. Without this, the single-shot path fires.
 Design: `docs/RECALL-OVERVIEW.md` for the full pipeline
 
 ### S1 Scribe
@@ -174,7 +232,7 @@ S2 operates when the operator is idle. It sees the full graph, not just one turn
 
 | Unit | What it does | Status |
 |------|---|---|
-| **AspectIntegration** | Sonnet classifies open-text node types AND edge relations into shared aspect taxonomy | not built (replaces disabled EdgeFamilyIntegration) |
+| **AspectIntegration** | Sonnet classifies open-text node types AND edge relations into shared aspect taxonomy | shipped |
 | **Consolidation** | Synthesizes convergent node clusters; archives or links similar pairs | shipped |
 | **Community** | Detects clusters via z-score pair scoring; Sonnet enriches into first-class community nodes | shipped |
 | **Healer** | Fills missing question/situation/reasoning fields on under-encoded nodes | shipped |
@@ -184,7 +242,7 @@ S2 operates when the operator is idle. It sees the full graph, not just one turn
 | Weaver | Discovers edges between orphan nodes | not built |
 | Vector Healer | Re-embeds stale vectors when source text drifts via paths revise() doesn't catch | not built |
 
-**Ordering matters:** Consolidation → Community → Healer. (`EdgeFamilyIntegration` was the historical first unit but its source interaction was retired with the unified-aspects refactor; `AspectIntegration` will take its place when built.) Each subsequent unit benefits from the previous.
+**Ordering:** Consolidation → Community → Healer → AspectIntegration. Each subsequent unit benefits from the previous.
 
 ### Suppression
 
@@ -219,7 +277,7 @@ The most important table in the brain. Not nodes — those are memory. Interacti
 
 Every boundary where two parts meet has an interaction entry: versioned prompt + config JSON. `register()` auto-increments version. `created_by` tracks who wrote it. Trace events reference `interaction_id` — which version produced which result. Compare outcomes across versions to evaluate changes.
 
-**Runtime-wired boundaries:** `surface`, `encoding_agent`, `s2_community_enrichment`, `s2_consolidation_enrichment`, `s2_healer` read from the table at runtime. MCP tool `register_interaction` allows updating from conversation. (When `AspectIntegration` ships, `s2_aspects` joins this list; the legacy `s2_edge_families` and `s2_node_families` interactions are no longer the source of truth — `brain.aspects` is.)
+**Runtime-wired boundaries:** `surface`, `encoding_agent`, `s2_community_enrichment`, `s2_consolidation_enrichment`, `s2_healer`, `s2_aspects` read from the table at runtime. MCP tool `register_interaction` allows updating from conversation. `brain.aspects` (not the legacy `s2_edge_families`/`s2_node_families` interactions) is the source of truth for aspect membership.
 
 API: `brain.get_interaction_prompt(name)`, `brain.get_interaction_config(name)`, `brain.get_interaction(name)`. Falls back to hardcoded defaults if the table is empty.
 

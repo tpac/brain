@@ -1,13 +1,13 @@
 {
-  "cycle_at": "2026-05-14T19:13:25.921778+00:00",
+  "cycle_at": "2026-05-17T20:37:26.446446+00:00",
   "classifications_accepted": [
     {
-      "category": "node_types",
-      "value": "overview",
+      "category": "edge_relations",
+      "value": "concludes",
       "aspects": [
-        "lesson_insight"
+        "temporal_sequence"
       ],
-      "rationale": "Overview nodes synthesize reusable knowledge across a domain \u2014 these are EARNED summaries of what works, what's active, what matters in a field, derived from Tom's research experience and curated for future use."
+      "rationale": "The relation expresses 'X (timeline/process) ends with Y (outcome event)' \u2014 pure chronological culmination, where Y is the final point in X's time sequence."
     }
   ],
   "classifications_rejected": []
