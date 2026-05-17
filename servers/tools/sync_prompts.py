@@ -46,9 +46,6 @@ SEED_PROMPTS = [
     ('s1_scout_facts',
      'servers/scales/s1/scouts/prompts/facts_prompt.py',
      'SYSTEM_PROMPT'),
-    ('s1_scout_synthesis',
-     'servers/scales/s1/scouts/prompts/synthesis_prompt.py',
-     'SYSTEM_PROMPT'),
 ]
 
 

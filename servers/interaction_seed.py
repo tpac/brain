@@ -238,14 +238,6 @@ S1_SCOUT_FACTS_CATEGORY = (
     "deserves its own handle in the graph."
 )
 
-S1_SCOUT_SYNTHESIS_CATEGORY = (
-    "Cross-turn synthesis — what emerges from the arc that no single turn "
-    "contains. When the operator and assistant are building something across "
-    "turns — a proof, a design, a poem revision, a hypothesis — the emerging "
-    "shape deserves its own node. Name the emergence, cite the turns, let the "
-    "writer type-tag."
-)
-
 S1_SCOUT_QUOTE_CONFIG_V1 = {
     "model": "claude-haiku-4-5",
     "max_candidates": 3,
@@ -273,15 +265,6 @@ S1_SCOUT_FACTS_CONFIG_V1 = {
     "max_tokens": 3000,
     "timeout_seconds": 25,
     "category_statement": S1_SCOUT_FACTS_CATEGORY,
-}
-
-S1_SCOUT_SYNTHESIS_CONFIG_V1 = {
-    "model": "claude-sonnet-4-6",
-    "max_candidates": 2,
-    "max_tokens": 3500,
-    "timeout_seconds": 45,
-    "category_statement": S1_SCOUT_SYNTHESIS_CATEGORY,
-    "min_turn_evidence": 3,
 }
 
 VOICE_CONFIG_V1 = {
@@ -331,7 +314,6 @@ def seed_interactions(brain):
     from .scales.s1.scouts.prompts.quote_prompt import SYSTEM_PROMPT as S1_SCOUT_QUOTE_PROMPT
     from .scales.s1.scouts.prompts.temporal_prompt import SYSTEM_PROMPT as S1_SCOUT_TEMPORAL_PROMPT
     from .scales.s1.scouts.prompts.facts_prompt import SYSTEM_PROMPT as S1_SCOUT_FACTS_PROMPT
-    from .scales.s1.scouts.prompts.synthesis_prompt import SYSTEM_PROMPT as S1_SCOUT_SYNTHESIS_PROMPT
 
     dal = brain._interaction_dal
     existing = {i['name'] for i in dal.list_all()}
@@ -368,8 +350,6 @@ def seed_interactions(brain):
               S1_SCOUT_TEMPORAL_CONFIG_V1,  'anchor')
     _register('s1_scout_facts',     S1_SCOUT_FACTS_PROMPT,
               S1_SCOUT_FACTS_CONFIG_V1,     'anchor')
-    _register('s1_scout_synthesis', S1_SCOUT_SYNTHESIS_PROMPT,
-              S1_SCOUT_SYNTHESIS_CONFIG_V1, 'anchor')
 
     # Short-template / config-only interactions (prompts inline).
     # 'judge' was renamed to 'surface' in commit 620fb4f (2026-05-03);

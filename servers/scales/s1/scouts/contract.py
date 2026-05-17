@@ -44,7 +44,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # ─── Scout registry ────────────────────────────────────────────────────────
 
-SCOUT_NAMES: Tuple[str, ...] = ("quote", "temporal", "facts", "synthesis")
+SCOUT_NAMES: Tuple[str, ...] = ("quote", "temporal", "facts")
 
 SCOUT_INTERACTION_PREFIX = "s1_scout_"  # e.g. s1_scout_quote
 
@@ -86,10 +86,6 @@ SCOUT_FIELD_SPECS: Dict[str, Dict[str, Tuple[str, ...]]] = {
         "required": ("entity", "feature", "value"),
         "optional": ("unit", "catalog_match", "context_anchors"),
     },
-    "synthesis": {
-        "required": ("turn_evidence",),
-        "optional": ("abstraction_candidate", "catalog_tension"),
-    },
 }
 
 
@@ -106,7 +102,6 @@ FIELD_LIMITS = {
     "feature":                50,
     "value":                 100,
     "unit":                   30,
-    "abstraction_candidate": 200,
     # category_statement is envelope-level
     "category_statement":    300,
 }

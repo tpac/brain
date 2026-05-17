@@ -88,7 +88,7 @@ class TestHappyPath(BrainTestBase):
     def test_runner_injects_scout_name_even_if_llm_says_otherwise(self):
         """LLM can't poison the scout field — runner overrides."""
         llm_output = json.dumps({
-            "scout": "synthesis",  # wrong! LLM claims different scout
+            "scout": "unknown_scout",  # wrong! LLM claims different scout
             "candidates": [],
             "scanned": {"turns": 5},
         })

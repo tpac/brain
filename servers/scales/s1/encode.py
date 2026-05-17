@@ -80,7 +80,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     _step("prompt(preamble=%d chars, body=%d chars)" % (
         len(user_preamble), len(user_content)))
 
-    # 2b. Muster phase — Phase-1 scouts (quote / temporal / facts / synthesis)
+    # 2b. Muster phase — Phase-1 scouts (quote / temporal / facts)
     # fan out in parallel, emit O/K traces on the s1e chain, and produce a
     # report block appended to user_content. Architectural default: ON.
     # The v13 prompt ships with `## Scout reports` as part of its expected

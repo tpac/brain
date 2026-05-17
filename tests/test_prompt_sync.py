@@ -39,7 +39,6 @@ SEED_FILES = [
     ('s1_scout_quote', 'servers.scales.s1.scouts.prompts.quote_prompt'),
     ('s1_scout_temporal', 'servers.scales.s1.scouts.prompts.temporal_prompt'),
     ('s1_scout_facts', 'servers.scales.s1.scouts.prompts.facts_prompt'),
-    ('s1_scout_synthesis', 'servers.scales.s1.scouts.prompts.synthesis_prompt'),
 ]
 
 

@@ -76,7 +76,7 @@ def run_llm_scout(
     """Execute one LLM scout. Always returns a valid envelope dict.
 
     Args:
-        scout_name: one of SCOUT_NAMES (quote, facts, synthesis).
+        scout_name: one of SCOUT_NAMES (quote, facts).
             Temporal is algo-first — do not route it through here.
         brain: Brain instance, used for interaction lookup + error logging.
         shared_prefix: content blocks from contract.build_shared_prefix().

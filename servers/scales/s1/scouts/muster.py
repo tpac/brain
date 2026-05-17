@@ -43,8 +43,7 @@ from .runners import SCOUT_RUNNERS
 # is much longer. A scout's own `timeout_seconds` in its interaction
 # parameters only applies if the scout builds its own client instead.
 #
-# 90s covers: algo scout (<1s), Haiku scouts (~2-5s each), Sonnet scout
-# for synthesis (~6-15s typical, up to ~30s on cold cache). Generous
+# 90s covers: algo scout (<1s), Haiku scouts (~2-5s each). Generous
 # buffer for tail latency before we stub the scout as timed-out.
 MUSTER_PER_SCOUT_TIMEOUT_S = 90.0
 

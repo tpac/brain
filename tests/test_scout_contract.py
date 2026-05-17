@@ -25,11 +25,10 @@ class TestScoutRegistry(unittest.TestCase):
     def test_scout_names_fixed_set(self):
         self.assertEqual(
             set(sc.SCOUT_NAMES),
-            {"quote", "temporal", "facts", "synthesis"})
+            {"quote", "temporal", "facts"})
 
     def test_interaction_name(self):
         self.assertEqual(sc.interaction_name("quote"), "s1_scout_quote")
-        self.assertEqual(sc.interaction_name("synthesis"), "s1_scout_synthesis")
         with self.assertRaises(ValueError):
             sc.interaction_name("unknown")
 
@@ -239,24 +238,6 @@ class TestValidateScoutOutput(unittest.TestCase):
         self.assertIn("feature", msg)
         self.assertIn("value", msg)
 
-    def test_synthesis_required_turn_evidence(self):
-        base = {
-            "scout": "synthesis",
-            "category_statement": "cross-turn synthesis",
-            "candidates": [
-                {
-                    "handle": "pattern name",
-                    "evidence_quote": "seen across turns",
-                    "evidence_turns": ["t1", "t3"],
-                    "why_candidate": "because",
-                    # turn_evidence missing
-                }
-            ],
-            "scanned": {"turns": 10},
-        }
-        ok, normalized, _, warnings = sc.validate_scout_output(base, "synthesis")
-        self.assertTrue(ok)
-        self.assertEqual(normalized["candidates"], [])
 
     def test_temporal_required_source_phrase(self):
         base = {
@@ -316,12 +297,6 @@ class TestFormatScoutReport(unittest.TestCase):
                 }],
                 "scanned": {"turns": 8, "fact_claims_found": 1, "passed_threshold": 1},
             },
-            "synthesis": {
-                "scout": "synthesis",
-                "category_statement": "cross-turn synthesis",
-                "candidates": [],
-                "scanned": {"turns": 8, "patterns_considered": 2, "passed_threshold": 0},
-            },
         }
 
     def test_contains_all_scouts(self):
@@ -331,7 +306,7 @@ class TestFormatScoutReport(unittest.TestCase):
 
     def test_empty_candidates_rendered_explicitly(self):
         report = sc.format_scout_report_for_s1s(self._outputs())
-        # temporal and synthesis have empty candidates
+        # temporal has empty candidates
         self.assertIn("(nothing qualified)", report)
 
     def test_populated_candidates_show_extra_fields(self):

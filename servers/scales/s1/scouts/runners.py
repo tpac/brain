@@ -1,10 +1,15 @@
 """Uniform scout runner registry for the muster.
 
 Each scout has slightly different input needs:
-- LLM scouts (quote, facts, synthesis) run on a pre-built shared_prefix
+- LLM scouts (quote, facts) run on a pre-built shared_prefix
   via run_llm_scout (servers/scales/s1/scouts/base.py).
 - Temporal runs algorithmically on raw turns + catalog_nodes via
   run_temporal_scout (servers/scales/s1/scouts/temporal.py).
+
+(The earlier `synthesis` scout was removed 2026-05-17 — synthesis-
+across-turns moved back inline to S1S/Scribe, per Tom: a scout lacking
+catalog + other-scout context drifted into role-continuation on long
+assistant content.)
 
 The muster doesn't want to branch per scout. This module wraps each scout
 in a callable with the signature  `(brain, muster_ctx) -> envelope` and
@@ -54,15 +59,6 @@ def _facts_runner(brain, ctx: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def _synthesis_runner(brain, ctx: Dict[str, Any]) -> Dict[str, Any]:
-    return run_llm_scout(
-        'synthesis', brain,
-        shared_prefix=ctx['shared_prefix'],
-        anthropic_client=ctx.get('anthropic_client'),
-        log_fn=ctx.get('log_fn'),
-    )
-
-
 def _temporal_runner(brain, ctx: Dict[str, Any]) -> Dict[str, Any]:
     return run_temporal_scout(
         brain=brain,
@@ -75,34 +71,16 @@ def _temporal_runner(brain, ctx: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # Single dispatch point. Order doesn't matter — muster runs in parallel.
-#
-# DISABLED_SCOUTS: scouts that stay in SCOUT_NAMES (so contract + validation
-# + tests continue to recognize them) but are removed from the runner
-# registry — muster won't call them. Synthesis moved back to S1S inline
-# (the scribe's ## Reading the conversation "Emerging patterns" section)
-# because integration-across-turns can't be extracted into a scout that
-# lacks catalog + other-scout context. On long assistant content Sonnet
-# synthesis drifted into role-continuation. Flip to [] to re-enable.
-DISABLED_SCOUTS = {'synthesis'}
-
-_ALL_RUNNERS: Dict[str, Callable[[Any, Dict[str, Any]], Dict[str, Any]]] = {
+SCOUT_RUNNERS: Dict[str, Callable[[Any, Dict[str, Any]], Dict[str, Any]]] = {
     'quote':     _quote_runner,
     'temporal':  _temporal_runner,
     'facts':     _facts_runner,
-    'synthesis': _synthesis_runner,
-}
-
-SCOUT_RUNNERS: Dict[str, Callable[[Any, Dict[str, Any]], Dict[str, Any]]] = {
-    name: fn for name, fn in _ALL_RUNNERS.items()
-    if name not in DISABLED_SCOUTS
 }
 
 
 def _validate_registry():
-    """Guard against drift. Disabled scouts are allowed to be missing from
-    SCOUT_RUNNERS. Anything else missing/extra is a real bug."""
-    enabled = set(sc.SCOUT_NAMES) - DISABLED_SCOUTS
-    missing = enabled - set(SCOUT_RUNNERS)
+    """Guard against drift between SCOUT_NAMES and SCOUT_RUNNERS."""
+    missing = set(sc.SCOUT_NAMES) - set(SCOUT_RUNNERS)
     extra = set(SCOUT_RUNNERS) - set(sc.SCOUT_NAMES)
     if missing or extra:
         raise RuntimeError(

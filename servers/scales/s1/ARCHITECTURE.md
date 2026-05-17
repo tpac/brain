@@ -260,7 +260,9 @@ Scouts:
 - `s1_scout_quote` — phrases worth atomizing as quote nodes (Haiku)
 - `s1_scout_temporal` — date anchors → time_anchor bridges (algorithmic)
 - `s1_scout_facts` — entity-feature-value tuples (Haiku)
-- `s1_scout_synthesis` — cross-turn patterns no single turn names (Sonnet)
+- (synthesis scout removed 2026-05-17 — cross-turn patterns handled
+  inline by S1S/Scribe; a separated scout lacked the catalog + other-
+  scout context it needed and drifted into role-continuation)
 
 Shared input (user content, 5m cache, byte-identical across scouts):
 orientation + session context + current date + node catalog + surfaced
