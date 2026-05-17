@@ -179,15 +179,23 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
     tool_trace = []
     raw_final = ''
 
+    # Anthropic Structured Outputs runs on EVERY round, alongside tools.
+    # When Haiku tool-uses, the schema doesn't apply to tool_use blocks;
+    # when Haiku finalizes with a text response, the schema enforces
+    # SURFACE_SELECTION_SCHEMA. Previous design only applied output_config
+    # on the final round — that left round 1 unprotected, so when Haiku
+    # skipped tools entirely and went straight to chat-style narration on
+    # round 1 ("I need to understand what topic this message is asking..."),
+    # the loop exited at `stop_reason != 'tool_use'` with the unparseable
+    # prose. Verified failure: surface_haiku_unparseable at 16:21:23 UTC.
+    output_config = {
+        'format': {
+            'type': 'json_schema',
+            'schema': SURFACE_SELECTION_SCHEMA,
+        },
+    }
+
     for round_idx in range(max_rounds):
-        # On the FINAL iteration of the cap, disable tools and force JSON
-        # schema compliance via Anthropic's Structured Outputs feature.
-        # Without this, Haiku's final-round response drifts into prose
-        # narration ("I need to understand what the operator is asking...")
-        # when the conversation context contains heavy markdown — observed
-        # 5× in a 2-hour window. Anthropic shipped Structured Outputs GA
-        # for Haiku 4.5 (Nov 2025); schema compliance is enforced during
-        # generation, no prompt-engineering tricks needed.
         is_final = (round_idx == max_rounds - 1)
 
         api_kwargs = {
@@ -195,18 +203,13 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
             'max_tokens': max_tokens,
             'system': surface_instructions,
             'messages': messages,
+            'output_config': output_config,
         }
         if not is_final:
+            # Final round omits tools — forces a finalization. Earlier rounds
+            # offer tools alongside the schema; Haiku may either tool_use (no
+            # schema constraint on tool_use blocks) or finalize JSON.
             api_kwargs['tools'] = TOOL_DEFINITIONS
-        else:
-            # Final round: no tools, Anthropic Structured Outputs forces
-            # the response to match SURFACE_SELECTION_SCHEMA exactly.
-            api_kwargs['output_config'] = {
-                'format': {
-                    'type': 'json_schema',
-                    'schema': SURFACE_SELECTION_SCHEMA,
-                },
-            }
 
         try:
             api_resp = client.messages.create(**api_kwargs)
