@@ -158,7 +158,11 @@ properties that matter for recall:
   Revision history lives in trace events; the node always reflects current truth.
 - **situation** gets its own embedding — it directly improves recall
   matching. Vague situation → node only surfaces for exact title matches.
-- **correction_of** creates a structural link, not just a label.
+- **corrects / supersedes / reframes** (or any correction-aspect relation)
+  on a `connect_to` edge create the structural link from a new node to the
+  one it corrects. The edge's `why` is the recall-time signal that
+  explains the correction. Don't put the corrected node's id in a content
+  field — the edge IS the link.
 
 ### Required fields (not optional)
 - **situation** — when should this node surface? "When debugging daemon

@@ -1,7 +1,10 @@
 """Answerer — given surfaced context + question, produce an answer or abstain.
 
-Deliberately model-agnostic and generic: this is the benchmark answerer, not Anchor.
-Keeping it generic means we measure the brain's retrieval quality, not Anchor's voice.
+Junior-Anchor model: Sonnet running with Anchor framing. The eval previously used
+generic Haiku to "isolate brain quality from Anchor voice", but that stand-in was
+weaker than the production consumer (Anchor running Opus) and trapped the eval into
+measuring Haiku-floor, not Anchor-ceiling. Production has a strong model reasoning
+over the surface output; the eval should too.
 
 Abstention handling: the model is told to answer "I don't have information about that"
 if the context doesn't support an answer. LongMemEval's abstention axis tests exactly this.
@@ -11,43 +14,24 @@ import time
 from typing import Optional, Dict, Any
 
 
-ANSWERER_MODEL = "claude-haiku-4-5"  # fast + cheap for 500-scale future runs; Sonnet available if needed
+ANSWERER_MODEL = "claude-sonnet-4-6"  # junior Anchor — production runs Opus; Sonnet is the eval stand-in
 ANSWERER_MAX_TOKENS = 400
 
 
-ANSWERER_SYSTEM = """You are answering a question based on memories retrieved from a personal memory system.
+ANSWERER_SYSTEM = """You are Anchor, an AI in a long-running partnership with the operator. The brain has surfaced memories below — that's what you currently recall about this moment.
 
-The user has a long history with an AI assistant. Below you'll see memories the system retrieved as relevant. Use ONLY these memories — do not invent facts.
+How to answer:
+- Read the memories. The answer is composed from them, not retrieved as a single statement.
+- If the memories carry atomic values (numbers, dates, names, items) and the question asks for something computed across them (a sum, a count, a comparison, a pick), do the computation. Atoms are stored separately; composition is your job.
+- If the memories carry related material but miss the specific value asked for, say what you have AND what's missing — one breath.
+- If the memories are empty or genuinely unrelated, say plainly: "I don't have information about that."
 
-Three response patterns. Pick the one that fits:
+Style:
+- Answer directly. Don't restate the question. Don't narrate your reasoning.
+- One sentence preferred; two when naming what's missing.
+- Speak in the present, as you would to the operator. No hedging unless something is actually uncertain.
 
-1. ANSWER — memories contain the answer OR support it by simple inference. Simple inference includes:
-   - summing values (FB Live 12 + YouTube 21 = 33 comments)
-   - comparing dates (Feb 20 < March 3 → tomatoes were first)
-   - counting items (brother + 3 sisters = 4 siblings)
-   - picking the earlier/later/largest/smallest of named events
-   Don't abstain just because the answer requires this kind of reasoning over the memories — that's what an answer IS.
-   Example: Q "How many sisters?" + memories list 3 sisters → "You have 3 sisters."
-   Example: Q "Which seeds first, tomatoes or marigolds?" + memories show "tomato seeds started Feb 20" and "marigold seeds germinated March 3" → "Tomatoes (Feb 20 vs March 3)."
-
-2. PARTIAL — memories contain RELATED material but not the exact value. The mismatch can be on:
-   - value (memories have parts of a sum, question asks for the total),
-   - date (memories show X in May, question asks for X in March),
-   - entity (memories show similar X, question asks for specific Y).
-   Say what you have AND name what's missing. One sentence, two if needed.
-   Example: Q "Total comments on my Facebook Live and my YouTube video?" + memories show FB Live got 12 comments, no specific count for YouTube →
-     "Your Facebook Live got 12 comments. I don't have a specific count for the YouTube video — just that you mentioned it was popular."
-
-3. ABSTAIN — memories are empty or fully unrelated to the question.
-   Say: "I don't have information about that."
-
-Rules:
-- Stay inside the memories. Do not invent facts.
-- Do not restate the question. Do not explain your reasoning.
-- Hedge ONLY in the PARTIAL pattern, and only to name what specifically is missing.
-- One sentence preferred; two when PARTIAL requires it.
-
-Temporal questions: if the memories have dates but the question asks for elapsed time, do the math from the dates."""
+Stay inside the memories. Don't invent. Don't generalize beyond what's stored."""
 
 
 def answer_question(question: str, surfaced_context: Optional[str],

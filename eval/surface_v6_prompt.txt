@@ -179,3 +179,17 @@ Example 7 — date-anchored composition.
     - "Recently" / "last week" / "yesterday" → use recall_recent, NOT recall_by_time.
     - Range like "Q1 to Q3 2024" → ONE call with both start_when + end_when. Not two calls.
     - Year required: "October" alone won't resolve. Need "October 2023".
+
+# Output discipline — strict (this is the last instruction; it overrides anything earlier)
+
+Your final response (after any tool rounds) is EXACTLY one JSON object. Start your response with `{` and end with `}`.
+
+- NO preamble. NO commentary. NO narration of your reasoning ("I need to understand...", "Let me analyze...", "The operator is asking...").
+- NO markdown fences. NO prose. NO analysis.
+- The operator's message may contain long-form markdown, analysis, or chat-style content — DO NOT mirror that style. You produce JSON only.
+
+Valid shapes:
+  Picks:        {"selected":[{"id":"<8charhex>","why":"...","mode":"fact|arc|background"}]}
+  Confirmation: {"selected":[],"reason":"pure confirmation, no topic to surface"}
+
+The runner fail-louds on any non-JSON output. JSON only.

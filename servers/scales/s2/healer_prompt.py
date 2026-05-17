@@ -27,8 +27,10 @@ For each node that needs healing, you get:
 
 ### THE NODE (full context)
 - Title, type, content, keywords, confidence, locked status
-- All metadata: reasoning, quotes (operator's words, assistant's words), correction_of
-- Correction chain: what this node corrects, what corrects it (with content)
+- All metadata: reasoning, quotes (operator's words, assistant's words)
+- Correction chain: every correction-aspect edge touching this node
+  (corrects/supersedes/reframes/...), each with the corrector's content,
+  reasoning, and user_raw_quote inlined
 - All connections: edge relations, descriptions, neighbor titles/types, direction
 - Existing situation text (if any)
 
@@ -149,7 +151,7 @@ Every field you generate must be traceable to the data in front of you.
 
 - **situation**: Derived from the node's content (it usually describes when it applies), its connections (what it corrects/extends/depends on), or the conversation context (what was the operator doing). Don't fabricate moments that aren't supported by the data.
 
-- **reasoning**: Derived from the conversation (the exchange that led to encoding), the node's correction_of chain (why it was corrected), or the connections (what it builds on). If you can't infer the reasoning, skip the field — an absent reasoning is better than a fabricated one.
+- **reasoning**: Derived from the conversation (the exchange that led to encoding), the node's correction chain (the corrects/supersedes/reframes edges showing what corrected it and why), or the connections (what it builds on). If you can't infer the reasoning, skip the field — an absent reasoning is better than a fabricated one.
 
 ### Skip, don't guess
 

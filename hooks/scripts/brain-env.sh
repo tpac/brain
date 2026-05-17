@@ -26,3 +26,9 @@ export PATH="$PLUGIN_DIR/venv/bin:$PATH"
 
 # Ensure nothing in the shell environment overrides venv resolution
 unset PYTHONHOME
+
+# Surface variant — v5_agentic enables the Haiku tool-use loop (recall_*,
+# expand_node, etc.) plus the final-round force-select code path. Without
+# this, the registered surface prompt runs under the legacy v4 single-shot
+# path and tools never fire. Rollback: unset this var and restart the daemon.
+export BRAIN_SURFACE_VARIANT="v5_agentic"
