@@ -348,29 +348,6 @@ EDGE_PRUNE_THRESHOLD = 0.1  # Edges below this weight after decay are deleted
 CRITICAL_BOOST = 3.0              # Recall score multiplier for critical=1 nodes
 CRITICAL_SIMILARITY_THRESHOLD = 0.20  # Lowered embedding threshold for critical nodes
 
-# ═══════════════════════════════════════════════════════════════
-# Recall score modulation by session history + node aspect
-# (replaces the uniform degree-fatigue applied to all nodes pre-2026-05-17)
-# ═══════════════════════════════════════════════════════════════
-
-# A node with this many structural edges is a "hub" — recall keeps the
-# degree-aware fatigue formula for hubs so they don't crowd every turn.
-HUB_DEGREE_THRESHOLD = 20
-
-# Identity-bearing aspect (locked rule/principle/identity/vision) gets a
-# two-state lifecycle: surface ONCE per session, then suppress hard. The
-# initial boost makes sure they reach Anchor's top-25 even when a niche
-# query out-cosines them; the repeat dampen pushes them out of the candidate
-# pool after they've been recalled at least once this session so the surface
-# doesn't reload the same identity nodes turn after turn.
-IDENTITY_INITIAL_BOOST = 1.15      # first touch this session
-IDENTITY_REPEAT_DAMPEN = 0.20      # any subsequent touch
-
-# Non-identity, non-hub nodes get a small recency boost when they've been
-# touched this session — working-thread continuity. Counters the previous
-# uniform-dampening behavior that was eating live conversation anchors.
-RECENCY_BOOST = 1.05
-
 # Graph traversal
 SPREAD_DECAY = 0.5
 MAX_HOPS = 3
