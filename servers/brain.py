@@ -1320,11 +1320,18 @@ class Brain(
 
     # log_conflict + resolve_conflict REMOVED 2026-04-05 — conflict_log table dropped
 
-    def _log_error(self, source: str, error: Exception, context: str = ''):
+    def _log_error(self, source: str, error: Exception, context: str = '',
+                   ctx=None):
         """Log an error to brain_logs.db + brain.log with rate limiting.
 
         Replaces silent `except: pass` blocks. Errors are stored in the logs DB
         and surfaced at boot via consciousness signals.
+
+        Parallel-session attribution: callers in hot paths (hook_recall,
+        S1 encode, MCP dispatch) can pass `ctx` for correct session
+        attribution on the log row. Callers without ctx fall back to the
+        deprecated `self.session_id` singleton — last-writer-wins under
+        parallel sessions, but log attribution is informational only.
         """
         try:
             import traceback
@@ -1339,6 +1346,7 @@ class Brain(
             tb = traceback.format_exception(type(error), error, error.__traceback__)
             tb_short = ''.join(tb[-3:]) if len(tb) > 3 else ''.join(tb)
 
+            _sid = (ctx.session_id if ctx is not None else self.session_id) or 'unknown'
             # Write to logs DB
             self._check_logs_db_size()
             self.logs_conn.execute('''
@@ -1346,7 +1354,7 @@ class Brain(
                   (session_id, event_type, source, metadata, created_at)
                 VALUES (?, 'error', ?, ?, ?)
             ''', (
-                self.session_id or 'unknown',  # XXX C-refactor: thread session_id through log callers
+                _sid,
                 source,
                 json.dumps({
                     'error': error_str,
@@ -1366,7 +1374,8 @@ class Brain(
             print('brain: error in %s: %s (context: %s)' % (source, error, context),
                   file=sys.stderr)
 
-    def _log_warning(self, source: str, message: str, context: str = ''):
+    def _log_warning(self, source: str, message: str, context: str = '',
+                     ctx=None):
         """Log a non-blocking warning to brain_logs.db + brain.log.
 
         For signals that are worth surfacing but aren't errors — empty-husk
@@ -1374,7 +1383,8 @@ class Brain(
         from _log_error: takes a string message rather than an Exception, and
         writes event_type='warning' so consumers can distinguish signal severity.
 
-        Rate-limited via the same machinery as _log_error.
+        Rate-limited via the same machinery as _log_error. `ctx` parameter
+        works the same way (per-session attribution; falls back to singleton).
         """
         try:
             # Rate limit check — compute fingerprint
@@ -1382,6 +1392,7 @@ class Brain(
             if self._check_rate_limit(source, fingerprint):
                 return  # suppressed
 
+            _sid = (ctx.session_id if ctx is not None else self.session_id) or 'unknown'
             # Write to logs DB
             self._check_logs_db_size()
             self.logs_conn.execute('''
@@ -1389,7 +1400,7 @@ class Brain(
                   (session_id, event_type, source, metadata, created_at)
                 VALUES (?, 'warning', ?, ?, ?)
             ''', (
-                self.session_id or 'unknown',  # XXX C-refactor: thread session_id through log callers
+                _sid,
                 source,
                 json.dumps({
                     'message': message,

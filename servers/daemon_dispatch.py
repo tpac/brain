@@ -30,6 +30,25 @@ def _resolve_id(brain, node_id):
     return full_id if full_id else node_id  # Not found — let the caller handle the error
 
 
+def _pop_session_ctx(brain, args):
+    """Pop session_id from args, return (ctx, args).
+
+    Handlers that pass `**args` into a brain method should call this first.
+    session_id is auto-injected by daemon_send() from CLAUDE_CODE_SESSION_ID;
+    without popping it, it cascades into the brain method's `**extra_fields`
+    and is silently stored as a `session_id` KV on every node — a real leak
+    from the auto-injection convenience. Returns the resolved SessionContext
+    (or None), ready to pass as an explicit `ctx=` kwarg.
+    """
+    sid = args.pop('session_id', None)
+    if not sid:
+        return None, args
+    try:
+        return brain.get_or_create_session(sid), args
+    except Exception:
+        return None, args
+
+
 class CmdEntry(NamedTuple):
     handler: Callable
     is_write: bool
@@ -288,6 +307,11 @@ def _handle_backfill_vectors(brain, args, graph_changes):
 def _handle_remember(brain, args, graph_changes):
     from .contract import validate_field, get_remember_fields
 
+    # session_id is a control field — strip BEFORE validation/passthrough so
+    # it doesn't land in node_metadata_kv as silent metadata. Loads ctx for
+    # per-session record_remember + add_to_segment routing inside remember().
+    ctx, args = _pop_session_ctx(brain, args)
+
     # Validate all provided fields against contract
     for field, value in args.items():
         ok, err = validate_field(field, value)
@@ -298,7 +322,13 @@ def _handle_remember(brain, args, graph_changes):
     # promoted fields to metadata, everything else to node_metadata_kv as extra_fields.
     # Don't filter — remember() handles routing via **extra_fields kwargs.
     remember_args = {k: v for k, v in args.items() if v is not None}
-    result = brain.remember(**remember_args)
+    result = brain.remember(**remember_args, ctx=ctx)
+    if ctx is not None:
+        try:
+            ctx.save(brain.logs_conn)
+        except Exception as _se:
+            brain._log_error('dispatch_ctx_save', _se,
+                             'persisting session activity after remember')
     node_id = result.get("id", "?")[:8] if isinstance(result, dict) else "?"
     graph_changes.append(
         "REMEMBER: [%s] %s (%s...)" % (
@@ -308,6 +338,11 @@ def _handle_remember(brain, args, graph_changes):
 
 def _handle_remember_batch(brain, args, graph_changes):
     from .contract import validate_field, get_remember_fields
+
+    # Pop session_id BEFORE spec scrubbing so per-node specs don't inherit
+    # control fields. Also strip from each spec defensively in case the
+    # caller bundled it inside a node spec.
+    ctx, args = _pop_session_ctx(brain, args)
 
     nodes = args.get("nodes", [])
     if not nodes:
@@ -319,6 +354,7 @@ def _handle_remember_batch(brain, args, graph_changes):
 
     cleaned_nodes = []
     for i, spec in enumerate(nodes):
+        spec.pop('session_id', None)  # defensive: not a node field
         for field, value in spec.items():
             ok, err = validate_field(field, value)
             if not ok:
@@ -333,7 +369,14 @@ def _handle_remember_batch(brain, args, graph_changes):
     result = brain.remember_batch(
         nodes=cleaned_nodes,
         connect_to=args.get("connect_to"),
-        auto_connect=args.get("auto_connect", True))
+        auto_connect=args.get("auto_connect", True),
+        ctx=ctx)
+    if ctx is not None:
+        try:
+            ctx.save(brain.logs_conn)
+        except Exception as _se:
+            brain._log_error('dispatch_ctx_save', _se,
+                             'persisting session activity after remember_batch')
     graph_changes.append("REMEMBER_BATCH: %d nodes" % result.get("nodes_created", 0))
     return {"ok": True, "result": result}
 
@@ -602,6 +645,10 @@ def _handle_brain_batch(brain, args, graph_changes):
     VALID_OPS = {"remember", "revise", "connect", "disconnect", "archive"}
 
     top_encoding_source = args.get("encoding_source")
+    # Propagate session_id to each op so sub-handlers can load ctx per op.
+    # (Each sub-handler will pop session_id and load its own ctx; cheap
+    # session_state reads + writes, acceptable for a batch of 1-10 ops.)
+    top_session_id = args.get("session_id", "")
     results = []
 
     # Sibling-aware connect_to: defer per-op connect_to from `remember` ops
@@ -625,6 +672,8 @@ def _handle_brain_batch(brain, args, graph_changes):
                            if k not in ("op", "connect_to")}
                 if top_encoding_source and "encoding_source" not in op_args:
                     op_args["encoding_source"] = top_encoding_source
+                if top_session_id and "session_id" not in op_args:
+                    op_args["session_id"] = top_session_id
                 # Same fix as remember_batch: disable inner remember()'s
                 # conversation-context auto_connect inside batches so it
                 # doesn't create reverse-direction co_accessed edges between
@@ -1035,10 +1084,12 @@ def _handle_recall_batch(brain, args, graph_changes):
     queries = args.get("queries", [])
     limit = args.get("limit", 5)
     batch_filter = args.get("filter")
+    sid = args.get("session_id", "")
     results = []
     for q in queries[:10]:  # cap at 10 queries
         try:
-            result = brain.recall(query=q, filter=batch_filter, limit=limit, source='mcp')
+            result = brain.recall(query=q, filter=batch_filter, limit=limit,
+                                  session_id=sid, source='mcp')
             results.append({"query": q, "results": result.get("results", [])})
         except Exception as e:
             results.append({"query": q, "results": [], "error": str(e)})

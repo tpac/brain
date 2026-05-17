@@ -221,13 +221,16 @@ def hook_recall(brain, args, graph_changes):
     # Recall — logging happens inside brain.recall() (single source of truth)
     try:
         from .pipeline_contract import CANDIDATES_FILE as _CF
+        # Pass ctx directly — already loaded above, skip the redundant DB
+        # lookup recall would otherwise do. ctx mutations (fatigue, segment)
+        # are saved at turn end in post_response_common.
         result = brain.recall(query=enriched, limit=_CF['max_candidates'],
-                              session_id=session_id, source='hook')
+                              ctx=ctx, source='hook')
     except Exception as e:
         brain._log_error('recall_first_attempt', e, 'hook_recall')
         from .pipeline_contract import CANDIDATES_FILE as _CF
         result = brain.recall(query=enriched, limit=_CF['max_candidates'],
-                              session_id=session_id, source='hook')
+                              ctx=ctx, source='hook')
 
     results = result.get("results", [])
     pt.mark('recall')

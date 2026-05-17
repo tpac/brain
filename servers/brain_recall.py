@@ -990,7 +990,8 @@ class BrainRecallMixin:
                include_archived: bool = False,
                min_recency: float = 0, project: Optional[str] = None,
                session_id: Optional[str] = None,
-               situation_vec=None, source: str = 'unknown') -> Dict[str, Any]:
+               situation_vec=None, source: str = 'unknown',
+               ctx=None) -> Dict[str, Any]:
         """Recall: embeddings + 3-degree graph traversal + keyword blending + situation matching.
 
         Args:
@@ -1024,6 +1025,11 @@ class BrainRecallMixin:
         Replaces the dispatch + brain.pre_edit caches: every recall caller
         (pre_edit, pre_bash_safety, hook_recall, MCP) now benefits.
         """
+        # Resolve session_id from ctx when caller passed an object; ctx wins
+        # over session_id if both supplied (Tom's convention: pass the object).
+        if ctx is not None and not session_id:
+            session_id = ctx.session_id
+
         # Build dedup key from result-affecting params.
         try:
             filter_key = json.dumps(filter, sort_keys=True, default=str) if filter else None
@@ -1058,7 +1064,7 @@ class BrainRecallMixin:
                 result = self._run_recall_with_commit(
                     query=query, filter=filter, limit=limit, offset=offset,
                     include_archived=include_archived, min_recency=min_recency,
-                    project=project, session_id=session_id,
+                    project=project, session_id=session_id, ctx=ctx,
                     situation_vec=situation_vec, source=source)
                 self._recall_cache_put(dedup_key, result)
                 inflight.set_result(result)
@@ -1073,7 +1079,7 @@ class BrainRecallMixin:
         return self._run_recall_with_commit(
             query=query, filter=filter, limit=limit, offset=offset,
             include_archived=include_archived, min_recency=min_recency,
-            project=project, session_id=session_id,
+            project=project, session_id=session_id, ctx=ctx,
             situation_vec=situation_vec, source=source)
 
     def _run_recall_with_commit(self, **kwargs):
@@ -1176,7 +1182,7 @@ class BrainRecallMixin:
                      offset: int = 0, include_archived: bool = False,
                      min_recency: float = 0, project=None,
                      session_id=None, situation_vec=None,
-                     source: str = 'unknown') -> Dict[str, Any]:
+                     source: str = 'unknown', ctx=None) -> Dict[str, Any]:
         """Actual recall implementation — hot path. Single-flight wrapper
         in recall() ensures only one of these runs per (query, scope) at
         a time across the daemon."""
@@ -1280,23 +1286,22 @@ class BrainRecallMixin:
             # reason. Now paid once. Idempotent if Brain.warm_up() already
             # built the structural cache during daemon boot.
             self._ensure_structural_degree_cache()
-            # Per-session fatigue snapshot — load ctx ONCE per recall call,
-            # use locals through scoring. The previous pattern lazy-cached
-            # the first session's ctx on `self._fatigue_ctx` and reused it
-            # for every subsequent recall regardless of session → parallel
-            # sessions read each other's fatigue. ctx is saved at end of
-            # _recall_impl so fatigue increments (via _mark_accessed below)
-            # persist for the next recall in this session.
-            _recall_ctx = None
+            # Per-session fatigue snapshot — prefer the SessionContext the
+            # caller passed in (Tom's convention); otherwise load fresh from
+            # session_id. ctx is saved at end of _recall_impl so fatigue
+            # increments (via _mark_accessed below) persist for the next
+            # recall in this session.
+            _recall_ctx = ctx
             _recall_fatigue: Dict[str, int] = {}
-            if session_id:
+            if _recall_ctx is None and session_id:
                 try:
                     _recall_ctx = self.get_or_create_session(session_id)
-                    _recall_fatigue = _recall_ctx.fatigue if _recall_ctx else {}
                 except Exception as _ferr:
                     self._log_error('recall_fatigue_ctx', _ferr,
                                     'loading session ctx for fatigue dampening — '
                                     'falling back to empty fatigue')
+            if _recall_ctx is not None:
+                _recall_fatigue = _recall_ctx.fatigue
             # Per-node data collected here for unified_score() in STEP 6.
             # created_at/emotion/access_count feed the modulator formula.
             node_created_at = {}    # node_id → ISO timestamp (for freshness)
@@ -1847,9 +1852,11 @@ class BrainRecallMixin:
             except Exception as _e:
                 self._log_error("recall", _e, "marking node as accessed for Hebbian learning")
 
-        # Persist fatigue increments — caller (post_response_common) may
-        # reload ctx fresh from DB; without this save, increments are lost.
-        if _recall_ctx is not None:
+        # Persist fatigue increments. If caller passed `ctx` explicitly, it
+        # owns the save (one save per turn at the hook boundary). When we
+        # loaded ctx internally from session_id, save here so increments
+        # aren't lost when the next post_response_common reloads fresh.
+        if _recall_ctx is not None and ctx is None:
             try:
                 _recall_ctx.save(self.logs_conn)
             except Exception as _se:

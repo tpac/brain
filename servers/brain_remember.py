@@ -567,6 +567,7 @@ class BrainRememberMixin:
                  scope: Optional[str] = None,
                  auto_connect: bool = True,
                  connect_to: Optional[List[Any]] = None,
+                 ctx=None,
                  **extra_fields) -> Dict[str, Any]:
         """
         Store a new memory node with semantic indexing and connections.
@@ -755,21 +756,28 @@ class BrainRememberMixin:
             self._log_error('bridge_at_store', e, 'emergent bridging for node %s' % node_id[:12])
 
         # v5: Track encoding for heartbeat + segment tracking.
-        # XXX C-refactor: remember() has no session_id / ctx parameter, so
-        # both paths fall back to the deprecated singleton. Under parallel
-        # sessions, last-writer-wins on `brain.session_id` routes counts
-        # and segment membership into the wrong session. Empty session_id
-        # is a silent no-op in both callees. Fix: thread SessionContext
-        # through remember() / remember_batch() / MCP dispatch.
-        _sid = self.session_id
-        if _sid:
+        # Per-session via the ctx passed in by the caller (dispatch handlers
+        # load ctx from args.session_id). Falls back to the deprecated
+        # `self.session_id` singleton when no ctx is provided — non-MCP
+        # callers (seed_pack, migrations, healer) take this path and don't
+        # care about parallel-session attribution.
+        _ctx_for_attr = ctx
+        if _ctx_for_attr is None and self.session_id:
             try:
-                _ctx = self.get_or_create_session(_sid)
-                self.record_remember(_ctx)
-                _ctx.save(self.logs_conn)
+                _ctx_for_attr = self.get_or_create_session(self.session_id)
+            except Exception:
+                _ctx_for_attr = None
+        if _ctx_for_attr is not None:
+            try:
+                self.record_remember(_ctx_for_attr)
+                # Caller saves ctx (dispatch handler does it after the
+                # write); fallback ctx loaded here we save inline.
+                if ctx is None:
+                    _ctx_for_attr.save(self.logs_conn)
             except Exception as e:
                 self._log_error('record_remember', e, 'tracking encoding for heartbeat')
         try:
+            _sid = _ctx_for_attr.session_id if _ctx_for_attr else ''
             self.add_to_segment(node_id, _sid)
         except Exception as e:
             self._log_error('add_to_segment', e, 'tracking node %s in conversation segment' % node_id[:12])
@@ -1497,7 +1505,8 @@ class BrainRememberMixin:
 
     def remember_batch(self, nodes: List[Dict],
                         connect_to: Optional[List[str]] = None,
-                        auto_connect: bool = True) -> Dict[str, Any]:
+                        auto_connect: bool = True,
+                        ctx=None) -> Dict[str, Any]:
         """Create multiple nodes in one call. Each node uses the same contract as remember().
 
         Args:
@@ -1534,7 +1543,7 @@ class BrainRememberMixin:
                 spec.setdefault('auto_connect', False)
             else:
                 ct_spec = None
-            result = self.remember(**spec)
+            result = self.remember(**spec, ctx=ctx)
             results.append(result)
             if result.get('id'):
                 created_ids.append(result['id'])
