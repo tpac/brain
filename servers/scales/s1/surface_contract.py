@@ -4,7 +4,7 @@ S1 Surface pushes relevant memories into awareness. This contract defines:
 - What the surfacer sees (SURFACE config, CANDIDATES_FILE, neighbor fields)
 - How candidates are formatted (format_candidate_for_surface, enrich_candidate_metadata)
 - How the prompt is assembled (build_surface_prompt)
-- How output is formatted for Claude (format_surface_output)
+- How output is formatted for Anchor (format_surface_output_activation)
 - Correction enrichment (correction_enrich — shared with encoding)
 
 Interaction: 'surface' in interactions table. Prompt is learnable.
@@ -608,19 +608,12 @@ Candidates:
     return user_content, cfg['max_tokens']
 
 
-SURFACE_FORMAT = {
-    'content_limit': 400, 'edge_limit': 3, 'metadata_limit': 150, 'time_format': 'relative',
-    # Surface strips decision/debug fields — keeps content, situation, edges
-    # (what Anchor needs to respond). Judge reasoning, question, keywords, model
-    # provenance, and confidence score aren't action-taking context.
-    'show_confidence': False,
-    'show_encoding_source': False,
-    'show_keywords': False,
-    'extra_skip_keys': ('question', 'reasoning'),
-    # Corrections render with relation verb + edge_description + ~150-char
-    # content excerpt. Cheap upgrade from legacy title-only render.
-    'correction_render': 'balanced',
-}
+# `SURFACE_FORMAT` removed 2026-05-17 — only ever used by the dead
+# `format_surface_output` legacy renderer. The live path is
+# `format_surface_output_activation` (called from surface.py:835), which
+# builds its own per-mode config dicts in `_render_node_activation`. The
+# legacy constant + function misled a code review into believing the
+# config was authoritative when it wasn't reached at runtime.
 HAIKU_FORMAT = {
     'content_limit': 300, 'edge_limit': 3, 'metadata_limit': 120,
     'time_format': 'relative',
@@ -1926,129 +1919,3 @@ def format_surface_output_activation(node_activation, field_activation,
         remaining -= len(rendered) + 2
 
     return '\n'.join(lines)
-
-
-def format_surface_output(selected, candidates, graph_neighbors=None):
-    """LEGACY: Format surfaced selections into structured additionalContext.
-
-    Kept temporarily for callers that haven't migrated to
-    format_surface_output_activation. New work should use the activation
-    renderer which replaces this function's combination of
-    SURFACE_FORMAT + inline-neighbor rendering.
-
-    Per-node rendering delegates to render_rich_node() with SURFACE_FORMAT.
-    Candidates must be in get_rich_node() shape (_metadata, _corrections, connections present).
-    This function adds: collection header, relevance reasoning, graph neighbors.
-    """
-    from servers.contract import render_rich_node
-
-    cfg = SURFACE
-    if not selected:
-        return ""
-
-    # Build a lookup from candidate ID (first 8 chars) to full candidate data
-    candidates_by_id = {}
-    for c in candidates:
-        short_id = str(c.get("id", ""))[:8]
-        candidates_by_id[short_id] = c
-
-    lines = ["Brain recalled %d memories:\n" % len(selected)]
-
-    # Track all IDs in selected nodes + their connections for neighbor dedup
-    seen_ids = set()
-
-    for s in selected[:cfg['max_selected']]:
-        sid = str(s.get("id", ""))[:8]
-        why = s.get("why", "")
-        c = candidates_by_id.get(sid)
-
-        if not c:
-            continue
-
-        seen_ids.add(c.get("id", ""))
-        seen_ids.add(sid)
-        # Track connection IDs for dedup
-        for conn in c.get("connections", []):
-            seen_ids.add(conn.get("id", ""))
-            seen_ids.add(conn.get("id", "")[:8])
-
-        # Per-node rendering — single formatter
-        # _corrections and connections already present from get_rich_node
-        is_locked_rule = (c.get('type') == 'rule' and c.get('locked'))
-        if is_locked_rule:
-            lines.append("━━━ ACTIVE RULE (locked, applies to this response) ━━━")
-            lines.append(render_rich_node(c, SURFACE_FORMAT))
-            lines.append("Before finalizing your response, check: does this rule apply? "
-                         "If you're about to do what the rule forbids or skip what it requires, stop and correct.")
-            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        else:
-            lines.append(render_rich_node(c, SURFACE_FORMAT))
-
-        # Surfacer's relevance reasoning (S1-specific, not in render_rich_node)
-        if why:
-            lines.append("Relevance: %s" % why)
-
-        lines.append("")  # blank line between nodes
-
-    # Graph neighbors — connected knowledge from surface-selected seeds
-    # Dedup: skip nodes already shown as selected nodes or their connections
-    if graph_neighbors:
-        deduped = [nb for nb in graph_neighbors
-                   if nb.get("id", "") not in seen_ids and nb.get("id", "")[:8] not in seen_ids]
-        if deduped:
-            # Map seed IDs → titles so we can say "corrects 'S1 Surface...'" by
-            # name instead of leaving the relation dangling.
-            seed_titles = {}
-            for c in candidates:
-                cid = c.get('id', '')
-                if cid:
-                    seed_titles[cid] = c.get('title', '')
-                    seed_titles[cid[:8]] = c.get('title', '')
-
-            lines.append("Related knowledge (via graph):")
-            for nb in deduped[:6]:
-                nid = nb.get('id', '') or ''
-                # Time marker: "1w ago" for unrevised, "created Xw ago, revised Yd ago" when revised
-                created = _relative_time(nb.get('created_at') or '')
-                revised = _relative_time(nb.get('revised_at') or '')
-                if revised and created and revised != created:
-                    time_str = "created %s, revised %s" % (created, revised)
-                elif created:
-                    time_str = created
-                else:
-                    time_str = ""
-                header_parts = ["id:%s" % nid[:8]]
-                if time_str:
-                    header_parts.append(time_str)
-                # Full title — no 60-char cap (readability > density)
-                lines.append('[%s] "%s" (%s)' % (
-                    nb.get("type", "?"),
-                    nb.get("title", "?"),
-                    ", ".join(header_parts)))
-
-                # Direction line — unambiguous who acts on whom. Matches the
-                # convention render_rich_node uses for in-node edges:
-                #   outgoing from seed (seed→rel→this):  "seed" rel this
-                #   incoming to seed (this→rel→seed):    this rel "seed"
-                seed_id = nb.get('seed_id', '') or ''
-                seed_title = seed_titles.get(seed_id) or seed_titles.get(seed_id[:8]) or '(seed)'
-                edge_type = nb.get('edge_type', 'related')
-                edge_desc = nb.get('edge_description', '')
-                direction = nb.get('direction', '')
-                if direction == 'outgoing':
-                    # Edge was seed → this neighbor; seed is the subject
-                    rel_line = '  "%s" %s this' % (seed_title, edge_type)
-                else:
-                    # Edge was this neighbor → seed; neighbor is the subject
-                    rel_line = '  this %s "%s"' % (edge_type, seed_title)
-                if edge_desc:
-                    rel_line += ' — ' + edge_desc
-                lines.append(rel_line)
-
-                # Content snippet last
-                content = (nb.get("content") or "")[:200]
-                if content:
-                    lines.append("  %s" % content)
-                lines.append("")  # blank line between neighbors
-
-    return "\n".join(lines)

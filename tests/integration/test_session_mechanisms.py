@@ -437,7 +437,6 @@ class Test08_ImportIntegrity(unittest.TestCase):
         """
         from servers import pipeline_contract as mod
         self.assertTrue(hasattr(mod, 'build_surface_prompt'))
-        self.assertTrue(hasattr(mod, 'format_surface_output'))
         # EMBEDDING_GROUPS may have been renamed; check for either.
         self.assertTrue(hasattr(mod, 'EMBEDDING_GROUPS') or
                         hasattr(mod, 'field_vector_types'),

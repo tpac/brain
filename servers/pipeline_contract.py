@@ -497,14 +497,12 @@ from .scales.s1.surface_contract import (  # noqa: E402, F401
     PRECISION,
     format_candidate_for_surface,
     build_surface_prompt,
-    format_surface_output,
     enrich_candidate_metadata,
     correction_enrich,
 )
 JUDGE = SURFACE  # legacy alias
 format_candidate_for_judge = format_candidate_for_surface
 build_judge_prompt = build_surface_prompt
-format_judge_output = format_surface_output
 
 from .scales.s1.encode_contract import (  # noqa: E402, F401
     ENCODING_AGENT,

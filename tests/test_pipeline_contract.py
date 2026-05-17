@@ -4,7 +4,6 @@ Covers:
 - EMBEDDING_GROUPS contract integrity
 - format_candidate_for_surface output structure
 - build_surface_prompt assembly
-- format_surface_output with and without graph neighbors
 - get_group_weight lookups
 """
 
@@ -21,7 +20,6 @@ from servers.pipeline_contract import (
     get_group_fields,
     format_candidate_for_surface,
     build_surface_prompt,
-    format_surface_output,
     SURFACE,
 )
 
@@ -213,48 +211,3 @@ class TestBuildSurfacePrompt(unittest.TestCase):
 
 class TestFormatSurfaceOutput(unittest.TestCase):
     """Verify structured output formatting."""
-
-    def test_empty_selected(self):
-        result = format_surface_output([], [])
-        self.assertEqual(result, "")
-
-    def test_basic_output(self):
-        selected = [{'id': 'abc12345', 'why': 'directly relevant'}]
-        candidates = [{'id': 'abc12345', 'type': 'rule', 'title': 'Test rule',
-                       'content': 'Some content', 'confidence': 0.9}]
-        result = format_surface_output(selected, candidates)
-        self.assertIn('Brain recalled 1 memories', result)
-        self.assertIn('Test rule', result)
-        self.assertIn('directly relevant', result)
-
-    def test_graph_neighbors_included(self):
-        selected = [{'id': 'abc12345', 'why': 'relevant'}]
-        candidates = [{'id': 'abc12345', 'type': 'rule', 'title': 'Test',
-                       'content': 'Content'}]
-        neighbors = [{'type': 'mechanism', 'title': 'Neighbor node',
-                      'edge_type': 'depends_on', 'edge_description': 'because X',
-                      'content': 'Neighbor content'}]
-        result = format_surface_output(selected, candidates, neighbors)
-        self.assertIn('Related knowledge', result)
-        self.assertIn('Neighbor node', result)
-        self.assertIn('depends_on', result)
-
-    def test_no_graph_neighbors(self):
-        selected = [{'id': 'abc12345', 'why': 'relevant'}]
-        candidates = [{'id': 'abc12345', 'type': 'rule', 'title': 'Test',
-                       'content': 'Content'}]
-        result = format_surface_output(selected, candidates)
-        self.assertNotIn('Related knowledge', result)
-
-    def test_selected_not_in_candidates(self):
-        """Selected node not found in candidates — should be skipped."""
-        selected = [{'id': 'missing', 'why': 'relevant'}]
-        candidates = [{'id': 'abc12345', 'type': 'rule', 'title': 'Test',
-                       'content': 'Content'}]
-        result = format_surface_output(selected, candidates)
-        self.assertIn("Brain recalled 1 memories", result)
-        self.assertNotIn("Test", result)  # Candidate content shouldn't appear
-
-
-if __name__ == '__main__':
-    unittest.main()
