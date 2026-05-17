@@ -8,6 +8,9 @@ SessionContext carries:
 - session_id: identity (from Claude Code hook args)
 - stop_counter: which stop we're on
 - fatigue: {node_id: access_count} for synaptic fatigue (resets between sessions)
+- activity counters (remember_count, message_count, edit_check_count,
+  last_encode_at_message, boot_time) — replaces the brain_meta globals
+  that leaked across parallel sessions before 2026-05-17
 
 Usage:
     # In a hook:
@@ -33,6 +36,13 @@ class SessionContext:
         self.stop_counter = stop_counter
         self.fatigue: Dict[str, int] = {}  # {node_id: access_count} — resets between sessions
         self.edge_fatigue: Dict[str, int] = {}  # {target_node_id: surface_count} — edge rotation
+        # Activity counters — were global brain_meta keys (leaked across
+        # parallel sessions). Persisted in session_state alongside fatigue.
+        self.remember_count: int = 0
+        self.message_count: int = 0
+        self.edit_check_count: int = 0
+        self.last_encode_at_message: int = 0
+        self.boot_time: str = ''  # ISO timestamp; empty means not booted yet
 
     @classmethod
     def from_hook_args(cls, args: dict) -> 'SessionContext':
@@ -111,13 +121,19 @@ class SessionContext:
     def save(self, conn: sqlite3.Connection):
         """Save session context to DB. Creates or updates.
 
-        Includes fatigue as JSON — single row replaces 52K per-node rows.
+        Includes fatigue + activity counters as JSON — single row replaces
+        52K per-node rows and 6 leaky brain_meta globals.
         """
         now = datetime.now(timezone.utc).isoformat()
         data = json.dumps({
             'stop_counter': self.stop_counter,
             'fatigue': self.fatigue,
             'edge_fatigue': self.edge_fatigue,
+            'remember_count': self.remember_count,
+            'message_count': self.message_count,
+            'edit_check_count': self.edit_check_count,
+            'last_encode_at_message': self.last_encode_at_message,
+            'boot_time': self.boot_time,
         })
         conn.execute(
             'INSERT OR REPLACE INTO session_state (session_id, key, node_id, value, updated_at) '
@@ -141,6 +157,11 @@ class SessionContext:
             )
             ctx.fatigue = {k: int(v) for k, v in data.get('fatigue', {}).items()}
             ctx.edge_fatigue = {k: int(v) for k, v in data.get('edge_fatigue', {}).items()}
+            ctx.remember_count = int(data.get('remember_count', 0))
+            ctx.message_count = int(data.get('message_count', 0))
+            ctx.edit_check_count = int(data.get('edit_check_count', 0))
+            ctx.last_encode_at_message = int(data.get('last_encode_at_message', 0))
+            ctx.boot_time = data.get('boot_time', '') or ''
             return ctx
         except (json.JSONDecodeError, TypeError):
             return None

@@ -466,7 +466,8 @@ class BrainAssemblyMixin:
     # list_staged, confirm_staged, dismiss_staged, auto_promote_staged
     # REMOVED 2026-04-06 — staged_learnings table dropped
 
-    def pre_edit(self, file: str, tool_name: str = 'Edit') -> dict:
+    def pre_edit(self, file: str, tool_name: str = 'Edit',
+                 session_id: str = '') -> dict:
         """
         Batch pre-edit call combining all lookups into one.
         Replaces 8 sequential HTTP calls from the old architecture.
@@ -504,12 +505,17 @@ class BrainAssemblyMixin:
         proc_result = self.procedure_trigger('pre_edit', {'file': file, 'tool': tool_name})
         timings['procedures_ms'] = round((_time.time() - t2) * 1000)
 
-        # 3. Encoding health
-        activity = self._get_session_activity()
-        boot_time = activity.get('boot_time', self.now())
-        remembers = int(activity.get('remember_count', 0))
-        edits_checked = int(activity.get('edit_check_count', 0))
-        last_remember = activity.get('last_remember_at', None)
+        # 3. Encoding health — per-session counters via SessionContext
+        if session_id:
+            ctx = self.get_or_create_session(session_id)
+            boot_time = ctx.boot_time or self.now()
+            remembers = ctx.remember_count
+            edits_checked = ctx.edit_check_count
+        else:
+            # XXX C-refactor: thread session_id through hook_pre_edit + MCP pre_edit
+            boot_time = self.now()
+            remembers = 0
+            edits_checked = 0
 
         # Compute session minutes
         try:
@@ -521,20 +527,15 @@ class BrainAssemblyMixin:
             self._log_error('pre_edit_session_minutes', e, 'computing session minutes from boot time')
             session_minutes = 0
 
-        # Compute minutes since last remember
-        mins_since_remember = 0
-        if last_remember:
-            try:
-                last_dt = _dt.fromisoformat(last_remember.replace('Z', '+00:00'))
-                mins_since_remember = (now_dt - last_dt).total_seconds() / 60
-            except Exception as _e:
-                self._log_error("pre_edit", _e, "last_dt = _dt.fromisoformat(last_remember.replace(")
-
-        # Determine encoding health status
+        # Determine encoding health status.
+        # Note: minutes_since_last_remember was historically computed from
+        # `last_remember_at` — a key never written by any writer. The STALE
+        # branch never fired. Health collapses to NONE-or-OK by edit_check
+        # count only.
         edits_since = edits_checked  # approximate — reset on each remember
         if remembers == 0 and session_minutes > 3:
             encoding_health = 'NONE'
-        elif edits_since > 8 and mins_since_remember > 5:
+        elif edits_since > 8:
             encoding_health = 'STALE'
         else:
             encoding_health = 'OK'
@@ -564,7 +565,7 @@ class BrainAssemblyMixin:
                 'health': encoding_health,
                 'remembers': remembers,
                 'edits_since_last_remember': edits_since,
-                'minutes_since_last_remember': round(mins_since_remember),
+                'minutes_since_last_remember': 0,  # XXX historical field, never wired
                 'session_minutes': round(session_minutes),
             },
             'embedder_ready': embedder.is_ready(),

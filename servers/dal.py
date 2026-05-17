@@ -969,23 +969,6 @@ class MetaDAL:
         """Set a JSON-encoded config value."""
         self.set(key, json.dumps(value))
 
-    def get_session_activity(self) -> Dict[str, Any]:
-        """Read all session activity keys."""
-        keys = ('remember_count', 'edit_check_count', 'session_id',
-                'message_count', 'last_encode_at_message', 'boot_time')
-        placeholders = ','.join('?' * len(keys))
-        cursor = self.conn.execute(
-            'SELECT key, value FROM brain_meta WHERE key IN (%s)' % placeholders,
-            keys
-        )
-        result = {}
-        for key, value in cursor.fetchall():
-            if key.endswith('_count') or key == 'last_encode_at_message':
-                result[key] = int(value) if value else 0
-            else:
-                result[key] = value
-        return result
-
     def increment(self, key: str) -> int:
         """Increment a counter and return new value."""
         current = self.get(key, "0")

@@ -376,7 +376,7 @@ def hook_recall(brain, args, graph_changes):
 
     sq_dal = SignalQueueDAL(brain.logs_conn)
     produce_reminders(brain, sq_dal)
-    produce_encoding_gap(brain, sq_dal)
+    produce_encoding_gap(brain, sq_dal, session_id=session_id)
     produce_system_health(brain, sq_dal)
     produce_integrity(brain, sq_dal)
     pt.mark('signals')
@@ -545,7 +545,7 @@ def post_response_common(brain, session_id, user_message, assistant_response):
 
     # Heartbeat
     try:
-        brain.record_message()
+        brain.record_message(session_id)
     except Exception as e:
         brain._log_error('record_message', e, 'post_response_common')
 
@@ -878,8 +878,9 @@ def hook_pre_edit(brain, args, graph_changes):
     if not filename:
         return {"json": {"decision": "approve"}}
 
+    session_id = args.get("session_id", "")
     try:
-        data = brain.pre_edit(file=filename, tool_name=tool_name)
+        data = brain.pre_edit(file=filename, tool_name=tool_name, session_id=session_id)
     except Exception as e:
         brain._log_error('pre_edit', e, 'hook_pre_edit')
         return {"json": {"decision": "approve"}}

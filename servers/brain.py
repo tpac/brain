@@ -491,17 +491,9 @@ class Brain(
 
 
     # ─── Session Activity Tracking ───
-
-    def _get_session_activity(self) -> Dict[str, Any]:
-        """Read session activity from brain_meta via DAL."""
-        try:
-            return self._meta.get_session_activity()
-        except Exception:
-            return {}
-
-    def _update_session_activity(self, key: str, value: Any):
-        """Write session activity to brain_meta via DAL."""
-        self._meta.set(key, str(value))
+    # Counters live on SessionContext, persisted via session_state.
+    # See record_remember / record_message / record_edit_check /
+    # get_encoding_heartbeat / reset_session_activity — all session-keyed.
 
     def session_context_for(self, session_id: str) -> str:
         """Per-session running journey summary (encoder's session arc).
@@ -644,20 +636,23 @@ class Brain(
     def reset_session_activity(self, session_id: str = ''):
         """Reset session counters. Session_id comes from hook args, not generated.
 
-        Also creates/updates SessionContext in DB for persistence across
-        daemon restarts.
+        Activity counters (remember_count, message_count, edit_check_count,
+        last_encode_at_message, boot_time) live on SessionContext now.
+        Two writes to brain_meta are retained as deprecated singleton
+        fallbacks (`session_id`, `boot_time`) for callers that haven't yet
+        been threaded with session_id — see XXX flags in _log_error,
+        brain_remember.remember(), and brain_assembly.pre_edit_check.
         """
         sid = session_id or uuid.uuid4().hex
-        self._update_session_activity('remember_count', 0)
-        self._update_session_activity('edit_check_count', 0)
-        self._update_session_activity('message_count', 0)
-        self._update_session_activity('last_encode_at_message', 0)
-        self._update_session_activity('boot_time', self.now())
-        self._update_session_activity('session_id', sid)
         self._cached_session_id = sid
-        # Persist SessionContext for daemon restart recovery
+        # XXX deprecated singleton fallback for un-threaded callers (see
+        # brain.session_id property + _log_error/_log_warning). C-refactor
+        # threads session_id through every call site and drops this write.
+        self._meta.set('session_id', sid)
+        # Persist SessionContext with fresh counters
         from .session_context import SessionContext
         ctx = SessionContext(session_id=sid)
+        ctx.boot_time = self.now()
         ctx.save(self.logs_conn)
         # v5.1: Reset segment state (per-session keys — parallel sessions safe)
         suffix = '_' + sid
@@ -772,40 +767,52 @@ class Brain(
             current.append(node_id)
             self.set_config('segment_node_ids_' + session_id, json.dumps(current))
 
-    def record_remember(self):
-        """Increment remember counter and mark last encode position."""
-        activity = self._get_session_activity()
-        count = activity.get('remember_count', 0) + 1
-        self._update_session_activity('remember_count', count)
-        # Track which message number the last encode happened at
-        msg_count = activity.get('message_count', 0)
-        self._update_session_activity('last_encode_at_message', msg_count)
+    def record_remember(self, session_id: str):
+        """Increment remember counter and mark last encode position.
 
-    def record_message(self):
+        Per-session: counters live on SessionContext, persisted via
+        session_state table. Empty session_id is a silent no-op.
+        """
+        if not session_id:
+            return
+        ctx = self.get_or_create_session(session_id)
+        ctx.remember_count += 1
+        ctx.last_encode_at_message = ctx.message_count
+        ctx.save(self.logs_conn)
+
+    def record_message(self, session_id: str):
         """Increment message counter. Called by hooks on each user message."""
-        activity = self._get_session_activity()
-        count = activity.get('message_count', 0) + 1
-        self._update_session_activity('message_count', count)
+        if not session_id:
+            return
+        ctx = self.get_or_create_session(session_id)
+        ctx.message_count += 1
+        ctx.save(self.logs_conn)
 
-    def record_edit_check(self):
+    def record_edit_check(self, session_id: str):
         """Increment edit check counter."""
-        activity = self._get_session_activity()
-        count = activity.get('edit_check_count', 0) + 1
-        self._update_session_activity('edit_check_count', count)
+        if not session_id:
+            return
+        ctx = self.get_or_create_session(session_id)
+        ctx.edit_check_count += 1
+        ctx.save(self.logs_conn)
 
-    def get_encoding_heartbeat(self, nudge_threshold: int = 8) -> Optional[Dict[str, Any]]:
+    def get_encoding_heartbeat(self, session_id: str,
+                               nudge_threshold: int = 8) -> Optional[Dict[str, Any]]:
         """Check if Claude should be nudged to encode learnings.
 
         Returns a nudge dict if messages since last encode exceeds threshold,
         None otherwise. The nudge includes context about what's been missed.
 
         Args:
+            session_id: session to check (per-session counters)
             nudge_threshold: Messages without encoding before nudging (default 8)
         """
-        activity = self._get_session_activity()
-        msg_count = int(activity.get('message_count', 0))
-        remember_count = int(activity.get('remember_count', 0))
-        last_encode_at = int(activity.get('last_encode_at_message', 0))
+        if not session_id:
+            return None
+        ctx = self.get_or_create_session(session_id)
+        msg_count = ctx.message_count
+        remember_count = ctx.remember_count
+        last_encode_at = ctx.last_encode_at_message
 
         messages_since_encode = msg_count - last_encode_at
 
@@ -1346,7 +1353,7 @@ class Brain(
                   (session_id, event_type, source, metadata, created_at)
                 VALUES (?, 'error', ?, ?, ?)
             ''', (
-                self._get_session_activity().get('session_id', 'unknown'),
+                self.session_id or 'unknown',  # XXX C-refactor: thread session_id through log callers
                 source,
                 json.dumps({
                     'error': error_str,
@@ -1389,7 +1396,7 @@ class Brain(
                   (session_id, event_type, source, metadata, created_at)
                 VALUES (?, 'warning', ?, ?, ?)
             ''', (
-                self._get_session_activity().get('session_id', 'unknown'),
+                self.session_id or 'unknown',  # XXX C-refactor: thread session_id through log callers
                 source,
                 json.dumps({
                     'message': message,

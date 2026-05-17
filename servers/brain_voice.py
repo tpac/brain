@@ -302,7 +302,7 @@ class BrainVoice:
 
         # ── Gather data ──
         ctx = brain.context_boot(user=user, project=project, task="session start")
-        brain.reset_session_activity()
+        brain.reset_session_activity(session_id=session_id)
 
         cs = {"reminders": brain.get_due_reminders()}
         health = brain.health_check(session_id="session_boot", auto_fix=True)

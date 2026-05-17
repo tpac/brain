@@ -143,6 +143,7 @@ def _handle_recall(brain, args, graph_changes):
 
 def _handle_heartbeat(brain, args, graph_changes):
     nudge = brain.get_encoding_heartbeat(
+        session_id=args.get("session_id", ""),
         nudge_threshold=args.get("threshold", 8))
     return {"ok": True, "result": {"nudge": nudge}}
 
@@ -214,7 +215,8 @@ def _handle_pre_edit(brain, args, graph_changes):
     handler stays simple."""
     file = args.get("file", "")
     tool_name = args.get("tool_name", "Edit")
-    data = brain.pre_edit(file=file, tool_name=tool_name)
+    session_id = args.get("session_id", "")
+    data = brain.pre_edit(file=file, tool_name=tool_name, session_id=session_id)
     try:
         data["change_impacts"] = brain.get_change_impact(file)
     except Exception as e:
@@ -233,14 +235,16 @@ def _handle_save(brain, args, graph_changes):
 
 
 def _handle_record_message(brain, args, graph_changes):
-    brain.record_message()
-    nudge = brain.get_encoding_heartbeat()
+    sid = args.get("session_id", "")
+    brain.record_message(sid)
+    nudge = brain.get_encoding_heartbeat(sid)
     return {"ok": True, "result": {"nudge": nudge}}
 
 
 def _handle_reset_session(brain, args, graph_changes):
-    brain.reset_session_activity(session_id=args.get("session_id", ""))
-    return {"ok": True, "result": {"status": "reset", "session_id": brain.session_id}}
+    sid = args.get("session_id", "")
+    brain.reset_session_activity(session_id=sid)
+    return {"ok": True, "result": {"status": "reset", "session_id": sid}}
 
 
 def _handle_set_config(brain, args, graph_changes):

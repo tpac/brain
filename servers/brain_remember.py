@@ -754,21 +754,20 @@ class BrainRememberMixin:
         except Exception as e:
             self._log_error('bridge_at_store', e, 'emergent bridging for node %s' % node_id[:12])
 
-        # v5: Track encoding for heartbeat
+        # v5: Track encoding for heartbeat + segment tracking.
+        # XXX C-refactor: remember() has no session_id parameter, so both
+        # calls fall back to the deprecated singleton. Under parallel
+        # sessions, last-writer-wins on `brain.session_id` routes counts
+        # and segment membership into the wrong session. Empty session_id
+        # is a silent no-op in both callees. Fix: thread session_id through
+        # remember() / remember_batch() / MCP dispatch.
+        _sid = self.session_id
         try:
-            self.record_remember()
+            self.record_remember(_sid)
         except Exception as e:
             self._log_error('record_remember', e, 'tracking encoding for heartbeat')
-
-        # v5.1: Track node in current conversation segment.
-        # XXX parallel-session leak: remember() has no session_id parameter,
-        # so we fall back to the deprecated singleton. Under parallel
-        # sessions, last-writer-wins on `brain.session_id` routes new nodes
-        # into the wrong session's segment. Empty session_id is a silent
-        # no-op (add_to_segment guards). Fix: thread session_id through
-        # remember() the same way encode.py threads it through dispatch.
         try:
-            self.add_to_segment(node_id, self.session_id)
+            self.add_to_segment(node_id, _sid)
         except Exception as e:
             self._log_error('add_to_segment', e, 'tracking node %s in conversation segment' % node_id[:12])
 
