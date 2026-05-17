@@ -941,12 +941,14 @@ class BrainRecallMixin:
         # Step 6: Pagination
         page = filtered[offset:offset + limit]
 
-        # Step 7: Mark accessed + Hebbian
+        # Step 7: Mark accessed (keyword-only fallback path).
+        # No ctx loaded — keyword recall doesn't use fatigue for scoring, so
+        # we skip ctx for the access marks too. access_count still updates.
         if not session_id:
             session_id = self.session_id
 
         for node in page:
-            self._mark_accessed(node['id'], session_id)
+            self._mark_accessed(node['id'], session_id, ctx=None)
 
         # v10: Hebbian co_accessed edge creation DISABLED.
         # Previously: every recall created co_accessed edges between all top-25 results.
@@ -1278,6 +1280,23 @@ class BrainRecallMixin:
             # reason. Now paid once. Idempotent if Brain.warm_up() already
             # built the structural cache during daemon boot.
             self._ensure_structural_degree_cache()
+            # Per-session fatigue snapshot — load ctx ONCE per recall call,
+            # use locals through scoring. The previous pattern lazy-cached
+            # the first session's ctx on `self._fatigue_ctx` and reused it
+            # for every subsequent recall regardless of session → parallel
+            # sessions read each other's fatigue. ctx is saved at end of
+            # _recall_impl so fatigue increments (via _mark_accessed below)
+            # persist for the next recall in this session.
+            _recall_ctx = None
+            _recall_fatigue: Dict[str, int] = {}
+            if session_id:
+                try:
+                    _recall_ctx = self.get_or_create_session(session_id)
+                    _recall_fatigue = _recall_ctx.fatigue if _recall_ctx else {}
+                except Exception as _ferr:
+                    self._log_error('recall_fatigue_ctx', _ferr,
+                                    'loading session ctx for fatigue dampening — '
+                                    'falling back to empty fatigue')
             # Per-node data collected here for unified_score() in STEP 6.
             # created_at/emotion/access_count feed the modulator formula.
             node_created_at = {}    # node_id → ISO timestamp (for freshness)
@@ -1321,22 +1340,14 @@ class BrainRecallMixin:
 
                     # v10: Synaptic fatigue — AFTER z-score normalization.
                     # Dampens the surprise-score for nodes recalled repeatedly
-                    # this session. Resets between sessions.
+                    # this session. _recall_fatigue is the per-call snapshot
+                    # of this session's ctx.fatigue (loaded above). Resets
+                    # between sessions.
                     # K (fatigue resistance) scales with structural degree:
                     #   Hub (30 edges): K=2.5, fatigues fast
                     #   Peripheral (3 edges): K=7.7, fatigues slow
                     #   New node (0 edges): K=10, barely fatigues
-                    if not hasattr(self, '_session_fatigue'):
-                        _fatigue_sid = session_id or self.session_id
-                        try:
-                            _ctx = self.get_or_create_session(_fatigue_sid) if _fatigue_sid else None
-                            self._session_fatigue = _ctx.fatigue if _ctx else {}
-                            self._fatigue_ctx = _ctx
-                        except Exception:
-                            self._session_fatigue = {}
-                            self._fatigue_ctx = None
-
-                    _fatigue_count = self._session_fatigue.get(node_id, 0)
+                    _fatigue_count = _recall_fatigue.get(node_id, 0)
                     if _fatigue_count > 0:
                         _degree = self._structural_degree_cache.get(node_id, 0)
                         _K = 10.0 / (1.0 + _degree / 10.0)
@@ -1509,9 +1520,9 @@ class BrainRecallMixin:
             # Fatigue was previously applied to primary sim only, but STEP 3.5
             # could overwrite with unfatigued z-weighted scores. Now fatigue
             # dampens the final embedding score regardless of which vector won.
-            if hasattr(self, '_session_fatigue') and self._session_fatigue:
+            if _recall_fatigue:
                 for nid in list(embedding_scores.keys()):
-                    _fc = self._session_fatigue.get(nid, 0)
+                    _fc = _recall_fatigue.get(nid, 0)
                     if _fc > 0:
                         _deg = self._structural_degree_cache.get(nid, 0) if hasattr(self, '_structural_degree_cache') else 0
                         _K = 10.0 / (1.0 + _deg / 10.0)
@@ -1826,15 +1837,24 @@ class BrainRecallMixin:
         # metadata and neighbor context for richer understanding.
         self._enrich_results(final_results[:3])
 
-        # STEP 8: Mark accessed (for Hebbian learning)
-        # v9.2: Use the same resolved session_id as fatigue (consistency)
-        # v9.2: Unified session_id — single source, no timestamp fallbacks
-        sid = getattr(self, '_fatigue_session_id', None) or session_id or self.session_id
+        # STEP 8: Mark accessed (for Hebbian learning + fatigue)
+        # Per-session: _recall_ctx (loaded at top of this function) is passed
+        # to _mark_accessed so fatigue increments land on the right session.
+        sid = session_id or self.session_id
         for node in final_results:
             try:
-                self._mark_accessed(node['id'], sid)
+                self._mark_accessed(node['id'], sid, ctx=_recall_ctx)
             except Exception as _e:
                 self._log_error("recall", _e, "marking node as accessed for Hebbian learning")
+
+        # Persist fatigue increments — caller (post_response_common) may
+        # reload ctx fresh from DB; without this save, increments are lost.
+        if _recall_ctx is not None:
+            try:
+                _recall_ctx.save(self.logs_conn)
+            except Exception as _se:
+                self._log_error('recall_ctx_save', _se,
+                                'persisting fatigue increments to session_state')
 
         # STEP 9: Log recall to recall_log (single source of truth)
         recall_ms = (time.time() - t0) * 1000
@@ -2022,7 +2042,7 @@ class BrainRecallMixin:
             self._log_error('search_keywords_fts5', e, 'FTS5 search failed, falling back to empty')
             return []
 
-    def _mark_accessed(self, node_id: str, session_id: str):
+    def _mark_accessed(self, node_id: str, session_id: str, ctx=None):
         """Mark a node as accessed, increment synaptic fatigue.
 
         Architecture (2026-05-08):
@@ -2036,22 +2056,24 @@ class BrainRecallMixin:
           commit happens in _run_recall_with_commit on the same
           recall write connection, batching all _mark_accessed UPDATEs
           from this recall.
+
+        Parallel-session correctness (2026-05-17): fatigue increments go
+        to the SessionContext passed in by the caller, not to a cached
+        instance attr (which leaked across sessions). When ctx is None
+        (callers without ctx in hand), fatigue is dropped silently for
+        this access — the access_count mark still happens, so the
+        recall side is unaffected, just no per-session fatigue feedback.
         """
         node_dal = NodeDAL(self.conn_recall_write)
         node_dal.mark_accessed(node_id)
         # access_log write removed 2026-04-05 — table dropped
         # commit deferred — see _run_recall_with_commit
 
-        # Increment session fatigue counter — next recall will dampen this node's cosine
-        # Fatigue lives on SessionContext, persisted via ctx.save() on stop
-        _ctx = getattr(self, '_fatigue_ctx', None)
-        if _ctx:
-            _ctx.increment_fatigue(node_id)
-        else:
-            # Fallback: in-memory only (no session context available)
-            if not hasattr(self, '_session_fatigue'):
-                self._session_fatigue = {}
-            self._session_fatigue[node_id] = self._session_fatigue.get(node_id, 0) + 1
+        # Increment session fatigue counter — next recall will dampen this
+        # node's cosine. ctx is the per-call SessionContext; mutations are
+        # saved by the caller at end of recall (see _recall_impl).
+        if ctx is not None:
+            ctx.increment_fatigue(node_id)
 
     def _hebbian_strengthen(self, node_ids: List[str], segment_node_ids: Optional[List[str]] = None):
         """
