@@ -376,7 +376,7 @@ def hook_recall(brain, args, graph_changes):
 
     sq_dal = SignalQueueDAL(brain.logs_conn)
     produce_reminders(brain, sq_dal)
-    produce_encoding_gap(brain, sq_dal, session_id=session_id)
+    produce_encoding_gap(brain, sq_dal, ctx=ctx)
     produce_system_health(brain, sq_dal)
     produce_integrity(brain, sq_dal)
     pt.mark('signals')
@@ -543,13 +543,13 @@ def post_response_common(brain, session_id, user_message, assistant_response):
     except Exception as e:
         brain._log_error('hebbian_surface_selected', e, 'post_response_common')
 
-    # Heartbeat
+    # Heartbeat — mutates ctx; saved below alongside stop counter increment
     try:
-        brain.record_message(session_id)
+        brain.record_message(ctx)
     except Exception as e:
         brain._log_error('record_message', e, 'post_response_common')
 
-    # Stop counter increment
+    # Stop counter increment — single save captures all turn mutations
     ctx.increment_stop()
     ctx.save(brain.logs_conn)
     return ctx
@@ -878,9 +878,10 @@ def hook_pre_edit(brain, args, graph_changes):
     if not filename:
         return {"json": {"decision": "approve"}}
 
-    session_id = args.get("session_id", "")
+    sid = args.get("session_id", "")
+    ctx = brain.get_or_create_session(sid) if sid else None
     try:
-        data = brain.pre_edit(file=filename, tool_name=tool_name, session_id=session_id)
+        data = brain.pre_edit(file=filename, tool_name=tool_name, ctx=ctx)
     except Exception as e:
         brain._log_error('pre_edit', e, 'hook_pre_edit')
         return {"json": {"decision": "approve"}}

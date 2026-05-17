@@ -755,17 +755,20 @@ class BrainRememberMixin:
             self._log_error('bridge_at_store', e, 'emergent bridging for node %s' % node_id[:12])
 
         # v5: Track encoding for heartbeat + segment tracking.
-        # XXX C-refactor: remember() has no session_id parameter, so both
-        # calls fall back to the deprecated singleton. Under parallel
+        # XXX C-refactor: remember() has no session_id / ctx parameter, so
+        # both paths fall back to the deprecated singleton. Under parallel
         # sessions, last-writer-wins on `brain.session_id` routes counts
         # and segment membership into the wrong session. Empty session_id
-        # is a silent no-op in both callees. Fix: thread session_id through
-        # remember() / remember_batch() / MCP dispatch.
+        # is a silent no-op in both callees. Fix: thread SessionContext
+        # through remember() / remember_batch() / MCP dispatch.
         _sid = self.session_id
-        try:
-            self.record_remember(_sid)
-        except Exception as e:
-            self._log_error('record_remember', e, 'tracking encoding for heartbeat')
+        if _sid:
+            try:
+                _ctx = self.get_or_create_session(_sid)
+                self.record_remember(_ctx)
+                _ctx.save(self.logs_conn)
+            except Exception as e:
+                self._log_error('record_remember', e, 'tracking encoding for heartbeat')
         try:
             self.add_to_segment(node_id, _sid)
         except Exception as e:

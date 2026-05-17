@@ -64,16 +64,14 @@ def produce_reminders(brain, sq_dal):
 
 # ── 2. ENCODING GAP ──
 
-def produce_encoding_gap(brain, sq_dal, session_id: str = ''):
+def produce_encoding_gap(brain, sq_dal, ctx=None):
     """Surface warning if session is 20+ min with zero encodes.
 
-    Per-session counters via SessionContext. Empty session_id is a silent
-    no-op (signal cannot be attributed to any session).
+    Read-only against SessionContext. None ctx is a silent no-op.
     """
-    if not session_id:
+    if ctx is None:
         return
     try:
-        ctx = brain.get_or_create_session(session_id)
         remembers = ctx.remember_count
         boot_time = ctx.boot_time
         if not boot_time:

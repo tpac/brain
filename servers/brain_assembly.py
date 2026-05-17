@@ -467,7 +467,7 @@ class BrainAssemblyMixin:
     # REMOVED 2026-04-06 — staged_learnings table dropped
 
     def pre_edit(self, file: str, tool_name: str = 'Edit',
-                 session_id: str = '') -> dict:
+                 ctx=None) -> dict:
         """
         Batch pre-edit call combining all lookups into one.
         Replaces 8 sequential HTTP calls from the old architecture.
@@ -506,13 +506,11 @@ class BrainAssemblyMixin:
         timings['procedures_ms'] = round((_time.time() - t2) * 1000)
 
         # 3. Encoding health — per-session counters via SessionContext
-        if session_id:
-            ctx = self.get_or_create_session(session_id)
+        if ctx is not None:
             boot_time = ctx.boot_time or self.now()
             remembers = ctx.remember_count
             edits_checked = ctx.edit_check_count
         else:
-            # XXX C-refactor: thread session_id through hook_pre_edit + MCP pre_edit
             boot_time = self.now()
             remembers = 0
             edits_checked = 0

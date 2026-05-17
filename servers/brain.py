@@ -767,49 +767,42 @@ class Brain(
             current.append(node_id)
             self.set_config('segment_node_ids_' + session_id, json.dumps(current))
 
-    def record_remember(self, session_id: str):
+    def record_remember(self, ctx):
         """Increment remember counter and mark last encode position.
 
-        Per-session: counters live on SessionContext, persisted via
-        session_state table. Empty session_id is a silent no-op.
+        Takes a SessionContext; mutates in place. Caller is responsible
+        for ctx.save() at the transaction boundary (turn end / handler
+        exit). None ctx is a silent no-op.
         """
-        if not session_id:
+        if ctx is None:
             return
-        ctx = self.get_or_create_session(session_id)
         ctx.remember_count += 1
         ctx.last_encode_at_message = ctx.message_count
-        ctx.save(self.logs_conn)
 
-    def record_message(self, session_id: str):
-        """Increment message counter. Called by hooks on each user message."""
-        if not session_id:
+    def record_message(self, ctx):
+        """Increment message counter. Mutates ctx in place."""
+        if ctx is None:
             return
-        ctx = self.get_or_create_session(session_id)
         ctx.message_count += 1
-        ctx.save(self.logs_conn)
 
-    def record_edit_check(self, session_id: str):
-        """Increment edit check counter."""
-        if not session_id:
+    def record_edit_check(self, ctx):
+        """Increment edit check counter. Mutates ctx in place."""
+        if ctx is None:
             return
-        ctx = self.get_or_create_session(session_id)
         ctx.edit_check_count += 1
-        ctx.save(self.logs_conn)
 
-    def get_encoding_heartbeat(self, session_id: str,
+    def get_encoding_heartbeat(self, ctx,
                                nudge_threshold: int = 8) -> Optional[Dict[str, Any]]:
         """Check if Claude should be nudged to encode learnings.
 
-        Returns a nudge dict if messages since last encode exceeds threshold,
-        None otherwise. The nudge includes context about what's been missed.
+        Read-only against SessionContext counters.
 
         Args:
-            session_id: session to check (per-session counters)
+            ctx: SessionContext for the session being inspected
             nudge_threshold: Messages without encoding before nudging (default 8)
         """
-        if not session_id:
+        if ctx is None:
             return None
-        ctx = self.get_or_create_session(session_id)
         msg_count = ctx.message_count
         remember_count = ctx.remember_count
         last_encode_at = ctx.last_encode_at_message
