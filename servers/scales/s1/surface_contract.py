@@ -608,19 +608,19 @@ Candidates:
     return user_content, cfg['max_tokens']
 
 
-# ───────────────────────────────────────────────────────────────────────
-# Surface render contract — format constants per render mode.
-#
-# `format_surface_output_activation` is the live path; it picks a mode
+# ═══════════════════════════════════════════════════════════════
+# RENDER FORMATS — per-mode constants for the surface OUTPUT
+# ═══════════════════════════════════════════════════════════════
+
+# `format_surface_output_activation` is the live path. It picks a mode
 # based on Haiku's per-pick `mode` annotation, looks up the matching
-# `SURFACE_*_FORMAT` constant, then resolves it to a concrete
-# `render_rich_node` cfg via `resolve_surface_format(fmt, budget)`.
+# SURFACE_*_FORMAT constant, then resolves it to a concrete
+# render_rich_node cfg via resolve_surface_format(fmt, budget).
 #
 # Constants here use *proportions* (of the per-node budget) rather than
 # absolute char limits — the budget allocator decides how many chars
 # each node gets; the format decides the within-node split. Floors
 # (min_*_chars) prevent micro-budgets from producing empty renders.
-# ───────────────────────────────────────────────────────────────────────
 
 # Arc mode — DEFAULT for surfaced nodes. State-of-mind framing: Anchor
 # reads the gist + situation + voice fields; low-activation fields are
@@ -691,9 +691,13 @@ def resolve_surface_format(fmt, budget):
     return cfg
 
 
-# Picker-side candidate render — what Haiku sees when selecting 3-5 from
-# 25. Distinct from the surface-OUTPUT formats above: this is the IN
-# (what Haiku reads), those are the OUT (what Anchor reads).
+# ═══════════════════════════════════════════════════════════════
+# PICKER RENDER — what Haiku reads when selecting 3-5 from 25
+# ═══════════════════════════════════════════════════════════════
+
+# Distinct from the SURFACE_*_FORMAT constants above: HAIKU_FORMAT is
+# the IN (rendered candidate menu Haiku reads), the SURFACE_*_FORMATs
+# are the OUT (what Anchor receives after Haiku's selection).
 HAIKU_FORMAT = {
     'content_limit': 300, 'edge_limit': 3, 'metadata_limit': 120,
     'time_format': 'relative',
@@ -710,10 +714,13 @@ HAIKU_FORMAT = {
 }
 
 
-# Surface output JSON schema — what Haiku must produce.
-# Lives here (in the surface contract module) next to the render configs
-# so all surface I/O contracts are one place. Anthropic Structured
-# Outputs enforces this schema during generation; see surface.py:185.
+# ═══════════════════════════════════════════════════════════════
+# OUTPUT SCHEMA — what Haiku must produce (Anthropic Structured Outputs)
+# ═══════════════════════════════════════════════════════════════
+
+# Enforced during generation via output_config={'format':{'type':'json_schema',
+# 'schema': SURFACE_SELECTION_SCHEMA}} on the final agentic-round API call.
+# See surface.py:_call_surface_agentic.
 SURFACE_SELECTION_SCHEMA = {
     "type": "object",
     "properties": {
