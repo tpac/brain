@@ -1852,11 +1852,15 @@ class BrainRecallMixin:
             except Exception as _e:
                 self._log_error("recall", _e, "marking node as accessed for Hebbian learning")
 
-        # Persist fatigue increments. If caller passed `ctx` explicitly, it
-        # owns the save (one save per turn at the hook boundary). When we
-        # loaded ctx internally from session_id, save here so increments
-        # aren't lost when the next post_response_common reloads fresh.
-        if _recall_ctx is not None and ctx is None:
+        # Persist fatigue increments at recall boundary. Save unconditionally
+        # even when the caller passed `ctx` — hooks are stateless dispatches,
+        # so a caller-side save would need to be added in every entry point
+        # that touches recall (hook_recall, MCP _handle_recall, brain_assembly
+        # internal calls, ...). The save is one row INSERT OR REPLACE on
+        # session_state — sub-ms, cheap. The next post_response_common's
+        # ctx load picks up these increments and persists them again as part
+        # of its own turn-end save; harmless double-write.
+        if _recall_ctx is not None:
             try:
                 _recall_ctx.save(self.logs_conn)
             except Exception as _se:
