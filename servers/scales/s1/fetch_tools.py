@@ -872,16 +872,12 @@ def execute_tool(brain, tool_name: str, tool_input: Dict[str, Any],
     return {'results': results or [], 'latency_ms': int((time.time() - t0) * 1000)}
 
 
-def format_tool_result_for_haiku(result: Dict[str, Any], brain=None) -> str:
+def format_tool_result_for_haiku(result: Dict[str, Any]) -> str:
     """Format a tool's output using the SAME renderer as the initial 25
     cosine candidates — `format_candidate_for_surface`. Tool results have
     already been fully enriched by `execute_tool()` (batched brain.get_node
     pass attaches _corrections, _metadata, connections), so this function
     just hands the rich shape to the formatter.
-
-    `brain` parameter is retained for signature stability; the rich path
-    no longer needs it. Thin fallback runs when results lack rich fields
-    (legacy callers not going through execute_tool).
     """
     results = result.get('results') or []
     if result.get('error'):

@@ -273,8 +273,7 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tool_use_id,
-                    "content": format_tool_result_for_haiku(
-                        exec_result, brain=brain),
+                    "content": format_tool_result_for_haiku(exec_result),
                 })
         messages.append({"role": "assistant", "content": assistant_blocks})
         messages.append({"role": "user", "content": tool_results})

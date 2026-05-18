@@ -19,7 +19,7 @@ import re
 import subprocess
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 
 # Encoding agent: at most 1 running at a time. Non-blocking acquire — skip if busy.
 _encoding_lock = threading.Lock()
@@ -64,7 +64,6 @@ ENV_CHANGE_PATTERNS = [
 # ── Helpers ──
 
 
-from .scales.dispatch import daemon_tcp_send as _daemon_tcp_send
 from .scales.s1.surface import run_surface as _run_surface
 
 

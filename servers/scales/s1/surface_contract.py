@@ -2,7 +2,7 @@
 
 S1 Surface pushes relevant memories into awareness. This contract defines:
 - What the surfacer sees (SURFACE config, CANDIDATES_FILE, neighbor fields)
-- How candidates are formatted (format_candidate_for_surface, enrich_candidate_metadata)
+- How candidates are formatted (format_candidate_for_surface)
 - How the prompt is assembled (build_surface_prompt)
 - How output is formatted for Anchor (format_surface_output_activation)
 
@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from collections import OrderedDict
 
 # Hoisted: any embedder API drift fails at daemon boot, not 16s into hook_recall.
-from servers.embedder import embed_document, embed_batch
+from servers.embedder import embed_batch
 from servers import embedder as _embedder
 
 # Bounded cache for edge-description embeddings. Same descriptions recur

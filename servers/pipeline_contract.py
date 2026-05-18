@@ -488,11 +488,7 @@ def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
 from .scales.s1.surface_contract import (  # noqa: E402, F401
     SURFACE,
     CANDIDATES_FILE,
-    NEIGHBOR_D1_FIELDS,
-    NEIGHBOR_D2_FIELDS,
-    NEIGHBOR_D3_FIELDS,
     NEIGHBOR_TRUNCATION,
-    PRECISION,
     format_candidate_for_surface,
     build_surface_prompt,
     enrich_candidate_metadata,
@@ -503,5 +499,4 @@ build_judge_prompt = build_surface_prompt
 
 from .scales.s1.encode_contract import (  # noqa: E402, F401
     ENCODING_AGENT,
-    build_encoder_node_catalog,
 )
