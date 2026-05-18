@@ -4,7 +4,6 @@ Contract checks (fast, no LLM, no daemon):
   • Per-field vector split exists in EMBEDDING_GROUPS
   • _compose_enriched_edge_text produces expected text
   • _allocate_budget_softmax respects minimum per node + total budget
-  • _mask_node_by_field_activation masks below-threshold fields
 
 Behavioral checks (use r3 preserved brain from N=5 run — read-only):
   • spread_activation from Hawaii seed activates NYC
@@ -156,49 +155,35 @@ class TestBudgetAllocation(unittest.TestCase):
         self.assertEqual(_allocate_budget_softmax([], 1000), [])
 
 
-class TestFieldMasking(unittest.TestCase):
-    """Low-activation fields get masked out before render."""
+class TestFieldMaskingRemoved(unittest.TestCase):
+    """Contract evolution 2026-05-17 — _mask_node_by_field_activation removed.
 
-    def test_low_activation_content_is_masked(self):
-        from servers.scales.s1.surface_contract import _mask_node_by_field_activation
-        node = {'title': 't', 'content': 'c-body', 'situation': 's-body'}
-        fa = {'content': 0.1, 'situation': 0.8}  # content below threshold
-        masked = _mask_node_by_field_activation(node, fa)
-        self.assertEqual(masked['content'], '')
-        self.assertEqual(masked['situation'], 's-body')  # high stays
+    The renderer used to strip fields below a 0.3 cosine threshold per
+    spread_activation's field_activation. That stripped voice quotes,
+    reasoning, and situation from Haiku's primary picks systematically
+    (short fields have intrinsically lower cosines than long fields).
 
-    def test_metadata_fields_masked_by_field_activation(self):
-        from servers.scales.s1.surface_contract import _mask_node_by_field_activation
-        node = {
-            'title': 't', 'content': 'c',
-            '_metadata': {
-                'reasoning': 'r',
-                'user_raw_quote': 'tom said',
-                'anchor_raw_quote': 'anchor said',
-                'question': 'what?',
-            }
-        }
-        fa = {
-            'reasoning': 0.9,
-            'user_raw_quote': 0.1,       # below — masks
-            'anchor_raw_quote': 0.5,
-            'question': 0.05,             # below — masks
-        }
-        masked = _mask_node_by_field_activation(node, fa)
-        self.assertIn('reasoning', masked['_metadata'])
-        self.assertNotIn('user_raw_quote', masked['_metadata'])
-        self.assertIn('anchor_raw_quote', masked['_metadata'])
-        self.assertNotIn('question', masked['_metadata'])
+    Render layer now trusts the encoder's attached fields — every field
+    present on the node renders, subject only to char-budget truncation
+    in render_rich_node. Field selection is the encoder's job, not the
+    renderer's.
 
-    def test_missing_field_activation_defaults_visible(self):
-        """When a field has no activation recorded, we default to visible
-        (conservative). Only explicit below-threshold causes masking."""
-        from servers.scales.s1.surface_contract import _mask_node_by_field_activation
-        node = {'title': 't', 'content': 'c', 'situation': 's'}
-        fa = {}  # no activations — all fields should stay
-        masked = _mask_node_by_field_activation(node, fa)
-        self.assertEqual(masked['content'], 'c')
-        self.assertEqual(masked['situation'], 's')
+    This test guards the contract: the masking function must stay deleted.
+    """
+
+    def test_mask_function_removed(self):
+        from servers.scales.s1 import surface_contract
+        self.assertFalse(
+            hasattr(surface_contract, '_mask_node_by_field_activation'),
+            'Field-masking renderer regression — function must stay deleted. '
+            'Render layer trusts encoder-attached fields; restoring this '
+            'function would re-introduce systematic voice/reasoning stripping.')
+
+    def test_field_render_threshold_removed(self):
+        from servers.scales.s1 import surface_contract
+        self.assertFalse(
+            hasattr(surface_contract, '_FIELD_RENDER_THRESHOLD'),
+            'Threshold constant must stay deleted alongside the mask function.')
 
 
 # ─────────────────────────────────────────────────────────────────

@@ -1602,13 +1602,14 @@ def select_edges(connections, query_vec, limit=3, prior_vecs=None,
 # Tom's framing: "fading means less and less data surfaced."
 # ═══════════════════════════════════════════════════════════════
 
-# Minimum field activation to render the field at all. Below this, the field
-# is masked out so render_rich_node drops it naturally.
-_FIELD_RENDER_THRESHOLD = 0.3
-
 # Minimum per-node budget — below this, we stop rendering further nodes
 # rather than emit a stub that can't carry meaning.
 _MIN_NODE_BUDGET_CHARS = 150
+
+# Hard byte cap on the inject. Claude Code spills additionalContext to a
+# file above ~10k chars, and Anchor doesn't read that file path back. Cap
+# below the ceiling with headroom for any wrapper bytes Claude Code adds.
+_MAX_INJECT_CHARS = 9500
 
 
 def _allocate_budget_softmax(activations, total_budget):
@@ -1623,32 +1624,6 @@ def _allocate_budget_softmax(activations, total_budget):
     exps = np.exp(arr - arr.max())
     weights = exps / exps.sum()
     return [max(_MIN_NODE_BUDGET_CHARS, int(w * total_budget)) for w in weights]
-
-
-def _mask_node_by_field_activation(node, field_activation, threshold=_FIELD_RENDER_THRESHOLD):
-    """Return a copy of `node` with low-activation fields zeroed out.
-
-    Fields that score below threshold are removed so render_rich_node drops
-    them. This is how activation drives WHICH fields appear — no config
-    whitelist, just the field's own query-match deciding its visibility.
-    """
-    masked = dict(node)
-
-    # Top-level fields: content, situation
-    if field_activation.get('content', 1.0) < threshold:
-        masked['content'] = ''
-    if field_activation.get('situation', 1.0) < threshold:
-        masked['situation'] = ''
-
-    # Metadata-KV-backed fields: reasoning, user_raw_quote, anchor_raw_quote,
-    # question. render_rich_node reads these from node['_metadata'].
-    meta = dict(node.get('_metadata') or {})
-    for field_name in ('reasoning', 'user_raw_quote', 'anchor_raw_quote', 'question'):
-        if field_activation.get(field_name, 1.0) < threshold:
-            meta.pop(field_name, None)
-    masked['_metadata'] = meta
-
-    return masked
 
 
 def _event_time_line(node):
@@ -1688,25 +1663,26 @@ def _event_time_line(node):
     return '  Event date: %s' % et_str
 
 
-def _render_node_activation(node, field_activation, budget, activation,
+def _render_node_activation(node, budget, activation,
                              why='', query_vec=None, brain=None, mode='arc'):
     """Render a single activated node within a char budget.
 
-    `mode` (added 2026-05-10 for agentic surface v5; default 'arc' preserves
-    v4 behavior byte-identically):
-      - 'arc' (default): current activation-thresholded path. Fields below
-        threshold are masked. Used for state-of-mind / identity nodes.
-      - 'fact': emit content VERBATIM, no field masking, no abbreviation.
-        Used for verbatim quotes / specific values / exact wording.
-      - 'background': title + 1-line summary only. Low-weight context.
+    Mode controls layout depth; the encoder's attached fields are trusted
+    in every mode (no cosine masking — the encoder picked these fields for
+    a reason, the renderer doesn't second-guess).
+
+      - 'arc' (default): full render via SURFACE_ARC_FORMAT; edges
+        re-ranked by query relevance via select_edges. State-of-mind /
+        identity nodes.
+      - 'fact': verbatim content, larger budget; SURFACE_FACT_FORMAT.
+        Specific values / quotes / exact wording.
+      - 'background': title + 1-line situation only; SURFACE_BACKGROUND_FORMAT.
+        Low-weight framing context.
 
     Common behavior:
-      • Budget scales content / metadata / edges limits proportionally.
-      • Edges are picked query-aware via select_edges (top-3 by MAX formula).
+      • Budget scales content / metadata / edge limits proportionally.
       • Structured event_time kv (when present) is rendered as a dedicated
-        line via _event_time_line, ABOVE activation-masking. Added 2026-05-11
-        to address L4 bottleneck — encoder writes event_time but render
-        wasn't exposing it as queryable structured data.
+        line via _event_time_line, just after the title.
     """
     from servers.contract import render_rich_node
     event_line = _event_time_line(node)
@@ -1736,47 +1712,47 @@ def _render_node_activation(node, field_activation, budget, activation,
         return '\n'.join(body_lines)
 
     if mode == 'fact':
-        # Fact mode — verbatim content, no field masking.
-        # Format contract: SURFACE_FACT_FORMAT.
         cfg = resolve_surface_format(SURFACE_FACT_FORMAT, budget)
         return _inject_event_line(render_rich_node(node, cfg))
 
-    # Default 'arc' — state-of-mind framing. Format: SURFACE_ARC_FORMAT.
-    # Fields below activation threshold are masked out before render so
-    # noise drops cleanly; voice fields (user_raw_quote, anchor_raw_quote)
-    # bypass meta_limit per render_rich_node's high-signal rule.
-    masked = _mask_node_by_field_activation(node, field_activation)
-    connections = masked.get('connections') or []
+    # 'arc' (default) — full encoder-attached fields render; edges
+    # re-ranked by query relevance so the most pertinent bridges appear
+    # under the node header.
+    arc_node = dict(node)
+    connections = arc_node.get('connections') or []
     if query_vec is not None and connections:
-        masked = dict(masked)
-        masked['connections'] = select_edges(
+        arc_node['connections'] = select_edges(
             connections, query_vec, limit=10,
             brain_conn=brain.conn if brain is not None else None,
             brain=brain)
 
     cfg = resolve_surface_format(SURFACE_ARC_FORMAT, budget)
-    return _inject_event_line(render_rich_node(masked, cfg))
+    return _inject_event_line(render_rich_node(arc_node, cfg))
 
 
 def format_surface_output_activation(node_activation, field_activation,
                                       rich_nodes, selected_why=None,
                                       selected_mode=None,
                                       query_vec=None, brain=None,
-                                      total_budget=4000):
-    """Render activated nodes as additionalContext, driven by activation.
+                                      total_budget=7000):
+    """Render activated nodes as additionalContext.
 
     Args:
-        node_activation:  {node_id: float} from spread_activation
-        field_activation: {node_id: {field_name: float}} from spread_activation
+        node_activation:  {node_id: float} from spread_activation — drives
+                          ranking + softmax budget weighting.
+        field_activation: {node_id: {field_name: float}} from spread_activation —
+                          used only for sort-tie-breaking (mean across fields).
+                          Per-field masking removed 2026-05-17 — the renderer
+                          trusts the encoder's attached fields.
         rich_nodes:       {node_id: rich_node_dict} from brain.get_node(ids)
         selected_why:     {node_id: str} — Haiku's "why" annotation (seeds only)
         selected_mode:    {node_id: str} — per-seed render mode (fact/arc/background).
-                          Added 2026-05-10 for surface v5 agentic. Omitted → 'arc'.
-        query_vec:        query embedding, used to re-rank each node's own edges
-        brain:            Brain instance — for select_edges family lookup
-        session:          SessionContext — for select_edges fatigue (not used in
-                          new kernel but passed through for now)
-        total_budget:     int char budget for full output
+                          Omitted → 'arc'.
+        query_vec:        query embedding, used to re-rank each node's edges
+        brain:            Brain instance — for select_edges + overflow logging
+        total_budget:     soft target for the total inject; per-node budgets
+                          are softmax-allocated from this. Hard exit cap is
+                          _MAX_INJECT_CHARS.
     """
     if not node_activation:
         return ""
@@ -1812,7 +1788,6 @@ def format_surface_output_activation(node_activation, field_activation,
             break
 
         node = rich_nodes[nid]
-        fa = field_activation.get(nid, {})
         why = selected_why.get(nid, '')
         mode = selected_mode.get(nid, 'arc')
 
@@ -1821,11 +1796,27 @@ def format_surface_output_activation(node_activation, field_activation,
         effective_budget = min(int(budget * 1.5) if mode == 'fact' else budget,
                                 remaining)
         rendered = _render_node_activation(
-            node, fa, effective_budget, activation,
+            node, effective_budget, activation,
             why=why, query_vec=query_vec, brain=brain, mode=mode)
 
         lines.append(rendered)
         lines.append('')  # blank line between nodes
         remaining -= len(rendered) + 2
 
-    return '\n'.join(lines)
+    result = '\n'.join(lines)
+    # Hard byte cap. Claude Code spills additionalContext to a file path
+    # above ~10k chars, and Anchor doesn't read that path back — the inject
+    # would be effectively lost. Truncate at a clean line boundary so the
+    # tail isn't a half-rendered field.
+    if len(result) > _MAX_INJECT_CHARS:
+        if brain is not None:
+            try:
+                brain._log_error(
+                    'surface_inject_overflow',
+                    ValueError('inject %d > cap %d' % (len(result), _MAX_INJECT_CHARS)),
+                    'ranked=%d primary=%d; truncated at byte cap' % (
+                        len(ranked), len(selected_why)))
+            except Exception:
+                pass
+        result = result[:_MAX_INJECT_CHARS].rsplit('\n', 1)[0]
+    return result
