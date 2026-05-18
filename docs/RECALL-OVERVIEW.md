@@ -162,7 +162,7 @@ What happens when the operator speaks:
    - **User message**: Frame as "Partnership context:", recent conversation (last 7 turns), recently surfaced (dedup hint), retrieval stats, intent guidance, 25 candidates
 9. **Haiku selects 0-8** from the 25 candidates. Returns `{"selected":[{"id":"...","why":"..."}], "reason"?}`. Robust JSON parse handles 3 shapes (bare, fenced, prose-trailing). Leading-0 recovery on 7-char IDs (Haiku occasionally drops a 0).
 10. **Spread activation** — `_graph_expand()` runs on the selected seed IDs. Activation flows through edges weighted by `cosine(query, edge_enriched_text)`. Per-hop median gate. Mutual traversal accumulates activation when two seeds' paths converge. ~3-4s baseline cost. Up to 5 hops.
-11. **Activation-weighted render** — `format_surface_output_activation` decides what nodes to render and how much detail per node based on activation values.
+11. **Activation-weighted render** — `format_surface_output_activation` decides what nodes to render based on activation values. After 2026-05-17 (commit `a478ba3`): the renderer **trusts the encoder's attached fields**. Per-field cosine masking was deleted (voice / reasoning / situation were being stripped systematically because short fields have intrinsically low cosines vs general queries). Today the renderer applies char-budget truncation only, not editorial field stripping. `total_budget=7000`; hard exit cap at `_MAX_INJECT_CHARS=9500` with `surface_inject_overflow` logging if approached.
 12. **`additionalContext`** — the rendered nodes are returned as Claude Code's `additionalContext` field. They reach Anchor as `[BRAIN] ... [/BRAIN]` blocks before the operator's message.
 13. **Trace writes** — S1R O/K/Δ events written to `brain_logs.db` via `TraceDAL.append_batch()`. K-event metadata includes `frame_chars`, `frame_tokens_est`, `frame_sections`.
 
@@ -173,6 +173,8 @@ What happens when the operator speaks:
 ---
 
 ## 3. What's still left
+
+**Active recall-funnel refinement plan: [docs/RECALL-FUNNEL-PLAN.md](RECALL-FUNNEL-PLAN.md).** Drafted 2026-05-17. Covers hub-dampening fix (access-based, not degree-based), two-tier fatigue split (cosine vs surface), surface-to-zero between encode runs, and the response→next-recall loop (working-thread continuity).
 
 **The full prioritized backlog lives in [docs/BACKLOG.md](BACKLOG.md).** Single source of truth across the recall arc, Frame punch list, and operational items. Don't duplicate it here.
 
