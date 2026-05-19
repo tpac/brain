@@ -28,17 +28,17 @@ Single gateway to the brain. Holds the Brain object, embedder, and Anthropic cli
 
 Two databases:
 - `brain.db` — nodes, edges (v22: `edge_id` PK, single-direction), `edge_relations` (multi-relation per edge), embeddings, graph structure
-- `brain_logs.db` — traces, session state, signal queue, interactions, hook errors
+- `brain_logs.db` — traces, session state, interactions, hook errors
 
 **Edge model (v22):** Physical edges (`edges` table) carry `edge_id`, `source_id` (actor), `target_id` (acted upon), aggregate `weight`. One row per pair — no mirrors. Semantic layer (`edge_relations` table) carries multiple relations per edge via `edge_id` FK: `relation` (open text), `description`, `weight`, `encoding_source`. Direction matters — source is the actor. Use `GraphDAL.add_relation()` for all edge writes.
 
 **Edge mutation:** `add_relation` is the canonical upsert — idempotent, field-preserving. Hebbian co-access strengthening lives in `recall_write_queue` (batched, atomic, off the recall hot path).
 
 **Write topology:** Two SQLite writer connections on `brain.db`:
-- `self.conn` — foreground writes (MCP, encoder, S2). Guarded by `brain.write_lock`.
-- `self.conn_bg_writer` — background batched writes (temporal extraction, vectors, access marks, Hebbian). Single worker thread owns it; no Python lock needed.
+- `self.conn` — foreground writes (MCP, encoder, S2, vector backfill). Guarded by `brain.write_lock` (`TrackedRLock` — `.snapshot()` exposes current holder for stall diagnostics).
+- `self.conn_bg_writer` — background batched writes (temporal extraction, access marks, Hebbian). Single worker thread owns it; no Python lock needed.
 
-Recall hot path is read-only at SQLite — writes enqueue to `recall_write_queue` and drain off-path. Foreground and background no longer race at the WAL writer slot.
+Recall hot path is read-only at SQLite — writes enqueue to `recall_write_queue` and drain off-path. `brain_batch` wraps all sub-ops in one `BEGIN IMMEDIATE / COMMIT` (sub-handlers call `Brain._maybe_commit()` which no-ops while `_batch_mode=True`; outer rollback on failure). All `sqlite3.connect` sites pass through `db_backends.current.apply_pragmas()` (synchronous=NORMAL, 64MB cache, 256MB mmap, busy_timeout=30s, WAL). `db_maintenance` thread runs `wal_checkpoint(TRUNCATE)` every 5 min and `PRAGMA optimize` every 30 min on both DBs; swap `db_backends/sqlite.py` for a different store, scheduler stays.
 
 **Activity tracking (S2 gating):** Two distinct timestamps. `last_activity` resets on every daemon command (general bookkeeping). `last_user_activity` resets only on `hook_recall` — i.e. real `UserPromptSubmit` events. S2 maintenance gates on `last_user_activity` so Anchor's tool use between prompts doesn't keep the idle clock alive.
 
