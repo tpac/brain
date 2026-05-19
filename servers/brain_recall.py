@@ -627,6 +627,14 @@ class BrainRecallMixin:
             """items = list of (node_id, text). One embed_batch + one
             executemany store. Returns count of rows written.
 
+            Embedding runs OUTSIDE brain.write_lock — `embedder.embed_batch`
+            is CPU-heavy ONNX work that historically held the lock for
+            seconds-to-minutes on large batches, blocking every other
+            writer (multi-session contention). The lock is acquired
+            only around the actual DB write + commit, which is brief.
+            write_lock is an RLock, so callers that already hold it
+            (none today) wouldn't deadlock.
+
             For vector_type='_situation', the text column is deprecated — kv
             is the single source of truth. Text is used to generate the
             embedding, then discarded (empty string stored). Other vector_types
@@ -641,9 +649,10 @@ class BrainRecallMixin:
                      store_text if store_text is not None else text,
                      blob)
                     for (nid, text), blob in zip(items, blobs)]
-            stored = vdal.store_batch(rows, model=model)
-            if stored:
-                self.conn.commit()
+            with self.write_lock:
+                stored = vdal.store_batch(rows, model=model)
+                if stored:
+                    self.conn.commit()
             return stored
 
         # 1. Primary vectors — nodes missing _primary for the active model

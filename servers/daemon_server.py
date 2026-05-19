@@ -216,6 +216,27 @@ class BrainDaemon:
             self._log("memory_watchdog start failed: %s" % _wd_e)
             self._memory_watchdog = None
 
+        # DB maintenance — WAL checkpoint every 5 min, PRAGMA optimize
+        # every 30 min, on brain.db and brain_logs.db. Lives in its own
+        # backend-agnostic scheduler (servers/db_maintenance.py) that
+        # calls into db_backends.current for SQLite-specific work; if
+        # we ever migrate off SQLite, only the backend module changes.
+        # Always-on (no config gate) — periodic checkpointing caps WAL
+        # growth, which directly reduces writer-slot wait time. Failures
+        # caught + logged via brain._log_error; loop never dies.
+        try:
+            from .db_maintenance import DBMaintenance
+            self._db_maintenance = DBMaintenance(
+                log_fn=self._log,
+                log_error_fn=getattr(self.brain, '_log_error', None))
+            self._db_maintenance.register('brain', self.brain.db_path)
+            self._db_maintenance.register('brain_logs', self.brain.logs_db_path)
+            self._db_maintenance.start()
+        except Exception as _dm_e:
+            # Scheduler must never block daemon startup.
+            self._log("db_maintenance start failed: %s" % _dm_e)
+            self._db_maintenance = None
+
         # Brain warmup — fault embeddings into mmap + build structural degree
         # cache off the user's critical path. The first recall before this
         # was paying ~15-20s and a ~2 GB RSS spike (observed 2026-05-09 with

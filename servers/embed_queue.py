@@ -217,6 +217,11 @@ def _check_stall(brain, recall_write_queue) -> None:
     only fires when the worker thread is alive enough to execute this.
     For "worker thread dead entirely" detection, rely on the daemon's
     thread-count watchdog (separate signal).
+
+    Log payload includes the write_lock holder (if TrackedRLock is in
+    use) and the last drain's BEGIN IMMEDIATE wait time. These two
+    signals usually answer "who's holding the WAL writer slot and for
+    how long" — the root cause of most stalls.
     """
     try:
         embed_snap = get_stats()
@@ -246,11 +251,34 @@ def _check_stall(brain, recall_write_queue) -> None:
 
         with _lock:
             _stats['stalls_logged_total'] += 1
+
+        # Diagnostic enrichment: who holds write_lock right now, and
+        # how long did the most recent BEGIN IMMEDIATE wait? Both are
+        # best-effort — the snapshot() method only exists on
+        # TrackedRLock and get_stats may not have the wait yet.
+        holder_info = ''
+        try:
+            wl = getattr(brain, 'write_lock', None)
+            if wl is not None and hasattr(wl, 'snapshot'):
+                snap = wl.snapshot()
+                if snap.get('holder'):
+                    holder_info = ', write_lock_held_by=%s for %dms (depth=%d)' % (
+                        snap['holder'], snap.get('held_for_ms') or 0,
+                        snap.get('depth') or 0)
+                else:
+                    holder_info = ', write_lock=free'
+        except Exception:
+            pass
+
+        last_wait = rwq_snap.get('last_begin_wait_ms', 0)
+        wait_info = ', last_begin_wait=%dms' % last_wait if last_wait else ''
+
         try:
             brain._log_error(
                 'bg_writer_worker_stalled',
-                RuntimeError('no drain in %ds, embed_depth=%d rwq_depth=%d'
-                             % (int(age_s), embed_depth, rwq_depth)),
+                RuntimeError('no drain in %ds, embed_depth=%d rwq_depth=%d%s%s'
+                             % (int(age_s), embed_depth, rwq_depth,
+                                holder_info, wait_info)),
                 'worker appears blocked or slow — investigate drain duration')
         except Exception as le:
             print('[embed_queue] stall log failed: %s' % le, file=sys.stderr)
@@ -294,21 +322,23 @@ def _drain_once(brain) -> None:
             break
 
         # ─── Vectors phase ─────────────────────────────────────────
-        # Vectors stay on the primary connection under brain.write_lock
-        # for now — the cache layer (CachedVectorDAL) holds invalidation
-        # state keyed to self.conn. Migrating vectors to conn_bg_writer
-        # is a follow-on (Phase 4b candidate); the load-bearing fix here
-        # is moving temporal extraction off the lock.
-        with brain.write_lock:
-            if node_batch:
-                try:
-                    result = brain.backfill_vectors(
-                        batch_size=len(node_batch), node_ids=node_batch)
-                except TypeError:
-                    result = brain.backfill_vectors(
-                        batch_size=len(node_batch))
-                total_vectors += sum(
-                    v for v in (result or {}).values() if isinstance(v, int))
+        # Vectors stay on the primary connection (CachedVectorDAL holds
+        # invalidation state keyed to self.conn — migrating to
+        # conn_bg_writer is a separate refactor). The write_lock used to
+        # wrap this whole call, which held the lock for the duration of
+        # embed_batch — seconds to minutes of CPU work blocking every
+        # other writer. backfill_vectors now self-locks only around the
+        # DB write+commit per batch, so other writers get the slot
+        # between vector types and between batches.
+        if node_batch:
+            try:
+                result = brain.backfill_vectors(
+                    batch_size=len(node_batch), node_ids=node_batch)
+            except TypeError:
+                result = brain.backfill_vectors(
+                    batch_size=len(node_batch))
+            total_vectors += sum(
+                v for v in (result or {}).values() if isinstance(v, int))
 
         # ─── Temporal phase ────────────────────────────────────────
         # Outside brain.write_lock, on brain.conn_bg_writer. Single

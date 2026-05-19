@@ -77,6 +77,7 @@ _stats = {
     'last_drain_at': None,            # epoch seconds
     'last_drain_took_ms': 0,
     'last_drain_size': 0,             # total items (access + hebbian) in batch
+    'last_begin_wait_ms': 0,          # time spent in BEGIN IMMEDIATE (WAL slot wait)
     'access_drained_total': 0,
     'hebbian_pairs_drained_total': 0,
     'errors_total': 0,                # exceptions during drain (caught + logged)
@@ -249,11 +250,18 @@ def drain_once(brain) -> None:
 
     conn = brain.conn_bg_writer
     rolled_back = False
+    begin_wait_ms = 0
     try:
         # BEGIN IMMEDIATE so we grab the WAL writer slot upfront; without
         # this SQLite auto-begins on first write and could deadlock on
         # busy_timeout mid-batch if a foreground write started first.
+        # We measure this separately because stalls usually point here —
+        # the WAL slot is contended, BEGIN IMMEDIATE waits, everything
+        # downstream pays. The wait time is exported in stats so the
+        # stall watchdog can attribute time accurately.
+        _bi_t0 = time.time()
         conn.execute('BEGIN IMMEDIATE')
+        begin_wait_ms = int((time.time() - _bi_t0) * 1000)
 
         if access_snap:
             # Atomic +1 per (node, session) pair via executemany. The
@@ -317,6 +325,7 @@ def drain_once(brain) -> None:
         _stats['last_drain_at'] = t0
         _stats['last_drain_took_ms'] = took_ms
         _stats['last_drain_size'] = batch_size
+        _stats['last_begin_wait_ms'] = begin_wait_ms
         if took_ms > _OVERLONG_THRESHOLD_MS:
             _stats['overlong_drains_total'] += 1
 
@@ -326,10 +335,10 @@ def drain_once(brain) -> None:
         try:
             brain._log_error(
                 'bg_writer_drain_overlong',
-                RuntimeError('drain took %dms (>%dms threshold)' %
-                             (took_ms, _OVERLONG_THRESHOLD_MS)),
-                'access=%d hebbian=%d' %
-                (len(access_snap), len(hebbian_snap)))
+                RuntimeError('drain took %dms (>%dms threshold) — BEGIN IMMEDIATE waited %dms' %
+                             (took_ms, _OVERLONG_THRESHOLD_MS, begin_wait_ms)),
+                'access=%d hebbian=%d begin_wait_ms=%d' %
+                (len(access_snap), len(hebbian_snap), begin_wait_ms))
         except Exception as le:
             print('[recall_write_queue] overlong log failed: %s' % le,
                   file=sys.stderr)

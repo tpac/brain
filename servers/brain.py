@@ -145,14 +145,18 @@ class Brain(
         # serialization: daemon dispatch, S2 encoder dispatch, embed_queue
         # backfill, autosave. RLock so a thread that already holds it can
         # call into a brain method that also wants to acquire it without
-        # deadlock.
-        self.write_lock = threading.RLock()
+        # deadlock. TrackedRLock exposes the current holder for the
+        # bg_writer stall watchdog — when a drain times out we want to
+        # know which thread was holding when.
+        from .tracked_lock import TrackedRLock
+        self.write_lock = TrackedRLock()
 
-        # Open SQLite connection with WAL mode for concurrency
+        # Open SQLite connection with WAL mode for concurrency. Pragma
+        # set comes from db_backends.current — single source for every
+        # connection in the daemon.
+        from . import db_backends
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
-        self.conn.execute('PRAGMA journal_mode=WAL')
-        self.conn.execute('PRAGMA busy_timeout = 30000')
-        self.conn.execute('PRAGMA foreign_keys=ON')
+        db_backends.current.apply_pragmas(self.conn)
 
         # Background-writer connection (2026-05-18). Owned exclusively by the
         # embed_queue worker thread for batched, deferred, non-realtime writes:
@@ -172,9 +176,7 @@ class Brain(
         # writes without this connection. sqlite3 raises OperationalError,
         # which propagates to daemon_server boot path and surfaces in daemon.log.
         self.conn_bg_writer = sqlite3.connect(db_path, check_same_thread=False)
-        self.conn_bg_writer.execute('PRAGMA journal_mode=WAL')
-        self.conn_bg_writer.execute('PRAGMA busy_timeout = 30000')
-        self.conn_bg_writer.execute('PRAGMA foreign_keys=ON')
+        db_backends.current.apply_pragmas(self.conn_bg_writer)
 
         # Daemon boot timestamp — used by run_maintenance_if_due to enforce
         # MAINTENANCE_BOOT_GRACE_SECONDS so maintenance never fires during
@@ -191,8 +193,7 @@ class Brain(
         db_dir = os.path.dirname(db_path) or '.'
         self.logs_db_path = os.path.join(db_dir, 'brain_logs.db')
         self.logs_conn = sqlite3.connect(self.logs_db_path, check_same_thread=False)
-        self.logs_conn.execute("PRAGMA journal_mode=WAL")
-        self.logs_conn.execute("PRAGMA busy_timeout = 30000")
+        db_backends.current.apply_pragmas(self.logs_conn)
         ensure_logs_schema(self.logs_conn)
 
         # One-time migration: move log tables from brain.db to brain_logs.db
