@@ -164,7 +164,8 @@ class RelationReclassifier(IntegrationUnit):
             if not os.environ.get('ANTHROPIC_API_KEY'):
                 from ..dispatch import load_env
                 load_env()
-            client = anthropic.Anthropic()
+            from .base import ANTHROPIC_CLIENT_TIMEOUT
+            client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
             response = client.messages.create(
                 model='claude-sonnet-4-20250514',
                 max_tokens=2048,

@@ -106,7 +106,8 @@ def _call_surface(brain, candidates_data, user_message,
     client = getattr(brain, 'anthropic_client', None)
     if client is None:
         import anthropic
-        client = anthropic.Anthropic()
+        from ..runner import ANTHROPIC_CLIENT_TIMEOUT
+        client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
 
     if variant == 'v5_agentic':
         # Agentic path: Haiku has tools, can extend the candidate pool

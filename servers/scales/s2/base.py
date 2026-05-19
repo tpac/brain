@@ -26,16 +26,8 @@ import time
 from datetime import date, datetime, timezone, timedelta
 
 
-# Per-request timeout on the Anthropic SDK client used by S2 encoders.
-# The SDK default (600s/request) let a hung API call tie up consolidation
-# for 45 minutes on 2026-04-19. 180s is generous for a 10-proposal batch
-# on Sonnet and caps the blast radius of any single stuck request.
-ANTHROPIC_CLIENT_TIMEOUT = 600.0  # 10 minutes. Community encoder round 2 on
-                                  # cold-cache batches can legitimately take
-                                  # ~218s (per observed trace data); 180s was
-                                  # lying about what's possible and producing
-                                  # a consistent "batch 1/N FAILED: read
-                                  # timeout" cascade every run.
+# Single shared Anthropic client timeout — see scales/runner.py.
+from ..runner import ANTHROPIC_CLIENT_TIMEOUT  # noqa: F401 — re-export for callers
 
 
 # Per-batch retry policy for transient API errors. The SDK's built-in
@@ -468,7 +460,7 @@ class IntegrationUnit:
             load_env()
 
         try:
-            client = anthropic.Anthropic()
+            client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
             response = client.messages.create(
                 model=model,
                 max_tokens=max_tokens,

@@ -18,6 +18,19 @@ import threading
 from .dispatch import make_scale_dispatch, daemon_tcp_send
 
 
+# Hard upper bound on any single Anthropic SDK call (S1 surface, S1
+# encode, S2 encoders, scouts). The SDK default is roughly 600s but is
+# measured against time.monotonic(), which does NOT advance while the
+# process is suspended (macOS sleep). A call started right before sleep
+# can therefore hang indefinitely after wake. The autosave loop's wall-
+# clock gap detector triggers a daemon restart on detected suspend
+# events; this constant bounds normal-mode hangs (slow API, throttled
+# response, etc.) so a stuck call doesn't tie up a worker forever.
+# Community encoder round 2 on cold-cache batches can legitimately take
+# ~218s; 600s leaves headroom without inviting silence.
+ANTHROPIC_CLIENT_TIMEOUT = 600.0
+
+
 def run_in_background(name, brain_db_path, session_id, counter, lock,
                       run_fn, encoding_source='encoder:sonnet',
                       trace_scale='s1', trace_chain_fn=None):
