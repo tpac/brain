@@ -880,7 +880,11 @@ def _health_monitor():
 
     consecutive_failures = 0
     PING_INTERVAL = 2.0
-    FAILURE_THRESHOLD = 3  # Alert after 3 consecutive failures (6s)
+    # 20s grace before declaring the daemon down. Legitimate slow paths can
+    # eat 5-15s (surface_haiku under load, brain.save() under contention,
+    # cold-cache S2 enrichment) — bailing at 6s caused false-positive
+    # alerts during normal operation. Below 20s = noise; above 20s = real.
+    FAILURE_THRESHOLD = 10
 
     while True:
         time.sleep(PING_INTERVAL)

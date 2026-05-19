@@ -366,6 +366,20 @@ The brain bundles its own Python at `venv/bin/python` (3.11.11). That's the inte
 
 Hooks source `brain-env.sh` transitively via `resolve-brain-db.sh`; the daemon launcher picks the same Python explicitly. Don't add new hook scripts that skip `brain-env.sh`.
 
+### `BRAIN_DEV_MODE` — opt out of end-user safety nets
+
+The daemon ships safety nets that auto-restart it on detected failures (host-suspend detector → SIGTERM-self; future hung-corpse force-kill). End users want these; developers debugging the daemon do not — an autokill rips the subject out from under `py-spy dump` / `lldb`.
+
+Set `BRAIN_DEV_MODE=1` in your shell rc (`~/.zshrc` or equivalent). The detectors still log loudly when they would have fired, but take no action — you control the lifecycle.
+
+```bash
+export BRAIN_DEV_MODE=1
+```
+
+**Plugin repackaging checklist must include unsetting this.** End-user environments need the safety nets — most users will see a hung daemon as a broken plugin, not a debuggable process. The repackager's job is to ensure the shipped artifact runs without `BRAIN_DEV_MODE` set. CI for the plugin should verify `BRAIN_DEV_MODE` is not exported.
+
+The flag is read via `servers.daemon_config.is_dev_mode()`. Add new dev-mode gates by calling that function — don't read the env var directly.
+
 ### Test Integrity
 
 **When a test fails, STOP.** Do not change the test OR the code.

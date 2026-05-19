@@ -702,18 +702,25 @@ class BrainDaemon:
             _last_wall = _now_wall
             _gap = _wall_delta - AUTOSAVE_INTERVAL_SECONDS
             if _gap > _SUSPEND_GAP_THRESHOLD:
+                from .daemon_config import is_dev_mode
+                _dev = is_dev_mode()
                 self._log(
                     "HOST SUSPEND DETECTED: wall +%.0fs vs expected %ds — "
-                    "Anthropic sockets opened pre-suspend may be hung. "
-                    "Sending SIGTERM to self for clean restart." % (
-                        _wall_delta, AUTOSAVE_INTERVAL_SECONDS))
+                    "Anthropic sockets opened pre-suspend may be hung.%s" % (
+                        _wall_delta, AUTOSAVE_INTERVAL_SECONDS,
+                        " (BRAIN_DEV_MODE — staying alive, no SIGTERM)"
+                        if _dev else " Sending SIGTERM to self for clean restart."))
                 try:
                     self.brain._log_error(
                         'daemon_host_suspend_detected',
-                        RuntimeError('wall_gap=%.0fs' % _wall_delta),
-                        'autosave loop saw wall-clock jump; SIGTERM to self')
+                        RuntimeError('wall_gap=%.0fs dev_mode=%s' % (_wall_delta, _dev)),
+                        'autosave loop saw wall-clock jump')
                 except Exception:
                     pass
+                if _dev:
+                    # Skip the kill — developer is in control. Reset _last_wall
+                    # so we don't re-fire every iteration on the same gap.
+                    continue
                 try:
                     os.kill(os.getpid(), signal.SIGTERM)
                 except Exception as _e:

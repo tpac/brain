@@ -34,6 +34,26 @@ DAEMON_HOST = ""  # Empty string = all interfaces (IPv4+IPv6), fixes macOS local
 DAEMON_PORT = 47200 + (os.getuid() % 100)  # Per-user port to avoid collisions
 
 
+# ─── Developer mode ───
+# Set BRAIN_DEV_MODE=1 in your shell rc to opt out of safety nets that
+# are appropriate for end users but actively hostile while developing
+# the brain itself (suspend-detector auto-restart, future hung-corpse
+# autokill, anything else that pulls the rug out from under you mid-
+# investigation). In dev mode the daemon logs loudly when these would
+# have fired, but takes no action — you control the lifecycle.
+#
+# IMPORTANT: this flag must NOT be set in environments where the brain
+# is shipped as a plugin to other users. End-user safety nets exist
+# because most users won't run py-spy / lldb / brain CLI to diagnose a
+# hung daemon — they just see a non-functional plugin. Repackaging
+# checklist must include "BRAIN_DEV_MODE unset / unexported".
+
+
+def is_dev_mode() -> bool:
+    """True if BRAIN_DEV_MODE is set to a truthy value."""
+    return os.environ.get('BRAIN_DEV_MODE', '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+
 # ─── Code Fingerprinting ───
 
 def _code_fingerprint() -> str:
