@@ -28,14 +28,11 @@ from .brain_constants import (
     CRITICAL_BOOST,
     CRITICAL_SIMILARITY_THRESHOLD,
     DECAY_HALF_LIFE,
-    EDGE_TYPES,
     EMBEDDING_PRIMARY_WEIGHT,
     GRAPH_AUGMENT_TOP_N,
     INTENTIONAL_EDGE_TYPES,
     KEYWORD_FALLBACK_WEIGHT,
-    LEARNING_RATE,
     MAX_PAGE_SIZE,
-    MAX_WEIGHT,
     PRUNE_THRESHOLD,
     RELEVANCE_FLOOR_ENRICHED,
     RELEVANCE_FLOOR_PRIMARY,
@@ -1060,8 +1057,11 @@ class BrainRecallMixin:
                 return _copy.deepcopy(inflight.result())
 
             # Leader path — compute, populate cache, fan out, clean up.
+            # Phase 5 (2026-05-18): _run_recall_with_commit removed — recall
+            # is now read-only at SQLite (writes deferred to recall_write_queue
+            # drained by the bg_writer worker), so no commit step is needed.
             try:
-                result = self._run_recall_with_commit(
+                result = self._recall_impl(
                     query=query, filter=filter, limit=limit, offset=offset,
                     include_archived=include_archived, min_recency=min_recency,
                     project=project, session_id=session_id, ctx=ctx,
@@ -1076,36 +1076,11 @@ class BrainRecallMixin:
                 self._recall_inflight_release(dedup_key, inflight)
 
         # Dedup disabled (key construction failed) — fall through.
-        return self._run_recall_with_commit(
+        return self._recall_impl(
             query=query, filter=filter, limit=limit, offset=offset,
             include_archived=include_archived, min_recency=min_recency,
             project=project, session_id=session_id, ctx=ctx,
             situation_vec=situation_vec, source=source)
-
-    def _run_recall_with_commit(self, **kwargs):
-        """Wrapper around _recall_impl that commits ONCE at the end of any
-        path (success, early return, or exception).
-
-        Why this exists: _mark_accessed accumulates UPDATEs on
-        self.conn_recall_write without committing (the commit storm
-        was the root cause of spinning CPU under concurrent recall
-        load — see commit log 2026-05-08). The single end-of-recall
-        commit on the recall write connection holds that connection's
-        write lock briefly once instead of N times, AND doesn't
-        contend with the main connection's long writes (consolidation
-        encoder LLM cycles).
-
-        Try/finally ensures we don't leak an open transaction on
-        early returns or exceptions.
-        """
-        try:
-            return self._recall_impl(**kwargs)
-        finally:
-            try:
-                self.conn_recall_write.commit()
-            except Exception as _e:
-                self._log_error('recall_final_commit', _e,
-                                'committing post-recall writes on recall write conn')
 
     # ─── recall result cache (5s TTL) ─────────────────────────────────
 
@@ -2044,82 +2019,52 @@ class BrainRecallMixin:
             return []
 
     def _mark_accessed(self, node_id: str, session_id: str, ctx=None):
-        """Mark a node as accessed, increment synaptic fatigue.
+        """Enqueue a recognition signal for this node + session pair.
 
-        Architecture (2026-05-08):
-        - Writes go to `self.conn_recall_write` (separate connection),
-          not the main `self.conn`. WAL mode lets the two writer
-          connections coordinate at the SQLite WAL layer in sub-ms,
-          so recall is no longer blocked by long write transactions
-          on the main connection (consolidation, hooks, MCP writes).
-        - Per-node commit removed (was the commit storm causing CPU
-          spin under concurrent hook-driven recall). The single final
-          commit happens in _run_recall_with_commit on the same
-          recall write connection, batching all _mark_accessed UPDATEs
-          from this recall.
+        Architecture (2026-05-18, Phase 5 of bg_writer migration):
+        - No DB I/O on the hot path. Enqueues (node_id, session_id, ts)
+          into `recall_write_queue`. The background worker drains every
+          EMBED_DRAIN_INTERVAL seconds via `brain.conn_bg_writer`,
+          producing one atomic +1 UPDATE per unique (node, session)
+          pair (dedup'd by Dict semantics within the drain window).
+        - Recall is now read-only at SQLite. No `conn_recall_write`,
+          no per-recall commit, no busy_timeout exposure on the hot
+          path.
 
-        Parallel-session correctness (2026-05-17): fatigue increments go
-        to the SessionContext passed in by the caller, not to a cached
-        instance attr (which leaked across sessions). When ctx is None
-        (callers without ctx in hand), fatigue is dropped silently for
-        this access — the access_count mark still happens, so the
-        recall side is unaffected, just no per-session fatigue feedback.
+        Parallel-session correctness: fatigue increments go to the
+        SessionContext passed in by the caller. When ctx is None,
+        fatigue is dropped for this access — the access mark still
+        enqueues, just no per-session fatigue feedback.
         """
-        node_dal = NodeDAL(self.conn_recall_write)
-        node_dal.mark_accessed(node_id)
-        # access_log write removed 2026-04-05 — table dropped
-        # commit deferred — see _run_recall_with_commit
+        try:
+            from . import recall_write_queue
+            recall_write_queue.enqueue_access(node_id, session_id, self.now())
+        except Exception as e:
+            self._log_error('mark_accessed_enqueue', e,
+                            'enqueue failed for node=%s session=%s' %
+                            (node_id[:12] if node_id else '', session_id))
 
         # Increment session fatigue counter — next recall will dampen this
         # node's cosine. ctx is the per-call SessionContext; mutations are
         # saved by the caller at end of recall (see _recall_impl).
         if ctx is not None:
-            ctx.increment_fatigue(node_id)
+            try:
+                ctx.increment_fatigue(node_id)
+            except Exception as e:
+                self._log_error('mark_accessed_fatigue', e,
+                                'fatigue increment failed for node=%s' %
+                                (node_id[:12] if node_id else ''))
 
-    def _hebbian_strengthen(self, node_ids: List[str], segment_node_ids: Optional[List[str]] = None):
-        """
-        Strengthen connections between co-accessed nodes (Hebbian learning).
-
-        If two nodes are co-recalled but have no edge, CREATE a co_accessed edge.
-        If they already have an edge, strengthen it.
-        This is how the brain auto-discovers relationships from usage patterns.
-
-        v5.1: When segment_node_ids is provided, only create NEW co_accessed edges
-        between nodes that are both in the same segment. Existing edges are always
-        strengthened regardless (if they co-fire across segments, the edge earned it).
-        """
-        if len(node_ids) < 2:
-            return
-
-        segment_set = set(segment_node_ids) if segment_node_ids else None
-
-        ts = self.now()
-
-        # Cap pairwise work: only top N nodes to avoid O(n^2) explosion
-        ids = node_ids[:15]
-
-        graph_dal = GraphDAL(self.conn)
-
-        for i in range(len(ids)):
-            for j in range(i + 1, len(ids)):
-                nid_i = ids[i]
-                nid_j = ids[j]
-
-                # Check if edge exists (either direction) — strengthen via DAL
-                if graph_dal.strengthen_edge(nid_i, nid_j, amount=LEARNING_RATE * 0.1):
-                    continue
-                if graph_dal.strengthen_edge(nid_j, nid_i, amount=LEARNING_RATE * 0.1):
-                    continue
-                else:
-                    # NO edge — create co_accessed (v5.1: only within same segment)
-                    if segment_set and (nid_i not in segment_set or nid_j not in segment_set):
-                        continue
-                    graph_dal.create_edge(
-                        nid_i, nid_j,
-                        weight=EDGE_TYPES['co_accessed']['defaultWeight'],
-                        relation='co_accessed')
-
-        self.conn.commit()
+    # _hebbian_strengthen REMOVED 2026-05-18 (Phase 5):
+    # - Operated on top-15-by-cosine recall results, not what Anchor
+    #   consciously surfaced. Strengthened pairs Anchor never saw.
+    # - Read-modify-write via deprecated GraphDAL.strengthen_edge.
+    # - Wrote through primary conn on the recall hot path — load-bearing
+    #   contributor to the database-locked cascade.
+    # Hebbian semantics now live in `daemon_hooks._hebbian_strengthen`
+    # (which already operates on surface-selected nodes — the right
+    # layer) and routes through `recall_write_queue.enqueue_hebbian_pairs`
+    # for atomic SQL via brain.conn_bg_writer.
 
     # _log_recall REMOVED 2026-04-05 — recall_log writes deprecated, traces are source of truth
 

@@ -264,21 +264,33 @@ class BrainTestBase(unittest.TestCase):
             self._patch_writes_to_auto_drain()
 
     def _drain_embeddings(self):
-        """Force-drain the embed_queue synchronously.
+        """Force-drain BOTH background queues synchronously.
 
-        Normally called automatically after remember()/revise() via the
-        wrapper installed in setUp. Exposed for tests that bypass the
-        wrapper (direct DAL writes, raw SQL, etc).
+        Drains embed_queue (vectors + temporal extraction) and
+        recall_write_queue (access marks + Hebbian) so tests see
+        synchronous behavior after calls that enqueue.
+
+        Normally called automatically after remember()/revise()/recall()
+        via the wrappers installed in setUp. Exposed for tests that
+        bypass those wrappers (direct DAL writes, raw SQL, etc).
         """
-        from servers import embed_queue
+        from servers import embed_queue, recall_write_queue
         embed_queue._drain_once(self.brain)
+        recall_write_queue.drain_once(self.brain)
 
     def _patch_writes_to_auto_drain(self):
-        """Wrap brain.remember and brain.revise so each call drains the
-        embed queue before returning. Tests see synchronous behavior."""
-        from servers import embed_queue
+        """Wrap brain.remember/revise/recall so each call drains both
+        background queues before returning. Tests see synchronous behavior.
 
-        for method_name in ('remember', 'revise'):
+        Recall is wrapped because Phase 5 (2026-05-18) moved
+        _mark_accessed and the surface-driven Hebbian path off the hot
+        path onto the bg_writer queue. Tests asserting on
+        nodes.access_count immediately after recall need the drain to
+        fire synchronously.
+        """
+        from servers import embed_queue, recall_write_queue
+
+        for method_name in ('remember', 'revise', 'recall'):
             original = getattr(self.brain, method_name, None)
             if original is None or getattr(original, '_drain_wrapped', False):
                 continue
@@ -289,10 +301,15 @@ class BrainTestBase(unittest.TestCase):
                     try:
                         embed_queue._drain_once(self.brain)
                     except Exception as e:
-                        # Don't let drain failures hide real test results.
                         import sys
-                        print('[brain_test_base] drain after %s failed: %s'
-                              % (qname, e), file=sys.stderr)
+                        print('[brain_test_base] embed drain after %s '
+                              'failed: %s' % (qname, e), file=sys.stderr)
+                    try:
+                        recall_write_queue.drain_once(self.brain)
+                    except Exception as e:
+                        import sys
+                        print('[brain_test_base] recall_write drain after '
+                              '%s failed: %s' % (qname, e), file=sys.stderr)
                     return result
                 wrapper._drain_wrapped = True
                 wrapper.__wrapped__ = orig

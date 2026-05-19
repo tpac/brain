@@ -414,7 +414,7 @@ def extract_edge_intervals(
     return out
 
 
-def backfill_edge_dates(brain, edge_id: str) -> int:
+def backfill_edge_dates(brain, edge_id: str, conn=None) -> int:
     """Extract intervals for one edge and write to entity_dates.
 
     Pulls all (relation, description) pairs from edge_relations for the
@@ -424,9 +424,18 @@ def backfill_edge_dates(brain, edge_id: str) -> int:
     Edges with multiple relations on the same edge_id get all relations
     scanned — each row's description is its own date-bearing surface.
 
-    Caller MUST hold brain.write_lock.
+    Args:
+        brain: Brain instance.
+        edge_id: edge to scan.
+        conn: optional sqlite3 connection. If None, uses brain.conn
+            (legacy path, requires caller holds brain.write_lock).
+            Pass brain.conn_bg_writer to route writes off the foreground
+            writer slot.
+
+    The caller is responsible for transaction lifecycle (BEGIN/COMMIT)
+    on the connection passed in. This function only executes statements.
     """
-    conn = brain.conn
+    conn = conn if conn is not None else brain.conn
     rows = conn.execute(
         '''SELECT relation, description FROM edge_relations
            WHERE edge_id = ? AND (archived IS NULL OR archived = 0)''',
@@ -449,15 +458,24 @@ def backfill_edge_dates(brain, edge_id: str) -> int:
     return write_entity_dates(conn, 'edge', edge_id, intervals)
 
 
-def backfill_node_dates(brain, node_id: str) -> int:
+def backfill_node_dates(brain, node_id: str, conn=None) -> int:
     """Extract intervals for one node and write to entity_dates.
 
     Pulls title + content from `nodes` and all KV pairs from
     `node_metadata_kv`. Returns the number of intervals written.
 
-    Caller MUST hold brain.write_lock (this writes to entity_dates).
+    Args:
+        brain: Brain instance.
+        node_id: node to scan.
+        conn: optional sqlite3 connection. If None, uses brain.conn
+            (legacy path, requires caller holds brain.write_lock).
+            Pass brain.conn_bg_writer to route writes off the foreground
+            writer slot.
+
+    The caller is responsible for transaction lifecycle (BEGIN/COMMIT)
+    on the connection passed in.
     """
-    conn = brain.conn
+    conn = conn if conn is not None else brain.conn
     row = conn.execute(
         'SELECT title, content FROM nodes WHERE id = ?', (node_id,)
     ).fetchone()
@@ -476,6 +494,7 @@ def backfill_entity_dates(
     brain,
     node_ids: Iterable[str],
     edge_ids: Optional[Iterable[str]] = None,
+    conn=None,
 ) -> dict:
     """Batch entry point — called by embed_queue._drain_once.
 
@@ -486,6 +505,19 @@ def backfill_entity_dates(
     description + relation text fields (no inheritance from endpoint
     nodes). The tool layer (recall_by_time) is responsible for unwrapping
     matched edges into (edge + source_node + target_node) responses.
+
+    Args:
+        brain: Brain instance.
+        node_ids: nodes to scan.
+        edge_ids: edges to scan (optional).
+        conn: optional sqlite3 connection to write through. None →
+            brain.conn (legacy, requires brain.write_lock). For the
+            embed_queue worker post-2026-05-18, pass brain.conn_bg_writer
+            so writes don't race with foreground MCP writes at the WAL
+            writer slot.
+
+    The caller owns transaction lifecycle on `conn` — this function
+    only executes statements and does not commit.
     """
     nodes_processed = 0
     edges_processed = 0
@@ -494,7 +526,7 @@ def backfill_entity_dates(
         if not nid:
             continue
         try:
-            intervals_written += backfill_node_dates(brain, nid)
+            intervals_written += backfill_node_dates(brain, nid, conn=conn)
             nodes_processed += 1
         except Exception as e:
             brain._log_error('temporal_extract_node', e,
@@ -503,7 +535,7 @@ def backfill_entity_dates(
         if not eid:
             continue
         try:
-            intervals_written += backfill_edge_dates(brain, eid)
+            intervals_written += backfill_edge_dates(brain, eid, conn=conn)
             edges_processed += 1
         except Exception as e:
             brain._log_error('temporal_extract_edge', e,

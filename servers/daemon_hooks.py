@@ -326,10 +326,14 @@ def hook_recall(brain, args, graph_changes):
 
         pt.mark('candidates')
 
-        # Recent messages for surface context — from traces
+        # Recent messages for surface context — from traces.
+        # Limit comes from SURFACE['recent_messages'] so the upstream pull and
+        # the downstream slice in build_surface_prompt share one source of truth.
+        from .scales.s1.surface_contract import SURFACE as _SURFACE
         recent_messages = []
         try:
-            turns = brain._trace_dal.get_session_turns(session_id, limit=5)
+            turns = brain._trace_dal.get_session_turns(
+                session_id, limit=_SURFACE['recent_messages'])
             recent_messages = [{"role": t['role'], "content": (t['content'] or '')[:_PL['recent_message_content']]}
                                for t in turns]
         except Exception as _e:
@@ -433,20 +437,37 @@ def hook_recall(brain, args, graph_changes):
 
 
 def _hebbian_strengthen(brain, session_id, stop_counter):
-    """Strengthen co_accessed edges between surface-selected nodes.
+    """Enqueue co-access pairs from this turn's surface selection.
 
-    Only nodes the S1 Surface selected get edges — meaningful co-activation.
+    Reads the surface-selected file written by S1 (3-5 nodes Anchor
+    consciously chose to surface), resolves short IDs to full IDs,
+    builds all unordered pairs, and enqueues them to
+    `recall_write_queue` for batched atomic strengthening via
+    `brain.conn_bg_writer`. The background worker handles the actual
+    SQL — this function does no DB writes.
 
-    Every invocation emits an outcome counter to brain stats — previous
-    "return silently" paths hid a filename bug for months. Now every call
-    has a visible tally, so "why did Hebbian never run?" becomes answerable.
+    Phase 5 of bg_writer migration (2026-05-18):
+    - Was: synchronous `brain.connect_typed` + `gdal.strengthen_relation`
+      per pair, both writing through primary `brain.conn` on the post-
+      response hot path. Read-modify-write with up to N×8 SQL round-trips.
+    - Now: pure resolve + enqueue. The worker's drain does atomic
+      `UPDATE edge_relations SET weight = MIN(MAX, weight + ?)` per
+      pair, no read needed for the strengthen path.
 
-    `stop_counter` is the same counter surface.py used when writing the
-    file — both producer and consumer must agree on the path so consecutive
-    turns don't read each other's files.
+    `stop_counter` is the same counter surface.py used when writing
+    the file — both producer and consumer must agree on the path so
+    consecutive turns don't read each other's files.
+
+    Outcome tally remains so "did Hebbian run?" stays answerable
+    without a debugger.
     """
-    outcome = {'file_missing': 0, 'few_ids': 0, 'unresolved': 0, 'edges': 0}
-    surface_path = '/tmp/brain-%s-%d-surface-selected.json' % (session_id, stop_counter)
+    from itertools import combinations
+    from . import recall_write_queue
+
+    outcome = {'file_missing': 0, 'few_ids': 0, 'unresolved': 0,
+               'pairs_enqueued': 0}
+    surface_path = '/tmp/brain-%s-%d-surface-selected.json' % (
+        session_id, stop_counter)
     try:
         if not os.path.exists(surface_path):
             outcome['file_missing'] = 1
@@ -458,7 +479,7 @@ def _hebbian_strengthen(brain, session_id, stop_counter):
             outcome['few_ids'] = 1
             return
 
-        # Resolve short IDs to full IDs
+        # Resolve short IDs to full IDs.
         from servers.dal import NodeDAL
         dal = NodeDAL(brain.conn)
         full_ids = []
@@ -470,26 +491,29 @@ def _hebbian_strengthen(brain, session_id, stop_counter):
             outcome['unresolved'] = 1
             return
 
-        from .brain_constants import LEARNING_RATE
-        from .dal import GraphDAL
-        gdal = GraphDAL(brain.conn)
-        for i in range(len(full_ids)):
-            for j in range(i + 1, min(len(full_ids), i + 8)):
-                try:
-                    # Stage 1B: connect_typed is now idempotent upsert (no
-                    # auto-strengthen). For Hebbian co-access we explicitly
-                    # ensure the edge exists, then strengthen its weight.
-                    brain.connect_typed(full_ids[i], full_ids[j],
-                                        relation='co_accessed', weight=LEARNING_RATE * 0.15,
-                                        edge_type='co_accessed', description='surface-selected')
-                    gdal.strengthen_relation(full_ids[i], full_ids[j], 'co_accessed')
-                    outcome['edges'] += 1
-                except Exception as e:
-                    brain._log_error('hebbian_edge', e, 'creating co_accessed edge')
+        # Build all unordered pairs and enqueue in one call. Max C(5, 2)
+        # = 10 pairs when surface picked the typical 3-5 nodes. No
+        # neighbor-cap (the old `min(j, i+8)` was an O(n²) bound that
+        # only mattered when this ran inline; the queue/drain handles
+        # batching naturally).
+        pairs = list(combinations(full_ids, 2))
+        ts = brain.now()
+        try:
+            recall_write_queue.enqueue_hebbian_pairs(pairs, ts)
+            outcome['pairs_enqueued'] = len(pairs)
+        except Exception as e:
+            brain._log_error('hebbian_enqueue', e,
+                             'enqueue_hebbian_pairs failed for %d pairs' %
+                             len(pairs))
+
+    except Exception as e:
+        # Unexpected failure in file-read / ID resolve / outer flow.
+        brain._log_error('hebbian_surface_selected_outer', e,
+                         'surface_path=%s' % surface_path)
     finally:
-        # Durable tally so "did Hebbian run?" is answerable without a debugger.
-        # If the log itself fails we surface that — silent pass would defeat
-        # the whole point of the visibility this block was added for.
+        # Durable tally so "did Hebbian run?" is answerable without a
+        # debugger. log_debug failure routes through _log_error so a
+        # broken logging path doesn't silently hide the outcome.
         try:
             brain.log_debug('hebbian_run', 'post_response_common', **outcome)
         except Exception as _le:
@@ -610,14 +634,23 @@ def hook_post_response_track(brain, args, graph_changes):
         # handed ownership to a background thread. Without this release,
         # the daemon's encoder would be permanently jammed.
         if acquired_for_spawn:
+            release_err = None
             try:
                 _encoding_lock.release()
-            except Exception:
-                pass
-            brain._log_error(
-                'encoding_lock_leak_recovered',
-                RuntimeError("encoding lock acquired but spawn failed; released to prevent permanent jam"),
-                'session=%s counter=%s' % (session_id, ctx.stop_counter))
+            except Exception as _re:
+                release_err = _re
+            if release_err is None:
+                brain._log_error(
+                    'encoding_lock_leak_recovered',
+                    RuntimeError("encoding lock acquired but spawn failed; released to prevent permanent jam"),
+                    'session=%s counter=%s' % (session_id, ctx.stop_counter))
+            else:
+                # Release itself failed — lock state is now corrupt.
+                # Log loudly so we know the jam is real, not "recovered".
+                brain._log_error(
+                    'encoding_lock_release_failed', release_err,
+                    'session=%s counter=%s — lock state corrupt, encoder may be permanently jammed' %
+                    (session_id, ctx.stop_counter))
 
     brain.save()
     return {"output": "(stored + %s)" % encoding_status}
@@ -1029,8 +1062,19 @@ def hook_stop_failure_log(brain, args, graph_changes):
     error_details = args.get("error_details", "")
     try:
         brain.log_debug("stop_failure", "API error: %s — %s" % (error_type, str(error_details)[:200]))
-    except Exception:
-        pass
+    except Exception as _le:
+        # Logging-path failure: route to _log_error as a fallback, then
+        # stderr as the last-resort. Swallowing this silently would hide
+        # API failures from production telemetry — the very thing this
+        # hook exists to capture.
+        try:
+            brain._log_error('stop_failure_log', _le,
+                             'log_debug raised on stop_failure capture; '
+                             'original error_type=%s' % error_type)
+        except Exception:
+            import sys as _sys
+            print('[hook_stop_failure_log] log_debug failed AND _log_error '
+                  'failed: %s' % _le, file=_sys.stderr)
     return {"output": ""}
 
 

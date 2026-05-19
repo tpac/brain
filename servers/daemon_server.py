@@ -793,20 +793,40 @@ class BrainDaemon:
 
     def _cleanup(self):
         """Close server socket, observer channel, remove PID and lock files.
+        Also signals background-writer queues to stop draining so the worker
+        thread exits cleanly at its next interval check (daemon thread is
+        force-killed on process exit anyway, but signaling lets a partial
+        drain finish without crash-rollback).
         Idempotent — safe to call multiple times (signal + atexit + explicit)."""
+        try:
+            from servers import embed_queue, recall_write_queue
+            embed_queue.request_shutdown()
+            recall_write_queue.request_shutdown()
+        except Exception as e:
+            print('[brain-daemon] queue shutdown signal failed: %s' % e,
+                  file=sys.stderr)
         self._close_socket()
         for path in [self.pid_path, get_status_path()]:
             try:
                 if os.path.exists(path):
                     os.unlink(path)
-            except Exception:
-                pass
+            except Exception as _ue:
+                # Stale PID/status files cause "Another daemon running"
+                # errors on next boot. Silent failure here hides that
+                # class of bug. Stderr is the right channel (we may
+                # not have a brain handle at this point in shutdown).
+                print('[brain-daemon] failed to remove %s: %s' %
+                      (path, _ue), file=sys.stderr)
         try:
             if hasattr(self, '_lock_fd') and self._lock_fd:
                 fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
                 self._lock_fd.close()
-        except Exception:
-            pass
+        except Exception as _le:
+            # A leaked file lock prevents daemon restart. Silent failure
+            # creates "can't acquire lock" errors at next launch with no
+            # explanation. Surface it.
+            print('[brain-daemon] failed to release lock fd: %s' %
+                  _le, file=sys.stderr)
 
     def _log(self, message: str):
         ts = time.strftime("%H:%M:%S")

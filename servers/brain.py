@@ -154,18 +154,27 @@ class Brain(
         self.conn.execute('PRAGMA busy_timeout = 30000')
         self.conn.execute('PRAGMA foreign_keys=ON')
 
-        # Separate write connection used ONLY by recall's _mark_accessed
-        # writes (2026-05-08). Decouples recall's frequent small UPDATE +
-        # COMMIT from any long-running write transaction on `self.conn`
-        # (consolidation/community/healer encoders, hooks, MCP writes).
-        # WAL mode lets two writer connections coordinate at the WAL layer
-        # in sub-ms; without this split, recall.commit() blocks for
-        # ~30s busy_timeout when consolidation holds the lock — first
-        # recall after boot timed out at ~261s observed.
-        self.conn_recall_write = sqlite3.connect(db_path, check_same_thread=False)
-        self.conn_recall_write.execute('PRAGMA journal_mode=WAL')
-        self.conn_recall_write.execute('PRAGMA busy_timeout = 30000')
-        self.conn_recall_write.execute('PRAGMA foreign_keys=ON')
+        # Background-writer connection (2026-05-18). Owned exclusively by the
+        # embed_queue worker thread for batched, deferred, non-realtime writes:
+        # temporal_extract intervals, vector backfill, recall-side access marks
+        # (`_mark_accessed`), and Hebbian co-access strengthening (moved out
+        # of the recall hot path at the surface layer). The recall hot path is
+        # read-only at SQLite. Foreground writes via `self.conn` no longer race
+        # with background batches at the WAL writer slot.
+        #
+        # Replaces the prior `self.conn_recall_write` design (Phase 8 cleanup,
+        # 2026-05-18). The two-writer design split conn_recall_write from
+        # `self.conn` to keep recall's frequent UPDATE+COMMIT off the long-
+        # running write path; this is now obsolete because recall enqueues
+        # instead of writing inline.
+        #
+        # Open failure here is a hard boot crash — the daemon cannot serve
+        # writes without this connection. sqlite3 raises OperationalError,
+        # which propagates to daemon_server boot path and surfaces in daemon.log.
+        self.conn_bg_writer = sqlite3.connect(db_path, check_same_thread=False)
+        self.conn_bg_writer.execute('PRAGMA journal_mode=WAL')
+        self.conn_bg_writer.execute('PRAGMA busy_timeout = 30000')
+        self.conn_bg_writer.execute('PRAGMA foreign_keys=ON')
 
         # Daemon boot timestamp — used by run_maintenance_if_due to enforce
         # MAINTENANCE_BOOT_GRACE_SECONDS so maintenance never fires during
@@ -1744,19 +1753,42 @@ class Brain(
                 print(f'[brain] Backup failed: {e}')
 
     def close(self):
-        """Commit, close all database connections, and remove from singleton cache."""
-        self.conn.commit()
-        self.conn.close()
+        """Commit, close all database connections, and remove from singleton cache.
+
+        Per-connection close is wrapped so a failure on one doesn't skip the
+        others. Errors are logged via `_log_error` (no silent except: pass)
+        with distinct origins per connection / phase so post-mortem can tell
+        commit failures from close failures.
+        """
         try:
-            self.conn_recall_write.commit()
-            self.conn_recall_write.close()
-        except Exception:
-            pass
+            self.conn.commit()
+        except Exception as e:
+            self._log_error('brain_close_commit', e, 'primary conn final commit')
+        try:
+            self.conn.close()
+        except Exception as e:
+            self._log_error('brain_close', e, 'primary conn close')
+
+        # Background-writer connection (temporal, access marks, hebbian).
+        try:
+            self.conn_bg_writer.commit()
+        except Exception as e:
+            self._log_error('bg_writer_close_commit', e,
+                            'bg_writer final commit')
+        try:
+            self.conn_bg_writer.close()
+        except Exception as e:
+            self._log_error('bg_writer_close', e, 'bg_writer close')
+
+        # logs_conn close — logged via stderr fallback because _log_error
+        # itself writes to logs_conn. Closing it last keeps prior _log_error
+        # calls in this method functional.
         try:
             self.logs_conn.commit()
             self.logs_conn.close()
-        except Exception:
-            pass
+        except Exception as e:
+            import sys as _sys
+            print('[brain] logs_conn close failed: %s' % e, file=_sys.stderr)
         # Remove from singleton registry if present
         canonical = os.path.realpath(self.db_path)
         with Brain._lock:

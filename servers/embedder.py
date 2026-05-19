@@ -363,13 +363,24 @@ def get_stats() -> dict:
             if stats['total_embeddings'] > 0 else 0
         ),
     }
-    # Surface embed_queue drain stats — makes "my write isn't indexed"
-    # debuggable without digging through logs.
+    # Surface both queue drain stats — makes "my write isn't indexed"
+    # and "my access marks aren't landing" debuggable without digging
+    # through logs. recall_write_queue is the bg_writer queue for
+    # access marks + Hebbian co-access (Phase 5, 2026-05-18).
     try:
         from . import embed_queue
         out['embed_queue'] = embed_queue.get_stats()
-    except Exception:
-        pass
+    except Exception as e:
+        import sys as _sys
+        print('[embedder] embed_queue.get_stats failed: %s' % e,
+              file=_sys.stderr)
+    try:
+        from . import recall_write_queue
+        out['recall_write_queue'] = recall_write_queue.get_stats()
+    except Exception as e:
+        import sys as _sys
+        print('[embedder] recall_write_queue.get_stats failed: %s' % e,
+              file=_sys.stderr)
     return out
 
 

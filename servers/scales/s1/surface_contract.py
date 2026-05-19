@@ -172,8 +172,14 @@ SURFACE = {
     'max_selected': 5,              # Haiku picks at most this many (was 8 — reduced for 10K hook cap)
     'user_message_limit': 300,
     'anchor_message_limit': 400,    # v9: was 150. Anchor responses carry design context
-    'recent_messages': 7,           # v9: was 5. Deeper conversation window
-    'recent_recalls_messages': 10,  # look back 10 messages for previously surfaced nodes
+    'recent_messages': 5,           # 2026-05-17: single source of truth. daemon_hooks
+                                    # pulls exactly this many session turns; build_surface_prompt
+                                    # slices the same number. Prior config of 7 was a dead
+                                    # ceiling — upstream get_session_turns(limit=5) clipped it.
+    'recent_recalls_messages': 5,   # Aligned with recent_messages: the dedup window matches
+                                    # the conversation window Haiku sees. Was 10 — meant any
+                                    # node surfaced in the last 10 selections was rendered as
+                                    # "do not re-pick", which exceeded the conversation context.
     'session_context_limit': 800,   # shared with ENCODING_AGENT — full session journey
     'session_context_tail': 800,  # 2026-05-02 (Frame Phase 1): was 200. Surface now gets
                                   # the full session_context blob, not just the tail.
@@ -424,7 +430,7 @@ def build_surface_prompt(candidates, user_message,
 
 Conversation (recent, oldest first):
 %s
-Recently surfaced (deprioritize — only select if the current message specifically needs them):
+Recently surfaced (OUT OF SCOPE — Anchor has already seen these in the last 5 turns; do NOT select any ID from this block):
 %s
 %s
 %s

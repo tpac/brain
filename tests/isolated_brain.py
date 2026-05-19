@@ -109,7 +109,7 @@ class IsolatedBrain:
         # → recall() in the same scope returns nothing. Wrap the write
         # APIs to drain synchronously, restoring the pre-deferral
         # contract that test code is written against.
-        from servers import embed_queue
+        from servers import embed_queue, recall_write_queue
 
         def _wrap(name):
             orig = getattr(self.brain, name, None)
@@ -123,14 +123,23 @@ class IsolatedBrain:
                     embed_queue._drain_once(brain)
                 except Exception as e:
                     import sys
-                    print('[isolated_brain] drain after %s failed: %s'
-                          % (name, e), file=sys.stderr)
+                    print('[isolated_brain] embed drain after %s '
+                          'failed: %s' % (name, e), file=sys.stderr)
+                try:
+                    recall_write_queue.drain_once(brain)
+                except Exception as e:
+                    import sys
+                    print('[isolated_brain] recall_write drain after %s '
+                          'failed: %s' % (name, e), file=sys.stderr)
                 return result
             w._drain_wrapped = True
             w.__wrapped__ = orig
             setattr(self.brain, name, w)
 
-        for name in ('remember', 'revise'):
+        # Wrap recall too (Phase 5, 2026-05-18): mark_accessed + hebbian
+        # enqueue happens on recall; tests asserting on access_count need
+        # the bg_writer drain to fire synchronously.
+        for name in ('remember', 'revise', 'recall'):
             _wrap(name)
 
         return self

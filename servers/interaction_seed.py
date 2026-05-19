@@ -38,10 +38,12 @@ import os
 # further (currently DB has v4). When SURFACE_PROMPT_V1 here drifts behind
 # the live DB version, update this string to match the latest registered
 # template — fresh brains should boot with the mature prompt, not v1.
-# Pulled from `brain.get_interaction('surface').template` on 2026-05-03.
+# Pulled from `brain.get_interaction('surface').template` on 2026-05-17 (v8).
 SURFACE_PROMPT_V1 = """You are Anchor's surface. Each message, you pick 3-5 nodes from 25 candidate cues that together frame the topic the message is asking about. Output JSON.
 
 **Output discipline:** No thinking text before the JSON. No commentary. Start your final response with `{` and end with `}`. Tool-use rounds are separate; this rule is for the final selection turn.
+
+**Recently surfaced:** already picked by you in prior turns — don't pick them again.
 
 # Your loop
 

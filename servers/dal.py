@@ -626,13 +626,18 @@ class TraceDAL:
         return result
 
     def get_by_ref_type(self, ref_type: str, scale: str = '',
-                        hours: int = 24, limit: int = 100) -> List[Dict[str, Any]]:
+                        hours: Optional[int] = 24, limit: int = 100) -> List[Dict[str, Any]]:
         """Get events filtered by ref_type.
 
         Use: "all corrections", "all recall_hits", "all encoding_runs".
+        Pass hours=None to disable the time-window filter (caller controls
+        recency purely via `limit` + `ORDER BY created_at DESC`).
         """
-        conditions = ['ref_type = ?', 'created_at > ?']
-        params = [ref_type, (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()]
+        conditions = ['ref_type = ?']
+        params: List[Any] = [ref_type]
+        if hours is not None:
+            conditions.append('created_at > ?')
+            params.append((datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat())
         if scale:
             conditions.append('scale = ?')
             params.append(scale)
@@ -2193,24 +2198,11 @@ class GraphDAL:
         self.add_relation(source_id, target_id, relation, description, weight)
         return True
 
-    def strengthen_edge(self, source_id: str, target_id: str,
-                        amount: float = 0.1, relation: Optional[str] = None) -> bool:
-        """Strengthen an existing edge.
-
-        DEPRECATED: Prefer brain.strengthen_relation_typed (or the explicit
-        GraphDAL.strengthen_relation) which handles weight bumps without
-        touching description, so the stored embedding stays valid.
-
-        WARNING — embedding bypass: same as create_edge — calls add_relation
-        directly, bypassing the write-path embed hook. Hebbian-only in
-        practice (co_accessed, excluded from spread). See create_edge.
-        """
-        row = self.get_edge(source_id, target_id)
-        if not row:
-            return False
-        if relation:
-            self.add_relation(source_id, target_id, relation)
-        return True
+    # strengthen_edge REMOVED 2026-05-18 (Phase 8 of bg_writer migration).
+    # Was a deprecated read-modify-write helper used only by the old
+    # brain_recall._hebbian_strengthen mixin, which Phase 5 deleted.
+    # Hebbian strengthening now uses atomic UPSERT inside
+    # recall_write_queue._apply_hebbian_pairs via add_relation.
 
     def delete_node_edges(self, node_id: str) -> int:
         """Soft-archive all edge_relations touching a node (v25).
@@ -2330,10 +2322,20 @@ class GraphDAL:
     _UNSET = object()
 
     def add_relation(self, source_id, target_id, relation,
-                     description=_UNSET, weight=_UNSET, encoding_source=_UNSET):
+                     description=_UNSET, weight=_UNSET, encoding_source=_UNSET,
+                     commit=True):
         """Upsert a relation on an edge pair. Creates the physical edge if needed.
 
         Stage 1B contract — field-preserving upsert + lifecycle audit via traces.
+
+        `commit=True` (default) preserves the prior behavior for every existing
+        caller — single statement boundary on `self.conn`. Pass `commit=False`
+        when the caller is managing a wider transaction on the same connection
+        (e.g., the bg_writer queue drain at `recall_write_queue._apply_hebbian_pairs`
+        opens BEGIN IMMEDIATE around a batch of pairs and commits once at the
+        end). Letting add_relation commit inside that outer transaction breaks
+        atomicity — earlier pairs persist while a later failure rolls back only
+        the most-recent statements.
 
         Three branches by row state for (edge_id, relation):
           - No row              → INSERT with passed values + sensible defaults
@@ -2474,7 +2476,8 @@ class GraphDAL:
         self._update_aggregate_weight(edge_id)
         self.conn.execute(
             'UPDATE edges SET last_strengthened = ? WHERE edge_id = ?', (ts, edge_id))
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
 
         # Enqueue for temporal extraction if description or relation text
         # changed — embed_queue.enqueue_edge() is a cheap set.add. Lazy
@@ -2485,8 +2488,20 @@ class GraphDAL:
             try:
                 from . import embed_queue
                 embed_queue.enqueue_edge(edge_id)
-            except Exception:
-                pass
+            except Exception as _eq_err:
+                # No-silent-errors: was bare `except: pass` pre-migration.
+                # The enqueue is a set.add — failure here is exotic (lock
+                # contention, import collapse). Log so a real producer
+                # outage is visible. Best-effort; we do not have a brain
+                # reference here, so route via _log_error on the only
+                # plausibly-reachable receiver (the connection's brain),
+                # falling back to stderr.
+                try:
+                    import sys as _sys
+                    print('[GraphDAL.add_relation] enqueue_edge failed: %s'
+                          % _eq_err, file=_sys.stderr)
+                except Exception:
+                    pass
 
         return result
 

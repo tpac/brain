@@ -15,6 +15,7 @@ Exposed stats (via get_stats) feed embedder diagnostics so "my write isn't
 indexed" is legible instead of silent.
 """
 
+import sys
 import threading
 import time
 from typing import Optional, Set
@@ -26,6 +27,11 @@ EMBED_DRAIN_INTERVAL = 5.0
 # handle the cold-start case (~20K entities at first boot) without
 # holding the lock for the full drain.
 DRAIN_BATCH_SIZE = 500
+# Stall threshold — if pending work exists AND no drain has happened
+# within STALL_THRESHOLD seconds, log loudly. Self-reported by the
+# worker; covers "worker is alive but blocked / slow" not "worker is
+# dead". Thread death is detected by daemon's thread-count watchdog.
+STALL_THRESHOLD_S = EMBED_DRAIN_INTERVAL * 3
 
 # ─── State ───
 _queue: Set[str] = set()           # node ids needing vector + date recomputation
@@ -33,11 +39,13 @@ _edge_queue: Set[str] = set()      # edge ids needing date recomputation
 _lock = threading.Lock()
 _drain_busy = threading.Lock()  # non-blocking; used for skip-tick semantics
 _worker_started = False
+_shutdown_requested = False
 _stats = {
     'nodes_enqueued_total': 0,
     'edges_enqueued_total': 0,
     'drains_total': 0,
     'drains_skipped_busy': 0,
+    'drains_skipped_empty': 0,
     'nodes_processed_total': 0,
     'edges_processed_total': 0,
     'vectors_written_total': 0,
@@ -45,6 +53,8 @@ _stats = {
     'last_drain_at': None,   # epoch seconds
     'last_drain_took_ms': 0,
     'last_drain_size': 0,
+    'worker_loop_errors_total': 0,
+    'stalls_logged_total': 0,
 }
 
 
@@ -90,25 +100,163 @@ def start(brain) -> None:
     t.start()
 
 
+def request_shutdown() -> None:
+    """Signal the worker to exit cleanly at the next interval check."""
+    global _shutdown_requested
+    with _lock:
+        _shutdown_requested = True
+
+
+def _is_shutdown_requested() -> bool:
+    with _lock:
+        return _shutdown_requested
+
+
 def _worker_loop(brain) -> None:
+    """Worker thread body. One thread drives two queues every
+    EMBED_DRAIN_INTERVAL seconds:
+
+      1. `embed_queue` — node vectors + temporal date extraction.
+         Heavier work; uses `_drain_busy` skip-tick semantics to avoid
+         overlapping drains on cold-start (~20K entities at first boot).
+      2. `recall_write_queue` — access marks + Hebbian co-access
+         strengthening. Lightweight (atomic SQL +1s on
+         `brain.conn_bg_writer`); always called per cycle since its
+         own drain_once self-checks for empty queues.
+
+    Top-level try/except is the load-bearing safety net for the
+    "no silent errors" mandate — the worker thread MUST never die.
+    Any unexpected exception is logged (origin `embed_worker_loop`)
+    and the loop continues after a brief backoff.
+
+    Shutdown: when `request_shutdown()` is called (either on
+    `embed_queue` or on `recall_write_queue`), the loop exits at the
+    next interval check.
+    """
+    # Import here so module-load order doesn't matter.
+    from servers import recall_write_queue
+
     while True:
-        time.sleep(EMBED_DRAIN_INTERVAL)
-        # Cheap pre-check — don't try to acquire drain lock if nothing to do.
-        with _lock:
-            if not _queue and not _edge_queue:
-                continue
-        # Skip-tick if a previous drain is still running.
-        if not _drain_busy.acquire(blocking=False):
-            with _lock:
-                _stats['drains_skipped_busy'] += 1
-            continue
         try:
-            _drain_once(brain)
+            time.sleep(EMBED_DRAIN_INTERVAL)
+
+            if _is_shutdown_requested() or recall_write_queue.is_shutdown_requested():
+                break
+
+            # Liveness self-check — if pending work exists and last drain
+            # was suspiciously long ago, log loudly. Helps surface a
+            # blocked / slow worker without an external watchdog.
+            _check_stall(brain, recall_write_queue)
+
+            # Drain embed_queue if it has work. Skip-tick if previous
+            # drain still running (cold-start defensive measure).
+            with _lock:
+                embed_pending = bool(_queue or _edge_queue)
+            if embed_pending:
+                if _drain_busy.acquire(blocking=False):
+                    try:
+                        _drain_once(brain)
+                    except Exception as e:
+                        try:
+                            brain._log_error(
+                                'embed_queue_drain', e,
+                                'top-level embed drain caught')
+                        except Exception as le:
+                            print('[embed_queue] drain error: %s '
+                                  '(log failed: %s)' % (e, le),
+                                  file=sys.stderr)
+                    finally:
+                        _drain_busy.release()
+                else:
+                    with _lock:
+                        _stats['drains_skipped_busy'] += 1
+            else:
+                with _lock:
+                    _stats['drains_skipped_empty'] += 1
+
+            # Drain recall_write_queue (access + hebbian). Fast,
+            # separate connection, separate transaction. drain_once is
+            # contract-bound never to raise out — this try/except is
+            # belt-and-suspenders.
+            try:
+                recall_write_queue.drain_once(brain)
+            except Exception as e:
+                try:
+                    brain._log_error(
+                        'recall_write_queue_drain', e,
+                        'top-level recall_write drain caught — '
+                        'drain_once is supposed to not raise')
+                except Exception as le:
+                    print('[embed_queue] recall_write drain error: %s '
+                          '(log failed: %s)' % (e, le), file=sys.stderr)
+
         except Exception as e:
-            import sys
-            print('[embed_queue] drain error: %s' % e, file=sys.stderr)
-        finally:
-            _drain_busy.release()
+            # Worker thread MUST never die silently. Catch everything,
+            # log loudly, sleep a beat, continue.
+            with _lock:
+                _stats['worker_loop_errors_total'] += 1
+            try:
+                brain._log_error(
+                    'embed_worker_loop', e,
+                    'worker loop caught unexpected exception — '
+                    'continuing after backoff')
+            except Exception as le:
+                print('[embed_queue] worker loop fatal (log failed): '
+                      'original=%s log=%s' % (e, le), file=sys.stderr)
+            # Extra sleep on error so we don't spin if the cause is
+            # immediate-and-repeating. time.sleep does not raise in
+            # normal operation; if it does (signal handler reraises),
+            # let it propagate — the OUTER while True will resume the
+            # loop body at the next iteration.
+            time.sleep(EMBED_DRAIN_INTERVAL)
+
+
+def _check_stall(brain, recall_write_queue) -> None:
+    """Log a stall warning if there's pending work AND last drain was
+    longer than STALL_THRESHOLD_S ago. Self-reported by the worker —
+    only fires when the worker thread is alive enough to execute this.
+    For "worker thread dead entirely" detection, rely on the daemon's
+    thread-count watchdog (separate signal).
+    """
+    try:
+        embed_snap = get_stats()
+        rwq_snap = recall_write_queue.get_stats()
+
+        embed_depth = (embed_snap.get('queue_depth', 0)
+                       + embed_snap.get('edge_queue_depth', 0))
+        rwq_depth = (rwq_snap.get('access_queue_depth', 0)
+                     + rwq_snap.get('hebbian_queue_depth', 0))
+        total_depth = embed_depth + rwq_depth
+
+        if total_depth == 0:
+            return
+
+        # "Last drain" = the most recent of either queue's last drain.
+        embed_last = embed_snap.get('last_drain_at')
+        rwq_last = rwq_snap.get('last_drain_at')
+        last_drain_at = max(t for t in (embed_last, rwq_last) if t is not None) \
+            if (embed_last or rwq_last) else None
+
+        if last_drain_at is None:
+            return  # never drained — first cycle, ignore
+
+        age_s = time.time() - last_drain_at
+        if age_s < STALL_THRESHOLD_S:
+            return
+
+        with _lock:
+            _stats['stalls_logged_total'] += 1
+        try:
+            brain._log_error(
+                'bg_writer_worker_stalled',
+                RuntimeError('no drain in %ds, embed_depth=%d rwq_depth=%d'
+                             % (int(age_s), embed_depth, rwq_depth)),
+                'worker appears blocked or slow — investigate drain duration')
+        except Exception as le:
+            print('[embed_queue] stall log failed: %s' % le, file=sys.stderr)
+    except Exception as e:
+        # Stall check is best-effort observability — never raise.
+        print('[embed_queue] _check_stall failed: %s' % e, file=sys.stderr)
 
 
 def _drain_once(brain) -> None:
@@ -145,8 +293,12 @@ def _drain_once(brain) -> None:
         if not node_batch and not edge_batch:
             break
 
-        # Process this batch under brain.write_lock. Released before the
-        # next batch so concurrent writers can interleave.
+        # ─── Vectors phase ─────────────────────────────────────────
+        # Vectors stay on the primary connection under brain.write_lock
+        # for now — the cache layer (CachedVectorDAL) holds invalidation
+        # state keyed to self.conn. Migrating vectors to conn_bg_writer
+        # is a follow-on (Phase 4b candidate); the load-bearing fix here
+        # is moving temporal extraction off the lock.
         with brain.write_lock:
             if node_batch:
                 try:
@@ -158,17 +310,44 @@ def _drain_once(brain) -> None:
                 total_vectors += sum(
                     v for v in (result or {}).values() if isinstance(v, int))
 
+        # ─── Temporal phase ────────────────────────────────────────
+        # Outside brain.write_lock, on brain.conn_bg_writer. Single
+        # BEGIN IMMEDIATE / COMMIT per batch. ROLLBACK + loud-log on
+        # failure; the batch is dropped (no retry queue — matches the
+        # loss-semantic contract). This is the architectural change
+        # closing the lock cascade: foreground MCP writes via
+        # `brain.conn` no longer compete with temporal extraction for
+        # the WAL writer slot.
+        try:
+            from servers.temporal_extraction import backfill_entity_dates
+            brain.conn_bg_writer.execute('BEGIN IMMEDIATE')
             try:
-                from servers.temporal_extraction import backfill_entity_dates
-                stats = backfill_entity_dates(brain, node_batch, edge_batch)
+                stats = backfill_entity_dates(
+                    brain, node_batch, edge_batch,
+                    conn=brain.conn_bg_writer)
                 total_intervals += int(stats.get('intervals_written', 0) or 0)
-                # write_entity_dates does INSERT/DELETE without committing —
-                # owner of the lock commits at the end of the batch.
-                brain.conn.commit()
-            except Exception as e:
-                import sys as _sys
-                print('[embed_queue] temporal extraction error: %s' % e,
-                      file=_sys.stderr)
+                brain.conn_bg_writer.commit()
+            except Exception as inner:
+                try:
+                    brain.conn_bg_writer.rollback()
+                except Exception as re:
+                    try:
+                        brain._log_error(
+                            'bg_writer_drain_rollback_failed', re,
+                            'rollback after temporal drain exception failed')
+                    except Exception:
+                        print('[embed_queue] rollback failed and log failed: '
+                              '%s' % re, file=sys.stderr)
+                raise inner
+        except Exception as e:
+            try:
+                brain._log_error(
+                    'bg_writer_drain_temporal', e,
+                    'temporal batch dropped: nodes=%d edges=%d' %
+                    (len(node_batch), len(edge_batch)))
+            except Exception as le:
+                print('[embed_queue] temporal extraction error: %s '
+                      '(log failed: %s)' % (e, le), file=sys.stderr)
 
         total_nodes += len(node_batch)
         total_edges += len(edge_batch)
