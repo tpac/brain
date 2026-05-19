@@ -244,8 +244,14 @@ def drain_once(brain) -> None:
     batch_size = len(access_snap) + len(hebbian_snap)
 
     if batch_size == 0:
+        # Empty tick — worker is alive, just had nothing to drain. Update
+        # last_drain_at so the stall watchdog doesn't read a stale timestamp
+        # from the last batch with actual work. Without this, a long idle
+        # period followed by a burst of enqueues looks like a "stall" the
+        # moment the burst arrives.
         with _lock:
             _stats['drains_skipped_empty'] += 1
+            _stats['last_drain_at'] = t0
         return
 
     conn = brain.conn_bg_writer

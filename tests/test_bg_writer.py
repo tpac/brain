@@ -487,5 +487,52 @@ class TestQueueDepthIntrospection(BrainTestBase):
             self.assertIn(key, stats, 'missing stat: %s' % key)
 
 
+class TestEmptyDrainTimestampsAreFresh(BrainTestBase):
+    """Empty-queue drain ticks must still update last_drain_at — otherwise
+    a long idle period followed by a burst of enqueues looks like a stall
+    the moment the burst lands (the stall watchdog reads a stale timestamp
+    from the last batch with actual work).
+
+    Real regression: 2026-05-19, bg_writer_worker_stalled fired with
+    "no drain in 197s, embed_depth=0 rwq_depth=96, write_lock=free" — the
+    worker was healthy, the queue had just been empty for 197s. Without
+    this contract, every burst-after-idle triggers a false-positive."""
+
+    needs_embedder = False
+
+    def setUp(self):
+        super().setUp()
+        recall_write_queue._clear_for_test()
+
+    def test_empty_drain_updates_last_drain_at(self):
+        # Establish a baseline: an actual drain runs and stamps last_drain_at.
+        result = self.brain.remember(
+            type='test', title='baseline', content='c',
+            encoding_source='anchor:test')
+        recall_write_queue.enqueue_access(result['id'], 'sess', '2026-05-19T12:00:00')
+        recall_write_queue.drain_once(self.brain)
+        first_stamp = recall_write_queue.get_stats()['last_drain_at']
+        self.assertIsNotNone(first_stamp)
+
+        # Simulate "queue was empty for a while" by sleeping briefly and
+        # then running an empty drain — pre-fix this was a no-op for
+        # last_drain_at, leaving the watchdog with a stale timestamp.
+        time.sleep(0.05)
+        recall_write_queue.drain_once(self.brain)  # nothing queued
+
+        second_stamp = recall_write_queue.get_stats()['last_drain_at']
+        self.assertIsNotNone(second_stamp)
+        self.assertGreater(second_stamp, first_stamp,
+                           "Empty-drain tick must refresh last_drain_at")
+
+    def test_empty_drain_counts_as_skipped_empty(self):
+        # Empty drain still increments drains_skipped_empty (existing
+        # behavior preserved); we're only adding the timestamp side-effect.
+        before = recall_write_queue.get_stats()['drains_skipped_empty']
+        recall_write_queue.drain_once(self.brain)
+        after = recall_write_queue.get_stats()['drains_skipped_empty']
+        self.assertEqual(after, before + 1)
+
+
 if __name__ == '__main__':
     unittest.main()

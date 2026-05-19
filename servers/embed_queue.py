@@ -384,6 +384,12 @@ def _drain_once(brain) -> None:
         batches += 1
 
     if batches == 0:
+        # Empty tick — see matching note in recall_write_queue.drain_once.
+        # Worker is alive, just had nothing to drain. Stamp last_drain_at
+        # so the stall watchdog doesn't false-positive when a burst of
+        # enqueues lands after a long idle period.
+        with _lock:
+            _stats['last_drain_at'] = t0
         return
 
     elapsed_ms = int((time.time() - t0) * 1000)
