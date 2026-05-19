@@ -1010,27 +1010,6 @@ LOG_TABLES = {
         )""",
     },
 
-    'signal_queue': {
-        'create': """CREATE TABLE IF NOT EXISTS signal_queue (
-            id TEXT PRIMARY KEY,
-            producer TEXT NOT NULL,
-            signal_type TEXT NOT NULL,
-            priority REAL DEFAULT 0.5,
-            content TEXT NOT NULL,
-            content_chars INTEGER DEFAULT 0,
-            metadata TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT,
-            ttl_seconds INTEGER,
-            times_surfaced INTEGER DEFAULT 0,
-            max_surfaces INTEGER,
-            last_surfaced_at TEXT,
-            cooldown_seconds INTEGER,
-            dismissed INTEGER DEFAULT 0,
-            preempt INTEGER DEFAULT 0
-        )""",
-    },
-
     # v9.2: Session state — first-class session-scoped data.
     # Replaces scattered in-memory dicts and brain_meta config keys.
     # Key types: 'fatigue' (node_id=node, value=count), 'journal' (node_id='', value=text),
@@ -1106,9 +1085,6 @@ LOG_INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_trace_scale ON trace_events(scale)',
     'CREATE INDEX IF NOT EXISTS idx_trace_created ON trace_events(created_at)',
     'CREATE INDEX IF NOT EXISTS idx_trace_session ON trace_events(session_id)',
-    # signal_queue
-    'CREATE INDEX IF NOT EXISTS idx_sq_priority ON signal_queue(dismissed, priority DESC)',
-    'CREATE INDEX IF NOT EXISTS idx_sq_producer ON signal_queue(producer)',
     # v9.2: session_state
     'CREATE INDEX IF NOT EXISTS idx_session_state_session ON session_state(session_id)',
 ]

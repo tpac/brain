@@ -200,11 +200,11 @@ class LogsDAL:
     def query_logs(self, source: str = 'all', hours: int = 24,
                    level: str = 'all', hook_name: str = '',
                    limit: int = 50) -> Dict[str, Any]:
-        """Unified log query across hook_errors, debug_log, and signal_queue.
+        """Unified log query across hook_errors and debug_log.
 
         Args:
-            source: 'errors' (hook_errors), 'debug' (debug_log), 'signals'
-                    (signal_queue), or 'all' (merged, sorted by time).
+            source: 'errors' (hook_errors), 'debug' (debug_log), or 'all'
+                    (merged, sorted by time).
             hours: look back window (default 24).
             level: filter by level — 'error', 'critical', 'warning', or 'all'.
             hook_name: filter hook_errors by hook name (e.g. 'hook_recall').
@@ -281,31 +281,6 @@ class LogsDAL:
                     })
             except Exception:
                 counts['debug_log'] = 0
-
-        # ── signal_queue ──
-        if source in ('signals', 'all'):
-            try:
-                conditions = ['created_at > ?']
-                params = [cutoff]
-                where = ' AND '.join(conditions)
-                rows = self.conn.execute(
-                    'SELECT id, producer, signal_type, priority, content, dismissed, created_at '
-                    'FROM signal_queue WHERE %s ORDER BY priority DESC, created_at DESC LIMIT ?' % where,
-                    params + [limit]
-                ).fetchall()
-                count_row = self.conn.execute(
-                    'SELECT COUNT(*) FROM signal_queue WHERE %s' % where, params
-                ).fetchone()
-                counts['signals'] = count_row[0] if count_row else 0
-                for r in rows:
-                    entries.append({
-                        'source': 'signal_queue', 'id': r[0], 'producer': r[1],
-                        'level': r[2], 'priority': r[3],
-                        'message': (r[4] or '')[:300], 'dismissed': bool(r[5]),
-                        'created_at': r[6]
-                    })
-            except Exception:
-                counts['signals'] = 0
 
         # Sort merged entries by time descending
         entries.sort(key=lambda e: e.get('created_at', ''), reverse=True)
@@ -2047,7 +2022,7 @@ class GraphDAL:
         """Edge count grouped by relation type.
 
         Returns dict {relation: count}, ordered by count desc. Used by
-        signal_producers, edge_families, health_check.
+        integrity_audit, edge_families, health_check.
         """
         where = '' if include_archived else 'WHERE archived = 0'
         rows = self.conn.execute(

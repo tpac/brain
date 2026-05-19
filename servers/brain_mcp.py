@@ -584,7 +584,7 @@ def _build_tools():
     {"name": "query_logs",
      "description": "Query brain operational logs — errors, debug events, and signals. Use this to diagnose brain health: hook timeouts, daemon errors, signal queue state, recall pipeline issues. Three sources available: 'errors' (hook failures like timeouts and crashes), 'debug' (daemon internal events), 'signals' (signal queue including daemon_down, brain_error). Use source='all' to get a merged timeline. Filter by level ('error', 'critical') or hook_name ('hook_recall', 'hook_post_response_track') to narrow results.",
      "inputSchema": {"type": "object", "properties": {
-         "source": {"type": "string", "description": "Which log source: 'errors' (hook_errors table), 'debug' (debug_log table), 'signals' (signal_queue), or 'all' (merged timeline)", "default": "all", "enum": ["all", "errors", "debug", "signals"]},
+         "source": {"type": "string", "description": "Which log source: 'errors' (hook_errors table), 'debug' (debug_log table), or 'all' (merged timeline)", "default": "all", "enum": ["all", "errors", "debug"]},
          "hours": {"type": "integer", "description": "Look back window in hours (default 24)", "default": 24},
          "level": {"type": "string", "description": "Filter by severity: 'error', 'critical', or 'all'", "default": "all"},
          "hook_name": {"type": "string", "description": "Filter hook_errors by hook name (e.g. 'hook_recall', 'hook_pre_bash_safety')"},
@@ -642,19 +642,6 @@ def _build_tools():
          "version": {"type": "integer", "description": "Version number to activate. Must already be registered."},
          "set_by": {"type": "string", "description": "Who flipped the pointer (default 'anchor')"}}}},
 
-    # ── Introspection ──
-    {"name": "consciousness",
-     "description": "Get brain consciousness signals. Most signals migrated to signal queue — returns reminders only. Use queue_state for full signal view.",
-     "inputSchema": {"type": "object", "properties": {}}},
-    {"name": "dismiss_signal",
-     "description": "Dismiss a signal from the brain's signal queue. Use when a signal has been acknowledged or is no longer relevant.",
-     "inputSchema": {"type": "object", "properties": {
-         "signal_id": {"type": "string", "description": "Signal ID to dismiss"},
-         "producer": {"type": "string", "description": "Dismiss all signals from this producer"}}}},
-    {"name": "queue_state",
-     "description": "Get current signal queue state — all pending signals with priorities, surface counts, producers.",
-     "inputSchema": {"type": "object", "properties": {}}},
-    # engineering_context removed 2026-04-13 — was a stub.
 
     # ── Daemon control ──
     {"name": "restart",
@@ -676,35 +663,13 @@ def _build_tools():
         sys.stderr.write(crash_msg)
         sys.stderr.flush()
 
-        # Write crash sentinel for boot hook to find
+        # Write crash sentinel for boot hook to find — boot-brain.sh reads this
+        # at SessionStart and surfaces the crash before Anchor sees the brain.
+        # External file is the surfacing channel; no brain-DB write.
         crash_file = "/tmp/brain-mcp-crash.txt"
         try:
             with open(crash_file, "w") as f:
                 f.write(crash_msg)
-        except Exception:
-            pass
-
-        # Write signal to queue (direct SQLite — daemon may be fine, it's the MCP that's broken)
-        try:
-            import sqlite3
-            db_dir = os.environ.get("BRAIN_DB_DIR", "")
-            if not db_dir:
-                candidate = os.path.join(os.path.expanduser("~"), "AgentsContext", "brain")
-                if os.path.isdir(candidate):
-                    db_dir = candidate
-            if db_dir:
-                logs_db = os.path.join(db_dir, "brain_logs.db")
-                conn = sqlite3.connect(logs_db, timeout=3)
-                conn.execute(
-                    """INSERT OR REPLACE INTO signal_queue
-                       (id, producer, signal_type, priority, content, preempt, created_at,
-                        times_surfaced, dismissed, cooldown_seconds)
-                       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 0, 0, 0)""",
-                    ("mcp:startup_crash", "brain_mcp", "mcp_crash", 0.95,
-                     "FATAL: Brain MCP server crashed on startup — Anchor has NO direct brain tools. Error: {}".format(e),
-                     1))  # PREEMPT — this is critical
-                conn.commit()
-                conn.close()
         except Exception:
             pass
 
@@ -935,7 +900,7 @@ def _health_monitor():
             sys.stderr.write("[brain-mcp] ALERT: Daemon unreachable for %ds — attempting restart\n" % (
                 int(consecutive_failures * PING_INTERVAL)))
 
-            # Write PREEMPT signal directly to signal queue (brain_logs.db)
+            # Log to dashboard
             try:
                 db_dir = os.environ.get("BRAIN_DB_DIR", "")
                 if not db_dir:
@@ -943,29 +908,6 @@ def _health_monitor():
                     candidate = os.path.join(home, "AgentsContext", "brain")
                     if os.path.isdir(candidate):
                         db_dir = candidate
-                if db_dir:
-                    logs_db = os.path.join(db_dir, "brain_logs.db")
-                    conn = sqlite3.connect(logs_db, timeout=3)
-                    # Only write daemon_down if not already dismissed
-                    existing = conn.execute(
-                        "SELECT dismissed FROM signal_queue WHERE id = 'health:daemon_down'"
-                    ).fetchone()
-                    if not existing or not existing[0]:
-                        conn.execute(
-                            """INSERT OR REPLACE INTO signal_queue
-                               (id, producer, signal_type, priority, content, preempt, created_at,
-                                times_surfaced, dismissed, cooldown_seconds)
-                               VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 0, 0, 300)""",
-                            ("health:daemon_down", "system_health", "daemon_down", 0.85,
-                             "⚠️ Brain daemon is DOWN. Recall and encoding disabled.",
-                             0))  # NOT preempt — don't block recall for a restart blip
-                    conn.commit()
-                    conn.close()
-            except Exception as e:
-                sys.stderr.write("[brain-mcp] Failed to write PREEMPT signal: %s\n" % e)
-
-            # Log to dashboard
-            try:
                 if db_dir:
                     dash_db = os.path.join(db_dir, "brain_dashboard.db")
                     conn = sqlite3.connect(dash_db, timeout=3)

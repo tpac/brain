@@ -111,7 +111,7 @@ class TestDaemonDispatchSync(unittest.TestCase):
 
     def test_core_read_commands_exist(self):
         """Essential read commands must exist."""
-        for cmd in ['recall', 'ping', 'consciousness', 'context_boot',
+        for cmd in ['recall', 'ping', 'context_boot',
                      'health_check', 'save', 'eval']:
             self.assertIn(cmd, self.commands, f"Missing core command: {cmd}")
 
@@ -122,6 +122,7 @@ class TestDaemonDispatchSync(unittest.TestCase):
             'remember_convention', 'remember_uncertainty', 'remember_mental_model',
             'record_divergence', 'learn_vocabulary',
             'auto_heal', 'auto_tune',
+            'consciousness', 'dismiss_signal', 'queue_state',
         ]
         present = [cmd for cmd in removed if cmd in self.commands]
         self.assertEqual(present, [],
@@ -160,7 +161,7 @@ class TestMCPToolSync(unittest.TestCase):
             'revise', 'revise_batch',
             'connect', 'connect_batch',
             'brain_batch',
-            'recall', 'consciousness', 'eval',
+            'recall', 'eval',
         ]
         for tool in should_be_mcp:
             self.assertIn(tool, self.mcp_tools,
@@ -172,6 +173,7 @@ class TestMCPToolSync(unittest.TestCase):
             'remember_lesson', 'remember_impact', 'remember_mechanism',
             'remember_convention', 'remember_uncertainty', 'remember_mental_model',
             'record_divergence', 'learn_vocabulary',
+            'consciousness', 'dismiss_signal', 'queue_state',
         ]
         present = [t for t in removed if t in self.mcp_tools]
         self.assertEqual(present, [],

@@ -258,8 +258,7 @@ class BrainVoice:
     # render_operator_prompt: DELETED — migrated to signal queue + assembler (2026-03-27)
 
     def _operator_boot_summary(self, node_count, edge_count, locked_count,
-                                signal_count: int = 0, alert_count: int = 0,
-                                consciousness_signals: Dict = None) -> Optional[str]:
+                                alert_count: int = 0) -> Optional[str]:
         """Build operator summary for boot — stats only, signals via queue."""
         sections = []
 
@@ -304,7 +303,6 @@ class BrainVoice:
         ctx = brain.context_boot(user=user, project=project, task="session start")
         brain.reset_session_activity(session_id=session_id)
 
-        cs = {"reminders": brain.get_due_reminders()}
         health = brain.health_check(session_id="session_boot", auto_fix=True)
 
         # ── Header ──
@@ -345,16 +343,13 @@ class BrainVoice:
         out.append("[/BRAIN]")
 
         # Operator channel
-        signal_count = sum(len(cs.get(k, [])) for k in ["evolutions", "silent_errors", "uncertain_areas"])
         high_issues = [i for i in health.get("issues", []) if i.get("severity") == "high"]
         alert_count = len(high_issues)
         operator_msg = self._operator_boot_summary(
             node_count=ctx.get("total_nodes", "?"),
             edge_count=ctx.get("total_edges", "?"),
             locked_count=ctx.get("total_locked", "?"),
-            signal_count=signal_count,
             alert_count=alert_count,
-            consciousness_signals=cs,
         )
 
         return {'for_claude': "\n".join(out), 'for_operator': operator_msg}

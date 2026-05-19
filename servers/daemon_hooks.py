@@ -371,26 +371,6 @@ def hook_recall(brain, args, graph_changes):
         except Exception as e:
             brain._log_error('hook_recall_gap_log', e, 'Failed to log recall gap')
 
-    # ── PRODUCE: seed the signal queue ──
-    from .dal_signal_queue import SignalQueueDAL
-    from .surface_assembler import SurfaceAssembler
-    from .signal_producers import (
-        produce_reminders, produce_encoding_gap,
-        produce_system_health, produce_integrity,
-    )
-
-    sq_dal = SignalQueueDAL(brain.logs_conn)
-    produce_reminders(brain, sq_dal)
-    produce_encoding_gap(brain, sq_dal, ctx=ctx)
-    produce_system_health(brain, sq_dal)
-    produce_integrity(brain, sq_dal)
-    pt.mark('signals')
-
-    # ── ASSEMBLE: budget-aware output ──
-    assembler = SurfaceAssembler(sq_dal, budget_chars=6000)
-    # Command hook: write candidates file, return approve + session_id.
-    # The thin client reads the file, calls LLM to distill, returns context.
-    # Dashboard logging happens in the thin client — one source of truth.
     brain.save()
 
     # ── S1 Surface: push relevant memories into awareness ──
@@ -870,7 +850,7 @@ def hook_idle_maintenance(brain, args, graph_changes):
 
     # 11. Deep integrity audit
     try:
-        from .signal_producers import deep_integrity_audit
+        from .integrity_audit import deep_integrity_audit
         findings = deep_integrity_audit(brain)
         if findings:
             severe = [f for f in findings if f.get("severity") in ("high", "medium")]

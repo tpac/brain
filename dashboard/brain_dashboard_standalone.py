@@ -734,32 +734,6 @@ def _query_traces(hours=24, scale='', limit=200, session_id=''):
         return []
 
 
-def _query_signal_queue():
-    """Read signal_queue from brain_logs.db — all non-dismissed signals."""
-    path = _get_logs_db_path()
-    if not os.path.exists(path):
-        return []
-    try:
-        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=3)
-        rows = conn.execute(
-            "SELECT id, producer, signal_type, priority, content, content_chars, "
-            "metadata, created_at, updated_at, ttl_seconds, times_surfaced, "
-            "max_surfaces, last_surfaced_at, cooldown_seconds, preempt "
-            "FROM signal_queue WHERE dismissed = 0 ORDER BY priority DESC"
-        ).fetchall()
-        conn.close()
-        return [{
-            'id': r[0], 'producer': r[1], 'signal_type': r[2],
-            'priority': r[3], 'content': r[4], 'content_chars': r[5],
-            'metadata': r[6], 'created_at': r[7], 'updated_at': r[8],
-            'ttl_seconds': r[9], 'times_surfaced': r[10],
-            'max_surfaces': r[11], 'last_surfaced_at': r[12],
-            'cooldown_seconds': r[13], 'preempt': bool(r[14]),
-        } for r in rows]
-    except Exception:
-        return []
-
-
 def _query_assembler_comparison(limit=20):
     """Read assembler comparison log from brain_dashboard.db."""
     path = _get_dashboard_db_path()
@@ -980,18 +954,6 @@ def _check_system_status():
     except Exception as e:
         status['embedder'] = {'alive': False, 'error': str(e)[:100]}
 
-    # 6. Signal queue — count pending
-    try:
-        conn = sqlite3.connect(f"file:{logs_path}?mode=ro", uri=True, timeout=2)
-        pending = conn.execute(
-            "SELECT COUNT(*) FROM signal_queue WHERE dismissed=0").fetchone()[0]
-        preempt = conn.execute(
-            "SELECT COUNT(*) FROM signal_queue WHERE dismissed=0 AND preempt=1").fetchone()[0]
-        conn.close()
-        status['signal_queue'] = {'alive': True, 'pending': pending, 'preempt': preempt}
-    except Exception as e:
-        status['signal_queue'] = {'alive': False, 'error': str(e)[:100]}
-
     return status
 
 
@@ -1047,8 +1009,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     self._json_response(200, json.load(f))
             else:
                 self._json_response(404, {"error": "No prompt file for batch %d" % batch})
-        elif path == "/api/signal-queue":
-            self._serve_signal_queue()
         elif path == "/api/assembler-comparison":
             self._serve_assembler_comparison(params)
         elif path == "/api/errors":
@@ -1138,11 +1098,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
         limit = int(params.get("limit", [30])[0])
         events = _query_encoding_activity(since_ts=since_ts, limit=limit)
         self._json_response(200, {"events": events})
-
-    def _serve_signal_queue(self):
-        """Return current signal queue state."""
-        signals = _query_signal_queue()
-        self._json_response(200, {"signals": signals})
 
     def _serve_assembler_comparison(self, params):
         """Return assembler vs old output comparison."""
@@ -1882,7 +1837,6 @@ canvas { width: 100%; height: 100%; }
 <div id="tab-logs" class="tab-content">
   <div class="feed-toggle">
     <button class="feed-btn active" onclick="switchLogFeed('errors')">Errors <span id="err-badge" style="display:none;background:#ff4466;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:2px"></span></button>
-    <button class="feed-btn" onclick="switchLogFeed('queue')">Queue <span id="queue-badge" style="display:none;background:#ffaa33;color:#000;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:2px"></span></button>
     <button class="feed-btn" onclick="switchLogFeed('daemon')">Daemon</button>
     <select id="error-hours" onchange="loadLogs()" style="margin-left:auto;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
       <option value="1">1h</option>
@@ -1893,7 +1847,6 @@ canvas { width: 100%; height: 100%; }
     <span id="logs-count" style="color:#666;font-size:11px"></span>
   </div>
   <div class="feed" id="feed-errors"></div>
-  <div class="feed" id="feed-queue" style="display:none"></div>
   <div class="feed" id="feed-daemon" style="display:none"></div>
 </div>
 
@@ -2754,63 +2707,6 @@ setInterval(() => { if (activeFeed === 'encoding') loadEncodingActivity(); }, 30
 // Also poll when not viewing, to keep badge updated
 setInterval(() => { if (activeFeed !== 'encoding' && encodingLoaded) loadEncodingActivity(); }, 10000);
 
-// Signal Queue feed
-async function loadSignalQueue() {
-  try {
-    const [queueR, compR] = await Promise.all([
-      fetch('/api/signal-queue'),
-      fetch('/api/assembler-comparison?limit=10')
-    ]);
-    const queueD = await queueR.json();
-    const compD = await compR.json();
-    const container = document.getElementById('feed-queue');
-
-    let html = '';
-
-    // Comparison banner
-    if (compD.comparisons && compD.comparisons.length) {
-      const latest = compD.comparisons[0];
-      const pct = latest.old_chars ? Math.round((1 - latest.new_chars / latest.old_chars) * 100) : 0;
-      html += '<div style="padding:10px 12px;background:#1a1a2a;border-radius:6px;margin:4px 0;font-size:12px">';
-      html += '<span style="color:#888">Latest:</span> ';
-      html += '<span style="color:#ff6666">' + latest.old_chars + ' chars (old)</span>';
-      html += ' → <span style="color:#33ff88">' + latest.new_chars + ' chars (new)</span>';
-      html += ' <span style="color:#7eb8ff">(' + pct + '% reduction)</span>';
-      if (latest.user_prompt) html += '<div style="color:#58a6ff;font-style:italic;margin-top:4px">' + escapeHtml(latest.user_prompt) + '</div>';
-      html += '</div>';
-    }
-
-    // Queue items
-    if (!queueD.signals || !queueD.signals.length) {
-      html += '<div style="color:#666;padding:20px;text-align:center">Queue empty — no pending signals</div>';
-    } else {
-      html += '<div style="color:#888;font-size:11px;padding:4px 8px">' + queueD.signals.length + ' signals in queue</div>';
-      for (const sig of queueD.signals) {
-        const priColor = sig.priority > 0.9 ? '#ff4444' : sig.priority > 0.7 ? '#ffaa33' : sig.priority > 0.5 ? '#ffff66' : '#666';
-        const priBar = '<span style="display:inline-block;width:' + Math.round(sig.priority * 60) + 'px;height:4px;background:' + priColor + ';border-radius:2px;vertical-align:middle;margin-right:6px"></span>';
-        const surfaced = sig.times_surfaced + (sig.max_surfaces ? '/' + sig.max_surfaces : '');
-        const preemptBadge = sig.preempt ? ' <span style="color:#ff4444;font-size:9px;font-weight:bold">PREEMPT</span>' : '';
-
-        html += '<div class="enc-entry" style="border-left-color:' + priColor + '">';
-        html += priBar;
-        html += '<span class="enc-kind" style="background:#1a1a2a;color:' + priColor + '">' + escapeHtml(sig.producer) + '</span> ';
-        html += '<span class="enc-title">' + escapeHtml(sig.content).substring(0, 120) + '</span>' + preemptBadge;
-        html += '<div class="enc-meta">';
-        html += 'pri: ' + sig.priority.toFixed(2) + ' · surfaced: ' + surfaced + ' · type: ' + sig.signal_type;
-        html += ' · ' + localTime(sig.created_at);
-        if (sig.cooldown_seconds) html += ' · cooldown: ' + sig.cooldown_seconds + 's';
-        html += '</div></div>';
-      }
-    }
-
-    container.innerHTML = html;
-  } catch(e) {
-    document.getElementById('feed-queue').innerHTML = '<div style="color:#ff4444;padding:20px">Error loading queue: ' + e.message + '</div>';
-  }
-}
-
-setInterval(() => { if (activeLogFeed === 'queue') loadSignalQueue(); }, 5000);
-
 // Explorer
 let expandedNode = null;
 async function searchNodes() {
@@ -2853,18 +2749,16 @@ function switchLogFeed(name) {
   activeLogFeed = name;
   document.querySelectorAll('#tab-logs .feed-btn').forEach(b => b.classList.remove('active'));
   event.target.classList.add('active');
-  ['errors','queue','daemon'].forEach(f => {
+  ['errors','daemon'].forEach(f => {
     document.getElementById('feed-' + f).style.display = f === name ? '' : 'none';
   });
   // Clear badge for this feed
   if (name === 'errors') { document.getElementById('err-badge').style.display = 'none'; }
-  if (name === 'queue') { document.getElementById('queue-badge').style.display = 'none'; }
   loadLogs();
 }
 
 async function loadLogs() {
   if (activeLogFeed === 'errors') loadErrors();
-  else if (activeLogFeed === 'queue') loadSignalQueue();
   else if (activeLogFeed === 'daemon') loadDaemonLogs();
 }
 
@@ -2954,7 +2848,6 @@ async function loadSystemStatus() {
       {key: 'logs_db', label: 'Logs DB', icon: '📋'},
       {key: 'judge', label: 'Haiku Judge', icon: '⚖️'},
       {key: 'embedder', label: 'Embedder', icon: '🔮'},
-      {key: 'signal_queue', label: 'Signal Queue', icon: '📡'},
     ];
 
     for (const comp of components) {
@@ -2974,8 +2867,6 @@ async function loadSystemStatus() {
         details = (s.size_mb || '?') + 'MB · Last: ' + localTime(s.last_entry);
       } else if (comp.key === 'embedder' && alive) {
         details = s.model || '?';
-      } else if (comp.key === 'signal_queue' && alive) {
-        details = s.pending + ' pending' + (s.preempt > 0 ? ' · ⚠️ ' + s.preempt + ' PREEMPT' : '');
       } else if (!alive) {
         details = s.error || 'unreachable';
       }
@@ -3007,7 +2898,6 @@ setInterval(() => {
 
 // Auto-refresh logs badges every 10s
 let lastSeenErrorCount = -1;
-let lastSeenQueueCount = -1;
 
 setInterval(async () => {
   const logsTab = document.getElementById('tab-logs');
@@ -3030,27 +2920,7 @@ setInterval(async () => {
       logsBadge.textContent = diff; logsBadge.style.display = '';
     } else {
       errBadge.style.display = 'none';
-      if (lastSeenQueueCount >= 0) logsBadge.style.display = 'none';
-    }
-  } catch(e) {}
-
-  // Queue badge
-  try {
-    const r = await fetch('/api/signal-queue');
-    const signals = await r.json();
-    const count = signals.length;
-    const queueBadge = document.getElementById('queue-badge');
-    const logsBadge = document.getElementById('logs-badge');
-    if (lastSeenQueueCount < 0) lastSeenQueueCount = count;
-    if (isViewing && activeLogFeed === 'queue') {
-      lastSeenQueueCount = count;
-      queueBadge.style.display = 'none';
-    } else if (count > lastSeenQueueCount) {
-      const diff = count - lastSeenQueueCount;
-      queueBadge.textContent = diff; queueBadge.style.display = '';
-      logsBadge.style.display = ''; logsBadge.textContent = '+';
-    } else {
-      queueBadge.style.display = 'none';
+      logsBadge.style.display = 'none';
     }
   } catch(e) {}
 }, 10000);

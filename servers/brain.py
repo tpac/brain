@@ -1024,17 +1024,6 @@ class Brain(
 
 
 
-    # ─── v4: REMINDERS (due_date) ───
-
-
-
-
-    # ─── v4: CONSCIOUSNESS — DELETED ───
-    # get_consciousness_signals() deleted (2026-03-26).
-    # Signals migrated to signal_producers.py + signal queue.
-    # See: servers/signal_producers.py, servers/dal_signal_queue.py, servers/surface_assembler.py
-
-
     # ─── v4: PATTERN-INFORMED PRUNING ───
     # Confirmed patterns can adjust how the brain prunes. "Personal info is rare but
     # always significant" → protect low-frequency personal nodes.

@@ -4,7 +4,6 @@ Tests cover:
 - hook_recall() output format (surface-formatted additionalContext)
 - Early return behavior (no results = approve)
 - Surface integration (mock — no API key in test env)
-- Signal production (reminders flow into signal queue)
 """
 
 import os
@@ -82,28 +81,6 @@ class TestHookRecallOutput(BrainTestBase):
         ctx = result["json"]["additionalContext"]
         self.assertIn("[rule]", ctx)
         self.assertIn("Test rule for recall", ctx)
-
-    def test_hook_recall_reminder_produced_to_signal_queue(self):
-        """Create reminder with past due_date, verify it flows into signal queue.
-
-        Reminders are produced into the signal queue by signal_producers. They do NOT
-        appear in additionalContext directly -- the current code path uses the surface
-        for additionalContext. This test verifies the signal queue receives the reminder.
-        """
-        self._seed_data()  # Need results to get past early return
-        self.brain.create_reminder("Ship the feature", "2020-01-01T00:00:00")
-        with patch('servers.daemon_hooks._run_surface', side_effect=_mock_run_surface):
-            self._call_recall("what should I do")
-
-        # Verify reminder was produced into signal queue (query directly, pull() consumes)
-        rows = self.brain.logs_conn.execute(
-            "SELECT content FROM signal_queue WHERE dismissed = 0"
-        ).fetchall()
-        all_content = [r[0] for r in rows]
-        reminder_found = any('Ship the feature' in c for c in all_content)
-        self.assertTrue(reminder_found,
-                        "Expected reminder 'Ship the feature' in signal queue, got: %s" %
-                        all_content)
 
     @patch('servers.daemon_hooks._run_surface', side_effect=_mock_run_surface)
     def test_hook_recall_judge_failure_returns_approve(self, mock_judge):

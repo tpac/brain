@@ -377,7 +377,6 @@ class TestDALPatternEnforcement(unittest.TestCase):
                 uncovered.append(table_name)
 
         # Current baseline: 6 tables not yet in main DAL.
-        # signal_queue has its own DAL (dal_signal_queue.py).
         MAX_UNCOVERED = 6
         self.assertLessEqual(len(uncovered), MAX_UNCOVERED,
                             f'Log tables without DAL coverage: {uncovered}. '

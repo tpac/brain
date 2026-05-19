@@ -369,13 +369,7 @@ class TestDaemonModuleStructure(unittest.TestCase):
                         f"daemon_config.py is {lines} lines — should be <100")
 
     def test_daemon_dispatch_is_readable(self):
-        """daemon_dispatch.py should stay under 1120 lines.
-        # ADJUSTED: 350→400 approved by Tom 2026-03-23 — files are well-structured
-        # ADJUSTED: 400→500 approved by Tom 2026-03-23 — added 7 remember_* handlers
-        # ADJUSTED: 500→600 — added dismiss_signal + queue_state handlers (signal queue refactor)
-        # ADJUSTED: 600→1120 — batch tools (remember_batch, revise_batch, etc.), trace tools,
-        #   interaction tools, filter_nodes, get_nodes added (2026-04)
-        """
+        """daemon_dispatch.py should stay under 1120 lines."""
         path = os.path.join(PROJECT_ROOT, 'servers', 'daemon_dispatch.py')
         with open(path) as f:
             lines = len(f.readlines())

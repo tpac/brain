@@ -169,15 +169,6 @@ class TestBrainVoiceRenderBoot(BrainTestBase):
 
 
 
-# TestBrainVoiceRenderPrompt: DELETED — render_prompt() replaced by SurfaceAssembler (2026-03-27)
-# Tests for assembler in test_surface_assembler.py
-
-
-# TestBrainVoiceRenderReboot: DELETED 2026-05-03 — render_reboot() removed
-# along with the pre/post-compact hooks. Compaction is now invisible to the
-# brain; the next UserPromptSubmit fires hook_recall which surfaces Frame.
-
-
 class TestBrainVoiceOperatorChannel(BrainTestBase):
     """Phase 4: Operator channel (for_operator) behavior."""
 
@@ -189,10 +180,6 @@ class TestBrainVoiceOperatorChannel(BrainTestBase):
         result = BrainVoice.format_for_operator(["🧠 3 nodes recalled"])
         self.assertIsNotNone(result)
         self.assertIn("3 nodes recalled", result)
-
-    # render_prompt operator tests: DELETED — render_prompt replaced by SurfaceAssembler (2026-03-27)
-
-    # test_debug_mode_exposes_claude_context removed — debug mode removed from render_prompt
 
 
 class TestBrainVoiceOperatorChannelV2(BrainTestBase):

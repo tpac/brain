@@ -212,11 +212,6 @@ class TestMCPRoundTrip(BrainTestBase):
 
     # ── Introspection ──
 
-    def test_consciousness(self):
-        """consciousness returns signal categories."""
-        result = self._dispatch("consciousness", {})
-        self.assertIsInstance(result, dict)
-
     # NOTE: test_engineering_context removed 2026-04-26.
     # The engineering_context tool was removed 2026-04-13 (was a stub
     # returning {}). Three production-side comments confirm the deletion:
@@ -307,18 +302,6 @@ class TestMCPRoundTrip(BrainTestBase):
         """clear_errors empties the rate-limit cache for the brain errors table."""
         result = self._dispatch("clear_errors", {})
         self.assertIsInstance(result, dict)
-
-    # ── Signal queue ──
-
-    def test_dismiss_signal(self):
-        """dismiss_signal handles missing signal gracefully."""
-        result = self._dispatch("dismiss_signal", {"signal_id": "nonexistent:signal:id"})
-        self.assertIsInstance(result, dict)
-
-    def test_queue_state(self):
-        """queue_state returns current signal queue."""
-        result = self._dispatch("queue_state", {})
-        self.assertIsInstance(result, list)
 
     # ── Coverage check ──
 

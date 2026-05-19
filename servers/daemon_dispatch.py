@@ -178,33 +178,6 @@ def _handle_health_check(brain, args, graph_changes):
         auto_fix=args.get("auto_fix", True))}
 
 
-def _handle_consciousness(brain, args, graph_changes):
-    """Migrated to signal_producers + signal queue. Returns reminders only."""
-    return {"ok": True, "result": {"reminders": brain.get_due_reminders()}}
-
-
-def _handle_dismiss_signal(brain, args, graph_changes):
-    """Dismiss a signal from the queue by ID or producer."""
-    from .dal_signal_queue import SignalQueueDAL
-    sq_dal = SignalQueueDAL(brain.logs_conn)
-    signal_id = args.get("signal_id", "")
-    producer = args.get("producer", "")
-    if signal_id:
-        ok = sq_dal.dismiss(signal_id)
-        return {"ok": True, "result": {"dismissed": signal_id, "found": ok}}
-    elif producer:
-        count = sq_dal.dismiss_by_producer(producer)
-        return {"ok": True, "result": {"dismissed_producer": producer, "count": count}}
-    return {"ok": False, "error": "Provide signal_id or producer"}
-
-
-def _handle_queue_state(brain, args, graph_changes):
-    """Return current signal queue state."""
-    from .dal_signal_queue import SignalQueueDAL
-    sq_dal = SignalQueueDAL(brain.logs_conn)
-    return {"ok": True, "result": sq_dal.get_queue_state()}
-
-
 def _handle_scan_host(brain, args, graph_changes):
     return {"ok": True, "result": brain.scan_host_environment()}
 
@@ -1379,9 +1352,6 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "heartbeat":                CmdEntry(_handle_heartbeat,            is_write=False),
     "validate_config":          CmdEntry(_handle_validate_config,      is_write=False),
     "health_check":             CmdEntry(_handle_health_check,         is_write=False),
-    "consciousness":            CmdEntry(_handle_consciousness,        is_write=False),
-    "dismiss_signal":           CmdEntry(_handle_dismiss_signal,       is_write=True),
-    "queue_state":              CmdEntry(_handle_queue_state,          is_write=False),
     "scan_host":                CmdEntry(_handle_scan_host,            is_write=False),
     "procedure_trigger":        CmdEntry(_handle_procedure_trigger,    is_write=False),
     "get_config":               CmdEntry(_handle_get_config,           is_write=False),
