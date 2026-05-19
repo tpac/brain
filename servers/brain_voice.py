@@ -102,7 +102,6 @@ class BrainVoice:
         """Generate encoding health warning if needed."""
         health = encoding.get("health", "OK")
         edits_gap = encoding.get("edits_since_last_remember", 0)
-        mins_since = encoding.get("minutes_since_last_remember", 0)
         session_min = encoding.get("session_minutes", 0)
 
         if health == "NONE" and session_min > 3:
@@ -114,9 +113,9 @@ class BrainVoice:
         elif health == "STALE":
             if edits_gap > 15:
                 return (
-                    "ENCODING WARNING: %d edits since your last /remember call "
-                    "(%d min ago). If anything worth remembering happened in that span — "
-                    "a decision, a correction, a pattern, feedback — store it now." % (edits_gap, mins_since)
+                    "ENCODING WARNING: %d edits since your last /remember call. "
+                    "If anything worth remembering happened in that span — "
+                    "a decision, a correction, a pattern, feedback — store it now." % edits_gap
                 )
             elif edits_gap > 8:
                 return (

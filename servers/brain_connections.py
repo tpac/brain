@@ -116,7 +116,7 @@ class BrainConnectionsMixin:
             # commit without contention. add_relation commits the
             # description; this commits the embedding. Symmetric with
             # node_enrichments writes which commit per node.
-            self.conn.commit()
+            self._maybe_commit()
         except Exception as e:
             # Embedding failure must NOT fail the connect — the row exists,
             # spread will fall through to the on-demand embed path. Log

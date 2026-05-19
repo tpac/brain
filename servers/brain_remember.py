@@ -224,7 +224,7 @@ class BrainRememberMixin:
                 self._log_error('archive_fts5', _e,
                                 'FTS5 delete for %s' % full_id[:8])
 
-        self.conn.commit()
+        self._maybe_commit()
 
         # 6. AFTER commit — invalidate the in-memory vector cache so recall's
         # cached matrix doesn't retain dead rows. Order matters: if we
@@ -360,7 +360,7 @@ class BrainRememberMixin:
                 (node_id, term, tf_val)
             )
 
-        self.conn.commit()
+        self._maybe_commit()
 
     def _tfidf_score(self, query_terms: List[str], node_id: str) -> float:
         """
@@ -535,7 +535,7 @@ class BrainRememberMixin:
                     (node_id, term, tf_val)
                 )
 
-        self.conn.commit()
+        self._maybe_commit()
 
     def remember(self, type: str, title: str, content: Optional[str] = None,
                  keywords: Optional[str] = None, locked: bool = False,
@@ -633,7 +633,7 @@ class BrainRememberMixin:
              evolution_status, source_turn_id,
              ts, ts, ts)
         )
-        self.conn.commit()
+        self._maybe_commit()
 
         # Store all metadata via unified path — promoted, emergent, and extra fields.
         _meta_fields = {}
@@ -666,7 +666,7 @@ class BrainRememberMixin:
         try:
             from .dal import Fts5DAL
             Fts5DAL(self.conn).upsert(node_id, title, content or '', keywords or '')
-            self.conn.commit()
+            self._maybe_commit()
         except Exception as e:
             self._log_error('fts5_sync_remember', e, 'syncing FTS5 for node %s' % node_id[:12])
 
@@ -962,7 +962,7 @@ class BrainRememberMixin:
         params.append(node_id)
         self.conn.execute(
             'UPDATE nodes SET %s WHERE id = ?' % ', '.join(set_parts), params)
-        self.conn.commit()
+        self._maybe_commit()
 
         # Store metadata via unified path — handles promoted, emergent, situation.
         # Only writable (non-skipped) fields get persisted.
@@ -993,7 +993,7 @@ class BrainRememberMixin:
                     'DELETE FROM node_enrichments WHERE node_id = ? '
                     'AND vector_type IN (%s)' % ph,
                     [node_id, *invalidated_vectors])
-                self.conn.commit()
+                self._maybe_commit()
                 # Invalidate the in-memory vector cache so recall doesn't
                 # serve stale embeddings between now and embed_queue's drain.
                 # Replaced hasattr() guard with explicit AttributeError catch:
@@ -1039,7 +1039,7 @@ class BrainRememberMixin:
             from .dal import Fts5DAL
             kw_for_fts = current_keywords if 'current_keywords' in dir() else ''
             Fts5DAL(self.conn).upsert(node_id, title, new_content, kw_for_fts or '')
-            self.conn.commit()
+            self._maybe_commit()
         except Exception as e:
             self._log_error("fts5_sync_revise", e, "syncing FTS5 for %s" % node_id[:8])
 
@@ -1213,7 +1213,7 @@ class BrainRememberMixin:
                 )
                 count += 1
         if count:
-            self.conn.commit()
+            self._maybe_commit()
         return {'backfilled': count, 'remaining': len(rows) - count}
 
     def _compute_group_vectors(self, node_id: str, title: str, content: str,
@@ -1317,7 +1317,7 @@ class BrainRememberMixin:
                      embed_text[:500], blob, embedder.stats.get('model_name', ''),
                      self.now()))
 
-        self.conn.commit()
+        self._maybe_commit()
 
     # _store_node_metadata removed 2026-04-13 — old node_metadata table dropped.
 
@@ -1799,7 +1799,7 @@ class BrainRememberMixin:
                 'UPDATE nodes SET personal = ?, personal_context = ?, updated_at = ? WHERE id = ?',
                 (personal, personal_context, ts, node_id)
             )
-        self.conn.commit()
+        self._maybe_commit()
 
         # Fetch updated node
         cursor = self.conn.execute(
@@ -2098,7 +2098,7 @@ class BrainRememberMixin:
                     self.connect(node_id, match["id"], relation="related_to", weight=0.4)
                     connections_created += 1
 
-        self.conn.commit()
+        self._maybe_commit()
 
         # Mark all created nodes dirty — embed_queue worker picks them up
         # within ~5s. Single batch drain for the whole group.

@@ -621,151 +621,198 @@ def _handle_brain_batch(brain, args, graph_changes):
     sibling_map = {}  # lowercased title → new node_id
     deferred_connects = []  # [(src_node_id, connect_to_spec)]
 
-    for i, op_spec in enumerate(operations):
-        if not isinstance(op_spec, dict):
-            results.append({"op": "?", "index": i, "ok": False,
-                            "error": "operation must be a dict, got %s" % type(op_spec).__name__})
-            continue
-        op = op_spec.get("op", "")
-        try:
-            if op == "remember":
-                # Pop per-op connect_to BEFORE handler so it's not processed
-                # eagerly with an empty sibling_map — defer to after the loop.
-                ct_spec = op_spec.get("connect_to")
-                op_args = {k: v for k, v in op_spec.items()
-                           if k not in ("op", "connect_to")}
-                if top_encoding_source and "encoding_source" not in op_args:
-                    op_args["encoding_source"] = top_encoding_source
-                if top_session_id and "session_id" not in op_args:
-                    op_args["session_id"] = top_session_id
-                # Same fix as remember_batch: disable inner remember()'s
-                # conversation-context auto_connect inside batches so it
-                # doesn't create reverse-direction co_accessed edges between
-                # siblings before deferred connect_to runs.
-                op_args.setdefault("auto_connect", False)
-                r = _handle_remember(brain, op_args, graph_changes)
-                results.append({"op": "remember", "index": i, **r})
-                # Capture for sibling_map + deferred resolution
-                if r.get("ok"):
-                    inner = r.get("result") or {}
-                    new_id = inner.get("id")
-                    if new_id:
-                        title = (op_args.get("title") or "").lower()
-                        if title:
-                            sibling_map[title] = new_id
-                        if ct_spec:
-                            deferred_connects.append((new_id, ct_spec))
+    # Wrap the whole batch in ONE SQLite transaction. Sub-handlers call
+    # brain._maybe_commit() which becomes a no-op while _batch_mode=True;
+    # the outer BEGIN IMMEDIATE / COMMIT here owns the durability point.
+    # Pre-change every op committed individually, so a batch of N ops hit
+    # the WAL writer slot N times — bad for parallel-session contention,
+    # no rollback semantic if op #37 broke. Per-op exceptions are still
+    # caught by the inner try/except below and recorded in `results` —
+    # that "best-effort" surface is preserved. Only when something
+    # escapes the per-op handler entirely (a programmer bug, not a
+    # caller-visible op failure) do we rollback the whole batch.
+    brain._batch_mode = True
+    transaction_started = False
+    try:
+        brain.conn.execute('BEGIN IMMEDIATE')
+        transaction_started = True
 
-            elif op == "revise":
-                op_args = {k: v for k, v in op_spec.items() if k != "op"}
-                if top_encoding_source and "encoding_source" not in op_args:
-                    op_args["encoding_source"] = top_encoding_source
-                r = _handle_revise(brain, op_args, graph_changes)
-                results.append({"op": "revise", "index": i, **r})
+        for i, op_spec in enumerate(operations):
+            if not isinstance(op_spec, dict):
+                results.append({"op": "?", "index": i, "ok": False,
+                                "error": "operation must be a dict, got %s" % type(op_spec).__name__})
+                continue
+            op = op_spec.get("op", "")
+            try:
+                if op == "remember":
+                    # Pop per-op connect_to BEFORE handler so it's not processed
+                    # eagerly with an empty sibling_map — defer to after the loop.
+                    ct_spec = op_spec.get("connect_to")
+                    op_args = {k: v for k, v in op_spec.items()
+                               if k not in ("op", "connect_to")}
+                    if top_encoding_source and "encoding_source" not in op_args:
+                        op_args["encoding_source"] = top_encoding_source
+                    if top_session_id and "session_id" not in op_args:
+                        op_args["session_id"] = top_session_id
+                    # Same fix as remember_batch: disable inner remember()'s
+                    # conversation-context auto_connect inside batches so it
+                    # doesn't create reverse-direction co_accessed edges between
+                    # siblings before deferred connect_to runs.
+                    op_args.setdefault("auto_connect", False)
+                    r = _handle_remember(brain, op_args, graph_changes)
+                    results.append({"op": "remember", "index": i, **r})
+                    # Capture for sibling_map + deferred resolution
+                    if r.get("ok"):
+                        inner = r.get("result") or {}
+                        new_id = inner.get("id")
+                        if new_id:
+                            title = (op_args.get("title") or "").lower()
+                            if title:
+                                sibling_map[title] = new_id
+                            if ct_spec:
+                                deferred_connects.append((new_id, ct_spec))
 
-            elif op == "connect":
-                op_args = {k: v for k, v in op_spec.items() if k != "op"}
-                if top_encoding_source and "encoding_source" not in op_args:
-                    op_args["encoding_source"] = top_encoding_source
-                r = _handle_connect(brain, op_args, graph_changes)
-                results.append({"op": "connect", "index": i, **r})
+                elif op == "revise":
+                    op_args = {k: v for k, v in op_spec.items() if k != "op"}
+                    if top_encoding_source and "encoding_source" not in op_args:
+                        op_args["encoding_source"] = top_encoding_source
+                    r = _handle_revise(brain, op_args, graph_changes)
+                    results.append({"op": "revise", "index": i, **r})
 
-            elif op == "archive":
-                node_id = op_spec.get("node_id")
-                if not node_id:
-                    results.append({"op": "archive", "index": i, "ok": False,
-                                    "error": "node_id is required"})
-                else:
-                    # Unified archive path — handles guards, edges, vectors, audit.
-                    # Fallback chain mirrors disconnect: op-level encoding_source
-                    # → op-level archived_by → top-level encoding_source →
-                    # 'unknown'. Lets top-level brain_batch tagging cascade to
-                    # archive audit without per-op injection.
+                elif op == "connect":
+                    op_args = {k: v for k, v in op_spec.items() if k != "op"}
+                    if top_encoding_source and "encoding_source" not in op_args:
+                        op_args["encoding_source"] = top_encoding_source
+                    r = _handle_connect(brain, op_args, graph_changes)
+                    results.append({"op": "connect", "index": i, **r})
+
+                elif op == "archive":
+                    node_id = op_spec.get("node_id")
+                    if not node_id:
+                        results.append({"op": "archive", "index": i, "ok": False,
+                                        "error": "node_id is required"})
+                    else:
+                        # Unified archive path — handles guards, edges, vectors, audit.
+                        # Fallback chain mirrors disconnect: op-level encoding_source
+                        # → op-level archived_by → top-level encoding_source →
+                        # 'unknown'. Lets top-level brain_batch tagging cascade to
+                        # archive audit without per-op injection.
+                        archived_by = op_spec.get('encoding_source') or \
+                            op_spec.get('archived_by') or \
+                            top_encoding_source or 'unknown'
+                        reason = op_spec.get('reason', '')
+                        r = brain.archive_node(
+                            node_id, archived_by=archived_by, reason=reason)
+                        if r.get('ok'):
+                            graph_changes.append("ARCHIVE: %s" % node_id[:8])
+                        results.append({"op": "archive", "index": i, **r})
+
+                elif op == "disconnect":
+                    # Soft-archive a specific relation on an edge. Other relations
+                    # on the same edge survive. v25 — archived row preserved for
+                    # forensics/recovery; reads filter via JOIN.
+                    # Lets ABSORB encoders prune survivor edges that don't fit
+                    # the new framing after revise.
+                    from .dal import GraphDAL
+                    source_id = op_spec.get("source_id")
+                    target_id = op_spec.get("target_id")
+                    relation = op_spec.get("relation")
                     archived_by = op_spec.get('encoding_source') or \
                         op_spec.get('archived_by') or \
                         top_encoding_source or 'unknown'
-                    reason = op_spec.get('reason', '')
-                    r = brain.archive_node(
-                        node_id, archived_by=archived_by, reason=reason)
-                    if r.get('ok'):
-                        graph_changes.append("ARCHIVE: %s" % node_id[:8])
-                    results.append({"op": "archive", "index": i, **r})
+                    if not (source_id and target_id and relation):
+                        results.append({"op": "disconnect", "index": i, "ok": False,
+                                        "error": "source_id, target_id, relation are required"})
+                    else:
+                        gdal = GraphDAL(brain.conn)
+                        edge_id = gdal.get_edge_id(source_id, target_id)
+                        gdal.remove_relation(
+                            source_id, target_id, relation, archived_by=archived_by)
+                        brain._maybe_commit()
+                        graph_changes.append("DISCONNECT: %s -[%s]-> %s" % (
+                            source_id[:8], relation, target_id[:8]))
 
-            elif op == "disconnect":
-                # Soft-archive a specific relation on an edge. Other relations
-                # on the same edge survive. v25 — archived row preserved for
-                # forensics/recovery; reads filter via JOIN.
-                # Lets ABSORB encoders prune survivor edges that don't fit
-                # the new framing after revise.
-                from .dal import GraphDAL
-                source_id = op_spec.get("source_id")
-                target_id = op_spec.get("target_id")
-                relation = op_spec.get("relation")
-                archived_by = op_spec.get('encoding_source') or \
-                    op_spec.get('archived_by') or \
-                    top_encoding_source or 'unknown'
-                if not (source_id and target_id and relation):
-                    results.append({"op": "disconnect", "index": i, "ok": False,
-                                    "error": "source_id, target_id, relation are required"})
+                        # Emit edge_relation_revised trace event capturing the
+                        # archived flag flip. Mirrors connect upsert trace shape.
+                        if edge_id:
+                            _emit_edge_revise_trace(
+                                brain, edge_id, relation,
+                                op_spec.get('reason', '') or args.get('reason', ''),
+                                archived_by,
+                                deltas=[{'field': 'archived',
+                                         'old': 0, 'new': 1}],
+                                chain_id_override=args.get('chain_id', ''),
+                                session_id=args.get('session_id', ''),
+                            )
+
+                        results.append({"op": "disconnect", "index": i, "ok": True})
+
                 else:
-                    gdal = GraphDAL(brain.conn)
-                    edge_id = gdal.get_edge_id(source_id, target_id)
-                    gdal.remove_relation(
-                        source_id, target_id, relation, archived_by=archived_by)
-                    brain.conn.commit()
-                    graph_changes.append("DISCONNECT: %s -[%s]-> %s" % (
-                        source_id[:8], relation, target_id[:8]))
+                    # Invalid op name — log loudly. Sonnet sometimes invents
+                    # structural names (consolidate/keep/evolve/skip) that were
+                    # never valid ops. Previously this returned ok=False and the
+                    # caller moved on silently.
+                    err_msg = ("Unknown op: %s (use remember, revise, connect, disconnect, archive)"
+                               % op)
+                    try:
+                        brain._log_error(
+                            'brain_batch_invalid_op',
+                            ValueError(err_msg),
+                            'op_spec=%s' % str(op_spec)[:300])
+                    except Exception:
+                        pass
+                    results.append({"op": op, "index": i, "ok": False, "error": err_msg})
+            except Exception as e:
+                results.append({"op": op, "index": i, "ok": False, "error": str(e)[:200]})
 
-                    # Emit edge_relation_revised trace event capturing the
-                    # archived flag flip. Mirrors connect upsert trace shape.
-                    if edge_id:
-                        _emit_edge_revise_trace(
-                            brain, edge_id, relation,
-                            op_spec.get('reason', '') or args.get('reason', ''),
-                            archived_by,
-                            deltas=[{'field': 'archived',
-                                     'old': 0, 'new': 1}],
-                            chain_id_override=args.get('chain_id', ''),
-                            session_id=args.get('session_id', ''),
-                        )
+        # Pass 2: deferred per-op connect_to resolution. Runs AFTER all ops so
+        # siblings declared in any order resolve correctly. _apply_connect_to
+        # logs all failures to debug_log; this is sequencing-agnostic and never
+        # raises. Returns (edges_created, failures_logged) — both surfaced in
+        # the batch result so a cycle with N requested connect_to and 0 edges
+        # has a visible "connect_to_failures=N" reason.
+        connect_to_edges = 0
+        connect_to_failures = 0
+        for src_id, ct_spec in deferred_connects:
+            edges, fails = brain._apply_connect_to(
+                src_id, ct_spec, sibling_map=sibling_map)
+            connect_to_edges += edges
+            connect_to_failures += fails
+        if connect_to_edges:
+            graph_changes.append("CONNECT_TO: %d edges" % connect_to_edges)
+        if connect_to_failures:
+            graph_changes.append("CONNECT_TO_FAILURES: %d" % connect_to_failures)
 
-                    results.append({"op": "disconnect", "index": i, "ok": True})
-
-            else:
-                # Invalid op name — log loudly. Sonnet sometimes invents
-                # structural names (consolidate/keep/evolve/skip) that were
-                # never valid ops. Previously this returned ok=False and the
-                # caller moved on silently.
-                err_msg = ("Unknown op: %s (use remember, revise, connect, disconnect, archive)"
-                           % op)
+        # One commit for the whole batch — all per-op writes land here.
+        brain.conn.commit()
+    except Exception as e:
+        # Per-op exceptions are caught above and recorded in `results` — reaching
+        # this handler means something escaped the per-op guard (programmer bug
+        # in a sub-handler, lost DB connection, etc.). Roll back so we don't
+        # leave half a batch persisted.
+        if transaction_started:
+            try:
+                brain.conn.rollback()
+            except Exception as re:
                 try:
                     brain._log_error(
-                        'brain_batch_invalid_op',
-                        ValueError(err_msg),
-                        'op_spec=%s' % str(op_spec)[:300])
+                        'brain_batch_rollback_failed', re,
+                        'rollback after batch exception failed')
                 except Exception:
                     pass
-                results.append({"op": op, "index": i, "ok": False, "error": err_msg})
-        except Exception as e:
-            results.append({"op": op, "index": i, "ok": False, "error": str(e)[:200]})
-
-    # Pass 2: deferred per-op connect_to resolution. Runs AFTER all ops so
-    # siblings declared in any order resolve correctly. _apply_connect_to
-    # logs all failures to debug_log; this is sequencing-agnostic and never
-    # raises. Returns (edges_created, failures_logged) — both surfaced in
-    # the batch result so a cycle with N requested connect_to and 0 edges
-    # has a visible "connect_to_failures=N" reason.
-    connect_to_edges = 0
-    connect_to_failures = 0
-    for src_id, ct_spec in deferred_connects:
-        edges, fails = brain._apply_connect_to(
-            src_id, ct_spec, sibling_map=sibling_map)
-        connect_to_edges += edges
-        connect_to_failures += fails
-    if connect_to_edges:
-        graph_changes.append("CONNECT_TO: %d edges" % connect_to_edges)
-    if connect_to_failures:
-        graph_changes.append("CONNECT_TO_FAILURES: %d" % connect_to_failures)
+        try:
+            brain._log_error(
+                'brain_batch_transaction_failed', e,
+                'ops=%d ran_before_fail=%d' % (
+                    len(operations), len(results)))
+        except Exception:
+            pass
+        # Re-raise so the dispatcher reports the failure to the caller. The
+        # daemon's outer dispatch wraps this in its own try/except and turns
+        # it into {ok: False, error: ...}.
+        raise
+    finally:
+        brain._batch_mode = False
 
     succeeded = sum(1 for r in results if r.get("ok"))
     return {"ok": True, "result": {

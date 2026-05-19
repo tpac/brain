@@ -563,7 +563,6 @@ class BrainAssemblyMixin:
                 'health': encoding_health,
                 'remembers': remembers,
                 'edits_since_last_remember': edits_since,
-                'minutes_since_last_remember': 0,  # XXX historical field, never wired
                 'session_minutes': round(session_minutes),
             },
             'embedder_ready': embedder.is_ready(),

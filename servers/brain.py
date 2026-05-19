@@ -139,6 +139,15 @@ class Brain(
         self.db_path = db_path
         self._skip_embedder = skip_embedder
 
+        # When True, write methods on this brain should call _maybe_commit()
+        # instead of self.conn.commit() directly — the surrounding caller
+        # (currently only _handle_brain_batch in daemon_dispatch) owns the
+        # transaction lifecycle and will commit/rollback the whole batch
+        # at once. Set under write_lock (which serializes brain_batch with
+        # all other writers), so a single attribute is sufficient — no
+        # need for thread-local state.
+        self._batch_mode = False
+
         # Serializes all writers to brain.db / brain_logs.db. The lock lives
         # on the brain (the resource it protects), not the daemon — this lets
         # any caller that holds a brain reference participate in
@@ -1720,6 +1729,24 @@ class Brain(
 
         timings['total_ms'] = int((_time.monotonic() - t0) * 1000)
         return timings
+
+    def _maybe_commit(self):
+        """Commit self.conn unless we're inside a brain_batch transaction.
+
+        Write methods on Brain (remember, revise, connect, archive_node)
+        used to call self.conn.commit() directly. Inside a brain_batch
+        with many ops, this meant N separate commits hitting the WAL
+        writer slot — bad for parallel-session contention, and there was
+        no rollback semantic if op #37 failed.
+
+        Now those methods call _maybe_commit() instead. When called from
+        a normal single-op path (_batch_mode=False) it commits as before.
+        When called from inside _handle_brain_batch (_batch_mode=True)
+        it's a no-op — the surrounding caller does one BEGIN IMMEDIATE
+        / COMMIT around all ops, with ROLLBACK on any failure.
+        """
+        if not self._batch_mode:
+            self.conn.commit()
 
     def save(self, backup: bool = False):
         """

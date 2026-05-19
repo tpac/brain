@@ -1,0 +1,145 @@
+"""Tests for the brain_batch single-transaction contract.
+
+Before the refactor each sub-op in brain_batch committed independently
+— N ops = N commits = N WAL writer-slot grabs, no rollback semantic.
+This test suite locks in the new contract:
+
+1. A batch fires brain.conn.commit() exactly once for the whole batch
+   (per-op _maybe_commit calls are no-ops while _batch_mode=True).
+2. A failure that escapes the per-op try/except (e.g., during deferred
+   connect_to resolution) rolls back EVERY op in the batch.
+3. _batch_mode is always reset to False after the function returns, even
+   on exception.
+"""
+
+import os
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from tests.brain_test_base import BrainTestBase
+from servers.daemon_dispatch import _handle_brain_batch
+
+
+class TestBrainBatchTransaction(BrainTestBase):
+    needs_embedder = False  # no embedding writes triggered by these tests
+
+    def _batch(self, operations, **extra):
+        """Helper — invoke _handle_brain_batch like the daemon does."""
+        args = {"operations": operations}
+        args.update(extra)
+        return _handle_brain_batch(self.brain, args, [])
+
+    def test_single_commit_per_batch(self):
+        """All N ops share one commit, not N commits. We count real
+        COMMITs via sqlite3.Connection.set_trace_callback (the conn's
+        Python methods are read-only built-ins and can't be patched)."""
+        statements = []
+        self.brain.conn.set_trace_callback(statements.append)
+        try:
+            r = self._batch([
+                {"op": "remember", "type": "rule", "title": "node A",
+                 "content": "first node in batch"},
+                {"op": "remember", "type": "rule", "title": "node B",
+                 "content": "second node in batch"},
+                {"op": "remember", "type": "rule", "title": "node C",
+                 "content": "third node in batch"},
+            ])
+        finally:
+            self.brain.conn.set_trace_callback(None)
+
+        self.assertTrue(r['ok'])
+        self.assertEqual(r['result']['succeeded'], 3)
+        # Count COMMIT statements observed in the trace.
+        commits = sum(1 for s in statements if s.strip().upper() == 'COMMIT')
+        self.assertEqual(commits, 1,
+                         "Expected one COMMIT for the batch, got %d. "
+                         "Statements: %s" % (commits, statements[-20:]))
+        # And exactly one BEGIN IMMEDIATE opens the transaction.
+        begins = sum(1 for s in statements if 'BEGIN IMMEDIATE' in s.upper())
+        self.assertEqual(begins, 1,
+                         "Expected one BEGIN IMMEDIATE, got %d" % begins)
+
+    def test_batch_mode_resets_after_success(self):
+        """_batch_mode must end False even after a happy-path return."""
+        self.assertFalse(self.brain._batch_mode)
+        self._batch([
+            {"op": "remember", "type": "rule", "title": "x", "content": "y"},
+        ])
+        self.assertFalse(self.brain._batch_mode)
+
+    def test_batch_mode_resets_after_outer_exception(self):
+        """_batch_mode must end False even when an exception propagates."""
+        self.assertFalse(self.brain._batch_mode)
+
+        with patch.object(self.brain, '_apply_connect_to',
+                          side_effect=RuntimeError('boom')):
+            with self.assertRaises(RuntimeError):
+                # Two ops; one has connect_to to force _apply_connect_to to fire.
+                self._batch([
+                    {"op": "remember", "type": "rule",
+                     "title": "src", "content": "source node",
+                     "connect_to": [{"title": "tgt", "relation": "tests"}]},
+                    {"op": "remember", "type": "rule",
+                     "title": "tgt", "content": "target node"},
+                ])
+
+        self.assertFalse(self.brain._batch_mode,
+                         "_batch_mode leaked True after exception")
+
+    def test_outer_exception_rolls_back_whole_batch(self):
+        """If _apply_connect_to raises, NEITHER remember in the batch persists."""
+        precount = self.brain.conn.execute(
+            "SELECT COUNT(*) FROM nodes WHERE title LIKE 'rollback-test-%'"
+        ).fetchone()[0]
+        self.assertEqual(precount, 0)
+
+        with patch.object(self.brain, '_apply_connect_to',
+                          side_effect=RuntimeError('forced rollback')):
+            with self.assertRaises(RuntimeError):
+                self._batch([
+                    {"op": "remember", "type": "rule",
+                     "title": "rollback-test-A",
+                     "content": "should be rolled back",
+                     "connect_to": [{"title": "rollback-test-B",
+                                     "relation": "tests"}]},
+                    {"op": "remember", "type": "rule",
+                     "title": "rollback-test-B",
+                     "content": "also should be rolled back"},
+                ])
+
+        postcount = self.brain.conn.execute(
+            "SELECT COUNT(*) FROM nodes WHERE title LIKE 'rollback-test-%'"
+        ).fetchone()[0]
+        self.assertEqual(postcount, 0,
+                         "Both nodes should have been rolled back; %d found" % postcount)
+
+    def test_per_op_failure_still_commits_other_ops(self):
+        """Per-op exceptions stay in results — the batch as a whole still commits
+        the ops that succeeded. (Best-effort surface preserved.)"""
+        r = self._batch([
+            {"op": "remember", "type": "rule",
+             "title": "happy-A", "content": "first ok"},
+            # Invalid op — per-op handler catches, batch continues.
+            {"op": "remember"},  # missing required type/title
+            {"op": "remember", "type": "rule",
+             "title": "happy-B", "content": "second ok"},
+        ])
+
+        self.assertTrue(r['ok'])
+        # Two of three succeeded.
+        succeeded_titles = [
+            self.brain.conn.execute(
+                "SELECT 1 FROM nodes WHERE title = ? AND archived = 0", (t,)
+            ).fetchone()
+            for t in ('happy-A', 'happy-B')
+        ]
+        self.assertTrue(all(succeeded_titles),
+                        "Both happy ops should have persisted")
+
+
+if __name__ == '__main__':
+    unittest.main()
