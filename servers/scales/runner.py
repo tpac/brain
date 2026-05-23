@@ -192,28 +192,50 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
     total_cache_creation = 0
     total_cache_read = 0
 
+    # Per-round diagnostic data so we can answer "where did r1's 100s go".
+    # Each entry: {round, ttft_ms, total_ms, output_tokens, input_tokens,
+    # cache_read, cache_creation}. ttft_ms isolates server prefill (largely
+    # invariant in generation cost) from the actual token-by-token output.
+    per_round_stats = []
+
     def _step(name):
         profile.append((name, int((time.time() - t0) * 1000)))
 
     truncations = []
 
-    def _track_usage(resp, round_num):
+    def _track_usage(resp, round_num, ttft_ms=None, total_ms=None):
         nonlocal total_input_tokens, total_output_tokens
         nonlocal total_cache_creation, total_cache_read
+        out_this_round = 0
+        in_this_round = 0
+        cr_this_round = 0
+        cw_this_round = 0
         if hasattr(resp, 'usage'):
-            total_input_tokens += getattr(resp.usage, 'input_tokens', 0)
-            total_output_tokens += getattr(resp.usage, 'output_tokens', 0)
-            total_cache_creation += getattr(resp.usage, 'cache_creation_input_tokens', 0) or 0
-            total_cache_read += getattr(resp.usage, 'cache_read_input_tokens', 0) or 0
+            in_this_round = getattr(resp.usage, 'input_tokens', 0) or 0
+            out_this_round = getattr(resp.usage, 'output_tokens', 0) or 0
+            cr_this_round = getattr(resp.usage, 'cache_read_input_tokens', 0) or 0
+            cw_this_round = getattr(resp.usage, 'cache_creation_input_tokens', 0) or 0
+            total_input_tokens += in_this_round
+            total_output_tokens += out_this_round
+            total_cache_creation += cw_this_round
+            total_cache_read += cr_this_round
+        per_round_stats.append({
+            'round': round_num,
+            'ttft_ms': ttft_ms,
+            'total_ms': total_ms,
+            'output_tokens': out_this_round,
+            'input_tokens': in_this_round,
+            'cache_read': cr_this_round,
+            'cache_creation': cw_this_round,
+        })
         if getattr(resp, 'stop_reason', None) == 'max_tokens':
-            out_used = getattr(resp.usage, 'output_tokens', 0) if hasattr(resp, 'usage') else '?'
+            _log("WARNING: max_tokens hit (round %d, %s/%d output tokens) — response truncated" % (
+                round_num, out_this_round, max_tokens))
             truncations.append({
                 'round': round_num,
-                'output_tokens': out_used,
+                'output_tokens': out_this_round,
                 'max_tokens': max_tokens,
             })
-            _log("WARNING: max_tokens hit (round %d, %s/%d output tokens) — response truncated" % (
-                round_num, out_used, max_tokens))
 
     # BP1 — tools + system cached at 1h TTL. System prompt is byte-identical
     # across every call within a prompt version; 1h TTL keeps a whole eval or
@@ -226,11 +248,39 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
     }]
 
     def _create_message(msgs):
-        """Create message with streaming to avoid timeout on large contexts."""
-        with client.messages.stream(
-                model=model, max_tokens=max_tokens,
-                system=system_param, messages=msgs, tools=tools) as stream:
-            return stream.get_final_message()
+        """Create message with streaming. Returns (final_message, ttft_ms,
+        total_ms). ttft_ms is the time from request issue to the first
+        server event — isolates "server prefill / cache lookup / wait"
+        from token-by-token generation time. None if iteration fails
+        (we fall back to the unmeasured path so a diagnostic glitch
+        can't kill an encoder cycle)."""
+        request_t0 = time.time()
+        ttft_ms = None
+        try:
+            with client.messages.stream(
+                    model=model, max_tokens=max_tokens,
+                    system=system_param, messages=msgs, tools=tools) as stream:
+                # Iterate raw events so we can timestamp the first server
+                # signal. SDK's stream object exposes a synchronous iter
+                # that yields RawMessageStreamEvent objects — message_start,
+                # content_block_start, content_block_delta, content_block_stop,
+                # message_delta, message_stop. We only need the first event
+                # to know when output began.
+                for _event in stream:
+                    if ttft_ms is None:
+                        ttft_ms = int((time.time() - request_t0) * 1000)
+                final_msg = stream.get_final_message()
+        except Exception:
+            # Defensive fallback — if event iteration breaks for any reason,
+            # re-issue without timing. Costs an extra API call only on bug,
+            # never on happy path. Better than nuking the encoder cycle.
+            with client.messages.stream(
+                    model=model, max_tokens=max_tokens,
+                    system=system_param, messages=msgs, tools=tools) as stream:
+                final_msg = stream.get_final_message()
+            ttft_ms = None
+        total_ms = int((time.time() - request_t0) * 1000)
+        return final_msg, ttft_ms, total_ms
 
     # User content. When `user_preamble` is provided, it forms a stable 1h
     # block that joins system in the cache (cross-call reuse). The dynamic
@@ -251,8 +301,8 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         "cache_control": {"type": "ephemeral", "ttl": "5m"},
     })
     api_messages = [{"role": "user", "content": user_blocks}]
-    response = _create_message(api_messages)
-    _track_usage(response, 0)
+    response, ttft_ms, total_ms = _create_message(api_messages)
+    _track_usage(response, 0, ttft_ms=ttft_ms, total_ms=total_ms)
     _step("llm_r0")
 
     actions = []
@@ -311,8 +361,8 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                                 {"id": b.id, "name": b.name, "input": b.input})}
             for b in response.content]})
         api_messages.append({"role": "user", "content": tool_results})
-        response = _create_message(api_messages)
-        _track_usage(response, rounds + 1)
+        response, ttft_ms, total_ms = _create_message(api_messages)
+        _track_usage(response, rounds + 1, ttft_ms=ttft_ms, total_ms=total_ms)
         _step("llm_r%d" % (rounds + 1))
 
     final_text = "".join(b.text for b in response.content if b.type == "text")
@@ -330,6 +380,26 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         total_input_tokens, total_cache_read, total_cache_creation, total_output_tokens,
         hit_rate,
         ', '.join('%s=%dms' % (n, t) for n, t in profile)))
+
+    # Per-round breakdown — answers "where did r1's wall-clock go?"
+    # Format: r0 ttft=12000ms gen=75798ms out=4521tok in=6432 cr=28135 cw=28135
+    # ttft separates server prefill from generation. If gen >> output/50tok-per-sec,
+    # there's slow generation; if ttft >> gen, prefill dominates (large context).
+    for rd in per_round_stats:
+        ttft = rd.get('ttft_ms')
+        tot = rd.get('total_ms') or 0
+        gen = (tot - ttft) if (ttft is not None and tot) else None
+        out_tok = rd.get('output_tokens') or 0
+        gen_rate = (out_tok * 1000.0 / gen) if (gen and gen > 0) else None
+        _log("  r%d ttft=%s gen=%s out=%dtok rate=%s in=%d cr=%d cw=%d" % (
+            rd['round'],
+            '%dms' % ttft if ttft is not None else '?',
+            '%dms' % gen if gen is not None else '?',
+            out_tok,
+            ('%.0ftok/s' % gen_rate) if gen_rate is not None else '?',
+            rd.get('input_tokens') or 0,
+            rd.get('cache_read') or 0,
+            rd.get('cache_creation') or 0))
 
     return {
         "rounds": rounds + 1,
