@@ -255,7 +255,8 @@ def _apply_surface_override(brain, override_path: str) -> None:
 def run_item(item: Dict[str, Any], item_idx: int, total: int,
              run_name: str = None, keep_db: bool = False,
              s1e_override: Optional[str] = None,
-             surface_override: Optional[str] = None) -> Dict[str, Any]:
+             surface_override: Optional[str] = None,
+             variance_idx: Optional[int] = None) -> Dict[str, Any]:
     """Run one item end-to-end. Each item gets its OWN brain DB for isolation.
 
     Per-item DB (brain-eval-{run_name}/{qid}/) means:
@@ -267,6 +268,11 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
     BEFORE the brain handles close — durable post-hoc analysis without
     re-running. See eval/ARTIFACTS.md.
 
+    When variance_idx is set, the per-item DB and artifact paths get a
+    suffix (-r{variance_idx}) so the same qid can be run N times in
+    parallel without collision. The result dict carries variance_idx
+    through so the aggregator can compute per-item mean/stddev.
+
     Returns result dict with inline judge + failure class.
     """
     from eval.longmem.replay import replay_item, query_brain
@@ -277,7 +283,11 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
     from eval.longmem.artifacts import EvalArtifactsDumper
 
     qid = item["question_id"]
-    item_db_path = per_item_brain_dir(qid, run_name=run_name)
+    # Variance runs share qid but get a -r{idx} suffix to keep per-item DBs
+    # and artifact dirs distinct. variance_idx=None means single-run, no suffix.
+    artifact_qid = qid if variance_idx is None else f"{qid}-r{variance_idx}"
+    item_db_path = per_item_brain_dir(qid, run_name=run_name,
+                                      variance_idx=variance_idx)
     brain = create_fresh_eval_brain(path=item_db_path, wipe=True)
 
     # Optional s1e prompt override — register a new version over the seeded
@@ -320,7 +330,7 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
     # NEVER kill the eval. Wrap each dump call in try/except.
     dumper: Optional[EvalArtifactsDumper] = None
     try:
-        dumper = EvalArtifactsDumper(run_name=run_name or 'adhoc', qid=qid)
+        dumper = EvalArtifactsDumper(run_name=run_name or 'adhoc', qid=artifact_qid)
         dumper.dump_meta(
             axis=axis,
             question=item["question"],
@@ -341,7 +351,8 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
     ingest_session_id = f"ingest-{qid}"
     ingest_stats = replay_item(brain, ingest_session_id, item["haystack_sessions"],
                                haystack_dates=item.get("haystack_dates"),
-                               log_prefix=f"[item {item_idx+1}]")
+                               log_prefix=f"[item {item_idx+1}]",
+                               dumper=dumper)
     ingest_ms = int((time.time() - t0) * 1000)
 
     q_result = query_brain(brain, item["question"], item.get("question_date"))
@@ -408,6 +419,7 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
 
     result = {
         "question_id": qid,
+        "variance_idx": variance_idx,
         "question_type": item["question_type"],
         "axis": axis,
         "question": item["question"],
@@ -417,6 +429,8 @@ def run_item(item: Dict[str, Any], item_idx: int, total: int,
         "has_context": a_result["has_context"],
         "correct": correct,
         "judge_raw": j["raw"],
+        "comparison": j.get("comparison", ""),
+        "judge_reasoning": j.get("reasoning", ""),
         "brain_errors_new": new_errors,
         **failure_info,
         "ingest": ingest_stats,
@@ -518,6 +532,12 @@ def main():
                         help="keep per-item brain DBs after each item (for post-hoc inspection)")
     parser.add_argument("--workers", type=int, default=1,
                         help="parallel worker processes (default 1 = serial). Each worker loads its own embedder (~1GB).")
+    parser.add_argument("--variance", type=int, default=1,
+                        help="Replicate each picked item N times (default 1). "
+                             "Each replicate runs in its own per-item brain "
+                             "(qid-r{idx}) so they can run in parallel. The "
+                             "aggregator reports per-axis mean/stddev across "
+                             "replicates so you can tell signal from noise.")
     parser.add_argument("--smoke-test", action="store_true",
                         help="Run 1 item per axis (~3-5 min), validate the pipeline end-to-end, "
                              "exit non-zero on any pipeline failure. Run BEFORE long runs.")
@@ -610,6 +630,17 @@ def main():
         n = sum(len(s) for s in item.get("haystack_sessions", []))
         print(f"  {i+1}. {item['question_id']:<24} axis={axis:<18} turns={n}", flush=True)
 
+    # Expand picked into (item, variance_idx) tasks. variance_idx=None when
+    # --variance=1 (preserves single-run qid paths). With --variance N, each
+    # item is replicated N times — each replicate is its own brain DB and
+    # its own artifact dir at qid-r{idx}.
+    if args.variance > 1:
+        tasks = [(item, vidx) for item in picked for vidx in range(args.variance)]
+        print(f"[harness] variance={args.variance} → {len(tasks)} total runs "
+              f"({len(picked)} items × {args.variance} replicates)", flush=True)
+    else:
+        tasks = [(item, None) for item in picked]
+
     # Compute run_name up front — each item's brain lives under brain-eval-{run_name}/{qid}/
     run_name = args.run_name or datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -644,50 +675,56 @@ def main():
 
     try:
         if args.workers <= 1:
-            # Serial path (backward compatible)
-            for i, item in enumerate(picked):
+            # Serial path (backward compatible). When --variance=1, tasks
+            # carries variance_idx=None and per-item paths stay unchanged.
+            for i, (item, vidx) in enumerate(tasks):
                 try:
-                    r = run_item(item, i, len(picked), run_name=run_name,
+                    r = run_item(item, i, len(tasks), run_name=run_name,
                                  keep_db=args.keep_dbs,
                                  s1e_override=s1e_override_path,
-                                 surface_override=surface_override_path)
+                                 surface_override=surface_override_path,
+                                 variance_idx=vidx)
                 except Exception as e:
                     import traceback
                     traceback.print_exc()
-                    print(f"[harness] item {i+1} FAILED: {e}", flush=True)
-                    r = {"question_id": item["question_id"], "error": str(e)}
+                    print(f"[harness] task {i+1} FAILED: {e}", flush=True)
+                    r = {"question_id": item["question_id"],
+                         "variance_idx": vidx, "error": str(e)}
                 results.append(r)
                 _stream_write_result(writers, r)
         else:
             # Parallel path — ProcessPoolExecutor, each worker loads its own embedder.
-            # Per-item DBs are already isolated (brain-eval-{run_name}/{qid}/), so no contention.
+            # Per-item DBs are already isolated (brain-eval-{run_name}/{qid}[-r{idx}]/), so no contention.
             from concurrent.futures import ProcessPoolExecutor, as_completed
-            print(f"[harness] running {len(picked)} items across {args.workers} workers", flush=True)
+            print(f"[harness] running {len(tasks)} tasks across {args.workers} workers", flush=True)
             results_by_idx: Dict[int, Dict[str, Any]] = {}
             with ProcessPoolExecutor(max_workers=args.workers) as pool:
                 futures = {
-                    pool.submit(run_item, item, i, len(picked), run_name,
+                    pool.submit(run_item, item, i, len(tasks), run_name,
                                 args.keep_dbs, s1e_override_path,
-                                surface_override_path): (i, item)
-                    for i, item in enumerate(picked)
+                                surface_override_path, vidx): (i, item, vidx)
+                    for i, (item, vidx) in enumerate(tasks)
                 }
                 done_count = 0
                 for fut in as_completed(futures):
-                    i, item = futures[fut]
+                    i, item, vidx = futures[fut]
                     try:
                         r = fut.result()
                     except Exception as e:
                         import traceback
                         traceback.print_exc()
-                        print(f"[harness] item {i+1} ({item['question_id']}) FAILED: {e}", flush=True)
-                        r = {"question_id": item["question_id"], "error": str(e)}
+                        print(f"[harness] task {i+1} ({item['question_id']}"
+                              f"{f'-r{vidx}' if vidx is not None else ''}) FAILED: {e}",
+                              flush=True)
+                        r = {"question_id": item["question_id"],
+                             "variance_idx": vidx, "error": str(e)}
                     results_by_idx[i] = r
                     # Stream as completed (out of order is fine for jsonl)
                     _stream_write_result(writers, r)
                     done_count += 1
-                    print(f"[harness] progress: {done_count}/{len(picked)} done", flush=True)
+                    print(f"[harness] progress: {done_count}/{len(tasks)} done", flush=True)
             # Preserve original order for the aggregate report
-            results = [results_by_idx[i] for i in range(len(picked))]
+            results = [results_by_idx[i] for i in range(len(tasks))]
     finally:
         # Always close streams — guarantees the partial jsonl is on disk.
         try:
@@ -699,15 +736,33 @@ def main():
     hypotheses_path = writers['hypotheses_path']
 
     # Aggregate inline-graded results
+    import statistics
     graded = [r for r in results if "correct" in r]
     correct_count = sum(1 for r in graded if r["correct"])
     overall = correct_count / len(graded) if graded else 0
     by_axis: Dict[str, List[bool]] = {}
     by_bucket: Dict[str, int] = {}
+    by_comparison: Dict[str, int] = {}
+    by_qid: Dict[str, List[bool]] = {}
     for r in graded:
         by_axis.setdefault(r["axis"], []).append(r["correct"])
+        by_qid.setdefault(r["question_id"], []).append(r["correct"])
+        if r.get("comparison"):
+            by_comparison[r["comparison"]] = by_comparison.get(r["comparison"], 0) + 1
         if not r["correct"] and r.get("failure_bucket"):
             by_bucket[r["failure_bucket"]] = by_bucket.get(r["failure_bucket"], 0) + 1
+
+    def _stats(hits: List[bool]) -> Dict[str, Any]:
+        floats = [1.0 if h else 0.0 for h in hits]
+        return {
+            "mean": sum(floats) / len(floats) if floats else 0,
+            "stddev": statistics.pstdev(floats) if len(floats) > 1 else 0.0,
+            "n": len(floats),
+        }
+
+    axis_stats = {a: _stats(v) for a, v in by_axis.items() if v}
+    per_qid_stats = ({q: _stats(v) for q, v in by_qid.items()}
+                     if args.variance > 1 else {})
 
     report_path = os.path.join(reports_dir, f"run_{run_name}.json")
     with open(report_path, "w") as f:
@@ -716,11 +771,17 @@ def main():
             "items_count": len(results),
             "correct_count": correct_count,
             "overall_score": overall,
-            "axis_scores": {a: sum(v) / len(v) for a, v in by_axis.items() if v},
-            "axis_counts": {a: len(v) for a, v in by_axis.items()},
+            # Legacy {axis: mean} preserved for downstream consumers (report.py, etc.)
+            "axis_scores": {a: s["mean"] for a, s in axis_stats.items()},
+            "axis_counts": {a: s["n"] for a, s in axis_stats.items()},
+            # Full stats (mean + stddev + n) — variance > 1 makes stddev meaningful.
+            "axis_stats": axis_stats,
+            "per_qid_stats": per_qid_stats,
+            "comparison_counts": by_comparison,
             "failure_buckets": by_bucket,
             "total_ms": total_ms,
-            "config": {"items_per_axis": args.items, "seed": args.seed},
+            "config": {"items_per_axis": args.items, "seed": args.seed,
+                       "variance": args.variance},
             "results": results,
         }, f, indent=2)
 

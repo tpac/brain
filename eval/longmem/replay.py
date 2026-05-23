@@ -60,7 +60,8 @@ def _run_s2_foreground(brain) -> Dict[str, Any]:
 
 def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, str]]],
                 haystack_dates: Optional[List[str]] = None,
-                log_prefix: str = "[replay]") -> Dict[str, Any]:
+                log_prefix: str = "[replay]",
+                dumper=None) -> Dict[str, Any]:
     """Replay a LongMemEval item's haystack through the brain.
 
     Args:
@@ -71,6 +72,12 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
             [Current date: YYYY-MM-DD] to user messages so the encoder can
             resolve relative time expressions
         log_prefix: prefix for log lines
+        dumper: optional EvalArtifactsDumper. When supplied, snapshots
+            nodes/edges before and after the final S2 flush so callers can
+            diff exactly what S2 (consolidation + community + healer)
+            changed in the graph. Files land at:
+              pre_final_s2 / post_final_s2  (nodes{suffix}.jsonl, edges{suffix}.jsonl)
+            Snapshot failures are non-fatal — the eval keeps going.
 
     Returns:
         {"turns": N, "user_turns": N, "s1e_runs": N, "s2_runs": N,
@@ -172,6 +179,19 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
         except Exception as e:
             print(f"{log_prefix}   WARN s1e trailing failed: {e}", flush=True)
 
+    # Snapshot the graph BEFORE the final S2 flush. Combined with the
+    # post_final_s2 snapshot below, this gives a clean diff of exactly what
+    # S2 (consolidation + community + healer) wrote during the flush —
+    # without it, the post-everything dump conflates ingest-time S2 with
+    # final-flush S2.
+    if dumper:
+        try:
+            dumper.dump_nodes(brain, prefix='pre_final_s2')
+            dumper.dump_edges(brain, prefix='pre_final_s2')
+        except Exception as e:
+            print(f"{log_prefix}   pre_final_s2 snapshot failed (non-fatal): {e}",
+                  flush=True)
+
     # Final S2 flush: loop until every unit reports no-op (skipped or 0 actions).
     # S2 consolidation caps at ~10 proposals per run — multiple passes may be needed
     # to exhaust the backlog for large ingestions. Cap at S2_FINAL_MAX_PASSES for safety.
@@ -205,6 +225,17 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
         except Exception as e:
             print(f"{log_prefix}   WARN s2 pass {pass_idx+1} failed: {e}", flush=True)
             break
+
+    # Snapshot AFTER S2 final flush but BEFORE backfill — captures the
+    # node/edge graph in the exact state S2 produced, isolated from the
+    # embedding backfill that follows.
+    if dumper:
+        try:
+            dumper.dump_nodes(brain, prefix='post_final_s2')
+            dumper.dump_edges(brain, prefix='post_final_s2')
+        except Exception as e:
+            print(f"{log_prefix}   post_final_s2 snapshot failed (non-fatal): {e}",
+                  flush=True)
 
     # Backfill AFTER all S1E + S2 writes (including healer) — production drains
     # via embed_queue worker, but eval runs inline so we must trigger explicitly.
