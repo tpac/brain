@@ -18,7 +18,7 @@ indexed" is legible instead of silent.
 import sys
 import threading
 import time
-from typing import Optional, Set
+from typing import Dict, Optional, Set
 
 # Drain every N seconds if queue is non-empty. Empty queue = no-op, no work.
 EMBED_DRAIN_INTERVAL = 5.0
@@ -32,6 +32,16 @@ DRAIN_BATCH_SIZE = 500
 # worker; covers "worker is alive but blocked / slow" not "worker is
 # dead". Thread death is detected by daemon's thread-count watchdog.
 STALL_THRESHOLD_S = EMBED_DRAIN_INTERVAL * 3
+
+# Pull-reconciliation policy for trace embeddings (v27 episodic refs).
+# Each tick: find up to N S0 trace events with no embedding yet, render
+# per §5.3, embed in one batch, store. Newest-first so recent
+# conversation is anchorable immediately; backfill of older traces
+# works backwards on its own across subsequent ticks. No queue state;
+# restart-safe — the LEFT JOIN finds whatever's still missing.
+TRACE_DRAIN_LIMIT = 5
+EAGER_TRACE_SCALES = ('s0',)
+EAGER_TRACE_REF_TYPES = ('user_message', 'assistant_message', 'tool_result')
 
 # ─── State ───
 _queue: Set[str] = set()           # node ids needing vector + date recomputation
@@ -50,6 +60,9 @@ _stats = {
     'edges_processed_total': 0,
     'vectors_written_total': 0,
     'temporal_intervals_written_total': 0,
+    'traces_processed_total': 0,
+    'traces_errors_total': 0,
+    'last_trace_drain_at': None,
     'last_drain_at': None,   # epoch seconds
     'last_drain_took_ms': 0,
     'last_drain_size': 0,
@@ -174,6 +187,22 @@ def _worker_loop(brain) -> None:
                 with _lock:
                     _stats['drains_skipped_empty'] += 1
 
+            # Pull-reconciliation: trace embeddings. Independent of
+            # node/edge queues — writes to brain_logs.trace_embeddings
+            # via its own connection. Caps per-tick work via
+            # TRACE_DRAIN_LIMIT; runs on every tick so newly-written
+            # S0 trace events get anchored within ~5s.
+            try:
+                _drain_trace_embeddings_once(brain)
+            except Exception as e:
+                try:
+                    brain._log_error(
+                        'embed_queue_trace_top', e,
+                        'top-level trace embed drain caught')
+                except Exception as le:
+                    print('[embed_queue] trace embed error: %s '
+                          '(log failed: %s)' % (e, le), file=sys.stderr)
+
             # Drain recall_write_queue (access + hebbian). Fast,
             # separate connection, separate transaction. drain_once is
             # contract-bound never to raise out — this try/except is
@@ -285,6 +314,95 @@ def _check_stall(brain, recall_write_queue) -> None:
     except Exception as e:
         # Stall check is best-effort observability — never raise.
         print('[embed_queue] _check_stall failed: %s' % e, file=sys.stderr)
+
+
+def _render_trace_for_embedding(row: Dict) -> str:
+    """Render a trace_event row to embedding text per docs/EPISODIC-REFERENCES.md §5.3.
+
+    Concrete identity tokens at the embedding layer (revised decision
+    19, biology-grounded): same individual's traces land in the same
+    vector neighborhood regardless of role/context changes. Falls back
+    to OPERATOR / ANCHOR sentinels if identity isn't configured in the
+    trace metadata yet (so the pipeline keeps producing usable vectors
+    on fresh installs).
+    """
+    meta = row.get('metadata') or {}
+    ref_type = row.get('ref_type', '')
+    human = meta.get('human_identity') or 'OPERATOR'
+    agent = meta.get('agent_identity') or 'ANCHOR'
+    # Prefer the longer metadata.content over the truncated summary;
+    # falls back to summary when content isn't present (tool_result,
+    # historical traces, etc.).
+    content = meta.get('content') or row.get('summary') or ''
+    if ref_type == 'user_message':
+        return '%s: %s' % (human, content)
+    if ref_type == 'assistant_message':
+        return '%s: %s' % (agent, content)
+    if ref_type == 'tool_result':
+        tool = meta.get('tool') or 'tool'
+        summary = row.get('summary') or ''
+        return '%s via %s: %s' % (agent, tool, summary)
+    # Unknown ref_type: best-effort tag so the embedder still gets
+    # signal. Future ref_types (S1 recall, S1 encoding) can override
+    # by adding a branch above; the design doc §5.3 has templates.
+    return '%s: %s' % (ref_type or 'event', content)
+
+
+def _drain_trace_embeddings_once(brain) -> None:
+    """Pull-reconciliation tick: find recent S0 traces with no embedding,
+    render → embed in one batch → store. Independent from node/edge
+    drains (different table, different connection); runs even when
+    those queues are empty. Skip-tick on prior overlap is unnecessary
+    — TRACE_DRAIN_LIMIT caps per-tick work and the LEFT JOIN is cheap.
+    """
+    try:
+        pending = brain._trace_dal.find_unembedded(
+            limit=TRACE_DRAIN_LIMIT,
+            scales=list(EAGER_TRACE_SCALES),
+            ref_types=list(EAGER_TRACE_REF_TYPES))
+    except Exception as e:
+        with _lock:
+            _stats['traces_errors_total'] += 1
+        try:
+            brain._log_error('embed_queue_trace_find', e,
+                             'find_unembedded raised')
+        except Exception:
+            pass
+        return
+    if not pending:
+        with _lock:
+            _stats['last_trace_drain_at'] = time.time()
+        return
+
+    try:
+        from servers import embedder
+        if not embedder.is_ready():
+            return  # cold start; next tick will catch up
+        texts = [_render_trace_for_embedding(row) for row in pending]
+        vectors = embedder.embed_batch(texts, kind='document')
+        if not vectors or len(vectors) != len(pending):
+            with _lock:
+                _stats['traces_errors_total'] += 1
+            return
+        rows_to_store = []
+        for row, vec, text in zip(pending, vectors, texts):
+            if vec is not None:
+                rows_to_store.append((row['id'], vec, text))
+        if rows_to_store:
+            model = embedder.get_config().get('model_name', 'unknown')
+            n_written = brain._trace_dal.store_embeddings(
+                rows_to_store, model=model)
+            with _lock:
+                _stats['traces_processed_total'] += n_written
+                _stats['last_trace_drain_at'] = time.time()
+    except Exception as e:
+        with _lock:
+            _stats['traces_errors_total'] += 1
+        try:
+            brain._log_error('embed_queue_trace_phase', e,
+                             'render/embed/store failed')
+        except Exception:
+            pass
 
 
 def _drain_once(brain) -> None:
