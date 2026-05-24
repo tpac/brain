@@ -538,6 +538,29 @@ class TraceDAL:
         self.conn.commit()
         return ids
 
+    def _decode_metadata(self, raw: Optional[str]) -> Dict[str, Any]:
+        """Decode a trace_events.metadata JSON cell into a dict.
+
+        Defensive against pre-v27 tool_result rows where the metadata
+        was double-encoded (the dispatch handler json.dumps'd a string
+        client payload, then trace_dal.append json.dumps'd it again).
+        Single-encoded rows (post-2026-05-23 dispatch fix) decode in
+        one pass; double-encoded legacy rows decode in two. Returns
+        an empty dict on any failure so callers can rely on dict shape.
+        """
+        if not raw:
+            return {}
+        try:
+            meta = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except (json.JSONDecodeError, TypeError):
+                return {}
+        return meta if isinstance(meta, dict) else {}
+
     def get_chain(self, chain_id: str) -> List[Dict[str, Any]]:
         """Get all events in a trace chain, ordered by time."""
         rows = self.conn.execute(
@@ -546,15 +569,11 @@ class TraceDAL:
             (chain_id,)).fetchall()
         results = []
         for r in rows:
-            meta = {}
-            try:
-                meta = json.loads(r[6]) if r[6] else {}
-            except (json.JSONDecodeError, TypeError):
-                meta = {}
             results.append({
                 'id': r[0], 'scale': r[1], 'event_type': r[2],
                 'ref_type': r[3], 'ref_id': r[4], 'summary': r[5],
-                'metadata': meta, 'created_at': r[7], 'session_id': r[8] or ''})
+                'metadata': self._decode_metadata(r[6]),
+                'created_at': r[7], 'session_id': r[8] or ''})
         return results
 
     def get_recent(self, scale: str = '', hours: int = 24,
@@ -897,7 +916,8 @@ class TraceDAL:
         return {r[0]: r[1] for r in rows}
 
     def find_unembedded(self, limit: int, scales: List[str],
-                        ref_types: List[str]) -> List[Dict[str, Any]]:
+                        ref_types: List[str],
+                        since: Optional[str] = None) -> List[Dict[str, Any]]:
         """Find recent trace events with no embedding row yet.
 
         Pull-reconciliation primitive: the worker calls this every tick,
@@ -910,6 +930,11 @@ class TraceDAL:
             ref_types: required ref_type filter (e.g., ['user_message',
                        'assistant_message', 'tool_result']). Empty raises
                        ValueError.
+            since: optional ISO timestamp lower bound on created_at.
+                   Worker uses this to skip historical traces that
+                   pre-date identity stamping — they'd render with
+                   OPERATOR/ANCHOR sentinels and pollute the embedding
+                   neighborhood that decision 19 keeps concrete.
 
         Returns rows with id/scale/event_type/ref_type/summary/metadata/
         session_id/created_at fields. Caller renders to text and embeds.
@@ -920,7 +945,12 @@ class TraceDAL:
             raise ValueError("find_unembedded: ref_types required")
         scale_ph = ','.join('?' * len(scales))
         ref_ph = ','.join('?' * len(ref_types))
-        params = list(scales) + list(ref_types) + [limit]
+        params: List[Any] = list(scales) + list(ref_types)
+        since_clause = ''
+        if since:
+            since_clause = ' AND te.created_at > ? '
+            params.append(since)
+        params.append(limit)
         rows = self.conn.execute(
             'SELECT te.id, te.scale, te.event_type, te.ref_type, '
             '       te.summary, te.metadata, te.session_id, te.created_at '
@@ -929,20 +959,17 @@ class TraceDAL:
             'WHERE tem.trace_id IS NULL '
             '  AND te.scale IN (%s) '
             '  AND te.ref_type IN (%s) '
+            '  %s'
             'ORDER BY te.created_at DESC '
-            'LIMIT ?' % (scale_ph, ref_ph),
+            'LIMIT ?' % (scale_ph, ref_ph, since_clause),
             params).fetchall()
         results = []
         for r in rows:
-            meta = {}
-            try:
-                meta = json.loads(r[5]) if r[5] else {}
-            except (json.JSONDecodeError, TypeError):
-                meta = {}
             results.append({
                 'id': r[0], 'scale': r[1], 'event_type': r[2],
                 'ref_type': r[3], 'summary': r[4] or '',
-                'metadata': meta, 'session_id': r[6] or '',
+                'metadata': self._decode_metadata(r[5]),
+                'session_id': r[6] or '',
                 'created_at': r[7]})
         return results
 

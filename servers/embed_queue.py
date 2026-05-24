@@ -42,6 +42,16 @@ STALL_THRESHOLD_S = EMBED_DRAIN_INTERVAL * 3
 TRACE_DRAIN_LIMIT = 5
 EAGER_TRACE_SCALES = ('s0',)
 EAGER_TRACE_REF_TYPES = ('user_message', 'assistant_message', 'tool_result')
+# Embed window — only consider traces newer than this. The architectural
+# reason (not just a perf knob): traces older than v27/identity-stamping
+# rollout have no human_identity / agent_identity in their metadata and
+# would render with OPERATOR / ANCHOR sentinels. Decision 19 specifically
+# keeps the embedding neighborhood concrete-token-only; embedding
+# pre-stamping traces would land them in a different vector neighborhood
+# from new traces. A 30-day window covers the source_refs use case (new
+# encoder writes anchoring at recent traces) without touching the
+# historical backlog.
+TRACE_EMBED_WINDOW_DAYS = 30
 
 # ─── State ───
 _queue: Set[str] = set()           # node ids needing vector + date recomputation
@@ -356,10 +366,14 @@ def _drain_trace_embeddings_once(brain) -> None:
     — TRACE_DRAIN_LIMIT caps per-tick work and the LEFT JOIN is cheap.
     """
     try:
+        from datetime import datetime, timedelta, timezone
+        since_iso = (datetime.now(timezone.utc)
+                     - timedelta(days=TRACE_EMBED_WINDOW_DAYS)).isoformat()
         pending = brain._trace_dal.find_unembedded(
             limit=TRACE_DRAIN_LIMIT,
             scales=list(EAGER_TRACE_SCALES),
-            ref_types=list(EAGER_TRACE_REF_TYPES))
+            ref_types=list(EAGER_TRACE_REF_TYPES),
+            since=since_iso)
     except Exception as e:
         with _lock:
             _stats['traces_errors_total'] += 1
@@ -378,6 +392,7 @@ def _drain_trace_embeddings_once(brain) -> None:
         from servers import embedder
         if not embedder.is_ready():
             return  # cold start; next tick will catch up
+        t0 = time.time()
         texts = [_render_trace_for_embedding(row) for row in pending]
         vectors = embedder.embed_batch(texts, kind='document')
         if not vectors or len(vectors) != len(pending):
@@ -392,9 +407,12 @@ def _drain_trace_embeddings_once(brain) -> None:
             model = embedder.get_config().get('model_name', 'unknown')
             n_written = brain._trace_dal.store_embeddings(
                 rows_to_store, model=model)
+            elapsed_ms = int((time.time() - t0) * 1000)
             with _lock:
                 _stats['traces_processed_total'] += n_written
                 _stats['last_trace_drain_at'] = time.time()
+            print('[embed_queue] trace_embed %d in %dms (render+embed+store)' %
+                  (n_written, elapsed_ms), flush=True)
     except Exception as e:
         with _lock:
             _stats['traces_errors_total'] += 1

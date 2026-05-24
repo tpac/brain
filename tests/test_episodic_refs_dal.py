@@ -137,6 +137,55 @@ class TraceEmbeddingsDALTest(unittest.TestCase):
             self.dal.find_unembedded(
                 limit=5, scales=['s0'], ref_types=[])
 
+    def test_find_unembedded_respects_since_cutoff(self):
+        """The `since` window excludes traces older than the cutoff —
+        bounds embed scope to traces created after identity stamping
+        went live (avoids polluting the vector neighborhood with
+        sentinel-tagged historical traces)."""
+        import time as _time
+        t1 = _seed_trace(self.conn, summary='old')
+        # Force old created_at on t1
+        self.conn.execute(
+            "UPDATE trace_events SET created_at = '2025-01-01T00:00:00+00:00' "
+            "WHERE id = ?", (t1,))
+        self.conn.commit()
+        t2 = _seed_trace(self.conn, summary='recent')
+        rows = self.dal.find_unembedded(
+            limit=5, scales=['s0'], ref_types=['user_message'],
+            since='2025-06-01T00:00:00+00:00')
+        ids = [r['id'] for r in rows]
+        self.assertIn(t2, ids)
+        self.assertNotIn(t1, ids)
+
+    def test_find_unembedded_no_since_returns_all(self):
+        """since=None preserves legacy behavior (no time filter)."""
+        t1 = _seed_trace(self.conn, summary='one')
+        rows = self.dal.find_unembedded(
+            limit=5, scales=['s0'], ref_types=['user_message'])
+        self.assertIn(t1, [r['id'] for r in rows])
+
+    def test_decode_metadata_single_encoded(self):
+        """Post-fix metadata is single-encoded JSON — one json.loads pass."""
+        meta = self.dal._decode_metadata('{"tool": "Bash"}')
+        self.assertEqual(meta, {'tool': 'Bash'})
+
+    def test_decode_metadata_double_encoded_legacy(self):
+        """Pre-fix tool_result traces stored '"{\\"tool\\": \\"Bash\\"}"'
+        (the dispatch json.dumps'd a string client payload, then
+        TraceDAL.append json.dumps'd that again). Defensive decode
+        unwraps both layers."""
+        import json as _json
+        double = _json.dumps('{"tool": "Bash"}')  # produces '"{\"tool\": \"Bash\"}"'
+        self.assertEqual(self.dal._decode_metadata(double),
+                         {'tool': 'Bash'})
+
+    def test_decode_metadata_handles_garbage(self):
+        self.assertEqual(self.dal._decode_metadata(None), {})
+        self.assertEqual(self.dal._decode_metadata(''), {})
+        self.assertEqual(self.dal._decode_metadata('not-json'), {})
+        # JSON that decodes to a non-dict primitive — return {} not crash
+        self.assertEqual(self.dal._decode_metadata('42'), {})
+
 
 class SourceRefsDALTest(unittest.TestCase):
     def setUp(self):

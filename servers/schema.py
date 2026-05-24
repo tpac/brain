@@ -1125,6 +1125,12 @@ LOG_INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_trace_scale ON trace_events(scale)',
     'CREATE INDEX IF NOT EXISTS idx_trace_created ON trace_events(created_at)',
     'CREATE INDEX IF NOT EXISTS idx_trace_session ON trace_events(session_id)',
+    # v27: composite covers the embed-worker hot query (find_unembedded):
+    # filter by scale + ref_type, sort by created_at DESC, stop early at
+    # LIMIT. Without this SQLite materializes all matches into a temp
+    # B-tree just to sort — every drain tick. With it the planner walks
+    # the index in DESC order and short-circuits after LIMIT matches.
+    'CREATE INDEX IF NOT EXISTS idx_trace_scope_created ON trace_events(scale, ref_type, created_at)',
     # v9.2: session_state
     'CREATE INDEX IF NOT EXISTS idx_session_state_session ON session_state(session_id)',
 ]
