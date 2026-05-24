@@ -217,6 +217,44 @@ class TestTraceDAL:
         assert 's1 event' not in s0_summaries
         assert 's1 event' in s1_summaries
 
+    def test_get_recent_session_id_authoritative_ignores_hours(self):
+        """When session_id is set, get_recent must honor it regardless of the
+        `hours` window. Regression: the old query_traces handler checked
+        session_id but never passed it through — historical sessions older
+        than the 24h default silently fell back to current-session events.
+        """
+        # Append events under two different session_ids
+        self.dal.append(chain_id='session-A', scale='s0', event_type='K',
+                        ref_type='user_message', summary='session-A event',
+                        session_id='session-aaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+        self.dal.append(chain_id='session-B', scale='s0', event_type='K',
+                        ref_type='user_message', summary='session-B event',
+                        session_id='session-bbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')
+
+        a_events = self.dal.get_recent(
+            session_id='session-aaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            hours=1, limit=10)
+        a_summaries = [e['summary'] for e in a_events]
+        assert 'session-A event' in a_summaries
+        assert 'session-B event' not in a_summaries
+
+        # Authoritative semantics: hours=0 (effectively no cutoff window)
+        # must STILL return session events. session_id wins over hours.
+        a_events_zero = self.dal.get_recent(
+            session_id='session-aaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            hours=0, limit=10)
+        assert any(e['summary'] == 'session-A event' for e in a_events_zero), \
+            "session_id must override hours=0 (was the silent-empty bug)"
+
+    def test_get_recent_unknown_session_returns_empty(self):
+        """When session_id has zero matches, get_recent returns []. The DAL
+        also logs a loud warning to stderr (asserted via captured stderr in
+        integration tests; unit test just verifies the return shape)."""
+        out = self.dal.get_recent(
+            session_id='nonexistent-session-id-zzzzzzzzzzzzzzzz',
+            hours=1, limit=10)
+        assert out == [], "unknown session_id must return [], not fall back"
+
     def test_get_recent_filters_event_type(self):
         """get_recent with event_type filter only returns matching type."""
         self.dal.append(chain_id='type-test', scale='s0', event_type='K',

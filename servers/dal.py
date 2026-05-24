@@ -646,10 +646,26 @@ class TraceDAL:
         return results
 
     def get_recent(self, scale: str = '', hours: int = 24,
-                   event_type: str = '', limit: int = 100) -> List[Dict[str, Any]]:
-        """Get recent trace events, optionally filtered by scale and type."""
-        conditions = ['created_at > ?']
-        params = [iso_cutoff(hours=hours)]
+                   event_type: str = '', session_id: str = '',
+                   limit: int = 100) -> List[Dict[str, Any]]:
+        """Get recent trace events, optionally filtered by scale/type/session.
+
+        session_id semantics: when set, it is the authoritative filter — the
+        `hours` window is ignored. Sessions older than the default window
+        (e.g. eval/healer/audit reaching for historical conversations) must
+        not silently truncate to empty because a 24h cutoff hid them. When
+        session_id is set and the query returns zero rows, log loud to
+        stderr — silent empty is the bug we just fixed.
+        """
+        conditions: list = []
+        params: list = []
+        if session_id:
+            # session_id is authoritative — skip the hours cutoff entirely.
+            conditions.append('session_id = ?')
+            params.append(session_id)
+        else:
+            conditions.append('created_at > ?')
+            params.append(iso_cutoff(hours=hours))
         if scale:
             conditions.append('scale = ?')
             params.append(scale)
@@ -661,10 +677,19 @@ class TraceDAL:
             'SELECT id, chain_id, scale, event_type, ref_type, ref_id, summary, created_at, session_id '
             'FROM trace_events WHERE %s ORDER BY created_at DESC LIMIT ?' % where,
             params + [limit]).fetchall()
-        return [{'id': r[0], 'chain_id': r[1], 'scale': r[2], 'event_type': r[3],
+        out = [{'id': r[0], 'chain_id': r[1], 'scale': r[2], 'event_type': r[3],
                  'ref_type': r[4], 'ref_id': r[5], 'summary': r[6], 'created_at': r[7],
                  'session_id': r[8] or ''}
                 for r in rows]
+        if session_id and not out:
+            # Loud-by-default: session_id was explicit; zero rows is a real
+            # signal (typo, archived session, wrong DB), not a quiet noop.
+            import sys as _sys
+            print('[query_traces] WARN session_id=%s returned 0 rows '
+                  '(scale=%r event_type=%r limit=%d)'
+                  % (session_id[:12], scale, event_type, limit),
+                  file=_sys.stderr)
+        return out
 
     def get_chains_for_session(self, session_id: str) -> List[str]:
         """Get all chain IDs from a session."""

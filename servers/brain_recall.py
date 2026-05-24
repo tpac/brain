@@ -539,8 +539,11 @@ class BrainRecallMixin:
             return {'chains': self._trace_dal.get_chains(
                 session_id=session_id, scale=scale, hours=hours, limit=limit)}
         if session_id:
+            # session_id is authoritative — get_recent ignores `hours` when
+            # session_id is set, so historical sessions don't silently empty.
             return {'events': self._trace_dal.get_recent(
-                scale=scale, hours=hours, event_type=event_type, limit=limit)}
+                scale=scale, hours=hours, event_type=event_type,
+                session_id=session_id, limit=limit)}
         return {'events': self._trace_dal.get_recent(
             scale=scale, hours=hours, event_type=event_type, limit=limit)}
 
