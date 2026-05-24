@@ -73,6 +73,59 @@ def brain_today(brain=None, tz: Optional[str] = None) -> _dt.date:
     return brain_now(brain=brain, tz=tz).date()
 
 
+def iso_cutoff(hours: float = 0, minutes: float = 0, days: float = 0) -> str:
+    """Return an ISO-format UTC cutoff timestamp suitable for SQL WHERE clauses.
+
+    Use bound as a parameter against ISO-T-formatted timestamp columns:
+
+        cur.execute(
+            "SELECT ... WHERE created_at > ?",
+            (iso_cutoff(hours=24),))
+
+    Why this exists
+    ---------------
+    SQLite's ``datetime('now', '-N hours')`` returns a space-separated format
+    without microseconds or timezone (e.g. ``'2026-05-24 17:07:13'``). Brain
+    stores ISO with a 'T' separator (e.g. ``'2026-05-24T17:07:13.123456+00:00'``
+    or with a 'Z' suffix). Lexicographic comparison breaks because
+    ``'T' (0x54) > ' ' (0x20)`` — same-day-earlier rows incorrectly look
+    "greater than" a same-day cutoff. Replace any
+    ``WHERE col > datetime('now', '-N units')`` in SQL with a bound
+    ``iso_cutoff(...)`` to compare apples to apples.
+
+    Two storage formats coexist (latent, currently safe)
+    ----------------------------------------------------
+    The codebase has two "ISO" suffixes in flight:
+
+      - ``Brain.now()``        → ``'…T…ffffffZ'``   (nodes.created_at,
+                                                     nodes.last_accessed)
+      - ``TraceDAL`` inserts   → ``'…T…ffffff+00:00'`` (trace_events.created_at,
+                                                       debug_log.created_at,
+                                                       hook_errors.created_at)
+
+    They are NOT lex-equivalent — ``'Z' (0x5A) > '+' (0x2B)`` — so a Z-stored
+    string is "greater than" a +00:00 string at the same instant.
+
+    **Invariant: queries stay within a single column.** Every WHERE-clause
+    timestamp comparison in the codebase reads from ONE column with ONE
+    consistent format. ``iso_cutoff`` returns ``+00:00`` form; both stored
+    formats compare correctly against it whenever the date/time/microsecond
+    prefix differs (i.e. effectively always — only an exact-microsecond
+    match would expose the suffix mismatch). If you ever need to compare
+    timestamps across columns with different suffix conventions, normalize
+    first — don't rely on raw string comparison.
+
+    Args:
+        hours, minutes, days: subtracted from current UTC time. All optional.
+
+    Returns:
+        ISO-8601 string in UTC, ``'YYYY-MM-DDTHH:MM:SS.ffffff+00:00'``.
+    """
+    dt = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(
+        hours=hours, minutes=minutes, days=days)
+    return dt.isoformat()
+
+
 def conversation_now(messages: Optional[Iterable[Any]] = None,
                       session_started_at: Optional[Any] = None,
                       brain=None,

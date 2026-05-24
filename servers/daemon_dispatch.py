@@ -14,6 +14,7 @@ import os
 from typing import Any, Dict, List, NamedTuple, Callable, Optional
 
 from .daemon_config import _CODE_FINGERPRINT
+from .clock import iso_cutoff
 
 
 def _resolve_id(brain, node_id):
@@ -882,7 +883,8 @@ def _handle_clear_errors(brain, args, graph_changes):
     # Hook errors
     if hours:
         c = brain.logs_conn.execute(
-            "DELETE FROM hook_errors WHERE created_at < datetime('now', '-%d hours')" % int(hours))
+            "DELETE FROM hook_errors WHERE created_at < ?",
+            (iso_cutoff(hours=int(hours)),))
     else:
         c = brain.logs_conn.execute("DELETE FROM hook_errors")
     cleared['hook_errors'] = c.rowcount
@@ -891,7 +893,8 @@ def _handle_clear_errors(brain, args, graph_changes):
     if args.get("debug_log", False):
         if hours:
             c = brain.logs_conn.execute(
-                "DELETE FROM debug_log WHERE created_at < datetime('now', '-%d hours')" % int(hours))
+                "DELETE FROM debug_log WHERE created_at < ?",
+                (iso_cutoff(hours=int(hours)),))
         else:
             c = brain.logs_conn.execute("DELETE FROM debug_log")
         cleared['debug_log'] = c.rowcount

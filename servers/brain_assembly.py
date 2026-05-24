@@ -9,6 +9,7 @@ which are provided by Brain.__init__.
 from . import embedder
 from .schema import BRAIN_VERSION, BRAIN_VERSION_KEY, NODE_TYPES
 from .text_processing import split_identifier
+from .clock import iso_cutoff
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 import json
@@ -432,8 +433,8 @@ class BrainAssemblyMixin:
         stale_count_row = self.conn.execute('''
             SELECT COUNT(*) FROM nodes
             WHERE type = 'context' AND locked = 0 AND archived = 0
-            AND created_at < datetime('now', '-7 days')
-        ''').fetchone()
+            AND created_at < ?
+        ''', (iso_cutoff(days=7),)).fetchone()
         stale_count = stale_count_row[0] if stale_count_row else 0
 
         if stale_count > 10:
@@ -446,8 +447,8 @@ class BrainAssemblyMixin:
                 stale_ids = [r[0] for r in self.conn.execute('''
                     SELECT id FROM nodes
                     WHERE type = 'context' AND locked = 0 AND archived = 0
-                    AND created_at < datetime('now', '-14 days')
-                ''').fetchall()]
+                    AND created_at < ?
+                ''', (iso_cutoff(days=14),)).fetchall()]
                 for sid in stale_ids:
                     self.archive_node(sid, archived_by='hook:integrity',
                                       reason='context node older than 14 days')

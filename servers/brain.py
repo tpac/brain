@@ -31,6 +31,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from .schema import ensure_schema, ensure_logs_schema, migrate_logs_to_separate_db
 from .dal import LogsDAL, MetaDAL
+from .clock import iso_cutoff
 from .brain_recall import BrainRecallMixin
 from .brain_remember import BrainRememberMixin
 from .brain_connections import BrainConnectionsMixin
@@ -436,11 +437,12 @@ class Brain(
             size = os.path.getsize(self.logs_db_path)
             if size > self._max_logs_db_size:
                 # Delete entries older than 7 days
+                cutoff_7d = iso_cutoff(days=7)
                 self.logs_conn.execute(
-                    "DELETE FROM debug_log WHERE created_at < datetime('now', '-7 days')")
+                    "DELETE FROM debug_log WHERE created_at < ?", (cutoff_7d,))
                 # access_log + recall_log tables dropped 2026-04-05
                 self.logs_conn.execute(
-                    "DELETE FROM dream_log WHERE created_at < datetime('now', '-7 days')")
+                    "DELETE FROM dream_log WHERE created_at < ?", (cutoff_7d,))
                 self.logs_conn.commit()
                 self._write_to_file_log('INFO', 'logs_db', 'Pruned entries older than 7 days (DB was %dMB)' % (size // (1024*1024)))
         except Exception:

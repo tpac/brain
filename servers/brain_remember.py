@@ -9,6 +9,7 @@ which are provided by Brain.__init__.
 from . import embedder
 from .brain_constants import TYPE_CONFIDENCE
 from .dal import GraphDAL, VectorDAL
+from .clock import iso_cutoff
 from .brain_constants import (
     ENRICHMENT_NEIGHBOR_COUNT,
     ENRICHMENT_PROMPT_TEMPLATE,
@@ -719,10 +720,10 @@ class BrainRememberMixin:
                     SELECT n.id, ne.embedding FROM nodes n
                     LEFT JOIN node_enrichments ne ON ne.node_id = n.id AND ne.vector_type = '_primary'
                     WHERE n.id != ? AND n.archived = 0
-                      AND n.last_accessed > datetime('now', '-1 hour')
+                      AND n.last_accessed > ?
                       AND n.type NOT IN ('thought', 'intuition')
                     ORDER BY n.last_accessed DESC LIMIT 10
-                ''', (node_id,)).fetchall()
+                ''', (node_id, iso_cutoff(hours=1))).fetchall()
 
                 if new_node_emb and recent:
                     scored = []

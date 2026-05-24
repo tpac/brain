@@ -7,6 +7,7 @@ revision stats, edge-type imbalance, sparse metadata.
 
 from .dal import GraphDAL
 from .dal_metadata import MetadataDAL
+from .clock import iso_cutoff
 
 
 # Types the system actively queries by name — these get special treatment
@@ -57,8 +58,8 @@ def deep_integrity_audit(brain):
         # 3. Cold zones — nodes not accessed in 14+ days
         cold = brain.conn.execute("""
             SELECT COUNT(*) FROM nodes WHERE archived=0
-            AND (last_accessed IS NULL OR last_accessed < datetime('now', '-14 days'))
-        """).fetchone()[0]
+            AND (last_accessed IS NULL OR last_accessed < ?)
+        """, (iso_cutoff(days=14),)).fetchone()[0]
         total = brain.conn.execute("SELECT COUNT(*) FROM nodes WHERE archived=0").fetchone()[0]
         if total > 0:
             cold_pct = cold / total * 100

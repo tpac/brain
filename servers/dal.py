@@ -22,6 +22,8 @@ import sqlite3
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
+from .clock import iso_cutoff
+
 
 class LogsDAL:
     """Access layer for brain_logs.db tables: debug_log, access_log, recall_log,
@@ -69,9 +71,9 @@ class LogsDAL:
         """Get recent errors from debug_log."""
         rows = self.conn.execute(
             "SELECT source, metadata, created_at FROM debug_log "
-            "WHERE event_type = 'error' AND created_at > datetime('now', '-%d hours') "
-            "ORDER BY created_at DESC LIMIT ?" % hours,
-            (limit,)
+            "WHERE event_type = 'error' AND created_at > ? "
+            "ORDER BY created_at DESC LIMIT ?",
+            (iso_cutoff(hours=hours), limit)
         ).fetchall()
         results = []
         for source, metadata, created_at in rows:
@@ -92,7 +94,8 @@ class LogsDAL:
         """Count errors in the last N hours."""
         row = self.conn.execute(
             "SELECT COUNT(*) FROM debug_log WHERE event_type = 'error' "
-            "AND created_at > datetime('now', '-%d hours')" % hours
+            "AND created_at > ?",
+            (iso_cutoff(hours=hours),)
         ).fetchone()
         return row[0] if row else 0
 
@@ -137,7 +140,8 @@ class LogsDAL:
         # debug_log: keep errors forever, prune telemetry/other after 30 days
         cur = self.conn.execute(
             "DELETE FROM debug_log WHERE event_type != 'error' "
-            "AND created_at < datetime('now', '-30 days')")
+            "AND created_at < ?",
+            (iso_cutoff(days=30),))
         stats['debug_log_pruned'] = cur.rowcount
 
         # suggest_log: REMOVED 2026-04-05 (table dropped)
@@ -148,7 +152,8 @@ class LogsDAL:
         try:
             cur = self.conn.execute(
                 "DELETE FROM hook_errors WHERE surfaced = 1 "
-                "AND created_at < datetime('now', '-30 days')")
+                "AND created_at < ?",
+                (iso_cutoff(days=30),))
             stats['hook_errors_pruned'] = cur.rowcount
         except Exception:
             stats['hook_errors_pruned'] = 0
