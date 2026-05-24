@@ -72,6 +72,7 @@ _stats = {
     'temporal_intervals_written_total': 0,
     'traces_processed_total': 0,
     'traces_errors_total': 0,
+    'traces_skipped_embedder_not_ready': 0,
     'last_trace_drain_at': None,
     'last_drain_at': None,   # epoch seconds
     'last_drain_took_ms': 0,
@@ -391,13 +392,41 @@ def _drain_trace_embeddings_once(brain) -> None:
     try:
         from servers import embedder
         if not embedder.is_ready():
-            return  # cold start; next tick will catch up
+            # First few ticks during boot are expected — embedder
+            # loads asynchronously. After that, "not ready" usually
+            # means it failed to load and the worker would spin
+            # forever silently. Track a per-process count and log
+            # loudly when it persists.
+            with _lock:
+                _stats['traces_skipped_embedder_not_ready'] = (
+                    _stats.get('traces_skipped_embedder_not_ready', 0) + 1)
+                skips = _stats['traces_skipped_embedder_not_ready']
+            # Loud once at the 5-tick mark (~25s), then every 50 ticks
+            # (~4 min). Catches genuine boot grace; surfaces stuck state.
+            if skips == 5 or (skips > 5 and skips % 50 == 0):
+                try:
+                    brain._log_error(
+                        'embed_queue_trace_embedder_not_ready',
+                        RuntimeError('embedder.is_ready() False after %d ticks' % skips),
+                        'worker can\'t produce trace embeddings; check embedder.get_model_status()')
+                except Exception:
+                    pass
+            return
         t0 = time.time()
         texts = [_render_trace_for_embedding(row) for row in pending]
         vectors = embedder.embed_batch(texts, kind='document')
         if not vectors or len(vectors) != len(pending):
             with _lock:
                 _stats['traces_errors_total'] += 1
+            try:
+                brain._log_error(
+                    'embed_queue_trace_embed_mismatch',
+                    RuntimeError(
+                        'embed_batch returned %d vectors for %d texts' %
+                        (len(vectors) if vectors else 0, len(pending))),
+                    'embedder returned partial or empty result; traces will be retried next tick')
+            except Exception:
+                pass
             return
         rows_to_store = []
         for row, vec, text in zip(pending, vectors, texts):
