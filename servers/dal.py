@@ -467,11 +467,15 @@ class TraceDAL:
     def _stamp_identity(self, metadata: Optional[Dict]) -> Optional[Dict]:
         """Inject configured identity tokens into a metadata dict.
 
-        setdefault semantics — explicit per-event values win. Returns None
-        unchanged if neither identity is configured and caller's metadata
-        is None (preserves "no metadata" semantics for tests / non-S0).
+        setdefault semantics — explicit per-event values win. Returns
+        metadata unchanged if neither identity is configured, or if
+        metadata is a non-dict value (defensive: callers that pass
+        unexpected shapes don't crash the trace write — the daemon
+        dispatch layer is responsible for normalizing to dict).
         """
         if not self._human_identity and not self._agent_identity:
+            return metadata
+        if metadata is not None and not isinstance(metadata, dict):
             return metadata
         meta = dict(metadata) if metadata else {}
         if self._human_identity:

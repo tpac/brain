@@ -834,7 +834,20 @@ def _handle_find_node_by_title(brain, args, graph_changes):
 
 
 def _handle_trace_append(brain, args, graph_changes):
-    """Append a trace event from any source. Validates against trace_contract."""
+    """Append a trace event from any source. Validates against trace_contract.
+
+    Cross-process clients (e.g. PostToolUse hook) typically JSON-encode
+    metadata before putting it on the wire because the daemon JSON
+    decoder only unwraps one level. Decode it back here so TraceDAL
+    stores a clean dict (and identity stamping receives a dict, not a
+    string).
+    """
+    raw_meta = args.get("metadata")
+    if isinstance(raw_meta, str) and raw_meta:
+        try:
+            raw_meta = json.loads(raw_meta)
+        except (ValueError, TypeError):
+            raw_meta = {"raw": raw_meta}
     try:
         event_id = brain._trace_dal.append(
             chain_id=args.get("chain_id", ""),
@@ -843,7 +856,7 @@ def _handle_trace_append(brain, args, graph_changes):
             ref_type=args.get("ref_type", ""),
             ref_id=args.get("ref_id", ""),
             summary=args.get("summary", ""),
-            metadata=args.get("metadata"),
+            metadata=raw_meta,
             session_id=args.get("session_id", ""))
         return {"ok": True, "result": {"event_id": event_id}}
     except ValueError as e:

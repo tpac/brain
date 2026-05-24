@@ -131,6 +131,18 @@ class StampingEnabledTest(unittest.TestCase):
             self.assertEqual(meta['human_identity'], 'Tom')
             self.assertEqual(meta['agent_identity'], 'Anchor')
 
+    def test_stamp_skips_non_dict_metadata(self):
+        """Defensive: if a caller passes a non-dict (e.g. a JSON string
+        that wasn't decoded by the dispatch layer), don't crash — return
+        the value unchanged. Dispatch is responsible for normalizing
+        shapes before reaching the DAL."""
+        # Direct helper call — append() requires a valid contract triple
+        # and would mask the defensive behavior behind validation.
+        result = self.dal._stamp_identity('{"tool": "Bash"}')
+        self.assertEqual(result, '{"tool": "Bash"}')
+        result = self.dal._stamp_identity(42)
+        self.assertEqual(result, 42)
+
     def test_stamp_on_all_scales(self):
         """Identity stamps every trace, not just s0 — DAL is policy-neutral.
         Higher-scale traces (S1, S2) still benefit from knowing which

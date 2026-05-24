@@ -13,6 +13,18 @@
 _BRAIN_ENV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PLUGIN_DIR="$(cd "$_BRAIN_ENV_DIR/../.." && pwd)"
 
+# Source the canonical user config (~/.config/brain/env) so secrets and
+# identity tokens (ANTHROPIC_API_KEY, BRAIN_OPERATOR_NAME, BRAIN_AGENT_NAME, ...)
+# propagate into both the hook scripts and the launchd-spawned daemon
+# launcher. set -a exports each loaded variable; explicit shell-level
+# values still win (we don't override an already-set var).
+_BRAIN_USER_ENV="${XDG_CONFIG_HOME:-$HOME/.config}/brain/env"
+if [ -f "$_BRAIN_USER_ENV" ]; then
+    set -a
+    . "$_BRAIN_USER_ENV"
+    set +a
+fi
+
 # Ensure runtime is installed (idempotent, fast-path on sentinel)
 if ! "$_BRAIN_ENV_DIR/ensure-runtime.sh"; then
     echo "[brain-env] FATAL: runtime bootstrap failed — brain disabled" >&2
