@@ -132,12 +132,11 @@ class TestDAL(unittest.TestCase):
         self.assertEqual(self.meta.increment("ctr"), 1)
         self.assertEqual(self.meta.increment("ctr"), 2)
 
-    def test_meta_session_activity(self):
-        self.meta.set("remember_count", "5")
-        self.meta.set("message_count", "20")
-        activity = self.meta.get_session_activity()
-        self.assertEqual(activity['remember_count'], 5)
-        self.assertEqual(activity['message_count'], 20)
+    # test_meta_session_activity removed 2026-05-23: targeted
+    # MetaDAL.get_session_activity() which was deliberately deleted in
+    # commit 95b2887 (parallel-session refactor — single-counter
+    # approach replaced by per-session SessionContext). Activity
+    # counters live on SessionContext now, not MetaDAL.
 
 
 

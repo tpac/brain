@@ -492,6 +492,32 @@ class BrainRecallMixin:
             source=source, hours=hours, level=level,
             hook_name=hook_name, limit=limit)
 
+    def get_trace(self, trace_id):
+        """Single trace_event point lookup. Returns the full row dict
+        (id/chain_id/scale/event_type/ref_type/ref_id/summary/metadata/
+        session_id/created_at) or None if not found.
+
+        Convention mirrors brain.get_node — same single-input shape so
+        callers don't have to think about batch vs point at the API
+        edge. For batch lookups use brain.get_traces.
+        """
+        if trace_id is None:
+            return None
+        rows = self._trace_dal.get_by_ids([trace_id])
+        return rows[0] if rows else None
+
+    def get_traces(self, trace_ids):
+        """Batch trace_event lookup. Returns a list of full row dicts
+        in ascending-id order; missing ids are silently skipped.
+
+        Use this when a caller has a list of trace_ids (e.g., expanding
+        node.source_refs at render time, or get_traces tool exposure
+        for the encoder). Single point lookup → use brain.get_trace.
+        """
+        if not trace_ids:
+            return []
+        return self._trace_dal.get_by_ids(list(trace_ids))
+
     def query_traces(self, scale: str = '', hours: int = 24,
                      event_type: str = '', chain_id: str = '',
                      session_id: str = '', ref_type: str = '',

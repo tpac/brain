@@ -187,6 +187,62 @@ class TraceEmbeddingsDALTest(unittest.TestCase):
         self.assertEqual(self.dal._decode_metadata('42'), {})
 
 
+class GetByIdsTest(unittest.TestCase):
+    """Trace point/batch lookup by id — brain.get_trace / get_traces
+    backend. Returns ordered list with missing ids silently skipped
+    (mirrors NodeDAL.get_bulk semantics)."""
+
+    def setUp(self):
+        self.conn = _open_in_memory()
+        ensure_logs_schema(self.conn)
+        self.dal = TraceDAL(self.conn)
+
+    def tearDown(self):
+        self.conn.close()
+
+    def test_single_id(self):
+        t = _seed_trace(self.conn, summary='hi')
+        rows = self.dal.get_by_ids([t])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['id'], t)
+        self.assertEqual(rows[0]['summary'], 'hi')
+
+    def test_batch_returns_in_id_order(self):
+        t1 = _seed_trace(self.conn, summary='first')
+        t2 = _seed_trace(self.conn, summary='second')
+        t3 = _seed_trace(self.conn, summary='third')
+        # Input order shouldn't matter — result is ascending id
+        rows = self.dal.get_by_ids([t3, t1, t2])
+        self.assertEqual([r['id'] for r in rows], [t1, t2, t3])
+
+    def test_missing_ids_skipped(self):
+        t = _seed_trace(self.conn)
+        rows = self.dal.get_by_ids([t, 99999, 99998])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['id'], t)
+
+    def test_empty_input_returns_empty_list(self):
+        self.assertEqual(self.dal.get_by_ids([]), [])
+
+    def test_metadata_decoded(self):
+        # Insert a row with double-encoded metadata (legacy shape) and
+        # verify get_by_ids returns it as a dict via _decode_metadata
+        import json as _json
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        double = _json.dumps('{"tool": "Bash"}')
+        cur = self.conn.execute(
+            'INSERT INTO trace_events '
+            '(chain_id, scale, event_type, ref_type, summary, metadata, '
+            ' session_id, created_at) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            ('c', 's0', 'delta', 'tool_result', 'Bash: ls',
+             double, '', now))
+        self.conn.commit()
+        rows = self.dal.get_by_ids([cur.lastrowid])
+        self.assertEqual(rows[0]['metadata'], {'tool': 'Bash'})
+
+
 class SourceRefsDALTest(unittest.TestCase):
     def setUp(self):
         self.conn = _open_in_memory()

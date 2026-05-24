@@ -603,6 +603,28 @@ class TraceDAL:
                 return {}
         return meta if isinstance(meta, dict) else {}
 
+    def get_by_ids(self, trace_ids: List[int]) -> List[Dict[str, Any]]:
+        """Point/batch lookup by trace_event.id. Returns rows in
+        ascending id order (deterministic); missing ids are silently
+        skipped (mirrors NodeDAL.get_bulk behavior — caller checks
+        len(result) vs len(input) if presence matters).
+        """
+        if not trace_ids:
+            return []
+        placeholders = ','.join('?' * len(trace_ids))
+        rows = self.conn.execute(
+            'SELECT id, chain_id, scale, event_type, ref_type, ref_id, '
+            '       summary, metadata, session_id, created_at '
+            'FROM trace_events WHERE id IN (%s) '
+            'ORDER BY id ASC' % placeholders,
+            list(trace_ids)).fetchall()
+        return [{
+            'id': r[0], 'chain_id': r[1], 'scale': r[2],
+            'event_type': r[3], 'ref_type': r[4] or '', 'ref_id': r[5] or '',
+            'summary': r[6] or '', 'metadata': self._decode_metadata(r[7]),
+            'session_id': r[8] or '', 'created_at': r[9],
+        } for r in rows]
+
     def get_chain(self, chain_id: str) -> List[Dict[str, Any]]:
         """Get all events in a trace chain, ordered by time."""
         rows = self.conn.execute(
@@ -688,14 +710,10 @@ class TraceDAL:
                 chains[cid] = {'chain_id': cid, 'scale': r[1],
                                'session_id': r[8] or '', 'events': []}
                 chain_order.append(cid)
-            meta = {}
-            try:
-                meta = json.loads(r[6]) if r[6] else {}
-            except (json.JSONDecodeError, TypeError):
-                pass
             chains[cid]['events'].append({
                 'event_type': r[2], 'ref_type': r[3] or '', 'ref_id': r[4] or '',
-                'summary': r[5] or '', 'metadata': meta, 'created_at': r[7]})
+                'summary': r[5] or '', 'metadata': self._decode_metadata(r[6]),
+                'created_at': r[7]})
 
         # Reverse events within each chain to chronological order
         for cid in chain_order:
@@ -729,15 +747,11 @@ class TraceDAL:
 
         results = []
         for r in rows:
-            meta = {}
-            try:
-                meta = json.loads(r[7]) if r[7] else {}
-            except (json.JSONDecodeError, TypeError):
-                pass
             results.append({
                 'id': r[0], 'chain_id': r[1], 'scale': r[2], 'event_type': r[3],
                 'ref_type': r[4] or '', 'ref_id': r[5] or '', 'summary': r[6] or '',
-                'metadata': meta, 'created_at': r[8], 'session_id': r[9] or ''})
+                'metadata': self._decode_metadata(r[7]),
+                'created_at': r[8], 'session_id': r[9] or ''})
         return results
 
     def get_outcomes(self, chain_id: str = '', scale: str = '',
@@ -764,15 +778,10 @@ class TraceDAL:
 
         results = []
         for r in rows:
-            meta = {}
-            try:
-                meta = json.loads(r[6]) if r[6] else {}
-            except (json.JSONDecodeError, TypeError):
-                pass
             results.append({
                 'id': r[0], 'chain_id': r[1], 'scale': r[2], 'event_type': 'outcome',
                 'ref_type': r[3] or '', 'ref_id': r[4] or '', 'summary': r[5] or '',
-                'metadata': meta, 'created_at': r[7]})
+                'metadata': self._decode_metadata(r[6]), 'created_at': r[7]})
         return results
 
     def count_by(self, field: str, scale: str = '', hours: int = 24) -> Dict[str, int]:
@@ -832,11 +841,7 @@ class TraceDAL:
             chain_id = r[0]
             if chain_id not in chains:
                 chains[chain_id] = {}
-            meta = {}
-            try:
-                meta = json.loads(r[4]) if r[4] else {}
-            except (json.JSONDecodeError, TypeError):
-                pass
+            meta = self._decode_metadata(r[4])
             # Content lives in metadata (full), summary is truncated for display
             content = meta.get('content', '') or r[3] or ''
             if r[2] == 'user_message':
@@ -867,11 +872,7 @@ class TraceDAL:
                 "AND chain_id IN (%s)" % placeholders,
                 list(recall_chains)).fetchall()
             for r in s1_rows:
-                try:
-                    meta = json.loads(r[1]) if r[1] else {}
-                    judge_outputs[r[0]] = meta.get('content', '')
-                except (json.JSONDecodeError, TypeError):
-                    judge_outputs[r[0]] = ''
+                judge_outputs[r[0]] = self._decode_metadata(r[1]).get('content', '')
 
         # Build result in encoding_agent._gather_messages() shape
         turns = []
