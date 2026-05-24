@@ -40,7 +40,7 @@ import shutil
 import sqlite3
 from datetime import datetime, timezone
 
-BRAIN_VERSION = 26  # v26: edge_relations stored embedding (embedding/embedding_model columns)
+BRAIN_VERSION = 27  # v27: node_source_refs (brain.db) + trace_embeddings (brain_logs.db) for episodic references
 BRAIN_VERSION_KEY = 'brain_schema_version'
 
 # ─── Allowed node types ───
@@ -150,7 +150,7 @@ TABLES = {
             'encoding_version': 'NULL',      # v6: encoding pipeline version (v5, v6, etc.) — floor adapts to quality
             'encoding_source': 'NULL',       # v7: who created this node. Convention: "category:process". anchor = direct MCP, encoder:sonnet = encoding agent, idle:redistribution/consolidation/etc, hook:boot/compaction. Only 'anchor' can lock.
             'revised_at': 'NULL',            # v8: when this node was last revised via revise()
-            'source_turn_id': 'NULL',        # v9: message_stream.id that produced this node (episode linkage)
+            'source_turn_id': 'NULL',        # v9 DEPRECATED (2026-05-23): single-ref legacy from removed message_stream table; superseded by node_source_refs (v27, multi-ref). Column kept to avoid touching existing rows; no new writes.
             'last_accessed': 'NULL',
             'created_at': 'NULL', 'updated_at': 'NULL',
         }
@@ -215,6 +215,28 @@ TABLES = {
             # staleness is detectable on swap.
             'embedding': 'NULL',
             'embedding_model': 'NULL',
+        }
+    },
+
+    # v27: episodic references — multi-ref pointer from a node to the
+    # trace events that anchor it. Sparse by design (typically 1-3 refs
+    # per node). `position` preserves the encoder's write order so
+    # render can expand primary refs first under budget. `trace_id`
+    # is a cross-DB reference to brain_logs.trace_events.id — no
+    # SQLite FK (cross-DB FKs aren't enforced); invalid refs degrade
+    # gracefully at recall and are cleaned by S2Healer.
+    'node_source_refs': {
+        'create': """CREATE TABLE IF NOT EXISTS node_source_refs (
+            node_id    TEXT     NOT NULL,
+            trace_id   INTEGER  NOT NULL,
+            position   INTEGER  NOT NULL DEFAULT 1,
+            created_at TEXT,
+            PRIMARY KEY (node_id, trace_id),
+            FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
+        )""",
+        'columns': {
+            'node_id': None, 'trace_id': None,
+            'position': '1', 'created_at': 'NULL',
         }
     },
 
@@ -455,6 +477,8 @@ INDEXES = [
     # edge_relations (v22: edge_id FK, relation for type queries)
     'CREATE INDEX IF NOT EXISTS idx_edge_relations_edge ON edge_relations(edge_id)',
     'CREATE INDEX IF NOT EXISTS idx_edge_relations_relation ON edge_relations(relation)',
+    # v27: node_source_refs reverse-lookup (engram cohort detection — get all nodes anchored to a given trace)
+    'CREATE INDEX IF NOT EXISTS idx_nsr_trace ON node_source_refs(trace_id)',
     # node_vectors
     'CREATE INDEX IF NOT EXISTS idx_vectors_term ON node_vectors(term)',
     'CREATE INDEX IF NOT EXISTS idx_vectors_node ON node_vectors(node_id)',
@@ -1065,6 +1089,22 @@ LOG_TABLES = {
             session_id TEXT,
             interaction_id INTEGER,
             created_at TEXT NOT NULL
+        )""",
+    },
+
+    # v27: per-trace embeddings for episodic references. One row per
+    # unique trace_id (PK); shared by N nodes referencing the same
+    # trace. The `text` column stores the rendered string that was
+    # fed to the embedder — matches node_enrichments convention;
+    # enables diagnostics and detects drift if the trace rendering
+    # changes over time.
+    'trace_embeddings': {
+        'create': """CREATE TABLE IF NOT EXISTS trace_embeddings (
+            trace_id    INTEGER    PRIMARY KEY,
+            vector      BLOB       NOT NULL,
+            text        TEXT,
+            model       TEXT,
+            created_at  TEXT
         )""",
     },
 
