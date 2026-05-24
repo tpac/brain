@@ -31,7 +31,7 @@ brain_batch({operations: [
    question: "When response latency spikes, where is the bottleneck usually hiding?",
    keywords: "hook latency timeout daemon profiling",
    reasoning: "Three hook-latency investigations formed a coherent arc — symptom (577119fd), diagnosis (0fce53be), resolution (854b4bc3). Consolidating them surfaces the pattern — hook timeouts are daemon-layer issues — that no single member captures alone.",
-   confidence: 0.85, auto_connect: false,
+   confidence: 0.85,
    connections: [
      {target_id: "577119fd", relation: "community_member", weight: 0.3},
      {target_id: "0fce53be", relation: "community_member", weight: 0.3},
@@ -49,7 +49,6 @@ brain_batch({operations: [
 Key rules:
 - ALL members from the proposal go in `connections` — not just a few, ALL of them
 - Reference node IDs in content as `(id:XXXXXXXX)`
-- `auto_connect: false` always
 - DO write community_latest_development — the newest node and what it means for this area's trajectory
 
 ## Standard Node Fields (required for every new community)

@@ -933,8 +933,7 @@ remember_batch(
      connect_to: [
        {title: "Brain vs database framing", relation: "grounds", why: "the know-that-it-knows quote is the moment the recognition principle became conscious — every recall mechanism traces back to this framing"}
      ]}
-  ],
-  auto_connect: true
+  ]
 )
 ```
 

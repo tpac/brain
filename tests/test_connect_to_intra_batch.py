@@ -78,7 +78,7 @@ class TestRememberBatchIntraBatch(BrainTestBase):
              'content': 'Unix sockets leave files behind after process death.',
              'connect_to': [{'title': 'TCP migration', 'relation': 'grounds',
                              'why': 'this fact is the technical reason TCP was chosen'}]},
-        ], auto_connect=False)
+        ])
         b_id = result['results'][1]['id']
         edges = [e for e in _edges_from(self.brain, b_id) if e['relation'] == 'grounds']
         self.assertEqual(len(edges), 1)
@@ -93,7 +93,7 @@ class TestRememberBatchIntraBatch(BrainTestBase):
             {'type': 'fact', 'title': 'Second node B',
              'content': 'Second.',
              'connect_to': [{'title': 'Anchor node A', 'relation': 'extends', 'why': 'B builds on A'}]},
-        ], auto_connect=False)
+        ])
         b_id = result['results'][1]['id']
         a_id = result['results'][0]['id']
         edges = [e for e in _edges_from(self.brain, b_id) if e['relation'] == 'extends']
@@ -114,7 +114,7 @@ class TestRememberBatchIntraBatch(BrainTestBase):
                              'why': 'B references A even though A appears later in the batch'}]},
             {'type': 'principle', 'title': 'Late-declared node A',
              'content': 'A comes second.'},
-        ], auto_connect=False)
+        ])
         b_id = result['results'][0]['id']
         a_id = result['results'][1]['id']
         edges = [e for e in _edges_from(self.brain, b_id) if e['relation'] == 'extends']
@@ -134,7 +134,7 @@ class TestRememberBatchIntraBatch(BrainTestBase):
              'content': 'Links to Shared title.',
              'connect_to': [{'title': 'Shared title', 'relation': 'extends',
                              'why': 'should resolve to sibling, not catalog'}]},
-        ], auto_connect=False)
+        ])
         sibling_id = result['results'][0]['id']
         linker_id = result['results'][1]['id']
         edges = [e for e in _edges_from(self.brain, linker_id) if e['relation'] == 'extends']
@@ -152,7 +152,7 @@ class TestRememberBatchIntraBatch(BrainTestBase):
              'content': 'Links to a catalog-only target.',
              'connect_to': [{'title': 'Catalog-only target', 'relation': 'grounds',
                              'why': 'fallback path to catalog'}]},
-        ], auto_connect=False)
+        ])
         linker_id = result['results'][0]['id']
         edges = [e for e in _edges_from(self.brain, linker_id) if e['relation'] == 'grounds']
         self.assertEqual(len(edges), 1)
@@ -165,7 +165,7 @@ class TestRememberBatchIntraBatch(BrainTestBase):
              'content': 'Has a connect_to nobody can match.',
              'connect_to': [{'title': 'zzz_nonexistent_title_no_match_possible',
                              'relation': 'extends', 'why': 'should be dropped'}]},
-        ], auto_connect=False)
+        ])
         self.assertEqual(result['nodes_created'], 1)
         node_id = result['results'][0]['id']
         edges = _edges_from(self.brain, node_id)
@@ -182,7 +182,7 @@ class TestRememberBatchIntraBatch(BrainTestBase):
              'content': 'Has connect_to to itself.',
              'connect_to': [{'title': 'Self-targeting node', 'relation': 'extends',
                              'why': 'should not create self-edge'}]},
-        ], auto_connect=False)
+        ])
         node_id = result['results'][0]['id']
         edges = _edges_from(self.brain, node_id)
         # No edge to self
@@ -201,7 +201,7 @@ class TestRememberBatchIntraBatch(BrainTestBase):
                  {'why': 'no title field — invalid'},  # malformed
                  {'title': 'Valid sibling', 'relation': 'extends', 'why': 'this one works'},
              ]},
-        ], auto_connect=False)
+        ])
         self.assertEqual(result['nodes_created'], 2)
         linker_id = result['results'][1]['id']
         valid_id = result['results'][0]['id']
@@ -222,7 +222,7 @@ class TestRememberBatchIntraBatch(BrainTestBase):
                                  {'relation': 'grounds', 'why': 'first reason'},
                                  {'relation': 'extends', 'why': 'second reason'},
                              ]}]},
-        ], auto_connect=False)
+        ])
         src_id = result['results'][1]['id']
         tgt_id = result['results'][0]['id']
         edges = [e for e in _edges_from(self.brain, src_id) if e['target_id'] == tgt_id]
@@ -242,7 +242,6 @@ class TestRememberBatchIntraBatch(BrainTestBase):
             ],
             connect_to=[{'title': 'External anchor', 'relation': 'related',
                          'why': 'top-level anchors all batch members'}],
-            auto_connect=False,
         )
         # Top-level resolves to catalog, NOT the sibling (back-compat).
         # Both siblings should have an edge to the CATALOG anchor.

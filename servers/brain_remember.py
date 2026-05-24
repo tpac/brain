@@ -1504,7 +1504,6 @@ class BrainRememberMixin:
 
     def remember_batch(self, nodes: List[Dict],
                         connect_to: Optional[List[str]] = None,
-                        auto_connect: bool = True,
                         ctx=None) -> Dict[str, Any]:
         """Create multiple nodes in one call. Each node uses the same contract as remember().
 
@@ -1512,10 +1511,19 @@ class BrainRememberMixin:
             nodes: List of dicts, each with the same fields remember() accepts
                    (type, title, content, keywords, situation, reasoning, etc.)
             connect_to: List of existing node titles to fuzzy-match and connect all new nodes to
-            auto_connect: If True, auto-connect new nodes to each other
 
         Returns:
             {nodes_created, results: [{id, title, related_nodes}], connections_created}
+
+        Note: pairwise auto-connect of new nodes in the batch was removed
+        (2026-05-24). It used to write `related_to` edges with empty
+        descriptions between every pair of created nodes — semantic noise
+        that confused recall and accumulated as `related_to`-with-no-why
+        pollution. If callers want intra-batch edges, pass them
+        explicitly via per-node `connect_to`. Episodically-bonded nodes
+        (same encoding event) now share that lineage via source_refs +
+        the future `co_anchored` edge (decision 15 in
+        EPISODIC-REFERENCES.md), not a synthetic relation.
         """
         results = []
         created_ids = []
@@ -1559,16 +1567,6 @@ class BrainRememberMixin:
                 src_id, ct_spec, sibling_map=sibling_map)
             connections_created += edges
             connect_to_failures += fails
-
-        # Auto-connect new nodes to each other
-        if auto_connect and len(created_ids) > 1:
-            for i, src_id in enumerate(created_ids):
-                for dst_id in created_ids[i + 1:]:
-                    try:
-                        self.connect(src_id, dst_id, relation='related_to', weight=0.5)
-                        connections_created += 1
-                    except Exception as _e:
-                        self._log_error('batch_auto_connect', _e, 'connecting %s → %s' % (src_id[:8], dst_id[:8]))
 
         # Fuzzy-match connect_to titles
         if connect_to:
@@ -1998,127 +1996,6 @@ class BrainRememberMixin:
         if top_k == 1:
             return results[0] if results else None
         return results[:top_k]
-
-    def encode_cluster(self, nodes: List[Dict], connect_to: Optional[List[str]] = None,
-                       auto_connect: bool = True) -> Dict[str, Any]:
-        """Compound encoding operation — store multiple nodes in one call.
-
-        Each node dict: {type, title, content, keywords?, enrichment?: {question?, anchor?, bridge?, keywords?}}
-        connect_to: list of existing node titles to fuzzy-match and connect to.
-        auto_connect: if True, find related existing nodes automatically.
-
-        Returns: {nodes_created, connections_created, suggested_connections, duplicates, missing}
-        """
-        created_ids = []
-        connections_created = 0
-        suggested = []
-        duplicates = []
-        missing = []
-
-        # 1. Store all nodes
-        for spec in nodes:
-            ntype = spec.get("type", "concept")
-            title = spec.get("title", "")
-            content = spec.get("content", "")
-
-            # Check for near-duplicate by title
-            existing = self.find_node_by_title(title, threshold=0.92)
-            if existing:
-                duplicates.append({
-                    "new_title": title,
-                    "existing_title": existing["title"],
-                    "existing_id": existing["id"],
-                    "similarity": existing["similarity"]
-                })
-
-            result = self.remember(
-                type=ntype, title=title, content=content,
-                keywords=spec.get("keywords"),
-                locked=spec.get("locked", False),
-                confidence=spec.get("confidence", None),
-                project=spec.get("project"),
-            )
-            node_id = result.get("id")
-            if not node_id:
-                continue
-            created_ids.append(node_id)
-
-            # Store inline enrichments if provided
-            enrichment = spec.get("enrichment")
-            if enrichment and isinstance(enrichment, dict):
-                self.store_enrichments(
-                    node_id=node_id,
-                    question=enrichment.get("question"),
-                    anchor=enrichment.get("anchor"),
-                    bridge=enrichment.get("bridge"),
-                    keywords=enrichment.get("keywords"),
-                )
-            else:
-                missing.append("%s: no enrichment provided" % title[:50])
-
-        # 2. Connect nodes within the cluster to each other
-        for i, src_id in enumerate(created_ids):
-            for dst_id in created_ids[i+1:]:
-                self.connect(src_id, dst_id, relation="related_to", weight=0.5)
-                connections_created += 1
-
-        # 3. Fuzzy-match connect_to titles and create edges (exclude just-created nodes)
-        connected_to = []
-        if connect_to:
-            created_set = set(created_ids)
-            for title_query in connect_to:
-                match = self.find_node_by_title(title_query, threshold=0.75)
-                if match and match["id"] not in created_set:
-                    for node_id in created_ids:
-                        self.connect(node_id, match["id"], relation="related_to", weight=0.6)
-                        connections_created += 1
-                    connected_to.append({
-                        "query": title_query, "matched": match["title"],
-                        "id": match["id"], "similarity": match["similarity"]
-                    })
-                else:
-                    missing.append("connect_to '%s': no match found (threshold 0.75)" % title_query[:50])
-
-        # 4. Auto-connect: find similar existing nodes for each new node
-        if auto_connect:
-            created_set = set(created_ids)
-            for node_id in created_ids:
-                row = self.conn.execute(
-                    "SELECT title FROM nodes WHERE id = ?", (node_id,)
-                ).fetchone()
-                if not row:
-                    continue
-                match = self.find_node_by_title(row[0], threshold=0.75)
-                if match and match["id"] != node_id and match["id"] not in created_set:
-                    suggested.append({
-                        "from_id": node_id, "from_title": row[0],
-                        "to_id": match["id"], "to_title": match["title"],
-                        "similarity": match["similarity"]
-                    })
-                    self.connect(node_id, match["id"], relation="related_to", weight=0.4)
-                    connections_created += 1
-
-        self._maybe_commit()
-
-        # Mark all created nodes dirty — embed_queue worker picks them up
-        # within ~5s. Single batch drain for the whole group.
-        try:
-            from . import embed_queue
-            for nid in created_ids:
-                embed_queue.enqueue(nid)
-        except Exception as e:
-            self._log_error('embed_enqueue_remember_batch', e,
-                            'enqueue %d nodes' % len(created_ids))
-
-        return {
-            "nodes_created": len(created_ids),
-            "node_ids": created_ids,
-            "connections_created": connections_created,
-            "connected_to": connected_to,
-            "suggested_connections": suggested,
-            "duplicates": duplicates,
-            "missing": missing,
-        }
 
     def enrich_keywords(self, node_id: str) -> Optional[str]:
         """

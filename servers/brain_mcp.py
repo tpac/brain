@@ -186,10 +186,10 @@ def _generate_remember_batch_schema():
         ),
         "items": _CONNECT_TO_ITEM_SCHEMA,
     }
-    node_properties["auto_connect"] = {
-        "type": "boolean",
-        "description": "Conversation-context co_accessed edges. Defaults false in batches.",
-    }
+    # auto_connect intentionally NOT in the schema. Per-node connect_to is
+    # the explicit edge surface; the old `auto_connect=True` default fired
+    # pairwise `related_to` edges with empty descriptions every batch and
+    # was removed 2026-05-24.
     return {
         "name": "remember_batch",
         "description": (
@@ -217,11 +217,6 @@ def _generate_remember_batch_schema():
                         "Batch-level: applies the same edge from EVERY created node to one "
                         "catalog target. Siblings excluded. For per-node edges, use node-level connect_to."
                     ),
-                },
-                "auto_connect": {
-                    "type": "boolean",
-                    "description": "Auto-connect siblings with generic `related_to` edges.",
-                    "default": True,
                 },
             },
         },
@@ -554,6 +549,16 @@ def _build_tools():
      "description": "Get multiple nodes by ID in one call. Returns full content, connections, metadata for each.",
      "inputSchema": {"type": "object", "required": ["node_ids"], "properties": {
          "node_ids": {"type": "array", "description": "Array of node IDs to fetch", "items": {"type": "string"}}}}},
+
+    {"name": "get_trace",
+     "description": "Point-lookup a single trace_event by its numeric id. Returns the full row (chain_id, scale, event_type, ref_type, summary, metadata, session_id, created_at). Use this to expand a node's source_refs, verify a quote's verbatim source, or look up a specific captured moment when you have its id. For batch lookups use get_traces.",
+     "inputSchema": {"type": "object", "required": ["trace_id"], "properties": {
+         "trace_id": {"type": "integer", "description": "trace_event.id (integer)"}}}},
+
+    {"name": "get_traces",
+     "description": "Batch trace_event point lookup. Pass up to 50 trace ids; returns full rows in ascending-id order, missing ids silently skipped. Natural use: expanding node.source_refs at render or audit time, fetching a known set of cross-session episodes.",
+     "inputSchema": {"type": "object", "required": ["trace_ids"], "properties": {
+         "trace_ids": {"type": "array", "description": "Array of trace_event ids (integers)", "items": {"type": "integer"}}}}},
 
     {"name": "recall_batch",
      "description": "Run multiple recall queries in one call. Returns results for each query.",
@@ -916,8 +921,11 @@ def _health_monitor():
                     dash_db = os.path.join(db_dir, "brain_dashboard.db")
                     conn = sqlite3.connect(dash_db, timeout=3)
                     conn.execute(
+                        # sql-datetime-ok — mid-deprecation INSERT into brain_dashboard.db.hook_log;
+                        # the dashboard column accepts SQLite-native space-separated timestamps.
+                        # Whole write path slated for removal (see brain memory: brain_dashboard.db deprecation).
                         """INSERT INTO hook_log (hook_name, timestamp, output_text, operator_text, session_id)
-                           VALUES (?, datetime('now'), ?, ?, ?)""",
+                           VALUES (?, datetime('now'), ?, ?, ?)""",  # sql-datetime-ok
                         ("DAEMON_DOWN",
                          "⚠️ Daemon unreachable — MCP health monitor detected failure",
                          "⚠️ DAEMON DOWN",

@@ -72,7 +72,6 @@ class TestMCPRoundTrip(BrainTestBase):
                 {"type": "concept", "title": "Batch node A", "content": "First batch node"},
                 {"type": "concept", "title": "Batch node B", "content": "Second batch node"},
             ],
-            "auto_connect": True
         })
         self.assertIn("nodes_created", result)
         self.assertEqual(result["nodes_created"], 2)
@@ -235,6 +234,31 @@ class TestMCPRoundTrip(BrainTestBase):
         """query_traces returns trace events."""
         result = self._dispatch("query_traces", {"hours": 1, "limit": 5})
         self.assertIsInstance(result, dict)
+
+    def test_get_trace(self):
+        """get_trace returns the full row for a known trace_id, or error for missing."""
+        # Append a trace and read it back
+        tid = self.brain._trace_dal.append(
+            chain_id='roundtrip-get-trace', scale='s0', event_type='K',
+            ref_type='user_message', summary='roundtrip get_trace probe')
+        result = self._dispatch("get_trace", {"trace_id": tid})
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result['id'], tid)
+        self.assertEqual(result['summary'], 'roundtrip get_trace probe')
+
+    def test_get_traces(self):
+        """get_traces returns a list; missing ids silently skipped."""
+        a = self.brain._trace_dal.append(
+            chain_id='roundtrip-get-traces', scale='s0', event_type='K',
+            ref_type='user_message', summary='get_traces probe A')
+        b = self.brain._trace_dal.append(
+            chain_id='roundtrip-get-traces', scale='s0', event_type='delta',
+            ref_type='assistant_message', summary='get_traces probe B')
+        result = self._dispatch("get_traces", {"trace_ids": [a, b, 99999999]})
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 2)
+        ids = {r['id'] for r in result}
+        self.assertEqual(ids, {a, b})
 
     def test_query_outcomes(self):
         """query_outcomes returns outcome events."""

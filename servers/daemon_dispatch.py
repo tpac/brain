@@ -336,10 +336,14 @@ def _handle_remember_batch(brain, args, graph_changes):
             cleaned['encoding_source'] = top_encoding_source
         cleaned_nodes.append(cleaned)
 
+    # 2026-05-24: auto_connect param removed from remember_batch — the
+    # pairwise `related_to` auto-connect it triggered was the source of
+    # empty-description `related_to` pollution every encoding cycle. We
+    # accept `auto_connect` in args silently (legacy callers may still send
+    # it) but drop it before forwarding.
     result = brain.remember_batch(
         nodes=cleaned_nodes,
         connect_to=args.get("connect_to"),
-        auto_connect=args.get("auto_connect", True),
         ctx=ctx)
     # ctx mutations persist via autosave (no per-call save).
     graph_changes.append("REMEMBER_BATCH: %d nodes" % result.get("nodes_created", 0))
@@ -1106,6 +1110,40 @@ def _handle_get_node(brain, args, graph_changes):
     return {"ok": True, "result": node}
 
 
+def _handle_get_trace(brain, args, graph_changes):
+    """Point-lookup a trace_event by id. Returns full row dict or error."""
+    trace_id = args.get("trace_id")
+    if trace_id is None:
+        return {"ok": False, "error": "trace_id is required"}
+    try:
+        tid = int(trace_id)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "trace_id must be an integer, got %r" % (trace_id,)}
+    row = brain.get_trace(tid)
+    if not row:
+        return {"ok": False, "error": "Trace not found: %d" % tid}
+    return {"ok": True, "result": row}
+
+
+def _handle_get_traces(brain, args, graph_changes):
+    """Batch trace_event lookup. Accepts up to 50 ids; missing ids skipped."""
+    trace_ids = args.get("trace_ids", [])
+    if not isinstance(trace_ids, list):
+        return {"ok": False, "error": "trace_ids must be a list of integers"}
+    cleaned: list = []
+    bad: list = []
+    for t in trace_ids[:50]:  # cap to 50 per call
+        try:
+            cleaned.append(int(t))
+        except (TypeError, ValueError):
+            bad.append(t)
+    rows = brain.get_traces(cleaned) if cleaned else []
+    out = {"ok": True, "result": rows}
+    if bad:
+        out["invalid_trace_ids"] = bad
+    return out
+
+
 def _handle_recall_batch(brain, args, graph_changes):
     """Batch recall — multiple queries in one call."""
     queries = args.get("queries", [])
@@ -1449,6 +1487,8 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "trace_append":          CmdEntry(_handle_trace_append,        is_write=True,  marks_dirty=False),
     "get_node":              CmdEntry(_handle_get_node,             is_write=False, marks_dirty=False),
     "get_nodes":             CmdEntry(_handle_get_nodes,            is_write=False, marks_dirty=False),
+    "get_trace":             CmdEntry(_handle_get_trace,            is_write=False, marks_dirty=False),
+    "get_traces":            CmdEntry(_handle_get_traces,           is_write=False, marks_dirty=False),
     "recall_batch":          CmdEntry(_handle_recall_batch,         is_write=False, marks_dirty=False),
     "graph_expand":          CmdEntry(_handle_graph_expand,         is_write=False, marks_dirty=False),
     "connect":               CmdEntry(_handle_connect,             is_write=True, marks_dirty=True,
