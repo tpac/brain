@@ -204,12 +204,12 @@ class CommunityDecoder(IntegrationUnit):
     def _read_community_state(self):
         communities = []
         rows = self.brain.conn.execute(
-            "SELECT id, title, content, keywords, confidence "
+            "SELECT id, title, content, confidence "
             "FROM nodes WHERE type = 'community' AND archived = 0 "
             "AND encoding_source = ?",
             (self.ENCODING_SOURCE,)).fetchall()
 
-        for nid, title, content, keywords, conf in rows:
+        for nid, title, content, conf in rows:
             meta = {}
             for k, v in self.brain.conn.execute(
                     "SELECT key, value FROM node_metadata_kv WHERE node_id = ?",
@@ -240,7 +240,7 @@ class CommunityDecoder(IntegrationUnit):
 
             communities.append({
                 'id': nid, 'title': title, 'content': content,
-                'keywords': keywords, 'confidence': conf,
+                'confidence': conf,
                 'members': members,
                 'centroid': centroid,
                 'edge_signature': meta.get('community_edge_signature', {}),

@@ -47,8 +47,12 @@ def _index_exists(conn, index_name):
 
 
 class SchemaVersionTest(unittest.TestCase):
-    def test_brain_version_is_27(self):
-        self.assertEqual(BRAIN_VERSION, 27)
+    def test_brain_version_is_at_least_27(self):
+        # v27 substrate (this file's scope) still installed; subsequent
+        # migrations (v28 drop-keywords, etc.) layer on top. Was an
+        # equality pin before 2026-05-24; floor-check keeps this test's
+        # intent stable across upgrades.
+        self.assertGreaterEqual(BRAIN_VERSION, 27)
 
 
 class NodeSourceRefsTest(unittest.TestCase):

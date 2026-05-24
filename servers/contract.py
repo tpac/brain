@@ -30,7 +30,9 @@ STRUCTURAL_FIELDS = {
     "type":       {"store": "nodes", "type": "str", "required": True},
     "title":      {"store": "nodes", "type": "str", "required": True},
     "content":    {"store": "nodes", "type": "str", "replace_on_revise": True, "history": "revision_history in metadata_kv (last 5)"},
-    "keywords":   {"store": "nodes", "type": "str"},
+    # keywords column dropped in schema v28 — auto-extractor produced
+    # near-duplicate noise; FTS5 indexes title+content directly via
+    # porter stemming.
     "confidence": {"store": "nodes", "type": "float", "range": (0.0, 1.0), "default": 1.0},
     "locked":     {"store": "nodes", "type": "bool", "default": False},
     "archived":   {"store": "nodes", "type": "bool", "default": False},
@@ -402,10 +404,9 @@ def render_rich_node(node, config=None):
             limit = _VOICE_LIMIT if key in _VOICE_KEYS else meta_limit
             lines.append('  %s: %s' % (key.replace('_', ' ').title(), _truncate(str(val), limit)))
 
-    # Keywords
-    if cfg.get('show_keywords', True):
-        if node.get('keywords'):
-            lines.append('  Keywords: %s' % node['keywords'])
+    # Keywords column dropped in schema v28 — render block removed.
+    # The `show_keywords` config flag is now an inert no-op; callers can
+    # be cleaned up incrementally.
 
     # Personal context
     if node.get('personal') and node.get('personal_context'):

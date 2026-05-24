@@ -46,7 +46,9 @@ class TestFormatNode(BrainTestBase):
         self.assertIn('conf:0.9', out)
         self.assertIn('locked', out)
         self.assertIn('We chose Postgres', out)
-        self.assertIn('Keywords: db postgres sql', out)
+        # Keywords column dropped in schema v28; render block removed.
+        # Asserting absence (same strictness, opposite contract).
+        self.assertNotIn('Keywords:', out)
 
     def test_nonexistent_node_returns_none(self):
         """Render returns None for an ID that doesn't exist."""

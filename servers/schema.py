@@ -40,7 +40,7 @@ import shutil
 import sqlite3
 from datetime import datetime, timezone
 
-BRAIN_VERSION = 27  # v27: node_source_refs (brain.db) + trace_embeddings (brain_logs.db) for episodic references
+BRAIN_VERSION = 28  # v28: drop nodes.keywords column + rebuild nodes_fts without keywords (auto-extractor produced noise; title+content via porter stemming is the cleaner lexical signal)
 BRAIN_VERSION_KEY = 'brain_schema_version'
 
 # ─── Allowed node types ───
@@ -100,7 +100,6 @@ TABLES = {
             type TEXT NOT NULL {NODE_TYPE_CHECK},
             title TEXT NOT NULL,
             content TEXT,
-            keywords TEXT,
             activation REAL DEFAULT 1.0,
             stability REAL DEFAULT 1.0,
             access_count INTEGER DEFAULT 1,
@@ -132,7 +131,6 @@ TABLES = {
         )""",
         'columns': {
             'id': None, 'type': None, 'title': None, 'content': None,
-            'keywords': None,
             'activation': '1.0', 'stability': '1.0', 'access_count': '1',
             'locked': '0', 'archived': '0', 'critical': '0', 'recency_score': '0',
             'emotion': '0', 'emotion_label': "'neutral'",
@@ -462,7 +460,6 @@ TABLES = {
 # ─── Canonical indexes ───
 INDEXES = [
     # nodes
-    'CREATE INDEX IF NOT EXISTS idx_nodes_keywords ON nodes(keywords)',
     'CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type)',
     'CREATE INDEX IF NOT EXISTS idx_nodes_activation ON nodes(activation DESC)',
     'CREATE INDEX IF NOT EXISTS idx_nodes_archived ON nodes(archived)',
@@ -639,6 +636,73 @@ def _backfill_data(conn, from_version):
         # time. Backfill of existing rows is done by
         # scripts/backfill_edge_embeddings.py (one-shot, idempotent).
         _migrate_edge_embedding_v26(conn)
+
+    if from_version < 28:
+        # v28: drop nodes.keywords column + rebuild nodes_fts without
+        # the keywords column. The auto-extractor produced near-duplicate
+        # tokenizer dumps (idiotic./idiotic, r1r10/r1-r10, skill.md/skillmd)
+        # that actively hurt FTS5 precision and TF-IDF scoring. Porter
+        # stemming on title+content provides the same lexical signal
+        # without the noise. See servers/brain_remember.py — the
+        # _extract_keywords and enrich_keywords functions were removed
+        # in the same change. Note: skipping from_version < 27 because
+        # v27 was schema-additive (new tables only) and doesn't gate
+        # anything in this migration.
+        _migrate_v28_drop_keywords(conn)
+
+
+def _migrate_v28_drop_keywords(conn):
+    """v28: drop nodes.keywords + rebuild nodes_fts without it.
+
+    Order matters: drop the index BEFORE dropping the column (SQLite
+    refuses to drop a column that's referenced by an index). Rebuild
+    nodes_fts as a separate step because CREATE VIRTUAL TABLE IF NOT
+    EXISTS doesn't reshape the existing virtual table.
+    """
+    # 1. Drop the legacy keywords index (no-op if already gone).
+    try:
+        conn.execute("DROP INDEX IF EXISTS idx_nodes_keywords")
+    except Exception as e:
+        print(f"[brain] v28: drop idx_nodes_keywords warning: {e}")
+
+    # 2. Rebuild nodes_fts: virtual tables can't be ALTERed, so drop +
+    #    recreate + repopulate. The cascade drops the auto-managed
+    #    nodes_fts_data / _idx / _content / _docsize / _config tables.
+    try:
+        conn.execute("DROP TABLE IF EXISTS nodes_fts")
+        conn.execute("""CREATE VIRTUAL TABLE nodes_fts USING fts5(
+            node_id UNINDEXED,
+            title,
+            content,
+            tokenize='porter unicode61'
+        )""")
+        conn.execute("""
+            INSERT INTO nodes_fts (node_id, title, content)
+            SELECT id, title, COALESCE(content, '')
+            FROM nodes WHERE archived = 0
+        """)
+        repop_count = conn.execute("SELECT COUNT(*) FROM nodes_fts").fetchone()[0]
+        print(f"[brain] v28: nodes_fts rebuilt without keywords column "
+              f"({repop_count} rows)")
+    except Exception as e:
+        print(f"[brain] v28: nodes_fts rebuild error: {e}")
+        raise  # FTS5 broken means recall lexical channel broken — fail loud
+
+    # 3. Drop the keywords column from nodes. SQLite 3.35+ supports
+    #    ALTER TABLE ... DROP COLUMN. The column may already be gone
+    #    on fresh brains created at v28; treat that as success.
+    try:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(nodes)").fetchall()}
+        if 'keywords' in cols:
+            conn.execute("ALTER TABLE nodes DROP COLUMN keywords")
+            print("[brain] v28: nodes.keywords column dropped")
+        else:
+            print("[brain] v28: nodes.keywords already absent — skipped")
+    except Exception as e:
+        # If anything still references the column (views, triggers), this
+        # fails. Surface and re-raise — silent half-migration is the worst case.
+        print(f"[brain] v28: DROP COLUMN keywords failed: {e}")
+        raise
 
 
 def _migrate_edge_embedding_v26(conn):
@@ -924,11 +988,14 @@ def ensure_schema(conn, db_path=None):
     # FTS5 tables use CREATE VIRTUAL TABLE — no ALTER TABLE support, separate from TABLES dict.
     # Porter stemming: "recommending" matches "recommend". Unicode61 for international text.
     try:
+        # v28: 3-column FTS5 schema. Pre-v28 brains had a 4th `keywords`
+        # column; _migrate_v28_drop_keywords drops + recreates this table
+        # on upgrade. CREATE VIRTUAL TABLE IF NOT EXISTS doesn't rebuild,
+        # so existing brains rely on that migration to flip the schema.
         conn.execute("""CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
             node_id UNINDEXED,
             title,
             content,
-            keywords,
             tokenize='porter unicode61'
         )""")
         # Auto-populate on first run: FTS5 empty but nodes exist
@@ -936,8 +1003,8 @@ def ensure_schema(conn, db_path=None):
         _node_count = conn.execute("SELECT COUNT(*) FROM nodes WHERE archived = 0").fetchone()[0]
         if _fts_count == 0 and _node_count > 0:
             conn.execute("""
-                INSERT INTO nodes_fts (node_id, title, content, keywords)
-                SELECT id, title, COALESCE(content, ''), COALESCE(keywords, '')
+                INSERT INTO nodes_fts (node_id, title, content)
+                SELECT id, title, COALESCE(content, '')
                 FROM nodes WHERE archived = 0
             """)
             conn.commit()

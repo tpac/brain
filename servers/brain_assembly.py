@@ -99,7 +99,7 @@ class BrainAssemblyMixin:
             if top_ids:
                 placeholders = ','.join('?' * len(top_ids))
                 neighbor_rows = self.conn.execute(f'''
-                    SELECT DISTINCT n.id, n.type, n.title, n.content, n.keywords, n.activation,
+                    SELECT DISTINCT n.id, n.type, n.title, n.content, n.activation,
                            n.stability, n.access_count, n.locked, n.archived, n.last_accessed, n.created_at
                     FROM edges e
                     JOIN nodes n ON (n.id = CASE WHEN e.source_id = n.id THEN e.target_id ELSE e.source_id END)
@@ -115,9 +115,9 @@ class BrainAssemblyMixin:
                         seen.add(nid)
                         all_results.append({
                             'id': row[0], 'type': row[1], 'title': row[2], 'content': row[3],
-                            'keywords': row[4], 'activation': row[5], 'stability': row[6],
-                            'access_count': row[7], 'locked': row[8] == 1, 'archived': row[9] == 1,
-                            'last_accessed': row[10], 'created_at': row[11],
+                            'activation': row[4], 'stability': row[5],
+                            'access_count': row[6], 'locked': row[7] == 1, 'archived': row[8] == 1,
+                            'last_accessed': row[9], 'created_at': row[10],
                             '_edge_neighbor': True
                         })
         except Exception as e:
@@ -161,10 +161,11 @@ class BrainAssemblyMixin:
             if r.get('_edge_neighbor'):
                 boost *= edge_neighbor_penalty
 
-            # File relevance
+            # File relevance — match against title + content snippet
+            # (keywords column dropped in schema v28)
             file_relevance = 0
             if file_terms:
-                node_text = f"{r.get('title', '')} {r.get('keywords', '')}".lower()
+                node_text = f"{r.get('title', '')} {(r.get('content') or '')[:300]}".lower()
                 for term in file_terms:
                     if term in node_text:
                         file_relevance += 1
@@ -184,7 +185,7 @@ class BrainAssemblyMixin:
                 r for r in ranked
                 if r['id'] not in selected_ids and r.get('locked') and
                    r.get('type') in ('rule', 'decision') and
-                   any(t in f"{r.get('title', '')} {r.get('keywords', '')}".lower() for t in file_terms)
+                   any(t in f"{r.get('title', '')} {(r.get('content') or '')[:300]}".lower() for t in file_terms)
             ]
 
             for locked_node in missed_locked:
@@ -251,7 +252,7 @@ class BrainAssemblyMixin:
 
         # v5.2: Critical nodes ALWAYS surface at boot — before everything else
         critical_nodes = self.conn.execute('''
-            SELECT id, type, title, content, keywords FROM nodes
+            SELECT id, type, title, content FROM nodes
             WHERE critical = 1 AND archived = 0
             ORDER BY updated_at DESC
         ''').fetchall()
@@ -270,14 +271,14 @@ class BrainAssemblyMixin:
             seen.add(r[0])
             results['locked'].insert(0, {
                 'id': r[0], 'type': r[1], 'title': r[2],
-                'content': r[3], 'keywords': r[4],
+                'content': r[3],
                 '_critical': True
             })
 
         # 1. Get locked nodes with full content for top N
         # Project-scoped: return nodes for this project + global (NULL project)
         locked = self.conn.execute('''
-            SELECT id, type, title, content, keywords FROM nodes
+            SELECT id, type, title, content FROM nodes
             WHERE locked = 1 AND archived = 0
               AND (project = ? OR project IS NULL OR project = '')
             ORDER BY
@@ -292,7 +293,7 @@ class BrainAssemblyMixin:
             seen.add(r[0])
             results['locked'].append({
                 'id': r[0], 'type': r[1], 'title': r[2],
-                'content': r[3], 'keywords': r[4]
+                'content': r[3]
             })
 
         # Title-only index for remaining locked nodes (same project scope)
@@ -315,7 +316,7 @@ class BrainAssemblyMixin:
 
         # 2. Recently accessed nodes
         recent = self.conn.execute('''
-            SELECT id, type, title, content, keywords, activation, last_accessed FROM nodes
+            SELECT id, type, title, content, activation, last_accessed FROM nodes
             WHERE archived = 0 AND locked = 0
             ORDER BY last_accessed DESC LIMIT ?
         ''', (max_recent,)).fetchall()
@@ -542,14 +543,17 @@ class BrainAssemblyMixin:
         # 4. Context files (nodes of type 'file' matching the edited filename)
         context_files = []
         try:
+            # Match against title only (keywords column dropped in v28).
+            # File-type nodes encode their topic in the title; content
+            # snippet carries the body.
             cursor = self.conn.execute(
-                "SELECT id, title, content, keywords, updated_at FROM nodes WHERE type = 'file' AND archived = 0 AND (title LIKE ? OR keywords LIKE ?) LIMIT 3",
-                (f'%{file}%', f'%{file}%')
+                "SELECT id, title, content, updated_at FROM nodes WHERE type = 'file' AND archived = 0 AND title LIKE ? LIMIT 3",
+                (f'%{file}%',)
             )
             for row in cursor.fetchall():
                 context_files.append({
                     'id': row[0], 'title': row[1], 'summary': (row[2] or '')[:200],
-                    'topic': row[3] or '', 'last_updated': row[4],
+                    'topic': '', 'last_updated': row[3],
                 })
         except Exception as _e:
             self._log_error("pre_edit", _e, "cursor = self.conn.execute(")
@@ -667,30 +671,38 @@ class BrainAssemblyMixin:
         matched = []
 
         try:
+            # Procedure-trigger matching: keywords column dropped in v28
+            # along with the broken auto-extractor. Trigger types
+            # ("session_start", "pre_edit", "pre_compact") and file_name
+            # filters now match against title + content only. Procedure
+            # nodes that need explicit tagging should include the trigger
+            # in their content body (e.g. "Run on session_start").
             cursor = self.conn.execute(
-                "SELECT id, title, content, keywords FROM nodes WHERE type = 'procedure' AND archived = 0 AND locked = 1"
+                "SELECT id, title, content FROM nodes WHERE type = 'procedure' AND archived = 0 AND locked = 1"
             )
             for row in cursor.fetchall():
-                node_id, title, content, keywords = row
+                node_id, title, content = row
                 content_lower = (content or '').lower()
-                keywords_lower = (keywords or '').lower()
+                title_lower = (title or '').lower()
+                # Combined search surface for trigger matching.
+                search_text = content_lower + ' ' + title_lower
 
                 # Check if procedure matches trigger type
-                if trigger_type in content_lower or trigger_type in keywords_lower:
+                if trigger_type in search_text:
                     # Parse procedure content for steps
                     steps = content or ''
                     category = 'general'
-                    if 'session_start' in keywords_lower:
+                    if 'session_start' in search_text:
                         category = 'session_start'
-                    elif 'pre_edit' in keywords_lower:
+                    elif 'pre_edit' in search_text:
                         category = 'pre_edit'
-                    elif 'pre_compact' in keywords_lower:
+                    elif 'pre_compact' in search_text:
                         category = 'pre_compact'
 
                     # Check file-specific procedures
                     if trigger_type == 'pre_edit' and 'file' in context:
                         file_name = context['file'].lower()
-                        if file_name not in content_lower and file_name not in keywords_lower:
+                        if file_name not in search_text:
                             # Check for wildcard patterns
                             if '*' not in content_lower:
                                 continue

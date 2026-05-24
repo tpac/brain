@@ -330,17 +330,22 @@ class BrainRememberMixin:
 
         return tf
 
-    def _store_tfidf_vector(self, node_id: str, title: str, content: Optional[str], keywords: Optional[str]):
+    def _store_tfidf_vector(self, node_id: str, title: str, content: Optional[str]):
         """
-        Store TF-IDF vector for a node (title + content + keywords).
+        Store TF-IDF vector for a node (title + content).
 
         Args:
             node_id: Node ID
             title: Node title
             content: Node content (optional)
-            keywords: Node keywords (optional)
+
+        Note: previously accepted a `keywords` argument that contributed
+        to the TF-IDF text. Dropped 2026-05-24 — the auto-extracted
+        keywords field was a downstream tokenizer dump producing
+        near-duplicate noise (idiotic./idiotic, r1r10/r1-r10), which
+        actively hurt precision. Title + content is the cleaner signal.
         """
-        full_text = ' '.join(filter(None, [title, content, keywords]))
+        full_text = ' '.join(filter(None, [title, content]))
         tf = self._compute_tf(full_text)
 
         # Delete old vectors for this node
@@ -508,17 +513,22 @@ class BrainRememberMixin:
         return scores
 
     def _rebuild_tfidf_index(self):
-        """Rebuild TF-IDF index for all existing (non-archived) nodes."""
+        """Rebuild TF-IDF index for all existing (non-archived) nodes.
+
+        Builds the TF-IDF text from title + content only (the keywords
+        column was dropped 2026-05-24 along with the broken
+        auto-extractor).
+        """
         # Clear existing index
         self.conn.execute('DELETE FROM node_vectors')
         self.conn.execute('DELETE FROM doc_freq')
 
         # Fetch all non-archived nodes
-        cursor = self.conn.execute('SELECT id, title, content, keywords FROM nodes WHERE archived = 0')
+        cursor = self.conn.execute('SELECT id, title, content FROM nodes WHERE archived = 0')
         all_nodes = cursor.fetchall()
 
-        for node_id, title, content, keywords in all_nodes:
-            full_text = ' '.join(filter(None, [title, content, keywords]))
+        for node_id, title, content in all_nodes:
+            full_text = ' '.join(filter(None, [title, content]))
             tf = self._compute_tf(full_text)
 
             # Update doc_freq
@@ -603,9 +613,12 @@ class BrainRememberMixin:
         if confidence == 1.0:  # default = unset by caller
             confidence = TYPE_CONFIDENCE.get(type, 0.70)
 
-        # Extract keywords if not provided
-        if not keywords:
-            keywords = self._extract_keywords(f'{title} {content or ""}')
+        # 2026-05-24: auto-keyword extraction removed. The `keywords` param
+        # is retained on the signature for back-compat (callers passing it
+        # explicitly aren't broken) but the value is now ignored — FTS5
+        # indexes title + content directly via porter unicode61 stemming,
+        # and TF-IDF builds its text from title + content. The keywords
+        # column on `nodes` is scheduled for removal in schema v28.
 
         # v4: Fixed personal nodes are always locked — their whole point is permanence
         if personal == 'fixed':
@@ -618,14 +631,14 @@ class BrainRememberMixin:
         from .brain_constants import CURRENT_ENCODING_VERSION
         self.conn.execute(
             '''INSERT INTO nodes
-               (id, type, title, content, content_summary, keywords,
+               (id, type, title, content, content_summary,
                 activation, stability, locked, confidence,
                 recency_score, emotion, emotion_label, emotion_source, project,
                 personal, personal_context, encoding_version, encoding_source,
                 evolution_status, source_turn_id,
                 last_accessed, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, 1.0, 1.0, ?, ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-            (node_id, type, title, content, content_summary, keywords,
+               VALUES (?, ?, ?, ?, ?, 1.0, 1.0, ?, ?, 1.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (node_id, type, title, content, content_summary,
              1 if locked else 0, confidence,
              emotion, emotion_label, emotion_source, project,
              personal, personal_context, CURRENT_ENCODING_VERSION,
@@ -656,16 +669,18 @@ class BrainRememberMixin:
         if critical:
             self._add_pending_critical(node_id, title)
 
-        # v5: Build TF-IDF vector for this node
+        # v5: Build TF-IDF vector for this node (from title + content)
         try:
-            self._store_tfidf_vector(node_id, title, content, keywords)
+            self._store_tfidf_vector(node_id, title, content)
         except Exception as e:
             self._log_error('tfidf_vector_store', e, 'storing TF-IDF vector for node %s' % node_id[:12])
 
-        # v9: Sync FTS5 full-text search index
+        # v9: Sync FTS5 full-text search index. Keywords column is scheduled
+        # for removal in schema v28; for now FTS5 still has the column so we
+        # pass empty string. Once v28 lands, Fts5DAL.upsert signature drops it.
         try:
             from .dal import Fts5DAL
-            Fts5DAL(self.conn).upsert(node_id, title, content or '', keywords or '')
+            Fts5DAL(self.conn).upsert(node_id, title, content or '', '')
             self._maybe_commit()
         except Exception as e:
             self._log_error('fts5_sync_remember', e, 'syncing FTS5 for node %s' % node_id[:12])
@@ -1025,20 +1040,18 @@ class BrainRememberMixin:
         _vdal = self._vec_dal
         embedding_updated = False
 
-        # Re-index TF-IDF
+        # Re-index TF-IDF from title + new_content (keywords column dropped
+        # 2026-05-24 along with the broken auto-extractor)
         try:
-            kw_row = self.conn.execute(
-                'SELECT keywords FROM nodes WHERE id = ?', (node_id,)).fetchone()
-            current_keywords = kw_row[0] if kw_row else None
-            self._store_tfidf_vector(node_id, title, new_content, current_keywords)
+            self._store_tfidf_vector(node_id, title, new_content)
         except Exception as e:
             self._log_error("revise_tfidf", e, "Failed to re-index TF-IDF for %s" % node_id[:8])
 
-        # v9: Re-sync FTS5 full-text search index
+        # v9: Re-sync FTS5 full-text search index (keywords scheduled for
+        # removal in schema v28; empty string until then)
         try:
             from .dal import Fts5DAL
-            kw_for_fts = current_keywords if 'current_keywords' in dir() else ''
-            Fts5DAL(self.conn).upsert(node_id, title, new_content, kw_for_fts or '')
+            Fts5DAL(self.conn).upsert(node_id, title, new_content, '')
             self._maybe_commit()
         except Exception as e:
             self._log_error("fts5_sync_revise", e, "syncing FTS5 for %s" % node_id[:8])
@@ -1701,54 +1714,6 @@ class BrainRememberMixin:
             return content[:197] + '...'
         return content
 
-    def _extract_keywords(self, text: str) -> str:
-        """
-        Extract keywords from text (numbers, proper nouns, technical terms, common words).
-
-        Args:
-            text: Text to extract from
-
-        Returns:
-            Space-separated keywords string
-        """
-        if not text:
-            return ''
-
-        # PHASE 1: Extract numbers and values before lowercasing
-        number_patterns = re.findall(r'\$?\d+(?:\.\d+)?%?(?:px|ms|s|d|kb|mb|gb)?', text, re.IGNORECASE)
-        number_keywords = [n.lower().replace(re.sub(r'[^a-z0-9%$.]', '', n), '') for n in number_patterns]
-        number_keywords = [n for n in number_keywords if len(n) >= 1]
-
-        # PHASE 2: Extract proper nouns and technical terms
-        proper_nouns = re.findall(r'[A-Z][a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*', text)
-        technical_terms = re.findall(r'[a-z]+[A-Z][a-zA-Z0-9]*', text)
-        snake_terms = re.findall(r'[a-z][a-z0-9]*_[a-z0-9_]+', text)
-        dotted_terms = re.findall(r'[a-z]+(?:\.[a-z]+)+', text)
-
-        preserved_terms = set()
-        for term in proper_nouns + technical_terms + snake_terms + dotted_terms:
-            lower = term.lower()
-            if len(lower) > 2 and lower not in TFIDF_STOP_WORDS:
-                preserved_terms.add(lower)
-                stripped = re.sub(r'[^a-z0-9]', '', lower)
-                if len(stripped) > 2 and stripped != lower:
-                    preserved_terms.add(stripped)
-
-        # PHASE 3: Standard word extraction
-        words = re.sub(r'[^a-z0-9\s\-\./]', ' ', text.lower()).split()
-        words = [w for w in words if len(w) > 2 and w not in TFIDF_STOP_WORDS]
-
-        # Also add variants
-        variants = set()
-        for w in words:
-            variants.add(w)
-            stripped = re.sub(r'[^a-z0-9]', '', w)
-            if stripped != w and len(stripped) > 2:
-                variants.add(stripped)
-
-        all_keywords = list(preserved_terms | variants | set(number_keywords))
-        return ' '.join(all_keywords[:50])  # Cap at 50 keywords
-
     def _bridge_at_store_time(self, node_id: str) -> List[Dict[str, Any]]:
         """
         Detect bridge opportunities at store-time.
@@ -1940,8 +1905,8 @@ class BrainRememberMixin:
         """Find a node by fuzzy title matching using embedding similarity.
 
         Embeds the query, scans all node embeddings, returns the best match(es)
-        above threshold with context (content snippet, keywords) so the caller
-        can verify correctness.
+        above threshold with a content snippet so the caller can verify
+        correctness.
 
         Args:
             title_query: Title to search for (fuzzy)
@@ -1949,24 +1914,27 @@ class BrainRememberMixin:
                        to prevent false matches. Lower to 0.6 for broader search.
             top_k: Return top K matches (default 1 = best match only)
 
-        Returns: {id, title, type, similarity, content_snippet, keywords} or None.
+        Returns: {id, title, type, similarity, content_snippet} or None.
                  If top_k > 1, returns list of matches.
+
+        Note: prior to schema v28 this also returned a `keywords` field
+        carrying the auto-extracted tokenizer dump. That column was
+        dropped; verification now relies on content_snippet + title alone.
         """
         scored = {}  # id → result dict, dedup by node
 
         # Path 1: Text matching — fast SQL LIKE on title
         query_lower = title_query.lower()
         text_rows = self.conn.execute(
-            "SELECT id, title, type, SUBSTR(content, 1, 200), keywords "
+            "SELECT id, title, type, SUBSTR(content, 1, 200) "
             "FROM nodes WHERE archived = 0 AND LOWER(title) LIKE ?",
             ("%" + query_lower.replace(" ", "%") + "%",)
         ).fetchall()
-        for nid, title, ntype, snippet, keywords in text_rows:
+        for nid, title, ntype, snippet in text_rows:
             scored[nid] = {
                 "id": nid, "title": title, "type": ntype,
                 "similarity": 0.95,  # text match = high confidence
                 "content_snippet": snippet or "",
-                "keywords": keywords or "",
             }
 
         # Path 2: Embedding similarity — semantic fallback
@@ -1975,11 +1943,11 @@ class BrainRememberMixin:
             if query_vec:
                 rows = self.conn.execute(
                     "SELECT ne.node_id, ne.embedding, n.title, n.type, "
-                    "SUBSTR(n.content, 1, 200) as snippet, n.keywords "
+                    "SUBSTR(n.content, 1, 200) as snippet "
                     "FROM node_enrichments ne JOIN nodes n ON ne.node_id = n.id "
                     "WHERE ne.vector_type = '_primary' AND n.archived = 0"
                 ).fetchall()
-                for node_id, emb_blob, title, ntype, snippet, keywords in rows:
+                for node_id, emb_blob, title, ntype, snippet in rows:
                     if not emb_blob or node_id in scored:
                         continue
                     sim = embedder.cosine_similarity(query_vec, emb_blob)
@@ -1988,7 +1956,6 @@ class BrainRememberMixin:
                             "id": node_id, "title": title, "type": ntype,
                             "similarity": round(sim, 3),
                             "content_snippet": snippet or "",
-                            "keywords": keywords or "",
                         }
 
         results = sorted(scored.values(), key=lambda x: x["similarity"], reverse=True)
@@ -1997,28 +1964,3 @@ class BrainRememberMixin:
             return results[0] if results else None
         return results[:top_k]
 
-    def enrich_keywords(self, node_id: str) -> Optional[str]:
-        """
-        Enrich keywords on a node from its content.
-        Used by health check for frequently-missed nodes.
-        """
-        try:
-            row = self.conn.execute(
-                'SELECT content, keywords FROM nodes WHERE id = ?',
-                (node_id,)
-            ).fetchone()
-            if not row or not row[0]:
-                return None
-
-            content, existing_kw = row
-            new_kw = self._extract_keywords(content)
-            combined = f'{existing_kw} {new_kw}' if existing_kw else new_kw
-
-            self.conn.execute(
-                'UPDATE nodes SET keywords = ?, updated_at = ? WHERE id = ?',
-                (combined, self.now(), node_id)
-            )
-            return combined
-        except Exception as e:
-            self._log_error('enrich_keywords', e, 'enriching keywords for node %s' % node_id[:12])
-            return None
