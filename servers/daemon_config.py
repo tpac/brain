@@ -54,6 +54,23 @@ def is_dev_mode() -> bool:
     return os.environ.get('BRAIN_DEV_MODE', '').strip().lower() in ('1', 'true', 'yes', 'on')
 
 
+# ─── Identity binding ───
+# Concrete names for the human operator and the agent (Anchor). Stamped
+# onto S0 trace_events metadata at write time so each event independently
+# records who said what. Source: ~/.config/brain/env (sourced by
+# boot-brain.sh, inherited into daemon environment). Empty string when
+# unset — DAL skips stamping, no placeholder sentinels.
+
+def get_operator_name() -> str:
+    """Canonical name of the current human partner. Empty if unset."""
+    return os.environ.get('BRAIN_OPERATOR_NAME', '').strip()
+
+
+def get_agent_name() -> str:
+    """Canonical name of the agent (the brain's self-token). Empty if unset."""
+    return os.environ.get('BRAIN_AGENT_NAME', '').strip()
+
+
 # ─── Code Fingerprinting ───
 
 def _code_fingerprint() -> str:

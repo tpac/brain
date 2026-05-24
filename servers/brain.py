@@ -215,6 +215,17 @@ class Brain(
         self._trace_dal = TraceDAL(self.logs_conn)
         self._interaction_dal = InteractionDAL(self.logs_conn)
 
+        # Identity binding — concrete names of the human partner and the
+        # agent at this brain's "current moment." Stamped onto every S0
+        # trace event so each row independently records who said what
+        # (matches biology's per-utterance speaker binding; survives
+        # partner changes without rewriting history). Sourced from env
+        # at boot; empty when unset → DAL skips stamping.
+        from .daemon_config import get_operator_name, get_agent_name
+        self.operator_name = get_operator_name()
+        self.agent_name = get_agent_name()
+        self._trace_dal.set_identity(self.operator_name, self.agent_name)
+
         # Shared vector DAL — cache-backed by default. Set env
         # BRAIN_DISABLE_VECTOR_CACHE=1 to fall back to raw VectorDAL for
         # emergency rollback or A/B benchmarking. Brain consumers use

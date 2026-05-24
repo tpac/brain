@@ -445,6 +445,40 @@ class TraceDAL:
 
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
+        # Identity stamped onto every trace event's metadata at write time.
+        # Empty strings = unset → no stamping (graceful degradation; no
+        # placeholder sentinel tokens). Set once at Brain init via
+        # set_identity() from daemon_config env vars.
+        self._human_identity: str = ''
+        self._agent_identity: str = ''
+
+    def set_identity(self, human_identity: str, agent_identity: str) -> None:
+        """Configure the identity tokens stamped onto every trace event.
+
+        Source values come from BRAIN_OPERATOR_NAME / BRAIN_AGENT_NAME env
+        vars resolved at Brain construction. Identity is a property of the
+        substrate — each trace_event records the speakers present when it
+        was written. Per-event override is possible by passing
+        human_identity / agent_identity directly in `metadata`.
+        """
+        self._human_identity = (human_identity or '').strip()
+        self._agent_identity = (agent_identity or '').strip()
+
+    def _stamp_identity(self, metadata: Optional[Dict]) -> Optional[Dict]:
+        """Inject configured identity tokens into a metadata dict.
+
+        setdefault semantics — explicit per-event values win. Returns None
+        unchanged if neither identity is configured and caller's metadata
+        is None (preserves "no metadata" semantics for tests / non-S0).
+        """
+        if not self._human_identity and not self._agent_identity:
+            return metadata
+        meta = dict(metadata) if metadata else {}
+        if self._human_identity:
+            meta.setdefault('human_identity', self._human_identity)
+        if self._agent_identity:
+            meta.setdefault('agent_identity', self._agent_identity)
+        return meta
 
     def append(self, chain_id: str, scale: str, event_type: str,
                ref_type: str = '', ref_id: str = '', summary: str = '',
@@ -452,13 +486,16 @@ class TraceDAL:
                interaction_id: int = None) -> int:
         """Append an event to a trace chain. Returns event id.
 
-        Validates against trace_contract before writing.
+        Validates against trace_contract before writing. Configured
+        identity tokens (set_identity) are stamped into metadata via
+        setdefault — explicit per-event values win.
         """
         from .trace_contract import validate_trace_event
         ok, error = validate_trace_event(scale, event_type, ref_type)
         if not ok:
             raise ValueError("Trace contract violation: %s" % error)
 
+        metadata = self._stamp_identity(metadata)
         now = datetime.now(timezone.utc).isoformat()
         meta_json = json.dumps(metadata) if metadata else None
         cursor = self.conn.execute(
@@ -474,7 +511,8 @@ class TraceDAL:
         """Append multiple trace events in a single transaction.
 
         Reduces WAL lock contention — one commit instead of N.
-        Each event dict uses the same keys as append().
+        Each event dict uses the same keys as append(). Identity stamping
+        applies per-event via the same setdefault semantics as append().
         """
         from .trace_contract import validate_trace_event
         now = datetime.now(timezone.utc).isoformat()
@@ -483,7 +521,8 @@ class TraceDAL:
             ok, error = validate_trace_event(ev['scale'], ev['event_type'], ev.get('ref_type', ''))
             if not ok:
                 raise ValueError("Trace contract violation: %s" % error)
-            meta_json = json.dumps(ev.get('metadata')) if ev.get('metadata') else None
+            metadata = self._stamp_identity(ev.get('metadata'))
+            meta_json = json.dumps(metadata) if metadata else None
             cursor = self.conn.execute(
                 'INSERT INTO trace_events '
                 '(chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, interaction_id, created_at) '
