@@ -73,7 +73,35 @@ def brain_today(brain=None, tz: Optional[str] = None) -> _dt.date:
     return brain_now(brain=brain, tz=tz).date()
 
 
-def iso_cutoff(hours: float = 0, minutes: float = 0, days: float = 0) -> str:
+def iso_now(at: Optional[_dt.datetime] = None) -> str:
+    """Return an ISO-format UTC timestamp suitable for stored ``created_at`` /
+    ``updated_at`` / cutoff comparisons.
+
+    This is the single source of truth for "now" as a timestamp STRING.
+    ``Brain.now()`` and the TraceDAL inserts route through this helper so
+    all rows written by brain code converge on one format.
+
+    Format: ``'YYYY-MM-DDTHH:MM:SS.ffffff+00:00'``.
+
+    Args:
+        at: pass a datetime to override wall-clock. Use this in S1/S2 code
+            to honor ``conversation_now()`` during eval replays — the
+            stamped timestamp anchors to the conversation's notional now
+            instead of the host wall-clock.
+
+            Examples:
+                ts = iso_now()                            # wall-clock (default)
+                ts = iso_now(at=conversation_now(msgs))   # eval-anchored
+
+    See ``iso_cutoff`` for the WHERE-clause companion.
+    """
+    base = at if at is not None else _dt.datetime.now(_dt.timezone.utc)
+    return base.astimezone(_dt.timezone.utc).isoformat()
+
+
+def iso_cutoff(hours: float = 0, minutes: float = 0,
+               days: float = 0, *,
+               at: Optional[_dt.datetime] = None) -> str:
     """Return an ISO-format UTC cutoff timestamp suitable for SQL WHERE clauses.
 
     Use bound as a parameter against ISO-T-formatted timestamp columns:
@@ -87,43 +115,55 @@ def iso_cutoff(hours: float = 0, minutes: float = 0, days: float = 0) -> str:
     SQLite's ``datetime('now', '-N hours')`` returns a space-separated format
     without microseconds or timezone (e.g. ``'2026-05-24 17:07:13'``). Brain
     stores ISO with a 'T' separator (e.g. ``'2026-05-24T17:07:13.123456+00:00'``
-    or with a 'Z' suffix). Lexicographic comparison breaks because
-    ``'T' (0x54) > ' ' (0x20)`` — same-day-earlier rows incorrectly look
-    "greater than" a same-day cutoff. Replace any
+    or, in historical rows, with a 'Z' suffix). Lexicographic comparison
+    breaks because ``'T' (0x54) > ' ' (0x20)`` — same-day-earlier rows
+    incorrectly look "greater than" a same-day cutoff. Replace any
     ``WHERE col > datetime('now', '-N units')`` in SQL with a bound
     ``iso_cutoff(...)`` to compare apples to apples.
 
-    Two storage formats coexist (latent, currently safe)
-    ----------------------------------------------------
-    The codebase has two "ISO" suffixes in flight:
-
-      - ``Brain.now()``        → ``'…T…ffffffZ'``   (nodes.created_at,
-                                                     nodes.last_accessed)
-      - ``TraceDAL`` inserts   → ``'…T…ffffff+00:00'`` (trace_events.created_at,
-                                                       debug_log.created_at,
-                                                       hook_errors.created_at)
-
-    They are NOT lex-equivalent — ``'Z' (0x5A) > '+' (0x2B)`` — so a Z-stored
-    string is "greater than" a +00:00 string at the same instant.
+    Format coexistence (historical, latent-safe)
+    --------------------------------------------
+    Pre-2026-05-24 ``Brain.now()`` emitted ``'…T…ffffffZ'`` while TraceDAL
+    inserts emitted ``'…T…ffffff+00:00'``. New writes converge on
+    ``+00:00`` via ``iso_now()`` — but stored rows from before that point
+    keep their original suffix. ``'Z' (0x5A) > '+' (0x2B)`` so at an
+    exact-microsecond match a Z-stored row compares as later than a
+    +00:00 cutoff. Statistically irrelevant for time windows of hours/
+    days, but worth knowing if you ever do exact-instant comparisons
+    across mixed-format columns.
 
     **Invariant: queries stay within a single column.** Every WHERE-clause
-    timestamp comparison in the codebase reads from ONE column with ONE
-    consistent format. ``iso_cutoff`` returns ``+00:00`` form; both stored
-    formats compare correctly against it whenever the date/time/microsecond
-    prefix differs (i.e. effectively always — only an exact-microsecond
-    match would expose the suffix mismatch). If you ever need to compare
-    timestamps across columns with different suffix conventions, normalize
-    first — don't rely on raw string comparison.
+    timestamp comparison in the codebase reads from ONE column. Don't
+    compare timestamps lexicographically across tables with different
+    historical suffix conventions — normalize first or use parsed
+    datetimes.
+
+    Conversation-time anchoring
+    ---------------------------
+    By default, the cutoff is computed against wall-clock UTC — correct
+    for system bookkeeping (log cleanup, integrity audits, dashboard
+    counts) where the question is "what happened in the real world in
+    the last N hours."
+
+    In S1/S2 code that filters CONVERSATION data (recall windows,
+    encoding-time neighborhoods), pass ``at=conversation_now(...)`` so
+    eval replays of historical conversations anchor the cutoff to the
+    conversation's notional time, not the host wall-clock. Without
+    this, eval replays of 2023 conversations would compute "the last
+    24 hours" against 2026 and silently return empty / wrong windows.
+
+    See servers/clock.py:conversation_now for resolution priority.
 
     Args:
-        hours, minutes, days: subtracted from current UTC time. All optional.
+        hours, minutes, days: subtracted from the anchor time.
+        at: optional anchor (datetime). Defaults to wall-clock UTC.
 
     Returns:
         ISO-8601 string in UTC, ``'YYYY-MM-DDTHH:MM:SS.ffffff+00:00'``.
     """
-    dt = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(
-        hours=hours, minutes=minutes, days=days)
-    return dt.isoformat()
+    base = at if at is not None else _dt.datetime.now(_dt.timezone.utc)
+    dt = base - _dt.timedelta(hours=hours, minutes=minutes, days=days)
+    return dt.astimezone(_dt.timezone.utc).isoformat()
 
 
 def conversation_now(messages: Optional[Iterable[Any]] = None,

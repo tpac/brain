@@ -334,6 +334,14 @@ Who created a node. Format: `category:process`. Edges carry the same tag so ever
 
 ## Development Rules
 
+### Time-window queries: route through `clock.iso_now()` / `iso_cutoff()`
+
+**Never use SQLite's `datetime('now', ...)` against TEXT timestamp columns.** SQLite's `datetime()` returns space-separated (`'2026-05-24 17:07:13'`); brain stores ISO-T (`'2026-05-24T17:07:13.123456+00:00'`). Lex comparison breaks because `'T' (0x54) > ' ' (0x20)` — same-day-earlier rows incorrectly pass `>` filters. Use `from .clock import iso_cutoff` and bind: `WHERE created_at > ?`. `julianday('now')` is fine — it returns a number.
+
+**Use `iso_now()` for any new-row timestamp** (`created_at`, `updated_at`, `last_accessed`). `Brain.now()` and TraceDAL inserts route through it. Single source of truth for the write-side format (`'…+00:00'`).
+
+**In S1/S2 code, pass `at=conversation_now(...)` explicitly.** S1/S2 reads/writes are conversation-time, not wall-clock. Eval replays inject historical `[Current date: ...]` prefixes; bare `iso_now()` / `iso_cutoff()` would anchor to today's wall-clock and silently corrupt the replay. System bookkeeping (log cleanup, integrity audits, dashboard counts) is exempt — wall-clock is correct there. `tests/test_time_window_contract.py` enforces both rules.
+
 ### Encoder prompts: DB is authoritative, sync to `.py` before committing
 
 The live prompts for encoder agents live in the `interactions` table in `brain_logs.db`. The `.py` files next to each encoder (`encoding_prompt.py`, `community_enrichment_prompt.py`, `consolidation_enrichment_prompt.py`, `healer_prompt.py`) are **seed-only** — they bootstrap fresh brains that have no DB entry yet. They must mirror the DB's latest version so a `git clone` inherits the mature prompts, not a stale v1.

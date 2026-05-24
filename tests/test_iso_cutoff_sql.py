@@ -23,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from servers.clock import iso_cutoff
+from servers.clock import iso_cutoff, iso_now
 
 
 ISO_PLUS_RE = re.compile(
@@ -53,6 +53,49 @@ def test_iso_cutoff_args_subtract():
     assert timedelta(minutes=59) < (base - one_hour) < timedelta(minutes=61)
     assert timedelta(hours=23) < (base - one_day) < timedelta(hours=25)
     assert timedelta(seconds=50) < (base - one_min) < timedelta(seconds=70)
+
+
+# ─── Conversation-time anchoring (at= kwarg) ────────────────────────────
+
+
+def test_iso_now_default_is_wallclock():
+    """iso_now() without args returns wall-clock UTC."""
+    s = iso_now()
+    parsed = datetime.fromisoformat(s)
+    drift = abs(datetime.now(timezone.utc) - parsed)
+    assert drift < timedelta(seconds=2), f'iso_now drifted: {drift}'
+
+
+def test_iso_now_honors_explicit_anchor():
+    """iso_now(at=X) returns X normalized to UTC ISO.
+
+    Lets eval-time callers stamp conversation_now() into created_at,
+    so historical replays anchor to the conversation, not wall-clock.
+    """
+    anchor = datetime(2023, 3, 19, 14, 16, 0, tzinfo=timezone.utc)
+    s = iso_now(at=anchor)
+    assert s == '2023-03-19T14:16:00+00:00', f'expected anchored iso, got {s!r}'
+
+
+def test_iso_cutoff_honors_explicit_anchor():
+    """iso_cutoff(hours=24, at=conversation_now()) windows against the
+    anchor, not wall-clock.
+
+    Without this, an eval replay of a 2023 conversation would compute
+    'the last 24 hours' against 2026 and silently match nothing.
+    """
+    anchor = datetime(2023, 3, 19, 14, 16, 0, tzinfo=timezone.utc)
+    s = iso_cutoff(hours=24, at=anchor)
+    expected = datetime(2023, 3, 18, 14, 16, 0, tzinfo=timezone.utc)
+    parsed = datetime.fromisoformat(s)
+    assert parsed == expected, f'cutoff = {parsed!r}, expected {expected!r}'
+
+
+def test_iso_cutoff_at_is_keyword_only():
+    """at= must be passed by keyword — positional would silently mean
+    something else if signature changes. Lock it in."""
+    with pytest.raises(TypeError):
+        iso_cutoff(1, 0, 0, datetime.now(timezone.utc))  # type: ignore[misc]
 
 
 # ─── 2. SQL windowing against both stored formats ───────────────────────

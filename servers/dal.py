@@ -22,7 +22,7 @@ import sqlite3
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
-from .clock import iso_cutoff
+from .clock import iso_cutoff, iso_now
 
 
 class LogsDAL:
@@ -41,7 +41,7 @@ class LogsDAL:
     def write_error(self, source: str, error: str, context: str = "",
                     traceback_str: str = "", session_id: str = "") -> None:
         """Write an error to the debug_log table."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = iso_now()
         metadata = json.dumps({
             'error': error[:500],
             'type': 'Exception',
@@ -58,7 +58,7 @@ class LogsDAL:
     def write_debug(self, source: str, message: str, session_id: str = "",
                     metadata: Optional[Dict] = None) -> None:
         """Write a debug entry to the debug_log table."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = iso_now()
         meta_json = json.dumps(metadata) if metadata else json.dumps({'message': message[:500]})
         self.conn.execute(
             'INSERT INTO debug_log (session_id, event_type, source, metadata, created_at) '
@@ -218,7 +218,7 @@ class LogsDAL:
         Returns: dict with 'entries' list and 'counts' summary.
         """
         limit = min(max(limit, 1), 200)
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        cutoff = iso_cutoff(hours=hours)
         entries = []
         counts = {}
 
@@ -325,7 +325,7 @@ class InteractionDAL:
           - If this is version 2 or later, do NOT activate. Caller must call
             `set_active()` explicitly to flip the runtime pointer.
         """
-        now = datetime.now(timezone.utc).isoformat()
+        now = iso_now()
         # Get current max version
         row = self.conn.execute(
             'SELECT MAX(version) FROM interactions WHERE name = ?', (name,)
@@ -364,7 +364,7 @@ class InteractionDAL:
         if not row:
             raise ValueError(
                 "Cannot activate %s v%d: no such version registered" % (name, version))
-        now = datetime.now(timezone.utc).isoformat()
+        now = iso_now()
         self.conn.execute(
             'INSERT INTO interaction_active (name, version, set_at, set_by) '
             'VALUES (?, ?, ?, ?) '
@@ -546,7 +546,7 @@ class TraceDAL:
 
         self._maybe_warn_identity_unset(scale, ref_type)
         metadata = self._stamp_identity(metadata)
-        now = datetime.now(timezone.utc).isoformat()
+        now = iso_now()
         meta_json = json.dumps(metadata) if metadata else None
         cursor = self.conn.execute(
             'INSERT INTO trace_events '
@@ -565,7 +565,7 @@ class TraceDAL:
         applies per-event via the same setdefault semantics as append().
         """
         from .trace_contract import validate_trace_event
-        now = datetime.now(timezone.utc).isoformat()
+        now = iso_now()
         ids = []
         for ev in events:
             ok, error = validate_trace_event(ev['scale'], ev['event_type'], ev.get('ref_type', ''))
@@ -649,7 +649,7 @@ class TraceDAL:
                    event_type: str = '', limit: int = 100) -> List[Dict[str, Any]]:
         """Get recent trace events, optionally filtered by scale and type."""
         conditions = ['created_at > ?']
-        params = [(datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()]
+        params = [iso_cutoff(hours=hours)]
         if scale:
             conditions.append('scale = ?')
             params.append(scale)
@@ -690,7 +690,7 @@ class TraceDAL:
         Ordered by most recent chain first.
         """
         conditions = ['created_at > ?']
-        params = [(datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()]
+        params = [iso_cutoff(hours=hours)]
         if session_id:
             conditions.append('session_id = ?')
             params.append(session_id)
@@ -739,7 +739,7 @@ class TraceDAL:
         params: List[Any] = [ref_type]
         if hours is not None:
             conditions.append('created_at > ?')
-            params.append((datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat())
+            params.append(iso_cutoff(hours=hours))
         if scale:
             conditions.append('scale = ?')
             params.append(scale)
@@ -767,7 +767,7 @@ class TraceDAL:
         Default 168h = 7 days.
         """
         conditions = ["event_type = 'outcome'", 'created_at > ?']
-        params = [(datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()]
+        params = [iso_cutoff(hours=hours)]
         if chain_id:
             conditions.append('chain_id = ?')
             params.append(chain_id)
@@ -800,7 +800,7 @@ class TraceDAL:
             return {}
 
         conditions = ['created_at > ?']
-        params = [(datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()]
+        params = [iso_cutoff(hours=hours)]
         if scale:
             conditions.append('scale = ?')
             params.append(scale)
@@ -936,7 +936,7 @@ class TraceDAL:
         INSERT OR REPLACE handles both new inserts and updates to the
         same trace_id (e.g., re-embed after rendering change).
         """
-        now = datetime.now(timezone.utc).isoformat()
+        now = iso_now()
         prepared = []
         for trace_id, vector, text in rows:
             if vector is None or trace_id is None:
@@ -1043,7 +1043,7 @@ class SessionStateDAL:
     def set(self, session_id: str, key: str, value: str, node_id: str = ''):
         """Set a session state value (upsert)."""
         from datetime import datetime, timezone
-        ts = datetime.now(timezone.utc).isoformat()
+        ts = iso_now()
         self.conn.execute(
             """INSERT INTO session_state (session_id, key, node_id, value, updated_at)
                VALUES (?, ?, ?, ?, ?)
@@ -1055,7 +1055,7 @@ class SessionStateDAL:
     def increment(self, session_id: str, key: str, node_id: str) -> int:
         """Increment a counter value. Returns new count."""
         from datetime import datetime, timezone
-        ts = datetime.now(timezone.utc).isoformat()
+        ts = iso_now()
         self.conn.execute(
             """INSERT INTO session_state (session_id, key, node_id, value, updated_at)
                VALUES (?, ?, ?, '1', ?)
@@ -1104,7 +1104,7 @@ class SessionStateDAL:
     def save_fatigue(self, session_id: str, fatigue: Dict[str, int]):
         """Save fatigue dict as a single JSON blob. Replaces per-node rows."""
         from datetime import datetime, timezone
-        ts = datetime.now(timezone.utc).isoformat()
+        ts = iso_now()
         self.conn.execute(
             """INSERT INTO session_state (session_id, key, node_id, value, updated_at)
                VALUES (?, 'fatigue', '', ?, ?)
@@ -1142,7 +1142,7 @@ class MetaDAL:
 
     def set(self, key: str, value: str) -> None:
         """Set a config value."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = iso_now()
         self.conn.execute(
             'INSERT OR REPLACE INTO brain_meta (key, value, updated_at) VALUES (?, ?, ?)',
             (key, str(value), now)
@@ -2858,7 +2858,7 @@ class GraphDAL:
 
 def _now() -> str:
     """UTC ISO timestamp for edge operations."""
-    return datetime.now(timezone.utc).isoformat()
+    return iso_now()
 
 
 class VectorDAL:
@@ -2889,7 +2889,7 @@ class VectorDAL:
         For bulk writes, prefer store_batch() — one round-trip instead of N.
         """
         vid = '%s__%s' % (node_id, vector_type)
-        now = datetime.now(timezone.utc).isoformat()
+        now = iso_now()
         try:
             self.conn.execute(
                 '''INSERT OR REPLACE INTO node_enrichments
@@ -2915,7 +2915,7 @@ class VectorDAL:
         INSERT OR REPLACE handles both new inserts and updates to existing
         (node_id, vector_type) rows via the deterministic id key.
         """
-        now = datetime.now(timezone.utc).isoformat()
+        now = iso_now()
         prepared = []
         for node_id, vector_type, text, blob in rows:
             if blob is None or not node_id or not vector_type:

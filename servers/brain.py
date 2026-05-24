@@ -31,7 +31,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from .schema import ensure_schema, ensure_logs_schema, migrate_logs_to_separate_db
 from .dal import LogsDAL, MetaDAL
-from .clock import iso_cutoff
+from .clock import iso_cutoff, iso_now
 from .brain_recall import BrainRecallMixin
 from .brain_remember import BrainRememberMixin
 from .brain_connections import BrainConnectionsMixin
@@ -449,8 +449,15 @@ class Brain(
             pass
 
     def now(self) -> str:
-        """Return current UTC ISO timestamp."""
-        return datetime.utcnow().isoformat() + 'Z'
+        """Return current UTC ISO timestamp.
+
+        Routes through ``iso_now()`` — single source of truth for the
+        write-side timestamp format (``'…+00:00'``). Pre-2026-05-24 this
+        emitted ``'…Z'``; historical rows with that suffix remain valid
+        (consumers normalize via ``.replace('Z', '+00:00')`` before
+        parsing). See ``servers/clock.py:iso_now``.
+        """
+        return iso_now()
 
     def _generate_id(self, node_type: str = None) -> str:
         """Generate 8-char hex node ID. ~4.3B combinations, collision-free at brain scale."""
@@ -661,7 +668,7 @@ class Brain(
         # statement, so two racing threads both calling here for the same
         # session_id can't both create.
         default_data = _json.dumps({'stop_counter': 0, 'fatigue': {}, 'edge_fatigue': {}})
-        now = datetime.now(timezone.utc).isoformat()
+        now = iso_now()
         self.logs_conn.execute(
             'INSERT OR IGNORE INTO session_state (session_id, key, node_id, value, updated_at) '
             'VALUES (?, ?, ?, ?, ?)',

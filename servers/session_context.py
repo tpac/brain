@@ -27,6 +27,8 @@ import sqlite3
 from typing import Dict
 from datetime import datetime, timezone
 
+from .clock import iso_now
+
 
 class SessionContext:
     """Per-session state that flows with every brain call."""
@@ -132,7 +134,7 @@ class SessionContext:
         Includes fatigue + activity counters as JSON — single row replaces
         52K per-node rows and 6 leaky brain_meta globals.
         """
-        now = datetime.now(timezone.utc).isoformat()
+        now = iso_now()
         data = json.dumps({
             'stop_counter': self.stop_counter,
             'fatigue': self.fatigue,

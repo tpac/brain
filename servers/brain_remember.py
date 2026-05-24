@@ -9,7 +9,7 @@ which are provided by Brain.__init__.
 from . import embedder
 from .brain_constants import TYPE_CONFIDENCE
 from .dal import GraphDAL, VectorDAL
-from .clock import iso_cutoff
+from .clock import iso_cutoff, iso_now
 from .brain_constants import (
     ENRICHMENT_NEIGHBOR_COUNT,
     ENRICHMENT_PROMPT_TEMPLATE,
@@ -142,10 +142,9 @@ class BrainRememberMixin:
         Returns:
             Dict with ok=True/False and details.
         """
-        from datetime import datetime, timezone
         from .dal_metadata import MetadataDAL
 
-        ts = datetime.now(timezone.utc).isoformat()
+        ts = iso_now()
 
         # Fetch node
         row = self.conn.execute(

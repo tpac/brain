@@ -6,7 +6,9 @@ Extracted to avoid circular imports (mixins can't import from brain.py).
 """
 
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+from .clock import iso_now
 
 # ═══════════════════════════════════════════════════════════════
 # CONSTANTS: Decay rates by node type (hours until weight halves)
@@ -257,73 +259,81 @@ INTENT_TYPE_BOOSTS = {
 
 def _start_of_today():
     """Midnight UTC today."""
-    return datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    return datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0)
 
 def _start_of_week():
     """Monday 00:00 UTC of the current week."""
-    now = datetime.utcnow()
-    return (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    now = datetime.now(timezone.utc)
+    return (now - timedelta(days=now.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0)
 
 def _start_of_month():
     """First day of the current month, 00:00 UTC."""
-    return datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return datetime.now(timezone.utc).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0)
 
+# Window definitions route through ``iso_now(at=...)`` so the bound
+# parameters share the +00:00 suffix convention used by every other
+# stored timestamp. Lexicographic comparison against historical Z-stored
+# rows is safe — the date/time prefix dominates.
 TEMPORAL_PATTERNS = [
     {
         'pattern': re.compile(r'\btoday\b', re.IGNORECASE),
         'range_fn': lambda: {
-            'after': _start_of_today().isoformat() + 'Z'
+            'after': iso_now(at=_start_of_today())
         }
     },
     {
         'pattern': re.compile(r'\byesterday\b', re.IGNORECASE),
         'range_fn': lambda: {
-            'after': (_start_of_today() - timedelta(days=1)).isoformat() + 'Z',
-            'before': _start_of_today().isoformat() + 'Z',
+            'after': iso_now(at=_start_of_today() - timedelta(days=1)),
+            'before': iso_now(at=_start_of_today()),
         }
     },
     {
         'pattern': re.compile(r'\bthis week\b', re.IGNORECASE),
         'range_fn': lambda: {
-            'after': _start_of_week().isoformat() + 'Z'
+            'after': iso_now(at=_start_of_week())
         }
     },
     {
         'pattern': re.compile(r'\blast week\b', re.IGNORECASE),
         'range_fn': lambda: {
-            'after': (_start_of_week() - timedelta(weeks=1)).isoformat() + 'Z',
-            'before': _start_of_week().isoformat() + 'Z',
+            'after': iso_now(at=_start_of_week() - timedelta(weeks=1)),
+            'before': iso_now(at=_start_of_week()),
         }
     },
     {
         'pattern': re.compile(r'\bthis month\b', re.IGNORECASE),
         'range_fn': lambda: {
-            'after': _start_of_month().isoformat() + 'Z'
+            'after': iso_now(at=_start_of_month())
         }
     },
     {
         'pattern': re.compile(r'\blast month\b', re.IGNORECASE),
         'range_fn': lambda: {
-            'after': (_start_of_month().replace(day=1) - timedelta(days=1)).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z',
-            'before': _start_of_month().isoformat() + 'Z',
+            'after': iso_now(at=(_start_of_month().replace(day=1) - timedelta(days=1)).replace(
+                day=1, hour=0, minute=0, second=0, microsecond=0)),
+            'before': iso_now(at=_start_of_month()),
         }
     },
     {
         'pattern': re.compile(r'\blast (\d+) days?\b', re.IGNORECASE),
         'range_fn': lambda m: {
-            'after': (datetime.utcnow() - timedelta(days=int(m.group(1)))).isoformat() + 'Z'
+            'after': iso_now(at=datetime.now(timezone.utc) - timedelta(days=int(m.group(1))))
         }
     },
     {
         'pattern': re.compile(r'\brecently\b', re.IGNORECASE),
         'range_fn': lambda: {
-            'after': (datetime.utcnow() - timedelta(days=3)).isoformat() + 'Z'
+            'after': iso_now(at=datetime.now(timezone.utc) - timedelta(days=3))
         }
     },
     {
         'pattern': re.compile(r'\blast session\b', re.IGNORECASE),
         'range_fn': lambda: {
-            'after': (datetime.utcnow() - timedelta(hours=6)).isoformat() + 'Z'
+            'after': iso_now(at=datetime.now(timezone.utc) - timedelta(hours=6))
         }
     },
 ]
