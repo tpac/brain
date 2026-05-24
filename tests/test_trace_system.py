@@ -255,6 +255,39 @@ class TestTraceDAL:
             hours=1, limit=10)
         assert out == [], "unknown session_id must return [], not fall back"
 
+    def test_get_recent_session_ids_plural_cross_session(self):
+        """session_ids (plural list) returns events from any matching session,
+        ignores hours, ordered by time. Useful for cross-session audits."""
+        self.dal.append(chain_id='multi-A', scale='s0', event_type='K',
+                        ref_type='user_message', summary='multi-A event',
+                        session_id='multi-aaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+        self.dal.append(chain_id='multi-B', scale='s0', event_type='K',
+                        ref_type='user_message', summary='multi-B event',
+                        session_id='multi-bbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')
+        self.dal.append(chain_id='multi-C', scale='s0', event_type='K',
+                        ref_type='user_message', summary='multi-C event',
+                        session_id='multi-ccc-cccc-cccc-cccc-cccccccccccc')
+
+        out = self.dal.get_recent(
+            session_ids=[
+                'multi-aaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                'multi-bbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+            ],
+            hours=0, limit=10)
+        summaries = {e['summary'] for e in out}
+        assert 'multi-A event' in summaries
+        assert 'multi-B event' in summaries
+        assert 'multi-C event' not in summaries, \
+            "C was NOT in session_ids, must be excluded"
+
+    def test_get_recent_session_id_plural_and_singular_rejected(self):
+        """Passing both session_id and session_ids must raise — ambiguous intent."""
+        import pytest
+        with pytest.raises(ValueError, match="not both"):
+            self.dal.get_recent(
+                session_id='single-id',
+                session_ids=['multi-1', 'multi-2'])
+
     def test_get_recent_filters_event_type(self):
         """get_recent with event_type filter only returns matching type."""
         self.dal.append(chain_id='type-test', scale='s0', event_type='K',

@@ -520,7 +520,8 @@ class BrainRecallMixin:
 
     def query_traces(self, scale: str = '', hours: int = 24,
                      event_type: str = '', chain_id: str = '',
-                     session_id: str = '', ref_type: str = '',
+                     session_id: str = '', session_ids=None,
+                     ref_type: str = '',
                      grouped: bool = False, limit: int = 100):
         """Query trace events — the fractal learning loop data.
 
@@ -528,7 +529,9 @@ class BrainRecallMixin:
         - chain_id set: return single chain with all events
         - ref_type set: filter events by ref_type
         - grouped=True + session_id: return chains grouped with nested events
-        - default: return flat recent events
+        - session_ids (list) set: cross-session pull; hours ignored
+        - session_id (str) set: single-session pull; hours ignored
+        - default: return flat recent events (hours-bound)
         """
         if chain_id:
             return {'chain': self._trace_dal.get_chain(chain_id)}
@@ -538,14 +541,11 @@ class BrainRecallMixin:
         if grouped and session_id:
             return {'chains': self._trace_dal.get_chains(
                 session_id=session_id, scale=scale, hours=hours, limit=limit)}
-        if session_id:
-            # session_id is authoritative — get_recent ignores `hours` when
-            # session_id is set, so historical sessions don't silently empty.
-            return {'events': self._trace_dal.get_recent(
-                scale=scale, hours=hours, event_type=event_type,
-                session_id=session_id, limit=limit)}
+        # Single or multi session pulls — both authoritative, both ignore hours.
+        # get_recent raises ValueError if both are set; we don't second-guess.
         return {'events': self._trace_dal.get_recent(
-            scale=scale, hours=hours, event_type=event_type, limit=limit)}
+            scale=scale, hours=hours, event_type=event_type,
+            session_id=session_id, session_ids=session_ids, limit=limit)}
 
     def query_outcomes(self, chain_id: str = '', scale: str = '',
                        hours: int = 168):

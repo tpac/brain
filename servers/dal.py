@@ -647,20 +647,44 @@ class TraceDAL:
 
     def get_recent(self, scale: str = '', hours: int = 24,
                    event_type: str = '', session_id: str = '',
+                   session_ids: Optional[List[str]] = None,
                    limit: int = 100) -> List[Dict[str, Any]]:
         """Get recent trace events, optionally filtered by scale/type/session.
 
-        session_id semantics: when set, it is the authoritative filter — the
-        `hours` window is ignored. Sessions older than the default window
-        (e.g. eval/healer/audit reaching for historical conversations) must
-        not silently truncate to empty because a 24h cutoff hid them. When
-        session_id is set and the query returns zero rows, log loud to
-        stderr — silent empty is the bug we just fixed.
+        Session filtering — three modes:
+
+        - **session_id** (singular, str): authoritative for one session. The
+          `hours` window is ignored — historical sessions older than the
+          default cutoff must not silently truncate to empty. Zero-row
+          results log loud to stderr.
+
+        - **session_ids** (plural, List[str]): authoritative for N sessions.
+          Returns events from any session in the list, ordered by time.
+          The `hours` window is ignored (same reasoning). Zero-row results
+          log loud. Useful for cross-session audits, eval cohorts,
+          partnership-arc lookups across distinct conversations.
+
+        - **neither**: default hours-based recent window.
+
+        Passing both session_id and session_ids raises ValueError — the
+        caller's intent is ambiguous and we don't guess.
         """
+        if session_id and session_ids:
+            raise ValueError(
+                "Pass either session_id (single str) or session_ids (List[str]), "
+                "not both. Got session_id=%r session_ids=%r"
+                % (session_id, session_ids))
+
         conditions: list = []
         params: list = []
-        if session_id:
-            # session_id is authoritative — skip the hours cutoff entirely.
+        if session_ids:
+            # Plural authoritative — IN clause across requested sessions,
+            # skip the hours cutoff entirely.
+            placeholders = ','.join(['?'] * len(session_ids))
+            conditions.append('session_id IN (%s)' % placeholders)
+            params.extend(session_ids)
+        elif session_id:
+            # Singular authoritative — equality, skip hours cutoff.
             conditions.append('session_id = ?')
             params.append(session_id)
         else:
@@ -681,13 +705,15 @@ class TraceDAL:
                  'ref_type': r[4], 'ref_id': r[5], 'summary': r[6], 'created_at': r[7],
                  'session_id': r[8] or ''}
                 for r in rows]
-        if session_id and not out:
-            # Loud-by-default: session_id was explicit; zero rows is a real
-            # signal (typo, archived session, wrong DB), not a quiet noop.
+        # Loud-by-default: explicit session filter with zero rows is a real
+        # signal (typo, archived session, wrong DB), not a quiet noop.
+        if (session_id or session_ids) and not out:
             import sys as _sys
-            print('[query_traces] WARN session_id=%s returned 0 rows '
+            who = session_id[:12] if session_id else ('[' + ','.join(s[:8] for s in session_ids[:3]) +
+                                                       (',…' if len(session_ids) > 3 else '') + ']')
+            print('[query_traces] WARN session filter %s returned 0 rows '
                   '(scale=%r event_type=%r limit=%d)'
-                  % (session_id[:12], scale, event_type, limit),
+                  % (who, scale, event_type, limit),
                   file=_sys.stderr)
         return out
 
@@ -1394,12 +1420,16 @@ class NodeDAL:
         return {"nodes": nodes, "total_count": total_count}
 
     def get_all_for_reindex(self) -> List[Dict[str, Any]]:
-        """Get all non-archived nodes for TF-IDF reindex."""
+        """Get all non-archived nodes for TF-IDF reindex.
+
+        Keywords column dropped in schema v28 — TF-IDF text now built from
+        title + content only.
+        """
         rows = self.conn.execute(
-            'SELECT id, title, content, keywords FROM nodes WHERE archived = 0'
+            'SELECT id, title, content FROM nodes WHERE archived = 0'
         ).fetchall()
         return [
-            {'id': r[0], 'title': r[1], 'content': r[2], 'keywords': r[3]}
+            {'id': r[0], 'title': r[1], 'content': r[2]}
             for r in rows
         ]
 
@@ -1418,7 +1448,7 @@ class NodeDAL:
     # Allowed columns for update_field — whitelist prevents SQL injection
     _UPDATABLE_FIELDS = frozenset({
         'content', 'content_summary', 'confidence', 'locked', 'archived',
-        'critical', 'keywords', 'revised_at', 'updated_at', 'encoding_source',
+        'critical', 'revised_at', 'updated_at', 'encoding_source',
         'encoding_version', 'evolution_status', 'resolved_at', 'resolved_by',
     })
 
@@ -1610,8 +1640,13 @@ class Fts5DAL:
     def search(self, query: str, limit: int = 30) -> List[str]:
         """Full-text search. Returns node_ids ranked by BM25 relevance.
 
-        Title matches weighted 10x over content, keywords 2x.
-        bm25() column weights: (node_id=0, title=10, content=1, keywords=2)
+        Title matches weighted 10x over content.
+        bm25() column weights: (node_id=0, title=10, content=1)
+
+        Note: prior to schema v28 there was a 4th column `keywords` carrying
+        an auto-extracted tokenizer dump. The column was dropped because the
+        extractor produced near-duplicate noise. Porter stemming on
+        title+content provides the same lexical signal without the noise.
         """
         safe_query = self._sanitize_query(query)
         if not safe_query:
@@ -1620,7 +1655,7 @@ class Fts5DAL:
             rows = self.conn.execute(
                 """SELECT node_id FROM nodes_fts
                    WHERE nodes_fts MATCH ?
-                   ORDER BY bm25(nodes_fts, 0, 10.0, 1.0, 2.0)
+                   ORDER BY bm25(nodes_fts, 0, 10.0, 1.0)
                    LIMIT ?""",
                 (safe_query, limit)
             ).fetchall()
@@ -1628,12 +1663,17 @@ class Fts5DAL:
         except Exception:
             return []
 
-    def upsert(self, node_id: str, title: str, content: str, keywords: str):
-        """Insert or update a node in the FTS5 index."""
+    def upsert(self, node_id: str, title: str, content: str, _legacy_keywords: str = ''):
+        """Insert or update a node in the FTS5 index.
+
+        The 4th positional arg is kept for back-compat with callers that
+        still pass an (ignored) keywords string. After all callers update,
+        the parameter can be dropped.
+        """
         self.delete(node_id)
         self.conn.execute(
-            "INSERT INTO nodes_fts (node_id, title, content, keywords) VALUES (?, ?, ?, ?)",
-            (node_id, title, content or '', keywords or ''))
+            "INSERT INTO nodes_fts (node_id, title, content) VALUES (?, ?, ?)",
+            (node_id, title, content or ''))
 
     def delete(self, node_id: str):
         """Remove a node from FTS5 index."""
@@ -1647,8 +1687,8 @@ class Fts5DAL:
         """Full rebuild of FTS5 index from nodes table."""
         self.conn.execute("DELETE FROM nodes_fts")
         self.conn.execute("""
-            INSERT INTO nodes_fts (node_id, title, content, keywords)
-            SELECT id, title, COALESCE(content, ''), COALESCE(keywords, '')
+            INSERT INTO nodes_fts (node_id, title, content)
+            SELECT id, title, COALESCE(content, '')
             FROM nodes WHERE archived = 0
         """)
         self.conn.commit()

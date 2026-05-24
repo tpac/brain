@@ -908,17 +908,30 @@ def _handle_clear_errors(brain, args, graph_changes):
 
 
 def _handle_query_traces(brain, args, graph_changes):
-    """Query trace events: O/K/Δ/outcome at every scale."""
-    result = brain.query_traces(
-        scale=args.get("scale", ""),
-        hours=args.get("hours", 24),
-        event_type=args.get("event_type", ""),
-        chain_id=args.get("chain_id", ""),
-        session_id=args.get("session_id", ""),
-        ref_type=args.get("ref_type", ""),
-        grouped=args.get("grouped", False),
-        limit=args.get("limit", 100))
-    return {"ok": True, "result": result}
+    """Query trace events: O/K/Δ/outcome at every scale.
+
+    session_id / session_ids handling: brain.query_traces (and ultimately
+    TraceDAL.get_recent) refuses to combine the two. We forward what the
+    caller sent verbatim and surface any ValueError as a structured error
+    rather than crashing the daemon thread.
+    """
+    sids = args.get("session_ids")
+    if sids is not None and not isinstance(sids, list):
+        return {"ok": False, "error": "session_ids must be a list of strings"}
+    try:
+        result = brain.query_traces(
+            scale=args.get("scale", ""),
+            hours=args.get("hours", 24),
+            event_type=args.get("event_type", ""),
+            chain_id=args.get("chain_id", ""),
+            session_id=args.get("session_id", ""),
+            session_ids=sids,
+            ref_type=args.get("ref_type", ""),
+            grouped=args.get("grouped", False),
+            limit=args.get("limit", 100))
+        return {"ok": True, "result": result}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
 
 
 def _handle_query_outcomes(brain, args, graph_changes):

@@ -597,15 +597,16 @@ def _build_tools():
 
     # ── Traces & Interactions ──
     {"name": "query_traces",
-     "description": "Query the fractal trace system — O/K/Δ/outcome events at every scale (s0-s4). Use to inspect what happened: what was observed, what knowledge was selected, what changed, what the outcome was. Filter by scale, event_type, ref_type, session_id, or retrieve a full chain by chain_id. Use grouped=true with session_id to get chains with nested events. Traces are the learning loop — higher scales read lower scales' traces.",
+     "description": "Query the fractal trace system — O/K/Δ/outcome events at every scale (s0-s4). Use to inspect what happened: what was observed, what knowledge was selected, what changed, what the outcome was. Filter by scale, event_type, ref_type, session_id (single), session_ids (multi), or retrieve a full chain by chain_id. Use grouped=true with session_id to get chains with nested events. session_id and session_ids are authoritative — when either is set, the `hours` window is ignored so historical sessions don't silently empty. Pass one or the other, not both. Traces are the learning loop — higher scales read lower scales' traces.",
      "inputSchema": {"type": "object", "properties": {
          "scale": {"type": "string", "description": "Filter by scale: 's0' (exchange), 's1' (turn), 's2' (session), 's3' (sleep), 's4' (growth). Empty = all."},
          "event_type": {"type": "string", "description": "Filter by type: 'O' (observation), 'K' (knowledge), 'delta' (changes), 'outcome'. Empty = all."},
          "chain_id": {"type": "string", "description": "Get all events in a specific chain. Overrides other filters."},
-         "session_id": {"type": "string", "description": "Filter by session. Combine with grouped=true for chain-grouped results."},
+         "session_id": {"type": "string", "description": "Single-session filter. Authoritative — hours window ignored when set. Combine with grouped=true for chain-grouped results."},
+         "session_ids": {"type": "array", "items": {"type": "string"}, "description": "Multi-session filter (cross-session pulls). Authoritative — hours window ignored. Mutually exclusive with session_id."},
          "ref_type": {"type": "string", "description": "Filter by ref_type: 'correction', 'recall_hit', 'encoding_run', 'tool_result', etc."},
          "grouped": {"type": "boolean", "description": "If true + session_id, return chains grouped with nested events instead of flat list.", "default": False},
-         "hours": {"type": "integer", "description": "Look back window in hours (default 24)", "default": 24},
+         "hours": {"type": "integer", "description": "Look back window in hours (default 24). Ignored when session_id or session_ids is set.", "default": 24},
          "limit": {"type": "integer", "description": "Max results (default 100)", "default": 100}}}},
 
     {"name": "query_outcomes",
