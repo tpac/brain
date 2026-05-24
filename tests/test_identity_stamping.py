@@ -161,6 +161,79 @@ class StampingEnabledTest(unittest.TestCase):
             self.assertEqual(meta['agent_identity'], 'Anchor', scale)
 
 
+class WritePathWarningTest(unittest.TestCase):
+    """The 'identity unset on scale write' loud signal fires at the
+    write site (not at boot) — one-shot per TraceDAL lifetime so the
+    operator sees the gap without log spam."""
+
+    def setUp(self):
+        self.conn = _open_logs()
+        self.dal = TraceDAL(self.conn)
+
+    def tearDown(self):
+        self.conn.close()
+
+    def _capture_stderr(self, fn):
+        import io
+        import sys
+        buf = io.StringIO()
+        old = sys.stderr
+        sys.stderr = buf
+        try:
+            fn()
+        finally:
+            sys.stderr = old
+        return buf.getvalue()
+
+    def test_fires_once_on_first_write_when_unset(self):
+        def do_write():
+            self.dal.append(chain_id='c', scale='s0', event_type='K',
+                            ref_type='user_message', metadata=None)
+        out = self._capture_stderr(do_write)
+        self.assertIn('identity unset on first scale-s0 write', out)
+        self.assertIn('BRAIN_OPERATOR_NAME', out)
+        self.assertIn('BRAIN_AGENT_NAME', out)
+
+    def test_does_not_fire_again_on_subsequent_writes(self):
+        def do_writes():
+            for _ in range(3):
+                self.dal.append(chain_id='c', scale='s0', event_type='K',
+                                ref_type='user_message', metadata=None)
+        out = self._capture_stderr(do_writes)
+        # Only one occurrence regardless of how many writes happened
+        self.assertEqual(out.count('identity unset'), 1)
+
+    def test_silent_when_identity_configured(self):
+        self.dal.set_identity('Tom', 'Anchor')
+
+        def do_write():
+            self.dal.append(chain_id='c', scale='s0', event_type='K',
+                            ref_type='user_message', metadata=None)
+        out = self._capture_stderr(do_write)
+        self.assertEqual(out, '')
+
+    def test_fires_on_append_batch_too(self):
+        def do_batch():
+            self.dal.append_batch([
+                {'chain_id': 'c', 'scale': 's0', 'event_type': 'K',
+                 'ref_type': 'user_message', 'metadata': None},
+            ])
+        out = self._capture_stderr(do_batch)
+        self.assertIn('identity unset', out)
+
+    def test_partial_identity_still_fires(self):
+        # Only one side set — still missing the other
+        self.dal.set_identity('Tom', '')
+
+        def do_write():
+            self.dal.append(chain_id='c', scale='s0', event_type='K',
+                            ref_type='user_message', metadata=None)
+        out = self._capture_stderr(do_write)
+        self.assertIn('identity unset', out)
+        self.assertNotIn('BRAIN_OPERATOR_NAME', out)
+        self.assertIn('BRAIN_AGENT_NAME', out)
+
+
 class ConfigReaderTest(unittest.TestCase):
     """daemon_config helpers read env vars and strip whitespace."""
 

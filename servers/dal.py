@@ -451,6 +451,11 @@ class TraceDAL:
         # set_identity() from daemon_config env vars.
         self._human_identity: str = ''
         self._agent_identity: str = ''
+        # One-shot guard for the "identity unset on write" warning.
+        # The gap doesn't change per-write, only per-restart — logging
+        # every write would flood; logging once per TraceDAL lifetime
+        # surfaces the gap without noise.
+        self._identity_missing_logged: bool = False
 
     def set_identity(self, human_identity: str, agent_identity: str) -> None:
         """Configure the identity tokens stamped onto every trace event.
@@ -463,6 +468,41 @@ class TraceDAL:
         """
         self._human_identity = (human_identity or '').strip()
         self._agent_identity = (agent_identity or '').strip()
+
+    def _maybe_warn_identity_unset(self, scale: str, ref_type: str) -> None:
+        """Loud-by-default at the scale-write boundary: when a trace
+        gets written but identity stamping is empty, surface it once.
+
+        The check lives at the write site (not at Brain.__init__)
+        because boot is a moment but writes are continuous — every
+        scale write through this DAL passes here. The first one that
+        fires with unset identity tells the operator the gap exists.
+        Subsequent writes stay silent (one-shot via
+        `_identity_missing_logged`) — the config didn't suddenly
+        re-break, no value in spamming.
+
+        Output goes to stderr → daemon.log (launchd-managed
+        StandardErrorPath). TraceDAL has no Brain reference, so we
+        don't route through brain._log_error here.
+        """
+        if self._human_identity and self._agent_identity:
+            return
+        if self._identity_missing_logged:
+            return
+        import sys as _sys
+        missing = []
+        if not self._human_identity:
+            missing.append('BRAIN_OPERATOR_NAME')
+        if not self._agent_identity:
+            missing.append('BRAIN_AGENT_NAME')
+        print('[trace_dal] identity unset on first scale-%s write '
+              '(ref_type=%s) — %s missing in env. Trace events will '
+              'be written without identity metadata until '
+              '~/.config/brain/env is configured and the daemon '
+              'restarts.' %
+              (scale, ref_type or '?', ', '.join(missing)),
+              file=_sys.stderr, flush=True)
+        self._identity_missing_logged = True
 
     def _stamp_identity(self, metadata: Optional[Dict]) -> Optional[Dict]:
         """Inject configured identity tokens into a metadata dict.
@@ -499,6 +539,7 @@ class TraceDAL:
         if not ok:
             raise ValueError("Trace contract violation: %s" % error)
 
+        self._maybe_warn_identity_unset(scale, ref_type)
         metadata = self._stamp_identity(metadata)
         now = datetime.now(timezone.utc).isoformat()
         meta_json = json.dumps(metadata) if metadata else None
@@ -525,6 +566,7 @@ class TraceDAL:
             ok, error = validate_trace_event(ev['scale'], ev['event_type'], ev.get('ref_type', ''))
             if not ok:
                 raise ValueError("Trace contract violation: %s" % error)
+            self._maybe_warn_identity_unset(ev['scale'], ev.get('ref_type', ''))
             metadata = self._stamp_identity(ev.get('metadata'))
             meta_json = json.dumps(metadata) if metadata else None
             cursor = self.conn.execute(

@@ -220,25 +220,16 @@ class Brain(
         # trace event so each row independently records who said what
         # (matches biology's per-utterance speaker binding; survives
         # partner changes without rewriting history). Sourced from env
-        # at boot; empty when unset → DAL skips stamping. Loud at boot
-        # if either is missing — silent identity-drop would be a long
-        # tail of headless trace writes the operator can't see.
+        # at boot; empty when unset → DAL skips stamping.
+        #
+        # The "identity missing" loud signal lives at the write boundary
+        # (TraceDAL._maybe_warn_identity_unset), not here — boot is one
+        # moment; trace writes are continuous, and that's where the gap
+        # actually manifests.
         from .daemon_config import get_operator_name, get_agent_name
         self.operator_name = get_operator_name()
         self.agent_name = get_agent_name()
         self._trace_dal.set_identity(self.operator_name, self.agent_name)
-        if not self.operator_name or not self.agent_name:
-            import sys as _sys
-            missing = []
-            if not self.operator_name:
-                missing.append('BRAIN_OPERATOR_NAME')
-            if not self.agent_name:
-                missing.append('BRAIN_AGENT_NAME')
-            print('[brain] identity not configured: %s missing — trace '
-                  'events will be written WITHOUT human_identity/'
-                  'agent_identity metadata. Set in '
-                  '~/.config/brain/env to activate stamping.'
-                  % ', '.join(missing), file=_sys.stderr, flush=True)
 
         # Shared vector DAL — cache-backed by default. Set env
         # BRAIN_DISABLE_VECTOR_CACHE=1 to fall back to raw VectorDAL for
