@@ -811,6 +811,98 @@ class TraceDAL:
 
         return turns
 
+    # --- Embeddings (v27: episodic references) ---
+
+    def store_embeddings(self, rows: List[tuple], model: str) -> int:
+        """Upsert per-trace embeddings (one row per unique trace_id).
+
+        Args:
+            rows: iterable of (trace_id, vector_blob, text). Rows with
+                  vector=None are skipped.
+            model: embedder model tag stored on each row.
+
+        Returns: count of rows actually written.
+
+        INSERT OR REPLACE handles both new inserts and updates to the
+        same trace_id (e.g., re-embed after rendering change).
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        prepared = []
+        for trace_id, vector, text in rows:
+            if vector is None or trace_id is None:
+                continue
+            prepared.append((trace_id, vector, (text or '')[:500], model, now))
+        if not prepared:
+            return 0
+        self.conn.executemany(
+            'INSERT OR REPLACE INTO trace_embeddings '
+            '(trace_id, vector, text, model, created_at) '
+            'VALUES (?, ?, ?, ?, ?)',
+            prepared)
+        self.conn.commit()
+        return len(prepared)
+
+    def get_embeddings(self, trace_ids: List[int]) -> Dict[int, bytes]:
+        """Batch fetch trace embeddings by id. Missing ids absent from result."""
+        if not trace_ids:
+            return {}
+        placeholders = ','.join('?' * len(trace_ids))
+        rows = self.conn.execute(
+            'SELECT trace_id, vector FROM trace_embeddings '
+            'WHERE trace_id IN (%s)' % placeholders,
+            list(trace_ids)).fetchall()
+        return {r[0]: r[1] for r in rows}
+
+    def find_unembedded(self, limit: int, scales: List[str],
+                        ref_types: List[str]) -> List[Dict[str, Any]]:
+        """Find recent trace events with no embedding row yet.
+
+        Pull-reconciliation primitive: the worker calls this every tick,
+        gets up to `limit` traces in newest-first order, embeds them.
+        No queue state; restart-safe by construction.
+
+        Args:
+            limit: max rows to return.
+            scales: required scale filter (e.g., ['s0']). Empty raises ValueError.
+            ref_types: required ref_type filter (e.g., ['user_message',
+                       'assistant_message', 'tool_result']). Empty raises
+                       ValueError.
+
+        Returns rows with id/scale/event_type/ref_type/summary/metadata/
+        session_id/created_at fields. Caller renders to text and embeds.
+        """
+        if not scales:
+            raise ValueError("find_unembedded: scales required")
+        if not ref_types:
+            raise ValueError("find_unembedded: ref_types required")
+        scale_ph = ','.join('?' * len(scales))
+        ref_ph = ','.join('?' * len(ref_types))
+        params = list(scales) + list(ref_types) + [limit]
+        rows = self.conn.execute(
+            'SELECT te.id, te.scale, te.event_type, te.ref_type, '
+            '       te.summary, te.metadata, te.session_id, te.created_at '
+            'FROM trace_events te '
+            'LEFT JOIN trace_embeddings tem ON tem.trace_id = te.id '
+            'WHERE tem.trace_id IS NULL '
+            '  AND te.scale IN (%s) '
+            '  AND te.ref_type IN (%s) '
+            'ORDER BY te.created_at DESC '
+            'LIMIT ?' % (scale_ph, ref_ph),
+            params).fetchall()
+        results = []
+        for r in rows:
+            meta = {}
+            try:
+                meta = json.loads(r[5]) if r[5] else {}
+            except (json.JSONDecodeError, TypeError):
+                meta = {}
+            results.append({
+                'id': r[0], 'scale': r[1], 'event_type': r[2],
+                'ref_type': r[3], 'summary': r[4] or '',
+                'metadata': meta, 'session_id': r[6] or '',
+                'created_at': r[7]})
+        return results
+
 
 class SessionStateDAL:
     """Access layer for session_state table in brain_logs.db.
@@ -2596,6 +2688,54 @@ class GraphDAL:
         self.conn.execute(
             'UPDATE edges SET weight = ? WHERE edge_id = ?',
             (new_weight, edge_id))
+
+    # --- Source refs (v27: episodic references) ---
+
+    def add_source_refs(self, node_id: str, trace_ids: List[int]) -> int:
+        """Attach trace_event pointers to a node. Position derived from
+        list order (1-indexed); first ref is the primary anchor.
+
+        INSERT OR IGNORE — first-write-wins. Re-encoding the same node
+        leaves existing refs untouched (positions and created_at stay
+        frozen). Explicit re-ordering belongs to a future
+        replace_source_refs() method when revise needs it.
+
+        Returns count of refs newly inserted (existing ignored).
+        """
+        if not node_id or not trace_ids:
+            return 0
+        now = _now()
+        rows = [(node_id, tid, idx + 1, now)
+                for idx, tid in enumerate(trace_ids)]
+        cur = self.conn.executemany(
+            'INSERT OR IGNORE INTO node_source_refs '
+            '(node_id, trace_id, position, created_at) '
+            'VALUES (?, ?, ?, ?)',
+            rows)
+        self.conn.commit()
+        return cur.rowcount
+
+    def get_source_refs(self, node_id: str) -> List[int]:
+        """Trace ids anchoring this node, ordered by encoder-written
+        position (primary first)."""
+        if not node_id:
+            return []
+        rows = self.conn.execute(
+            'SELECT trace_id FROM node_source_refs '
+            'WHERE node_id = ? ORDER BY position ASC',
+            (node_id,)).fetchall()
+        return [r[0] for r in rows]
+
+    def get_nodes_referencing(self, trace_id: int) -> List[str]:
+        """All node_ids anchored to a given trace. Engram cohort
+        detection primitive — nodes that share a trace are part of
+        the same memory at the substrate level."""
+        if trace_id is None:
+            return []
+        rows = self.conn.execute(
+            'SELECT node_id FROM node_source_refs WHERE trace_id = ?',
+            (trace_id,)).fetchall()
+        return [r[0] for r in rows]
 
 
 def _now() -> str:
