@@ -44,17 +44,39 @@ function _nodeMatches(node) {
 const DIM_COLOR = '#1a1a1a';
 
 // ── Recall pulse ──────────────────────────────────────────────────────
-// When a new recall trace lands (published on the `recall:event` bus
-// topic by live.js's fetcher), every node id in `used_ids` and
-// `returned_ids` gets a 5-second pulse. Strength decays linearly to 0.
-// Judge-selected (used_ids) pulse stronger than candidates.
+// Each recall surfaces three layers of nodes, in increasing causal
+// importance. We pulse all three with distinct color + intensity so the
+// operator can SEE the funnel narrow:
+//
+//   returned    ~25 nodes the recall pipeline surfaced (cosine + FTS5
+//               + spread). Dim cool blue, weakest pulse — "considered".
+//   activation  ≤30 nodes that lit up via spread-activation from the
+//               judge's picks. These actually shape additionalContext.
+//               Medium green pulse — "influenced this turn".
+//   used        3–5 nodes the Haiku judge selected. Bright white pulse,
+//               largest size bump — "Anchor literally read these".
+//
+// A node in multiple layers gets the strongest tier (used > activation
+// > returned). _onRecallEvent enforces that ordering when populating
+// the pulse map.
 
 const PULSE_DURATION_MS = 5000;
-const PULSE_COLOR_USED      = '#ffffff';   // judge-selected → bright white pulse
-const PULSE_COLOR_RETURNED  = '#7eb8ff';   // candidate     → cool blue pulse
-const PULSE_SIZE_MULT       = 1.8;         // peak val * this for non-hub nodes
+const PULSE_SIZE_MULT   = 1.8;   // peak val multiplier at intensity=1.0
 
-// nodeId → { startedAt, isJudgeSelected }
+// tier name → { color, intensity }
+// `intensity` scales both color-blend and size pulse. The tier ordering
+// is encoded in PULSE_TIER_ORDER below — anything outside that list is
+// ignored by _onRecallEvent.
+const PULSE_TIERS = {
+  used:       { color: '#ffffff', intensity: 1.00 },
+  activation: { color: '#33ff88', intensity: 0.70 },
+  returned:   { color: '#7eb8ff', intensity: 0.40 },
+};
+// Apply weakest → strongest so 'used' wins when a node appears in
+// multiple layers (Map.set last-write semantics).
+const PULSE_TIER_ORDER = ['returned', 'activation', 'used'];
+
+// nodeId → { startedAt, tier }
 const _pulses = new Map();
 let _pulseRafScheduled = false;
 
@@ -87,23 +109,22 @@ function _colorFor(n) {
   const baseColor = _nodeMatches(n) ? (n.color || '#666') : DIM_COLOR;
   const p = _pulses.get(n.id);
   if (!p) return baseColor;
+  const tier = PULSE_TIERS[p.tier];
+  if (!tier) return baseColor;
   const strength = _pulseStrength(n.id);
   if (strength <= 0) return baseColor;
-  const pulseColor = p.isJudgeSelected ? PULSE_COLOR_USED : PULSE_COLOR_RETURNED;
-  // Judge-selected pulses use the full 0-1 strength curve; candidates max
-  // out at half — they're still discoverable but don't compete with the
-  // brighter "this was actually selected" signal.
-  const t = p.isJudgeSelected ? strength : strength * 0.5;
-  return _blend(pulseColor, baseColor, t);
+  return _blend(tier.color, baseColor, strength * tier.intensity);
 }
 
 function _valFor(n) {
   const base = n.hub ? n.val : 2;
+  const p = _pulses.get(n.id);
+  if (!p) return base;
+  const tier = PULSE_TIERS[p.tier];
+  if (!tier) return base;
   const strength = _pulseStrength(n.id);
   if (strength <= 0) return base;
-  const p = _pulses.get(n.id);
-  const t = p && p.isJudgeSelected ? strength : strength * 0.5;
-  return base * (1 + (PULSE_SIZE_MULT - 1) * t);
+  return base * (1 + (PULSE_SIZE_MULT - 1) * strength * tier.intensity);
 }
 
 function _scheduleAnimation() {
@@ -139,12 +160,17 @@ function _onRecallEvent({ event }) {
   // arrived before the user opened Live would be confusing (out-of-time
   // flashes). The user sees activations going forward.
   if (!graph3d || !event) return;
-  const used = new Set(event.used_ids || []);
-  const returned = event.returned_ids || [];
   const now = Date.now();
-  for (const id of returned) _pulses.set(id, { startedAt: now, isJudgeSelected: false });
-  // used_ids overrides — same id stronger pulse.
-  for (const id of used) _pulses.set(id, { startedAt: now, isJudgeSelected: true });
+  // Apply tiers weakest → strongest so a node in multiple layers ends up
+  // tagged with its strongest tier (Map.set last-write).
+  const idsByTier = {
+    returned:   event.returned_ids   || [],
+    activation: event.activation_ids || [],
+    used:       event.used_ids       || [],
+  };
+  for (const tier of PULSE_TIER_ORDER) {
+    for (const id of idsByTier[tier]) _pulses.set(id, { startedAt: now, tier });
+  }
   _scheduleAnimation();
 }
 

@@ -93,8 +93,14 @@ def query_recall_log(conn, since_ts: str = '', limit: int = 50, session_id: str 
         except Exception:
             pass
 
-        # K event (judge-selected) in the same chain
+        # K event (judge-selected + activation expansion) in the same chain.
+        # ref_id is the JSON-encoded list of short ids the Haiku judge picked;
+        # metadata.activations is the spread-activation expansion (post-
+        # selection neighbors that lit up enough to enter additionalContext).
+        # Both are short (8-char) ids — graph node ids share that format, so
+        # they reconcile directly with no remapping.
         selected_ids = []
+        activation_ids = []
         k_row = conn.execute(
             "SELECT ref_id, summary, metadata FROM trace_events "
             "WHERE chain_id = ? AND event_type = 'K'",
@@ -103,6 +109,14 @@ def query_recall_log(conn, since_ts: str = '', limit: int = 50, session_id: str 
         if k_row:
             try:
                 selected_ids = json.loads(k_row[0]) if k_row[0] else []
+            except Exception:
+                pass
+            try:
+                k_meta = json.loads(k_row[2]) if k_row[2] else {}
+                activation_ids = [
+                    entry.get('id') for entry in (k_meta.get('activations') or [])
+                    if entry.get('id')
+                ]
             except Exception:
                 pass
 
@@ -133,10 +147,9 @@ def query_recall_log(conn, since_ts: str = '', limit: int = 50, session_id: str 
             "snippets": {},
             "timestamp": timestamp,
             "source": "hook",
-            "embeddings_used": True,
             "used_ids": selected_ids,
             "used_count": len(selected_ids),
-            "precision_score": None,
+            "activation_ids": activation_ids,
             "judge_prompt": j_prompt,
             # Prefer the /tmp surface-result file over trace metadata —
             # the trace truncates at 4000 chars per policy, but the file
