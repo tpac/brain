@@ -35,9 +35,11 @@ CLUSTER_SHAPE = {
     # ── Node details (per member) ──
     'node_details': 'dict[str, dict]',  # node_id → {
     #   title, type, content, confidence, encoding_source,
-    #   keywords, locked, critical, created_at, updated_at,
+    #   locked, critical, created_at, updated_at,
     #   reasoning*, user_raw_quote*, anchor_raw_quote*, situation*
     #   (* = from node_metadata_kv, may be absent)
+    #   Note: `keywords` removed schema v28 — FTS5 porter stemming on
+    #   title+content replaces it.
     # }
 
     # ── Behavioral evidence (from S1 traces) ──

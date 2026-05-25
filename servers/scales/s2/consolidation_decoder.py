@@ -561,20 +561,25 @@ class ConsolidationDecoder(IntegrationUnit):
         return clusters
 
     def _load_node_data(self, node_ids):
-        """Batch-load title, type, content, confidence, encoding_source, timestamps."""
+        """Batch-load title, type, content, confidence, encoding_source, timestamps.
+
+        Note: `keywords` column dropped in schema v28 (2026-05-24). FTS5
+        porter stemming on title+content provides the lexical signal that
+        the keywords field previously carried.
+        """
         data = {}
         placeholders = ','.join('?' * len(node_ids))
         for row in self.brain.conn.execute("""
             SELECT id, title, type, content, confidence, encoding_source,
-                   keywords, locked, critical, created_at, updated_at
+                   locked, critical, created_at, updated_at
             FROM nodes WHERE id IN (%s)
         """ % placeholders, list(node_ids)).fetchall():
             data[row[0]] = {
                 'title': row[1], 'type': row[2], 'content': row[3],
                 'confidence': row[4], 'encoding_source': row[5] or '',
-                'keywords': row[6] or '', 'locked': bool(row[7]),
-                'critical': bool(row[8]),
-                'created_at': row[9] or '', 'updated_at': row[10] or '',
+                'locked': bool(row[6]),
+                'critical': bool(row[7]),
+                'created_at': row[8] or '', 'updated_at': row[9] or '',
             }
 
         # Load raw quotes from metadata
