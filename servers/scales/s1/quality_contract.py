@@ -896,6 +896,88 @@ EVALUATOR_PROTOCOL = {
 # becomes a runtime interaction (e.g., S2 quality probe), seed from this
 # constant per the prompt-sync discipline in CLAUDE.md.
 
+# ═══════════════════════════════════════════════════════════════
+# EXAMPLE AUTHORING CONVENTIONS
+# ═══════════════════════════════════════════════════════════════
+#
+# Hard-won discipline: example `connect_to` targets MUST use placeholder
+# syntax, not literal titles. This was learned the hard way in v20 —
+# Sonnet pattern-matches the shapes it sees in the canonical training
+# pattern AND §7.6 examples, including literal target titles. When
+# example targets reference titles that aren't real catalog nodes (e.g.
+# "Daemon TCP migration", "Brain vs database framing"), Sonnet copies
+# them verbatim in production encoded output, producing
+# `connect_to_unresolved` errors at write boundary.
+#
+# A prose disclaimer above the canonical pattern (v21) is insufficient
+# — Sonnet's pattern-match is stronger than the disclaimer's restraint.
+# The right fix is to make example target slots VISUALLY UNCOPYABLE.
+
+EXAMPLE_AUTHORING_CONVENTIONS = {
+    'placeholder_syntax': {
+        'rule': (
+            "Example `connect_to` targets MUST use bracketed placeholder "
+            "syntax — `<descriptive-name-of-what-should-be-here>` — never "
+            "a literal-looking title string. Same rule applies to any "
+            "field in an example where the value should be resolved "
+            "against the live catalog or computed at encode time."
+        ),
+        'good': [
+            '{title: "<related-architecture-decision-from-catalog>", relation: "grounds", why: "..."}',
+            '{title: "<the-existing-framing-this-quote-anchors>", relation: "grounds", why: "..."}',
+            '{title: "<the-prior-belief-being-corrected>", relation: "corrects", why: "..."}',
+        ],
+        'bad': [
+            '{title: "Daemon TCP migration", relation: "grounds", why: "..."}',
+            '{title: "Single-writer invariant beats clever concurrency", relation: "parallels", why: "..."}',
+            '# Real-looking titles get pattern-matched and literal-copied',
+        ],
+        'rationale': (
+            "Sonnet pattern-matches the shape it sees. Real-looking "
+            "titles get literal-copied to production output even when "
+            "wrapped in prose disclaimers. Bracketed placeholders are "
+            "visually marked as illustrative — Sonnet's training "
+            "recognizes <placeholder> patterns as 'fill this in,' not "
+            "'copy verbatim.'"
+        ),
+    },
+    'example_block_wrappers': {
+        'rule': (
+            "Each example block in the encoder prompt SHOULD be wrapped "
+            "in `<example>...</example>` markers (or similar visible "
+            "demarcation) so the example/production boundary is "
+            "structurally unmissable. v22+ work."
+        ),
+        'precedent': (
+            "Anthropic's own prompt-engineering conventions use XML-like "
+            "tags for examples. Sonnet's training recognizes the pattern."
+        ),
+    },
+    'fields_that_need_placeholders': [
+        # When authoring or rendering examples, ANY of these fields with
+        # a value that wouldn't exist in a fresh brain should use <...>
+        # syntax instead of a literal value.
+        'connect_to[].title',  # connect_to edge targets — top failure mode
+        'source_refs',          # trace_ids in examples don't match real traces
+        'node_id (in revise examples)',  # node_id references must be placeholder
+    ],
+    'when_real_values_are_ok': [
+        # These fields can have real-looking values in examples because
+        # they describe THIS node, not external references:
+        'title (of the example node being created)',
+        'content / situation / reasoning (of the example node)',
+        'user_raw_quote / anchor_raw_quote (verbatim is the contract; the example demonstrates verbatim discipline)',
+        'event_time',
+    ],
+    'history': (
+        "Convention established in v22 after the v20→v21 connect_to_"
+        "unresolved error pattern. Tom's framing: 'examples need much "
+        "better signaling that it's an example.' The hard lesson: prose "
+        "disclaimers are too soft against Sonnet's shape-pattern-match."
+    ),
+}
+
+
 EVALUATOR_SYSTEM_PROMPT = """You are evaluating an encoder example against the 32-dimension quality contract.
 
 # Your inputs
