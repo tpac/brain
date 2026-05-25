@@ -445,6 +445,31 @@ class TestGetByRefType:
         result = self.dal.get_by_ref_type('correction', limit=3)
         assert len(result) <= 3
 
+    def test_filters_by_session_id(self):
+        """session_id scopes results to a single session — parallel sessions
+        don't see each other's events. Required by surface dedup."""
+        self.dal.append(chain_id='sA-1', scale='s1', event_type='K',
+                        ref_type='surface_selected', ref_id='["nA"]',
+                        session_id='sess-A')
+        self.dal.append(chain_id='sB-1', scale='s1', event_type='K',
+                        ref_type='surface_selected', ref_id='["nB"]',
+                        session_id='sess-B')
+
+        only_a = self.dal.get_by_ref_type(
+            'surface_selected', scale='s1', hours=None, session_id='sess-A')
+        only_b = self.dal.get_by_ref_type(
+            'surface_selected', scale='s1', hours=None, session_id='sess-B')
+        unscoped = self.dal.get_by_ref_type(
+            'surface_selected', scale='s1', hours=None)
+
+        # Per-session filter: each session sees only its own row.
+        assert {r['ref_id'] for r in only_a} == {'["nA"]'}
+        assert {r['ref_id'] for r in only_b} == {'["nB"]'}
+        # Unscoped sees both (IsolatedBrain may also have seed traces — assert
+        # both are present, not that the set equals exactly two).
+        unscoped_ids = {r['ref_id'] for r in unscoped}
+        assert {'["nA"]', '["nB"]'} <= unscoped_ids
+
 
 class TestGetOutcomes:
     """Verify get_outcomes returns outcome events."""

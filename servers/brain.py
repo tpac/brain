@@ -704,6 +704,100 @@ class Brain(
                     pass
         return n
 
+    def live_sessions(self, limit: int = 5, min_messages: int = 5) -> list:
+        """Return the most-recently-updated session_ids with at least
+        `min_messages` messages on their SessionContext.
+
+        Used by `live_session_activity` for the Frame brain-wide slots'
+        cross-session view. "Live" is defined as "recent meaningful work",
+        not wall-clock-active — survives a week-long gap (Tom's intent:
+        last X sessions with ≥Y messages, parallel sessions all count).
+
+        Reads from `session_state` rather than `_session_contexts` cache
+        so it surfaces sessions whose ctx isn't currently in memory
+        (post-daemon-restart, SessionEnd'd sessions, etc.).
+        """
+        try:
+            rows = self.logs_conn.execute(
+                "SELECT session_id FROM session_state "
+                "WHERE key = '_session_context' "
+                "AND CAST(COALESCE(json_extract(value, '$.message_count'), 0) "
+                "         AS INTEGER) >= ? "
+                "ORDER BY updated_at DESC LIMIT ?",
+                (min_messages, limit)).fetchall()
+            return [r[0] for r in rows]
+        except Exception as e:
+            try:
+                self._log_error('live_sessions_query', e,
+                                'min_messages=%d limit=%d' % (min_messages, limit))
+            except Exception:
+                pass
+            return []
+
+    def live_session_activity(self, node_ids=None,
+                              limit: int = 5,
+                              min_messages: int = 5) -> dict:
+        """Aggregate per-session node_activity across the live sessions.
+
+        Returns: {node_id: {'last_accessed': max_ts,
+                            'activation': max_activation,
+                            'access_count': sum_across_sessions,
+                            'session_count': N}}
+
+        - last_accessed: MAX across live sessions (most recent wins).
+        - activation: MAX (a node "warm" in any one live session counts).
+        - access_count: SUM (cross-session usage signal).
+        - session_count: how many live sessions touched this node.
+
+        Hybrid read path:
+          (1) `self._session_contexts` cache — freshest in-memory state for
+              sessions currently running.
+          (2) `SessionContext.load(self.logs_conn, sid)` — persisted state
+              for sessions not in cache (covers daemon restart + ended
+              sessions still in the "live" window).
+          Sessions that fail both paths are silently skipped.
+
+        Args:
+          node_ids: optional iterable to filter aggregation. None = all
+              nodes touched by any live session.
+          limit / min_messages: passed to `live_sessions`.
+        """
+        from .session_context import SessionContext
+        filter_ids = set(node_ids) if node_ids is not None else None
+        aggregated: dict = {}
+        for sid in self.live_sessions(limit=limit, min_messages=min_messages):
+            ctx = self._session_contexts.get(sid)
+            if ctx is None:
+                try:
+                    ctx = SessionContext.load(self.logs_conn, sid)
+                except Exception as e:
+                    try:
+                        self._log_error('live_session_activity_load', e,
+                                        'session=%s' % sid[:8])
+                    except Exception:
+                        pass
+                    ctx = None
+            if ctx is None:
+                continue
+            for nid, rec in ctx.node_activity.items():
+                if filter_ids is not None and nid not in filter_ids:
+                    continue
+                agg = aggregated.setdefault(nid, {
+                    'last_accessed': '',
+                    'activation': 0.0,
+                    'access_count': 0,
+                    'session_count': 0,
+                })
+                ts = str(rec.get('last_accessed', '') or '')
+                if ts > agg['last_accessed']:
+                    agg['last_accessed'] = ts
+                act = float(rec.get('activation', 0.0))
+                if act > agg['activation']:
+                    agg['activation'] = act
+                agg['access_count'] += int(rec.get('access_count', 0))
+                agg['session_count'] += 1
+        return aggregated
+
     def discard_session_context(self, session_id: str) -> None:
         """Save + drop a session's cached SessionContext. Called from
         SessionEnd hook for clean shutdown of that session.
