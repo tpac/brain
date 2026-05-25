@@ -46,14 +46,13 @@ EXAMPLE_4_OLD = '''    {type: "correction", title: "Ask the daemon, don't probe 
 EXAMPLE_4_NEW = '''    {type: "correction", title: "Ask the daemon, don't probe flag files",
      content: "Anchor proposed gating encoding-agent runs via a flag file the agent would check each cycle. Tom redirected: have the daemon return the prompt directly (or NONE) — Anchor just asks. The authority decides AND ships the work or the no-op; Anchor never inspects state. Generalizes beyond gating: any read-modify-write boundary where staleness can't be detected by the reader should eliminate the read instead of guarding it.",
      situation: "When designing gating mechanisms, hook coordination, or any ask-vs-check boundary where the reader can't verify how stale a snapshot is",
-     reasoning: "Tom rejected Anchor's flag-file proposal directly. Race conditions felt obvious to Anchor; staleness didn't — the reframe Tom forced (control-by-request rather than control-by-inspection) generalizes the lesson beyond this one design.",
+     reasoning: "Tom rejected Anchor's flag-file proposal directly. Race conditions felt obvious to Anchor; staleness didn't — the reframe Tom forced (control-by-request rather than control-by-inspection) generalizes the lesson beyond this one design. The correction-lineage edge below is illustrative — at encode time, target the real prior-belief node in the catalog.",
      user_raw_quote: "no don't use a flag file, have the daemon return the prompt directly",
      anchor_raw_quote: "Stale-flag was the failure mode I missed — race conditions felt obvious, staleness didn't. The reframe lands: the authority decides AND ships, callers don't peek.",
      correction_pattern: "Control-by-request rather than control-by-inspection",
      event_time: "2026-04-22",
      connect_to: [
-       {title: "Flag-file boot protocol (Anchor's rejected proposal)", relation: "corrects", why: "names the specific design this correction ruled out — the polling flag file Anchor proposed in 2026-04-22 design work. The corrects edge gives the correction substrate (correction_improvement aspect) walkable lineage from rule back to mistake."},
-       {title: "Single-writer invariant beats clever concurrency", relation: "parallels", why: "same shape at a different layer — locks address concurrent-write contention; control-by-request addresses concurrent-read staleness. Both: eliminate the shared mutable state instead of guarding it."}
+       {title: "<the specific prior design this corrects — resolve to the real catalog node>", relation: "corrects", why: "the corrects edge gives the correction substrate (correction_improvement aspect) walkable lineage from rule back to the mistake it ruled out. EXAMPLE TARGET — at encode time, replace with the actual catalog node title for the prior belief being corrected, or omit the edge if no such node exists yet."}
      ]},'''
 
 
@@ -158,6 +157,37 @@ REVISE_NEW = '''    // FULL revise — operator updated a routine value. The OLD
 # §7.6 BLOCK — wave-1 unique additions
 # ═══════════════════════════════════════════════════════════════
 
+EXAMPLE_DISCLAIMER_HEADER = '''
+**A note on example `connect_to` targets.** The `connect_to` entries
+shown in the canonical training pattern and §7.6 examples reference
+target node titles for shape-demonstration purposes. The targets
+themselves (e.g. "Daemon TCP migration", "Voice verbatim or empty",
+"The brain as identity, not tool") may or may not exist as real
+catalog nodes — they're illustrative of the edge SHAPE, not directions
+to write that exact title verbatim.
+
+**At encode time**: only emit `connect_to` entries whose target title
+matches a node visible in this conversation's node catalog OR a sibling
+node being created in the same `remember_batch` call. If the example
+shape suggests an edge but no real catalog node fits the target slot,
+either:
+- Skip the edge entirely (no harm — graph stays clean)
+- Use the closest semantically-aligned catalog node instead
+- Resolve to a sibling node by title if one is being created in the same batch
+
+The `connect_to_unresolved` error fires when a target title resolves
+to nothing — that's the loud signal the catalog didn't contain the
+node you expected. Common cause: copying an example target verbatim
+instead of resolving against the live catalog.
+
+'''
+
+
+# Insert the disclaimer before the canonical training pattern (above the
+# "Example round 1" header). Sonnet reads it before encountering the
+# fictional connect_to targets.
+CANONICAL_ANCHOR = "Example round 1 — five nodes showing full shape across type tags."
+
 SECTION_7_6_HEADER = '''
 ## Identity-bearing examples (§7.6)
 
@@ -210,6 +240,16 @@ def assemble_v20():
         edit_status.append('  ✓ §7.6 block inserted before Encoding Journal')
     else:
         edit_status.append('  ✗ §7.6 insertion anchor not found')
+
+    # Insert the connect_to disclaimer ABOVE the canonical training pattern
+    # so Sonnet reads it before encountering example fictional targets.
+    if CANONICAL_ANCHOR in prompt:
+        prompt = prompt.replace(
+            CANONICAL_ANCHOR,
+            EXAMPLE_DISCLAIMER_HEADER + '\n' + CANONICAL_ANCHOR, 1)
+        edit_status.append('  ✓ connect_to disclaimer inserted before canonical pattern')
+    else:
+        edit_status.append('  ✗ canonical pattern anchor not found')
 
     return prompt, edit_status
 
