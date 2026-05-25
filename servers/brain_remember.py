@@ -648,6 +648,31 @@ class BrainRememberMixin:
         )
         self._maybe_commit()
 
+        # Encode-time voice fidelity validation (Phase B+ structural backup).
+        # A/B testing of v20 surfaced a speaker-misattribution failure mode:
+        # when the conversation has operator-asks-question + anchor-articulates-
+        # principle shape, Sonnet's voice-attribution logic matches content to
+        # field rather than speaker to field — it can land identical strings in
+        # BOTH user_raw_quote and anchor_raw_quote. Prompt teaching alone didn't
+        # catch this (failed across v19, v20.0, v20.1 on the same corpus).
+        # Loud at write boundary so the error surfaces every time it happens.
+        # Non-blocking: write proceeds, but the encoder errors table records the
+        # violation for retrospective audit + future S2Healer-driven cleanup.
+        if (user_raw_quote and anchor_raw_quote
+                and user_raw_quote.strip() == anchor_raw_quote.strip()
+                and len(user_raw_quote.strip()) > 0):
+            self._log_error(
+                'voice_fidelity_identical_strings',
+                ValueError(
+                    "user_raw_quote == anchor_raw_quote on node %s "
+                    "(type=%s, title=%r). Voice fields are for different "
+                    "speakers; identical strings indicate Sonnet matched "
+                    "content-to-field rather than speaker-to-field. "
+                    "Quote: %r" % (
+                        node_id, type, (title or '')[:80],
+                        user_raw_quote.strip()[:160])),
+                'encode-time voice fidelity check')
+
         # Store all metadata via unified path — promoted, emergent, and extra fields.
         _meta_fields = {}
         # Promoted fields passed as explicit args
