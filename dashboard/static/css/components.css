@@ -179,3 +179,47 @@
 .code--purple { border-left: 3px solid var(--accent-purple); background: #0a0a12; color: #b8b8d8; max-height: 500px; }
 .code--green  { border-left: 3px solid var(--accent-green);  background: #0d1117; color: #b8d8b8; max-height: 300px; }
 .code--cyan   { border-left: 3px solid var(--accent-cyan);   background: #0d1117; color: #c8b8d8; max-height: 400px; }
+
+/* ── Encoding feed sub-shapes ──────────────────────────────────────── */
+/* Reused patterns inside loadEncodingActivity's rendered cards. Replace
+ * the inline-style soup with semantic classes. New encoding-feed code
+ * should reach for these instead of hand-rolling padding+color+font. */
+.enc-tier-row { padding: 2px 0; color: var(--text-muted); font-size: var(--fs-sm); }
+.enc-sub-row { margin: 2px 0; padding: 4px 8px; }
+.enc-sub-row--clickable { cursor: pointer; }
+.enc-sub-row--archived  { opacity: 0.6; }
+.enc-meta-line       { color: var(--text-muted); font-size: var(--fs-xs); margin-top: 2px; padding-left: 4px; }
+.enc-meta-line--dim  { color: var(--text-subtle); }
+.enc-meta-line--warn { color: #aa8800; }
+.enc-empty-note { color: var(--text-subtle); font-size: var(--fs-sm); padding: 4px 8px; }
+.feed-empty     { color: var(--text-muted); padding: 20px; text-align: center; }
+.hook-body--padded { padding: 4px 12px; }
+
+/* ── Insights panel (Live tab top) ─────────────────────────────────── */
+/* Runtime-signal cards rendered above the activity stream. Severity
+ * controls the left accent stripe + title color. */
+.insights-panel { padding: 8px; }
+.insights-panel:empty { display: none; }
+.insights-card {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  margin: 4px 0;
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  border-left: 3px solid var(--border-base);
+}
+.insights-card--low    { border-left-color: var(--accent-blue); }
+.insights-card--medium { border-left-color: var(--accent-amber); }
+.insights-card--high   { border-left-color: var(--accent-red); }
+.insights-icon  { font-size: 18px; line-height: 1.4; flex-shrink: 0; }
+.insights-body  { flex: 1; min-width: 0; }
+.insights-title { font-weight: bold; color: var(--text-heading); font-size: var(--fs-md); }
+.insights-card--medium .insights-title { color: var(--accent-amber); }
+.insights-card--high   .insights-title { color: var(--accent-red); }
+.insights-detail {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  margin-top: 4px;
+  line-height: 1.4;
+}

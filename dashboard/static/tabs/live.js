@@ -214,6 +214,28 @@ async function pollRecallLog() {
   } catch(e) { console.error('pollRecallLog error:', e); }
 }
 
+// Insights renderer — pure subscriber on `insights:tick`. Replaces the
+// panel's contents on every tick. The :empty CSS pseudo-class collapses
+// padding when nothing fires, so the feed stays tight on a healthy brain.
+function _renderInsightsPanel({ insights }) {
+  const panel = document.getElementById('insights-panel');
+  if (!panel) return;
+  if (!insights || !insights.length) {
+    panel.innerHTML = '';
+    return;
+  }
+  panel.innerHTML = insights.map(i => {
+    const sev = (i.severity || 'low').toLowerCase();
+    return '<div class="insights-card insights-card--' + escapeHtml(sev) + '">' +
+      '<div class="insights-icon">' + (i.icon || '') + '</div>' +
+      '<div class="insights-body">' +
+        '<div class="insights-title">' + escapeHtml(i.title || '') + '</div>' +
+        '<div class="insights-detail">' + escapeHtml(i.detail || '') + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
 // Renderer — pure subscriber. Knows nothing about the network; just maps
 // an event to a DOM node (insert new, replace existing when judge_output
 // arrives for a pending entry).
@@ -385,13 +407,13 @@ function _renderS2ChainEntry(chain) {
   }
   h += '</div>';
 
-  h += '<div class="hook-body" style="padding:4px 12px">';
+  h += '<div class="hook-body hook-body--padded">';
   if (oEvent) {
-    h += '<div style="padding:2px 0;color:#888;font-size:11px">';
+    h += '<div class="enc-tier-row">';
     h += '<strong style="color:' + badgeColor + '">O (observed):</strong> ' + escapeHtml(oEvent.summary || '') + '</div>';
   }
   if (kEvent) {
-    h += '<div style="padding:2px 0;color:#888;font-size:11px">';
+    h += '<div class="enc-tier-row">';
     h += '<strong style="color:#ffaa33">K (proposals):</strong> ' + escapeHtml(kEvent.summary || '') + '</div>';
 
     if (isConsolidation && kEvent.metadata) {
@@ -435,7 +457,7 @@ function _renderS2ChainEntry(chain) {
                    d.ref_type === 'community_enriched' ? '#aa66ff' :
                    d.ref_type === 'consolidated' ? '#33ff88' :
                    d.ref_type === 'recall_quality_signal' ? '#ff6666' : '#888';
-    h += '<div style="padding:2px 0;color:#888;font-size:11px">';
+    h += '<div class="enc-tier-row">';
     h += '<strong style="color:' + color + '">Δ ' + escapeHtml(d.ref_type || '') + ':</strong> ';
     h += escapeHtml(d.summary || '') + '</div>';
   });
@@ -462,7 +484,7 @@ async function loadEncodingActivity() {
 
     if (!runsD.runs || !runsD.runs.length) {
       if (!encodingLoaded) {
-        container.innerHTML = '<div style="color:#666;padding:20px;text-align:center">No recent encoding runs</div>';
+        container.innerHTML = '<div class="feed-empty">No recent encoding runs</div>';
       }
       encodingLoaded = true;
       return;
@@ -553,37 +575,37 @@ async function loadEncodingActivity() {
           html += '<div class="hook-prompt">' + escapeHtml(run.k_summary || run.o_summary || '') + '</div>';
         }
 
-        html += '<div class="hook-body" style="padding:4px 12px">';
+        html += '<div class="hook-body hook-body--padded">';
 
         if (isConsol) {
           for (const n of (run.synthesized || [])) {
-            html += '<div class="enc-entry created" data-kind="created" style="margin:2px 0;padding:4px 8px;cursor:pointer" onclick="loadNodeDetail(&quot;' + (n.id||'') + '&quot;)">' +
+            html += '<div class="enc-entry enc-sub-row enc-sub-row--clickable created" data-kind="created" onclick="loadNodeDetail(&quot;' + (n.id||'') + '&quot;)">' +
               '<span class="enc-kind created">SYNTHESIZED</span> ' +
               '<span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ' +
               '<span class="enc-title">' + escapeHtml(n.title || '') + '</span>' +
-              (n.content ? '<div style="color:#888;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml((n.content||'').substring(0, 400)) + '</div>' : '') +
+              (n.content ? '<div class="enc-meta-line">' + escapeHtml((n.content||'').substring(0, 400)) + '</div>' : '') +
               '</div>';
           }
           for (const n of (run.archived || [])) {
-            html += '<div class="enc-entry" style="margin:2px 0;padding:4px 8px;opacity:0.6;cursor:pointer" onclick="loadNodeDetail(&quot;' + (n.id||'') + '&quot;)">' +
+            html += '<div class="enc-entry enc-sub-row enc-sub-row--clickable enc-sub-row--archived" onclick="loadNodeDetail(&quot;' + (n.id||'') + '&quot;)">' +
               '<span class="enc-kind" style="background:#663333;color:#ff8888">ARCHIVED</span> ' +
               '<span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ' +
               '<span class="enc-title">' + escapeHtml(n.title || '') + '</span>' +
-              (n.content ? '<div style="color:#666;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml((n.content||'').substring(0, 250)) + '</div>' : '') +
+              (n.content ? '<div class="enc-meta-line enc-meta-line--dim">' + escapeHtml((n.content||'').substring(0, 250)) + '</div>' : '') +
               '</div>';
           }
           for (const e of (run.evolved || [])) {
-            html += '<div class="enc-entry" style="margin:2px 0;padding:4px 8px">' +
+            html += '<div class="enc-entry enc-sub-row">' +
               '<span class="enc-kind" style="background:#444400;color:#ffcc00">EVOLVED</span> ' +
               escapeHtml(e.survivor || '') + ' <span style="color:#ffcc00">supersedes</span> ' +
               '<span style="opacity:0.6">' + escapeHtml(e.archived || '') + '</span></div>';
           }
           for (const e of (run.kept || [])) {
-            html += '<div class="enc-entry" style="margin:2px 0;padding:4px 8px">' +
+            html += '<div class="enc-entry enc-sub-row">' +
               '<span class="enc-kind" style="background:#003344;color:#45B7D1">KEPT</span> ' +
               escapeHtml(e.source || '') + ' <span style="color:#45B7D1">↔</span> ' +
               escapeHtml(e.target || '') +
-              (e.description ? '<div style="color:#666;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml(e.description.substring(0, 250)) + '</div>' : '') +
+              (e.description ? '<div class="enc-meta-line enc-meta-line--dim">' + escapeHtml(e.description.substring(0, 250)) + '</div>' : '') +
               '</div>';
           }
           if (run.journal) {
@@ -592,15 +614,15 @@ async function loadEncodingActivity() {
           }
         }
         if (isHealer) {
-          if (run.o_summary) html += '<div style="padding:2px 0;color:#888;font-size:11px"><strong style="color:' + color + '">O ' + escapeHtml(run.o_ref_type || '') + ':</strong> ' + escapeHtml(run.o_summary) + '</div>';
-          if (run.k_summary) html += '<div style="padding:2px 0;color:#888;font-size:11px"><strong style="color:#ffaa33">K ' + escapeHtml(run.k_ref_type || '') + ':</strong> ' + escapeHtml(run.k_summary) + '</div>';
-          if (run.summary) html += '<div style="padding:2px 0;color:#888;font-size:11px"><strong style="color:#33ff88">Δ ' + escapeHtml(run.ref_type || 'healer_generated') + ':</strong> ' + escapeHtml(run.summary) + '</div>';
+          if (run.o_summary) html += '<div class="enc-tier-row"><strong style="color:' + color + '">O ' + escapeHtml(run.o_ref_type || '') + ':</strong> ' + escapeHtml(run.o_summary) + '</div>';
+          if (run.k_summary) html += '<div class="enc-tier-row"><strong style="color:#ffaa33">K ' + escapeHtml(run.k_ref_type || '') + ':</strong> ' + escapeHtml(run.k_summary) + '</div>';
+          if (run.summary) html += '<div class="enc-tier-row"><strong style="color:#33ff88">Δ ' + escapeHtml(run.ref_type || 'healer_generated') + ':</strong> ' + escapeHtml(run.summary) + '</div>';
         } else if (isConsol) {
           html += '<div class="consol-prompt-body" style="display:none"><pre style="white-space:pre-wrap;color:#aaa;font-size:10px;max-height:600px;overflow-y:auto">Loading...</pre></div>';
         } else {
-          if (run.o_summary) html += '<div style="padding:2px 0;color:#888;font-size:11px"><strong style="color:#45B7D1">O:</strong> ' + escapeHtml(run.o_summary) + '</div>';
-          if (run.k_summary) html += '<div style="padding:2px 0;color:#888;font-size:11px"><strong style="color:#ffaa33">K:</strong> ' + escapeHtml(run.k_summary) + '</div>';
-          if (run.summary) html += '<div style="padding:2px 0;color:#888;font-size:11px"><strong style="color:#33ff88">Δ:</strong> ' + escapeHtml(run.summary) + '</div>';
+          if (run.o_summary) html += '<div class="enc-tier-row"><strong style="color:#45B7D1">O:</strong> ' + escapeHtml(run.o_summary) + '</div>';
+          if (run.k_summary) html += '<div class="enc-tier-row"><strong style="color:#ffaa33">K:</strong> ' + escapeHtml(run.k_summary) + '</div>';
+          if (run.summary) html += '<div class="enc-tier-row"><strong style="color:#33ff88">Δ:</strong> ' + escapeHtml(run.summary) + '</div>';
 
           for (const c of (run.communities || [])) {
             const matColor = c.maturity === 'settled' ? '#33ff88' :
@@ -611,15 +633,15 @@ async function loadEncodingActivity() {
               '<span style="color:' + matColor + ';font-size:10px;font-weight:bold;margin-right:4px">' + (c.maturity||'?').toUpperCase() + '</span>' +
               '<span class="enc-title">' + escapeHtml(c.title || '') + '</span>' +
               '<span style="color:#666;font-size:10px;margin-left:6px">' + (c.members||0) + ' members</span>' +
-              (c.narrative ? '<div style="color:#888;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml(c.narrative) + '</div>' : '') +
-              (c.content ? '<div style="color:#666;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml((c.content||'').substring(0, 300)) + '</div>' : '') +
-              (c.open_questions ? '<div style="color:#aa8800;font-size:10px;margin-top:2px;padding-left:4px">Open: ' + escapeHtml(c.open_questions) + '</div>' : '') +
+              (c.narrative ? '<div class="enc-meta-line">' + escapeHtml(c.narrative) + '</div>' : '') +
+              (c.content ? '<div class="enc-meta-line enc-meta-line--dim">' + escapeHtml((c.content||'').substring(0, 300)) + '</div>' : '') +
+              (c.open_questions ? '<div class="enc-meta-line enc-meta-line--warn">Open: ' + escapeHtml(c.open_questions) + '</div>' : '') +
               '</div>';
           }
         }
 
         if (!actionCount && !run.summary) {
-          html += '<div style="color:#555;font-size:11px;padding:4px 8px">(no write actions)</div>';
+          html += '<div class="enc-empty-note">(no write actions)</div>';
         }
         html += '</div>';
 
@@ -650,19 +672,19 @@ async function loadEncodingActivity() {
         html += '<div class="hook-prompt">' + escapeHtml(run.prompt_info) + '</div>';
       }
 
-      html += '<div class="hook-body" style="padding:4px 12px">';
+      html += '<div class="hook-body hook-body--padded">';
       for (const n of (run.nodes || [])) {
         const kind = n.kind === 'revised' ? 'REVISED' : 'CREATED';
         const kindClass = n.kind === 'revised' ? 'revised' : 'created';
-        html += '<div class="enc-entry ' + kindClass + '" data-kind="' + kindClass + '" style="margin:2px 0;padding:4px 8px;cursor:pointer" onclick="loadNodeDetail(&quot;' + (n.id||'') + '&quot;)">' +
+        html += '<div class="enc-entry enc-sub-row enc-sub-row--clickable ' + kindClass + '" data-kind="' + kindClass + '" onclick="loadNodeDetail(&quot;' + (n.id||'') + '&quot;)">' +
           '<span class="enc-kind ' + kindClass + '">' + kind + '</span> ' +
           '<span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ' +
           '<span class="enc-title">' + escapeHtml(n.title || '') + '</span>' +
-          (n.content ? '<div style="color:#888;font-size:10px;margin-top:2px;padding-left:4px">' + escapeHtml((n.content||'').substring(0, 150)) + '</div>' : '') +
+          (n.content ? '<div class="enc-meta-line">' + escapeHtml((n.content||'').substring(0, 150)) + '</div>' : '') +
           '</div>';
       }
       for (const e of (run.edges || []).slice(0, 8)) {
-        html += '<div class="enc-entry connected" data-kind="connected" style="margin:2px 0;padding:4px 8px">' +
+        html += '<div class="enc-entry enc-sub-row connected" data-kind="connected">' +
           '<span class="enc-kind connected">CONNECTED</span> ' +
           escapeHtml(e.source_title || '') + ' <span style="color:#aa66ff">—' + (e.relation||'') + '→</span> ' +
           escapeHtml(e.target_title || '') + '</div>';
@@ -671,7 +693,7 @@ async function loadEncodingActivity() {
         html += '<div style="color:#555;font-size:10px;padding:2px 8px">+' + ((run.edges || []).length - 8) + ' more edges</div>';
       }
       if (!(run.nodes || []).length && !(run.edges || []).length) {
-        html += '<div style="color:#555;font-size:11px;padding:4px 8px">(no write actions)</div>';
+        html += '<div class="enc-empty-note">(no write actions)</div>';
       }
       html += '</div>';
 
@@ -855,7 +877,7 @@ function _setupDivider() {
 export function init() {
   // Placeholder while the feed waits for the first poll fire.
   const feed = document.getElementById('feed-decoding');
-  feed.innerHTML = '<div class="hook-placeholder" style="color:#666;padding:20px;text-align:center">Waiting for brain activity...</div>';
+  feed.innerHTML = '<div class="hook-placeholder" class="feed-empty">Waiting for brain activity...</div>';
 
   _restoreLayout();
   _setupDivider();
@@ -864,6 +886,29 @@ export function init() {
   // same topic in its own init() — both react to the bus event stream
   // independently.
   bus.subscribe('recall:event', _renderRecallEvent);
+  bus.subscribe('insights:tick', _renderInsightsPanel);
+
+  // Insights — slow poll (60s), gated on Live tab visible. Same bus
+  // pattern as `recall:event`: the fetcher only publishes; the renderer
+  // is a separate subscriber. Adding a "insights count" tab-bar badge
+  // later means subscribing in app.js, not editing this fetcher.
+  poll.register({
+    key: 'insights-live',
+    interval: 60000,
+    activeWhen: () => document.getElementById('tab-live').classList.contains('active'),
+    fetcher: async () => {
+      try {
+        const env = await api.insightsLive();
+        // envelope_ok: { status: 'success', data: [...] }
+        // envelope_error: { status: 'error', error: '...' }
+        if (env && env.status === 'success') {
+          bus.publish('insights:tick', { insights: env.data || [] });
+        } else if (env && env.status === 'error') {
+          console.error('[live] insights endpoint error:', env.error);
+        }
+      } catch (e) { console.error('[live] insights fetch failed:', e); }
+    },
+  });
 
   // Recall feed — 2s cadence, only when the Live tab is open AND on the
   // decoding sub-feed. Inactive tabs get zero polls.

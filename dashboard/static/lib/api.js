@@ -88,6 +88,7 @@ export const api = {
   status:              ()       => get('/api/status'),
   systemStatus:        ()       => get('/api/system-status'),
   insights:            ()       => get('/api/insights'),
+  insightsLive:        ()       => get('/api/insights/live'),
   aspects:             ()       => get('/api/aspects'),
   sessions:            ()       => get('/api/sessions'),
   recalls:             (p = {}) => get('/api/recalls' + _qs(p)),

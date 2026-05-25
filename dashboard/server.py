@@ -17,12 +17,14 @@ from urllib.parse import urlparse, parse_qs
 
 from . import log as dashboard_log
 from .daemon_client import DAEMON_PORT, daemon_alive
+from . import contract
 from .queries import (
     aspects,
     encoding,
     errors,
     explorer,
     graph,
+    insights_scanner,
     legacy,
     recalls,
     s2_runs,
@@ -84,6 +86,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._json(200, {"status": system.check_system_status()})
         elif path == "/api/insights":
             self._json(200, {"insights": stats.query_insights()})
+        elif path == "/api/insights/live":
+            # First adopter of the Prometheus envelope. Phase 2 migration
+            # policy: new endpoints emit the envelope; existing routes
+            # convert when their caller's render is being rewritten.
+            self._json(200, contract.envelope_ok(insights_scanner.scan_all()))
         elif path == "/api/aspects":
             self._json(200, {"aspects": aspects.query_aspects()})
         elif path == "/api/dashboard-errors":

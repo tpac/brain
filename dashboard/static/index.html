@@ -74,6 +74,11 @@
     </div>
     <div class="live-divider" id="live-divider" title="Drag to resize"></div>
     <div class="live-pane live-pane--stream">
+      <!-- Insights panel — runtime-signal cards. Empty by default;
+           the :empty CSS pseudo-class collapses padding when nothing
+           is firing so the feed stays tight. Populated by live.js
+           subscribing to the `insights:tick` bus topic. -->
+      <div id="insights-panel" class="insights-panel"></div>
       <div class="feed-toggle">
         <button class="feed-btn active" onclick="switchFeed('decoding')">Decoding</button>
         <button class="feed-btn" onclick="switchFeed('encoding')">Encoding <span id="enc-badge" class="notif"></span></button>
