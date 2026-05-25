@@ -145,6 +145,7 @@ async function loadSessions() {
 window.switchTab             = switchTab;
 window.toggleOverflowMenu    = toggleOverflowMenu;
 window.switchFeed            = live.switchFeed;
+window.setLiveLayout         = live.setLiveLayout;
 window.onSessionFilterChange = live.onSessionFilterChange;
 window.filterByScale         = live.filterByScale;
 window.toggleHookBody        = live.toggleHookBody;

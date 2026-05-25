@@ -47,6 +47,15 @@
   <div class="stats-bar" id="stats-bar"></div>
   <div id="daemon-banner"></div>
   <div class="live-split" id="live-split">
+    <!-- Layout picker floats over the split. The unicode glyphs depict
+         the four orientations: graph left / right / top / bottom.
+         Active button gets the accent color via JS. -->
+    <div class="live-layout-picker" role="group" aria-label="Live tab layout">
+      <button class="live-layout-btn" data-layout="graph-left"   title="Graph on left"     onclick="setLiveLayout('graph-left')">&#9703;</button>
+      <button class="live-layout-btn" data-layout="graph-right"  title="Graph on right"    onclick="setLiveLayout('graph-right')">&#9704;</button>
+      <button class="live-layout-btn" data-layout="graph-top"    title="Graph on top"      onclick="setLiveLayout('graph-top')">&#11154;</button>
+      <button class="live-layout-btn" data-layout="graph-bottom" title="Graph on bottom"   onclick="setLiveLayout('graph-bottom')">&#11155;</button>
+    </div>
     <div class="live-pane live-pane--graph">
       <div class="graph-container">
         <div class="graph-controls">

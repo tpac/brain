@@ -722,29 +722,98 @@ export function toggleConsolPrompt(entry)  {
   });
 }
 
-// ── Split divider drag ────────────────────────────────────────────────
-// User drags the divider; we update grid-template-columns directly. The
-// resulting graphPct is persisted to localStorage and published on
-// `live:layout` so the graph module can re-fit its renderer.
+// ── Live split layout ─────────────────────────────────────────────────
+// Four orientations: graph-left / graph-right / graph-top / graph-bottom.
+//
+// Single state-driven function (_applyLayout) sets:
+//   - grid-template-columns OR grid-template-rows on .live-split
+//   - "graph-first" vs "graph-last" child order via CSS class
+//   - "layout--horizontal" vs "layout--vertical" for cursor + axis
+//
+// The divider drag computes a new graphPct from the mouse position along
+// the active axis; if graph is on the FAR side (right/bottom), the drag
+// direction inverts (dragging away from graph shrinks it, toward expands).
+//
+// graphPct is "the graph pane's share of the split, 0-100", regardless of
+// orientation. Both mode + pct persist to localStorage so the layout
+// survives reloads.
 
-const SPLIT_STORAGE_KEY = 'dashboard.liveSplitPct';
-const SPLIT_DEFAULT_PCT = 60;
+const LAYOUT_MODE_KEY = 'dashboard.liveLayoutMode';
+const LAYOUT_PCT_KEY  = 'dashboard.liveSplitPct';
+const LAYOUT_DEFAULT_MODE = 'graph-left';
+const LAYOUT_DEFAULT_PCT  = 60;
 
-function _applySplit(pct) {
+// mode → { axis: 'columns'|'rows', graphFirst: bool }
+const LAYOUTS = {
+  'graph-left':   { axis: 'columns', graphFirst: true  },
+  'graph-right':  { axis: 'columns', graphFirst: false },
+  'graph-top':    { axis: 'rows',    graphFirst: true  },
+  'graph-bottom': { axis: 'rows',    graphFirst: false },
+};
+
+let _layoutMode = LAYOUT_DEFAULT_MODE;
+let _graphPct = LAYOUT_DEFAULT_PCT;
+
+function _applyLayout(mode, graphPct) {
   const split = document.getElementById('live-split');
   if (!split) return;
-  const clamped = Math.max(0, Math.min(100, pct));
-  split.style.gridTemplateColumns = `${clamped}fr 6px ${100 - clamped}fr`;
-  bus.publish('live:layout', { graphPct: clamped });
+  const cfg = LAYOUTS[mode] || LAYOUTS[LAYOUT_DEFAULT_MODE];
+  const pct = Math.max(0, Math.min(100, graphPct));
+
+  // Cache state for the drag handler + persistence.
+  _layoutMode = mode;
+  _graphPct = pct;
+
+  // Set grid template along the active axis only; the other axis fills.
+  const sizing = cfg.graphFirst
+    ? `${pct}fr 6px ${100 - pct}fr`
+    : `${100 - pct}fr 6px ${pct}fr`;
+  if (cfg.axis === 'columns') {
+    split.style.gridTemplateColumns = sizing;
+    split.style.gridTemplateRows = '1fr';
+  } else {
+    split.style.gridTemplateRows = sizing;
+    split.style.gridTemplateColumns = '1fr';
+  }
+
+  // Reset then apply layout classes — drives order (which child sits in
+  // which cell) and cursor (ew vs ns).
+  split.classList.remove('layout--horizontal', 'layout--vertical', 'graph-first', 'graph-last');
+  split.classList.add(cfg.axis === 'columns' ? 'layout--horizontal' : 'layout--vertical');
+  split.classList.add(cfg.graphFirst ? 'graph-first' : 'graph-last');
+
+  // Mark the active picker button.
+  document.querySelectorAll('.live-layout-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.layout === mode);
+  });
+
+  bus.publish('live:layout', { mode, graphPct: pct });
 }
 
-function _restoreSplit() {
-  let pct = SPLIT_DEFAULT_PCT;
+function _restoreLayout() {
+  let mode = LAYOUT_DEFAULT_MODE;
+  let pct  = LAYOUT_DEFAULT_PCT;
   try {
-    const saved = parseFloat(localStorage.getItem(SPLIT_STORAGE_KEY));
-    if (!Number.isNaN(saved) && saved >= 0 && saved <= 100) pct = saved;
-  } catch (e) { /* localStorage may be blocked; fall back to default */ }
-  _applySplit(pct);
+    const savedMode = localStorage.getItem(LAYOUT_MODE_KEY);
+    if (savedMode && LAYOUTS[savedMode]) mode = savedMode;
+    const savedPct = parseFloat(localStorage.getItem(LAYOUT_PCT_KEY));
+    if (!Number.isNaN(savedPct) && savedPct >= 0 && savedPct <= 100) pct = savedPct;
+  } catch (e) { /* localStorage may be blocked; defaults are fine */ }
+  _applyLayout(mode, pct);
+}
+
+function _persistLayout() {
+  try {
+    localStorage.setItem(LAYOUT_MODE_KEY, _layoutMode);
+    localStorage.setItem(LAYOUT_PCT_KEY, String(_graphPct));
+  } catch (e) { /* blocked storage → silently skip */ }
+}
+
+// Public — called by the picker buttons via window.setLiveLayout.
+export function setLiveLayout(mode) {
+  if (!LAYOUTS[mode]) return;
+  _applyLayout(mode, _graphPct);
+  _persistLayout();
 }
 
 function _setupDivider() {
@@ -761,22 +830,23 @@ function _setupDivider() {
   });
   document.addEventListener('mousemove', (e) => {
     if (!dragging) return;
+    const cfg = LAYOUTS[_layoutMode];
     const rect = split.getBoundingClientRect();
-    const pct = ((e.clientX - rect.left) / rect.width) * 100;
-    _applySplit(pct);
+    // Mouse position along the active axis, as a 0-100 fraction.
+    const raw = cfg.axis === 'columns'
+      ? ((e.clientX - rect.left) / rect.width) * 100
+      : ((e.clientY - rect.top)  / rect.height) * 100;
+    // When graph is on the FAR side, invert — moving toward graph
+    // shrinks the FIRST pane, growing graph.
+    const pct = cfg.graphFirst ? raw : 100 - raw;
+    _applyLayout(_layoutMode, pct);
   });
   document.addEventListener('mouseup', () => {
     if (!dragging) return;
     dragging = false;
     divider.classList.remove('dragging');
     split.classList.remove('dragging');
-    // Persist final value. Read it back from the inline style — _applySplit
-    // already clamped it.
-    const cols = split.style.gridTemplateColumns || '';
-    const m = cols.match(/^(\d+(?:\.\d+)?)fr/);
-    if (m) {
-      try { localStorage.setItem(SPLIT_STORAGE_KEY, m[1]); } catch (e) {}
-    }
+    _persistLayout();
   });
 }
 
@@ -787,7 +857,7 @@ export function init() {
   const feed = document.getElementById('feed-decoding');
   feed.innerHTML = '<div class="hook-placeholder" style="color:#666;padding:20px;text-align:center">Waiting for brain activity...</div>';
 
-  _restoreSplit();
+  _restoreLayout();
   _setupDivider();
 
   // Renderer subscribes here once. The graph module subscribes to the

@@ -98,36 +98,84 @@ canvas { width: 100%; height: 100%; }
 #tab-live > .stats-bar, #tab-live > #daemon-banner { flex-shrink: 0; }
 
 /* ── Live split: graph | divider | stream ───────────────────────────── */
-/* Grid-based: the divider drag updates grid-template-columns at runtime. */
+/* Grid-based. JS sets grid-template-columns OR -rows + child `order`
+ * based on the active layout (4 modes: graph-left/right/top/bottom).
+ * The divider drag updates the active template at runtime. */
 .live-split {
   display: grid;
-  grid-template-columns: 60fr 6px 40fr;
   flex: 1;
   min-height: 0;
+  position: relative;   /* anchors the absolutely-positioned layout picker */
 }
-.live-pane { overflow: hidden; position: relative; min-width: 0; }
+.live-pane { overflow: hidden; position: relative; min-width: 0; min-height: 0; }
 .live-pane--graph .graph-container {
   position: relative;
   height: 100%;
 }
-.live-pane--stream { overflow-y: auto; border-left: 1px solid var(--border-faint); }
+.live-pane--stream { overflow-y: auto; }
 .live-divider {
   background: var(--border-base);
   cursor: ew-resize;
   transition: background 0.15s;
   position: relative;
 }
+.live-split.layout--vertical .live-divider { cursor: ns-resize; }
 .live-divider::before {
-  /* Wider hit-target than the visible line. */
+  /* Wider hit-target than the visible line — same trick works for both
+   * axes since the pseudo-element grows in whichever dimension is short. */
   content: '';
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: -3px;
+  bottom: -3px;
   left: -3px;
   right: -3px;
 }
 .live-divider:hover, .live-divider.dragging { background: var(--accent-blue); }
-.live-split.dragging { user-select: none; cursor: ew-resize; }
+.live-split.dragging { user-select: none; }
+.live-split.layout--horizontal.dragging { cursor: ew-resize; }
+.live-split.layout--vertical.dragging   { cursor: ns-resize; }
+
+/* Child order — flipped by JS when the active layout puts graph last
+ * (graph-right / graph-bottom). Grid respects `order` exactly like flex. */
+.live-split.graph-first .live-pane--graph  { order: 0; }
+.live-split.graph-first .live-divider      { order: 1; }
+.live-split.graph-first .live-pane--stream { order: 2; }
+.live-split.graph-last  .live-pane--stream { order: 0; }
+.live-split.graph-last  .live-divider      { order: 1; }
+.live-split.graph-last  .live-pane--graph  { order: 2; }
+
+/* ── Layout picker (4 orientation buttons, top-right corner) ────────── */
+.live-layout-picker {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 20;
+  display: flex;
+  gap: 2px;
+  background: rgba(26, 26, 42, 0.85);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-md);
+  padding: 2px;
+  backdrop-filter: blur(4px);
+}
+.live-layout-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0;
+  line-height: 1;
+  font-family: inherit;
+}
+.live-layout-btn:hover { background: var(--bg-raised); color: var(--text-heading); }
+.live-layout-btn.active { background: var(--bg-raised); color: var(--accent-blue); }
 
 /* ── Top stats bar ──────────────────────────────────────────────────── */
 
