@@ -10,6 +10,11 @@ FK cascade. They don't require a live Brain or embedder.
 Background: the design intent dates back to v9 when the nodes table got a
 `source_turn_id` column (still present, now DEPRECATED). v27 supersedes that
 single-ref legacy with a multi-ref join table.
+
+v29 update (2026-05-25): trace_id columns migrated INTEGER → TEXT (8-char
+hex) for brain-wide ID consistency with nodes and edges. This file's
+assertions reflect the v29 column types; the v27 substrate (tables, indexes,
+FK cascade) is unchanged.
 """
 
 import os
@@ -74,7 +79,8 @@ class NodeSourceRefsTest(unittest.TestCase):
     def test_columns_shape(self):
         cols = _table_columns(self.conn, 'node_source_refs')
         self.assertEqual(cols.get('node_id'), 'TEXT')
-        self.assertEqual(cols.get('trace_id'), 'INTEGER')
+        # v29: trace_id migrated INTEGER → TEXT (8-char hex)
+        self.assertEqual(cols.get('trace_id'), 'TEXT')
         self.assertEqual(cols.get('position'), 'INTEGER')
         self.assertEqual(cols.get('created_at'), 'TEXT')
 
@@ -114,7 +120,8 @@ class NodeSourceRefsTest(unittest.TestCase):
         self.conn.execute(
             "INSERT INTO nodes (id, type, title) VALUES (?, ?, ?)",
             ('node_c', 'concept', 'C'))
-        for trace_id, position in [(1, 1), (2, 2), (3, 3)]:
+        # v29: trace_id is TEXT (8-char hex); test uses canonical hex form.
+        for trace_id, position in [('00000001', 1), ('00000002', 2), ('00000003', 3)]:
             self.conn.execute(
                 "INSERT INTO node_source_refs (node_id, trace_id, position, created_at) "
                 "VALUES (?, ?, ?, ?)",
@@ -123,7 +130,8 @@ class NodeSourceRefsTest(unittest.TestCase):
             "SELECT trace_id FROM node_source_refs WHERE node_id = ? "
             "ORDER BY position",
             ('node_c',))
-        self.assertEqual([r[0] for r in cur.fetchall()], [1, 2, 3])
+        self.assertEqual([r[0] for r in cur.fetchall()],
+                         ['00000001', '00000002', '00000003'])
 
 
 class TraceEmbeddingsTest(unittest.TestCase):
@@ -144,28 +152,30 @@ class TraceEmbeddingsTest(unittest.TestCase):
 
     def test_columns_shape(self):
         cols = _table_columns(self.conn, 'trace_embeddings')
-        self.assertEqual(cols.get('trace_id'), 'INTEGER')
+        # v29: trace_id migrated INTEGER → TEXT (8-char hex)
+        self.assertEqual(cols.get('trace_id'), 'TEXT')
         self.assertEqual(cols.get('vector'), 'BLOB')
         self.assertEqual(cols.get('text'), 'TEXT')
         self.assertEqual(cols.get('model'), 'TEXT')
         self.assertEqual(cols.get('created_at'), 'TEXT')
 
     def test_primary_key_prevents_duplicate_trace(self):
+        # v29: trace_id is TEXT (hex). Use canonical hex form for test inputs.
         self.conn.execute(
             "INSERT INTO trace_embeddings (trace_id, vector, text, model, created_at) "
             "VALUES (?, ?, ?, ?, ?)",
-            (1, b'\x00\x01', 'first render', 'nomic', '2026-05-23T00:00:00Z'))
+            ('00000001', b'\x00\x01', 'first render', 'nomic', '2026-05-23T00:00:00Z'))
         with self.assertRaises(sqlite3.IntegrityError):
             self.conn.execute(
                 "INSERT INTO trace_embeddings (trace_id, vector, text, model, created_at) "
                 "VALUES (?, ?, ?, ?, ?)",
-                (1, b'\x02\x03', 'second render', 'nomic', '2026-05-23T00:01:00Z'))
+                ('00000001', b'\x02\x03', 'second render', 'nomic', '2026-05-23T00:01:00Z'))
 
     def test_vector_not_null(self):
         with self.assertRaises(sqlite3.IntegrityError):
             self.conn.execute(
                 "INSERT INTO trace_embeddings (trace_id, vector) VALUES (?, ?)",
-                (1, None))
+                ('00000001', None))
 
 
 class IdempotencyTest(unittest.TestCase):

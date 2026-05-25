@@ -278,6 +278,59 @@ def _handle_backfill_vectors(brain, args, graph_changes):
         node_ids=args.get("node_ids"))}
 
 
+def _validate_source_refs(refs, location: str):
+    """v29 / Phase B Step 4 — validation for source_refs at the write boundary.
+
+    Returns (ok, error|None). Sparseness warning logged separately (non-fatal).
+
+    Rules:
+      - Must be a list (or None — handled by caller as "no refs"; empty list
+        is legitimate per the unified revise contract — explicit clear).
+      - Each item must be a string. Int input rejected loudly (no coercion);
+        v29 contract is hex strings end-to-end (reviewer F2).
+      - Empty strings rejected.
+      - >10 refs logged as a sparseness warning (decision 13: 1-3 typical;
+        well-anchored nodes are <=5; 10+ is a fingerprint of "ref everything"
+        anti-pattern). Non-fatal — write proceeds, log fires.
+    """
+    if refs is None:
+        return True, None
+    if not isinstance(refs, list):
+        return False, "source_refs at %s must be a list, got %s" % (
+            location, type(refs).__name__)
+    for i, r in enumerate(refs):
+        if not isinstance(r, str):
+            return False, ("source_refs[%d] at %s must be an 8-char hex "
+                           "string (v29), got %s (%r)") % (
+                i, location, type(r).__name__, r)
+        if not r.strip():
+            return False, "source_refs[%d] at %s is empty/whitespace" % (i, location)
+    return True, None
+
+
+def _maybe_warn_source_refs_sparseness(brain, refs, location: str):
+    """Log a sparseness warning when source_refs exceeds 10 (decision 13).
+    Non-fatal — the write proceeds. Surfaces systemic over-anchoring.
+
+    Routes through brain._log_warning for rate-limiting + file-log mirror +
+    canonical surface (reviewer F4). The previous direct INSERT into
+    hook_errors was off-schema (that table is for hook script failures, not
+    in-process brain warnings) and had no rate limit — an encoder churning
+    out 50 oversized nodes would spam the table."""
+    if not refs or not isinstance(refs, list):
+        return
+    if len(refs) > 10:
+        try:
+            brain._log_warning(
+                'source_refs_sparseness',
+                'source_refs at %s has %d entries (decision 13: 1-3 '
+                'typical, <=5 well-anchored). Likely over-anchoring; recall '
+                'will dilute rather than focus.' % (location, len(refs)),
+                context='count=%d, location=%s' % (len(refs), location))
+        except Exception:
+            pass  # logging failure must never block the write
+
+
 def _handle_remember(brain, args, graph_changes):
     from .contract import validate_field, get_remember_fields
 
@@ -285,6 +338,13 @@ def _handle_remember(brain, args, graph_changes):
     # it doesn't land in node_metadata_kv as silent metadata. Loads ctx for
     # per-session record_remember + add_to_segment routing inside remember().
     ctx, args = _pop_session_ctx(brain, args)
+
+    # v29 / Phase B Step 4 — validate source_refs shape at the write boundary.
+    refs = args.get('source_refs')
+    ok, err = _validate_source_refs(refs, 'remember')
+    if not ok:
+        return {"ok": False, "error": err}
+    _maybe_warn_source_refs_sparseness(brain, refs, 'remember')
 
     # Validate all provided fields against contract
     for field, value in args.items():
@@ -325,6 +385,13 @@ def _handle_remember_batch(brain, args, graph_changes):
     cleaned_nodes = []
     for i, spec in enumerate(nodes):
         spec.pop('session_id', None)  # defensive: not a node field
+        # v29 / Phase B Step 4 — per-node source_refs validation
+        refs = spec.get('source_refs')
+        ok, err = _validate_source_refs(refs, 'remember_batch.nodes[%d]' % i)
+        if not ok:
+            return {"ok": False, "error": err}
+        _maybe_warn_source_refs_sparseness(
+            brain, refs, 'remember_batch.nodes[%d]' % i)
         for field, value in spec.items():
             ok, err = validate_field(field, value)
             if not ok:
@@ -499,6 +566,14 @@ def _handle_revise(brain, args, graph_changes):
     # Reserve known dispatch keys so they don't get treated as field updates.
     DISPATCH_KEYS = {"node_id", "reason", "encoding_source", "chain_id", "session_id"}
     updates = {k: v for k, v in args.items() if k not in DISPATCH_KEYS}
+
+    # v29 / Phase B Step 4 — source_refs validation on revise
+    refs = updates.get('source_refs')
+    ok, err = _validate_source_refs(refs, 'revise')
+    if not ok:
+        return {"ok": False, "error": err}
+    _maybe_warn_source_refs_sparseness(brain, refs, 'revise')
+
     for field, value in updates.items():
         ok, err = validate_field(field, value)
         if not ok:
@@ -555,6 +630,13 @@ def _handle_revise_batch(brain, args, graph_changes):
             return {"ok": False, "error": "revisions[%d]: node_id required" % i}
         if not spec.get("reason"):
             return {"ok": False, "error": "revisions[%d]: reason required" % i}
+        # v29 / Phase B Step 4 — per-revision source_refs validation
+        refs = spec.get('source_refs')
+        ok, err = _validate_source_refs(refs, 'revise_batch.revisions[%d]' % i)
+        if not ok:
+            return {"ok": False, "error": err}
+        _maybe_warn_source_refs_sparseness(
+            brain, refs, 'revise_batch.revisions[%d]' % i)
         for field, value in spec.items():
             if field not in ("node_id", "reason"):
                 ok, err = validate_field(field, value)
@@ -1124,32 +1206,38 @@ def _handle_get_node(brain, args, graph_changes):
 
 
 def _handle_get_trace(brain, args, graph_changes):
-    """Point-lookup a trace_event by id. Returns full row dict or error."""
+    """Point-lookup a trace_event by id. v29: id is 8-char hex string.
+    Rejects int input loudly — coercion was removed because random hex
+    generation made it unsafe (collision with migrated-int range)."""
     trace_id = args.get("trace_id")
     if trace_id is None:
         return {"ok": False, "error": "trace_id is required"}
-    try:
-        tid = int(trace_id)
-    except (TypeError, ValueError):
-        return {"ok": False, "error": "trace_id must be an integer, got %r" % (trace_id,)}
+    if not isinstance(trace_id, str) or not trace_id.strip():
+        return {"ok": False,
+                "error": "trace_id must be an 8-char hex string (v29), got %r" % (trace_id,)}
+    tid = trace_id.strip().lower()
     row = brain.get_trace(tid)
     if not row:
-        return {"ok": False, "error": "Trace not found: %d" % tid}
+        return {"ok": False, "error": "Trace not found: %s" % tid}
     return {"ok": True, "result": row}
 
 
 def _handle_get_traces(brain, args, graph_changes):
-    """Batch trace_event lookup. Accepts up to 50 ids; missing ids skipped."""
+    """Batch trace_event lookup. v29: ids are 8-char hex strings.
+    Accepts up to 50 ids; missing ids skipped. Rejects ints loudly."""
     trace_ids = args.get("trace_ids", [])
     if not isinstance(trace_ids, list):
-        return {"ok": False, "error": "trace_ids must be a list of integers"}
+        return {"ok": False, "error": "trace_ids must be a list of 8-char hex strings"}
     cleaned: list = []
     bad: list = []
     for t in trace_ids[:50]:  # cap to 50 per call
-        try:
-            cleaned.append(int(t))
-        except (TypeError, ValueError):
+        if isinstance(t, str) and t.strip():
+            cleaned.append(t.strip().lower())
+        else:
             bad.append(t)
+    if bad:
+        return {"ok": False,
+                "error": "trace_ids must be 8-char hex strings (v29); rejected: %r" % bad[:5]}
     rows = brain.get_traces(cleaned) if cleaned else []
     out = {"ok": True, "result": rows}
     if bad:

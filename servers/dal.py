@@ -18,11 +18,28 @@ Direct self.conn.execute() calls continue to work alongside the DAL.
 """
 
 import json
+import secrets
 import sqlite3
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
 from .clock import iso_cutoff, iso_now
+
+
+def _new_trace_id(conn) -> str:
+    """Generate a fresh 8-char hex trace id, retrying on the vanishingly rare
+    collision with an existing id. Matches node id shape (also 8-char hex via
+    secrets.token_hex(4)). Collision space is 4 billion vs ~60K existing rows
+    — first-try success is ~99.9985%."""
+    for _ in range(5):
+        candidate = secrets.token_hex(4)
+        row = conn.execute(
+            'SELECT 1 FROM trace_events WHERE id = ? LIMIT 1',
+            (candidate,)
+        ).fetchone()
+        if row is None:
+            return candidate
+    raise RuntimeError("_new_trace_id: 5 consecutive collisions — investigate")
 
 
 class LogsDAL:
@@ -548,16 +565,17 @@ class TraceDAL:
         metadata = self._stamp_identity(metadata)
         now = iso_now()
         meta_json = json.dumps(metadata) if metadata else None
-        cursor = self.conn.execute(
+        trace_id = _new_trace_id(self.conn)
+        self.conn.execute(
             'INSERT INTO trace_events '
-            '(chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, interaction_id, created_at) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            (chain_id, scale, event_type, ref_type, ref_id,
+            '(id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, interaction_id, created_at) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (trace_id, chain_id, scale, event_type, ref_type, ref_id,
              summary if summary else '', meta_json, session_id, interaction_id, now))
         self.conn.commit()
-        return cursor.lastrowid
+        return trace_id
 
-    def append_batch(self, events: list) -> List[int]:
+    def append_batch(self, events: list) -> List[str]:
         """Append multiple trace events in a single transaction.
 
         Reduces WAL lock contention — one commit instead of N.
@@ -574,14 +592,15 @@ class TraceDAL:
             self._maybe_warn_identity_unset(ev['scale'], ev.get('ref_type', ''))
             metadata = self._stamp_identity(ev.get('metadata'))
             meta_json = json.dumps(metadata) if metadata else None
-            cursor = self.conn.execute(
+            trace_id = _new_trace_id(self.conn)
+            self.conn.execute(
                 'INSERT INTO trace_events '
-                '(chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, interaction_id, created_at) '
-                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                (ev['chain_id'], ev['scale'], ev['event_type'], ev.get('ref_type', ''),
+                '(id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, interaction_id, created_at) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (trace_id, ev['chain_id'], ev['scale'], ev['event_type'], ev.get('ref_type', ''),
                  ev.get('ref_id', ''), ev.get('summary', ''), meta_json,
                  ev.get('session_id', ''), ev.get('interaction_id'), now))
-            ids.append(cursor.lastrowid)
+            ids.append(trace_id)
         self.conn.commit()
         return ids
 
@@ -608,14 +627,22 @@ class TraceDAL:
                 return {}
         return meta if isinstance(meta, dict) else {}
 
-    def get_by_ids(self, trace_ids: List[int]) -> List[Dict[str, Any]]:
-        """Point/batch lookup by trace_event.id. Returns rows in
-        ascending id order (deterministic); missing ids are silently
-        skipped (mirrors NodeDAL.get_bulk behavior — caller checks
+    def get_by_ids(self, trace_ids: List[str]) -> List[Dict[str, Any]]:
+        """Point/batch lookup by trace_event.id (v29: 8-char hex strings).
+        Returns rows in ascending id order (deterministic); missing ids are
+        silently skipped (mirrors NodeDAL.get_bulk behavior — caller checks
         len(result) vs len(input) if presence matters).
+
+        Rejects int input loudly per v29 contract.
         """
         if not trace_ids:
             return []
+        for tid in trace_ids:
+            if not isinstance(tid, str):
+                raise ValueError(
+                    "get_by_ids: trace_ids must be strings, got %s (%r). "
+                    "v29 trace ids are 8-char hex." % (
+                        type(tid).__name__, tid))
         placeholders = ','.join('?' * len(trace_ids))
         rows = self.conn.execute(
             'SELECT id, chain_id, scale, event_type, ref_type, ref_id, '
@@ -883,9 +910,11 @@ class TraceDAL:
             before: Turns before around_timestamp (default 10)
             after: Turns after around_timestamp (default 5)
         """
-        # Get S0 events for this session, chronologically
+        # Get S0 events for this session, chronologically.
+        # v29: select `id` (8-char hex trace_event.id) so callers can render
+        # [trace:<hex>] markers — the encoder copies these into source_refs.
         rows = self.conn.execute(
-            "SELECT chain_id, event_type, ref_type, summary, metadata, created_at "
+            "SELECT id, chain_id, event_type, ref_type, summary, metadata, created_at "
             "FROM trace_events WHERE scale = 's0' AND session_id = ? "
             "AND event_type IN ('K', 'delta') AND ref_type IN ('user_message', 'assistant_message') "
             "ORDER BY created_at ASC",
@@ -894,22 +923,25 @@ class TraceDAL:
         # Group by chain (each chain = one stop = user+assistant pair)
         chains = {}
         for r in rows:
-            chain_id = r[0]
+            trace_id = r[0]
+            chain_id = r[1]
             if chain_id not in chains:
                 chains[chain_id] = {}
-            meta = self._decode_metadata(r[4])
+            meta = self._decode_metadata(r[5])
             # Content lives in metadata (full), summary is truncated for display
-            content = meta.get('content', '') or r[3] or ''
-            if r[2] == 'user_message':
+            content = meta.get('content', '') or r[4] or ''
+            if r[3] == 'user_message':
                 chains[chain_id]['user'] = {
+                    'trace_id': trace_id,
                     'content': content,
-                    'timestamp': r[5],
+                    'timestamp': r[6],
                     'recall_chain': meta.get('recall_chain', ''),
                 }
-            elif r[2] == 'assistant_message':
+            elif r[3] == 'assistant_message':
                 chains[chain_id]['assistant'] = {
+                    'trace_id': trace_id,
                     'content': content,
-                    'timestamp': r[5],
+                    'timestamp': r[6],
                 }
 
         # Cross-reference S1 delta (additionalContext) for judge_output
@@ -938,6 +970,7 @@ class TraceDAL:
                 recall_chain = data['user'].get('recall_chain', '')
                 turns.append({
                     'role': 'user',
+                    'trace_id': data['user'].get('trace_id'),
                     'content': data['user']['content'],
                     'timestamp': data['user']['timestamp'],
                     'signal': None,
@@ -947,6 +980,7 @@ class TraceDAL:
             if 'assistant' in data:
                 turns.append({
                     'role': 'assistant',
+                    'trace_id': data['assistant'].get('trace_id'),
                     'content': data['assistant']['content'],
                     'timestamp': data['assistant']['timestamp'],
                     'signal': None,
@@ -1003,10 +1037,17 @@ class TraceDAL:
         self.conn.commit()
         return len(prepared)
 
-    def get_embeddings(self, trace_ids: List[int]) -> Dict[int, bytes]:
-        """Batch fetch trace embeddings by id. Missing ids absent from result."""
+    def get_embeddings(self, trace_ids: List[str]) -> Dict[str, bytes]:
+        """Batch fetch trace embeddings by id (v29: 8-char hex). Missing ids
+        absent from result. Rejects int input loudly per v29 contract."""
         if not trace_ids:
             return {}
+        for tid in trace_ids:
+            if not isinstance(tid, str):
+                raise ValueError(
+                    "get_embeddings: trace_ids must be strings, got "
+                    "%s (%r). v29 trace ids are 8-char hex." % (
+                        type(tid).__name__, tid))
         placeholders = ','.join('?' * len(trace_ids))
         rows = self.conn.execute(
             'SELECT trace_id, vector FROM trace_embeddings '
@@ -2874,19 +2915,29 @@ class GraphDAL:
 
     # --- Source refs (v27: episodic references) ---
 
-    def add_source_refs(self, node_id: str, trace_ids: List[int]) -> int:
-        """Attach trace_event pointers to a node. Position derived from
-        list order (1-indexed); first ref is the primary anchor.
+    def add_source_refs(self, node_id: str, trace_ids: List[str]) -> int:
+        """Append trace_event pointers to a node (v29: 8-char hex strings).
+        Used at NEW-node creation (remember()). Position derived from list
+        order (1-indexed); first ref is the primary anchor.
 
-        INSERT OR IGNORE — first-write-wins. Re-encoding the same node
-        leaves existing refs untouched (positions and created_at stay
-        frozen). Explicit re-ordering belongs to a future
-        replace_source_refs() method when revise needs it.
+        INSERT OR IGNORE — first-write-wins. Re-calling with the same refs
+        is a no-op. For revise() use replace_source_refs() instead — that's
+        where field-level replace semantics belong (decision 995ffeb1).
+
+        Reject int input loudly per the v29 contract — coercion was removed
+        because random hex generation made it unsafe.
 
         Returns count of refs newly inserted (existing ignored).
         """
         if not node_id or not trace_ids:
             return 0
+        # Reject int input loudly — v29 contract is hex strings end-to-end.
+        for tid in trace_ids:
+            if not isinstance(tid, str):
+                raise ValueError(
+                    "add_source_refs: trace_ids must be strings, got "
+                    "%s (%r). v29 trace ids are 8-char hex." % (
+                        type(tid).__name__, tid))
         now = _now()
         rows = [(node_id, tid, idx + 1, now)
                 for idx, tid in enumerate(trace_ids)]
@@ -2898,9 +2949,45 @@ class GraphDAL:
         self.conn.commit()
         return cur.rowcount
 
-    def get_source_refs(self, node_id: str) -> List[int]:
+    def replace_source_refs(self, node_id: str, trace_ids: List[str]) -> int:
+        """Replace the node's source_refs with the given list. v29: 8-char hex.
+
+        Per the unified 2-class revise contract (decision 995ffeb1):
+        - field present → REPLACE entire value
+        - field absent → preserve (caller decides whether to call this)
+        Called only by revise() when source_refs is in the update payload.
+        Atomic: DELETE old rows, then INSERT new ones in a single transaction.
+
+        Pass empty list to clear all refs. Returns count inserted.
+        """
+        if not node_id:
+            return 0
+        # Reject int input loudly — v29 contract is hex strings end-to-end.
+        # Coercion was removed (reviewer F2) — silent int→hex was unsafe
+        # against random hex generation; loud rejection is the doctrine.
+        for tid in (trace_ids or []):
+            if not isinstance(tid, str):
+                raise ValueError(
+                    "replace_source_refs: trace_ids must be strings, got "
+                    "%s (%r). v29 trace ids are 8-char hex." % (
+                        type(tid).__name__, tid))
+        now = _now()
+        self.conn.execute(
+            'DELETE FROM node_source_refs WHERE node_id = ?', (node_id,))
+        rows = [(node_id, tid, idx + 1, now)
+                for idx, tid in enumerate(trace_ids or [])]
+        if rows:
+            self.conn.executemany(
+                'INSERT INTO node_source_refs '
+                '(node_id, trace_id, position, created_at) '
+                'VALUES (?, ?, ?, ?)',
+                rows)
+        self.conn.commit()
+        return len(rows)
+
+    def get_source_refs(self, node_id: str) -> List[str]:
         """Trace ids anchoring this node, ordered by encoder-written
-        position (primary first)."""
+        position (primary first). v29: returns 8-char hex strings."""
         if not node_id:
             return []
         rows = self.conn.execute(
@@ -2909,12 +2996,17 @@ class GraphDAL:
             (node_id,)).fetchall()
         return [r[0] for r in rows]
 
-    def get_nodes_referencing(self, trace_id: int) -> List[str]:
-        """All node_ids anchored to a given trace. Engram cohort
-        detection primitive — nodes that share a trace are part of
-        the same memory at the substrate level."""
+    def get_nodes_referencing(self, trace_id: str) -> List[str]:
+        """All node_ids anchored to a given trace (v29: 8-char hex). Engram
+        cohort detection primitive — nodes that share a trace are part of
+        the same memory at the substrate level. Rejects int input loudly."""
         if trace_id is None:
             return []
+        if not isinstance(trace_id, str):
+            raise ValueError(
+                "get_nodes_referencing: trace_id must be a string, got "
+                "%s (%r). v29 trace ids are 8-char hex." % (
+                    type(trace_id).__name__, trace_id))
         rows = self.conn.execute(
             'SELECT node_id FROM node_source_refs WHERE trace_id = ?',
             (trace_id,)).fetchall()

@@ -247,14 +247,16 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertEqual(result['summary'], 'roundtrip get_trace probe')
 
     def test_get_traces(self):
-        """get_traces returns a list; missing ids silently skipped."""
+        """get_traces returns a list; missing ids silently skipped.
+        v29: ids are 8-char hex strings (reviewer F2 — int input rejected
+        loudly). The phantom id 'deadbeef' won't match any real row."""
         a = self.brain._trace_dal.append(
             chain_id='roundtrip-get-traces', scale='s0', event_type='K',
             ref_type='user_message', summary='get_traces probe A')
         b = self.brain._trace_dal.append(
             chain_id='roundtrip-get-traces', scale='s0', event_type='delta',
             ref_type='assistant_message', summary='get_traces probe B')
-        result = self._dispatch("get_traces", {"trace_ids": [a, b, 99999999]})
+        result = self._dispatch("get_traces", {"trace_ids": [a, b, 'deadbeef']})
         self.assertIsInstance(result, list)
         self.assertEqual(len(result), 2)
         ids = {r['id'] for r in result}

@@ -1,12 +1,17 @@
-"""DAL methods for episodic references (v27 substrate).
+"""DAL methods for episodic references (v27 substrate; v29 trace_id hex).
 
   - TraceDAL: store_embeddings / get_embeddings / find_unembedded
   - GraphDAL: add_source_refs / get_source_refs / get_nodes_referencing
 
 Pure-DAL tests: in-memory SQLite, no live Brain, no embedder.
+
+v29 update (2026-05-25): trace_id migrated INTEGER → TEXT (8-char hex).
+Tests use canonical hex form. DAL int→hex coercion is preserved for legacy
+callers but the contract is hex strings end-to-end.
 """
 
 import os
+import secrets
 import sqlite3
 import sys
 import unittest
@@ -31,18 +36,19 @@ def _seed_node(conn, node_id):
 
 def _seed_trace(conn, scale='s0', ref_type='user_message',
                 summary='hello', session_id='sess-1'):
-    """Insert a trace_event row and return its id."""
+    """Insert a trace_event row and return its hex id (v29)."""
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).isoformat()
-    cur = conn.execute(
+    trace_id = secrets.token_hex(4)
+    conn.execute(
         'INSERT INTO trace_events '
-        '(chain_id, scale, event_type, ref_type, summary, '
+        '(id, chain_id, scale, event_type, ref_type, summary, '
         ' metadata, session_id, created_at) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        ('chain-x', scale, 'K' if ref_type == 'user_message' else 'delta',
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        (trace_id, 'chain-x', scale, 'K' if ref_type == 'user_message' else 'delta',
          ref_type, summary, None, session_id, now))
     conn.commit()
-    return cur.lastrowid
+    return trace_id
 
 
 class TraceEmbeddingsDALTest(unittest.TestCase):
@@ -56,36 +62,39 @@ class TraceEmbeddingsDALTest(unittest.TestCase):
 
     def test_store_and_get_single(self):
         n = self.dal.store_embeddings(
-            [(1, b'\x01\x02', 'tom said hi')], model='nomic')
+            [('00000001', b'\x01\x02', 'tom said hi')], model='nomic')
         self.assertEqual(n, 1)
-        got = self.dal.get_embeddings([1])
-        self.assertEqual(got, {1: b'\x01\x02'})
+        got = self.dal.get_embeddings(['00000001'])
+        self.assertEqual(got, {'00000001': b'\x01\x02'})
 
     def test_store_skips_null_vectors(self):
         n = self.dal.store_embeddings(
-            [(1, b'\x00', 'ok'), (2, None, 'skip'), (3, b'\x02', 'ok2')],
+            [('00000001', b'\x00', 'ok'),
+             ('00000002', None, 'skip'),
+             ('00000003', b'\x02', 'ok2')],
             model='nomic')
         self.assertEqual(n, 2)
-        self.assertEqual(set(self.dal.get_embeddings([1, 2, 3]).keys()),
-                         {1, 3})
+        self.assertEqual(
+            set(self.dal.get_embeddings(['00000001', '00000002', '00000003']).keys()),
+            {'00000001', '00000003'})
 
     def test_store_replaces_on_conflict(self):
-        self.dal.store_embeddings([(1, b'\xaa', 'first')], model='nomic')
-        self.dal.store_embeddings([(1, b'\xbb', 'second')], model='nomic')
-        got = self.dal.get_embeddings([1])
-        self.assertEqual(got[1], b'\xbb')
+        self.dal.store_embeddings([('00000001', b'\xaa', 'first')], model='nomic')
+        self.dal.store_embeddings([('00000001', b'\xbb', 'second')], model='nomic')
+        got = self.dal.get_embeddings(['00000001'])
+        self.assertEqual(got['00000001'], b'\xbb')
 
     def test_text_truncation_500_chars(self):
         long_text = 'x' * 1000
-        self.dal.store_embeddings([(7, b'\x01', long_text)], model='nomic')
+        self.dal.store_embeddings([('00000007', b'\x01', long_text)], model='nomic')
         row = self.conn.execute(
-            'SELECT text FROM trace_embeddings WHERE trace_id = 7'
+            "SELECT text FROM trace_embeddings WHERE trace_id = '00000007'"
         ).fetchone()
         self.assertEqual(len(row[0]), 500)
 
     def test_get_embeddings_empty(self):
         self.assertEqual(self.dal.get_embeddings([]), {})
-        self.assertEqual(self.dal.get_embeddings([999]), {})
+        self.assertEqual(self.dal.get_embeddings(['nonexistent']), {})
 
     def test_find_unembedded_returns_newest_first(self):
         t1 = _seed_trace(self.conn, summary='first')
@@ -211,13 +220,16 @@ class GetByIdsTest(unittest.TestCase):
         t1 = _seed_trace(self.conn, summary='first')
         t2 = _seed_trace(self.conn, summary='second')
         t3 = _seed_trace(self.conn, summary='third')
-        # Input order shouldn't matter — result is ascending id
+        # Input order shouldn't matter — result is ascending id (v29: lex
+        # ascending on 8-char hex). Random hex ids mean ascending id != insertion
+        # order — assert against sorted() to keep the contract precise.
         rows = self.dal.get_by_ids([t3, t1, t2])
-        self.assertEqual([r['id'] for r in rows], [t1, t2, t3])
+        self.assertEqual([r['id'] for r in rows], sorted([t1, t2, t3]))
 
     def test_missing_ids_skipped(self):
         t = _seed_trace(self.conn)
-        rows = self.dal.get_by_ids([t, 99999, 99998])
+        # 'deadbeef' is a 8-char hex placeholder that won't match anything
+        rows = self.dal.get_by_ids([t, 'deadbeef', 'cafef00d'])
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]['id'], t)
 
@@ -226,20 +238,22 @@ class GetByIdsTest(unittest.TestCase):
 
     def test_metadata_decoded(self):
         # Insert a row with double-encoded metadata (legacy shape) and
-        # verify get_by_ids returns it as a dict via _decode_metadata
+        # verify get_by_ids returns it as a dict via _decode_metadata.
+        # v29: insert with explicit hex id (TEXT PK has no autoincrement).
         import json as _json
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()
         double = _json.dumps('{"tool": "Bash"}')
-        cur = self.conn.execute(
+        tid = secrets.token_hex(4)
+        self.conn.execute(
             'INSERT INTO trace_events '
-            '(chain_id, scale, event_type, ref_type, summary, metadata, '
+            '(id, chain_id, scale, event_type, ref_type, summary, metadata, '
             ' session_id, created_at) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            ('c', 's0', 'delta', 'tool_result', 'Bash: ls',
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (tid, 'c', 's0', 'delta', 'tool_result', 'Bash: ls',
              double, '', now))
         self.conn.commit()
-        rows = self.dal.get_by_ids([cur.lastrowid])
+        rows = self.dal.get_by_ids([tid])
         self.assertEqual(rows[0]['metadata'], {'tool': 'Bash'})
 
 
@@ -255,19 +269,21 @@ class SourceRefsDALTest(unittest.TestCase):
         self.conn.close()
 
     def test_add_and_get_preserves_order(self):
-        n = self.dal.add_source_refs('node_a', [42, 17, 99])
+        n = self.dal.add_source_refs('node_a', ['0000002a', '00000011', '00000063'])
         self.assertEqual(n, 3)
-        self.assertEqual(self.dal.get_source_refs('node_a'), [42, 17, 99])
+        self.assertEqual(self.dal.get_source_refs('node_a'),
+                         ['0000002a', '00000011', '00000063'])
 
     def test_add_ignores_duplicates(self):
-        first = self.dal.add_source_refs('node_a', [10, 20])
-        second = self.dal.add_source_refs('node_a', [10, 30])
+        first = self.dal.add_source_refs('node_a', ['0000000a', '00000014'])
+        second = self.dal.add_source_refs('node_a', ['0000000a', '0000001e'])
         self.assertEqual(first, 2)
-        self.assertEqual(second, 1)  # only 30 new; 10 ignored
-        self.assertEqual(self.dal.get_source_refs('node_a'), [10, 20, 30])
+        self.assertEqual(second, 1)  # only 0000001e new; 0000000a ignored
+        self.assertEqual(self.dal.get_source_refs('node_a'),
+                         ['0000000a', '00000014', '0000001e'])
 
     def test_add_empty_inputs_returns_zero(self):
-        self.assertEqual(self.dal.add_source_refs('', [1, 2]), 0)
+        self.assertEqual(self.dal.add_source_refs('', ['00000001', '00000002']), 0)
         self.assertEqual(self.dal.add_source_refs('node_a', []), 0)
 
     def test_get_source_refs_empty_node(self):
@@ -275,15 +291,50 @@ class SourceRefsDALTest(unittest.TestCase):
         self.assertEqual(self.dal.get_source_refs('nonexistent'), [])
 
     def test_get_nodes_referencing_cohort(self):
-        self.dal.add_source_refs('node_a', [100, 200])
-        self.dal.add_source_refs('node_b', [200, 300])
-        cohort = self.dal.get_nodes_referencing(200)
+        self.dal.add_source_refs('node_a', ['00000064', '000000c8'])
+        self.dal.add_source_refs('node_b', ['000000c8', '0000012c'])
+        cohort = self.dal.get_nodes_referencing('000000c8')
         self.assertEqual(sorted(cohort), ['node_a', 'node_b'])
-        self.assertEqual(self.dal.get_nodes_referencing(100), ['node_a'])
-        self.assertEqual(self.dal.get_nodes_referencing(999), [])
+        self.assertEqual(self.dal.get_nodes_referencing('00000064'), ['node_a'])
+        self.assertEqual(self.dal.get_nodes_referencing('deadbeef'), [])
+
+    def test_int_input_rejected_loudly(self):
+        """v29 contract: trace_ids are 8-char hex strings end-to-end.
+        Coercion was removed because random hex generation made silent
+        int→hex unsafe (collision with token_hex output). Int input
+        must raise ValueError so the encoder fails loud rather than
+        landing colliding refs."""
+        with self.assertRaises(ValueError) as ctx:
+            self.dal.add_source_refs('node_a', [42, 17])
+        self.assertIn('strings', str(ctx.exception))
+        with self.assertRaises(ValueError):
+            self.dal.get_nodes_referencing(42)
+
+    def test_replace_source_refs_clears_then_inserts(self):
+        """replace_source_refs is the revise() persistence path:
+        atomic DELETE existing + INSERT new (field-level REPLACE per
+        decision 995ffeb1)."""
+        self.dal.add_source_refs('node_a', ['00000001', '00000002', '00000003'])
+        self.assertEqual(self.dal.get_source_refs('node_a'),
+                         ['00000001', '00000002', '00000003'])
+        # Replace with two new ones
+        n = self.dal.replace_source_refs('node_a', ['deadbeef', 'cafef00d'])
+        self.assertEqual(n, 2)
+        self.assertEqual(self.dal.get_source_refs('node_a'),
+                         ['deadbeef', 'cafef00d'])
+        # Replace with empty list clears all refs
+        n = self.dal.replace_source_refs('node_a', [])
+        self.assertEqual(n, 0)
+        self.assertEqual(self.dal.get_source_refs('node_a'), [])
+
+    def test_replace_source_refs_rejects_ints(self):
+        """Same v29 contract as add_source_refs."""
+        with self.assertRaises(ValueError):
+            self.dal.replace_source_refs('node_a', [42, 17])
 
     def test_fk_cascade_clears_refs(self):
-        self.dal.add_source_refs('node_a', [5, 6, 7])
+        self.dal.add_source_refs('node_a',
+                                 ['00000005', '00000006', '00000007'])
         self.conn.execute("DELETE FROM nodes WHERE id = 'node_a'")
         self.assertEqual(self.dal.get_source_refs('node_a'), [])
 

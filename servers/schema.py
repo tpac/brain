@@ -40,7 +40,7 @@ import shutil
 import sqlite3
 from datetime import datetime, timezone
 
-BRAIN_VERSION = 28  # v28: drop nodes.keywords column + rebuild nodes_fts without keywords (auto-extractor produced noise; title+content via porter stemming is the cleaner lexical signal)
+BRAIN_VERSION = 29  # v29: trace_events.id INTEGER AUTOINCREMENT → TEXT (8-char hex) for ID consistency across nodes/edges/traces. trace_embeddings.trace_id and node_source_refs.trace_id follow. Existing rows migrate via deterministic hex (printf '%08x'); new rows generated via secrets.token_hex(4). Eliminates the sentinel-range hack in example authoring.
 BRAIN_VERSION_KEY = 'brain_schema_version'
 
 # ─── Allowed node types ───
@@ -223,10 +223,11 @@ TABLES = {
     # is a cross-DB reference to brain_logs.trace_events.id — no
     # SQLite FK (cross-DB FKs aren't enforced); invalid refs degrade
     # gracefully at recall and are cleaned by S2Healer.
+    # v29: trace_id is TEXT (8-char hex), matching node id shape.
     'node_source_refs': {
         'create': """CREATE TABLE IF NOT EXISTS node_source_refs (
-            node_id    TEXT     NOT NULL,
-            trace_id   INTEGER  NOT NULL,
+            node_id    TEXT  NOT NULL,
+            trace_id   TEXT  NOT NULL,
             position   INTEGER  NOT NULL DEFAULT 1,
             created_at TEXT,
             PRIMARY KEY (node_id, trace_id),
@@ -649,6 +650,204 @@ def _backfill_data(conn, from_version):
         # v27 was schema-additive (new tables only) and doesn't gate
         # anything in this migration.
         _migrate_v28_drop_keywords(conn)
+
+    if from_version < 29:
+        # v29: trace_events.id INTEGER → TEXT (8-char hex), trickling through
+        # trace_embeddings.trace_id and node_source_refs.trace_id. Brain-wide
+        # ID consistency — every entity (node, edge, trace) now shares the
+        # 8-char hex shape. Removes the example-authoring sentinel-range hack.
+        # node_source_refs in brain.db is the only v29-affected table here;
+        # the logs DB migration runs from ensure_logs_schema.
+        _migrate_v29_trace_id_main(conn)
+
+
+def _trace_id_column_is_integer(conn, table: str, column: str) -> bool:
+    """Returns True only if the table exists AND the column type is INTEGER
+    (i.e., legacy pre-v29 state needing migration). Returns False on fresh
+    brains (table missing) and on already-migrated brains (column TEXT).
+    Self-detecting idempotency for the v29 trace_id migration."""
+    try:
+        cur = conn.execute(f"PRAGMA table_info({table})")
+        for row in cur.fetchall():
+            if row[1] == column:
+                return (row[2] or '').upper() == 'INTEGER'
+    except Exception:
+        pass
+    return False
+
+
+def _migrate_v29_trace_id_main(conn):
+    """v29 (brain.db side): node_source_refs.trace_id INTEGER → TEXT.
+
+    The table is empty in production (Phase B WRITE path hasn't shipped),
+    so this is a simple recreate. If somehow rows exist, they're migrated
+    via deterministic hex: printf('%08x', old_int).
+    """
+    if not _trace_id_column_is_integer(conn, 'node_source_refs', 'trace_id'):
+        # Either fresh brain (no table yet — CREATE TABLE will use TEXT) or
+        # already migrated. Skip in both cases.
+        return
+
+    # Python's sqlite3 module wraps DML in implicit transactions; DDL after
+    # an INSERT in the same conn can be swallowed (no commit between them).
+    # We force autocommit for the duration of the rebuild so each statement
+    # is durable as it runs, then restore the prior isolation_level.
+    prior_isolation = conn.isolation_level
+    try:
+        n_rows = conn.execute("SELECT COUNT(*) FROM node_source_refs").fetchone()[0]
+        print(f"[brain] v29: migrating node_source_refs.trace_id INTEGER → TEXT ({n_rows} rows)")
+        conn.commit()  # close any pending tx before switching mode
+        conn.isolation_level = None  # autocommit
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.execute("""
+            CREATE TABLE node_source_refs_v29 (
+                node_id    TEXT  NOT NULL,
+                trace_id   TEXT  NOT NULL,
+                position   INTEGER  NOT NULL DEFAULT 1,
+                created_at TEXT,
+                PRIMARY KEY (node_id, trace_id),
+                FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("""
+            INSERT INTO node_source_refs_v29 (node_id, trace_id, position, created_at)
+            SELECT node_id, printf('%08x', trace_id), position, created_at
+            FROM node_source_refs
+        """)
+        n_after = conn.execute("SELECT COUNT(*) FROM node_source_refs_v29").fetchone()[0]
+        if n_after != n_rows:
+            raise RuntimeError(f"v29: node_source_refs row count drift {n_rows} → {n_after}")
+        conn.execute("DROP TABLE node_source_refs")
+        conn.execute("ALTER TABLE node_source_refs_v29 RENAME TO node_source_refs")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_nsr_trace ON node_source_refs(trace_id)")
+        conn.execute("PRAGMA foreign_keys=ON")
+        print(f"[brain] v29: node_source_refs migrated cleanly ({n_after} rows)")
+    except Exception as e:
+        print(f"[brain] v29: node_source_refs migration FAILED: {e}")
+        try:
+            conn.execute("DROP TABLE IF EXISTS node_source_refs_v29")
+            conn.execute("PRAGMA foreign_keys=ON")
+        except Exception:
+            pass
+        raise
+    finally:
+        conn.isolation_level = prior_isolation
+
+
+def _migrate_v29_trace_id_logs(conn):
+    """v29 (brain_logs.db side): trace_events.id INTEGER → TEXT and
+    trace_embeddings.trace_id INTEGER → TEXT.
+
+    Production data: ~60K trace_events rows, ~13K trace_embeddings rows.
+    Deterministic hex via printf('%08x', old_int) — preserves lexicographic
+    ordering and lets any external integer reference (from logs, debug
+    output) be resolved by formatting.
+
+    Self-detecting via PRAGMA table_info — runs only if column is still
+    INTEGER. Called from ensure_logs_schema (logs DB has no brain_meta
+    version anchor, so column-type probe is the idempotency signal).
+    """
+    needs_trace_events = _trace_id_column_is_integer(conn, 'trace_events', 'id')
+    needs_trace_embeddings = _trace_id_column_is_integer(conn, 'trace_embeddings', 'trace_id')
+
+    if not needs_trace_events and not needs_trace_embeddings:
+        return  # fresh brain (table missing — CREATE will use TEXT) or already migrated
+
+    print(f"[brain] v29: logs DB migration starting "
+          f"(trace_events={needs_trace_events}, trace_embeddings={needs_trace_embeddings})")
+
+    # Force autocommit so each DDL statement is durable as it runs (Python's
+    # sqlite3 swallows DDL after DML in implicit transaction mode).
+    prior_isolation = conn.isolation_level
+    conn.commit()
+    conn.isolation_level = None
+
+    if needs_trace_events:
+        try:
+            n_rows = conn.execute("SELECT COUNT(*) FROM trace_events").fetchone()[0]
+            print(f"[brain] v29: migrating trace_events.id INTEGER → TEXT ({n_rows} rows)")
+            conn.execute("""
+                CREATE TABLE trace_events_v29 (
+                    id TEXT PRIMARY KEY,
+                    chain_id TEXT NOT NULL,
+                    scale TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    ref_type TEXT,
+                    ref_id TEXT,
+                    summary TEXT,
+                    metadata TEXT,
+                    session_id TEXT,
+                    interaction_id INTEGER,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                INSERT INTO trace_events_v29
+                    (id, chain_id, scale, event_type, ref_type, ref_id,
+                     summary, metadata, session_id, interaction_id, created_at)
+                SELECT printf('%08x', id), chain_id, scale, event_type,
+                       ref_type, ref_id, summary, metadata, session_id,
+                       interaction_id, created_at
+                FROM trace_events
+            """)
+            n_after = conn.execute("SELECT COUNT(*) FROM trace_events_v29").fetchone()[0]
+            if n_after != n_rows:
+                raise RuntimeError(f"v29: trace_events row count drift {n_rows} → {n_after}")
+            conn.execute("DROP TABLE trace_events")
+            conn.execute("ALTER TABLE trace_events_v29 RENAME TO trace_events")
+            # Recreate indexes (will be applied again by ensure_logs_schema
+            # post-migration, but recreate here for safety during rollback).
+            for idx in [
+                "CREATE INDEX IF NOT EXISTS idx_trace_chain ON trace_events(chain_id)",
+                "CREATE INDEX IF NOT EXISTS idx_trace_scale ON trace_events(scale)",
+                "CREATE INDEX IF NOT EXISTS idx_trace_created ON trace_events(created_at)",
+                "CREATE INDEX IF NOT EXISTS idx_trace_session ON trace_events(session_id)",
+                "CREATE INDEX IF NOT EXISTS idx_trace_scope_created ON trace_events(scale, ref_type, created_at)",
+            ]:
+                conn.execute(idx)
+            print(f"[brain] v29: trace_events migrated cleanly ({n_after} rows)")
+        except Exception as e:
+            print(f"[brain] v29: trace_events migration FAILED: {e}")
+            try:
+                conn.execute("DROP TABLE IF EXISTS trace_events_v29")
+            except Exception:
+                pass
+            raise
+
+    if needs_trace_embeddings:
+        try:
+            n_rows = conn.execute("SELECT COUNT(*) FROM trace_embeddings").fetchone()[0]
+            print(f"[brain] v29: migrating trace_embeddings.trace_id INTEGER → TEXT ({n_rows} rows)")
+            conn.execute("""
+                CREATE TABLE trace_embeddings_v29 (
+                    trace_id    TEXT    PRIMARY KEY,
+                    vector      BLOB    NOT NULL,
+                    text        TEXT,
+                    model       TEXT,
+                    created_at  TEXT
+                )
+            """)
+            conn.execute("""
+                INSERT INTO trace_embeddings_v29 (trace_id, vector, text, model, created_at)
+                SELECT printf('%08x', trace_id), vector, text, model, created_at
+                FROM trace_embeddings
+            """)
+            n_after = conn.execute("SELECT COUNT(*) FROM trace_embeddings_v29").fetchone()[0]
+            if n_after != n_rows:
+                raise RuntimeError(f"v29: trace_embeddings row count drift {n_rows} → {n_after}")
+            conn.execute("DROP TABLE trace_embeddings")
+            conn.execute("ALTER TABLE trace_embeddings_v29 RENAME TO trace_embeddings")
+            print(f"[brain] v29: trace_embeddings migrated cleanly ({n_after} rows)")
+        except Exception as e:
+            print(f"[brain] v29: trace_embeddings migration FAILED: {e}")
+            try:
+                conn.execute("DROP TABLE IF EXISTS trace_embeddings_v29")
+            except Exception:
+                pass
+            conn.isolation_level = prior_isolation
+            raise
+
+    conn.isolation_level = prior_isolation
 
 
 def _migrate_v28_drop_keywords(conn):
@@ -1143,9 +1342,13 @@ LOG_TABLES = {
             set_by TEXT NOT NULL
         )""",
     },
+    # v29: trace_events.id is TEXT (8-char hex), matching node/edge id shape.
+    # Generation: TraceDAL.append() calls secrets.token_hex(4) with collision
+    # retry. Historical rows migrate via printf('%08x', old_int) — deterministic
+    # so any pre-migration integer reference can still be resolved.
     'trace_events': {
         'create': """CREATE TABLE IF NOT EXISTS trace_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT PRIMARY KEY,
             chain_id TEXT NOT NULL,
             scale TEXT NOT NULL,
             event_type TEXT NOT NULL,
@@ -1165,10 +1368,11 @@ LOG_TABLES = {
     # fed to the embedder — matches node_enrichments convention;
     # enables diagnostics and detects drift if the trace rendering
     # changes over time.
+    # v29: trace_id is TEXT (matches trace_events.id).
     'trace_embeddings': {
         'create': """CREATE TABLE IF NOT EXISTS trace_embeddings (
-            trace_id    INTEGER    PRIMARY KEY,
-            vector      BLOB       NOT NULL,
+            trace_id    TEXT    PRIMARY KEY,
+            vector      BLOB    NOT NULL,
             text        TEXT,
             model       TEXT,
             created_at  TEXT
@@ -1209,6 +1413,14 @@ def ensure_logs_schema(conn):
     Also handles column migrations for existing tables via ALTER TABLE.
     """
     conn.execute('PRAGMA journal_mode=WAL')
+
+    # v29: trace_events.id and trace_embeddings.trace_id must migrate from
+    # INTEGER to TEXT BEFORE the CREATE TABLE IF NOT EXISTS runs — otherwise
+    # SQLite skips the new TEXT definition because the table already exists.
+    # The migration helper is self-detecting (column-type probe) so it's
+    # safe on fresh brains and idempotent on already-migrated ones.
+    _migrate_v29_trace_id_logs(conn)
+
     for table_name, spec in LOG_TABLES.items():
         conn.execute(spec['create'])
 
