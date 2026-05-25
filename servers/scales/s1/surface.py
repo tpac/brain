@@ -19,11 +19,16 @@ from servers.trace_contract import build_selection_metadata
 # SURFACE_SELECTION_SCHEMA lives in surface_contract.py alongside the other
 # surface I/O contracts (the render formats for each mode). Imported below.
 def _get_recently_surfaced(brain, session_id):
-    """Get recently surfaced node IDs from S1 traces (for dedup)."""
+    """Get recently surfaced node IDs from S1 traces (for dedup).
+
+    Scoped to this session — parallel sessions must not see each other's
+    surfaced nodes in their exclusion lists.
+    """
     from servers.scales.s1.surface_contract import SURFACE
     lookback = SURFACE.get('recent_recalls_messages', 10)
     recent_k = brain._trace_dal.get_by_ref_type(
-        'surface_selected', scale='s1', hours=None, limit=lookback)
+        'surface_selected', scale='s1', hours=None, limit=lookback,
+        session_id=session_id)
     seen_ids = set()
     for evt in recent_k:
         raw = evt.get('ref_id', '[]')

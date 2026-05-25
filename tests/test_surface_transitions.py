@@ -257,3 +257,40 @@ class TestDecodeTransitions(BrainTestBase):
             self.assertIn(short_id, prompt,
                           'Candidate %s not found in surface prompt — '
                           'format_candidate_for_surface dropped it' % short_id)
+
+    def test_recently_surfaced_is_session_scoped(self):
+        """_get_recently_surfaced must not leak surfaces from parallel sessions.
+
+        Each session's Haiku gets an exclusion list of nodes already shown to
+        Anchor. That list must come from THIS session's surface_selected traces
+        only — otherwise Session B sees Session A's picks marked 'already seen'
+        and Haiku skips re-selecting them even when relevant to B.
+        """
+        from servers.scales.s1.surface import _get_recently_surfaced
+
+        n_a = self.brain.remember(type='rule', title='Session A surfaced this',
+                                  content='Only A should see this in exclusion list')
+        n_b = self.brain.remember(type='rule', title='Session B surfaced this',
+                                  content='Only B should see this in exclusion list')
+
+        self.brain._trace_dal.append(
+            chain_id='s1r-sessA-1', scale='s1', event_type='K',
+            ref_type='surface_selected', ref_id=json.dumps([n_a['id']]),
+            session_id='sess-A')
+        self.brain._trace_dal.append(
+            chain_id='s1r-sessB-1', scale='s1', event_type='K',
+            ref_type='surface_selected', ref_id=json.dumps([n_b['id']]),
+            session_id='sess-B')
+
+        only_a = _get_recently_surfaced(self.brain, 'sess-A')
+        only_b = _get_recently_surfaced(self.brain, 'sess-B')
+
+        a_ids = {entry['id'] for entry in only_a}
+        b_ids = {entry['id'] for entry in only_b}
+
+        self.assertIn(n_a['id'], a_ids, "Session A's surface missing from A's exclusion list")
+        self.assertNotIn(n_b['id'], a_ids,
+                         "Session B's surface LEAKED into Session A's exclusion list")
+        self.assertIn(n_b['id'], b_ids, "Session B's surface missing from B's exclusion list")
+        self.assertNotIn(n_a['id'], b_ids,
+                         "Session A's surface LEAKED into Session B's exclusion list")

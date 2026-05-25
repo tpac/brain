@@ -601,12 +601,15 @@ class TraceDAL:
         return result
 
     def get_by_ref_type(self, ref_type: str, scale: str = '',
-                        hours: Optional[int] = 24, limit: int = 100) -> List[Dict[str, Any]]:
+                        hours: Optional[int] = 24, limit: int = 100,
+                        session_id: str = '') -> List[Dict[str, Any]]:
         """Get events filtered by ref_type.
 
         Use: "all corrections", "all recall_hits", "all encoding_runs".
         Pass hours=None to disable the time-window filter (caller controls
         recency purely via `limit` + `ORDER BY created_at DESC`).
+        Pass session_id to scope results to a single session — required for
+        per-session reads (e.g. surface's recently-surfaced dedup list).
         """
         conditions = ['ref_type = ?']
         params: List[Any] = [ref_type]
@@ -616,6 +619,9 @@ class TraceDAL:
         if scale:
             conditions.append('scale = ?')
             params.append(scale)
+        if session_id:
+            conditions.append('session_id = ?')
+            params.append(session_id)
         where = ' AND '.join(conditions)
 
         rows = self.conn.execute(
