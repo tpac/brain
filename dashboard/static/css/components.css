@@ -374,6 +374,27 @@
   margin-top: 4px;
   font-style: italic;
 }
+
+/* ── Graph error fallback ─────────────────────────────────────────── */
+/* Shown when ForceGraph3D can't get a WebGL context — Chromium sandbox,
+ * GPU driver, browser policy. Tells the user *why* the pane is blank
+ * instead of leaving it silent. */
+.graph-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--bg-panel);
+}
+.graph-error-title { color: var(--accent-red); font-weight: bold; font-size: 14px; }
+.graph-error-msg   { color: var(--text-body); font-family: var(--font-mono); font-size: 11px; max-width: 80%; }
+.graph-error-hint  { color: var(--text-subtle); font-size: 11px; max-width: 80%; line-height: 1.4; }
 .hook-body--padded { padding: 4px 12px; }
 
 /* ── Insights panel (Live tab top) ─────────────────────────────────── */

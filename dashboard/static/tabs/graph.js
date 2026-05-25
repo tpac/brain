@@ -1,34 +1,58 @@
 // ===========================================================================
-// tabs/graph.js — 3D ForceGraph + search-driven node highlighter.
+// tabs/graph.js — 3D ForceGraph + search-driven highlighter +
+//                 persistent recall-highlight ('spotlight') mode.
 // ---------------------------------------------------------------------------
 // Lifecycle contract (shared by every tabs/*.js module):
 //
-//   init()         called once on app boot, before any tab is shown.
-//                  Wires polls + bus subs. Does NOT fetch data.
-//
-//   activate()     called when this tab becomes the visible one.
-//                  Lazy-loads data + sizes graph to container.
-//
-//   deactivate()   called when leaving this tab. Most modules no-op
-//                  (poll.js auto-gates on activeWhen + document.hidden).
+//   init()         called once on app boot. Wires bus subs.
+//   activate()     called when Live tab becomes visible. Lazy-loads
+//                  graph data + sizes renderer to container.
+//   deactivate()   no-op — 3D scene keeps animating in background.
 //
 // Since the P2.2 layout pivot the graph mounts inside Live's left pane;
-// `activate()` is now driven by live.activate(). The standalone Graph
-// tab is gone, and so is the community legend pane (P2.4) — the search
-// input above the graph replaces both the discovery affordance (find a
-// community by name) and the navigation affordance (zoom to its hub).
+// `activate()` is now driven by live.activate().
+//
+// ── Visual model ─────────────────────────────────────────────────────
+//
+// The graph has TWO independent dimming axes that combine via AND:
+//
+//   1. SEARCH    — type a query into the search box. Non-matching nodes
+//                  go dark. Empty query = everything passes.
+//
+//   2. HIGHLIGHT — when a recall lands, the surfaced nodes become the
+//                  "highlight set" (persistent — no decay). All non-set
+//                  nodes go dark. Empty set = everything passes.
+//                  Cleared by clicking Refresh.
+//
+// A node only renders in its community color if it passes BOTH gates.
+// Within the highlight set, tier (used/activation/returned) drives the
+// color blend + size bump:
+//
+//   used        white blend, 1.0× intensity   — judge picked these
+//   activation  green blend, 0.7× intensity   — spread-expanded
+//   returned    blue blend,  0.4× intensity   — candidate pool
+//
+// ── Highlight mode ───────────────────────────────────────────────────
+//
+//   latest         (default) — every new recall REPLACES the set.
+//                  Pre-loaded with the most recent recall on switch.
+//   session=<id>   union of every recall whose session_id matches.
+//                  Pre-loaded with that session's history on switch.
+//
+// The mode dropdown lives in .graph-controls; session options are
+// injected by _populateSessionOptions() on activate.
 // ===========================================================================
 
 import { api } from '/static/lib/api.js';
 import bus from '/static/lib/bus.js';
+import { escapeHtml } from '/static/lib/dom.js';
 import { loadNodeDetail } from '/static/lib/node_detail.js';
 
 let graph3d = null;
 let graph3dData = null;
 
-// Search state. Lowercased query; nodes are matched against their name,
-// type, and community_title (which is attached to every member of a
-// community by the server). Empty query → everything matches.
+// ── Search state ──────────────────────────────────────────────────────
+
 let _searchQuery = '';
 
 function _nodeMatches(node) {
@@ -39,54 +63,31 @@ function _nodeMatches(node) {
       || (node.community_title || '').toLowerCase().includes(q);
 }
 
-// Dim color for non-matched nodes. Dark enough to recede, light enough
-// to still hint at structure. Matched nodes keep their assigned color.
+// ── Highlight state ───────────────────────────────────────────────────
+
 const DIM_COLOR = '#1a1a1a';
+const HIGHLIGHT_SIZE_MULT = 1.8;
 
-// ── Recall pulse ──────────────────────────────────────────────────────
-// Each recall surfaces three layers of nodes, in increasing causal
-// importance. We pulse all three with distinct color + intensity so the
-// operator can SEE the funnel narrow:
-//
-//   returned    ~25 nodes the recall pipeline surfaced (cosine + FTS5
-//               + spread). Dim cool blue, weakest pulse — "considered".
-//   activation  ≤30 nodes that lit up via spread-activation from the
-//               judge's picks. These actually shape additionalContext.
-//               Medium green pulse — "influenced this turn".
-//   used        3–5 nodes the Haiku judge selected. Bright white pulse,
-//               largest size bump — "Anchor literally read these".
-//
-// A node in multiple layers gets the strongest tier (used > activation
-// > returned). _onRecallEvent enforces that ordering when populating
-// the pulse map.
-
-const PULSE_DURATION_MS = 5000;
-const PULSE_SIZE_MULT   = 1.8;   // peak val multiplier at intensity=1.0
-
-// tier name → { color, intensity }
-// `intensity` scales both color-blend and size pulse. The tier ordering
-// is encoded in PULSE_TIER_ORDER below — anything outside that list is
-// ignored by _onRecallEvent.
-const PULSE_TIERS = {
+// tier → { color, intensity }. Used for color blend + size bump within
+// the highlight set. Adding a tier means a new label here + extending
+// HIGHLIGHT_TIER_ORDER.
+const HIGHLIGHT_TIERS = {
   used:       { color: '#ffffff', intensity: 1.00 },
   activation: { color: '#33ff88', intensity: 0.70 },
   returned:   { color: '#7eb8ff', intensity: 0.40 },
 };
-// Apply weakest → strongest so 'used' wins when a node appears in
-// multiple layers (Map.set last-write semantics).
-const PULSE_TIER_ORDER = ['returned', 'activation', 'used'];
+// Weakest → strongest so later writes win in the per-id Map.
+const HIGHLIGHT_TIER_ORDER = ['returned', 'activation', 'used'];
 
-// nodeId → { startedAt, tier }
-const _pulses = new Map();
-let _pulseRafScheduled = false;
+// nodeId → tier string. Persistent (no decay). Empty = no highlight
+// active = all nodes show their community color.
+const _highlightTier = new Map();
+// 'latest' (default) — each recall REPLACES the set.
+// 'session'          — union of recalls for `_highlightSessionId`.
+let _highlightMode = 'latest';
+let _highlightSessionId = null;
 
-function _pulseStrength(nodeId) {
-  const p = _pulses.get(nodeId);
-  if (!p) return 0;
-  const elapsed = Date.now() - p.startedAt;
-  if (elapsed >= PULSE_DURATION_MS) return 0;
-  return 1 - (elapsed / PULSE_DURATION_MS);
-}
+// ── Color math ────────────────────────────────────────────────────────
 
 function _hexToRgb(hex) {
   const m = hex.replace('#', '');
@@ -105,86 +106,44 @@ function _blend(c1, c2, t) {
   return _rgbToHex(a.r * t + b.r * (1 - t), a.g * t + b.g * (1 - t), a.b * t + b.b * (1 - t));
 }
 
+// ── Per-node color + size resolvers ────────────────────────────────
+
 function _colorFor(n) {
-  const baseColor = _nodeMatches(n) ? (n.color || '#666') : DIM_COLOR;
-  const p = _pulses.get(n.id);
-  if (!p) return baseColor;
-  const tier = PULSE_TIERS[p.tier];
-  if (!tier) return baseColor;
-  const strength = _pulseStrength(n.id);
-  if (strength <= 0) return baseColor;
-  return _blend(tier.color, baseColor, strength * tier.intensity);
+  // A node renders in color iff it passes BOTH gates:
+  //   - search:    matches the current query (or no query)
+  //   - highlight: in the set (or no set is active)
+  const setActive = _highlightTier.size > 0;
+  const inHighlight = !setActive || _highlightTier.has(n.id);
+  if (!_nodeMatches(n) || !inHighlight) return DIM_COLOR;
+
+  // In-highlight nodes get tier-blended color (when the set is active).
+  // When no set is active, just show the community color.
+  const tierName = setActive ? _highlightTier.get(n.id) : null;
+  const baseColor = n.color || '#666';
+  if (!tierName) return baseColor;
+  const tier = HIGHLIGHT_TIERS[tierName];
+  return _blend(tier.color, baseColor, tier.intensity);
 }
 
 function _valFor(n) {
   const base = n.hub ? n.val : 2;
-  const p = _pulses.get(n.id);
-  if (!p) return base;
-  const tier = PULSE_TIERS[p.tier];
-  if (!tier) return base;
-  const strength = _pulseStrength(n.id);
-  if (strength <= 0) return base;
-  return base * (1 + (PULSE_SIZE_MULT - 1) * strength * tier.intensity);
+  const tierName = _highlightTier.get(n.id);
+  if (!tierName) return base;
+  const tier = HIGHLIGHT_TIERS[tierName];
+  return base * (1 + (HIGHLIGHT_SIZE_MULT - 1) * tier.intensity);
 }
 
-function _scheduleAnimation() {
-  if (_pulseRafScheduled || !graph3d) return;
-  _pulseRafScheduled = true;
-  const tick = () => {
-    _pulseRafScheduled = false;
-    if (!graph3d) return;
-    const now = Date.now();
-    let alive = 0;
-    for (const [id, pulse] of _pulses) {
-      if (now - pulse.startedAt >= PULSE_DURATION_MS) _pulses.delete(id);
-      else alive++;
-    }
-    // Pass a fresh closure each tick. 3d-force-graph caches per-node
-    // Three.js materials by color string; calling .nodeColor with the
-    // SAME function reference is treated as a no-op by the library's
-    // internal change detection, so the materials never refresh during
-    // the pulse window. Wrapping in a new arrow each tick forces the
-    // re-evaluation we need. Cheap — one closure per frame.
-    graph3d.nodeColor(n => _colorFor(n));
-    graph3d.nodeVal(n => _valFor(n));
-    if (alive > 0) {
-      _pulseRafScheduled = true;
-      requestAnimationFrame(tick);
-    }
-  };
-  requestAnimationFrame(tick);
-}
-
-function _onRecallEvent({ event }) {
-  // Skip if the graph isn't loaded yet — buffered pulses for events that
-  // arrived before the user opened Live would be confusing (out-of-time
-  // flashes). The user sees activations going forward.
-  if (!graph3d || !event) return;
-  const now = Date.now();
-  // Apply tiers weakest → strongest so a node in multiple layers ends up
-  // tagged with its strongest tier (Map.set last-write).
-  const idsByTier = {
-    returned:   event.returned_ids   || [],
-    activation: event.activation_ids || [],
-    used:       event.used_ids       || [],
-  };
-  for (const tier of PULSE_TIER_ORDER) {
-    for (const id of idsByTier[tier]) _pulses.set(id, { startedAt: now, tier });
-  }
-  _scheduleAnimation();
-}
-
-/** Apply current search to the live graph. Re-binding the nodeColor
- * function reference is what triggers ForceGraph3D to re-evaluate
- * material colors — passing the same fn ref is a no-op. */
-function _refreshColors() {
+// Force ForceGraph3D to re-evaluate per-node color/size. The library
+// treats setter calls with the SAME function reference as no-ops, so we
+// pass fresh closures each time we need a refresh.
+function _refreshGraph() {
   if (!graph3d) return;
-  graph3d.nodeColor(_colorFor);
+  graph3d.nodeColor(n => _colorFor(n));
+  graph3d.nodeVal(n => _valFor(n));
 }
 
-/** Pan the camera to the best match. Hub nodes win over members of the
- * same name, since the user typing "frame" usually means "show me the
- * Frame *community*", not one of its 20 leaf nodes. */
+// ── Search public surface ────────────────────────────────────────────
+
 function _focusFirstMatch() {
   if (!graph3d || !_searchQuery) return;
   const nodes = graph3d.graphData().nodes;
@@ -207,11 +166,9 @@ function _updateMatchCount() {
   el.textContent = n + ' match' + (n === 1 ? '' : 'es');
 }
 
-// Public — called by the inline `oninput` / `onkeydown` handlers via
-// window.onGraphSearch / window.onGraphSearchKey.
 export function setSearchQuery(q) {
   _searchQuery = (q || '').toLowerCase().trim();
-  _refreshColors();
+  _refreshGraph();
   _updateMatchCount();
 }
 
@@ -227,15 +184,117 @@ export function onGraphSearchKey(event) {
   }
 }
 
+// ── Highlight + mode public surface ──────────────────────────────────
+
+// Layer a recall event into the highlight set. Weakest tier first so
+// stronger tiers overwrite (Map.set last-write).
+function _applyEventToHighlight(event) {
+  if (!event) return;
+  const idsByTier = {
+    returned:   event.returned_ids   || [],
+    activation: event.activation_ids || [],
+    used:       event.used_ids       || [],
+  };
+  for (const tier of HIGHLIGHT_TIER_ORDER) {
+    for (const id of idsByTier[tier]) _highlightTier.set(id, tier);
+  }
+}
+
+function _onRecallEvent({ event }) {
+  if (!graph3d || !event) return;
+  if (_highlightMode === 'session') {
+    // Only union recalls for the watched session — ignore others.
+    if (event.session_id !== _highlightSessionId) return;
+  } else {
+    // 'latest': replace the entire set with just this recall.
+    _highlightTier.clear();
+  }
+  _applyEventToHighlight(event);
+  _refreshGraph();
+}
+
+// Switch highlight mode. Clears the existing set, then pre-loads:
+//   latest      → the single most recent recall (so the spotlight is
+//                 immediately visible without waiting for the next one)
+//   session=X   → every recall for session X, unioned into the set
+async function setHighlightMode(mode, sessionId) {
+  _highlightMode = (mode === 'session' && sessionId) ? 'session' : 'latest';
+  _highlightSessionId = _highlightMode === 'session' ? sessionId : null;
+  _highlightTier.clear();
+  try {
+    if (_highlightMode === 'latest') {
+      const d = await api.recalls({ limit: 1 });
+      const evt = (d.events || [])[0];
+      if (evt) _applyEventToHighlight(evt);
+    } else {
+      const d = await api.recalls({ limit: 200, session_id: sessionId });
+      for (const evt of (d.events || [])) _applyEventToHighlight(evt);
+    }
+  } catch (e) {
+    console.error('[graph] highlight mode preload failed:', e);
+  }
+  _refreshGraph();
+}
+
+export function onGraphHighlightModeChange() {
+  const sel = document.getElementById('graph-highlight-mode');
+  if (!sel) return;
+  const v = sel.value;
+  if (v === 'latest') return setHighlightMode('latest');
+  if (v.startsWith('session:')) return setHighlightMode('session', v.slice('session:'.length));
+}
+
+// Refresh = clear the highlight + reload the graph data from /api/graph3d.
+export function onGraphRefresh() {
+  _highlightTier.clear();
+  loadGraph3D();
+}
+
+// Populate the mode dropdown with session options. Called once on
+// activate(); not polled — sessions change rarely and the dropdown
+// only matters when the user is actively switching modes.
+async function _populateSessionOptions() {
+  const sel = document.getElementById('graph-highlight-mode');
+  if (!sel) return;
+  try {
+    const sessions = await api.sessions();
+    // Preserve "Latest recall" as option 0; replace any prior session-*.
+    while (sel.options.length > 1) sel.remove(1);
+    for (const s of (sessions || [])) {
+      const opt = document.createElement('option');
+      opt.value = 'session:' + s.id;
+      opt.textContent = 'Session: ' + s.short + ' (' + s.events + ' events)';
+      sel.appendChild(opt);
+    }
+  } catch (e) {
+    console.error('[graph] session list load failed:', e);
+  }
+}
+
 // ── Graph load + lifecycle ────────────────────────────────────────────
+
+function _renderGraphError(message, hint) {
+  const container = document.getElementById('graph-3d');
+  if (!container) return;
+  container.innerHTML =
+    '<div class="graph-error">' +
+      '<div class="graph-error-title">3D graph unavailable</div>' +
+      '<div class="graph-error-msg">' + escapeHtml(message || 'unknown error') + '</div>' +
+      (hint ? '<div class="graph-error-hint">' + escapeHtml(hint) + '</div>' : '') +
+    '</div>';
+}
 
 export async function loadGraph3D() {
   try {
     graph3dData = await api.graph3d();
-    if (!graph3dData.nodes || !graph3dData.nodes.length) return;
+    if (!graph3dData.nodes || !graph3dData.nodes.length) {
+      _renderGraphError('No graph data returned',
+        'The /api/graph3d endpoint returned an empty payload. Check daemon health on the Logs tab.');
+      return;
+    }
 
     // Filter: only show nodes IN communities + community hub nodes.
-    // Orphans get hidden — they clutter without adding structure.
+    // Orphans hidden — they clutter without adding structure.
     const communityNodeIds = new Set();
     const hubIds = new Set();
     graph3dData.nodes.forEach(n => {
@@ -254,8 +313,6 @@ export async function loadGraph3D() {
       .map(e => ({source: e.source, target: e.target, relation: e.relation}));
 
     const container = document.getElementById('graph-3d');
-    // Height comes from the parent .graph-container (100% of Live's
-    // graph pane). Don't hard-set it.
     const w = container.offsetWidth || 800;
     const h = container.offsetHeight || 600;
 
@@ -266,8 +323,8 @@ export async function loadGraph3D() {
         .width(w).height(h)
         .graphData({nodes: visibleNodes, links: visibleLinks})
         .backgroundColor('#08080f')
-        .nodeVal(_valFor)
-        .nodeColor(_colorFor)
+        .nodeVal(n => _valFor(n))
+        .nodeColor(n => _colorFor(n))
         .nodeOpacity(0.85)
         .nodeLabel(n => {
           if (n.hub) return '<div style="text-align:center;font-size:14px"><b>' + n.name + '</b><br><span style="color:#aaa">' + (n.val/0.8|0) + ' members</span></div>';
@@ -298,24 +355,27 @@ export async function loadGraph3D() {
       if (controls) controls.zoomSpeed = 5.0;
     }
 
-    // If the user had typed before the graph mounted, apply the filter
-    // now that we have nodes.
-    _refreshColors();
+    // Apply any current state (search + highlight) once nodes are live.
+    _refreshGraph();
     _updateMatchCount();
   } catch(e) {
     console.error('Graph3D load failed:', e);
+    graph3d = null;   // let next loadGraph3D rebuild from scratch
+    const msg = (e && e.message) ? e.message : String(e);
+    _renderGraphError(msg,
+      /webgl|gl\b/i.test(msg)
+        ? 'WebGL context could not be created. Common causes: GPU driver, browser policy, sandboxed iframe. Try reloading or opening in a regular Chrome window.'
+        : 'See the Logs tab → Dashboard sub-feed for the full stack.');
   }
 }
 
-/** Resize ForceGraph3D to the current container. Run after tab-switch or
- * layout drag — three.js doesn't observe its host. */
+/** Resize ForceGraph3D to the current container. Run after tab-switch
+ * or layout drag — three.js doesn't observe its host. */
 export function resize() {
   if (!graph3d) return;
   const c = document.getElementById('graph-3d');
   if (!c) return;
-  // Trigger reflow before reading offset* so a hidden→visible transition
-  // gives us the post-display size, not the pre-display zeros.
-  void c.offsetHeight;
+  void c.offsetHeight;   // trigger reflow before reading offset*
   const w = c.offsetWidth || 800;
   const h = c.offsetHeight || 600;
   graph3d.width(w).height(h);
@@ -327,31 +387,26 @@ export function resize() {
 // ── Lifecycle ─────────────────────────────────────────────────────────
 
 export function init() {
-  // No polls — the graph reloads on Refresh button or activate(). The 3D
-  // scene's own animation loop keeps it moving once mounted.
-  // Subscribe to layout drags from Live's divider — when the user resizes
-  // the left pane, the renderer needs a setSize() pass.
   bus.subscribe('live:layout', () => {
-    // Debounce-ish via rAF: mousemove fires every pixel; we don't want
-    // to call renderer.setSize() that often. The browser coalesces.
     requestAnimationFrame(resize);
   });
-  // Recall activations — pulse surfaced nodes for 5s when a new recall
-  // lands. The bus event is published by live.js's pollRecallLog.
   bus.subscribe('recall:event', _onRecallEvent);
 }
 
 export function activate() {
-  // 300ms delay matches the legacy behavior: the tab-content display:block
-  // hasn't laid out yet by the time switchTab returns; size reads zero
-  // without a beat.
+  // 300ms delay matches the legacy behavior: tab-content display:block
+  // hasn't laid out yet by the time switchTab returns.
   setTimeout(() => {
     if (!graph3dData) loadGraph3D();
     else resize();
+    // Populate the mode dropdown + apply default mode (latest) so the
+    // spotlight pre-loads on first open.
+    _populateSessionOptions();
+    if (_highlightTier.size === 0) setHighlightMode('latest');
   }, 300);
 }
 
 export function deactivate() {
-  // 3D scene keeps animating in the background — cheap, and re-activating
+  // 3D scene keeps animating in the background — cheap; re-activating
   // a paused scene introduces a visible re-warmup.
 }

@@ -67,7 +67,11 @@
             oninput="onGraphSearch()"
             onkeydown="onGraphSearchKey(event)">
           <span id="graph-search-count" class="graph-search-count"></span>
-          <button class="btn--glass" onclick="loadGraph3D()">Refresh</button>
+          <select id="graph-highlight-mode" class="toolbar-select" title="Which recalls highlight nodes on the graph" onchange="onGraphHighlightModeChange()">
+            <option value="latest">Latest recall</option>
+            <!-- session-* options injected by tabs/graph.js after /api/sessions loads -->
+          </select>
+          <button class="btn--glass" title="Clear highlight + reload graph" onclick="onGraphRefresh()">Refresh</button>
         </div>
         <div id="graph-3d" style="width:100%;height:100%"></div>
       </div>
