@@ -957,7 +957,21 @@ class BrainRecallMixin:
             filtered = [n for n in filtered if not n.get('archived')]
         filtered = _apply_filter(filtered, filter, self.conn)
         if min_recency > 0:
-            filtered = [n for n in filtered if n.get('recency_score', 0) >= min_recency]
+            # Per-session recency_score when available (post 2026-05-25
+            # parallel-session work) — fall back to the global field on the
+            # node payload if this session hasn't touched the node yet. The
+            # gate is disabled in prod today (callers pass min_recency=0),
+            # so this is the correct shape for when it turns on, not a
+            # behavior change at the current call sites.
+            ctx = self._session_contexts.get(session_id) if session_id else None
+            if ctx is not None:
+                def _rec(n):
+                    rec = ctx.node_activity.get(n['id'], {})
+                    return float(rec.get('recency_score',
+                                         n.get('recency_score', 0)))
+                filtered = [n for n in filtered if _rec(n) >= min_recency]
+            else:
+                filtered = [n for n in filtered if n.get('recency_score', 0) >= min_recency]
 
         # v5: Project filter
         if project:

@@ -179,5 +179,95 @@ class TestSurfacePromptAcceptsFrame(BrainTestBase):
         self.assertNotIn("Encoder's recent journal", prompt)
 
 
+class TestLiveSessionResort(BrainTestBase):
+    """Frame brain-wide slots reorder by live-session activity — nodes
+    touched by the last X >=Y-msg sessions outrank nodes any background
+    activity bumped.
+    """
+
+    needs_embedder = False
+
+    def _make_live_session(self, sid, message_count, touched_node_ids):
+        """Create a live session with >=5 messages that has touched the given nodes."""
+        ctx = self.brain.get_or_create_session(sid)
+        ctx.message_count = message_count
+        for nid in touched_node_ids:
+            ctx.bump_node_activity(nid, '2026-05-25T10:00:00+00:00')
+        ctx.save(self.brain.logs_conn)
+        return ctx
+
+    def test_helper_floats_live_session_touched_nodes(self):
+        """_live_session_resort floats live-session nodes above untouched ones."""
+        from servers.scales.s1.frame import _live_session_resort
+
+        # Two synthetic nodes with the SAME global last_accessed.
+        nodes = [
+            {'id': 'old-but-globally-recent', 'last_accessed': '2026-05-24T12:00:00+00:00'},
+            {'id': 'fresh-and-live', 'last_accessed': '2026-05-24T12:00:00+00:00'},
+        ]
+        # Live session touched only 'fresh-and-live'.
+        self._make_live_session('sess-live', 10, ['fresh-and-live'])
+
+        result = _live_session_resort(self.brain, nodes, limit=2)
+        self.assertEqual(result[0]['id'], 'fresh-and-live',
+                         'live-session-touched node should outrank '
+                         'globally-recent-only node')
+        self.assertEqual(result[1]['id'], 'old-but-globally-recent')
+
+    def test_helper_falls_back_to_global_when_no_live_sessions(self):
+        """With no >=Y-msg sessions, order falls back to the global field —
+        backward-compatible with pre-change Frame behavior."""
+        from servers.scales.s1.frame import _live_session_resort
+
+        nodes = [
+            {'id': 'older', 'last_accessed': '2026-05-20T00:00:00+00:00'},
+            {'id': 'newer', 'last_accessed': '2026-05-25T00:00:00+00:00'},
+        ]
+        # No live sessions seeded — should fall back to global last_accessed.
+        result = _live_session_resort(self.brain, nodes, limit=2)
+        self.assertEqual(result[0]['id'], 'newer',
+                         'No live sessions → global last_accessed sort wins')
+
+    def test_frame_partnership_floats_live_session_community(self):
+        """Vacation-gap scenario: background activity touched community-A
+        globally most-recently; live partnership touched community-B.
+        Frame.Partnership should float community-B even though A has the
+        more recent global last_accessed.
+        """
+        # Two community nodes — community-A is "more globally recent" by
+        # virtue of being created later (so last_accessed is later).
+        comm_b = self.brain.remember(
+            type='community', title='Community-B-live-partnership',
+            content='topic the live partnership has been working on')
+        # Sleep tick so global last_accessed differs.
+        import time
+        time.sleep(0.02)
+        comm_a = self.brain.remember(
+            type='community', title='Community-A-background-bumped',
+            content='touched only by a background eval session')
+
+        # A low-message background session bumped community-A — should NOT
+        # count as "live" (below min_messages threshold).
+        self._make_live_session('bg', 1, [comm_a['id']])
+        # A real partnership session (>=5 messages) bumped community-B.
+        self._make_live_session('partnership', 10, [comm_b['id']])
+
+        frame = build_frame(self.brain, 'fresh-third-session')
+
+        # The partnership session's community should appear earlier than
+        # the background-bumped one in the Partnership section.
+        partnership_section = frame.split('## Partnership', 1)[1].split('## ', 1)[0]
+        idx_b = partnership_section.find(comm_b['title'])
+        idx_a = partnership_section.find(comm_a['title'])
+        self.assertGreaterEqual(idx_b, 0,
+                                'live partnership community missing from Frame')
+        # community-A may also appear (it's still a community node) — but
+        # if so, B must come first.
+        if idx_a >= 0:
+            self.assertLess(idx_b, idx_a,
+                            'live-session community should outrank '
+                            'background-only community')
+
+
 if __name__ == '__main__':
     unittest.main()
