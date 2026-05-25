@@ -1,37 +1,82 @@
-"""Single stderr logger for the dashboard.
+"""Single stderr logger + in-memory error ring for the dashboard.
 
 The dashboard intentionally degrades gracefully when something goes wrong —
 half the panels would crash the page if any one query raised, so each query
 catches its own exceptions and returns an empty result. The historic pattern
 was `except Exception: pass / return []` which made every failure invisible.
 
-This helper preserves the degradation but makes the failure VISIBLE in the
-dashboard's stdout/stderr (which preview_console_logs surfaces, and which a
-shell-launched dashboard prints to the terminal). Per the brain's
-loud-by-default principle: silent failures are the most dangerous bug class.
+This module does two things:
 
-Convention:
-  warn('component', 'human-readable thing that failed', exc=e)
-prints:
-  [dashboard.component] thing that failed: <ExceptionType>: <message>
+1. **Loud stderr logging** — `warn(component, message, exc=)` prints to
+   stderr in a uniform format. The preview console + a shell-launched
+   dashboard both see it; failures stop being silent.
 
-`component` is the module name (e.g. 'queries.recalls'), not a class.
+2. **In-memory ring buffer** — every warn() also appends to a bounded deque
+   the `/api/dashboard-errors` route exposes. This makes the dashboard
+   self-monitoring: when something goes wrong, you can see it in the
+   Logs tab (Dashboard sub-feed) without tailing terminal output.
+
+Loud-by-default principle: a silent failure is worse than a noisy one.
+The ring buffer makes "noisy" cheap — it doesn't fill disk, it doesn't
+spam every console; it just sits there waiting to be looked at when a
+panel shows blank.
 """
 
 import sys
+import time
+from collections import deque
+from threading import Lock
+
+# Bounded — drops oldest on overflow. 200 entries × a few hundred bytes each
+# = ~50KB max footprint. Plenty to catch a regression cluster, small enough
+# to ignore.
+_RING: deque = deque(maxlen=200)
+_LOCK = Lock()  # threads (HTTP handler) write; readers iterate snapshots
 
 
 def warn(component: str, message: str, exc: BaseException = None) -> None:
-    """Emit a single line to stderr. Never raises."""
+    """Emit a single line to stderr + append to the ring. Never raises."""
+    entry = {
+        'ts': time.strftime('%Y-%m-%dT%H:%M:%S+00:00', time.gmtime()),
+        'component': component,
+        'message': message,
+        'exc_type': type(exc).__name__ if exc is not None else None,
+        'exc_text': str(exc) if exc is not None else None,
+    }
+    # stderr first — even if the ring append throws (it shouldn't), the
+    # operator still gets the log line.
     try:
         if exc is None:
             line = '[dashboard.%s] %s' % (component, message)
         else:
             line = '[dashboard.%s] %s: %s: %s' % (
-                component, message, type(exc).__name__, exc,
+                component, message, entry['exc_type'], exc,
             )
         print(line, file=sys.stderr, flush=True)
     except Exception:
-        # Logging itself failing is the corner of corners. Swallow — we'd
-        # rather lose the log line than crash the request handler.
         pass
+    try:
+        with _LOCK:
+            _RING.append(entry)
+    except Exception:
+        pass
+
+
+def recent(limit: int = 100) -> list:
+    """Return the most recent `limit` warn entries, newest first.
+
+    Snapshot under the lock so a concurrent warn() can't mutate the list
+    mid-iteration. Returned list is a freshly-allocated copy — callers can
+    sort / filter / slice freely.
+    """
+    with _LOCK:
+        items = list(_RING)
+    items.reverse()  # newest first
+    return items[:limit]
+
+
+def clear() -> None:
+    """Drop all entries. Used by /api/dashboard-errors?clear=1 to reset the
+    badge after the operator has read the feed."""
+    with _LOCK:
+        _RING.clear()

@@ -76,6 +76,7 @@
   <div class="feed-toggle">
     <button class="feed-btn active" onclick="switchLogFeed('errors')">Errors <span id="err-badge" class="notif"></span></button>
     <button class="feed-btn" onclick="switchLogFeed('daemon')">Daemon</button>
+    <button class="feed-btn" onclick="switchLogFeed('dashboard')">Dashboard <span id="dash-err-badge" class="notif"></span></button>
     <select id="error-hours" class="toolbar-select" onchange="loadLogs()" style="margin-left:auto">
       <option value="1">1h</option>
       <option value="6">6h</option>
@@ -86,6 +87,7 @@
   </div>
   <div class="feed" id="feed-errors"></div>
   <div class="feed" id="feed-daemon" style="display:none"></div>
+  <div class="feed" id="feed-dashboard" style="display:none"></div>
 </div>
 
 <div id="tab-health" class="tab-content">

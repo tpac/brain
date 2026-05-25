@@ -15,6 +15,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse, parse_qs
 
+from . import log as dashboard_log
 from .daemon_client import DAEMON_PORT, daemon_alive
 from .queries import (
     aspects,
@@ -85,6 +86,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._json(200, {"insights": stats.query_insights()})
         elif path == "/api/aspects":
             self._json(200, {"aspects": aspects.query_aspects()})
+        elif path == "/api/dashboard-errors":
+            # The dashboard's own error feed. Reads from log.py's ring buffer
+            # — every warn() in queries/* / server.py / db.py lands here.
+            # `?clear=1` resets the badge after the operator reads it.
+            if params.get("clear", [""])[0] == "1":
+                dashboard_log.clear()
+                self._json(200, {"errors": [], "count": 0, "cleared": True})
+            else:
+                limit = int(params.get("limit", ["100"])[0])
+                items = dashboard_log.recent(limit=limit)
+                self._json(200, {"errors": items, "count": len(items)})
 
         # Live decoding feed
         elif path == "/api/recalls":

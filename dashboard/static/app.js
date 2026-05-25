@@ -52,7 +52,7 @@ async function loadStats() {
     Object.entries(d.types).forEach(([t, c]) => {
       sel.innerHTML += `<option value="${t}" ${t===current?'selected':''}>${t} (${c})</option>`;
     });
-  } catch(e) {}
+  } catch(e) { console.error('[dashboard] loadStats failed:', e); }
 }
 // Polling — every interval goes through lib/poll.js. The scheduler gates
 // on document.hidden (no fires when window minimized) and dedupes
@@ -508,7 +508,11 @@ function _renderS2ChainEntry(chain) {
         if (clusters.length > 15) {
           h += '<div style="color:#555;font-size:10px;padding:2px 8px">+' + (clusters.length - 15) + ' more clusters</div>';
         }
-      } catch(e) {}
+      } catch(e) {
+        // Old consolidation metadata may not have the clusters key —
+        // log so we can see the format change if a new version drifts.
+        console.error('[dashboard] consolidation cluster parse failed:', e);
+      }
     }
   }
   deltaEvents.forEach(d => {
@@ -865,28 +869,148 @@ async function searchNodes() {
         </div>
       </div>
     `).join('');
-  } catch(e) {}
+  } catch(e) { console.error('[dashboard] searchNodes failed:', e); }
 }
 // Dead: toggleNode — never called anywhere. Deleted P1.7.
 
-// Logs tab — Errors + Daemon
+// Logs tab — Errors + Daemon + Dashboard (dashboard's own self-monitoring)
 let activeLogFeed = 'errors';
 
 function switchLogFeed(name) {
   activeLogFeed = name;
-  document.querySelectorAll('#tab-logs .feed-btn').forEach(b => b.classList.remove('active'));
-  event.target.classList.add('active');
-  ['errors','daemon'].forEach(f => {
+  // Find the button whose text matches `name` (case-insensitive) and mark
+  // it active. Was previously `event.target.classList.add('active')` —
+  // global `event` only exists inside inline onclick handlers, so calling
+  // switchLogFeed() programmatically threw.
+  document.querySelectorAll('#tab-logs .feed-btn').forEach(b => {
+    b.classList.toggle('active', b.textContent.trim().toLowerCase().startsWith(name));
+  });
+  ['errors','daemon','dashboard'].forEach(f => {
     document.getElementById('feed-' + f).style.display = f === name ? '' : 'none';
   });
-  if (name === 'errors') { document.getElementById('err-badge').style.display = 'none'; }
+  if (name === 'errors') document.getElementById('err-badge').style.display = 'none';
+  if (name === 'dashboard') document.getElementById('dash-err-badge').style.display = 'none';
   loadLogs();
 }
 
 async function loadLogs() {
   if (activeLogFeed === 'errors') loadErrors();
   else if (activeLogFeed === 'daemon') loadDaemonLogs();
+  else if (activeLogFeed === 'dashboard') loadDashboardErrors();
 }
+
+// ── Dashboard self-monitoring ──────────────────────────────────────────
+// The dashboard captures TWO error sources:
+//   1. Python warn() calls — surfaced via /api/dashboard-errors (the ring
+//      buffer in dashboard/log.py).
+//   2. Browser-side errors — window.onerror + console.error wrap below.
+//      Kept in `_clientErrors` array; rendered alongside server entries.
+// Without this, silent failures in either runtime sit invisible until
+// someone notices a panel rendering wrong.
+
+const _clientErrors = [];  // ring of {ts, source, message, stack}
+const MAX_CLIENT_ERRORS = 200;
+
+function _captureClientError(source, message, stack) {
+  _clientErrors.push({
+    ts: new Date().toISOString(),
+    source,
+    message: String(message).slice(0, 300),
+    stack: stack ? String(stack).split('\n').slice(0, 4).join(' | ') : '',
+  });
+  while (_clientErrors.length > MAX_CLIENT_ERRORS) _clientErrors.shift();
+  // Flash the badge on the Dashboard sub-feed unless it's currently visible.
+  if (activeLogFeed !== 'dashboard') {
+    const b = document.getElementById('dash-err-badge');
+    if (b) { b.textContent = _clientErrors.length; b.style.display = ''; }
+  }
+}
+
+// Existing window.onerror handler is from legacy app.js — wrap it so the
+// document.title side-effect still happens AND we capture for the feed.
+const _legacyOnError = window.onerror;
+window.onerror = function(msg, src, line, col, err) {
+  _captureClientError('window.onerror', msg + ' @ line ' + line, err && err.stack);
+  if (_legacyOnError) return _legacyOnError(msg, src, line, col, err);
+};
+// console.error wrap — every error log lands in the ring too.
+const _origConsoleError = console.error.bind(console);
+console.error = function(...args) {
+  try {
+    const text = args.map(a => a && a.message ? a.message : String(a)).join(' ');
+    _captureClientError('console.error', text, args[args.length-1] && args[args.length-1].stack);
+  } catch (e) { /* don't recurse */ }
+  _origConsoleError(...args);
+};
+// Promise rejections that nothing else caught.
+window.addEventListener('unhandledrejection', e => {
+  _captureClientError('unhandledrejection', e.reason && e.reason.message || String(e.reason),
+                      e.reason && e.reason.stack);
+});
+
+async function loadDashboardErrors() {
+  const feed = document.getElementById('feed-dashboard');
+  let serverEntries = [];
+  try {
+    const d = await api.get ? await fetch('/api/dashboard-errors').then(r => r.json())
+                            : { errors: [] };
+    serverEntries = (d.errors || []).map(e => ({
+      ts: e.ts,
+      source: 'server:' + (e.component || '?'),
+      message: e.message + (e.exc_text ? ' — ' + e.exc_type + ': ' + e.exc_text : ''),
+      stack: '',
+    }));
+  } catch (e) {
+    _captureClientError('loadDashboardErrors', 'server fetch failed: ' + e);
+  }
+  // Merge server + client, newest first.
+  const all = [...serverEntries, ..._clientErrors.slice().reverse()];
+  all.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+  document.getElementById('logs-count').textContent = all.length + ' dashboard events';
+
+  if (!all.length) {
+    feed.innerHTML = '<div style="color:#4a4;padding:20px;text-align:center">No dashboard errors. The substrate is loud-by-default; if a panel goes blank without entries here, that\'s a regression.</div>';
+    return;
+  }
+  feed.innerHTML = '';
+  for (const e of all) {
+    const isServer = e.source && e.source.startsWith('server:');
+    const color = isServer ? '#ffaa33' : '#ff6644';
+    const div = document.createElement('div');
+    div.style.cssText = 'padding:8px 12px;margin:4px 0;background:#111118;border-radius:6px;border-left:3px solid ' + color + ';font-size:12px';
+    const t = localTime(e.ts);
+    div.innerHTML =
+      '<span class="badge badge--ghost-amber" style="background:' + color + '22;color:' + color + '">' + (isServer ? 'PY' : 'JS') + '</span> ' +
+      '<span style="color:#aaa;font-weight:bold">' + escapeHtml(e.source || '?') + '</span>' +
+      '<div style="color:#ccc;margin-top:3px">' + escapeHtml(e.message || '') + '</div>' +
+      (e.stack ? '<div style="color:#666;font-size:10px;margin-top:2px;font-family:monospace">' + escapeHtml(e.stack) + '</div>' : '') +
+      '<div style="color:#555;font-size:10px;margin-top:2px">' + t + '</div>';
+    feed.appendChild(div);
+  }
+}
+
+// Background poll for new dashboard errors — drives the badge so the
+// operator sees regression clusters without manually clicking the tab.
+poll.register({
+  key: 'dash-err-badge',
+  interval: 15000,
+  fetcher: async () => {
+    try {
+      const d = await fetch('/api/dashboard-errors?limit=1').then(r => r.json());
+      const totalServer = d.count || 0;
+      const totalClient = _clientErrors.length;
+      const total = totalServer + totalClient;
+      const badge = document.getElementById('dash-err-badge');
+      if (!badge) return;
+      if (total > 0 && activeLogFeed !== 'dashboard') {
+        badge.textContent = total;
+        badge.style.display = '';
+      } else {
+        badge.style.display = 'none';
+      }
+    } catch (e) { /* don't recurse into _captureClientError here */ }
+  },
+});
 
 async function loadErrors() {
   const hours = document.getElementById('error-hours').value;
@@ -1047,7 +1171,7 @@ async function _checkErrBadge() {
       errBadge.style.display = 'none';
       logsBadge.style.display = 'none';
     }
-  } catch(e) {}
+  } catch(e) { console.error('[dashboard] err-badge check failed:', e); }
 }
 // Error badge — 10s background poll, always running (no activeWhen) because
 // the badge counts errors for tabs that aren't visible. document.hidden
