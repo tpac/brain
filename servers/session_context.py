@@ -36,6 +36,15 @@ class SessionContext:
         self.stop_counter = stop_counter
         self.fatigue: Dict[str, int] = {}  # {node_id: access_count} — resets between sessions
         self.edge_fatigue: Dict[str, int] = {}  # {target_node_id: surface_count} — edge rotation
+        # Per-session node activity — the parallel-session replacement for
+        # global nodes.{activation, recency_score, last_accessed, access_count}
+        # in reads that should be session-scoped (spreading-activation kernel,
+        # recency filtering, live-session Frame composition). Global nodes
+        # columns stay populated by the drain for S2 maintenance + dashboard
+        # analytics. See bump_node_activity() for write semantics.
+        # Shape: {node_id: {'activation': float, 'recency_score': float,
+        #                   'access_count': int, 'last_accessed': iso_str}}
+        self.node_activity: Dict[str, Dict[str, object]] = {}
         # Activity counters — were global brain_meta keys (leaked across
         # parallel sessions). Persisted in session_state alongside fatigue.
         self.remember_count: int = 0
@@ -126,6 +135,45 @@ class SessionContext:
         """Get current edge fatigue count for a target node."""
         return self.edge_fatigue.get(target_id, 0)
 
+    def bump_node_activity(self, node_id: str, ts: str) -> Dict[str, object]:
+        """Mark a node as accessed by this session at time `ts`.
+
+        Semantics mirror the global `nodes` UPDATE in recall_write_queue.drain:
+          access_count += 1
+          activation   = min(1.0, activation + 0.1)
+          recency_score = 1.0  (reset on access)
+          last_accessed = ts   (caller passes wall-clock or conversation-time)
+
+        First access creates the entry with access_count=1, activation=1.0
+        (capped at the bump-from-zero ceiling — matches `remember()` initial).
+        Returns the updated record.
+        """
+        if not node_id:
+            return {}
+        rec = self.node_activity.get(node_id)
+        if rec is None:
+            rec = {
+                'activation': 1.0,
+                'recency_score': 1.0,
+                'access_count': 1,
+                'last_accessed': ts,
+            }
+        else:
+            current = float(rec.get('activation', 0.0))
+            rec['activation'] = min(1.0, current + 0.1)
+            rec['recency_score'] = 1.0
+            rec['access_count'] = int(rec.get('access_count', 0)) + 1
+            # Monotonic ts: ISO-8601 strings sort lexicographically.
+            existing_ts = rec.get('last_accessed', '')
+            if not existing_ts or ts > existing_ts:
+                rec['last_accessed'] = ts
+        self.node_activity[node_id] = rec
+        return rec
+
+    def get_node_activity(self, node_id: str) -> Dict[str, object]:
+        """Return this session's activity record for a node, or empty dict."""
+        return self.node_activity.get(node_id, {})
+
     def save(self, conn: sqlite3.Connection):
         """Save session context to DB. Creates or updates.
 
@@ -145,6 +193,7 @@ class SessionContext:
             'segment_id': self.segment_id,
             'segment_embeddings': self.segment_embeddings,
             'segment_node_ids': self.segment_node_ids,
+            'node_activity': self.node_activity,
         })
         conn.execute(
             'INSERT OR REPLACE INTO session_state (session_id, key, node_id, value, updated_at) '
@@ -176,6 +225,18 @@ class SessionContext:
             ctx.segment_id = int(data.get('segment_id', 0))
             ctx.segment_embeddings = list(data.get('segment_embeddings', []) or [])
             ctx.segment_node_ids = list(data.get('segment_node_ids', []) or [])
+            raw_activity = data.get('node_activity', {}) or {}
+            # Coerce types — JSON round-trip preserves dicts but the inner
+            # numerics need conversion when an older session_state row
+            # predates this field (raw_activity will be {} then; loop no-op).
+            for nid, rec in raw_activity.items():
+                if isinstance(rec, dict):
+                    ctx.node_activity[nid] = {
+                        'activation': float(rec.get('activation', 0.0)),
+                        'recency_score': float(rec.get('recency_score', 0.0)),
+                        'access_count': int(rec.get('access_count', 0)),
+                        'last_accessed': str(rec.get('last_accessed', '') or ''),
+                    }
             return ctx
         except (json.JSONDecodeError, TypeError):
             return None

@@ -2063,6 +2063,19 @@ class BrainRecallMixin:
                 self._log_error('mark_accessed_fatigue', e,
                                 'fatigue increment failed for node=%s' %
                                 (node_id[:12] if node_id else ''))
+            # Per-session node activity — parallel-session replacement for
+            # global nodes.{activation,recency_score,last_accessed,access_count}
+            # in reads that should be session-scoped (spreading-activation
+            # kernel, recency filtering, live-session Frame composition).
+            # In-memory; persisted with the SessionContext save at end of
+            # recall. Global nodes columns still bumped by recall_write_queue
+            # drain for S2 maintenance + dashboard analytics.
+            try:
+                ctx.bump_node_activity(node_id, self.now())
+            except Exception as e:
+                self._log_error('mark_accessed_activity', e,
+                                'node_activity bump failed for node=%s' %
+                                (node_id[:12] if node_id else ''))
 
     # _hebbian_strengthen REMOVED 2026-05-18 (Phase 5):
     # - Operated on top-15-by-cosine recall results, not what Anchor
