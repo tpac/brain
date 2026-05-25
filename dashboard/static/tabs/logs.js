@@ -95,6 +95,38 @@ function _wireClientErrorCapture() {
   });
 }
 
+// One renderer, three callers. spec keys: borderColor, pillText,
+// source, component, sessionTag, message, context, stack, timestamp,
+// dataSource (optional dataset.source). Everything is auto-escaped.
+function _renderLogEntry(spec) {
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  if (spec.borderColor) div.style.borderLeftColor = spec.borderColor;
+  if (spec.dataSource) div.dataset.source = spec.dataSource;
+  const pillStyle = spec.borderColor
+    ? 'background:' + spec.borderColor + '22;color:' + spec.borderColor
+    : '';
+  let html =
+    '<span class="log-pill" style="' + pillStyle + '">'
+      + escapeHtml(spec.pillText || '') + '</span> ';
+  if (spec.source)    html += '<span class="log-source">' + escapeHtml(spec.source) + '</span> ';
+  if (spec.component) html += '<span class="log-component">' + escapeHtml(spec.component) + '</span>';
+  if (spec.sessionTag) {
+    html += '<span class="log-session">' + escapeHtml(spec.sessionTag) + '</span>';
+  }
+  if (spec.message) html += '<div class="log-message">' + escapeHtml(spec.message) + '</div>';
+  if (spec.context) html += '<div class="log-context">' + escapeHtml(spec.context) + '</div>';
+  if (spec.stack)   html += '<div class="log-stack">'   + escapeHtml(spec.stack)   + '</div>';
+  if (spec.timestamp) html += '<div class="log-time">' + localTime(spec.timestamp) + '</div>';
+  div.innerHTML = html;
+  return div;
+}
+
+function _renderEmpty(feed, text, variant) {
+  feed.innerHTML = '<div class="feed-empty feed-empty--' + variant + '">'
+    + escapeHtml(text) + '</div>';
+}
+
 async function loadDashboardErrors() {
   const feed = document.getElementById('feed-dashboard');
   let serverEntries = [];
@@ -114,91 +146,84 @@ async function loadDashboardErrors() {
   document.getElementById('logs-count').textContent = all.length + ' dashboard events';
 
   if (!all.length) {
-    feed.innerHTML = '<div style="color:#4a4;padding:20px;text-align:center">No dashboard errors. The substrate is loud-by-default; if a panel goes blank without entries here, that\'s a regression.</div>';
+    _renderEmpty(feed, 'No dashboard errors. The substrate is loud-by-default; '
+                     + 'if a panel goes blank without entries here, that\'s a regression.',
+                 'ok');
     return;
   }
   feed.innerHTML = '';
   for (const e of all) {
     const isServer = e.source && e.source.startsWith('server:');
-    const color = isServer ? '#ffaa33' : '#ff6644';
-    const div = document.createElement('div');
-    div.style.cssText = 'padding:8px 12px;margin:4px 0;background:#111118;border-radius:6px;border-left:3px solid ' + color + ';font-size:12px';
-    const t = localTime(e.ts);
-    div.innerHTML =
-      '<span class="badge badge--ghost-amber" style="background:' + color + '22;color:' + color + '">' + (isServer ? 'PY' : 'JS') + '</span> ' +
-      '<span style="color:#aaa;font-weight:bold">' + escapeHtml(e.source || '?') + '</span>' +
-      '<div style="color:#ccc;margin-top:3px">' + escapeHtml(e.message || '') + '</div>' +
-      (e.stack ? '<div style="color:#666;font-size:10px;margin-top:2px;font-family:monospace">' + escapeHtml(e.stack) + '</div>' : '') +
-      '<div style="color:#555;font-size:10px;margin-top:2px">' + t + '</div>';
-    feed.appendChild(div);
+    feed.appendChild(_renderLogEntry({
+      borderColor: isServer ? '#ffaa33' : '#ff6644',
+      pillText:    isServer ? 'PY' : 'JS',
+      component:   e.source || '?',
+      message:     e.message || '',
+      stack:       e.stack || '',
+      timestamp:   e.ts,
+    }));
   }
 }
 
 async function loadErrors() {
   const hours = document.getElementById('error-hours').value;
+  const feed = document.getElementById('feed-errors');
   try {
     const d = await api.errors({ hours, limit: 100 });
-    const feed = document.getElementById('feed-errors');
     document.getElementById('logs-count').textContent = d.count + ' errors';
-
     if (!d.errors || !d.errors.length) {
-      feed.innerHTML = '<div style="color:#4a4;padding:20px;text-align:center">No errors in the last ' + hours + 'h</div>';
+      _renderEmpty(feed, 'No errors in the last ' + hours + 'h', 'ok');
       return;
     }
     feed.innerHTML = '';
     for (const e of d.errors) {
-      const div = document.createElement('div');
-      div.dataset.source = e.source || '';
-      const levelColor = _levelColor(e.level);
-      div.style.cssText = 'padding:8px 12px;margin:4px 0;background:#111118;border-radius:6px;border-left:3px solid ' + levelColor + ';font-size:12px';
-      const t = localTime(e.timestamp);
-      const sessionTag = e.session_id ? '<span style="color:#555;font-size:9px;margin-left:4px">' + e.session_id.substring(0,8) + '</span>' : '';
-      div.innerHTML =
-        '<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:bold;text-transform:uppercase;background:' + levelColor + '22;color:' + levelColor + '">' + (e.level || 'error') + '</span> ' +
-        '<span style="color:#888;font-size:10px">' + (e.source || '') + '</span> ' +
-        '<span style="color:#aaa;font-weight:bold">' + escapeHtml(e.component || '') + '</span>' + sessionTag +
-        '<div style="color:#ccc;margin-top:3px">' + escapeHtml(e.error || '') + '</div>' +
-        (e.context ? '<div style="color:#666;font-size:10px;margin-top:2px">' + escapeHtml(e.context) + '</div>' : '') +
-        '<div style="color:#555;font-size:10px;margin-top:2px">' + t + '</div>';
-      feed.appendChild(div);
+      feed.appendChild(_renderLogEntry({
+        borderColor: _levelColor(e.level),
+        pillText:    e.level || 'error',
+        dataSource:  e.source || '',
+        source:      e.source || '',
+        component:   e.component || '',
+        sessionTag:  e.session_id ? e.session_id.substring(0, 8) : '',
+        message:     e.error || '',
+        context:     e.context || '',
+        timestamp:   e.timestamp,
+      }));
     }
   } catch(e) {
-    document.getElementById('feed-errors').innerHTML = '<div style="color:#f66;padding:20px">Failed to load: ' + e + '</div>';
+    _renderEmpty(feed, 'Failed to load: ' + e, 'error');
   }
 }
 
 async function loadDaemonLogs() {
   const hours = document.getElementById('error-hours').value;
+  const feed = document.getElementById('feed-daemon');
   try {
-    const d = await api.errors({ hours, limit: 200, source: 'daemon' });
-    const feed = document.getElementById('feed-daemon');
-    const d2 = await api.errors({ hours, limit: 50, source: 'hook' });
-
+    const d  = await api.errors({ hours, limit: 200, source: 'daemon' });
+    const d2 = await api.errors({ hours, limit: 50,  source: 'hook' });
     const all = [...(d.errors || []), ...(d2.errors || [])];
     all.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
     document.getElementById('logs-count').textContent = all.length + ' daemon events';
-
     if (!all.length) {
-      feed.innerHTML = '<div style="color:#4a4;padding:20px;text-align:center">No daemon events in the last ' + hours + 'h</div>';
+      _renderEmpty(feed, 'No daemon events in the last ' + hours + 'h', 'ok');
       return;
     }
     feed.innerHTML = '';
     for (const e of all) {
-      const div = document.createElement('div');
-      const levelColor = _levelColor(e.level);
-      const isRestart = (e.error || '').includes('restart') || (e.component || '').includes('restart');
-      const borderColor = isRestart ? '#4a9eff' : levelColor;
-      div.style.cssText = 'padding:8px 12px;margin:4px 0;background:#111118;border-radius:6px;border-left:3px solid ' + borderColor + ';font-size:12px';
-      const t = localTime(e.timestamp);
-      div.innerHTML =
-        '<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:bold;text-transform:uppercase;background:' + borderColor + '22;color:' + borderColor + '">' + (isRestart ? 'restart' : e.level || 'error') + '</span> ' +
-        '<span style="color:#aaa;font-weight:bold">' + escapeHtml(e.component || '') + '</span>' +
-        '<div style="color:#ccc;margin-top:3px">' + escapeHtml(e.error || '') + '</div>' +
-        '<div style="color:#555;font-size:10px;margin-top:2px">' + t + '</div>';
-      feed.appendChild(div);
+      // Restart events get a distinct blue stripe + 'restart' pill — they're
+      // not errors, they're lifecycle markers. Keep them visually separated
+      // so an oncall scanning the feed can see "daemon bounced" at a glance.
+      const isRestart = (e.error || '').includes('restart')
+                        || (e.component || '').includes('restart');
+      feed.appendChild(_renderLogEntry({
+        borderColor: isRestart ? '#4a9eff' : _levelColor(e.level),
+        pillText:    isRestart ? 'restart' : (e.level || 'error'),
+        component:   e.component || '',
+        message:     e.error || '',
+        timestamp:   e.timestamp,
+      }));
     }
   } catch(e) {
-    document.getElementById('feed-daemon').innerHTML = '<div style="color:#f66;padding:20px">Failed to load: ' + e + '</div>';
+    _renderEmpty(feed, 'Failed to load: ' + e, 'error');
   }
 }
 

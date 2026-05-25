@@ -193,6 +193,36 @@
 .enc-meta-line--warn { color: #aa8800; }
 .enc-empty-note { color: var(--text-subtle); font-size: var(--fs-sm); padding: 4px 8px; }
 .feed-empty     { color: var(--text-muted); padding: 20px; text-align: center; }
+.feed-empty--ok    { color: #4a4; }
+.feed-empty--error { color: #f66; text-align: left; }
+
+/* ── Log entry (errors + daemon + dashboard sub-feeds) ─────────────── */
+/* Three sub-feeds renders the same shape via _renderLogEntry — these
+ * classes hold the structure. Border-left color + pill background are
+ * still set inline because they're per-entry (level/severity drives them). */
+.log-entry {
+  padding: 8px 12px;
+  margin: 4px 0;
+  background: var(--bg-panel);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--border-base);
+  font-size: var(--fs-md);
+}
+.log-pill {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: var(--fs-xs);
+  font-weight: bold;
+  text-transform: uppercase;
+}
+.log-source    { color: var(--text-muted);   font-size: var(--fs-xs); }
+.log-component { color: var(--text-heading); font-weight: bold; }
+.log-session   { color: var(--text-subtle);  font-size: 9px; margin-left: 4px; }
+.log-message   { color: var(--text-body);    margin-top: 3px; }
+.log-context   { color: var(--text-subtle);  font-size: var(--fs-xs); margin-top: 2px; }
+.log-stack     { color: var(--text-subtle);  font-size: var(--fs-xs); margin-top: 2px; font-family: monospace; }
+.log-time      { color: var(--text-faint);   font-size: var(--fs-xs); margin-top: 2px; }
 .hook-body--padded { padding: 4px 12px; }
 
 /* ── Insights panel (Live tab top) ─────────────────────────────────── */

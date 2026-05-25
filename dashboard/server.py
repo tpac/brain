@@ -25,7 +25,6 @@ from .queries import (
     explorer,
     graph,
     insights_scanner,
-    legacy,
     recalls,
     s2_runs,
     sessions,
@@ -163,17 +162,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
         # Errors / logs
         elif path == "/api/errors":
             self._serve_errors(params)
-
-        # Legacy
-        elif path == "/api/hook-log":
-            since_id = int(params.get("since_id", [0])[0])
-            limit = int(params.get("limit", [50])[0])
-            entries = legacy.query_hook_log(since_id=since_id, limit=limit)
-            latest_id = entries[0]["id"] if entries else since_id
-            self._json(200, {"events": entries, "latest_id": latest_id})
-        elif path == "/api/assembler-comparison":
-            limit = int(params.get("limit", [20])[0])
-            self._json(200, {"comparisons": legacy.query_assembler_comparison(limit=limit)})
 
         else:
             self._json(404, {"error": "Not found"})
