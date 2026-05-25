@@ -1,3 +1,12 @@
+// ES module — substrate adopted: api/poll/bus/dom/types from lib/.
+// Inline `onclick="X()"` in index.html requires X on window — see the
+// window.* exposures at the bottom of this file.
+import { api } from '/static/lib/api.js';
+import { poll } from '/static/lib/poll.js';
+import bus from '/static/lib/bus.js';
+import { el, escapeHtml, localTime, identityChip } from '/static/lib/dom.js';
+import { TYPE_COLORS as TYPE_COLORS_FROM_LIB } from '/static/lib/types.js';
+
 window.onerror = function(msg, src, line, col, err) { document.title = 'ERR L' + line + ': ' + msg; console.error('JS ERROR line ' + line + ': ' + msg); };
 let daemonAlive = false;
 
@@ -17,8 +26,7 @@ function switchTab(name) {
 
 async function loadStats() {
   try {
-    const r = await fetch('/api/stats');
-    const d = await r.json();
+    const d = await api.stats();
     daemonAlive = d.daemon === 'alive';
     const statusClass = daemonAlive ? 'alive' : 'unavailable';
     const statusText = daemonAlive ? 'Daemon: alive' : 'Daemon: offline';
@@ -46,10 +54,11 @@ async function loadStats() {
     });
   } catch(e) {}
 }
-loadStats();
-loadSessions();
-setInterval(loadStats, 30000);
-setInterval(loadSessions, 60000);
+// Polling — every interval goes through lib/poll.js. The scheduler gates
+// on document.hidden (no fires when window minimized) and dedupes
+// in-flight, so concurrent fires of the same key coalesce.
+poll.register({ key: 'stats',    interval: 30000, fetcher: loadStats });
+poll.register({ key: 'sessions', interval: 60000, fetcher: loadSessions });
 
 // Live feed — polls /api/recalls. Cursor is ISO timestamp (since_ts), not
 // integer rowid: trace_events.id is now an 8-char hex string, so integer
@@ -58,24 +67,10 @@ setInterval(loadSessions, 60000);
 let lastRecallTs = '';
 const MAX_ENTRIES = 100;
 
-function escapeHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-function localTime(utcStr, mode) {
-  if (!utcStr) return '';
-  let s = utcStr;
-  if (s.length >= 19 && !s.endsWith('Z') && !s.includes('+')) s += 'Z';
-  const d = new Date(s);
-  if (isNaN(d)) return utcStr;
-  if (mode === 'time') return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-  return d.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit'});
-}
+// escapeHtml + localTime imported from lib/dom.js — the canonical versions.
+// Old local copies removed P1.7.
 
-function toggleDetails(btn) {
-  const details = btn.nextElementSibling;
-  details.classList.toggle('open');
-  btn.textContent = details.classList.contains('open') ? 'Hide Details' : 'Full Details';
-}
+// Dead: toggleDetails — defined but never called. Deleted P1.7.
 
 function toggleHookBody(el) {
   const body = el.parentElement.querySelector('.hook-body');
@@ -207,8 +202,7 @@ function getSessionFilter() {
 
 async function loadSessions() {
   try {
-    const r = await fetch('/api/sessions');
-    const sessions = await r.json();
+    const sessions = await api.sessions();
     const sel = document.getElementById('session-filter');
     // Keep current selection
     const current = sel.value;
@@ -230,12 +224,11 @@ function onSessionFilterChange() {
 
 async function pollRecallLog() {
   try {
-    let url = '/api/recalls?limit=20';
-    if (lastRecallTs) url += '&since_ts=' + encodeURIComponent(lastRecallTs);
-    const sf = getSessionFilter();
-    if (sf) url += '&session_id=' + encodeURIComponent(sf);
-    const r = await fetch(url);
-    const d = await r.json();
+    const d = await api.recalls({
+      limit: 20,
+      since_ts: lastRecallTs || undefined,
+      session_id: getSessionFilter() || undefined,
+    });
     const feed = document.getElementById('feed-decoding');
     if (d.events && d.events.length) {
       if (feed.querySelector('.hook-placeholder')) feed.querySelector('.hook-placeholder').remove();
@@ -259,8 +252,10 @@ async function pollRecallLog() {
         const minTs = stamps.sort()[0];
         // Step the cursor back one second to include the earliest pending row.
         const minTsBack = new Date(new Date(minTs).getTime() - 1000).toISOString();
-        const jr = await fetch('/api/recalls?since_ts=' + encodeURIComponent(minTsBack) + '&limit=' + (stamps.length + 5));
-        const jd = await jr.json();
+        const jd = await api.recalls({
+          since_ts: minTsBack,
+          limit: stamps.length + 5,
+        });
         for (const evt of (jd.events || [])) {
           if (evt.judge_output) {
             const el = document.querySelector('#feed-decoding .recall-entry[data-recall-id="' + evt.id + '"][data-needs-judge="1"]');
@@ -278,23 +273,33 @@ async function pollRecallLog() {
   } catch(e) { console.error('pollRecallLog error:', e); }
 }
 
-// Initial load
-(async function() {
+// Initial load — placeholder, then let the scheduler take over.
+(function() {
   const feed = document.getElementById('feed-decoding');
   feed.innerHTML = '<div class="hook-placeholder" style="color:#666;padding:20px;text-align:center">Waiting for brain activity...</div>';
-  await pollRecallLog();
 })();
-setInterval(pollRecallLog, 2000);
 
-// Feed toggle + encoding badge
-let activeFeed = 'surface';
-var encBadgeCount = 0;
-function updateEncBadge(count) {
-  if (activeFeed === 'encoding') return;
-  encBadgeCount += count;
-  var badge = document.getElementById('enc-badge');
-  if (encBadgeCount > 0) { badge.textContent = encBadgeCount; badge.style.display = 'inline'; }
-}
+// Feed-toggle state. Declared BEFORE any poll.register that reads it —
+// poll.register fires an immediate eligibility check, and `let` variables
+// are in TDZ until their declaration line is hit (vs `var` which hoists).
+// Initial value 'decoding' matches index.html's active-class on the
+// Decoding button. Previously 'surface' (legacy name) — every interval
+// misfired on first load.
+let activeFeed = 'decoding';
+let encBadgeCount = 0;
+// Dead: updateEncBadge — defined but called nowhere. Deleted P1.7.
+
+// Recall feed — 2s cadence, only when the Live tab is open AND on the
+// decoding sub-feed. Inactive tabs get zero polls; previously this ran
+// every 2s no matter what was on screen.
+poll.register({
+  key: 'recalls',
+  interval: 2000,
+  activeWhen: () => document.getElementById('tab-live').classList.contains('active')
+                    && activeFeed === 'decoding',
+  fetcher: pollRecallLog,
+});
+
 function switchFeed(name) {
   activeFeed = name;
   document.querySelectorAll('#tab-live .feed-btn').forEach(b => {
@@ -343,8 +348,7 @@ async function loadS2DecodeEntries() {
   try {
     // Only show S2 entries from last 24h in the live Decoding feed.
     // Historical S2 data lives in the Traces tab.
-    const r = await fetch('/api/traces?scale=s2&hours=24');
-    const events = await r.json();
+    const events = await api.traces({ scale: 's2', hours: 24 });
     if (!Array.isArray(events) || !events.length) return;
     const chains = {};
     events.forEach(e => {
@@ -381,9 +385,15 @@ async function loadS2DecodeEntries() {
     console.error('S2 decode load failed:', e);
   }
 }
-// Refresh S2 feed every 15s while decoding tab is active. Light poll —
-// the function is idempotent and only appends new chains.
-setInterval(() => { if (activeFeed === 'decoding') loadS2DecodeEntries(); }, 15000);
+// Refresh S2 feed every 15s while the Live tab + decoding sub-feed are open.
+// Idempotent (only appends new chains by chain_id).
+poll.register({
+  key: 's2-decode',
+  interval: 15000,
+  activeWhen: () => document.getElementById('tab-live').classList.contains('active')
+                    && activeFeed === 'decoding',
+  fetcher: loadS2DecodeEntries,
+});
 
 function _renderS2ChainEntry(chain) {
   const oEvent = chain.events.find(e => e.event_type === 'O');
@@ -536,8 +546,7 @@ let lastEncodingTs = '';
 async function loadEncodingActivity() {
   try {
     const container = document.getElementById('feed-encoding');
-    const runsR = await fetch('/api/encoding-runs?limit=50&hours=12');
-    const runsD = await runsR.json();
+    const runsD = await api.encodingRuns({ limit: 50, hours: 12 });
 
     if (!runsD.runs || !runsD.runs.length) {
       if (!encodingLoaded) {
@@ -566,8 +575,7 @@ async function loadEncodingActivity() {
 
     let s2Runs = [];
     try {
-      const consolR = await fetch('/api/consolidation-runs?hours=12');
-      const consolD = await consolR.json();
+      const consolD = await api.consolidationRuns({ hours: 12 });
       if (consolD.runs) {
         for (const run of consolD.runs) {
           s2Runs.push({type: 'consolidation', ...run, start_ts: run.timestamp});
@@ -575,8 +583,7 @@ async function loadEncodingActivity() {
       }
     } catch(e) { console.error('S2 consolidation load:', e); }
     try {
-      const commR = await fetch('/api/community-runs?hours=12');
-      const commD = await commR.json();
+      const commD = await api.communityRuns({ hours: 12 });
       if (commD.runs) {
         for (const run of commD.runs) {
           s2Runs.push({type: 'community', ...run, start_ts: run.timestamp});
@@ -584,8 +591,7 @@ async function loadEncodingActivity() {
       }
     } catch(e) { console.error('S2 community load:', e); }
     try {
-      const healR = await fetch('/api/healer-runs?hours=12');
-      const healD = await healR.json();
+      const healD = await api.healerRuns({ hours: 12 });
       if (healD.runs) {
         for (const run of healD.runs) {
           s2Runs.push({type: 'healer', ...run, start_ts: run.timestamp});
@@ -805,8 +811,7 @@ async function toggleConsolPrompt(entry) {
     if (btn) btn.textContent = 'Hide Prompt';
     if (prompt.querySelector('pre').textContent === 'Loading...') {
       try {
-        const r = await fetch('/api/consolidation-prompt?batch=1');
-        const d = await r.json();
+        const d = await api.consolidationPrompt(1);
         prompt.querySelector('pre').textContent = d.user_content || d.error || '(no prompt available)';
       } catch(e) {
         prompt.querySelector('pre').textContent = '(failed to load prompt)';
@@ -818,20 +823,32 @@ async function toggleConsolPrompt(entry) {
   }
 }
 
-setInterval(() => { if (activeFeed === 'encoding') loadEncodingActivity(); }, 3000);
-setInterval(() => { if (activeFeed !== 'encoding' && encodingLoaded) loadEncodingActivity(); }, 10000);
+// Encoding tab refresh — fast cadence (3s) when the Encoding sub-feed is
+// open + visible; slow cadence (10s) for badge updates when it's not.
+// Single registration with adaptive interval — kills two setIntervals.
+poll.register({
+  key: 'encoding-active',
+  interval: 3000,
+  activeWhen: () => document.getElementById('tab-live').classList.contains('active')
+                    && activeFeed === 'encoding',
+  fetcher: loadEncodingActivity,
+});
+poll.register({
+  key: 'encoding-background',
+  interval: 10000,
+  activeWhen: () => encodingLoaded
+                    && !(document.getElementById('tab-live').classList.contains('active')
+                         && activeFeed === 'encoding'),
+  fetcher: loadEncodingActivity,
+});
 
-// Explorer
-let expandedNode = null;
+// Explorer — `expandedNode` was a legacy expand-on-click state that no
+// surviving code reads. Deleted P1.7 alongside `toggleNode`.
 async function searchNodes() {
   const search = document.getElementById('search-input').value;
   const type = document.getElementById('type-filter').value;
-  let url = '/api/nodes?limit=100';
-  if (search) url += '&search=' + encodeURIComponent(search);
-  if (type) url += '&type=' + encodeURIComponent(type);
   try {
-    const r = await fetch(url);
-    const d = await r.json();
+    const d = await api.nodes({ limit: 100, search: search || undefined, type: type || undefined });
     const list = document.getElementById('node-list');
     list.innerHTML = d.nodes.map(n => `
       <div class="node-card" onclick="loadNodeDetail('${n.id}')" style="cursor:pointer">
@@ -850,10 +867,7 @@ async function searchNodes() {
     `).join('');
   } catch(e) {}
 }
-function toggleNode(id, el) {
-  expandedNode = expandedNode === id ? null : id;
-  el.classList.toggle('expanded');
-}
+// Dead: toggleNode — never called anywhere. Deleted P1.7.
 
 // Logs tab — Errors + Daemon
 let activeLogFeed = 'errors';
@@ -877,8 +891,7 @@ async function loadLogs() {
 async function loadErrors() {
   const hours = document.getElementById('error-hours').value;
   try {
-    const r = await fetch('/api/errors?hours=' + hours + '&limit=100');
-    const d = await r.json();
+    const d = await api.errors({ hours, limit: 100 });
     const feed = document.getElementById('feed-errors');
     document.getElementById('logs-count').textContent = d.count + ' errors';
 
@@ -911,11 +924,9 @@ async function loadErrors() {
 async function loadDaemonLogs() {
   const hours = document.getElementById('error-hours').value;
   try {
-    const r = await fetch('/api/errors?hours=' + hours + '&limit=200&source=daemon');
-    const d = await r.json();
+    const d = await api.errors({ hours, limit: 200, source: 'daemon' });
     const feed = document.getElementById('feed-daemon');
-    const r2 = await fetch('/api/errors?hours=' + hours + '&limit=50&source=hook');
-    const d2 = await r2.json();
+    const d2 = await api.errors({ hours, limit: 50, source: 'hook' });
 
     const all = [...(d.errors || []), ...(d2.errors || [])];
     all.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
@@ -948,8 +959,7 @@ async function loadDaemonLogs() {
 // System Status
 async function loadSystemStatus() {
   try {
-    const r = await fetch('/api/system-status');
-    const d = await r.json();
+    const d = await api.systemStatus();
     const grid = document.getElementById('status-grid');
     grid.innerHTML = '';
 
@@ -1001,20 +1011,27 @@ async function loadSystemStatus() {
   }
 }
 
-setInterval(() => {
-  const statusTab = document.getElementById('tab-status');
-  if (statusTab && statusTab.classList.contains('active')) loadSystemStatus();
-}, 5000);
+poll.register({
+  key: 'system-status',
+  interval: 5000,
+  activeWhen: () => {
+    // Note: legacy "#tab-status" id existed in an earlier version but the
+    // tab is currently "#tab-health". Check both so this doesn't silently
+    // stop refreshing if Health is renamed.
+    const t = document.getElementById('tab-health') || document.getElementById('tab-status');
+    return t && t.classList.contains('active');
+  },
+  fetcher: loadSystemStatus,
+});
 
 let lastSeenErrorCount = -1;
 
-setInterval(async () => {
+async function _checkErrBadge() {
   const logsTab = document.getElementById('tab-logs');
   const isViewing = logsTab && logsTab.classList.contains('active');
 
   try {
-    const r = await fetch('/api/errors?hours=1&limit=1');
-    const d = await r.json();
+    const d = await api.errors({ hours: 1, limit: 1 });
     const errBadge = document.getElementById('err-badge');
     const logsBadge = document.getElementById('logs-badge');
     if (lastSeenErrorCount < 0) lastSeenErrorCount = d.count;
@@ -1031,15 +1048,18 @@ setInterval(async () => {
       logsBadge.style.display = 'none';
     }
   } catch(e) {}
-}, 10000);
+}
+// Error badge — 10s background poll, always running (no activeWhen) because
+// the badge counts errors for tabs that aren't visible. document.hidden
+// still gates so an unfocused window pauses.
+poll.register({ key: 'err-badge', interval: 10000, fetcher: _checkErrBadge });
 
 // Aspect taxonomy — 14 aspects classifying node_types + edge_relations.
 // Source: aspects_v1.json (live at $BRAIN_DB_DIR/aspects_v1.json, seed in
 // servers/scales/s2/aspects_v1.json). Counts come from brain.db.
 async function loadAspects() {
   try {
-    const r = await fetch('/api/aspects');
-    const d = await r.json();
+    const d = await api.aspects();
     const grid = document.getElementById('aspects-grid');
     if (!grid) return;
     const aspects = d.aspects || [];
@@ -1086,10 +1106,8 @@ async function loadAspects() {
 // Health
 async function loadHealth() {
   try {
-    const statsR = await fetch('/api/stats');
-    const insightsR = await fetch('/api/insights');
-    const d = await statsR.json();
-    const ins = await insightsR.json();
+    const d = await api.stats();
+    const ins = await api.insights();
     const hc = document.getElementById('health-content');
     const orphanClass = d.orphans > 20 ? 'bad' : d.orphans > 5 ? 'warn' : 'ok';
     const sevColors = {high: '#ff6666', medium: '#ffaa33', low: '#7eb8ff'};
@@ -1143,11 +1161,11 @@ async function loadTraces() {
     const scaleFilter = document.getElementById('trace-scale-filter').value;
     const hours = document.getElementById('trace-hours-filter').value;
     const sessionFilter = document.getElementById('trace-session-filter').value;
-    let url = '/api/traces?hours=' + hours;
-    if (scaleFilter) url += '&scale=' + scaleFilter;
-    if (sessionFilter) url += '&session=' + sessionFilter;
-    const r = await fetch(url);
-    const traces = await r.json();
+    const traces = await api.traces({
+      hours,
+      scale: scaleFilter || undefined,
+      session: sessionFilter || undefined,
+    });
     const el = document.getElementById('traces-content');
     const label = hours <= 1 ? '1h' : hours <= 6 ? '6h' : hours <= 24 ? '24h' : '7d';
     document.getElementById('trace-count').textContent = traces.length + ' events (' + label + ')';
@@ -1155,8 +1173,7 @@ async function loadTraces() {
     const sessSelect = document.getElementById('trace-session-filter');
     const prevVal = sessSelect.value;
     try {
-      const sr = await fetch('/api/sessions');
-      const sessions = await sr.json();
+      const sessions = await api.sessions();
       const opts = '<option value="">All sessions</option>' + sessions.map(s =>
         '<option value="' + s.id + '"' + (s.id === prevVal ? ' selected' : '') + '>' + s.short + ' (' + s.events + ' events)</option>'
       ).join('');
@@ -1268,16 +1285,20 @@ function _loadMoreTraces() {
   _renderTracesBatch(document.getElementById('traces-content'));
 }
 
-let _traceAutoRefresh = null;
-function _startTraceAutoRefresh() {
-  _stopTraceAutoRefresh();
-  _traceAutoRefresh = setInterval(() => {
+// Traces tab — keep the start/stop helpers as no-ops for now so the
+// switchTab caller doesn't break, but the actual polling is registered
+// once and gated on tab-visibility (matches the other panels' pattern).
+poll.register({
+  key: 'traces',
+  interval: 5000,
+  activeWhen: () => {
     const tab = document.getElementById('tab-traces');
-    if (tab && tab.classList.contains('active')) loadTraces();
-  }, 5000);
-}
-function _stopTraceAutoRefresh() {
-  if (_traceAutoRefresh) { clearInterval(_traceAutoRefresh); _traceAutoRefresh = null; }
+    return tab && tab.classList.contains('active');
+  },
+  fetcher: loadTraces,
+});
+function _startTraceAutoRefresh() { /* now handled by poll registration above */ }
+function _stopTraceAutoRefresh() { /* now handled by poll registration above */
 }
 
 // 3D Graph
@@ -1298,24 +1319,16 @@ async function loadNodeDetail(nodeId) {
   panel.innerHTML = '<div style="color:#666;padding:20px">Loading...</div>';
   try {
     // Fan out three calls in parallel:
-    //   /api/node/{id}             — base node + connections (direct SQL,
-    //                                works without daemon)
-    //   /api/node/{id}/corrections — aspect-edge walk (via daemon)
-    //   /api/node/{id}/source-refs — episodic refs from node_source_refs (v27)
-    var [r, cr, srr] = await Promise.all([
-      fetch('/api/node/' + nodeId),
-      fetch('/api/node/' + nodeId + '/corrections').catch(() => null),
-      fetch('/api/node/' + nodeId + '/source-refs').catch(() => null),
+    //   node          — base node + connections (direct SQL, works without daemon)
+    //   corrections   — aspect-edge walk (via daemon; falls back to [] if down)
+    //   sourceRefs    — episodic refs from node_source_refs (v27)
+    var [d, crData, srrData] = await Promise.all([
+      api.node(nodeId),
+      api.nodeCorrections(nodeId).catch(() => ({ corrections: [] })),
+      api.nodeSourceRefs(nodeId).catch(() => ({ refs: [] })),
     ]);
-    var d = await r.json();
-    var corrections = [];
-    if (cr && cr.ok) {
-      try { corrections = (await cr.json()).corrections || []; } catch(e) { corrections = []; }
-    }
-    var sourceRefs = [];
-    if (srr && srr.ok) {
-      try { sourceRefs = (await srr.json()).refs || []; } catch(e) { sourceRefs = []; }
-    }
+    var corrections = (crData && crData.corrections) || [];
+    var sourceRefs = (srrData && srrData.refs) || [];
     var n = d.node;
     var conns = d.connections || [];
     var meta = n.metadata || {};
@@ -1402,8 +1415,7 @@ async function loadNodeDetail(nodeId) {
 
 async function loadGraph3D() {
   try {
-    const r = await fetch('/api/graph3d');
-    graph3dData = await r.json();
+    graph3dData = await api.graph3d();
     if (!graph3dData.nodes || !graph3dData.nodes.length) return;
 
     // Filter: only show nodes IN communities + community hub nodes
@@ -1499,4 +1511,35 @@ function focusCommunity(hubId) {
   }
 }
 
-async function loadGraph() { loadGraph3D(); }
+// Dead: loadGraph — redirected to loadGraph3D for legacy callers, but no
+// legacy caller remains. Deleted P1.7.
+
+// ────────────────────────────────────────────────────────────────────────
+// Inline-handler exposure. ES modules scope identifiers to the module, but
+// inline `onclick="X()"` in index.html (and in our dynamically-rendered
+// innerHTML strings) look up `X` on the global `window`. Each handler the
+// HTML names is mounted explicitly here — adding a new inline handler =
+// adding a line below.
+//
+// As the migration to addEventListener progresses (future phase), entries
+// here disappear one by one.
+// ────────────────────────────────────────────────────────────────────────
+window.switchTab             = switchTab;
+window.switchFeed            = switchFeed;
+window.onSessionFilterChange = onSessionFilterChange;
+window.filterByScale         = filterByScale;
+window.switchLogFeed         = switchLogFeed;
+window.loadLogs              = loadLogs;
+window.loadGraph3D           = loadGraph3D;
+window.toggleLegend          = toggleLegend;
+window.searchNodes           = searchNodes;
+window.onTraceScaleChange    = onTraceScaleChange;
+window.loadTraces            = loadTraces;
+window.toggleHookBody        = toggleHookBody;
+window.toggleSurfacePrompt   = toggleSurfacePrompt;
+window.toggleEncPrompt       = toggleEncPrompt;
+window.toggleConsolPrompt    = toggleConsolPrompt;
+window.loadNodeDetail        = loadNodeDetail;
+window.focusCommunity        = focusCommunity;
+window._loadMoreTraces       = _loadMoreTraces;
+

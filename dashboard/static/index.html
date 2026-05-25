@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Brain Dashboard</title>
+<!-- Modular CSS, loaded in order (vars → base → components → types →
+     legacy). The legacy style.css remains until its specific selectors
+     are migrated tab-by-tab; new code should reach for the components/
+     type classes first. -->
+<link rel="stylesheet" href="/static/css/vars.css">
+<link rel="stylesheet" href="/static/css/base.css">
+<link rel="stylesheet" href="/static/css/components.css">
+<link rel="stylesheet" href="/static/css/types.css">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -12,7 +20,7 @@
   <div class="tab active" onclick="switchTab('live')">Live</div>
   <div class="tab" onclick="switchTab('graph')">Graph</div>
   <div class="tab" onclick="switchTab('explorer')">Explorer</div>
-  <div class="tab" onclick="switchTab('logs')">Logs <span id="logs-badge" style="display:none;background:#ff4466;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:2px"></span></div>
+  <div class="tab" onclick="switchTab('logs')">Logs <span id="logs-badge" class="notif"></span></div>
   <div class="tab" onclick="switchTab('health')">Health</div>
   <div class="tab" onclick="switchTab('traces')">Traces</div>
 </div>
@@ -22,11 +30,11 @@
   <div id="daemon-banner"></div>
   <div class="feed-toggle">
     <button class="feed-btn active" onclick="switchFeed('decoding')">Decoding</button>
-    <button class="feed-btn" onclick="switchFeed('encoding')">Encoding <span id="enc-badge" style="display:none;background:#ff4466;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:4px"></span></button>
-    <select id="session-filter" onchange="onSessionFilterChange()" style="margin-left:auto;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
+    <button class="feed-btn" onclick="switchFeed('encoding')">Encoding <span id="enc-badge" class="notif"></span></button>
+    <select id="session-filter" class="toolbar-select" onchange="onSessionFilterChange()" style="margin-left:auto">
       <option value="">All sessions</option>
     </select>
-    <select id="scale-filter" onchange="filterByScale()" style="margin-left:8px;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
+    <select id="scale-filter" class="toolbar-select" onchange="filterByScale()" style="margin-left:8px">
       <option value="">All scales</option>
       <option value="s1">S1 Turn</option>
       <option value="s2">S2 Graph</option>
@@ -39,11 +47,11 @@
 <div id="tab-graph" class="tab-content">
   <div class="graph-container">
     <div class="graph-controls">
-      <button onclick="loadGraph3D()">Refresh</button>
-      <button onclick="toggleLegend()">Legend</button>
+      <button class="btn--glass" onclick="loadGraph3D()">Refresh</button>
+      <button class="btn--glass" onclick="toggleLegend()">Legend</button>
     </div>
     <div id="graph-3d" style="width:100%;height:100%"></div>
-    <div id="graph-legend" style="position:fixed;top:42px;right:0;background:rgba(10,10,20,0.95);border-left:1px solid #333;padding:14px;height:calc(100vh - 42px);overflow-y:auto;z-index:10;font-size:11px;color:#888;width:260px;transform:translateX(220px);transition:transform 0.3s ease">
+    <div id="graph-legend" style="position:fixed;top:42px;right:0;background:var(--bg-overlay);border-left:1px solid #333;padding:14px;height:calc(100vh - 42px);overflow-y:auto;z-index:10;font-size:11px;color:var(--text-muted);width:260px;transform:translateX(220px);transition:transform 0.3s ease">
       <h3 style="color:#555;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px">Communities</h3>
       <div id="legend-items"></div>
     </div>
@@ -66,9 +74,9 @@
 
 <div id="tab-logs" class="tab-content">
   <div class="feed-toggle">
-    <button class="feed-btn active" onclick="switchLogFeed('errors')">Errors <span id="err-badge" style="display:none;background:#ff4466;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:2px"></span></button>
+    <button class="feed-btn active" onclick="switchLogFeed('errors')">Errors <span id="err-badge" class="notif"></span></button>
     <button class="feed-btn" onclick="switchLogFeed('daemon')">Daemon</button>
-    <select id="error-hours" onchange="loadLogs()" style="margin-left:auto;background:#111;color:#ccc;border:1px solid #333;padding:3px 8px;border-radius:4px;font-size:11px">
+    <select id="error-hours" class="toolbar-select" onchange="loadLogs()" style="margin-left:auto">
       <option value="1">1h</option>
       <option value="6">6h</option>
       <option value="24" selected>24h</option>
@@ -90,7 +98,7 @@
 
 <div id="tab-traces" class="tab-content">
   <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;padding:4px 8px">
-    <select id="trace-scale-filter" onchange="onTraceScaleChange()" style="background:#111;color:#ccc;border:1px solid #333;padding:4px 8px;border-radius:4px;font-size:11px">
+    <select id="trace-scale-filter" class="toolbar-select" onchange="onTraceScaleChange()">
       <option value="">All scales</option>
       <option value="s0">S0 (Exchange)</option>
       <option value="s1">S1 (Turn)</option>
@@ -98,13 +106,13 @@
       <option value="s3">S3 (Sleep)</option>
       <option value="s4">S4 (Growth)</option>
     </select>
-    <select id="trace-hours-filter" onchange="loadTraces()" style="background:#111;color:#ccc;border:1px solid #333;padding:4px 8px;border-radius:4px;font-size:11px">
+    <select id="trace-hours-filter" class="toolbar-select" onchange="loadTraces()">
       <option value="1">Last hour</option>
       <option value="6">Last 6h</option>
       <option value="24" selected>Last 24h</option>
       <option value="168">Last 7d</option>
     </select>
-    <select id="trace-session-filter" onchange="loadTraces()" style="background:#111;color:#ccc;border:1px solid #333;padding:4px 8px;border-radius:4px;font-size:11px">
+    <select id="trace-session-filter" class="toolbar-select" onchange="loadTraces()">
       <option value="">All sessions</option>
     </select>
     <span id="trace-count" style="color:#888;font-size:11px"></span>
@@ -112,6 +120,7 @@
   <div id="traces-content"></div>
 </div>
 
-<script src="/static/app.js"></script>
+<!-- Main app — type=module enables ES imports, no build step needed. -->
+<script type="module" src="/static/app.js"></script>
 </body>
 </html>

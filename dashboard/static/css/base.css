@@ -1,0 +1,129 @@
+/* ==========================================================================
+   Base: reset, document chrome, tabs.
+   The minimum every page needs before any component class kicks in.
+   ========================================================================== */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg-page);
+  color: var(--text-body);
+  font-family: var(--font-mono);
+  font-size: var(--fs-lg);
+  overflow: hidden;
+  height: 100vh;
+}
+
+canvas { width: 100%; height: 100%; }
+
+/* ── Top-level tabs ──────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-base);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.tab {
+  padding: 10px 14px;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  white-space: nowrap;
+  font-size: var(--fs-md);
+}
+.tab:hover { color: var(--text-heading); }
+.tab.active {
+  color: var(--accent-blue);
+  border-bottom-color: var(--accent-blue);
+}
+
+.tab-content {
+  display: none;
+  height: calc(100vh - 42px);
+  overflow: auto;
+}
+.tab-content.active { display: block; }
+
+/* ── Top stats bar ──────────────────────────────────────────────────── */
+
+.stats-bar {
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-faint);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.stat { display: flex; flex-direction: column; align-items: center; min-width: 70px; }
+.stat-value { font-size: var(--fs-xl); font-weight: bold; color: var(--accent-blue); }
+.stat-label {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.daemon-status {
+  margin-left: auto;
+  padding: var(--space-1) 10px;
+  border-radius: var(--radius-md);
+  font-size: var(--fs-sm);
+  font-weight: bold;
+}
+.daemon-status.alive       { background: #1a3a1a; color: var(--accent-green); }
+.daemon-status.unavailable { background: #3a1a1a; color: var(--accent-red); }
+
+.no-daemon-banner {
+  background: #3a1a1a;
+  border: 1px solid var(--accent-red);
+  color: #ff9999;
+  padding: 10px var(--space-4);
+  font-size: var(--fs-md);
+  text-align: center;
+}
+
+/* ── Filter / toggle row above feeds ────────────────────────────────── */
+
+.feed { padding: var(--space-2); }
+
+.feed-toggle {
+  display: flex;
+  gap: 0;
+  padding: 0 var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.feed-btn {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-base);
+  color: var(--text-muted);
+  padding: var(--space-1) + 2 var(--space-4);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  transition: all 0.15s;
+}
+.feed-btn:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+.feed-btn:last-child  { border-radius: 0 var(--radius-md) var(--radius-md) 0; border-left: none; }
+.feed-btn.active {
+  background: var(--bg-raised);
+  color: var(--accent-blue);
+  border-color: var(--border-strong);
+}
+
+/* Compact form controls used in toolbars (filter dropdowns, hour selects). */
+.toolbar-select {
+  background: #111;
+  color: var(--text-heading);
+  border: 1px solid #333;
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-sm);
+  font-family: inherit;
+}

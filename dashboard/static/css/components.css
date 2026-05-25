@@ -1,0 +1,181 @@
+/* ==========================================================================
+   Component primitives — the ~12 classes that absorb 162 inline style= attrs.
+   --------------------------------------------------------------------------
+   Pattern: every repeated UI element (entry row, badge, chip, button) gets
+   ONE base class + accent modifiers. New panels reach for these instead of
+   open-coding `style="background:#111118;border-left:..."` from scratch.
+
+   Modifier naming:  .card .card--s2   .badge .badge--green   .chip .chip--id
+   Accent suffix matches a token in vars.css (--accent-green, etc).
+   ========================================================================== */
+
+/* ── Card — the basic "entry row" container ───────────────────────── */
+
+.card {
+  background: var(--bg-panel);
+  border-left: 3px solid var(--border-base);
+  border-radius: var(--radius-lg);
+  margin: var(--space-1) + 2 0;
+  overflow: hidden;
+  font-size: var(--fs-md);
+}
+
+/* Accent strip on the left — semantic name = scale or unit type. */
+.card--s0      { border-left-color: var(--color-s0); }
+.card--s1      { border-left-color: var(--color-s1); }
+.card--s2      { border-left-color: var(--color-s2); }
+.card--s3      { border-left-color: var(--color-s3); }
+.card--s4      { border-left-color: var(--color-s4); }
+.card--success { border-left-color: var(--accent-green); }
+.card--warning { border-left-color: var(--accent-amber); }
+.card--danger  { border-left-color: var(--accent-red); }
+.card--purple  { border-left-color: var(--accent-purple); }
+.card--pink    { border-left-color: var(--accent-pink); }
+.card--cyan    { border-left-color: var(--accent-cyan); }
+
+/* Click affordance for the whole card. */
+.card--clickable { cursor: pointer; transition: background 0.15s; }
+.card--clickable:hover { background: var(--bg-raised); }
+
+/* Card head — fixed-height row with badge / time / id chips. Click toggles
+   the body (.card-body) underneath via JS. */
+.card-head {
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  user-select: none;
+}
+.card-head:hover { background: var(--bg-raised); }
+
+.card-body { display: none; padding: 0 var(--space-3) 10px; }
+.card-body.open { display: block; }
+
+/* Inline prompt line under the head, italic, accent stripe. */
+.card-prompt {
+  padding: var(--space-1) + 2 var(--space-3);
+  background: #0d1117;
+  border-left: 3px solid #58a6ff;
+  color: #c9d1d9;
+  font-size: var(--fs-md);
+  margin: 0 var(--space-2);
+  font-style: italic;
+}
+
+/* ── Badge — bold uppercase tag (scale / source / level) ───────────── */
+
+.badge {
+  display: inline-block;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-xs);
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
+}
+.badge--blue    { background: #1a2a4a; color: var(--accent-blue); }
+.badge--green   { background: #1a3a1a; color: var(--accent-green); }
+.badge--amber   { background: #3a2a1a; color: var(--accent-amber); }
+.badge--red     { background: #4a1a1a; color: var(--accent-red); }
+.badge--purple  { background: #2a1a3a; color: var(--accent-purple); }
+.badge--pink    { background: #4a1a4a; color: var(--accent-pink); }
+.badge--cyan    { background: #1a3a4a; color: var(--accent-cyan); }
+.badge--solid-blue   { background: var(--accent-blue);   color: #000; }
+.badge--solid-green  { background: var(--accent-green);  color: #000; }
+.badge--solid-amber  { background: var(--accent-amber);  color: #000; }
+.badge--solid-purple { background: var(--accent-purple); color: #000; }
+.badge--solid-cyan   { background: var(--accent-cyan);   color: #000; }
+.badge--solid-pink   { background: var(--accent-pink);   color: #000; }
+
+/* Restart / boot events get a subtle outlined treatment. */
+.badge--ghost-blue   { background: rgba(126, 184, 255, 0.13); color: var(--accent-blue); }
+.badge--ghost-amber  { background: rgba(255, 170, 51, 0.13);  color: var(--accent-amber); }
+.badge--ghost-red    { background: rgba(255, 102, 102, 0.13); color: var(--accent-red); }
+.badge--ghost-pink   { background: rgba(255, 102, 170, 0.13); color: var(--accent-pink); }
+.badge--ghost-orange { background: rgba(255, 102, 68, 0.13);  color: #ff6644; }
+
+/* ── Chip — inline pill (id / session / time / count) ──────────────── */
+
+.chip {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  border: 1px solid transparent;
+}
+.chip--time    { color: var(--text-subtle); background: transparent; font-size: var(--fs-sm); }
+.chip--id      { color: var(--text-subtle); background: transparent; }
+.chip--session { color: var(--accent-blue); background: var(--bg-raised); }
+.chip--count   { color: var(--text-faint); background: transparent; font-size: var(--fs-xs); margin-left: auto; }
+/* Identity chip — speaker→responder pair from trace metadata. */
+.chip--identity {
+  color: #88a;
+  background: #181828;
+  border-color: #232338;
+  letter-spacing: 0.2px;
+}
+
+/* ── Notification badge (red number bubble on tab labels / buttons) ── */
+
+.notif {
+  display: none;
+  background: #ff4466;
+  color: #fff;
+  border-radius: var(--space-2);
+  padding: 1px 6px;
+  font-size: var(--fs-xs);
+  margin-left: var(--space-1);
+}
+.notif.show { display: inline; }
+
+/* ── Action button (Show Prompt / Refresh / etc) ───────────────────── */
+
+.btn {
+  background: var(--bg-raised);
+  border: 1px solid var(--border-base);
+  color: var(--accent-blue);
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  font-family: inherit;
+}
+.btn:hover { background: #2a2a4a; }
+
+/* Floating glass-style button used in the graph controls. */
+.btn--glass {
+  background: rgba(26, 26, 42, 0.8);
+  border: 1px solid var(--border-base);
+  color: var(--text-heading);
+  padding: 5px 10px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  backdrop-filter: blur(4px);
+}
+.btn--glass:hover { background: #2a2a4a; }
+
+/* ── Code block inside a card body ─────────────────────────────────── */
+
+.code {
+  background: var(--bg-deep);
+  border: 1px solid #1a1a3a;
+  border-radius: var(--radius-md);
+  padding: 10px;
+  color: #998;
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 600px;
+  overflow-y: auto;
+}
+/* Color-tinted code variants — same shape, different accent stripe. */
+.code--purple { border-left: 3px solid var(--accent-purple); background: #0a0a12; color: #b8b8d8; max-height: 500px; }
+.code--green  { border-left: 3px solid var(--accent-green);  background: #0d1117; color: #b8d8b8; max-height: 300px; }
+.code--cyan   { border-left: 3px solid var(--accent-cyan);   background: #0d1117; color: #c8b8d8; max-height: 400px; }
