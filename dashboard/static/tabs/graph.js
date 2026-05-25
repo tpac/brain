@@ -43,7 +43,110 @@ function _nodeMatches(node) {
 // to still hint at structure. Matched nodes keep their assigned color.
 const DIM_COLOR = '#1a1a1a';
 
-function _colorFor(n) { return _nodeMatches(n) ? n.color : DIM_COLOR; }
+// ── Recall pulse ──────────────────────────────────────────────────────
+// When a new recall trace lands (published on the `recall:event` bus
+// topic by live.js's fetcher), every node id in `used_ids` and
+// `returned_ids` gets a 5-second pulse. Strength decays linearly to 0.
+// Judge-selected (used_ids) pulse stronger than candidates.
+
+const PULSE_DURATION_MS = 5000;
+const PULSE_COLOR_USED      = '#ffffff';   // judge-selected → bright white pulse
+const PULSE_COLOR_RETURNED  = '#7eb8ff';   // candidate     → cool blue pulse
+const PULSE_SIZE_MULT       = 1.8;         // peak val * this for non-hub nodes
+
+// nodeId → { startedAt, isJudgeSelected }
+const _pulses = new Map();
+let _pulseRafScheduled = false;
+
+function _pulseStrength(nodeId) {
+  const p = _pulses.get(nodeId);
+  if (!p) return 0;
+  const elapsed = Date.now() - p.startedAt;
+  if (elapsed >= PULSE_DURATION_MS) return 0;
+  return 1 - (elapsed / PULSE_DURATION_MS);
+}
+
+function _hexToRgb(hex) {
+  const m = hex.replace('#', '');
+  return {
+    r: parseInt(m.slice(0, 2), 16),
+    g: parseInt(m.slice(2, 4), 16),
+    b: parseInt(m.slice(4, 6), 16),
+  };
+}
+function _rgbToHex(r, g, b) {
+  const h = v => Math.max(0, Math.min(255, v|0)).toString(16).padStart(2, '0');
+  return '#' + h(r) + h(g) + h(b);
+}
+function _blend(c1, c2, t) {
+  const a = _hexToRgb(c1), b = _hexToRgb(c2);
+  return _rgbToHex(a.r * t + b.r * (1 - t), a.g * t + b.g * (1 - t), a.b * t + b.b * (1 - t));
+}
+
+function _colorFor(n) {
+  const baseColor = _nodeMatches(n) ? (n.color || '#666') : DIM_COLOR;
+  const p = _pulses.get(n.id);
+  if (!p) return baseColor;
+  const strength = _pulseStrength(n.id);
+  if (strength <= 0) return baseColor;
+  const pulseColor = p.isJudgeSelected ? PULSE_COLOR_USED : PULSE_COLOR_RETURNED;
+  // Judge-selected pulses use the full 0-1 strength curve; candidates max
+  // out at half — they're still discoverable but don't compete with the
+  // brighter "this was actually selected" signal.
+  const t = p.isJudgeSelected ? strength : strength * 0.5;
+  return _blend(pulseColor, baseColor, t);
+}
+
+function _valFor(n) {
+  const base = n.hub ? n.val : 2;
+  const strength = _pulseStrength(n.id);
+  if (strength <= 0) return base;
+  const p = _pulses.get(n.id);
+  const t = p && p.isJudgeSelected ? strength : strength * 0.5;
+  return base * (1 + (PULSE_SIZE_MULT - 1) * t);
+}
+
+function _scheduleAnimation() {
+  if (_pulseRafScheduled || !graph3d) return;
+  _pulseRafScheduled = true;
+  const tick = () => {
+    _pulseRafScheduled = false;
+    if (!graph3d) return;
+    const now = Date.now();
+    let alive = 0;
+    for (const [id, pulse] of _pulses) {
+      if (now - pulse.startedAt >= PULSE_DURATION_MS) _pulses.delete(id);
+      else alive++;
+    }
+    // Pass a fresh closure each tick. 3d-force-graph caches per-node
+    // Three.js materials by color string; calling .nodeColor with the
+    // SAME function reference is treated as a no-op by the library's
+    // internal change detection, so the materials never refresh during
+    // the pulse window. Wrapping in a new arrow each tick forces the
+    // re-evaluation we need. Cheap — one closure per frame.
+    graph3d.nodeColor(n => _colorFor(n));
+    graph3d.nodeVal(n => _valFor(n));
+    if (alive > 0) {
+      _pulseRafScheduled = true;
+      requestAnimationFrame(tick);
+    }
+  };
+  requestAnimationFrame(tick);
+}
+
+function _onRecallEvent({ event }) {
+  // Skip if the graph isn't loaded yet — buffered pulses for events that
+  // arrived before the user opened Live would be confusing (out-of-time
+  // flashes). The user sees activations going forward.
+  if (!graph3d || !event) return;
+  const used = new Set(event.used_ids || []);
+  const returned = event.returned_ids || [];
+  const now = Date.now();
+  for (const id of returned) _pulses.set(id, { startedAt: now, isJudgeSelected: false });
+  // used_ids overrides — same id stronger pulse.
+  for (const id of used) _pulses.set(id, { startedAt: now, isJudgeSelected: true });
+  _scheduleAnimation();
+}
 
 /** Apply current search to the live graph. Re-binding the nodeColor
  * function reference is what triggers ForceGraph3D to re-evaluate
@@ -137,7 +240,7 @@ export async function loadGraph3D() {
         .width(w).height(h)
         .graphData({nodes: visibleNodes, links: visibleLinks})
         .backgroundColor('#08080f')
-        .nodeVal(n => n.hub ? n.val : 2)
+        .nodeVal(_valFor)
         .nodeColor(_colorFor)
         .nodeOpacity(0.85)
         .nodeLabel(n => {
@@ -207,6 +310,9 @@ export function init() {
     // to call renderer.setSize() that often. The browser coalesces.
     requestAnimationFrame(resize);
   });
+  // Recall activations — pulse surfaced nodes for 5s when a new recall
+  // lands. The bus event is published by live.js's pollRecallLog.
+  bus.subscribe('recall:event', _onRecallEvent);
 }
 
 export function activate() {

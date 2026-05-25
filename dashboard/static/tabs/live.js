@@ -165,6 +165,13 @@ export function onSessionFilterChange() {
   pollRecallLog();
 }
 
+// Recall event flow (P2.5 split): the fetcher (`pollRecallLog`) is a pure
+// data fetcher — it advances the timestamp cursor and publishes each new
+// or freshly-judged event on the `recall:event` bus topic. The DOM render
+// + the graph pulse are independent subscribers reacting to the same
+// event stream. Adding a new consumer (e.g. an insights panel) means
+// subscribing in init(), not patching this fetcher.
+
 async function pollRecallLog() {
   try {
     const d = await api.recalls({
@@ -172,20 +179,22 @@ async function pollRecallLog() {
       since_ts: lastRecallTs || undefined,
       session_id: getSessionFilter() || undefined,
     });
-    const feed = document.getElementById('feed-decoding');
     if (d.events && d.events.length) {
-      if (feed.querySelector('.hook-placeholder')) feed.querySelector('.hook-placeholder').remove();
+      // Server returns newest-first; flip so subscribers see chronological
+      // order (matters for the graph pulse — latest event over-stacks
+      // earlier ones).
       const sorted = d.events.slice().reverse();
       for (const evt of sorted) {
         if (lastRecallTs && (evt.timestamp || '') <= lastRecallTs) continue;
-        const el = renderRecallEntry(evt);
-        if (!isEntryVisible(evt.source || 'unknown')) el.style.display = 'none';
-        feed.prepend(el);
+        bus.publish('recall:event', { event: evt });
       }
       if (d.latest_ts) lastRecallTs = d.latest_ts;
-      while (feed.children.length > MAX_ENTRIES) feed.removeChild(feed.lastChild);
     }
-    // Async judge update: refresh entries missing judge data.
+
+    // Judge-output backfill: hook recalls arrive without judge_output (Haiku
+    // hasn't responded yet). Re-fetch the slice covering pending entries
+    // and re-publish — the renderer's dedupe-by-id swaps the chip-list view
+    // for the judge-output view in place.
     const pending = document.querySelectorAll('#feed-decoding .recall-entry[data-needs-judge="1"]');
     if (pending.length) {
       const stamps = Array.from(pending).map(el => el.dataset.ts).filter(Boolean);
@@ -198,19 +207,38 @@ async function pollRecallLog() {
           limit: stamps.length + 5,
         });
         for (const evt of (jd.events || [])) {
-          if (evt.judge_output) {
-            const el = document.querySelector('#feed-decoding .recall-entry[data-recall-id="' + evt.id + '"][data-needs-judge="1"]');
-            if (el) {
-              const scrollTop = feed.scrollTop;
-              const newEl = renderRecallEntry(evt);
-              el.replaceWith(newEl);
-              feed.scrollTop = scrollTop;
-            }
-          }
+          if (evt.judge_output) bus.publish('recall:event', { event: evt });
         }
       }
     }
   } catch(e) { console.error('pollRecallLog error:', e); }
+}
+
+// Renderer — pure subscriber. Knows nothing about the network; just maps
+// an event to a DOM node (insert new, replace existing when judge_output
+// arrives for a pending entry).
+function _renderRecallEvent({ event: evt }) {
+  const feed = document.getElementById('feed-decoding');
+  if (!feed) return;
+  const existing = feed.querySelector('.recall-entry[data-recall-id="' + evt.id + '"]');
+  if (existing) {
+    // Same id arrived again — only meaningful if judge_output is now set
+    // and the old DOM was still in "needs judge" state.
+    if (evt.judge_output && existing.dataset.needsJudge === '1') {
+      const scrollTop = feed.scrollTop;
+      const newEl = renderRecallEntry(evt);
+      existing.replaceWith(newEl);
+      feed.scrollTop = scrollTop;
+    }
+    return;
+  }
+  // New event.
+  const placeholder = feed.querySelector('.hook-placeholder');
+  if (placeholder) placeholder.remove();
+  const el = renderRecallEntry(evt);
+  if (!isEntryVisible(evt.source || 'unknown')) el.style.display = 'none';
+  feed.prepend(el);
+  while (feed.children.length > MAX_ENTRIES) feed.removeChild(feed.lastChild);
 }
 
 export function switchFeed(name) {
@@ -761,6 +789,11 @@ export function init() {
 
   _restoreSplit();
   _setupDivider();
+
+  // Renderer subscribes here once. The graph module subscribes to the
+  // same topic in its own init() — both react to the bus event stream
+  // independently.
+  bus.subscribe('recall:event', _renderRecallEvent);
 
   // Recall feed — 2s cadence, only when the Live tab is open AND on the
   // decoding sub-feed. Inactive tabs get zero polls.
