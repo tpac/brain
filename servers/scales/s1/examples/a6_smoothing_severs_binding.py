@@ -27,7 +27,7 @@ EXAMPLE = {
     'source_conversation': [
         {
             'turn': 't0',
-            'trace_id': 54312,
+            'trace_id': '<trace-tom-smoothing-evidence-probe>',
             'speaker': 'Tom',
             'register': 'terse_probe_with_evidence',
             'text': (
@@ -37,7 +37,7 @@ EXAMPLE = {
         },
         {
             'turn': 't1',
-            'trace_id': 54313,
+            'trace_id': '<trace-anchor-cleanup-pattern-recognition>',
             'speaker': 'Anchor',
             'register': 'working_through_self_observation',
             'text': (
@@ -51,7 +51,7 @@ EXAMPLE = {
         },
         {
             'turn': 't2',
-            'trace_id': 54314,
+            'trace_id': '<trace-anchor-binding-articulation>',
             'speaker': 'Anchor',
             'register': 'anchor_introspection_load_bearing',
             'text': (
@@ -165,10 +165,11 @@ EXAMPLE = {
                 "encoding any operator-derived node where raw text feels "
                 "rough — the moment cleanup feels like correctness"
             ),
-            'source_refs': [54312, 54314],
+            'source_refs': ['<trace-tom-smoothing-evidence-probe>',
+                             '<trace-anchor-binding-articulation>'],
             'connect_to': [
                 {
-                    'title': "Voice verbatim or empty — D5 of encoder quality contract",
+                    'title': "<related-voice-fidelity-principle>",
                     'relation': 'grounds',
                     'edge_description': (
                         "Anchor's self-observation IS the biological "
@@ -178,7 +179,7 @@ EXAMPLE = {
                     ),
                 },
                 {
-                    'title': "Schacter & Addis constructive memory framework",
+                    'title': "<related-cognitive-science-framework>",
                     'relation': 'validates',
                     'edge_description': (
                         "Anchor's self-observed pattern matches the "
@@ -187,10 +188,7 @@ EXAMPLE = {
                     ),
                 },
                 {
-                    'title': (
-                        "Quote-fidelity probe: ~10-20% paraphrase floor in "
-                        "encoder output (Era E scan)"
-                    ),
+                    'title': "<related-quote-fidelity-empirical-finding>",
                     'relation': 'addresses',
                     'edge_description': (
                         "The smoothing reflex Anchor named here is what "

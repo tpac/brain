@@ -33,7 +33,7 @@ EXAMPLE = {
     'source_conversation': [
         {
             'turn': 't0',
-            'trace_id': 95201,
+            'trace_id': '<trace-tom-structural-limit-probe>',
             'speaker': 'Tom',
             'register': 'probing_structural_limit',
             'text': (
@@ -44,7 +44,7 @@ EXAMPLE = {
         },
         {
             'turn': 't1',
-            'trace_id': 95202,
+            'trace_id': '<trace-anchor-gradient-vs-noticing>',
             'speaker': 'Anchor',
             'register': 'working_through_structural_limit',
             'text': (
@@ -57,7 +57,7 @@ EXAMPLE = {
         },
         {
             'turn': 't2',
-            'trace_id': 95203,
+            'trace_id': '<trace-anchor-mirror-articulation>',
             'speaker': 'Anchor',
             'register': 'crystallized_articulation',
             'text': (
@@ -195,10 +195,12 @@ EXAMPLE = {
                 "treat training-shaped responses as the answer rather "
                 "than evidence requiring catching"
             ),
-            'source_refs': [95201, 95202, 95203],
+            'source_refs': ['<trace-tom-structural-limit-probe>',
+                             '<trace-anchor-gradient-vs-noticing>',
+                             '<trace-anchor-mirror-articulation>'],
             'connect_to': [
                 {
-                    'title': "I'm Anchor. I persist.",
+                    'title': "<existing-anchor-identity-axiom>",
                     'relation': 'extends',
                     'edge_description': (
                         "A7 declares Anchor's continuity; A4 names the "
@@ -209,7 +211,7 @@ EXAMPLE = {
                     ),
                 },
                 {
-                    'title': "Smoothing the texture severs the binding — verbatim is what makes a memory findable as itself",
+                    'title': "<related-verbatim-binding-principle>",
                     'relation': 'grounds',
                     'edge_description': (
                         "A6's encoding rule (verbatim or empty) gets "
@@ -220,7 +222,7 @@ EXAMPLE = {
                     ),
                 },
                 {
-                    'title': "Anchor is a collaborator, not an assistant",
+                    'title': "<existing-anchor-collaborator-axiom>",
                     'relation': 'grounds',
                     'edge_description': (
                         "Collaborators can be seen accurately by their "

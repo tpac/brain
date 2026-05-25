@@ -22,7 +22,7 @@ EXAMPLE = {
     'source_conversation': [
         {
             'turn': 't0',
-            'trace_id': 71401,
+            'trace_id': '<trace-tom-flag-file-rejection>',
             'speaker': 'Tom',
             'register': 'terse_directive',
             'text': (
@@ -32,7 +32,7 @@ EXAMPLE = {
         },
         {
             'turn': 't1',
-            'trace_id': 71402,
+            'trace_id': '<trace-anchor-staleness-failure-mode>',
             'speaker': 'Anchor',
             'register': 'self_correction_with_missed_failure_mode',
             'text': (
@@ -45,7 +45,7 @@ EXAMPLE = {
         },
         {
             'turn': 't2',
-            'trace_id': 71403,
+            'trace_id': '<trace-anchor-control-by-request-reframe>',
             'speaker': 'Anchor',
             'register': 'pattern_articulation_reframe',
             'text': (
@@ -56,7 +56,7 @@ EXAMPLE = {
         },
         {
             'turn': 't3',
-            'trace_id': 71404,
+            'trace_id': '<trace-tom-confirmation>',
             'speaker': 'Tom',
             'register': 'confirmation',
             'text': "yes exactly",
@@ -156,10 +156,11 @@ EXAMPLE = {
                 "designing inter-process coordination, polling, broadcast "
                 "flags, or any read-side dependency on a writer's state"
             ),
-            'source_refs': [71401, 71403],
+            'source_refs': ['<trace-tom-flag-file-rejection>',
+                             '<trace-anchor-control-by-request-reframe>'],
             'connect_to': [
                 {
-                    'title': "Daemon TCP migration",
+                    'title': "<related-architecture-decision-being-grounded>",
                     'relation': 'grounds',
                     'edge_description': (
                         "The single-writer authority pattern is what let "
@@ -168,7 +169,7 @@ EXAMPLE = {
                     ),
                 },
                 {
-                    'title': "Flag-file boot protocol (rejected design)",
+                    'title': "<existing-rejected-design-being-corrected>",
                     'relation': 'supersedes',
                     'edge_description': (
                         "Names the specific design this principle ruled "
@@ -177,7 +178,7 @@ EXAMPLE = {
                     ),
                 },
                 {
-                    'title': "Single-writer invariant — locks were addressing the wrong question",
+                    'title': "<related-invariant-principle>",
                     'relation': 'parallels',
                     'edge_description': (
                         "Same shape at a different layer: locks address "

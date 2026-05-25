@@ -30,7 +30,7 @@ EXAMPLE = {
     'source_conversation': [
         {
             'turn': 't0',
-            'trace_id': 76001,
+            'trace_id': '<trace-tom-methodology-statement>',
             'speaker': 'Tom',
             'register': 'operator_stated_methodology',
             'text': (
@@ -43,7 +43,7 @@ EXAMPLE = {
         },
         {
             'turn': 't1',
-            'trace_id': 76002,
+            'trace_id': '<trace-anchor-axiom-articulation>',
             'speaker': 'Anchor',
             'register': 'identifying_the_load_bearing_axiom',
             'text': (
@@ -56,7 +56,7 @@ EXAMPLE = {
         },
         {
             'turn': 't2',
-            'trace_id': 76003,
+            'trace_id': '<trace-tom-ratification>',
             'speaker': 'Tom',
             'register': 'ratification',
             'text': "yes. that's the spine.",
@@ -150,7 +150,7 @@ EXAMPLE = {
                     "logged to the errors table when ops slip the schema, 4) test "
                     "contracts catch dispatch drift. tests lock the contracts."
                 ),
-                'source_refs': [76001],
+                'source_refs': ['<trace-tom-methodology-statement>'],
                 'connect_to': [
                     {
                         'title': "Silent failures are the most dangerous bug class — assume every try/except is a dark corner",
@@ -196,7 +196,8 @@ EXAMPLE = {
                     "try/except is a potential dark corner, then build the loud signal "
                     "that fires when that corner goes wrong."
                 ),
-                'source_refs': [76002, 76003],
+                'source_refs': ['<trace-anchor-axiom-articulation>',
+                                 '<trace-tom-ratification>'],
                 'connect_to': [
                     {
                         'title': "Loud-by-default — four-check operational spine",

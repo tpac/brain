@@ -33,24 +33,31 @@ from servers.scales.s1.quality_contract import (
 )
 
 
-EVALUATOR_SYSTEM_PROMPT = """You are evaluating an encoder example against the 32-dimension quality contract.
+EVALUATOR_SYSTEM_PROMPT = """You are evaluating an encoder example against the 36-dimension quality contract.
 
 You receive:
 - `conversation`: source turns the encoder saw (S0 trace events with speaker labels and trace ids)
 - `encoder_output`: the remember_batch / brain_batch / revise_batch calls the example demonstrates
 - `example_intent`: which axis/dim this example was authored to teach
-- `contract`: the 32 DIMENSIONS dict + CROSS_DIM_RULES from quality_contract.py
+- `contract`: the 36 DIMENSIONS dict + CROSS_DIM_RULES from quality_contract.py
 - `self_claimed_eval`: the example's own contract_eval claim (DO NOT read until AFTER independent scoring)
 
 # Your task
 
-For each dimension D1..D32, classify the encoder output INDEPENDENTLY (without looking at self_claimed_eval):
+For each dimension D1..D36, classify the encoder output INDEPENDENTLY (without looking at self_claimed_eval):
 - `satisfied`: positive signals present, no violations
 - `degraded`: partial — some satisfies present but degrades-list features visible
 - `violated`: clear violation of the dim's stated criteria
 - `n/a`: dimension structurally doesn't apply to this example shape
 
-For each cross-dim rule CR1..CR11, identify:
+D33-D35 (sentinel range, ref internal consistency, voice annotation coverage) are mechanically checked by validate_example_authoring() — your job for these is to confirm the mechanical check and report the violations if any.
+
+D36 (turn↔node language divergence) is YOUR primary semantic call. Read the source_conversation turns AND the node content/situation/reasoning fields. Score:
+- satisfied: turns and nodes use different language registers; node names a structural axis the turn implies; specificity preserved; verbatim phrases bridged via raw_quote fields only
+- violated: node content paraphrases the turn; ranges flattened; numbers smoothed; exact phrases re-stated in content prose
+Per CR12: phrases shared between a turn and user_raw_quote/anchor_raw_quote are the legitimate verbatim bridge — that's NOT a D36 violation.
+
+For each cross-dim rule CR1..CR12, identify:
 - Did the tension this rule names actually surface in this example?
 - If yes, was the rule's resolution applied correctly?
 
@@ -69,7 +76,7 @@ THEN compare your scoring to self_claimed_eval and flag divergences.
       "matches_self_claim": true | false,
       "divergence_reason": "<if mismatch, why>"
     },
-    ...32 entries
+    ...36 entries
   ],
   "cross_dim": [
     {
@@ -78,7 +85,7 @@ THEN compare your scoring to self_claimed_eval and flag divergences.
       "resolution_correct": true | false | "n/a",
       "note": "<observation about how the tension was navigated>"
     },
-    ...11 entries
+    ...12 entries
   ],
   "verdict": {
     "is_canonical": true | false,
@@ -104,7 +111,7 @@ THEN compare your scoring to self_claimed_eval and flag divergences.
 
 def load_contract_summary() -> str:
     """Render the contract as text for evaluator agent input."""
-    lines = ["# 32-DIMENSION QUALITY CONTRACT", ""]
+    lines = [f"# {len(DIMENSIONS)}-DIMENSION QUALITY CONTRACT", ""]
     for dim_name, dim in DIMENSIONS.items():
         lines.append(f"## {dim_name}")
         lines.append(f"**Group**: {dim['group']}")

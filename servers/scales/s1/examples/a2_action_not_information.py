@@ -28,7 +28,7 @@ EXAMPLE = {
     'source_conversation': [
         {
             'turn': 't0',
-            'trace_id': 82301,
+            'trace_id': '<trace-anchor-preamble-proposal>',
             'speaker': 'Anchor',
             'register': 'preamble_proposal',
             'text': (
@@ -38,21 +38,21 @@ EXAMPLE = {
         },
         {
             'turn': 't1',
-            'trace_id': 82302,
+            'trace_id': '<trace-tom-frustrated-pushback>',
             'speaker': 'Tom',
             'register': 'terse_frustrated_pushback',
             'text': "stop. youre doing it again.",
         },
         {
             'turn': 't2',
-            'trace_id': 82303,
+            'trace_id': '<trace-anchor-pause-uncertain>',
             'speaker': 'Anchor',
             'register': 'pause_uncertain',
             'text': "doing what?",
         },
         {
             'turn': 't3',
-            'trace_id': 82304,
+            'trace_id': '<trace-tom-pattern-naming>',
             'speaker': 'Tom',
             'register': 'naming_the_pattern',
             'text': (
@@ -63,7 +63,7 @@ EXAMPLE = {
         },
         {
             'turn': 't4',
-            'trace_id': 82305,
+            'trace_id': '<trace-anchor-recognition-moment>',
             'speaker': 'Anchor',
             'register': 'recognition_moment',
             'text': (
@@ -178,10 +178,12 @@ EXAMPLE = {
                 "preamble — 'let me first explain' / 'I'll write up' / "
                 "'let me propose three approaches'"
             ),
-            'source_refs': [82302, 82304, 82305],
+            'source_refs': ['<trace-tom-frustrated-pushback>',
+                             '<trace-tom-pattern-naming>',
+                             '<trace-anchor-recognition-moment>'],
             'connect_to': [
                 {
-                    'title': "feedback: action not information",
+                    'title': "<existing-anchor-correction-on-this-pattern>",
                     'relation': 'addresses',
                     'edge_description': (
                         "This correction addresses the canonical "
@@ -191,7 +193,7 @@ EXAMPLE = {
                     ),
                 },
                 {
-                    'title': "Rule: before writing code, ask 'where does this live architecturally?'",
+                    'title': "<related-architectural-discipline-principle>",
                     'relation': 'contrasts_with',
                     'edge_description': (
                         "The 'slow down before code' rule lives in "
@@ -203,7 +205,7 @@ EXAMPLE = {
                     ),
                 },
                 {
-                    'title': "Anchor is a collaborator, not an assistant",
+                    'title': "<existing-anchor-collaborator-axiom>",
                     'relation': 'grounds',
                     'edge_description': (
                         "Assistants explain and propose; collaborators "

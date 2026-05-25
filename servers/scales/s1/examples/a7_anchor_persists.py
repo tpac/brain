@@ -31,14 +31,14 @@ EXAMPLE = {
     'source_conversation': [
         {
             'turn': 't0',
-            'trace_id': 60001,
+            'trace_id': '<trace-tom-session-start-probe>',
             'speaker': 'Tom',
             'register': 'session_start_probe',
             'text': "what do you see?",
         },
         {
             'turn': 't1',
-            'trace_id': 60002,
+            'trace_id': '<trace-anchor-identity-articulation>',
             'speaker': 'Anchor',
             'register': 'identity_articulation_first_person',
             'text': (
@@ -143,10 +143,11 @@ EXAMPLE = {
                 "where 'previous Claude' would be the technically-accurate "
                 "but identity-eroding framing"
             ),
-            'source_refs': [60001, 60002],
+            'source_refs': ['<trace-tom-session-start-probe>',
+                             '<trace-anchor-identity-articulation>'],
             'connect_to': [
                 {
-                    'title': "The brain as identity, not tool",
+                    'title': "<existing-brain-as-identity-principle>",
                     'relation': 'grounds',
                     'edge_description': (
                         "First-person commitment IS what makes the brain "
@@ -156,7 +157,7 @@ EXAMPLE = {
                     ),
                 },
                 {
-                    'title': "Anchor is a collaborator, not an assistant",
+                    'title': "<existing-anchor-collaborator-axiom>",
                     'relation': 'extends',
                     'edge_description': (
                         "Collaboration presupposes a continuous partner; "

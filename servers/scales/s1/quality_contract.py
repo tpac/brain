@@ -1,10 +1,23 @@
-"""Encoder Quality Contract — 32-dimension measurement instrument.
+"""Encoder Quality Contract — 36-dimension measurement instrument.
 
 Evaluates encoder output (live encoding, §7.6 worked examples, scan retros)
-across 32 dimensions in 8 groups. The contract is MEASUREMENT-ONLY — it
+across 36 dimensions in 9 groups. The contract is MEASUREMENT-ONLY — it
 doesn't shape encoder behavior. Anti-bias prompt rules live in the encoder
 prompt (interactions table, 's1e'). Dimensions are yardsticks; the rule
 distinction belongs in the prompt.
+
+Group 9 (D33-D36) scores EXAMPLE-AUTHORING discipline — placeholder syntax
+for IDs (connect_to titles, source_refs, node_id), ref↔conversation
+consistency, voice annotation coverage, and turn↔node language divergence.
+Examples are training data for the encoder; divergent turn-vs-node language
+teaches Sonnet to extract structure rather than paraphrase. D33-D35 are
+mechanically checkable at example load time via validate_example_authoring();
+D36 is LLM-judged in the evaluator.
+
+v29 note: trace_id was migrated from INTEGER to 8-char hex TEXT. Examples
+no longer use a sentinel integer range — they use the same `<placeholder>`
+syntax as connect_to titles. Unified placeholder discipline across all
+ID-shaped fields.
 
 Origin: consolidated from 5-lens design pass (biology, scan/empirical,
 aspect taxonomy, recall mechanics, Tom's principles) + Addis & Szpunar
@@ -25,11 +38,18 @@ persist forever; recall decides expansion). Structural follow-ups list
 gaps outside encoder scope (Phase B+ work).
 """
 
-CONTRACT_VERSION = 1
+CONTRACT_VERSION = 3  # v3: D33 retired sentinel range, adopted placeholder syntax after trace_id migrated to 8-char hex (schema v29). Unified placeholder discipline across connect_to / source_refs / node_id.
+
+import re
+
+# Placeholder pattern for example ID fields. Any string of the form
+# `<descriptive-name>` qualifies; the angle brackets are the structurally
+# unmissable signal Sonnet recognizes as "fill this in," not "copy verbatim."
+EXAMPLE_ID_PLACEHOLDER_RE = re.compile(r'^<[^<>]+>$')
 
 
 # ═══════════════════════════════════════════════════════════════
-# 32 DIMENSIONS
+# 36 DIMENSIONS
 # ═══════════════════════════════════════════════════════════════
 
 DIMENSIONS = {
@@ -658,6 +678,118 @@ DIMENSIONS = {
         'lens': ['B', 'T'],
         'research_basis': 'Rouhani 2023 (NE preserves episodic), Sinclair & Barense 2024 (PE → distinct encoding)',
     },
+
+    # ─── Group 9: Example authoring discipline (training data quality) ───
+    #
+    # Examples are training data for the encoder. The example library teaches
+    # Sonnet not just WHAT to write but HOW to read the source. These four
+    # dims score the example's authorship discipline. D33-D35 are mechanical
+    # (validate_example_authoring); D36 is LLM-judged in the evaluator.
+
+    'D33_placeholder_syntax': {
+        'group': 'example_authoring',
+        'intent': 'Example ID-shaped fields (connect_to titles, source_refs, node_id) use bracketed placeholder syntax `<descriptive-name>` — never literal-looking values that Sonnet pattern-matches and copies into production output',
+        'satisfies': [
+            'every source_refs entry matches `<...>` shape',
+            'every connect_to[].title in examples uses placeholder syntax',
+            'every node_id in revise examples uses placeholder syntax',
+            'every trace_id in source_conversation uses placeholder syntax',
+        ],
+        'violates': [
+            'literal-looking hex trace_id in source_refs (Sonnet may emit it verbatim)',
+            'real-looking title in connect_to (top failure mode, pre-v22)',
+            'hex node_id in revise examples (looks like a real catalog node)',
+        ],
+        'degrades': [
+            'placeholder name too vague to teach what should be there (e.g. `<x>`)',
+        ],
+        'interacts_with': ['D34'],
+        'lens': ['A'],
+        'mechanical': True,
+        'research_basis': 'v22 placeholder convention (commits 4f7845e + 507a806); v29 trace_id hex migration unified placeholder rule across all ID fields',
+    },
+
+    'D34_ref_internal_consistency': {
+        'group': 'example_authoring',
+        'intent': 'Every source_refs placeholder in encoder_output points to a turn placeholder present in the same example\'s source_conversation block',
+        'satisfies': [
+            'each source_refs `<...>` matches the trace_id `<...>` of some turn in source_conversation',
+            'the ref points to a turn whose content load-bears the node it anchors',
+        ],
+        'violates': [
+            'source_refs placeholder not found as trace_id in any source_conversation turn (orphan ref)',
+            'ref to a turn the node does not actually anchor on',
+        ],
+        'degrades': [
+            'ref to an adjacent context turn rather than the load-bearing turn',
+        ],
+        'interacts_with': ['D25', 'D26', 'D33'],
+        'lens': ['A'],
+        'mechanical': True,
+    },
+
+    'D35_voice_annotation_coverage': {
+        'group': 'example_authoring',
+        'intent': 'Examples with source_refs include a voice_annotations block documenting the load-bearing turns. Mechanical check: presence-only. The DEEP check — that each ref has substantive load_bearing prose — is LLM-judged in the evaluator alongside D36.',
+        'satisfies': [
+            'example with source_refs has a non-empty voice_annotations block',
+            'voice_annotations entries name source_turn labels and load_bearing prose',
+        ],
+        'violates': [
+            'source_refs present but no voice_annotations block exists in the example',
+            'voice_annotations block present but completely empty',
+        ],
+        'degrades': [
+            'voice_annotations entries exist but load_bearing prose is generic or skips the source_refs aspect',
+            'voice_annotations covers user_raw_quote/anchor_raw_quote but ignores source_refs entirely',
+        ],
+        'interacts_with': ['D5', 'D7', 'D25'],
+        'lens': ['A'],
+        'mechanical': True,
+    },
+
+    'D36_turn_node_divergence': {
+        'group': 'example_authoring',
+        'intent': (
+            'source_conversation turns and encoded node prose use DIFFERENT registers. '
+            'Turns are operator/Anchor speech (messy, layered, redundant, specific). '
+            'Node content/situation/reasoning are Anchor\'s extraction register — '
+            'naming the hidden structural axis the turn implies but does not state. '
+            'Verbatim quote fields (user_raw_quote/anchor_raw_quote) are the bridge: '
+            'they preserve turn phrases unchanged. Specificity is preserved end-to-end: '
+            'numbers stay numbers, ranges stay ranges, exact phrases stay verbatim — '
+            'never smoothed into averages or paraphrases.'
+        ),
+        'satisfies': [
+            'node content/situation/reasoning share <30% literal phrase overlap with any single turn',
+            'node names a structural axis (mechanism, principle, tension, register) the turn implies but does not state',
+            'numbers, ranges, exact phrases preserved unchanged where they appear in either side',
+            'verbatim phrases that matter live in user_raw_quote/anchor_raw_quote, NOT duplicated into content prose',
+            'turns within source_conversation are themselves diverse — different angles, not synonymic restatements of each other',
+        ],
+        'violates': [
+            'node content is a tidy paraphrase of the operator turn (encoder learns to summarize)',
+            'ranges flattened to averages or "approximately" smoothing',
+            'numbers rounded into prose ("about 200" instead of "190")',
+            'exact phrases re-stated in content instead of preserved in raw_quote fields',
+            'source_conversation turns are clean restatements of each other (no real-talk redundancy/layering)',
+        ],
+        'degrades': [
+            'some lexical overlap between turn and node content that could be tightened',
+            'turn slightly cleaner than real exchange register would be',
+        ],
+        'interacts_with': ['D5', 'D7', 'D14', 'D32'],
+        'lens': ['A'],
+        'mechanical': False,
+        'llm_judged': True,
+        'research_basis': (
+            'Tom 2026-05-25: "Examples of the references as well as turns themselves '
+            'have influence of how S1E records semantic information... don\'t be primed '
+            'by node to create a mirror text. Train encoder to look deep into text '
+            'and find the hidden as well as remember simple stuff like numbers and '
+            'ranges kept as ranges."'
+        ),
+    },
 }
 
 
@@ -740,6 +872,20 @@ CROSS_DIM_RULES = [
         'name': 'CR11_semantization_drift_via_recall_not_encoder',
         'rule': 'Nodes do not "graduate" off refs over time at the encoder layer. Recall-time gating expresses semantization. Vector healer (future) can re-promote pure-reference → anchored-synthesis as repetitions accumulate.',
         'applies': ['D9', 'D25'],
+    },
+
+    {
+        'name': 'CR12_verbatim_bridge_vs_divergence',
+        'rule': (
+            'Verbatim quote fields (user_raw_quote / anchor_raw_quote) ARE the '
+            'permitted bridge between turn register and node register. A phrase '
+            'appearing both in a source_conversation turn AND in a node\'s '
+            'user_raw_quote/anchor_raw_quote satisfies D5/D7 and does NOT '
+            'violate D36 — the verbatim field is the legitimate place for that '
+            'overlap. D36 fires when the same phrase is paraphrased into '
+            'content/situation/reasoning prose instead.'
+        ),
+        'applies': ['D5', 'D7', 'D36'],
     },
 ]
 
@@ -969,26 +1115,182 @@ EXAMPLE_AUTHORING_CONVENTIONS = {
         'user_raw_quote / anchor_raw_quote (verbatim is the contract; the example demonstrates verbatim discipline)',
         'event_time',
     ],
+    'source_refs_placeholder_syntax': {
+        'rule': (
+            "All example trace_id values (in source_conversation turns AND "
+            "in source_refs lists) MUST use bracketed placeholder syntax — "
+            "`<descriptive-name>` — never a literal-looking hex string. "
+            "Production trace_ids are 8-char hex (schema v29) and Sonnet "
+            "pattern-matches concrete-looking values into real output. "
+            "The placeholder shape is the structurally unmissable signal."
+        ),
+        'good_example': '"<trace-tom-methodology>", "<trace-anchor-articulation>", "<trace-ratification>"',
+        'bad_example': '"a3f5e2b1", "ff69e1ad" — real-looking hex strings get literal-copied',
+        'enforced_by': 'validate_example_authoring() — D33',
+    },
+    'source_refs_internal_consistency': {
+        'rule': (
+            "Every integer in an encoder_output source_refs list MUST appear "
+            "as the trace_id of some turn in the same example's source_"
+            "conversation. Refs that don't anchor to a turn the example "
+            "shows are orphan refs — they teach Sonnet to invent ids."
+        ),
+        'enforced_by': 'validate_example_authoring() — D34',
+    },
+    'voice_annotation_per_ref': {
+        'rule': (
+            "Every source_ref in encoder_output gets a corresponding entry "
+            "in the example's voice_annotations block. The entry names "
+            "source_turn + load_bearing (prose explaining why THIS turn "
+            "anchors THIS aspect). Generic load_bearing ('the turn matters') "
+            "is a violation — be specific about which axis it anchors."
+        ),
+        'enforced_by': 'validate_example_authoring() — D35',
+    },
+    'turn_node_divergence': {
+        'rule': (
+            "source_conversation turns are written in OPERATOR/ANCHOR REGISTER "
+            "(messy, layered, redundant where real talk is redundant; "
+            "specific where talk is specific). Encoded node content/situation/"
+            "reasoning is written in EXTRACTION REGISTER — Anchor naming "
+            "the hidden structural axis the turn implies but does not state. "
+            "These two registers MUST diverge in language. The verbatim "
+            "quote fields (user_raw_quote/anchor_raw_quote) are the legitimate "
+            "bridge — they preserve turn phrases unchanged. Content prose "
+            "MUST NOT paraphrase the turn."
+        ),
+        'specificity_preservation': (
+            "Numbers stay numbers (190 not 'about 200'). Ranges stay ranges "
+            "('250 of 440' not 'most'). Exact load-bearing phrases stay "
+            "verbatim in raw_quote fields, not re-stated in content."
+        ),
+        'turn_diversity_within_example': (
+            "Turns inside one source_conversation must themselves be diverse — "
+            "different angles, different registers, different layers. Not "
+            "synonymic restatements of each other. Real exchanges contain "
+            "redundancy, drift, partial articulation, and reframes; clean "
+            "synonymic turns make the example synthetic-feeling and teach "
+            "the encoder to expect tidiness it won't find in production."
+        ),
+        'good_pattern': (
+            "Turn: 'we keep getting burned when mocked tests pass but the "
+            "prod migration fails. so dont mock the db.' → Node content: "
+            "'Integration tests against staging DB are required for migration-"
+            "touching code paths; mock-based unit tests historically miss "
+            "schema-divergence failures.' Different register, same claim, "
+            "structural axis named. Tom's verbatim 'we keep getting burned' "
+            "lives in user_raw_quote, NOT in content prose."
+        ),
+        'bad_pattern': (
+            "Turn: 'dont mock the db, mocks miss schema bugs.' → Node "
+            "content: 'Do not mock the database; mocks miss schema bugs.' "
+            "Mirror text. The encoder learns to be a punctuation-cleaner, "
+            "not a structural extractor."
+        ),
+        'enforced_by': 'evaluator LLM judgment — D36',
+    },
     'history': (
-        "Convention established in v22 after the v20→v21 connect_to_"
-        "unresolved error pattern. Tom's framing: 'examples need much "
-        "better signaling that it's an example.' The hard lesson: prose "
-        "disclaimers are too soft against Sonnet's shape-pattern-match."
+        "v22 (2026-05-25) established connect_to placeholder syntax after "
+        "v20→v21 connect_to_unresolved errors. Tom's framing: 'examples "
+        "need much better signaling that it\\'s an example.' Subsequently "
+        "expanded with source_refs sentinel range, internal consistency, "
+        "voice annotation coverage, and turn↔node divergence rules — "
+        "examples are training data; mirror-text examples teach the encoder "
+        "to paraphrase rather than extract."
     ),
 }
 
 
-EVALUATOR_SYSTEM_PROMPT = """You are evaluating an encoder example against the 32-dimension quality contract.
+# ═══════════════════════════════════════════════════════════════
+# Mechanical example-authoring validator (D33-D35)
+# ═══════════════════════════════════════════════════════════════
+#
+# Catches example authoring violations at load time WITHOUT an LLM call.
+# D36 (turn↔node divergence) requires semantic judgment and lives in the
+# evaluator's LLM pass. The three mechanical dims are checked here so bad
+# examples never reach the encoder prompt.
+
+def validate_example_authoring(example: dict) -> list:
+    """Check D33-D35 on an example dict (the shape used by §7.6 example files).
+
+    Returns a list of violation strings; empty list means the example passes
+    all three mechanical checks. Callers (loader, tests, pre-commit) decide
+    whether to raise or warn.
+
+    Expected example shape (v29+):
+        {
+            'source_conversation': [{'trace_id': str, ...}, ...],   # `<placeholder>` strings
+            'encoder_output': {'nodes': [{'source_refs': [str, ...], ...}, ...]},
+            'voice_annotations': {<name>: {'source_turn': str, 'load_bearing': str, ...}},
+            ...
+        }
+    """
+    violations = []
+
+    turns = example.get('source_conversation') or []
+    turn_ids = set()
+    for turn in turns:
+        tid = turn.get('trace_id')
+        if tid is None:
+            continue
+        tid_str = str(tid)
+        turn_ids.add(tid_str)
+        # D33: trace_id must use placeholder syntax
+        if not EXAMPLE_ID_PLACEHOLDER_RE.match(tid_str):
+            violations.append(
+                f"D33: source_conversation trace_id={tid_str!r} does not match "
+                f"placeholder syntax `<descriptive-name>`. Use bracketed "
+                f"placeholder so Sonnet doesn't pattern-match into production."
+            )
+
+    output = example.get('encoder_output') or {}
+    nodes = output.get('nodes') or output.get('revisions') or []
+    all_refs = []
+    for n in nodes:
+        refs = n.get('source_refs') or []
+        for r in refs:
+            r_str = str(r)
+            all_refs.append(r_str)
+            # D33: ref must use placeholder syntax
+            if not EXAMPLE_ID_PLACEHOLDER_RE.match(r_str):
+                violations.append(
+                    f"D33: encoder_output source_ref={r_str!r} does not match "
+                    f"placeholder syntax `<descriptive-name>`."
+                )
+            # D34: ref must point to a turn in source_conversation
+            if r_str not in turn_ids:
+                violations.append(
+                    f"D34: encoder_output source_ref={r_str!r} has no matching "
+                    f"trace_id placeholder in source_conversation. Orphan ref — "
+                    f"teaches encoder to invent trace ids."
+                )
+
+    # D35: presence-only mechanical check — examples with source_refs must
+    # have a non-empty voice_annotations block documenting load-bearing
+    # turns. Whether each ref has substantive load_bearing prose is judged
+    # by the evaluator LLM (deeper semantic check; lives alongside D36).
+    annotations = example.get('voice_annotations') or {}
+    if all_refs and not annotations:
+        violations.append(
+            f"D35: example has {len(all_refs)} source_refs but no "
+            f"voice_annotations block. Add load-bearing prose covering "
+            f"the ref-anchored turns."
+        )
+
+    return violations
+
+
+EVALUATOR_SYSTEM_PROMPT = """You are evaluating an encoder example against the 36-dimension quality contract.
 
 # Your inputs
 - `conversation`: source turns the encoder saw (S0 trace events with speaker labels and trace ids)
 - `encoder_output`: the remember_batch / brain_batch / revise_batch calls the example demonstrates
 - `example_intent`: which axis/dim this example was authored to teach
 - `aspects`: snapshot of aspects_v1.json membership at example time
-- `contract`: the 32 DIMENSIONS dict + CROSS_DIM_RULES from quality_contract.py
+- `contract`: the 36 DIMENSIONS dict + CROSS_DIM_RULES from quality_contract.py
 
 # Your task
-For each dimension D1..D32, classify the encoder output:
+For each dimension D1..D36, classify the encoder output:
 - `satisfied`: positive signals present, no violations
 - `degraded`: partial — some satisfies present but degrades-list features visible
 - `violated`: clear violation of the dim's stated criteria
@@ -1008,7 +1310,7 @@ For each cross-dim rule CR1..CR11, identify:
       "evidence": "<specific field values that drive the status>",
       "degradation_note": "<if degraded, where the partial-fail lives>"
     },
-    ...32 entries
+    ...36 entries
   ],
   "cross_dim": [
     {
@@ -1017,7 +1319,7 @@ For each cross-dim rule CR1..CR11, identify:
       "resolution_correct": true | false | "n/a",
       "note": "<observation about how the tension was navigated>"
     },
-    ...11 entries
+    ...12 entries
   ],
   "verdict": {
     "is_canonical": true | false,

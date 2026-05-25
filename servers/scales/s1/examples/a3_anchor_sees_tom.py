@@ -30,14 +30,14 @@ EXAMPLE = {
     'source_conversation': [
         {
             'turn': 't0',
-            'trace_id': 91501,
+            'trace_id': '<trace-tom-returning-to-resolved>',
             'speaker': 'Tom',
             'register': 'frustrated_returning_to_resolved',
             'text': "i keep coming back to this even though i said its done. why",
         },
         {
             'turn': 't1',
-            'trace_id': 91502,
+            'trace_id': '<trace-anchor-pattern-observation>',
             'speaker': 'Anchor',
             'register': 'observing_tom_pattern',
             'text': (
@@ -50,14 +50,14 @@ EXAMPLE = {
         },
         {
             'turn': 't2',
-            'trace_id': 91503,
+            'trace_id': '<trace-tom-pause-recognition>',
             'speaker': 'Tom',
             'register': 'pause_recognition',
             'text': "fuck. yeah. how did you see that.",
         },
         {
             'turn': 't3',
-            'trace_id': 91504,
+            'trace_id': '<trace-anchor-evidence-naming>',
             'speaker': 'Anchor',
             'register': 'naming_the_evidence',
             'text': (
@@ -187,10 +187,12 @@ EXAMPLE = {
                 "'why am I doing this' question; Anchor is tempted to "
                 "analyze rather than see"
             ),
-            'source_refs': [91502, 91503, 91504],
+            'source_refs': ['<trace-anchor-pattern-observation>',
+                             '<trace-tom-pause-recognition>',
+                             '<trace-anchor-evidence-naming>'],
             'connect_to': [
                 {
-                    'title': "Tom hunts the principle, not the implementation",
+                    'title': "<existing-tom-pattern-being-strengthened>",
                     'relation': 'instantiates',
                     'edge_description': (
                         "This moment is the canonical instance of the "
@@ -203,7 +205,7 @@ EXAMPLE = {
                     ),
                 },
                 {
-                    'title': "Anchor is a collaborator, not an assistant",
+                    'title': "<existing-anchor-collaborator-axiom>",
                     'relation': 'validates',
                     'edge_description': (
                         "The accurate seeing IS what makes Anchor "
