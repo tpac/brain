@@ -19,6 +19,7 @@
 // ===========================================================================
 
 import { api } from '/static/lib/api.js';
+import bus from '/static/lib/bus.js';
 import { loadNodeDetail } from '/static/lib/node_detail.js';
 
 let graph3d = null;
@@ -49,7 +50,9 @@ export async function loadGraph3D() {
       .map(e => ({source: e.source, target: e.target, relation: e.relation}));
 
     const container = document.getElementById('graph-3d');
-    container.style.height = 'calc(100vh - 42px)';
+    // Height comes from the parent .graph-container (100% of Live's
+    // graph pane). Don't hard-set it — the layout has changed since
+    // standalone-tab days.
     const w = container.offsetWidth || 800;
     const h = container.offsetHeight || 600;
 
@@ -129,7 +132,6 @@ export function resize() {
   if (!graph3d) return;
   const c = document.getElementById('graph-3d');
   if (!c) return;
-  c.style.height = 'calc(100vh - 42px)';
   // Trigger reflow before reading offset* so a hidden→visible transition
   // gives us the post-display size, not the pre-display zeros.
   void c.offsetHeight;
@@ -146,6 +148,14 @@ export function resize() {
 export function init() {
   // No polls — the graph reloads on Refresh button or activate(). The 3D
   // scene's own animation loop keeps it moving once mounted.
+  // Subscribe to layout drags from Live's divider — when the user resizes
+  // the left pane, the renderer needs a setSize() pass.
+  bus.subscribe('live:layout', () => {
+    // Debounce-ish via rAF: the mousemove fires every pixel; we don't want
+    // to call renderer.setSize() that often. The browser coalesces into
+    // the next frame.
+    requestAnimationFrame(resize);
+  });
 }
 
 export function activate() {

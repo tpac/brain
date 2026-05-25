@@ -31,10 +31,13 @@ import * as health   from '/static/tabs/health.js';
 import * as traces   from '/static/tabs/traces.js';
 
 // ── Tab registry ──────────────────────────────────────────────────────
-// Order matches the visible tabs in index.html. The active tab on first
-// render is 'live' (driven by the .active class in markup).
-const TAB_ORDER = ['live', 'graph', 'explorer', 'logs', 'health', 'traces'];
+// `graph` is NOT a top-level tab — it lives inside Live as the left pane
+// (added by the P2.2 layout pivot). It's still a module because Live needs
+// to drive its activate/resize lifecycle.
+// Primary tabs (visible top-of-page): live, logs, traces.
+// Overflow tabs (in the ⋯ dropdown):  explorer, health.
 const TABS = { live, graph, explorer, logs, health, traces };
+const OVERFLOW_TABS = ['explorer', 'health'];
 let activeTab = 'live';
 
 function switchTab(name) {
@@ -43,15 +46,42 @@ function switchTab(name) {
   try { TABS[prev]?.deactivate?.(); } catch(e) { console.error('[app] deactivate failed:', e); }
   activeTab = name;
 
-  document.querySelectorAll('.tab').forEach((t, i) => {
-    t.classList.toggle('active', TAB_ORDER[i] === name);
+  // Tabs are matched by data-tab now (not array index), so the ⋯ button
+  // with no data-tab stays untouched here — its active state is set below.
+  document.querySelectorAll('.tab[data-tab]').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === name);
   });
+  // Overflow menu items: same data-tab convention.
+  document.querySelectorAll('.tab-overflow-item').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === name);
+  });
+  // ⋯ toggle is "active" iff the current tab is one of its menu items.
+  const overflowToggle = document.querySelector('.tab-overflow-toggle');
+  if (overflowToggle) overflowToggle.classList.toggle('active', OVERFLOW_TABS.includes(name));
+  closeOverflowMenu();
+
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
 
   try { TABS[name]?.activate?.(); } catch(e) { console.error('[app] activate failed:', e); }
   bus.publish('tab:active', { name });
 }
+
+// ── Overflow menu ─────────────────────────────────────────────────────
+function toggleOverflowMenu(event) {
+  if (event) event.stopPropagation();
+  const menu = document.getElementById('tab-overflow-menu');
+  if (!menu) return;
+  menu.classList.toggle('open');
+}
+function closeOverflowMenu() {
+  const menu = document.getElementById('tab-overflow-menu');
+  if (menu) menu.classList.remove('open');
+}
+// Click anywhere outside the menu closes it.
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.tab-overflow')) closeOverflowMenu();
+});
 
 // ── Page-chrome state (stats bar, session dropdown) ───────────────────
 // These don't belong to any one tab — they appear on multiple tabs and are
@@ -113,6 +143,7 @@ async function loadSessions() {
 // As the migration to addEventListener progresses, entries disappear.
 
 window.switchTab             = switchTab;
+window.toggleOverflowMenu    = toggleOverflowMenu;
 window.switchFeed            = live.switchFeed;
 window.onSessionFilterChange = live.onSessionFilterChange;
 window.filterByScale         = live.filterByScale;
@@ -138,8 +169,10 @@ window.loadNodeDetail        = loadNodeDetail;
 poll.register({ key: 'stats',    interval: 30000, fetcher: loadStats });
 poll.register({ key: 'sessions', interval: 60000, fetcher: loadSessions });
 
-// Wire every tab module's polls + bus subs once.
-for (const name of TAB_ORDER) {
+// Wire every tab module's polls + bus subs once. Includes `graph` even
+// though it's not a primary tab — Live embeds it and needs its lifecycle
+// wired identically to the others.
+for (const name of Object.keys(TABS)) {
   try { TABS[name]?.init?.(); } catch(e) { console.error('[app] init', name, 'failed:', e); }
 }
 

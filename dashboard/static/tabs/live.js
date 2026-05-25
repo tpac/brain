@@ -8,8 +8,10 @@
 
 import { api } from '/static/lib/api.js';
 import { poll } from '/static/lib/poll.js';
+import bus from '/static/lib/bus.js';
 import { escapeHtml, localTime } from '/static/lib/dom.js';
 import { loadNodeDetail } from '/static/lib/node_detail.js';
+import * as graph from './graph.js';
 
 // ── Live feed — polls /api/recalls. ────────────────────────────────────
 // Cursor is ISO timestamp (since_ts), not integer rowid: trace_events.id is
@@ -710,12 +712,73 @@ export async function toggleConsolPrompt(entry) {
   }
 }
 
+// ── Split divider drag ────────────────────────────────────────────────
+// User drags the divider; we update grid-template-columns directly. The
+// resulting graphPct is persisted to localStorage and published on
+// `live:layout` so the graph module can re-fit its renderer.
+
+const SPLIT_STORAGE_KEY = 'dashboard.liveSplitPct';
+const SPLIT_DEFAULT_PCT = 60;
+
+function _applySplit(pct) {
+  const split = document.getElementById('live-split');
+  if (!split) return;
+  const clamped = Math.max(0, Math.min(100, pct));
+  split.style.gridTemplateColumns = `${clamped}fr 6px ${100 - clamped}fr`;
+  bus.publish('live:layout', { graphPct: clamped });
+}
+
+function _restoreSplit() {
+  let pct = SPLIT_DEFAULT_PCT;
+  try {
+    const saved = parseFloat(localStorage.getItem(SPLIT_STORAGE_KEY));
+    if (!Number.isNaN(saved) && saved >= 0 && saved <= 100) pct = saved;
+  } catch (e) { /* localStorage may be blocked; fall back to default */ }
+  _applySplit(pct);
+}
+
+function _setupDivider() {
+  const divider = document.getElementById('live-divider');
+  const split = document.getElementById('live-split');
+  if (!divider || !split) return;
+  let dragging = false;
+
+  divider.addEventListener('mousedown', (e) => {
+    dragging = true;
+    divider.classList.add('dragging');
+    split.classList.add('dragging');
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const rect = split.getBoundingClientRect();
+    const pct = ((e.clientX - rect.left) / rect.width) * 100;
+    _applySplit(pct);
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    divider.classList.remove('dragging');
+    split.classList.remove('dragging');
+    // Persist final value. Read it back from the inline style — _applySplit
+    // already clamped it.
+    const cols = split.style.gridTemplateColumns || '';
+    const m = cols.match(/^(\d+(?:\.\d+)?)fr/);
+    if (m) {
+      try { localStorage.setItem(SPLIT_STORAGE_KEY, m[1]); } catch (e) {}
+    }
+  });
+}
+
 // ── Lifecycle ─────────────────────────────────────────────────────────
 
 export function init() {
   // Placeholder while the feed waits for the first poll fire.
   const feed = document.getElementById('feed-decoding');
   feed.innerHTML = '<div class="hook-placeholder" style="color:#666;padding:20px;text-align:center">Waiting for brain activity...</div>';
+
+  _restoreSplit();
+  _setupDivider();
 
   // Recall feed — 2s cadence, only when the Live tab is open AND on the
   // decoding sub-feed. Inactive tabs get zero polls.
@@ -757,10 +820,12 @@ export function init() {
 }
 
 export function activate() {
-  // Polls auto-activate via activeWhen. Nothing to do here — the first
-  // tick within ~1s fires pollRecallLog + loadS2DecodeEntries.
+  // Live owns the graph now — drive its activate() so the 3D scene mounts
+  // (first time) or resizes (subsequent). Polls auto-activate via activeWhen.
+  try { graph.activate(); } catch (e) { console.error('[live] graph activate failed:', e); }
 }
 
 export function deactivate() {
-  // Polls auto-deactivate via activeWhen.
+  // Graph stays mounted in the hidden tab; its canvas keeps the WebGL
+  // context warm so re-activating is instant.
 }

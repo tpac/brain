@@ -13,52 +13,76 @@
 <link rel="stylesheet" href="/static/css/components.css">
 <link rel="stylesheet" href="/static/css/types.css">
 <link rel="stylesheet" href="/static/style.css">
+<!-- ForceGraph3D is needed up-front: the graph mounts inside the Live tab,
+     so the library has to be loaded before the Live module's activate() runs. -->
+<script src="https://unpkg.com/3d-force-graph@1"></script>
 </head>
 <body>
 
 <div class="tabs">
-  <div class="tab active" onclick="switchTab('live')">Live</div>
-  <div class="tab" onclick="switchTab('graph')">Graph</div>
-  <div class="tab" onclick="switchTab('explorer')">Explorer</div>
-  <div class="tab" onclick="switchTab('logs')">Logs <span id="logs-badge" class="notif"></span></div>
-  <div class="tab" onclick="switchTab('health')">Health</div>
-  <div class="tab" onclick="switchTab('traces')">Traces</div>
+  <div class="tab active" data-tab="live"    onclick="switchTab('live')">Live</div>
+  <div class="tab"        data-tab="logs"    onclick="switchTab('logs')">Logs <span id="logs-badge" class="notif"></span></div>
+  <div class="tab"        data-tab="traces"  onclick="switchTab('traces')">Traces</div>
+  <!-- ⋯ overflow — Explorer + Health live here. The button is a tab visually
+       but never gets an associated tab-content; switching to one of the
+       overflow items leaves the ⋯ button in its “active” state via the
+       data-overflow-active attribute set by switchTab. -->
+  <div class="tab-overflow">
+    <div class="tab tab-overflow-toggle" onclick="toggleOverflowMenu(event)">⋯</div>
+    <div class="tab-overflow-menu" id="tab-overflow-menu">
+      <div class="tab-overflow-item" data-tab="explorer" onclick="switchTab('explorer')">Explorer</div>
+      <div class="tab-overflow-item" data-tab="health"   onclick="switchTab('health')">Health</div>
+    </div>
+  </div>
 </div>
 
+<!-- ── Live tab ──────────────────────────────────────────────────────
+     Split view: graph on the left, activity stream on the right. The
+     divider in the middle is draggable; user-preferred split width is
+     persisted in localStorage (key: dashboard.liveSplitPct).
+     The standalone Graph tab was dropped — Live now hosts the only
+     ForceGraph3D instance. Drag the divider to 100% to get the
+     full-screen-graph view the old standalone tab provided. -->
 <div id="tab-live" class="tab-content active">
   <div class="stats-bar" id="stats-bar"></div>
   <div id="daemon-banner"></div>
-  <div class="feed-toggle">
-    <button class="feed-btn active" onclick="switchFeed('decoding')">Decoding</button>
-    <button class="feed-btn" onclick="switchFeed('encoding')">Encoding <span id="enc-badge" class="notif"></span></button>
-    <select id="session-filter" class="toolbar-select" onchange="onSessionFilterChange()" style="margin-left:auto">
-      <option value="">All sessions</option>
-    </select>
-    <select id="scale-filter" class="toolbar-select" onchange="filterByScale()" style="margin-left:8px">
-      <option value="">All scales</option>
-      <option value="s1">S1 Turn</option>
-      <option value="s2">S2 Graph</option>
-    </select>
+  <div class="live-split" id="live-split">
+    <div class="live-pane live-pane--graph">
+      <div class="graph-container">
+        <div class="graph-controls">
+          <button class="btn--glass" onclick="loadGraph3D()">Refresh</button>
+          <button class="btn--glass" onclick="toggleLegend()">Legend</button>
+        </div>
+        <div id="graph-3d" style="width:100%;height:100%"></div>
+        <div id="graph-legend" style="position:absolute;top:42px;right:0;background:var(--bg-overlay);border-left:1px solid #333;padding:14px;height:100%;overflow-y:auto;z-index:10;font-size:11px;color:var(--text-muted);width:260px;transform:translateX(220px);transition:transform 0.3s ease">
+          <h3 style="color:#555;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px">Communities</h3>
+          <div id="legend-items"></div>
+        </div>
+      </div>
+    </div>
+    <div class="live-divider" id="live-divider" title="Drag to resize"></div>
+    <div class="live-pane live-pane--stream">
+      <div class="feed-toggle">
+        <button class="feed-btn active" onclick="switchFeed('decoding')">Decoding</button>
+        <button class="feed-btn" onclick="switchFeed('encoding')">Encoding <span id="enc-badge" class="notif"></span></button>
+        <select id="session-filter" class="toolbar-select" onchange="onSessionFilterChange()" style="margin-left:auto">
+          <option value="">All sessions</option>
+        </select>
+        <select id="scale-filter" class="toolbar-select" onchange="filterByScale()" style="margin-left:8px">
+          <option value="">All scales</option>
+          <option value="s1">S1 Turn</option>
+          <option value="s2">S2 Graph</option>
+        </select>
+      </div>
+      <div class="feed" id="feed-decoding"></div>
+      <div class="feed" id="feed-encoding" style="display:none"></div>
+    </div>
   </div>
-  <div class="feed" id="feed-decoding"></div>
-  <div class="feed" id="feed-encoding" style="display:none"></div>
 </div>
 
-<div id="tab-graph" class="tab-content">
-  <div class="graph-container">
-    <div class="graph-controls">
-      <button class="btn--glass" onclick="loadGraph3D()">Refresh</button>
-      <button class="btn--glass" onclick="toggleLegend()">Legend</button>
-    </div>
-    <div id="graph-3d" style="width:100%;height:100%"></div>
-    <div id="graph-legend" style="position:fixed;top:42px;right:0;background:var(--bg-overlay);border-left:1px solid #333;padding:14px;height:calc(100vh - 42px);overflow-y:auto;z-index:10;font-size:11px;color:var(--text-muted);width:260px;transform:translateX(220px);transition:transform 0.3s ease">
-      <h3 style="color:#555;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px">Communities</h3>
-      <div id="legend-items"></div>
-    </div>
-  </div>
-</div>
+<!-- Detail overlay — shared by Graph (node click), Explorer (card click),
+     Live (candidate click). Lives outside any tab-content. -->
 <div class="node-detail" id="node-detail" style="display:none"></div>
-<script src="https://unpkg.com/3d-force-graph@1"></script>
 
 <div id="tab-explorer" class="tab-content">
   <div class="explorer">

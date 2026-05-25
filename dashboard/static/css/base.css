@@ -48,6 +48,87 @@ canvas { width: 100%; height: 100%; }
 }
 .tab-content.active { display: block; }
 
+/* ── ⋯ Overflow tab + dropdown ──────────────────────────────────────── */
+/* The overflow toggle is itself a .tab; it gets `active` styling when one
+ * of its menu items is the current tab. The menu floats absolutely below
+ * the tab bar so it doesn't push other tabs around. */
+.tab-overflow { position: relative; }
+.tab-overflow-toggle {
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: 2px;
+  padding-bottom: 8px;
+}
+.tab-overflow-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 50;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-base);
+  border-top: none;
+  border-bottom-right-radius: var(--radius-md);
+  min-width: 140px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+.tab-overflow-menu.open { display: block; }
+.tab-overflow-item {
+  padding: 10px 14px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--fs-md);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border-faint);
+}
+.tab-overflow-item:last-child { border-bottom: none; }
+.tab-overflow-item:hover { color: var(--text-heading); background: var(--bg-raised); }
+.tab-overflow-item.active { color: var(--accent-blue); }
+
+/* ── Live tab uses flex column so the split fills remaining height ──── */
+/* stats-bar + daemon-banner take their natural height (stats-bar wraps);
+ * .live-split flex-grows into whatever's left. tab-content's default
+ * `display:block`+`overflow:auto` would clamp the split's height — flex
+ * lets the inner panes own their own overflow instead. */
+#tab-live.active {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#tab-live > .stats-bar, #tab-live > #daemon-banner { flex-shrink: 0; }
+
+/* ── Live split: graph | divider | stream ───────────────────────────── */
+/* Grid-based: the divider drag updates grid-template-columns at runtime. */
+.live-split {
+  display: grid;
+  grid-template-columns: 60fr 6px 40fr;
+  flex: 1;
+  min-height: 0;
+}
+.live-pane { overflow: hidden; position: relative; min-width: 0; }
+.live-pane--graph .graph-container {
+  position: relative;
+  height: 100%;
+}
+.live-pane--stream { overflow-y: auto; border-left: 1px solid var(--border-faint); }
+.live-divider {
+  background: var(--border-base);
+  cursor: ew-resize;
+  transition: background 0.15s;
+  position: relative;
+}
+.live-divider::before {
+  /* Wider hit-target than the visible line. */
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  right: -3px;
+}
+.live-divider:hover, .live-divider.dragging { background: var(--accent-blue); }
+.live-split.dragging { user-select: none; cursor: ew-resize; }
+
 /* ── Top stats bar ──────────────────────────────────────────────────── */
 
 .stats-bar {
