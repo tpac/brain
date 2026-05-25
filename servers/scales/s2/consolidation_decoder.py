@@ -451,8 +451,16 @@ class ConsolidationDecoder(IntegrationUnit):
                     'sample member IDs: %s; total members dropped=%d' % (
                         sample,
                         sum(len(m) for m in oversized_dropped)))
-            except Exception:
-                pass
+            except Exception as log_err:
+                # _log_error itself failing is rare; surface to stderr so
+                # daemon.log captures it rather than silently swallowing
+                # the visibility we were trying to add. Matches the
+                # brain_remember.py:41-44 pattern.
+                import sys
+                print(
+                    '[consolidation] _log_error failed while reporting '
+                    'oversized clusters: %r' % log_err,
+                    file=sys.stderr, flush=True)
 
         # Sort by highest similarity (max of either dimension)
         clusters.sort(key=lambda c: -max(c['content_cosine_max'], c['title_cosine_max']))
