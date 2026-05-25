@@ -110,6 +110,21 @@ export function identityChip(human, agent) {
     h, el('span', { style: { color: '#555', margin: '0 3px' } }, '→'), a);
 }
 
+/** HTML-string variant of identityChip — for callers still concatenating
+ * into innerHTML strings (live.js recall feed, traces.js chain header).
+ * Returns '' when neither side is set so it's safe to drop into a
+ * template-literal slot without conditional guards.
+ *
+ * Note: as those callers migrate to el()-based rendering, prefer
+ * identityChip() above and delete this helper. */
+export function identityChipHTML(human, agent) {
+  if (!human && !agent) return '';
+  const h = human ? escapeHtml(human) : '?';
+  const a = agent ? escapeHtml(agent) : '?';
+  return '<span class="identity-chip" title="speaker → responder">' +
+    h + '<span style="color:#555;margin:0 3px">→</span>' + a + '</span>';
+}
+
 /** Convenience: clear a node and append a list of children atomically.
  * Avoids the half-rendered flash that `node.innerHTML = ''` + repeated
  * appends causes. */

@@ -9,7 +9,7 @@
 import { api } from '/static/lib/api.js';
 import { poll } from '/static/lib/poll.js';
 import bus from '/static/lib/bus.js';
-import { escapeHtml, localTime } from '/static/lib/dom.js';
+import { escapeHtml, localTime, identityChipHTML } from '/static/lib/dom.js';
 import { loadNodeDetail } from '/static/lib/node_detail.js';
 import * as graph from './graph.js';
 
@@ -31,29 +31,37 @@ export function toggleHookBody(el) {
   body.classList.toggle('open');
 }
 
-const SOURCE_COLORS = {
-  hook: '#7eb8ff',
-  mcp: '#b8ff7e',
-  internal: '#888',
-  unknown: '#666'
-};
-const SOURCE_LABELS = {
-  hook: 'HOOK',
-  mcp: 'ANCHOR',
-  internal: 'INTERNAL',
-  unknown: '?'
+// Source tag for recall entries → drives the .badge--solid-* color class
+// on the header pill and the readable label. `unknown` falls through to
+// the neutral .badge variant.
+const SOURCE_META = {
+  hook:     { cls: 'badge badge--solid-blue',  label: 'HOOK' },
+  mcp:      { cls: 'badge badge--solid-green', label: 'ANCHOR' },
+  internal: { cls: 'badge',                    label: 'INTERNAL' },
+  unknown:  { cls: 'badge',                    label: '?' },
 };
 
-// Identity stamping landed in trace_events metadata via 75075eb / 65bf483.
-// Render a compact chip like "Tom→Anchor" — arrow direction matches the
-// O/Δ pattern (human observes, agent responds). Empty strings → no chip;
-// half-stamped traces still show what we have so the operator can spot the gap.
-function renderIdentityChip(human, agent) {
-  if (!human && !agent) return '';
-  const h = human ? escapeHtml(human) : '?';
-  const a = agent ? escapeHtml(agent) : '?';
-  return '<span class="identity-chip" title="speaker → responder">' +
-    h + '<span style="color:#555;margin:0 3px">→</span>' + a + '</span>';
+// S2 unit metadata — single source for both the decoding feed (which
+// reads it from a chain_id substring) and the encoding feed (which reads
+// it from run.type). `match` is a substring tested against chain_id;
+// `type` is the literal value used when iterating run records.
+const S2_UNITS = [
+  { type: 'consolidation', match: 'consolidation',         label: 'S2 CONSOLIDATION', bg: '#1a4a2a', fg: '#33ff88' },
+  { type: 'community',     match: 'community',             label: 'S2 COMMUNITY',     bg: '#1a3a4a', fg: '#45B7D1' },
+  { type: 'edge_family',   match: 'edge_family',           label: 'S2 EDGE FAMILIES', bg: '#1a3a4a', fg: '#45B7D1' },
+  { type: 'healer',        match: 'healer',                label: 'S2 HEALER',        bg: '#4a1a4a', fg: '#ff66aa' },
+];
+const S2_UNIT_DEFAULT = { type: '_default', label: 'S2', bg: '#1a3a4a', fg: '#45B7D1' };
+
+function s2UnitFromChainId(chainId) {
+  if (!chainId) return S2_UNIT_DEFAULT;
+  for (const u of S2_UNITS) {
+    if (chainId.includes(u.match)) return u;
+  }
+  return S2_UNIT_DEFAULT;
+}
+function s2UnitFromType(type) {
+  return S2_UNITS.find(u => u.type === type) || S2_UNIT_DEFAULT;
 }
 
 function renderRecallEntry(evt) {
@@ -66,8 +74,7 @@ function renderRecallEntry(evt) {
   div.dataset.needsJudge = (src === 'hook' && !evt.judge_output) ? '1' : '0';
   div.dataset.ts = evt.timestamp || '';
   const t = localTime(evt.timestamp, 'time');
-  const srcColor = SOURCE_COLORS[src] || '#666';
-  const srcLabel = SOURCE_LABELS[src] || src.toUpperCase();
+  const srcMeta = SOURCE_META[src] || { cls: 'badge', label: src.toUpperCase() };
   const sid = evt.session_id ? evt.session_id.substring(0, 8) : '';
   const titles = evt.titles || {};
   const snippets = evt.snippets || {};
@@ -122,10 +129,10 @@ function renderRecallEntry(evt) {
   fullDetails += '</pre></div>';
 
   const idShort = evt.id ? String(evt.id).substring(0, 8) : '';
-  const identityChip = renderIdentityChip(evt.human_identity, evt.agent_identity);
+  const identityChip = identityChipHTML(evt.human_identity, evt.agent_identity);
   div.innerHTML =
     '<div class="hook-header" onclick="toggleHookBody(this)">' +
-      '<span class="hook-badge" style="background:' + srcColor + ';color:#000">' + srcLabel + '</span>' +
+      '<span class="' + srcMeta.cls + '">' + srcMeta.label + '</span>' +
       '<span class="hook-time">' + t + '</span>' +
       (sid ? '<span class="hook-session">' + sid + '</span>' : '') +
       identityChip +
@@ -301,28 +308,14 @@ function _renderS2ChainEntry(chain) {
   const chainShort = chain.chain_id.substring(0, 20);
   const chainTs = newestEvt?.created_at || '';
 
-  // Unit-type table. Adding a new S2 unit = adding a row here.
-  const UNIT_STYLES = {
-    consolidation:    {label:'S2 CONSOLIDATION',  bg:'#1a4a2a', fg:'#33ff88'},
-    community:        {label:'S2 COMMUNITY',      bg:'#1a3a4a', fg:'#45B7D1'},
-    edge_family:      {label:'S2 EDGE FAMILIES',  bg:'#1a3a4a', fg:'#45B7D1'},
-    healer:           {label:'S2 HEALER',         bg:'#4a1a4a', fg:'#ff66aa'},
-    _default:         {label:'S2',                bg:'#1a3a4a', fg:'#45B7D1'},
-  };
-  let unitStyle = UNIT_STYLES._default;
-  for (const [key, style] of Object.entries(UNIT_STYLES)) {
-    if (key !== '_default' && chain.chain_id && chain.chain_id.includes(key)) {
-      unitStyle = style;
-      break;
-    }
-  }
-  const badgeLabel = unitStyle.label;
-  const badgeBg = unitStyle.bg;
-  const badgeColor = unitStyle.fg;
-  const borderColor = unitStyle.fg;
-  const isConsolidation = badgeLabel === 'S2 CONSOLIDATION';
-  const isCommunity     = badgeLabel === 'S2 COMMUNITY';
-  const isHealer        = badgeLabel === 'S2 HEALER';
+  const unit = s2UnitFromChainId(chain.chain_id);
+  const badgeLabel = unit.label;
+  const badgeBg = unit.bg;
+  const badgeColor = unit.fg;
+  const borderColor = unit.fg;
+  const isConsolidation = unit.type === 'consolidation';
+  const isCommunity     = unit.type === 'community';
+  const isHealer        = unit.type === 'healer';
 
   let h = '';
   h += '<div class="hook-header" onclick="toggleHookBody(this)">';
@@ -507,10 +500,13 @@ async function loadEncodingActivity() {
         const div = document.createElement('div');
         div.className = 'hook-entry enc-entry';
         div.dataset.scale = 's2';
-        const isConsol = run.type === 'consolidation';
-        const isHealer = run.type === 'healer';
-        const color = isConsol ? '#33ff88' : isHealer ? '#ff66aa' : '#45B7D1';
-        const label = isConsol ? 'S2 CONSOLIDATE' : isHealer ? 'S2 HEALER' : 'S2 COMMUNITY';
+        const unit = s2UnitFromType(run.type);
+        const isConsol = unit.type === 'consolidation';
+        const isHealer = unit.type === 'healer';
+        // Encoding feed uses the shorter "S2 CONSOLIDATE" label vs the
+        // decoding feed's "S2 CONSOLIDATION" — the row is denser here.
+        const color = unit.fg;
+        const label = isConsol ? 'S2 CONSOLIDATE' : unit.label;
         div.style.borderLeftColor = color;
         const t = localTime(run.start_ts, 'time');
         const actionCount = (run.synthesized||[]).length + (run.archived||[]).length + (run.kept||[]).length + (run.evolved||[]).length;
@@ -665,51 +661,37 @@ async function loadEncodingActivity() {
   } catch(e) { console.error('loadEncodingActivity error:', e); }
 }
 
-export function toggleSurfacePrompt(entry) {
-  const prompt = entry.querySelector('.surface-prompt-body');
+// One toggler — three named exports preserved as thin wrappers so the
+// inline `onclick="toggleX(...)"` handlers in renderRecallEntry +
+// loadEncodingActivity keep working without surgery. `lazyLoad` runs the
+// first time we expand, populating the <pre> via API (consolidation only).
+async function _togglePromptBody(entry, bodyClass, lazyLoad) {
+  const prompt = entry.querySelector('.' + bodyClass);
   if (!prompt) return;
   const btn = entry.querySelector('.hook-details-btn');
   if (prompt.style.display === 'none') {
     prompt.style.display = 'block';
     if (btn) btn.textContent = 'Hide Prompt';
-  } else {
-    prompt.style.display = 'none';
-    if (btn) btn.textContent = 'Show Prompt';
-  }
-}
-
-export function toggleEncPrompt(entry) {
-  const prompt = entry.querySelector('.enc-prompt-body');
-  if (!prompt) return;
-  const btn = entry.querySelector('.hook-details-btn');
-  if (prompt.style.display === 'none') {
-    prompt.style.display = 'block';
-    if (btn) btn.textContent = 'Hide Prompt';
-  } else {
-    prompt.style.display = 'none';
-    if (btn) btn.textContent = 'Show Prompt';
-  }
-}
-
-export async function toggleConsolPrompt(entry) {
-  const prompt = entry.querySelector('.consol-prompt-body');
-  if (!prompt) return;
-  const btn = entry.querySelector('.hook-details-btn');
-  if (prompt.style.display === 'none') {
-    prompt.style.display = 'block';
-    if (btn) btn.textContent = 'Hide Prompt';
-    if (prompt.querySelector('pre').textContent === 'Loading...') {
-      try {
-        const d = await api.consolidationPrompt(1);
-        prompt.querySelector('pre').textContent = d.user_content || d.error || '(no prompt available)';
-      } catch(e) {
-        prompt.querySelector('pre').textContent = '(failed to load prompt)';
+    if (lazyLoad) {
+      const pre = prompt.querySelector('pre');
+      if (pre && pre.textContent === 'Loading...') {
+        try { pre.textContent = await lazyLoad(); }
+        catch (e) { pre.textContent = '(failed to load prompt)'; }
       }
     }
   } else {
     prompt.style.display = 'none';
     if (btn) btn.textContent = 'Show Prompt';
   }
+}
+
+export function toggleSurfacePrompt(entry) { _togglePromptBody(entry, 'surface-prompt-body'); }
+export function toggleEncPrompt(entry)     { _togglePromptBody(entry, 'enc-prompt-body'); }
+export function toggleConsolPrompt(entry)  {
+  return _togglePromptBody(entry, 'consol-prompt-body', async () => {
+    const d = await api.consolidationPrompt(1);
+    return d.user_content || d.error || '(no prompt available)';
+  });
 }
 
 // ── Split divider drag ────────────────────────────────────────────────

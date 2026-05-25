@@ -9,19 +9,12 @@
 
 import { api } from '/static/lib/api.js';
 import { poll } from '/static/lib/poll.js';
-import { escapeHtml, localTime } from '/static/lib/dom.js';
+import { escapeHtml, localTime, identityChipHTML } from '/static/lib/dom.js';
+import { SCALE_COLORS } from '/static/lib/scales.js';
 
 let _traceChainEntries = [];
 let _traceRendered = 0;
 const _TRACE_BATCH = 30;
-
-function renderIdentityChip(human, agent) {
-  if (!human && !agent) return '';
-  const h = human ? escapeHtml(human) : '?';
-  const a = agent ? escapeHtml(agent) : '?';
-  return '<span class="identity-chip" title="speaker → responder">' +
-    h + '<span style="color:#555;margin:0 3px">→</span>' + a + '</span>';
-}
 
 export function onTraceScaleChange() {
   const scale = document.getElementById('trace-scale-filter').value;
@@ -99,7 +92,6 @@ function _traceChainLabel(chainId) {
 }
 
 function _renderTracesBatch(el) {
-  const scaleColors = {s0:'#888', s1:'#7eb8ff', s2:'#ffaa33', s3:'#33ff88', s4:'#ff66aa'};
   const typeLabels = {O:'Observed', K:'Selected', delta:'Changed', outcome:'Outcome'};
   const typeColors = {O:'#45B7D1', K:'#ffaa33', delta:'#33ff88', outcome:'#aa66ff'};
   const end = Math.min(_traceRendered + _TRACE_BATCH, _traceChainEntries.length);
@@ -109,7 +101,7 @@ function _renderTracesBatch(el) {
     const [chainId, events] = _traceChainEntries[i];
     const firstTime = events[0].created_at;
     const chainScale = events[0].scale;
-    const color = scaleColors[chainScale] || '#666';
+    const color = SCALE_COLORS[chainScale] || '#666';
     const label = _traceChainLabel(chainId);
     const sessionId = events[0].session_id || '';
     const sessionTag = sessionId ? '<span style="color:#444;font-size:9px;margin-left:6px">' + sessionId.substring(0,8) + '</span>' : '';
@@ -123,7 +115,7 @@ function _renderTracesBatch(el) {
       }
     }
     const identityTag = (chainHi || chainAi)
-      ? '<span style="margin-left:6px">' + renderIdentityChip(chainHi, chainAi) + '</span>'
+      ? '<span style="margin-left:6px">' + identityChipHTML(chainHi, chainAi) + '</span>'
       : '';
 
     html += '<div style="background:#0a0a12;border-radius:8px;margin:6px 0;border-left:3px solid ' + color + '">';

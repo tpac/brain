@@ -11,6 +11,7 @@
 
 import { api } from './api.js';
 import { escapeHtml, localTime } from './dom.js';
+import { SCALE_COLORS } from './scales.js';
 
 export async function loadNodeDetail(nodeId) {
   const panel = document.getElementById('node-detail');
@@ -63,13 +64,12 @@ export async function loadNodeDetail(nodeId) {
     // attached at encode time.
     if (sourceRefs.length) {
       h += '<div class="nd-section">Encoded from ' + sourceRefs.length + ' trace(s)</div>';
-      const scaleColors = {s0:'#888', s1:'#7eb8ff', s2:'#ffaa33', s3:'#33ff88'};
       for (const ref of sourceRefs) {
         if (ref.missing) {
           h += '<div class="nd-field" style="opacity:0.5">trace ' + (ref.trace_id||'') + ' (not found — log-rotated or archived)</div>';
           continue;
         }
-        const sc = scaleColors[ref.scale] || '#666';
+        const sc = SCALE_COLORS[ref.scale] || '#666';
         const sess = ref.session_id ? ref.session_id.substring(0,8) : '';
         h += '<div class="nd-conn" style="border-left-color:' + sc + '">';
         h += '<div style="font-size:9px;color:' + sc + ';text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">' + ref.scale + ' · ' + (ref.event_type || '') + (ref.ref_type ? ' · ' + ref.ref_type : '') + (sess ? ' · ' + sess : '') + '</div>';

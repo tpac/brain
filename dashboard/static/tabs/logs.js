@@ -12,6 +12,16 @@ import { api } from '/static/lib/api.js';
 import { poll } from '/static/lib/poll.js';
 import { escapeHtml, localTime } from '/static/lib/dom.js';
 
+// Severity → border/text color. Used by both the Errors and Daemon
+// renderers; previously defined twice with identical contents.
+const LEVEL_COLORS = {
+  critical: '#ff4444',
+  error:    '#ff6644',
+  warning:  '#ffaa33',
+  info:     '#4a9eff',
+};
+function _levelColor(level) { return LEVEL_COLORS[level] || '#888'; }
+
 let activeLogFeed = 'errors';
 
 export function switchLogFeed(name) {
@@ -139,7 +149,7 @@ async function loadErrors() {
     for (const e of d.errors) {
       const div = document.createElement('div');
       div.dataset.source = e.source || '';
-      const levelColor = {critical:'#ff4444',error:'#ff6644',warning:'#ffaa33',info:'#4a9eff'}[e.level] || '#888';
+      const levelColor = _levelColor(e.level);
       div.style.cssText = 'padding:8px 12px;margin:4px 0;background:#111118;border-radius:6px;border-left:3px solid ' + levelColor + ';font-size:12px';
       const t = localTime(e.timestamp);
       const sessionTag = e.session_id ? '<span style="color:#555;font-size:9px;margin-left:4px">' + e.session_id.substring(0,8) + '</span>' : '';
@@ -175,7 +185,7 @@ async function loadDaemonLogs() {
     feed.innerHTML = '';
     for (const e of all) {
       const div = document.createElement('div');
-      const levelColor = {critical:'#ff4444',error:'#ff6644',warning:'#ffaa33',info:'#4a9eff'}[e.level] || '#888';
+      const levelColor = _levelColor(e.level);
       const isRestart = (e.error || '').includes('restart') || (e.component || '').includes('restart');
       const borderColor = isRestart ? '#4a9eff' : levelColor;
       div.style.cssText = 'padding:8px 12px;margin:4px 0;background:#111118;border-radius:6px;border-left:3px solid ' + borderColor + ';font-size:12px';
