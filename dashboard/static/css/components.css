@@ -223,6 +223,114 @@
 .log-context   { color: var(--text-subtle);  font-size: var(--fs-xs); margin-top: 2px; }
 .log-stack     { color: var(--text-subtle);  font-size: var(--fs-xs); margin-top: 2px; font-family: monospace; }
 .log-time      { color: var(--text-faint);   font-size: var(--fs-xs); margin-top: 2px; }
+
+/* ── Health tab: system-status cards ──────────────────────────────── */
+.status-card {
+  background: var(--bg-panel);
+  border-radius: 8px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-base);
+}
+.status-card--alive { border-color: #1a3a1a; }
+.status-card--dead  { border-color: #3a1a1a; }
+.status-card-row    { display: flex; align-items: center; gap: 8px; }
+.status-card-icon   { font-size: 20px; }
+.status-card-title  { color: var(--text-heading); font-weight: bold; font-size: 13px; }
+.status-card-state  { font-size: 11px; margin-top: 2px; }
+.status-card-state--alive { color: #4a4; }
+.status-card-state--dead  { color: #f44; }
+.status-card-details {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: right;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.status-card-path {
+  font-size: 9px;
+  color: var(--text-faint);
+  margin-top: 4px;
+  word-break: break-all;
+}
+
+/* ── Health tab: aspect taxonomy cards ────────────────────────────── */
+.aspect-card {
+  background: var(--bg-panel);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 6px 0;
+  border-left: 3px solid var(--accent-cyan);
+}
+.aspect-card-head   { display: flex; justify-content: space-between; align-items: baseline; }
+.aspect-card-name   { color: var(--accent-blue); font-weight: bold; font-size: 13px; }
+.aspect-card-totals { color: var(--text-muted); font-size: 10px; }
+.aspect-card-dim    { color: var(--text-subtle); font-size: 10px; margin-left: 6px; }
+.aspect-card-locked { color: var(--accent-amber); font-size: 9px; }
+.aspect-card-meaning {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-top: 6px;
+  line-height: 1.4;
+}
+.aspect-card-section { margin-top: 6px; }
+.aspect-card-section-label {
+  color: var(--text-subtle);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.aspect-chip {
+  display: inline-block;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-base);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  margin: 2px 3px 0 0;
+}
+.aspect-chip--type     { color: var(--text-body); }
+.aspect-chip--relation { color: var(--accent-purple); }
+.aspect-chip-count     { color: var(--text-subtle); margin-left: 4px; }
+.aspect-chip-more      { color: var(--text-subtle); font-size: 10px; margin-left: 4px; }
+
+/* ── Health tab: diagnostic insight cards (distinct from Live's
+ * lightweight .insights-card — these are larger, can include
+ * evidence nodes, and use the H/M/L severity ladder). ──────────── */
+.health-insight {
+  background: var(--bg-panel);
+  border-radius: 8px;
+  padding: 14px;
+  margin: 8px 0;
+  border-left: 4px solid var(--border-base);
+}
+.health-insight--high   { border-left-color: var(--accent-red); }
+.health-insight--medium { border-left-color: var(--accent-amber); }
+.health-insight--low    { border-left-color: var(--accent-blue); }
+.health-insight-title   { font-size: 15px; font-weight: bold; }
+.health-insight--high   .health-insight-title { color: var(--accent-red); }
+.health-insight--medium .health-insight-title { color: var(--accent-amber); }
+.health-insight--low    .health-insight-title { color: var(--accent-blue); }
+.health-insight-detail  {
+  color: var(--text-muted);
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.health-insight-nodes      { margin-top: 8px; font-size: 11px; color: var(--text-muted); }
+.health-insight-node-meta  { color: var(--text-subtle); }
+
+/* ── Health tab: section headings + summary states ────────────────── */
+.health-section-h3        { color: var(--text-heading); margin: 20px 0 8px; font-size: 14px; }
+.health-section-h3--muted { color: var(--text-muted); }
+.health-empty-good {
+  color: var(--accent-green);
+  padding: 20px;
+  text-align: center;
+  font-size: 16px;
+}
+.type-count { font-size: 18px; font-weight: bold; color: var(--accent-blue); float: right; }
 .hook-body--padded { padding: 4px 12px; }
 
 /* ── Insights panel (Live tab top) ─────────────────────────────────── */
