@@ -93,9 +93,16 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: 'SF Mono', 'Fira Code',
 .type-bug_lesson { background: #4a1a1a; color: #ff8866; }
 .locked-icon { color: #ffaa33; margin-left: 4px; }
 .graph-container { position: relative; height: calc(100vh - 42px); }
-.graph-controls { position: absolute; top: 10px; left: 10px; z-index: 10; display: flex; gap: 6px; flex-wrap: wrap; }
+.graph-controls { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 10; display: flex; gap: 6px; align-items: center; }
 .graph-controls button, .graph-controls select { background: #1a1a2acc; border: 1px solid #2a2a3a; color: #ccc; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 11px; backdrop-filter: blur(4px); }
 .graph-controls button:hover { background: #2a2a4a; }
+/* Search input + match-count badge. The input flex-grows so the user can
+ * type long community names without the field clipping. Match-count sits
+ * inline to the right of the input. */
+.graph-search { flex: 1; min-width: 0; background: #1a1a2acc; border: 1px solid #2a2a3a; color: #e0e0e0; padding: 5px 10px; border-radius: 4px; font-family: inherit; font-size: 12px; backdrop-filter: blur(4px); }
+.graph-search:focus { outline: none; border-color: #4a9eff; }
+.graph-search::placeholder { color: #666; }
+.graph-search-count { color: #888; font-size: 10px; min-width: 60px; text-align: right; pointer-events: none; }
 canvas { width: 100%; height: 100%; }
 .node-tooltip { position: absolute; background: #1a1a2aee; border: 1px solid #3a3a5a; padding: 10px; border-radius: 6px; max-width: 300px; font-size: 11px; pointer-events: none; display: none; z-index: 20; backdrop-filter: blur(8px); }
 .node-detail { position: fixed; top: 0; right: 0; width: 380px; height: 100%; background: #0d0d15f0; border-left: 1px solid #2a2a3a; padding: 16px; overflow-y: auto; z-index: 100; backdrop-filter: blur(12px); font-size: 12px; }

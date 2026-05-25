@@ -50,14 +50,17 @@
     <div class="live-pane live-pane--graph">
       <div class="graph-container">
         <div class="graph-controls">
+          <input
+            type="text"
+            id="graph-search"
+            class="graph-search"
+            placeholder="Search nodes / communities…"
+            oninput="onGraphSearch()"
+            onkeydown="onGraphSearchKey(event)">
+          <span id="graph-search-count" class="graph-search-count"></span>
           <button class="btn--glass" onclick="loadGraph3D()">Refresh</button>
-          <button class="btn--glass" onclick="toggleLegend()">Legend</button>
         </div>
         <div id="graph-3d" style="width:100%;height:100%"></div>
-        <div id="graph-legend" style="position:absolute;top:42px;right:0;background:var(--bg-overlay);border-left:1px solid #333;padding:14px;height:100%;overflow-y:auto;z-index:10;font-size:11px;color:var(--text-muted);width:260px;transform:translateX(220px);transition:transform 0.3s ease">
-          <h3 style="color:#555;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px">Communities</h3>
-          <div id="legend-items"></div>
-        </div>
       </div>
     </div>
     <div class="live-divider" id="live-divider" title="Drag to resize"></div>
