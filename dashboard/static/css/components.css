@@ -353,6 +353,27 @@
 .nd-conn-content   { color: #aaa; font-size: 11px; margin-top: 3px; }
 .nd-conn-quote     { color: var(--accent-blue); font-size: 10px; margin-top: 3px; }
 .nd-conn-empty     { color: var(--text-subtle); padding: 8px; }
+
+/* Timestamps row — three pills with relative time + absolute tooltip. */
+.nd-times      { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 10px; }
+.nd-time-pill  { display: flex; flex-direction: column; line-height: 1.2; }
+.nd-time-label { color: var(--text-subtle);  font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
+.nd-time-rel   { color: var(--text-heading); font-size: 12px; font-weight: bold; }
+.nd-time-abs   { color: var(--text-subtle);  font-size: 10px; }
+
+/* Field row: monospaced value for arbitrary scalar fields (numbers, booleans). */
+.nd-field-mono { font-family: var(--font-mono); color: var(--text-body); }
+
+/* Source-ref clickable affordance. The dynamic accent-stripe color is
+ * set via inline `style` because it's data (scale color), not design. */
+.nd-conn--clickable { cursor: pointer; }
+.nd-conn--clickable:hover { background: var(--bg-raised); }
+.nd-conn-action {
+  color: var(--accent-blue);
+  font-size: 10px;
+  margin-top: 4px;
+  font-style: italic;
+}
 .hook-body--padded { padding: 4px 12px; }
 
 /* ── Insights panel (Live tab top) ─────────────────────────────────── */

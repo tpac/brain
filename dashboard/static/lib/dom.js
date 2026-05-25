@@ -84,6 +84,29 @@ export function el(tag, attrs, ...children) {
   return node;
 }
 
+/** Short relative-time helper — '3m ago', '2h ago', '5d ago'. Pairs with
+ * localTime() in tooltip-style UI: show 'created 3h ago' inline with the
+ * absolute timestamp in title= or as a sibling. Future = '' (we don't
+ * surface future timestamps in this dashboard). */
+export function relativeTime(utcStr) {
+  if (!utcStr) return '';
+  let s = utcStr;
+  if (s.length >= 19 && !s.endsWith('Z') && !s.includes('+')) s += 'Z';
+  const d = new Date(s);
+  if (isNaN(d)) return '';
+  const secs = Math.max(0, (Date.now() - d.getTime()) / 1000);
+  if (secs < 60)    return Math.round(secs) + 's ago';
+  const mins = secs / 60;
+  if (mins < 60)    return Math.round(mins) + 'm ago';
+  const hours = mins / 60;
+  if (hours < 24)   return Math.round(hours) + 'h ago';
+  const days = hours / 24;
+  if (days < 30)    return Math.round(days) + 'd ago';
+  const months = days / 30;
+  if (months < 12)  return Math.round(months) + 'mo ago';
+  return Math.round(days / 365) + 'y ago';
+}
+
 /** Convert a server ISO timestamp to a human-readable local time. */
 export function localTime(utcStr, mode) {
   if (!utcStr) return '';
