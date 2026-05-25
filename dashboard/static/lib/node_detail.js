@@ -7,16 +7,172 @@
 //
 // The overlay element (#node-detail) lives in index.html so any caller can
 // open it. We don't construct/destroy it per-call.
+//
+// Renders via `el()` from lib/dom.js — every string child is auto-escaped,
+// every onclick is wired with addEventListener (no inline onclick="..." in
+// rendered HTML). The function is split into one section helper per area
+// so the read order matches the visual top-down: title → meta → content →
+// fields → source-refs → corrections → connections.
 // ===========================================================================
 
 import { api } from './api.js';
-import { escapeHtml, localTime } from './dom.js';
+import { el, html, mount, localTime } from './dom.js';
 import { SCALE_COLORS } from './scales.js';
+
+// ── Section helpers (each returns an array of elements, or [] when empty) ──
+
+function _closeButton() {
+  return el('div', {
+    class: 'nd-close',
+    onclick: () => { document.getElementById('node-detail').style.display = 'none'; },
+  }, html('&times;'));
+}
+
+function _title(n) {
+  return el('div', { class: 'nd-title' },
+    el('span', { class: 'type-badge type-' + (n.type || '') }, n.type || ''),
+    ' ',
+    n.locked   ? html('&#x1f512; ') : null,
+    n.critical ? '⚠️ '              : null,
+    n.title || '',
+  );
+}
+
+function _metaStrip(n) {
+  return el('div', { class: 'nd-meta' },
+    el('span', null, 'id: ' + (n.id || '').substring(0, 8)),
+    el('span', null, 'accessed: ' + n.access_count + 'x'),
+    el('span', null, 'conf: ' + (n.confidence || 0).toFixed(2)),
+    el('span', null, 'source: ' + (n.encoding_source || '?')),
+    el('span', null, localTime(n.created_at)),
+  );
+}
+
+function _fieldsSection(n, meta) {
+  const fields = [];
+  const pushField = (label, value, extra) => {
+    if (!value) return;
+    fields.push(el('div', { class: 'nd-field' },
+      el('span', { class: 'nd-fk' }, label + ':'),
+      ' ',
+      extra || value,
+    ));
+  };
+
+  pushField('situation',           n.situation);
+  pushField('reasoning',           meta.reasoning);
+  pushField('user_raw_quote',      meta.user_raw_quote,
+            el('em', null, '"' + meta.user_raw_quote + '"'));
+  pushField('correction_of',       meta.correction_of,
+            el('a', {
+              class: 'nd-correction-of',
+              onclick: () => loadNodeDetail(meta.correction_of),
+            }, meta.correction_of));
+  pushField('correction_pattern',  meta.correction_pattern);
+  pushField('source_context',      meta.source_context);
+  pushField('personal',            n.personal);
+  pushField('evolution_status',    n.evolution_status);
+  if (n.revised_at) pushField('revised', localTime(n.revised_at));
+
+  if (!fields.length) return [];
+  return [el('div', { class: 'nd-section' }, 'Fields'), ...fields];
+}
+
+// Episodic refs — which traces this node was encoded from. v27 substrate
+// (node_source_refs). Empty = pre-v27 node OR no refs attached at encode.
+function _sourceRefsSection(refs) {
+  if (!refs.length) return [];
+  const out = [el('div', { class: 'nd-section' },
+    'Encoded from ' + refs.length + ' trace(s)')];
+  for (const ref of refs) {
+    if (ref.missing) {
+      out.push(el('div', { class: 'nd-field nd-conn-missing' },
+        'trace ' + (ref.trace_id || '') + ' (not found — log-rotated or archived)'));
+      continue;
+    }
+    const sc = SCALE_COLORS[ref.scale] || '#666';
+    const sess = ref.session_id ? ref.session_id.substring(0, 8) : '';
+    const tagText = ref.scale + ' · ' + (ref.event_type || '')
+                  + (ref.ref_type ? ' · ' + ref.ref_type : '')
+                  + (sess ? ' · ' + sess : '');
+    out.push(el('div', {
+      class: 'nd-conn',
+      style: { borderLeftColor: sc },
+    },
+      el('div', { class: 'nd-conn-tag', style: { color: sc } }, tagText),
+      el('div', { class: 'nd-conn-summary' }, (ref.summary || '').substring(0, 180)),
+      el('div', { class: 'nd-conn-trace' },
+        'trace ' + (ref.trace_id || '').substring(0, 8)
+        + ' · pos ' + (ref.position || 1)
+        + ' · ' + localTime(ref.trace_created_at)),
+    ));
+  }
+  return out;
+}
+
+// Corrections — aspect-edge walk via daemon. Direction matters: 'corrects'
+// means the neighbor IS this node's corrector; 'corrected_by' is the inverse.
+function _correctionsSection(corrections) {
+  if (!corrections.length) return [];
+  const out = [el('div', { class: 'nd-section' },
+    'Corrections (' + corrections.length + ')')];
+  for (const c of corrections) {
+    const dirColor = c.direction === 'corrects' ? '#ff8866' : '#88ccff';
+    const dirLabel = c.direction === 'corrects' ? '⤴ corrects this' : '↪ corrected by this';
+    out.push(el('div', {
+      class: 'nd-conn',
+      style: { borderLeftColor: dirColor },
+      onclick: () => loadNodeDetail(c.id || ''),
+    },
+      el('div', { class: 'nd-conn-tag', style: { color: dirColor } },
+        dirLabel + ' · ' + (c.relation || '')),
+      el('div', { class: 'nd-conn-title' },
+        el('span', { class: 'type-badge type-' + (c.type || '') }, c.type || ''),
+        ' ',
+        (c.title || '').substring(0, 80)),
+      c.edge_description
+        ? el('div', { class: 'nd-conn-edge-why' },
+            'why: ' + c.edge_description.substring(0, 180))
+        : null,
+      c.content
+        ? el('div', { class: 'nd-conn-content' }, c.content.substring(0, 200))
+        : null,
+      c.user_raw_quote
+        ? el('div', { class: 'nd-conn-quote' },
+            '"' + c.user_raw_quote.substring(0, 150) + '"')
+        : null,
+    ));
+  }
+  return out;
+}
+
+function _connectionsSection(conns) {
+  const out = [el('div', { class: 'nd-section' }, 'Connections (' + conns.length + ')')];
+  for (const c of conns) {
+    out.push(el('div', {
+      class: 'nd-conn',
+      onclick: () => loadNodeDetail(c.id),
+    },
+      el('div', { class: 'nd-conn-title' },
+        el('span', { class: 'type-badge type-' + (c.type || '') }, c.type || ''),
+        ' ',
+        (c.title || '').substring(0, 60)),
+      el('div', { class: 'nd-conn-meta' },
+        (c.relation || '') + ' · weight ' + (c.weight || 0).toFixed(2)),
+    ));
+  }
+  if (!conns.length) {
+    out.push(el('div', { class: 'nd-conn-empty' }, 'No connections'));
+  }
+  return out;
+}
+
+// ── Public entry point ─────────────────────────────────────────────────
 
 export async function loadNodeDetail(nodeId) {
   const panel = document.getElementById('node-detail');
   panel.style.display = 'block';
-  panel.innerHTML = '<div style="color:#666;padding:20px">Loading...</div>';
+  mount(panel, el('div', { class: 'nd-loading' }, 'Loading...'));
   try {
     // Fan out three calls in parallel:
     //   node          — base node + connections (direct SQL, works without daemon)
@@ -28,84 +184,24 @@ export async function loadNodeDetail(nodeId) {
       api.nodeSourceRefs(nodeId).catch(() => ({ refs: [] })),
     ]);
     const corrections = (crData && crData.corrections) || [];
-    const sourceRefs = (srrData && srrData.refs) || [];
-    const n = d.node;
-    const conns = d.connections || [];
-    const meta = n.metadata || {};
-    let h = '';
-    h += '<div class="nd-close" onclick="document.getElementById(&quot;node-detail&quot;).style.display=&quot;none&quot;">&times;</div>';
-    h += '<div class="nd-title"><span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ';
-    if (n.locked) h += '&#x1f512; ';
-    if (n.critical) h += '⚠️ ';
-    h += escapeHtml(n.title || '') + '</div>';
-    h += '<div class="nd-meta">';
-    h += '<span>id: ' + (n.id||'').substring(0,8) + '</span>';
-    h += '<span>accessed: ' + n.access_count + 'x</span>';
-    h += '<span>conf: ' + (n.confidence||0).toFixed(2) + '</span>';
-    h += '<span>source: ' + (n.encoding_source||'?') + '</span>';
-    h += '<span>' + localTime(n.created_at) + '</span>';
-    h += '</div>';
-    h += '<div class="nd-section">Content</div>';
-    h += '<div class="nd-content">' + escapeHtml(n.content || '(empty)') + '</div>';
-    const fields = [];
-    if (n.situation) fields.push('<div class="nd-field"><span class="nd-fk">situation:</span> ' + escapeHtml(n.situation) + '</div>');
-    if (meta.reasoning) fields.push('<div class="nd-field"><span class="nd-fk">reasoning:</span> ' + escapeHtml(meta.reasoning) + '</div>');
-    if (meta.user_raw_quote) fields.push('<div class="nd-field"><span class="nd-fk">user_raw_quote:</span> <em>"' + escapeHtml(meta.user_raw_quote) + '"</em></div>');
-    if (meta.correction_of) fields.push('<div class="nd-field"><span class="nd-fk">correction_of:</span> <a style="color:#7eb8ff;cursor:pointer" onclick="loadNodeDetail(&quot;' + meta.correction_of + '&quot;)">' + meta.correction_of + '</a></div>');
-    if (meta.correction_pattern) fields.push('<div class="nd-field"><span class="nd-fk">correction_pattern:</span> ' + escapeHtml(meta.correction_pattern) + '</div>');
-    if (meta.source_context) fields.push('<div class="nd-field"><span class="nd-fk">source_context:</span> ' + escapeHtml(meta.source_context) + '</div>');
-    if (n.personal) fields.push('<div class="nd-field"><span class="nd-fk">personal:</span> ' + escapeHtml(n.personal) + '</div>');
-    if (n.evolution_status) fields.push('<div class="nd-field"><span class="nd-fk">evolution_status:</span> ' + escapeHtml(n.evolution_status) + '</div>');
-    if (n.revised_at) fields.push('<div class="nd-field"><span class="nd-fk">revised:</span> ' + localTime(n.revised_at) + '</div>');
-    if (fields.length) h += '<div class="nd-section">Fields</div>' + fields.join('');
+    const sourceRefs  = (srrData && srrData.refs) || [];
+    const n           = d.node;
+    const conns       = d.connections || [];
+    const meta        = n.metadata || {};
 
-    // Episodic refs — which traces this node was encoded from. v27 substrate
-    // (node_source_refs). If empty, either pre-v27 node OR no refs were
-    // attached at encode time.
-    if (sourceRefs.length) {
-      h += '<div class="nd-section">Encoded from ' + sourceRefs.length + ' trace(s)</div>';
-      for (const ref of sourceRefs) {
-        if (ref.missing) {
-          h += '<div class="nd-field" style="opacity:0.5">trace ' + (ref.trace_id||'') + ' (not found — log-rotated or archived)</div>';
-          continue;
-        }
-        const sc = SCALE_COLORS[ref.scale] || '#666';
-        const sess = ref.session_id ? ref.session_id.substring(0,8) : '';
-        h += '<div class="nd-conn" style="border-left-color:' + sc + '">';
-        h += '<div style="font-size:9px;color:' + sc + ';text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">' + ref.scale + ' · ' + (ref.event_type || '') + (ref.ref_type ? ' · ' + ref.ref_type : '') + (sess ? ' · ' + sess : '') + '</div>';
-        h += '<div style="color:#ccc;font-size:11px">' + escapeHtml((ref.summary || '').substring(0,180)) + '</div>';
-        h += '<div style="color:#555;font-size:9px;margin-top:2px">trace ' + (ref.trace_id||'').substring(0,8) + ' · pos ' + (ref.position || 1) + ' · ' + localTime(ref.trace_created_at) + '</div>';
-        h += '</div>';
-      }
-    }
-
-    // Corrections — aspect-edge walk via daemon. Direction matters: 'corrects'
-    // means the neighbor IS this node's corrector; 'corrected_by' is the inverse.
-    if (corrections.length) {
-      h += '<div class="nd-section">Corrections (' + corrections.length + ')</div>';
-      for (const c of corrections) {
-        const dirColor = c.direction === 'corrects' ? '#ff8866' : '#88ccff';
-        const dirLabel = c.direction === 'corrects' ? '⤴ corrects this' : '↪ corrected by this';
-        h += '<div class="nd-conn" onclick="loadNodeDetail(&quot;' + (c.id||'') + '&quot;)" style="border-left-color:' + dirColor + '">';
-        h += '<div style="font-size:9px;color:' + dirColor + ';text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">' + dirLabel + ' · ' + escapeHtml(c.relation || '') + '</div>';
-        h += '<div class="nd-conn-title"><span class="type-badge type-' + (c.type||'') + '">' + (c.type||'') + '</span> ' + escapeHtml((c.title||'').substring(0,80)) + '</div>';
-        if (c.edge_description) h += '<div style="color:#888;font-size:10px;margin-top:3px;font-style:italic">why: ' + escapeHtml(c.edge_description.substring(0,180)) + '</div>';
-        if (c.content) h += '<div style="color:#aaa;font-size:11px;margin-top:3px">' + escapeHtml(c.content.substring(0,200)) + '</div>';
-        if (c.user_raw_quote) h += '<div style="color:#7eb8ff;font-size:10px;margin-top:3px">"' + escapeHtml(c.user_raw_quote.substring(0,150)) + '"</div>';
-        h += '</div>';
-      }
-    }
-
-    h += '<div class="nd-section">Connections (' + conns.length + ')</div>';
-    for (const c of conns) {
-      h += '<div class="nd-conn" onclick="loadNodeDetail(&quot;' + c.id + '&quot;)">';
-      h += '<div class="nd-conn-title"><span class="type-badge type-' + (c.type||'') + '">' + (c.type||'') + '</span> ' + escapeHtml((c.title||'').substring(0,60)) + '</div>';
-      h += '<div class="nd-conn-meta">' + (c.relation||'') + ' · weight ' + (c.weight||0).toFixed(2) + '</div>';
-      h += '</div>';
-    }
-    if (!conns.length) h += '<div style="color:#555;padding:8px">No connections</div>';
-    panel.innerHTML = h;
+    mount(panel,
+      _closeButton(),
+      _title(n),
+      _metaStrip(n),
+      el('div', { class: 'nd-section' }, 'Content'),
+      el('div', { class: 'nd-content' }, n.content || '(empty)'),
+      _fieldsSection(n, meta),
+      _sourceRefsSection(sourceRefs),
+      _correctionsSection(corrections),
+      _connectionsSection(conns),
+    );
   } catch(e) {
-    panel.innerHTML = '<div style="color:#ff6666;padding:20px">Failed to load: ' + e.message + '</div>';
+    mount(panel, el('div', { class: 'feed-empty feed-empty--error' },
+      'Failed to load: ' + (e && e.message ? e.message : String(e))));
   }
 }

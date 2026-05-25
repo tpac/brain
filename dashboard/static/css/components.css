@@ -331,6 +331,28 @@
   font-size: 16px;
 }
 .type-count { font-size: 18px; font-weight: bold; color: var(--accent-blue); float: right; }
+
+/* ── node-detail panel sub-classes ────────────────────────────────── */
+/* The .nd-* base classes (.nd-title, .nd-content, .nd-conn, etc.) live
+ * in legacy style.css. These complement them — the per-section bits
+ * that used to live inline. Dynamic per-row colors (scale color, edge
+ * direction color) still pass through inline `style` because they're
+ * data, not design. */
+.nd-loading        { color: var(--text-muted); padding: 20px; }
+.nd-correction-of  { color: var(--accent-blue); cursor: pointer; }
+.nd-conn-missing   { opacity: 0.5; }
+.nd-conn-tag {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+.nd-conn-summary   { color: var(--text-body); font-size: 11px; }
+.nd-conn-trace     { color: var(--text-subtle); font-size: 9px; margin-top: 2px; }
+.nd-conn-edge-why  { color: var(--text-muted); font-size: 10px; margin-top: 3px; font-style: italic; }
+.nd-conn-content   { color: #aaa; font-size: 11px; margin-top: 3px; }
+.nd-conn-quote     { color: var(--accent-blue); font-size: 10px; margin-top: 3px; }
+.nd-conn-empty     { color: var(--text-subtle); padding: 8px; }
 .hook-body--padded { padding: 4px 12px; }
 
 /* ── Insights panel (Live tab top) ─────────────────────────────────── */
