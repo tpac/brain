@@ -64,12 +64,19 @@ def get_conversation(brain, session_id: str, limit: int = 20) -> List[Dict]:
         session_id: Full session UUID
         limit: Max turns to return (most recent)
 
-    Returns: [{role: 'user'|'assistant', content: str, timestamp: str}]
+    Returns: [{role, content, timestamp, trace_id, judge_output}]
+        trace_id: 8-char hex id from trace_events (v29) — used by S1 encoder
+                  to populate source_refs via `[trace:<hex>]` inline markers.
+        judge_output: surface selection from S1R for the user turn (if any).
     """
     try:
         turns = brain._trace_dal.get_session_turns(session_id, limit=limit)
-        return [{'role': t['role'], 'content': t.get('content', ''),
-                 'timestamp': t.get('timestamp', '')} for t in turns]
+        return [{'role': t['role'],
+                 'trace_id': t.get('trace_id'),
+                 'content': t.get('content', ''),
+                 'timestamp': t.get('timestamp', ''),
+                 'judge_output': t.get('judge_output', '')}
+                for t in turns]
     except Exception:
         return []
 

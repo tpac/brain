@@ -30,6 +30,34 @@ _last_daemon_fingerprint = None  # Track daemon restarts
 
 # ── Contract-driven tool schema generation ──
 
+# Phase B / v29 — source_refs property used by remember / remember_batch /
+# revise / revise_batch / brain_batch. 8-char hex trace_event.ids (TEXT PK
+# since schema v29). The encoder reads `[trace:<hex>]` markers inline in
+# its input timeline (see servers/scales/s1/encode.py::_build_user_content)
+# and picks 1-3 load-bearing refs per node — sparse by design
+# (EPISODIC-REFERENCES.md decision 13). Persisted via
+# GraphDAL.add_source_refs into node_source_refs (Step 3); invalid refs
+# degrade gracefully at recall (S2Healer cleans dangling refs).
+_SOURCE_REFS_SCHEMA = {
+    "type": "array",
+    "items": {"type": "string"},
+    "description": (
+        "Trace event ids anchoring this node to its originating moments. "
+        "Each id is an 8-char hex string copied verbatim from the "
+        "`[trace:<hex>]` markers in the conversation timeline you were "
+        "given. Sparse by design: pick 1-3 load-bearing turns per node — "
+        "the turn(s) whose content is what made this node encodeable. "
+        "Adjacent context is what graph traversal is for; source_refs are "
+        "for the moments that GENERATED this node. Leave empty when the "
+        "node is a multi-session abstraction with no single anchor "
+        "(pure-synthesis pattern). When content would just rewrite what "
+        "the source already says clearly, point to the source instead "
+        "of restating it (the pure-reference pattern). See "
+        "EPISODIC-REFERENCES.md §7.4 for the full judgment rule."
+    ),
+}
+
+
 def _generate_remember_schema():
     """Generate the 'remember' MCP tool schema from the contract."""
     from servers.contract import get_remember_fields as get_writable_fields
@@ -52,6 +80,10 @@ def _generate_remember_schema():
         if spec.get("default") is not None:
             prop["default"] = spec["default"]
         properties[name] = prop
+
+    # v29 / Phase B: source_refs anchors the node to S0/S1 trace events.
+    # See _SOURCE_REFS_SCHEMA below for the full semantics.
+    properties["source_refs"] = _SOURCE_REFS_SCHEMA
 
     return {
         "name": "remember",
@@ -163,7 +195,11 @@ _CONNECT_TO_ITEM_SCHEMA = {
 
 
 def _generate_remember_batch_schema():
-    """Generate the 'remember_batch' tool schema — array of remember() objects."""
+    """Generate the 'remember_batch' tool schema — array of remember() objects.
+
+    source_refs is inherited from `_generate_remember_schema()` (auto-added
+    to per-node properties via the base schema's property dict).
+    """
     remember_schema = _generate_remember_schema()
     node_properties = dict(remember_schema["inputSchema"]["properties"])
     # Per-node connect_to: sibling-aware, sequencing-agnostic. Declaration order
@@ -300,6 +336,7 @@ def _build_revise_batch_schema():
                             "anchor_raw_quote": {"type": "string", "description": "Anchor's exact words"},
                             "keywords": {"type": "string", "description": "Space-separated keywords"},
                             "confidence": {"type": "number", "description": "0-1 confidence score"},
+                            "source_refs": _SOURCE_REFS_SCHEMA,
                         },
                     },
                 },
@@ -551,14 +588,14 @@ def _build_tools():
          "node_ids": {"type": "array", "description": "Array of node IDs to fetch", "items": {"type": "string"}}}}},
 
     {"name": "get_trace",
-     "description": "Point-lookup a single trace_event by its numeric id. Returns the full row (chain_id, scale, event_type, ref_type, summary, metadata, session_id, created_at). Use this to expand a node's source_refs, verify a quote's verbatim source, or look up a specific captured moment when you have its id. For batch lookups use get_traces.",
+     "description": "Point-lookup a single trace_event by id. Returns the full row (chain_id, scale, event_type, ref_type, summary, metadata, session_id, created_at). Use this to expand a node's source_refs, verify a quote's verbatim source, or look up a specific captured moment when you have its id. For batch lookups use get_traces.",
      "inputSchema": {"type": "object", "required": ["trace_id"], "properties": {
-         "trace_id": {"type": "integer", "description": "trace_event.id (integer)"}}}},
+         "trace_id": {"type": "string", "description": "trace_event.id — 8-char hex string (v29). Legacy integer ids are accepted for back-compat (coerced to canonical hex via printf('%08x'))."}}}},
 
     {"name": "get_traces",
      "description": "Batch trace_event point lookup. Pass up to 50 trace ids; returns full rows in ascending-id order, missing ids silently skipped. Natural use: expanding node.source_refs at render or audit time, fetching a known set of cross-session episodes.",
      "inputSchema": {"type": "object", "required": ["trace_ids"], "properties": {
-         "trace_ids": {"type": "array", "description": "Array of trace_event ids (integers)", "items": {"type": "integer"}}}}},
+         "trace_ids": {"type": "array", "description": "Array of trace_event ids — each an 8-char hex string (v29). Legacy integer ids are accepted for back-compat.", "items": {"type": "string"}}}}},
 
     {"name": "recall_batch",
      "description": "Run multiple recall queries in one call. Returns results for each query.",

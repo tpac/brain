@@ -577,6 +577,12 @@ class BrainRememberMixin:
                  scope: Optional[str] = None,
                  auto_connect: bool = True,
                  connect_to: Optional[List[Any]] = None,
+                 # v29 / Phase B: source_refs anchors the node to trace events.
+                 # Sparse by design (1-3 refs typical). Each ref is an 8-char
+                 # hex trace_event.id. Persisted via GraphDAL.add_source_refs
+                 # → node_source_refs join table. Legacy integer ids are
+                 # coerced to canonical hex by the DAL.
+                 source_refs: Optional[List[str]] = None,
                  ctx=None,
                  **extra_fields) -> Dict[str, Any]:
         """
@@ -719,6 +725,23 @@ class BrainRememberMixin:
         except Exception as e:
             self._log_error('embed_enqueue_remember', e, 'enqueue %s' % node_id[:12])
         embedding_stored = False
+
+        # v29 / Phase B: persist source_refs to node_source_refs join table.
+        # GraphDAL.add_source_refs coerces legacy int ids → 8-char hex,
+        # uses INSERT OR IGNORE (first-write-wins, re-encode is safe),
+        # preserves the encoder's write order via `position`. Empty/None
+        # input is a no-op. Failures are logged but don't fail the write —
+        # invalid refs degrade gracefully at recall (S2Healer cleans
+        # dangling refs in a future pass).
+        if source_refs:
+            try:
+                from .dal import GraphDAL
+                GraphDAL(self.conn).add_source_refs(node_id, source_refs)
+            except Exception as e:
+                self._log_error(
+                    'source_refs_persist', e,
+                    'persisting source_refs for node %s (%d refs)' % (
+                        node_id[:12], len(source_refs)))
 
         # Create connections
         if connections:
@@ -904,6 +927,17 @@ class BrainRememberMixin:
         # gets mutated below (content is popped, etc.), so we need the
         # original set or the invalidation step misses fields.
         fields_changed_for_invalidation = set(all_updates.keys())
+
+        # v29 / Phase B: source_refs is a join-table field, not a node column.
+        # Pop it before the field classification so it doesn't land in
+        # node_metadata_kv as an extra field. Persist via replace_source_refs
+        # AFTER the existence check (node_id must exist for the FK).
+        # Per the unified 2-class revise contract (decision 995ffeb1) and
+        # EPISODIC-REFERENCES.md §6.2: when source_refs is PRESENT in the
+        # revise payload, REPLACE the entire list. When ABSENT, preserve.
+        # Use a sentinel to distinguish "key absent" from "explicit empty list".
+        _SR_ABSENT = object()
+        new_source_refs = all_updates.pop('source_refs', _SR_ABSENT)
 
         # Fetch existing node
         row = self.conn.execute(
@@ -1151,6 +1185,27 @@ class BrainRememberMixin:
         if 'content' in old_values:
             fields_updated.append('content')
 
+        # v29 / Phase B: persist source_refs with field-level REPLACE semantics
+        # (decision 995ffeb1 — unified revise contract; §6.2). When the key was
+        # absent in the payload, preserve existing refs (no-op). When present —
+        # even as an empty list — replace the entire list.
+        source_refs_replaced = None  # None=untouched, int=count after replace
+        if new_source_refs is not _SR_ABSENT:
+            try:
+                from .dal import GraphDAL
+                source_refs_replaced = GraphDAL(self.conn).replace_source_refs(
+                    node_id, new_source_refs or [])
+                fields_updated.append('source_refs')
+                deltas.append({
+                    'field': 'source_refs',
+                    'op': 'replace',
+                    'count_after': source_refs_replaced,
+                })
+            except Exception as e:
+                self._log_error(
+                    'source_refs_persist_revise', e,
+                    'replacing source_refs on revise %s' % node_id[:12])
+
         return {
             'id': node_id,
             'type': writable.get('type', node_type),
@@ -1164,6 +1219,7 @@ class BrainRememberMixin:
             'verified': verified,
             'verification_failures': verification_failures if not verified else [],
             'pending_resolved': 0,
+            'source_refs_replaced': source_refs_replaced,
         }
 
     # ═══════════════════════════════════════════════════════════════

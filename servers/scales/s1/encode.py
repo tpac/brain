@@ -283,7 +283,12 @@ def _gather_messages(brain, session_id):
         turns = get_conversation(brain, session_id, limit=limit)
         if turns:
             for i, t in enumerate(turns):
-                t['id'] = 'turn-%d' % i
+                # `id` was a synthetic display label (turn-N). Keep it as
+                # `turn_label` for human-facing render. `trace_id` (hex)
+                # comes from S0 layer and is the load-bearing reference
+                # the encoder copies into source_refs.
+                t['turn_label'] = 'turn-%d' % i
+                t['id'] = 'turn-%d' % i  # backward-compat for downstream readers
                 t['content'] = (t.get('content', '') or '')[:content_limit]
             return turns
     except Exception as e:
@@ -348,19 +353,34 @@ def _build_user_content(brain, messages, counter, session_id):
         print('[s1e] ERROR building node catalog: %s' % e, flush=True)
         node_catalog, cataloged_ids = '', set()
 
-    # Build conversation timeline with node references
+    # Build conversation timeline with node references.
+    #
+    # Per-turn `[trace:<hex>]` markers (v29 / Phase B Step 1): each USER /
+    # ASSISTANT line carries the trace_event.id of the originating row. The
+    # encoder copies these into `source_refs` when a node anchors to that
+    # turn — see EPISODIC-REFERENCES.md §6.5 and §7.4. Sparse by design
+    # (decision 13): the encoder picks 1-3 load-bearing trace_ids per node,
+    # not the whole window. Missing/None trace_id renders as `[trace:?]`
+    # (legacy turns from pre-v29 JSONL fallback) so the encoder skips them
+    # rather than fabricating ids.
     timeline = ""
     turn_num = 0
     i = 0
+
+    def _fmt_trace(tid):
+        return "[trace:%s]" % tid if tid else "[trace:?]"
+
     while i < len(messages):
         m = messages[i]
         if m.get("role") == "user":
             turn_num += 1
             user_content = (m.get("content") or "")[:ENCODING_AGENT['message_display_limit']]
             turn_id = m.get("id", "")
+            user_trace = m.get("trace_id")
 
             timeline += "[TURN %d]\n" % turn_num
-            timeline += "USER: \"%s\" (turn_id: %s)\n" % (user_content, turn_id)
+            timeline += "USER %s: \"%s\" (turn_id: %s)\n" % (
+                _fmt_trace(user_trace), user_content, turn_id)
 
             # Reference surfaced nodes by ID (full data in catalog above)
             # Only show when there are actual node IDs — skip noise lines
@@ -378,8 +398,10 @@ def _build_user_content(brain, messages, counter, session_id):
 
             # Include assistant response
             if i + 1 < len(messages) and messages[i + 1].get("role") == "assistant":
-                asst = (messages[i + 1].get("content") or "")[:ENCODING_AGENT['message_display_limit']]
-                timeline += "ASSISTANT: \"%s\"\n" % asst
+                asst_msg = messages[i + 1]
+                asst = (asst_msg.get("content") or "")[:ENCODING_AGENT['message_display_limit']]
+                asst_trace = asst_msg.get("trace_id")
+                timeline += "ASSISTANT %s: \"%s\"\n" % (_fmt_trace(asst_trace), asst)
                 i += 1
 
             timeline += "\n"
