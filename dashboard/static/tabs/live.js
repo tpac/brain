@@ -217,23 +217,55 @@ async function pollRecallLog() {
 // Insights renderer — pure subscriber on `insights:tick`. Replaces the
 // panel's contents on every tick. The :empty CSS pseudo-class collapses
 // padding when nothing fires, so the feed stays tight on a healthy brain.
+//
+// Dismissal: clicking the × on a card adds its title to `_dismissedInsights`.
+// Subsequent ticks filter that title out. The Set is page-session-scoped
+// only — no localStorage. Reload = fresh signal, so a real persistent
+// problem can't be permanently silenced.
+const _dismissedInsights = new Set();
+let _lastInsights = [];
+
 function _renderInsightsPanel({ insights }) {
+  _lastInsights = insights || [];
+  _redrawInsightsPanel();
+}
+
+function _redrawInsightsPanel() {
   const panel = document.getElementById('insights-panel');
   if (!panel) return;
-  if (!insights || !insights.length) {
+  const visible = _lastInsights.filter(i => !_dismissedInsights.has(i.title || ''));
+  if (!visible.length) {
     panel.innerHTML = '';
     return;
   }
-  panel.innerHTML = insights.map(i => {
+  panel.innerHTML = visible.map(i => {
     const sev = (i.severity || 'low').toLowerCase();
+    // data-title carries the RAW title for the dismiss delegate to read.
+    // Escaped here as an HTML attribute value — the browser decodes it
+    // back to the raw string when we read element.dataset.title.
     return '<div class="insights-card insights-card--' + escapeHtml(sev) + '">' +
       '<div class="insights-icon">' + (i.icon || '') + '</div>' +
       '<div class="insights-body">' +
         '<div class="insights-title">' + escapeHtml(i.title || '') + '</div>' +
         '<div class="insights-detail">' + escapeHtml(i.detail || '') + '</div>' +
       '</div>' +
+      '<button class="insights-dismiss" title="Dismiss until reload" ' +
+              'data-title="' + escapeHtml(i.title || '') + '">&times;</button>' +
     '</div>';
   }).join('');
+}
+
+// Wire dismiss delegation ONCE on the panel — adding listeners per-render
+// would leak. Called from init().
+function _wireInsightsDismiss() {
+  const panel = document.getElementById('insights-panel');
+  if (!panel) return;
+  panel.addEventListener('click', (e) => {
+    const btn = e.target.closest('.insights-dismiss');
+    if (!btn) return;
+    _dismissedInsights.add(btn.dataset.title || '');
+    _redrawInsightsPanel();
+  });
 }
 
 // Renderer — pure subscriber. Knows nothing about the network; just maps
@@ -887,6 +919,7 @@ export function init() {
   // independently.
   bus.subscribe('recall:event', _renderRecallEvent);
   bus.subscribe('insights:tick', _renderInsightsPanel);
+  _wireInsightsDismiss();
 
   // Insights — slow poll (60s), gated on Live tab visible. Same bus
   // pattern as `recall:event`: the fetcher only publishes; the renderer

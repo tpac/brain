@@ -273,18 +273,64 @@ async function _populateSessionOptions() {
 
 // ── Graph load + lifecycle ────────────────────────────────────────────
 
-function _renderGraphError(message, hint) {
+function _renderGraphError(message, hint, hintHTML) {
   const container = document.getElementById('graph-3d');
   if (!container) return;
   container.innerHTML =
     '<div class="graph-error">' +
       '<div class="graph-error-title">3D graph unavailable</div>' +
       '<div class="graph-error-msg">' + escapeHtml(message || 'unknown error') + '</div>' +
-      (hint ? '<div class="graph-error-hint">' + escapeHtml(hint) + '</div>' : '') +
+      (hintHTML ? '<div class="graph-error-hint">' + hintHTML + '</div>'
+                : (hint ? '<div class="graph-error-hint">' + escapeHtml(hint) + '</div>' : '')) +
     '</div>';
 }
 
+// Pre-flight WebGL check. ForceGraph3D's THREE.WebGLRenderer constructor
+// catches its own context-creation failure but logs a noisy stack first;
+// detecting up-front gives us a friendlier error AND avoids the noise.
+// Returns null on success, or a {reason, hintHTML} on failure.
+function _detectWebGLBlocker() {
+  // 1. Library loaded?
+  if (typeof window.ForceGraph3D !== 'function') {
+    return {
+      reason: 'ForceGraph3D library failed to load.',
+      hintHTML:
+        'The CDN script (<code>unpkg.com/3d-force-graph</code>) didn\'t finish loading. ' +
+        'Check the Network tab — likely a network/CSP block. Reload the page after the ' +
+        'CDN is reachable.',
+    };
+  }
+  // 2. WebGL context creatable?
+  let gl = null;
+  try {
+    const c = document.createElement('canvas');
+    gl = c.getContext('webgl2') || c.getContext('webgl') || c.getContext('experimental-webgl');
+  } catch (e) { /* fall through */ }
+  if (!gl) {
+    return {
+      reason: 'Browser refused to create a WebGL context.',
+      hintHTML:
+        'Open <code>chrome://gpu</code> in a new tab and look for "WebGL" status. ' +
+        'If it says "Hardware accelerated" but you still see this, try: ' +
+        '<ol style="text-align:left;margin:6px 0 0 18px;padding:0">' +
+          '<li>chrome://settings → System → "Use hardware acceleration when available" ON, then restart Chrome.</li>' +
+          '<li>chrome://flags → search "WebGL" → ensure none are explicitly disabled.</li>' +
+          '<li>Hard refresh this page (Cmd+Shift+R).</li>' +
+        '</ol>',
+    };
+  }
+  return null;
+}
+
 export async function loadGraph3D() {
+  // Pre-flight: bail with a clean error if the browser can't render at all.
+  // Avoids the noisy THREE.WebGLRenderer console stack trace and gives the
+  // operator actionable Chrome-specific hints instead of a generic catch.
+  const block = _detectWebGLBlocker();
+  if (block) {
+    _renderGraphError(block.reason, null, block.hintHTML);
+    return;
+  }
   try {
     graph3dData = await api.graph3d();
     if (!graph3dData.nodes || !graph3dData.nodes.length) {
