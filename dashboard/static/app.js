@@ -149,11 +149,15 @@ window.setLiveLayout         = live.setLiveLayout;
 window.onSessionFilterChange = live.onSessionFilterChange;
 window.pinRecallToGraph      = live.pinRecallToGraph;
 window.filterByScale         = live.filterByScale;
+// toggleHookBody is the only remaining live.js toggle exposed via
+// window.* — used by the decoding-feed S2 chain entries which still
+// build their HTML via string concatenation. renderRecallEntry's
+// Show Prompt button and the encoding-feed cards both migrated to
+// addEventListener with closure-captured refs, so their respective
+// window.* mounts (toggleSurfacePrompt, toggleEncPrompt,
+// toggleConsolPrompt) are gone. Migrating _renderS2ChainEntry would
+// let us drop this last one too.
 window.toggleHookBody        = live.toggleHookBody;
-window.toggleSurfacePrompt   = live.toggleSurfacePrompt;
-// toggleEncPrompt / toggleConsolPrompt removed — encoding-feed cards
-// migrated to el() builder + attached listeners. The remaining
-// renderRecallEntry inline onclick still uses toggleSurfacePrompt.
 window.switchLogFeed         = logs.switchLogFeed;
 window.loadLogs              = logs.loadLogs;
 window.loadGraph3D           = graph.loadGraph3D;

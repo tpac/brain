@@ -90,7 +90,11 @@ function renderRecallEntry(evt) {
   const usedIds = new Set(evt.used_ids || []);
 
   // Short details: judge_output = exact additionalContext sent to Claude
-  // Falls back to candidate title chips if no judge data yet (MCP recalls, old data)
+  // Falls back to candidate title chips if no judge data yet (MCP recalls,
+  // old data). Candidate divs carry data-nid (not inline onclick) — the
+  // post-innerHTML wiring below attaches one listener per candidate that
+  // both opens loadNodeDetail AND stopPropagation to avoid pinning the
+  // whole recall when the user wanted just one node.
   let shortContent = '';
   if (evt.judge_output && evt.judge_output !== '(no selection)') {
     shortContent = '<div class="recall-judge-output"><pre>' + escapeHtml(evt.judge_output) + '</pre></div>';
@@ -99,7 +103,7 @@ function renderRecallEntry(evt) {
     const total = Object.keys(titles).length;
     shortContent = '<div class="recall-candidates"><div class="recall-candidates-header">0 selected from ' + total + ' candidates</div>' +
       titleEntries.map(([nid, title]) => {
-        return '<div class="recall-candidate" onclick="loadNodeDetail(&quot;' + nid + '&quot;)">' + escapeHtml(title) + '</div>';
+        return '<div class="recall-candidate" data-nid="' + escapeHtml(nid) + '">' + escapeHtml(title) + '</div>';
       }).join('') +
       (total > 8 ? '<div class="recall-candidate more">+' + (total - 8) + ' more</div>' : '') +
       '</div>';
@@ -111,7 +115,7 @@ function renderRecallEntry(evt) {
       shortContent = '<div class="recall-candidates"><div class="recall-candidates-header">' + total + ' candidates (pending judge)</div>' +
         titleEntries.map(([nid, title]) => {
           const isUsed = usedIds.has(nid);
-          return '<div class="recall-candidate' + (isUsed ? ' used' : '') + '" onclick="loadNodeDetail(&quot;' + nid + '&quot;)">' +
+          return '<div class="recall-candidate' + (isUsed ? ' used' : '') + '" data-nid="' + escapeHtml(nid) + '">' +
             escapeHtml(title) + '</div>';
         }).join('') +
         (total > 12 ? '<div class="recall-candidate more">+' + (total - 12) + ' more</div>' : '') +
@@ -145,18 +149,37 @@ function renderRecallEntry(evt) {
   // the affordance; the container-level click handler below is the action.
   div.title = 'Click to highlight these nodes on the graph';
   div.innerHTML =
-    '<div class="hook-header" onclick="toggleHookBody(this)">' +
+    '<div class="hook-header">' +
       '<span class="' + srcMeta.cls + '">' + srcMeta.label + '</span>' +
       '<span class="hook-time">' + t + '</span>' +
       (sid ? '<span class="hook-session">' + sid + '</span>' : '') +
       identityChip +
       '<span class="hook-id">#' + idShort + '</span>' +
       '<span class="hook-size">' + (evt.used_count || 0) + ' selected</span>' +
-      (evt.judge_prompt ? '<button class="hook-details-btn" style="margin-left:auto" onclick="event.stopPropagation();toggleSurfacePrompt(this.parentElement.parentElement)">Show Prompt</button>' : '') +
+      (evt.judge_prompt ? '<button class="hook-details-btn hook-details-btn--right">Show Prompt</button>' : '') +
     '</div>' +
     '<div class="hook-prompt">' + escapeHtml(evt.query || '') + '</div>' +
     '<div class="hook-body">' + shortContent + '</div>' +
     '<div class="surface-prompt-body" style="display:none"><pre>' + (evt.judge_prompt ? escapeHtml(evt.judge_prompt) : '') + '</pre></div>';
+
+  // ── Attach listeners (post-innerHTML) ───────────────────────────────
+  // Header click toggles body open AND bubbles up to the container click
+  // handler (which pins the recall). This dual-action — expand AND pin —
+  // is intentional: clicking the header signals "I'm interested in this
+  // card." No stopPropagation here.
+  const header = div.querySelector('.hook-header');
+  const body   = div.querySelector('.hook-body');
+  if (header && body) {
+    header.addEventListener('click', () => body.classList.toggle('open'));
+  }
+  // Show Prompt button — toggles surface-prompt-body underneath the card.
+  // Reuses _wirePromptToggle from the P2.18 encoding-card migration so
+  // both feeds share the same show/hide mechanic. Inline onclick was
+  // ferrying event.stopPropagation; the helper handles that internally.
+  const promptBtn  = div.querySelector('.hook-details-btn');
+  const promptBody = div.querySelector('.surface-prompt-body');
+  if (promptBtn && promptBody) _wirePromptToggle(promptBtn, promptBody, null);
+
   // Hover = preview, click = commit. mouseenter previews the recall's
   // nodes on the graph (saves prior state); mouseleave restores; click
   // upgrades preview to pin (graph discards the snapshot so the followup
@@ -170,18 +193,22 @@ function renderRecallEntry(evt) {
   });
   // Container-level click → pin. Inner interactive elements that should NOT
   // also pin call event.stopPropagation in their own handlers (candidates
-  // via wireCandidateStops below, prompt buttons inline). Header bubbles
-  // up intentionally — clicking the header expands AND pins, treating the
+  // below, prompt button via _wirePromptToggle). Header bubbles up
+  // intentionally — clicking the header expands AND pins, treating the
   // entire card as a selectable unit.
   div.addEventListener('click', () => {
     if (evt.id) pinRecallToGraph(evt.id);
   });
-  // Candidates open node-detail; clicking one should NOT also pin the
-  // whole recall. Inline onclicks are emitted by recall-candidate divs in
-  // the body — we wrap each to stop propagation without rewriting the
-  // inline onclick string.
-  div.querySelectorAll('.recall-candidate').forEach(c => {
-    c.addEventListener('click', e => e.stopPropagation());
+  // Candidates open node-detail and STOP the click from also pinning the
+  // whole recall. Wired here as a single listener per candidate (was
+  // previously inline onclick + a separate stopPropagation listener —
+  // two handlers per element for the same DOM event).
+  div.querySelectorAll('.recall-candidate[data-nid]').forEach(c => {
+    c.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const nid = c.dataset.nid;
+      if (nid) loadNodeDetail(nid);
+    });
   });
   return div;
 }
@@ -990,32 +1017,14 @@ function _renderS1EncodeCard(run) {
   );
 }
 
-// toggleSurfacePrompt is still used by renderRecallEntry's "Show Prompt"
-// inline onclick (that card hasn't been migrated to el() yet). The
-// encoding-feed equivalents (toggleEncPrompt / toggleConsolPrompt) were
-// removed in the el() migration — those cards now wire their toggle
-// directly via _wirePromptToggle with closure-captured element refs.
-async function _togglePromptBody(entry, bodyClass, lazyLoad) {
-  const prompt = entry.querySelector('.' + bodyClass);
-  if (!prompt) return;
-  const btn = entry.querySelector('.hook-details-btn');
-  if (prompt.style.display === 'none') {
-    prompt.style.display = 'block';
-    if (btn) btn.textContent = 'Hide Prompt';
-    if (lazyLoad) {
-      const pre = prompt.querySelector('pre');
-      if (pre && pre.textContent === 'Loading...') {
-        try { pre.textContent = await lazyLoad(); }
-        catch (e) { pre.textContent = '(failed to load prompt)'; }
-      }
-    }
-  } else {
-    prompt.style.display = 'none';
-    if (btn) btn.textContent = 'Show Prompt';
-  }
-}
-
-export function toggleSurfacePrompt(entry) { _togglePromptBody(entry, 'surface-prompt-body'); }
+// toggleSurfacePrompt / _togglePromptBody removed — renderRecallEntry's
+// "Show Prompt" button now wires its toggle via _wirePromptToggle with
+// closure-captured element refs, same pattern as the encoding-feed
+// cards. The shared helper lives at the bottom of this file.
+//
+// toggleHookBody remains exported below because `_renderS2ChainEntry`
+// (decoding-feed S2 cards) still uses inline onclick on its header.
+// Eventual migration would let us drop the export + window.* mount too.
 
 // ── Live split layout ─────────────────────────────────────────────────
 // Four orientations: graph-left / graph-right / graph-top / graph-bottom.
