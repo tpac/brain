@@ -99,6 +99,25 @@ def run_cell(version: int, item: Dict[str, Any], arm_run_name: str,
                 pass
     probe_ms = int((time.time() - t_probes) * 1000)
 
+    # Extract turn/round counts — surface from ingest stats so downstream
+    # reports don't need to dig into the longmem_result blob.
+    ingest = (longmem_result or {}).get('ingest') or {}
+    turn_counts = {
+        'haystack_turns': ingest.get('turns', 0),
+        'user_turns': ingest.get('user_turns', 0),
+        's1e_runs': ingest.get('s1e_runs', 0),  # encoder fires per Stop hook
+        's2_runs': ingest.get('s2_runs', 0),    # S2 maintenance runs
+        # surface calls (Haiku) — per user turn during replay + 1 at query
+        'surface_calls_during_replay': ingest.get('user_turns', 0),
+        'surface_call_at_query': 1,
+    }
+
+    # Artifact + brain paths for offline replay
+    brain_db_path = (longmem_result or {}).get('brain_db_path') or brain_dir
+    artifact_dir = os.path.join(
+        'eval', 'longmem', 'reports', arm_run_name, 'items',
+        item['question_id'])
+
     return {
         'version': version,
         'item_id': item['question_id'],
@@ -106,6 +125,12 @@ def run_cell(version: int, item: Dict[str, Any], arm_run_name: str,
         'longmem_result': longmem_result,
         'probes': probes,
         'probe_error': probe_error,
+        'turn_counts': turn_counts,
+        'paths': {
+            'brain_db': brain_db_path,
+            'artifacts_dir': artifact_dir,
+            'agent_calls_dir': os.path.join(artifact_dir, 'agent_calls'),
+        },
         'timing': {
             'longmem_ms': longmem_ms,
             'probe_ms': probe_ms,
@@ -121,34 +146,74 @@ def run_arm(version: int, items: List[Dict[str, Any]],
             run_name: str,
             skip_probes: Optional[List[str]] = None,
             cell_writer: Optional[Callable[[Dict[str, Any]], None]] = None,
+            parallel_workers: int = 1,
             ) -> List[Dict[str, Any]]:
     """Run all `items` through encoder version `version`. Returns list of
     cell results in input order. `cell_writer` is invoked once per cell as
-    soon as it completes — use it to stream to per_cell.jsonl."""
+    soon as it completes — use it to stream to per_cell.jsonl.
+
+    `parallel_workers > 1` runs cells concurrently via ThreadPoolExecutor.
+    Threads (not processes) — sqlite3 connections are per-cell anyway
+    (each cell's per_item brain has its own connections), and the workload
+    is I/O bound (Sonnet/Haiku API calls release the GIL). The daemon
+    serializes its own writes via write_lock, so parallel API hits
+    naturally backpressure.
+    """
     arm_run_name = f"{run_name}-v{version}"
     template_path = materialize_s1e_template(version)
-    print(f"\n[encoder_eval] === ARM v{version} === ({len(items)} items)",
-          file=sys.stderr, flush=True)
-    cells = []
+    print(f"\n[encoder_eval] === ARM v{version} === ({len(items)} items, "
+          f"workers={parallel_workers})", file=sys.stderr, flush=True)
+    cells_by_idx: Dict[int, Dict[str, Any]] = {}
+    write_lock = None
     try:
-        for i, item in enumerate(items):
-            cell = run_cell(
-                version=version, item=item, arm_run_name=arm_run_name,
-                item_idx=i, total=len(items),
-                template_path=template_path, skip_probes=skip_probes)
-            cells.append(cell)
-            if cell_writer is not None:
-                try:
-                    cell_writer(cell)
-                except Exception as e:
-                    print(f"[encoder_eval] cell_writer failed (non-fatal): {e}",
-                          file=sys.stderr, flush=True)
+        if parallel_workers <= 1:
+            for i, item in enumerate(items):
+                cell = run_cell(
+                    version=version, item=item, arm_run_name=arm_run_name,
+                    item_idx=i, total=len(items),
+                    template_path=template_path, skip_probes=skip_probes)
+                cells_by_idx[i] = cell
+                if cell_writer is not None:
+                    try:
+                        cell_writer(cell)
+                    except Exception as e:
+                        print(f"[encoder_eval] cell_writer failed: {e}",
+                              file=sys.stderr, flush=True)
+        else:
+            import threading
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            write_lock = threading.Lock()
+
+            def _one(idx, item):
+                return idx, run_cell(
+                    version=version, item=item, arm_run_name=arm_run_name,
+                    item_idx=idx, total=len(items),
+                    template_path=template_path, skip_probes=skip_probes)
+
+            with ThreadPoolExecutor(max_workers=parallel_workers) as pool:
+                futures = [pool.submit(_one, i, it)
+                           for i, it in enumerate(items)]
+                for fut in as_completed(futures):
+                    try:
+                        idx, cell = fut.result()
+                    except Exception as e:
+                        print(f"[encoder_eval] cell raised: {e!r}",
+                              file=sys.stderr, flush=True)
+                        continue
+                    cells_by_idx[idx] = cell
+                    if cell_writer is not None:
+                        with write_lock:
+                            try:
+                                cell_writer(cell)
+                            except Exception as e:
+                                print(f"[encoder_eval] cell_writer failed: {e}",
+                                      file=sys.stderr, flush=True)
     finally:
         try:
             os.unlink(template_path)
         except Exception:
             pass
-    return cells
+    return [cells_by_idx[i] for i in sorted(cells_by_idx.keys())]
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -262,6 +327,7 @@ def run_staged(
         skip_probes: Optional[List[str]] = None,
         stop_conditions: List[Callable] = DEFAULT_STOP_CONDITIONS,
         continue_on_stop: bool = False,
+        parallel_workers: int = 1,
         ) -> Dict[str, Any]:
     """Run versions × stages with checkpointed halt-on-stop semantics.
 
@@ -299,7 +365,8 @@ def run_staged(
                     version=v, items=stage_items,
                     run_name=f"{run_name}-{stage_name}",
                     skip_probes=skip_probes,
-                    cell_writer=_cell_writer)
+                    cell_writer=_cell_writer,
+                    parallel_workers=parallel_workers)
                 stage_cells.extend(cells)
                 all_cells.extend(cells)
             stage_ms = int((time.time() - t_stage) * 1000)

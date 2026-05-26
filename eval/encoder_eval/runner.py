@@ -110,6 +110,9 @@ def main():
                         help='Comma-separated probe names to skip')
     parser.add_argument('--continue-on-stop', action='store_true',
                         help='Do not halt when stop conditions fire')
+    parser.add_argument('--parallel', type=int, default=1, metavar='WORKERS',
+                        help='Run cells concurrently within each arm. '
+                             'Default 1 (sequential). Threads, not processes.')
     parser.add_argument('--dry-run', action='store_true',
                         help='Print the plan; do not run')
     args = parser.parse_args()
@@ -205,7 +208,8 @@ def main():
     summary = run_staged(
         versions=versions, stages=stage_payloads, run_name=run_name,
         out_dir=out_dir, skip_probes=skip_probes,
-        continue_on_stop=args.continue_on_stop)
+        continue_on_stop=args.continue_on_stop,
+        parallel_workers=args.parallel)
     wall_ms = int((time.time() - t0) * 1000)
     summary['wall_ms'] = wall_ms
     summary['ended_at'] = datetime.utcnow().isoformat() + 'Z'
