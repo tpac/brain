@@ -445,3 +445,60 @@
   margin-left: auto;
 }
 .insights-dismiss:hover { color: var(--text-heading); background: var(--bg-raised); }
+
+/* ── Recall card pin affordance + graph pin chip ────────────────────
+ * Recall cards in #feed-decoding are clickable to pin their highlight
+ * set onto the 3D graph. The previous design had a dedicated 🎯 button
+ * tucked into the hook-header — Tom wanted the card itself to feel
+ * selectable. Two visual cues:
+ *   1. Hover: translateX shift signals clickability (button-like).
+ *   2. Pinned: a left-accent background + accented border-left so the
+ *      active card is clearly "the one currently driving the graph."
+ * Scoped to .recall-entry (not .hook-entry broadly) so encoding-feed
+ * entries — which are NOT pinnable — keep their static look. */
+.recall-entry {
+  cursor: pointer;
+  transition: transform 0.12s ease-out, background-color 0.12s ease-out, border-left-color 0.12s ease-out;
+}
+.recall-entry:hover {
+  transform: translateX(4px);
+}
+.recall-entry--pinned {
+  background: rgba(126, 184, 255, 0.07);
+  border-left: 3px solid var(--accent-blue);
+}
+.recall-entry--pinned:hover {
+  /* No shift when already pinned — clicking again is a no-op, so the
+   * shift would imply an action that doesn't exist. */
+  transform: none;
+}
+/* The "Pinned: #abc12345 ×" chip lives in .graph-controls when the graph
+ * is locked to a specific recall. Click × to unpin (calls
+ * setHighlightMode('latest') in graph.js). The chip is the only signal
+ * to the operator that incoming recalls aren't currently overriding the
+ * view — without it pinned mode would silently swallow live events. */
+.graph-pin-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 6px 2px 8px;
+  background: rgba(126, 184, 255, 0.12);
+  border: 1px solid rgba(126, 184, 255, 0.4);
+  color: var(--accent-blue);
+  border-radius: var(--radius-md);
+  font-size: 11px;
+}
+.graph-pin-chip-label { font-family: var(--font-mono, monospace); }
+.graph-pin-chip-close {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.graph-pin-chip-close:hover { opacity: 1; }
+

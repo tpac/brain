@@ -49,16 +49,21 @@
 <div id="tab-live" class="tab-content active">
   <div class="stats-bar" id="stats-bar"></div>
   <div id="daemon-banner"></div>
-  <div class="live-split" id="live-split">
-    <!-- Layout picker floats over the split. The unicode glyphs depict
-         the four orientations: graph left / right / top / bottom.
-         Active button gets the accent color via JS. -->
+  <!-- Layout picker — small strip above the split. Previously absolute-
+       positioned over the stream pane's top-right corner, which overlapped
+       insights cards / the feed-toggle bar. Now it's an inline toolbar so
+       it never sits on top of content. The four glyphs depict graph
+       left / right / top / bottom; active button gets the accent color
+       via setLiveLayout in live.js. -->
+  <div class="live-toolbar">
     <div class="live-layout-picker" role="group" aria-label="Live tab layout">
       <button class="live-layout-btn" data-layout="graph-left"   title="Graph on left"     onclick="setLiveLayout('graph-left')">&#9703;</button>
       <button class="live-layout-btn" data-layout="graph-right"  title="Graph on right"    onclick="setLiveLayout('graph-right')">&#9704;</button>
       <button class="live-layout-btn" data-layout="graph-top"    title="Graph on top"      onclick="setLiveLayout('graph-top')">&#11154;</button>
       <button class="live-layout-btn" data-layout="graph-bottom" title="Graph on bottom"   onclick="setLiveLayout('graph-bottom')">&#11155;</button>
     </div>
+  </div>
+  <div class="live-split" id="live-split">
     <div class="live-pane live-pane--graph">
       <div class="graph-container">
         <div class="graph-controls">
@@ -70,10 +75,10 @@
             oninput="onGraphSearch()"
             onkeydown="onGraphSearchKey(event)">
           <span id="graph-search-count" class="graph-search-count"></span>
-          <select id="graph-highlight-mode" class="toolbar-select" title="Which recalls highlight nodes on the graph" onchange="onGraphHighlightModeChange()">
-            <option value="latest">Latest recall</option>
-            <!-- session-* options injected by tabs/graph.js after /api/sessions loads -->
-          </select>
+          <!-- Highlight-mode dropdown removed: per-session filtering is already
+               offered by the activity-stream's session-filter; pinned mode is
+               now driven by clicking a recall card. Latest is the only auto
+               mode, so a single-option dropdown is dead chrome. -->
           <button class="btn--glass" title="Clear highlight + reload graph" onclick="onGraphRefresh()">Refresh</button>
         </div>
         <div id="graph-3d" style="width:100%;height:100%"></div>

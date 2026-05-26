@@ -26,6 +26,14 @@ const MAX_ENTRIES = 100;
 let activeFeed = 'decoding';
 let encBadgeCount = 0;
 
+// Recall-event cache (id → event payload). Populated by _renderRecallEvent
+// so clicking a card's pin button can re-apply that historical recall's
+// highlight to the graph without re-fetching. Bounded to MAX_ENTRIES so
+// memory stays flat — once a card scrolls out of the feed and gets
+// evicted from the DOM, its entry here is also pruned by the cleanup
+// pass in _renderRecallEvent.
+const _eventsById = new Map();
+
 export function toggleHookBody(el) {
   const body = el.parentElement.querySelector('.hook-body');
   body.classList.toggle('open');
@@ -130,6 +138,12 @@ function renderRecallEntry(evt) {
 
   const idShort = evt.id ? String(evt.id).substring(0, 8) : '';
   const identityChip = identityChipHTML(evt.human_identity, evt.agent_identity);
+  // Pin behavior: the whole card is the click target. The previous design
+  // had a dedicated 🎯 button next to "Show Prompt", but Tom wanted the
+  // card itself to feel selectable — hover shifts the card right, click
+  // pins. The `.recall-entry:hover` transform in components.css gives
+  // the affordance; the container-level click handler below is the action.
+  div.title = 'Click to highlight these nodes on the graph';
   div.innerHTML =
     '<div class="hook-header" onclick="toggleHookBody(this)">' +
       '<span class="' + srcMeta.cls + '">' + srcMeta.label + '</span>' +
@@ -143,7 +157,46 @@ function renderRecallEntry(evt) {
     '<div class="hook-prompt">' + escapeHtml(evt.query || '') + '</div>' +
     '<div class="hook-body">' + shortContent + '</div>' +
     '<div class="surface-prompt-body" style="display:none"><pre>' + (evt.judge_prompt ? escapeHtml(evt.judge_prompt) : '') + '</pre></div>';
+  // Hover = preview, click = commit. mouseenter previews the recall's
+  // nodes on the graph (saves prior state); mouseleave restores; click
+  // upgrades preview to pin (graph discards the snapshot so the followup
+  // mouseleave is a no-op). Same affordance as the visual hover-shift in
+  // CSS: the card behaves like a button.
+  div.addEventListener('mouseenter', () => {
+    if (evt) graph.previewRecallOnGraph(evt);
+  });
+  div.addEventListener('mouseleave', () => {
+    graph.clearRecallPreview();
+  });
+  // Container-level click → pin. Inner interactive elements that should NOT
+  // also pin call event.stopPropagation in their own handlers (candidates
+  // via wireCandidateStops below, prompt buttons inline). Header bubbles
+  // up intentionally — clicking the header expands AND pins, treating the
+  // entire card as a selectable unit.
+  div.addEventListener('click', () => {
+    if (evt.id) pinRecallToGraph(evt.id);
+  });
+  // Candidates open node-detail; clicking one should NOT also pin the
+  // whole recall. Inline onclicks are emitted by recall-candidate divs in
+  // the body — we wrap each to stop propagation without rewriting the
+  // inline onclick string.
+  div.querySelectorAll('.recall-candidate').forEach(c => {
+    c.addEventListener('click', e => e.stopPropagation());
+  });
   return div;
+}
+
+// Look up a cached recall event by id and pin its highlight on the graph.
+// Called from the inline onclick on each recall card's pin button. Falls
+// back gracefully when the event scrolled out and got pruned — the user
+// just doesn't get a visual response, no error.
+export function pinRecallToGraph(eventId) {
+  const evt = _eventsById.get(eventId);
+  if (!evt) {
+    console.warn('[live] pinRecallToGraph: event not in cache:', eventId);
+    return;
+  }
+  graph.pinRecallToGraph(evt);
 }
 
 function isEntryVisible(src) {
@@ -160,9 +213,24 @@ function getSessionFilter() {
 }
 
 export function onSessionFilterChange() {
+  // Reset both decoding + encoding feeds — until now the encoding feed
+  // silently ignored the dropdown, so switching session left stale runs
+  // on screen from other sessions. Both feeds now pass session_id through
+  // to their respective endpoints.
   lastRecallTs = '';
   document.getElementById('feed-decoding').innerHTML = '';
   pollRecallLog();
+
+  // Force the encoding feed to refetch under the new session filter.
+  // Clear the fingerprint so loadEncodingActivity's short-circuit doesn't
+  // skip the re-render even when the row count happens to match.
+  encodingLoaded = false;
+  const encContainer = document.getElementById('feed-encoding');
+  if (encContainer) {
+    encContainer.innerHTML = '';
+    encContainer.dataset.fingerprint = '';
+  }
+  loadEncodingActivity();
 }
 
 // Recall event flow (P2.5 split): the fetcher (`pollRecallLog`) is a pure
@@ -274,6 +342,10 @@ function _wireInsightsDismiss() {
 function _renderRecallEvent({ event: evt }) {
   const feed = document.getElementById('feed-decoding');
   if (!feed) return;
+  // Cache the event so the pin button on the card can look it up later.
+  // Updates replace, so a judge_output backfill correctly overwrites the
+  // pending entry.
+  if (evt.id) _eventsById.set(evt.id, evt);
   const existing = feed.querySelector('.recall-entry[data-recall-id="' + evt.id + '"]');
   if (existing) {
     // Same id arrived again — only meaningful if judge_output is now set
@@ -292,7 +364,14 @@ function _renderRecallEvent({ event: evt }) {
   const el = renderRecallEntry(evt);
   if (!isEntryVisible(evt.source || 'unknown')) el.style.display = 'none';
   feed.prepend(el);
-  while (feed.children.length > MAX_ENTRIES) feed.removeChild(feed.lastChild);
+  // Eviction: keep DOM + cache in sync. When DOM drops oldest entries,
+  // remove them from _eventsById too so memory stays bounded.
+  while (feed.children.length > MAX_ENTRIES) {
+    const removed = feed.lastChild;
+    const removedId = removed?.dataset?.recallId;
+    if (removedId) _eventsById.delete(removedId);
+    feed.removeChild(removed);
+  }
 }
 
 export function switchFeed(name) {
@@ -320,22 +399,26 @@ function loadDecodingFeed() {
   loadS2DecodeEntries();
 }
 
+// Filter every top-level card in BOTH feeds by data-scale. The selector
+// is `[data-scale]` (not `.enc-entry` etc) because the class names are
+// overloaded: `.enc-entry` is reused on inner sub-rows (CREATED /
+// REVISED / CONNECTED rows inside the encoding card body), and those
+// don't carry data-scale. The previous compound-class selector caught
+// those inner rows, defaulted their scale to 's1', then hid them when
+// filtering by 's2' — making S2 cards visually empty. Contract: only
+// top-level cards set `data-scale`; the selector now relies on that.
 export function filterByScale() {
   const val = document.getElementById('scale-filter').value;
-  document.querySelectorAll('#feed-decoding .recall-entry, #feed-decoding .s2-entry').forEach(el => {
-    const scale = el.dataset.scale || 's1';
+  document.querySelectorAll('#feed-decoding [data-scale], #feed-encoding [data-scale]').forEach(el => {
     if (!val) { el.style.display = ''; return; }
-    el.style.display = scale === val ? '' : 'none';
-  });
-  document.querySelectorAll('#feed-encoding .enc-entry').forEach(el => {
-    const scale = el.dataset.scale || 's1';
-    if (!val) { el.style.display = ''; return; }
-    el.style.display = scale === val ? '' : 'none';
+    el.style.display = el.dataset.scale === val ? '' : 'none';
   });
 }
 
 // Track which S2 chain_ids we've already rendered. Polling adds new ones
-// without re-rendering existing.
+// without re-rendering existing. The Set is pruned on every fetch to drop
+// chain_ids that fell out of the 24h window — without that pruning the
+// Set grew for the page lifetime (slow leak: ~30 chars × N chains).
 const s2RenderedChains = new Set();
 async function loadS2DecodeEntries() {
   const container = document.getElementById('feed-decoding');
@@ -349,6 +432,17 @@ async function loadS2DecodeEntries() {
       if (!chains[e.chain_id]) chains[e.chain_id] = {events: [], chain_id: e.chain_id};
       chains[e.chain_id].events.push(e);
     });
+    // Prune the dedup Set to only chain_ids still in the fetch window.
+    // Anything older than 24h is now stale — keeping it in the Set wastes
+    // memory and would also incorrectly suppress re-renders if a chain
+    // re-appeared (e.g., backfill). The corresponding DOM nodes are not
+    // explicitly evicted here — they roll out naturally as new chains
+    // get prepended; the bounded MAX_ENTRIES contract for recall cards
+    // doesn't apply to S2 chains, but the 24h window is the natural cap.
+    const liveChainIds = new Set(Object.keys(chains));
+    for (const id of s2RenderedChains) {
+      if (!liveChainIds.has(id)) s2RenderedChains.delete(id);
+    }
     Object.values(chains).forEach(c => c.events.sort(
       (a, b) => (a.created_at || '').localeCompare(b.created_at || '')));
     const chainList = Object.values(chains).sort((a, b) => {
@@ -375,6 +469,10 @@ async function loadS2DecodeEntries() {
       }
       if (!inserted) container.appendChild(el);
     });
+    // Same reasoning as loadEncodingActivity — re-apply the scale filter
+    // so freshly-rendered S2 chains respect the dropdown that was already
+    // set before they arrived.
+    filterByScale();
   } catch(e) {
     console.error('S2 decode load failed:', e);
   }
@@ -512,7 +610,14 @@ let lastEncodingTs = '';
 async function loadEncodingActivity() {
   try {
     const container = document.getElementById('feed-encoding');
-    const runsD = await api.encodingRuns({ limit: 50, hours: 12 });
+    // Honor the session-filter dropdown — without this the encoding feed
+    // shows runs from every session while decoding correctly narrows.
+    const sessionId = getSessionFilter();
+    const runsD = await api.encodingRuns({
+      limit: 50,
+      hours: 12,
+      ...(sessionId ? { session_id: sessionId } : {}),
+    });
 
     if (!runsD.runs || !runsD.runs.length) {
       if (!encodingLoaded) {
@@ -740,6 +845,12 @@ async function loadEncodingActivity() {
       div.innerHTML = html;
       container.appendChild(div);
     }
+    // Re-apply the scale filter — entries we just appended haven't been
+    // seen by filterByScale yet, so a previously-set "S2 Graph" filter
+    // would leave fresh S1 cards visible until the user toggles the
+    // dropdown again. Same contract as the new entries in
+    // _renderRecallEvent which gates via isEntryVisible.
+    filterByScale();
   } catch(e) { console.error('loadEncodingActivity error:', e); }
 }
 
@@ -870,10 +981,17 @@ export function setLiveLayout(mode) {
   _persistLayout();
 }
 
+// Idempotency guard — _setupDivider attaches document-level mousemove +
+// mouseup listeners. If init() ever fires twice (architecture drift, hot
+// reload, future double-wire bug) we'd get N parallel handlers running
+// on every mouse move. Single source of truth: once wired, never again.
+let _dividerWired = false;
 function _setupDivider() {
+  if (_dividerWired) return;
   const divider = document.getElementById('live-divider');
   const split = document.getElementById('live-split');
   if (!divider || !split) return;
+  _dividerWired = true;
   let dragging = false;
 
   divider.addEventListener('mousedown', (e) => {
@@ -920,6 +1038,21 @@ export function init() {
   bus.subscribe('recall:event', _renderRecallEvent);
   bus.subscribe('insights:tick', _renderInsightsPanel);
   _wireInsightsDismiss();
+
+  // Pinned-card highlight — graph.js publishes 'graph:pinned' when the
+  // user clicks a recall card (or when pinned mode is cleared via
+  // Refresh / dropdown change). We mirror the lock by adding/removing
+  // .recall-entry--pinned on the matching card. Living here (the feed
+  // owner) means graph.js doesn't reach across module boundaries to
+  // mutate live.js DOM.
+  bus.subscribe('graph:pinned', ({ eventId }) => {
+    document.querySelectorAll('#feed-decoding .recall-entry--pinned')
+      .forEach(el => el.classList.remove('recall-entry--pinned'));
+    if (!eventId) return;
+    const target = document.querySelector(
+      '#feed-decoding .recall-entry[data-recall-id="' + eventId + '"]');
+    if (target) target.classList.add('recall-entry--pinned');
+  });
 
   // Insights — slow poll (60s), gated on Live tab visible. Same bus
   // pattern as `recall:event`: the fetcher only publishes; the renderer

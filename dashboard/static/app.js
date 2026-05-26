@@ -147,6 +147,7 @@ window.toggleOverflowMenu    = toggleOverflowMenu;
 window.switchFeed            = live.switchFeed;
 window.setLiveLayout         = live.setLiveLayout;
 window.onSessionFilterChange = live.onSessionFilterChange;
+window.pinRecallToGraph      = live.pinRecallToGraph;
 window.filterByScale         = live.filterByScale;
 window.toggleHookBody        = live.toggleHookBody;
 window.toggleSurfacePrompt   = live.toggleSurfacePrompt;
@@ -157,7 +158,6 @@ window.loadLogs              = logs.loadLogs;
 window.loadGraph3D           = graph.loadGraph3D;
 window.onGraphSearch         = graph.onGraphSearch;
 window.onGraphSearchKey      = graph.onGraphSearchKey;
-window.onGraphHighlightModeChange = graph.onGraphHighlightModeChange;
 window.onGraphRefresh        = graph.onGraphRefresh;
 window.searchNodes           = explorer.searchNodes;
 window.onTraceScaleChange    = traces.onTraceScaleChange;
@@ -175,7 +175,17 @@ poll.register({ key: 'sessions', interval: 60000, fetcher: loadSessions });
 // Wire every tab module's polls + bus subs once. Includes `graph` even
 // though it's not a primary tab — Live embeds it and needs its lifecycle
 // wired identically to the others.
+//
+// _inittedTabs is the single point of truth for "this tab's init() has
+// already run". ES modules execute their top-level code exactly once per
+// page load, so this loop currently runs once, but the guard protects
+// against future architecture drift — anyone calling init() a second
+// time (hot reload, debug shell, double-import) would otherwise duplicate
+// every bus subscription registered inside it.
+const _inittedTabs = new Set();
 for (const name of Object.keys(TABS)) {
+  if (_inittedTabs.has(name)) continue;
+  _inittedTabs.add(name);
   try { TABS[name]?.init?.(); } catch(e) { console.error('[app] init', name, 'failed:', e); }
 }
 

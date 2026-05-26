@@ -34,13 +34,12 @@
 //
 // ── Highlight mode ───────────────────────────────────────────────────
 //
-//   latest         (default) — every new recall REPLACES the set.
-//                  Pre-loaded with the most recent recall on switch.
-//   session=<id>   union of every recall whose session_id matches.
-//                  Pre-loaded with that session's history on switch.
-//
-// The mode dropdown lives in .graph-controls; session options are
-// injected by _populateSessionOptions() on activate.
+//   latest   (default) — every new recall REPLACES the set. Pre-loaded
+//                        with the most recent recall on first open.
+//   pinned   — entered by clicking a recall card in the activity stream.
+//              Locked until Refresh / the × on the pin chip; incoming
+//              recalls are ignored. There is no UI dropdown — the chip
+//              in .graph-controls is the only signal + escape hatch.
 // ===========================================================================
 
 import { api } from '/static/lib/api.js';
@@ -82,10 +81,16 @@ const HIGHLIGHT_TIER_ORDER = ['returned', 'activation', 'used'];
 // nodeId → tier string. Persistent (no decay). Empty = no highlight
 // active = all nodes show their community color.
 const _highlightTier = new Map();
-// 'latest' (default) — each recall REPLACES the set.
-// 'session'          — union of recalls for `_highlightSessionId`.
+// Two modes, no dropdown:
+//   'latest' (default) — each incoming recall REPLACES the set.
+//   'pinned'           — set frozen to a specific event clicked from the
+//                        activity stream; incoming live events are ignored
+//                        until Refresh. Set by pinRecallToGraph().
+// Session filtering used to live here but was removed once the activity
+// stream gained its own session-filter dropdown — two parallel filters
+// for the same dimension were redundant.
 let _highlightMode = 'latest';
-let _highlightSessionId = null;
+let _pinnedEventId = null;     // for the chip display while pinned
 
 // ── Color math ────────────────────────────────────────────────────────
 
@@ -146,8 +151,9 @@ function _refreshGraph() {
 
 function _focusFirstMatch() {
   if (!graph3d || !_searchQuery) return;
-  const nodes = graph3d.graphData().nodes;
-  const matches = nodes.filter(_nodeMatches);
+  // Match against the live graph only — camera pan needs the laid-out
+  // x/y/z coords from the simulation, which the raw API payload lacks.
+  const matches = graph3d.graphData().nodes.filter(_nodeMatches);
   if (!matches.length) return;
   const target = matches.find(n => n.hub) || matches[0];
   graph3d.cameraPosition(
@@ -157,11 +163,25 @@ function _focusFirstMatch() {
   );
 }
 
+// Single source of truth for "what nodes can we filter against." Pulls
+// from the live ForceGraph3D instance when available, otherwise falls
+// back to the raw API payload. The fallback matters when WebGL failed
+// to mount: graph3dData is populated by api.graph3d() before the canvas
+// is built, so search keeps giving the user feedback ("23 matches") even
+// when the visualization itself is unavailable. Returns null when neither
+// is loaded.
+function _searchableNodes() {
+  if (graph3d) return graph3d.graphData().nodes;
+  if (graph3dData?.nodes) return graph3dData.nodes;
+  return null;
+}
+
 function _updateMatchCount() {
   const el = document.getElementById('graph-search-count');
   if (!el) return;
-  if (!_searchQuery || !graph3d) { el.textContent = ''; return; }
-  const nodes = graph3d.graphData().nodes;
+  if (!_searchQuery) { el.textContent = ''; return; }
+  const nodes = _searchableNodes();
+  if (!nodes) { el.textContent = ''; return; }
   const n = nodes.filter(_nodeMatches).length;
   el.textContent = n + ' match' + (n === 1 ? '' : 'es');
 }
@@ -202,73 +222,140 @@ function _applyEventToHighlight(event) {
 
 function _onRecallEvent({ event }) {
   if (!graph3d || !event) return;
-  if (_highlightMode === 'session') {
-    // Only union recalls for the watched session — ignore others.
-    if (event.session_id !== _highlightSessionId) return;
-  } else {
-    // 'latest': replace the entire set with just this recall.
-    _highlightTier.clear();
-  }
+  // Pinned mode means the user clicked a specific recall to lock the
+  // highlight on it — don't let auto-incoming events steal that focus.
+  if (_highlightMode === 'pinned') return;
+  // 'latest': replace the entire set with just this recall.
+  _highlightTier.clear();
   _applyEventToHighlight(event);
   _refreshGraph();
 }
 
-// Switch highlight mode. Clears the existing set, then pre-loads:
-//   latest      → the single most recent recall (so the spotlight is
-//                 immediately visible without waiting for the next one)
-//   session=X   → every recall for session X, unioned into the set
-async function setHighlightMode(mode, sessionId) {
-  _highlightMode = (mode === 'session' && sessionId) ? 'session' : 'latest';
-  _highlightSessionId = _highlightMode === 'session' ? sessionId : null;
+// ── Hover-preview ────────────────────────────────────────────────────
+// previewRecallOnGraph / clearRecallPreview let the activity stream
+// "audition" a recall on the graph while the cursor is over its card,
+// without committing — the prior highlight state is snapshotted on enter
+// and restored on leave. Click upgrades the preview to a pin
+// (pinRecallToGraph) which marks the preview as consumed so the
+// subsequent mouseleave is a no-op.
+let _previewSnapshot = null;   // { tier: Map, mode, pinnedEventId }
+
+function _saveSnapshot() {
+  _previewSnapshot = {
+    tier: new Map(_highlightTier),
+    mode: _highlightMode,
+    pinnedEventId: _pinnedEventId,
+  };
+}
+
+function _restoreSnapshot() {
+  if (!_previewSnapshot) return;
+  _highlightTier.clear();
+  for (const [k, v] of _previewSnapshot.tier) _highlightTier.set(k, v);
+  _highlightMode = _previewSnapshot.mode;
+  _pinnedEventId = _previewSnapshot.pinnedEventId;
+  _previewSnapshot = null;
+  _refreshGraph();
+}
+
+export function previewRecallOnGraph(event) {
+  if (!graph3d || !event) return;
+  if (!_previewSnapshot) _saveSnapshot();
+  _highlightTier.clear();
+  _applyEventToHighlight(event);
+  _refreshGraph();
+}
+
+export function clearRecallPreview() {
+  if (!_previewSnapshot) return;
+  _restoreSnapshot();
+}
+
+// Pin highlight to a specific past recall event — called from the
+// activity stream when the operator clicks a recall card. Replaces the
+// highlight set with this event's nodes and locks the mode so subsequent
+// live recalls don't override. Clear by clicking Refresh or selecting a
+// different mode in the dropdown. Publishes 'graph:pinned' so the
+// activity stream can mark its corresponding card with the selected
+// background — graph.js doesn't reach into live.js DOM directly, the
+// bus topic is the boundary.
+export function pinRecallToGraph(event) {
+  if (!event) return;
+  // Consume any in-flight preview snapshot — the user upgraded a hover
+  // into a commit, so the post-hover mouseleave must not restore the
+  // pre-hover state. Without this, leaving the card after a click
+  // would silently undo the pin.
+  _previewSnapshot = null;
+  _highlightMode = 'pinned';
+  _pinnedEventId = event.id || null;
+  _highlightTier.clear();
+  _applyEventToHighlight(event);
+  _refreshGraph();
+  _renderPinIndicator();
+  bus.publish('graph:pinned', { eventId: _pinnedEventId });
+  // Reflect the lock in the mode dropdown — Latest is no longer correct.
+  // We keep the dropdown selectable so the user can leave pinned mode by
+  // picking Latest or a session.
+  const sel = document.getElementById('graph-highlight-mode');
+  if (sel) sel.value = 'latest';   // semantically pinned overrides; chip shows the truth
+}
+
+// Small chip rendered into .graph-controls when pinned, with a × that
+// returns to Latest. Removed automatically when leaving pinned mode.
+function _renderPinIndicator() {
+  const controls = document.querySelector('.graph-controls');
+  if (!controls) return;
+  let chip = document.getElementById('graph-pin-chip');
+  if (_highlightMode !== 'pinned') {
+    if (chip) chip.remove();
+    return;
+  }
+  if (!chip) {
+    chip = document.createElement('span');
+    chip.id = 'graph-pin-chip';
+    chip.className = 'graph-pin-chip';
+    controls.appendChild(chip);
+  }
+  const idShort = (_pinnedEventId || '').toString().slice(0, 8);
+  chip.innerHTML = '<span class="graph-pin-chip-label">Pinned: #' + idShort + '</span>' +
+                   '<button class="graph-pin-chip-close" title="Unpin (back to Latest)">&times;</button>';
+  const closeBtn = chip.querySelector('.graph-pin-chip-close');
+  if (closeBtn) closeBtn.onclick = () => setHighlightMode('latest');
+}
+
+// Switch highlight mode. Only used to escape pinned mode (back to
+// 'latest') — there's no longer a dropdown to drive this from the UI.
+// The × on the pin chip and onGraphRefresh both call it.
+async function setHighlightMode(mode) {
+  _highlightMode = 'latest';   // 'pinned' is set only by pinRecallToGraph
+  _pinnedEventId = null;
+  _renderPinIndicator();       // removes the chip if leaving pinned mode
+  bus.publish('graph:pinned', { eventId: null });
   _highlightTier.clear();
   try {
-    if (_highlightMode === 'latest') {
-      const d = await api.recalls({ limit: 1 });
-      const evt = (d.events || [])[0];
-      if (evt) _applyEventToHighlight(evt);
-    } else {
-      const d = await api.recalls({ limit: 200, session_id: sessionId });
-      for (const evt of (d.events || [])) _applyEventToHighlight(evt);
-    }
+    const d = await api.recalls({ limit: 1 });
+    const evt = (d.events || [])[0];
+    if (evt) _applyEventToHighlight(evt);
   } catch (e) {
-    console.error('[graph] highlight mode preload failed:', e);
+    console.error('[graph] latest-recall preload failed:', e);
   }
   _refreshGraph();
 }
 
-export function onGraphHighlightModeChange() {
-  const sel = document.getElementById('graph-highlight-mode');
-  if (!sel) return;
-  const v = sel.value;
-  if (v === 'latest') return setHighlightMode('latest');
-  if (v.startsWith('session:')) return setHighlightMode('session', v.slice('session:'.length));
-}
-
-// Refresh = clear the highlight + reload the graph data from /api/graph3d.
+// Refresh = nuke any zombie state, then reload from scratch. We dispose
+// the renderer rather than just calling graphData() because the user
+// typically clicks Refresh when something feels stuck — Chrome may have
+// dropped our context. Cheap rebuild beats a half-alive canvas. Also
+// clears any pinned-event lock so the rebuilt graph follows live events.
 export function onGraphRefresh() {
   _highlightTier.clear();
+  _highlightMode = 'latest';
+  _pinnedEventId = null;
+  _renderPinIndicator();
+  bus.publish('graph:pinned', { eventId: null });
+  graph3dData = null;
+  _destroyGraph();
   loadGraph3D();
-}
-
-// Populate the mode dropdown with session options. Called once on
-// activate(); not polled — sessions change rarely and the dropdown
-// only matters when the user is actively switching modes.
-async function _populateSessionOptions() {
-  const sel = document.getElementById('graph-highlight-mode');
-  if (!sel) return;
-  try {
-    const sessions = await api.sessions();
-    // Preserve "Latest recall" as option 0; replace any prior session-*.
-    while (sel.options.length > 1) sel.remove(1);
-    for (const s of (sessions || [])) {
-      const opt = document.createElement('option');
-      opt.value = 'session:' + s.id;
-      opt.textContent = 'Session: ' + s.short + ' (' + s.events + ' events)';
-      sel.appendChild(opt);
-    }
-  } catch (e) {
-    console.error('[graph] session list load failed:', e);
-  }
 }
 
 // ── Graph load + lifecycle ────────────────────────────────────────────
@@ -289,6 +376,12 @@ function _renderGraphError(message, hint, hintHTML) {
 // catches its own context-creation failure but logs a noisy stack first;
 // detecting up-front gives us a friendlier error AND avoids the noise.
 // Returns null on success, or a {reason, hintHTML} on failure.
+//
+// CRITICAL: Chrome caps WebGL contexts at ~16 per tab. The probe context
+// MUST be explicitly released via WEBGL_lose_context — letting it fall
+// out of scope leaves the slot allocated until GC, which during a busy
+// session never catches up. Before this fix, each loadGraph3D() burned
+// a slot, and after ~16 tab switches the real graph mount silently failed.
 function _detectWebGLBlocker() {
   // 1. Library loaded?
   if (typeof window.ForceGraph3D !== 'function') {
@@ -306,6 +399,10 @@ function _detectWebGLBlocker() {
     const c = document.createElement('canvas');
     gl = c.getContext('webgl2') || c.getContext('webgl') || c.getContext('experimental-webgl');
   } catch (e) { /* fall through */ }
+  // Always release the probe slot — see comment above.
+  if (gl) {
+    try { gl.getExtension('WEBGL_lose_context')?.loseContext(); } catch (_) { /* best-effort */ }
+  }
   if (!gl) {
     return {
       reason: 'Browser refused to create a WebGL context.',
@@ -322,6 +419,59 @@ function _detectWebGLBlocker() {
   return null;
 }
 
+// Fully tear down the current graph instance + DOM. Used on error paths
+// and on user-triggered Refresh so we never accumulate orphan
+// WebGLRenderer instances (Chrome's ~16-context-per-tab cap is the root
+// cause of "flaky / works sometimes / blank after refresh"). Safe to
+// call when graph3d is already null.
+function _destroyGraph() {
+  if (graph3d) {
+    try {
+      // Force the GPU slot to free immediately rather than waiting for GC.
+      const renderer = graph3d.renderer?.();
+      renderer?.forceContextLoss?.();
+      renderer?.dispose?.();
+    } catch (_) { /* best-effort */ }
+    try {
+      // ForceGraph3D exposes _destructor for clean unmount.
+      graph3d._destructor?.();
+    } catch (_) { /* best-effort */ }
+    graph3d = null;
+  }
+  // Either way, wipe the host element — a half-mounted canvas can linger
+  // here even when the JS handle is null (e.g. mount threw mid-init).
+  const c = document.getElementById('graph-3d');
+  if (c) c.innerHTML = '';
+}
+
+// Wire webglcontextlost / webglcontextrestored on the renderer's canvas.
+// Called once after the initial mount. Context loss = Chrome's GPU
+// process crashed or VRAM ran out — the #1 cause of flakiness per the
+// 2026 troubleshooting threads. Without this, the canvas goes black and
+// the user sees no signal. With it, they get a recovery prompt + auto-
+// rebuild on restore.
+function _wireContextLossHandlers() {
+  const canvas = graph3d?.renderer?.()?.domElement;
+  if (!canvas) return;
+  canvas.addEventListener('webglcontextlost', (e) => {
+    // preventDefault is required for the restore event to fire later.
+    e.preventDefault();
+    console.warn('[graph] WebGL context lost — GPU process crash or VRAM exhaustion');
+    _destroyGraph();
+    _renderGraphError(
+      'GPU context lost.',
+      null,
+      'Chrome\'s GPU process likely crashed or VRAM filled up. ' +
+      'Hard refresh (Cmd+Shift+R) — if it keeps happening, check ' +
+      '<code>chrome://gpu</code> for repeated GPU crashes.'
+    );
+  });
+  canvas.addEventListener('webglcontextrestored', () => {
+    console.info('[graph] WebGL context restored — reloading graph');
+    loadGraph3D();
+  });
+}
+
 export async function loadGraph3D() {
   // Pre-flight: bail with a clean error if the browser can't render at all.
   // Avoids the noisy THREE.WebGLRenderer console stack trace and gives the
@@ -329,6 +479,15 @@ export async function loadGraph3D() {
   const block = _detectWebGLBlocker();
   if (block) {
     _renderGraphError(block.reason, null, block.hintHTML);
+    // Still fetch the graph payload so search keeps working as a node
+    // browser even when the 3D canvas can't mount. Match-count updates
+    // via _updateMatchCount → _searchableNodes() falling back to
+    // graph3dData. Without this, search would silently no-op every time
+    // WebGL was unavailable.
+    try {
+      if (!graph3dData) graph3dData = await api.graph3d();
+      _updateMatchCount();
+    } catch (_) { /* search degradation only; not worth surfacing */ }
     return;
   }
   try {
@@ -399,6 +558,11 @@ export async function loadGraph3D() {
         });
       const controls = graph3d.controls();
       if (controls) controls.zoomSpeed = 5.0;
+      // Hook into WebGL context loss so a GPU process crash surfaces
+      // as a recovery prompt instead of a silent black canvas. Only
+      // wire on first mount — subsequent loadGraph3D() reuse the
+      // existing renderer + canvas, so the listeners persist.
+      _wireContextLossHandlers();
     }
 
     // Apply any current state (search + highlight) once nodes are live.
@@ -406,7 +570,11 @@ export async function loadGraph3D() {
     _updateMatchCount();
   } catch(e) {
     console.error('Graph3D load failed:', e);
-    graph3d = null;   // let next loadGraph3D rebuild from scratch
+    // Full teardown — previously this just nulled the handle, leaving
+    // the half-mounted canvas/renderer attached to the DOM. After a few
+    // retries that orphaned chain would exhaust Chrome's per-tab WebGL
+    // context budget and every subsequent mount would silently fail.
+    _destroyGraph();
     const msg = (e && e.message) ? e.message : String(e);
     _renderGraphError(msg,
       /webgl|gl\b/i.test(msg)
@@ -445,10 +613,12 @@ export function activate() {
   setTimeout(() => {
     if (!graph3dData) loadGraph3D();
     else resize();
-    // Populate the mode dropdown + apply default mode (latest) so the
-    // spotlight pre-loads on first open.
-    _populateSessionOptions();
-    if (_highlightTier.size === 0) setHighlightMode('latest');
+    // Pre-load the latest recall so the spotlight is immediately
+    // visible on first open. Skips when the user has already pinned a
+    // card (don't overwrite their selection).
+    if (_highlightTier.size === 0 && _highlightMode !== 'pinned') {
+      setHighlightMode('latest');
+    }
   }, 300);
 }
 

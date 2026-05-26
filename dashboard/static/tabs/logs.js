@@ -36,8 +36,11 @@ export function switchLogFeed(name) {
   ['errors','daemon','dashboard'].forEach(f => {
     document.getElementById('feed-' + f).style.display = f === name ? '' : 'none';
   });
+  // Hide the sub-feed badge immediately + roll the tab badge so the
+  // operator sees their click reflected without waiting for the next poll.
   if (name === 'errors') document.getElementById('err-badge').style.display = 'none';
   if (name === 'dashboard') document.getElementById('dash-err-badge').style.display = 'none';
+  _recomputeLogsBadge();
   loadLogs();
 }
 
@@ -65,13 +68,25 @@ function _captureClientError(source, message, stack) {
   });
   while (_clientErrors.length > MAX_CLIENT_ERRORS) _clientErrors.shift();
   // Flash the badge on the Dashboard sub-feed unless it's currently visible.
+  // Roll the tab badge in lockstep so client errors lift it without
+  // waiting for the 15s dash-err-badge poll to fire.
   if (activeLogFeed !== 'dashboard') {
     const b = document.getElementById('dash-err-badge');
-    if (b) { b.textContent = _clientErrors.length; b.style.display = ''; }
+    if (b) { b.textContent = String(_clientErrors.length); b.style.display = ''; }
+    _recomputeLogsBadge();
   }
 }
 
+// Idempotency guard — _wireClientErrorCapture replaces window.onerror,
+// console.error, and registers unhandledrejection. Double-wiring would
+// create a chain of wrappers (new → old → original) so every error event
+// would cascade through N layers and N captures land in _clientErrors.
+// Single-init in current architecture, but cheap insurance against
+// future drift (hot module reload, double-init bug).
+let _clientErrorsWired = false;
 function _wireClientErrorCapture() {
+  if (_clientErrorsWired) return;
+  _clientErrorsWired = true;
   // Existing window.onerror handler still updates document.title for the
   // legacy at-a-glance indicator; we wrap it so capture still happens.
   const _legacyOnError = window.onerror;
@@ -227,28 +242,54 @@ async function loadDaemonLogs() {
   }
 }
 
-let lastSeenErrorCount = -1;
+// ── Unread-error counters ─────────────────────────────────────────────
+// Two sub-feeds (errors, dashboard) each track a baseline ("count when
+// the user last looked"). The tab-title badge is the SUM of unread for
+// every source so opening Logs always reveals every source's queue at a
+// glance — previously the tab badge only reflected brain errors and
+// silently swallowed new dashboard errors. _recomputeLogsBadge() is the
+// single setter for #logs-badge — each source updates its own sub-feed
+// badge then calls this to roll up.
+let _seenBrainErrCount = -1;   // /api/errors baseline
+let _seenDashErrCount  = -1;   // dashboard-errors + client ring baseline
+
+function _recomputeLogsBadge() {
+  const logsBadge = document.getElementById('logs-badge');
+  if (!logsBadge) return;
+  let total = 0;
+  for (const id of ['err-badge', 'dash-err-badge']) {
+    const b = document.getElementById(id);
+    if (!b || b.style.display === 'none') continue;
+    total += parseInt(b.textContent || '0', 10) || 0;
+  }
+  if (total > 0) {
+    logsBadge.textContent = String(total);
+    logsBadge.style.display = '';
+  } else {
+    logsBadge.style.display = 'none';
+  }
+}
+
 async function _checkErrBadge() {
   const logsTab = document.getElementById('tab-logs');
   const isViewing = logsTab && logsTab.classList.contains('active');
   try {
     const d = await api.errors({ hours: 1, limit: 1 });
     const errBadge = document.getElementById('err-badge');
-    const logsBadge = document.getElementById('logs-badge');
-    if (lastSeenErrorCount < 0) lastSeenErrorCount = d.count;
+    if (_seenBrainErrCount < 0) _seenBrainErrCount = d.count;
     if (isViewing && activeLogFeed === 'errors') {
-      lastSeenErrorCount = d.count;
+      _seenBrainErrCount = d.count;
       errBadge.style.display = 'none';
       loadErrors();
-    } else if (d.count > lastSeenErrorCount) {
-      const diff = d.count - lastSeenErrorCount;
-      errBadge.textContent = diff; errBadge.style.display = '';
-      logsBadge.textContent = diff; logsBadge.style.display = '';
+    } else if (d.count > _seenBrainErrCount) {
+      const diff = d.count - _seenBrainErrCount;
+      errBadge.textContent = String(diff);
+      errBadge.style.display = '';
     } else {
       errBadge.style.display = 'none';
-      logsBadge.style.display = 'none';
     }
   } catch(e) { console.error('[dashboard] err-badge check failed:', e); }
+  _recomputeLogsBadge();
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -263,6 +304,10 @@ export function init() {
 
   // Background poll for new dashboard errors — drives the badge so the
   // operator sees regression clusters without manually clicking the tab.
+  // Diff-based against `_seenDashErrCount` so the badge counts NEW
+  // errors since the user last opened the Dashboard sub-feed, matching
+  // the brain-error badge semantics. Without diff tracking the badge
+  // would show the lifetime total and never clear.
   poll.register({
     key: 'dash-err-badge',
     interval: 15000,
@@ -274,12 +319,19 @@ export function init() {
         const total = totalServer + totalClient;
         const badge = document.getElementById('dash-err-badge');
         if (!badge) return;
-        if (total > 0 && activeLogFeed !== 'dashboard') {
-          badge.textContent = total;
+        const logsTab = document.getElementById('tab-logs');
+        const isViewing = logsTab && logsTab.classList.contains('active');
+        if (_seenDashErrCount < 0) _seenDashErrCount = total;
+        if (isViewing && activeLogFeed === 'dashboard') {
+          _seenDashErrCount = total;
+          badge.style.display = 'none';
+        } else if (total > _seenDashErrCount) {
+          badge.textContent = String(total - _seenDashErrCount);
           badge.style.display = '';
         } else {
           badge.style.display = 'none';
         }
+        _recomputeLogsBadge();
       } catch (e) { /* don't recurse into _captureClientError here */ }
     },
   });
