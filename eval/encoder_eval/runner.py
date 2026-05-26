@@ -96,7 +96,14 @@ def main():
     parser.add_argument('--corpus', default='realchat',
                         choices=['realchat', 'longmem'])
     parser.add_argument('--stages', default='0-0',
-                        help='Comma-separated inclusive item ranges, e.g. "0-0,1-2"')
+                        help='Comma-separated inclusive item ranges, e.g. "0-0,1-2". '
+                             'Ignored when --stratify is set.')
+    parser.add_argument('--stratify', type=int, default=0, metavar='PER_AXIS',
+                        help='Stratified sample mode: pick N items per axis. '
+                             'Overrides --stages. Each axis becomes its own '
+                             'stage so checkpoint stops fire at axis boundaries.')
+    parser.add_argument('--stratify-seed', type=int, default=42,
+                        help='RNG seed for stratified sampling (reproducible).')
     parser.add_argument('--run-name', default=None,
                         help='Output directory name under eval/encoder_eval/reports/')
     parser.add_argument('--skip-probes', default='',
@@ -110,7 +117,36 @@ def main():
     versions = _parse_versions(args.versions)
     raw_items = _load_corpus(args.corpus)
     items = [_normalize_item(it, i, args.corpus) for i, it in enumerate(raw_items)]
-    stages_spec = _parse_stages(args.stages, len(items))
+
+    if args.stratify > 0:
+        from eval.longmem.harness import _item_axis
+        import random
+        per_axis = args.stratify
+        rng = random.Random(args.stratify_seed)
+        # Group by axis, prefer smaller items (faster encoding)
+        by_axis: Dict[str, List[Dict[str, Any]]] = {}
+        for it in items:
+            ax = _item_axis(it)
+            by_axis.setdefault(ax, []).append(it)
+        stages_spec = []
+        letters = 'ABCDEFGHIJKLMN'
+        for i, axis in enumerate(sorted(by_axis.keys())):
+            pool = by_axis[axis]
+            # Sort by total turn count ascending, take bottom-half-shuffled
+            pool_sorted = sorted(pool, key=lambda it: sum(
+                len(s) for s in (it.get('haystack_sessions') or [])))
+            pool_bot = pool_sorted[: max(per_axis * 4, len(pool_sorted) // 2)]
+            rng.shuffle(pool_bot)
+            picked = pool_bot[:per_axis]
+            if not picked:
+                continue
+            stages_spec.append({
+                'name': f"stage_{letters[i] if i < len(letters) else i}_{axis}",
+                'indices': [items.index(p) for p in picked],
+                'range': (axis, len(picked)),
+            })
+    else:
+        stages_spec = _parse_stages(args.stages, len(items))
 
     run_name = args.run_name or f"encoder_eval_{datetime.utcnow():%Y%m%d_%H%M%S}"
     out_dir = ROOT / 'eval' / 'encoder_eval' / 'reports' / run_name
@@ -124,8 +160,13 @@ def main():
           file=sys.stderr)
     print(f"  stages    : {len(stages_spec)}", file=sys.stderr)
     for s in stages_spec:
-        print(f"    {s['name']}: items[{s['range'][0]}..{s['range'][1]}] "
-              f"({len(s['indices'])} items)", file=sys.stderr)
+        r = s['range']
+        if isinstance(r[0], int):
+            scope = f"items[{r[0]}..{r[1]}]"
+        else:
+            scope = f"axis={r[0]} (n={r[1]})"
+        print(f"    {s['name']}: {scope} ({len(s['indices'])} items)",
+              file=sys.stderr)
     print(f"  out_dir   : {out_dir}", file=sys.stderr)
     if skip_probes:
         print(f"  skip_probes: {skip_probes}", file=sys.stderr)
