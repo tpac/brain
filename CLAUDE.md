@@ -344,18 +344,22 @@ Who created a node. Format: `category:process`. Edges carry the same tag so ever
 
 ### Encoder prompts: DB is authoritative, sync to `.py` before committing
 
-The live prompts for encoder agents live in the `interactions` table in `brain_logs.db`. The `.py` files next to each encoder (`encoding_prompt.py`, `community_enrichment_prompt.py`, `consolidation_enrichment_prompt.py`, `healer_prompt.py`) are **seed-only** — they bootstrap fresh brains that have no DB entry yet. They must mirror the DB's latest version so a `git clone` inherits the mature prompts, not a stale v1.
+The live prompts for encoder agents live in the `interactions` table in `brain_logs.db`. The `.py` files next to each encoder (`encoding_prompt.py`, `community_enrichment_prompt.py`, `consolidation_enrichment_prompt.py`, `healer_prompt.py`) are **seed-only** — they bootstrap fresh brains that have no DB entry yet. They must mirror the **production-ACTIVE** version (not the highest registered) so a `git clone` inherits the prompt the runtime is actually using, never an untested dormant candidate.
 
-**Discipline**: after ANY `register_interaction` call that touches one of the four encoder prompts, run:
+**Discipline** for a normal prompt change:
 
 ```bash
-./dev sync-prompts           # write DB latest → .py files
-./dev sync-prompts --check   # CI-style non-zero-exit drift check
+register_interaction(name, template)         # registers as v(N+1), DORMANT
+set_interaction_active(name, version=N+1)    # flips the runtime pointer
+./dev sync-prompts                           # mirrors ACTIVE → .py files
+./dev sync-prompts --check                   # CI-style non-zero-exit drift check
 ```
 
-Commit the `.py` change together with whatever prompted the registration. Never edit the `.py` files by hand to change prompt behavior — that won't affect runtime and will silently drift from the DB. Use `register_interaction`, then sync.
+**Discipline** for an eval-gated prompt change (e.g. v22 ship gate): register DORMANT, run the eval, then activate + sync. Do **not** sync between register and activate — `sync-prompts` deliberately mirrors only the active version, so dormant candidates cannot leak into the seed file and be picked up by fresh-brain installs that skipped the eval.
 
-`tests/test_prompt_sync.py` holds the contract: each seed file must export `SYSTEM_PROMPT`, fresh brains must seed all four prompts, and seed must never overwrite an externally-registered version.
+Commit the `.py` change together with whatever prompted the registration. Never edit the `.py` files by hand to change prompt behavior — that won't affect runtime and will silently drift from the DB.
+
+`tests/test_prompt_sync.py` holds the contract: each seed file must export `SYSTEM_PROMPT`, fresh brains must seed all four prompts, sync must mirror the active version (not the latest registered), and seed must never overwrite an externally-registered version.
 
 ### Python runtime — use `./dev`
 

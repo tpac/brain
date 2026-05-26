@@ -116,6 +116,49 @@ class TestFreshBrainSeeding:
         finally:
             brain.close()
 
+    def test_sync_grabs_active_not_latest_version(self, tmp_path):
+        """`sync_prompts._fetch_active` must mirror the ACTIVE version, not
+        the highest registered one.
+
+        Regression guard: if someone changes the fetch back to ORDER BY
+        version DESC, dormant candidates (e.g. an eval-gated v22 registered
+        but not yet activated) would leak into the seed file and fresh
+        brains would skip the eval gate. This test locks the active-version
+        semantics.
+        """
+        from servers.brain import Brain
+        from servers.tools.sync_prompts import _fetch_active
+        db = str(tmp_path / 'brain.db')
+        brain = Brain(db_path=db)
+        try:
+            # v1 was seeded + auto-activated by Brain.__init__.
+            initial_v1 = brain.get_interaction_prompt('s1e')
+            assert initial_v1
+
+            # Register v2 as DORMANT — do NOT activate.
+            dormant_v2 = 'DORMANT v2 — must not leak into seed.\n' * 20
+            result = brain._interaction_dal.register(
+                name='s1e', template=dormant_v2,
+                parameters='{}', created_by='test')
+            assert result['version'] == 2
+
+            # Fetch via sync's helper. Must return v1 (active), NOT v2 (latest).
+            fetched = _fetch_active(brain.logs_conn, 's1e')
+            assert fetched is not None
+            assert fetched['version'] == 1, (
+                f'_fetch_active returned v{fetched["version"]} — must return '
+                f'the ACTIVE version (v1), not the highest registered (v2). '
+                f'Dormant candidates leaking into the seed bypasses eval gates.')
+            assert fetched['template'] == initial_v1
+
+            # Now activate v2. Fetch must follow.
+            brain._interaction_dal.set_active('s1e', 2, set_by='test')
+            fetched_after = _fetch_active(brain.logs_conn, 's1e')
+            assert fetched_after['version'] == 2
+            assert fetched_after['template'] == dormant_v2
+        finally:
+            brain.close()
+
     def test_seed_doesnt_override_externally_registered_version(self, tmp_path):
         """After an external register + set_active bumps a prompt to v2,
         a subsequent seed call must leave v2 as the active version — not
