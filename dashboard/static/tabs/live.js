@@ -9,7 +9,7 @@
 import { api } from '/static/lib/api.js';
 import { poll } from '/static/lib/poll.js';
 import bus from '/static/lib/bus.js';
-import { escapeHtml, localTime, identityChipHTML } from '/static/lib/dom.js';
+import { el, escapeHtml, localTime, identityChipHTML } from '/static/lib/dom.js';
 import { loadNodeDetail } from '/static/lib/node_detail.js';
 import * as graph from './graph.js';
 
@@ -672,178 +672,17 @@ async function loadEncodingActivity() {
 
     container.innerHTML = '';
 
+    // Merge S1 + S2 runs into a single list, newest-first.
     const allRuns = [];
-    for (const run of runsD.runs) {
-      allRuns.push({type: 's1e', data: run, ts: run.start_ts || ''});
-    }
-    for (const run of s2Runs) {
-      allRuns.push({type: 's2', data: run, ts: run.start_ts || ''});
-    }
-    allRuns.sort((a,b) => (b.ts || '').localeCompare(a.ts || ''));
+    for (const run of runsD.runs) allRuns.push({ type: 's1e', data: run, ts: run.start_ts || '' });
+    for (const run of s2Runs)     allRuns.push({ type: 's2',  data: run, ts: run.start_ts || '' });
+    allRuns.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
 
     for (const item of allRuns) {
-      if (item.type === 's2') {
-        const run = item.data;
-        const div = document.createElement('div');
-        div.className = 'hook-entry enc-entry';
-        div.dataset.scale = 's2';
-        const unit = s2UnitFromType(run.type);
-        const isConsol = unit.type === 'consolidation';
-        const isHealer = unit.type === 'healer';
-        // Encoding feed uses the shorter "S2 CONSOLIDATE" label vs the
-        // decoding feed's "S2 CONSOLIDATION" — the row is denser here.
-        const color = unit.fg;
-        const label = isConsol ? 'S2 CONSOLIDATE' : unit.label;
-        div.style.borderLeftColor = color;
-        const t = localTime(run.start_ts, 'time');
-        const actionCount = (run.synthesized||[]).length + (run.archived||[]).length + (run.kept||[]).length + (run.evolved||[]).length;
-
-        const headerSummary = isConsol ? (actionCount + ' actions')
-                              : isHealer ? escapeHtml((run.summary||'').substring(0, 80))
-                              : escapeHtml((run.summary||'').substring(0, 60));
-        let html = '<div class="hook-header" onclick="toggleHookBody(this)">' +
-          '<span class="hook-badge" style="background:' + color + ';color:#000">' + label + '</span>' +
-          '<span class="hook-time">' + t + '</span>' +
-          '<span class="hook-size">' + headerSummary + '</span>' +
-          (isConsol ? '<button class="hook-details-btn" style="margin-left:auto" onclick="event.stopPropagation();toggleConsolPrompt(this.parentElement.parentElement)">Show Prompt</button>' : '') +
-          '</div>';
-
-        if (run.o_summary || run.k_summary) {
-          html += '<div class="hook-prompt">' + escapeHtml(run.k_summary || run.o_summary || '') + '</div>';
-        }
-
-        html += '<div class="hook-body hook-body--padded">';
-
-        if (isConsol) {
-          for (const n of (run.synthesized || [])) {
-            html += '<div class="enc-entry enc-sub-row enc-sub-row--clickable created" data-kind="created" onclick="loadNodeDetail(&quot;' + (n.id||'') + '&quot;)">' +
-              '<span class="enc-kind created">SYNTHESIZED</span> ' +
-              '<span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ' +
-              '<span class="enc-title">' + escapeHtml(n.title || '') + '</span>' +
-              (n.content ? '<div class="enc-meta-line">' + escapeHtml((n.content||'').substring(0, 400)) + '</div>' : '') +
-              '</div>';
-          }
-          for (const n of (run.archived || [])) {
-            html += '<div class="enc-entry enc-sub-row enc-sub-row--clickable enc-sub-row--archived" onclick="loadNodeDetail(&quot;' + (n.id||'') + '&quot;)">' +
-              '<span class="enc-kind" style="background:#663333;color:#ff8888">ARCHIVED</span> ' +
-              '<span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ' +
-              '<span class="enc-title">' + escapeHtml(n.title || '') + '</span>' +
-              (n.content ? '<div class="enc-meta-line enc-meta-line--dim">' + escapeHtml((n.content||'').substring(0, 250)) + '</div>' : '') +
-              '</div>';
-          }
-          for (const e of (run.evolved || [])) {
-            html += '<div class="enc-entry enc-sub-row">' +
-              '<span class="enc-kind" style="background:#444400;color:#ffcc00">EVOLVED</span> ' +
-              escapeHtml(e.survivor || '') + ' <span style="color:#ffcc00">supersedes</span> ' +
-              '<span style="opacity:0.6">' + escapeHtml(e.archived || '') + '</span></div>';
-          }
-          for (const e of (run.kept || [])) {
-            html += '<div class="enc-entry enc-sub-row">' +
-              '<span class="enc-kind" style="background:#003344;color:#45B7D1">KEPT</span> ' +
-              escapeHtml(e.source || '') + ' <span style="color:#45B7D1">↔</span> ' +
-              escapeHtml(e.target || '') +
-              (e.description ? '<div class="enc-meta-line enc-meta-line--dim">' + escapeHtml(e.description.substring(0, 250)) + '</div>' : '') +
-              '</div>';
-          }
-          if (run.journal) {
-            html += '<div style="margin-top:6px;padding:4px 8px;color:#666;font-size:10px;border-top:1px solid #222">' +
-              '<strong>Journal:</strong><pre style="white-space:pre-wrap;margin:4px 0;color:#888">' + escapeHtml(run.journal.substring(0, 500)) + '</pre></div>';
-          }
-        }
-        if (isHealer) {
-          if (run.o_summary) html += '<div class="enc-tier-row"><strong style="color:' + color + '">O ' + escapeHtml(run.o_ref_type || '') + ':</strong> ' + escapeHtml(run.o_summary) + '</div>';
-          if (run.k_summary) html += '<div class="enc-tier-row"><strong style="color:#ffaa33">K ' + escapeHtml(run.k_ref_type || '') + ':</strong> ' + escapeHtml(run.k_summary) + '</div>';
-          if (run.summary) html += '<div class="enc-tier-row"><strong style="color:#33ff88">Δ ' + escapeHtml(run.ref_type || 'healer_generated') + ':</strong> ' + escapeHtml(run.summary) + '</div>';
-        } else if (isConsol) {
-          html += '<div class="consol-prompt-body" style="display:none"><pre style="white-space:pre-wrap;color:#aaa;font-size:10px;max-height:600px;overflow-y:auto">Loading...</pre></div>';
-        } else {
-          if (run.o_summary) html += '<div class="enc-tier-row"><strong style="color:#45B7D1">O:</strong> ' + escapeHtml(run.o_summary) + '</div>';
-          if (run.k_summary) html += '<div class="enc-tier-row"><strong style="color:#ffaa33">K:</strong> ' + escapeHtml(run.k_summary) + '</div>';
-          if (run.summary) html += '<div class="enc-tier-row"><strong style="color:#33ff88">Δ:</strong> ' + escapeHtml(run.summary) + '</div>';
-
-          for (const c of (run.communities || [])) {
-            const matColor = c.maturity === 'settled' ? '#33ff88' :
-                             c.maturity === 'active' ? '#ffcc00' :
-                             c.maturity === 'forming' ? '#45B7D1' : '#888';
-            html += '<div class="enc-entry created" style="margin:3px 0;padding:4px 8px;cursor:pointer" onclick="loadNodeDetail(&quot;' + (c.id||'') + '&quot;)">' +
-              '<span class="enc-kind created">COMMUNITY</span> ' +
-              '<span style="color:' + matColor + ';font-size:10px;font-weight:bold;margin-right:4px">' + (c.maturity||'?').toUpperCase() + '</span>' +
-              '<span class="enc-title">' + escapeHtml(c.title || '') + '</span>' +
-              '<span style="color:#666;font-size:10px;margin-left:6px">' + (c.members||0) + ' members</span>' +
-              (c.narrative ? '<div class="enc-meta-line">' + escapeHtml(c.narrative) + '</div>' : '') +
-              (c.content ? '<div class="enc-meta-line enc-meta-line--dim">' + escapeHtml((c.content||'').substring(0, 300)) + '</div>' : '') +
-              (c.open_questions ? '<div class="enc-meta-line enc-meta-line--warn">Open: ' + escapeHtml(c.open_questions) + '</div>' : '') +
-              '</div>';
-          }
-        }
-
-        if (!actionCount && !run.summary) {
-          html += '<div class="enc-empty-note">(no write actions)</div>';
-        }
-        html += '</div>';
-
-        div.innerHTML = html;
-        container.appendChild(div);
-        continue;
-      }
-      const run = item.data;
-      const div = document.createElement('div');
-      div.className = 'hook-entry enc-entry';
-      div.dataset.scale = 's1';
-      div.style.borderLeftColor = '#aa66ff';
-      const t = localTime(run.start_ts, 'time');
-      const nodeCount = run.nodes ? run.nodes.length : 0;
-      const edgeCount = run.edges ? run.edges.length : 0;
-
-      const sid = run.session_id ? run.session_id.substring(0, 8) : '';
-      let html = '<div class="hook-header" onclick="toggleHookBody(this)">' +
-        '<span class="hook-badge" style="background:#aa66ff;color:#000">S1 ENCODE</span>' +
-        '<span class="hook-time">' + t + '</span>' +
-        (sid ? '<span class="hook-session">' + sid + '</span>' : '') +
-        '<span class="hook-id">#' + (run.counter || '') + '</span>' +
-        '<span class="hook-size">' + nodeCount + ' actions</span>' +
-        '<button class="hook-details-btn" style="margin-left:auto" onclick="event.stopPropagation();toggleEncPrompt(this.parentElement.parentElement)">Show Prompt</button>' +
-      '</div>';
-
-      if (run.prompt_info) {
-        html += '<div class="hook-prompt">' + escapeHtml(run.prompt_info) + '</div>';
-      }
-
-      html += '<div class="hook-body hook-body--padded">';
-      for (const n of (run.nodes || [])) {
-        const kind = n.kind === 'revised' ? 'REVISED' : 'CREATED';
-        const kindClass = n.kind === 'revised' ? 'revised' : 'created';
-        html += '<div class="enc-entry enc-sub-row enc-sub-row--clickable ' + kindClass + '" data-kind="' + kindClass + '" onclick="loadNodeDetail(&quot;' + (n.id||'') + '&quot;)">' +
-          '<span class="enc-kind ' + kindClass + '">' + kind + '</span> ' +
-          '<span class="type-badge type-' + (n.type||'') + '">' + (n.type||'') + '</span> ' +
-          '<span class="enc-title">' + escapeHtml(n.title || '') + '</span>' +
-          (n.content ? '<div class="enc-meta-line">' + escapeHtml((n.content||'').substring(0, 150)) + '</div>' : '') +
-          '</div>';
-      }
-      for (const e of (run.edges || []).slice(0, 8)) {
-        html += '<div class="enc-entry enc-sub-row connected" data-kind="connected">' +
-          '<span class="enc-kind connected">CONNECTED</span> ' +
-          escapeHtml(e.source_title || '') + ' <span style="color:#aa66ff">—' + (e.relation||'') + '→</span> ' +
-          escapeHtml(e.target_title || '') + '</div>';
-      }
-      if ((run.edges || []).length > 8) {
-        html += '<div style="color:#555;font-size:10px;padding:2px 8px">+' + ((run.edges || []).length - 8) + ' more edges</div>';
-      }
-      if (!(run.nodes || []).length && !(run.edges || []).length) {
-        html += '<div class="enc-empty-note">(no write actions)</div>';
-      }
-      html += '</div>';
-
-      html += '<div class="enc-prompt-body" style="display:none"><pre>';
-      if (run.encoder_prompt) {
-        html += escapeHtml(run.encoder_prompt);
-      } else {
-        html += '(no prompt file found — encoding ran before prompt logging was added)';
-      }
-      html += '</pre></div>';
-
-      div.innerHTML = html;
-      container.appendChild(div);
+      container.appendChild(
+        item.type === 's2'
+          ? _renderS2RunCard(item.data)
+          : _renderS1EncodeCard(item.data));
     }
     // Re-apply the scale filter — entries we just appended haven't been
     // seen by filterByScale yet, so a previously-set "S2 Graph" filter
@@ -854,10 +693,308 @@ async function loadEncodingActivity() {
   } catch(e) { console.error('loadEncodingActivity error:', e); }
 }
 
-// One toggler — three named exports preserved as thin wrappers so the
-// inline `onclick="toggleX(...)"` handlers in renderRecallEntry +
-// loadEncodingActivity keep working without surgery. `lazyLoad` runs the
-// first time we expand, populating the <pre> via API (consolidation only).
+// ── Encoding-card helpers ─────────────────────────────────────────────
+// Three card shapes (S1 encode / S2 consolidation / S2 healer/community),
+// all sharing the same hook-header + hook-body envelope. Each helper
+// returns the top-level card element with all listeners attached via
+// el()'s onclick → addEventListener mapping — no inline `onclick=`
+// strings, no `window.toggle*` globals, no string-concatenated HTML.
+
+// Wire a "Show Prompt" / "Hide Prompt" button to its collapsible body.
+// `lazyLoad` is an async function called the first time the body is
+// expanded — its return value populates the <pre>. Used by the
+// consolidation card to fetch the prompt on-demand from /api/.
+function _wirePromptToggle(button, body, lazyLoad) {
+  button.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const showing = body.style.display !== 'none';
+    if (showing) {
+      body.style.display = 'none';
+      button.textContent = 'Show Prompt';
+      return;
+    }
+    body.style.display = 'block';
+    button.textContent = 'Hide Prompt';
+    if (lazyLoad) {
+      const pre = body.querySelector('pre');
+      if (pre && pre.textContent === 'Loading...') {
+        try { pre.textContent = await lazyLoad(); }
+        catch (_) { pre.textContent = '(failed to load prompt)'; }
+      }
+    }
+  });
+}
+
+// Build a clickable sub-row that opens a node detail panel on click.
+// `kindClass` styles the left-pill (.enc-kind --modifier already exists
+// for static colors; pass null for the kind-pill style if you want to
+// rely on `kindLabel`'s own background via .enc-kind).
+function _encSubRow({ kindClass, kindLabel, typeName, title, content, contentDim, nodeId }) {
+  const kindEl = el('span', { class: ['enc-kind', kindClass].filter(Boolean) }, kindLabel);
+  const typeEl = typeName ? el('span', { class: 'type-badge type-' + typeName }, typeName) : null;
+  return el('div', {
+    class: ['enc-entry', 'enc-sub-row', nodeId && 'enc-sub-row--clickable', kindClass].filter(Boolean),
+    dataset: kindClass ? { kind: kindClass } : null,
+    onclick: nodeId ? () => loadNodeDetail(nodeId) : null,
+  },
+    kindEl,
+    ' ',
+    typeEl,
+    typeEl ? ' ' : null,
+    el('span', { class: 'enc-title' }, title || ''),
+    content ? el('div', {
+      class: ['enc-meta-line', contentDim && 'enc-meta-line--dim'].filter(Boolean),
+    }, (content || '').substring(0, contentDim ? 250 : 400)) : null,
+  );
+}
+
+// O/K/Δ tier row. `accentClass` is one of enc-tier-label--{o,k,delta}
+// for default cards; healer uses the unit color via the `accentStyle`
+// override (data-driven, not design).
+function _encTierRow(letter, refType, summary, { accentClass, accentStyle } = {}) {
+  if (!summary) return null;
+  const labelText = refType ? letter + ' ' + refType + ':' : letter + ':';
+  return el('div', { class: 'enc-tier-row' },
+    el('strong', {
+      class: accentClass || null,
+      style: accentStyle || null,
+    }, labelText),
+    ' ',
+    summary,
+  );
+}
+
+function _renderS2ConsolBody(run) {
+  const out = [];
+  for (const n of (run.synthesized || [])) {
+    out.push(_encSubRow({
+      kindClass: 'created', kindLabel: 'SYNTHESIZED',
+      typeName: n.type, title: n.title, content: n.content,
+      nodeId: n.id,
+    }));
+  }
+  for (const n of (run.archived || [])) {
+    out.push(_encSubRow({
+      kindClass: 'enc-kind--archived enc-sub-row--archived',
+      kindLabel: 'ARCHIVED',
+      typeName: n.type, title: n.title, content: n.content, contentDim: true,
+      nodeId: n.id,
+    }));
+  }
+  for (const e of (run.evolved || [])) {
+    out.push(el('div', { class: 'enc-entry enc-sub-row' },
+      el('span', { class: 'enc-kind enc-kind--evolved' }, 'EVOLVED'),
+      ' ',
+      e.survivor || '',
+      ' ',
+      el('span', { class: 'enc-kind--evolved' }, 'supersedes'),
+      ' ',
+      el('span', { style: { opacity: 0.6 } }, e.archived || ''),
+    ));
+  }
+  for (const e of (run.kept || [])) {
+    out.push(el('div', { class: 'enc-entry enc-sub-row' },
+      el('span', { class: 'enc-kind enc-kind--kept' }, 'KEPT'),
+      ' ',
+      e.source || '',
+      ' ',
+      el('span', { class: 'enc-kind--kept' }, '↔'),
+      ' ',
+      e.target || '',
+      e.description ? el('div', { class: 'enc-meta-line enc-meta-line--dim' },
+        e.description.substring(0, 250)) : null,
+    ));
+  }
+  if (run.journal) {
+    out.push(el('div', { class: 'enc-journal' },
+      el('strong', null, 'Journal:'),
+      el('pre', { class: 'enc-journal-text' }, run.journal.substring(0, 500)),
+    ));
+  }
+  return out;
+}
+
+function _renderS2HealerBody(run, unitColor) {
+  // Healer tier rows use the unit color (data-driven), not the fixed
+  // O/K/Δ accents the default branch uses.
+  return [
+    _encTierRow('O', run.o_ref_type, run.o_summary,                   { accentStyle: { color: unitColor } }),
+    _encTierRow('K', run.k_ref_type, run.k_summary,                   { accentClass: 'enc-tier-label--k' }),
+    _encTierRow('Δ', run.ref_type || 'healer_generated', run.summary, { accentClass: 'enc-tier-label--delta' }),
+  ];
+}
+
+function _renderS2DefaultBody(run) {
+  const out = [
+    _encTierRow('O', '', run.o_summary, { accentClass: 'enc-tier-label--o' }),
+    _encTierRow('K', '', run.k_summary, { accentClass: 'enc-tier-label--k' }),
+    _encTierRow('Δ', '', run.summary,   { accentClass: 'enc-tier-label--delta' }),
+  ];
+  for (const c of (run.communities || [])) {
+    const matColor = c.maturity === 'settled' ? '#33ff88'
+                   : c.maturity === 'active'  ? '#ffcc00'
+                   : c.maturity === 'forming' ? '#45B7D1' : '#888';
+    out.push(el('div', {
+      class: 'enc-entry enc-community-row',
+      onclick: () => loadNodeDetail(c.id || ''),
+    },
+      el('span', { class: 'enc-kind created' }, 'COMMUNITY'),
+      ' ',
+      el('span', { class: 'enc-community-maturity', style: { color: matColor } },
+        (c.maturity || '?').toUpperCase()),
+      el('span', { class: 'enc-title' }, c.title || ''),
+      el('span', { class: 'enc-community-members' }, (c.members || 0) + ' members'),
+      c.narrative ? el('div', { class: 'enc-meta-line' }, c.narrative) : null,
+      c.content ? el('div', { class: 'enc-meta-line enc-meta-line--dim' },
+        (c.content || '').substring(0, 300)) : null,
+      c.open_questions ? el('div', { class: 'enc-meta-line enc-meta-line--warn' },
+        'Open: ' + c.open_questions) : null,
+    ));
+  }
+  return out;
+}
+
+function _renderS2RunCard(run) {
+  const unit       = s2UnitFromType(run.type);
+  const isConsol   = unit.type === 'consolidation';
+  const isHealer   = unit.type === 'healer';
+  const color      = unit.fg;
+  // Encoding feed uses the shorter "S2 CONSOLIDATE" label vs the decoding
+  // feed's "S2 CONSOLIDATION" — the row is denser here.
+  const label      = isConsol ? 'S2 CONSOLIDATE' : unit.label;
+  const t          = localTime(run.start_ts, 'time');
+  const actionCount = (run.synthesized || []).length + (run.archived || []).length
+                    + (run.kept || []).length + (run.evolved || []).length;
+  const headerSummary = isConsol ? (actionCount + ' actions')
+                      : isHealer ? (run.summary || '').substring(0, 80)
+                      : (run.summary || '').substring(0, 60);
+
+  // Build body section based on shape, plus the optional consol prompt
+  // collapsible (lazy-loaded on first expand).
+  const bodyRows = isConsol ? _renderS2ConsolBody(run)
+                 : isHealer ? _renderS2HealerBody(run, color)
+                 :            _renderS2DefaultBody(run);
+  if (!actionCount && !run.summary) {
+    bodyRows.push(el('div', { class: 'enc-empty-note' }, '(no write actions)'));
+  }
+  const body = el('div', { class: 'hook-body hook-body--padded' }, bodyRows);
+
+  // Consolidation cards get a Show Prompt button + lazy-loaded prompt
+  // body underneath. Other S2 shapes (healer, community) don't.
+  let consolPromptBody = null;
+  let showPromptBtn = null;
+  if (isConsol) {
+    consolPromptBody = el('div', { class: 'consol-prompt-body', style: { display: 'none' } },
+      el('pre', { class: 'enc-prompt-pre' }, 'Loading...'),
+    );
+    showPromptBtn = el('button', { class: 'hook-details-btn hook-details-btn--right' }, 'Show Prompt');
+  }
+
+  const header = el('div', { class: 'hook-header' },
+    el('span', { class: 'hook-badge', style: { background: color, color: '#000' } }, label),
+    el('span', { class: 'hook-time' }, t),
+    el('span', { class: 'hook-size' }, headerSummary),
+    showPromptBtn,
+  );
+  header.addEventListener('click', () => body.classList.toggle('open'));
+
+  if (isConsol && showPromptBtn && consolPromptBody) {
+    _wirePromptToggle(showPromptBtn, consolPromptBody, async () => {
+      const d = await api.consolidationPrompt(1);
+      return d.user_content || d.error || '(no prompt available)';
+    });
+  }
+
+  return el('div', {
+    class: 'hook-entry enc-entry',
+    dataset: { scale: 's2' },
+    style: { borderLeftColor: color },
+  },
+    header,
+    (run.o_summary || run.k_summary)
+      ? el('div', { class: 'hook-prompt' }, run.k_summary || run.o_summary || '')
+      : null,
+    body,
+    consolPromptBody,
+  );
+}
+
+function _renderS1EncodeCard(run) {
+  const t         = localTime(run.start_ts, 'time');
+  const nodeCount = run.nodes ? run.nodes.length : 0;
+  const sid       = run.session_id ? run.session_id.substring(0, 8) : '';
+
+  // Body: created/revised nodes, then up to 8 edges, then overflow line.
+  const bodyRows = [];
+  for (const n of (run.nodes || [])) {
+    const kindClass = n.kind === 'revised' ? 'revised' : 'created';
+    const kindLabel = n.kind === 'revised' ? 'REVISED' : 'CREATED';
+    bodyRows.push(_encSubRow({
+      kindClass, kindLabel,
+      typeName: n.type, title: n.title,
+      content: n.content,
+      nodeId: n.id,
+    }));
+  }
+  for (const e of (run.edges || []).slice(0, 8)) {
+    bodyRows.push(el('div', {
+      class: 'enc-entry enc-sub-row connected',
+      dataset: { kind: 'connected' },
+    },
+      el('span', { class: 'enc-kind connected' }, 'CONNECTED'),
+      ' ',
+      e.source_title || '',
+      ' ',
+      el('span', { class: 'enc-edge-arrow' }, '—' + (e.relation || '') + '→'),
+      ' ',
+      e.target_title || '',
+    ));
+  }
+  if ((run.edges || []).length > 8) {
+    bodyRows.push(el('div', { class: 'enc-edge-overflow' },
+      '+' + ((run.edges || []).length - 8) + ' more edges'));
+  }
+  if (!(run.nodes || []).length && !(run.edges || []).length) {
+    bodyRows.push(el('div', { class: 'enc-empty-note' }, '(no write actions)'));
+  }
+  const body = el('div', { class: 'hook-body hook-body--padded' }, bodyRows);
+
+  // Prompt body — populated up-front from run.encoder_prompt (no lazy
+  // load needed; the API already returned it inline).
+  const encPromptBody = el('div', { class: 'enc-prompt-body', style: { display: 'none' } },
+    el('pre', { class: 'enc-prompt-pre' },
+      run.encoder_prompt || '(no prompt file found — encoding ran before prompt logging was added)'),
+  );
+  const showPromptBtn = el('button', { class: 'hook-details-btn hook-details-btn--right' }, 'Show Prompt');
+
+  const header = el('div', { class: 'hook-header' },
+    el('span', { class: 'hook-badge', style: { background: '#aa66ff', color: '#000' } }, 'S1 ENCODE'),
+    el('span', { class: 'hook-time' }, t),
+    sid ? el('span', { class: 'hook-session' }, sid) : null,
+    el('span', { class: 'hook-id' }, '#' + (run.counter || '')),
+    el('span', { class: 'hook-size' }, nodeCount + ' actions'),
+    showPromptBtn,
+  );
+  header.addEventListener('click', () => body.classList.toggle('open'));
+  _wirePromptToggle(showPromptBtn, encPromptBody, null);
+
+  return el('div', {
+    class: 'hook-entry enc-entry',
+    dataset: { scale: 's1' },
+    style: { borderLeftColor: '#aa66ff' },
+  },
+    header,
+    run.prompt_info ? el('div', { class: 'hook-prompt' }, run.prompt_info) : null,
+    body,
+    encPromptBody,
+  );
+}
+
+// toggleSurfacePrompt is still used by renderRecallEntry's "Show Prompt"
+// inline onclick (that card hasn't been migrated to el() yet). The
+// encoding-feed equivalents (toggleEncPrompt / toggleConsolPrompt) were
+// removed in the el() migration — those cards now wire their toggle
+// directly via _wirePromptToggle with closure-captured element refs.
 async function _togglePromptBody(entry, bodyClass, lazyLoad) {
   const prompt = entry.querySelector('.' + bodyClass);
   if (!prompt) return;
@@ -879,13 +1016,6 @@ async function _togglePromptBody(entry, bodyClass, lazyLoad) {
 }
 
 export function toggleSurfacePrompt(entry) { _togglePromptBody(entry, 'surface-prompt-body'); }
-export function toggleEncPrompt(entry)     { _togglePromptBody(entry, 'enc-prompt-body'); }
-export function toggleConsolPrompt(entry)  {
-  return _togglePromptBody(entry, 'consol-prompt-body', async () => {
-    const d = await api.consolidationPrompt(1);
-    return d.user_content || d.error || '(no prompt available)';
-  });
-}
 
 // ── Live split layout ─────────────────────────────────────────────────
 // Four orientations: graph-left / graph-right / graph-top / graph-bottom.

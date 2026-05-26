@@ -151,8 +151,9 @@ window.pinRecallToGraph      = live.pinRecallToGraph;
 window.filterByScale         = live.filterByScale;
 window.toggleHookBody        = live.toggleHookBody;
 window.toggleSurfacePrompt   = live.toggleSurfacePrompt;
-window.toggleEncPrompt       = live.toggleEncPrompt;
-window.toggleConsolPrompt    = live.toggleConsolPrompt;
+// toggleEncPrompt / toggleConsolPrompt removed — encoding-feed cards
+// migrated to el() builder + attached listeners. The remaining
+// renderRecallEntry inline onclick still uses toggleSurfacePrompt.
 window.switchLogFeed         = logs.switchLogFeed;
 window.loadLogs              = logs.loadLogs;
 window.loadGraph3D           = graph.loadGraph3D;

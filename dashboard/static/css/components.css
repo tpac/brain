@@ -574,3 +574,74 @@
 .trace-event--target {
   animation: traceTargetFlash 2.2s ease-out 1;
 }
+
+/* ── Encoding feed sub-row variants (loadEncodingActivity migration) ─
+ * Absorbs the inline style= attributes that the string-built encoding
+ * cards used to carry. Each variant is a semantic name for a static
+ * color pair so the JS can stay in el() / addEventListener form.
+ * The dynamic per-unit colors (S2 unit.fg for badge bg) stay as
+ * inline `style` because they're data (unit identity), not design. */
+.enc-kind--archived { background: #663333; color: #ff8888; }
+.enc-kind--evolved  { background: #444400; color: #ffcc00; }
+.enc-kind--kept     { background: #003344; color: #45B7D1; }
+
+/* O / K / Δ tier labels in the S2 default (community) card. Healer
+ * uses its unit color via inline style; only the default branch had
+ * fixed cyan/amber/green labels worth promoting to classes. */
+.enc-tier-label--o     { color: var(--accent-cyan); font-weight: bold; }
+.enc-tier-label--k     { color: var(--accent-amber); font-weight: bold; }
+.enc-tier-label--delta { color: var(--accent-green); font-weight: bold; }
+
+/* "source —relation→ target" rows in S1 encoding cards. */
+.enc-edge-arrow    { color: var(--accent-purple); }
+.enc-edge-overflow {
+  color: var(--text-faint);
+  font-size: var(--fs-xs);
+  padding: 2px 8px;
+}
+
+/* Journal block at the bottom of an S2 consolidation card. */
+.enc-journal {
+  margin-top: 6px;
+  padding: 4px 8px;
+  color: var(--text-subtle);
+  font-size: var(--fs-xs);
+  border-top: 1px solid #222;
+}
+.enc-journal-text {
+  white-space: pre-wrap;
+  margin: 4px 0;
+  color: var(--text-muted);
+}
+
+/* Community sub-row in default S2 cards. Maturity color stays inline
+ * because it's data (settled/active/forming → green/yellow/cyan). */
+.enc-community-row {
+  margin: 3px 0;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.enc-community-maturity {
+  font-size: var(--fs-xs);
+  font-weight: bold;
+  margin-right: 4px;
+}
+.enc-community-members {
+  color: var(--text-faint);
+  font-size: var(--fs-xs);
+  margin-left: 6px;
+}
+
+/* Prompt-body collapsible block — S1 encoding card and consol card both
+ * use this shape (pre with a max-height + scroll). */
+.enc-prompt-pre {
+  white-space: pre-wrap;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  max-height: 600px;
+  overflow-y: auto;
+  margin: 0;
+}
+
+/* Pushes the Show Prompt button to the right edge of .hook-header. */
+.hook-details-btn--right { margin-left: auto; }

@@ -1,54 +1,35 @@
 # Dashboard — Next Session
 
-Continuation notes for whoever picks this up. Supersedes the old
-`Dashboard-nextwork.md` (kept around for historical context but stale —
-the bug list it tracked is closed).
+Continuation notes for whoever picks this up. Phase 0/1 history + the
+substrate they built; Phase 2 retrospective (shipped); Phase 3 candidates
+(what's next); architectural rules + anti-patterns that stay in force.
 
 ---
 
-## Where we are now (2026-05-25)
+## Where we are now (2026-05-26)
 
-The dashboard was a single 3,471-line `brain_dashboard_standalone.py` with
-Python + HTML + CSS + JS all in one triple-quoted string, ~30 raw SQL
-queries inline, 162 inline `style=` attrs, 15 global JS variables, 9 racing
-`setInterval`s. Two cleanup phases landed:
+The dashboard started as a single 3,471-line
+`brain_dashboard_standalone.py` with Python + HTML + CSS + JS all in one
+triple-quoted string. Three phases of refactor have shipped:
 
-**Phase 0 (commit `26b9a88`)** — monolith → package + backdate audit.
-- Split into `dashboard/` package: `server.py`, `queries/*.py` (12
-  modules), `db.py`, `daemon_client.py`, `clock.py`, `log.py`, plus
-  thin `brain_dashboard_standalone.py` entry shim.
-- `@safe_query` decorator collapsed ~50 copies of
-  `with ro_connect/try/except/return []` boilerplate.
-- `clock.iso_window_around()` replaced two hand-rolled string-clamped
-  timestamp window sites; fixes the midnight/hour rollover bug.
-- 7 audit items: identity chips on traces, correction enrichment on node
-  detail, episodic-refs section, aspect taxonomy view, S2 Healer cards,
-  loud-by-default sweep, disconnection contract test.
+**Phase 0** (`26b9a88`) — monolith → package + backdate audit. Split into
+the `dashboard/` package; `@safe_query` decorator collapsed boilerplate;
+identity chips on traces; episodic-refs section; aspect taxonomy view;
+S2 Healer cards; loud-by-default sweep; disconnection contract test.
 
-**Phase 1 (commit `42225ec`)** — frontend substrate.
-- `static/css/`: `vars.css` (design tokens) → `base.css` (chrome) →
-  `components.css` (card/badge/chip/notif/btn primitives) → `types.css`
-  (type-color single source).
-- `static/lib/`: `api.js` (fetch wrapper + named endpoints + dedup),
-  `bus.js` (pub/sub for cross-tab signals), `poll.js` (one 1Hz
-  scheduler replaces 9 setIntervals), `dom.js` (escape-by-default
-  `el()` builder + `escapeHtml` + `localTime` + `identityChip`),
-  `types.js` (TYPE_COLORS map for the 3D graph).
-- `app.js` became an ES module. Every fetch goes through `api.*`, every
-  poll through `poll.register({key,interval,activeWhen,fetcher})`.
-- Real bugs fixed: `activeFeed='surface'` (caused all polls to misfire
-  on first load) → `'decoding'`; `% since` undefined-variable in two
-  branches of errors.py; `_corrections is list not dict` for single-id
-  get_node; 7 dead symbols deleted.
+**Phase 1** (`42225ec`) — frontend substrate. `static/css/` (vars/base/
+components/types) and `static/lib/` (api/bus/poll/dom/types) — see the
+Architecture section. `app.js` became an ES module. Every fetch through
+`api.*`, every poll through `poll.register`.
 
-**Dashboard self-monitoring** (most recent commit, see git log for SHA).
-- `dashboard/log.py` now has a 200-entry ring buffer behind `warn()`.
-- `/api/dashboard-errors` exposes it. Logs tab has a third "Dashboard"
-  sub-feed showing both server (`warn()`) and browser (`window.onerror`
-  + `console.error` + `unhandledrejection`) entries.
-- The 4 remaining silent `catch(e) {}` blocks in app.js now log.
-- Use this aggressively next session — when a panel shows blank, look
-  here first.
+**Dashboard self-monitoring** — `dashboard/log.py` ring buffer behind
+`warn()`. `/api/dashboard-errors` exposes it. Logs tab has Errors /
+Daemon / Dashboard sub-feeds — the Dashboard sub-feed shows both server
+warnings AND browser-side `window.onerror` / `console.error` /
+`unhandledrejection` entries. When a panel goes blank, look here first.
+
+**Phase 2** (`P2.1` through `P2.17`) — feature build on top of the
+substrate. See the **Phase 2 — what shipped** section below.
 
 ---
 
@@ -56,52 +37,78 @@ queries inline, 162 inline `style=` attrs, 15 global JS variables, 9 racing
 
 ```
 dashboard/
-  brain_dashboard_standalone.py   # 30-line entry shim (preserves the
-                                  # launch path: .claude/launch.json,
-                                  # test_time_window_contract.py, eval/longmem
-                                  # all hardcode this path)
+  brain_dashboard_standalone.py   # 30-line entry shim
   server.py                       # HTTP routes only — no SQL
   daemon_client.py                # TCP client (ONE sanctioned bridge)
   db.py                           # path resolution + ro_connect helper
-                                  # (mode=ro pinned; contract test catches drift)
   clock.py                        # utc_cutoff + iso_window_around
   log.py                          # warn() + recent() ring buffer
   query.py                        # @safe_query decorator
   contract.py                     # Prometheus envelope helpers
-                                  # (helpers ready; NOT YET adopted by routes)
+                                  # (helpers ready; NOT YET adopted)
   queries/                        # 12 modules, one per data source
     recalls.py / encoding.py / s2_runs.py / traces.py /
     errors.py / system.py / sessions.py / stats.py /
-    explorer.py / graph.py / aspects.py / legacy.py / _meta.py
+    explorer.py / graph.py / aspects.py / insights_scanner.py /
+    _meta.py
   static/
     index.html
-    style.css                     # LEGACY — being migrated to components.css
-                                  # tab-by-tab. New code should reach for
-                                  # vars/base/components/types first.
+    style.css                     # LEGACY — being migrated to
+                                  # components.css tab-by-tab. New code
+                                  # reaches for vars/base/components/types
+                                  # first. Loaded AFTER components.css so
+                                  # legacy rules win on same-specificity
+                                  # collisions — bump new rules by stacking
+                                  # classes (.nd-section.nd-section--source)
+                                  # rather than !important.
     css/
-      vars.css                    # design tokens (color, spacing, font, radius)
+      vars.css                    # design tokens
       base.css                    # reset + tabs + stats-bar + toolbar
       components.css              # .card .badge .chip .notif .btn .code
-      types.css                   # .type--<name> single source for type → color
+                                  # + nd-* + insights-* + recall-entry
+                                  # + graph-pin-chip + trace-event--target
+      types.css                   # .type--<name> single source
     lib/
       api.js                      # fetch wrapper + named endpoints
       bus.js                      # ~40-line pub/sub
-      poll.js                     # one 1Hz scheduler
-      dom.js                      # el() / escapeHtml / localTime / identityChip
-      types.js                    # TYPE_COLORS (mirrors types.css)
-    app.js                        # ES module — top has imports, bottom has
-                                  # window.* exposures for inline handlers
+      poll.js                     # one 1Hz scheduler (visibility-gated)
+      dom.js                      # el() + escapeHtml + localTime +
+                                  # identityChip + relativeTime
+      types.js                    # TYPE_COLORS map for the 3D graph
+      scales.js                   # SCALE_COLORS + scaleColor() helper
+      node_detail.js              # node-detail panel (el()-builder rewrite)
+    tabs/                         # per-tab modules — each exports
+                                  # {init, activate, deactivate}
+      live.js                     # decoding + encoding feeds, layout
+                                  # picker, insights panel, recall card
+                                  # hover/pin
+      graph.js                    # 3D ForceGraph + search highlighter
+                                  # + pin chip + WebGL lifecycle
+      explorer.js                 # node search + type filter
+      logs.js                     # errors + daemon + dashboard sub-feeds
+                                  # + client-error capture wrap
+      health.js                   # system status + aspects + insights
+      traces.js                   # trace chain rendering + flash target
+    app.js                        # 90-line bootstrap — switchTab,
+                                  # page-chrome polls (stats/sessions),
+                                  # inline-handler window.* exposures,
+                                  # init-once guard for tab modules
 tests/
-  test_dashboard_disconnection.py # 2 invariants: no servers.* imports,
-                                  # no non-ro SQLite connects (docstrings
-                                  # may legitimately mention sqlite3.connect)
+  test_dashboard_disconnection.py # invariants: no servers.*/hooks.*
+                                  # imports, all SQLite connects = ro
 ```
 
-Run: `python3 dashboard/brain_dashboard_standalone.py` → `http://127.0.0.1:47303`
+Run: `python3 dashboard/brain_dashboard_standalone.py` →
+`http://127.0.0.1:47303`
 
-Contract tests (`./dev pytest tests/test_dashboard_disconnection.py`) lock
-the architecture boundary. Don't relax them — when something needs daemon
-behavior, route through `daemon_client.daemon_send` over TCP.
+Lifecycle contract (every `tabs/*.js` module):
+- `init()` — called ONCE on app boot. Wires polls + bus subs.
+- `activate()` — called when the tab becomes visible. Lazy-loads data.
+- `deactivate()` — called when leaving. Most modules no-op; `poll.js`
+  auto-gates on `activeWhen` + `document.hidden`.
+
+`app.js` guards `init()` with an `_inittedTabs` Set so a future
+double-init can't duplicate subscriptions.
 
 ---
 
@@ -110,269 +117,259 @@ behavior, route through `daemon_client.daemon_send` over TCP.
 **Architectural rules** (in priority order):
 
 1. **The dashboard never imports from `servers.*` or `hooks.*`.** Locked
-   by `tests/test_dashboard_disconnection.py:test_no_imports_from_servers_or_hooks`.
-   If you need brain behavior, ask the daemon over TCP via
-   `daemon_client.daemon_send(cmd, args)`. The ONE documented exception
-   is `queries/aspects.py:_repo_seed_path()` which reads the brain's
-   `aspects_v1.json` config — same file the brain reads, so it's
-   consuming the same source-of-truth, not creating a parallel funnel.
+   by `tests/test_dashboard_disconnection.py`. One documented exception:
+   `queries/aspects.py:_repo_seed_path()` reads the brain's
+   `aspects_v1.json` — same source-of-truth, not a parallel funnel.
 
-2. **All SQLite connections open with `mode=ro`.** Locked by
-   `test_all_sqlite_connects_are_read_only`. Use
-   `dashboard.db.ro_connect(path)` or the `@safe_query(component, path_fn)`
-   decorator — both pin `mode=ro` for you.
+2. **All SQLite connections open with `mode=ro`.** Locked by the same
+   contract test. Use `ro_connect()` or `@safe_query`.
 
-3. **Loud by default.** Every `except Exception` either logs via
-   `dashboard.log.warn(component, message, exc=e)` OR is an intentional
-   inner-row silence with a comment explaining why. Silent `pass` is a
-   bug. The ring buffer makes loud cheap — entries don't disappear, they
-   sit in the Dashboard sub-feed under the Logs tab.
+3. **Loud by default.** Every `except` either logs via
+   `dashboard.log.warn(component, msg, exc=e)` OR is an intentional
+   inner-row silence with a comment. Silent `pass` is a bug.
 
-4. **Time windows route through `clock.iso_window_around()`.** No
-   hand-rolled string slicing on timestamps — broken on hour / midnight
-   rollover. `utc_cutoff(...)` for general "N hours ago" cutoffs.
+4. **Time windows route through `clock.iso_window_around()`.**
+   `utc_cutoff(...)` for "N hours ago" cutoffs. No hand-rolled string
+   slicing on timestamps.
 
 5. **`@safe_query(component, db_path_fn)` for single-DB queries.**
-   First arg of the wrapped function is `conn`. Errors auto-route to
-   `warn()`. Returns `default` (usually `[]`) on any failure. Don't
-   re-implement the with-ro_connect/try/except shape — the decorator
-   already does it.
+   First arg is `conn`. Errors auto-route to `warn()`. Returns default
+   `[]` on failure.
 
-6. **Frontend: ES module. `<script type="module" src="app.js">` in
-   `index.html`.** All identifiers are module-scoped; inline
-   `onclick="X()"` requires `window.X = X` mounted at the bottom of
-   `app.js`. Future: migrate inline handlers to `addEventListener` so
-   the window-exposure block shrinks.
+6. **Frontend: ES module.** Inline `onclick="X()"` requires
+   `window.X = X` at the bottom of `app.js`. Migrating to
+   `addEventListener` is incremental — new code prefers attached
+   listeners (see `node_detail.js`, recall card click handlers).
 
 7. **Polling routes through `poll.register({key,interval,activeWhen,fetcher})`.**
-   Never call `setInterval` directly. Per-tab `activeWhen` predicates
-   stop polling when the tab is hidden / inactive.
+   Never `setInterval` directly. `key` deduplicates — re-registering
+   replaces the entry, no duplicate firings.
 
-8. **Fetch routes through `api.*` named endpoints.** Never call `fetch()`
-   directly. `api.recalls({...})` not `fetch('/api/recalls?...')`. The
-   wrapper dedups concurrent identical URLs.
+8. **Fetch routes through `api.*` named endpoints.** Never bare `fetch()`.
+   The wrapper dedups concurrent identical URLs.
 
 9. **DOM construction uses `el(tag, attrs, ...kids)` from `lib/dom.js`.**
-   Strings auto-escape; insert raw HTML via `html('...')`. This is
-   incrementally migrating — `app.js` still has `innerHTML += '...'`
-   patterns. New code should use `el()`.
+   Strings auto-escape; raw HTML via `html('...')`. Migrating
+   incrementally; `loadEncodingActivity` still has innerHTML soup and is
+   the next target.
+
+10. **Cross-module signals via `bus.publish(topic, payload)`.** Topic
+    naming `<source>:<event>`. Current catalog:
+    - `tab:active` — fires on switchTab with `{name}`.
+    - `recall:event` — published by live.js poller; both live.js
+      renderer and graph.js highlight subscribe.
+    - `graph:pinned` — published by graph.js when a recall card pins
+      the highlight (`{eventId}`) or unpins (`{eventId:null}`).
+      live.js applies `.recall-entry--pinned` accordingly.
+    - `live:layout` — fires on divider drag / layout change. graph.js
+      resizes ForceGraph3D in response.
+    - `insights:tick` — fires every 60s with the insights payload.
+
+11. **`data-scale` is the contract for top-level cards only.**
+    `filterByScale` selects `[data-scale]` — inner sub-rows
+    (CREATED / REVISED / CONNECTED inside encoding cards) must NOT
+    carry `data-scale`, or they'll get filtered when their parent
+    card is visible. Class names like `.enc-entry` are overloaded
+    across both layers; only the attribute is reliable.
 
 **Naming conventions**:
 
 - CSS classes: `.card .card--s1 .card--success`; `.badge .badge--green
   .badge--ghost-amber`; `.chip .chip--id .chip--session .chip--identity`.
   Generic primitive + accent modifier.
-- Type colors: `.type--<name>` (e.g. `.type--lesson`). The `.type-badge`
-  base class plus the modifier. Single source: `static/css/types.css`
+- Type colors: `.type--<name>`. Single source: `static/css/types.css`
   mirrored by `static/lib/types.js`.
-- JS module-local globals OK at module top; cross-module signals go
-  through `bus.publish(topic, payload)`. Topic naming `<source>:<event>`
-  (e.g. `recall:event`, `graph:activation`).
-- Endpoint shapes: still inconsistent (some bare arrays, some
-  `{events:[...]}`, some `{runs:[...]}`). Prometheus envelope helpers
-  are in `contract.py` but no route migrated yet — see remaining work
-  below.
+- JS module-local globals OK at module top; cross-module state goes
+  through `bus.publish`.
 
 ---
 
-## Other-session boundary
+## Cross-module flash-survives-poll pattern
 
-A second session is doing Phase B (episodic-references write path) +
-schema v29 (hex `trace_events.id`). They're in `servers/*`, `eval/*`,
-and a handful of test files. Their commits land between mine:
+When module A wants to apply a visible effect to DOM owned by module B,
+AND module B re-renders periodically (poll), the effect dies on each
+re-render. The pattern shipped in P2.17 for trace-flash:
 
-```
-cd0c26a Phase B surface: encoder input markers + MCP source_refs schema
-f088343 Schema v29 + DAL/dispatch trace_id discipline
-42225ec Dashboard P1: frontend substrate
-26b9a88 Dashboard refactor: monolith → package, audit + reground, P0
-```
+1. Module A (`node_detail.js`) stores pending state at module scope:
+   `_pendingFlashTraceId` + `_pendingFlashUntil` (timeout).
+2. Module A exports a `reapplyFlashIfPending()` function.
+3. Module B (`traces.js`) calls `reapplyFlashIfPending()` at the end of
+   its render loop.
+4. The pending state auto-clears after the timeout window so subsequent
+   B renders don't re-flash forever.
 
-No file overlap — dashboard is purely additive in its own subtree. Their
-work makes `node_source_refs` actually populate; once it does, the
-"Encoded from N traces" section in the node-detail panel will start
-showing real data (the endpoint already works against the empty table).
-
-When you start next session: `git status` first, see what they pushed,
-align before touching anything.
+Use this when bus events feel like overkill (single producer/consumer
+pair, no fan-out) and direct import is acceptable.
 
 ---
 
-## Remaining cleanup debt (do as you touch each tab)
+## Phase 2 — what shipped
 
-These are tracked here, NOT as a separate "cleanup phase" — Tom's rule is
-**every feature includes downstream cleanup**. As you touch a tab to add
-features, drag its share of this list with you.
+Commits `P2.1` through `P2.17`. The original plan had 3 items; the
+session expanded scope as features uncovered substrate gaps.
 
-### Frontend split (the big one)
+**P2.1 Per-tab module split.** `app.js` 1500 → 90 lines. Six tab
+modules each exporting `{init, activate, deactivate}`. The split was
+the prerequisite for everything else — separating concerns lets each
+tab own its own polls + bus subs without leaking globals.
 
-`app.js` is still ~1500 lines, one file. The substrate (api, bus, poll,
-dom) is in; the per-tab split is not. Per-tab modules planned:
+**P2.2 Layout pivot.** Live tab became a graph + stream split with
+draggable divider, 4-orientation picker, drag-divider persistence to
+localStorage. Standalone Graph tab dropped — only one ForceGraph3D
+instance now, mounted in Live's left pane. Explorer + Health pushed
+into a "⋯" overflow menu. Persist via `dashboard.liveSplitPct` and
+`dashboard.liveLayoutMode` localStorage keys.
 
-```
-static/tabs/
-  live.js       # decoding + encoding feeds + S2 entries on Live
-  graph.js      # 3D ForceGraph + legend + activations
-  explorer.js   # node search + detail panel
-  logs.js       # errors + daemon + dashboard sub-feeds
-  health.js     # system status + aspects + insights
-  traces.js     # trace chain rendering
-```
+**P2.3 Cleanup pass.** Inline `style=` migration for several panels
+(insights, health, node-detail). `node_detail.js` rewritten to `el()`
+builder with section helpers. `logs.js` extracted shared
+`_renderLogEntry`. `health.js` migrated inline styles to component
+classes. `queries/legacy.py` deleted (dead). Endpoint cleanup:
+`/api/hook-log` and `/api/assembler-comparison` removed.
 
-Each module exports `{init, activate, deactivate}`. `app.js` becomes a
-~30-line bootstrap that imports and routes.
+**P2.4 Graph search highlighter.** Replaced the community-legend pane
+with a search input that dim-by-defaults non-matches. `_searchQuery`
++ `_nodeMatches`; pan-to-first-match on Enter. Search also works
+when WebGL fails (`_searchableNodes()` falls back to `graph3dData`).
 
-**Trigger**: The layout pivot (Live = graph + stream side-by-side, push
-Explorer + Health into a "⋯ More" overflow) — there's no clean way to
-merge two tabs into one without first separating them out, so the pivot
-forces the split.
+**P2.5 Recall activations on graph.** Three-tier persistent
+highlight: used (white, 1.0) / activation (green, 0.7) /
+returned (blue, 0.4). Persistent — no decay — until next recall or
+Refresh. Latest / Per-session modes. Pinned mode (added in P2.16)
+locks the highlight to a specific event.
 
-### Inline styles → component classes
+**P2.6 Insights MVP.** `queries/insights_scanner.py` with 3 rule
+families: S2 silence, empty selections, error spike. `/api/insights/live`
+endpoint. Panel renders into Live tab top; cards have severity / icon /
+title / detail / evidence; dismiss × per page-session.
 
-162 inline `style="..."` attributes in `app.js` (counted at audit time).
-The primitives in `components.css` (`.card`, `.badge`, `.chip`, etc.)
-cover the common shapes. Migration policy: when you rewrite a panel's
-render code (which the per-tab split forces), convert its `style=`
-attributes to classes. Don't do a separate "migration phase" — too easy
-to break rendering.
+**P2.13 Persistent dim-by-default highlight + WebGL error pane.**
+Replaced 5s pulse decay with the persistent model. When WebGL fails
+the graph pane shows a chrome://gpu diagnostic instead of silent blank.
+
+**P2.14/P2.15 ForceGraph3D pin to 1.80.0.** Library pinned to a
+specific version after a fabrication caught by Tom (see P2.15 commit
+body for the honest correction).
+
+**P2.16 WebGL hygiene + pin-to-graph UX + GC audit.** WebGL context
+leak fixes (3 vectors closed); whole-card click pin with hover
+preview; dropped redundant highlight-mode dropdown; scale-filter
+selector bug fix; encoding feed session filter; logs unified badge;
+layout picker repositioned out of absolute over content;
+`s2RenderedChains` prune + idempotency guards + central init guard.
+
+**P2.17 Source-ref navigation.** Source-refs in node-detail get
+prominent `--source` styling (accent-blue heading, tinted card, chip
+button). Clicking "Open in Traces tab" navigates with session filter,
+scrolls target into view, flashes gold. The flash survives the 5s
+traces poll re-render via `reapplyTraceFlashIfPending`. Traces query
+switched ASC→DESC + limit 200→500 (was silently dropping target
+traces in busy sessions).
+
+---
+
+## Phase 3 candidates
+
+These are real but uncommitted-to. Pick when you start the next
+session.
+
+### loadEncodingActivity → el() migration (cleanup debt)
+
+`tabs/live.js:loadEncodingActivity` (~250 lines) still builds HTML via
+string concatenation with inline `style=` and inline `onclick=`. Last
+big inline-style holdout. Migration mirrors what `node_detail.js`
+already does — `el()` builder, section helpers, addEventListener for
+clicks. Drop window.* exposure for `toggleEncPrompt` /
+`toggleConsolPrompt` etc. in favor of attached listeners.
 
 ### Prometheus envelope adoption
 
-Server-side: `contract.envelope_ok(data, warnings=...)` and
-`envelope_error(msg, error_type=...)` exist; no route emits them yet.
-Client-side: `lib/api.js:unwrap(body)` handles BOTH legacy shapes and
-the envelope.
+Server-side `contract.envelope_ok/error` exist but no route emits them.
+Client `lib/api.js:unwrap()` handles both shapes. Migration plan: each
+new endpoint uses the envelope; each existing endpoint converts when
+its caller's render code is being rewritten anyway. Don't half-migrate
+one route without updating its caller in the same commit.
 
-**Migration plan**: each new endpoint uses the envelope. Each existing
-endpoint converts when its caller's render code is being rewritten
-anyway (i.e. during the per-tab split). Don't half-migrate one route at
-a time without updating its caller in the same commit.
+### Dashboard self-health surface
+
+No one's asked for it but it'd close the loop. A small panel surfacing:
+- Active polls + last-fire times (debug data already in
+  `poll._debug_entries()`).
+- WebGL context count (estimate via probe).
+- Bus topic subscriber counts (`bus._debug_topics()`).
+- Memory growth indicators (DOM node count, `_eventsById` size,
+  `s2RenderedChains` size).
+
+Probably lives under Health tab as a "Dashboard diagnostics"
+sub-section. Not urgent — `warn()` ring already covers most failure
+visibility.
 
 ### Type-color server endpoint
 
 `static/css/types.css` and `static/lib/types.js` mirror each other
-manually. Both encode the same name → color map. Eventual fix: add
-`/api/type-colors` that returns the canonical map (probably derived from
-the brain's aspect taxonomy), have CSS variables and JS read from a
-single place at runtime. Not urgent — the duplication is only between
-two files, both of which I own.
-
-### "Encoded from N traces" — waiting on Phase B writes
-
-`/api/node/{id}/source-refs` works against an empty `node_source_refs`
-table today. Once Phase B's write path ships (the other session is
-on this), the section will populate automatically. No work needed on
-the dashboard side until/unless the shape changes.
+manually. Eventual fix: `/api/type-colors` returns the canonical map
+(probably derived from brain aspect taxonomy). Low priority — only
+two files, both dashboard-owned.
 
 ### Static asset hardening
 
-`server.py` serves `/static/*` from a path-checked `STATIC_DIR`. It
-defends against `..` traversal but doesn't set `Cache-Control` headers.
-For local-dev this is fine (forces reload during refactoring); for any
-hypothetical packaged distribution, add cache headers.
+`server.py` serves `/static/*` from a path-checked `STATIC_DIR`.
+Defends against `..` traversal but doesn't set `Cache-Control`
+headers. Fine for local-dev (forces reload during refactoring); add
+cache headers if/when packaging.
 
-### Other-session schema changes the dashboard should watch
+### Insights LLM-summarized version
 
-The other session is changing schemas. The dashboard's read queries are
-loud-by-default — if they break, `warn()` lands in the Dashboard
-sub-feed. But proactive monitoring beats reactive: when reviewing their
-commits, scan for `ALTER TABLE` / `DROP COLUMN` / new tables that the
-dashboard might want to surface. Recent additions worth surfacing:
-
-- `trace_embeddings` (v27) — no dashboard view yet. Could be a "% of
-  traces embedded" indicator on the Health tab.
-- `node_source_refs` (v27, populating from Phase B) — endpoint exists,
-  UI section exists, just waiting for writes.
-- v29 hex `trace_events.id` — handled (cursor switched to ISO ts).
-
----
-
-## Phase 2 — features Tom asked for
-
-Order matters. Each pulls a tab through the per-module split + migrates
-its inline styles, per the cleanup rule above.
-
-### 1. Layout pivot — Live = graph + stream + "⋯ More" overflow
-
-The big visual move. Live becomes a split view: 3D graph on the left
-(~60% wide), activity stream on the right (~40%), so recall activations
-on the graph are visible while the stream still updates. Explorer and
-Health move into a "⋯" overflow menu in the tab bar.
-
-Bus topics that come online during this:
-- `tab:active` — fires on switchTab, carries the tab name. Tabs use
-  this to lazy-load.
-- `live:layout` — when the user drags the split divider, the graph
-  needs to re-fit.
-
-The 3D graph (`ForceGraph3D` from CDN) needs `renderer.setSize(w, h)`
-+ `camera.updateProjectionMatrix()` on resize — already done in the
-existing switchTab logic; just needs wiring to the new split.
-
-### 2. Recall activations on the graph
-
-When a new recall trace lands, light up the surfaced nodes on the 3D
-graph for 5s. Pulse intensity = `used_ids` (selected by judge) brighter
-than `returned_ids` (candidates).
-
-Substrate:
-- `poll.js` already polls `/api/recalls` and publishes new events.
-- New bus topic: `graph:activation` with `{used_ids:[...], returned_ids:[...]}`.
-- Graph tab subscribes; uses the existing `ForceGraph3D.nodeColor()` or a
-  custom three.js material to apply the pulse.
-
-Risk: ForceGraph3D from CDN doesn't expose a per-node pulse cleanly. If
-it doesn't, fall back to color-flash + size-flash on the existing node
-material. Document the limitation if the visual is degraded.
-
-### 3. Insights agent MVP — rule-based
-
-Read recent encoding/recall/error activity. Detect anomalies:
-- An S2 unit hasn't fired in N hours
-- A node was recalled K times but never selected → probably noise
-- A community has > N members but no encoding edge in M days
-- The judge success rate dropped > 30% in the last hour
-- Error count spiked > 3× over the prior baseline
-
-Implementation: `queries/insights_scanner.py` — pure derived analysis
-from existing query outputs, no new tables. Renders into a "Insights"
-section at the top of the Live tab.
-
-LLM-summarized version comes later — keep rule-based for the MVP. Each
-insight has `{severity, icon, title, detail, evidence:[trace_ids|node_ids]}`.
+Rule-based MVP shipped in P2.6. Eventual: LLM that reads the same
+trace data and produces narrative anomalies. Each insight still has
+`{severity, icon, title, detail, evidence:[trace_ids|node_ids]}` — the
+contract doesn't change, only the producer.
 
 ---
 
 ## Anti-patterns — don't do these
 
-These came up during P0/P1 and would have rotted the codebase:
+These came up during P0/P1/P2 and would have rotted the codebase:
 
 - **Don't write a new `_serve_X` method that takes raw SQL.** Add a
-  function in `queries/<area>.py` decorated with `@safe_query`; the
-  route handler just calls it and renders JSON. `server.py` should
-  contain ZERO SQL.
+  function in `queries/<area>.py` with `@safe_query`; the route handler
+  just calls + renders JSON. `server.py` has ZERO SQL.
 
-- **Don't add a new `setInterval`.** Use `poll.register({key, ...})`.
-  Inactive tabs should poll zero unless they need background badges.
+- **Don't add a new `setInterval`.** Use `poll.register`.
 
-- **Don't add a new `let global_state_X` at module top in app.js.**
-  Module-local is fine; cross-tab state goes through `bus.publish`.
+- **Don't add a new `let global_state_X` at module top in `app.js`.**
+  Module-local in a tab is fine; cross-tab state via `bus.publish`.
 
 - **Don't open `sqlite3.connect(...)` directly.** Use `ro_connect()`.
-  The contract test catches this but the better defense is reflex.
+  Contract test catches this.
 
-- **Don't import from `servers.*`.** If you need brain state, send a
-  TCP command via `daemon_send(cmd, args)`. If the daemon doesn't expose
-  the command yet, that's a brain-side change, not a dashboard hack.
+- **Don't import from `servers.*`.** TCP via `daemon_send(cmd, args)`.
 
 - **Don't write `style="background:...;color:..."` inline.** Reach for
-  `.card .card--s1` etc. If the primitive doesn't exist for what you
-  need, add it to `components.css` — but try the existing ones first.
+  `.card .card--s1` etc. Add to `components.css` if missing.
 
-- **Don't write `} catch(e) {}` or `except Exception: pass`.** Use
-  `warn(component, 'what failed', exc=e)` (Python) or
-  `console.error('[dashboard] X failed:', e)` (JS). Silent failure is
-  the bug class CLAUDE.md spends 200 words on.
+- **Don't write `} catch(e) {}` or `except Exception: pass`.**
+  `warn(component, 'what failed', exc=e)` or
+  `console.error('[dashboard] X failed:', e)`. Silent failure is the
+  bug class CLAUDE.md spends 200 words on.
+
+- **Don't apply `addEventListener` to children inside an
+  `innerHTML`-rewriting container without thinking about lifecycle.**
+  Each re-render orphans the listeners and re-attaches new ones.
+  Either: (a) use event delegation on the stable parent, (b) bind
+  listeners on `document.createElement` results coupled to a
+  bounded-eviction strategy (see recall card listeners + MAX_ENTRIES),
+  or (c) use inline `onclick` (still acceptable for simple cases).
+
+- **Don't `sel.value = X` to apply a filter when the `<option value=X>`
+  may not exist yet.** It silently becomes `''`. Pass the override
+  through the function signature (see `loadTraces(opts.session)`),
+  then sync the dropdown after the data arrives.
+
+- **Don't bump CSS class specificity with `!important`.** Stack
+  classes on the same element (`.nd-section.nd-section--source`).
+  Required because `style.css` ships after `components.css` and wins
+  on same-specificity collisions.
 
 ---
 
@@ -385,7 +382,9 @@ These came up during P0/P1 and would have rotted the codebase:
   tests/test_time_window_contract.py`
 - **Inspect ring buffer**: `curl http://127.0.0.1:47303/api/dashboard-errors`
 - **Clear ring buffer**: `curl 'http://127.0.0.1:47303/api/dashboard-errors?clear=1'`
-- **Inspect poll registry from devtools console**:
+- **Inspect poll registry from devtools**:
   `await import('/static/lib/poll.js').then(m => m.poll._debug_entries())`
 - **Inspect bus subscriptions**:
   `await import('/static/lib/bus.js').then(m => m.bus._debug_topics())`
+- **Hard-refresh assets**: Cmd+Shift+R — `<link>`'d CSS and ES module
+  imports both cache aggressively in Chrome.
