@@ -67,6 +67,7 @@ eval/fixtures/brain_eval_copy.db*
 eval/fixtures/eval_daemon.log
 # Per-run eval artifacts — work-in-progress reports, not source.
 eval/longmem/reports/
+eval/encoder_eval/reports/
 eval/replay_snapshots/
 eval/reports/
 eval/aspects_v1_classified_run_summary.json
