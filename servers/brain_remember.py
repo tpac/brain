@@ -743,6 +743,35 @@ class BrainRememberMixin:
                     'persisting source_refs for node %s (%d refs)' % (
                         node_id[:12], len(source_refs)))
 
+            # Step 7 / decision 15: co_anchored auto-edge. When this node's
+            # source_refs overlap with any existing node's refs, write a
+            # structural co_anchored edge to each sibling. The graph layer
+            # is the signal — no score boost, no magnitude to guess.
+            # Excluded from candidate cosine ranking at brain_recall.py:334
+            # alongside co_accessed. Sparse refs (1-3) × small cohort →
+            # negligible cost.
+            try:
+                from .dal import GraphDAL
+                graph_dal = GraphDAL(self.conn)
+                siblings: set = set()
+                for tid in source_refs:
+                    if not isinstance(tid, str):
+                        continue
+                    for sibling_id in graph_dal.get_nodes_referencing(tid):
+                        if sibling_id != node_id:
+                            siblings.add(sibling_id)
+                for sibling_id in siblings:
+                    graph_dal.add_relation(
+                        node_id, sibling_id, 'co_anchored',
+                        description='shared episodic anchor',
+                        encoding_source='dispatch:co_anchored',
+                    )
+            except Exception as e:
+                self._log_error(
+                    'co_anchored_autoedge', e,
+                    'co_anchored auto-edge for node %s (%d refs)' % (
+                        node_id[:12], len(source_refs)))
+
         # Create connections
         if connections:
             for conn in connections:
@@ -1205,6 +1234,32 @@ class BrainRememberMixin:
                 self._log_error(
                     'source_refs_persist_revise', e,
                     'replacing source_refs on revise %s' % node_id[:12])
+
+            # Step 7: refresh co_anchored cohort after REPLACE. New refs may
+            # bring new siblings; old siblings whose shared refs are now gone
+            # become stale edges that S2Healer archives (§10.6 Responsibility 2).
+            # add_relation is idempotent — existing edges are field-preserving
+            # no-ops.
+            try:
+                from .dal import GraphDAL
+                graph_dal = GraphDAL(self.conn)
+                siblings: set = set()
+                for tid in (new_source_refs or []):
+                    if not isinstance(tid, str):
+                        continue
+                    for sibling_id in graph_dal.get_nodes_referencing(tid):
+                        if sibling_id != node_id:
+                            siblings.add(sibling_id)
+                for sibling_id in siblings:
+                    graph_dal.add_relation(
+                        node_id, sibling_id, 'co_anchored',
+                        description='shared episodic anchor',
+                        encoding_source='dispatch:co_anchored',
+                    )
+            except Exception as e:
+                self._log_error(
+                    'co_anchored_autoedge_revise', e,
+                    'co_anchored auto-edge on revise %s' % node_id[:12])
 
         return {
             'id': node_id,

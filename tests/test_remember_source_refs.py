@@ -14,7 +14,11 @@ import unittest
 
 from servers.brain import Brain
 from servers.dal import GraphDAL
-from servers.daemon_dispatch import _validate_source_refs
+from servers.daemon_dispatch import (
+    _validate_source_refs,
+    _maybe_warn_source_refs_hex_format,
+    _maybe_warn_source_refs_sparseness,
+)
 
 
 class RememberSourceRefsTest(unittest.TestCase):
@@ -130,6 +134,72 @@ class RememberSourceRefsTest(unittest.TestCase):
         self.assertEqual(gd.get_source_refs(nid), [])
         self.assertEqual(result.get('source_refs_replaced'), 0)
 
+    # ── Step 7: co_anchored auto-edge ─────────────────────────
+
+    def _has_co_anchored_edge(self, a: str, b: str) -> bool:
+        """Check whether a co_anchored relation exists between a and b
+        (direction-agnostic — physical edges are single-row per pair)."""
+        gd = GraphDAL(self.brain.conn)
+        # Try both directions; physical edges store one row per pair
+        for (s, t) in [(a, b), (b, a)]:
+            rows = self.brain.conn.execute(
+                'SELECT er.relation FROM edges e '
+                'JOIN edge_relations er ON er.edge_id = e.edge_id '
+                'WHERE e.source_id = ? AND e.target_id = ? '
+                'AND er.relation = ? AND er.archived = 0',
+                (s, t, 'co_anchored')).fetchall()
+            if rows:
+                return True
+        return False
+
+    def test_co_anchored_fires_for_shared_ref(self):
+        """Two nodes sharing one trace_id get a co_anchored edge auto-written
+        at remember() time."""
+        nid1, _ = self._create_node(title='cohort A', source_refs=['a3f5e2b1'])
+        nid2, _ = self._create_node(title='cohort B', source_refs=['a3f5e2b1'])
+        self.assertTrue(self._has_co_anchored_edge(nid1, nid2))
+
+    def test_co_anchored_skips_self(self):
+        """A node with refs but no siblings produces no co_anchored edges to
+        itself."""
+        nid, _ = self._create_node(title='solo', source_refs=['a3f5e2b1'])
+        # No siblings means no co_anchored edges from this node at all
+        rows = self.brain.conn.execute(
+            'SELECT er.relation FROM edges e '
+            'JOIN edge_relations er ON er.edge_id = e.edge_id '
+            'WHERE (e.source_id = ? OR e.target_id = ?) '
+            'AND er.relation = ? AND er.archived = 0',
+            (nid, nid, 'co_anchored')).fetchall()
+        self.assertEqual(rows, [])
+
+    def test_co_anchored_three_node_cohort(self):
+        """Three nodes anchored to the same trace get co_anchored edges
+        to each other (full clique within the cohort)."""
+        nid1, _ = self._create_node(title='A', source_refs=['a3f5e2b1'])
+        nid2, _ = self._create_node(title='B', source_refs=['a3f5e2b1'])
+        nid3, _ = self._create_node(title='C', source_refs=['a3f5e2b1'])
+        self.assertTrue(self._has_co_anchored_edge(nid1, nid2))
+        self.assertTrue(self._has_co_anchored_edge(nid1, nid3))
+        self.assertTrue(self._has_co_anchored_edge(nid2, nid3))
+
+    def test_co_anchored_no_edge_for_disjoint_refs(self):
+        """Two nodes with disjoint source_refs share no anchor — no
+        co_anchored edge."""
+        nid1, _ = self._create_node(title='X', source_refs=['a3f5e2b1'])
+        nid2, _ = self._create_node(title='Y', source_refs=['b8c9d0e1'])
+        self.assertFalse(self._has_co_anchored_edge(nid1, nid2))
+
+    def test_co_anchored_fires_on_revise_replace(self):
+        """When revise REPLACES source_refs to include a shared ref, the
+        new cohort gets co_anchored edges."""
+        nid1, _ = self._create_node(title='target', source_refs=['a3f5e2b1'])
+        nid2, _ = self._create_node(title='isolated', source_refs=['b8c9d0e1'])
+        self.assertFalse(self._has_co_anchored_edge(nid1, nid2))
+        # Now revise nid2 to share nid1's anchor
+        self.brain.revise(nid2, reason='swap anchor to join cohort',
+                          source_refs=['a3f5e2b1'])
+        self.assertTrue(self._has_co_anchored_edge(nid1, nid2))
+
     # ── dispatch validator ────────────────────────────────────
 
     def test_validator_accepts_well_formed_list(self):
@@ -166,6 +236,53 @@ class RememberSourceRefsTest(unittest.TestCase):
         ok, err = _validate_source_refs(['valid', '  '], 'test')
         self.assertFalse(ok)
         self.assertIn('empty', err)
+
+    # ── Layer 1 soft-warn validators (v22 eval gate) ──────────
+
+    def test_hex_format_warn_fires_for_placeholder(self):
+        """Encoder copied a literal `<trace-...>` from an example into
+        production — hex-format warn fires; write proceeds (refs persist)."""
+        warnings_logged = []
+        original_log = self.brain._log_warning
+        self.brain._log_warning = lambda kind, msg, **kw: warnings_logged.append((kind, msg))
+        try:
+            _maybe_warn_source_refs_hex_format(
+                self.brain, ['<trace-placeholder>', 'a3f5e2b1'], 'test')
+        finally:
+            self.brain._log_warning = original_log
+        kinds = [k for k, _ in warnings_logged]
+        self.assertIn('source_refs_hex_format', kinds)
+
+    def test_hex_format_warn_silent_on_valid_hex(self):
+        """Well-formed 8-char hex refs produce no hex-format warn."""
+        warnings_logged = []
+        original_log = self.brain._log_warning
+        self.brain._log_warning = lambda kind, msg, **kw: warnings_logged.append((kind, msg))
+        try:
+            _maybe_warn_source_refs_hex_format(
+                self.brain, ['a3f5e2b1', 'b8c9d0e1'], 'test')
+        finally:
+            self.brain._log_warning = original_log
+        self.assertEqual(warnings_logged, [])
+
+    def test_sparseness_warn_threshold_lowered_to_5(self):
+        """v22 lowered the sparsity threshold from 10 to 5 to match the
+        prompt's §7.5 teaching (1-3 typical, second-guess at 5-6)."""
+        warnings_logged = []
+        original_log = self.brain._log_warning
+        self.brain._log_warning = lambda kind, msg, **kw: warnings_logged.append((kind, msg))
+        try:
+            # 5 refs = silent (boundary)
+            _maybe_warn_source_refs_sparseness(
+                self.brain, ['a3f5e2b1'] * 5, 'test_5')
+            # 6 refs = fires
+            _maybe_warn_source_refs_sparseness(
+                self.brain, ['a3f5e2b1'] * 6, 'test_6')
+        finally:
+            self.brain._log_warning = original_log
+        kinds = [k for k, _ in warnings_logged]
+        self.assertNotIn('test_5', ' '.join(m for _, m in warnings_logged))
+        self.assertEqual(kinds.count('source_refs_sparseness'), 1)
 
 
 if __name__ == '__main__':

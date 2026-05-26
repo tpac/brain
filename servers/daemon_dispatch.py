@@ -11,6 +11,7 @@ reports whether a write lock is needed.
 
 import json
 import os
+import re
 from typing import Any, Dict, List, NamedTuple, Callable, Optional
 
 from .daemon_config import _CODE_FINGERPRINT
@@ -278,10 +279,14 @@ def _handle_backfill_vectors(brain, args, graph_changes):
         node_ids=args.get("node_ids"))}
 
 
+_HEX_TRACE_ID_RE = re.compile(r'^[0-9a-f]{8}$')
+
+
 def _validate_source_refs(refs, location: str):
     """v29 / Phase B Step 4 — validation for source_refs at the write boundary.
 
-    Returns (ok, error|None). Sparseness warning logged separately (non-fatal).
+    Returns (ok, error|None). Sparseness + hex-format warnings logged
+    separately (non-fatal).
 
     Rules:
       - Must be a list (or None — handled by caller as "no refs"; empty list
@@ -289,9 +294,11 @@ def _validate_source_refs(refs, location: str):
       - Each item must be a string. Int input rejected loudly (no coercion);
         v29 contract is hex strings end-to-end (reviewer F2).
       - Empty strings rejected.
-      - >10 refs logged as a sparseness warning (decision 13: 1-3 typical;
-        well-anchored nodes are <=5; 10+ is a fingerprint of "ref everything"
-        anti-pattern). Non-fatal — write proceeds, log fires.
+      - Hex format mismatch (^[0-9a-f]{8}$): soft warn, write proceeds
+        (reviewer F6 — catches encoder regressions earlier than S2Healer).
+      - >5 refs logged as sparseness warning (decision 13 / §7.5 v22 prompt:
+        1-3 typical; second-guess at 5-6; 10+ is "ref everything" anti-pattern).
+        Non-fatal — write proceeds, log fires.
     """
     if refs is None:
         return True, None
@@ -308,24 +315,55 @@ def _validate_source_refs(refs, location: str):
     return True, None
 
 
-def _maybe_warn_source_refs_sparseness(brain, refs, location: str):
-    """Log a sparseness warning when source_refs exceeds 10 (decision 13).
-    Non-fatal — the write proceeds. Surfaces systemic over-anchoring.
-
-    Routes through brain._log_warning for rate-limiting + file-log mirror +
-    canonical surface (reviewer F4). The previous direct INSERT into
-    hook_errors was off-schema (that table is for hook script failures, not
-    in-process brain warnings) and had no rate limit — an encoder churning
-    out 50 oversized nodes would spam the table."""
+def _maybe_warn_source_refs_hex_format(brain, refs, location: str):
+    """Soft warn when any source_refs entry doesn't match the v29 8-char hex
+    shape. Non-fatal — refs persist; S2Healer's invalid_refs_dropped_total
+    eventually cleans hallucinated ids but this surfaces them at the write
+    boundary (reviewer F6). Most common cause: encoder copied a literal
+    `<trace-...>` placeholder from an example instead of substituting real
+    hex from the conversation timeline."""
     if not refs or not isinstance(refs, list):
         return
-    if len(refs) > 10:
+    malformed = [r for r in refs
+                 if isinstance(r, str) and not _HEX_TRACE_ID_RE.match(r)]
+    if malformed:
+        try:
+            brain._log_warning(
+                'source_refs_hex_format',
+                'source_refs at %s has %d entries that do not match the v29 '
+                '8-char hex pattern (^[0-9a-f]{8}$). Examples: %r. Likely '
+                'literal example-placeholders or pre-v29 integer ids. Refs '
+                'persist; recall will degrade gracefully but S2Healer will '
+                'archive them.' % (location, len(malformed), malformed[:3]),
+                context='location=%s, malformed_count=%d' % (
+                    location, len(malformed)))
+        except Exception:
+            pass  # logging failure must never block the write
+
+
+def _maybe_warn_source_refs_sparseness(brain, refs, location: str):
+    """Log a sparseness warning when source_refs exceeds 5 (decision 13 +
+    §7.5 v22 prompt). 1-3 typical, second-guess at 5-6, 10+ is the
+    "ref everything" anti-pattern. Non-fatal — the write proceeds.
+    Surfaces systemic over-anchoring.
+
+    v22 lowered the threshold from >10 to >5 to align with the prompt's
+    sparseness teaching ("when you find yourself wanting to add a 5th or
+    6th ref, ask: would that ref actually be the one that surfaces this
+    memory next time, or is it just adjacent context?").
+
+    Routes through brain._log_warning for rate-limiting + file-log mirror +
+    canonical surface (reviewer F4)."""
+    if not refs or not isinstance(refs, list):
+        return
+    if len(refs) > 5:
         try:
             brain._log_warning(
                 'source_refs_sparseness',
                 'source_refs at %s has %d entries (decision 13: 1-3 '
-                'typical, <=5 well-anchored). Likely over-anchoring; recall '
-                'will dilute rather than focus.' % (location, len(refs)),
+                'typical, second-guess at 5-6, 10+ is anti-pattern). '
+                'Likely over-anchoring; recall will dilute rather than '
+                'focus.' % (location, len(refs)),
                 context='count=%d, location=%s' % (len(refs), location))
         except Exception:
             pass  # logging failure must never block the write
@@ -345,6 +383,7 @@ def _handle_remember(brain, args, graph_changes):
     if not ok:
         return {"ok": False, "error": err}
     _maybe_warn_source_refs_sparseness(brain, refs, 'remember')
+    _maybe_warn_source_refs_hex_format(brain, refs, 'remember')
 
     # Validate all provided fields against contract
     for field, value in args.items():
@@ -391,6 +430,8 @@ def _handle_remember_batch(brain, args, graph_changes):
         if not ok:
             return {"ok": False, "error": err}
         _maybe_warn_source_refs_sparseness(
+            brain, refs, 'remember_batch.nodes[%d]' % i)
+        _maybe_warn_source_refs_hex_format(
             brain, refs, 'remember_batch.nodes[%d]' % i)
         for field, value in spec.items():
             ok, err = validate_field(field, value)
@@ -573,6 +614,7 @@ def _handle_revise(brain, args, graph_changes):
     if not ok:
         return {"ok": False, "error": err}
     _maybe_warn_source_refs_sparseness(brain, refs, 'revise')
+    _maybe_warn_source_refs_hex_format(brain, refs, 'revise')
 
     for field, value in updates.items():
         ok, err = validate_field(field, value)
@@ -636,6 +678,8 @@ def _handle_revise_batch(brain, args, graph_changes):
         if not ok:
             return {"ok": False, "error": err}
         _maybe_warn_source_refs_sparseness(
+            brain, refs, 'revise_batch.revisions[%d]' % i)
+        _maybe_warn_source_refs_hex_format(
             brain, refs, 'revise_batch.revisions[%d]' % i)
         for field, value in spec.items():
             if field not in ("node_id", "reason"):
