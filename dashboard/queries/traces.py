@@ -14,8 +14,17 @@ from ._meta import extract_identity
 
 
 @safe_query('queries.traces', logs_db_path)
-def query_traces(conn, hours: int = 24, scale: str = '', limit: int = 200, session_id: str = ''):
-    """Read trace_events from brain_logs.db, filtered by time window + scale + session."""
+def query_traces(conn, hours: int = 24, scale: str = '', limit: int = 500, session_id: str = ''):
+    """Read trace_events from brain_logs.db, filtered by time window + scale + session.
+
+    Order/limit: DESC keeps the NEWEST `limit` events — both UI callers
+    (the Traces tab and the live S2-decode feed) re-sort within chains
+    after fetching, so wire order doesn't affect display. ASC + LIMIT 200
+    used to silently drop newer events in busy sessions (462+ events in
+    24h), which broke navigation from node-detail source-refs: the
+    target trace existed in the DB but never reached the client. Bumped
+    default limit 200 → 500 to cover the long tail.
+    """
     conditions = ["created_at > ?"]
     params = [utc_cutoff(hours=hours)]
     if scale:
@@ -28,7 +37,7 @@ def query_traces(conn, hours: int = 24, scale: str = '', limit: int = 200, sessi
     rows = conn.execute(
         "SELECT id, chain_id, scale, event_type, ref_type, ref_id, "
         "summary, metadata, session_id, created_at "
-        "FROM trace_events WHERE %s ORDER BY created_at ASC LIMIT ?" % where,
+        "FROM trace_events WHERE %s ORDER BY created_at DESC LIMIT ?" % where,
         params + [limit],
     ).fetchall()
     out = []

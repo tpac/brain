@@ -375,6 +375,63 @@
   font-style: italic;
 }
 
+/* ── Source-ref prominence (the --source modifier set) ──────────────
+ * Source-refs are the most actionable thing in the panel — they connect
+ * a memory back to the conversation event that produced it. Default
+ * .nd-section / .nd-conn (defined with `.node-detail` prefix in legacy
+ * style.css) render them like any other list, which buried them. These
+ * modifier rules need the `.node-detail` ancestor too to match that
+ * specificity — without it the legacy rules win and the source-ref
+ * section keeps its muted gray look.
+ *   - bump the section heading to a bigger, accent-colored label
+ *   - tint the card background so it visually clusters as its own group
+ *   - widen the left accent strip
+ *   - promote "→ Open in Traces tab" from italic afterthought to a real
+ *     chip button so the click affordance reads at a glance */
+/* Specificity boost — the legacy style.css ships AFTER components.css and
+ * has `.node-detail .nd-section { color: #888 }` at the same specificity
+ * as `.node-detail .nd-section--source`. Stacking both classes onto the
+ * same element (.nd-section.nd-section--source) bumps us to (0,3,0)
+ * which beats the legacy rule cleanly without !important. Same trick
+ * for the card. */
+.node-detail .nd-section.nd-section--source {
+  font-size: 12px;
+  color: var(--accent-blue);
+  font-weight: bold;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-top: 14px;
+  margin-bottom: 6px;
+}
+.node-detail .nd-conn.nd-conn--source {
+  background: rgba(126, 184, 255, 0.04);
+  border-left-width: 4px;
+  padding: 10px 12px;
+  margin: 4px 0;
+  border-radius: var(--radius-md);
+  transition: background-color 0.15s;
+}
+.node-detail .nd-conn.nd-conn--source:hover {
+  background: rgba(126, 184, 255, 0.12);
+}
+.node-detail .nd-conn.nd-conn--source .nd-conn-action {
+  display: inline-block;
+  padding: 3px 10px;
+  margin-top: 8px;
+  background: rgba(126, 184, 255, 0.12);
+  border: 1px solid rgba(126, 184, 255, 0.35);
+  border-radius: var(--radius-md);
+  color: var(--accent-blue);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 500;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.node-detail .nd-conn.nd-conn--source:hover .nd-conn-action {
+  background: rgba(126, 184, 255, 0.25);
+  border-color: rgba(126, 184, 255, 0.6);
+}
+
 /* ── Graph error fallback ─────────────────────────────────────────── */
 /* Shown when ForceGraph3D can't get a WebGL context — Chromium sandbox,
  * GPU driver, browser policy. Tells the user *why* the pane is blank
@@ -502,3 +559,18 @@
 }
 .graph-pin-chip-close:hover { opacity: 1; }
 
+/* ── Trace-event scroll-target flash ────────────────────────────────
+ * Applied to a .trace-event in the Traces tab when the user navigates
+ * there via "Open in Traces tab" from a node-detail source-ref. The
+ * keyframes pulse the background twice over 2s so the operator's eye
+ * lands on the correct row — the Traces tab can show hundreds of
+ * events per session and without this the navigation just dumps the
+ * user into a scrolled list with no visible anchor. */
+@keyframes traceTargetFlash {
+  0%   { background: rgba(255, 234, 0, 0.45);    box-shadow: inset 0 0 0 1px rgba(255, 234, 0, 0.8); }
+  60%  { background: rgba(255, 234, 0, 0.15);    box-shadow: inset 0 0 0 1px rgba(255, 234, 0, 0.4); }
+  100% { background: transparent;                box-shadow: inset 0 0 0 1px transparent; }
+}
+.trace-event--target {
+  animation: traceTargetFlash 2.2s ease-out 1;
+}

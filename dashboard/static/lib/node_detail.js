@@ -154,31 +154,98 @@ function _fieldsSection(n, meta) {
 // Navigate to Traces tab + filter to the source session of this ref. The
 // user lands on a list of chains from that session — finding THE specific
 // chain among them is still scroll-work, but at least we narrow the haul.
-function _openTraceInTracesTab(ref) {
+// Navigate to a specific trace event. Three steps:
+//   1. Switch to the Traces tab
+//   2. Apply the session filter (narrows the chain list)
+//   3. Once loadTraces resolves, scroll the target trace into view and
+//      flash-highlight it so the operator sees WHERE they landed —
+//      previously they'd switch tabs and have to hunt for the row.
+//
+// _flashTargetTrace handles the "render until found" case: if the trace
+// isn't in the first batch of 30 chains, we call _loadMoreTraces() once
+// before giving up. Most refs land in the first batch (newest-first),
+// but very old nodes can sit further down.
+async function _openTraceInTracesTab(ref) {
   const sessionId = ref && ref.session_id;
+  const traceId = ref && ref.trace_id;
   if (!sessionId || typeof window.switchTab !== 'function') return;
   window.switchTab('traces');
-  // The Traces tab's session-filter dropdown options are populated by its
-  // own loadTraces() call. We may need to wait for that to populate before
-  // setting the value. Try immediate; if the option isn't there yet, the
-  // assignment is silently dropped — set a short retry.
-  const setFilter = () => {
-    const sel = document.getElementById('trace-session-filter');
-    if (!sel) return false;
-    // Set even if the option isn't present yet; loadTraces preserves
-    // the prior value when re-populating.
-    sel.value = sessionId;
-    if (typeof window.loadTraces === 'function') window.loadTraces();
-    return true;
-  };
-  if (!setFilter()) setTimeout(setFilter, 400);
+  if (typeof window.loadTraces !== 'function') return;
+  // Pass session as an explicit opts param — `sel.value = sessionId` no
+  // longer works to force a filter, because the dropdown's <option> for
+  // this session may not exist yet (loadTraces populates options AFTER
+  // reading the current value). When the option is missing, setting
+  // .value silently becomes '' and the filter is lost. opts.session
+  // bypasses the dropdown read entirely; loadTraces then syncs the
+  // dropdown back to match.
+  try { await window.loadTraces({ session: sessionId }); }
+  catch (_) { /* keep going to fallback */ }
+  if (traceId) _flashTargetTrace(traceId);
+}
+
+// Trace-flash state. The Traces tab polls every 5s and rewrites
+// #traces-content from scratch, which destroys any class we added. We
+// stash the target trace_id at module scope and let traces.js re-apply
+// the class after each render (see _reapplyFlashOnRender bound in
+// node_detail.js init below). Cleared after the animation completes
+// so subsequent polls don't keep flashing the same row forever.
+let _pendingFlashTraceId = null;
+let _pendingFlashUntil = 0;
+
+function _flashTargetTrace(traceId) {
+  _pendingFlashTraceId = traceId;
+  _pendingFlashUntil = Date.now() + 2500;   // a bit beyond the 2.2s animation
+  _applyFlashIfPending();
+}
+
+function _applyFlashIfPending() {
+  if (!_pendingFlashTraceId) return;
+  if (Date.now() > _pendingFlashUntil) {
+    _pendingFlashTraceId = null;
+    return;
+  }
+  const find = () => document.querySelector(
+    '#traces-content .trace-event[data-trace-id="' + _pendingFlashTraceId + '"]');
+  let el = find();
+  // Not in the first batch? Click "Load more" once and retry. Two batches
+  // cover ~60 chains, enough for nearly every realistic source-ref.
+  if (!el && typeof window._loadMoreTraces === 'function') {
+    try { window._loadMoreTraces(); } catch (_) {}
+    el = find();
+  }
+  if (!el) {
+    console.warn('[node-detail] trace not visible after Load More:', _pendingFlashTraceId);
+    return;
+  }
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // Re-trigger the CSS animation by toggling the class. Removing first
+  // (in case the same event was already flashed in this session) and
+  // re-adding on the next frame forces a restart.
+  el.classList.remove('trace-event--target');
+  // void offsetHeight forces a reflow so the second classList.add
+  // registers as a new animation, not a continuation.
+  void el.offsetHeight;
+  el.classList.add('trace-event--target');
+}
+
+// Public: traces.js calls this after every render to re-apply the flash
+// if one is still pending. Bound on window for the cross-module call
+// to stay loosely coupled (no import needed in traces.js).
+export function reapplyTraceFlashIfPending() {
+  _applyFlashIfPending();
 }
 
 // Episodic refs — which traces this node was encoded from. v27 substrate
 // (node_source_refs). Each card is clickable → Traces tab + session filter.
 function _sourceRefsSection(refs) {
   if (!refs.length) return [];
-  const out = [el('div', { class: 'nd-section' },
+  // Source-refs are the most actionable thing in the panel — they
+  // connect a node back to the conversation event that produced it.
+  // The --source modifiers (vs the generic .nd-section / .nd-conn used
+  // by other panels) bump visual weight: brighter section heading,
+  // accent-tinted card background, the action link styled as a real
+  // button-chip rather than the muted italic afterthought it was.
+  const out = [el('div', { class: 'nd-section nd-section--source' },
     'Encoded from ' + refs.length + ' trace(s)')];
   for (const ref of refs) {
     if (ref.missing) {
@@ -192,7 +259,7 @@ function _sourceRefsSection(refs) {
                   + (ref.ref_type ? ' · ' + ref.ref_type : '')
                   + (sess ? ' · ' + sess : '');
     out.push(el('div', {
-      class: 'nd-conn nd-conn--clickable',
+      class: 'nd-conn nd-conn--clickable nd-conn--source',
       style: { borderLeftColor: sc },
       onclick: () => _openTraceInTracesTab(ref),
     },

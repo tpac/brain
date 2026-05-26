@@ -11,6 +11,7 @@ import { api } from '/static/lib/api.js';
 import { poll } from '/static/lib/poll.js';
 import { escapeHtml, localTime, identityChipHTML } from '/static/lib/dom.js';
 import { SCALE_COLORS } from '/static/lib/scales.js';
+import { reapplyTraceFlashIfPending } from '/static/lib/node_detail.js';
 
 let _traceChainEntries = [];
 let _traceRendered = 0;
@@ -25,11 +26,17 @@ export function onTraceScaleChange() {
   loadTraces();
 }
 
-export async function loadTraces() {
+export async function loadTraces(opts = {}) {
   try {
     const scaleFilter = document.getElementById('trace-scale-filter').value;
     const hours = document.getElementById('trace-hours-filter').value;
-    const sessionFilter = document.getElementById('trace-session-filter').value;
+    // Callers (e.g. node_detail's "Open in Traces tab") can force a
+    // session that isn't in the dropdown yet — setting the dropdown's
+    // .value to a missing option silently resets to '', so reading from
+    // it would lose the override. Explicit opts.session wins.
+    const sessionFilter = (opts.session !== undefined)
+      ? opts.session
+      : document.getElementById('trace-session-filter').value;
     const traces = await api.traces({
       hours,
       scale: scaleFilter || undefined,
@@ -40,11 +47,16 @@ export async function loadTraces() {
     document.getElementById('trace-count').textContent = traces.length + ' events (' + label + ')';
 
     const sessSelect = document.getElementById('trace-session-filter');
-    const prevVal = sessSelect.value;
+    // Sync the dropdown to the resolved sessionFilter — without this,
+    // an override passed via opts.session wouldn't visually appear in
+    // the dropdown, so the user couldn't tell which session they're
+    // looking at. `prevVal` used to track the dropdown's prior value
+    // for preservation; sessionFilter supersedes it once a caller has
+    // explicitly chosen.
     try {
       const sessions = await api.sessions();
       const opts = '<option value="">All sessions</option>' + sessions.map(s =>
-        '<option value="' + s.id + '"' + (s.id === prevVal ? ' selected' : '') + '>' + s.short + ' (' + s.events + ' events)</option>'
+        '<option value="' + s.id + '"' + (s.id === sessionFilter ? ' selected' : '') + '>' + s.short + ' (' + s.events + ' events)</option>'
       ).join('');
       sessSelect.innerHTML = opts;
     } catch(e) { /* keep existing options */ }
@@ -72,6 +84,11 @@ export async function loadTraces() {
     _traceRendered = 0;
     el.innerHTML = '';
     _renderTracesBatch(el);
+    // Re-apply the source-ref flash if one is still pending. The 5s
+    // poll rewrites #traces-content from scratch, which would otherwise
+    // destroy the .trace-event--target class added by node_detail.js.
+    // reapplyTraceFlashIfPending is a no-op when nothing's pending.
+    reapplyTraceFlashIfPending();
   } catch(e) { console.error('loadTraces', e); }
 }
 
@@ -118,7 +135,11 @@ function _renderTracesBatch(el) {
       ? '<span style="margin-left:6px">' + identityChipHTML(chainHi, chainAi) + '</span>'
       : '';
 
-    html += '<div style="background:#0a0a12;border-radius:8px;margin:6px 0;border-left:3px solid ' + color + '">';
+    // data-chain-id on the wrapper + data-trace-id on each event row let
+    // node_detail.js scroll a specific trace into view after navigating
+    // from a source-ref card. Without these attributes there'd be no
+    // selector to target the right event.
+    html += '<div class="trace-chain" data-chain-id="' + escapeHtml(chainId) + '" style="background:#0a0a12;border-radius:8px;margin:6px 0;border-left:3px solid ' + color + '">';
     html += '<div style="padding:8px 12px;display:flex;justify-content:space-between;align-items:center">';
     html += '<div><span style="color:' + color + ';font-size:12px;font-weight:bold">' + label + '</span>' + sessionTag + identityTag + '</div>';
     html += '<span style="color:#555;font-size:10px">' + localTime(firstTime) + '</span>';
@@ -127,7 +148,8 @@ function _renderTracesBatch(el) {
     events.forEach(ev => {
       const tColor = typeColors[ev.event_type] || '#666';
       const tLabel = typeLabels[ev.event_type] || ev.event_type;
-      html += '<div style="padding:4px 12px 4px 20px;border-top:1px solid #111;display:flex;gap:8px;align-items:flex-start">';
+      const traceIdAttr = ev.id ? ' data-trace-id="' + escapeHtml(String(ev.id)) + '"' : '';
+      html += '<div class="trace-event"' + traceIdAttr + ' style="padding:4px 12px 4px 20px;border-top:1px solid #111;display:flex;gap:8px;align-items:flex-start">';
       html += '<span style="flex-shrink:0;font-size:10px;font-weight:bold;color:' + tColor + ';min-width:55px">' + tLabel + '</span>';
       html += '<div style="flex:1;min-width:0">';
       if (ev.ref_type) html += '<span style="color:#666;font-size:10px;background:#1a1a2a;padding:1px 4px;border-radius:2px;margin-right:4px">' + ev.ref_type + '</span>';
