@@ -370,5 +370,67 @@ class TestCoordinator(unittest.TestCase):
         self.assertEqual(Healer.NAME, 'healer')
 
 
+class TestCommunityIdleGate(BrainTestBase):
+    """Phase 1 idle gate — skip the unit when nothing changed or too soon.
+
+    The decode is a pure function of graph state, so re-running it on an
+    unchanged graph re-derives identical, already-rejected proposals. The
+    gate (CommunityDetection._should_skip) stops that waste.
+    """
+
+    needs_embedder = False
+
+    def _unit(self):
+        from servers.scales.s2.community import CommunityDetection
+        return CommunityDetection(self.brain)
+
+    def test_cold_start_runs(self):
+        # No last-run timestamp recorded → never skip.
+        self.assertIsNone(self._unit()._should_skip())
+
+    def test_throttles_recent_run(self):
+        import time
+        self.brain.set_config('s2_community_last_run_ts', str(time.time()))
+        reason = self._unit()._should_skip()
+        self.assertIsNotNone(reason)
+        self.assertIn('throttled', reason)
+
+    def test_no_change_skips_then_new_node_wakes(self):
+        import time
+        u = self._unit()
+        u.config = dict(u.config, min_run_interval_seconds=0)  # isolate the change-gate
+        self.brain.remember(type='fact', title='old', content='c')
+        time.sleep(0.02)
+        self.brain.set_config('s2_community_last_run_ts', str(time.time()))
+        time.sleep(0.02)
+        # Nothing changed since the cutoff → skip.
+        self.assertEqual(u._should_skip(), 'no graph change since last run')
+        # A new node appears → gate opens.
+        self.brain.remember(type='fact', title='new', content='c')
+        self.assertIsNone(u._should_skip())
+
+    def test_change_gate_ignores_self_writes_and_noise(self):
+        import time
+        u = self._unit()
+        u.config = dict(u.config, min_run_interval_seconds=0)
+        a = self.brain.remember(type='fact', title='a', content='c')['id']
+        b = self.brain.remember(type='fact', title='b', content='c')['id']
+        c = self.brain.remember(type='fact', title='cc', content='c')['id']
+        d = self.brain.remember(type='fact', title='dd', content='c')['id']
+        time.sleep(0.02)
+        self.brain.set_config('s2_community_last_run_ts', str(time.time()))
+        time.sleep(0.02)
+        # None of these may wake the gate:
+        self.brain.remember(type='community', title='comm', content='c')   # own node type
+        self.brain.connect_typed(a, b, relation='co_accessed', weight=0.5)  # noise edge
+        self.brain.connect_typed(a, b, relation='implements',              # own edge source
+                                 encoding_source='s2:community_detection')
+        self.assertEqual(u._should_skip(), 'no graph change since last run')
+        # A real typed edge from a non-self source DOES wake it:
+        self.brain.connect_typed(c, d, relation='implements', weight=0.8,
+                                 encoding_source='encoder:sonnet')
+        self.assertIsNone(u._should_skip())
+
+
 if __name__ == '__main__':
     unittest.main()

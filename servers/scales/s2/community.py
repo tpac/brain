@@ -8,7 +8,17 @@ Encoder: servers/scales/s2/community_encoder.py
 Rejection suppression: servers/scales/s2/rejection_table.py
 Contract: servers/scales/s2/community_contract.py
 Prompt: s2_community_enrichment interaction (v12+)
+
+Phase 1 idle gate (2026-05-29): the decode is a pure function of graph state,
+so re-running it on an unchanged graph re-derives identical, already-rejected
+proposals. The gate skips the whole unit unless the graph changed since the
+last decode AND a minimum interval elapsed — turning a ~15s full-graph scan
+that fired every idle cycle (87% doing zero work) into a cheap no-op when
+nothing has changed.
 """
+
+import time as _time
+from datetime import datetime, timezone
 
 from .community_decoder import CommunityDecoder
 from .community_encoder import CommunityEncoder
@@ -17,13 +27,118 @@ from .rejection_table import filter_rejected
 
 
 class CommunityDetection(CommunityDecoder):
-    """Full S2CD+S2CE pipeline — decode → filter rejections → encode.
+    """Full S2CD+S2CE pipeline — gate → decode → filter rejections → encode.
 
     Inherits from CommunityDecoder so all decoder methods are available.
     Callers that only need the decoder can use CommunityDecoder directly.
     """
 
+    # brain_meta key: epoch of the last actual decode (skipped cycles excluded).
+    LAST_RUN_KEY = 's2_community_last_run_ts'
+
     def run(self):
+        """Idle gate → decode → filter → encode, with timing.
+
+        Returns:
+            dict with: actions, proposals, communities, details, skipped,
+            error, elapsed_ms
+        """
+        skip_reason = self._should_skip()
+        if skip_reason:
+            # Silent — no trace. With the gate in place, skipped cycles are
+            # the common case; tracing each one would re-bloat the very trace
+            # table this gate exists to shrink. The visible proof is simply
+            # far fewer real runs (each carrying its elapsed_ms).
+            return {'actions': 0, 'skipped': skip_reason}
+
+        result = None
+        t0 = _time.time()  # clock-ok — idle-cycle wall-clock, not conversation time
+        try:
+            result = self._run_pipeline()
+            return result
+        finally:
+            # Stamp AFTER the run so this unit's own writes (community nodes,
+            # member edges) precede the cutoff and don't self-trigger the
+            # no-change gate on the next cycle.
+            self.brain.set_config(self.LAST_RUN_KEY, str(_time.time()))  # clock-ok
+            elapsed_ms = int((_time.time() - t0) * 1000)
+            if isinstance(result, dict):
+                result['elapsed_ms'] = elapsed_ms
+            print('[s2cd] community decode+encode: %dms' % elapsed_ms, flush=True)
+
+    # ══════════════════════════════════════════════════════════
+    # Phase 1 idle gate
+    # ══════════════════════════════════════════════════════════
+
+    def _should_skip(self):
+        """Return a skip-reason string, or None to proceed.
+
+        System bookkeeping — wall-clock is correct here (real time since the
+        last decode), the same basis as Brain._maintenance_last_run_ts. This
+        is NOT conversation time, so it takes no `at=` anchor.
+        """
+        raw = self.brain.get_config(self.LAST_RUN_KEY) or '0'
+        try:
+            last_run_ts = float(raw)
+        except (TypeError, ValueError):
+            last_run_ts = 0.0
+        if last_run_ts <= 0:
+            return None  # cold start / never run — always proceed
+
+        now = _time.time()  # clock-ok
+        since = now - last_run_ts
+        min_interval = self.config.get('min_run_interval_seconds', 30 * 60)
+        if since < min_interval:
+            return 'throttled (%.0fm < %.0fm min interval)' % (
+                since / 60.0, min_interval / 60.0)
+
+        cutoff_iso = datetime.fromtimestamp(
+            last_run_ts, tz=timezone.utc).isoformat()
+        if not self._graph_changed_since(cutoff_iso):
+            return 'no graph change since last run'
+        return None
+
+    def _graph_changed_since(self, cutoff_iso):
+        """True if the graph changed since cutoff_iso in a way that could
+        produce a NEW community proposal.
+
+        Counts: any non-community node created or revised; any non-noise,
+        non-self typed edge_relation added. Excludes this unit's own writes
+        (community nodes by type; community edges by encoding_source) so a
+        productive run does not immediately re-trigger itself. Hebbian
+        co_accessed edges are 'noise' and excluded — they must not wake
+        community detection.
+        """
+        c = self.brain.conn
+        if c.execute(
+                "SELECT 1 FROM nodes "
+                "WHERE (created_at > ? OR updated_at > ?) "
+                "AND type != 'community' LIMIT 1",
+                (cutoff_iso, cutoff_iso)).fetchone():
+            return True
+
+        noise = list(self.brain.aspects.relations_in(['noise', 'generic_relation']))
+        if noise:
+            placeholders = ','.join('?' * len(noise))
+            query = (
+                "SELECT 1 FROM edge_relations "
+                "WHERE created_at > ? AND archived = 0 "
+                "AND encoding_source != ? "
+                "AND relation NOT IN (%s) LIMIT 1" % placeholders)
+            params = (cutoff_iso, self.ENCODING_SOURCE, *noise)
+        else:
+            query = (
+                "SELECT 1 FROM edge_relations "
+                "WHERE created_at > ? AND archived = 0 "
+                "AND encoding_source != ? LIMIT 1")
+            params = (cutoff_iso, self.ENCODING_SOURCE)
+        return c.execute(query, params).fetchone() is not None
+
+    # ══════════════════════════════════════════════════════════
+    # Pipeline — decode → filter rejections → encode (behavior unchanged)
+    # ══════════════════════════════════════════════════════════
+
+    def _run_pipeline(self):
         """Run full decode → filter → encode pipeline.
 
         Rejection filter runs between decoder and encoder. Proposals whose

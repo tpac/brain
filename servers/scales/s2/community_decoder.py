@@ -20,6 +20,7 @@ exceeds home affinity × 1.5.
 """
 
 import json
+import time
 import base64
 from collections import defaultdict, Counter
 
@@ -128,22 +129,27 @@ class CommunityDecoder(IntegrationUnit):
                    '%d unplaced nodes, %d communities' % (
                        unplaced_count, len(community_state)))
 
+        _t_decode = time.time()  # clock-ok — idle-cycle wall-clock duration
         decode_result = self._decode(s1_delta, community_state, is_cold_start=False)
         proposals = decode_result['proposals']
         proposals.extend(self._detect_recall_signals(s1_delta, community_state))
+        decode_ms = int((time.time() - _t_decode) * 1000)
 
         if not proposals:
-            self.trace('K', 'community_proposals', 'No proposals generated')
+            self.trace('K', 'community_proposals',
+                       'No proposals generated (decode %dms)' % decode_ms)
 
         # Rich trace with decode state
         if proposals:
             self.trace('K', 'community_proposals',
-                       '%d proposals: %d clusters, %d affinities, %d cross-cutting' % (
+                       '%d proposals: %d clusters, %d affinities, %d cross-cutting (decode %dms)' % (
                            len(proposals),
                            decode_result['stats'].get('valid_clusters', 0),
                            decode_result['stats'].get('nodes_with_affinities', 0),
-                           decode_result['stats'].get('cross_cutting', 0)),
+                           decode_result['stats'].get('cross_cutting', 0),
+                           decode_ms),
                        metadata={
+                           'decode_ms': decode_ms,
                            'decode_stats': decode_result['stats'],
                            'cluster_summaries': decode_result.get('cluster_summaries', []),
                        })

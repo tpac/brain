@@ -82,6 +82,13 @@ COMMUNITY_DETECTION = {
     },
     'max_rounds': 2,                # LLM rounds per batch — get_nodes then brain_batch, done
     'journal_max_chars': 14000,
+
+    # ── Idle-run gating (Phase 1, 2026-05-29) ──
+    # The decode is a pure function of graph state — re-running it on an
+    # unchanged graph re-derives identical, already-rejected proposals. Skip
+    # the whole unit unless the graph changed AND this interval has elapsed
+    # since the last actual decode. See CommunityDetection._should_skip.
+    'min_run_interval_seconds': 30 * 60,
 }
 
 

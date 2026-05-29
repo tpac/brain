@@ -85,6 +85,18 @@ class CommunityEncoder(IntegrationUnit):
                            ', '.join('%d members' % c.get('member_count', 0)
                                      for c in corridors[:5])))
 
+        # Honest skip: if corridor filtering emptied the actionable set, there
+        # is genuinely nothing to encode. Report it as a skip — NOT as a
+        # "COMPLETE: 0 actions in 0 rounds", which reads like a successful run
+        # on the dashboard and masks that the encoder never had work to do.
+        if not encoder_proposals:
+            self.trace('delta', 'community_enriched',
+                       'SKIPPED: %d corridor(s) filtered, no other actionable proposals'
+                       % len(corridors))
+            return {'actions': 0, 'write_actions': 0, 'rounds': 0,
+                    'action_details': [], 'final_text': '',
+                    'skipped': 'corridors_only'}
+
         # Cap with per-type quotas (process backlog over multiple idle cycles).
         # Sort within each type by confidence (highest first) so strong
         # proposals get encoder time before borderline ones.
