@@ -454,9 +454,15 @@ class TestSurfaceLayer(BrainTestBase):
         self.assertIn('total_nodes', result)
 
     def test_health_check_fresh_brain(self):
-        """Fresh brain should be healthy."""
+        """Fresh brain should be healthy: no high-severity issues, well-formed report
+        ({'healthy', 'issues', 'actions', 'checked_at'})."""
         result = self.brain.health_check()
         self.assertIsInstance(result, dict)
+        self.assertTrue(result['healthy'],
+                        f"fresh brain reported unhealthy: {result.get('issues')}")
+        self.assertIsInstance(result['issues'], list)
+        self.assertIsInstance(result['actions'], list)
+        self.assertIn('checked_at', result)
 
     def test_suggest_with_file(self):
         """suggest() should return suggestions for a known file pattern."""
@@ -466,11 +472,17 @@ class TestSurfaceLayer(BrainTestBase):
             keywords='brain.py init mixin constraint', locked=True)
         result = self.brain.suggest(context='editing brain.py', file='brain.py')
         self.assertIsInstance(result, dict)
+        self.assertIn('suggestions', result)
+        self.assertIsInstance(result['suggestions'], list)
 
     def test_pre_edit_returns_structure(self):
-        """pre_edit should return encoding health and suggestions."""
+        """pre_edit returns the batched pre-edit contract: suggestions +
+        procedures + context_files + encoding{health} + timings."""
         result = self.brain.pre_edit(file='test.py', tool_name='Edit')
         self.assertIsInstance(result, dict)
+        for key in ('suggestions', 'procedures', 'context_files', 'encoding', 'timings'):
+            self.assertIn(key, result)
+        self.assertIn('health', result['encoding'])
 
 
 
@@ -742,9 +754,12 @@ class TestInfBug(BrainTestBase):
             content='We decided to use microservices',
             keywords='architecture microservices decision')
 
-        # Recall should not crash
+        # Recall should not crash AND must still produce a valid result envelope
+        # despite the corrupted 'inf' string in the decay config.
         results = self.brain.recall('architecture decision')
         self.assertIsInstance(results, dict)
+        self.assertIn('results', results)
+        self.assertIsInstance(results['results'], list)
 
     def test_recall_handles_infinity_string(self):
         """Recall handles 'Infinity' string variant."""
@@ -757,6 +772,8 @@ class TestInfBug(BrainTestBase):
 
         results = self.brain.recall('test infinity')
         self.assertIsInstance(results, dict)
+        self.assertIn('results', results)
+        self.assertIsInstance(results['results'], list)
 
     def test_recall_handles_nan(self):
         """NaN in config falls back to default half-life."""
@@ -770,6 +787,8 @@ class TestInfBug(BrainTestBase):
 
         results = self.brain.recall('nan test')
         self.assertIsInstance(results, dict)
+        self.assertIn('results', results)
+        self.assertIsInstance(results['results'], list)
 
     # removed — tested deleted method (2026-04-13)
 

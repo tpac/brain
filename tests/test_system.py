@@ -69,16 +69,20 @@ class TestHookFunctions(BrainTestBase):
         self.assertIn(result['json'].get('decision'), ['approve', 'block'])
 
     def test_pre_bash_approves_safe(self):
-        """Non-destructive commands should be approved."""
+        """Non-destructive commands should be approved — assert the decision,
+        not just the envelope. The old check only verified 'json' was present,
+        so it passed regardless of whether a safe command was approved."""
         result = hook_pre_bash_safety(self.brain, {
             'command': 'ls -la /tmp'}, [])
         self.assertIn('json', result)
+        self.assertEqual(result['json'].get('decision'), 'approve')
 
     def test_config_change_doesnt_crash(self):
-        """Config change hook should handle gracefully."""
+        """Config change hook handles gracefully and returns a string output payload."""
         result = hook_config_change_host(self.brain, {
             'source': 'test', 'file_path': '/test/config'}, [])
         self.assertIn('output', result)
+        self.assertIsInstance(result['output'], str)
 
 
 class TestDaemonDispatch(unittest.TestCase):

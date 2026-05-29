@@ -204,10 +204,17 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertEqual(len(result), 2)
 
     def test_filter_nodes(self):
-        """filter_nodes returns nodes matching structural criteria."""
+        """filter_nodes returns {'nodes': [...], 'total_count': N} for a
+        structural-field query (field='type', no include/exclude → all
+        non-archived nodes). NOTE: the old comment here claimed 'returns
+        distinct values' — the DAL never did that; it always returns the
+        nodes+count shape. Asserting the real contract catches shape drift."""
         result = self._dispatch("filter_nodes", {"field": "type"})
-        # Without include/exclude, returns distinct values
         self.assertIsInstance(result, dict)
+        self.assertIn("nodes", result)
+        self.assertIsInstance(result["nodes"], list)
+        self.assertIn("total_count", result)
+        self.assertIsInstance(result["total_count"], int)
 
     # ── Introspection ──
 
@@ -226,14 +233,20 @@ class TestMCPRoundTrip(BrainTestBase):
     # ── Trace/log queries ──
 
     def test_query_logs(self):
-        """query_logs returns log entries."""
+        """query_logs returns {'entries': [...], 'counts': {...}} (DAL contract)."""
         result = self._dispatch("query_logs", {"hours": 1})
         self.assertIsInstance(result, dict)
+        self.assertIn("entries", result)
+        self.assertIsInstance(result["entries"], list)
+        self.assertIn("counts", result)
+        self.assertIsInstance(result["counts"], dict)
 
     def test_query_traces(self):
-        """query_traces returns trace events."""
+        """query_traces default mode returns {'events': [...]} (flat recent)."""
         result = self._dispatch("query_traces", {"hours": 1, "limit": 5})
         self.assertIsInstance(result, dict)
+        self.assertIn("events", result)
+        self.assertIsInstance(result["events"], list)
 
     def test_get_trace(self):
         """get_trace returns the full row for a known trace_id, or error for missing."""
@@ -263,27 +276,61 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertEqual(ids, {a, b})
 
     def test_query_outcomes(self):
-        """query_outcomes returns outcome events."""
-        result = self._dispatch("query_outcomes", {"hours": 1})
+        """query_outcomes returns the outcome events for a chain. Write one,
+        then read it back — stronger than the old isinstance-list smoke check."""
+        self.brain._trace_dal.append(
+            chain_id="roundtrip-oc", scale="s1", event_type="O",
+            ref_type="recall", summary="seed for outcome")
+        self.brain._trace_dal.append_outcome(
+            chain_id="roundtrip-oc", scale="s1", ref_type="correction",
+            ref_id="node-xyz", summary="operator corrected this")
+        result = self._dispatch("query_outcomes", {"chain_id": "roundtrip-oc"})
         self.assertIsInstance(result, list)
+        self.assertGreaterEqual(len(result), 1)
+        self.assertTrue(
+            any(o.get("ref_type") == "correction" for o in result),
+            "appended correction outcome not returned by query_outcomes")
 
     def test_count_traces(self):
-        """count_traces returns grouped counts."""
+        """count_traces returns {event_type: int}. Append two known events and
+        verify they're counted — stronger than the old isinstance-dict check."""
+        for _ in range(2):
+            self.brain._trace_dal.append(
+                chain_id="roundtrip-count", scale="s1", event_type="O",
+                ref_type="recall", summary="count probe")
         result = self._dispatch("count_traces", {"field": "event_type"})
         self.assertIsInstance(result, dict)
+        self.assertTrue(all(isinstance(v, int) for v in result.values()),
+                        "count values must be ints")
+        self.assertGreaterEqual(result.get("O", 0), 2,
+                                "two appended 'O' events not reflected in counts")
 
     # ── Interactions ──
 
     def test_list_interactions(self):
-        """list_interactions returns registered interactions."""
+        """list_interactions returns registered interactions. Register a probe
+        and confirm it appears by name — stronger than isinstance-list."""
+        self._dispatch("register_interaction", {
+            "name": "roundtrip_list_probe", "template": "probe",
+            "parameters": "{}", "created_by": "roundtrip_test"})
         result = self._dispatch("list_interactions", {})
         self.assertIsInstance(result, list)
+        names = {i.get("name") for i in result}
+        self.assertIn("roundtrip_list_probe", names)
 
     def test_get_interaction(self):
-        """get_interaction returns a specific interaction."""
-        result = self._dispatch("get_interaction", {"name": "surface"})
-        # May return None if interactions not seeded in isolated brain
-        self.assertTrue(result is None or isinstance(result, dict))
+        """get_interaction returns the stored interaction row. Register a probe
+        with a known template, then read it back. The old check
+        (`result is None or isinstance(result, dict)`) passed even on the
+        handler's {'ok': False, 'error': ...} envelope — it asserted nothing
+        about correctness. get_active returns id/name/version/template/parameters."""
+        self._dispatch("register_interaction", {
+            "name": "roundtrip_get_probe", "template": "PROBE TEMPLATE BODY",
+            "parameters": "{}", "created_by": "roundtrip_test"})
+        result = self._dispatch("get_interaction", {"name": "roundtrip_get_probe"})
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result.get("name"), "roundtrip_get_probe")
+        self.assertEqual(result.get("template"), "PROBE TEMPLATE BODY")
 
     def test_register_interaction(self):
         """register_interaction adds a new interaction version."""
@@ -325,9 +372,21 @@ class TestMCPRoundTrip(BrainTestBase):
                          f"Expected version 2, got: {result}")
 
     def test_clear_errors(self):
-        """clear_errors empties the rate-limit cache for the brain errors table."""
+        """clear_errors deletes hook_errors and reports the rowcount. Insert a
+        hook error, clear, and confirm it's actually gone — the old check only
+        asserted the return was a dict."""
+        self.brain.logs_conn.execute(
+            "INSERT INTO hook_errors (created_at, hook_name, level, error) "
+            "VALUES (?, ?, ?, ?)",
+            ("2026-05-29T00:00:00+00:00", "test_hook", "error", "probe error"))
+        self.brain.logs_conn.commit()
         result = self._dispatch("clear_errors", {})
         self.assertIsInstance(result, dict)
+        self.assertIn("hook_errors", result)
+        self.assertGreaterEqual(result["hook_errors"], 1)
+        remaining = self.brain.logs_conn.execute(
+            "SELECT COUNT(*) FROM hook_errors").fetchone()[0]
+        self.assertEqual(remaining, 0, "hook_errors not actually cleared")
 
     # ── Coverage check ──
 

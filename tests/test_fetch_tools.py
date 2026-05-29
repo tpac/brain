@@ -136,6 +136,10 @@ class TestRecallTopical:
     def test_empty_query_handled(self, env):
         results = recall_topical(env.brain, query='', k=5)
         assert isinstance(results, list)
+        # Empty query must not crash AND must not yield malformed candidates:
+        # anything returned still carries the tool's source tag.
+        for r in results:
+            assert r['source_tool'] == 'recall_topical'
 
 
 class TestRecallRecent:
@@ -146,9 +150,13 @@ class TestRecallRecent:
             assert r['source_tool'] == 'recall_recent'
 
     def test_unknown_window_falls_back(self, env):
-        # 'blah' falls back to last 24h
+        # 'blah' falls back to last 24h (the parse itself is locked by
+        # TestWindowParser.test_unknown_falls_back_to_24h). Here we assert the
+        # tool still produces well-tagged candidates off that fallback window.
         results = recall_recent(env.brain, window='blah random', k=5)
         assert isinstance(results, list)
+        for r in results:
+            assert r['source_tool'] == 'recall_recent'
 
 
 class TestRecallByTime:
@@ -166,6 +174,8 @@ class TestRecallByTime:
         results = recall_by_time(env.brain, start_when='2026-04-01',
                                  end_when='2026-05-10', query='partnership', limit=5)
         assert isinstance(results, list)
+        for r in results:
+            assert r['source_tool'] == 'recall_by_time'
 
 
 class TestRecallVerbatim:
@@ -177,8 +187,10 @@ class TestRecallVerbatim:
             assert r['source_tool'] == 'recall_verbatim'
 
     def test_nonsense_phrase_returns_empty(self, env):
+        # recall_verbatim is exact-match FTS5 — a made-up token has no hits, so
+        # the result is strictly empty (tightened from the old "== [] OR all(...)").
         results = recall_verbatim(env.brain, phrase='zxqwerty_unlikely_phrase_98765', k=5)
-        assert results == [] or all(r['source_tool'] == 'recall_verbatim' for r in results)
+        assert results == []
 
 
 class TestRecallByAspect:
