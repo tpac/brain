@@ -62,8 +62,8 @@ class TestContractEquivalence(unittest.TestCase):
             extras, set(),
             "aspects_v1.json contains names not in REQUIRED_ASPECTS: %s" % extras
         )
-
-    def test_set_equivalence(self):
+        # Consolidated from the former test_set_equivalence: with no missing and
+        # no extra names, the sets are equal — assert it directly here.
         self.assertEqual(self.required, self.seeded)
 
 

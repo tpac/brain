@@ -104,9 +104,9 @@ class TestDaemonDispatchSync(unittest.TestCase):
         missing = [cmd for cmd in required_commands if cmd not in self.commands]
         self.assertEqual(missing, [],
                          f"Daemon dispatch missing commands: {missing}")
-
-    def test_connection_commands_exist(self):
-        """connect must be in daemon dispatch."""
+        # Consolidated from the former standalone test_connection_commands_exist
+        # — 'connect' is in required_commands above; this preserves its explicit
+        # presence assertion.
         self.assertIn('connect', self.commands)
 
     def test_core_read_commands_exist(self):
