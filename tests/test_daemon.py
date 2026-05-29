@@ -589,13 +589,10 @@ class TestConsciousnessFeatures(unittest.TestCase):
         from servers.schema import NODE_TYPES
         self.assertIn('boot', NODE_TYPES)
 
-    def test_skill_md_has_orientation_preamble(self):
-        """SKILL.md should open with identity orientation for Anchor."""
-        skill_path = os.path.join(PROJECT_ROOT, 'skills', 'brain', 'SKILL.md')
-        with open(skill_path) as f:
-            content = f.read()
-        self.assertIn('Anchor', content)
-        self.assertIn('What You Are', content)
+    # test_skill_md_has_orientation_preamble — REMOVED (redundant). Its two
+    # assertions ('Anchor' + 'What You Are' present in SKILL.md) are a strict
+    # subset of TestSkillAvailability.test_skill_md_has_anchor_identity, which
+    # asserts both plus 'Encoding Craft'. Coverage lives there now.
 
 
 # ══════════════════════════════════════════════════════════════════════════

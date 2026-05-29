@@ -194,13 +194,12 @@ class TestBuildSurfacePrompt(unittest.TestCase):
         self.assertIn('xyz', prompt)
         self.assertIn('Some old node', prompt)
 
-    def test_prompt_includes_frame_when_provided(self):
-        prompt, _ = build_surface_prompt(
-            [{'id': 'a', 'type': 'rule', 'title': 'T', 'content': 'C'}],
-            'test',
-            frame='THE FRAME PRIOR TEXT')
-        self.assertIn('THE FRAME PRIOR TEXT', prompt)
-        self.assertIn('Partnership context', prompt)
+    # test_prompt_includes_frame_when_provided — REMOVED (redundant). Asserted the
+    # identical build_surface_prompt(frame=...) behavior as
+    # test_frame.py::TestSurfacePromptAcceptsFrame::test_frame_renders_as_partnership_context.
+    # This class's own docstring already defers frame/instruction-content tests to
+    # test_frame.py; coverage lives there (and test_frame adds the empty-frame
+    # degraded-marker case this never had).
 
     def test_max_tokens_from_config(self):
         _, max_tokens = build_surface_prompt(

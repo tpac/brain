@@ -212,11 +212,11 @@ class TestCrossScaleTraceIntegrity(unittest.TestCase):
             self.assertNotIn('user_message', s1_ref_types,
                              "S0 user events must not appear in S1 query")
 
-    def test_surface_selected_trace_ref_type(self):
-        """Verify that 'surface_selected' is the correct ref_type for S1R K events."""
-        from servers.trace_contract import validate_trace_event
-        ok, msg = validate_trace_event('s1', 'K', 'surface_selected')
-        self.assertTrue(ok, msg)
+    # test_surface_selected_trace_ref_type — REMOVED (redundant). The identical
+    # triple is asserted by test_trace_system.py::TestTraceContract::test_known_good_s1
+    # (`validate('s1','K','surface_selected') == (True, '')`), whose home is the
+    # canonical trace-contract suite. This file owns cross-scale wiring, not the
+    # contract-validation table.
 
 
 class TestNodeCatalogRegexMatchesRealIDs(unittest.TestCase):

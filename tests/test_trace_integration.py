@@ -291,48 +291,11 @@ class TestS1EncodeTraces:
         assert '/tmp/brain-encoding-prompt-102.json' in events[0]['ref_id']
 
 
-class TestS0S1CrossReference:
-    """Verify cross-chain linkage between S0 and S1."""
-
-    @pytest.fixture(autouse=True)
-    def setup_brain(self):
-        with IsolatedBrain() as env:
-            self.brain = env.brain
-            self.dal = env.brain._trace_dal
-            env.brain.logs_conn.execute('DELETE FROM trace_events')
-            env.brain.logs_conn.commit()
-            yield
-
-    def test_get_session_turns_cross_references(self):
-        """get_session_turns resolves surface_output from S1 via recall_chain."""
-        session_id = 'sess-xref-test-1234'
-        stop = '30'
-        s1_chain = 's1r-%s-%s' % (session_id[:8], stop)
-        s0_chain = 's0-%s-%s' % (session_id[:8], stop)
-
-        # Write S1 recall delta (what surface produced)
-        self.dal.append(
-            chain_id=s1_chain, scale='s1', event_type='delta',
-            ref_type='additionalContext',
-            summary='3 nodes surfaced',
-            metadata={'content': 'Brain recalled: node about architecture'},
-            session_id=session_id)
-
-        # Write S0 with recall_chain reference
-        self.dal.append(
-            chain_id=s0_chain, scale='s0', event_type='K',
-            ref_type='user_message',
-            summary='how does the architecture work?',
-            metadata={'content': 'how does the architecture work?',
-                      'recall_chain': s1_chain},
-            session_id=session_id)
-        self.dal.append(
-            chain_id=s0_chain, scale='s0', event_type='delta',
-            ref_type='assistant_message',
-            summary='The architecture uses...',
-            metadata={'content': 'The architecture uses a fractal pattern.'},
-            session_id=session_id)
-
-        turns = self.dal.get_session_turns(session_id)
-        user_turn = [t for t in turns if t['role'] == 'user'][0]
-        assert user_turn['judge_output'] == 'Brain recalled: node about architecture'
+# TestS0S1CrossReference — REMOVED (redundant). Its sole test
+# (test_get_session_turns_cross_references) asserted the identical behavior as
+# test_trace_system.py::TestGetSessionTurns::test_cross_reference_surface_output:
+# get_session_turns resolving surface_output from the S1 delta via recall_chain.
+# That assertion is kept in trace_system, where it completes the cohesive 5-facet
+# get_session_turns unit suite (shape / chronological / cross-reference / content /
+# limit). The "integration" framing here was thin — both do DAL-append-then-read,
+# not a more faithful hook path — so the lone single-test class is dropped.

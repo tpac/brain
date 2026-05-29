@@ -40,21 +40,16 @@ HAS_R3 = os.path.isdir(R3_BRAIN)
 # ─────────────────────────────────────────────────────────────────
 
 class TestEmbeddingGroupsExtension(unittest.TestCase):
-    """Part C: EMBEDDING_GROUPS has legacy + field cohorts, both intact."""
+    """Part C: the field-cohort EXTENSION specifics — vector ordering + fallback.
 
-    def test_both_cohorts_present(self):
-        from servers.pipeline_contract import EMBEDDING_GROUPS
-        cohorts = {g.get('cohort') for g in EMBEDDING_GROUPS.values()}
-        self.assertIn('legacy', cohorts)
-        self.assertIn('field', cohorts)
-
-    def test_field_cohort_has_zero_weights(self):
-        """Field cohort must not participate in recall's top2_avg scoring."""
-        from servers.pipeline_contract import EMBEDDING_GROUPS
-        for name, cfg in EMBEDDING_GROUPS.items():
-            if cfg.get('cohort') == 'field':
-                self.assertEqual(cfg['weight'], 0.0,
-                    f'field cohort {name} should have weight=0')
+    Cohort presence/membership and the field-weight=0 invariant are owned by
+    test_pipeline_contract.py::TestEmbeddingGroups (test_cohort_assignment asserts
+    exact legacy/field membership; test_cohort_weight_invariants asserts legacy>0
+    AND field==0 — strictly stronger than the checks formerly duplicated here).
+    Removed from this file:
+      test_both_cohorts_present       — subset of test_cohort_assignment
+      test_field_cohort_has_zero_weights — subset of test_cohort_weight_invariants
+    """
 
     def test_field_vector_types_stable_order(self):
         from servers.pipeline_contract import field_vector_types

@@ -93,28 +93,14 @@ class TestFreshBrainSeeding:
         finally:
             brain.close()
 
-    def test_seed_is_idempotent(self, tmp_path):
-        """Running seed twice doesn't register duplicate versions — the
-        'if name not in existing' guards must hold."""
-        from servers.brain import Brain
-        from servers.interaction_seed import seed_interactions
-        db = str(tmp_path / 'brain.db')
-        brain = Brain(db_path=db)
-        try:
-            versions_before = {
-                i['name']: i['max_version']
-                for i in brain._interaction_dal.list_all()
-            }
-            seed_interactions(brain)
-            versions_after = {
-                i['name']: i['max_version']
-                for i in brain._interaction_dal.list_all()
-            }
-            assert versions_after == versions_before, (
-                'seed_interactions() bumped a version on re-run. It must be idempotent: '
-                f'before={versions_before} after={versions_after}')
-        finally:
-            brain.close()
+    # test_seed_is_idempotent — REMOVED (redundant). The seed-idempotency invariant
+    # is owned by test_interactions_runtime.py::TestInteractionSeeding::test_seed_is_idempotent,
+    # which seeds twice from a cleared table and asserts total_versions==1 across ALL
+    # interactions (a stronger, cleaner check than this fresh-brain max_version diff,
+    # and one that covers the encoder prompts too). CLAUDE.md's enumerated
+    # test_prompt_sync contract deliberately omits idempotency — this file owns
+    # SYSTEM_PROMPT shape, fresh-brain seeding, active-version mirroring, and the
+    # no-clobber guarantee.
 
     def test_sync_grabs_active_not_latest_version(self, tmp_path):
         """`sync_prompts._fetch_active` must mirror the ACTIVE version, not
