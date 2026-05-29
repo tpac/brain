@@ -97,11 +97,6 @@ class TestIntegrity(unittest.TestCase):
             self.assertTrue(callable(getattr(hooks_module, hook_cmd)),
                             f"'{hook_cmd}' in daemon_hooks is not callable")
 
-    def test_no_duplicate_commands(self):
-        """Dispatch table should have no duplicate command names."""
-        # Python dicts can't have dupes, but we check the count matches
-        self.assertEqual(len(COMMAND_TABLE), len(set(COMMAND_TABLE.keys())))
-
     def test_mcp_tool_descriptions_not_empty(self):
         """Every MCP tool must have a non-empty description."""
         for tool in MCP_TOOLS:

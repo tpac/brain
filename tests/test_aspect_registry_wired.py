@@ -14,10 +14,6 @@ class TestAspectRegistryWired(BrainTestBase):
 
     needs_embedder = False
 
-    def test_brain_has_aspects_attribute(self):
-        self.assertTrue(hasattr(self.brain, 'aspects'),
-                        'Brain.__init__ should expose brain.aspects')
-
     def test_all_14_required_present_after_auto_heal(self):
         # Fresh brain → empty type='aspect' → auto-heal seeds 14
         all_aspects = self.brain.aspects.all()
