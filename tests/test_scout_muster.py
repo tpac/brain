@@ -111,7 +111,6 @@ class TestHappyPath(BrainTestBase):
             'quote': _ok_envelope('quote'),
             'temporal': _ok_envelope('temporal'),
             'facts': _ok_envelope('facts'),
-            'synthesis': _ok_envelope('synthesis'),
         })
         with patch.object(m, 'SCOUT_RUNNERS', fake):
             report, outputs, metrics = m.run_muster(_basic_ctx(self.brain))
@@ -125,11 +124,10 @@ class TestHappyPath(BrainTestBase):
             'quote': _ok_envelope('quote', n_candidates=3),
             'temporal': _ok_envelope('temporal', n_candidates=5),
             'facts': _ok_envelope('facts', n_candidates=0),
-            'synthesis': _ok_envelope('synthesis', n_candidates=1),
         })
         with patch.object(m, 'SCOUT_RUNNERS', fake):
             _, _, metrics = m.run_muster(_basic_ctx(self.brain))
-        self.assertEqual(metrics['total_candidates'], 9)
+        self.assertEqual(metrics['total_candidates'], 8)
         self.assertEqual(metrics['total_errors'], 0)
         self.assertGreaterEqual(metrics['elapsed_ms'], 0)
         self.assertEqual(metrics['per_scout']['quote']['candidates'], 3)
@@ -144,7 +142,6 @@ class TestErrorIsolation(BrainTestBase):
                 'quote': _ok_envelope('quote'),
                 'temporal': _ok_envelope('temporal'),
                 'facts': _ok_envelope('facts'),
-                'synthesis': _ok_envelope('synthesis'),
             },
             raise_by_scout={'quote': RuntimeError('boom')},
         )
@@ -158,11 +155,11 @@ class TestErrorIsolation(BrainTestBase):
                             for e in outputs['quote']['_errors']))
 
         # Others unaffected
-        for name in ('temporal', 'facts', 'synthesis'):
+        for name in [n for n in sc.SCOUT_NAMES if n != 'quote']:
             self.assertEqual(outputs[name]['_errors'], [])
             self.assertEqual(len(outputs[name]['candidates']), 1)
 
-        # Report still renders all 4 sections
+        # Report still renders all sections
         for name in sc.SCOUT_NAMES:
             self.assertIn(f'### {name}', report)
 
@@ -187,16 +184,16 @@ class TestTimeoutIsolation(BrainTestBase):
     def test_one_scout_times_out_others_return(self):
         fake = _make_fake_runners(
             results_by_scout={n: _ok_envelope(n) for n in sc.SCOUT_NAMES},
-            sleep_by_scout={'synthesis': 2.0},  # blocks past timeout
+            sleep_by_scout={'facts': 2.0},  # blocks past timeout
         )
         with patch.object(m, 'SCOUT_RUNNERS', fake):
             _, outputs, _ = m.run_muster(_basic_ctx(self.brain), timeout_s=0.2)
-        # synthesis timed out
-        self.assertEqual(outputs['synthesis']['candidates'], [])
+        # facts timed out
+        self.assertEqual(outputs['facts']['candidates'], [])
         self.assertTrue(any(e['type'] == 'muster_timeout'
-                            for e in outputs['synthesis']['_errors']))
+                            for e in outputs['facts']['_errors']))
         # others returned normally
-        for name in ('quote', 'temporal', 'facts'):
+        for name in ('quote', 'temporal'):
             self.assertEqual(outputs[name]['_errors'], [])
 
 
@@ -264,7 +261,6 @@ class TestTraceEmission(BrainTestBase):
             'quote': _ok_envelope('quote'),
             'temporal': _ok_envelope('temporal'),
             'facts': _ok_envelope('facts'),
-            'synthesis': _ok_envelope('synthesis'),
         })
         with patch.object(m, 'SCOUT_RUNNERS', fake):
             m.run_muster(_basic_ctx(self.brain))
@@ -277,12 +273,12 @@ class TestTraceEmission(BrainTestBase):
             "AND ref_type IN ('scout_input', 'scout_findings')"
         ).fetchall()
 
-        # 4 scouts * 2 event types each = 8 events
-        self.assertEqual(len(rows), 8)
+        # 3 scouts * 2 event types each = 6 events
+        self.assertEqual(len(rows), 6)
         inputs = [r for r in rows if r[2] == 'scout_input']
         findings = [r for r in rows if r[2] == 'scout_findings']
-        self.assertEqual(len(inputs), 4)
-        self.assertEqual(len(findings), 4)
+        self.assertEqual(len(inputs), 3)
+        self.assertEqual(len(findings), 3)
 
 
 if __name__ == '__main__':
