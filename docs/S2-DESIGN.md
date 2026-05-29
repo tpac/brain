@@ -400,6 +400,13 @@ Not all units should run on the same trigger:
 
 Each unit maintains its own cursor — last run timestamp or last processed node ID. Units process incrementally (new since last run), not full graph scan, with periodic full sweeps for structural units (community detection, hub analysis).
 
+**Idle-gating (2026-05-29).** The coordinator fires every ~15 min when idle, but each unit must gate its own expensive work or it re-derives the same fixed point every cycle. Two units were doing full O(graph) scans every cycle (Community: 87% zero-work; Consolidation: hardcoded `cold_start`, ~88% zero-pairs) and were gated:
+- **Community** (`community.py:_should_skip`) — skip unless a non-community node changed (or a non-noise typed edge was added) since the last decode AND ≥30 min elapsed. Last-run stamped after the run; key `s2_community_last_run_ts`.
+- **Consolidation** (`consolidation_decoder.run`) — one cold-start covers the backlog, then incremental (`changed @ all.T`, no-miss by construction); skip when nothing changed; a similarity-threshold change forces a fresh cold-start. The cutoff is stamped by the orchestrator only after the encoder completes, so a mid-run encoder failure retries rather than skipping past. Keys `s2_consolidation_last_run_ts` / `s2_consolidation_last_threshold`.
+- **AspectIntegration** (empty-batch early-out) and **Healer** (`_has_new_traces` + `gaps==0`) were already correctly gated.
+
+Full write-up: `docs/S2-GATING-AND-TEST-CLEANUP-HANDOFF.md`.
+
 ### Shared Infrastructure
 
 All units use:

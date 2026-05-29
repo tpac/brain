@@ -234,6 +234,8 @@ S2 operates when the operator is idle. It sees the full graph, not just one turn
 
 **S2 Coordinator** (`scales/s2/coordinator.py`): the daemon polls `brain.run_maintenance_if_due(last_user_activity)` every few seconds. Brain owns the "is it time?" decision (idle threshold + min interval; last-run timestamp persisted in `brain_meta`). When due, the coordinator runs units in order — each checks its own traces to decide whether to fire.
 
+**Per-unit idle-gating is each unit's own responsibility** (2026-05-29). The coordinator firing ≠ a unit doing work. A unit whose expensive step (a graph scan) isn't gated will re-derive the same fixed point every cycle — Community and Consolidation both ran full O(graph) scans every ~15 min, 24/7, ~87% producing nothing. Each now persists its own last-run timestamp (`s2_<unit>_last_run_ts` in `brain_meta`) and skips unless the graph changed since then. Consolidation does one cold-start then incremental (`changed @ all.T`), stamping its cutoff only *after* the encoder completes so a mid-run failure retries. When adding an S2 unit with a non-trivial scan, gate it the same way. See `docs/S2-GATING-AND-TEST-CLEANUP-HANDOFF.md`.
+
 | Unit | What it does | Status |
 |------|---|---|
 | **AspectIntegration** | Sonnet classifies open-text node types AND edge relations into shared aspect taxonomy | shipped |
