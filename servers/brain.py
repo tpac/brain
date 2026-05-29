@@ -646,10 +646,11 @@ class Brain(
         that session) — see daemon_hooks.hook_session_end.
 
         Race-safe on first load: two threads with the same brand-new
-        session_id can call concurrently — `INSERT OR IGNORE` atomically
-        claims the row, then the subsequent load reads whatever ended up
-        there. After first load, both threads operate on the same cached
-        instance (Python attribute access — `Brain.write_lock` serializes
+        session_id can call concurrently. The create path takes `write_lock`
+        (the serializer for brain_logs.db writes) so the shared `logs_conn`
+        can't hit concurrent transactions; `INSERT OR IGNORE` keeps the row
+        itself idempotent. After first load, both threads operate on the same
+        cached instance (Python attribute access — `write_lock` serializes
         actual mutations).
         """
         from .session_context import SessionContext
@@ -660,27 +661,34 @@ class Brain(
             session_id = self.session_id
             if session_id == 'no_session':
                 session_id = uuid.uuid4().hex
-        # Fast path: already cached
+        # Fast path: already cached (lock-free — the common case).
         cached = self._session_contexts.get(session_id)
         if cached is not None:
             return cached
-        # Atomic create-if-missing — INSERT OR IGNORE is a single SQLite
-        # statement, so two racing threads both calling here for the same
-        # session_id can't both create.
-        default_data = _json.dumps({'stop_counter': 0, 'fatigue': {}, 'edge_fatigue': {}})
-        now = iso_now()
-        self.logs_conn.execute(
-            'INSERT OR IGNORE INTO session_state (session_id, key, node_id, value, updated_at) '
-            'VALUES (?, ?, ?, ?, ?)',
-            (session_id, '_session_context', '', default_data, now))
-        self.logs_conn.commit()
-        # Row is guaranteed to exist now — load reads our default or a
-        # racing thread's already-modified state.
-        ctx = SessionContext.load(self.logs_conn, session_id)
-        if ctx is None:
-            ctx = SessionContext(session_id=session_id)
-        self._session_contexts[session_id] = ctx
-        return ctx
+        # First touch: serialize the create under write_lock. INSERT OR IGNORE
+        # is row-atomic, but self.logs_conn is shared across daemon request
+        # threads (check_same_thread=False, deferred isolation) — two concurrent
+        # .execute() calls auto-BEGIN on the same connection and collide with
+        # "cannot start a transaction within a transaction". write_lock is the
+        # documented serializer for brain_logs.db writes too (see __init__).
+        with self.write_lock:
+            cached = self._session_contexts.get(session_id)  # re-check under lock
+            if cached is not None:
+                return cached
+            default_data = _json.dumps({'stop_counter': 0, 'fatigue': {}, 'edge_fatigue': {}})
+            now = iso_now()
+            self.logs_conn.execute(
+                'INSERT OR IGNORE INTO session_state (session_id, key, node_id, value, updated_at) '
+                'VALUES (?, ?, ?, ?, ?)',
+                (session_id, '_session_context', '', default_data, now))
+            self.logs_conn.commit()
+            # Row is guaranteed to exist now — load reads our default or a
+            # racing thread's already-modified state.
+            ctx = SessionContext.load(self.logs_conn, session_id)
+            if ctx is None:
+                ctx = SessionContext(session_id=session_id)
+            self._session_contexts[session_id] = ctx
+            return ctx
 
     def save_session_contexts(self) -> int:
         """Persist all cached SessionContexts to session_state.
@@ -692,16 +700,21 @@ class Brain(
         boundary. Returns the count of saves attempted.
         """
         n = 0
-        for ctx in list(self._session_contexts.values()):
-            try:
-                ctx.save(self.logs_conn)
-                n += 1
-            except Exception as _e:
+        # Serialize the shared logs_conn writes. This runs on the autosave
+        # thread, outside the dispatch write path, so without write_lock it can
+        # collide with a concurrent get_or_create_session on the same
+        # connection ("cannot start a transaction within a transaction").
+        with self.write_lock:
+            for ctx in list(self._session_contexts.values()):
                 try:
-                    self._log_error('session_context_autosave', _e,
-                                    'persisting cached SessionContext')
-                except Exception:
-                    pass
+                    ctx.save(self.logs_conn)
+                    n += 1
+                except Exception as _e:
+                    try:
+                        self._log_error('session_context_autosave', _e,
+                                        'persisting cached SessionContext')
+                    except Exception:
+                        pass
         return n
 
     def live_sessions(self, limit: int = 5, min_messages: int = 5) -> list:
@@ -805,7 +818,8 @@ class Brain(
         ctx = self._session_contexts.pop(session_id, None)
         if ctx is not None:
             try:
-                ctx.save(self.logs_conn)
+                with self.write_lock:  # serialize the shared logs_conn write
+                    ctx.save(self.logs_conn)
             except Exception as _e:
                 try:
                     self._log_error('session_context_discard', _e,
@@ -837,10 +851,6 @@ class Brain(
         """
         sid = session_id or uuid.uuid4().hex
         self._cached_session_id = sid
-        # XXX deprecated singleton fallback for un-threaded callers (see
-        # brain.session_id property + _log_error/_log_warning). C-refactor
-        # threads session_id through every call site and drops this write.
-        self._meta.set('session_id', sid)
         # Persist SessionContext with fresh counters + segment state
         # (segment_id=0, segment_embeddings=[], segment_node_ids=[] are
         # the SessionContext defaults). Save immediately and replace the
@@ -849,8 +859,17 @@ class Brain(
         from .session_context import SessionContext
         ctx = SessionContext(session_id=sid)
         ctx.boot_time = self.now()
-        ctx.save(self.logs_conn)
-        self._session_contexts[sid] = ctx
+        # Serialize the brain_meta (brain.db) + session_state (logs_conn)
+        # writes under write_lock — same shared-connection race as
+        # get_or_create_session when this runs outside the dispatch write
+        # path (e.g. direct boot/test calls).
+        with self.write_lock:
+            # XXX deprecated singleton fallback for un-threaded callers (see
+            # brain.session_id property + _log_error/_log_warning). C-refactor
+            # threads session_id through every call site and drops this write.
+            self._meta.set('session_id', sid)
+            ctx.save(self.logs_conn)
+            self._session_contexts[sid] = ctx
 
     def check_segment_boundary(self, query_embedding, session_id: str):
         """Detect if a new message represents a context/topic shift.

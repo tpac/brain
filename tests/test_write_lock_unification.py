@@ -146,6 +146,43 @@ class GetOrCreateSessionRaceTests(BrainTestBase):
             "get_or_create_session overwrote existing stop_counter — INSERT OR IGNORE is broken")
         self.assertEqual(ctx2.fatigue, {'node-x': 7})
 
+    def test_autosave_and_create_share_logs_conn_safely(self):
+        """save_session_contexts (autosave path) and get_or_create_session both
+        write the shared logs_conn. Under concurrent access without write_lock
+        they collide on the connection's transaction state ("cannot start a
+        transaction within a transaction"). All logs_conn writers must serialize.
+
+        Barrier-synced N threads, each looping over BOTH writers, to force the
+        overlapping-transaction window deterministically (loose 2-thread timing
+        is a false-green — it rarely hits the window).
+        """
+        # Seed several cached contexts so each save_session_contexts() flush
+        # does real per-row work — widens the transaction window.
+        for _ in range(10):
+            self.brain.get_or_create_session('seed-' + os.urandom(4).hex())
+
+        N = 8
+        errors = []
+        barrier = threading.Barrier(N)
+
+        def worker():
+            try:
+                barrier.wait(timeout=2.0)
+                for _ in range(20):
+                    self.brain.get_or_create_session('race2-' + os.urandom(4).hex())
+                    self.brain.save_session_contexts()
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=worker) for _ in range(N)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=15.0)
+
+        self.assertEqual(errors, [],
+            "concurrent autosave + create raised (logs_conn transaction race): %s" % errors)
+
 
 if __name__ == '__main__':
     unittest.main()
