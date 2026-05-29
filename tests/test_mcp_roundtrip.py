@@ -407,6 +407,77 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertEqual(untested, set(),
                          "MCP tools without round-trip tests: %s" % untested)
 
+    def test_roundtrip_tests_assert_on_content(self):
+        """Gate against smoke-test theater: every MCP tool's round-trip test
+        must assert on actual keys/values, not merely that *something* came back.
+
+        A test whose only assertion is `assertIsInstance(result, dict/list)` on
+        the bare top-level result passes no matter what the handler returns — it
+        can't catch a handler that drifts to the wrong shape. This AST check
+        requires each tool to have at least one test method with a substantive
+        assertion (assertEqual / assertIn / assertGreater / ... or an
+        assertIsInstance on a SUBSCRIPT like result['key'], which checks a
+        sub-field rather than the envelope).
+
+        Pairs with test_all_mcp_tools_have_roundtrip_tests: that gate ensures
+        coverage *exists*; this one ensures the coverage *bites*. Without it,
+        the easy way to satisfy the coverage gate is an isinstance smoke test
+        (bucket B of the 2026-05 redundancy hunt was exactly that backlog)."""
+        import ast
+        import inspect
+        import textwrap
+
+        SUBSTANTIVE = {
+            'assertEqual', 'assertNotEqual', 'assertIn', 'assertNotIn',
+            'assertGreater', 'assertGreaterEqual', 'assertLess', 'assertLessEqual',
+            'assertTrue', 'assertFalse', 'assertIsNone', 'assertIsNotNone',
+            'assertAlmostEqual', 'assertListEqual', 'assertDictEqual', 'assertRegex',
+        }
+
+        def _is_substantive(method_name):
+            src = textwrap.dedent(inspect.getsource(getattr(type(self), method_name)))
+            for node in ast.walk(ast.parse(src)):
+                if not (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)):
+                    continue
+                attr = node.func.attr
+                if attr in SUBSTANTIVE:
+                    return True
+                # assertIsInstance(result['key'], ...) inspects a sub-field's
+                # shape, not just the top-level envelope — that counts.
+                if (attr == 'assertIsInstance' and node.args
+                        and isinstance(node.args[0], ast.Subscript)):
+                    return True
+            return False
+
+        mcp_tool_names = {t["name"] for t in TOOLS}
+        untestable = {'restart', 'shutdown'}
+
+        # Map each tool to the test methods exercising it (same name-stripping
+        # as the coverage gate above), skipping the two meta-gates themselves.
+        tool_methods = {}
+        for method in dir(self):
+            if not method.startswith("test_"):
+                continue
+            if method in ('test_all_mcp_tools_have_roundtrip_tests',
+                          'test_roundtrip_tests_assert_on_content'):
+                continue
+            tool_name = method.replace("test_", "").replace("_then_recall", "").replace("_no_match", "")
+            if tool_name in mcp_tool_names:
+                tool_methods.setdefault(tool_name, []).append(method)
+
+        theater = []
+        for tool, methods in sorted(tool_methods.items()):
+            if tool in untestable:
+                continue
+            if not any(_is_substantive(m) for m in methods):
+                theater.append("%s (only: %s)" % (tool, ", ".join(sorted(methods))))
+
+        self.assertEqual(theater, [],
+                         "MCP tools whose round-trip tests assert only type, not "
+                         "content (smoke-test theater — strengthen to assert "
+                         "keys/values): %s" % theater)
+
 
 if __name__ == "__main__":
     unittest.main()
