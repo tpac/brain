@@ -10,6 +10,16 @@ import pytest
 from tests.isolated_brain import IsolatedBrain
 
 
+def _caller_meta(md):
+    """Strip substrate identity stamps before comparing caller-provided
+    metadata. TraceDAL injects agent_identity/human_identity onto every event
+    when BRAIN_OPERATOR_NAME/BRAIN_AGENT_NAME are set (see set_identity); that
+    behavior is covered by test_identity_stamping.py. These round-trip tests
+    only assert the caller's own keys survive — and must stay env-independent."""
+    return {k: v for k, v in (md or {}).items()
+            if k not in ('agent_identity', 'human_identity')}
+
+
 # ═══════════════════════════════════════════════════════
 # C1: Contract validation
 # ═══════════════════════════════════════════════════════
@@ -162,7 +172,7 @@ class TestTraceDAL:
         assert event['ref_type'] == 'user_message'
         assert event['ref_id'] == 'msg-123'
         assert event['summary'] == 'hello world'
-        assert event['metadata'] == {'content': 'full message'}
+        assert _caller_meta(event['metadata']) == {'content': 'full message'}
 
     def test_metadata_roundtrip(self):
         """JSON metadata survives write → read cycle."""
@@ -179,7 +189,7 @@ class TestTraceDAL:
             ref_type='recall', metadata=meta, session_id='test')
 
         chain = self.dal.get_chain('meta-test')
-        assert chain[0]['metadata'] == meta
+        assert _caller_meta(chain[0]['metadata']) == meta
         assert chain[0]['metadata']['candidates'][0]['score'] == 0.85
 
     def test_chain_ordering(self):
@@ -400,7 +410,7 @@ class TestGetChains:
                         ref_type='recall', metadata={'query': 'test', 'count': 25},
                         session_id='sess-1')
         result = self.dal.get_chains(session_id='sess-1', scale='s1')
-        assert result[0]['events'][0]['metadata'] == {'query': 'test', 'count': 25}
+        assert _caller_meta(result[0]['events'][0]['metadata']) == {'query': 'test', 'count': 25}
 
 
 class TestGetByRefType:
