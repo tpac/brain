@@ -25,6 +25,7 @@ from servers.brain_constants import (
     MAINTENANCE_IDLE_THRESHOLD_SECONDS,
     MAINTENANCE_MIN_INTERVAL_SECONDS,
     MAINTENANCE_FORCE_FIRE_SECONDS,
+    MAINTENANCE_BOOT_GRACE_SECONDS,
 )
 
 
@@ -40,6 +41,11 @@ class MaintenanceGateTests(BrainTestBase):
         Patches run_s2 so a real fire returns a sentinel (no actual S2 work).
         """
         now = 1_000_000.0
+        # Clear the boot-grace gate (2026-05-08): it suppresses maintenance for
+        # the first BOOT_GRACE seconds after _boot_time. Anchor _boot_time to
+        # the fake `now` so boot_age is well past the grace window — otherwise
+        # the gate short-circuits before the idle/interval logic under test.
+        self.brain._boot_time = now - MAINTENANCE_BOOT_GRACE_SECONDS - 60
         self._set_last_run(now - since_last_run)
         last_activity = now - idle_seconds
         with patch('servers.scales.s2.coordinator.run_s2',
@@ -108,15 +114,19 @@ class MaintenanceGateTests(BrainTestBase):
     # ── cold-boot path (last_activity_ts == 0) ────────────────────────
 
     def test_zero_last_activity_treated_as_infinite_idle(self):
-        # Daemon just restarted: last_user_activity = 0.0. Gate should
-        # treat this as "infinitely idle" and fire (subject to min_interval).
+        # last_user_activity = 0.0 (no prompts yet) must map to "infinitely
+        # idle" so the gate fires — once past the boot-grace window. (Boot
+        # grace, 2026-05-08, deliberately suppresses the very first post-start
+        # poll so the first user recall isn't blocked behind consolidation.)
         now = 1_000_000.0
+        self.brain._boot_time = now - MAINTENANCE_BOOT_GRACE_SECONDS - 60
         self._set_last_run(now - MAINTENANCE_MIN_INTERVAL_SECONDS - 60)
         with patch('servers.scales.s2.coordinator.run_s2',
                    return_value={'fired': True}):
             result = self.brain.run_maintenance_if_due(0.0, now=now)
         self.assertIsNotNone(result,
-            "freshly-restarted daemon should fire S2 immediately")
+            "past boot-grace, a daemon with no user activity (0.0) is treated "
+            "as infinitely idle and fires")
 
 
 if __name__ == '__main__':

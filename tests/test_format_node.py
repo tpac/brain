@@ -82,9 +82,10 @@ class TestFormatNode(BrainTestBase):
         long_content = 'A' * 500
         nid = self._make_node(content=long_content)
         out = self._render(nid, config={'content_limit': 50})
-        # Content line should have exactly 50 A's, not 500
-        self.assertIn('A' * 50, out)
-        self.assertNotIn('A' * 51, out)
+        # _truncate caps at <= limit chars INCLUDING the ellipsis
+        # (s[:limit-1] + '…'), so a 500-char body renders as 49 A's + '…'.
+        self.assertIn('A' * 49 + '…', out)
+        self.assertNotIn('A' * 50, out)
 
     def test_no_content_limit_shows_full(self):
         """Default (content_limit=None) shows full content."""
