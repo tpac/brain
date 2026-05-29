@@ -497,6 +497,32 @@ def _handle_brain_batch(brain, args, graph_changes):
     # caller-visible op failure) do we rollback the whole batch.
     brain._batch_mode = True
     transaction_started = False
+    # brain_batch owns its own BEGIN IMMEDIATE / COMMIT envelope. If self.conn
+    # is ALREADY mid-transaction here, an upstream op left a deferred auto-BEGIN
+    # open without committing (self.conn uses Python's default deferred
+    # isolation). Inheriting it would (a) make the explicit BEGIN IMMEDIATE
+    # below throw "cannot start a transaction within a transaction" and (b)
+    # silently fold that op's uncommitted writes into THIS batch's commit.
+    # Flush the orphan cleanly and log loud so the upstream leak stays visible.
+    if brain.conn.in_transaction:
+        try:
+            brain.conn.commit()
+        except Exception:
+            try:
+                brain.conn.rollback()
+            except Exception:
+                pass
+        print('[brain_batch] WARN: flushed a leaked transaction at entry — an '
+              'upstream write did not commit (self.conn was mid-transaction)',
+              flush=True)
+        try:
+            brain._log_error(
+                'brain_batch_stale_txn',
+                RuntimeError('self.conn was mid-transaction at brain_batch entry'),
+                'flushed leaked txn before BEGIN IMMEDIATE; upstream op that ran '
+                'just before brain_batch did not commit')
+        except Exception:
+            pass
     try:
         brain.conn.execute('BEGIN IMMEDIATE')
         transaction_started = True

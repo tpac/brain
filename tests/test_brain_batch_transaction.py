@@ -117,6 +117,36 @@ class TestBrainBatchTransaction(BrainTestBase):
         self.assertEqual(postcount, 0,
                          "Both nodes should have been rolled back; %d found" % postcount)
 
+    def test_recovers_from_leaked_transaction(self):
+        """Guard: if self.conn is already mid-transaction at entry (an upstream
+        op left a deferred auto-BEGIN open without committing), brain_batch must
+        flush the orphan, recover, and commit its own ops cleanly — NOT throw
+        'cannot start a transaction within a transaction'.
+
+        Regression for the S2 multi-pass community crash surfaced by the Frozen
+        Corpus eval build. See docs/WRITE-TXN-ISOLATION-ROOTFIX.md.
+        """
+        # Simulate the leak: open a transaction + a DML, do NOT commit.
+        self.brain.conn.execute('BEGIN')
+        self.brain.conn.execute("UPDATE nodes SET title = title WHERE 0")
+        self.assertTrue(self.brain.conn.in_transaction,
+                        "precondition: connection should be mid-transaction")
+
+        r = self._batch([
+            {"op": "remember", "type": "rule",
+             "title": "leaked-txn-recovery", "content": "should persist"},
+        ])
+
+        self.assertTrue(r['ok'], "batch should recover, not crash")
+        self.assertEqual(r['result']['succeeded'], 1)
+        self.assertFalse(self.brain.conn.in_transaction,
+                         "connection should be clean after the batch")
+        self.assertFalse(self.brain._batch_mode, "_batch_mode must reset")
+        persisted = self.brain.conn.execute(
+            "SELECT 1 FROM nodes WHERE title = 'leaked-txn-recovery' AND archived = 0"
+        ).fetchone()
+        self.assertIsNotNone(persisted, "the batch op should have persisted")
+
     def test_per_op_failure_still_commits_other_ops(self):
         """Per-op exceptions stay in results — the batch as a whole still commits
         the ops that succeeded. (Best-effort surface preserved.)"""
