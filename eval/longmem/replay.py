@@ -61,7 +61,8 @@ def _run_s2_foreground(brain) -> Dict[str, Any]:
 def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, str]]],
                 haystack_dates: Optional[List[str]] = None,
                 log_prefix: str = "[replay]",
-                dumper=None) -> Dict[str, Any]:
+                dumper=None,
+                s2_every_n: Optional[int] = None) -> Dict[str, Any]:
     """Replay a LongMemEval item's haystack through the brain.
 
     Args:
@@ -89,8 +90,15 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
     ctx = brain.get_or_create_session(session_id)
 
     stats = {"turns": 0, "user_turns": 0, "s1e_runs": 0, "s2_runs": 0,
-             "s1r_ms_total": 0, "s1e_ms_total": 0, "s2_ms_total": 0}
+             "s1r_ms_total": 0, "s1e_ms_total": 0, "s2_ms_total": 0,
+             # Every run_s2() return captured here so the corpus build can
+             # record what S2 actually did (merges, communities, fills, errors)
+             # — S2 is a subject under test, not just a fidelity knob.
+             "s2_deltas": []}
 
+    # S2 cadence is configurable so the corpus build can pin it into the
+    # corpus_hash; defaults to the module constant when unset.
+    s2_gate = s2_every_n if s2_every_n is not None else S2_EVERY_N_ENCODINGS
     encodings_since_s2 = 0
     total_sessions = len(haystack_sessions)
 
@@ -149,13 +157,14 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
                     print(f"{log_prefix}   WARN s1e failed: {e}", flush=True)
 
                 # S2 gate: every N encodings
-                if encodings_since_s2 >= S2_EVERY_N_ENCODINGS:
+                if encodings_since_s2 >= s2_gate:
                     print(f"{log_prefix}   s2 firing", flush=True)
                     t0s = time.time()
                     try:
-                        _run_s2_foreground(brain)
+                        s2_res = _run_s2_foreground(brain)
                         stats["s2_runs"] += 1
                         stats["s2_ms_total"] += int((time.time() - t0s) * 1000)
+                        stats["s2_deltas"].append(s2_res)
                         encodings_since_s2 = 0
                         print(f"{log_prefix}   s2 done in {int((time.time()-t0s)*1000)}ms", flush=True)
                     except Exception as e:
@@ -206,6 +215,7 @@ def replay_item(brain, session_id: str, haystack_sessions: List[List[Dict[str, s
             stats["s2_runs"] += 1
             elapsed = int((time.time() - t0s) * 1000)
             stats["s2_ms_total"] += elapsed
+            stats["s2_deltas"].append(s2_result)
 
             did_work = False
             if isinstance(s2_result, dict):

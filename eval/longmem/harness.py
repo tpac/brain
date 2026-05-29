@@ -81,19 +81,27 @@ def stratified_sample(data: List[Dict[str, Any]], per_axis: int = 2,
 
 
 def _snapshot_error_count(brain) -> int:
-    """Count brain_errors rows now — returns a monotonic counter used to detect
-    errors logged during a single item's ingest/query phase."""
+    """Count error rows now — a monotonic counter to detect errors logged during
+    a single item's ingest/query phase.
+
+    Errors live in `debug_log` (event_type='error') via `brain._log_error`, NOT a
+    `brain_errors` table. The prior query here hit a non-existent table and the
+    bare `except` swallowed it to 0 — so this guardrail was a silent no-op. Fixed
+    2026-05-29 (same bug class flagged in docs/WRITE-TXN-ISOLATION-ROOTFIX.md)."""
     try:
-        return brain.logs_conn.execute("SELECT COUNT(*) FROM brain_errors").fetchone()[0]
+        return brain.logs_conn.execute(
+            "SELECT COUNT(*) FROM debug_log WHERE event_type='error'").fetchone()[0]
     except Exception:
         return 0
 
 
 def _new_errors_since(brain, baseline_count: int) -> List[Dict[str, Any]]:
-    """Return error rows logged since baseline_count. Limited to 20 for sanity."""
+    """Return error rows logged since baseline_count. Limited to 20 for sanity.
+
+    Error detail is JSON in `debug_log.metadata` ({error, type, context})."""
     try:
         rows = brain.logs_conn.execute(
-            "SELECT error_type, error_message, context FROM brain_errors "
+            "SELECT source, metadata FROM debug_log WHERE event_type='error' "
             "ORDER BY id DESC LIMIT ?", (20,)).fetchall()
     except Exception:
         return []
@@ -101,8 +109,18 @@ def _new_errors_since(brain, baseline_count: int) -> List[Dict[str, Any]]:
     n_new = max(0, current - baseline_count)
     if n_new == 0:
         return []
-    return [{"type": r[0], "message": (r[1] or "")[:200], "context": (r[2] or "")[:100]}
-            for r in rows[:n_new]]
+    out = []
+    for source, meta_json in rows[:n_new]:
+        try:
+            meta = json.loads(meta_json) if meta_json else {}
+        except Exception:
+            meta = {}
+        out.append({
+            "type": meta.get("type") or source,
+            "message": (meta.get("error") or "")[:200],
+            "context": (meta.get("context") or "")[:100],
+        })
+    return out
 
 
 def _preflight(oracle_path: str, min_oracle_items: int = 100,

@@ -1,0 +1,136 @@
+"""Frozen Corpus — the durable artifact between Stage 1 (encode) and Stage 2 (recall).
+
+A corpus is a set of fully-encoded, per-item brains plus a manifest. It is
+content-addressed by the inputs that determine the encoded graph: the s1e
+(encoder) prompt, the ingest-time surface prompt, the S2 cadence, the oracle,
+and the exact item set. Same inputs → same `corpus_hash` → reuse on disk
+instead of paying the (expensive) encode again.
+
+This is what makes A/B honest and fast at once:
+  - RECALL experiments hold corpus_hash fixed for both arms → encoding can't
+    contribute to the delta (it's the same frozen bytes).
+  - ENCODE experiments build two corpora (different s1e) once each, reuse
+    across every recall sweep.
+
+Layout: ~/AgentsContext/eval-corpus/{corpus_hash}/
+          manifest.json
+          {qid}/                 ← a complete, closed brain (brain.db + WAL)
+          {qid}/ ...
+
+The manifest also carries the answerability verdict (the gold-scan run on the
+frozen brain) and the S2 delta (what consolidation/community/healer actually
+did) so a corpus build is itself a diagnostic, not just a cache.
+"""
+import hashlib
+import json
+import os
+from typing import Any, Dict, List, Optional
+
+
+CORPUS_ROOT = os.path.expanduser("~/AgentsContext/eval-corpus")
+
+
+# ─── Paths ────────────────────────────────────────────────────────────────
+
+def corpus_dir(corpus_hash: str) -> str:
+    return os.path.join(CORPUS_ROOT, corpus_hash)
+
+
+def corpus_item_dir(corpus_hash: str, qid: str) -> str:
+    """The per-item frozen brain directory (a complete brain.db)."""
+    return os.path.join(corpus_dir(corpus_hash), qid)
+
+
+def manifest_path(corpus_hash: str) -> str:
+    return os.path.join(corpus_dir(corpus_hash), "manifest.json")
+
+
+def load_manifest(corpus_hash: str) -> Optional[Dict[str, Any]]:
+    path = manifest_path(corpus_hash)
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        return json.load(f)
+
+
+def save_manifest(corpus_hash: str, manifest: Dict[str, Any]) -> str:
+    os.makedirs(corpus_dir(corpus_hash), exist_ok=True)
+    path = manifest_path(corpus_hash)
+    with open(path, "w") as f:
+        json.dump(manifest, f, indent=2)
+    return path
+
+
+# ─── Content addressing ────────────────────────────────────────────────────
+
+def source_token(spec: Optional[str]) -> str:
+    """Reduce a prompt source ('active' or a file path) to a stable token.
+
+    'active' → the seeded v1 the fresh eval brain boots with (which mirrors
+    the production-active prompt, per the sync-prompts discipline). A file
+    path → a content hash, so editing the override file changes the corpus
+    hash and forces a rebuild.
+    """
+    if not spec or spec == "active":
+        return "active"
+    try:
+        data = open(spec, "rb").read()
+        return "file:" + hashlib.sha1(data).hexdigest()[:8]
+    except Exception:
+        return "missing:" + os.path.basename(spec)
+
+
+def corpus_config_hash(config: Dict[str, Any]) -> str:
+    """6-hex content address over everything that determines the encoded graph."""
+    blob = json.dumps(config, sort_keys=True)
+    return hashlib.sha1(blob.encode("utf-8")).hexdigest()[:6]
+
+
+# ─── S2 delta ────────────────────────────────────────────────────────────
+
+def summarize_s2_deltas(deltas: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Aggregate every run_s2() return from a build into a per-unit summary.
+
+    Each delta is `{unit_name: result_dict, '_elapsed_ms': ...}`. We roll up,
+    per unit: how many times it fired, how often it did real work, total
+    actions, errors (with samples), and skips. Errors are the gold here — the
+    coordinator swallows unit exceptions into `{'error': ...}`, so this is
+    where an S2 unit that's quietly broken during ingest becomes visible.
+    """
+    summary: Dict[str, Any] = {}
+    for d in deltas or []:
+        if not isinstance(d, dict):
+            continue
+        for unit, res in d.items():
+            if unit == "_elapsed_ms" or not isinstance(res, dict):
+                continue
+            s = summary.setdefault(unit, {
+                "fires": 0, "did_work": 0, "actions": 0,
+                "errors": 0, "skipped": 0, "sample_errors": [],
+            })
+            s["fires"] += 1
+            if "error" in res:
+                s["errors"] += 1
+                if len(s["sample_errors"]) < 3:
+                    s["sample_errors"].append(str(res["error"])[:200])
+            elif res.get("skipped"):
+                s["skipped"] += 1
+            else:
+                acts = int(res.get("actions", 0) or 0)
+                s["actions"] += acts
+                if acts > 0:
+                    s["did_work"] += 1
+    return summary
+
+
+def merge_s2_totals(per_item: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Sum per-item S2 summaries across the whole corpus."""
+    totals: Dict[str, Any] = {}
+    for item in per_item:
+        for unit, s in (item.get("s2_delta") or {}).items():
+            t = totals.setdefault(unit, {
+                "fires": 0, "did_work": 0, "actions": 0, "errors": 0, "skipped": 0,
+            })
+            for k in ("fires", "did_work", "actions", "errors", "skipped"):
+                t[k] += int(s.get(k, 0) or 0)
+    return totals
