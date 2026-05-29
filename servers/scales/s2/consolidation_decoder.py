@@ -10,7 +10,9 @@ K = similarity thresholds + edge families + community membership
 """
 
 import json
+import time
 from collections import defaultdict, Counter
+from datetime import datetime, timezone
 
 import numpy as np
 
@@ -24,6 +26,13 @@ class ConsolidationDecoder(IntegrationUnit):
     SCALE = 's2'
     ENCODING_SOURCE = 's2:consolidation'
 
+    # brain_meta keys for the scan gate (2026-05-29). One cold-start covers the
+    # existing backlog; subsequent runs scan only nodes changed since last run
+    # (incremental) and skip when nothing changed. A similarity-threshold
+    # change forces a fresh cold-start.
+    LAST_RUN_TS_KEY = 's2_consolidation_last_run_ts'
+    LAST_THRESHOLD_KEY = 's2_consolidation_last_threshold'
+
     O_SOURCES = ['graph_embeddings', 's1_recall_traces', 's1_encode_traces']
     K_SOURCES = ['similarity_threshold', 'edge_families', 'community_membership']
 
@@ -34,30 +43,68 @@ class ConsolidationDecoder(IntegrationUnit):
     def run(self):
         """Find convergent clusters, enrich with behavioral evidence.
 
+        Gating (2026-05-29): the embedding scan is the expensive step. The
+        first run (no recorded last-run timestamp) does a full cold-start scan
+        that covers the entire existing backlog; afterwards each run scans only
+        nodes created/revised since the last run (incremental) and skips
+        entirely when nothing changed. A similarity-threshold change forces one
+        fresh cold-start so previously sub-threshold pairs are re-evaluated.
+        _heal_graph runs every cycle (cheap) — only the scan is gated.
+
         Returns:
             dict with: clusters (list), stats (dict), skipped (str or None)
         """
-        # Always full scan — takes <1s on ~2000 nodes. Suppression edges
-        # (consolidated_into, similar_to) filter already-processed pairs.
-        # No incremental mode needed — it blocked graduated cold start
-        # and saved <1s at the cost of missing 136 unprocessed clusters.
-
-        # Step 0: Graph health — archive broken artifacts
+        # Step 0: Graph health — archive broken artifacts (cheap, always runs)
         healed = self._heal_graph()
 
-        # Step 1: Find candidate pairs by embedding similarity (always full scan)
-        candidates, scan_stats = self._scan_embeddings('', True)
+        # Mode selection. Wall-clock is correct here — real time since the last
+        # scan, same basis as Brain._maintenance_last_run_ts; not conversation
+        # time, so no `at=` anchor.
+        raw_ts = self.brain.get_config(self.LAST_RUN_TS_KEY) or '0'
+        try:
+            last_run_ts = float(raw_ts)
+        except (TypeError, ValueError):
+            last_run_ts = 0.0
+        cur_threshold = str(self.config['similarity_threshold'])
+        prev_threshold = self.brain.get_config(self.LAST_THRESHOLD_KEY)
+        cold_start = (last_run_ts <= 0) or (prev_threshold != cur_threshold)
+
+        cutoff_iso = (datetime.fromtimestamp(last_run_ts, tz=timezone.utc).isoformat()
+                      if last_run_ts > 0 else '')  # clock-ok — gate cutoff, not conversation time
+        changed_ids = None
+        if not cold_start:
+            changed_ids = self._get_changed_node_ids(cutoff_iso)
+            if not changed_ids:
+                # Nothing changed since the last scan — skip the expensive
+                # pass. Leave last_run_ts untouched so changes keep accruing.
+                return {'clusters': [], 'stats': {'healed': healed},
+                        'skipped': 'no graph change'}
+
+        # Step 1: Find candidate pairs by embedding similarity
+        scan_started = time.time()  # clock-ok — idle-cycle wall-clock duration
+        candidates, scan_stats = self._scan_embeddings(
+            cutoff_iso, cold_start, changed_ids)
+        scan_stats['scan_ms'] = int((time.time() - scan_started) * 1000)
 
         self.trace('O', 'consolidation_candidates',
-                   'Scanned %d nodes, found %d pairs above %.2f (suppressed %d)' % (
+                   'Scanned %d nodes, found %d pairs above %.2f (suppressed %d, %s %dms)' % (
                        scan_stats['nodes_scanned'],
                        scan_stats['pairs_found'],
                        self.config['similarity_threshold'],
-                       scan_stats.get('suppressed_pairs', 0)),
+                       scan_stats.get('suppressed_pairs', 0),
+                       scan_stats.get('mode', '?'),
+                       scan_stats['scan_ms']),
                    metadata=scan_stats)
 
+        # Baseline to record IF the full run completes. The orchestrator
+        # stamps this only AFTER the encoder finishes — so a mid-run failure
+        # (encoder hang/timeout) leaves the cutoff untouched and the next cycle
+        # retries the same work instead of skipping past it. Captured at scan
+        # start so changes arriving during a slow encode aren't missed.
+        stamp = {'ts': scan_started, 'threshold': cur_threshold}
+
         if not candidates:
-            return {'clusters': [], 'stats': scan_stats}
+            return {'clusters': [], 'stats': scan_stats, '_stamp': stamp}
 
         # Step 2: Cluster connected components
         clusters = self._cluster_pairs(candidates)
@@ -82,6 +129,7 @@ class ConsolidationDecoder(IntegrationUnit):
             'stats': {**scan_stats, 'clusters_formed': len(enriched),
                       'class_counts': dict(class_counts),
                       'healed': healed},
+            '_stamp': stamp,
         }
 
     # ══════════════════════════════════════════════════════════
@@ -139,7 +187,7 @@ class ConsolidationDecoder(IntegrationUnit):
     # Step 1: Embedding scan
     # ══════════════════════════════════════════════════════════
 
-    def _scan_embeddings(self, last_ts, is_cold_start):
+    def _scan_embeddings(self, last_ts, is_cold_start, changed_ids=None):
         """Find all node pairs above similarity threshold.
 
         Uses two similarity dimensions:
@@ -300,10 +348,16 @@ class ConsolidationDecoder(IntegrationUnit):
             pairs_raw = _find_pairs(content_sim_upper, title_sim_upper, ids, ids)
             mode = 'cold_start'
         else:
-            changed_ids = self._get_changed_node_ids(last_ts)
+            if changed_ids is None:
+                changed_ids = self._get_changed_node_ids(last_ts)
             if not changed_ids:
                 return [], {'nodes_scanned': len(content_vecs), 'pairs_found': 0,
                             'mode': 'incremental', 'changed_nodes': 0}
+
+            # A changed node must always re-evaluate, even if it already carries
+            # a suppression edge — exclude it from the reviewed filter so its
+            # pairs survive (a revise() can create a new near-duplicate).
+            already_reviewed.difference_update(changed_ids)
 
             changed_indices = [id_to_idx[nid] for nid in changed_ids if nid in id_to_idx]
             if not changed_indices:
@@ -348,26 +402,25 @@ class ConsolidationDecoder(IntegrationUnit):
 
         return unique_pairs, stats
 
-    def _get_changed_node_ids(self, since_ts):
-        """Get node IDs created or revised since last run, from S1E traces."""
-        traces = self._read_traces_since(
-            's1', since_ts, ref_types=['encoding_run'])
-        changed = set()
-        for t in traces:
-            meta = t.get('metadata')
-            if isinstance(meta, str):
-                try:
-                    meta = json.loads(meta)
-                except (json.JSONDecodeError, TypeError):
-                    meta = {}
-            if isinstance(meta, dict):
-                for nid in meta.get('created', []):
-                    if nid:
-                        changed.add(nid)
-                for nid in meta.get('revised', []):
-                    if nid:
-                        changed.add(nid)
-        return changed
+    def _get_changed_node_ids(self, since_iso):
+        """Node IDs created or revised since the cutoff, from node timestamps.
+
+        Uses nodes.created_at/updated_at — NOT S1E encoding_run traces — so it
+        catches nodes touched by Anchor's MCP tools and other S2 units, not
+        just the S1 Scribe. Community nodes are excluded (consolidation scans
+        non-community nodes only). Empty cutoff returns the full active set.
+        """
+        c = self.brain.conn
+        if not since_iso:
+            rows = c.execute(
+                "SELECT id FROM nodes WHERE archived = 0 AND type != 'community'"
+            ).fetchall()
+            return {r[0] for r in rows}
+        rows = c.execute(
+            "SELECT id FROM nodes WHERE archived = 0 AND type != 'community' "
+            "AND (created_at > ? OR updated_at > ?)",
+            (since_iso, since_iso)).fetchall()
+        return {r[0] for r in rows}
 
     # ══════════════════════════════════════════════════════════
     # Step 2: Cluster connected components

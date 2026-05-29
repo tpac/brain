@@ -38,6 +38,7 @@ class Consolidation(ConsolidationDecoder):
         stats = decode_result.get('stats', {})
 
         if not clusters:
+            self._record_scan_baseline(decode_result)
             return {'actions': 0, 'clusters': 0, 'stats': stats}
 
         # Fingerprint-based rejection filter — SKIP decisions from prior
@@ -62,6 +63,7 @@ class Consolidation(ConsolidationDecoder):
                   flush=True)
 
         if not clusters:
+            self._record_scan_baseline(decode_result)
             return {'actions': 0, 'clusters': 0, 'stats': stats}
 
         # Cap clusters per run (graduated cold start).
@@ -140,6 +142,11 @@ class Consolidation(ConsolidationDecoder):
             print('[s2-consolidation] Recorded %d SKIP rejections' % recorded,
                   flush=True)
 
+        # Run completed (encoder finished) — now it's safe to advance the
+        # last-run cutoff. The encode-failure path returns above without
+        # stamping, so failed work is retried next cycle.
+        self._record_scan_baseline(decode_result)
+
         return {
             'actions': encode_result.get('write_actions', 0),
             'clusters': len(clusters),
@@ -151,3 +158,16 @@ class Consolidation(ConsolidationDecoder):
                 'write_actions': encode_result.get('write_actions', 0),
             },
         }
+
+    def _record_scan_baseline(self, decode_result):
+        """Advance the last-run cutoff — ONLY after a run fully completes.
+
+        Stamps the timestamp + threshold the decoder captured at scan start.
+        Called on the completed paths (nothing to encode, or encoder
+        succeeded), never on a skip or a mid-run encoder failure — so failed
+        work is retried next cycle instead of being silently skipped past.
+        """
+        stamp = decode_result.get('_stamp')
+        if stamp:
+            self.brain.set_config(self.LAST_RUN_TS_KEY, str(stamp['ts']))
+            self.brain.set_config(self.LAST_THRESHOLD_KEY, stamp['threshold'])
