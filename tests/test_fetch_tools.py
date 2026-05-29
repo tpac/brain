@@ -18,7 +18,7 @@ from servers.scales.s1.fetch_tools import (
     _parse_date_expr,
     recall_topical,
     recall_recent,
-    recall_by_date,
+    recall_by_time,
     recall_verbatim,
     recall_by_aspect,
     expand_node,
@@ -98,7 +98,7 @@ class TestToolDefinitions:
     def test_six_tools_defined(self):
         names = {t['name'] for t in TOOL_DEFINITIONS}
         assert names == {
-            'recall_topical', 'recall_recent', 'recall_by_date',
+            'recall_topical', 'recall_recent', 'recall_by_time',
             'recall_verbatim', 'recall_by_aspect', 'expand_node',
         }
 
@@ -151,17 +151,20 @@ class TestRecallRecent:
         assert isinstance(results, list)
 
 
-class TestRecallByDate:
-    def test_since_recent_date_returns_results(self, env):
-        results = recall_by_date(env.brain, when='since 2026-04-01', k=10)
+class TestRecallByTime:
+    def test_open_ended_start_returns_results(self, env):
+        # recall_by_date(when='since 2026-04-01') → recall_by_time with an
+        # open-ended upper bound. Needs a query for tiers 1/2; time-only is tier 3.
+        results = recall_by_time(env.brain, start_when='2026-04-01',
+                                 query='partnership', limit=10)
         assert isinstance(results, list)
         for r in results:
-            assert r['source_tool'] == 'recall_by_date'
+            assert r['source_tool'] == 'recall_by_time'
 
-    def test_dict_form(self, env):
-        results = recall_by_date(env.brain,
-                                   when={'since': '2026-04-01', 'until': '2026-05-10'},
-                                   k=5)
+    def test_bounded_range(self, env):
+        # recall_by_date(when={'since':..., 'until':...}) → start_when/end_when.
+        results = recall_by_time(env.brain, start_when='2026-04-01',
+                                 end_when='2026-05-10', query='partnership', limit=5)
         assert isinstance(results, list)
 
 
