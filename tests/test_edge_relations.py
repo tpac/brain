@@ -117,7 +117,12 @@ class T2_MultiRelation(BrainTestBase):
             (a, b, b, a)).fetchone()[0]
         self.assertAlmostEqual(edge_weight, 0.8, places=1)
 
-    def test_same_relation_strengthens(self):
+    def test_same_relation_idempotent(self):
+        """Stage 1B (Option α): re-connecting the same relation is idempotent.
+        Repeated connect does NOT auto-strengthen weight — Hebbian bumps go
+        through GraphDAL.strengthen_relation(). A later description replaces the
+        earlier one (field-preserving upsert), and the pair stays a single row.
+        """
         a, b = self._create_pair()
         self.brain.connect_typed(a, b, relation='extends', weight=0.5,
                                  description='first')
@@ -126,8 +131,9 @@ class T2_MultiRelation(BrainTestBase):
 
         rels = _get_relations_for_pair(self.brain.conn, a, b)
         extends_rels = [r for r in rels if r[0] == 'extends']
-        self.assertEqual(len(extends_rels), 1)
-        self.assertGreater(extends_rels[0][2], 0.5)  # weight increased
+        self.assertEqual(len(extends_rels), 1)            # one row, not two
+        self.assertEqual(extends_rels[0][2], 0.5)         # weight unchanged (no auto-strengthen)
+        self.assertEqual(extends_rels[0][1], 'second')    # later description replaces earlier
 
     def test_direction_preserved(self):
         """Source of connect call should be source_id in edges table."""
