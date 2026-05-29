@@ -33,6 +33,11 @@ THREAD_POOL_SIZE = max(4, (os.cpu_count() or 4) // 2)
 DAEMON_HOST = ""  # Empty string = all interfaces (IPv4+IPv6), fixes macOS localhost→::1
 DAEMON_PORT = 47200 + (os.getuid() % 100)  # Per-user port to avoid collisions
 
+# launchd service label (macOS). The daemon runs as this launchd job
+# (KeepAlive=true), so external recovery force-restarts a hung daemon with
+# `launchctl kickstart -k` and lets launchd own the respawn.
+LAUNCHD_LABEL = "com.brain.daemon"
+
 
 # ─── Developer mode ───
 # Set BRAIN_DEV_MODE=1 in your shell rc to opt out of safety nets that
@@ -126,3 +131,13 @@ def get_maintenance_path() -> str:
 def is_maintenance_mode() -> bool:
     """Check if brain is in maintenance mode (DB operations, no daemon)."""
     return os.path.exists(get_maintenance_path())
+
+
+def get_recovery_state_path() -> str:
+    """Path to the cross-process daemon-recovery state file.
+
+    Holds the cooldown timestamp + circuit-breaker failure count shared by
+    every recovery caller (hooks, MCP health monitor) so concurrent callers
+    don't double-restart a daemon mid-respawn or loop forever on one that
+    can't come back."""
+    return os.path.join("/tmp", "brain-recovery-{}.json".format(os.getuid()))

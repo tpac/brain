@@ -195,9 +195,14 @@ class TestTraceContractSync:
         all_py += glob.glob(os.path.join(ROOT, 'hooks', 'scripts', '*.py'))
 
         known_writers = set(os.path.join(ROOT, f) for f in TRACE_WRITER_FILES)
-        # Also allow dal.py (the DAL itself) and daemon_dispatch.py (the router)
+        # Also allow dal.py (the DAL itself) and the dispatch layer. The dispatch
+        # handlers split out of daemon_dispatch 2026-05-28: revise/edge trace
+        # emitters live in dispatch_write.py, the trace_append handler in
+        # dispatch_observability.py.
         known_writers.add(os.path.join(ROOT, 'servers', 'dal.py'))
         known_writers.add(os.path.join(ROOT, 'servers', 'daemon_dispatch.py'))
+        known_writers.add(os.path.join(ROOT, 'servers', 'dispatch_write.py'))
+        known_writers.add(os.path.join(ROOT, 'servers', 'dispatch_observability.py'))
 
         for py_file in all_py:
             if py_file in known_writers:

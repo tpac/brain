@@ -15,6 +15,7 @@ import json
 import os
 import signal
 import socket
+import subprocess
 import sys
 import time
 from typing import Any, Dict, Optional
@@ -61,8 +62,9 @@ def _debugger_friendly_python() -> str:
     return sys.executable
 
 from .daemon_config import (
-    _code_fingerprint, _CODE_FINGERPRINT,
+    _code_fingerprint, _CODE_FINGERPRINT, LAUNCHD_LABEL,
     get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
+    get_recovery_state_path, is_maintenance_mode,
 )
 
 
@@ -130,6 +132,17 @@ def _can_connect(timeout: float = 2.0) -> dict:
         return {}
 
 
+def is_daemon_responsive(timeout: float = 2.0) -> bool:
+    """True only if the daemon answers a ping (liveness).
+
+    Distinguishes a live daemon from a hung "corpse" that holds the port but
+    services nothing — which a bare TCP connect or a PID-exists check would
+    wrongly report as alive. This is the liveness signal; readiness (e.g. a
+    cold-start recall that's slow but alive) is a separate concern and must
+    NOT be treated as down."""
+    return _can_connect(timeout=timeout).get("ok", False)
+
+
 def ensure_daemon(db_path: str) -> bool:
     """Start the daemon if not running. Returns True if daemon is ready.
 
@@ -142,7 +155,6 @@ def ensure_daemon(db_path: str) -> bool:
     Maintenance mode: if the maintenance lock file exists, skip startup.
     Used during DB operations (VACUUM, schema changes, bulk deletes).
     """
-    from .daemon_config import is_maintenance_mode
     if is_maintenance_mode():
         sys.stderr.write("[brain-daemon] Maintenance mode active — skipping startup\n")
         return False
@@ -194,7 +206,6 @@ def ensure_daemon(db_path: str) -> bool:
 
         # Spawn daemon
         sys.stderr.write("[brain-daemon] Spawning daemon...\n")
-        import subprocess
         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         log_path = os.path.join(os.path.dirname(db_path), "daemon.log")
 
@@ -312,6 +323,106 @@ def restart_daemon(db_path: str = None) -> bool:
         db_dir = os.environ.get("BRAIN_DB_DIR", os.path.join(os.path.expanduser("~"), "AgentsContext", "brain"))
         db_path = os.path.join(db_dir, "brain.db")
     return ensure_daemon(db_path)
+
+
+# ─── Hung-daemon recovery ───
+#
+# A daemon that hangs after host sleep ("corpse") keeps its port bound but
+# services nothing, so launchd's crash-respawn never fires and the daemon's
+# own in-process suspend detector can't act (no thread is scheduled to send
+# the SIGTERM). Recovery must come from OUTSIDE the frozen process: force it
+# to die and let launchd respawn it. Every recovery caller — the MCP health
+# monitor and the recall hook — routes through recover_daemon(); shared
+# cooldown + circuit-breaker state (one /tmp file) keeps them from fighting.
+
+_RECOVERY_COOLDOWN_S = 30.0      # don't issue a 2nd restart while one is in flight
+_RECOVERY_MAX_ATTEMPTS = 5       # circuit breaker: stop after this many…
+_RECOVERY_WINDOW_S = 600.0       # …within this sliding window, then surface loudly
+
+
+def _read_recovery_state() -> dict:
+    try:
+        with open(get_recovery_state_path()) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {"last_attempt": 0.0, "attempts": 0}
+
+
+def _write_recovery_state(last_attempt: float, attempts: int):
+    try:
+        with open(get_recovery_state_path(), "w") as f:
+            json.dump({"last_attempt": last_attempt, "attempts": attempts}, f)
+    except OSError:
+        pass
+
+
+def _relaunch_daemon(db_path: Optional[str]):
+    """Kill the hung daemon and bring a fresh one up.
+
+    launchd is the canonical owner: `kickstart -k` kills + respawns in one
+    launchd-serialized call (no competing-daemon race). If launchd isn't
+    managing it (kickstart fails), fall back to kill + Popen spawn."""
+    label = "gui/{}/{}".format(os.getuid(), LAUNCHD_LABEL)
+    try:
+        result = subprocess.run(["launchctl", "kickstart", "-k", label],
+                                timeout=10, capture_output=True)
+        if result.returncode == 0:
+            return
+    except Exception:
+        pass
+    # No launchd (or kickstart failed) — own the kill + respawn.
+    _kill_daemon()
+    if not db_path:
+        db_dir = os.environ.get("BRAIN_DB_DIR",
+                                os.path.join(os.path.expanduser("~"), "AgentsContext", "brain"))
+        db_path = os.path.join(db_dir, "brain.db")
+    ensure_daemon(db_path)
+
+
+def recover_daemon(db_path: Optional[str] = None) -> bool:
+    """Recover a hung/unreachable daemon. Returns True iff it's healthy now.
+
+    The single recovery path for every caller. Idempotent and safe to call
+    repeatedly — it no-ops when:
+      - the daemon already answers a ping (and clears any failure streak),
+      - maintenance mode is on (intentional shutdown),
+      - a restart is still in flight (cooldown), or
+      - the circuit breaker has tripped (too many failed restarts).
+    Otherwise it forces a restart and returns False; the next ping confirms.
+    """
+    if is_maintenance_mode():
+        return False
+
+    if is_daemon_responsive():
+        if _read_recovery_state().get("attempts"):
+            _write_recovery_state(0.0, 0)  # healthy again — reset the streak
+        return True
+
+    now = time.time()
+    state = _read_recovery_state()
+    last_attempt = state.get("last_attempt", 0.0)
+    attempts = state.get("attempts", 0)
+
+    # Sliding window: an old failure streak ages out, so the breaker can't
+    # lock recovery out forever after a long-past incident.
+    if now - last_attempt > _RECOVERY_WINDOW_S:
+        last_attempt, attempts = 0.0, 0
+
+    if now - last_attempt < _RECOVERY_COOLDOWN_S:
+        return False  # a restart is already in flight — give it time to boot
+
+    if attempts >= _RECOVERY_MAX_ATTEMPTS:
+        sys.stderr.write(
+            "[brain-daemon] recovery circuit OPEN — %d restarts in %ds did not "
+            "revive the daemon; not restarting again. Investigate manually.\n"
+            % (attempts, int(_RECOVERY_WINDOW_S)))
+        return False
+
+    attempts += 1
+    _write_recovery_state(now, attempts)
+    sys.stderr.write("[brain-daemon] daemon unresponsive — forcing restart (attempt %d)\n" % attempts)
+    _relaunch_daemon(db_path)
+    return False  # not yet verified; the next ping confirms recovery
 
 
 # ─── Agent DB Isolation ───

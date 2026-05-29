@@ -233,10 +233,16 @@ def daemon_unavailable_error(hook_name=None):
     except Exception:
         pass
 
-    # 3. Daemon restart is handled by launchd (com.brain.daemon).
-    # Hooks do NOT restart the daemon — that caused race conditions
-    # with multiple sessions spawning competing daemons.
-    # If launchd is not configured, the MCP plugin health monitor restarts it.
+    # 3. A hung daemon keeps the port bound, so launchd's crash-respawn never
+    # fires and the daemon can't SIGTERM itself. Hand off to the single
+    # recovery path — it kills the corpse + lets launchd respawn, guarded by
+    # maintenance-lock + cooldown + circuit breaker. (The MCP health monitor
+    # calls the same function; shared state keeps them from fighting.)
+    try:
+        from servers.daemon_client import recover_daemon
+        recover_daemon(db_path)
+    except Exception:
+        pass
 
     return msg
 
@@ -272,14 +278,16 @@ DAEMON_HOST = "127.0.0.1"
 DAEMON_PORT = 47200 + (os.getuid() % 100)
 
 
-def daemon_available():
-    """Check if daemon is reachable via TCP."""
+def daemon_available(timeout=2.0):
+    """Liveness check — True only if the daemon answers a ping.
+
+    Delegates to daemon_client.is_daemon_responsive(), the single source of
+    truth. A hung "corpse" that holds the port but never replies reads as
+    unavailable here, so recovery can fire; a slow-but-alive daemon still
+    answers and reads as available."""
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1.0)
-        sock.connect((DAEMON_HOST, DAEMON_PORT))
-        sock.close()
-        return True
+        from servers.daemon_client import is_daemon_responsive
+        return is_daemon_responsive(timeout=timeout)
     except Exception:
         return False
 

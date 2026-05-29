@@ -361,15 +361,17 @@ class TestDaemonModuleStructure(unittest.TestCase):
             self.assertIsNotNone(sym, f"Split daemon modules missing symbol: {sym_name}")
 
     def test_daemon_config_is_small(self):
-        """daemon_config.py should stay under 120 lines.
+        """daemon_config.py should stay under 150 lines.
         # ADJUSTED: 100→120 — added BRAIN_DEV_MODE + is_dev_mode() helper with
         #   plugin-repackaging caution docstring (2026-05-19).
+        # ADJUSTED: 120→150 — added LAUNCHD_LABEL + get_recovery_state_path()
+        #   for the consolidated hung-daemon recovery path (2026-05-28).
         """
         config_path = os.path.join(PROJECT_ROOT, 'servers', 'daemon_config.py')
         with open(config_path) as f:
             lines = len(f.readlines())
-        self.assertLess(lines, 120,
-                        f"daemon_config.py is {lines} lines — should be <120")
+        self.assertLess(lines, 150,
+                        f"daemon_config.py is {lines} lines — should be <150")
 
     def test_daemon_dispatch_is_readable(self):
         """daemon_dispatch.py should stay under 1120 lines."""
@@ -380,17 +382,20 @@ class TestDaemonModuleStructure(unittest.TestCase):
                         f"daemon_dispatch.py is {lines} lines — should be <1120")
 
     def test_daemon_server_is_readable(self):
-        """daemon_server.py should stay under 790 lines.
+        """daemon_server.py should stay under 950 lines.
         # ADJUSTED: 350→400 approved by Tom 2026-03-23 — same rationale as dispatch.
         # ADJUSTED: 400→450 approved by Tom 2026-03-24 — observer channel wiring added.
         # ADJUSTED: 450→790 — scales runner integration, session context, trace pipeline,
         #   background encoding lifecycle (2026-04)
+        # ADJUSTED: 790→950 approved by Tom 2026-05-28 — one cohesive daemon class
+        #   (supervisor loop, signal handling, suspend detector, request handling);
+        #   modest overage, splitting a single class isn't worth the seams.
         """
         path = os.path.join(PROJECT_ROOT, 'servers', 'daemon_server.py')
         with open(path) as f:
             lines = len(f.readlines())
-        self.assertLess(lines, 790,
-                        f"daemon_server.py is {lines} lines — should be <790")
+        self.assertLess(lines, 950,
+                        f"daemon_server.py is {lines} lines — should be <950")
 
     def test_no_circular_imports(self):
         """Importing daemon modules in any order should not cause circular imports."""
@@ -494,8 +499,9 @@ class TestSkillAvailability(unittest.TestCase):
             content = f.read()
         # Anchor must have identity section
         self.assertIn('Anchor', content)
-        # Must have encoding examples (show, don't tell)
-        self.assertIn('What Good Encoding Looks Like', content)
+        # Must carry encoding guidance (heading renamed in the 2026-05 SKILL.md
+        # rewrite from "What Good Encoding Looks Like" → "Encoding Craft").
+        self.assertIn('Encoding Craft', content)
         # Must have the "What You Are" identity section
         self.assertIn('What You Are', content)
 

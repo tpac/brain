@@ -920,6 +920,7 @@ def _health_monitor():
     """
     import time
     import sqlite3
+    from servers.daemon_client import recover_daemon
 
     consecutive_failures = 0
     PING_INTERVAL = 2.0
@@ -973,9 +974,11 @@ def _health_monitor():
             except Exception:
                 pass
 
-            # Attempt restart
+            # Force-recover the hung daemon — kill + launchd respawn.
+            # (ensure_daemon_running() only pings; a corpse won't exit on its
+            # own, so launchd's crash-respawn never fires without this.)
             try:
-                ensure_daemon_running()
+                recover_daemon()
             except Exception as e:
                 sys.stderr.write("[brain-mcp] Restart failed: %s\n" % e)
 
@@ -984,7 +987,7 @@ def _health_monitor():
             sys.stderr.write("[brain-mcp] Still down after %ds — retrying restart\n" % (
                 int(consecutive_failures * PING_INTERVAL)))
             try:
-                ensure_daemon_running()
+                recover_daemon()
             except Exception:
                 pass
 
