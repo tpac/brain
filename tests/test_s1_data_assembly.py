@@ -368,7 +368,14 @@ class TestSaveJournal:
 
 
 class TestSaveSessionContext:
-    """Tests for _save_session_context(brain, dispatch_fn, final_text)."""
+    """Tests for _save_session_context(brain, dispatch_fn, session_id, final_text).
+
+    2026-05-02 (Frame Phase 2.5): session context is per-session — written to
+    `session_context_{session_id}`, not the global `session_context` key — so
+    parallel sessions don't clobber each other. Tests seed + assert that key.
+    """
+
+    SID = 'test-sess'
 
     @pytest.fixture(autouse=True)
     def setup_brain(self):
@@ -388,16 +395,17 @@ class TestSaveSessionContext:
         """SESSION_CONTEXT: line in encoder output gets extracted and saved."""
         from servers.scales.s1.encode import _save_session_context
 
-        # Clear existing session context
-        self.brain._meta.set('session_context', '')
+        key = 'session_context_' + self.SID
+        # Clear existing per-session context
+        self.brain._meta.set(key, '')
         self.brain.conn.commit()
 
         dispatch_fn, calls = self._mock_dispatch()
         final_text = 'Some encoding output.\nSESSION_CONTEXT: Tom exploring recall mechanisms.\nDone.'
-        _save_session_context(self.brain, dispatch_fn, final_text)
+        _save_session_context(self.brain, dispatch_fn, self.SID, final_text)
 
         ctx_calls = [(cmd, args) for cmd, args in calls
-                     if cmd == 'set_config' and args.get('key') == 'session_context']
+                     if cmd == 'set_config' and args.get('key') == key]
         assert len(ctx_calls) == 1
         assert 'Tom exploring recall mechanisms.' in ctx_calls[0][1]['value']
 
@@ -406,25 +414,26 @@ class TestSaveSessionContext:
         from servers.scales.s1.encode import _save_session_context
 
         dispatch_fn, calls = self._mock_dispatch()
-        _save_session_context(self.brain, dispatch_fn, 'Just some text without context.')
+        _save_session_context(self.brain, dispatch_fn, self.SID, 'Just some text without context.')
 
         ctx_calls = [(cmd, args) for cmd, args in calls
-                     if cmd == 'set_config' and args.get('key') == 'session_context']
+                     if cmd == 'set_config' and args.get('key') == 'session_context_' + self.SID]
         assert len(ctx_calls) == 0
 
     def test_appends_to_existing_context(self):
         """New SESSION_CONTEXT appends to existing, newline-separated."""
         from servers.scales.s1.encode import _save_session_context
 
-        self.brain._meta.set('session_context', 'Previous context about testing.')
+        key = 'session_context_' + self.SID
+        self.brain._meta.set(key, 'Previous context about testing.')
         self.brain.conn.commit()
 
         dispatch_fn, calls = self._mock_dispatch()
         final_text = 'SESSION_CONTEXT: Now working on encoding pipeline.'
-        _save_session_context(self.brain, dispatch_fn, final_text)
+        _save_session_context(self.brain, dispatch_fn, self.SID, final_text)
 
         ctx_calls = [(cmd, args) for cmd, args in calls
-                     if cmd == 'set_config' and args.get('key') == 'session_context']
+                     if cmd == 'set_config' and args.get('key') == key]
         assert len(ctx_calls) == 1
         value = ctx_calls[0][1]['value']
         assert 'Previous context about testing.' in value
@@ -441,15 +450,16 @@ class TestSaveSessionContext:
         # Fill existing context close to the limit
         lines = ['Context line %d about something important' % i for i in range(30)]
         existing = '\n'.join(lines)
-        self.brain._meta.set('session_context', existing)
+        key = 'session_context_' + self.SID
+        self.brain._meta.set(key, existing)
         self.brain.conn.commit()
 
         dispatch_fn, calls = self._mock_dispatch()
         final_text = 'SESSION_CONTEXT: Final context entry that pushes over the limit.'
-        _save_session_context(self.brain, dispatch_fn, final_text)
+        _save_session_context(self.brain, dispatch_fn, self.SID, final_text)
 
         ctx_calls = [(cmd, args) for cmd, args in calls
-                     if cmd == 'set_config' and args.get('key') == 'session_context']
+                     if cmd == 'set_config' and args.get('key') == key]
         if ctx_calls:
             value = ctx_calls[0][1]['value']
             assert len(value) <= limit
@@ -460,15 +470,16 @@ class TestSaveSessionContext:
         """SESSION_CONTEXT: matching is case-insensitive on the prefix."""
         from servers.scales.s1.encode import _save_session_context
 
-        self.brain._meta.set('session_context', '')
+        key = 'session_context_' + self.SID
+        self.brain._meta.set(key, '')
         self.brain.conn.commit()
 
         dispatch_fn, calls = self._mock_dispatch()
         # The code uses .upper().startswith('SESSION_CONTEXT:')
         final_text = 'session_context: lowercase prefix works too.'
-        _save_session_context(self.brain, dispatch_fn, final_text)
+        _save_session_context(self.brain, dispatch_fn, self.SID, final_text)
 
         ctx_calls = [(cmd, args) for cmd, args in calls
-                     if cmd == 'set_config' and args.get('key') == 'session_context']
+                     if cmd == 'set_config' and args.get('key') == key]
         assert len(ctx_calls) == 1
         assert 'lowercase prefix works too.' in ctx_calls[0][1]['value']
