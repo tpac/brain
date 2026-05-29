@@ -119,13 +119,23 @@ def sweep(corpus_hash: str, surface: str, variance: int, label: str,
             print(f"[sweep] --surface path not found: {surface}", file=sys.stderr)
             sys.exit(2)
 
-    items = [it for it in manifest["items"] if it.get("answerable")]
-    excluded = [it["qid"] for it in manifest["items"] if not it.get("answerable")]
+    # Score EVERY item. The answerability gate's gold-scan requires ALL gold
+    # terms in ONE node, but composed / multi-session answers are spread across
+    # MANY nodes — no single node carries all the terms — so a strict-scan
+    # "unanswerable" is often a FALSE negative (verified: bc149d6b had 13 richly
+    # on-topic nodes yet scanned unanswerable). The scan can't reliably exclude,
+    # so don't hard-exclude on it. Score all items and let the per-item failure
+    # bucket separate genuine ENCODE_MISS (coverage) from recall-pipeline
+    # failures. Abstention items are scored too (the test is whether they abstain).
+    items = list(manifest["items"])
+    gate_unanswerable = [it["qid"] for it in items
+                         if not it.get("answerable") and it.get("axis") != "abstention"]
     if qids:
         wanted = {q.strip() for q in qids.split(",") if q.strip()}
         items = [it for it in items if it["qid"] in wanted]
-    print(f"[sweep] corpus {corpus_hash} loaded — {len(items)} answerable item(s); "
-          f"{len(excluded)} excluded (unanswerable): {excluded}", flush=True)
+    print(f"[sweep] corpus {corpus_hash} loaded — scoring {len(items)} item(s); "
+          f"{len(gate_unanswerable)} flagged unanswerable by the gate, scored anyway "
+          f"for coverage: {gate_unanswerable}", flush=True)
     print(f"[sweep] surface={'override:'+surface if surface != 'active' else 'active'} "
           f"variance={variance}", flush=True)
 
@@ -170,9 +180,19 @@ def sweep(corpus_hash: str, surface: str, variance: int, label: str,
 
             failure_info = {}
             if not correct:
-                failure_info = classify_failure(
-                    brain, question, gold, ar["hypothesis"],
-                    qr["query_session_id"], ar["has_context"], ar["abstained"])
+                if axis == "abstention":
+                    # An abstention miss = fabricated an answer when the haystack
+                    # had none. The recall-funnel classifier would mislabel it
+                    # (gold legitimately absent → spurious ENCODE_MISS), so bucket
+                    # it directly instead.
+                    failure_info = {
+                        "failure_bucket": "ABSTENTION_FAIL",
+                        "failure_reason": "did not abstain — fabricated an answer when the haystack had none",
+                    }
+                else:
+                    failure_info = classify_failure(
+                        brain, question, gold, ar["hypothesis"],
+                        qr["query_session_id"], ar["has_context"], ar["abstained"])
 
             total_ms = int((time.time() - t0) * 1000)
             mark = "✓" if correct else "✗"
@@ -233,7 +253,7 @@ def sweep(corpus_hash: str, surface: str, variance: int, label: str,
     total_ms = int((time.time() - t_run0) * 1000)
 
     _write_run_report(reports_dir, run_name, corpus_hash, surface, variance,
-                      results, total_ms, excluded)
+                      results, total_ms, gate_unanswerable)
     return run_name
 
 
@@ -245,7 +265,7 @@ def _stats(hits):
 
 
 def _write_run_report(reports_dir, run_name, corpus_hash, surface, variance,
-                      results, total_ms, excluded):
+                      results, total_ms, gate_unanswerable):
     correct_count = sum(1 for r in results if r["correct"])
     overall = correct_count / len(results) if results else 0
     by_axis, by_qid, by_bucket, by_comparison = {}, {}, {}, {}
@@ -266,6 +286,14 @@ def _write_run_report(reports_dir, run_name, corpus_hash, surface, variance,
 
     axis_stats = {a: _stats(v) for a, v in by_axis.items() if v}
     per_qid_stats = {q: _stats(v) for q, v in by_qid.items()} if variance > 1 else {}
+
+    # Recall-conditional pass rate: drop genuine ENCODE_MISS items from the
+    # denominator so encode-coverage gaps don't mask the recall signal. (Raw
+    # `overall` keeps everything; this isolates "recall quality given the fact
+    # was encoded." ABSTENTION_FAIL stays in — abstaining IS the test there.)
+    encode_miss = by_bucket.get("ENCODE_MISS", 0)
+    recall_denom = len(results) - encode_miss
+    recall_conditional = correct_count / recall_denom if recall_denom else 0.0
 
     report = {
         "run_name": run_name,
@@ -290,7 +318,9 @@ def _write_run_report(reports_dir, run_name, corpus_hash, surface, variance,
             "s2_in_selected_sum": reach_sel_sum,
             "s2_total_sum": reach_total_sum,
         },
-        "excluded_unanswerable": excluded,
+        "encode_miss_count": encode_miss,
+        "recall_conditional_pass": recall_conditional,
+        "gate_flagged_unanswerable": gate_unanswerable,
         "total_ms": total_ms,
         "results": results,
     }
@@ -299,7 +329,9 @@ def _write_run_report(reports_dir, run_name, corpus_hash, surface, variance,
         json.dump(report, f, indent=2)
 
     print(f"\n[sweep] done in {total_ms/1000:.1f}s", flush=True)
-    print(f"[sweep] overall: {overall:.1%} ({correct_count}/{len(results)})", flush=True)
+    print(f"[sweep] overall (raw): {overall:.1%} ({correct_count}/{len(results)})", flush=True)
+    print(f"[sweep] recall-conditional (excl. {encode_miss} ENCODE_MISS): "
+          f"{recall_conditional:.1%} ({correct_count}/{recall_denom})", flush=True)
     print(f"[sweep] failure buckets: {json.dumps(by_bucket)}", flush=True)
     print(f"[sweep] S2-reached-recall: {reps_with_s2}/{len(results)} reps had S2 nodes; "
           f"{reach_cand_sum} surfaced as candidates, {reach_sel_sum} selected", flush=True)

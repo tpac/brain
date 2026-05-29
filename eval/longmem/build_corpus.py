@@ -138,6 +138,23 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
     items_manifest = []
     t_run0 = time.time()
 
+    def _save_manifest_now():
+        """Rebuild + persist the manifest from items-so-far. Called after every
+        item so a crash during a long unattended build preserves completed items
+        (their frozen brains already exist on disk; this keeps the index in sync)."""
+        ac = sum(1 for it in items_manifest if it.get("answerable"))
+        m = {
+            "corpus_hash": h, "label": label, "created_at_epoch": time.time(),
+            "config": config, "items": items_manifest,
+            "answerable_count": ac,
+            "unanswerable_count": len(items_manifest) - ac,
+            "s2_totals": merge_s2_totals(items_manifest),
+            "build_errors_total": sum(
+                it.get("build_errors", {}).get("count", 0) for it in items_manifest),
+            "build_ms": int((time.time() - t_run0) * 1000),
+        }
+        return save_manifest(h, m), m
+
     for idx, item in enumerate(picked):
         qid = item["question_id"]
         axis = _item_axis(item)
@@ -212,24 +229,12 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
             "build_errors": build_errors,
             "brain_dir": path,
         })
+        _save_manifest_now()  # incremental — a crash mid-build keeps prior items
 
-    answerable_count = sum(1 for it in items_manifest if it["answerable"])
-    manifest = {
-        "corpus_hash": h,
-        "label": label,
-        "created_at_epoch": time.time(),
-        "config": config,
-        "items": items_manifest,
-        "answerable_count": answerable_count,
-        "unanswerable_count": len(items_manifest) - answerable_count,
-        "s2_totals": merge_s2_totals(items_manifest),
-        "build_errors_total": sum(it["build_errors"]["count"] for it in items_manifest),
-        "build_ms": int((time.time() - t_run0) * 1000),
-    }
-    path = save_manifest(h, manifest)
+    path, manifest = _save_manifest_now()
 
     print(f"\n[corpus] done in {manifest['build_ms']/1000:.1f}s", flush=True)
-    print(f"[corpus] ANSWERABLE: {answerable_count}/{len(items_manifest)}   "
+    print(f"[corpus] ANSWERABLE: {manifest['answerable_count']}/{len(items_manifest)}   "
           f"UNANSWERABLE: {manifest['unanswerable_count']}/{len(items_manifest)}", flush=True)
     print(f"[corpus] S2 totals: {json.dumps(manifest['s2_totals'])}", flush=True)
     print(f"[corpus] manifest → {path}", flush=True)
