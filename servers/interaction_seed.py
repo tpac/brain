@@ -226,9 +226,9 @@ Example 7 — date-anchored composition.
 
 
 # S2_NODE_FAMILIES_PROMPT and S2_EDGE_FAMILIES_PROMPT — REMOVED 2026-05-04
-# (Step 12 of unified-aspects). Replaced by aspect-nodes seeded directly
-# from aspects_v1.json. Step 13 will register a unified s2_aspects prompt
-# for the AspectIntegration maintenance unit.
+# (Step 12 of unified-aspects). Replaced by the unified aspect taxonomy in
+# aspects_v1.json, which AspectRegistry reads directly (no aspect-nodes). The
+# AspectIntegration maintenance unit's prompt is the s2_aspects interaction.
 
 
 # ═══════════════════════════════════════════════════════════════════════

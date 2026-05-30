@@ -271,12 +271,11 @@ class Brain(
                 print(f'[brain] Embedder load failed (optional): {e}')
 
         # AspectRegistry — first-class semantic-role API exposed as
-        # brain.aspects. Eager validation: loads all type='aspect' nodes,
-        # checks REQUIRED_ASPECTS present, auto-heals from aspects_v1.json
-        # if any are missing (logs warning, doesn't block). Read-only Brain
-        # instances (skip_embedder=True for background scale runs in
-        # runner.py) still validate — _load is cheap once aspects exist
-        # in the DB, and auto-heal is idempotent (skips already-present).
+        # brain.aspects. Eager validation: loads aspects from aspects_v1.json,
+        # checks REQUIRED_ASPECTS present, logs a warning if any are missing
+        # (doesn't block). Read-only Brain instances (skip_embedder=True for
+        # background scale runs in runner.py) still validate — _load is a
+        # cheap JSON read.
         #
         # MUST come before seed_baby_brain — seed creates 16 edges via
         # connect_typed, which hits _maybe_embed_edge_relation

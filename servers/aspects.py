@@ -2,13 +2,16 @@
 
 An aspect is a semantic role (correction, identity_bearing, active_thread, ...)
 that groups node TYPES and/or edge RELATIONS under a shared meaning. Aspects
-are themselves brain nodes (type='aspect'), with member lists in metadata.
+live in aspects_v1.json — each entry carries its own member lists (the
+node_types / edge_relations it claims). The registry reads that file directly;
+aspects are NOT brain nodes.
 
 Two tiers:
   - Required aspects (locked): code routes on these by string. Must always
-    exist. Listed in REQUIRED_ASPECTS — single source of truth, mirrored by
-    aspects_v1.json (test enforces equivalence). On boot the registry
-    validates and auto-heals from seed if any required aspect is missing.
+    exist. Listed in REQUIRED_ASPECTS — single source of truth for the
+    required NAMES, mirrored by aspects_v1.json keys (test enforces
+    equivalence). On boot the registry validates they are present in the JSON
+    and logs loudly if any are missing (no auto-heal — the JSON is the spec).
   - Emergent aspects (unlocked): discovered by S2's AspectIntegration unit
     as the brain accumulates new types/relations. Created freely.
 
@@ -19,8 +22,8 @@ Consumers (every name string in the codebase flows through here):
   - Surface: brain.aspects.relation_meaning_map() for embedding composition
   - MCP: list_aspects, filter_nodes(field='aspect'), recall(filter={'aspect':...})
 
-Step 2 ships the typed shapes and from_dict() construction for tests/seeding.
-The _load_from_brain() path (filter_nodes(type='aspect')) is wired in Step 6.
+from_dict() constructs a registry without a brain (for tests/seeding); the
+production path is _load(), which reads aspects_v1.json directly.
 """
 
 from dataclasses import dataclass, field
@@ -53,12 +56,12 @@ REQUIRED_ASPECTS: tuple = (
 
 
 class AspectContractError(Exception):
-    """Raised when a required aspect is missing from the brain.
+    """Raised by __getattr__ when `brain.aspects.<name>` references an aspect
+    not present in aspects_v1.json.
 
-    The auto-heal path catches this on boot and reseeds from
-    aspects_v1.json. Code that calls `registry.<aspect_name>` for a
-    non-required (emergent) aspect should use registry.by_name() instead,
-    which returns Optional[Aspect].
+    Code that calls `registry.<aspect_name>` for a non-required (emergent)
+    aspect should use registry.by_name() instead, which returns
+    Optional[Aspect].
     """
 
 
@@ -112,9 +115,10 @@ class AspectRegistry:
     """First-class API for the aspects system.
 
     Production: instantiated once at Brain.__init__, exposed as brain.aspects.
-    Loads from filter_nodes(type='aspect') eagerly; validates required aspects
-    are present; auto-heals from aspects_v1.json if any are missing. The
-    cache invalidates on a dirty flag set by the maintenance unit after writes.
+    Loads from aspects_v1.json eagerly; validates required aspects are present
+    (logs loudly if any are missing — see _validate). The in-memory cache
+    invalidates on a dirty flag (see invalidate()) so a rewritten JSON file is
+    picked up on next access.
 
     Testing/seeding: use from_dict() to construct without a brain — bypasses
     the load path, takes a pre-built dict of aspect specs.
@@ -245,9 +249,10 @@ class AspectRegistry:
             pass  # never let logging block validation
 
     def invalidate(self) -> None:
-        """Mark cache stale. Next access reloads from brain.
+        """Mark cache stale. Next access reloads from aspects_v1.json.
 
-        Called by AspectIntegration after writing new/revised aspect-nodes.
+        Provided for callers (e.g. AspectIntegration) that rewrite
+        aspects_v1.json and need the in-memory registry to pick up the change.
         """
         self._dirty = True
 

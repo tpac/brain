@@ -37,7 +37,7 @@ HEALER = {
 # HEALER_EDGE_FAMILIES — REMOVED 2026-05-04 (Step 10 of unified-aspects).
 # Was a dict of {family_name: display_label} for the healer prompt. Per a
 # pre-removal grep, nothing imported it — the dict was already dead code.
-# Display-label data now lives on each aspect-node's metadata:
+# Display-label data now lives on each aspect's metadata (from aspects_v1.json):
 #     brain.aspects.correction_improvement.metadata.get('display_label')
 #       → 'corrects/improves'
 # Healer prompts that want the labels back should iterate brain.aspects.all()
