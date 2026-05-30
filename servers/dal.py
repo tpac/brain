@@ -5,10 +5,10 @@ Thin abstraction over SQLite tables. Each table has read/write methods.
 Only this module knows which connection (brain.db vs brain_logs.db) owns which table.
 
 Usage in brain.py:
-    from servers.dal import LogsDAL, MetaDAL
+    from servers.dal import LogsDAL, BrainMetaDAL
 
     self._logs = LogsDAL(self.logs_conn)
-    self._meta = MetaDAL(self.conn)
+    self._meta = BrainMetaDAL(self.conn)
 
     self._logs.write_error("source", "error msg", "context")
     errors = self._logs.get_recent_errors(hours=24)
@@ -1225,7 +1225,7 @@ class SessionStateDAL:
         self.conn.commit()
 
 
-class MetaDAL:
+class BrainMetaDAL:
     """Access layer for brain_meta table — key-value config store."""
 
     def __init__(self, conn: sqlite3.Connection):
@@ -1372,11 +1372,19 @@ class NodeDAL:
             ).fetchone()
         return row[0] if row else 0
 
-    def count_locked(self) -> int:
-        """Count locked nodes."""
-        row = self.conn.execute(
-            'SELECT COUNT(*) FROM nodes WHERE locked = 1'
-        ).fetchone()
+    def count_locked(self, include_archived: bool = False) -> int:
+        """Count locked nodes. Excludes archived by default (the
+        identity-meaningful count); pass include_archived=True for the raw
+        lock count regardless of archive state.
+
+        Default chosen to match the 2 of 3 current call sites (brain.py,
+        brain_assembly.py) that filter archived=0; daemon_server's status
+        count currently omits the filter and will pick up the corrected
+        (non-archived) semantics when it migrates onto this method (Phase 3)."""
+        sql = 'SELECT COUNT(*) FROM nodes WHERE locked = 1'
+        if not include_archived:
+            sql += ' AND archived = 0'
+        row = self.conn.execute(sql).fetchone()
         return row[0] if row else 0
 
     def count_by_type(self, node_type: str) -> int:
@@ -1590,15 +1598,9 @@ class NodeDAL:
         )
 
     # get_metadata removed 2026-04-13 — old node_metadata table dropped, use MetadataDAL (KV).
-
-
-    def delete_for_node(self, node_id: str) -> int:
-        """Delete all enrichments for a node. Returns count deleted."""
-        cur = self.conn.execute(
-            'DELETE FROM node_enrichments WHERE node_id = ?', (node_id,)
-        )
-        self.conn.commit()
-        return cur.rowcount
+    # delete_for_node removed 2026-05-30 (DAL cleanup Phase 0) — was a dup of
+    # VectorDAL.delete_for_node (node_enrichments is the vector table, owned by
+    # VectorDAL); had zero callers.
 
 
 class TfIdfDAL:
@@ -1707,7 +1709,13 @@ class Fts5DAL:
                 (safe_query, limit)
             ).fetchall()
             return [r[0] for r in rows]
-        except Exception:
+        except Exception as e:
+            # Loud-by-default: a malformed query or corrupt FTS5 index must not
+            # look identical to "no matches" — FTS5 is one of two recall signals.
+            # Log before degrading (matches add_relation's de-silenced pattern).
+            import sys as _sys
+            print('[Fts5DAL.search] FTS5 query failed (%r): %s'
+                  % (safe_query, e), file=_sys.stderr)
             return []
 
     def upsert(self, node_id: str, title: str, content: str, _legacy_keywords: str = ''):
@@ -1727,8 +1735,13 @@ class Fts5DAL:
         try:
             self.conn.execute(
                 "DELETE FROM nodes_fts WHERE node_id = ?", (node_id,))
-        except Exception:
-            pass
+        except Exception as e:
+            # Loud-by-default: a failed delete leaves a stale index entry.
+            # Lower stakes than search (self-heals on next upsert) but log
+            # rather than swallow silently.
+            import sys as _sys
+            print('[Fts5DAL.delete] FTS5 delete failed for %s: %s'
+                  % (node_id, e), file=_sys.stderr)
 
     def rebuild(self):
         """Full rebuild of FTS5 index from nodes table."""
@@ -2440,60 +2453,19 @@ class GraphDAL:
         ).fetchone()
         return row[0] if row else 0
 
-    def get_edge_count(self) -> int:
-        """Total edge count in the graph."""
-        row = self.conn.execute('SELECT COUNT(*) FROM edges').fetchone()
-        return row[0] if row else 0
-
-    def get_well_connected(self, min_weight: float = 0.3,
-                           min_edges: int = 5) -> List[Dict[str, Any]]:
-        """Find well-connected nodes for consolidation/promotion."""
-        rows = self.conn.execute("""
-            SELECT node_id, SUM(weight) as total_weight, COUNT(*) as edge_count FROM (
-                SELECT source_id as node_id, weight FROM edges WHERE weight > ?
-                UNION ALL
-                SELECT target_id as node_id, weight FROM edges WHERE weight > ?
-            ) GROUP BY node_id HAVING edge_count >= ?
-        """, (min_weight, min_weight, min_edges)).fetchall()
-        return [
-            {'node_id': r[0], 'total_weight': r[1], 'edge_count': r[2]}
-            for r in rows
-        ]
-
-    def get_random_walk_neighbors(self, node_id: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get neighbors for random walk, ordered randomly. Both directions."""
-        rows = self.conn.execute("""
-            SELECT CASE WHEN source_id = ? THEN target_id ELSE source_id END as neighbor_id,
-                   weight
-            FROM edges
-            WHERE source_id = ? OR target_id = ?
-            ORDER BY RANDOM() LIMIT ?
-        """, (node_id, node_id, node_id, limit)).fetchall()
-        return [{'target_id': r[0], 'weight': r[1]} for r in rows]
+    # get_edge_count removed 2026-05-30 (DAL cleanup Phase 0) — exact dup of
+    # count_total; both were dead (brain._get_edge_count uses raw SQL, to be
+    # routed through count_total in Phase 3).
+    # get_well_connected + get_random_walk_neighbors removed 2026-05-30 — the
+    # consolidation/promotion + random-walk paths that used them are retired
+    # (brain_connections._random_walk, their only kin, was also dead).
 
     # --- Writes ---
 
-    def create_edge(self, source_id: str, target_id: str, relation: str = 'related',
-                    weight: float = 0.5, description: str = '') -> bool:
-        """Create a bidirectional edge with one relation. Returns False if already exists.
-
-        DEPRECATED: prefer brain.connect_typed() which goes through the
-        write-path embed hook (`_maybe_embed_edge_relation`).
-
-        WARNING — embedding bypass: this method calls GraphDAL.add_relation
-        directly, NOT through brain.connect_typed, so it does NOT populate
-        edge_relations.embedding. Spread/select_edges will fall through to
-        the on-demand embed path for any edge created via this method.
-        Currently the only production caller is brain_recall.py's Hebbian
-        path, which only creates `co_accessed` edges — those are excluded
-        from spread/select_edges by DEFAULT_EXCLUDED_RELATIONS, so the
-        bypass is harmless. If you call this with any other relation, the
-        bypass becomes a real perf regression.
-        """
-        if self.get_edge(source_id, target_id) is not None:
-            return False
-        self.add_relation(source_id, target_id, relation, description, weight)
-        return True
+    # create_edge removed 2026-05-30 (DAL cleanup Phase 0) — DEPRECATED since the
+    # Hebbian path moved to recall_write_queue via add_relation; 0 callers (its
+    # docstring's claimed brain_recall caller was already gone). Use
+    # brain.connect_typed() (write-path embed hook) for all edge creation.
 
     # strengthen_edge REMOVED 2026-05-18 (Phase 8 of bg_writer migration).
     # Was a deprecated read-modify-write helper used only by the old
@@ -2501,8 +2473,12 @@ class GraphDAL:
     # Hebbian strengthening now uses atomic UPSERT inside
     # recall_write_queue._apply_hebbian_pairs via add_relation.
 
-    def delete_node_edges(self, node_id: str) -> int:
+    def delete_node_edges(self, node_id: str, commit: bool = True) -> int:
         """Soft-archive all edge_relations touching a node (v25).
+
+        `commit=True` (default) preserves single-statement-boundary behavior.
+        Pass commit=False when inside a wider transaction (brain_batch) so the
+        outer BEGIN IMMEDIATE/COMMIT keeps the batch atomic — see add_relation.
 
         Was a hard DELETE prior to v25 — the asymmetry with node archive
         destroyed edge provenance forever. Now sets archived=1 on the
@@ -2534,11 +2510,15 @@ class GraphDAL:
                 [ts, 'delete_node_edges'] + edge_ids)
             archived_count = cur.rowcount
 
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return archived_count
 
-    def decay_edges(self) -> Dict[str, Any]:
+    def decay_edges(self, commit: bool = True) -> Dict[str, Any]:
         """Apply exponential decay to auto-generated edge relations.
+
+        `commit=True` (default) keeps standalone behavior (the idle S2 caller).
+        Pass commit=False inside a wider transaction — see add_relation.
 
         Operates on edge_relations via edge_id.
         When a relation's weight drops below threshold, that relation is removed.
@@ -2601,7 +2581,8 @@ class GraphDAL:
             for eid in set(pruned_edge_ids):
                 self._update_aggregate_weight(eid)
 
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return {'decayed': total_decayed, 'pruned': total_pruned, 'by_type': by_type}
 
     # --- edge_relations (multi-relation semantic layer via edge_id) ---
@@ -2870,8 +2851,13 @@ class GraphDAL:
                  'created_at': r[4]}
                 for r in rows]
 
-    def remove_relation(self, source_id, target_id, relation, archived_by: str = 'unknown'):
+    def remove_relation(self, source_id, target_id, relation, archived_by: str = 'unknown',
+                        commit: bool = True):
         """Soft-archive a specific relation on a pair (v25).
+
+        `commit=True` (default) preserves single-statement-boundary behavior.
+        The brain_batch `disconnect` op passes commit=False so the batch's
+        outer transaction stays atomic — see add_relation for the full rationale.
 
         Flips archived=1 on the matching row. Previously hard-DELETEd; the
         change preserves edge history for recovery. The edges aggregate row
@@ -2894,7 +2880,8 @@ class GraphDAL:
 
         # Recompute aggregate weight from remaining active relations
         self._update_aggregate_weight(edge_id)
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
 
     def _update_aggregate_weight(self, edge_id):
         """Set edges.weight to max weight across ACTIVE relation rows.
@@ -2921,7 +2908,7 @@ class GraphDAL:
 
     # --- Source refs (v27: episodic references) ---
 
-    def add_source_refs(self, node_id: str, trace_ids: List[str]) -> int:
+    def add_source_refs(self, node_id: str, trace_ids: List[str], commit: bool = True) -> int:
         """Append trace_event pointers to a node (v29: 8-char hex strings).
         Used at NEW-node creation (remember()). Position derived from list
         order (1-indexed); first ref is the primary anchor.
@@ -2952,10 +2939,11 @@ class GraphDAL:
             '(node_id, trace_id, position, created_at) '
             'VALUES (?, ?, ?, ?)',
             rows)
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return cur.rowcount
 
-    def replace_source_refs(self, node_id: str, trace_ids: List[str]) -> int:
+    def replace_source_refs(self, node_id: str, trace_ids: List[str], commit: bool = True) -> int:
         """Replace the node's source_refs with the given list. v29: 8-char hex.
 
         Per the unified 2-class revise contract (decision 995ffeb1):
@@ -2988,7 +2976,8 @@ class GraphDAL:
                 '(node_id, trace_id, position, created_at) '
                 'VALUES (?, ?, ?, ?)',
                 rows)
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return len(rows)
 
     def get_source_refs(self, node_id: str) -> List[str]:

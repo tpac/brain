@@ -73,11 +73,7 @@ class BrainCorrectionsMixin:
         """Body of correction_enrich — separated so the public method can wrap
         it in a single try/except without indentation pyramid.
         """
-        from .dal import NodeDAL, GraphDAL
-        from .dal_metadata import MetadataDAL
-
-        conn = self.conn
-        ndal = NodeDAL(conn)
+        ndal = self._nodes
         full_to_short = {}
         full_ids = []
         for nid in node_ids:
@@ -94,7 +90,7 @@ class BrainCorrectionsMixin:
         if not correction_relations:
             return {}
 
-        graph_dal = GraphDAL(conn)
+        graph_dal = self._graph
         connections = graph_dal.get_connections_bulk(
             full_ids,
             include_relations=correction_relations,
@@ -112,7 +108,7 @@ class BrainCorrectionsMixin:
         # Keys must mirror render_corrections's heavy-mode render list, otherwise
         # the renderer reads a key the data layer never fetched.
         naked_by_id = ndal.get_bulk(list(neighbor_ids))
-        meta_dal = MetadataDAL(conn)
+        meta_dal = self._meta_kv
         meta_by_id = meta_dal.get_fields_bulk(
             list(neighbor_ids),
             ['reasoning', 'user_raw_quote', 'anchor_raw_quote'])

@@ -57,7 +57,7 @@ from .brain_constants import (
     ZSCORE_STATS_KEY_MEAN,
     ZSCORE_STATS_KEY_STD,
 )
-from .dal import GraphDAL, NodeDAL, TfIdfDAL, LogsDAL, Fts5DAL, VectorDAL
+from .dal import GraphDAL, NodeDAL, LogsDAL, VectorDAL
 
 
 # ── Lexical bridge — Haiku-generated query expansion ───────────────
@@ -459,7 +459,7 @@ class BrainRecallMixin:
         mechanics. Cost: 1 embed call (~50ms) + N cosine ops (cheap matrix
         math). When relevance_query is empty/None, behavior is unchanged.
         """
-        node_dal = NodeDAL(self.conn)
+        node_dal = self._nodes
         # Widen the pool when relevance ranking is requested
         dal_limit = limit * relevance_pool_multiplier if relevance_query else limit
         result = node_dal.filter_nodes(
@@ -648,7 +648,7 @@ class BrainRecallMixin:
         from .dal_metadata import MetadataDAL
 
         vdal = self._vec_dal
-        mdal = MetadataDAL(self.conn)
+        mdal = self._meta_kv
         model = embedder.stats.get('model_name', '')
         result = {}
 
@@ -844,9 +844,9 @@ class BrainRecallMixin:
         if tfidf_query_terms:
             try:
                 unique_terms = list(set(tfidf_query_terms))
-                tfidf_dal = TfIdfDAL(self.conn)
+                tfidf_dal = self._tfidf
                 tfidf_node_ids = tfidf_dal.get_nodes_matching_terms(unique_terms)
-                _node_dal = NodeDAL(self.conn)
+                _node_dal = self._nodes
                 for nid in tfidf_node_ids[:50]:
                     if nid not in all_seeds:
                         node = _node_dal.get_naked_node(nid)
@@ -916,7 +916,7 @@ class BrainRecallMixin:
             relevance = (kw_w * keyword_relevance + emb_w * semantic_score)
 
             # v4: Hub dampening (nodes with 20+ connections get reduced relevance)
-            _graph_dal = GraphDAL(self.conn)
+            _graph_dal = self._graph
             edge_count = _graph_dal.count_node_edges(node['id'], min_weight=0)
             hub = self._get_tunable('hub_dampening', {'threshold': 40, 'penalty': 0.5})
             hub_threshold = hub.get('threshold', 40) if isinstance(hub, dict) else 40
@@ -1607,7 +1607,7 @@ class BrainRecallMixin:
         fts5_only_ids = set()
         fts5_all_ids = set()
         try:
-            fts5_dal = Fts5DAL(self.conn)
+            fts5_dal = self._fts
             _fts5_queries = [query] + alternate_strings
             for _fq in _fts5_queries:
                 if not _fq or not _fq.strip():
@@ -1778,7 +1778,7 @@ class BrainRecallMixin:
             if not node:
                 # Node came from embedding-only path — fetch from DB via DAL
                 try:
-                    _node_dal = NodeDAL(self.conn)
+                    _node_dal = self._nodes
                     node = _node_dal.get_naked_node(nid)
                 except Exception as e:
                     self._log_error("recall_hydrate", e, "Failed to hydrate node %s" % nid[:8])
@@ -1961,7 +1961,7 @@ class BrainRecallMixin:
         """
         from .dal_metadata import MetadataDAL
         try:
-            mdal = MetadataDAL(self.conn)
+            mdal = self._meta_kv
             self._zscore_stats = mdal.get_paired_keys(
                 ZSCORE_STATS_KEY_MEAN, ZSCORE_STATS_KEY_STD)
         except Exception as e:
@@ -1976,7 +1976,7 @@ class BrainRecallMixin:
         The caller decides WHICH results to enrich — this method enriches all it receives.
         Mutates results in place.
         """
-        graph_dal = GraphDAL(self.conn)
+        graph_dal = self._graph
         for node in results:
             nid = node.get('id')
             if not nid:
@@ -1985,7 +1985,7 @@ class BrainRecallMixin:
             # Attach metadata from KV store
             try:
                 from .dal_metadata import MetadataDAL
-                _meta_dal = MetadataDAL(self.conn)
+                _meta_dal = self._meta_kv
                 meta = _meta_dal.get(nid)
                 if meta:
                     node['_metadata'] = meta
@@ -2019,7 +2019,7 @@ class BrainRecallMixin:
         consistent interface regardless of how the node was found.
         """
         from .dal import NodeDAL
-        node_dal = NodeDAL(self.conn)
+        node_dal = self._nodes
         node = node_dal.get_naked_node(node_id)
         if not node:
             return {'results': [], 'intent': 'direct_lookup'}
@@ -2057,9 +2057,9 @@ class BrainRecallMixin:
             List of matching nodes
         """
         try:
-            fts5_dal = Fts5DAL(self.conn)
+            fts5_dal = self._fts
             node_ids = fts5_dal.search(query, limit)
-            _ndal = NodeDAL(self.conn)
+            _ndal = self._nodes
             results = []
             for nid in node_ids:
                 node = _ndal.get_naked_node(nid)
@@ -2140,7 +2140,7 @@ class BrainRecallMixin:
         sql += ' ORDER BY last_accessed DESC LIMIT ?'
         params.append(limit)
 
-        _ndal = NodeDAL(self.conn)
+        _ndal = self._nodes
         results = []
         for row in self.conn.execute(sql, params).fetchall():
             node = _ndal.get_naked_node(row[0])

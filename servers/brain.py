@@ -30,7 +30,7 @@ import threading
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from .schema import ensure_schema, ensure_logs_schema, migrate_logs_to_separate_db
-from .dal import LogsDAL, MetaDAL
+from .dal import LogsDAL, BrainMetaDAL
 from .clock import iso_cutoff, iso_now
 from .brain_recall import BrainRecallMixin
 from .brain_remember import BrainRememberMixin
@@ -210,11 +210,24 @@ class Brain(
         migrate_logs_to_separate_db(self.conn, self.logs_conn)
 
         # DAL instances — incremental adoption, brain.py migrates one method at a time
-        self._meta = MetaDAL(self.conn)
+        self._meta = BrainMetaDAL(self.conn)
         self._logs_dal = LogsDAL(self.logs_conn)
         from .dal import TraceDAL, InteractionDAL
         self._trace_dal = TraceDAL(self.logs_conn)
         self._interaction_dal = InteractionDAL(self.logs_conn)
+
+        # Repository aggregate (DAL cleanup Phase 2): hold the brain.db DALs
+        # foreground-conn-bound so methods use them by construction instead of
+        # re-instantiating XDAL(self.conn) ad hoc. The bg-writer path
+        # (recall_write_queue) constructs its own GraphDAL on conn_bg_writer —
+        # the one documented exception.
+        from .dal import NodeDAL, GraphDAL, Fts5DAL, TfIdfDAL
+        from .dal_metadata import MetadataDAL
+        self._nodes = NodeDAL(self.conn)
+        self._graph = GraphDAL(self.conn)
+        self._meta_kv = MetadataDAL(self.conn)
+        self._fts = Fts5DAL(self.conn)
+        self._tfidf = TfIdfDAL(self.conn)
 
         # Identity binding — concrete names of the human partner and the
         # agent at this brain's "current moment." Stamped onto every S0

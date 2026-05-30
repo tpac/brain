@@ -778,7 +778,7 @@ class ConsolidationDecoder(IntegrationUnit):
         if not ids:
             return {}
         from servers.dal import GraphDAL
-        return GraphDAL(self.brain.conn).get_communities_for(ids)
+        return self.brain._graph.get_communities_for(ids)
 
     def _load_edge_data(self, node_ids):
         """Load typed edges per node via GraphDAL.
@@ -797,7 +797,7 @@ class ConsolidationDecoder(IntegrationUnit):
             return {}
 
         from servers.dal import GraphDAL
-        per_member = GraphDAL(self.brain.conn).get_neighbors_bulk(ids)
+        per_member = self.brain._graph.get_neighbors_bulk(ids)
         # exclude_relations defaults to DEFAULT_EXCLUDED_RELATIONS, so
         # co_accessed / emergent_bridge are already out. archived=0 is the
         # DAL default (v25).
@@ -824,7 +824,7 @@ class ConsolidationDecoder(IntegrationUnit):
         if not correction_rels:
             correction_rels = {'corrects', 'corrected_by', 'supersedes', 'superseded_by'}
         from servers.dal import GraphDAL
-        return GraphDAL(self.brain.conn).has_edge_between(
+        return self.brain._graph.has_edge_between(
             node_ids, node_ids, relations=correction_rels)
 
     def _has_tension_edge(self, node_ids):
@@ -838,7 +838,7 @@ class ConsolidationDecoder(IntegrationUnit):
             tension_rels = {'contradicts', 'challenges', 'conflicts_with',
                             'contrasts', 'undermines', 'violates'}
         from servers.dal import GraphDAL
-        return GraphDAL(self.brain.conn).has_edge_between(
+        return self.brain._graph.has_edge_between(
             node_ids, node_ids, relations=tension_rels)
 
     # ══════════════════════════════════════════════════════════

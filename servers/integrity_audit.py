@@ -6,7 +6,6 @@ revision stats, edge-type imbalance, sparse metadata.
 """
 
 from .dal import GraphDAL
-from .dal_metadata import MetadataDAL
 from .clock import iso_cutoff
 
 
@@ -94,7 +93,7 @@ def deep_integrity_audit(brain):
 
         # 6. Edge type distribution — are co_accessed dominating?
         # GraphDAL.count_by_relation defaults archived=0 (v25).
-        all_counts = GraphDAL(brain.conn).count_by_relation()
+        all_counts = brain._graph.count_by_relation()
         edge_types = list(all_counts.items())[:5]
         total_edges = sum(cnt for _, cnt in edge_types)
         for rel, cnt in edge_types:
@@ -107,7 +106,7 @@ def deep_integrity_audit(brain):
                 })
 
         # 7. Metadata sparseness (via KV DAL)
-        _meta_dal = MetadataDAL(brain.conn)
+        _meta_dal = brain._meta_kv
         meta_total = _meta_dal.total_nodes()
         if meta_total > 0:
             for field in ['reasoning', 'user_raw_quote', 'source_context']:

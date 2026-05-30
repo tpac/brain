@@ -46,8 +46,7 @@ def _get_recently_surfaced(brain, session_id):
                     'sample=%r' % str(raw)[:120])
             except Exception:
                 pass
-    from servers.dal import NodeDAL
-    dal = NodeDAL(brain.conn)
+    dal = brain._nodes
     recently_surfaced = []
     for nid in list(seen_ids)[:20]:
         title = dal.get_title(nid)
@@ -365,7 +364,6 @@ def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
         'trace':            per-hop diagnostics
     """
     import os
-    from servers.dal import NodeDAL
     from servers.scales.s1.surface_contract import (
         spread_activation, spread_activation_cluster)
 
@@ -408,7 +406,7 @@ def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
         _VARIANT_FIRST_CALL_LOGGED = True
 
     # Resolve to full IDs (the kernel reads vectors keyed on full id)
-    ndal = NodeDAL(brain.conn)
+    ndal = brain._nodes
     resolved = []
     for sid in selected_ids:
         full = ndal.resolve_id(sid) if len(str(sid)) < 16 else sid
@@ -659,8 +657,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
             # session context). If found, use it; if not, log loudly so
             # the failure isn't silent.
             try:
-                from servers.dal import NodeDAL
-                ndal = NodeDAL(brain.conn)
+                ndal = brain._nodes
                 resolved = ndal.resolve_id(short_id)
                 # 2026-05-02: Haiku occasionally drops a leading '0' from
                 # 8-char IDs, producing a 7-char output (e.g. '95c2b96'

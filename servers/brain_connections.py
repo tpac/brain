@@ -8,7 +8,6 @@ which are provided by Brain.__init__.
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-import random
 from .brain_constants import (
     EDGE_TYPES,
     LEARNING_RATE,
@@ -145,7 +144,7 @@ class BrainConnectionsMixin:
             that want to emit trace events.
         """
         from .dal import GraphDAL
-        graph_dal = GraphDAL(self.conn)
+        graph_dal = self._graph
         # description omitted so add_relation's sentinel default kicks in
         # (preserves existing on update; defaults to '' on create).
         result = graph_dal.add_relation(source_id, target_id, relation, weight=weight)
@@ -183,7 +182,7 @@ class BrainConnectionsMixin:
             edge_def.get('defaultWeight', 0.5) if edge_def else 0.5)
 
         from .dal import GraphDAL
-        graph_dal = GraphDAL(self.conn)
+        graph_dal = self._graph
         # Build kwargs: only pass explicitly-provided fields so add_relation's
         # sentinel-based field-preservation propagates cleanly through this
         # layer. weight is always passed (resolved above).
@@ -192,48 +191,14 @@ class BrainConnectionsMixin:
             kwargs['description'] = description
         if encoding_source is not None:
             kwargs['encoding_source'] = encoding_source
-        result = graph_dal.add_relation(source_id, target_id, relation, **kwargs)
+        result = graph_dal.add_relation(source_id, target_id, relation,
+                                        commit=not self._batch_mode, **kwargs)
         self._maybe_embed_edge_relation(result.get('edge_id'), relation, result)
         return result
 
-    def _random_walk(self, start_id: str, steps: int) -> List[str]:
-        """
-        Weighted random walk along edges.
-        Avoids loops (don't revisit nodes).
-        Returns list of node IDs in path.
-        """
-        path = [start_id]
-        current = start_id
-
-        for _ in range(steps):
-            neighbors = self.conn.execute('''
-                SELECT CASE WHEN source_id = ? THEN target_id ELSE source_id END, weight
-                FROM edges WHERE source_id = ? OR target_id = ?
-                ORDER BY RANDOM() LIMIT 10
-            ''', (current, current, current)).fetchall()
-
-            if not neighbors:
-                break
-
-            # Weighted random selection
-            total_weight = sum(w for _, w in neighbors)
-            if total_weight <= 0:
-                break
-
-            roll = random.random() * total_weight
-            next_id = neighbors[0][0]
-            for nid, w in neighbors:
-                roll -= w
-                if roll <= 0:
-                    next_id = nid
-                    break
-
-            # Avoid loops
-            if next_id not in path:
-                path.append(next_id)
-                current = next_id
-
-        return path
+    # _random_walk removed 2026-05-30 (DAL cleanup Phase 0) — dead (0 callers);
+    # the random-walk neighbor path is retired (GraphDAL.get_random_walk_neighbors
+    # was also removed).
 
     def _get_node_title(self, node_id: str) -> str:
         """Get title of a node by ID."""
@@ -253,7 +218,7 @@ class BrainConnectionsMixin:
 
         # Check existing bridge count via GraphDAL (archived=0 default).
         from .dal import GraphDAL
-        current_bridge_count = GraphDAL(self.conn).count_node_edges(
+        current_bridge_count = self._graph.count_node_edges(
             node_id, min_weight=0.0, relations={'emergent_bridge'})
 
         if current_bridge_count >= max_per_node:

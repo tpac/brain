@@ -409,12 +409,8 @@ def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
         'metadata': {node_id: {key: value, ...}},
     }
     """
-    from .dal import NodeDAL
-    from .dal_metadata import MetadataDAL
-
-    conn = brain.conn
-    ndal = NodeDAL(conn)
-    mdal = MetadataDAL(conn)
+    ndal = brain._nodes
+    mdal = brain._meta_kv
 
     # Resolve short IDs
     resolved_ids = set()
@@ -428,7 +424,7 @@ def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
 
     # ── Graph expansion via GraphDAL (v25 — archived + noise centralized) ──
     from .dal import GraphDAL
-    graph_dal = GraphDAL(conn)
+    graph_dal = brain._graph
     seen = set(resolved_ids)
     neighbors = []
     excluded = set(TRAVERSE_EXCLUDED_EDGES)

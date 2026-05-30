@@ -604,7 +604,6 @@ def _handle_brain_batch(brain, args, graph_changes):
                     # forensics/recovery; reads filter via JOIN.
                     # Lets ABSORB encoders prune survivor edges that don't fit
                     # the new framing after revise.
-                    from .dal import GraphDAL
                     source_id = op_spec.get("source_id")
                     target_id = op_spec.get("target_id")
                     relation = op_spec.get("relation")
@@ -615,10 +614,11 @@ def _handle_brain_batch(brain, args, graph_changes):
                         results.append({"op": "disconnect", "index": i, "ok": False,
                                         "error": "source_id, target_id, relation are required"})
                     else:
-                        gdal = GraphDAL(brain.conn)
+                        gdal = brain._graph
                         edge_id = gdal.get_edge_id(source_id, target_id)
                         gdal.remove_relation(
-                            source_id, target_id, relation, archived_by=archived_by)
+                            source_id, target_id, relation, archived_by=archived_by,
+                            commit=not brain._batch_mode)
                         brain._maybe_commit()
                         graph_changes.append("DISCONNECT: %s -[%s]-> %s" % (
                             source_id[:8], relation, target_id[:8]))
