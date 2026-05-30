@@ -148,8 +148,11 @@ def _surface_unsurfaced_errors():
         lines.append("  → full detail in the dashboard errors view.")
         print("\n".join(lines))
         mark_hook_errors_surfaced([e["id"] for e in errs])
-    except Exception:
-        pass  # surfacing must never break boot
+    except Exception as e:
+        # Must never break boot — but don't swallow silently either (that's the
+        # bug this whole change fought). stderr is the last-resort channel when
+        # the hook_errors sink itself may be the thing that's failing.
+        print("[brain-boot] error-surfacing failed: %s" % e, file=sys.stderr)
 
 
 run_hook("boot_brain", main)
