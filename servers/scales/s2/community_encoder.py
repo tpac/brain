@@ -21,6 +21,8 @@ from .rejection_table import (
     match_proposals_to_actions,
     record_rejections,
     sort_proposals_by_priority,
+    node_ids_touched_by_invalid_ops,
+    get_proposed_ids,
 )
 
 
@@ -155,11 +157,33 @@ class CommunityEncoder(IntegrationUnit):
         else:
             acted_on, skipped_proposals = match_proposals_to_actions(
                 encoder_proposals, action_details)
+            # A proposal the encoder TRIED to act on with an invalid op (e.g.
+            # `op: reject` instead of `revise`+_sys_drift_threshold) lands in
+            # skipped because the matcher sees no valid action — but it's an
+            # encoder FAILURE, not a clean SKIP. Pull it out so we don't stamp
+            # a fingerprint that abandons the drift-rejection forever; it
+            # retries next cycle.
+            invalid_touched = node_ids_touched_by_invalid_ops(action_details)
+            invalid_op_failures = 0
+            if invalid_touched and skipped_proposals:
+                retry = [p for p in skipped_proposals
+                         if set(get_proposed_ids(p)) & invalid_touched]
+                if retry:
+                    invalid_op_failures = len(retry)
+                    skipped_proposals = [p for p in skipped_proposals
+                                         if p not in retry]
+                    self.brain._log_warning(
+                        's2_community_invalid_op_retry',
+                        '%d proposal(s) hit invalid brain_batch ops — '
+                        'retrying next cycle, NOT suppressed' % invalid_op_failures)
+                    print('[s2ce] %d proposal(s) hit invalid ops — retry, NOT suppressed'
+                          % invalid_op_failures, flush=True)
             if skipped_proposals:
                 record_rejections(self.brain, skipped_proposals)
                 print('[s2ce] Stamped %d rejected proposals (fingerprints)' % len(skipped_proposals),
                       flush=True)
             result['rejection_skipped_count'] = len(skipped_proposals)
+            result['invalid_op_failures'] = invalid_op_failures
 
         # Outcome vocab — count acted-on proposals by type.
         outcomes = {}
@@ -178,6 +202,7 @@ class CommunityEncoder(IntegrationUnit):
                        inputs_processed=len(encoder_proposals),
                        outcomes=outcomes,
                        rejection_skipped=result.get('rejection_skipped_count', 0),
+                       invalid_op_failures=result.get('invalid_op_failures', 0),
                        journal_entry=result.get('journal_entry', ''),
                        action_details=action_details,
                        final_text=final_text,

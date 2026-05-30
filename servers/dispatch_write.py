@@ -464,13 +464,14 @@ def _handle_brain_batch(brain, args, graph_changes):
     if not operations:
         return {"ok": False, "error": "operations array is required"}
 
-    # Valid nested op names. Sonnet has been observed inventing structural
-    # op names like `consolidate` / `keep` / `evolve` / `skip` — these are
-    # prompt-level decisions, not dispatch ops. When invented names land
-    # here they silently go to the "Unknown op" branch below; surface them
-    # loudly so drift gets noticed immediately. (The historical 25 silent
-    # drops across consolidation runs is exactly this pattern.)
-    VALID_OPS = {"remember", "revise", "connect", "disconnect", "archive"}
+    # Valid nested op names live in contract.VALID_BATCH_OPS (single source of
+    # truth — see that constant). The dispatcher matches them via the if/elif
+    # chain below; the final `else` is the invalid-op guard. Sonnet has been
+    # observed inventing structural op names like `consolidate` / `keep` /
+    # `evolve` / `skip` / `absorb` / `reject` — these are prompt-level
+    # DECISIONS, not dispatch ops. They land in the "Unknown op" branch, get
+    # logged loudly (brain_batch_invalid_op), and the S2 rejection_table now
+    # detects them so a dropped op isn't mistaken for a clean SKIP.
 
     top_encoding_source = args.get("encoding_source")
     # Propagate session_id to each op so sub-handlers can load ctx per op.

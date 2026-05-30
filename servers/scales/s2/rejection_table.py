@@ -29,6 +29,8 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
+from ...contract import VALID_BATCH_OPS
+
 
 # ═══════════════════════════════════════════════════════════════
 # FINGERPRINT COMPUTATION
@@ -149,6 +151,42 @@ def get_proposed_ids(proposal):
         if isinstance(f, dict) and f.get('id'):
             ids.append(f['id'])
     return ids
+
+
+def node_ids_touched_by_invalid_ops(action_details):
+    """Node IDs the encoder targeted with an op OUTSIDE the closed vocabulary.
+
+    When the encoder emits a concept-verb as an op name (`absorb`, `reject`,
+    `keep`, `skip` — the conceptual decisions, not the 5 real ops), dispatch
+    drops the op and logs `brain_batch_invalid_op`. The encoder *tried* to act
+    and was thwarted — that is an encoder FAILURE to retry, not a clean SKIP.
+
+    Callers use this to pull such proposals/clusters OUT of the skip→rejection
+    path: stamping a suppression fingerprint on a failed attempt would both
+    abandon the intended merge/threshold-raise AND suppress the proposal
+    forever (until a member node's updated_at changes). Returns the set of
+    node IDs any invalid op referenced; intersect it with a proposal's
+    `get_proposed_ids()` to decide.
+    """
+    touched = set()
+    for action in action_details or []:
+        if not isinstance(action, dict) or action.get('tool') != 'brain_batch':
+            continue
+        for op_spec in action.get('input', {}).get('operations', []):
+            if not isinstance(op_spec, dict):
+                continue
+            if op_spec.get('op', '') in VALID_BATCH_OPS:
+                continue
+            # Invalid op — collect every node id it referenced.
+            for key in ('node_id', 'source_id', 'target_id',
+                        'larger_id', 'smaller_id'):
+                val = op_spec.get(key)
+                if val:
+                    touched.add(val)
+            for member in op_spec.get('members', []) or []:
+                if member:
+                    touched.add(member)
+    return touched
 
 
 # ═══════════════════════════════════════════════════════════════

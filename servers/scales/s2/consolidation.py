@@ -12,7 +12,8 @@ Prompt: servers/scales/s2/consolidation_enrichment_prompt.py
 from .consolidation_decoder import ConsolidationDecoder
 from .consolidation_encoder import ConsolidationEncoder
 from .consolidation_contract import CONSOLIDATION
-from .rejection_table import filter_rejected, record_rejections
+from .rejection_table import (
+    filter_rejected, record_rejections, node_ids_touched_by_invalid_ops)
 
 
 class Consolidation(ConsolidationDecoder):
@@ -113,9 +114,21 @@ class Consolidation(ConsolidationDecoder):
         # record a rejection fingerprint so the decoder doesn't resurface them.
         post_edges = _snapshot_suppression_pairs()
         new_edges = post_edges - pre_edges
+        # Nodes the encoder TRIED to act on with an invalid op (e.g. `op:
+        # absorb` instead of revise+archive — dispatch dropped it). A cluster
+        # touching one of these wrote no suppression edge NOT because the
+        # encoder chose SKIP, but because its merge was thwarted. Treat it as a
+        # failed attempt to retry — never stamp a fingerprint, which would
+        # abandon the merge AND suppress the cluster until a member changes.
+        invalid_touched = node_ids_touched_by_invalid_ops(
+            encode_result.get('action_details', []))
         skipped_proposals = []
+        invalid_op_clusters = 0
         for c in clusters:
             members = c.get('nodes', [])
+            if invalid_touched and (set(members) & invalid_touched):
+                invalid_op_clusters += 1
+                continue
             handled = False
             for i in range(len(members)):
                 for j in range(i + 1, len(members)):
@@ -141,6 +154,13 @@ class Consolidation(ConsolidationDecoder):
         if recorded:
             print('[s2-consolidation] Recorded %d SKIP rejections' % recorded,
                   flush=True)
+        if invalid_op_clusters:
+            self.brain._log_warning(
+                's2_consolidation_invalid_op_retry',
+                '%d cluster(s) hit invalid brain_batch ops (merge thwarted) — '
+                'retrying next cycle, NOT suppressed' % invalid_op_clusters)
+            print('[s2-consolidation] %d cluster(s) hit invalid ops — retry, NOT suppressed'
+                  % invalid_op_clusters, flush=True)
 
         # Run completed (encoder finished) — now it's safe to advance the
         # last-run cutoff. The encode-failure path returns above without
@@ -151,6 +171,7 @@ class Consolidation(ConsolidationDecoder):
             'actions': encode_result.get('write_actions', 0),
             'clusters': len(clusters),
             'skipped_recorded': recorded,
+            'invalid_op_clusters': invalid_op_clusters,
             'stats': stats,
             'details': {
                 'rounds': encode_result.get('rounds', 0),

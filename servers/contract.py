@@ -21,6 +21,21 @@ To add a new field:
 """
 
 
+# ── BRAIN_BATCH OP VOCABULARY ──
+# The closed set of operation names brain_batch accepts. Single source of
+# truth for the three sites that must agree (CLAUDE.md "closed vocabulary"):
+#   - dispatch_write._handle_brain_batch  (the if/elif dispatcher + guard)
+#   - brain_mcp brain_batch inputSchema   (the JSON-schema enum)
+#   - s2 rejection_table                  (detecting invalid-op attempts so a
+#                                           dropped op isn't mistaken for a SKIP)
+# Adding an op means adding it here and wiring the dispatcher branch — the
+# enum and the S2 detector pick it up automatically.
+
+VALID_BATCH_OPS = frozenset({
+    "remember", "revise", "connect", "disconnect", "archive",
+})
+
+
 # ── STRUCTURAL FIELDS ──
 # These are columns on the 'nodes' table.
 # Changing these requires schema migration.
