@@ -16,7 +16,7 @@ from socketserver import ThreadingMixIn
 from urllib.parse import urlparse, parse_qs
 
 from . import log as dashboard_log
-from .daemon_client import DAEMON_PORT, daemon_alive
+from .daemon_client import DAEMON_PORT, daemon_alive, daemon_send
 from . import contract
 from .queries import (
     aspects,
@@ -27,6 +27,7 @@ from .queries import (
     insights_scanner,
     recalls,
     s2_runs,
+    self_channel,
     sessions,
     stats,
     system,
@@ -143,6 +144,23 @@ class DashboardHandler(BaseHTTPRequestHandler):
             session_id = params.get("session", [""])[0]
             self._json(200, traces.query_traces(hours=hours, scale=scale, session_id=session_id))
 
+        # Self-channel: stream↔stream messages + faithful boot captures
+        elif path == "/api/self-messages":
+            hours = int(params.get("hours", ["48"])[0])
+            limit = int(params.get("limit", ["200"])[0])
+            self._json(200, {"messages": self_channel.query_messages(hours=hours, limit=limit)})
+        elif path == "/api/boot-renders":
+            session_id = params.get("session", [""])[0]
+            limit = int(params.get("limit", ["30"])[0])
+            self._json(200, {"renders": self_channel.query_boot_renders(session_id=session_id, limit=limit)})
+        elif path == "/api/self-presence":
+            # Live roster — must go through the daemon (window + ranking logic).
+            # Omit session_id so the operator sees every live stream. Returns
+            # {streams:[], line:''} or an empty roster when the daemon is down.
+            limit = int(params.get("limit", ["10"])[0])
+            result = daemon_send("self_presence", {"limit": limit})
+            self._json(200, result if isinstance(result, dict) else {"streams": [], "line": ""})
+
         # Explorer + graph
         elif path == "/api/nodes":
             self._serve_nodes(params)
@@ -167,6 +185,60 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         else:
             self._json(404, {"error": "Not found"})
+
+    def do_POST(self):
+        """The dashboard's ONE write surface. CLAUDE.md makes the dashboard a
+        passive observer that never writes the DB directly — that invariant
+        holds: this hands off to the daemon (the single writer) over TCP, the
+        same as any MCP client. The dashboard still opens no write connection.
+        """
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path == "/api/self-send":
+            self._handle_self_send()
+        else:
+            self._json(404, {"error": "Not found"})
+
+    def _read_json_body(self):
+        """Parse the request body as JSON; ({}, error_str) on any failure."""
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except (TypeError, ValueError):
+            length = 0
+        if not length:
+            return {}, "empty body"
+        try:
+            raw = self.rfile.read(length)
+            return json.loads(raw.decode("utf-8")), None
+        except Exception as e:
+            return {}, str(e)
+
+    def _handle_self_send(self):
+        """Operator-authored send into the self-channel courier → daemon's
+        self_send. The operator is not a stream of thought, so from_session
+        carries a recognizable label ('operator-dashboard') rather than a
+        session id — it renders attributed, never masquerading as another-me."""
+        body, err = self._read_json_body()
+        if err:
+            return self._json(400, {"ok": False, "error": "bad request body: %s" % err})
+        to = (body.get("to") or "").strip()
+        message = (body.get("body") or "").strip()
+        if not to or not message:
+            return self._json(400, {"ok": False, "error": "both 'to' and 'body' are required"})
+        if not daemon_alive():
+            return self._json(503, {"ok": False, "error": "daemon unavailable — cannot send"})
+        args = {
+            "to": to,
+            "body": message,
+            "from_session": body.get("from_session") or "operator-dashboard",
+        }
+        if body.get("intent"):
+            args["intent"] = body["intent"]
+        result = daemon_send("self_send", args)
+        if result is None:
+            return self._json(502, {"ok": False, "error": "daemon returned no result"})
+        self._json(200, {"ok": True, "result": result})
 
     # ── Response helpers ──
 

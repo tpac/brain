@@ -40,6 +40,25 @@ export async function get(url) {
   return p;
 }
 
+/** Low-level POST with a JSON body. Returns the parsed JSON body; throws on
+ * network/HTTP/parse failure. NOT coalesced (writes aren't idempotent). This
+ * is the dashboard's only write path — it reaches the daemon via the server,
+ * never the DB directly. */
+export async function post(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  let parsed = null;
+  try { parsed = await r.json(); } catch (_) { /* leave null */ }
+  if (!r.ok) {
+    const msg = (parsed && parsed.error) ? parsed.error : ('HTTP ' + r.status);
+    throw new Error(msg);
+  }
+  return parsed;
+}
+
 /** Convert any of the legacy shapes into a uniform {ok, data, warnings}.
  * Opt-in — call this when you want consistency, leave it off when you want
  * the raw shape. */
@@ -105,6 +124,11 @@ export const api = {
   node:                (id)     => get('/api/node/' + encodeURIComponent(id)),
   nodeCorrections:     (id)     => get('/api/node/' + encodeURIComponent(id) + '/corrections'),
   nodeSourceRefs:      (id)     => get('/api/node/' + encodeURIComponent(id) + '/source-refs'),
+  // Self-channel (Streams tab)
+  selfMessages:        (p = {}) => get('/api/self-messages' + _qs(p)),
+  bootRenders:         (p = {}) => get('/api/boot-renders' + _qs(p)),
+  selfPresence:        (p = {}) => get('/api/self-presence' + _qs(p)),
+  selfSend:            (body)   => post('/api/self-send', body),
 };
 
 export default api;

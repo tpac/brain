@@ -29,6 +29,7 @@ import * as explorer from '/static/tabs/explorer.js';
 import * as logs     from '/static/tabs/logs.js';
 import * as health   from '/static/tabs/health.js';
 import * as traces   from '/static/tabs/traces.js';
+import * as streams  from '/static/tabs/streams.js';
 
 // ── Tab registry ──────────────────────────────────────────────────────
 // `graph` is NOT a top-level tab — it lives inside Live as the left pane
@@ -36,7 +37,7 @@ import * as traces   from '/static/tabs/traces.js';
 // to drive its activate/resize lifecycle.
 // Primary tabs (visible top-of-page): live, logs, traces.
 // Overflow tabs (in the ⋯ dropdown):  explorer, health.
-const TABS = { live, graph, explorer, logs, health, traces };
+const TABS = { live, graph, explorer, logs, health, traces, streams };
 const OVERFLOW_TABS = ['explorer', 'health'];
 let activeTab = 'live';
 
@@ -168,6 +169,10 @@ window.searchNodes           = explorer.searchNodes;
 window.onTraceScaleChange    = traces.onTraceScaleChange;
 window.loadTraces            = traces.loadTraces;
 window._loadMoreTraces       = traces._loadMoreTraces;
+window.switchStreamsView     = streams.switchStreamsView;
+window.loadStreams           = streams.loadStreams;
+window.onStreamsSend         = streams.onStreamsSend;
+window.onStreamsSendKey      = streams.onStreamsSendKey;
 window.loadNodeDetail        = loadNodeDetail;
 
 // ── Boot ──────────────────────────────────────────────────────────────

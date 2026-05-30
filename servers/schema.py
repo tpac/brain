@@ -1405,6 +1405,25 @@ LOG_TABLES = {
         )""",
     },
 
+    # Boot observability — the exact `for_claude` text the daemon rendered and
+    # served to a session at SessionStart. context_boot is read-only re: the
+    # knowledge graph, but it logs what it served here (the same pattern as
+    # recall writing a trace from a read path). One row per real boot; the
+    # dashboard's Streams→Boot view reads the latest per session. "What
+    # actually got to boot." Written by Brain.record_boot_render via
+    # _handle_context_boot; never gated on a BRAIN_VERSION bump (new table).
+    'boot_renders': {
+        'create': """CREATE TABLE IF NOT EXISTS boot_renders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            user TEXT DEFAULT '',
+            project TEXT DEFAULT '',
+            char_count INTEGER DEFAULT 0,
+            text TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )""",
+    },
+
 }
 
 LOG_INDEXES = [
@@ -1434,6 +1453,9 @@ LOG_INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_self_inflight_address ON self_inflight(address)',
     'CREATE INDEX IF NOT EXISTS idx_self_inflight_created ON self_inflight(created_at)',
     'CREATE INDEX IF NOT EXISTS idx_self_delivered_to ON self_delivered(to_session)',
+    # boot_renders — dashboard reads latest-per-session and newest-first
+    'CREATE INDEX IF NOT EXISTS idx_boot_renders_session ON boot_renders(session_id)',
+    'CREATE INDEX IF NOT EXISTS idx_boot_renders_created ON boot_renders(created_at)',
 ]
 
 

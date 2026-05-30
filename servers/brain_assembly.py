@@ -9,7 +9,7 @@ which are provided by Brain.__init__.
 from . import embedder
 from .schema import BRAIN_VERSION, BRAIN_VERSION_KEY, NODE_TYPES
 from .text_processing import split_identifier
-from .clock import iso_cutoff
+from .clock import iso_cutoff, iso_now
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 import json
@@ -759,6 +759,34 @@ class BrainAssemblyMixin:
         voice = BrainVoice(self)
         rendered = voice.render_boot_v2(user, project, db_dir, session_id=session_id)
         return voice.wrap_for_hook(rendered['for_claude'], rendered.get('for_operator'))
+
+    def record_boot_render(self, session_id: str, text: str,
+                           user: str = '', project: str = '') -> None:
+        """Persist the exact boot text served to a session at SessionStart.
+
+        context_boot is read-only re: the knowledge graph, but it logs what it
+        served here — the same pattern as recall writing a trace from a read
+        path. The dashboard's Streams→Boot view reads this to show "what
+        actually got to boot." Writes to brain_logs.db under write_lock,
+        mirroring scales/self_channel/signal.py's shared-logs-writer pattern.
+
+        Best-effort: a failure here must NEVER break boot (loud to stderr, not
+        raised). Skips when there's no session or no text (non-SessionStart
+        renders shouldn't pollute the log)."""
+        if not session_id or not text:
+            return
+        try:
+            with self.write_lock:
+                self.logs_conn.execute(
+                    'INSERT INTO boot_renders '
+                    '(session_id, user, project, char_count, text, created_at) '
+                    'VALUES (?, ?, ?, ?, ?, ?)',
+                    (session_id, user or '', project or '', len(text), text, iso_now()))
+                self.logs_conn.commit()
+        except Exception as e:
+            import sys
+            print('[brain] record_boot_render failed: %s' % e,
+                  file=sys.stderr, flush=True)
 
 
     # auto_encode, track_response, detect_vocab_gaps: deleted 2026-03-28

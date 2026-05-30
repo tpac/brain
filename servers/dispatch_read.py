@@ -189,4 +189,14 @@ def _handle_context_boot(brain, args, graph_changes):
         project=args.get("project", "default"),
         db_dir=args.get("db_dir", ""),
         session_id=args.get("session_id", ""))
+    # Faithful boot capture: record exactly what we served this session so the
+    # dashboard can show "what actually got to boot". Only on real
+    # SessionStarts (session_id present); record_boot_render is best-effort and
+    # never raises. format_boot_context returns the wrapped string the hook
+    # prints verbatim; tolerate a dict shape defensively.
+    sid = args.get("session_id", "")
+    if sid:
+        served = text if isinstance(text, str) else (
+            (text or {}).get("for_claude") or (text or {}).get("text") or "")
+        brain.record_boot_render(sid, served, args.get("user", ""), args.get("project", ""))
     return {"ok": True, "result": text}
