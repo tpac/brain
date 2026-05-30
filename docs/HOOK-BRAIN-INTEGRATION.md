@@ -196,5 +196,5 @@ When MCP servers request input, check if brain has the answer.
 4. **Async for fire-and-forget** — PostToolUse, FileChanged, learning loops
 5. **Blocking only when necessary** — PreToolUse for rules, Stop for behavioral self-check
 6. **Brain access via daemon** — thin client pattern, no model loading in hooks
-7. **Signal queue as universal bus** — hooks write signals, assembler surfaces by priority
-8. **Dashboard visibility** — every hook logs to brain_dashboard.db for monitoring
+7. **Error visibility via `brain_logs.db`** — hooks log failures through `log_hook_error` → `hook_errors`; daemon/brain errors → `brain._log_error` → `debug_log` (event_type='error'). The old signal-queue bus was removed (commit 02f5c32).
+8. **Dashboard reads `brain_logs.db`** — `recall_log`, `hook_errors`, `debug_log`, and `trace_events`. (`brain_dashboard.db` is deprecated; `log_hook_output` is a no-op kept only for caller compatibility.)
