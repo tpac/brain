@@ -179,11 +179,19 @@ class CachedVectorDAL:
     def find_missing(self, vector_type: str, limit: int = 50,
                      model: Optional[str] = None,
                      node_ids: Optional[set] = None,
+                     require_kv_keys_any: Optional[List[str]] = None,
                      source_kv_keys: Optional[List[str]] = None) -> List[Dict[str, Any]]:
-        """Delegate — backfill path, cold, needs node.title/content."""
+        """Delegate — backfill path, cold, needs node.title/content.
+
+        Mirrors VectorDAL.find_missing's full signature so the canonical
+        `require_kv_keys_any` kwarg reaches the inner DAL. Production wires
+        CachedVectorDAL, so a caller passing require_kv_keys_any would
+        otherwise hit a TypeError on the missing parameter.
+        """
         with self._sql_lock:
             return self._inner.find_missing(vector_type, limit,
                                             model=model, node_ids=node_ids,
+                                            require_kv_keys_any=require_kv_keys_any,
                                             source_kv_keys=source_kv_keys)
 
     def get_coverage_stats(self) -> Dict[str, Any]:

@@ -30,7 +30,7 @@ import threading
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from .schema import ensure_schema, ensure_logs_schema, migrate_logs_to_separate_db
-from .dal import LogsDAL, MetaDAL
+from .dal import LogsDAL, BrainMetaDAL
 from .clock import iso_cutoff, iso_now
 from .brain_recall import BrainRecallMixin
 from .brain_remember import BrainRememberMixin
@@ -210,7 +210,7 @@ class Brain(
         migrate_logs_to_separate_db(self.conn, self.logs_conn)
 
         # DAL instances — incremental adoption, brain.py migrates one method at a time
-        self._meta = MetaDAL(self.conn)
+        self._meta = BrainMetaDAL(self.conn)
         self._logs_dal = LogsDAL(self.logs_conn)
         from .dal import TraceDAL, InteractionDAL
         self._trace_dal = TraceDAL(self.logs_conn)

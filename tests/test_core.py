@@ -26,7 +26,7 @@ import sqlite3
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from servers.brain import Brain
-from servers.dal import LogsDAL, MetaDAL
+from servers.dal import LogsDAL, BrainMetaDAL
 from servers.schema import ensure_schema, ensure_logs_schema
 from tests.brain_test_base import BrainTestBase
 
@@ -102,7 +102,7 @@ class TestDAL(unittest.TestCase):
 
         self.brain_conn = sqlite3.connect(os.path.join(self.tmp, 'brain.db'))
         ensure_schema(self.brain_conn)
-        self.meta = MetaDAL(self.brain_conn)
+        self.meta = BrainMetaDAL(self.brain_conn)
 
     def tearDown(self):
         self.logs_conn.close()
@@ -133,10 +133,10 @@ class TestDAL(unittest.TestCase):
         self.assertEqual(self.meta.increment("ctr"), 2)
 
     # test_meta_session_activity removed 2026-05-23: targeted
-    # MetaDAL.get_session_activity() which was deliberately deleted in
+    # BrainMetaDAL.get_session_activity() which was deliberately deleted in
     # commit 95b2887 (parallel-session refactor — single-counter
     # approach replaced by per-session SessionContext). Activity
-    # counters live on SessionContext now, not MetaDAL.
+    # counters live on SessionContext now, not BrainMetaDAL.
 
 
 
@@ -263,7 +263,7 @@ class TestDALPatternEnforcement(unittest.TestCase):
     """Meta-tests: enforce that DB access goes through the DAL.
 
     The brain has a centralized Data Access Layer (dal.py) that owns access to:
-    - brain_meta table → MetaDAL (self._meta)
+    - brain_meta table → BrainMetaDAL (self._meta)
     - brain_logs.db tables → LogsDAL (self._logs)
 
     Direct self.logs_conn.execute() and direct brain_meta access in mixin files
@@ -311,10 +311,10 @@ class TestDALPatternEnforcement(unittest.TestCase):
             self._log_violation_count('logs_conn_direct', len(violations), violations[:5])
 
     def test_no_direct_brain_meta_in_mixins(self):
-        """Mixin files should use self._meta (MetaDAL) not raw brain_meta SQL.
+        """Mixin files should use self._meta (BrainMetaDAL) not raw brain_meta SQL.
 
         brain_meta is a key-value config store. All access should go through
-        MetaDAL.get(), .set(), .get_json(), .set_json(), .increment().
+        BrainMetaDAL.get(), .set(), .get_json(), .set_json(), .increment().
         Direct INSERT/SELECT on brain_meta bypasses validation and timestamps.
         """
         import re as re_mod
