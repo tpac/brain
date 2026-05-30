@@ -6,7 +6,7 @@ Falls back to direct Brain() ONLY if daemon is completely unavailable.
 import sys, os, json
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import db_path, daemon_available, daemon_call, daemon_call_raw, log_hook_output
+from hook_common import db_path, daemon_available, daemon_call, daemon_call_raw, run_hook, get_unsurfaced_hook_errors, mark_hook_errors_surfaced
 
 db_dir = os.environ.get("BRAIN_DB_DIR", "")
 
@@ -70,7 +70,6 @@ def _boot_via_daemon():
     if isinstance(result, dict):
         text = result.get("for_claude", "") or result.get("text", "")
         if text:
-            log_hook_output("boot", output_text=text)
             print(text)
             # Mark session as booted (skip re-boots on resume)
             # Mark this session as booted (skip re-boots on resume)
@@ -80,7 +79,6 @@ def _boot_via_daemon():
                 daemon_call("set_config", {"key": "last_booted_session", "value": sid_val})
             return True
     elif isinstance(result, str) and result:
-        log_hook_output("boot", output_text=result)
         print(result)
         daemon_call("set_config", {"key": "session_booted", "value": "1"})
         return True
@@ -122,10 +120,37 @@ def _boot_via_direct():
 
 
 # ── Main ──
-if daemon_available():
-    if not _boot_via_daemon():
-        print("[brain-boot] Daemon returned empty context, falling back to direct", file=sys.stderr)
+def main():
+    if daemon_available():
+        if not _boot_via_daemon():
+            print("[brain-boot] Daemon returned empty context, falling back to direct", file=sys.stderr)
+            _boot_via_direct()
+    else:
+        print("[brain-boot] Daemon not available, using direct Brain()", file=sys.stderr)
         _boot_via_direct()
-else:
-    print("[brain-boot] Daemon not available, using direct Brain()", file=sys.stderr)
-    _boot_via_direct()
+
+
+def _surface_unsurfaced_errors():
+    """Boot-surfacing (#1): proactively show hook errors that accumulated since
+    the last session. Resilient by design — runs even if boot failed, because
+    errors matter most exactly when the brain is too broken to boot. Reads the
+    hook_errors sink directly (no daemon needed), prints a banner Claude relays
+    to the operator, then marks them surfaced. Never breaks boot."""
+    try:
+        errs = get_unsurfaced_hook_errors(limit=5)
+        if not errs:
+            return
+        lines = ["[BRAIN] ⚠️ %d unsurfaced hook error(s) since last session:" % len(errs)]
+        for e in errs:
+            lines.append("  • [%s] %s: %s (%s)" % (
+                e.get("level", "error"), e.get("hook_name", "?"),
+                (e.get("error") or "")[:120], (e.get("created_at") or "")[:19]))
+        lines.append("  → full detail in the dashboard errors view.")
+        print("\n".join(lines))
+        mark_hook_errors_surfaced([e["id"] for e in errs])
+    except Exception:
+        pass  # surfacing must never break boot
+
+
+run_hook("boot_brain", main)
+_surface_unsurfaced_errors()
