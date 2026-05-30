@@ -640,6 +640,27 @@ def hook_post_response_track(brain, args, graph_changes):
                     'session=%s counter=%s — lock state corrupt, encoder may be permanently jammed' %
                     (session_id, ctx.stop_counter))
 
+    # Stop backstop for self-messages: if a tap is pending and no earlier hook
+    # (PreToolUse) caught it this turn, block the stop so it's seen before the
+    # turn ends. Consume-once → blocks at most once per batch (next stop finds
+    # nothing and allows it). Only on the Stop event — this handler also runs on
+    # UserPromptSubmit, where blocking would be wrong.
+    if args.get("hook_event_name") == "Stop":
+        try:
+            from servers.scales.self_channel import signal as _self_signal
+            _block, _n = _self_signal.drain_and_render(brain, session_id)
+            if _n:
+                brain._trace_dal.append(
+                    chain_id=ctx.s0_chain(), scale='s0', event_type='K',
+                    ref_type='self_message',
+                    summary='delivered %d self-message(s) via Stop block' % _n)
+                brain.save()
+                return {"output": "(stored + %s)" % encoding_status,
+                        "decision": "block", "reason": _block}
+        except Exception as _self_err:
+            brain._log_error('self_delivery_stop', _self_err,
+                             'Stop self-message delivery (session=%s)' % session_id)
+
     brain.save()
     return {"output": "(stored + %s)" % encoding_status}
 
@@ -890,8 +911,40 @@ def hook_idle_maintenance(brain, args, graph_changes):
     return {"output": ""}  # Notification stdout invisible
 
 
+def _attach_self_pretool(brain, session_id, result):
+    """PreToolUse self-message delivery via hookSpecificOutput.additionalContext
+    — the channel that actually reaches the model on a plain ALLOW. (approve +
+    `reason` does NOT surface to the model on allow — verified live 2026-05-30
+    and in the Claude Code hooks docs.) Non-intrusive: no block, no Haiku, just a
+    fast inbox drain; the rules `reason` is left untouched. Mutates+returns it.
+
+    Fail-safe: a delivery error logs loudly and returns the result untouched.
+    Consume-once via drain_inbox; traced as the s0 self_message marker."""
+    if not session_id:
+        return result
+    try:
+        from servers.scales.self_channel import signal as _sig
+        block, n = _sig.drain_and_render(brain, session_id)
+        if n:
+            j = result.setdefault("json", {})
+            j.setdefault("decision", "approve")
+            hso = j.setdefault("hookSpecificOutput", {})
+            hso["hookEventName"] = "PreToolUse"
+            existing = hso.get("additionalContext", "")
+            hso["additionalContext"] = (block + "\n\n" + existing) if existing else block
+            brain._trace_dal.append(
+                chain_id=brain.get_or_create_session(session_id).s0_chain(),
+                scale='s0', event_type='K', ref_type='self_message',
+                summary='delivered %d self-message(s) via PreToolUse' % n)
+    except Exception as _e:
+        brain._log_error('self_delivery_pretool', _e,
+                         'PreToolUse self-message delivery (session=%s)' % session_id)
+    return result
+
+
 def hook_pre_edit(brain, args, graph_changes):
-    """PreToolUse(Edit|Write) — surface brain rules before file edits.
+    """PreToolUse(Edit|Write) — surface brain rules before file edits, and
+    deliver any pending self-messages (drain → prepend to reason).
 
     Returns JSON {"decision":"approve","reason":"..."}.
     """
@@ -907,7 +960,7 @@ def hook_pre_edit(brain, args, graph_changes):
         data = brain.pre_edit(file=filename, tool_name=tool_name, ctx=ctx)
     except Exception as e:
         brain._log_error('pre_edit', e, 'hook_pre_edit')
-        return {"json": {"decision": "approve"}}
+        return _attach_self_pretool(brain, sid, {"json": {"decision": "approve"}})
 
     suggestions = data.get("suggestions", [])
     procedures = data.get("procedures", [])
@@ -926,8 +979,8 @@ def hook_pre_edit(brain, args, graph_changes):
 
     if not suggestions and not procedures and not context_files and not change_impacts:
         if encoding_warning:
-            return {"json": {"decision": "approve", "reason": encoding_warning}}
-        return {"json": {"decision": "approve"}}
+            return _attach_self_pretool(brain, sid, {"json": {"decision": "approve", "reason": encoding_warning}})
+        return _attach_self_pretool(brain, sid, {"json": {"decision": "approve"}})
 
     context = _format_suggestions(filename, suggestions, procedures, context_files,
                                   change_impacts, encoding_warning)
@@ -950,7 +1003,7 @@ def hook_pre_edit(brain, args, graph_changes):
             brain._log_error('debug_log_pre_edit', e, 'hook_pre_edit')
 
     brain.save()
-    return {"json": {"decision": "approve", "reason": context}}
+    return _attach_self_pretool(brain, sid, {"json": {"decision": "approve", "reason": context}})
 
 
 def hook_pre_bash_safety(brain, args, graph_changes):

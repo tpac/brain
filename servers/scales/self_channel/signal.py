@@ -81,21 +81,21 @@ def drain_inbox(brain, to_session):
     return out
 
 
-def deliver_into_context(brain, to_session, context):
-    """Phase 2b — delivery-into-Observation. Drain this stream's inbox and merge
-    the messages into an Observation `context` string. Returns (new_context,
-    n_delivered).
+def drain_and_render(brain, to_session):
+    """Phase 2b delivery primitive — drain this stream's inbox and render the
+    pending messages into one budgeted block. Returns (block, n_drained), or
+    ("", 0) when empty. Consume-once is inherited from drain_inbox.
 
-    A directed tap is imperative, so it PREPENDS — seen ahead of recall — but
-    render_received_block budgets it so it can't crowd recall out. Consume-once
-    is inherited from drain_inbox. The caller owns tracing (it holds the chain
-    id) — this returns the count so the caller can decide whether to trace."""
+    Callers wrap the block for their channel: PreToolUse prepends it to a tool's
+    `reason` (tool feedback, the instant before a mutating action); Stop returns
+    it as a `decision:block` reason (the backstop for no-tool turns). Delivery
+    deliberately does NOT ride on_prompt — that channel is passive, competes with
+    recall, and would win the consume-once race against these higher-salience
+    hooks. The caller owns tracing (it holds the chain id)."""
     pending = drain_inbox(brain, to_session)
     if not pending:
-        return context, 0
-    block = self_contract.render_received_block(pending)
-    merged = (block + "\n\n" + context) if context else block
-    return merged, len(pending)
+        return "", 0
+    return self_contract.render_received_block(pending), len(pending)
 
 
 def reap_expired(brain):

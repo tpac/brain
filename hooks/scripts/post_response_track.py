@@ -71,11 +71,20 @@ try:
         }, timeout=4.0)  # Encoding runs in background thread — hook must return in <5s
         latency = (time.time() - t0) * 1000
         if resp.get("ok"):
-            output = resp.get("result", {}).get("output", "")
-            brain_debug("track: completed in %dms%s" % (latency, ", output=%d chars" % len(output) if output else ""))
-            log_hook_output("stop", output_text=output or "(store_exchange + encoding gate ran)")
-            if output:
-                print(output)
+            result = resp.get("result", {})
+            # Stop self-message backstop: the daemon signals a block to force the
+            # turn to continue so a pending tap is seen. On Stop, only the JSON
+            # `decision` field reaches Claude — plain stdout is invisible.
+            if result.get("decision") == "block":
+                print(json.dumps({"decision": "block", "reason": result.get("reason", "")}))
+                brain_debug("track: Stop blocked to deliver self-message(s)")
+                log_hook_output("stop", output_text="(self-message delivered via Stop block)")
+            else:
+                output = result.get("output", "")
+                brain_debug("track: completed in %dms%s" % (latency, ", output=%d chars" % len(output) if output else ""))
+                log_hook_output("stop", output_text=output or "(store_exchange + encoding gate ran)")
+                if output:
+                    print(output)
         else:
             brain_debug("track: daemon returned ok=false")
     else:

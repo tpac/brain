@@ -107,22 +107,21 @@ class TestSelfSignal(BrainTestBase):
         self.assertLess(len(block), 800 + 200)   # bounded near the cap
         self.assertIn("more waiting", block)      # overflow is announced
 
-    def test_deliver_into_context_prepends_and_consumes(self):
+    def test_drain_and_render_and_consumes(self):
         signal.send(self.brain, from_session='A',
                     address=self_contract.address_for_stream('B'), body='ping B')
-        merged, n = signal.deliver_into_context(self.brain, 'B', "RECALL CONTEXT HERE")
+        block, n = signal.drain_and_render(self.brain, 'B')
         self.assertEqual(n, 1)
-        self.assertIn('ping B', merged)
-        self.assertTrue(merged.rstrip().endswith("RECALL CONTEXT HERE"))  # tap prepended, recall last
-        # consume-once: the second delivery finds nothing, context unchanged
-        merged2, n2 = signal.deliver_into_context(self.brain, 'B', "RECALL CONTEXT HERE")
+        self.assertIn('ping B', block)
+        # consume-once: the second drain finds nothing
+        block2, n2 = signal.drain_and_render(self.brain, 'B')
         self.assertEqual(n2, 0)
-        self.assertEqual(merged2, "RECALL CONTEXT HERE")
+        self.assertEqual(block2, "")
 
-    def test_deliver_into_context_empty_inbox_unchanged(self):
-        merged, n = signal.deliver_into_context(self.brain, 'NOBODY-HOME', "just recall")
+    def test_drain_and_render_empty_inbox(self):
+        block, n = signal.drain_and_render(self.brain, 'NOBODY-HOME')
         self.assertEqual(n, 0)
-        self.assertEqual(merged, "just recall")
+        self.assertEqual(block, "")
 
 
 if __name__ == '__main__':
