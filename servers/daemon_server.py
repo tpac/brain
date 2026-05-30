@@ -898,15 +898,39 @@ class BrainDaemon:
                 print('[brain-daemon] failed to remove %s: %s' %
                       (path, _ue), file=sys.stderr)
         try:
-            if hasattr(self, '_lock_fd') and self._lock_fd:
+            # Idempotent: _cleanup runs more than once (explicit _shutdown +
+            # atexit). A closed file object is still truthy, so the bare
+            # `and self._lock_fd` guard let the 2nd call re-flock an
+            # already-closed fd → "I/O operation on closed file" — dozens of
+            # false alarms that looked like a lock leak but weren't. Skip when
+            # already closed; null in finally so later calls short-circuit.
+            if getattr(self, '_lock_fd', None) and not self._lock_fd.closed:
                 fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
                 self._lock_fd.close()
         except Exception as _le:
-            # A leaked file lock prevents daemon restart. Silent failure
-            # creates "can't acquire lock" errors at next launch with no
-            # explanation. Surface it.
+            # A GENUINE release failure (not the harmless double-call above).
+            # A leaked lock prevents daemon restart, so surface it where the
+            # operator can SEE it — the dashboard reads debug_log; daemon.log
+            # stderr alone is invisible to them. brain is already closed here,
+            # so write directly via a fresh connection, the way log_hook_error
+            # logs without a Brain handle. Logging must never crash shutdown.
             print('[brain-daemon] failed to release lock fd: %s' %
                   _le, file=sys.stderr)
+            try:
+                import sqlite3
+                from .clock import iso_now
+                _logs_db = os.path.join(os.path.dirname(self.db_path), 'brain_logs.db')
+                _c = sqlite3.connect(_logs_db, timeout=5)
+                _c.execute(
+                    "INSERT INTO debug_log (session_id, event_type, source, metadata, created_at) "
+                    "VALUES ('daemon', 'error', 'release_lock_fd', ?, ?)",
+                    (json.dumps({'error': str(_le), 'type': type(_le).__name__}), iso_now()))
+                _c.commit()
+                _c.close()
+            except Exception:
+                pass  # stderr already carries it
+        finally:
+            self._lock_fd = None
 
     def _log(self, message: str):
         ts = time.strftime("%H:%M:%S")
