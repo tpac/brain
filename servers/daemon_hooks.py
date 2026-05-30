@@ -406,6 +406,27 @@ def hook_recall(brain, args, graph_changes):
                          'S1 Surface failed in daemon (query=%s)' % user_message[:100])
 
     pt.log(brain, 'hook_recall', n_results=len(results))
+
+    # ── Self-channel delivery (Phase 2b) ──────────────────────────────────
+    # Drain this stream's in-flight self-messages into Observation. A directed
+    # tap is imperative, so it PREPENDS — seen ahead of recall — but budgeted
+    # (render_received_block caps it) so it can't crowd recall out. Consume-once
+    # is enforced by drain_inbox's self_delivered PK. Runs after recall/surface,
+    # so it never slows candidate retrieval. Fail-safe: a delivery error logs
+    # loudly and leaves recall intact. See docs/SELF-CHANNEL-DESIGN.md.
+    try:
+        from servers.scales.self_channel import signal as _self_signal
+        additional_context, _n_self = _self_signal.deliver_into_context(
+            brain, session_id, additional_context or "")
+        if _n_self:
+            brain._trace_dal.append(
+                chain_id=ctx.s0_chain(), scale='s0', event_type='K',
+                ref_type='self_message',
+                summary='delivered %d self-message(s) into Observation' % _n_self)
+    except Exception as _self_err:
+        brain._log_error('self_delivery', _self_err,
+                         'self-message drain/inject failed in hook_recall (session=%s)' % session_id)
+
     if additional_context:
         return {"json": {"additionalContext": additional_context}, "session_id": session_id}
     else:

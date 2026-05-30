@@ -84,6 +84,46 @@ class TestSelfSignal(BrainTestBase):
         stored = self.brain.logs_conn.execute("SELECT refs FROM self_inflight").fetchone()[0]
         self.assertIn('node-abc', stored)
 
+    # ── Phase 2b: render + delivery-into-Observation ──
+
+    def test_render_received_block_composes(self):
+        msgs = [
+            {"body": "first tap", "from": "aaaa1111", "rendered": "⚡ from aaaa1111\n   first tap"},
+            {"body": "second tap", "from": "bbbb2222", "rendered": "⚡ from bbbb2222\n   second tap"},
+        ]
+        block = self_contract.render_received_block(msgs)
+        self.assertIn("first tap", block)
+        self.assertIn("second tap", block)
+        self.assertIn("stream", block.lower())  # framed with a header
+
+    def test_render_received_block_empty(self):
+        self.assertEqual(self_contract.render_received_block([]), "")
+
+    def test_render_received_block_overflow_is_loud(self):
+        """Over-budget input is bounded AND names the dropped count — no silent cut."""
+        msgs = [{"body": "x" * 300, "from": "s%02d" % i,
+                 "rendered": ("⚡ from s%02d\n   " % i) + "x" * 300} for i in range(20)]
+        block = self_contract.render_received_block(msgs, cap=800)
+        self.assertLess(len(block), 800 + 200)   # bounded near the cap
+        self.assertIn("more waiting", block)      # overflow is announced
+
+    def test_deliver_into_context_prepends_and_consumes(self):
+        signal.send(self.brain, from_session='A',
+                    address=self_contract.address_for_stream('B'), body='ping B')
+        merged, n = signal.deliver_into_context(self.brain, 'B', "RECALL CONTEXT HERE")
+        self.assertEqual(n, 1)
+        self.assertIn('ping B', merged)
+        self.assertTrue(merged.rstrip().endswith("RECALL CONTEXT HERE"))  # tap prepended, recall last
+        # consume-once: the second delivery finds nothing, context unchanged
+        merged2, n2 = signal.deliver_into_context(self.brain, 'B', "RECALL CONTEXT HERE")
+        self.assertEqual(n2, 0)
+        self.assertEqual(merged2, "RECALL CONTEXT HERE")
+
+    def test_deliver_into_context_empty_inbox_unchanged(self):
+        merged, n = signal.deliver_into_context(self.brain, 'NOBODY-HOME', "just recall")
+        self.assertEqual(n, 0)
+        self.assertEqual(merged, "just recall")
+
 
 if __name__ == '__main__':
     unittest.main()

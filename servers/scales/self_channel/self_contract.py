@@ -174,3 +174,29 @@ def render_presence(streams, waiting=0):
     if waiting:
         line += " · %d waiting" % waiting
     return line
+
+
+def render_received_block(messages, cap=RECEIVED_BLOCK_MAX):
+    """Compose drained self-messages into ONE Observation block, budgeted.
+
+    Each message arrives already intent-rendered (drain_inbox sets `rendered`
+    via render_signal); this just frames + joins them under a header and bounds
+    the total so a tap can't crowd out recall against the additionalContext cap.
+    Overflow is LOUD — the trailing line names how many were dropped, never a
+    silent cut. Returns "" for no messages (caller skips the block entirely)."""
+    if not messages:
+        return ""
+    head = "🧵 from your other streams of thought"
+    parts, used, dropped = [], len(head), 0
+    for i, m in enumerate(messages):
+        rendered = (m.get("rendered")
+                    or render_signal(m.get("body", ""), stream_short=m.get("from", ""))).strip()
+        if parts and used + len(rendered) + 2 > cap:   # always keep at least one
+            dropped = len(messages) - i
+            break
+        parts.append(rendered)
+        used += len(rendered) + 2
+    body = "\n\n".join(parts)
+    if dropped:
+        body += "\n\n(+%d more waiting — drained but over budget)" % dropped
+    return "%s\n\n%s" % (head, body)

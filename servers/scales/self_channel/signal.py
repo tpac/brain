@@ -81,6 +81,23 @@ def drain_inbox(brain, to_session):
     return out
 
 
+def deliver_into_context(brain, to_session, context):
+    """Phase 2b — delivery-into-Observation. Drain this stream's inbox and merge
+    the messages into an Observation `context` string. Returns (new_context,
+    n_delivered).
+
+    A directed tap is imperative, so it PREPENDS — seen ahead of recall — but
+    render_received_block budgets it so it can't crowd recall out. Consume-once
+    is inherited from drain_inbox. The caller owns tracing (it holds the chain
+    id) — this returns the count so the caller can decide whether to trace."""
+    pending = drain_inbox(brain, to_session)
+    if not pending:
+        return context, 0
+    block = self_contract.render_received_block(pending)
+    merged = (block + "\n\n" + context) if context else block
+    return merged, len(pending)
+
+
 def reap_expired(brain):
     """Delete messages past their TTL (the dead-letter sweep) + orphan delivery
     rows. Returns count reaped. Wired into the daemon's idle-maintenance tick
