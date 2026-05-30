@@ -6,7 +6,7 @@ Thin client: sends hook_post_bash_host_check to daemon, falls back to direct Pyt
 import sys, os, re
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, log_hook_error
+from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, run_hook
 
 hook_input = get_hook_input()
 
@@ -28,10 +28,10 @@ ENV_CHANGE_PATTERNS = [
 if not any(re.search(pat, command, re.IGNORECASE) for pat in ENV_CHANGE_PATTERNS):
     sys.exit(0)
 
-try:
+def main():
     if daemon_available():
         daemon_call_raw("hook_post_bash_host_check", {"command": command, "session_id": hook_input.get("session_id", "")}, timeout=5.0)
     else:
         daemon_unavailable_error("post_bash_host_check")
-except Exception as e:
-    log_hook_error("post_bash_host_check", e, "hook exception")
+
+run_hook("post_bash_host_check", main)
