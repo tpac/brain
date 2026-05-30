@@ -26,14 +26,27 @@ class TestMCPRoundTrip(BrainTestBase):
     """Test every MCP tool through daemon dispatch against a real brain."""
 
     def _dispatch(self, cmd, args):
-        """Simulate daemon dispatch — call handler, unwrap result envelope."""
+        """Simulate daemon dispatch — call handler, ENFORCE + unwrap the
+        {"ok": True, "result": ...} envelope.
+
+        Every table handler MUST return that envelope; the daemon sends the
+        return verbatim, so a raw dict reaches the MCP client as a falsy `ok`
+        with no `error` — surfacing as "Unknown daemon error" on a call that
+        actually succeeded (the dispatch_self bug, c4f6386). The previous
+        lenient `if "result" in raw: ... else return raw` passed un-enveloped
+        returns straight through, which is exactly why this suite — though it
+        exercises self_presence/send/etc. — never caught that bug. Enforcing
+        the envelope here makes the violation fail for EVERY tool, in CI."""
         entry = COMMAND_TABLE.get(cmd)
         self.assertIsNotNone(entry, "No dispatch handler for: %s" % cmd)
         raw = entry.handler(self.brain, args, [])
-        # Handlers return {"ok": True, "result": {...}} — unwrap
-        if isinstance(raw, dict) and "result" in raw:
-            return raw["result"]
-        return raw
+        self.assertIsInstance(raw, dict, "%s handler returned non-dict: %r" % (cmd, raw))
+        self.assertIs(raw.get("ok"), True,
+                      "%s handler must return the {'ok': True, 'result': ...} "
+                      "envelope (raw return reads as 'Unknown daemon error'), got: %r"
+                      % (cmd, raw))
+        self.assertIn("result", raw, "%s handler envelope missing 'result'" % cmd)
+        return raw["result"]
 
     # ── Core memory operations ──
 
@@ -558,6 +571,32 @@ class TestCriticalToolsAlwaysLoad(unittest.TestCase):
                 self.assertNotIn(
                     "anthropic/alwaysLoad", t.get("_meta", {}),
                     "%s unexpectedly marked alwaysLoad" % t["name"])
+
+
+class TestMissingEnvelopeIsLoud(unittest.TestCase):
+    """brain_mcp must NAME a missing-envelope response, not bury it in the
+    generic "Unknown daemon error". Locks the diagnostic added after the
+    dispatch_self envelope bug (c4f6386): a handler returning a raw dict should
+    produce an error that points at the envelope and shows the offending keys,
+    so the next slip is a one-line diagnosis instead of a multi-turn hunt."""
+
+    def test_raw_dict_response_yields_descriptive_error(self):
+        from unittest import mock
+        from servers import brain_mcp
+        # daemon_send returns a raw payload dict (no ok/result/error) — exactly
+        # what an un-enveloped handler produces over the wire.
+        with mock.patch.object(brain_mcp, "daemon_send",
+                               return_value={"streams": [], "line": ""}):
+            resp = brain_mcp.handle_tools_call(
+                "req-1", {"name": "self_presence", "arguments": {}})
+        payload = resp["result"]
+        self.assertTrue(payload.get("isError"))
+        text = payload["content"][0]["text"]
+        self.assertIn("envelope", text)
+        self.assertNotIn("Unknown daemon error", text)
+        # the offending keys are surfaced for fast diagnosis
+        self.assertIn("streams", text)
+        self.assertIn("line", text)
 
 
 if __name__ == "__main__":

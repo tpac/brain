@@ -918,7 +918,19 @@ def handle_tools_call(request_id, params):
                 "content": [{"type": "text", "text": result_text}]
             })
 
-        last_error = resp.get("error", "Unknown daemon error")
+        # Distinguish a real daemon error from a missing-envelope response. A
+        # reply with neither ok=True nor an `error` key means a dispatch handler
+        # returned a raw payload dict instead of the {"ok": ...} envelope (the
+        # dispatch_self bug, c4f6386). Name it loudly — the old "Unknown daemon
+        # error" fallback turned that into a multi-turn hunt — and show what the
+        # handler actually returned.
+        if "error" in resp:
+            last_error = resp.get("error") or "daemon returned ok=false with an empty error message"
+        else:
+            bad_keys = sorted(k for k in resp.keys() if k != "ok")
+            last_error = ("daemon response missing the {ok,...} envelope — a dispatch "
+                          "handler likely returned a raw dict; keys=%s" % bad_keys)
+            sys.stderr.write("[brain-mcp] %s: %s\n" % (tool_name, last_error))
         is_connection_error = "connection" in last_error.lower() or "timeout" in last_error.lower()
 
         if is_connection_error and attempt < len(backoff) - 1:
