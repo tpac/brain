@@ -1670,7 +1670,8 @@ def _event_time_line(node):
 
 
 def _render_node_activation(node, budget, activation,
-                             why='', query_vec=None, brain=None, mode='arc'):
+                             why='', query_vec=None, brain=None, mode='arc',
+                             seen_root_ids=None):
     """Render a single activated node within a char budget.
 
     Mode controls layout depth; the encoder's attached fields are trusted
@@ -1726,6 +1727,16 @@ def _render_node_activation(node, budget, activation,
     # under the node header.
     arc_node = dict(node)
     connections = arc_node.get('connections') or []
+    # Dedup edge-lines that point to a node already rendered as a root in this
+    # inject: the neighbor is shown in full elsewhere, so the edge-line is a
+    # redundant restatement that wastes budget. Conservative — seen_root_ids
+    # only ever holds nodes rendered BEFORE this one (higher activation), so a
+    # dropped edge always has its target shown above; an edge to a node that
+    # never renders is kept (its only appearance).
+    if seen_root_ids and connections:
+        connections = [c for c in connections
+                       if c.get('id') not in seen_root_ids]
+        arc_node['connections'] = connections
     if query_vec is not None and connections:
         arc_node['connections'] = select_edges(
             connections, query_vec, limit=10,
@@ -1788,6 +1799,7 @@ def format_surface_output_activation(node_activation, field_activation,
 
     lines = ['Brain activated %d memories:' % len(ranked), '']
     remaining = total_budget - len(lines[0])
+    seen_root_ids = set()  # nodes already rendered as roots — dedup their edge-lines
 
     for (nid, activation), budget in zip(ranked, budgets):
         if remaining < _MIN_NODE_BUDGET_CHARS:
@@ -1803,11 +1815,13 @@ def format_surface_output_activation(node_activation, field_activation,
                                 remaining)
         rendered = _render_node_activation(
             node, effective_budget, activation,
-            why=why, query_vec=query_vec, brain=brain, mode=mode)
+            why=why, query_vec=query_vec, brain=brain, mode=mode,
+            seen_root_ids=seen_root_ids)
 
         lines.append(rendered)
         lines.append('')  # blank line between nodes
         remaining -= len(rendered) + 2
+        seen_root_ids.add(nid)  # now a rendered root — later nodes dedup edges to it
 
     result = '\n'.join(lines)
     # Hard byte cap. Claude Code spills additionalContext to a file path

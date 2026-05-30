@@ -111,7 +111,7 @@ def _capture_one(brain, ctx, spec):
         if _query_vec is not None and node_data.get('connections'):
             node_data['connections'] = select_edges(
                 node_data['connections'], _query_vec,
-                session=ctx, limit=10, prior_vecs=[],
+                limit=10, prior_vecs=[],
                 brain_conn=brain.conn, brain=brain)
         node_data["score"] = r.get("effective_activation", 0)
         node_data["discovery"] = r.get("_discovery", "embedding")
