@@ -1288,7 +1288,7 @@ class BrainRecallMixin:
 
         # v9: Brain size for retrieval stats (computed once)
         try:
-            _brain_size = self.conn.execute("SELECT COUNT(*) FROM nodes WHERE archived = 0").fetchone()[0]
+            _brain_size = self._nodes.count()
         except Exception:
             _brain_size = 0
 

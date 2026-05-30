@@ -1,6 +1,25 @@
 # DAL Cleanup & Migration Plan
 
-**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phase 2 (repository aggregate) ✅ landed — Phase 3 (migrate writes) next
+**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phases 0–2 merged to `main` (`6adc595`). Phase 3 in progress — 3a counts ✅ (`cfc8f02`); 3b TF-IDF + 3c node-writes/titles pending.
+
+> **Code-review fixes (`0cd1c1d`, 2026-05-30):** an xhigh review found Phase-1's
+> F3 fix was **incomplete** — 3 reachable GraphDAL writer calls still self-committed
+> inside a batch (co_anchored auto-edges in remember+revise, the untyped `connect()`
+> helper, and the bg-writer hebbian 'new edge' branch). All guarded now (+5 brain_batch
+> regression/coverage tests). Also swept review cleanup: a missed consolidation_decoder
+> straggler, the dead `from .dal import GraphDAL` imports Phase 2 left behind, and the
+> stale count_locked/daemon status-count docs. **Lesson: the F3 by-convention guard is
+> fragile — a structural fix (review finding #5) is still open as a follow-up.**
+
+> **⚠ Branch / merge state (session end 2026-05-30):** `dal-cleanup` is **4 commits
+> ahead of `main` and NOT yet merged**. `main` (`6adc595`) has Phases 0–2 — which
+> includes the **incomplete** F3, so the co_anchored / connect() / hebbian atomicity
+> gap is currently LIVE on `main`. The completion fix lives only on `dal-cleanup`
+> (`0cd1c1d`). **Next session's first move: merge `dal-cleanup` → `main`** to land it.
+> Worktree: `/Users/tpac/brain-dal-cleanup`; full suite green on the branch (1362/7/4).
+>
+> **Open after merge:** structural F3 fix (#5), Phase 3b (TF-IDF→TfIdfDAL), 3c
+> (node-writes/titles→NodeDAL), then Phases 4–6.
 
 Living tracker for resuming the stalled DAL migration. Update the **Status** lines
 and the progress table as phases land. This doc is the single source of truth for
@@ -161,7 +180,10 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 **Verify:** `./dev pytest tests/`; `eval/decode_funnel.py` (recall hot path touched).
 **Stop point:** zero ad-hoc construction except the documented bg_writer exception. Commit.
 
-### Phase 3 — Migrate writes (stop writing raw SQL)  ☐
+### Phase 3 — Migrate writes (stop writing raw SQL)  ◐ (3a done)
+**3a — counts ✅ (`cfc8f02`):** `brain._get_{node,edge,locked}_count`, `brain_recall` brain-size, `brain_assembly` total_locked, `daemon_server` status counts → held DALs (`count`/`count_locked`/`count_total`/`count_by_type` adopted). daemon locked count gains the documented non-archived semantics.
+**3b — TF-IDF (pending):** route `brain_remember`'s inline `_store_tfidf_vector` / `_rebuild_tfidf_index` / `_tfidf_score` blocks onto `TfIdfDAL` (the verbatim-reimplemented dead class). Also `brain.py:323`/`brain_assembly:433` raw counts.
+**3c — node writes + titles (pending):** raw `UPDATE nodes …` → `NodeDAL.update_field`/etc.; `SELECT title …` → `NodeDAL.get_title`.
 **Goal:** Adopt the Category-B *write* methods; remove the write violations.
 **Work:** Route `brain_remember.py` TF-IDF block → `TfIdfDAL`; node UPDATEs → `NodeDAL.update_field`/etc.; the 3 `brain._get_*_count` + daemon_server counts → `NodeDAL`/`GraphDAL` counts; node-title reads → `NodeDAL.get_title`.
 **Verify:** `./dev pytest tests/`; `eval/s1_encode_eval.py` (encode path touches remember); decode_funnel for counts on recall.
@@ -192,9 +214,9 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 | Phase | Status | Commit | Notes |
 |---|---|---|---|
 | 0 — Safe cleanup + fixes | ☑ | 2026-05-30 | dead Category-A gone; B-FTS/SIG/LCK/NAME fixed; 0 new test fails |
-| 1 — F3 correctness | ☑ | fd9c313 | 5 writers + 4 callers batch-aware; 4 regression tests; suite green |
+| 1 — F3 correctness | ☑ | fd9c313 (+0cd1c1d) | writers+callers batch-aware; xhigh review later found 3 MISSED writers (co_anchored×2, connect(), hebbian) → completed in 0cd1c1d; 9 batch tests |
 | 2 — Repository aggregate | ☑ | d13d671, c1f9ceb | held 5 DALs; ~57/68 sites converted; residual = bg-writer + daemon_hooks + conn-params |
-| 3 — Migrate writes | ☐ | — | |
+| 3 — Migrate writes | ◐ | cfc8f02, 0cd1c1d | 3a counts ✅; 3b TF-IDF + 3c node-writes/titles pending |
 | 4 — Migrate reads | ☐ | — | |
 | 5 — Missing DALs + extractions | ☐ | — | |
 | 6 — Lock it | ☐ | — | |

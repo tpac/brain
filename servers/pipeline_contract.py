@@ -423,7 +423,6 @@ def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
         return {'neighbors': [], 'corrections': {}, 'metadata': {}}
 
     # ── Graph expansion via GraphDAL (v25 — archived + noise centralized) ──
-    from .dal import GraphDAL
     graph_dal = brain._graph
     seen = set(resolved_ids)
     neighbors = []

@@ -8,7 +8,7 @@ which are provided by Brain.__init__.
 
 from . import embedder
 from .brain_constants import TYPE_CONFIDENCE
-from .dal import GraphDAL, VectorDAL
+from .dal import VectorDAL
 from .clock import iso_cutoff, iso_now
 from .brain_constants import (
     ENRICHMENT_NEIGHBOR_COUNT,
@@ -732,7 +732,6 @@ class BrainRememberMixin:
         # dangling refs in a future pass).
         if source_refs:
             try:
-                from .dal import GraphDAL
                 self._graph.add_source_refs(
                     node_id, source_refs, commit=not self._batch_mode)
             except Exception as e:
@@ -749,7 +748,6 @@ class BrainRememberMixin:
             # alongside co_accessed. Sparse refs (1-3) × small cohort →
             # negligible cost.
             try:
-                from .dal import GraphDAL
                 graph_dal = self._graph
                 siblings: set = set()
                 for tid in source_refs:
@@ -763,6 +761,7 @@ class BrainRememberMixin:
                         node_id, sibling_id, 'co_anchored',
                         description='shared episodic anchor',
                         encoding_source='dispatch:co_anchored',
+                        commit=not self._batch_mode,  # F3: defer to the batch's COMMIT
                     )
             except Exception as e:
                 self._log_error(
@@ -825,13 +824,11 @@ class BrainRememberMixin:
                     scored.sort(key=lambda x: x[1], reverse=True)
                     for recent_id, sim in scored[:3]:
                         if sim > 0.3:
-                            from .dal import GraphDAL
                             graph_dal = self._graph
                             if not graph_dal.edge_exists(node_id, recent_id):
                                 self.connect(node_id, recent_id, 'co_accessed', max(0.2, sim * 0.5))
                 elif recent:
                     for (recent_id, _) in recent[:3]:
-                        from .dal import GraphDAL
                         graph_dal = self._graph
                         if not graph_dal.edge_exists(node_id, recent_id):
                             self.connect(node_id, recent_id, 'co_accessed', 0.2)
@@ -1217,7 +1214,6 @@ class BrainRememberMixin:
         source_refs_replaced = None  # None=untouched, int=count after replace
         if new_source_refs is not _SR_ABSENT:
             try:
-                from .dal import GraphDAL
                 source_refs_replaced = self._graph.replace_source_refs(
                     node_id, new_source_refs or [], commit=not self._batch_mode)
                 fields_updated.append('source_refs')
@@ -1237,7 +1233,6 @@ class BrainRememberMixin:
             # add_relation is idempotent — existing edges are field-preserving
             # no-ops.
             try:
-                from .dal import GraphDAL
                 graph_dal = self._graph
                 siblings: set = set()
                 for tid in (new_source_refs or []):
@@ -1251,6 +1246,7 @@ class BrainRememberMixin:
                         node_id, sibling_id, 'co_anchored',
                         description='shared episodic anchor',
                         encoding_source='dispatch:co_anchored',
+                        commit=not self._batch_mode,  # F3: defer to the batch's COMMIT
                     )
             except Exception as e:
                 self._log_error(
@@ -1429,7 +1425,6 @@ class BrainRememberMixin:
                     # (co_accessed, emergent_bridge, community_member),
                     # min_length, and the weight-ordered LIMIT.
                     try:
-                        from .dal import GraphDAL
                         descriptions = self._graph.get_edge_descriptions_for(
                             node_id, min_length=10, limit=5)
                         for desc in descriptions:

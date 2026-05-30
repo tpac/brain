@@ -1377,10 +1377,10 @@ class NodeDAL:
         identity-meaningful count); pass include_archived=True for the raw
         lock count regardless of archive state.
 
-        Default chosen to match the 2 of 3 current call sites (brain.py,
-        brain_assembly.py) that filter archived=0; daemon_server's status
-        count currently omits the filter and will pick up the corrected
-        (non-archived) semantics when it migrates onto this method (Phase 3)."""
+        Default (non-archived) matches all current call sites — brain.py,
+        brain_assembly.py, and daemon_server's status count (migrated 2026-05-30,
+        which intentionally drops archived-locked nodes from the status total).
+        Pass include_archived=True for the raw all-state lock count."""
         sql = 'SELECT COUNT(*) FROM nodes WHERE locked = 1'
         if not include_archived:
             sql += ' AND archived = 0'

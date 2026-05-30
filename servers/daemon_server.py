@@ -667,10 +667,13 @@ class BrainDaemon:
             if not brain:
                 return
 
-            node_count = brain.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
-            locked_count = brain.conn.execute("SELECT COUNT(*) FROM nodes WHERE locked = 1").fetchone()[0]
-            edge_count = brain.conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
-            tension_count = brain.conn.execute("SELECT COUNT(*) FROM nodes WHERE type = 'tension'").fetchone()[0]
+            # Semantics: nodes/edges report total store size (incl. archived);
+            # locked/tensions report the active (non-archived) subset via the DAL
+            # defaults — the identity-meaningful live counts.
+            node_count = brain._nodes.count(archived=True)
+            locked_count = brain._nodes.count_locked()
+            edge_count = brain._graph.count_total()
+            tension_count = brain._nodes.count_by_type('tension')
 
             from servers import embedder
             emb_ready = embedder.is_ready()

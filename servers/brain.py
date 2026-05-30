@@ -1083,18 +1083,15 @@ class Brain(
 
     def _get_node_count(self) -> int:
         """Get count of non-archived nodes."""
-        cursor = self.conn.execute('SELECT COUNT(*) FROM nodes WHERE archived = 0')
-        return cursor.fetchone()[0]
+        return self._nodes.count()
 
     def _get_edge_count(self) -> int:
         """Get total edge count."""
-        cursor = self.conn.execute('SELECT COUNT(*) FROM edges')
-        return cursor.fetchone()[0]
+        return self._graph.count_total()
 
     def _get_locked_count(self) -> int:
         """Get count of locked nodes."""
-        cursor = self.conn.execute('SELECT COUNT(*) FROM nodes WHERE locked = 1 AND archived = 0')
-        return cursor.fetchone()[0]
+        return self._nodes.count_locked()
 
     # ─── REMEMBER: Store a new node with TF-IDF + embeddings ───
 
