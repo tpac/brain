@@ -1,0 +1,104 @@
+"""daemon_call_raw observability contract.
+
+Regression guard for the silent-failure class: a recall failure that surfaced
+to Claude (via additionalContext) but never reached hook_errors, so it was
+invisible in the dashboard and at boot. Two gaps caused it:
+
+  1. The empty/garbled-read case let json.loads("") throw the cryptic
+     "Expecting value: line 1 column 1 (char 0)".
+  2. daemon_call_raw's catch-all `except` returned ok=false WITHOUT logging
+     (unlike its timeout and ok=false siblings).
+
+The fix lives in the shared daemon path (single source of truth — every hook
+calls daemon_call_raw), so these tests exercise that one function with a fake
+daemon and assert BOTH halves: a clear error string AND a hook_errors row.
+"""
+import os
+import sys
+import socket
+import sqlite3
+import tempfile
+import threading
+import unittest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'hooks', 'scripts'))
+import hook_common
+
+
+def _serve_once(handler):
+    """Start a throwaway TCP server on an ephemeral port. `handler(conn)` runs
+    for the single accepted connection. Returns (host, port, stop_fn)."""
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    host, port = srv.getsockname()
+
+    def run():
+        try:
+            conn, _ = srv.accept()
+            try:
+                conn.recv(4096)  # drain the client's request so its send completes
+                handler(conn)
+            finally:
+                conn.close()
+        except OSError:
+            pass
+        finally:
+            srv.close()
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    return host, port, t
+
+
+class TestDaemonCallRawLogging(unittest.TestCase):
+    def setUp(self):
+        # Point hook_common's logger at a temp brain_logs.db.
+        self._tmp = tempfile.mkdtemp()
+        self._saved = (hook_common.db_dir, hook_common.DAEMON_HOST, hook_common.DAEMON_PORT)
+        hook_common.db_dir = self._tmp
+
+    def tearDown(self):
+        hook_common.db_dir, hook_common.DAEMON_HOST, hook_common.DAEMON_PORT = self._saved
+
+    def _hook_errors(self):
+        db = os.path.join(self._tmp, "brain_logs.db")
+        if not os.path.isfile(db):
+            return []
+        conn = sqlite3.connect(db)
+        try:
+            return conn.execute(
+                "SELECT hook_name, error FROM hook_errors ORDER BY id").fetchall()
+        finally:
+            conn.close()
+
+    def test_empty_response_returns_clear_error_and_logs(self):
+        """Daemon accepts then closes without writing → clear message, logged."""
+        host, port, _ = _serve_once(lambda conn: None)  # close without sending
+        hook_common.DAEMON_HOST, hook_common.DAEMON_PORT = host, port
+
+        resp = hook_common.daemon_call_raw("probe_empty", timeout=3.0)
+
+        self.assertFalse(resp.get("ok"))
+        self.assertIn("empty response", resp.get("error", ""),
+                      "empty read should yield a clear message, not a cryptic JSON error")
+        rows = self._hook_errors()
+        self.assertTrue(any(r[0] == "probe_empty" for r in rows),
+                        "empty-response failure must be logged to hook_errors")
+
+    def test_garbage_response_is_logged(self):
+        """Non-JSON reply → JSON parse error caught by the catch-all AND logged."""
+        host, port, _ = _serve_once(lambda conn: conn.sendall(b"not json at all\n"))
+        hook_common.DAEMON_HOST, hook_common.DAEMON_PORT = host, port
+
+        resp = hook_common.daemon_call_raw("probe_garbage", timeout=3.0)
+
+        self.assertFalse(resp.get("ok"))
+        rows = self._hook_errors()
+        self.assertTrue(any(r[0] == "probe_garbage" for r in rows),
+                        "garbled-response failure must be logged to hook_errors")
+
+
+if __name__ == "__main__":
+    unittest.main()

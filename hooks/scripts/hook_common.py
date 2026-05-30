@@ -335,7 +335,14 @@ def daemon_call_raw(cmd, args=None, timeout=10.0):
                 break
             data += chunk
         sock.close()
-        resp = json.loads(data.decode().strip())
+        text = data.decode().strip()
+        if not text:
+            # Daemon accepted the connection but closed it without writing.
+            # Surfacing this explicitly beats letting json.loads("") throw the
+            # cryptic "Expecting value: line 1 column 1 (char 0)" — the
+            # ValueError is caught below and logged to hook_errors.
+            raise ValueError("daemon returned empty response (connection closed before reply)")
+        resp = json.loads(text)
 
         if not resp.get("ok"):
             err = resp.get("error", "unknown error")
@@ -351,7 +358,12 @@ def daemon_call_raw(cmd, args=None, timeout=10.0):
         brain_error("%s: daemon not running" % cmd)
         return {"ok": False, "error": "daemon not running"}
     except Exception as e:
+        # Catch-all for empty/garbled reads, JSON-parse failures, socket
+        # resets, etc. The sibling branches (ok=false, timeout) already log;
+        # this one did not — that gap is exactly how a recall failure stayed
+        # invisible (surfaced to Claude but never reached hook_errors).
         brain_error("%s: %s" % (cmd, e))
+        log_hook_error(cmd, e, "daemon_call_raw failed")
         return {"ok": False, "error": str(e)}
 
 

@@ -13,7 +13,8 @@ import sys, os, json, time
 _t0 = time.time()
 sys.path.insert(0, os.path.dirname(__file__))
 from hook_common import (get_hook_input, daemon_available, daemon_call_raw,
-                         daemon_unavailable_error, brain_debug, log_hook_output)
+                         daemon_unavailable_error, brain_debug, log_hook_output,
+                         log_hook_error)
 from datetime import datetime as _dt
 def _ts(): return _dt.now().strftime("%H:%M:%S.%f")[:-3]
 sys.stderr.write("[recall-hook %s] import: %dms\n" % (_ts(), (time.time() - _t0) * 1000))
@@ -48,7 +49,10 @@ try:
 
     if not resp.get("ok"):
         err_msg = resp.get("error", "unknown error")
-        log_hook_output("recall", output_text="(daemon error: %s)" % err_msg, user_prompt=user_message)
+        # No log_hook_error here: daemon_call_raw already logged this failure to
+        # hook_errors (single source of truth — logging lives in the shared
+        # daemon path, not duplicated per caller). We only render the user-facing
+        # message below.
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext":
             "[BRAIN]\n⚠️ RECALL FAILED: %s\nThe brain could not search for relevant memories.\n[/BRAIN]" % err_msg}}))
         sys.exit(0)
@@ -75,6 +79,10 @@ try:
         os._exit(0)
 
 except Exception as e:
-    log_hook_output("recall", output_text="(exception) %s" % e, user_prompt=user_message)
+    # Hook-internal exception (NOT a daemon-call failure — daemon_call_raw
+    # catches its own and returns ok=false). This path was silent before:
+    # log_hook_output is a deprecated no-op. log_hook_error lands it in
+    # hook_errors so it's visible in the dashboard and at boot.
+    log_hook_error("recall", e, "pre_response_recall hook exception")
     brain_debug("recall: exception: %s" % e)
     print(APPROVE)
