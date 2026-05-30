@@ -226,10 +226,14 @@ def daemon_unavailable_error(hook_name=None):
 
     print("[brain] CRITICAL: %s — daemon unavailable" % name, file=sys.stderr)
 
-    # 2. Log to dashboard DB directly (SQLite, no daemon needed)
+    # 2. Persist to brain_logs.db directly (SQLite, no daemon needed) so the
+    #    outage shows in the dashboard + query_logs even while the daemon is
+    #    down. log_hook_output was deprecated to a no-op (2026-04-03), which
+    #    silently broke this guarantee for every hook that lands here.
     try:
-        log_hook_output("DAEMON_DOWN", output_text=msg,
-                        operator_text="⚠️ Daemon down during %s" % name)
+        log_hook_error("DAEMON_DOWN", "daemon unreachable (detected by %s)" % name,
+                       "recall + encoding disabled until restart; relayed to operator",
+                       level="critical")
     except Exception:
         pass
 

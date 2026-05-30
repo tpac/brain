@@ -20,6 +20,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'hooks', 'scripts'))
 import hook_common
@@ -98,6 +99,47 @@ class TestDaemonCallRawLogging(unittest.TestCase):
         rows = self._hook_errors()
         self.assertTrue(any(r[0] == "probe_garbage" for r in rows),
                         "garbled-response failure must be logged to hook_errors")
+
+
+class TestDaemonUnavailableLogging(unittest.TestCase):
+    """daemon_unavailable_error must PERSIST the outage, not just relay it.
+
+    The canonical daemon-down handler (every hook calls it) logged via
+    log_hook_output — deprecated to a no-op (2026-04-03) — so a real
+    daemon-down event left hook_errors empty: invisible in the dashboard, at
+    boot, and to query_logs, even though the operator saw the CRITICAL relay.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._saved_dir = hook_common.db_dir
+        hook_common.db_dir = self._tmp
+
+    def tearDown(self):
+        hook_common.db_dir = self._saved_dir
+
+    def test_outage_relayed_and_persisted(self):
+        # Neutralize step 3 (recover_daemon) so the test never touches a real
+        # daemon — daemon_unavailable_error imports it lazily at call time.
+        with mock.patch("servers.daemon_client.recover_daemon", lambda *a, **k: None):
+            msg = hook_common.daemon_unavailable_error("recall")
+
+        # 1. still returns the CRITICAL relay Claude must surface to the operator
+        self.assertIn("CRITICAL", msg)
+
+        # 2. and now persists the outage to hook_errors (was a silent no-op before)
+        db = os.path.join(self._tmp, "brain_logs.db")
+        self.assertTrue(os.path.isfile(db), "daemon-down must create/write brain_logs.db")
+        conn = sqlite3.connect(db)
+        try:
+            rows = conn.execute(
+                "SELECT hook_name, level, error FROM hook_errors ORDER BY id").fetchall()
+        finally:
+            conn.close()
+        down = [r for r in rows if r[0] == "DAEMON_DOWN"]
+        self.assertTrue(down, "daemon-down event must be logged to hook_errors")
+        self.assertEqual(down[0][1], "critical", "daemon-down must log at level=critical")
+        self.assertIn("recall", down[0][2], "the detecting hook should be named in the error")
 
 
 if __name__ == "__main__":
