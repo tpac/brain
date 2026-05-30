@@ -2473,8 +2473,12 @@ class GraphDAL:
     # Hebbian strengthening now uses atomic UPSERT inside
     # recall_write_queue._apply_hebbian_pairs via add_relation.
 
-    def delete_node_edges(self, node_id: str) -> int:
+    def delete_node_edges(self, node_id: str, commit: bool = True) -> int:
         """Soft-archive all edge_relations touching a node (v25).
+
+        `commit=True` (default) preserves single-statement-boundary behavior.
+        Pass commit=False when inside a wider transaction (brain_batch) so the
+        outer BEGIN IMMEDIATE/COMMIT keeps the batch atomic — see add_relation.
 
         Was a hard DELETE prior to v25 — the asymmetry with node archive
         destroyed edge provenance forever. Now sets archived=1 on the
@@ -2506,11 +2510,15 @@ class GraphDAL:
                 [ts, 'delete_node_edges'] + edge_ids)
             archived_count = cur.rowcount
 
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return archived_count
 
-    def decay_edges(self) -> Dict[str, Any]:
+    def decay_edges(self, commit: bool = True) -> Dict[str, Any]:
         """Apply exponential decay to auto-generated edge relations.
+
+        `commit=True` (default) keeps standalone behavior (the idle S2 caller).
+        Pass commit=False inside a wider transaction — see add_relation.
 
         Operates on edge_relations via edge_id.
         When a relation's weight drops below threshold, that relation is removed.
@@ -2573,7 +2581,8 @@ class GraphDAL:
             for eid in set(pruned_edge_ids):
                 self._update_aggregate_weight(eid)
 
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return {'decayed': total_decayed, 'pruned': total_pruned, 'by_type': by_type}
 
     # --- edge_relations (multi-relation semantic layer via edge_id) ---
@@ -2842,8 +2851,13 @@ class GraphDAL:
                  'created_at': r[4]}
                 for r in rows]
 
-    def remove_relation(self, source_id, target_id, relation, archived_by: str = 'unknown'):
+    def remove_relation(self, source_id, target_id, relation, archived_by: str = 'unknown',
+                        commit: bool = True):
         """Soft-archive a specific relation on a pair (v25).
+
+        `commit=True` (default) preserves single-statement-boundary behavior.
+        The brain_batch `disconnect` op passes commit=False so the batch's
+        outer transaction stays atomic — see add_relation for the full rationale.
 
         Flips archived=1 on the matching row. Previously hard-DELETEd; the
         change preserves edge history for recovery. The edges aggregate row
@@ -2866,7 +2880,8 @@ class GraphDAL:
 
         # Recompute aggregate weight from remaining active relations
         self._update_aggregate_weight(edge_id)
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
 
     def _update_aggregate_weight(self, edge_id):
         """Set edges.weight to max weight across ACTIVE relation rows.
@@ -2893,7 +2908,7 @@ class GraphDAL:
 
     # --- Source refs (v27: episodic references) ---
 
-    def add_source_refs(self, node_id: str, trace_ids: List[str]) -> int:
+    def add_source_refs(self, node_id: str, trace_ids: List[str], commit: bool = True) -> int:
         """Append trace_event pointers to a node (v29: 8-char hex strings).
         Used at NEW-node creation (remember()). Position derived from list
         order (1-indexed); first ref is the primary anchor.
@@ -2924,10 +2939,11 @@ class GraphDAL:
             '(node_id, trace_id, position, created_at) '
             'VALUES (?, ?, ?, ?)',
             rows)
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return cur.rowcount
 
-    def replace_source_refs(self, node_id: str, trace_ids: List[str]) -> int:
+    def replace_source_refs(self, node_id: str, trace_ids: List[str], commit: bool = True) -> int:
         """Replace the node's source_refs with the given list. v29: 8-char hex.
 
         Per the unified 2-class revise contract (decision 995ffeb1):
@@ -2960,7 +2976,8 @@ class GraphDAL:
                 '(node_id, trace_id, position, created_at) '
                 'VALUES (?, ?, ?, ?)',
                 rows)
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return len(rows)
 
     def get_source_refs(self, node_id: str) -> List[str]:

@@ -618,7 +618,8 @@ def _handle_brain_batch(brain, args, graph_changes):
                         gdal = GraphDAL(brain.conn)
                         edge_id = gdal.get_edge_id(source_id, target_id)
                         gdal.remove_relation(
-                            source_id, target_id, relation, archived_by=archived_by)
+                            source_id, target_id, relation, archived_by=archived_by,
+                            commit=not brain._batch_mode)
                         brain._maybe_commit()
                         graph_changes.append("DISCONNECT: %s -[%s]-> %s" % (
                             source_id[:8], relation, target_id[:8]))

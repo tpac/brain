@@ -191,7 +191,8 @@ class BrainConnectionsMixin:
             kwargs['description'] = description
         if encoding_source is not None:
             kwargs['encoding_source'] = encoding_source
-        result = graph_dal.add_relation(source_id, target_id, relation, **kwargs)
+        result = graph_dal.add_relation(source_id, target_id, relation,
+                                        commit=not self._batch_mode, **kwargs)
         self._maybe_embed_edge_relation(result.get('edge_id'), relation, result)
         return result
 

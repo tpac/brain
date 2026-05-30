@@ -736,7 +736,8 @@ class BrainRememberMixin:
         if source_refs:
             try:
                 from .dal import GraphDAL
-                GraphDAL(self.conn).add_source_refs(node_id, source_refs)
+                GraphDAL(self.conn).add_source_refs(
+                    node_id, source_refs, commit=not self._batch_mode)
             except Exception as e:
                 self._log_error(
                     'source_refs_persist', e,
@@ -1223,7 +1224,7 @@ class BrainRememberMixin:
             try:
                 from .dal import GraphDAL
                 source_refs_replaced = GraphDAL(self.conn).replace_source_refs(
-                    node_id, new_source_refs or [])
+                    node_id, new_source_refs or [], commit=not self._batch_mode)
                 fields_updated.append('source_refs')
                 deltas.append({
                     'field': 'source_refs',

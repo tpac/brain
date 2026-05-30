@@ -170,6 +170,103 @@ class TestBrainBatchTransaction(BrainTestBase):
         self.assertTrue(all(succeeded_titles),
                         "Both happy ops should have persisted")
 
+    # ── F3: GraphDAL writers must not self-commit inside a batch ──────────────
+    # Regression for docs/WRITE-TXN-ISOLATION-ROOTFIX.md. test_single_commit_per_batch
+    # above uses only plain `remember` ops, so it never exercised the connect /
+    # disconnect / source-ref paths whose DAL writers (add_relation via
+    # connect_typed, remove_relation, add_source_refs/replace_source_refs) used to
+    # self-commit mid-batch — silently breaking both the single-COMMIT property and
+    # the all-or-nothing rollback guarantee. These tests drive those paths.
+
+    def _commit_count(self, operations, **extra):
+        """Run a batch and return (result, number of real COMMITs observed)."""
+        statements = []
+        self.brain.conn.set_trace_callback(statements.append)
+        try:
+            r = self._batch(operations, **extra)
+        finally:
+            self.brain.conn.set_trace_callback(None)
+        commits = sum(1 for s in statements if s.strip().upper() == 'COMMIT')
+        return r, commits
+
+    def _node_id(self, title):
+        row = self.brain.conn.execute(
+            "SELECT id FROM nodes WHERE title = ? AND archived = 0", (title,)
+        ).fetchone()
+        return row[0] if row else None
+
+    def _tests_relation_count(self, a, b, relation='tests'):
+        """Count active edge_relations named `relation` between a and b in either
+        direction. remember() may auto-bridge similar nodes, so a physical edge
+        can pre-exist — we assert on the SPECIFIC relation the connect op writes,
+        not bare edge existence."""
+        return self.brain.conn.execute(
+            "SELECT COUNT(*) FROM edge_relations er JOIN edges e ON er.edge_id = e.edge_id "
+            "WHERE er.relation = ? AND er.archived = 0 AND "
+            "((e.source_id = ? AND e.target_id = ?) OR (e.source_id = ? AND e.target_id = ?))",
+            (relation, a, b, b, a)).fetchone()[0]
+
+    def test_connect_op_single_commit(self):
+        """`connect` routes through connect_typed -> add_relation, which must defer
+        its commit inside a batch (commit=not _batch_mode). One COMMIT total."""
+        self.brain.remember(type='rule', title='f3-conn-A', content='a')
+        self.brain.remember(type='rule', title='f3-conn-B', content='b')
+        a, b = self._node_id('f3-conn-A'), self._node_id('f3-conn-B')
+        r, commits = self._commit_count([
+            {"op": "connect", "source_id": a, "target_id": b, "relation": "tests"},
+        ])
+        self.assertTrue(r['ok'])
+        self.assertEqual(commits, 1,
+                         "connect op self-committed inside the batch; got %d COMMITs" % commits)
+
+    def test_disconnect_op_single_commit(self):
+        """`disconnect` routes through remove_relation, which must defer its commit."""
+        self.brain.remember(type='rule', title='f3-disc-A', content='a')
+        self.brain.remember(type='rule', title='f3-disc-B', content='b')
+        a, b = self._node_id('f3-disc-A'), self._node_id('f3-disc-B')
+        self.brain.connect_typed(a, b, 'tests')  # pre-existing edge to remove
+        r, commits = self._commit_count([
+            {"op": "disconnect", "source_id": a, "target_id": b, "relation": "tests"},
+        ])
+        self.assertTrue(r['ok'])
+        self.assertEqual(commits, 1,
+                         "disconnect op self-committed inside the batch; got %d COMMITs" % commits)
+
+    def test_remember_with_source_refs_single_commit(self):
+        """A `remember` carrying source_refs routes through add_source_refs, which
+        must defer its commit."""
+        r, commits = self._commit_count([
+            {"op": "remember", "type": "rule", "title": "f3-srcrefs",
+             "content": "node with refs", "source_refs": ["aabbccdd", "11223344"]},
+        ])
+        self.assertTrue(r['ok'])
+        self.assertEqual(commits, 1,
+                         "source_refs write self-committed inside the batch; got %d COMMITs" % commits)
+
+    def test_connect_rolled_back_on_outer_failure(self):
+        """The prime F3 leak: connect_typed -> add_relation used to self-commit, so
+        a later op's failure could NOT roll the edge back. Now the edge must vanish
+        with the batch's ROLLBACK."""
+        self.brain.remember(type='rule', title='f3-rb-A', content='a')
+        self.brain.remember(type='rule', title='f3-rb-B', content='b')
+        a, b = self._node_id('f3-rb-A'), self._node_id('f3-rb-B')
+        self.assertEqual(self._tests_relation_count(a, b), 0,
+                         "precondition: no 'tests' relation between A and B yet")
+
+        with patch.object(self.brain, '_apply_connect_to',
+                          side_effect=RuntimeError('forced rollback')):
+            with self.assertRaises(RuntimeError):
+                self._batch([
+                    {"op": "connect", "source_id": a, "target_id": b,
+                     "relation": "tests"},
+                    {"op": "remember", "type": "rule", "title": "f3-rb-C",
+                     "content": "triggers connect_to resolution failure",
+                     "connect_to": [{"title": "f3-rb-A", "relation": "tests"}]},
+                ])
+
+        self.assertEqual(self._tests_relation_count(a, b), 0,
+                         "connect op did not roll back with the batch — 'tests' relation persisted")
+
 
 if __name__ == '__main__':
     unittest.main()
