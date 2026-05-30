@@ -1,8 +1,13 @@
-"""Step 6: AspectRegistry wired to Brain.__init__.
+"""AspectRegistry wired to Brain.__init__.
 
-Tests cover the eager-validation + auto-heal path. Every fresh Brain ends up
-with the 14 required aspect-nodes; the registry exposes them via attribute
-access. Reverse lookups and surface helpers all work end-to-end.
+Tests cover the live load path: every fresh Brain ends up with the 14 required
+aspects, exposed via attribute access, with reverse lookups and surface helpers
+working end-to-end. The registry loads them from
+servers/scales/s2/aspects_v1.json (AspectRegistry._load). The old type='aspect'
+brain-node / auto-heal mechanism these tests were originally written against is
+retired (migration removed 2026-05-29) — the assertions below verify the
+JSON-loaded registry, not node seeding. Method names retaining 'auto_heal' are
+historical; the behavior under test is JSON load.
 """
 
 from tests.brain_test_base import BrainTestBase
@@ -10,12 +15,12 @@ from servers.aspects import REQUIRED_ASPECTS, Aspect
 
 
 class TestAspectRegistryWired(BrainTestBase):
-    """brain.aspects exists after Brain.__init__ + auto-heals required."""
+    """brain.aspects exists after Brain.__init__ and loads the 14 required."""
 
     needs_embedder = False
 
     def test_all_14_required_present_after_auto_heal(self):
-        # Fresh brain → empty type='aspect' → auto-heal seeds 14
+        # Fresh brain → registry loads all 14 required from aspects_v1.json
         all_aspects = self.brain.aspects.all()
         for name in REQUIRED_ASPECTS:
             with self.subTest(aspect=name):
@@ -35,7 +40,7 @@ class TestAspectRegistryWired(BrainTestBase):
         self.assertIn('corrects', ci.edge_relations)
 
     def test_required_aspects_locked(self):
-        # Auto-heal seeds with locked=True via anchor:seed_aspects
+        # aspects_v1.json ships every required aspect locked=True
         for name in REQUIRED_ASPECTS:
             with self.subTest(aspect=name):
                 aspect = self.brain.aspects.by_name(name)
@@ -99,21 +104,21 @@ class TestAspectRegistryWired(BrainTestBase):
 
 
 class TestAspectRegistryIdempotentAcrossBrains(BrainTestBase):
-    """A second Brain on the same DB sees existing aspects, doesn't re-seed."""
+    """Two Brains over the same db_dir both load the 14 aspects consistently."""
 
     needs_embedder = False
 
     def test_second_brain_loads_existing_aspects(self):
-        # First brain auto-heals
+        # First brain loads the 14 from aspects_v1.json
         first_count = len(self.brain.aspects.all())
         self.assertEqual(first_count, 14)
 
-        # Second brain on same DB should LOAD, not re-create
+        # Second brain over the same db_dir reads the same JSON → same 14
         from servers.brain import Brain
         second_brain = Brain(self.db_path, skip_embedder=True)
         second_count = len(second_brain.aspects.all())
         self.assertEqual(second_count, 14,
-                         'second brain should see existing aspects, not double-seed')
+                         'second brain should load the same 14 aspects from JSON')
 
 
 class TestAspectRegistryHealerDisplayLabel(BrainTestBase):
