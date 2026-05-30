@@ -61,9 +61,9 @@ archives/
 !.claude/skills/brain/SKILL.md
 
 # docs/ design docs ARE tracked (un-ignored 2026-05-30 — the blanket ignore
-# left existing docs tracked-but-ignored, warning on every doc commit). Only the
-# bulky session-log archive stays out — multi-MB .jsonl/.txt dumps, not source.
-docs/archive/sessions/logs/
+# left existing docs tracked-but-ignored, warning on every doc commit). The
+# historical archive (superseded handoffs + multi-MB session-log dumps) stays out.
+docs/archive/
 eval/results/
 eval/fixtures/brain_eval_copy.db*
 eval/fixtures/eval_daemon.log

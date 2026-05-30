@@ -1,0 +1,191 @@
+# DAL Cleanup & Migration Plan
+
+**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phase 0 ✅ landed — Phase 1 (F3) next
+
+Living tracker for resuming the stalled DAL migration. Update the **Status** lines
+and the progress table as phases land. This doc is the single source of truth for
+scope and progress — keep it current.
+
+---
+
+## Why this exists
+
+The DAL was designed for **incremental, table-at-a-time adoption** (locked decision
+`7d14f588`; `dal.py` docstring: *"Direct self.conn.execute() calls continue to work
+alongside the DAL"*). The original plan (`docs/archive/stale/DAL-MIGRATION-PLAN.md`)
+defined **Step 0** = hold every DAL as an instance on `Brain`, then migrate callers.
+**Step 0 was never finished and the migration stalled.** That produces two symptoms
+that are *the same gap seen from opposite sides*:
+
+| Symptom | Count | Root |
+|---|---|---|
+| Raw-SQL calls outside the DAL | ~301 total (~43 genuine violations after subtracting DDL/PRAGMA/maintenance) | callers never migrated |
+| DAL methods with **zero callers** | ~40 | the methods callers *would* call were written but never adopted |
+
+The clearest case: **`TfIdfDAL` is fully written, and `brain_remember.py` reimplements
+it statement-for-statement inline.** The DAL method is "dead" *because* the violation
+exists. Resume the migration → both disappear together.
+
+**Verified facts (2026-05-30 audit):**
+- All sampled dead methods have **0 callers repo-wide** (incl. `dashboard/`).
+- `SessionStateDAL` is **never instantiated** anywhere; `session_state` table is live but accessed via raw SQL in `brain.py:680,738,768`.
+- `_random_walk` (brain_connections.py:199) and `GraphDAL.get_random_walk_neighbors` are **both dead** — random-walk path retired.
+- `GraphDAL.create_edge` — 0 callers, already `# DEPRECATED`.
+- **68 ad-hoc DAL construction sites** in `servers/` for the 5 not-held DALs.
+- F3 transaction bug confirmed: `connect_typed` (brain_connections.py:195) never passes `commit=False` → `add_relation` self-commits at dal.py:2777 inside batches.
+
+---
+
+## Principles (carry through every phase)
+
+- **Incremental & stoppable.** Each phase ships independently, tests green, committed separately. We can stop after any phase and the tree is consistent.
+- **DAL-first.** No new raw SQL outside `dal*.py` / `schema.py`. Phase 6 adds a guardrail test.
+- **Loud by default.** No new silent `except`. De-silence as we touch.
+- **Don't break the recall hot path.** Any change to `brain_recall.py` / surface / pipeline → run `eval/decode_funnel.py` before/after.
+- **Backup before destructive DB ops.** This effort is mostly *code*, but any phase that touches data (none planned) → `cp brain.db brain.db.bak-{ts}` first.
+- **Test integrity.** If a test fails, STOP — report expected vs actual, don't weaken it.
+
+## Out of scope / avoid (parallel streams active)
+
+Two other sessions are working the same repo. Per `git status` they touch
+`signal.py`, `daemon_hooks.py`, `post_response_track.py`, `test_self_signal.py`,
+`test_self_delivery.py`. To avoid collision:
+
+- **No `SelfChannelDAL`** — `self_inflight` / `self_delivered` stay raw this effort (`signal.py` is theirs).
+- **Touch `daemon_hooks.py` minimally** — only the ad-hoc DAL construction swap in Phase 2, coordinate first.
+
+---
+
+## Scope ledger
+
+### Bugs (independent of the migration; fix where scheduled)
+
+| ID | Bug | Location | Phase |
+|---|---|---|---|
+| B-F3 | GraphDAL writers self-commit → breaks `brain_batch` atomicity | dal.py `add_relation`/`remove_relation`/`delete_node_edges`/`decay_edges`/`add_source_refs`/`replace_source_refs`; brain_connections.py:195 | 1 |
+| B-SIG | `CachedVectorDAL.find_missing` drops `require_kv_keys_any` → latent `TypeError` | dal_vector_cached.py:179 vs dal.py:3197 | 0 |
+| B-FTS | Two silent `except Exception` on a recall signal | Fts5DAL.search (dal.py:1710), delete (1730) | 0 |
+| B-LCK | `count_locked` omits `archived=0`; 3 callers want it (semantics fork) | dal.py:1375 vs brain.py:1083, daemon_server.py:671, brain_assembly.py:346 | 0 |
+| B-KEY | Neighbor-row key inconsistent (`target_id`/`node_id`/`id`) | dal.py get_random_walk_neighbors / get_well_connected / get_community_members | 0 (mostly resolved by deletions) / 6 |
+| B-NAME | `MetaDAL` vs `MetadataDAL` naming trap | dal.py:1228 vs dal_metadata.py:68 | 0 |
+
+### Dead methods — categorized
+
+**Category A — delete now (Phase 0), no adoption value:**
+- `GraphDAL.get_edge_count` (dup of `count_total` — keep `count_total`)
+- `GraphDAL.get_well_connected`
+- `GraphDAL.get_random_walk_neighbors` + `brain_connections._random_walk`
+- `GraphDAL.create_edge` (already DEPRECATED)
+- `NodeDAL.delete_for_node` (wrong owner — dup of `VectorDAL.delete_for_node` on `node_enrichments`)
+
+**Category B — migration targets (adopt in Phases 3–4; raw SQL is the violation, DAL method is the fix). Do NOT delete:**
+- All `TfIdfDAL`: `store_tf_vector`, `clear_all`, `get_doc_freq`, `get_node_terms`, `get_total_docs`, `delete_for_node`, `rebuild`
+- `NodeDAL` writes: `update_field`, `update_confidence`, `set_critical`, `update_type`, `append_content`, `set_evolution_status`, `mark_accessed`, `delete`, `unlock`
+- `NodeDAL` counts: `count`, `count_locked`, `count_by_type`; `GraphDAL.count_total`
+- `MetadataDAL.get_all_by_key`
+- `SessionStateDAL` (whole class) — resurrect + adopt for `brain.py` raw `session_state` SQL, OR consciously delete (decide in Phase 4)
+
+**Category C — test-only / revisit Phase 6:**
+- `MetaDAL.get_json`/`set_json`/`increment`, `MetadataDAL.delete_all`/`get_nodes_with_flag`/`clear_flag`/`field_coverage`, `GraphDAL.delete_node_edges`, `InteractionDAL.list_versions`, `Fts5DAL.rebuild`, `NodeDAL.get_all_for_reindex`/`get_all_with_titles` (latter may have a maintenance/CLI use — verify before deleting).
+
+### Raw-SQL violations by subsystem (the migration work)
+
+| Subsystem | Files | Target DAL | Phase |
+|---|---|---|---|
+| TF-IDF index | brain_remember.py:352-366, 400-480, 523-545 | TfIdfDAL (exists) | 3 |
+| Node writes | brain_remember.py (UPDATE nodes …), :1359 content_summary | NodeDAL.update_field/etc. | 3 |
+| Counts | brain.py:1071/1076/1081, daemon_server.py:670, brain_recall.py:1291, brain_assembly.py:346 | NodeDAL/GraphDAL counts | 3 |
+| Node titles | brain_remember.py:312/1312, brain_connections.py:241 | NodeDAL.get_title | 3 |
+| Metadata-KV reads | community_decoder.py:70/220/350, temporal_extraction.py:485 | MetadataDAL.get/get_field/get_all_by_key | 4 |
+| N+1 loops | community_decoder.py:847 (embedding), :959 (created_at) | VectorDAL bulk / NodeDAL.get_bulk | 4 |
+| trace_events (via DAL's own conn!) | conversation.py:161/173/210 | new TraceDAL methods | 4 |
+| session_state | brain.py:680/738/768 | SessionStateDAL (resurrect) | 4 |
+| edge relation rename | reclassify.py:92 | new `GraphDAL.rename_relation` | 4 |
+| entity_dates (no DAL) | temporal_extraction.py:346/355/369, fetch_tools.py:577/592/485 | new EntityDatesDAL | 5 |
+
+### Structure
+
+- **Extract `SourceRefDAL`** from GraphDAL (`add_source_refs`/`replace_source_refs`/`get_source_refs`/`get_nodes_referencing`, dal.py:2924-3021 — operate on `node_source_refs`, not edges). Phase 5.
+- **Cascade-delete path** — one `Brain.delete_node_cascade(node_id)` so `purge`/archive stop hand-rolling per-table SQL and the per-table `delete_for_node` methods get a real caller. Phase 5.
+- Leave the GraphDAL **edge core** intact — its size is earned by the v22 two-table model.
+
+---
+
+## Phases
+
+Legend: ☐ not started · ◐ in progress · ☑ done
+
+### Phase 0 — Safe cleanup + cheap fixes  ☑ (2026-05-30)
+**Landed:** Deleted Category-A dead code (`GraphDAL.get_edge_count`/`get_well_connected`/`get_random_walk_neighbors`/`create_edge`, `NodeDAL.delete_for_node`, `brain_connections._random_walk` + orphaned `import random`). Fixed B-FTS (de-silenced `Fts5DAL.search`/`delete`), B-SIG (`CachedVectorDAL.find_missing` now mirrors `require_kv_keys_any`), B-LCK (`count_locked(include_archived=False)` capability added; callers migrate in Phase 3), B-NAME (`MetaDAL`→**`BrainMetaDAL`**, chosen over `ConfigDAL` for `brain_meta` table-name alignment + `self._meta` coherence). Full suite: 1349 pass / 7 skip / **4 pre-existing fails** (recall fatigue+hub-dampening, confirmed red on baseline without these changes — NOT introduced here; flagged separately).
+**Goal:** Remove confirmed-dead Category-A code and land the low-risk bug fixes. No behavior change.
+**Work:**
+1. Delete Category-A dead methods (get_edge_count, get_well_connected, get_random_walk_neighbors, _random_walk, create_edge, NodeDAL.delete_for_node) — verify 0 callers immediately before each delete.
+2. B-FTS: de-silence `Fts5DAL.search`/`delete` (log to stderr, match the file's existing pattern at add_relation:2789).
+3. B-SIG: mirror `require_kv_keys_any` into `CachedVectorDAL.find_missing`.
+4. B-LCK: add `archived: bool = True` param to `NodeDAL.count_locked`, reconcile with the 3 callers' intent (they want `archived=0`).
+5. B-NAME: rename `MetaDAL` → `ConfigDAL` (5 methods, 1 attr `_meta`); update all references.
+**Verify:** `./dev pytest tests/` green; `./dev pytest tests/test_contract_sync.py tests/test_dispatch_contract_sync.py`.
+**Stop point:** dead Category-A gone, 4 bug fixes in. Commit.
+
+### Phase 1 — F3 transaction composition fix (correctness)  ☐
+**Goal:** `brain_batch`'s all-or-nothing rollback becomes true. (Ref: `docs/WRITE-TXN-ISOLATION-ROOTFIX.md` Option A.)
+**Work:**
+1. Add `commit: bool = True` to `remove_relation`, `delete_node_edges`, `decay_edges`, `add_source_refs`, `replace_source_refs` (mirror `add_relation`).
+2. Make `connect_typed` (brain_connections.py:195) pass `commit=False` when `self._batch_mode`.
+3. Tests: per method, assert `conn.in_transaction is False` after a standalone call; assert a `brain_batch` wrapping each commits exactly once and rolls back fully on a mid-batch failure.
+**Verify:** new txn tests green; existing batch tests green; reproduce-then-fix the "cannot start a transaction within a transaction" case (BACKLOG F3).
+**Stop point:** correctness bug closed, interim guard can stay as belt-and-suspenders. Commit.
+
+### Phase 2 — Repository aggregate (finish Step 0)  ☐
+**Goal:** Hold all DALs on `Brain`, foreground-conn-bound. Replace the 68 ad-hoc construction sites. "Right connection by construction, not convention."
+**Work:**
+1. Add `self.nodes`, `self.graph`, `self.meta_kv` (MetadataDAL), `self.fts`, `self.tfidf` in `brain.py` `__init__` (foreground `self.conn`).
+2. Replace ad-hoc `NodeDAL(self.conn)` / `GraphDAL(...)` / etc. with the held instances across the 68 sites — mechanical, one file at a time, tests after each.
+3. Keep the **one** intentional `GraphDAL(conn_bg_writer)` in `recall_write_queue.py:400` as the documented exception (add a comment).
+4. Coordinate `daemon_hooks.py` edits with the other stream.
+**Verify:** `./dev pytest tests/`; `eval/decode_funnel.py` (recall hot path touched).
+**Stop point:** zero ad-hoc construction except the documented bg_writer exception. Commit.
+
+### Phase 3 — Migrate writes (stop writing raw SQL)  ☐
+**Goal:** Adopt the Category-B *write* methods; remove the write violations.
+**Work:** Route `brain_remember.py` TF-IDF block → `TfIdfDAL`; node UPDATEs → `NodeDAL.update_field`/etc.; the 3 `brain._get_*_count` + daemon_server counts → `NodeDAL`/`GraphDAL` counts; node-title reads → `NodeDAL.get_title`.
+**Verify:** `./dev pytest tests/`; `eval/s1_encode_eval.py` (encode path touches remember); decode_funnel for counts on recall.
+**Stop point:** `brain_remember.py` raw-SQL count drops from 37 toward the bespoke-only floor. Commit.
+
+### Phase 4 — Migrate reads (stop reading raw SQL)  ☐
+**Goal:** Adopt Category-B *read* methods + new read methods; fix the 2 N+1 loops.
+**Work:** community_decoder/temporal metadata-KV reads → `MetadataDAL`; collapse the 2 N+1 loops (community_decoder.py:847/959) to bulk; add `TraceDAL` methods for conversation.py's 3 raw `trace_events` queries; decide SessionStateDAL (resurrect+adopt brain.py session_state, or delete); add `GraphDAL.rename_relation` for reclassify.py:92.
+**Verify:** `./dev pytest tests/`; decode_funnel (community + recall touched).
+**Stop point:** conversation.py no longer reaches into `_trace_dal.conn`; N+1 gone. Commit.
+
+### Phase 5 — Missing DALs + structural extractions  ☐
+**Goal:** Close the no-DAL subsystems and the god-class misfit.
+**Work:** Build `EntityDatesDAL` (temporal_extraction write + fetch_tools read); extract `SourceRefDAL` from GraphDAL; add `Brain.delete_node_cascade` and route `purge`/archive through it.
+**Verify:** `./dev pytest tests/`; temporal + recall-by-time paths.
+**Stop point:** `entity_dates` and source-refs fully DAL'd; one cascade-delete path. Commit.
+
+### Phase 6 — Lock it (guardrail)  ☐
+**Goal:** Prevent regression; normalize remaining contracts.
+**Work:** Add a contract test that fails on new raw `.execute(` outside `dal*.py`/`schema.py`/allowlisted maintenance files; normalize neighbor-row key → `id` (B-KEY) with a contract assertion; sweep Category-C test-only methods (delete or document); fold in BACKLOG P4.17 (`judge_output`→`surface_output` in `dal.py:get_user_turns`) if the file is open.
+**Verify:** full suite; the new guardrail test fails on a planted violation.
+**Stop point:** migration locked. Commit + archive this doc's predecessor reference.
+
+---
+
+## Progress
+
+| Phase | Status | Commit | Notes |
+|---|---|---|---|
+| 0 — Safe cleanup + fixes | ☑ | 2026-05-30 | dead Category-A gone; B-FTS/SIG/LCK/NAME fixed; 0 new test fails |
+| 1 — F3 correctness | ☐ | — | |
+| 2 — Repository aggregate | ☐ | — | 68 sites |
+| 3 — Migrate writes | ☐ | — | |
+| 4 — Migrate reads | ☐ | — | |
+| 5 — Missing DALs + extractions | ☐ | — | |
+| 6 — Lock it | ☐ | — | |
+
+## References
+- `docs/archive/stale/DAL-MIGRATION-PLAN.md` — original plan (Step 0 never finished; anticipated F3)
+- `docs/WRITE-TXN-ISOLATION-ROOTFIX.md` — F3 root-cause + Option A/B
+- `docs/BACKLOG.md` — F3 (~1 day), P4.17
+- Decision node `7d14f588` (locked) — DAL designed for incremental adoption
