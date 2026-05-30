@@ -6,6 +6,19 @@ Living tracker for resuming the stalled DAL migration. Update the **Status** lin
 and the progress table as phases land. This doc is the single source of truth for
 scope and progress — keep it current.
 
+## Where this work lives (isolation)
+
+Phases 1–6 run in a **dedicated git worktree** to avoid the shared-index
+collisions that hit Phase 0 (a parallel session's `git add -A` swept the
+staged work; recovered via reflog + patch). Setup:
+
+- Worktree: `/Users/tpac/brain-dal-cleanup` · branch: `dal-cleanup` (based on `0bfba45`)
+- `venv` is a symlink to the main repo's bundled venv (gitignored; never commit it)
+- Commit per phase with **explicit paths** (`git commit -- <files>`), never bare `git commit`
+- Phase 0 landed here as `9ca62fb` (the main-tree copy was reverted to keep main clean)
+- **Merge-back:** `dal-cleanup` → `main` once Tom approves (end of run or per-phase),
+  coordinating the moment since parallel streams commit to `main` continuously
+
 ---
 
 ## Why this exists
