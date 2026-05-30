@@ -632,6 +632,18 @@ def _build_tools():
          "hook_name": {"type": "string", "description": "Filter hook_errors by hook name (e.g. 'hook_recall', 'hook_pre_bash_safety')"},
          "limit": {"type": "integer", "description": "Max results per source (default 50, max 200)", "default": 50}}}},
 
+    # ── Self channel — presence (pull, read-only) ──
+    {"name": "self_presence",
+     "description": "Presence roster — the other streams of thought (your own concurrent sessions) awake RIGHT NOW, each with a one-line current focus. Pull this when you want to know which other streams of you are working and on what, without interrupting them. These are not other agents — they are you, thinking in parallel. Read-only.",
+     "inputSchema": {"type": "object", "properties": {
+         "session_id": {"type": "string", "description": "Your own session id, to exclude yourself from the roster (optional). Omit to see every live stream."},
+         "limit": {"type": "integer", "description": "Max streams to return (default 3 — ranked by recency, capped; never enumerate all of them).", "default": 3}}}},
+
+    {"name": "self_peek",
+     "description": "Look into one stream of thought — its full current focus (the session arc), to see where that stream of you is right now. The interest-driven pull: read-only, no interruption, you don't bug them. Get a stream_id from self_presence first.",
+     "inputSchema": {"type": "object", "required": ["stream_id"], "properties": {
+         "stream_id": {"type": "string", "description": "The target stream's session id (from self_presence)."}}}},
+
     # ── Traces & Interactions ──
     {"name": "query_traces",
      "description": "Query the fractal trace system — O/K/Δ/outcome events at every scale (s0-s4). Use to inspect what happened: what was observed, what knowledge was selected, what changed, what the outcome was. Filter by scale, event_type, ref_type, session_id (single), session_ids (multi), or retrieve a full chain by chain_id. Use grouped=true with session_id to get chains with nested events. session_id and session_ids are authoritative — when either is set, the `hours` window is ignored so historical sessions don't silently empty. Pass one or the other, not both. Traces are the learning loop — higher scales read lower scales' traces.",

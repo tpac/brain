@@ -59,7 +59,9 @@ EVENT_TYPES = {
 
 REF_TYPES = {
     # Scale 0: raw exchange
-    ("s0", "K"):       ["user_message"],
+    ("s0", "K"):       ["user_message",
+                         "self_message"],     # incoming turn from a stream of thought (self↔self),
+                                              # not the operator — same exchange, different correspondent
     ("s0", "delta"):   ["assistant_message", "tool_result",
                          "node_revised", "edge_relation_revised"],
     ("s0", "outcome"): ["correction", "follow_up"],

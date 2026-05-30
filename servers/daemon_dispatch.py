@@ -39,6 +39,7 @@ from .dispatch_ops import (
     _handle_diagnose, _handle_eval,
     _handle_drop_sys_revision_history,
 )
+from .dispatch_self import _handle_self_presence, _handle_self_peek
 
 
 COMMAND_TABLE: Dict[str, CmdEntry] = {
@@ -61,6 +62,10 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "get_debug_status":         CmdEntry(_handle_get_debug_status,     is_write=False),
     "enrichment_coverage":      CmdEntry(_handle_enrichment_coverage,  is_write=False),
     "pre_edit":                 CmdEntry(_handle_pre_edit,             is_write=False),
+
+    # ── Self channel — presence (pull, read-only) ──
+    "self_presence":            CmdEntry(_handle_self_presence,        is_write=False),
+    "self_peek":                CmdEntry(_handle_self_peek,            is_write=False),
 
     # ── Writes (exclusive lock) ──
     "save":                CmdEntry(_handle_save,               is_write=True, marks_dirty=False),

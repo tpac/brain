@@ -716,6 +716,40 @@ class Brain(
                         pass
         return n
 
+    def present_streams(self, exclude_session: str = '',
+                        window_min: float = 30, limit: int = 5) -> list:
+        """Streams of thought awake RIGHT NOW — the self-channel presence roster.
+
+        Distinct from `live_sessions()`: that one is "recent meaningful work"
+        (≥min_messages, survives week-long gaps, for the Frame's cross-session
+        slots). `present_streams` is WALL-CLOCK "who is awake this moment" —
+        sessions whose session_state row updated within the last `window_min`
+        minutes, newest first, excluding the caller.
+
+        Wall-clock is correct here: presence is real-time, not conversation-time,
+        so it's exempt from the conversation_now() rule like other bookkeeping
+        reads. See docs/BOOT-REIGNITION.md (presence at scale).
+
+        Returns [{'session_id': str, 'updated_at': iso}], newest first.
+        """
+        from .clock import iso_cutoff
+        try:
+            rows = self.logs_conn.execute(
+                "SELECT session_id, updated_at FROM session_state "
+                "WHERE key = '_session_context' AND updated_at > ? "
+                "AND session_id != ? "
+                "ORDER BY updated_at DESC LIMIT ?",
+                (iso_cutoff(minutes=window_min), exclude_session or '', limit)
+            ).fetchall()
+            return [{'session_id': r[0], 'updated_at': r[1]} for r in rows]
+        except Exception as e:
+            try:
+                self._log_error('present_streams_query', e,
+                                'window_min=%s limit=%d' % (window_min, limit))
+            except Exception:
+                pass
+            return []
+
     def live_sessions(self, limit: int = 5, min_messages: int = 5) -> list:
         """Return the most-recently-updated session_ids with at least
         `min_messages` messages on their SessionContext.

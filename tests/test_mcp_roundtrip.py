@@ -390,6 +390,30 @@ class TestMCPRoundTrip(BrainTestBase):
 
     # ── Coverage check ──
 
+    # ── Self channel (presence — pull) ──
+
+    def test_self_presence(self):
+        """self_presence returns a roster of live streams + a rendered line."""
+        from servers.session_context import SessionContext
+        ctx = SessionContext(session_id='roundtrip-stream-A')
+        ctx.message_count = 3
+        ctx.save(self.brain.logs_conn)
+        self.brain.set_config('session_context_roundtrip-stream-A', 'roundtrip focus A')
+        result = self._dispatch("self_presence", {"session_id": "roundtrip-self", "limit": 5})
+        self.assertIn("streams", result)
+        self.assertIn("line", result)
+        self.assertIsInstance(result["streams"], list)
+        ids = {s["session_id"] for s in result["streams"]}
+        self.assertIn("roundtrip-stream-A", ids)
+
+    def test_self_peek(self):
+        """self_peek returns one stream's full current focus."""
+        self.brain.set_config('session_context_roundtrip-peek',
+                              'peek focus line one\nline two')
+        result = self._dispatch("self_peek", {"stream_id": "roundtrip-peek"})
+        self.assertTrue(result["found"])
+        self.assertEqual(result["focus"], "peek focus line one\nline two")
+
     def test_all_mcp_tools_have_roundtrip_tests(self):
         """Every MCP tool should have a corresponding test above."""
         mcp_tool_names = {t["name"] for t in TOOLS}
