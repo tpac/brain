@@ -389,7 +389,7 @@ def _build_user_content(brain, messages, counter, session_id):
                 ref_ids = re.findall(r'id:([a-z0-9_]{6,8})', judge_output)
                 if ref_ids:
                     from servers.dal import NodeDAL
-                    dal = NodeDAL(brain.conn)
+                    dal = brain._nodes
                     refs = []
                     for rid in ref_ids:
                         title = (dal.get_title(rid) or rid)[:50]

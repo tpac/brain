@@ -712,7 +712,7 @@ def recall_verbatim(brain, phrase: str = '', k: int = 10, **_) -> List[Dict[str,
     """Verbatim phrase lookup via FTS5 — bypasses embedding similarity entirely."""
     try:
         from servers.dal import Fts5DAL
-        fts = Fts5DAL(brain.conn)
+        fts = brain._fts
         hit_ids = fts.search(phrase, limit=int(k) * 2) or []
         if not hit_ids:
             return []

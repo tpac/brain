@@ -23,7 +23,7 @@ class Healer(HealerDecoder):
         # nodes. Runs every cycle so historical leaks self-heal over time.
         archive_error = None
         try:
-            edges_archived = GraphDAL(self.brain.conn).archive_dangling_edges(
+            edges_archived = self.brain._graph.archive_dangling_edges(
                 archived_by='s2:healer')
         except Exception as e:
             edges_archived = 0

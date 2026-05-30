@@ -147,8 +147,8 @@ def _handle_graph_expand(brain, args, graph_changes):
 
     from .brain_constants import EXCLUDED_EDGE_TYPES
     from .dal import NodeDAL, GraphDAL
-    node_dal = NodeDAL(brain.conn)
-    graph_dal = GraphDAL(brain.conn)
+    node_dal = brain._nodes
+    graph_dal = brain._graph
     seen = set(node_ids)
     neighbors = []
     excluded = set(EXCLUDED_EDGE_TYPES)

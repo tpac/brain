@@ -615,7 +615,7 @@ def _handle_brain_batch(brain, args, graph_changes):
                         results.append({"op": "disconnect", "index": i, "ok": False,
                                         "error": "source_id, target_id, relation are required"})
                     else:
-                        gdal = GraphDAL(brain.conn)
+                        gdal = brain._graph
                         edge_id = gdal.get_edge_id(source_id, target_id)
                         gdal.remove_relation(
                             source_id, target_id, relation, archived_by=archived_by,

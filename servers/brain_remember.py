@@ -106,7 +106,7 @@ class BrainRememberMixin:
 
         if kv_fields:
             try:
-                count = MetadataDAL(self.conn).set_many(node_id, kv_fields)
+                count = self._meta_kv.set_many(node_id, kv_fields)
                 stored += count
             except Exception as _e:
                 self._log_error('store_metadata_kv', _e,
@@ -181,7 +181,7 @@ class BrainRememberMixin:
                 if v is not None:
                     audit['_sys_archived_%s' % k] = str(v)
         try:
-            MetadataDAL(self.conn).set_many(full_id, audit)
+            self._meta_kv.set_many(full_id, audit)
         except Exception as _e:
             self._log_error('archive_metadata', _e,
                             'storing audit for %s' % node_id[:8])
@@ -219,7 +219,7 @@ class BrainRememberMixin:
         if has_fts5:
             try:
                 from .dal import Fts5DAL
-                Fts5DAL(self.conn).delete(full_id)
+                self._fts.delete(full_id)
             except Exception as _e:
                 self._log_error('archive_fts5', _e,
                                 'FTS5 delete for %s' % full_id[:8])
@@ -711,7 +711,7 @@ class BrainRememberMixin:
         # pass empty string. Once v28 lands, Fts5DAL.upsert signature drops it.
         try:
             from .dal import Fts5DAL
-            Fts5DAL(self.conn).upsert(node_id, title, content or '', '')
+            self._fts.upsert(node_id, title, content or '', '')
             self._maybe_commit()
         except Exception as e:
             self._log_error('fts5_sync_remember', e, 'syncing FTS5 for node %s' % node_id[:12])
@@ -736,7 +736,7 @@ class BrainRememberMixin:
         if source_refs:
             try:
                 from .dal import GraphDAL
-                GraphDAL(self.conn).add_source_refs(
+                self._graph.add_source_refs(
                     node_id, source_refs, commit=not self._batch_mode)
             except Exception as e:
                 self._log_error(
@@ -753,7 +753,7 @@ class BrainRememberMixin:
             # negligible cost.
             try:
                 from .dal import GraphDAL
-                graph_dal = GraphDAL(self.conn)
+                graph_dal = self._graph
                 siblings: set = set()
                 for tid in source_refs:
                     if not isinstance(tid, str):
@@ -829,13 +829,13 @@ class BrainRememberMixin:
                     for recent_id, sim in scored[:3]:
                         if sim > 0.3:
                             from .dal import GraphDAL
-                            graph_dal = GraphDAL(self.conn)
+                            graph_dal = self._graph
                             if not graph_dal.edge_exists(node_id, recent_id):
                                 self.connect(node_id, recent_id, 'co_accessed', max(0.2, sim * 0.5))
                 elif recent:
                     for (recent_id, _) in recent[:3]:
                         from .dal import GraphDAL
-                        graph_dal = GraphDAL(self.conn)
+                        graph_dal = self._graph
                         if not graph_dal.edge_exists(node_id, recent_id):
                             self.connect(node_id, recent_id, 'co_accessed', 0.2)
             except Exception as e:
@@ -1041,7 +1041,7 @@ class BrainRememberMixin:
         ]
         if kv_to_capture:
             from .dal_metadata import MetadataDAL
-            kv_old = MetadataDAL(self.conn).get_fields(node_id, kv_to_capture)
+            kv_old = self._meta_kv.get_fields(node_id, kv_to_capture)
             for k in kv_to_capture:
                 old_values[k] = kv_old.get(k)  # None if not previously set
 
@@ -1140,7 +1140,7 @@ class BrainRememberMixin:
         # removal in schema v28; empty string until then)
         try:
             from .dal import Fts5DAL
-            Fts5DAL(self.conn).upsert(node_id, title, new_content, '')
+            self._fts.upsert(node_id, title, new_content, '')
             self._maybe_commit()
         except Exception as e:
             self._log_error("fts5_sync_revise", e, "syncing FTS5 for %s" % node_id[:8])
@@ -1154,7 +1154,7 @@ class BrainRememberMixin:
 
         # Verify nodes table fields
         from .dal import NodeDAL
-        readback = NodeDAL(self.conn).get_naked_node(node_id)
+        readback = self._nodes.get_naked_node(node_id)
         if readback:
             for field in list(writable.keys()):
                 if field in readback:
@@ -1223,7 +1223,7 @@ class BrainRememberMixin:
         if new_source_refs is not _SR_ABSENT:
             try:
                 from .dal import GraphDAL
-                source_refs_replaced = GraphDAL(self.conn).replace_source_refs(
+                source_refs_replaced = self._graph.replace_source_refs(
                     node_id, new_source_refs or [], commit=not self._batch_mode)
                 fields_updated.append('source_refs')
                 deltas.append({
@@ -1243,7 +1243,7 @@ class BrainRememberMixin:
             # no-ops.
             try:
                 from .dal import GraphDAL
-                graph_dal = GraphDAL(self.conn)
+                graph_dal = self._graph
                 siblings: set = set()
                 for tid in (new_source_refs or []):
                     if not isinstance(tid, str):
@@ -1402,7 +1402,7 @@ class BrainRememberMixin:
         # Also read any KV metadata not passed as args (emergent fields)
         try:
             from .dal_metadata import MetadataDAL
-            dal = MetadataDAL(self.conn)
+            dal = self._meta_kv
             kv = dal.get(node_id)
             for k, v in kv.items():
                 if k not in field_values and k not in EMBEDDING_SKIP_FIELDS and v and v.strip():
@@ -1436,7 +1436,7 @@ class BrainRememberMixin:
                     # min_length, and the weight-ordered LIMIT.
                     try:
                         from .dal import GraphDAL
-                        descriptions = GraphDAL(self.conn).get_edge_descriptions_for(
+                        descriptions = self._graph.get_edge_descriptions_for(
                             node_id, min_length=10, limit=5)
                         for desc in descriptions:
                             parts.append(desc[:EMBEDDING_FIELD_CHAR_LIMIT])
@@ -1964,7 +1964,7 @@ class BrainRememberMixin:
         Returns None if node has no neighbors (nothing to anchor to).
         """
         try:
-            graph_dal = GraphDAL(self.conn)
+            graph_dal = self._graph
             neighbors = graph_dal.get_neighbors(
                 node_id, limit=ENRICHMENT_NEIGHBOR_COUNT
             )

@@ -18,7 +18,7 @@ def _resolve_id(brain, node_id):
     if not node_id:
         return node_id
     from servers.dal import NodeDAL
-    dal = NodeDAL(brain.conn)
+    dal = brain._nodes
     full_id = dal.resolve_id(node_id)
     return full_id if full_id else node_id  # Not found — let the caller handle the error
 

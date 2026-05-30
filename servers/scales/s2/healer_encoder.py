@@ -280,7 +280,7 @@ class HealerEncoder(IntegrationUnit):
 
         # Resolve short node ID
         from servers.dal import NodeDAL
-        ndal = NodeDAL(self.brain.conn)
+        ndal = self.brain._nodes
         full_id = ndal.resolve_id(node_id) if len(node_id) < 16 else node_id
         if not full_id:
             return 0
