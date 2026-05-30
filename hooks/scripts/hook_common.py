@@ -213,13 +213,6 @@ def mark_hook_errors_surfaced(error_ids):
         pass
 
 
-def log_hook_output(hook_name, output_text="", operator_text="", metadata="", user_prompt="", session_id=""):
-    """DEPRECATED 2026-04-03: brain_dashboard.db is no longer read by the dashboard.
-    Dashboard reads from recall_log (brain_logs.db) and judge tmp files.
-    This function is kept as a no-op to avoid breaking callers."""
-    return
-
-
 def get_hook_input():
     """Parse HOOK_INPUT from environment (set by bash shim)."""
     try:
@@ -253,8 +246,8 @@ def daemon_unavailable_error(hook_name=None):
 
     # 2. Persist to brain_logs.db directly (SQLite, no daemon needed) so the
     #    outage shows in the dashboard + query_logs even while the daemon is
-    #    down. log_hook_output was deprecated to a no-op (2026-04-03), which
-    #    silently broke this guarantee for every hook that lands here.
+    #    down. The old log_hook_output path was a silent no-op (removed
+    #    2026-05-30), which had quietly broken this guarantee for hooks here.
     try:
         log_hook_error("DAEMON_DOWN", "daemon unreachable (detected by %s)" % name,
                        "recall + encoding disabled until restart; relayed to operator",

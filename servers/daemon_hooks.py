@@ -895,8 +895,7 @@ def hook_idle_maintenance(brain, args, graph_changes):
     # Log to dashboard (not additionalContext — idle maintenance is operational, not conversational)
     if output:
         try:
-            from hooks.scripts.hook_common import log_hook_output
-            log_hook_output("IDLE", output_text="\n".join(output))
+            brain.log_debug("idle_output", "hook_idle_maintenance", output="\n".join(output))
         except Exception as e:
             brain._log_error('log_idle_output', e, 'idle_maintenance')
 
@@ -1145,8 +1144,7 @@ def hook_config_change_host(brain, args, graph_changes):
             output_lines.append("[/BRAIN]")
 
             try:
-                from hooks.scripts.hook_common import log_hook_output
-                log_hook_output("HOST_ENV", output_text="\n".join(output_lines))
+                brain.log_debug("host_env_change", "hook_config_change_host", output="\n".join(output_lines))
             except Exception as e:
                 brain._log_error('log_host_env_output', e, 'hook_config_change_host')
             graph_changes.append("HOST: environment changed (%d items)" % len(changes))
@@ -1176,8 +1174,7 @@ def hook_post_bash_host_check(brain, args, graph_changes):
             output_lines.append("  Command: %s" % command[:100])
 
             try:
-                from hooks.scripts.hook_common import log_hook_output
-                log_hook_output("HOST_ENV", output_text="\n".join(output_lines))
+                brain.log_debug("host_env_change", "hook_post_bash_host_check", output="\n".join(output_lines))
             except Exception as e:
                 brain._log_error('log_host_env_output', e, 'hook_post_bash_host_check')
             graph_changes.append("HOST: env changed after bash (%d items)" % len(changes))
