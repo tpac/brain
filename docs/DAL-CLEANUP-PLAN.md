@@ -1,6 +1,6 @@
 # DAL Cleanup & Migration Plan
 
-**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phase 2 (repository aggregate) ✅ landed — Phase 3 (migrate writes) next
+**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phases 0–2 merged to `main` (`6adc595`). Phase 3 in progress — 3a counts ✅ (`cfc8f02`); 3b TF-IDF + 3c node-writes/titles pending.
 
 Living tracker for resuming the stalled DAL migration. Update the **Status** lines
 and the progress table as phases land. This doc is the single source of truth for
@@ -161,7 +161,10 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 **Verify:** `./dev pytest tests/`; `eval/decode_funnel.py` (recall hot path touched).
 **Stop point:** zero ad-hoc construction except the documented bg_writer exception. Commit.
 
-### Phase 3 — Migrate writes (stop writing raw SQL)  ☐
+### Phase 3 — Migrate writes (stop writing raw SQL)  ◐ (3a done)
+**3a — counts ✅ (`cfc8f02`):** `brain._get_{node,edge,locked}_count`, `brain_recall` brain-size, `brain_assembly` total_locked, `daemon_server` status counts → held DALs (`count`/`count_locked`/`count_total`/`count_by_type` adopted). daemon locked count gains the documented non-archived semantics.
+**3b — TF-IDF (pending):** route `brain_remember`'s inline `_store_tfidf_vector` / `_rebuild_tfidf_index` / `_tfidf_score` blocks onto `TfIdfDAL` (the verbatim-reimplemented dead class). Also `brain.py:323`/`brain_assembly:433` raw counts.
+**3c — node writes + titles (pending):** raw `UPDATE nodes …` → `NodeDAL.update_field`/etc.; `SELECT title …` → `NodeDAL.get_title`.
 **Goal:** Adopt the Category-B *write* methods; remove the write violations.
 **Work:** Route `brain_remember.py` TF-IDF block → `TfIdfDAL`; node UPDATEs → `NodeDAL.update_field`/etc.; the 3 `brain._get_*_count` + daemon_server counts → `NodeDAL`/`GraphDAL` counts; node-title reads → `NodeDAL.get_title`.
 **Verify:** `./dev pytest tests/`; `eval/s1_encode_eval.py` (encode path touches remember); decode_funnel for counts on recall.
