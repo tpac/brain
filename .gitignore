@@ -60,8 +60,10 @@ archives/
 !.claude/skills/brain/
 !.claude/skills/brain/SKILL.md
 
-# Design docs and session handoffs (not part of plugin source)
-docs/
+# docs/ design docs ARE tracked (un-ignored 2026-05-30 — the blanket ignore
+# left existing docs tracked-but-ignored, warning on every doc commit). Only the
+# bulky session-log archive stays out — multi-MB .jsonl/.txt dumps, not source.
+docs/archive/sessions/logs/
 eval/results/
 eval/fixtures/brain_eval_copy.db*
 eval/fixtures/eval_daemon.log
