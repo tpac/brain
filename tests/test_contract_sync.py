@@ -123,6 +123,7 @@ class TestDaemonDispatchSync(unittest.TestCase):
             'record_divergence', 'learn_vocabulary',
             'auto_heal', 'auto_tune',
             'consciousness', 'dismiss_signal', 'queue_state',
+            'migrate_to_aspects',  # retired 2026-05-29 — obsolete aspect-node migration
         ]
         present = [cmd for cmd in removed if cmd in self.commands]
         self.assertEqual(present, [],

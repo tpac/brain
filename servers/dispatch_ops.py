@@ -246,24 +246,6 @@ def _handle_eval(brain, args, graph_changes):
     return {"ok": True, "result": result}
 
 
-def _handle_migrate_to_aspects(brain, args, graph_changes):
-    """One-shot migration: seed required aspects + import emergent from legacy.
-
-    Idempotent — safe to re-run. Operator triggers via scripts/migrate_to_aspects.py
-    after backing up brain.db. The handler runs in-daemon (single writer
-    connection) so it doesn't violate the 'never spawn second Brain()' rule.
-
-    Returns the migration summary.
-    """
-    from .aspect_migration import migrate_to_aspects
-    result = migrate_to_aspects(brain)
-    graph_changes.append("MIGRATE_ASPECTS: required=%d created, emergent=%d created, total=%d" % (
-        len(result['required']['created']),
-        len(result['emergent']['created']),
-        result['aspect_node_count']))
-    return {"ok": True, "result": result}
-
-
 def _handle_drop_sys_revision_history(brain, args, graph_changes):
     """Stage 1A migration: drop legacy _sys_revision_history KV blobs.
 

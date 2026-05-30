@@ -432,10 +432,9 @@ def seed_interactions(brain):
                      created_by='s2:community_detection')
 
     # s2_edge_families and s2_node_families seeds — REMOVED 2026-05-04
-    # (Step 12 of unified-aspects). Replaced by aspect-nodes auto-healed by
-    # AspectRegistry at Brain.__init__ from servers/scales/s2/aspects_v1.json
-    # (single seed, both kinds). Migration script for existing brains:
-    # scripts/migrate_to_aspects.py reads any leftover s2_*_families
-    # interactions and converts them into emergent aspect-nodes.
-    # Step 13 will replace EdgeFamilyIntegration with AspectIntegration and
-    # register the new s2_aspects interaction prompt here.
+    # (Step 12 of unified-aspects). Replaced by the unified aspect taxonomy in
+    # servers/scales/s2/aspects_v1.json, which AspectRegistry reads directly at
+    # Brain.__init__ and AspectIntegration maintains. (The one-shot
+    # scripts/migrate_to_aspects.py bridge and servers/aspect_migration.py were
+    # retired 2026-05-29 — the live registry reads JSON, never aspect-nodes, so
+    # the migration's node output was inert.)

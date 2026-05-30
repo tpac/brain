@@ -51,7 +51,6 @@ FILES=(
   servers/brain_cli.py
   # Aspects (unified taxonomy — replaces former families layer)
   servers/aspects.py
-  servers/aspect_migration.py
   # Scale modules
   servers/scales/__init__.py
   servers/scales/dispatch.py

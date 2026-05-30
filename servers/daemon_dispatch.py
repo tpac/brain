@@ -36,7 +36,7 @@ from .dispatch_ops import (
     _handle_get_debug_status, _handle_enrichment_coverage, _handle_pre_edit,
     _handle_save, _handle_record_message, _handle_reset_session, _handle_set_config,
     _handle_promote_staged, _handle_backfill_summaries, _handle_backfill_vectors,
-    _handle_diagnose, _handle_eval, _handle_migrate_to_aspects,
+    _handle_diagnose, _handle_eval,
     _handle_drop_sys_revision_history,
 )
 
@@ -106,7 +106,6 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "enrich":                CmdEntry(_handle_enrich,              is_write=True, marks_dirty=True),
     "eval":                  CmdEntry(_handle_eval,                is_write=True, marks_dirty=True),
     "diagnose":              CmdEntry(_handle_diagnose,            is_write=False, marks_dirty=False),
-    "migrate_to_aspects":    CmdEntry(_handle_migrate_to_aspects,  is_write=True,  marks_dirty=True),
     "drop_sys_revision_history": CmdEntry(_handle_drop_sys_revision_history, is_write=True, marks_dirty=True),
 }
 
