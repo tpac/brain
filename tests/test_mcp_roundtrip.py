@@ -414,6 +414,24 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertTrue(result["found"])
         self.assertEqual(result["focus"], "peek focus line one\nline two")
 
+    def test_self_send(self):
+        """self_send places a directed message in the courier."""
+        result = self._dispatch("self_send", {
+            "to": "roundtrip-recipient", "body": "tap on the shoulder",
+            "from_session": "roundtrip-sender"})
+        self.assertIn("id", result)
+        self.assertEqual(result["address"], "self:roundtrip-recipient")
+
+    def test_self_inbox(self):
+        """self_inbox drains messages addressed to the caller, consume-once."""
+        self._dispatch("self_send", {
+            "to": "roundtrip-inbox-user", "body": "you have mail",
+            "from_session": "roundtrip-sender"})
+        result = self._dispatch("self_inbox", {"session_id": "roundtrip-inbox-user"})
+        self.assertIn("you have mail", [m["body"] for m in result["messages"]])
+        again = self._dispatch("self_inbox", {"session_id": "roundtrip-inbox-user"})
+        self.assertNotIn("you have mail", [m["body"] for m in again["messages"]])
+
     def test_all_mcp_tools_have_roundtrip_tests(self):
         """Every MCP tool should have a corresponding test above."""
         mcp_tool_names = {t["name"] for t in TOOLS}

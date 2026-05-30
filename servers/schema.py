@@ -1379,6 +1379,32 @@ LOG_TABLES = {
         )""",
     },
 
+    # Self channel — directed-signal courier (Phase 2a). One stream sends a
+    # message addressed to another live stream (self:<sid>) or self:broadcast;
+    # the recipient consumes it once via self_delivered. Pull-based in 2a.
+    # TTL enforced by created_at + DEFAULT_SIGNAL_TTL_HOURS at drain/reap.
+    'self_inflight': {
+        'create': """CREATE TABLE IF NOT EXISTS self_inflight (
+            id TEXT PRIMARY KEY,
+            from_session TEXT NOT NULL,
+            address TEXT NOT NULL,
+            intent TEXT NOT NULL DEFAULT 'signal',
+            body TEXT NOT NULL,
+            refs TEXT DEFAULT '',
+            created_at TEXT NOT NULL
+        )""",
+    },
+    # One row per (message, recipient) — broadcast fans out, each recipient
+    # consumes exactly once (PK guards double-delivery).
+    'self_delivered': {
+        'create': """CREATE TABLE IF NOT EXISTS self_delivered (
+            message_id TEXT NOT NULL,
+            to_session TEXT NOT NULL,
+            delivered_at TEXT NOT NULL,
+            PRIMARY KEY (message_id, to_session)
+        )""",
+    },
+
 }
 
 LOG_INDEXES = [
@@ -1404,6 +1430,10 @@ LOG_INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_trace_scope_created ON trace_events(scale, ref_type, created_at)',
     # v9.2: session_state
     'CREATE INDEX IF NOT EXISTS idx_session_state_session ON session_state(session_id)',
+    # self channel — inbox drain filters by address; reap filters by created_at
+    'CREATE INDEX IF NOT EXISTS idx_self_inflight_address ON self_inflight(address)',
+    'CREATE INDEX IF NOT EXISTS idx_self_inflight_created ON self_inflight(created_at)',
+    'CREATE INDEX IF NOT EXISTS idx_self_delivered_to ON self_delivered(to_session)',
 ]
 
 

@@ -92,8 +92,10 @@ Discipline:
 
 ## Storage (minimal)
 
-Only the in-flight directed-message queue, additive in `servers/schema.py`
-(schema v30). The letter (encoded arc) and ambient awareness need none.
+Only the in-flight directed-message courier, added to `LOG_TABLES` in
+`servers/schema.py` (brain_logs.db, created idempotently by `ensure_logs_schema`
+— **no `BRAIN_VERSION` bump**, since new tables need no migration gate). The
+letter (encoded arc) and ambient awareness need none.
 
 ```sql
 CREATE TABLE self_inflight (
@@ -103,10 +105,9 @@ CREATE TABLE self_inflight (
     intent       TEXT NOT NULL,   -- letter | signal (render hint)
     body         TEXT NOT NULL,
     refs         TEXT,            -- JSON: node ids / files (anti-drift tether)
-    created_at   TEXT NOT NULL,
-    expires_at   TEXT             -- TTL; undelivered-and-expired is dead-letter
-);
-CREATE TABLE self_delivered (    -- consume-on-read + broadcast fan-out
+    created_at   TEXT NOT NULL    -- TTL = created_at + DEFAULT_SIGNAL_TTL_HOURS,
+);                                --   enforced at drain/reap (no per-message expires_at)
+CREATE TABLE self_delivered (    -- consume-once + broadcast fan-out
     message_id   TEXT NOT NULL,
     to_session   TEXT NOT NULL,
     delivered_at TEXT NOT NULL,

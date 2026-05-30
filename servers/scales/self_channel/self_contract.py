@@ -66,6 +66,11 @@ def routes_at_turn(session_id):             # pre_response_recall — spatial / 
     return (address_for_stream(session_id), ADDR_BROADCAST)
 
 
+def address_from_target(target):
+    """Map an MCP-friendly target — a session_id, or 'broadcast' — to an address."""
+    return ADDR_BROADCAST if target == 'broadcast' else address_for_stream(target)
+
+
 # ═══════════════════════════════════════════════════════════════
 # INTENT  —  a render hint, defaulted from the address
 # ═══════════════════════════════════════════════════════════════
@@ -85,8 +90,10 @@ def default_intent(address):
 # Holds a directed/broadcast live self-message from send until the recipient
 # pulls it into Observation, then it is consumed. The next_boot letter does NOT
 # live here — it is the encoded session arc, surfaced at boot.
+# created_at + DEFAULT_SIGNAL_TTL_HOURS enforces expiry at drain/reap — no
+# per-message expires_at in 2a (add one only if per-message TTL is ever needed).
 INFLIGHT_FIELDS = ("id", "from_session", "address", "intent", "body", "refs",
-                   "created_at", "expires_at")
+                   "created_at")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -112,6 +119,9 @@ RECEIVED_BLOCK_MAX = 1800
 # stream of thought, not the operator. It is marked next to `user_message` on
 # S0's K side. The response (`assistant_message`) and the encoding (s1e) are
 # entirely unchanged — same mechanism, different correspondent.
+# REF_SELF_MESSAGE is the live s0 marker (validated by the guard below).
+# CORRESPONDENT_* label a turn's speaker — reserved for Phase 4 (encoding
+# self-originated S0 turns); not referenced elsewhere yet.
 CORRESPONDENT_OPERATOR = "operator"
 CORRESPONDENT_SELF = "self"
 REF_SELF_MESSAGE = "self_message"   # (s0, K) — see servers/trace_contract.py

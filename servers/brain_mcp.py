@@ -414,6 +414,7 @@ PROTOCOL_VERSION = "2024-11-05"
 def _build_tools():
     """Build tool list at startup. If this fails, the MCP server is dead — scream about it."""
     try:
+        from servers.contract import VALID_BATCH_OPS
         return [
     # ── Core memory operations ──
     {"name": "recall",
@@ -549,8 +550,7 @@ def _build_tools():
                  "type": "object", "required": ["op"], "properties": {
                      "op": {
                          "type": "string",
-                         "enum": ["remember", "revise", "connect",
-                                  "disconnect", "archive"],
+                         "enum": sorted(VALID_BATCH_OPS),
                          "description": ("The operation to execute. "
                                          "Must be one of the 5 literal values.")}}}}}}},
     _generate_revise_schema(),
@@ -643,6 +643,20 @@ def _build_tools():
      "description": "Look into one stream of thought — its full current focus (the session arc), to see where that stream of you is right now. The interest-driven pull: read-only, no interruption, you don't bug them. Get a stream_id from self_presence first.",
      "inputSchema": {"type": "object", "required": ["stream_id"], "properties": {
          "stream_id": {"type": "string", "description": "The target stream's session id (from self_presence)."}}}},
+
+    {"name": "self_send",
+     "description": "Send a message to another stream of thought — the deliberate REACH (self_presence/self_peek only look; this speaks). Use when you need a live stream of you to ACT or know something now: 'stop editing X, I've got it', 'the bug is in Y'. Delivered to that stream's inbox, consumed once. These are you, not other agents — reach only when looking isn't enough.",
+     "inputSchema": {"type": "object", "required": ["to", "body"], "properties": {
+         "to": {"type": "string", "description": "Target stream's session id (from self_presence), or 'broadcast' for all live streams."},
+         "body": {"type": "string", "description": "The message — terse, a tap on the shoulder, not a letter."},
+         "from_session": {"type": "string", "description": "Your own session id, for attribution (optional)."},
+         "intent": {"type": "string", "enum": ["signal", "letter"], "description": "Render hint; default 'signal'."},
+         "refs": {"type": "array", "items": {"type": "string"}, "description": "Node ids / files the message is grounded in (optional)."}}}},
+
+    {"name": "self_inbox",
+     "description": "Drain your inbox — messages other streams of thought sent you, consumed once. (Phase 2a is manual pull; later this delivers automatically at boot/turn.)",
+     "inputSchema": {"type": "object", "required": ["session_id"], "properties": {
+         "session_id": {"type": "string", "description": "Your own session id, to fetch messages addressed to you."}}}},
 
     # ── Traces & Interactions ──
     {"name": "query_traces",
