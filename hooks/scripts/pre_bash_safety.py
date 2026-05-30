@@ -6,7 +6,7 @@ Output: JSON {"decision":"approve"|"block","reason":"..."}.
 import sys, os, json, re
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug
+from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, log_hook_error
 
 APPROVE = json.dumps({"decision": "approve"})
 
@@ -61,7 +61,8 @@ try:
             }))
     else:
         print(json.dumps({"decision": "approve", "reason": daemon_unavailable_error("pre_bash_safety")}))
-except Exception:
+except Exception as e:
+    log_hook_error("pre_bash_safety", e, "safety check exception")
     print(json.dumps({
         "decision": "approve",
         "reason": "\u26a0\ufe0f Destructive command detected. Safety check error — proceed carefully.",

@@ -883,8 +883,7 @@ class BrainDaemon:
             embed_queue.request_shutdown()
             recall_write_queue.request_shutdown()
         except Exception as e:
-            print('[brain-daemon] queue shutdown signal failed: %s' % e,
-                  file=sys.stderr)
+            self._log_shutdown_error('queue_shutdown', e)
         self._close_socket()
         for path in [self.pid_path, get_status_path()]:
             try:
@@ -910,27 +909,30 @@ class BrainDaemon:
         except Exception as _le:
             # A GENUINE release failure (not the harmless double-call above).
             # A leaked lock prevents daemon restart, so surface it where the
-            # operator can SEE it — the dashboard reads debug_log; daemon.log
-            # stderr alone is invisible to them. brain is already closed here,
-            # so write directly via a fresh connection, the way log_hook_error
-            # logs without a Brain handle. Logging must never crash shutdown.
-            print('[brain-daemon] failed to release lock fd: %s' %
-                  _le, file=sys.stderr)
-            try:
-                import sqlite3
-                from .clock import iso_now
-                _logs_db = os.path.join(os.path.dirname(self.db_path), 'brain_logs.db')
-                _c = sqlite3.connect(_logs_db, timeout=5)
-                _c.execute(
-                    "INSERT INTO debug_log (session_id, event_type, source, metadata, created_at) "
-                    "VALUES ('daemon', 'error', 'release_lock_fd', ?, ?)",
-                    (json.dumps({'error': str(_le), 'type': type(_le).__name__}), iso_now()))
-                _c.commit()
-                _c.close()
-            except Exception:
-                pass  # stderr already carries it
+            # operator can SEE it (the dashboard reads debug_log, not stderr).
+            self._log_shutdown_error('release_lock_fd', _le)
         finally:
             self._lock_fd = None
+
+    def _log_shutdown_error(self, source, err):
+        """Surface a shutdown-time error to debug_log (which the dashboard
+        reads) AND stderr. brain is already closed during _cleanup, so write
+        via a fresh connection — the way log_hook_error logs without a Brain
+        handle. Never raises: logging must not crash shutdown."""
+        print('[brain-daemon] %s: %s' % (source, err), file=sys.stderr)
+        try:
+            import sqlite3
+            from .clock import iso_now
+            logs_db = os.path.join(os.path.dirname(self.db_path), 'brain_logs.db')
+            conn = sqlite3.connect(logs_db, timeout=5)
+            conn.execute(
+                "INSERT INTO debug_log (session_id, event_type, source, metadata, created_at) "
+                "VALUES ('daemon', 'error', ?, ?, ?)",
+                (source, json.dumps({'error': str(err), 'type': type(err).__name__}), iso_now()))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass  # stderr already carries it
 
     def _log(self, message: str):
         ts = time.strftime("%H:%M:%S")

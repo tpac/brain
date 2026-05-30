@@ -394,6 +394,7 @@ def recall_topical(brain, query: str, k: int = 25, **_) -> List[Dict[str, Any]]:
                 out.append(cand)
         return out[:int(k)]
     except Exception as e:
+        brain._log_error('fetch_recall_topical', e, 'surface fetch tool failed; returned no candidates')
         print('[fetch_tools] recall_topical failed: %s' % e, file=sys.stderr)
         return []
 
@@ -426,6 +427,7 @@ def recall_recent(brain, session_id: str = '', window: str = 'last 10 hours',
                 out.append(cand)
         return out[:int(k)]
     except Exception as e:
+        brain._log_error('fetch_recall_recent', e, 'surface fetch tool failed; returned no candidates')
         print('[fetch_tools] recall_recent failed: %s' % e, file=sys.stderr)
         return []
 
@@ -701,6 +703,7 @@ def recall_by_time(brain, start_when: str = '', end_when: str = '',
 
         return out[:int(limit)]
     except Exception as e:
+        brain._log_error('fetch_recall_by_time', e, 'surface fetch tool failed; returned no candidates')
         print('[fetch_tools] recall_by_time failed: %s' % e, file=sys.stderr)
         return []
 
@@ -731,6 +734,7 @@ def recall_verbatim(brain, phrase: str = '', k: int = 10, **_) -> List[Dict[str,
                 out.append(cand)
         return out[:int(k)]
     except Exception as e:
+        brain._log_error('fetch_recall_verbatim', e, 'surface fetch tool failed; returned no candidates')
         print('[fetch_tools] recall_verbatim failed: %s' % e, file=sys.stderr)
         return []
 
@@ -765,6 +769,7 @@ def recall_by_aspect(brain, aspect: str = '', recent_first: bool = True,
                 out.append(cand)
         return out[:int(k)]
     except Exception as e:
+        brain._log_error('fetch_recall_by_aspect', e, 'surface fetch tool failed; returned no candidates')
         print('[fetch_tools] recall_by_aspect failed: %s' % e, file=sys.stderr)
         return []
 
@@ -803,6 +808,7 @@ def expand_node(brain, node_ref: str = '', hops: int = 1, **_) -> List[Dict[str,
                 out.append(cand)
         return out
     except Exception as e:
+        brain._log_error('fetch_expand_node', e, 'surface fetch tool failed; returned no candidates')
         print('[fetch_tools] expand_node failed: %s' % e, file=sys.stderr)
         return []
 

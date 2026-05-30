@@ -6,7 +6,7 @@ Thin client: sends hook_post_response_track to daemon.
 import sys, os, json, time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, is_debug_mode, log_hook_output
+from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, is_debug_mode, log_hook_output, log_hook_error
 
 hook_input = get_hook_input()
 
@@ -81,4 +81,5 @@ try:
     else:
         daemon_unavailable_error("post_response_track")
 except Exception as e:
+    log_hook_error("post_response_track", e, "hook exception")
     print('[brain] ERROR post_response_track: %s' % e, file=sys.stderr)
