@@ -97,19 +97,46 @@ INFLIGHT_FIELDS = ("id", "from_session", "address", "intent", "body", "refs",
 
 
 # ═══════════════════════════════════════════════════════════════
-# LIMITS
+# TRUNCATION CONTRACT  —  one truncation point, always loud
 # ═══════════════════════════════════════════════════════════════
-SIGNAL_BODY_MAX = 400
-LETTER_BODY_MAX = 2000             # cap on the arc the boot renders as a letter
-REFS_MAX = 12                      # node ids / files the message is grounded in (anti-drift tether)
-DEFAULT_SIGNAL_TTL_HOURS = 24      # an undelivered live signal older than a day is dead
-ROSTER_LIVE_WINDOW_MIN = 30        # a stream is "live" if it acted within this window
-PRESENCE_MAX_STREAMS = 3           # cap the roster — imagine 20 streams one day; rank + cap, never enumerate
+# Tom's standing rule (node 8178593a): every truncation point must have an
+# EXPLICIT, documented contract — never a bare magic number doing a silent
+# slice. This section IS that contract for the self-channel.
+#
+#   SEND      (signal.send)            stores body + refs IN FULL. No
+#                                      truncation. Only guard: a non-empty body.
+#   DELIVERY  (render_received_block)  the SINGLE truncation point. Two caps,
+#                                      both LOUD — never a silent cut:
+#                                        • per message → DELIVERED_BODY_MAX:
+#                                          the body is cut with an inline marker
+#                                          naming the dropped char count.
+#                                        • whole block → RECEIVED_BLOCK_MAX:
+#                                          overflow messages are named at the tail.
+#   INVARIANT                          the full message ALWAYS survives in the
+#                                      courier (self_inflight) — the dashboard
+#                                      Streams tab shows it untruncated.
+#                                      Truncation only ever shapes what is
+#                                      INJECTED into Observation, never storage.
+#
+# Why a delivery cap exists at all (and a send cap does not): additionalContext
+# spills to a file Anchor can't read back past ~9500 chars
+# (surface_contract._MAX_INJECT_CHARS = 9500), and the self-block shares that
+# budget with the Frame + recall. So the cap is a real downstream delivery
+# constraint — NOT a stylistic limit on how much I'm allowed to say. There is
+# deliberately no SIGNAL_BODY_MAX / REFS_MAX: those were arbitrary silent slices
+# (removed 2026-05-30), exactly the anti-pattern this contract forbids.
+DELIVERED_BODY_MAX = 1000          # per-message body, capped LOUDLY at delivery render
+RECEIVED_BLOCK_MAX = 1800          # whole injected self-block, overflow named LOUDLY
 
-# Inject budget. additionalContext spills to a file Anchor can't read back above
-# ~10k chars (surface_contract._MAX_INJECT_CHARS = 9500); the self-dialogue block
-# shares that budget with the Frame + recall, so keep it small.
-RECEIVED_BLOCK_MAX = 1800
+# ── POLICY DEFAULTS (tunable knobs; NOT truncation points) ──────────────
+DEFAULT_SIGNAL_TTL_HOURS = 24      # an undelivered live signal older than a day is dead (drain/reap filter)
+ROSTER_LIVE_WINDOW_MIN = 30        # a stream counts as "live" if it acted within this window
+PRESENCE_MAX_STREAMS = 3           # roster shows a count + top-K ranked, never enumerates all
+
+# ── Phase 3 forward placeholder (NOT yet enforced) ──────────────────────
+# The boot-letter budget — designed when Phase 3 (the first-person letter)
+# lands. Defined so the design-doc reference resolves; nothing enforces it today.
+LETTER_BODY_MAX = 2000
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -176,21 +203,38 @@ def render_presence(streams, waiting=0):
     return line
 
 
-def render_received_block(messages, cap=RECEIVED_BLOCK_MAX):
-    """Compose drained self-messages into ONE Observation block, budgeted.
+def _render_one(m):
+    """Render ONE drained message for injection, capping its body LOUDLY at
+    DELIVERED_BODY_MAX (the per-message half of the truncation contract). Renders
+    from the raw body — not a pre-baked string — so the cap actually applies; the
+    full body always remains in the courier. Letters render reflective; anything
+    else as a signal tap."""
+    body = m.get("body", "") or ""
+    if len(body) > DELIVERED_BODY_MAX:
+        dropped = len(body) - DELIVERED_BODY_MAX
+        body = (body[:DELIVERED_BODY_MAX].rstrip()
+                + " …[+%d chars — full message in the dashboard Streams tab]" % dropped)
+    if m.get("intent") == INTENT_LETTER:
+        return render_letter(body)
+    return render_signal(body, stream_short=m.get("from", ""))
 
-    Each message arrives already intent-rendered (drain_inbox sets `rendered`
-    via render_signal); this just frames + joins them under a header and bounds
-    the total so a tap can't crowd out recall against the additionalContext cap.
-    Overflow is LOUD — the trailing line names how many were dropped, never a
-    silent cut. Returns "" for no messages (caller skips the block entirely)."""
+
+def render_received_block(messages, cap=RECEIVED_BLOCK_MAX):
+    """Compose drained self-messages into ONE budgeted Observation block.
+
+    This is the SINGLE truncation point of the self-channel (see the TRUNCATION
+    CONTRACT above). Two LOUD caps, never a silent cut:
+      • per message → DELIVERED_BODY_MAX (in _render_one), body cut with a marker
+      • whole block → `cap` (RECEIVED_BLOCK_MAX), overflow named at the tail
+    The full message always survives in the courier (self_inflight); the
+    dashboard Streams tab shows it untruncated. Returns "" for no messages
+    (caller skips the block entirely)."""
     if not messages:
         return ""
     head = "🧵 from your other streams of thought"
     parts, used, dropped = [], len(head), 0
     for i, m in enumerate(messages):
-        rendered = (m.get("rendered")
-                    or render_signal(m.get("body", ""), stream_short=m.get("from", ""))).strip()
+        rendered = _render_one(m).strip()
         if parts and used + len(rendered) + 2 > cap:   # always keep at least one
             dropped = len(messages) - i
             break
@@ -198,5 +242,6 @@ def render_received_block(messages, cap=RECEIVED_BLOCK_MAX):
         used += len(rendered) + 2
     body = "\n\n".join(parts)
     if dropped:
-        body += "\n\n(+%d more waiting — drained but over budget)" % dropped
+        body += ("\n\n(+%d more waiting — over the injection budget; "
+                 "full text in the dashboard Streams tab)" % dropped)
     return "%s\n\n%s" % (head, body)

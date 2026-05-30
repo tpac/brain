@@ -84,6 +84,25 @@ class TestSelfSignal(BrainTestBase):
         stored = self.brain.logs_conn.execute("SELECT refs FROM self_inflight").fetchone()[0]
         self.assertIn('node-abc', stored)
 
+    # ── Truncation contract: SEND stores in full, no silent slice ──
+
+    def test_send_stores_full_body_no_silent_cap(self):
+        """The body is stored verbatim — no SIGNAL_BODY_MAX slice. Truncation,
+        if any, happens only at delivery render, loudly."""
+        long_body = "z" * 1500
+        signal.send(self.brain, from_session='A',
+                    address=self_contract.address_for_stream('B'), body=long_body)
+        stored = self.brain.logs_conn.execute("SELECT body FROM self_inflight").fetchone()[0]
+        self.assertEqual(len(stored), 1500)
+
+    def test_send_stores_all_refs_no_silent_cap(self):
+        """All refs persist — no REFS_MAX slice silently dropping the tether."""
+        refs = ['n%d' % i for i in range(30)]
+        signal.send(self.brain, from_session='A',
+                    address=self_contract.address_for_stream('B'), body='many refs', refs=refs)
+        stored = self.brain.logs_conn.execute("SELECT refs FROM self_inflight").fetchone()[0]
+        self.assertIn('n29', stored)   # the 30th ref survived (would be gone at a cap of 12)
+
     # ── Phase 2b: render + delivery-into-Observation ──
 
     def test_render_received_block_composes(self):
@@ -106,6 +125,15 @@ class TestSelfSignal(BrainTestBase):
         block = self_contract.render_received_block(msgs, cap=800)
         self.assertLess(len(block), 800 + 200)   # bounded near the cap
         self.assertIn("more waiting", block)      # overflow is announced
+
+    def test_render_caps_long_body_loudly(self):
+        """A single over-long body is cut at DELIVERED_BODY_MAX with a LOUD inline
+        marker — never silently — and the block stays bounded."""
+        long_body = "y" * (self_contract.DELIVERED_BODY_MAX + 500)
+        block = self_contract.render_received_block([{"body": long_body, "from": "s1"}])
+        self.assertIn("full message in the dashboard", block)                 # loud marker
+        self.assertNotIn("y" * (self_contract.DELIVERED_BODY_MAX + 1), block)  # body was cut
+        self.assertLess(len(block), self_contract.DELIVERED_BODY_MAX + 300)    # bounded
 
     def test_drain_and_render_and_consumes(self):
         signal.send(self.brain, from_session='A',

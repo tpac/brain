@@ -24,14 +24,19 @@ from servers.scales.self_channel import self_contract
 
 
 def send(brain, from_session, address, body, intent=None, refs=None):
-    """Place a directed/broadcast self-message in the courier. Returns its record."""
+    """Place a directed/broadcast self-message in the courier. Returns its record.
+
+    Stores the body and refs IN FULL — no truncation here. Per the self-channel
+    truncation contract (self_contract), the SINGLE truncation point is delivery
+    render (render_received_block), and it is loud; storage keeps everything so
+    the dashboard always shows the message untruncated. The only guard is a
+    non-empty body."""
     body = (body or '').strip()
     if not body:
         raise ValueError('self.signal.send: empty body')
-    body = body[:self_contract.SIGNAL_BODY_MAX]
     if intent not in self_contract.INTENTS:
         intent = self_contract.default_intent(address)
-    refs_json = json.dumps(list(refs or [])[:self_contract.REFS_MAX])
+    refs_json = json.dumps(list(refs or []))
     mid = uuid.uuid4().hex[:12]
     created_at = iso_now()
     # Serialize the shared logs_conn write (mirrors brain.discard_session_context).
