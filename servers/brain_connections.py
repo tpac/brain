@@ -146,8 +146,7 @@ class BrainConnectionsMixin:
         graph_dal = self._graph
         # description omitted so add_relation's sentinel default kicks in
         # (preserves existing on update; defaults to '' on create).
-        result = graph_dal.add_relation(source_id, target_id, relation, weight=weight,
-                                        commit=not self._batch_mode)
+        result = graph_dal.add_relation(source_id, target_id, relation, weight=weight)
         self._maybe_embed_edge_relation(result.get('edge_id'), relation, result)
         return result
 
@@ -190,8 +189,7 @@ class BrainConnectionsMixin:
             kwargs['description'] = description
         if encoding_source is not None:
             kwargs['encoding_source'] = encoding_source
-        result = graph_dal.add_relation(source_id, target_id, relation,
-                                        commit=not self._batch_mode, **kwargs)
+        result = graph_dal.add_relation(source_id, target_id, relation, **kwargs)
         self._maybe_embed_edge_relation(result.get('edge_id'), relation, result)
         return result
 

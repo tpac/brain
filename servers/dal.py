@@ -24,6 +24,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
 from .clock import iso_cutoff, iso_now
+from .db_backends.sqlite import commit_unless_batched
 
 
 def _new_trace_id(conn) -> str:
@@ -70,7 +71,7 @@ class LogsDAL:
             'VALUES (?, ?, ?, ?, ?)',
             (session_id, 'error', source, metadata, now)
         )
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def write_debug(self, source: str, message: str, session_id: str = "",
                     metadata: Optional[Dict] = None) -> None:
@@ -82,7 +83,7 @@ class LogsDAL:
             'VALUES (?, ?, ?, ?, ?)',
             (session_id, 'debug', source, meta_json, now)
         )
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def get_recent_errors(self, hours: int = 24, limit: int = 20) -> List[Dict[str, Any]]:
         """Get recent errors from debug_log."""
@@ -175,7 +176,7 @@ class LogsDAL:
         except Exception:
             stats['hook_errors_pruned'] = 0
 
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
         # --- Graph DB orphan cleanup ---
         if graph_conn:
@@ -362,7 +363,7 @@ class InteractionDAL:
                 'VALUES (?, ?, ?, ?)',
                 (name, version, now, 'register:auto_v1'))
             was_activated = True
-        self.conn.commit()
+        commit_unless_batched(self.conn)
         return {'name': name, 'version': version, 'id': new_id,
                 'auto_activated': was_activated}
 
@@ -388,7 +389,7 @@ class InteractionDAL:
             'ON CONFLICT(name) DO UPDATE SET '
             'version = excluded.version, set_at = excluded.set_at, set_by = excluded.set_by',
             (name, version, now, set_by))
-        self.conn.commit()
+        commit_unless_batched(self.conn)
         return {'name': name, 'version': version, 'set_at': now, 'set_by': set_by}
 
     def get_active(self, name: str) -> Optional[Dict[str, Any]]:
@@ -572,7 +573,7 @@ class TraceDAL:
             'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             (trace_id, chain_id, scale, event_type, ref_type, ref_id,
              summary if summary else '', meta_json, session_id, interaction_id, now))
-        self.conn.commit()
+        commit_unless_batched(self.conn)
         return trace_id
 
     def append_batch(self, events: list) -> List[str]:
@@ -601,7 +602,7 @@ class TraceDAL:
                  ev.get('ref_id', ''), ev.get('summary', ''), meta_json,
                  ev.get('session_id', ''), ev.get('interaction_id'), now))
             ids.append(trace_id)
-        self.conn.commit()
+        commit_unless_batched(self.conn)
         return ids
 
     def _decode_metadata(self, raw: Optional[str]) -> Dict[str, Any]:
@@ -1040,7 +1041,7 @@ class TraceDAL:
             '(trace_id, vector, text, model, created_at) '
             'VALUES (?, ?, ?, ?, ?)',
             prepared)
-        self.conn.commit()
+        commit_unless_batched(self.conn)
         return len(prepared)
 
     def get_embeddings(self, trace_ids: List[str]) -> Dict[str, bytes]:
@@ -1148,7 +1149,7 @@ class SessionStateDAL:
                ON CONFLICT(session_id, key, node_id)
                DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
             (session_id, key, node_id, value, ts))
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def increment(self, session_id: str, key: str, node_id: str) -> int:
         """Increment a counter value. Returns new count."""
@@ -1161,7 +1162,7 @@ class SessionStateDAL:
                DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT),
                             updated_at = excluded.updated_at""",
             (session_id, key, node_id, ts))
-        self.conn.commit()
+        commit_unless_batched(self.conn)
         row = self.conn.execute(
             "SELECT value FROM session_state WHERE session_id = ? AND key = ? AND node_id = ?",
             (session_id, key, node_id)).fetchone()
@@ -1213,7 +1214,7 @@ class SessionStateDAL:
         self.conn.execute(
             "DELETE FROM session_state WHERE session_id = ? AND key = 'fatigue' AND node_id != ''",
             (session_id,))
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def cleanup_old_sessions(self, keep_last_n: int = 5):
         """Remove session_state for old sessions, keeping the N most recent."""
@@ -1222,7 +1223,7 @@ class SessionStateDAL:
                 SELECT DISTINCT session_id FROM session_state
                 ORDER BY updated_at DESC LIMIT ?
             )""", (keep_last_n,))
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
 
 class BrainMetaDAL:
@@ -1245,7 +1246,7 @@ class BrainMetaDAL:
             'INSERT OR REPLACE INTO brain_meta (key, value, updated_at) VALUES (?, ?, ?)',
             (key, str(value), now)
         )
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def get_json(self, key: str, default: Any = None) -> Any:
         """Get a JSON-decoded config value."""
@@ -1515,7 +1516,7 @@ class NodeDAL:
         self.conn.execute(
             'UPDATE nodes SET %s = ?, updated_at = ? WHERE id = ?' % field,
             (value, _now(), node_id))
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def update_confidence(self, node_id: str, confidence: float) -> None:
         """Update a node's confidence score."""
@@ -1523,7 +1524,7 @@ class NodeDAL:
             'UPDATE nodes SET confidence = ?, updated_at = ? WHERE id = ?',
             (confidence, _now(), node_id)
         )
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def set_critical(self, node_id: str, critical: bool = True) -> None:
         """Mark a node as critical."""
@@ -1531,7 +1532,7 @@ class NodeDAL:
             'UPDATE nodes SET critical = ?, updated_at = ? WHERE id = ?',
             (1 if critical else 0, _now(), node_id)
         )
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def purge(self, node_id: str) -> None:
         """Hard delete a node and ALL associated data.
@@ -1541,7 +1542,7 @@ class NodeDAL:
         self.conn.execute('DELETE FROM node_metadata_kv WHERE node_id = ?', (node_id,))
         self.conn.execute('DELETE FROM edges WHERE source_id = ? OR target_id = ?', (node_id, node_id))
         self.conn.execute('DELETE FROM nodes WHERE id = ?', (node_id,))
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def unlock(self, node_id: str) -> None:
         """Unlock a node."""
@@ -1549,7 +1550,7 @@ class NodeDAL:
             'UPDATE nodes SET locked = 0, updated_at = ? WHERE id = ?',
             (_now(), node_id)
         )
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def update_type(self, node_id: str, new_type: str, title_prefix_old: str = '',
                     title_prefix_new: str = '') -> None:
@@ -1564,7 +1565,7 @@ class NodeDAL:
                 'UPDATE nodes SET type = ?, updated_at = ? WHERE id = ?',
                 (new_type, _now(), node_id)
             )
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def append_content(self, node_id: str, text: str) -> None:
         """Append text to a node's content."""
@@ -1572,7 +1573,7 @@ class NodeDAL:
             'UPDATE nodes SET content = content || ?, updated_at = ? WHERE id = ?',
             (text, _now(), node_id)
         )
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def set_evolution_status(self, node_id: str, status: str) -> None:
         """Set evolution_status on a node."""
@@ -1580,12 +1581,12 @@ class NodeDAL:
             "UPDATE nodes SET evolution_status = ? WHERE id = ?",
             (status, node_id)
         )
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def delete(self, node_id: str) -> None:
         """Hard delete a node (use archive() for soft delete)."""
         self.conn.execute('DELETE FROM nodes WHERE id = ?', (node_id,))
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def mark_accessed(self, node_id: str, activation_boost: float = 0.1) -> None:
         """Update access tracking fields on a node."""
@@ -1652,20 +1653,20 @@ class TfIdfDAL:
                 'ON CONFLICT(term) DO UPDATE SET count = count + 1',
                 (term,)
             )
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def delete_for_node(self, node_id: str) -> None:
         """Delete TF-IDF data for a node."""
         self.conn.execute(
             'DELETE FROM node_vectors WHERE node_id = ?', (node_id,)
         )
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def clear_all(self) -> None:
         """Clear entire TF-IDF index (for reindex)."""
         self.conn.execute('DELETE FROM node_vectors')
         self.conn.execute('DELETE FROM doc_freq')
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def get_total_docs(self) -> int:
         """Count total documents with TF-IDF vectors."""
@@ -1751,7 +1752,7 @@ class Fts5DAL:
             SELECT id, title, COALESCE(content, '')
             FROM nodes WHERE archived = 0
         """)
-        self.conn.commit()
+        commit_unless_batched(self.conn)
 
     @staticmethod
     def _sanitize_query(query: str) -> str:
@@ -2473,12 +2474,11 @@ class GraphDAL:
     # Hebbian strengthening now uses atomic UPSERT inside
     # recall_write_queue._apply_hebbian_pairs via add_relation.
 
-    def delete_node_edges(self, node_id: str, commit: bool = True) -> int:
+    def delete_node_edges(self, node_id: str) -> int:
         """Soft-archive all edge_relations touching a node (v25).
 
-        `commit=True` (default) preserves single-statement-boundary behavior.
-        Pass commit=False when inside a wider transaction (brain_batch) so the
-        outer BEGIN IMMEDIATE/COMMIT keeps the batch atomic — see add_relation.
+        Commit is gated on self.conn.in_batch (commit_unless_batched) — a no-op
+        inside a brain_batch envelope, a real commit standalone.
 
         Was a hard DELETE prior to v25 — the asymmetry with node archive
         destroyed edge provenance forever. Now sets archived=1 on the
@@ -2510,15 +2510,13 @@ class GraphDAL:
                 [ts, 'delete_node_edges'] + edge_ids)
             archived_count = cur.rowcount
 
-        if commit:
-            self.conn.commit()
+        commit_unless_batched(self.conn)
         return archived_count
 
-    def decay_edges(self, commit: bool = True) -> Dict[str, Any]:
+    def decay_edges(self) -> Dict[str, Any]:
         """Apply exponential decay to auto-generated edge relations.
 
-        `commit=True` (default) keeps standalone behavior (the idle S2 caller).
-        Pass commit=False inside a wider transaction — see add_relation.
+        Commit is gated on self.conn.in_batch (commit_unless_batched).
 
         Operates on edge_relations via edge_id.
         When a relation's weight drops below threshold, that relation is removed.
@@ -2581,8 +2579,7 @@ class GraphDAL:
             for eid in set(pruned_edge_ids):
                 self._update_aggregate_weight(eid)
 
-        if commit:
-            self.conn.commit()
+        commit_unless_batched(self.conn)
         return {'decayed': total_decayed, 'pruned': total_pruned, 'by_type': by_type}
 
     # --- edge_relations (multi-relation semantic layer via edge_id) ---
@@ -2600,20 +2597,18 @@ class GraphDAL:
     _UNSET = object()
 
     def add_relation(self, source_id, target_id, relation,
-                     description=_UNSET, weight=_UNSET, encoding_source=_UNSET,
-                     commit=True):
+                     description=_UNSET, weight=_UNSET, encoding_source=_UNSET):
         """Upsert a relation on an edge pair. Creates the physical edge if needed.
 
         Stage 1B contract — field-preserving upsert + lifecycle audit via traces.
 
-        `commit=True` (default) preserves the prior behavior for every existing
-        caller — single statement boundary on `self.conn`. Pass `commit=False`
-        when the caller is managing a wider transaction on the same connection
-        (e.g., the bg_writer queue drain at `recall_write_queue._apply_hebbian_pairs`
-        opens BEGIN IMMEDIATE around a batch of pairs and commits once at the
-        end). Letting add_relation commit inside that outer transaction breaks
-        atomicity — earlier pairs persist while a later failure rolls back only
-        the most-recent statements.
+        Commit is gated on self.conn.in_batch (commit_unless_batched): a no-op
+        when a wider transaction owns the envelope (brain_batch, or the
+        bg_writer queue drain that opens BEGIN IMMEDIATE around a batch of
+        pairs and commits once), a real commit standalone. The owner flips
+        conn.in_batch — letting add_relation self-commit inside would break
+        atomicity (earlier writes persist while a later failure rolls back
+        only the most-recent statements).
 
         Three branches by row state for (edge_id, relation):
           - No row              → INSERT with passed values + sensible defaults
@@ -2754,8 +2749,7 @@ class GraphDAL:
         self._update_aggregate_weight(edge_id)
         self.conn.execute(
             'UPDATE edges SET last_strengthened = ? WHERE edge_id = ?', (ts, edge_id))
-        if commit:
-            self.conn.commit()
+        commit_unless_batched(self.conn)
 
         # Enqueue for temporal extraction if description or relation text
         # changed — embed_queue.enqueue_edge() is a cheap set.add. Lazy
@@ -2827,7 +2821,7 @@ class GraphDAL:
         self.conn.execute(
             'UPDATE edges SET last_strengthened = ? WHERE edge_id = ?',
             (ts, edge_id))
-        self.conn.commit()
+        commit_unless_batched(self.conn)
         return {'strengthened': True, 'old_weight': old_weight,
                 'new_weight': new_weight}
 
@@ -2851,13 +2845,11 @@ class GraphDAL:
                  'created_at': r[4]}
                 for r in rows]
 
-    def remove_relation(self, source_id, target_id, relation, archived_by: str = 'unknown',
-                        commit: bool = True):
+    def remove_relation(self, source_id, target_id, relation, archived_by: str = 'unknown'):
         """Soft-archive a specific relation on a pair (v25).
 
-        `commit=True` (default) preserves single-statement-boundary behavior.
-        The brain_batch `disconnect` op passes commit=False so the batch's
-        outer transaction stays atomic — see add_relation for the full rationale.
+        Commit is gated on self.conn.in_batch (commit_unless_batched) — a no-op
+        inside the brain_batch `disconnect` envelope, a real commit standalone.
 
         Flips archived=1 on the matching row. Previously hard-DELETEd; the
         change preserves edge history for recovery. The edges aggregate row
@@ -2880,8 +2872,7 @@ class GraphDAL:
 
         # Recompute aggregate weight from remaining active relations
         self._update_aggregate_weight(edge_id)
-        if commit:
-            self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def _update_aggregate_weight(self, edge_id):
         """Set edges.weight to max weight across ACTIVE relation rows.
@@ -2908,7 +2899,7 @@ class GraphDAL:
 
     # --- Source refs (v27: episodic references) ---
 
-    def add_source_refs(self, node_id: str, trace_ids: List[str], commit: bool = True) -> int:
+    def add_source_refs(self, node_id: str, trace_ids: List[str]) -> int:
         """Append trace_event pointers to a node (v29: 8-char hex strings).
         Used at NEW-node creation (remember()). Position derived from list
         order (1-indexed); first ref is the primary anchor.
@@ -2939,11 +2930,10 @@ class GraphDAL:
             '(node_id, trace_id, position, created_at) '
             'VALUES (?, ?, ?, ?)',
             rows)
-        if commit:
-            self.conn.commit()
+        commit_unless_batched(self.conn)
         return cur.rowcount
 
-    def replace_source_refs(self, node_id: str, trace_ids: List[str], commit: bool = True) -> int:
+    def replace_source_refs(self, node_id: str, trace_ids: List[str]) -> int:
         """Replace the node's source_refs with the given list. v29: 8-char hex.
 
         Per the unified 2-class revise contract (decision 995ffeb1):
@@ -2976,8 +2966,7 @@ class GraphDAL:
                 '(node_id, trace_id, position, created_at) '
                 'VALUES (?, ?, ?, ?)',
                 rows)
-        if commit:
-            self.conn.commit()
+        commit_unless_batched(self.conn)
         return len(rows)
 
     def get_source_refs(self, node_id: str) -> List[str]:

@@ -257,6 +257,11 @@ def drain_once(brain) -> None:
     conn = brain.conn_bg_writer
     rolled_back = False
     begin_wait_ms = 0
+    # This drain owns its own BEGIN IMMEDIATE / COMMIT envelope on the
+    # bg-writer connection. Flag it so add_relation (via _apply_hebbian_pairs)
+    # defers its commit to the single COMMIT below — the same conn.in_batch
+    # gate the foreground brain_batch uses. Reset in the finally.
+    conn.in_batch = True
     try:
         # BEGIN IMMEDIATE so we grab the WAL writer slot upfront; without
         # this SQLite auto-begins on first write and could deadlock on
@@ -324,6 +329,11 @@ def drain_once(brain) -> None:
                 _stats['rollbacks_total'] += 1
         # NOTE: do NOT re-enqueue the snapshot. The data is intentionally
         # lost — preserves the loss contract and avoids poison-pill loops.
+    finally:
+        # Always clear batch state — the bg-writer connection is reused
+        # across drains, so a leaked True would make the next standalone
+        # write on this connection silently skip its commit.
+        conn.in_batch = False
 
     took_ms = int((time.time() - t0) * 1000)
     with _lock:
@@ -382,11 +392,11 @@ def _apply_hebbian_pairs(brain, conn,
          for "same context" that Anchor's surface selection makes
          redundant).
 
-    Operates on `brain.conn_bg_writer`. We pass `commit=False` to
-    GraphDAL.add_relation (which otherwise commits at the end of every
-    upsert) so the outer BEGIN IMMEDIATE / COMMIT around the batch
-    remains atomic. Without commit=False, a single add_relation mid-
-    batch would commit earlier pairs and break the rollback contract.
+    Operates on `brain.conn_bg_writer`. The caller (`_drain_once`) sets
+    conn.in_batch=True around the BEGIN IMMEDIATE / COMMIT envelope, so
+    add_relation (which gates its commit on conn.in_batch via
+    commit_unless_batched) defers to the single COMMIT — earlier pairs
+    can't self-commit and break the rollback contract.
 
     Per-pair exceptions are caught + logged but don't abort the batch.
     The outer transaction's success/failure is independent of any
@@ -435,8 +445,7 @@ def _apply_hebbian_pairs(brain, conn,
                         a, b, 'co_accessed',
                         description='hebbian co-access',
                         weight=co_default_weight,
-                        encoding_source='recall:hebbian',
-                        commit=False)
+                        encoding_source='recall:hebbian')
             else:
                 # No physical edge between the pair. add_relation
                 # creates both the edges row and the edge_relations row.
@@ -444,8 +453,7 @@ def _apply_hebbian_pairs(brain, conn,
                     a, b, 'co_accessed',
                     description='hebbian co-access',
                     weight=co_default_weight,
-                    encoding_source='recall:hebbian',
-                    commit=False)  # batched drain commits once at the end
+                    encoding_source='recall:hebbian')  # in_batch defers commit
         except Exception as e:
             try:
                 brain._log_error(

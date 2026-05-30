@@ -732,8 +732,7 @@ class BrainRememberMixin:
         # dangling refs in a future pass).
         if source_refs:
             try:
-                self._graph.add_source_refs(
-                    node_id, source_refs, commit=not self._batch_mode)
+                self._graph.add_source_refs(node_id, source_refs)
             except Exception as e:
                 self._log_error(
                     'source_refs_persist', e,
@@ -761,7 +760,6 @@ class BrainRememberMixin:
                         node_id, sibling_id, 'co_anchored',
                         description='shared episodic anchor',
                         encoding_source='dispatch:co_anchored',
-                        commit=not self._batch_mode,  # F3: defer to the batch's COMMIT
                     )
             except Exception as e:
                 self._log_error(
@@ -1215,7 +1213,7 @@ class BrainRememberMixin:
         if new_source_refs is not _SR_ABSENT:
             try:
                 source_refs_replaced = self._graph.replace_source_refs(
-                    node_id, new_source_refs or [], commit=not self._batch_mode)
+                    node_id, new_source_refs or [])
                 fields_updated.append('source_refs')
                 deltas.append({
                     'field': 'source_refs',
@@ -1246,7 +1244,6 @@ class BrainRememberMixin:
                         node_id, sibling_id, 'co_anchored',
                         description='shared episodic anchor',
                         encoding_source='dispatch:co_anchored',
-                        commit=not self._batch_mode,  # F3: defer to the batch's COMMIT
                     )
             except Exception as e:
                 self._log_error(

@@ -35,6 +35,59 @@ import sqlite3
 from typing import Dict, Any
 
 
+# ─── Transaction discipline ───────────────────────────────────────────
+# brain_batch (and the bg-writer drain) wrap many sub-ops in one
+# BEGIN IMMEDIATE / COMMIT envelope. For that to be atomic, the DAL
+# writers running inside must NOT self-commit. Pre-2026-05-30 this was
+# enforced by convention: every writer took a `commit` kwarg and every
+# batch-context caller had to remember `commit=not _batch_mode`. That's
+# one-missed-caller from silent corruption — and we shipped exactly that
+# bug (3 callers forgot it; only a code review caught it).
+#
+# Structural fix: the batch state is a property of the CONNECTION, not of
+# each call. `in_batch` lives on the connection; the envelope owner flips
+# it; writers consult it via commit_unless_batched(). No kwarg to forget.
+#
+# Why a subclass and not `conn.in_transaction`: under SQLite's default
+# deferred isolation `in_transaction` is True after ANY DML, so it can't
+# distinguish "inside an explicit batch" from "mid standalone write" — a
+# naive check there would never commit standalone writes (data loss).
+# And a plain sqlite3.Connection rejects arbitrary attributes, so the
+# flag needs a subclass carrying a real __dict__.
+
+
+class BatchAwareConnection(sqlite3.Connection):
+    """sqlite3 connection that knows whether it's inside a batch envelope.
+
+    `in_batch=False` by default → writers self-commit (standalone behavior).
+    A batch owner (dispatch_write._handle_brain_batch, the recall_write_queue
+    drain) sets `in_batch=True` for the duration of its BEGIN IMMEDIATE /
+    COMMIT and resets it in a finally. Writers gate their commit on this via
+    commit_unless_batched() — see that helper.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.in_batch = False
+
+
+def commit_unless_batched(conn: sqlite3.Connection) -> None:
+    """Commit `conn` unless it's inside a batch envelope (conn.in_batch).
+
+    The single source of truth for write-path commit discipline. EVERY DAL
+    writer ends with this instead of a bare `conn.commit()`, so a caller can
+    no longer break batch atomicity by forgetting a kwarg — the writer reads
+    the connection's batch state itself.
+
+    Non-BatchAware connections (some maintenance/test paths) have no
+    `in_batch` attribute → getattr returns False → treated as standalone →
+    commit. That's the safe default: a stray writer on a plain connection
+    behaves exactly as before this change.
+    """
+    if not getattr(conn, 'in_batch', False):
+        conn.commit()
+
+
 # Per-connection pragmas. Applied at every sqlite3.connect site via
 # apply_pragmas(conn). Reset when the connection closes, so every new
 # connection needs them.

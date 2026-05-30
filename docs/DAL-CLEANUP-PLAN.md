@@ -1,6 +1,18 @@
 # DAL Cleanup & Migration Plan
 
-**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phases 0–2 + 3a + F3-completion all **merged to `main`** (merge `530d2f8`). Phase 3 in progress — 3a counts ✅; 3b TF-IDF + 3c node-writes/titles pending. Open: structural F3 (#5), Phases 3b/3c/4/5/6.
+**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phases 0–2 + 3a + F3-completion **merged to `main`** (merge `530d2f8`). **Structural F3 fix (#5) ✅ done** on worktree `dal-cleanup-2` (connection-bound batch flag — see below). Phase 3 in progress — 3a counts ✅; 3b TF-IDF + 3c node-writes/titles pending. Open: Phases 3b/3c/4/5/6.
+
+> **✅ Structural F3 fix (2026-05-30, branch `dal-cleanup-2`):** killed the
+> by-convention `commit=not _batch_mode` fragility. Batch state now lives on the
+> **connection** (`BatchAwareConnection.in_batch`, `db_backends/sqlite.py`); a
+> single gate `commit_unless_batched(conn)` replaces every `self.conn.commit()`
+> in `dal.py` (33 sites) + `Brain._maybe_commit()`. The `commit` kwarg is removed
+> from the 6 GraphDAL writers and `brain._batch_mode` is deleted — one source of
+> truth, nothing to forget. Owners (`_handle_brain_batch`, `recall_write_queue
+> ._drain_once`) flip `conn.in_batch` in try/finally. Locked by
+> `tests/test_write_txn_discipline.py` (behavior + source + signature + wiring
+> contracts; verified they flag the pre-fix state). Full doc:
+> `docs/WRITE-TXN-ISOLATION-ROOTFIX.md` → "Root fix — shipped (Option A)".
 
 > **Code-review fixes (`0cd1c1d`, 2026-05-30):** an xhigh review found Phase-1's
 > F3 fix was **incomplete** — 3 reachable GraphDAL writer calls still self-committed
@@ -19,8 +31,12 @@
 > additive both sides). Worktree `/Users/tpac/brain-dal-cleanup` retained on branch
 > `dal-cleanup` — **`git merge --ff-only main` in it before resuming Phase 3b.**
 >
-> **Open for next session:** structural F3 fix (#5 — kill the by-convention fragility),
-> Phase 3b (TF-IDF→TfIdfDAL), 3c (node-writes/titles→NodeDAL), then Phases 4–6.
+> **Open for next session:** Phase 3b (TF-IDF→TfIdfDAL), 3c (node-writes/titles→NodeDAL),
+> then Phases 4–6. (Structural F3 #5 is done — see the box above.) NOTE: the
+> structural fix makes 3b/3c safer — once `remember` routes through
+> `TfIdfDAL.store_tf_vector` / `NodeDAL.update_field`, those writers already gate
+> on `conn.in_batch` (every dal.py commit was converted), so they're batch-atomic
+> for free; no per-caller `commit=` plumbing needed.
 
 Living tracker for resuming the stalled DAL migration. Update the **Status** lines
 and the progress table as phases land. This doc is the single source of truth for
@@ -95,7 +111,7 @@ Two other sessions are working the same repo. Per `git status` they touch
 
 | ID | Bug | Location | Phase |
 |---|---|---|---|
-| B-F3 | GraphDAL writers self-commit → breaks `brain_batch` atomicity | dal.py `add_relation`/`remove_relation`/`delete_node_edges`/`decay_edges`/`add_source_refs`/`replace_source_refs`; brain_connections.py:195 | 1 |
+| B-F3 | GraphDAL writers self-commit → breaks `brain_batch` atomicity | dal.py `add_relation`/`remove_relation`/`delete_node_edges`/`decay_edges`/`add_source_refs`/`replace_source_refs`; brain_connections.py:195 | 1 (correctness) + **1b structural ✅** — `commit` gate moved to `conn.in_batch`; no kwarg to forget |
 | B-SIG | `CachedVectorDAL.find_missing` drops `require_kv_keys_any` → latent `TypeError` | dal_vector_cached.py:179 vs dal.py:3197 | 0 |
 | B-FTS | Two silent `except Exception` on a recall signal | Fts5DAL.search (dal.py:1710), delete (1730) | 0 |
 | B-LCK | `count_locked` omits `archived=0`; 3 callers want it (semantics fork) | dal.py:1375 vs brain.py:1083, daemon_server.py:671, brain_assembly.py:346 | 0 |
@@ -216,6 +232,7 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 |---|---|---|---|
 | 0 — Safe cleanup + fixes | ☑ | 2026-05-30 | dead Category-A gone; B-FTS/SIG/LCK/NAME fixed; 0 new test fails |
 | 1 — F3 correctness | ☑ | fd9c313 (+0cd1c1d) | writers+callers batch-aware; xhigh review later found 3 MISSED writers (co_anchored×2, connect(), hebbian) → completed in 0cd1c1d; 9 batch tests |
+| 1b — F3 **structural** (#5) | ☑ | dal-cleanup-2 | conn-bound `in_batch` flag (`BatchAwareConnection`) + `commit_unless_batched`; `commit` kwarg + `_batch_mode` deleted; all 33 dal.py commits gated; guardrail `test_write_txn_discipline.py`. Kills the by-convention fragility |
 | 2 — Repository aggregate | ☑ | d13d671, c1f9ceb | held 5 DALs; ~57/68 sites converted; residual = bg-writer + daemon_hooks + conn-params |
 | 3 — Migrate writes | ◐ | cfc8f02, 0cd1c1d | 3a counts ✅; 3b TF-IDF + 3c node-writes/titles pending |
 | 4 — Migrate reads | ☐ | — | |
