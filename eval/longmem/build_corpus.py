@@ -90,9 +90,38 @@ def _read_build_errors(brain) -> dict:
     return {"count": count, "samples": samples}
 
 
+def _fetch_interaction_template(name: str, version: int) -> str:
+    """Fetch a registered interaction version's template from the LIVE daemon.
+
+    Used to pull DORMANT prompt versions (e.g. s1e v24, s1_scout_facts v7) so the
+    eval can A/B them against the active ones. Reads production's interactions
+    table via TCP; the eval brain is untouched until _apply_interaction_override.
+    """
+    from servers.daemon_client import send_command
+    r = send_command('get_interaction', {'name': name, 'version': int(version)})
+    tmpl = (r.get('result') or {}).get('template') if isinstance(r, dict) else None
+    if not tmpl:
+        raise RuntimeError("could not fetch %s v%s from daemon: %s" % (name, version, r))
+    return tmpl
+
+
+def _apply_interaction_override(brain, name: str, template: str) -> None:
+    """Register + activate `template` as a new version of `name` in THIS eval
+    brain only (production daemon untouched). Generalizes harness._apply_s1e_override
+    to any interaction; mirrors eval.encoder_eval.targeted_v24_eval."""
+    existing = brain._interaction_dal.get_active(name)
+    params = existing.get('parameters', '') if existing else ''
+    result = brain._interaction_dal.register(
+        name, template=template, parameters=params, created_by='eval-override-%s' % name)
+    if result.get('version', 1) > 1:
+        brain._interaction_dal.set_active(
+            name, result['version'], set_by='eval-override-%s' % name)
+
+
 def build_corpus(items_per_axis: int, seed: int, oracle: str,
                  s1e: str, ingest_surface: str, s2_every_n: int,
-                 label: str, qids: str = None, force: bool = False) -> str:
+                 label: str, qids: str = None, force: bool = False,
+                 interaction_overrides: dict = None) -> str:
     _load_env()
 
     with open(oracle) as f:
@@ -121,9 +150,16 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
         "oracle": os.path.basename(oracle),
         "qids": qid_list,
     }
+    # Interaction overrides (e.g. DORMANT s1e v24 + s1_scout_facts v7) change the
+    # encoded graph, so they're part of the content address — a v22 corpus and a
+    # v24+v7 corpus get distinct hashes.
+    if interaction_overrides:
+        config["interaction_overrides"] = {
+            k: int(v) for k, v in sorted(interaction_overrides.items())}
     h = corpus_config_hash(config)
+    ov_str = (" / overrides=%s" % config["interaction_overrides"]) if interaction_overrides else ""
     print(f"[corpus] config hash = {h}  ({config['s1e']} / surface={config['ingest_surface']} "
-          f"/ s2_every_n={s2_every_n} / {len(qid_list)} items)", flush=True)
+          f"/ s2_every_n={s2_every_n} / {len(qid_list)} items{ov_str})", flush=True)
 
     if load_manifest(h) and not force:
         print(f"[corpus] CACHE HIT — manifest exists at {manifest_path(h)}; "
@@ -133,6 +169,14 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
     # Surface override needs the agentic-loop env var, same as harness.
     if ingest_surface != "active":
         os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"
+
+    # Fetch DORMANT override templates from the live daemon once (reused per item).
+    override_templates = {}
+    if interaction_overrides:
+        for name, version in sorted(interaction_overrides.items()):
+            override_templates[name] = _fetch_interaction_template(name, version)
+            print(f"[corpus] override: {name} → v{version} ({len(override_templates[name])} chars)",
+                  flush=True)
 
     os.makedirs(corpus_dir(h), exist_ok=True)
     items_manifest = []
@@ -169,6 +213,8 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
             _apply_s1e_override(brain, s1e)
         if ingest_surface != "active":
             _apply_surface_override(brain, ingest_surface)
+        for ov_name, ov_template in override_templates.items():
+            _apply_interaction_override(brain, ov_name, ov_template)
 
         t0 = time.time()
         stats = replay_item(
@@ -256,10 +302,22 @@ def main():
     p.add_argument("--label", default="corpus", help="human label stored in the manifest")
     p.add_argument("--qids", default=None, help="comma-separated qids (overrides stratified sampling)")
     p.add_argument("--force", action="store_true", help="rebuild even if the corpus already exists")
+    p.add_argument("--interaction-override", dest="interaction_override", default=None,
+                   help="Comma-separated name=version pairs, fetched from the live daemon's "
+                        "registered (incl. DORMANT) versions and activated in each eval brain. "
+                        "e.g. 's1e=24,s1_scout_facts=7'. Part of the corpus hash.")
     args = p.parse_args()
 
+    overrides = {}
+    if args.interaction_override:
+        for pair in args.interaction_override.split(","):
+            if "=" in pair:
+                n, v = pair.split("=", 1)
+                overrides[n.strip()] = int(v.strip())
+
     build_corpus(args.items, args.seed, args.oracle, args.s1e, args.ingest_surface,
-                 args.s2_every_n, args.label, qids=args.qids, force=args.force)
+                 args.s2_every_n, args.label, qids=args.qids, force=args.force,
+                 interaction_overrides=overrides or None)
 
 
 if __name__ == "__main__":
