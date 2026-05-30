@@ -162,10 +162,18 @@ class Consolidation(ConsolidationDecoder):
             print('[s2-consolidation] %d cluster(s) hit invalid ops — retry, NOT suppressed'
                   % invalid_op_clusters, flush=True)
 
-        # Run completed (encoder finished) — now it's safe to advance the
-        # last-run cutoff. The encode-failure path returns above without
-        # stamping, so failed work is retried next cycle.
-        self._record_scan_baseline(decode_result)
+        # Advance the cutoff only when EVERY cluster was resolved. The
+        # encode-failure path returns above without stamping (forcing retry);
+        # invalid-op clusters need the same treatment — they were neither
+        # edge-handled nor SKIP-stamped (merge thwarted), and advancing the
+        # baseline would hide them from the incremental decoder forever (their
+        # member timestamps never changed), silently losing them — the exact
+        # failure this guard prevents, just relocated from fingerprint to
+        # cutoff. Leaving the baseline forces a re-scan next cycle; clusters
+        # that WERE resolved are already suppressed (edges/fingerprints), so
+        # only the thwarted ones return to the encoder.
+        if not invalid_op_clusters:
+            self._record_scan_baseline(decode_result)
 
         return {
             'actions': encode_result.get('write_actions', 0),

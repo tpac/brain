@@ -166,12 +166,14 @@ class CommunityEncoder(IntegrationUnit):
             invalid_touched = node_ids_touched_by_invalid_ops(action_details)
             invalid_op_failures = 0
             if invalid_touched and skipped_proposals:
-                retry = [p for p in skipped_proposals
-                         if set(get_proposed_ids(p)) & invalid_touched]
+                retry, kept = [], []
+                for p in skipped_proposals:
+                    bucket = (retry if set(get_proposed_ids(p)) & invalid_touched
+                              else kept)
+                    bucket.append(p)
                 if retry:
                     invalid_op_failures = len(retry)
-                    skipped_proposals = [p for p in skipped_proposals
-                                         if p not in retry]
+                    skipped_proposals = kept
                     self.brain._log_warning(
                         's2_community_invalid_op_retry',
                         '%d proposal(s) hit invalid brain_batch ops — '

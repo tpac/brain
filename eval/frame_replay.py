@@ -220,6 +220,16 @@ def capture(label, brain_dir=None, verbose=False):
     out_path.write_text(json.dumps(snapshot, indent=2, default=str))
     sys.stderr.write("[capture] Saved %s (%d queries)\n" % (
         out_path, len(snapshot["queries"])))
+    # Loud-by-default: an all-errored capture is a useless snapshot that used to
+    # exit 0 and look successful — that's how a stale select_edges kwarg went
+    # unnoticed. Fail loudly when nothing captured; warn on partial skips.
+    skipped_n = sum(1 for q in snapshot["queries"] if q.get("skipped"))
+    total_n = len(snapshot["queries"])
+    if total_n and skipped_n == total_n:
+        sys.exit("[capture] FAILED: all %d queries errored — snapshot unusable. "
+                 "First reason: %s" % (total_n, snapshot["queries"][0].get("reason", "?")))
+    if skipped_n:
+        sys.stderr.write("[capture] WARN: %d/%d queries skipped\n" % (skipped_n, total_n))
 
 
 def compare(label_a, label_b):
