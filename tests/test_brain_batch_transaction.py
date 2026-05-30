@@ -268,5 +268,95 @@ class TestBrainBatchTransaction(BrainTestBase):
                          "connect op did not roll back with the batch — 'tests' relation persisted")
 
 
+    # ── More brain_batch coverage — it's load-bearing infrastructure ──────────
+    # Phase-1 F3 covered connect/disconnect/source-ref single-commit + rollback.
+    # These extend to the paths the F3 fix originally MISSED (co_anchored auto-
+    # edges, the untyped connect() helper) plus mixed-op and revise.
+
+    def test_co_anchored_op_single_commit(self):
+        """A remember op whose source_refs overlap an existing node fires the
+        co_anchored auto-edge (brain_remember.py). That add_relation must defer its
+        commit so the batch COMMITs once. Regression: it used to self-commit."""
+        self.brain.remember(type='rule', title='co-anchor-A', content='anchor',
+                            source_refs=['deadbeef'])
+        a = self._node_id('co-anchor-A')
+        self.assertIsNotNone(a)
+        r, commits = self._commit_count([
+            {"op": "remember", "type": "rule", "title": "co-anchor-B",
+             "content": "shares the anchor ref", "source_refs": ["deadbeef"]},
+        ])
+        self.assertTrue(r['ok'])
+        self.assertEqual(commits, 1,
+                         "co_anchored auto-edge self-committed inside the batch; got %d COMMITs" % commits)
+        b = self._node_id('co-anchor-B')
+        self.assertGreater(self._tests_relation_count(a, b, 'co_anchored'), 0,
+                           "co_anchored edge B->A should exist (proves the branch ran)")
+
+    def test_co_anchored_rolls_back_on_outer_failure(self):
+        """The co_anchored auto-edge must roll back with the batch when a later op
+        fails — it used to self-commit and survive the rollback."""
+        self.brain.remember(type='rule', title='co-rb-A', content='anchor',
+                            source_refs=['cafebabe'])
+        with patch.object(self.brain, '_apply_connect_to',
+                          side_effect=RuntimeError('forced rollback')):
+            with self.assertRaises(RuntimeError):
+                self._batch([
+                    {"op": "remember", "type": "rule", "title": "co-rb-B",
+                     "content": "shares anchor", "source_refs": ["cafebabe"]},
+                    {"op": "remember", "type": "rule", "title": "co-rb-C",
+                     "content": "triggers connect_to failure",
+                     "connect_to": [{"title": "co-rb-A", "relation": "tests"}]},
+                ])
+        self.assertIsNone(self._node_id('co-rb-B'),
+                          "co-rb-B (and its co_anchored edge) must roll back with the batch")
+
+    def test_connections_op_single_commit(self):
+        """A remember op carrying an explicit `connections` list routes through the
+        untyped connect() helper, which must defer its commit. Regression for the
+        connect() F3 gap (connect_typed was patched in Phase 1, connect() was not)."""
+        self.brain.remember(type='rule', title='conns-target', content='target')
+        tgt = self._node_id('conns-target')
+        r, commits = self._commit_count([
+            {"op": "remember", "type": "rule", "title": "conns-src",
+             "content": "has explicit connections",
+             "connections": [{"target_id": tgt, "relation": "tests"}]},
+        ])
+        self.assertTrue(r['ok'])
+        self.assertEqual(commits, 1,
+                         "explicit connections (connect()) self-committed inside the batch; got %d" % commits)
+        src = self._node_id('conns-src')
+        self.assertGreater(self._tests_relation_count(src, tgt, 'tests'), 0,
+                           "the explicit connection edge should persist")
+
+    def test_mixed_op_batch_single_commit(self):
+        """Core contract: a batch mixing remember + connect + disconnect + archive
+        must COMMIT exactly once across all op types."""
+        self.brain.remember(type='rule', title='mix-A', content='a')
+        self.brain.remember(type='rule', title='mix-B', content='b')
+        self.brain.remember(type='rule', title='mix-C', content='to archive')
+        a, b, c = self._node_id('mix-A'), self._node_id('mix-B'), self._node_id('mix-C')
+        self.brain.connect_typed(a, b, 'old_rel')  # pre-existing edge to disconnect
+        r, commits = self._commit_count([
+            {"op": "remember", "type": "rule", "title": "mix-D", "content": "new node"},
+            {"op": "connect", "source_id": a, "target_id": b, "relation": "new_rel"},
+            {"op": "disconnect", "source_id": a, "target_id": b, "relation": "old_rel"},
+            {"op": "archive", "node_id": c, "reason": "test"},
+        ])
+        self.assertTrue(r['ok'])
+        self.assertEqual(commits, 1,
+                         "mixed-op batch must COMMIT exactly once; got %d" % commits)
+
+    def test_revise_op_single_commit(self):
+        """A revise op must COMMIT exactly once inside a batch."""
+        self.brain.remember(type='rule', title='rev-X', content='original')
+        x = self._node_id('rev-X')
+        r, commits = self._commit_count([
+            {"op": "revise", "node_id": x, "reason": "test revise",
+             "content": "revised content"},
+        ])
+        self.assertTrue(r['ok'])
+        self.assertEqual(commits, 1, "revise op must COMMIT once; got %d" % commits)
+
+
 if __name__ == '__main__':
     unittest.main()

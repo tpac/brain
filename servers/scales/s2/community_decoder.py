@@ -239,7 +239,6 @@ class CommunityDecoder(IntegrationUnit):
                         'community %s centroid unreadable' % nid[:8])
 
             # Member IDs via GraphDAL (archived=0 default, v25).
-            from servers.dal import GraphDAL
             member_dicts = self.brain._graph.get_community_members(
                 nid, require_active_member=False)
             members = {m['id'] for m in member_dicts}

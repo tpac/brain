@@ -143,11 +143,11 @@ class BrainConnectionsMixin:
             revived_from_archive, updated, deltas, warnings) — used by callers
             that want to emit trace events.
         """
-        from .dal import GraphDAL
         graph_dal = self._graph
         # description omitted so add_relation's sentinel default kicks in
         # (preserves existing on update; defaults to '' on create).
-        result = graph_dal.add_relation(source_id, target_id, relation, weight=weight)
+        result = graph_dal.add_relation(source_id, target_id, relation, weight=weight,
+                                        commit=not self._batch_mode)
         self._maybe_embed_edge_relation(result.get('edge_id'), relation, result)
         return result
 
@@ -181,7 +181,6 @@ class BrainConnectionsMixin:
         actual_weight = weight if weight is not None else (
             edge_def.get('defaultWeight', 0.5) if edge_def else 0.5)
 
-        from .dal import GraphDAL
         graph_dal = self._graph
         # Build kwargs: only pass explicitly-provided fields so add_relation's
         # sentinel-based field-preservation propagates cleanly through this
@@ -217,7 +216,6 @@ class BrainConnectionsMixin:
         max_per_node = self.get_config('bridge_max_per_node', 5)
 
         # Check existing bridge count via GraphDAL (archived=0 default).
-        from .dal import GraphDAL
         current_bridge_count = self._graph.count_node_edges(
             node_id, min_weight=0.0, relations={'emergent_bridge'})
 

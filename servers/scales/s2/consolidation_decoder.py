@@ -285,9 +285,7 @@ class ConsolidationDecoder(IntegrationUnit):
         # cluster and relied on prompt compliance to stay consistent.
         already_reviewed = set()
         if suppression:
-            from servers.dal import GraphDAL
-            already_reviewed = GraphDAL(
-                self.brain.conn).nodes_touched_by_relations(suppression)
+            already_reviewed = self.brain._graph.nodes_touched_by_relations(suppression)
         # Retain per-pair suppression set for backward-compat with legacy
         # edges — drops to {} once the state check does the heavy lifting.
         suppressed = set()
@@ -777,7 +775,6 @@ class ConsolidationDecoder(IntegrationUnit):
         ids = list(node_ids)
         if not ids:
             return {}
-        from servers.dal import GraphDAL
         return self.brain._graph.get_communities_for(ids)
 
     def _load_edge_data(self, node_ids):
@@ -796,7 +793,6 @@ class ConsolidationDecoder(IntegrationUnit):
         if not ids:
             return {}
 
-        from servers.dal import GraphDAL
         per_member = self.brain._graph.get_neighbors_bulk(ids)
         # exclude_relations defaults to DEFAULT_EXCLUDED_RELATIONS, so
         # co_accessed / emergent_bridge are already out. archived=0 is the
@@ -823,7 +819,6 @@ class ConsolidationDecoder(IntegrationUnit):
             ['correction_improvement', 'hierarchical_structure']))
         if not correction_rels:
             correction_rels = {'corrects', 'corrected_by', 'supersedes', 'superseded_by'}
-        from servers.dal import GraphDAL
         return self.brain._graph.has_edge_between(
             node_ids, node_ids, relations=correction_rels)
 
@@ -837,7 +832,6 @@ class ConsolidationDecoder(IntegrationUnit):
         if not tension_rels:
             tension_rels = {'contradicts', 'challenges', 'conflicts_with',
                             'contrasts', 'undermines', 'violates'}
-        from servers.dal import GraphDAL
         return self.brain._graph.has_edge_between(
             node_ids, node_ids, relations=tension_rels)
 

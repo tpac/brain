@@ -444,7 +444,8 @@ def _apply_hebbian_pairs(brain, conn,
                     a, b, 'co_accessed',
                     description='hebbian co-access',
                     weight=co_default_weight,
-                    encoding_source='recall:hebbian')
+                    encoding_source='recall:hebbian',
+                    commit=False)  # batched drain commits once at the end
         except Exception as e:
             try:
                 brain._log_error(

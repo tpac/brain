@@ -667,6 +667,9 @@ class BrainDaemon:
             if not brain:
                 return
 
+            # Semantics: nodes/edges report total store size (incl. archived);
+            # locked/tensions report the active (non-archived) subset via the DAL
+            # defaults — the identity-meaningful live counts.
             node_count = brain._nodes.count(archived=True)
             locked_count = brain._nodes.count_locked()
             edge_count = brain._graph.count_total()

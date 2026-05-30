@@ -5,7 +5,6 @@ duplicate-title clusters, emergent types, cold zones, isolated nodes,
 revision stats, edge-type imbalance, sparse metadata.
 """
 
-from .dal import GraphDAL
 from .clock import iso_cutoff
 
 
