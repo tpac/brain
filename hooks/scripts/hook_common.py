@@ -151,6 +151,31 @@ def log_hook_error(source, error, context="", level="error"):
             pass  # Last resort — stderr was already printed
 
 
+def run_hook(name, fn, on_error=None):
+    """Single error boundary for a hook script — the standard every hook runs through.
+
+    Runs fn() (the hook body). If it raises, logs ONCE to hook_errors (via
+    log_hook_error, the canonical hook-side sink) and invokes on_error() for the
+    hook's fail-safe output — e.g. a PreToolUse hook printing its `approve`
+    decision so the tool isn't blocked by the hook's own crash.
+
+    Catches Exception only — SystemExit/KeyboardInterrupt propagate, so a hook's
+    own `sys.exit(0)` skip-path (and Ctrl-C) still work. Never re-raises: a
+    crashing hook must not break the host. Does NOT impose an exit code — each
+    hook owns its own output contract (approve/block/additionalContext/none),
+    which is why output lives in fn()/on_error(), not here.
+    """
+    try:
+        fn()
+    except Exception as e:
+        log_hook_error(name, e, "hook exception")
+        if on_error is not None:
+            try:
+                on_error()
+            except Exception as e2:
+                log_hook_error(name, e2, "hook on_error fallback also failed")
+
+
 def get_unsurfaced_hook_errors(limit=10):
     """Read unsurfaced hook errors from brain_logs.db. Returns list of dicts."""
     logs_db = os.path.join(db_dir, "brain_logs.db") if db_dir else ""
