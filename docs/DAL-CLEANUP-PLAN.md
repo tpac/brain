@@ -1,6 +1,6 @@
 # DAL Cleanup & Migration Plan
 
-**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phase 1 (F3) ✅ landed — Phase 2 (repository aggregate) next
+**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phase 2 (repository aggregate) ✅ landed — Phase 3 (migrate writes) next
 
 Living tracker for resuming the stalled DAL migration. Update the **Status** lines
 and the progress table as phases land. This doc is the single source of truth for
@@ -150,7 +150,8 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 **Verify:** new txn tests green; existing batch tests green; reproduce-then-fix the "cannot start a transaction within a transaction" case (BACKLOG F3).
 **Stop point:** correctness bug closed, interim guard can stay as belt-and-suspenders. Commit.
 
-### Phase 2 — Repository aggregate (finish Step 0)  ☐
+### Phase 2 — Repository aggregate (finish Step 0)  ☑ (2026-05-30)
+**Landed (`d13d671` + cleanup `c1f9ceb`):** Held `self._nodes/_graph/_meta_kv/_fts/_tfidf` on Brain (foreground conn). Converted ~57 of the 68 explicit/alias sites (`self.conn`/`brain.conn`/`self.brain.conn` + the `brain_corrections`/`pipeline_contract` `conn=` aliases) to the held instances; removed all orphaned imports + 2 unused `conn` locals. **Residual (intentional):** `recall_write_queue:400` (`GraphDAL(conn_bg_writer)` — the documented bg exception); `daemon_hooks.py` ×3 (parallel-stream file — deferred to avoid merge conflict); `brain_recall`'s `_apply_filter(conn)` + `get_rich_node` bare-conn params and `surface_contract`'s `brain_conn` param (genuine function params, not held-instance candidates). Pure refactor — full suite 1353 pass / 7 skip / 4 deselected; import-smoke + DAL/pipeline subset green.
 **Goal:** Hold all DALs on `Brain`, foreground-conn-bound. Replace the 68 ad-hoc construction sites. "Right connection by construction, not convention."
 **Work:**
 1. Add `self.nodes`, `self.graph`, `self.meta_kv` (MetadataDAL), `self.fts`, `self.tfidf` in `brain.py` `__init__` (foreground `self.conn`).
@@ -192,7 +193,7 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 |---|---|---|---|
 | 0 — Safe cleanup + fixes | ☑ | 2026-05-30 | dead Category-A gone; B-FTS/SIG/LCK/NAME fixed; 0 new test fails |
 | 1 — F3 correctness | ☑ | fd9c313 | 5 writers + 4 callers batch-aware; 4 regression tests; suite green |
-| 2 — Repository aggregate | ☐ | — | 68 sites |
+| 2 — Repository aggregate | ☑ | d13d671, c1f9ceb | held 5 DALs; ~57/68 sites converted; residual = bg-writer + daemon_hooks + conn-params |
 | 3 — Migrate writes | ☐ | — | |
 | 4 — Migrate reads | ☐ | — | |
 | 5 — Missing DALs + extractions | ☐ | — | |
