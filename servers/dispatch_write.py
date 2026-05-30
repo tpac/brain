@@ -328,7 +328,7 @@ def _handle_remember_batch(brain, args, graph_changes):
 
 def _handle_revise(brain, args, graph_changes):
     """Update any field(s) on an existing node via revise()."""
-    from .contract import validate_field, ALL_FIELDS
+    from .contract import validate_field
 
     node_id = _resolve_id(brain, args.get("node_id", ""))
     reason = args.get("reason", "")

@@ -14,7 +14,6 @@ import os
 
 from .base import IntegrationUnit
 from .community_contract import COMMUNITY_DETECTION
-from .community_decoder import read_community_meta
 from servers.trace_contract import build_delta_metadata
 
 from .rejection_table import (

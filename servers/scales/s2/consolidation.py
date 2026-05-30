@@ -11,7 +11,6 @@ Prompt: servers/scales/s2/consolidation_enrichment_prompt.py
 
 from .consolidation_decoder import ConsolidationDecoder
 from .consolidation_encoder import ConsolidationEncoder
-from .consolidation_contract import CONSOLIDATION
 from .rejection_table import (
     filter_rejected, record_rejections, node_ids_touched_by_invalid_ops)
 
