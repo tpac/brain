@@ -11,6 +11,16 @@
 > stale count_locked/daemon status-count docs. **Lesson: the F3 by-convention guard is
 > fragile — a structural fix (review finding #5) is still open as a follow-up.**
 
+> **⚠ Branch / merge state (session end 2026-05-30):** `dal-cleanup` is **4 commits
+> ahead of `main` and NOT yet merged**. `main` (`6adc595`) has Phases 0–2 — which
+> includes the **incomplete** F3, so the co_anchored / connect() / hebbian atomicity
+> gap is currently LIVE on `main`. The completion fix lives only on `dal-cleanup`
+> (`0cd1c1d`). **Next session's first move: merge `dal-cleanup` → `main`** to land it.
+> Worktree: `/Users/tpac/brain-dal-cleanup`; full suite green on the branch (1362/7/4).
+>
+> **Open after merge:** structural F3 fix (#5), Phase 3b (TF-IDF→TfIdfDAL), 3c
+> (node-writes/titles→NodeDAL), then Phases 4–6.
+
 Living tracker for resuming the stalled DAL migration. Update the **Status** lines
 and the progress table as phases land. This doc is the single source of truth for
 scope and progress — keep it current.
@@ -204,9 +214,9 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 | Phase | Status | Commit | Notes |
 |---|---|---|---|
 | 0 — Safe cleanup + fixes | ☑ | 2026-05-30 | dead Category-A gone; B-FTS/SIG/LCK/NAME fixed; 0 new test fails |
-| 1 — F3 correctness | ☑ | fd9c313 | 5 writers + 4 callers batch-aware; 4 regression tests; suite green |
+| 1 — F3 correctness | ☑ | fd9c313 (+0cd1c1d) | writers+callers batch-aware; xhigh review later found 3 MISSED writers (co_anchored×2, connect(), hebbian) → completed in 0cd1c1d; 9 batch tests |
 | 2 — Repository aggregate | ☑ | d13d671, c1f9ceb | held 5 DALs; ~57/68 sites converted; residual = bg-writer + daemon_hooks + conn-params |
-| 3 — Migrate writes | ☐ | — | |
+| 3 — Migrate writes | ◐ | cfc8f02, 0cd1c1d | 3a counts ✅; 3b TF-IDF + 3c node-writes/titles pending |
 | 4 — Migrate reads | ☐ | — | |
 | 5 — Missing DALs + extractions | ☐ | — | |
 | 6 — Lock it | ☐ | — | |
