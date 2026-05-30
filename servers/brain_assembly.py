@@ -342,9 +342,7 @@ class BrainAssemblyMixin:
                     })
 
         # Get total locked count
-        total_locked = self.conn.execute(
-            'SELECT COUNT(*) FROM nodes WHERE locked = 1 AND archived = 0'
-        ).fetchone()[0]
+        total_locked = self._nodes.count_locked()
 
         return {
             'brain_version': BRAIN_VERSION,
