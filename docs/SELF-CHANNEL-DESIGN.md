@@ -4,6 +4,23 @@
 > "message bus / `self` scale" framing, which was the wrong shape. Conceptual
 > context: `docs/LATERAL-SCALES.md`. Contract: `servers/scales/self_channel/self_contract.py`.
 
+## Handoff — where this stands (2026-05-29, read first if you're picking this up)
+
+**The pull half is done and committed; the push half is half-done. You wake with the tools live.**
+
+Shipped + reviewed (Sonnet + Opus) + silent-error-audited + full suite green:
+- **Phase 0** — S0 `self_message` correspondent marker + `self_contract`
+- **Phase 1** — presence: `self_presence` (roster) + `self_peek` — commit `ff12524`
+- **Phase 2a** — directed signal courier: `self_send` / `self_inbox`, consume-once, broadcast fan-out, TTL/reap — commit `31a2632`
+
+**Next: Phase 2b — delivery-into-Observation.** Auto-drain the inbox at the recall hook (`pre_response_recall.py`, UserPromptSubmit) and inject pending signals into O as the s0 `self_message` marker Phase 0 already laid down. It's the **first live hot-path change** → trace the recall pipeline before touching it, and it needs a daemon restart. Decision already made: UserPromptSubmit delivery first; PreToolUse (faster interrupt) later if wanted.
+
+**Use the tools now.** `self_presence` / `self_peek` / `self_send` / `self_inbox` are live — they were deferred in the session that built them, so a fresh boot is the first place they're callable. They're niche, deliberately NOT in the always-load `CRITICAL_TOOLS` set — reach via tool-search when interest calls.
+
+**Parked:** the boot-reignition A/B eval (`docs/BOOT-REIGNITION.md`) — briefing-vs-reignition via `frame_replay`, specified, not run.
+
+**Shared working tree (multiple live streams):** other streams shipped `CRITICAL_TOOLS` always-load (`49c6841`) + a hook silent-error fix (`55a1b29`); a third has uncommitted invalid-op/S2 work. **`git add` explicit paths, never `-A`** — verify each shared file is purely yours before staging.
+
 ## The model (the part that changed everything)
 
 **Conversation is conversation. The correspondent is a property of it, not a
@@ -153,11 +170,12 @@ separate scale. Encode→recall already crosses sessions; no special chain neede
 
 | Phase | What | Status |
 |---|---|---|
-| **0 Marker + contract** | `self_message` on S0; self_contract (naming, address, render, limits) | **done** |
-| **1 Presence** | roster read (`session_state`) + `peek(stream)` frame-read; inject presence line | next — pull-only, cheapest, highest awareness value |
-| **2 Directed signal** | `self_inflight` store + delivery-into-O shim (UserPromptSubmit/PreToolUse) + MCP `self_send` | the one real new wire |
-| **3 Letter** | S1E first-person arc (deferred voice pass) + boot smart-surface | rides existing encode + boot |
-| **4 Remember self-turns** | mark correspondent on self-originated S0 turns so they encode/recall like operator turns | closes the loop |
+| **0 Marker + contract** | `self_message` on S0; self_contract (naming, address, render, limits) | ✅ shipped |
+| **1 Presence** | `present_streams` roster + `peek` (`session_context_for`); MCP `self_presence`/`self_peek` | ✅ shipped — `ff12524` |
+| **2a Directed signal** | `self_inflight`/`self_delivered` courier; send/drain/reap; MCP `self_send`/`self_inbox` | ✅ shipped — `31a2632` |
+| **2b Delivery-into-Observation** | auto-drain inbox at the recall hook (UserPromptSubmit) → inject signals as the s0 `self_message` marker | **NEXT** — first live hot-path change; needs a restart |
+| **3 Letter** | S1E first-person arc (deferred voice pass) + boot smart-surface | pending |
+| **4 Remember self-turns** | mark correspondent on self-originated S0 turns so they encode/recall like operator turns | pending |
 
 ## Open ("more")
 
