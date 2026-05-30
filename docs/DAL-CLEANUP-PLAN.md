@@ -2,6 +2,15 @@
 
 **Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phases 0–2 merged to `main` (`6adc595`). Phase 3 in progress — 3a counts ✅ (`cfc8f02`); 3b TF-IDF + 3c node-writes/titles pending.
 
+> **Code-review fixes (`0cd1c1d`, 2026-05-30):** an xhigh review found Phase-1's
+> F3 fix was **incomplete** — 3 reachable GraphDAL writer calls still self-committed
+> inside a batch (co_anchored auto-edges in remember+revise, the untyped `connect()`
+> helper, and the bg-writer hebbian 'new edge' branch). All guarded now (+5 brain_batch
+> regression/coverage tests). Also swept review cleanup: a missed consolidation_decoder
+> straggler, the dead `from .dal import GraphDAL` imports Phase 2 left behind, and the
+> stale count_locked/daemon status-count docs. **Lesson: the F3 by-convention guard is
+> fragile — a structural fix (review finding #5) is still open as a follow-up.**
+
 Living tracker for resuming the stalled DAL migration. Update the **Status** lines
 and the progress table as phases land. This doc is the single source of truth for
 scope and progress — keep it current.
