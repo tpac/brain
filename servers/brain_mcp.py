@@ -734,6 +734,46 @@ def _build_tools():
 TOOLS = _build_tools()
 
 
+# ── MCP tool-search: keep the hot-path tools eager for every install ──
+# Claude Code defers MCP tools behind ToolSearch when they'd exceed ~10% of the
+# context window (ENABLE_TOOL_SEARCH=auto, the default). That threshold lives in
+# the USER's client config and never ships with the plugin — so we can't rely on
+# it to keep the brain's core tools loaded. Instead we mark them at the source:
+# `anthropic/alwaysLoad` in each tool's `_meta` is the spec-sanctioned vendor
+# extension that forces a tool to load eagerly regardless of the client's
+# ENABLE_TOOL_SEARCH setting. handle_tools_list emits TOOLS verbatim, so the flag
+# reaches every installer's Claude Code; older clients ignore the unknown key
+# harmlessly. There is no `alwaysLoad: false` — anything NOT listed here defers
+# normally. Ref: code.claude.com/docs mcp-configuration "Exempt a server from
+# deferral"; requires Claude Code v2.1.121+.
+CRITICAL_TOOLS = frozenset({
+    "recall",             # primary semantic read path
+    "remember",           # primary write path
+    "get_node",           # exact-id pull
+    "find_node_by_title", # fuzzy-title pull
+    "filter_nodes",       # structured / bulk lookups recall can't do
+    "brain_batch",        # mixed-op write (remember + revise + connect + archive)
+})
+
+
+def _stamp_always_load(tools, critical):
+    """Mark `critical` tools with anthropic/alwaysLoad so they bypass tool-search
+    deferral on every install. Fails loud at startup if a name doesn't match a
+    real tool — a silent typo would defer a tool we meant to keep eager."""
+    names = {t["name"] for t in tools}
+    unknown = critical - names
+    if unknown:
+        raise ValueError(
+            "CRITICAL_TOOLS contains unknown tool name(s) {} — not in {}".format(
+                sorted(unknown), sorted(names)))
+    for t in tools:
+        if t["name"] in critical:
+            t.setdefault("_meta", {})["anthropic/alwaysLoad"] = True
+
+
+_stamp_always_load(TOOLS, CRITICAL_TOOLS)
+
+
 def make_response(request_id, result):
     """Build a JSON-RPC 2.0 response."""
     return {"jsonrpc": "2.0", "id": request_id, "result": result}

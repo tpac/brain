@@ -18,7 +18,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from tests.brain_test_base import BrainTestBase
-from servers.brain_mcp import TOOLS
+from servers.brain_mcp import TOOLS, CRITICAL_TOOLS
 from servers.daemon_dispatch import COMMAND_TABLE
 
 
@@ -501,6 +501,45 @@ class TestMCPRoundTrip(BrainTestBase):
                          "MCP tools whose round-trip tests assert only type, not "
                          "content (smoke-test theater — strengthen to assert "
                          "keys/values): %s" % theater)
+
+
+class TestCriticalToolsAlwaysLoad(unittest.TestCase):
+    """Tool-search deferral contract.
+
+    Claude Code defers MCP tools behind ToolSearch when they'd exceed ~10% of
+    the context window (the default). CRITICAL_TOOLS opt out via
+    anthropic/alwaysLoad in their _meta so the brain's hot-path tools load
+    eagerly for EVERY installer — the flag ships in tools/list, not in any
+    user's settings.json. These gates lock that contract: the right tools are
+    eager, the long tail still defers. Pure module inspection — no brain.
+    """
+
+    def test_critical_names_are_real_tools(self):
+        """Every CRITICAL_TOOLS name must match an actual tool. A typo would
+        silently defer a tool we meant eager. _stamp_always_load raises at
+        import on mismatch; this locks the same invariant as a test."""
+        names = {t["name"] for t in TOOLS}
+        self.assertTrue(
+            CRITICAL_TOOLS <= names,
+            "CRITICAL_TOOLS contains non-existent tool(s): %s"
+            % sorted(CRITICAL_TOOLS - names))
+
+    def test_critical_tools_carry_always_load(self):
+        """Each critical tool emits _meta['anthropic/alwaysLoad'] == True."""
+        for t in TOOLS:
+            if t["name"] in CRITICAL_TOOLS:
+                self.assertEqual(
+                    t.get("_meta", {}).get("anthropic/alwaysLoad"), True,
+                    "%s should carry anthropic/alwaysLoad" % t["name"])
+
+    def test_non_critical_tools_do_not_carry_always_load(self):
+        """Non-critical tools must NOT be eager — otherwise the whole point
+        (lean context, defer the long tail) collapses to load-everything."""
+        for t in TOOLS:
+            if t["name"] not in CRITICAL_TOOLS:
+                self.assertNotIn(
+                    "anthropic/alwaysLoad", t.get("_meta", {}),
+                    "%s unexpectedly marked alwaysLoad" % t["name"])
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 {
   "name": "brain",
-  "version": "9.5.0",
+  "version": "9.5.1",
   "description": "Persistent shared brain between AI assistant and operator. Not a RAG system — a living knowledge graph that heals itself, learns from conversations, and activates the right knowledge at the right moment. v9.5: S1 Scribe v14+SPLIT prompt with unconditional muster (3 scouts fan out in parallel before encoding: quote, temporal, facts; synthesis built but disabled pending a Sonnet role-continuation fix); S1 Surface spreading-activation kernel with per-field vectors (single physics replacing select_edges + per-seed top-K + community-walk); S2 retry-on-transient-API + 15-min maintenance interval; encoding lock leak recovery + 5 silent-failure surfaces hardened.",
   "author": {
     "name": "Tom Pachys"
