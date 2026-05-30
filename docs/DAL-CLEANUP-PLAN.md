@@ -1,6 +1,6 @@
 # DAL Cleanup & Migration Plan
 
-**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phase 0 ✅ landed — Phase 1 (F3) next
+**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phase 1 (F3) ✅ landed — Phase 2 (repository aggregate) next
 
 Living tracker for resuming the stalled DAL migration. Update the **Status** lines
 and the progress table as phases land. This doc is the single source of truth for
@@ -140,7 +140,8 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 **Verify:** `./dev pytest tests/` green; `./dev pytest tests/test_contract_sync.py tests/test_dispatch_contract_sync.py`.
 **Stop point:** dead Category-A gone, 4 bug fixes in. Commit.
 
-### Phase 1 — F3 transaction composition fix (correctness)  ☐
+### Phase 1 — F3 transaction composition fix (correctness)  ☑ (2026-05-30)
+**Landed (`fd9c313`):** `commit: bool = True` added to `remove_relation`, `add_source_refs`, `replace_source_refs`, `delete_node_edges`, `decay_edges` (mirroring `add_relation`); each `self.conn.commit()` guarded. Batch-context callers pass `commit=not _batch_mode`: `connect_typed` (the prime live leak), `dispatch_write` disconnect op, `brain_remember` source-ref writes. Added 4 regression tests (connect/disconnect/source-ref each COMMIT once inside a batch; connect rolls back fully on a later op's failure) — the existing commit-counter used only plain `remember` ops and never caught these. Full suite: 1353 pass / 7 skip / 4 deselected.
 **Goal:** `brain_batch`'s all-or-nothing rollback becomes true. (Ref: `docs/WRITE-TXN-ISOLATION-ROOTFIX.md` Option A.)
 **Work:**
 1. Add `commit: bool = True` to `remove_relation`, `delete_node_edges`, `decay_edges`, `add_source_refs`, `replace_source_refs` (mirror `add_relation`).
@@ -190,7 +191,7 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 | Phase | Status | Commit | Notes |
 |---|---|---|---|
 | 0 — Safe cleanup + fixes | ☑ | 2026-05-30 | dead Category-A gone; B-FTS/SIG/LCK/NAME fixed; 0 new test fails |
-| 1 — F3 correctness | ☐ | — | |
+| 1 — F3 correctness | ☑ | fd9c313 | 5 writers + 4 callers batch-aware; 4 regression tests; suite green |
 | 2 — Repository aggregate | ☐ | — | 68 sites |
 | 3 — Migrate writes | ☐ | — | |
 | 4 — Migrate reads | ☐ | — | |
