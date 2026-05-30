@@ -58,7 +58,6 @@ class BrainRememberMixin:
         Returns count of fields stored.
         """
         from .contract import STRUCTURAL_FIELDS, PROMOTED_FIELDS
-        from .dal_metadata import MetadataDAL
 
         kv_fields = {}
         stored = 0
@@ -142,8 +141,6 @@ class BrainRememberMixin:
         Returns:
             Dict with ok=True/False and details.
         """
-        from .dal_metadata import MetadataDAL
-
         ts = iso_now()
 
         # Fetch node
@@ -1040,7 +1037,6 @@ class BrainRememberMixin:
             if k not in NODES_TABLE_FIELDS and k != 'content'
         ]
         if kv_to_capture:
-            from .dal_metadata import MetadataDAL
             kv_old = self._meta_kv.get_fields(node_id, kv_to_capture)
             for k in kv_to_capture:
                 old_values[k] = kv_old.get(k)  # None if not previously set
@@ -1153,7 +1149,6 @@ class BrainRememberMixin:
         verification_failures = []
 
         # Verify nodes table fields
-        from .dal import NodeDAL
         readback = self._nodes.get_naked_node(node_id)
         if readback:
             for field in list(writable.keys()):
@@ -1401,7 +1396,6 @@ class BrainRememberMixin:
 
         # Also read any KV metadata not passed as args (emergent fields)
         try:
-            from .dal_metadata import MetadataDAL
             dal = self._meta_kv
             kv = dal.get(node_id)
             for k, v in kv.items():

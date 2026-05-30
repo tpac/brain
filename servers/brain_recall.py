@@ -57,7 +57,7 @@ from .brain_constants import (
     ZSCORE_STATS_KEY_MEAN,
     ZSCORE_STATS_KEY_STD,
 )
-from .dal import GraphDAL, NodeDAL, TfIdfDAL, LogsDAL, Fts5DAL, VectorDAL
+from .dal import GraphDAL, NodeDAL, LogsDAL, VectorDAL
 
 
 # ── Lexical bridge — Haiku-generated query expansion ───────────────

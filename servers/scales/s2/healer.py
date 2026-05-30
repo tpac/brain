@@ -12,7 +12,6 @@ Follows the same pattern as CommunityDetection and Consolidation.
 
 from .healer_decoder import HealerDecoder
 from .healer_encoder import HealerEncoder
-from servers.dal import GraphDAL
 
 
 class Healer(HealerDecoder):

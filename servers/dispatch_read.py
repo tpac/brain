@@ -146,7 +146,6 @@ def _handle_graph_expand(brain, args, graph_changes):
         return {"ok": True, "result": {"neighbors": []}}
 
     from .brain_constants import EXCLUDED_EDGE_TYPES
-    from .dal import NodeDAL, GraphDAL
     node_dal = brain._nodes
     graph_dal = brain._graph
     seen = set(node_ids)

@@ -46,7 +46,6 @@ def _get_recently_surfaced(brain, session_id):
                     'sample=%r' % str(raw)[:120])
             except Exception:
                 pass
-    from servers.dal import NodeDAL
     dal = brain._nodes
     recently_surfaced = []
     for nid in list(seen_ids)[:20]:
@@ -365,7 +364,6 @@ def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
         'trace':            per-hop diagnostics
     """
     import os
-    from servers.dal import NodeDAL
     from servers.scales.s1.surface_contract import (
         spread_activation, spread_activation_cluster)
 
@@ -659,7 +657,6 @@ def run_surface(brain, ctx, candidates_data, user_message,
             # session context). If found, use it; if not, log loudly so
             # the failure isn't silent.
             try:
-                from servers.dal import NodeDAL
                 ndal = brain._nodes
                 resolved = ndal.resolve_id(short_id)
                 # 2026-05-02: Haiku occasionally drops a leading '0' from

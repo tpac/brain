@@ -6,7 +6,6 @@ revision stats, edge-type imbalance, sparse metadata.
 """
 
 from .dal import GraphDAL
-from .dal_metadata import MetadataDAL
 from .clock import iso_cutoff
 
 

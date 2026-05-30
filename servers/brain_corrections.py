@@ -73,10 +73,6 @@ class BrainCorrectionsMixin:
         """Body of correction_enrich — separated so the public method can wrap
         it in a single try/except without indentation pyramid.
         """
-        from .dal import NodeDAL, GraphDAL
-        from .dal_metadata import MetadataDAL
-
-        conn = self.conn
         ndal = self._nodes
         full_to_short = {}
         full_ids = []

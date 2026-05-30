@@ -409,10 +409,6 @@ def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
         'metadata': {node_id: {key: value, ...}},
     }
     """
-    from .dal import NodeDAL
-    from .dal_metadata import MetadataDAL
-
-    conn = brain.conn
     ndal = brain._nodes
     mdal = brain._meta_kv
 
