@@ -1,6 +1,6 @@
 # DAL Cleanup & Migration Plan
 
-**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phases 0–2 merged to `main` (`6adc595`). Phase 3 in progress — 3a counts ✅ (`cfc8f02`); 3b TF-IDF + 3c node-writes/titles pending.
+**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phases 0–2 + 3a + F3-completion all **merged to `main`** (merge `530d2f8`). Phase 3 in progress — 3a counts ✅; 3b TF-IDF + 3c node-writes/titles pending. Open: structural F3 (#5), Phases 3b/3c/4/5/6.
 
 > **Code-review fixes (`0cd1c1d`, 2026-05-30):** an xhigh review found Phase-1's
 > F3 fix was **incomplete** — 3 reachable GraphDAL writer calls still self-committed
@@ -11,15 +11,16 @@
 > stale count_locked/daemon status-count docs. **Lesson: the F3 by-convention guard is
 > fragile — a structural fix (review finding #5) is still open as a follow-up.**
 
-> **⚠ Branch / merge state (session end 2026-05-30):** `dal-cleanup` is **4 commits
-> ahead of `main` and NOT yet merged**. `main` (`6adc595`) has Phases 0–2 — which
-> includes the **incomplete** F3, so the co_anchored / connect() / hebbian atomicity
-> gap is currently LIVE on `main`. The completion fix lives only on `dal-cleanup`
-> (`0cd1c1d`). **Next session's first move: merge `dal-cleanup` → `main`** to land it.
-> Worktree: `/Users/tpac/brain-dal-cleanup`; full suite green on the branch (1362/7/4).
+> **✅ Merge state (session end 2026-05-30):** `dal-cleanup` is **merged to `main`**
+> (merge commit `530d2f8`) — Phases 0–2, 3a counts, and the F3 completion fix all
+> landed; the co_anchored/connect()/hebbian atomicity gap is **closed on `main`**.
+> Full suite green on `main` post-merge (1365/7/4). Clean auto-merge with the
+> concurrent dashboard/self-channel work (only `brain_assembly.py` overlapped,
+> additive both sides). Worktree `/Users/tpac/brain-dal-cleanup` retained on branch
+> `dal-cleanup` — **`git merge --ff-only main` in it before resuming Phase 3b.**
 >
-> **Open after merge:** structural F3 fix (#5), Phase 3b (TF-IDF→TfIdfDAL), 3c
-> (node-writes/titles→NodeDAL), then Phases 4–6.
+> **Open for next session:** structural F3 fix (#5 — kill the by-convention fragility),
+> Phase 3b (TF-IDF→TfIdfDAL), 3c (node-writes/titles→NodeDAL), then Phases 4–6.
 
 Living tracker for resuming the stalled DAL migration. Update the **Status** lines
 and the progress table as phases land. This doc is the single source of truth for
