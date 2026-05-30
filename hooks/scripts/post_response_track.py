@@ -6,7 +6,7 @@ Thin client: sends hook_post_response_track to daemon.
 import sys, os, json, time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, is_debug_mode, log_hook_output, log_hook_error
+from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, run_hook
 
 hook_input = get_hook_input()
 
@@ -56,8 +56,9 @@ if not has_user_message and event_name != "Stop":
     brain_debug("track: skipped (no message, not Stop)")
     sys.exit(0)
 
-t0 = time.time()
-try:
+
+def main():
+    t0 = time.time()
     if daemon_available():
         last_msg = hook_input.get("last_assistant_message", "")
         brain_debug("track: event=%s, user_msg=%d chars, assistant_msg=%d chars" % (
@@ -78,17 +79,15 @@ try:
             if result.get("decision") == "block":
                 print(json.dumps({"decision": "block", "reason": result.get("reason", "")}))
                 brain_debug("track: Stop blocked to deliver self-message(s)")
-                log_hook_output("stop", output_text="(self-message delivered via Stop block)")
             else:
                 output = result.get("output", "")
                 brain_debug("track: completed in %dms%s" % (latency, ", output=%d chars" % len(output) if output else ""))
-                log_hook_output("stop", output_text=output or "(store_exchange + encoding gate ran)")
                 if output:
                     print(output)
         else:
             brain_debug("track: daemon returned ok=false")
     else:
         daemon_unavailable_error("post_response_track")
-except Exception as e:
-    log_hook_error("post_response_track", e, "hook exception")
-    print('[brain] ERROR post_response_track: %s' % e, file=sys.stderr)
+
+
+run_hook("post_response_track", main)

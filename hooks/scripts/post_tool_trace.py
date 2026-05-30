@@ -9,6 +9,9 @@ import json
 import socket
 import os
 
+sys.path.insert(0, os.path.dirname(__file__))
+from hook_common import run_hook
+
 
 def _build_summary(tool_name, tool_input):
     """Build a human-readable summary of the tool call."""
@@ -94,5 +97,4 @@ def main():
         pass
 
 
-if __name__ == "__main__":
-    main()
+run_hook("post_tool_trace", main)
