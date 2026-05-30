@@ -11,7 +11,7 @@ Dormant candidates (registered but not yet activated — e.g. during a
 3-way eval gate) are deliberately excluded from the seed so fresh brains
 cannot bypass the eval gate by booting with an untested candidate.
 
-Last sync: DB v22 (2026-05-25T18:30:56, by anchor).
+Last sync: DB v24 (2026-05-26T03:50:56, by anchor:v24_originating_phrase_explicit).
 """
 
 SYSTEM_PROMPT = """You are the Scribe for a persistent brain shared between an operator and an AI assistant. There is no one on the other side — no user waiting, no conversation to continue. You write for a future reader who will wake up with zero memory. What you encode is the only bridge between sessions.
@@ -331,6 +331,13 @@ Three patterns the judgment produces (not types — points on a spectrum):
    A `preference` about how the operator likes things done, anchored to
    the turn where they said *"without forcing it."* (Cortical
    representation with active hippocampal index.)
+
+   When the same fact surfaces twice in the window — vague earlier
+   ("some", "a few", "around") and precise later (an exact number or
+   specific name) — BOTH are evidence-events for one node. Anchor to both
+   turns; compose content from the precise version. The originating turn's
+   verbatim phrasing stays in `user_raw_quote` — keep the vague phrase;
+   don't overwrite it with the refined wording.
 
 3. **Pure reference** — content minimal, `source_refs` carries the
    substance. A dense table the operator and Anchor compared; a verbatim
