@@ -7,7 +7,13 @@ Signal's brain_logs.db writes go through brain.write_lock inside signal.py;
 none of these touch brain.db, so all register is_write=False.
 
 Handler contract (shared by all daemon commands):
-    handler(brain, args, graph_changes) -> dict
+    handler(brain, args, graph_changes) -> {"ok": True, "result": <payload>}
+
+Every handler MUST return the {"ok", "result"} envelope, like every other
+dispatch_*.py handler. The table dispatch in daemon_server sends the return
+verbatim — a raw, un-enveloped dict reaches the MCP client (brain_mcp) as a
+falsy `ok` with no `error`, surfacing as the misleading "Unknown daemon error"
+even though the handler succeeded. test_self_dispatch.py locks this.
 """
 
 from servers.scales.self_channel import presence, signal, self_contract
@@ -19,10 +25,10 @@ def _handle_self_presence(brain, args, graph_changes):
     args.session_id = the caller's session (excluded from its own roster).
     args.limit      = optional cap (default PRESENCE_MAX_STREAMS).
     """
-    return presence.build_presence(
+    return {"ok": True, "result": presence.build_presence(
         brain,
         my_session_id=args.get('session_id', '') or '',
-        limit=args.get('limit'))
+        limit=args.get('limit'))}
 
 
 def _handle_self_peek(brain, args, graph_changes):
@@ -31,7 +37,7 @@ def _handle_self_peek(brain, args, graph_changes):
     args.stream_id = the TARGET stream to peek (distinct from the caller's
     session_id, so peeking never collides with the caller identity).
     """
-    return presence.peek(brain, args.get('stream_id', '') or '')
+    return {"ok": True, "result": presence.peek(brain, args.get('stream_id', '') or '')}
 
 
 def _handle_self_send(brain, args, graph_changes):
@@ -42,13 +48,13 @@ def _handle_self_send(brain, args, graph_changes):
     args.from_session = caller's session id for attribution (falls back to session_id).
     args.intent/refs  = optional.
     """
-    return signal.send(
+    return {"ok": True, "result": signal.send(
         brain,
         from_session=args.get('from_session', '') or args.get('session_id', '') or '',
         address=self_contract.address_from_target(args.get('to', '') or ''),
         body=args.get('body', '') or '',
         intent=args.get('intent'),
-        refs=args.get('refs'))
+        refs=args.get('refs'))}
 
 
 def _handle_self_inbox(brain, args, graph_changes):
@@ -56,4 +62,4 @@ def _handle_self_inbox(brain, args, graph_changes):
 
     args.session_id = the caller's own session, to fetch messages addressed to it.
     """
-    return {'messages': signal.drain_inbox(brain, to_session=args.get('session_id', '') or '')}
+    return {"ok": True, "result": {'messages': signal.drain_inbox(brain, to_session=args.get('session_id', '') or '')}}
