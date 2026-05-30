@@ -6,7 +6,7 @@ Output: JSON {"decision":"approve"|"block","reason":"..."}.
 import sys, os, json, re
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, log_hook_error
+from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, run_hook
 
 APPROVE = json.dumps({"decision": "approve"})
 
@@ -42,7 +42,9 @@ if not is_destructive:
 
 # ── Destructive command detected — call daemon/brain for safety check ──
 brain_debug("bash: DESTRUCTIVE → %s" % command[:120])
-try:
+
+
+def main():
     if daemon_available():
         resp = daemon_call_raw("hook_pre_bash_safety", {"command": command, "session_id": hook_input.get("session_id", "")}, timeout=7.0)
         if resp.get("ok"):
@@ -52,18 +54,23 @@ try:
             else:
                 print(json.dumps({
                     "decision": "approve",
-                    "reason": "\u26a0\ufe0f Destructive command detected. Proceed carefully.",
+                    "reason": "⚠️ Destructive command detected. Proceed carefully.",
                 }))
         else:
             print(json.dumps({
                 "decision": "approve",
-                "reason": "\u26a0\ufe0f Destructive command detected. Safety check unavailable — proceed carefully.",
+                "reason": "⚠️ Destructive command detected. Safety check unavailable — proceed carefully.",
             }))
     else:
         print(json.dumps({"decision": "approve", "reason": daemon_unavailable_error("pre_bash_safety")}))
-except Exception as e:
-    log_hook_error("pre_bash_safety", e, "safety check exception")
+
+
+def _fail_open():
+    # Safety check itself crashed — fail OPEN (approve + warning), never block on our own error.
     print(json.dumps({
         "decision": "approve",
-        "reason": "\u26a0\ufe0f Destructive command detected. Safety check error — proceed carefully.",
+        "reason": "⚠️ Destructive command detected. Safety check error — proceed carefully.",
     }))
+
+
+run_hook("pre_bash_safety", main, on_error=_fail_open)

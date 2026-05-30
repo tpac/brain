@@ -13,8 +13,7 @@ import sys, os, json, time
 _t0 = time.time()
 sys.path.insert(0, os.path.dirname(__file__))
 from hook_common import (get_hook_input, daemon_available, daemon_call_raw,
-                         daemon_unavailable_error, brain_debug, log_hook_output,
-                         log_hook_error)
+                         daemon_unavailable_error, brain_debug, run_hook)
 from datetime import datetime as _dt
 def _ts(): return _dt.now().strftime("%H:%M:%S.%f")[:-3]
 sys.stderr.write("[recall-hook %s] import: %dms\n" % (_ts(), (time.time() - _t0) * 1000))
@@ -30,11 +29,11 @@ if not user_message or len(user_message) < 5 or user_message.startswith("/") or 
     print(APPROVE)
     sys.exit(0)
 
-t0 = time.time()
-try:
+
+def main():
+    t0 = time.time()
     if not daemon_available():
         err = daemon_unavailable_error("recall")
-        log_hook_output("recall", output_text="(daemon unavailable)", user_prompt=user_message)
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": err}}))
         sys.exit(0)
 
@@ -49,10 +48,8 @@ try:
 
     if not resp.get("ok"):
         err_msg = resp.get("error", "unknown error")
-        # No log_hook_error here: daemon_call_raw already logged this failure to
-        # hook_errors (single source of truth — logging lives in the shared
-        # daemon path, not duplicated per caller). We only render the user-facing
-        # message below.
+        # daemon_call_raw already logged this failure to hook_errors (single
+        # source of truth). We only render the user-facing message here.
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext":
             "[BRAIN]\n⚠️ RECALL FAILED: %s\nThe brain could not search for relevant memories.\n[/BRAIN]" % err_msg}}))
         sys.exit(0)
@@ -64,25 +61,16 @@ try:
     result_json = result.get("json", {})
     if "additionalContext" in result_json:
         context = result_json["additionalContext"]
-        log_hook_output("recall", output_text=context, user_prompt=user_message)
         brain_debug("recall: daemon returned context (%d chars) in %dms" % (len(context), elapsed))
         sys.stderr.write("[recall-hook %s] total: %dms, printing and exiting\n" % (_ts(), (time.time() - _t0) * 1000))
         sys.stdout.write(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": context}}))
         sys.stdout.flush()
         os._exit(0)  # Fast exit — skip Python cleanup
     else:
-        log_hook_output("recall", output_text="(approve: %s)" % result_json.get("decision", "?"),
-                       user_prompt=user_message)
         brain_debug("recall: daemon returned approve in %dms" % elapsed)
         sys.stdout.write(json.dumps(result_json))
         sys.stdout.flush()
         os._exit(0)
 
-except Exception as e:
-    # Hook-internal exception (NOT a daemon-call failure — daemon_call_raw
-    # catches its own and returns ok=false). This path was silent before:
-    # log_hook_output is a deprecated no-op. log_hook_error lands it in
-    # hook_errors so it's visible in the dashboard and at boot.
-    log_hook_error("recall", e, "pre_response_recall hook exception")
-    brain_debug("recall: exception: %s" % e)
-    print(APPROVE)
+
+run_hook("recall", main, on_error=lambda: print(APPROVE))

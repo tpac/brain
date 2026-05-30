@@ -5,7 +5,7 @@ Output: JSON {"decision":"approve","reason":"..."}.
 import sys, os, json, time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, is_debug_mode, log_hook_error
+from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, is_debug_mode, run_hook
 
 APPROVE = json.dumps({"decision": "approve"})
 
@@ -28,7 +28,7 @@ if any(filename.endswith(ext) for ext in skip_exts) and filename != "package.jso
     sys.exit(0)
 
 t0 = time.time()
-try:
+def main():
     if daemon_available():
         resp = daemon_call_raw("hook_pre_edit", {
             "filename": filename,
@@ -50,6 +50,5 @@ try:
             print(APPROVE)
     else:
         print(json.dumps({"decision": "approve", "reason": daemon_unavailable_error("pre_edit_suggest")}))
-except Exception as e:
-    log_hook_error("pre_edit_suggest", e, "hook exception")
-    print(APPROVE)
+
+run_hook("pre_edit_suggest", main, on_error=lambda: print(APPROVE))
