@@ -1,19 +1,22 @@
 # Self↔Self — Implementation Design
 
-> **Status:** spec, ready to build (re-cut 2026-05-29). Supersedes the earlier
+> **Status:** Phases 0–2b shipped + live-verified (2026-05-30); Phases 3–4 pending. Supersedes the earlier
 > "message bus / `self` scale" framing, which was the wrong shape. Conceptual
 > context: `docs/LATERAL-SCALES.md`. Contract: `servers/scales/self_channel/self_contract.py`.
 
 ## Handoff — where this stands (2026-05-29, read first if you're picking this up)
 
-**The pull half is done and committed; the push half is half-done. You wake with the tools live.**
+**Both halves shipped: pull (presence) + push (directed signal, auto-delivered). You wake with the tools live and delivery active at tool/turn boundaries.**
 
 Shipped + reviewed (Sonnet + Opus) + silent-error-audited + full suite green:
 - **Phase 0** — S0 `self_message` correspondent marker + `self_contract`
 - **Phase 1** — presence: `self_presence` (roster) + `self_peek` — commit `ff12524`
 - **Phase 2a** — directed signal courier: `self_send` / `self_inbox`, consume-once, broadcast fan-out, TTL/reap — commit `31a2632`
+- **Phase 2b** — delivery-into-Observation, **live-verified 2026-05-30**: a sent signal auto-drains into the recipient's Observation at its next **PreToolUse(Edit/Write)** (via `hookSpecificOutput.additionalContext`) or **Stop** (via `decision:block`), consume-once. Commits `0c2dc5a` (first cut, on_prompt) → `aa366f7` (pulled the wrong channel) → `0de7b9c` (PreToolUse + Stop — the channels that actually surface).
 
-**Next: Phase 2b — delivery-into-Observation.** Auto-drain the inbox at the recall hook (`pre_response_recall.py`, UserPromptSubmit) and inject pending signals into O as the s0 `self_message` marker Phase 0 already laid down. It's the **first live hot-path change** → trace the recall pipeline before touching it, and it needs a daemon restart. Decision already made: UserPromptSubmit delivery first; PreToolUse (faster interrupt) later if wanted.
+**Channel lesson (learned the hard way — see "Connect to hooks"):** the first 2b cut delivered at on_prompt (`pre_response_recall.py`), but on_prompt (a) overflowed the inject spill cap (`_MAX_INJECT_CHARS`) — prepending past it makes Claude Code spill the whole inject to a file Anchor never reads — and (b) is the weakest channel anyway. Removed. Then: PreToolUse **approve + `reason` does NOT reach the model** (silent on allow); `hookSpecificOutput.additionalContext` **does**. `HOOKS.md` was stale on both. Verified live: a seeded signal surfaced in a `Write`'s feedback.
+
+**Next: Phase 3 (letter) + Phase 4 (encode self-turns)** — neither built. Known gaps today: the **send side is not traced** (only delivery writes the s0 `self_message` marker); a delivered signal **carries no recall** (pure drain by design — no Haiku; `refs` tether stored but not rendered); and it is **not encoded as a turn** (Phase 4). See the build plan.
 
 **Use the tools now.** `self_presence` / `self_peek` / `self_send` / `self_inbox` are live — they were deferred in the session that built them, so a fresh boot is the first place they're callable. They're niche, deliberately NOT in the always-load `CRITICAL_TOOLS` set — reach via tool-search when interest calls.
 
@@ -66,21 +69,43 @@ needs a durable in-flight row, and it's consumed on delivery.
 
 ## Connect to hooks (delivery-into-Observation)
 
-Only SessionStart and UserPromptSubmit inject into context; PreToolUse feeds
-back `reason` (see `hooks/HOOKS.md`). That maps cleanly:
+**Which channels actually reach the model** (verified 2026-05-30 against current
+Claude Code — `HOOKS.md` was stale; the rule that matters is *which field
+surfaces to Claude*, not just which event fires):
 
-- **SessionStart → `boot_brain.py`** — surface the **letter** (the encoded arc,
-  in first-person voice) + the **presence** line into O. This is the temporal
-  arrival.
-- **UserPromptSubmit → `pre_response_recall.py`** — pull any **directed /
-  broadcast in-flight** self-messages addressed to this stream into
-  `additionalContext` (they become part of O alongside recall) + refresh
-  **presence**. This is where a live self→self message lands.
-- **PreToolUse** — optional lower-latency path: deliver a directed signal via
-  `reason` *before* the next tool runs (the true "interrupt before you act").
-- **S1E (encode)** — encodes self↔self turns exactly like operator turns
-  (correspondent-marked), and writes the next_boot **letter** as a first-person
-  arc. Remembering stays automatic; reaching stays deliberate.
+| Channel | Reaches the model? |
+|---|---|
+| SessionStart / UserPromptSubmit `additionalContext` | yes (passive) |
+| **PreToolUse `hookSpecificOutput.additionalContext`** | **yes — on a plain allow** |
+| PreToolUse approve + `reason` | **no** (silent on allow) |
+| PreToolUse `deny` + `permissionDecisionReason` | yes (blocks the tool) |
+| **Stop `decision:block` + `reason`** | **yes** (forces the turn to continue) |
+| PostToolUse `additionalContext` | yes (next to tool result) |
+
+Delivery is split by **salience + consume-once**, NOT by message type (one pool;
+whichever hook fires first wins):
+
+- **PreToolUse(Edit/Write) → `hook_pre_edit`** — drain the inbox and emit the
+  rendered block as `hookSpecificOutput.additionalContext` (the channel that
+  surfaces on allow). The high-salience "interrupt before you act" landing; it's
+  a pure drain (no Haiku/recall) so edits don't slow. **Primary** delivery point.
+  *Bash is NOT a delivery point* — `pre_bash_safety` regex-pre-screens and only
+  calls the daemon on destructive commands.
+- **Stop → `hook_post_response_track`** — if a tap is still pending (no tool
+  fired this turn), return `decision:block` with the block as `reason`. The
+  **backstop** for prose-only turns. Consume-once → blocks at most once per batch.
+- **on_prompt (`pre_response_recall.py`) — removed.** It overflowed the inject
+  spill cap and is the weakest channel; with consume-once it would also steal
+  signals from the high-salience hooks. Reserved for low-urgency *passive* use
+  (a future letter/FYI), not imperative signals.
+- **SessionStart → `boot_brain.py`** — surface the **letter** (Phase 3) +
+  **presence**. The temporal arrival. *Not built.*
+- **PreToolUse `deny` + `permissionDecisionReason`** — reserved for the future
+  *enforce* mode (the daemon-authored conflict guardrail that blocks rather than
+  announces — "without announcements"), not normal delivery.
+- **S1E (encode) — Phase 4, not built** — will encode self↔self turns
+  correspondent-marked, so they remember/recall like operator turns. Today a
+  delivered signal is consumed + traced (delivery only) but not encoded.
 
 ## Surface smartly in boot (Tom's requirement)
 
@@ -173,9 +198,9 @@ separate scale. Encode→recall already crosses sessions; no special chain neede
 | **0 Marker + contract** | `self_message` on S0; self_contract (naming, address, render, limits) | ✅ shipped |
 | **1 Presence** | `present_streams` roster + `peek` (`session_context_for`); MCP `self_presence`/`self_peek` | ✅ shipped — `ff12524` |
 | **2a Directed signal** | `self_inflight`/`self_delivered` courier; send/drain/reap; MCP `self_send`/`self_inbox` | ✅ shipped — `31a2632` |
-| **2b Delivery-into-Observation** | auto-drain inbox at the recall hook (UserPromptSubmit) → inject signals as the s0 `self_message` marker | **NEXT** — first live hot-path change; needs a restart |
+| **2b Delivery-into-Observation** | auto-drain at **PreToolUse(Edit/Write)** (`hookSpecificOutput.additionalContext`) + **Stop** (`decision:block`), consume-once; on_prompt removed (spill + weak); Bash excluded (safety pre-screen skips the daemon) | ✅ shipped + live-verified — `0de7b9c` |
 | **3 Letter** | S1E first-person arc (deferred voice pass) + boot smart-surface | pending |
-| **4 Remember self-turns** | mark correspondent on self-originated S0 turns so they encode/recall like operator turns | pending |
+| **4 Remember self-turns** | mark correspondent on self-originated S0 turns so they encode/recall like operator turns; **also: trace the send side, render `refs` as a light recall** | pending |
 
 ## Open ("more")
 
