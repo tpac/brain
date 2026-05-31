@@ -97,7 +97,7 @@ Naming these explicitly because they're the load-bearing claims everything else 
 
 ### Validation infrastructure built
 
-**`eval/frame_replay.py`.** Capture/compare harness against an isolated brain copy (DB copy via `IsolatedBrain` per the "never spawn Brain() against live DB while daemon running" rule). Test corpus: 5 queries from FRAME-DESIGN.md Appendix A — `exco_cold` ("What is EX.CO?"), `self_intro` ("What do you know about you?"), `exco_pivot` ("Should we go back to EX.CO sales kit?"), `where_were_we` ("Where were we?"), `open_last_week` ("What's still open from last week?"). Each capture saves: candidates list (id/title/score/type), Haiku selected (id+why), additionalContext rendered, latency_ms, prompt char count.
+**`eval/frame_replay.py`.** Capture/compare harness against an isolated brain copy (DB copy via `IsolatedBrain` per the "never spawn Brain() against live DB while daemon running" rule). Test corpus: 5 queries — `exco_cold` ("What is EX.CO?"), `self_intro` ("What do you know about you?"), `exco_pivot` ("Should we go back to EX.CO sales kit?"), `where_were_we` ("Where were we?"), `open_last_week` ("What's still open from last week?"). Each capture saves: candidates list (id/title/score/type), Haiku selected (id+why), additionalContext rendered, latency_ms, prompt char count.
 
 **5 captured snapshots** tracking the trajectory: `phase1_baseline_2026-05-02` → `phase2_v1_unified` → `phase2_v1_unified_clean` (post-cleanup) → `phase2_v3_prompt` → `phase2_v4_prompt`. Each one diffable against the previous via `compare label_a label_b`.
 
@@ -199,7 +199,7 @@ Headlines for orientation:
 5. **Agentic recall cold start.** Without ambient context as Haiku input, single-shot judgment picks fetches blind. Needs explicit Frame pre-load as separate axis input + baseline fallback if Haiku chooses empty fetch plan.
 6. **Query embedding divergence.** 10-turn community embedding vs 3-turn node embedding means the two discovery channels find different pools. Connection scoring helps; no deep theory yet on when to trust each channel.
 7. **The irresolvable SKILL.md tension** (named explicitly so we don't keep trying to fix it). SKILL.md is instructions to a stateless thing about how to behave as if continuous. The contradiction is built-in. Future passes should accept rather than try to dissolve.
-8. **Q13 (FRAME-DESIGN.md) — does automatic spread activation survive Phase 4?** Current 3-4s spread cost eats the latency budget needed for Frame-skip target. Phase 4 tools cover most of what spread does. Anchor's lean: Option C (retire spread, keep kernel as tool-internal helper). Decision needed before Phase 4 tools ship.
+8. **Q13 — does automatic spread activation survive Phase 4?** Largely resolved in practice: `_traverse_graph` removed from recall path 2026-04-14; `spread_activation` still lives in `surface.py` post-selection expansion (matches Anchor's lean — retire from recall, retain in surface). Documenting closure pending.
 
 ---
 
@@ -231,7 +231,7 @@ Spawn fresh Claude Code session with the brain skill loaded; send identical wake
 
 **What it would measure:** Anchor's behavior at boot, with SKILL.md loaded. The only path to empirically validating SKILL.md changes, boot rewrites, and the felt-difference work that the operator (Tom) has been the only sensor for.
 
-**Status:** designed in FRAME-DESIGN.md as the calibration mechanism; implementation queued.
+**Status:** queued as BACKLOG P3.1.
 
 ### Methodology principle
 
@@ -248,8 +248,8 @@ Spread activation broke (precision-over-reach was the wrong tradeoff) → recogn
 ## 7. Where to look
 
 **Primary docs:**
-- `docs/FRAME-DESIGN.md` — Frame Phase 2/2.5 architecture, decisions, risks, build phases, latency roadmap
 - `docs/RECALL-OVERVIEW.md` — this file
+- `docs/archive/FRAME-DESIGN.md` — Frame Phase 2/2.5 architecture journey (historical; live tasks folded into BACKLOG.md P4.18–P4.20 + P5.1–P5.2)
 - `CLAUDE.md` — developer guide (still pre-Frame in places; queued for next-session update)
 - `skills/brain/SKILL.md` — Anchor identity baseline (rewritten 2026-05-03)
 

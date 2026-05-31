@@ -20,7 +20,7 @@ LOOP CONTROL
 - Parallel tool calls per round encouraged (Anthropic native).
 - Behavioral discipline (in surface prompt) prevents iterating same query.
 
-See docs/AGENTIC-SURFACE-CONTRACT.md for the full spec.
+See docs/archive/AGENTIC-SURFACE-CONTRACT.md for the historical spec (shipped 2026-05-15+; archived 2026-05-31).
 """
 from __future__ import annotations
 

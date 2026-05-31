@@ -1,6 +1,6 @@
 # S1 Encoder — feed it what Anchor actually touched
 
-**Status:** Spec, not started. Depends on the cross-session-leak fix landing first.
+**Status:** Spec, not started. The cross-session-leak prerequisite (`session_id` populated on every trace_event) **landed 2026-05-02** — Part A in §design is no longer blocking. Pick up at Part B (new trace emissions).
 
 ## Problem
 
@@ -63,8 +63,8 @@ Truncate guardrail: soft cap ~30 total nodes with priority order if exceeded.
 
 ## Implementation plan
 
-### Part A — depends on other window
-Wait for the cross-session leak fix. Verify by querying any 5-trace sample and confirming `session_id` is populated.
+### Part A — ✅ DONE (2026-05-02)
+Cross-session-leak fix landed. Every trace_event now stamps `session_id` reliably (verifiable by sampling any 5 traces). `WHERE session_id = ?` is the foundation for the encoder query below.
 
 ### Part B — new trace emissions (this work)
 Add to `daemon_dispatch.py`:
