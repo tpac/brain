@@ -499,7 +499,7 @@ def _build_tools():
                      "archive) — packs them into ONE LLM round instead of N. For pure "
                      "single-type batches use `remember_batch` / `revise_batch` / "
                      "`connect_batch`; the moment you have a mix, switch to brain_batch. "
-                     "Five (and only five) valid op values: "
+                     "Six valid op values: "
                      "'remember' creates a new node — supports a per-op `connect_to: "
                      "[{title, relation, why}]` for typed edges. Targets resolve in two "
                      "scopes: SIBLINGS (other `remember` ops in this same batch) and "
@@ -521,11 +521,21 @@ def _build_tools():
                      "op instead. Don't double-emit: an edge already in `connect_to` must "
                      "NOT also appear as a separate `connect` op for the same pair; "
                      "'disconnect' removes an edge relation; "
-                     "'archive' soft-archives a node. "
+                     "'archive' soft-archives a node; "
+                     "'absorb' losslessly merges one node into another — fold "
+                     "`absorbed_id` INTO `survivor_id` (source_refs, edges, "
+                     "access_count, and metadata transfer automatically), then "
+                     "archive the absorbed. Shape the survivor with the SAME "
+                     "field overrides as revise (`content`, or keys like "
+                     "title/confidence/situation). The absorbed must be archivable "
+                     "(locked/critical refused); the survivor MAY be locked — you "
+                     "absorb INTO the canonical node. This IS the real merge — "
+                     "use it instead of inventing a 'consolidate'/'merge' op. "
                      "Operations run sequentially. Do NOT invent structural "
                      "op names like 'consolidate'/'evolve'/'keep'/'skip' — "
-                     "those are semantic decisions expressed through which "
-                     "of the 5 real ops you emit. **Relation names are NOT "
+                     "a node merge is the `absorb` op; the rest are semantic "
+                     "decisions expressed through which real op you emit. "
+                     "**Relation names are NOT "
                      "op names.** `similar_to`, `corrects`, `supersedes`, "
                      "`reframes`, `extends`, `grounds`, etc. are values for "
                      "the `relation` field on a `connect` op, never op types "
@@ -543,7 +553,7 @@ def _build_tools():
          "operations": {
              "type": "array",
              "description": ("Array of operations. Each object has an 'op' "
-                             "field (one of the 5 valid values) plus the "
+                             "field (one of the valid op values) plus the "
                              "fields that op needs. `remember` ops accept an "
                              "optional `connect_to` array for sibling+catalog edges."),
              "items": {
@@ -552,7 +562,7 @@ def _build_tools():
                          "type": "string",
                          "enum": sorted(VALID_BATCH_OPS),
                          "description": ("The operation to execute. "
-                                         "Must be one of the 5 literal values.")}}}}}}},
+                                         "Must be one of the valid op values.")}}}}}}},
     _generate_revise_schema(),
     _build_revise_batch_schema(),
     {"name": "enrich",

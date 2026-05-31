@@ -32,7 +32,7 @@ To add a new field:
 # enum and the S2 detector pick it up automatically.
 
 VALID_BATCH_OPS = frozenset({
-    "remember", "revise", "connect", "disconnect", "archive",
+    "remember", "revise", "connect", "disconnect", "archive", "absorb",
 })
 
 

@@ -269,6 +269,151 @@ class BrainRememberMixin:
             'vectors_deleted': vectors_deleted,
         }
 
+    def absorb(self, survivor_id: str, absorbed_id: str,
+               content: str = None, reason: str = '', updates=None,
+               prune_edges=None, drop_fields=None,
+               archived_by: str = 'anchor', **kwargs) -> Dict[str, Any]:
+        """Lossless merge: fold absorbed_id INTO survivor_id, then archive absorbed.
+
+        Transfer-by-default. Everything the caller doesn't deliberately override
+        moves structurally — so a merge can't silently drop information the way
+        the imperative revise+connect+archive dance does (preservation audit,
+        node 988de522). The caller hand-writes only the synthesis (`content`)
+        and names what to drop (`prune_edges`, `drop_fields`).
+
+        Transfers:
+          - source_refs  → union onto survivor (INSERT OR IGNORE dedups)
+          - edges        → re-point absorbed's external edges to survivor,
+                           upsert-dedup, drop the absorbed<->survivor intra edge;
+                           noise relations excluded by get_connections_bulk default
+          - access_count → survivor += absorbed (usage history is additive)
+          - metadata KV  → fill keys survivor LACKS from absorbed; survivor wins;
+                           `_sys_` keys skipped
+          - ANY field    → caller overrides via `content`, an `updates` dict, OR
+                           field kwargs (title=, confidence=, situation=, type=,
+                           critical=, ...) — the SAME shape as revise(). Applied
+                           through revise() AFTER the auto-transfers, so explicit
+                           overrides win over KV-fill. Untouched fields keep the
+                           survivor's value; absorbed's content persists on the
+                           archived husk. Auto-transfers above cover only the
+                           unambiguously-additive dimensions; everything
+                           judgment-laden (confidence, title, ...) is explicit.
+        Then archive_node(absorbed, extra={survivor_id}) for provenance.
+
+        Guards: absorbed must be archivable (NOT locked/critical) — the type
+        constraint that makes "a locked node is always the survivor" structural.
+        survivor must exist and be unarchived; survivor != absorbed.
+
+        Commit gating: composes DAL writers that self-gate on conn.in_batch
+        (commit_unless_batched) and ends with _maybe_commit() — so inside
+        brain_batch the whole merge is one atomic envelope; standalone it commits.
+        """
+        if survivor_id == absorbed_id:
+            return {'ok': False, 'error': 'survivor and absorbed are the same node'}
+
+        rows = {r[0]: r for r in self.conn.execute(
+            'SELECT id, locked, critical, archived, access_count '
+            'FROM nodes WHERE id IN (?, ?)',
+            (survivor_id, absorbed_id)).fetchall()}
+        if survivor_id not in rows:
+            return {'ok': False, 'error': 'survivor not found', 'node_id': survivor_id}
+        if absorbed_id not in rows:
+            return {'ok': False, 'error': 'absorbed not found', 'node_id': absorbed_id}
+        if rows[survivor_id][3]:
+            return {'ok': False, 'error': 'survivor is archived', 'node_id': survivor_id}
+
+        a_locked, a_critical, _a_archived, a_access = rows[absorbed_id][1:]
+        if a_locked or a_critical:
+            flag = 'locked' if a_locked else 'critical'
+            self._log_warning(
+                'absorb_guarded',
+                'Cannot absorb %s node %s into %s — absorbed must be archivable' % (
+                    flag, absorbed_id[:8], survivor_id[:8]),
+                'absorb refused: the absorbed node is %s (only the survivor may '
+                'be locked/critical)' % flag)
+            return {'ok': False, 'error': 'Cannot absorb %s node' % flag,
+                    'absorbed_id': absorbed_id}
+
+        # Caller field overrides — revise() shape: content / updates / kwargs.
+        field_updates = dict(updates or {})
+        field_updates.update(kwargs)
+        if content is not None:
+            field_updates['content'] = content
+
+        report = {'ok': True, 'survivor_id': survivor_id, 'absorbed_id': absorbed_id}
+
+        # 1. source_refs — union onto survivor (self-gates commit on conn.in_batch)
+        absorbed_refs = self._graph.get_source_refs(absorbed_id)
+        report['source_refs_added'] = (
+            self._graph.add_source_refs(survivor_id, absorbed_refs)
+            if absorbed_refs else 0)
+
+        # 2. edges — re-point absorbed's external edges to survivor
+        prune = set(prune_edges or [])
+        conns = self._graph.get_connections_bulk([absorbed_id]).get(absorbed_id, [])
+        migrated = 0
+        for c in conns:
+            neighbor = c['id']
+            if neighbor == survivor_id:
+                continue  # drop the intra-pair edge — it dies with the absorbed node
+            outgoing = c.get('direction') == 'outgoing'
+            for rel in c.get('relations', []):
+                relation = rel.get('relation')
+                if not relation or relation in prune:
+                    continue
+                src, tgt = ((survivor_id, neighbor) if outgoing
+                            else (neighbor, survivor_id))
+                kw = {'encoding_source': archived_by}
+                desc = rel.get('description')
+                if desc:
+                    kw['description'] = desc
+                self._graph.add_relation(src, tgt, relation, **kw)
+                migrated += 1
+        report['edges_migrated'] = migrated
+
+        # 3. access_count — additive (usage history)
+        if a_access:
+            self.conn.execute(
+                'UPDATE nodes SET access_count = access_count + ? WHERE id = ?',
+                (a_access, survivor_id))
+        report['access_count_added'] = a_access or 0
+
+        # 4. metadata KV — fill keys survivor LACKS (survivor wins; skip _sys_)
+        drop = set(drop_fields or [])
+        kv = self._meta_kv.get_all_bulk([survivor_id, absorbed_id])
+        s_kv, a_kv = kv.get(survivor_id, {}), kv.get(absorbed_id, {})
+        fill = {k: v for k, v in a_kv.items()
+                if not k.startswith('_sys_') and k not in drop
+                and k not in field_updates
+                and (v or '').strip() and not (s_kv.get(k) or '').strip()}
+        if fill:
+            self._meta_kv.set_many(survivor_id, fill)
+        report['fields_filled'] = sorted(fill.keys())
+
+        # 5. caller field overrides — content / updates / kwargs, the SAME shape
+        # as revise(). Applied AFTER the auto-transfers so explicit overrides win
+        # over KV-fill. revise() handles every mutable field + immutable guards
+        # + re-embed; we don't reimplement field handling.
+        if field_updates:
+            rev = self.revise(survivor_id, updates=field_updates,
+                              reason=reason or 'absorb %s' % absorbed_id[:8])
+            report['fields_revised'] = sorted(field_updates.keys())
+            if rev.get('warnings'):
+                report['revise_warnings'] = rev['warnings']
+
+        # 6. archive the absorbed node with survivor provenance
+        arch = self.archive_node(
+            absorbed_id, archived_by=archived_by,
+            reason=reason or 'absorbed into %s' % survivor_id[:8],
+            extra={'survivor_id': survivor_id})
+        report['absorbed_archived'] = arch.get('ok', False)
+        if not arch.get('ok'):
+            report['ok'] = False
+            report['archive_error'] = arch.get('error')
+
+        self._maybe_commit()
+        return report
+
     def _tfidf_tokenize(self, text: str) -> List[str]:
         """
         Tokenize text for TF-IDF: expand CamelCase, lowercase, remove stopwords.

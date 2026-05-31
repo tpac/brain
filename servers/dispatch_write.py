@@ -599,6 +599,42 @@ def _handle_brain_batch(brain, args, graph_changes):
                             graph_changes.append("ARCHIVE: %s" % node_id[:8])
                         results.append({"op": "archive", "index": i, **r})
 
+                elif op == "absorb":
+                    # Lossless merge: fold absorbed INTO survivor, then archive
+                    # absorbed. Transfer-by-default (source_refs, edges,
+                    # access_count, KV) so a merge can't silently drop info the
+                    # imperative revise+connect+archive path did (node 988de522).
+                    # survivor may be locked; absorbed must not be.
+                    survivor_id = op_spec.get("survivor_id")
+                    absorbed_id = op_spec.get("absorbed_id")
+                    if not (survivor_id and absorbed_id):
+                        results.append({"op": "absorb", "index": i, "ok": False,
+                                        "error": "survivor_id and absorbed_id are required"})
+                    else:
+                        archived_by = op_spec.get('encoding_source') or \
+                            op_spec.get('archived_by') or \
+                            top_encoding_source or 'unknown'
+                        # Revise-op style: every non-control key is a survivor
+                        # field override (content, title, confidence, situation,
+                        # ...), forwarded to absorb()'s updates. Same mental
+                        # model as the revise op — an agent writes the same shape.
+                        _CONTROL = {'op', 'survivor_id', 'absorbed_id',
+                                    'prune_edges', 'drop_fields', 'archived_by',
+                                    'encoding_source', 'reason'}
+                        field_updates = {k: v for k, v in op_spec.items()
+                                         if k not in _CONTROL}
+                        r = brain.absorb(
+                            survivor_id, absorbed_id,
+                            updates=field_updates or None,
+                            archived_by=archived_by,
+                            reason=op_spec.get('reason', ''),
+                            prune_edges=op_spec.get('prune_edges'),
+                            drop_fields=op_spec.get('drop_fields'))
+                        if r.get('ok'):
+                            graph_changes.append("ABSORB: %s <- %s" % (
+                                survivor_id[:8], absorbed_id[:8]))
+                        results.append({"op": "absorb", "index": i, **r})
+
                 elif op == "disconnect":
                     # Soft-archive a specific relation on an edge. Other relations
                     # on the same edge survive. v25 — archived row preserved for
@@ -644,7 +680,7 @@ def _handle_brain_batch(brain, args, graph_changes):
                     # structural names (consolidate/keep/evolve/skip) that were
                     # never valid ops. Previously this returned ok=False and the
                     # caller moved on silently.
-                    err_msg = ("Unknown op: %s (use remember, revise, connect, disconnect, archive)"
+                    err_msg = ("Unknown op: %s (use remember, revise, connect, disconnect, archive, absorb)"
                                % op)
                     try:
                         brain._log_error(
