@@ -213,14 +213,18 @@ class CommunityDecoder(IntegrationUnit):
             "AND encoding_source = ?",
             (self.ENCODING_SOURCE,)).fetchall()
 
+        # Bulk-fetch the community metadata for all nodes in one query
+        # (was N+1: one get() per node), narrowed to the keys we use.
+        meta_by_node = self.brain._meta_kv.get_fields_bulk(
+            [r[0] for r in rows], list(COMMUNITY_METADATA_KEYS))
+
         for nid, title, content, conf in rows:
             meta = {}
-            for k, v in self.brain._meta_kv.get(nid).items():
-                if k in COMMUNITY_METADATA_KEYS:
-                    try:
-                        meta[k] = json.loads(v) if v else None
-                    except (json.JSONDecodeError, TypeError):
-                        meta[k] = v
+            for k, v in meta_by_node.get(nid, {}).items():
+                try:
+                    meta[k] = json.loads(v) if v else None
+                except (json.JSONDecodeError, TypeError):
+                    meta[k] = v
 
             centroid = None
             centroid_b64 = meta.get('community_centroid')
