@@ -58,8 +58,11 @@
 > remediation. Full suite 1374/7/4. **Resume at Phase 4** (see the Phase 4 section
 > below — line numbers re-audited 2026-05-31).
 >
-> **One decision is yours before Phase 4 work:** `SessionStateDAL` resurrect-vs-delete
-> (dead class, live table, raw SQL at `brain.py:701/759/789`). Pick first.
+> **✅ Phase 4 underway (`9367509`):** the reserved `SessionStateDAL` decision is
+> resolved — resurrected; the `session_state` table is now fully DAL-gated
+> (brain.py ×3 + session_context.py save/load). Remaining Phase 4: metadata-KV
+> reads → MetadataDAL, conversation.py trace_events → TraceDAL, reclassify
+> rename_relation, and the recall-hot-path `_batch_tfidf_scores` (needs eval).
 >
 > **Audit gotchas found this session (don't trip on them):**
 > - `eval/decode_funnel.py` (cited in CLAUDE.md + this doc as THE recall benchmark)
@@ -195,7 +198,7 @@ Two other sessions are working the same repo. Per `git status` they touch
 | Metadata-KV reads | community_decoder.py:70/220/350, temporal_extraction.py:485 | MetadataDAL.get/get_field/get_all_by_key | 4 |
 | N+1 loops | community_decoder.py:847 (embedding), :959 (created_at) | VectorDAL bulk / NodeDAL.get_bulk | 4 |
 | trace_events (via DAL's own conn!) | conversation.py:161/173/210 | new TraceDAL methods | 4 |
-| session_state | brain.py:680/738/768 | SessionStateDAL (resurrect) | 4 |
+| session_state | brain.py:701/759/789 + session_context.py:219/228 | SessionStateDAL (resurrected) | 4 ✅ |
 | edge relation rename | reclassify.py:92 | new `GraphDAL.rename_relation` | 4 |
 | entity_dates (no DAL) | temporal_extraction.py:346/355/369, fetch_tools.py:577/592/485 | new EntityDatesDAL | 5 |
 
@@ -265,7 +268,7 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 1. **metadata-KV reads → `MetadataDAL`**: `community_decoder.py:71` (`SELECT value FROM node_metadata_kv WHERE node_id=? AND key=?`) and the per-node loop at `community_decoder.py:218-220`; `temporal_extraction.py:486` (`SELECT key,value FROM node_metadata_kv WHERE node_id=?`).
 2. **N+1 loops → bulk**: `community_decoder.py:218-220` fetches metadata per-node inside a `for nid` loop — collapse to a bulk `MetadataDAL.get_*_bulk`. (The other N+1 the original audit cited at :847/959 has shifted — re-grep `for .* in` + per-row `conn.execute` in community_decoder before fixing.)
 3. **conversation.py `trace_events` → new `TraceDAL` methods**: 3 raw queries reaching into `brain._trace_dal.conn` at `conversation.py:161-162, 173-174, 210-211` (session_id/created_at lookups). Add `TraceDAL` read methods; stop reaching into the DAL's own conn.
-4. **⚖ DECISION (Tom's call): `SessionStateDAL` resurrect-vs-delete.** Class is dead (0 instantiations); `session_state` table is live, accessed via raw SQL in `brain.py:701` (INSERT OR IGNORE), `759` & `789` (SELECT). Either resurrect `SessionStateDAL` + adopt these 3 sites, or delete the dead class and accept the raw SQL as a documented exception. **Decide before doing.**
+4. **✅ DONE (`9367509`) — `SessionStateDAL` resurrected (Tom's call: resurrect).** Added `ensure_default` (INSERT OR IGNORE — preserves a racing thread's state, unlike `set`'s upsert), `recently_updated`, `sessions_by_message_count`. Held logs-bound: `self._session_state = SessionStateDAL(self.logs_conn)`. Adopted the 3 brain.py sites (`get_or_create_session`/`present_streams`/`live_sessions`, `write_lock` kept at call sites) **and** `session_context.py` `save`/`load` (route through the DAL by wrapping the handed conn — SessionContext has no Brain ref). **Zero raw `session_state` SQL survives outside `dal.py`/`schema.py`** — the table is fully swept. New `test_session_state_dal.py` (6) locks the ensure_default-vs-set semantic.
 5. **`GraphDAL.rename_relation`** for `reclassify.py:93` (`UPDATE edge_relations SET relation=?, encoding_source=?`).
 6. **Deferred-from-3b (recall HOT PATH — needs benchmark):** `_batch_tfidf_scores` (`brain_remember.py`, called at `brain_recall.py:884`). Subtle: `total_docs = self._get_node_count()` (node count) ≠ `TfIdfDAL.get_total_docs()` (distinct-nodes-with-vectors) — do NOT swap; and its node_vectors read is term-filtered (`term IN (...)`), no exact DAL method exists → add one. **Run the recall eval before/after** (see note below — `decode_funnel.py` is gone).
 7. **Deferred-from-3b:** `brain_assembly.py:433` stale-context count (bespoke `nodes` filter: type+locked+archived+created_at) — add a narrow `NodeDAL` count method or leave documented.
@@ -306,7 +309,7 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 | 2 — Repository aggregate | ☑ | d13d671, c1f9ceb | held 5 DALs; ~57/68 sites converted; residual = bg-writer + daemon_hooks + conn-params |
 | 3 — Migrate writes | ☑ | cfc8f02, 8aedaaa, 8b42e6d | 3a counts ✅; 3b TF-IDF→TfIdfDAL + dead _tfidf_score deleted ✅; 3c titles→get_title ✅ (risky multi-field UPDATEs deferred — see Phase 4/§Cosmetic). On `main` via `061cb40` |
 | (review) — F3 lock-discipline remediation | ☑ | 191bbc0, 81a4b61 | code-review of F3 found a pre-existing race: S2 maintenance's `set_config`/`save()` committed `self.conn` lock-free; both now hold write_lock. Guardrail widened to brain*.py |
-| 4 — Migrate reads | ☐ | — | metadata-KV→MetadataDAL; conversation.py trace_events→TraceDAL; **SessionStateDAL decision**; reclassify rename_relation; +deferred `_batch_tfidf_scores` (recall hot path, needs eval) |
+| 4 — Migrate reads | ◐ | 9367509 | **SessionStateDAL ✅ resurrected — session_state table fully swept (brain.py ×3 + session_context.py save/load); zero raw SQL outside dal/schema.** Remaining: metadata-KV→MetadataDAL; conversation.py trace_events→TraceDAL; reclassify rename_relation; +deferred `_batch_tfidf_scores` (recall hot path, needs eval) |
 | 5 — Missing DALs + extractions | ☐ | — | EntityDatesDAL (⚠ fetch_tools.py gone — re-find reader); SourceRefDAL extract; delete_node_cascade (⚠ purge misses node_vectors+node_source_refs) |
 | 6 — Lock it | ☐ | — | raw-SQL guardrail; tighten txn guardrail (alias/compound commits + tag brain.py:122); normalize neighbor key |
 
