@@ -1178,6 +1178,48 @@ class SessionStateDAL:
             (session_id, key, node_id, value, ts))
         commit_unless_batched(self.conn)
 
+    # --- session-context lifecycle (the rows keyed '_session_context') ---
+
+    def ensure_default(self, session_id: str, key: str, value: str,
+                       node_id: str = '') -> None:
+        """Insert a default row only if absent (INSERT OR IGNORE).
+
+        Distinct from set(): set() overwrites via upsert; this preserves an
+        existing row, so a racing thread's already-mutated state is never
+        clobbered on first touch.
+        """
+        self.conn.execute(
+            'INSERT OR IGNORE INTO session_state '
+            '(session_id, key, node_id, value, updated_at) VALUES (?, ?, ?, ?, ?)',
+            (session_id, key, node_id, value, iso_now()))
+        commit_unless_batched(self.conn)
+
+    def recently_updated(self, key: str, cutoff_iso: str,
+                         exclude_session: str = '', limit: int = 5) -> list:
+        """Sessions whose `key` row updated since `cutoff_iso`, newest first.
+
+        Returns [{'session_id', 'updated_at'}]. The caller computes the cutoff
+        (wall-clock vs conversation-time is the caller's policy, not the DAL's).
+        """
+        rows = self.conn.execute(
+            "SELECT session_id, updated_at FROM session_state "
+            "WHERE key = ? AND updated_at > ? AND session_id != ? "
+            "ORDER BY updated_at DESC LIMIT ?",
+            (key, cutoff_iso, exclude_session or '', limit)).fetchall()
+        return [{'session_id': r[0], 'updated_at': r[1]} for r in rows]
+
+    def sessions_by_message_count(self, key: str, min_messages: int,
+                                  limit: int = 5) -> list:
+        """Session ids whose `key` row JSON has message_count >= min_messages,
+        newest first. Returns [session_id].
+        """
+        rows = self.conn.execute(
+            "SELECT session_id FROM session_state WHERE key = ? "
+            "AND CAST(COALESCE(json_extract(value, '$.message_count'), 0) AS INTEGER) >= ? "
+            "ORDER BY updated_at DESC LIMIT ?",
+            (key, min_messages, limit)).fetchall()
+        return [r[0] for r in rows]
+
     def increment(self, session_id: str, key: str, node_id: str) -> int:
         """Increment a counter value. Returns new count."""
         from datetime import datetime, timezone

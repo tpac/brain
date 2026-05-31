@@ -219,9 +219,11 @@ class Brain(
         # DAL instances — incremental adoption, brain.py migrates one method at a time
         self._meta = BrainMetaDAL(self.conn)
         self._logs_dal = LogsDAL(self.logs_conn)
-        from .dal import TraceDAL, InteractionDAL
+        from .dal import TraceDAL, InteractionDAL, SessionStateDAL
         self._trace_dal = TraceDAL(self.logs_conn)
         self._interaction_dal = InteractionDAL(self.logs_conn)
+        # logs-bound: session_state lives in brain_logs.db, not brain.db
+        self._session_state = SessionStateDAL(self.logs_conn)
 
         # Repository aggregate (DAL cleanup Phase 2): hold the brain.db DALs
         # foreground-conn-bound so methods use them by construction instead of
@@ -696,12 +698,7 @@ class Brain(
             if cached is not None:
                 return cached
             default_data = _json.dumps({'stop_counter': 0, 'fatigue': {}, 'edge_fatigue': {}})
-            now = iso_now()
-            self.logs_conn.execute(
-                'INSERT OR IGNORE INTO session_state (session_id, key, node_id, value, updated_at) '
-                'VALUES (?, ?, ?, ?, ?)',
-                (session_id, '_session_context', '', default_data, now))
-            self.logs_conn.commit()
+            self._session_state.ensure_default(session_id, '_session_context', default_data)
             # Row is guaranteed to exist now — load reads our default or a
             # racing thread's already-modified state.
             ctx = SessionContext.load(self.logs_conn, session_id)
@@ -755,14 +752,9 @@ class Brain(
         """
         from .clock import iso_cutoff
         try:
-            rows = self.logs_conn.execute(
-                "SELECT session_id, updated_at FROM session_state "
-                "WHERE key = '_session_context' AND updated_at > ? "
-                "AND session_id != ? "
-                "ORDER BY updated_at DESC LIMIT ?",
-                (iso_cutoff(minutes=window_min), exclude_session or '', limit)
-            ).fetchall()
-            return [{'session_id': r[0], 'updated_at': r[1]} for r in rows]
+            return self._session_state.recently_updated(
+                '_session_context', iso_cutoff(minutes=window_min),
+                exclude_session=exclude_session, limit=limit)
         except Exception as e:
             try:
                 self._log_error('present_streams_query', e,
@@ -785,14 +777,8 @@ class Brain(
         (post-daemon-restart, SessionEnd'd sessions, etc.).
         """
         try:
-            rows = self.logs_conn.execute(
-                "SELECT session_id FROM session_state "
-                "WHERE key = '_session_context' "
-                "AND CAST(COALESCE(json_extract(value, '$.message_count'), 0) "
-                "         AS INTEGER) >= ? "
-                "ORDER BY updated_at DESC LIMIT ?",
-                (min_messages, limit)).fetchall()
-            return [r[0] for r in rows]
+            return self._session_state.sessions_by_message_count(
+                '_session_context', min_messages, limit)
         except Exception as e:
             try:
                 self._log_error('live_sessions_query', e,

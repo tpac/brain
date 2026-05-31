@@ -27,8 +27,6 @@ import sqlite3
 from typing import Dict
 from datetime import datetime, timezone
 
-from .clock import iso_now
-
 
 class SessionContext:
     """Per-session state that flows with every brain call."""
@@ -198,7 +196,6 @@ class SessionContext:
         Includes fatigue + activity counters as JSON — single row replaces
         52K per-node rows and 6 leaky brain_meta globals.
         """
-        now = iso_now()
         data = json.dumps({
             'stop_counter': self.stop_counter,
             'last_recall_stop': self.last_recall_stop,
@@ -215,22 +212,20 @@ class SessionContext:
             'segment_node_ids': self.segment_node_ids,
             'node_activity': self.node_activity,
         })
-        conn.execute(
-            'INSERT OR REPLACE INTO session_state (session_id, key, node_id, value, updated_at) '
-            'VALUES (?, ?, ?, ?, ?)',
-            (self.session_id, '_session_context', '', data, now))
-        conn.commit()
+        # SessionStateDAL is the sole gateway to session_state; wrap the conn
+        # we're handed (SessionContext has no Brain ref to reach a held DAL).
+        from .dal import SessionStateDAL
+        SessionStateDAL(conn).set(self.session_id, '_session_context', data)
 
     @classmethod
     def load(cls, conn: sqlite3.Connection, session_id: str) -> 'SessionContext':
         """Load session context from DB. Returns None if not found."""
-        row = conn.execute(
-            'SELECT value FROM session_state WHERE session_id = ? AND key = ?',
-            (session_id, '_session_context')).fetchone()
-        if not row:
+        from .dal import SessionStateDAL
+        value = SessionStateDAL(conn).get(session_id, '_session_context')
+        if not value:
             return None
         try:
-            data = json.loads(row[0])
+            data = json.loads(value)
             ctx = cls(
                 session_id=session_id,
                 stop_counter=data.get('stop_counter', 0),
