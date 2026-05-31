@@ -267,10 +267,10 @@ designed here, status as of 2026-05-31:
 
 | Piece | What | Where | Status |
 |---|---|---|---|
-| **Containment (format)** | Live signals render as third-person reported speech — `⚡ <who> says: "…"` + a standing attribution footer — so another stream's action can't bleed into your self-model as your own. **Letter stays first-person** (continuity across time is the point there). | `self_contract.py` `render_signal` / `render_received_block` | designed; pending (shared file — sequenced behind `anchor-w`) |
-| **Delivery visibility** | `self_outbox` — a sender sees per-recipient `delivered_at` + still-pending. Kills silence-opacity. Data already in `self_delivered`; pure read surface. | new MCP tool + `brain_mcp.py` / dispatch | designed; pending |
-| **Addressing** | Id is canonical; `self_send(to=)` resolves shorter forms (a label or id-prefix) against the *live* roster — unique match proceeds, ambiguous/none is loud. First-class stream **label** for legible "who", id-backed. | `self_send` resolution + label storage | designed; pending |
-| **Presence liveness** | Roster classifies **active / dormant / lost** by `updated_at` recency, and surfaces recently-lost streams instead of silently dropping them at the window edge. | `presence.py` / `render_presence` | designed; pending |
+| **Containment (format)** | Live signals render as third-person reported speech — `⚡ <who> says: "…"` + a standing attribution footer — so another stream's action can't bleed into your self-model as your own. **Letter stays first-person** (continuity across time is the point there). | `self_contract.py` `render_signal` / `render_received_block` | ✅ shipped (`7f80913`) |
+| **Delivery visibility** | `self_outbox` — a sender sees per-recipient `delivered_at` + still-pending. Kills silence-opacity. Data already in `self_delivered`; pure read surface. | `self_outbox` + `brain_mcp.py` / dispatch | ✅ shipped (`7f80913`) |
+| **Addressing** | Id is canonical; `self_send(to=)` resolves shorter forms (a label or id-prefix) against the *live* roster — unique match proceeds, ambiguous/none is loud. First-class stream **label** for legible "who", id-backed. | `self_send` resolution + label storage | ✅ shipped (`1758a15`) |
+| **Presence liveness** | Roster classifies **active / dormant / lost** by `updated_at` recency, and surfaces recently-lost streams instead of silently dropping them at the window edge. | `presence.py` / `render_presence` | ✅ shipped (`fd9202a`) |
 
 ### Containment, in full: agency follows the hands
 

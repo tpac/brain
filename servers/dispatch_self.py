@@ -16,7 +16,7 @@ falsy `ok` with no `error`, surfacing as the misleading "Unknown daemon error"
 even though the handler succeeded. test_self_dispatch.py locks this.
 """
 
-from servers.scales.self_channel import presence, signal, self_contract
+from servers.scales.self_channel import presence, signal
 
 
 def _handle_self_presence(brain, args, graph_changes):
