@@ -588,11 +588,15 @@ def post_response_common(brain, session_id, user_message, assistant_response):
     except Exception as e:
         brain._log_error('record_message', e, 'post_response_common')
 
-    # Stop counter advances ONLY on conversational turns — the Scribe gates on
-    # `stop_counter % 5`, so wakeups must not inflate it (else the encoder runs
-    # on watch churn). In-memory; autosave persists. See trace_contract.
+    # stop_counter is the per-stop SEQUENCE number — it advances on EVERY stop
+    # (incl. heartbeats) so S0/S1 chain IDs stay unique. conversational_count is
+    # the integration CADENCE — it advances only on conversational turns and is
+    # what the Scribe gates on. Two counters, two responsibilities (sequence vs
+    # cadence). In-memory; autosave persists. See trace_contract S0 TURN
+    # CLASSIFICATION.
+    ctx.increment_stop()
     if is_conversational:
-        ctx.increment_stop()
+        ctx.conversational_count += 1
     return ctx
 
 
@@ -620,15 +624,17 @@ def hook_post_response_track(brain, args, graph_changes):
     acquired_for_spawn = False
     try:
         if not getattr(ctx, 'last_turn_conversational', True):
-            # Heartbeat (wakeup re-arm): stop_counter didn't advance, so the
-            # Scribe gate must NOT run — a static counter sitting at a multiple
-            # of 5 would otherwise re-fire the encoder on every wakeup.
+            # Heartbeat (wakeup re-arm): not a conversational turn, so it didn't
+            # advance the integration cadence — skip the Scribe gate entirely.
             encoding_status = "heartbeat — not a turn, encoder gate skipped"
         else:
+            # Gate on the integration CADENCE (conversational turns), not the raw
+            # stop SEQUENCE — wakeups never drag the Scribe along. `counter` (the
+            # stop sequence) still names the s1e chain / prompt file uniquely.
             counter = ctx.stop_counter
-            position = counter % 5
+            position = ctx.conversational_count % 5
 
-            if position == 0:
+            if ctx.conversational_count > 0 and position == 0:
                 if not _encoding_lock.acquire(blocking=False):
                     encoding_status = "encoding skipped (previous still running)"
                     print("[brain-hooks] Encoding agent skipped — previous run still active", flush=True)

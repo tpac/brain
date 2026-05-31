@@ -101,8 +101,11 @@ class TestHookRecallOutput(BrainTestBase):
 class TestTurnClassification(BrainTestBase):
     """post_response_common classifies each stop: conversational (a real prompt
     ran recall this stop → last_recall_stop == stop_counter) vs heartbeat (a
-    /watch wakeup re-arm, recall skipped client-side). Heartbeats must NOT tick
-    stop_counter (which gates the Scribe) or enter the conversation stream.
+    /watch wakeup re-arm, recall skipped client-side). Two counters, two jobs:
+    stop_counter is the per-stop SEQUENCE (advances every stop → unique chain
+    IDs); conversational_count is the integration CADENCE (advances only on
+    conversational turns → what the Scribe gates on). A heartbeat advances the
+    sequence but NOT the cadence, and never enters the conversation stream.
     See trace_contract S0 TURN CLASSIFICATION."""
 
     needs_embedder = False
@@ -113,42 +116,45 @@ class TestTurnClassification(BrainTestBase):
             "ORDER BY created_at", (session_id,)).fetchall()
         return [r[0] for r in rows]
 
-    def test_conversational_turn_increments_and_writes_user_message(self):
+    def test_conversational_turn_advances_both_counters_and_writes_user_message(self):
         sid = 'test-turn-conv'
         ctx = self.brain.get_or_create_session(sid)
-        before = ctx.stop_counter
+        seq_before, cad_before = ctx.stop_counter, ctx.conversational_count
         ctx.last_recall_stop = ctx.stop_counter   # simulate hook_recall having run this stop
         post_response_common(self.brain, sid, "a real operator prompt", "a response")
-        self.assertEqual(ctx.stop_counter, before + 1)
+        self.assertEqual(ctx.stop_counter, seq_before + 1)           # sequence advances
+        self.assertEqual(ctx.conversational_count, cad_before + 1)   # cadence advances
         self.assertTrue(ctx.last_turn_conversational)
         refs = self._s0_refs(sid)
         self.assertIn('user_message', refs)
         self.assertIn('assistant_message', refs)
         self.assertNotIn('heartbeat', refs)
 
-    def test_heartbeat_turn_neither_increments_nor_writes_user_message(self):
+    def test_heartbeat_advances_sequence_but_not_cadence_no_user_message(self):
         sid = 'test-turn-heartbeat'
         ctx = self.brain.get_or_create_session(sid)
-        before = ctx.stop_counter                 # last_recall_stop stays -1 != stop_counter
+        seq_before, cad_before = ctx.stop_counter, ctx.conversational_count
         post_response_common(self.brain, sid, "/watch skill body", "(watching — inbox empty)")
-        self.assertEqual(ctx.stop_counter, before)   # NOT incremented → Scribe never dragged along
+        self.assertEqual(ctx.stop_counter, seq_before + 1)           # sequence advances → unique chain IDs
+        self.assertEqual(ctx.conversational_count, cad_before)       # cadence does NOT → Scribe not dragged along
         self.assertFalse(ctx.last_turn_conversational)
         refs = self._s0_refs(sid)
         self.assertIn('heartbeat', refs)
         self.assertNotIn('user_message', refs)
         self.assertNotIn('assistant_message', refs)
 
-    def test_heartbeats_between_real_turns_dont_inflate_counter(self):
+    def test_heartbeats_dont_advance_cadence_between_real_turns(self):
         sid = 'test-turn-mixed'
         ctx = self.brain.get_or_create_session(sid)
         ctx.last_recall_stop = ctx.stop_counter
         post_response_common(self.brain, sid, "real one", "r")
-        after_real = ctx.stop_counter
+        cad_after_real, seq_after_real = ctx.conversational_count, ctx.stop_counter
         post_response_common(self.brain, sid, "/watch", "(watching)")   # heartbeat: no recall mark
-        self.assertEqual(ctx.stop_counter, after_real)                  # heartbeat doesn't advance
-        ctx.last_recall_stop = ctx.stop_counter                         # next real turn
+        self.assertEqual(ctx.conversational_count, cad_after_real)      # cadence unchanged by heartbeat
+        self.assertEqual(ctx.stop_counter, seq_after_real + 1)         # but sequence advanced
+        ctx.last_recall_stop = ctx.stop_counter                        # next real turn
         post_response_common(self.brain, sid, "real two", "r")
-        self.assertEqual(ctx.stop_counter, after_real + 1)              # advances by exactly one
+        self.assertEqual(ctx.conversational_count, cad_after_real + 1)  # cadence +1 for the real turn only
 
 
 if __name__ == '__main__':

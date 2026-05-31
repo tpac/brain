@@ -43,6 +43,12 @@ class SessionContext:
         # client-side, so its stop never updates this → it reads as a heartbeat.
         # -1 = recall has never run for this session.
         self.last_recall_stop: int = -1
+        # Integration cadence — advances ONLY on conversational turns. The S1
+        # Scribe gates on this (every Nth conversational turn), decoupled from
+        # stop_counter (the per-stop SEQUENCE number, which advances on every
+        # stop incl. heartbeats so chain IDs stay unique). Two counters, two
+        # responsibilities. See trace_contract S0 TURN CLASSIFICATION.
+        self.conversational_count: int = 0
         # Transient (not persisted): set by post_response_common each turn so the
         # Stop hook's Scribe gate only fires on conversational turns.
         self.last_turn_conversational: bool = True
@@ -196,6 +202,7 @@ class SessionContext:
         data = json.dumps({
             'stop_counter': self.stop_counter,
             'last_recall_stop': self.last_recall_stop,
+            'conversational_count': self.conversational_count,
             'fatigue': self.fatigue,
             'edge_fatigue': self.edge_fatigue,
             'remember_count': self.remember_count,
@@ -229,6 +236,7 @@ class SessionContext:
                 stop_counter=data.get('stop_counter', 0),
             )
             ctx.last_recall_stop = int(data.get('last_recall_stop', -1))
+            ctx.conversational_count = int(data.get('conversational_count', 0))
             ctx.fatigue = {k: int(v) for k, v in data.get('fatigue', {}).items()}
             ctx.edge_fatigue = {k: int(v) for k, v in data.get('edge_fatigue', {}).items()}
             ctx.remember_count = int(data.get('remember_count', 0))
