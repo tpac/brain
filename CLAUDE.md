@@ -271,7 +271,7 @@ Three files, same pattern as the shipped units. Subclass `IntegrationUnit` in `s
 
 Register in `coordinator.py` units list. Trace chain: `s2-{YYYYMMDD}-{unit_name}`. Contract file defines config + data shapes.
 
-**brain_batch op vocabulary is closed**: `remember`, `revise`, `connect`, `disconnect`, `archive`. Enforced by JSON schema enum; invalid op names log as `brain_batch_invalid_op`. Adding a new op means updating `VALID_OPS` in `daemon_dispatch._handle_brain_batch`, the schema enum in `brain_mcp`, and the dispatcher's if/elif.
+**brain_batch op vocabulary is closed**: `remember`, `revise`, `connect`, `disconnect`, `archive`, `absorb` (absorb = lossless merge — folds one node into another transfer-by-default, then archives the absorbed; see `docs/S2-ABSORB-OP-DESIGN.md`). Enforced by JSON schema enum; invalid op names log as `brain_batch_invalid_op`. The closed set lives in `VALID_BATCH_OPS` in `servers/contract.py` — the `brain_mcp` schema enum AND the S2 rejection-table invalid-op detector both derive from it. Adding a new op means updating that frozenset and adding the dispatcher branch in `dispatch_write._handle_brain_batch`.
 
 ## Shared Infrastructure
 

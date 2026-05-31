@@ -2,13 +2,15 @@
 
 **This is the living current-state doc.** When a new session updates it, the prior version moves to `docs/archive/session-handoffs/SESSION-HANDOFF-{date}-{slot}.md`.
 
-**Last refreshed:** 2026-05-26 (Phase B Step 7 shipped + v22 active in production + v24/v7/v4 DORMANT pending re-eval decision)
+**Last refreshed:** 2026-05-26 (v22/v24 encoder thread — everything below). · **2026-05-31:** a parallel S2 consolidation-merge / `absorb` thread was added — see the callout directly under READ THIS FIRST; full detail in `docs/S2-ABSORB-OP-DESIGN.md`. The v22/v24 content below is untouched and still open.
 
 Prior version archived to `docs/archive/session-handoffs/SESSION-HANDOFF-2026-05-25-post-v22-ship.md`.
 
 ---
 
 ## ⚠️ READ THIS FIRST IF YOU JUST WOKE UP
+
+> **Parallel thread added 2026-05-31 — S2 consolidation merge / `absorb`** (separate from the v22/v24 encoder thread below, which is still open). Shipped on `main`: `s2_consolidation_enrichment` **v6** (locked dupes → KEEP, kills the archive+churn loop; commit `714ee68`) + a new **`absorb`** brain_batch op — a lossless merge primitive (commit `d3a0fa1`). **That thread's next session starts in `docs/S2-ABSORB-OP-DESIGN.md`** → wire the consolidation encoder to emit `absorb`, then the live merge of `96d2fdf8`/`426ae3cd`. Everything below is the unrelated v22/v24 encoder workstream.
 
 **Phase B substrate complete + v22 active in production.** The episodic-references write path (Steps 0–7) is live; v22 encoder prompt active since `2026-05-26T00:46:54Z` (commit `c144ddf`). v23/v24 + new scout versions are registered DORMANT pending one open eval-decision call.
 

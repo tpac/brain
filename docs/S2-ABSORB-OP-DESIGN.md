@@ -1,7 +1,27 @@
 # S2 `absorb` — a first-class lossless merge primitive
 
-**Status:** design / spec. Not built. Blocked on the in-flight DAL cleanup
-(`2be1295e`, write-path rewrite). Sequenced as Track 2 of the locked-absorb work.
+**Status:** ✅ PRIMITIVE SHIPPED (2026-05-31). `brain.absorb()` + the `absorb`
+brain_batch op are built, tested (16 tests), committed to main (`d3a0fa1`). The
+DAL cleanup it was blocked on has landed (`061cb40`). **NOT yet wired into the
+consolidation encoder** — that + the live merge is the next session.
+
+---
+
+## ⚠️ NEXT SESSION — START HERE
+
+**DONE (committed on main):**
+- `brain.absorb(survivor_id, absorbed_id, content=, reason=, updates=, **field_kwargs, prune_edges=, drop_fields=)` in `servers/brain_remember.py` — lossless transfer-by-default + revise-shaped field overrides.
+- `absorb` brain_batch op — `servers/contract.py` (`VALID_BATCH_OPS`), `servers/dispatch_write.py` (dispatch branch, revise-op-style field pass-through), `servers/brain_mcp.py` (schema enum + description). Any non-control key on the op is a survivor field override.
+- `tests/test_absorb.py` (16 tests: every transfer dimension, guards, the brain_batch op path, atomicity) — green, + contract/dispatch sync.
+- Track 1a (stop-the-churn prompt) shipped separately: `s2_consolidation_enrichment` **v6 active** (`714ee68`) — see `S2-CONSOLIDATION-LOCKED-ABSORB.md`.
+
+**NEXT (the actual work):**
+1. **Wire consolidation to emit `absorb`** — rewrite `consolidation_enrichment_prompt.py`: CONSOLIDATE/EVOLVE + the three edge-migration sections collapse into "use `absorb`". Register DORMANT → eval → activate → `./dev sync-prompts`. Consolidation is sacred → **eval-gated**.
+2. **Build the preservation-probe gate** ("The gate" below) — prove `absorb` is lossless on a richly-populated fixture (refs + voice + emergent KV + access + edges) before the new prompt activates.
+3. **Live lossless merge** of the real pair: operator unlocks `96d2fdf8` → `absorb` into `426ae3cd` → verify schema/roadmap/quote/refs/access all land. Safe now because `absorb` preserves them (the lock was the only thing guarding them — audit `988de522`).
+4. **Track 1b (still open):** `archive_node` locked-refusal `_log_error`→`_log_warning` + an actionable once-per-pair "locked near-dupe → unlock to merge" alert.
+
+**Pointers:** eval harnesses `eval/s2_locked_probe.py` (real-instance A/B + reasoning) + `eval/s2_locked_eval.py` (fixture A/B on existing dimensions). Brain nodes: decision `cb1cf256`, lossy-audit `988de522`, milestone `7af599d9`.
 
 ---
 
@@ -43,10 +63,14 @@ hand-touch" — Tom).
 {op: "absorb",
  survivor_id: "<canonical>",
  absorbed_id: "<redundant, must be archivable / unlocked>",
- content: "<the deliberate synthesis>",   # ONLY mandatory hand-written field
- prune_edges: [...],                       # optional: edges NOT to carry
- drop_fields: [...]}                       # optional: KV NOT to carry
+ # ANY survivor field override — SAME shape as revise (all optional):
+ content: "<synthesis>", title: "...", confidence: 0.95, situation: "...",
+ prune_edges: [...],   # optional: edges NOT to carry
+ drop_fields: [...]}   # optional: KV NOT to auto-fill from absorbed
 ```
+No field is mandatory: with none given, `absorb` does a pure structural transfer
+(refs/edges/access/KV) and archives. The shipped Python signature mirrors this:
+`absorb(survivor_id, absorbed_id, content=, reason=, updates=, **field_kwargs, prune_edges=, drop_fields=)`.
 
 ### Structural transfer policy (no LLM involvement)
 
@@ -56,7 +80,7 @@ hand-touch" — Tom).
 | edges | re-point absorbed's externals → survivor, **dedup**, drop the intra-pair edge | `prune_edges` |
 | `access_count` | **sum** (usage history is additive) | — |
 | KV (situation, reasoning, voice quotes, emergent) | **fill where survivor lacks it**; survivor wins on conflict | `drop_fields` |
-| content | explicit override (prose can't auto-merge) | required |
+| content + ANY mutable field | survivor's own kept | caller overrides via `content` / `updates` dict / field kwargs (revise shape), applied through `revise()` AFTER the auto-transfers so the caller wins |
 | `created_at` | keep survivor's | absorbed's recorded in provenance |
 | then | `archive(absorbed, archived_survivor_id=survivor)` | — |
 
@@ -68,16 +92,16 @@ hand-touch" — Tom).
 - Contradiction is out of scope: `absorb` is for redundancy. Supersession/
   correction routes to the correction path (operator escalation), unchanged.
 
-## Implementation sites
+## Implementation sites (✅ done unless noted)
 
-Adding an op to the closed `brain_batch` vocabulary touches:
-- `servers/daemon_dispatch.py` — `VALID_OPS` in `_handle_brain_batch` + dispatcher if/elif
-- `servers/brain_mcp.py` — the `brain_batch` schema enum
-- `servers/dal.py` (+ `brain_remember.py`) — the transfer logic: source_ref union,
-  edge re-point/dedup, access_count sum, KV fill, then archive with survivor provenance
-- `tests/` — atomicity, each transfer dimension, dedup, locked-as-absorbed rejection
-- `servers/scales/s2/consolidation_enrichment_prompt.py` — rewrite CONSOLIDATE/
-  EVOLVE + the three edge-migration sections down to "use `absorb`"
+The closed `brain_batch` vocabulary lives in `servers/contract.py` (not
+`daemon_dispatch`), and the dispatcher is in `dispatch_write.py`:
+- ✅ `servers/contract.py` — `VALID_BATCH_OPS += "absorb"` (the MCP schema enum AND the S2 rejection-table invalid-op detector derive from this frozenset)
+- ✅ `servers/dispatch_write.py` — `_handle_brain_batch` `absorb` branch; every non-control key is forwarded to `absorb()`'s `updates` (revise-op style)
+- ✅ `servers/brain_mcp.py` — `brain_batch` description documents `absorb` (and the stale "five ops" count is fixed)
+- ✅ `servers/brain_remember.py` — `brain.absorb()` composes existing DAL: `get_source_refs`/`add_source_refs`, `get_connections_bulk`/`add_relation`, `MetadataDAL.get_all_bulk`/`set_many`, `revise` (field overrides + re-embed), `archive_node` (provenance). No commit kwargs — sub-writes self-gate on `conn.in_batch` (post-F3 idiom); ends with `_maybe_commit()`.
+- ✅ `tests/test_absorb.py` — atomicity, each transfer dimension, dedup, locked-as-absorbed rejection, op-path
+- ⬜ `servers/scales/s2/consolidation_enrichment_prompt.py` — rewrite CONSOLIDATE/EVOLVE + the three edge-migration sections down to "use `absorb`" (**NEXT SESSION**)
 
 ## The gate
 
@@ -88,12 +112,12 @@ activates, and before any live merge.
 
 ## Sequencing & coordination
 
-1. **DAL cleanup lands first** (`2be1295e` — BatchAwareConnection F3 rewrites
-   `dal.py`/`brain_remember.py`/dispatch). Building `absorb` concurrently collides.
-2. Spec (this doc) → build op + DAL transfer + tests → preservation probe gate →
-   prompt rewrite → re-eval.
-3. **Live lossless merge:** unlock `96d2fdf8` → `absorb` into `426ae3cd` →
-   archive. Validates the whole pipeline end-to-end.
+1. ✅ DAL cleanup landed (`061cb40`) — `absorb` was re-applied fresh against the
+   post-F3 `conn.in_batch` commit idiom (the old `_batch_mode`/`commit=` kwargs are gone).
+2. ✅ Built op + DAL transfer + tests (`d3a0fa1`). ⬜ preservation-probe gate →
+   prompt rewrite → eval (NEXT).
+3. ⬜ **Live lossless merge:** operator unlocks `96d2fdf8` → `absorb` into
+   `426ae3cd` → archive. Validates the whole pipeline end-to-end.
 
 ## Lineage
 

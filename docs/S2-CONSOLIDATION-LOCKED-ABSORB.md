@@ -1,7 +1,11 @@
 # S2 Consolidation — Locked Nodes Are Absorbers, Not Absorbed
 
-**Status:** design + handoff. Diagnosed 2026-05-30, not yet implemented.
-Consolidation is a sacred system → **eval-gated** before any prompt activates.
+**Status:** ✅ Prompt v6 SHIPPED + active (2026-05-31, commit `714ee68`) — the
+behavioral fix below (≥2 locked → KEEP, no churn-revise, contradiction → escalate,
+merge-candidate alert in the edge description) is live. The deeper "actually merge
+the dupes" path is the new **`absorb`** op (shipped as a primitive, not yet wired
+into the consolidation encoder) — see `docs/S2-ABSORB-OP-DESIGN.md`. Consolidation
+is sacred → prompt changes remain **eval-gated**.
 
 ---
 
