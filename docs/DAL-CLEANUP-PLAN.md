@@ -1,6 +1,6 @@
 # DAL Cleanup & Migration Plan
 
-**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phases 0–2 + 3a + F3-completion **merged to `main`** (merge `530d2f8`). **Structural F3 fix (#5) ✅ done** on worktree `dal-cleanup-2` (connection-bound batch flag — see below). Phase 3 in progress — 3a counts ✅, 3b TF-IDF ✅ (`_store_tfidf_vector`/`_rebuild_tfidf_index`→`TfIdfDAL`, dead `_tfidf_score` deleted; batch scorer read deferred to Phase 4); 3c node-writes/titles pending. Open: Phases 3c/4/5/6.
+**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phases 0–2 + 3a on `main` (merge `530d2f8`). **Structural F3 fix (#5) + F3 review remediation + Phase 3 (3b, 3c) MERGED to `main` 2026-05-31 — merge commit `061cb40`** (5 commits `f91a1f5`/`8aedaaa`/`191bbc0`/`81a4b61`/`8b42e6d`; full suite 1374/7/4; clean --no-ff merge, parallel S2 stream's worktree work preserved). **Phase 3 COMPLETE.** Open: Phase 4 (reads + `SessionStateDAL` decide + recall-path `_batch_tfidf_scores`→needs benchmark), Phase 5, Phase 6, deferred 3c `update_fields` fork.
 
 > **✅ Structural F3 fix (2026-05-30, branch `dal-cleanup-2`):** killed the
 > by-convention `commit=not _batch_mode` fragility. Batch state now lives on the
