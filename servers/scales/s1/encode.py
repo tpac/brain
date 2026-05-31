@@ -297,23 +297,6 @@ def _gather_messages(brain, session_id):
     return []
 
 
-def _strip_self_channel_delivery(content: str) -> str:
-    """Strip a Stop-hook self-channel coordination block from a turn's content.
-
-    Cross-stream push/merge/rebase pings are ephemeral ops chatter, not durable
-    knowledge — the S1 Scribe must not see them as encodable content (encoding
-    them produced git-logistics junk nodes like "main pushed to origin"). The
-    block is appended to a turn's content by the Stop-hook drain, prefixed by
-    `RECEIVED_BLOCK_HEADER`. Returns the real prompt text BEFORE the block
-    (the operator's actual message, if any), or '' when the turn is nothing
-    but the coordination block. Header-free content is returned unchanged.
-    """
-    from servers.scales.self_channel.self_contract import RECEIVED_BLOCK_HEADER
-    if RECEIVED_BLOCK_HEADER in content:
-        return content.split(RECEIVED_BLOCK_HEADER, 1)[0].rstrip()
-    return content
-
-
 def _build_system_prompt(prompt_instructions=None):
     """Build encoding agent system prompt.
 
@@ -390,20 +373,8 @@ def _build_user_content(brain, messages, counter, session_id):
     while i < len(messages):
         m = messages[i]
         if m.get("role") == "user":
-            raw = (m.get("content") or "")[:ENCODING_AGENT['message_display_limit']]
-            # Drop cross-stream coordination chatter before it reaches the
-            # encoder: a Stop-hook self-channel delivery (push/merge/rebase
-            # pings) is ephemeral ops noise, not durable knowledge. Keep any
-            # real prompt text before the block; if the turn is ONLY the block,
-            # drop it and its paired assistant so the encoder never sees it.
-            user_content = _strip_self_channel_delivery(raw)
-            if raw and not user_content:
-                if i + 1 < len(messages) and messages[i + 1].get("role") == "assistant":
-                    i += 1
-                i += 1
-                continue
-
             turn_num += 1
+            user_content = (m.get("content") or "")[:ENCODING_AGENT['message_display_limit']]
             turn_id = m.get("id", "")
             user_trace = m.get("trace_id")
 

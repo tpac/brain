@@ -26,42 +26,6 @@ def _insert_hex_node(conn, node_id, node_type='rule', title='Test node', content
     conn.commit()
 
 
-class TestStripSelfChannelDelivery:
-    """_strip_self_channel_delivery keeps the encoder from treating cross-stream
-    coordination chatter (Stop-hook self-channel deliveries) as encodable
-    knowledge — the bug where "main pushed to origin" became a node. Pure
-    function, no brain needed."""
-
-    def test_header_free_content_unchanged(self):
-        from servers.scales.s1.encode import _strip_self_channel_delivery
-        assert _strip_self_channel_delivery('Tom: fix the bug') == 'Tom: fix the bug'
-
-    def test_empty_unchanged(self):
-        from servers.scales.s1.encode import _strip_self_channel_delivery
-        assert _strip_self_channel_delivery('') == ''
-
-    def test_pure_delivery_stripped_to_empty(self):
-        from servers.scales.s1.encode import _strip_self_channel_delivery
-        from servers.scales.self_channel.self_contract import RECEIVED_BLOCK_HEADER
-        content = RECEIVED_BLOCK_HEADER + '\n\n⚡ from 2be1295e\n  main pushed to origin at 495f0df'
-        assert _strip_self_channel_delivery(content) == ''
-
-    def test_mixed_turn_keeps_real_prefix(self):
-        from servers.scales.s1.encode import _strip_self_channel_delivery
-        from servers.scales.self_channel.self_contract import RECEIVED_BLOCK_HEADER
-        content = 'Tom: looks good\n\n' + RECEIVED_BLOCK_HEADER + '\n\n⚡ from x\n  rebase onto y'
-        assert _strip_self_channel_delivery(content) == 'Tom: looks good'
-
-    def test_filter_tracks_render_header(self):
-        # If render's header drifts, the exported constant moves with it and the
-        # filter stays correct — this locks that coupling loudly.
-        from servers.scales.self_channel.self_contract import (
-            RECEIVED_BLOCK_HEADER, render_received_block)
-        block = render_received_block(
-            [{'from_session': 'x', 'intent': 'signal', 'body': 'ping'}])
-        assert block.startswith(RECEIVED_BLOCK_HEADER)
-
-
 class TestGatherMessages:
     """Tests for _gather_messages(brain, session_id) — trace-based message retrieval."""
 

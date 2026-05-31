@@ -219,12 +219,6 @@ def _render_one(m):
     return render_signal(body, stream_short=m.get("from", ""))
 
 
-# The header that prefixes every delivered self-channel bundle. Exported as a
-# constant so consumers (e.g. the S1 Scribe's encode-time filter) can detect
-# and strip cross-stream coordination deliveries without drifting from render.
-RECEIVED_BLOCK_HEADER = "🧵 from your other streams of thought"
-
-
 def render_received_block(messages, cap=RECEIVED_BLOCK_MAX):
     """Compose drained self-messages into ONE budgeted Observation block.
 
@@ -237,7 +231,7 @@ def render_received_block(messages, cap=RECEIVED_BLOCK_MAX):
     (caller skips the block entirely)."""
     if not messages:
         return ""
-    head = RECEIVED_BLOCK_HEADER
+    head = "🧵 from your other streams of thought"
     parts, used, dropped = [], len(head), 0
     for i, m in enumerate(messages):
         rendered = _render_one(m).strip()
