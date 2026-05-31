@@ -920,12 +920,17 @@ class TraceDAL:
         # Get S0 events for this session, chronologically.
         # v29: select `id` (8-char hex trace_event.id) so callers can render
         # [trace:<hex>] markers — the encoder copies these into source_refs.
+        # Conversation window = the conversational ref_types defined by the S0
+        # turn-classification contract (single source of truth for what the
+        # encoder reads — see trace_contract.CONVERSATIONAL_REF_TYPES).
+        from .trace_contract import CONVERSATIONAL_REF_TYPES
+        _refs = ",".join("?" * len(CONVERSATIONAL_REF_TYPES))
         rows = self.conn.execute(
             "SELECT id, chain_id, event_type, ref_type, summary, metadata, created_at "
             "FROM trace_events WHERE scale = 's0' AND session_id = ? "
-            "AND event_type IN ('K', 'delta') AND ref_type IN ('user_message', 'assistant_message') "
-            "ORDER BY created_at ASC",
-            (session_id,)).fetchall()
+            "AND event_type IN ('K', 'delta') AND ref_type IN (%s) "
+            "ORDER BY created_at ASC" % _refs,
+            (session_id, *CONVERSATIONAL_REF_TYPES)).fetchall()
 
         # Group by chain (each chain = one stop = user+assistant pair)
         chains = {}

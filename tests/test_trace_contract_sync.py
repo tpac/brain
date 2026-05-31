@@ -408,3 +408,38 @@ class TestEdgeReviseContract:
             ])
         assert len(meta['deltas']) == 2
         assert all(d['old'] is None for d in meta['deltas'])
+
+
+class TestS0TurnClassification:
+    """The S0 turn-classification contract — single source of truth for which
+    turns are conversation worth encoding (vs. recorded-only). See the
+    'S0 TURN CLASSIFICATION' block in trace_contract.py."""
+
+    def test_heartbeat_is_a_valid_s0_incoming_ref_type(self):
+        from servers.trace_contract import validate_trace_event
+        ok, _ = validate_trace_event('s0', 'K', 'heartbeat')
+        assert ok, "heartbeat must be a valid (s0, K) ref_type"
+
+    def test_only_user_message_is_conversational_today(self):
+        # Locks the decisions: operator prompts encode; anchor↔anchor is OFF for
+        # now; heartbeats never. Flipping self_message is a deliberate change.
+        from servers.trace_contract import S0_CONVERSATIONAL_INCOMING
+        assert S0_CONVERSATIONAL_INCOMING['user_message'] is True
+        assert S0_CONVERSATIONAL_INCOMING['self_message'] is False
+        assert S0_CONVERSATIONAL_INCOMING['heartbeat'] is False
+
+    def test_conversational_ref_types_derived_from_one_dial(self):
+        # CONVERSATIONAL_REF_TYPES must be DERIVED from S0_CONVERSATIONAL_INCOMING
+        # (the single dial) + the assistant response side — never hardcoded.
+        from servers.trace_contract import (
+            CONVERSATIONAL_REF_TYPES, S0_CONVERSATIONAL_INCOMING)
+        expected = tuple(
+            rt for rt, conv in S0_CONVERSATIONAL_INCOMING.items() if conv
+        ) + ('assistant_message',)
+        assert CONVERSATIONAL_REF_TYPES == expected
+
+    def test_whitelist_unchanged_zero_behavior_guard(self):
+        # The get_session_turns whitelist must still be exactly the pre-refactor
+        # pair — guards the Phase-1 repoint as genuinely zero-behavior-change.
+        from servers.trace_contract import CONVERSATIONAL_REF_TYPES
+        assert set(CONVERSATIONAL_REF_TYPES) == {'user_message', 'assistant_message'}

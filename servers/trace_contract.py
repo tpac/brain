@@ -60,8 +60,11 @@ EVENT_TYPES = {
 REF_TYPES = {
     # Scale 0: raw exchange
     ("s0", "K"):       ["user_message",
-                         "self_message"],     # incoming turn from a stream of thought (self↔self),
+                         "self_message",      # incoming turn from a stream of thought (self↔self),
                                               # not the operator — same exchange, different correspondent
+                         "heartbeat"],        # a /watch wakeup re-arm with no real input (no operator
+                                              # prompt, empty inbox). Recorded for observability, but
+                                              # NOT a conversational turn — see S0 TURN CLASSIFICATION.
     ("s0", "delta"):   ["assistant_message", "tool_result",
                          "node_revised", "edge_relation_revised"],
     ("s0", "outcome"): ["correction", "follow_up"],
@@ -142,6 +145,44 @@ REF_TYPES = {
     ("s4", "outcome"): ["adopted",             # finding was used by Tom/Anchor
                          "rejected"],           # Tom rejected the finding
 }
+
+
+# ── S0 TURN CLASSIFICATION ──
+# Every stop produces one S0 turn, classified by its incoming-side (s0,"K")
+# ref_type. NOT every turn is a conversation worth encoding. This is the single
+# source of truth for "what's filtered and what's not" — consumers read these
+# constants instead of re-deciding inline.
+#
+#   incoming ref_type   what it is                                conversational?
+#   ──────────────────────────────────────────────────────────────────────────
+#   user_message        real operator prompt (hook_recall ran;     YES
+#                        last_user_activity reset this turn)
+#   self_message        inbound msg from another stream            no  (planned)
+#                        (anchor↔anchor)
+#   heartbeat           /watch wakeup re-arm, no real input        no  (never)
+#                        (no prompt + empty inbox)
+#
+# "conversational" means BOTH: (a) the turn ticks the S1 Scribe's stop_counter
+# (daemon_hooks: counter % 5 gate), and (b) the encoder reads it via
+# get_session_turns. Non-conversational turns are still written to S0 (for
+# observability) but never drive or feed encoding.
+#
+# anchor↔anchor encoding is a PLANNED capability, switched OFF today. The single
+# dial to enable it is below: flip self_message to True. heartbeat stays False
+# forever.
+S0_CONVERSATIONAL_INCOMING = {
+    "user_message": True,
+    "self_message": False,   # recorded today; flip to True to encode anchor↔anchor turns
+    "heartbeat":    False,   # a wakeup re-arm is never a turn
+}
+
+# Flat ref_type set the encoder's conversation window (dal.get_session_turns)
+# selects: the conversational incoming types + the assistant response side.
+# DERIVED from S0_CONVERSATIONAL_INCOMING so there is exactly one dial — flipping
+# a type there updates both the Scribe counter gate and the encoder whitelist.
+CONVERSATIONAL_REF_TYPES = tuple(
+    rt for rt, conv in S0_CONVERSATIONAL_INCOMING.items() if conv
+) + ("assistant_message",)
 
 
 # ── CHAIN ID CONVENTIONS ──
