@@ -1040,8 +1040,7 @@ def _health_monitor():
             # daemon-independent table hook_common.log_hook_error writes to, so
             # the dashboard errors panel + query_logs surface it whether the
             # hook-side detector or this idle ping-loop detector fires first.
-            # (Replaces the retired brain_dashboard.db.hook_log write — completes
-            # the brain_dashboard.db deprecation.)
+            # The hook_errors SQL lives in LogsDAL (no raw SQL in the MCP layer).
             try:
                 db_dir = os.environ.get("BRAIN_DB_DIR", "")
                 if not db_dir:
@@ -1050,29 +1049,15 @@ def _health_monitor():
                     if os.path.isdir(candidate):
                         db_dir = candidate
                 if db_dir and os.path.isdir(db_dir):
-                    from datetime import datetime as _dt, timezone as _tz
-                    # ISO-T, not datetime('now'): hook_errors.created_at is
-                    # lex-compared by the dashboard's `created_at > ?` window.
-                    ts = _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                    from servers.dal import LogsDAL
                     conn = sqlite3.connect(os.path.join(db_dir, "brain_logs.db"), timeout=3)
-                    conn.execute(
-                        """CREATE TABLE IF NOT EXISTS hook_errors (
-                               id INTEGER PRIMARY KEY AUTOINCREMENT,
-                               created_at TEXT NOT NULL, hook_name TEXT NOT NULL,
-                               level TEXT NOT NULL DEFAULT 'error', error TEXT NOT NULL,
-                               context TEXT DEFAULT '', traceback TEXT DEFAULT '',
-                               surfaced INTEGER DEFAULT 0)""")
-                    conn.execute(
-                        "INSERT INTO hook_errors (created_at, hook_name, level, error, context) "
-                        "VALUES (?, ?, ?, ?, ?)",
-                        (ts, "DAEMON_DOWN", "critical",
-                         "Daemon unreachable — MCP health monitor detected failure",
-                         "mcp_health_monitor"))
-                    conn.execute(
-                        "DELETE FROM hook_errors WHERE id NOT IN "
-                        "(SELECT id FROM hook_errors ORDER BY id DESC LIMIT 200)")
-                    conn.commit()
-                    conn.close()
+                    try:
+                        LogsDAL(conn).log_hook_error(
+                            "DAEMON_DOWN",
+                            "Daemon unreachable — MCP health monitor detected failure",
+                            context="mcp_health_monitor", level="critical")
+                    finally:
+                        conn.close()
             except Exception:
                 pass
 

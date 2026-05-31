@@ -85,6 +85,31 @@ class LogsDAL:
         )
         commit_unless_batched(self.conn)
 
+    # ── hook_errors ──
+    # The daemon-independent error table the dashboard + boot read. Hook scripts
+    # write it raw (they can't reliably import this DAL); in-process callers
+    # (e.g. the MCP health monitor) route here so the hook_errors SQL lives in
+    # exactly one place rather than scattered raw across the codebase.
+    def log_hook_error(self, hook_name: str, error: str, context: str = "",
+                       level: str = "error", traceback_str: str = "") -> None:
+        """Append a hook_errors row (creating the table if absent) and prune to
+        the most recent 200. Mirrors the schema hook_common.log_hook_error uses."""
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS hook_errors ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, "
+            "hook_name TEXT NOT NULL, level TEXT NOT NULL DEFAULT 'error', "
+            "error TEXT NOT NULL, context TEXT DEFAULT '', "
+            "traceback TEXT DEFAULT '', surfaced INTEGER DEFAULT 0)")
+        self.conn.execute(
+            "INSERT INTO hook_errors (created_at, hook_name, level, error, context, traceback) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (iso_now(), hook_name, level, str(error), context[:500],
+             (traceback_str or "")[:2000]))
+        self.conn.execute(
+            "DELETE FROM hook_errors WHERE id NOT IN "
+            "(SELECT id FROM hook_errors ORDER BY id DESC LIMIT 200)")
+        commit_unless_batched(self.conn)
+
     def get_recent_errors(self, hours: int = 24, limit: int = 20) -> List[Dict[str, Any]]:
         """Get recent errors from debug_log."""
         rows = self.conn.execute(
