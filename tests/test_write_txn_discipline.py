@@ -94,6 +94,58 @@ class TestNoSelfCommitInDAL(unittest.TestCase):
             "brain_batch atomicity. Offending lines: %s" % offenders)
 
 
+class TestBrainSelfCommitsAreMarked(unittest.TestCase):
+    """Source contract for the brain mixins (brain.py + brain_*.py): a
+    `self.conn.commit()` statement is allowed ONLY at an explicit durability
+    point tagged `# commit-ok: <reason>` (save/autosave, shutdown, a backfill
+    that holds write_lock). Every OTHER self.conn write must route through
+    self._maybe_commit() / commit_unless_batched so it respects conn.in_batch.
+
+    Closes the blind spot the F3 code review found: the dal*.py-only scan above
+    did not cover brain.py, where log_communication once self-committed and
+    bypassed the gate. Markers make the few legitimate exceptions explicit and
+    auditable instead of invisible."""
+
+    def test_brain_self_conn_commits_are_marked(self):
+        offenders = []
+        paths = (glob.glob(os.path.join(_SERVERS_DIR, 'brain.py')) +
+                 glob.glob(os.path.join(_SERVERS_DIR, 'brain_*.py')))
+        for path in paths:
+            with open(path, encoding='utf-8') as f:
+                for lineno, line in enumerate(f, 1):
+                    # Only real statements (stripped line starts with the call),
+                    # not docstring/comment prose that happens to mention it.
+                    if line.strip().startswith('self.conn.commit()'):
+                        if 'commit-ok:' not in line:
+                            offenders.append('%s:%d' % (os.path.basename(path), lineno))
+        self.assertEqual(
+            offenders, [],
+            "A self.conn.commit() in a brain mixin must either route through "
+            "self._maybe_commit() (gate on conn.in_batch) or be tagged "
+            "`# commit-ok: <reason>` if it's a deliberate explicit-durability "
+            "point. Untagged offenders: %s" % offenders)
+
+
+class TestSetConfigHoldsWriteLock(unittest.TestCase):
+    """set_config is a foreground self.conn write that S2 maintenance calls
+    lock-free on a pool thread (gating timestamps, failure counters, journals).
+    It MUST hold write_lock so it can't interleave with a concurrent client
+    brain_batch on the shared connection — without it, set_config's INSERT
+    joins the batch's open transaction and is lost if the batch rolls back.
+    (Source contract — the behavioral race is timing-dependent to reproduce
+    deterministically; this locks the guard that prevents it.)"""
+
+    def test_set_config_acquires_write_lock(self):
+        from servers.brain import Brain
+        src = inspect.getsource(Brain.set_config)
+        self.assertIn(
+            'with self.write_lock', src,
+            "Brain.set_config must acquire write_lock — S2 maintenance calls it "
+            "lock-free on a pool thread, and without the lock its INSERT "
+            "interleaves with a concurrent brain_batch on the shared connection "
+            "and is lost on rollback.")
+
+
 class TestGraphWritersHaveNoCommitKwarg(unittest.TestCase):
     """Signature contract: the batch-reachable GraphDAL writers expose no
     `commit` parameter. The old forgettable knob is gone — the writer reads

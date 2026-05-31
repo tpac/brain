@@ -14,6 +14,26 @@
 > contracts; verified they flag the pre-fix state). Full doc:
 > `docs/WRITE-TXN-ISOLATION-ROOTFIX.md` → "Root fix — shipped (Option A)".
 
+> **F3 code-review remediation (2026-05-30, `dal-cleanup-2`):** a high-effort
+> segmented `/code-review` of the F3 commit surfaced a **pre-existing**
+> concurrency gap (not an F3 regression): S2 maintenance calls `brain.set_config`
+> **lock-free** on a pool thread (gating timestamps, failure counters, journals),
+> concurrent with a client `brain_batch` holding `write_lock`+`in_batch=True` on
+> the shared `brain.conn`. With `commit_unless_batched` now on `BrainMetaDAL.set`,
+> the config INSERT folds into the batch txn and is lost on rollback. **Fixed:**
+> `brain.set_config` now acquires `write_lock` (RLock, reentrant-safe) — it
+> serializes against `brain_batch` (which resets `in_batch` before releasing the
+> lock), so a non-owner thread never observes `in_batch`. Also: `log_communication`'s
+> bare `self.conn.commit()` routed through `_maybe_commit()`; the guardrail widened
+> to scan `brain.py`+`brain_*.py` (legit explicit-durability commits tagged
+> `# commit-ok:`). **⚠ FLAGGED, not fixed (pre-existing, untouched by F3):**
+> `Brain.save()` is also called **lock-free** in `_run_idle_maintenance`
+> (daemon_server.py:831) and does an unconditional `self.conn.commit()` — same
+> race class (could commit a concurrent client batch's partial state). Spawned as
+> a separate follow-up task. Per-write `write_lock` (matching `set_config` and the
+> encoder dispatch at `base.py:319`) is the fix, NOT wrapping all of maintenance
+> (that would hold the lock across S2 LLM calls).
+
 > **Code-review fixes (`0cd1c1d`, 2026-05-30):** an xhigh review found Phase-1's
 > F3 fix was **incomplete** — 3 reachable GraphDAL writer calls still self-committed
 > inside a batch (co_anchored auto-edges in remember+revise, the untyped `connect()`

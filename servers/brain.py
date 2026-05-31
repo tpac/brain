@@ -1293,7 +1293,7 @@ class Brain(
                              'followed': host_followed, 'context': context}),
                  ts)
             )
-            self.conn.commit()
+            self._maybe_commit()  # gated commit (was bare self.conn.commit())
         except Exception:
             pass
 
@@ -1461,8 +1461,21 @@ class Brain(
         return {'updated': updated, 'takes_effect': 'next boot'}
 
     def set_config(self, key: str, value: Any) -> Dict[str, Any]:
-        """Set a config value in brain_meta via DAL. Persists across restarts."""
-        self._meta.set(key, str(value))
+        """Set a config value in brain_meta via DAL. Persists across restarts.
+
+        Holds write_lock. set_config is a foreground self.conn write, and S2
+        maintenance calls it lock-free on a pool thread (gating timestamps,
+        failure counters, journals). Without the lock those writes interleave
+        with a concurrent client brain_batch on the shared connection: the
+        INSERT joins the batch's open transaction and BrainMetaDAL.set's
+        commit_unless_batched then no-ops (in_batch=True), so the config write
+        is lost if the batch rolls back. The lock serializes set_config against
+        brain_batch (which resets in_batch before releasing the lock), so a
+        non-owner thread never observes in_batch. write_lock is an RLock, so a
+        caller already holding it (encoder dispatch, a batch) re-acquires safely.
+        """
+        with self.write_lock:
+            self._meta.set(key, str(value))
         return {'key': key, 'value': value, 'updated_at': self.now()}
 
     # ══════════════════════════════════════════════════════════════════
@@ -1944,7 +1957,7 @@ class Brain(
         Args:
             backup: If True, create a backup copy
         """
-        self.conn.commit()
+        self.conn.commit()  # commit-ok: explicit durability point (save/autosave)
         try:
             self.logs_conn.commit()
         except Exception:
@@ -1967,7 +1980,7 @@ class Brain(
         commit failures from close failures.
         """
         try:
-            self.conn.commit()
+            self.conn.commit()  # commit-ok: final commit on shutdown
         except Exception as e:
             self._log_error('brain_close_commit', e, 'primary conn final commit')
         try:
