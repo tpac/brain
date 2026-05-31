@@ -118,6 +118,39 @@ class BrainRememberMixin:
     # Unified archive — single path for all archive operations
     # ═══════════════════════════════════════════════════════════════
 
+    def delete_node_cascade(self, node_id: str) -> None:
+        """Hard-delete a node and EVERY child-table row, routed through the
+        owning DALs — the one place that knows all child tables. Replaces the
+        hand-rolled NodeDAL.purge, which deleted only node_enrichments /
+        node_metadata_kv / edges / nodes and LEAKED node_vectors +
+        node_source_refs (orphan rows on every purge). Irreversible — use
+        archive_node() for soft delete.
+
+        Atomic: the deletes run inside one connection-level batch envelope so a
+        mid-cascade failure leaves the node intact rather than half-deleted
+        (matching purge's old single-commit behaviour, now complete). Composes
+        safely if called inside an outer batch — it defers the commit to the
+        owner via the saved in_batch state."""
+        if not node_id:
+            return
+        prior = self.conn.in_batch
+        self.conn.in_batch = True
+        try:
+            self._vec_dal.delete_for_node(node_id)     # node_enrichments
+            self._tfidf.delete_for_node(node_id)       # node_vectors
+            self._meta_kv.delete_all(node_id)          # node_metadata_kv
+            self._graph.hard_delete_node_edges(node_id)  # edges + edge_relations
+            self._graph.delete_source_refs(node_id)    # node_source_refs
+            self._nodes.delete(node_id)                # nodes
+            if not prior:
+                self.conn.commit()  # commit-ok: single atomic node-delete cascade
+        except Exception:
+            if not prior:
+                self.conn.rollback()
+            raise
+        finally:
+            self.conn.in_batch = prior
+
     def archive_node(self, node_id: str, archived_by: str,
                      reason: str = '', extra: Dict[str, Any] = None) -> Dict[str, Any]:
         """Archive a node. Single path for all callers.

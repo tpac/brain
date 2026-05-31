@@ -1594,16 +1594,6 @@ class NodeDAL:
         )
         commit_unless_batched(self.conn)
 
-    def purge(self, node_id: str) -> None:
-        """Hard delete a node and ALL associated data.
-        Removes: node, embeddings, enrichments, edges (both directions), metadata KV.
-        Use archive() for soft delete. This is irreversible."""
-        self.conn.execute('DELETE FROM node_enrichments WHERE node_id = ?', (node_id,))
-        self.conn.execute('DELETE FROM node_metadata_kv WHERE node_id = ?', (node_id,))
-        self.conn.execute('DELETE FROM edges WHERE source_id = ? OR target_id = ?', (node_id, node_id))
-        self.conn.execute('DELETE FROM nodes WHERE id = ?', (node_id,))
-        commit_unless_batched(self.conn)
-
     def unlock(self, node_id: str) -> None:
         """Unlock a node."""
         self.conn.execute(
@@ -2578,6 +2568,27 @@ class GraphDAL:
         commit_unless_batched(self.conn)
         return archived_count
 
+    def hard_delete_node_edges(self, node_id: str) -> int:
+        """HARD-delete every edge touching a node — both the `edge_relations`
+        rows and the `edges` aggregate rows. For the node delete-cascade: a hard
+        node delete must leave no edge or relation rows. Contrast
+        delete_node_edges, which SOFT-archives (archived=1) to preserve history
+        for a still-live node. Returns the count of `edges` rows removed."""
+        if not node_id:
+            return 0
+        edge_ids = [r[0] for r in self.conn.execute(
+            'SELECT edge_id FROM edges WHERE source_id = ? OR target_id = ?',
+            (node_id, node_id)).fetchall()]
+        if edge_ids:
+            ph = ','.join('?' * len(edge_ids))
+            self.conn.execute(
+                'DELETE FROM edge_relations WHERE edge_id IN (%s)' % ph, edge_ids)
+        n = self.conn.execute(
+            'DELETE FROM edges WHERE source_id = ? OR target_id = ?',
+            (node_id, node_id)).rowcount
+        commit_unless_batched(self.conn)
+        return n
+
     def decay_edges(self) -> Dict[str, Any]:
         """Apply exponential decay to auto-generated edge relations.
 
@@ -3073,6 +3084,15 @@ class GraphDAL:
             'SELECT node_id FROM node_source_refs WHERE trace_id = ?',
             (trace_id,)).fetchall()
         return [r[0] for r in rows]
+
+    def delete_source_refs(self, node_id: str) -> None:
+        """Delete all source_refs for a node (node_source_refs table). Used by
+        the node delete-cascade so a hard delete leaves no orphan ref rows."""
+        if not node_id:
+            return
+        self.conn.execute(
+            'DELETE FROM node_source_refs WHERE node_id = ?', (node_id,))
+        commit_unless_batched(self.conn)
 
 
 def _now() -> str:
