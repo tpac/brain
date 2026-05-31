@@ -26,13 +26,15 @@
 > lock), so a non-owner thread never observes `in_batch`. Also: `log_communication`'s
 > bare `self.conn.commit()` routed through `_maybe_commit()`; the guardrail widened
 > to scan `brain.py`+`brain_*.py` (legit explicit-durability commits tagged
-> `# commit-ok:`). **⚠ FLAGGED, not fixed (pre-existing, untouched by F3):**
-> `Brain.save()` is also called **lock-free** in `_run_idle_maintenance`
-> (daemon_server.py:831) and does an unconditional `self.conn.commit()` — same
-> race class (could commit a concurrent client batch's partial state). Spawned as
-> a separate follow-up task. Per-write `write_lock` (matching `set_config` and the
-> encoder dispatch at `base.py:319`) is the fix, NOT wrapping all of maintenance
-> (that would hold the lock across S2 LLM calls).
+> `# commit-ok:`). **Also fixed (same race class, the spawned follow-up):**
+> `Brain.save()` was likewise called **lock-free** in `_run_idle_maintenance`
+> (daemon_server.py:831) with an unconditional `self.conn.commit()` that could
+> commit a concurrent client batch's partial state. `save()` now wraps that
+> commit in `self.write_lock` (RLock — the daemon autosave path that already
+> holds it re-acquires safely; `logs_conn` stays outside, separate DB). Per-write
+> lock granularity (matching `set_config` and the encoder dispatch at
+> `base.py:319`), NOT wrapping all of maintenance. Locked by
+> `TestSaveHoldsWriteLock`.
 
 > **Code-review fixes (`0cd1c1d`, 2026-05-30):** an xhigh review found Phase-1's
 > F3 fix was **incomplete** — 3 reachable GraphDAL writer calls still self-committed
@@ -222,7 +224,11 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 **3b — TF-IDF ✅ (`dal-cleanup-2`):** `brain_remember._store_tfidf_vector` → `self._tfidf.store_tf_vector(node_id, tf)` (the verbatim-reimplemented dead class, now adopted); `_rebuild_tfidf_index` → `clear_all()` + per-node `store_tf_vector` wrapped in `conn.in_batch` (single commit preserved via save/restore + `_maybe_commit`); `brain.py` boot reindex check → `self._tfidf.get_total_docs()==0` + `self._nodes.count(archived=True)`. `_compute_tf`/`_tfidf_tokenize` stay (TF math, not DB). **Dead `_tfidf_score` (single-node, 0 callers) deleted.**
   - *Deferred to Phase 4 (reads):* `_batch_tfidf_scores` is a READ on the **recall hot path** (`brain_recall.py:884`) with subtle semantics (`total_docs = _get_node_count()` ≠ `get_total_docs()`; term-filtered node_vectors read with no exact DAL method). Migrating it needs a new `TfIdfDAL` read method + a `decode_funnel` before/after — belongs in the reads phase, not writes.
   - *Deferred to Phase 4:* `brain_assembly:433` stale-context count is a bespoke filtered `nodes` read (type+locked+archived+created_at), not a TF-IDF write.
-**3c — node writes + titles (pending):** raw `UPDATE nodes …` → `NodeDAL.update_field`/etc.; `SELECT title …` → `NodeDAL.get_title`.
+**3c — node titles ✅ / writes mostly deferred (`dal-cleanup-2`):** the genuinely-clean wins done — `SELECT title FROM nodes WHERE id=?` → `self._nodes.get_title()` at `brain_connections._get_node_title` and `brain_remember` mark_critical (both fetch a real title; full-id exact ≡ get_title's prefix match; the dead bare `except:` in `_get_node_title` dropped). **The raw `UPDATE nodes` sites are NOT clean drop-ins and are deferred (migrating them naively = behavior change for marginal purity):**
+  - `content_summary` backfill (brain_remember ~1270) deliberately omits the `updated_at` bump (it's a derived field; bumping pollutes recency-based recall) — `NodeDAL.update_field` always bumps. Leave raw.
+  - archive node-UPDATE (brain_remember ~167) reuses a single `ts` shared with the archive audit metadata for consistency — `update_field`'s fresh `_now()` would desync them. Leave raw (it lives inside `archive_node`'s larger flow).
+  - bg access-mark (recall_write_queue ~284) is a batched `executemany` multi-field UPDATE on `conn_bg_writer`. Specialized. Leave raw.
+  - **FORK (deferred per cost):** the `revise` generic setter (brain_remember ~980, dynamic multi-field `UPDATE nodes SET %s`) and the personal-annotation writes (~1801/1806, 3-4 fields) are MULTI-field — they'd need a new `NodeDAL.update_fields(node_id, {col: val})` method. Real DAL-first value (revise is the most-trafficked node write) but it's a behavior-sensitive core path; a new method + careful migration is its own scoped task, not a cheap drop-in.
 **Goal:** Adopt the Category-B *write* methods; remove the write violations.
 **Work:** Route `brain_remember.py` TF-IDF block → `TfIdfDAL`; node UPDATEs → `NodeDAL.update_field`/etc.; the 3 `brain._get_*_count` + daemon_server counts → `NodeDAL`/`GraphDAL` counts; node-title reads → `NodeDAL.get_title`.
 **Verify:** `./dev pytest tests/`; `eval/s1_encode_eval.py` (encode path touches remember); decode_funnel for counts on recall.

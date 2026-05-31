@@ -1218,9 +1218,9 @@ class BrainRememberMixin:
         Returns:
             Dict with node_id, status='pending', reason
         """
-        # Verify node exists
-        row = self.conn.execute('SELECT title FROM nodes WHERE id = ?', (node_id,)).fetchone()
-        if not row:
+        # Verify node exists (title is reused in the pending entry below)
+        node_title = self._nodes.get_title(node_id)
+        if node_title is None:
             return {'error': f'Node {node_id} not found'}
 
         try:
@@ -1232,7 +1232,7 @@ class BrainRememberMixin:
             if node_id not in existing_ids:
                 pending.append({
                     'node_id': node_id,
-                    'title': row[0],
+                    'title': node_title,
                     'reason': reason,
                     'requested_at': self.now()
                 })
