@@ -221,20 +221,6 @@ class MetadataDAL:
             (key2, key1)).fetchall()
         return {r[0]: (r[1], r[2]) for r in rows}
 
-    def get_nodes_with_flag(self, key: str, value: str = 'true') -> List[str]:
-        """Get node IDs where a flag is set to a specific value.
-
-        Used for needs_enrichment flags, etc.
-        """
-        rows = self.conn.execute(
-            'SELECT node_id FROM node_metadata_kv WHERE key = ? AND value = ?',
-            (key, value)).fetchall()
-        return [r[0] for r in rows]
-
-    def clear_flag(self, node_id: str, key: str) -> bool:
-        """Delete a flag after it's been processed. Returns True if existed."""
-        return self.delete(node_id, key)
-
     def bulk_set_key(self, key: str, node_values: Dict[str, Any]) -> int:
         """Set the same key on many nodes at once. Returns count written.
 
@@ -251,10 +237,3 @@ class MetadataDAL:
                 (node_id, key, encoded))
             count += 1
         return count
-
-    def field_coverage(self) -> Dict[str, int]:
-        """Get count of nodes per metadata key. For health monitoring."""
-        rows = self.conn.execute(
-            'SELECT key, COUNT(DISTINCT node_id) FROM node_metadata_kv GROUP BY key'
-        ).fetchall()
-        return {r[0]: r[1] for r in rows}

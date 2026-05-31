@@ -456,16 +456,6 @@ class InteractionDAL:
                 'created_at': row[5], 'created_by': row[6],
                 'parent_version': row[7]}
 
-    def list_versions(self, name: str) -> List[Dict[str, Any]]:
-        """List all versions of a single interaction, oldest → newest."""
-        rows = self.conn.execute(
-            'SELECT version, template, parameters, created_at, created_by, parent_version '
-            'FROM interactions WHERE name = ? ORDER BY version ASC',
-            (name,)).fetchall()
-        return [{'version': r[0], 'template': r[1], 'parameters': r[2],
-                 'created_at': r[3], 'created_by': r[4],
-                 'parent_version': r[5]} for r in rows]
-
     def list_all(self) -> List[Dict[str, Any]]:
         """List all interactions: name, max_version, total_versions, active_version."""
         rows = self.conn.execute(
@@ -1569,30 +1559,6 @@ class NodeDAL:
 
         return {"nodes": nodes, "total_count": total_count}
 
-    def get_all_for_reindex(self) -> List[Dict[str, Any]]:
-        """Get all non-archived nodes for TF-IDF reindex.
-
-        Keywords column dropped in schema v28 — TF-IDF text now built from
-        title + content only.
-        """
-        rows = self.conn.execute(
-            'SELECT id, title, content FROM nodes WHERE archived = 0'
-        ).fetchall()
-        return [
-            {'id': r[0], 'title': r[1], 'content': r[2]}
-            for r in rows
-        ]
-
-    def get_all_with_titles(self) -> List[Dict[str, Any]]:
-        """Get all nodes with titles (for absorb/dedup)."""
-        rows = self.conn.execute(
-            'SELECT id, title, type, locked FROM nodes WHERE title IS NOT NULL'
-        ).fetchall()
-        return [
-            {'id': r[0], 'title': r[1], 'type': r[2], 'locked': r[3] == 1}
-            for r in rows
-        ]
-
     # --- Writes ---
 
     # Allowed columns for update_field — whitelist prevents SQL injection
@@ -1852,16 +1818,6 @@ class Fts5DAL:
             import sys as _sys
             print('[Fts5DAL.delete] FTS5 delete failed for %s: %s'
                   % (node_id, e), file=_sys.stderr)
-
-    def rebuild(self):
-        """Full rebuild of FTS5 index from nodes table."""
-        self.conn.execute("DELETE FROM nodes_fts")
-        self.conn.execute("""
-            INSERT INTO nodes_fts (node_id, title, content)
-            SELECT id, title, COALESCE(content, '')
-            FROM nodes WHERE archived = 0
-        """)
-        commit_unless_batched(self.conn)
 
     @staticmethod
     def _sanitize_query(query: str) -> str:
