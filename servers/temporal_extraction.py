@@ -482,10 +482,8 @@ def backfill_node_dates(brain, node_id: str, conn=None) -> int:
     if not row:
         return 0
     title, content = row[0], row[1]
-    kv_pairs = conn.execute(
-        'SELECT key, value FROM node_metadata_kv WHERE node_id = ?',
-        (node_id,),
-    ).fetchall()
+    from .dal_metadata import MetadataDAL
+    kv_pairs = list(MetadataDAL(conn).get(node_id).items())
     intervals = extract_node_intervals(title, content, kv_pairs)
     return write_entity_dates(conn, 'node', node_id, intervals)
 

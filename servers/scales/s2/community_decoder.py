@@ -67,12 +67,10 @@ def read_community_meta(conn, node_id, key, type='str'):
 
     type: 'str', 'float', 'int', 'bool'
     """
-    row = conn.execute(
-        "SELECT value FROM node_metadata_kv WHERE node_id=? AND key=?",
-        (node_id, key)).fetchone()
-    if not row or not row[0]:
+    from ...dal_metadata import MetadataDAL
+    val = MetadataDAL(conn).get_field(node_id, key)
+    if not val:
         return '' if type == 'str' else 0.0 if type == 'float' else 0 if type == 'int' else False
-    val = row[0]
     if type == 'float':
         return _safe_float(val)
     elif type == 'int':
@@ -217,9 +215,7 @@ class CommunityDecoder(IntegrationUnit):
 
         for nid, title, content, conf in rows:
             meta = {}
-            for k, v in self.brain.conn.execute(
-                    "SELECT key, value FROM node_metadata_kv WHERE node_id = ?",
-                    (nid,)).fetchall():
+            for k, v in self.brain._meta_kv.get(nid).items():
                 if k in COMMUNITY_METADATA_KEYS:
                     try:
                         meta[k] = json.loads(v) if v else None
@@ -346,9 +342,7 @@ class CommunityDecoder(IntegrationUnit):
 
         # Bulk-load per-node drift thresholds
         node_drift_thresholds = {}
-        drift_rows = self.brain.conn.execute(
-            "SELECT node_id, value FROM node_metadata_kv "
-            "WHERE key = '_sys_drift_threshold'").fetchall()
+        drift_rows = self.brain._meta_kv.get_all_by_key('_sys_drift_threshold').items()
         for _nid, _val in drift_rows:
             try:
                 node_drift_thresholds[_nid] = float(_val)
