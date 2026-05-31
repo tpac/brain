@@ -567,9 +567,10 @@ class BrainRememberMixin:
         # Precompute IDF for all query terms
         idf_map = {}
         for term in set(query_terms):
-            cursor = self.conn.execute('SELECT count FROM doc_freq WHERE term = ?', (term,))
-            row = cursor.fetchone()
-            df = row[0] if row else 1
+            # `or 1`: an absent term defaults to df=1 (get_doc_freq returns 0),
+            # preserving the original IDF. Existing terms always have count>=1,
+            # so `or 1` only ever rewrites the absent-term case.
+            df = self._tfidf.get_doc_freq(term) or 1
             idf_map[term] = math.log((total_docs + 1) / (df + 1)) + 1
 
         # Build query vector
@@ -591,18 +592,12 @@ class BrainRememberMixin:
         if query_norm == 0:
             return {}
 
-        # Get all matching vectors in one query
+        # Get all matching vectors in one query (term+node filtered)
         unique_terms = list(set(query_terms))
-        term_placeholders = ','.join('?' * len(unique_terms))
-        node_placeholders = ','.join('?' * len(node_ids))
-        cursor = self.conn.execute(
-            f'SELECT node_id, term, tf FROM node_vectors WHERE term IN ({term_placeholders}) AND node_id IN ({node_placeholders})',
-            unique_terms + node_ids
-        )
 
         # Group by node_id
         node_term_maps = {}
-        for node_id, term, tf in cursor.fetchall():
+        for node_id, term, tf in self._tfidf.get_tf_vectors_for(unique_terms, node_ids):
             if node_id not in node_term_maps:
                 node_term_maps[node_id] = {}
             node_term_maps[node_id][term] = tf

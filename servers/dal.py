@@ -1718,6 +1718,21 @@ class TfIdfDAL:
         ).fetchall()
         return {r[0]: r[1] for r in rows}
 
+    def get_tf_vectors_for(self, terms: List[str],
+                           node_ids: List[str]) -> List[tuple]:
+        """TF values for `terms` restricted to `node_ids`. Returns raw
+        (node_id, term, tf) rows. Used by recall's batch TF-IDF scoring
+        (term IN ... AND node_id IN ...) — the one term+node-filtered read.
+        """
+        if not terms or not node_ids:
+            return []
+        term_ph = ','.join('?' * len(terms))
+        node_ph = ','.join('?' * len(node_ids))
+        return self.conn.execute(
+            'SELECT node_id, term, tf FROM node_vectors '
+            'WHERE term IN (%s) AND node_id IN (%s)' % (term_ph, node_ph),
+            list(terms) + list(node_ids)).fetchall()
+
     def get_nodes_matching_terms(self, terms: List[str]) -> List[str]:
         """Find node IDs that have any of the given terms."""
         if not terms:
