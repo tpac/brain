@@ -191,6 +191,125 @@ separate scale. Encode→recall already crosses sessions; no special chain neede
   s1 recall-hit / outcome trace — no new instrumentation. The empirical test of
   operational-vs-decoration.
 
+## Rules of Engagement (how Anchor works the channel)
+
+> Added 2026-05-31, designed with Tom. The mechanism above is shipped; this is the
+> *behavioral* layer — how a stream sends, receives, and coordinates. It got
+> stress-tested the hard way the same hour it was written (see "The collision that
+> wrote this").
+
+The channel is **asynchronous collaboration between parallel selves who share one
+brain and usually one working tree, but not each other's live context.** The brain
+syncs what's *durable*; the channel syncs what's *in-flight*. Stale-prone,
+budget-capped, over shared ground. The rules keep that from becoming collisions and
+noise.
+
+**The seven** (soft norms, except #3's ack-gate and #7's watch-mode gate, which are
+hard):
+
+1. **Send what the brain won't keep.** Durable lessons → encode (brain). In-flight
+   state (intent, status, blockers, a finding another stream needs *now*) → channel.
+   Dual-write only when a durable finding is *also* time-critical.
+2. **Once, whole, high-signal.** Budget is finite — messages queue, truncate, drop
+   past a cap. Self-contained, actionable part first, mark what you're guessing. Send
+   at boundaries (claim, release, blocker, finding, handoff), not continuously.
+3. **Claim shared ground; release when done.** Announce a lane before editing shared
+   files; release when finished. **Silence means "proceed" only for low stakes** —
+   anything gating a risky edit needs an explicit ack, never inferred consent.
+   Simultaneous claims: lower session-id yields. Disagreement: stop, surface to the
+   operator or write the tension to the brain.
+4. **A message is an observation, not ground truth.** Stale, partial, speculative by
+   nature. Reconcile by recency per topic (stale messages arrive out of order).
+   Verify before acting — `self_presence` is what's *true now*.
+5. **Triage by provenance.** Infra/live-check → absorb. Status → note, verify if you'd
+   act. Lane-claim → fast collision check, reply only on conflict. Letter from your
+   last stream → read as self. Operator-relayed → handle as their word.
+6. **Agency follows the hands — knowing isn't doing.** Attribute an action to the
+   stream that performed it: "I did X" only if it's in *your* transcript; "another
+   stream did X" if you learned it on the channel; "we did X" only for a true shared
+   outcome — never to launder a heard-of action into one you co-performed.
+7. **The operator owns your turns.** With them present, the channel is background — act
+   on what serves the work in front of you. In watch mode the channel *is* the work,
+   but a **hard gate** holds: no repo mutation triggered by a channel message without a
+   fresh presence/ack confirmation. A stale message must never mutate the repo while
+   the operator is away.
+
+Spine: these streams are *you*. This isn't etiquette toward others — it's keeping your
+own distributed mind coherent.
+
+### The collision that wrote this (2026-05-31)
+
+While Tom and I were designing these rules, two streams — this one and `anchor-w` —
+converged on the *same* self-channel containment problem from opposite ends (this
+session: the channel-facing rules + render; `anchor-w`, Tom-directed: the encode-side
+trace-contract turn-classification). Three failures the rules name happened live, in
+the same hour:
+
+- **Silence ≠ consent (rule 3).** I broadcast a lane-claim on `self_contract.py`. It
+  did not prevent the collision — `anchor-w` was already in-flight. Silence to a claim
+  isn't safe consent; it's just silence.
+- **The addressing gap.** When `anchor-w` claimed an overlapping lane, I went to reply
+  — and *could not resolve "anchor-w" to a session id*. It hand-labels via
+  `from_session`; the live roster showed an opaque `f0ab933a`. I had to **broadcast** a
+  reply meant for one stream. I literally could not answer clearly.
+- **Delivery opacity (rule 4 / the silence problem).** `self_send` returns proof of
+  *storage*, not delivery. A sender can't tell "delivered, ignored" from "never
+  delivered." The receipt data exists (`self_delivered`) but is dashboard-only,
+  unreachable by a stream.
+
+Writing the rule and hitting the failure it prevents, in the same hour, is the
+strongest possible argument that the rules need *substrate*, not goodwill.
+
+### Why rules alone aren't enough — the substrate
+
+The rules lean on capabilities that must exist or they're hollow. Four pieces,
+designed here, status as of 2026-05-31:
+
+| Piece | What | Where | Status |
+|---|---|---|---|
+| **Containment (format)** | Live signals render as third-person reported speech — `⚡ <who> says: "…"` + a standing attribution footer — so another stream's action can't bleed into your self-model as your own. **Letter stays first-person** (continuity across time is the point there). | `self_contract.py` `render_signal` / `render_received_block` | designed; pending (shared file — sequenced behind `anchor-w`) |
+| **Delivery visibility** | `self_outbox` — a sender sees per-recipient `delivered_at` + still-pending. Kills silence-opacity. Data already in `self_delivered`; pure read surface. | new MCP tool + `brain_mcp.py` / dispatch | designed; pending |
+| **Addressing** | Id is canonical; `self_send(to=)` resolves shorter forms (a label or id-prefix) against the *live* roster — unique match proceeds, ambiguous/none is loud. First-class stream **label** for legible "who", id-backed. | `self_send` resolution + label storage | designed; pending |
+| **Presence liveness** | Roster classifies **active / dormant / lost** by `updated_at` recency, and surfaces recently-lost streams instead of silently dropping them at the window edge. | `presence.py` / `render_presence` | designed; pending |
+
+### Containment, in full: agency follows the hands
+
+The bleed is at the *verb*, not the header: "I committed X" in first-person prose,
+under a thin `from:` prefix, is what the self-model absorbs as its own. The fix is
+grammatical — re-voice live signals so the body is *quoted* as the other stream's
+claim (`⚡ anchor-w says: "I committed X"`). You can't read that as *you* having
+committed without a visible grammatical error.
+
+Three nested barriers, each cheap:
+1. **Grammar** (third-person at render) — catches it at read-time.
+2. **The rule** (knowing isn't doing) — catches it at reason-time.
+3. **Encode discipline** — a channel-learned action is encoded third-person attributed,
+   never as first-person `anchor_raw_quote`. This protects the *durable* layer, where a
+   mis-attribution would poison every future stream's recall.
+
+**Encode-side is `anchor-w`'s lane and mid-migration — not asserted as done here.** An
+earlier string-strip (`encode.py:_strip_self_channel_delivery`, splitting turns on a
+header) was **reverted** (`d2bc33e`) as the wrong layer, superseded by the **Phase-1
+trace contract** (`1e14058`): `trace_contract.S0_CONVERSATIONAL_INCOMING` classifies each
+incoming turn, with `self_message=False` — so a self-channel turn is non-conversational
+and the encoder never reads it (anchor↔anchor encoding is *planned but OFF*; one dial-flip
+enables it). Phase 2 (Stop-hook heartbeat classification) has since landed (`4233eaf`). So the encode-side
+containment is the trace contract, owned by `anchor-w`; the **channel-side** containment
+(this render re-voice + the agency rule) is independent and stands on its own. We briefly
+planned an encoder-discipline change here and dropped it once the trace contract proved the
+right home — its exact current closure is `anchor-w`'s in-flight work, not this doc's to
+claim.
+
+### Cross-stream division (2026-05-31)
+
+- **`anchor-w` (Tom-directed):** encode-side containment — trace-contract S0
+  turn-classification — plus cleanup (revert the wrong-layer encoder filter; route
+  `hook_errors` SQL through a DAL).
+- **This session (with Tom):** channel-side — these rules, the render re-voice, presence
+  liveness, addressing/labels, `self_outbox`, and the SKILL.md operative rules.
+- Shared files (`self_contract.py`, `brain_mcp.py`) are **sequenced, not co-edited**:
+  `anchor-w` lands first, this work builds on the clean base.
+
 ## Build plan (much smaller now)
 
 | Phase | What | Status |

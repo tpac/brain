@@ -117,3 +117,45 @@ def reap_expired(brain):
             'WHERE message_id NOT IN (SELECT id FROM self_inflight)')
         brain.logs_conn.commit()
     return reaped
+
+
+def outbox(brain, from_session, limit=20):
+    """Delivery status of messages THIS stream SENT — the sender-side view that
+    until now only the dashboard had. Per recent in-flight message: which streams
+    have drained (read) it and when, and — for a DIRECTED send — whether the named
+    target is still pending. Closes the gap a sender hit when a reply never came:
+    it tells "delivered, not acted on" apart from "never delivered". Read-only —
+    pure SELECT, no write_lock.
+
+    Broadcast has no fixed recipient set (any live stream may yet drain it), so
+    `pending` is reported only for a directed address; broadcasts just list who has
+    drained so far."""
+    if not from_session:
+        return {'messages': []}
+    cutoff = iso_cutoff(hours=self_contract.DEFAULT_SIGNAL_TTL_HOURS)
+    rows = brain.logs_conn.execute(
+        'SELECT id, address, intent, body, created_at FROM self_inflight '
+        'WHERE from_session = ? AND created_at > ? '
+        'ORDER BY created_at DESC LIMIT ?',
+        (from_session, cutoff, limit)).fetchall()
+    out = []
+    for mid, address, intent, body, created_at in rows:
+        delivered = brain.logs_conn.execute(
+            'SELECT to_session, delivered_at FROM self_delivered '
+            'WHERE message_id = ? ORDER BY delivered_at', (mid,)).fetchall()
+        rec = {
+            'id': mid,
+            'address': address,
+            'intent': intent,
+            'created_at': created_at,
+            'preview': (body or '')[:120] + (' …' if len(body or '') > 120 else ''),
+            'delivered_to': [{'to': (ts or '')[:8], 'at': at} for ts, at in delivered],
+        }
+        target = address.split(':', 1)[1] if ':' in address else address
+        if target == 'broadcast':
+            rec['broadcast'] = True
+        else:
+            rec['target'] = target[:8]
+            rec['pending'] = not any((ts or '') == target for ts, _ in delivered)
+        out.append(rec)
+    return {'messages': out}

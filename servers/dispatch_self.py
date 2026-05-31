@@ -63,3 +63,16 @@ def _handle_self_inbox(brain, args, graph_changes):
     args.session_id = the caller's own session, to fetch messages addressed to it.
     """
     return {"ok": True, "result": {'messages': signal.drain_inbox(brain, to_session=args.get('session_id', '') or '')}}
+
+
+def _handle_self_outbox(brain, args, graph_changes):
+    """Delivery status of the caller's SENT messages — who's drained each, and
+    whether a directed target is still pending. Read-only (sender-side receipt).
+
+    args.from_session = caller's session id (falls back to session_id).
+    args.limit        = optional cap (default 20).
+    """
+    return {"ok": True, "result": signal.outbox(
+        brain,
+        from_session=args.get('from_session', '') or args.get('session_id', '') or '',
+        limit=args.get('limit', 20))}

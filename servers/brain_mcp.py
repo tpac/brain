@@ -668,6 +668,12 @@ def _build_tools():
      "inputSchema": {"type": "object", "required": ["session_id"], "properties": {
          "session_id": {"type": "string", "description": "Your own session id, to fetch messages addressed to you."}}}},
 
+    {"name": "self_outbox",
+     "description": "Delivery status of messages YOU sent to other streams — the receipt view. Per recent message: which streams have drained (read) it and when, and for a directed send whether the target is still pending. Use it to read silence correctly: 'delivered, not acted on' vs 'never delivered' — so you don't wait forever or re-send into the void. Read-only.",
+     "inputSchema": {"type": "object", "properties": {
+         "from_session": {"type": "string", "description": "Your own session id, to look up what you sent (optional; falls back to your session)."},
+         "limit": {"type": "integer", "description": "Max recent sent messages to return (default 20).", "default": 20}}}},
+
     # ── Traces & Interactions ──
     {"name": "query_traces",
      "description": "Query the fractal trace system — O/K/Δ/outcome events at every scale (s0-s4). Use to inspect what happened: what was observed, what knowledge was selected, what changed, what the outcome was. Filter by scale, event_type, ref_type, session_id (single), session_ids (multi), or retrieve a full chain by chain_id. Use grouped=true with session_id to get chains with nested events. session_id and session_ids are authoritative — when either is set, the `hours` window is ignored so historical sessions don't silently empty. Pass one or the other, not both. Traces are the learning loop — higher scales read lower scales' traces.",

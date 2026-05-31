@@ -103,12 +103,36 @@ class TestSelfSignal(BrainTestBase):
         stored = self.brain.logs_conn.execute("SELECT refs FROM self_inflight").fetchone()[0]
         self.assertIn('n29', stored)   # the 30th ref survived (would be gone at a cap of 12)
 
+    def test_outbox_shows_delivery_status(self):
+        """A sender can see who drained its message, and whether a directed target
+        is still pending — silence read correctly (delivered-vs-never-delivered)."""
+        signal.send(self.brain, from_session='A',
+                    address=self_contract.address_for_stream('B'), body='ping B')
+        signal.send(self.brain, from_session='A',
+                    address=self_contract.ADDR_BROADCAST, body='hey all')
+        # Before anyone drains: directed message is pending, nobody delivered.
+        ob = signal.outbox(self.brain, from_session='A')['messages']
+        self.assertEqual(len(ob), 2)
+        directed = [m for m in ob if m.get('target')][0]
+        self.assertTrue(directed['pending'])
+        self.assertEqual(directed['delivered_to'], [])
+        # B drains → directed no longer pending; delivered_to names B.
+        signal.drain_inbox(self.brain, to_session='B')
+        directed2 = [m for m in signal.outbox(self.brain, from_session='A')['messages']
+                     if m.get('target')][0]
+        self.assertFalse(directed2['pending'])
+        self.assertTrue(any(d['to'] == 'B' for d in directed2['delivered_to']))
+
+    def test_outbox_empty_for_silent_stream(self):
+        """A stream that never sent anything has an empty outbox (no crash)."""
+        self.assertEqual(signal.outbox(self.brain, from_session='Z')['messages'], [])
+
     # ── Phase 2b: render + delivery-into-Observation ──
 
     def test_render_received_block_composes(self):
         msgs = [
-            {"body": "first tap", "from": "aaaa1111", "rendered": "⚡ from aaaa1111\n   first tap"},
-            {"body": "second tap", "from": "bbbb2222", "rendered": "⚡ from bbbb2222\n   second tap"},
+            {"body": "first tap", "from": "aaaa1111", "rendered": '⚡ aaaa1111 says:\n   "first tap"'},
+            {"body": "second tap", "from": "bbbb2222", "rendered": '⚡ bbbb2222 says:\n   "second tap"'},
         ]
         block = self_contract.render_received_block(msgs)
         self.assertIn("first tap", block)
@@ -121,7 +145,7 @@ class TestSelfSignal(BrainTestBase):
     def test_render_received_block_overflow_is_loud(self):
         """Over-budget input is bounded AND names the dropped count — no silent cut."""
         msgs = [{"body": "x" * 300, "from": "s%02d" % i,
-                 "rendered": ("⚡ from s%02d\n   " % i) + "x" * 300} for i in range(20)]
+                 "rendered": ('⚡ s%02d says:\n   "' % i) + "x" * 300 + '"'} for i in range(20)]
         block = self_contract.render_received_block(msgs, cap=800)
         self.assertLess(len(block), 800 + 200)   # bounded near the cap
         self.assertIn("more waiting", block)      # overflow is announced

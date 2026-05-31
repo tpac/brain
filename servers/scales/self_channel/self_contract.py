@@ -181,12 +181,19 @@ def render_letter(body, when=""):
 
 
 def render_signal(body, stream_short="", focus="", when=""):
-    """Live signal arriving in O — a tap from another stream, attributed (who +
-    what they're doing) so the reader can judge whether to act."""
+    """Live signal arriving in O — a tap from ANOTHER stream, rendered as REPORTED
+    speech: `who` is a grammatical subject and the body is QUOTED as their claim,
+    never your own first-person assertion. That re-voicing is the containment
+    barrier — you cannot absorb '<who> says: "I did X"' as something YOU did
+    without a visible grammatical error. (The boot letter stays first-person; see
+    render_letter — continuity across time is the point there. This is for live,
+    concurrent streams, where two agencies coexist in one moment and a verb is
+    about to get mis-owned.) `who` is the stream's label, falling back to its
+    short id."""
     who = stream_short or "a live stream"
     tag = " · ".join(p for p in (focus, when) if p)
-    head = "⚡ from %s%s" % (who, (" [%s]" % tag) if tag else "")
-    return "%s\n   %s" % (head, (body or "").strip())
+    head = "⚡ %s%s says:" % (who, (" [%s]" % tag) if tag else "")
+    return '%s\n   "%s"' % (head, (body or "").strip())
 
 
 def render_presence(streams, waiting=0):
@@ -232,7 +239,9 @@ def render_received_block(messages, cap=RECEIVED_BLOCK_MAX):
     if not messages:
         return ""
     head = "🧵 from your other streams of thought"
-    parts, used, dropped = [], len(head), 0
+    note = ("   — what they did is theirs; you know it, you didn't do it. "
+            "Attribute accordingly if you encode.")
+    parts, used, dropped = [], len(head) + len(note), 0
     for i, m in enumerate(messages):
         rendered = _render_one(m).strip()
         if parts and used + len(rendered) + 2 > cap:   # always keep at least one
@@ -244,4 +253,4 @@ def render_received_block(messages, cap=RECEIVED_BLOCK_MAX):
     if dropped:
         body += ("\n\n(+%d more waiting — over the injection budget; "
                  "full text in the dashboard Streams tab)" % dropped)
-    return "%s\n\n%s" % (head, body)
+    return "%s\n%s\n\n%s" % (head, note, body)
