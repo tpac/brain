@@ -1036,7 +1036,12 @@ def _health_monitor():
             sys.stderr.write("[brain-mcp] ALERT: Daemon unreachable for %ds — attempting restart\n" % (
                 int(consecutive_failures * PING_INTERVAL)))
 
-            # Log to dashboard
+            # Persist the outage to brain_logs.db.hook_errors — the same
+            # daemon-independent table hook_common.log_hook_error writes to, so
+            # the dashboard errors panel + query_logs surface it whether the
+            # hook-side detector or this idle ping-loop detector fires first.
+            # (Replaces the retired brain_dashboard.db.hook_log write — completes
+            # the brain_dashboard.db deprecation.)
             try:
                 db_dir = os.environ.get("BRAIN_DB_DIR", "")
                 if not db_dir:
@@ -1044,19 +1049,28 @@ def _health_monitor():
                     candidate = os.path.join(home, "AgentsContext", "brain")
                     if os.path.isdir(candidate):
                         db_dir = candidate
-                if db_dir:
-                    dash_db = os.path.join(db_dir, "brain_dashboard.db")
-                    conn = sqlite3.connect(dash_db, timeout=3)
+                if db_dir and os.path.isdir(db_dir):
+                    from datetime import datetime as _dt, timezone as _tz
+                    # ISO-T, not datetime('now'): hook_errors.created_at is
+                    # lex-compared by the dashboard's `created_at > ?` window.
+                    ts = _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                    conn = sqlite3.connect(os.path.join(db_dir, "brain_logs.db"), timeout=3)
                     conn.execute(
-                        # sql-datetime-ok — mid-deprecation INSERT into brain_dashboard.db.hook_log;
-                        # the dashboard column accepts SQLite-native space-separated timestamps.
-                        # Whole write path slated for removal (see brain memory: brain_dashboard.db deprecation).
-                        """INSERT INTO hook_log (hook_name, timestamp, output_text, operator_text, session_id)
-                           VALUES (?, datetime('now'), ?, ?, ?)""",  # sql-datetime-ok
-                        ("DAEMON_DOWN",
-                         "⚠️ Daemon unreachable — MCP health monitor detected failure",
-                         "⚠️ DAEMON DOWN",
+                        """CREATE TABLE IF NOT EXISTS hook_errors (
+                               id INTEGER PRIMARY KEY AUTOINCREMENT,
+                               created_at TEXT NOT NULL, hook_name TEXT NOT NULL,
+                               level TEXT NOT NULL DEFAULT 'error', error TEXT NOT NULL,
+                               context TEXT DEFAULT '', traceback TEXT DEFAULT '',
+                               surfaced INTEGER DEFAULT 0)""")
+                    conn.execute(
+                        "INSERT INTO hook_errors (created_at, hook_name, level, error, context) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (ts, "DAEMON_DOWN", "critical",
+                         "Daemon unreachable — MCP health monitor detected failure",
                          "mcp_health_monitor"))
+                    conn.execute(
+                        "DELETE FROM hook_errors WHERE id NOT IN "
+                        "(SELECT id FROM hook_errors ORDER BY id DESC LIMIT 200)")
                     conn.commit()
                     conn.close()
             except Exception:

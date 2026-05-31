@@ -1,9 +1,8 @@
 """DB path resolution + read-only SQLite connect helper.
 
-The dashboard reads three databases:
-  brain.db            — nodes, edges, embeddings
-  brain_logs.db       — traces, hook errors, telemetry
-  brain_dashboard.db  — legacy hook_log + assembler comparison
+The dashboard reads two databases:
+  brain.db       — nodes, edges, embeddings
+  brain_logs.db  — traces, hook errors, telemetry
 
 All connections open in read-only mode (`mode=ro`) — the dashboard never
 writes to brain. Writers go through the daemon.
@@ -29,10 +28,6 @@ def brain_db_path() -> str:
 
 def logs_db_path() -> str:
     return os.path.join(_brain_dir(), "brain_logs.db")
-
-
-def dashboard_db_path() -> str:
-    return os.path.join(_brain_dir(), "brain_dashboard.db")
 
 
 @contextmanager

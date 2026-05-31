@@ -52,8 +52,8 @@ SQL_DATETIME_RE = re.compile(
 # touches brain SQLite databases.
 SQL_SCAN_DIRS = ['servers', 'dashboard', 'hooks']
 
-# Lines that are exempt — comments, docstrings, and the one INSERT that
-# hasn't been migrated yet (brain_dashboard.db is mid-deprecation).
+# Paths that are exempt — the helper itself plus test/docstring files that
+# deliberately contain the banned pattern to demonstrate or explain it.
 # Keep this list TIGHT. Every entry is a foothold for the bug.
 SQL_EXEMPT_PATHS = {
     # Documentation references in the helper itself.
@@ -68,8 +68,8 @@ SQL_EXEMPT_PATHS = {
     'dashboard/brain_dashboard_standalone.py',
 }
 
-# Lines containing this marker are exempt (e.g. for the brain_mcp.py:920
-# mid-deprecation INSERT, or any future grandfathered case).
+# Lines containing this marker are exempt — the escape hatch for an
+# intentional datetime('now') against a SQLite-native timestamp column.
 SQL_EXEMPT_MARKER = '# sql-datetime-ok'
 
 
@@ -115,20 +115,11 @@ def test_no_sqlite_datetime_now_in_sql_strings():
             if v:
                 all_violations[rel] = v
 
-    # One known site remains: brain_mcp.py:920 writes datetime('now')
-    # into brain_dashboard.db (mid-deprecation). Allow it via the
-    # in-line marker — but flag if anything else creeps in.
-    BRAIN_MCP_EXPECTED = {
-        'servers/brain_mcp.py': [(920, 'mid-deprecation INSERT into brain_dashboard.db')],
-    }
-
-    # Strip the expected/known site by line number.
-    unexpected = {}
-    for rel, v in all_violations.items():
-        expected_lines = {ln for ln, _ in BRAIN_MCP_EXPECTED.get(rel, [])}
-        new = [(ln, src) for ln, src in v if ln not in expected_lines]
-        if new:
-            unexpected[rel] = new
+    # No grandfathered line-number sites remain: the brain_dashboard.db
+    # mid-deprecation INSERT was retired (DAEMON_DOWN now writes ISO-T to
+    # brain_logs.db.hook_errors). The inline # sql-datetime-ok marker is the
+    # only exemption path now — anything the scan still surfaces is a real bug.
+    unexpected = all_violations
 
     if unexpected:
         msg = ['Found SQL datetime("now",...) calls outside the exempt list:']

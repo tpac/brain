@@ -1,8 +1,9 @@
 """Unified errors view — pulls from every component that records errors.
 
-Sources: brain `debug_log`, `hook_errors`, `conflict_log`, dashboard
-`hook_log` (legacy DAEMON_DOWN events), and `brain_telemetry`. Each source
-contributes a row with a uniform shape so the UI can render them in one feed.
+Sources: brain `debug_log`, `hook_errors` (incl. DAEMON_DOWN — written by both
+the hook-side detector and the MCP health monitor), `conflict_log`, and
+`brain_telemetry`. Each source contributes a row with a uniform shape so the
+UI can render them in one feed.
 
 Previously this file had five copies of the same
 ``with ro_connect: if conn: try: ... except: pass`` block — silent failures
@@ -14,7 +15,7 @@ warnings on any failure.
 import json
 
 from ..clock import utc_cutoff
-from ..db import dashboard_db_path, logs_db_path, ro_connect
+from ..db import logs_db_path, ro_connect
 from ..log import warn
 
 
@@ -60,14 +61,6 @@ def _shape_conflict(r):
     }
 
 
-def _shape_daemon_down(r):
-    return {
-        'source': 'daemon', 'component': 'daemon_down', 'timestamp': r[1],
-        'error': (r[2] or '')[:200], 'context': '',
-        'level': 'critical',
-    }
-
-
 def _shape_telemetry(r):
     return {
         'source': 'telemetry', 'component': r[2], 'timestamp': r[1],
@@ -93,11 +86,6 @@ _SOURCES = [
      "SELECT id, created_at, hook_name, rule_title, brain_decision, resolution "
      "FROM conflict_log WHERE created_at > ? ORDER BY created_at DESC LIMIT ?",
      _shape_conflict, 'conflict_log'),
-    (dashboard_db_path,
-     "SELECT id, timestamp, output_text FROM hook_log "
-     "WHERE hook_name='DAEMON_DOWN' AND timestamp > ? "
-     "ORDER BY id DESC LIMIT ?",
-     _shape_daemon_down, 'dashboard hook_log (legacy)'),
     (logs_db_path,
      "SELECT id, timestamp, operation, error_message FROM brain_telemetry "
      "WHERE success=0 AND timestamp > ? "
@@ -115,8 +103,8 @@ def _pull_source(db_path_fn, sql, shape_fn, label, since_ts, limit):
             rows = conn.execute(sql, (since_ts, limit)).fetchall()
             return [shape_fn(r) for r in rows]
     except Exception as e:
-        # Legacy tables (dashboard/hook_log, brain_telemetry) may not exist on
-        # fresh brains — that's expected and the warn line tells you which one.
+        # The brain_telemetry table may not exist on fresh brains — that's
+        # expected and the warn line tells you which source.
         warn('queries.errors', '%s pull failed' % label, exc=e)
         return []
 
