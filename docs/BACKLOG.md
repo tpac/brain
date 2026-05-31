@@ -47,7 +47,7 @@
 
 | ID | What | Effort | Status |
 |---|---|---|---|
-| **F3** | GraphDAL methods manage transactions inconsistently inside/around brain_batch. **Two symptoms, same root:** (1) commit inside a batch → breaks all-or-nothing rollback; (2) leave a deferred auto-BEGIN open → next `brain_batch` `BEGIN IMMEDIATE` throws *"cannot start a transaction within a transaction"* (reproduced 2026-05-29 in the S2 community multi-pass flush via `build_corpus.py`). Interim guard SHIPPED ([dispatch_write.py:498](../servers/dispatch_write.py:498)) — `brain_batch` flushes a stale txn + logs `brain_batch_stale_txn`. Root-cause analysis + fix options (A: `_batch_mode`-aware GraphDAL; B: `isolation_level=None`): **[docs/WRITE-TXN-ISOLATION-ROOTFIX.md](WRITE-TXN-ISOLATION-ROOTFIX.md)**. | ~1 day | open (guard interim) |
+| **F3** | GraphDAL methods manage transactions inconsistently inside/around brain_batch. Root fix Option A (connection-bound `BatchAwareConnection.in_batch` flag + `commit_unless_batched()` gate; `commit` kwarg removed from 6 writers; `brain._batch_mode` deleted; locked by `tests/test_write_txn_discipline.py`) shipped 2026-05-30 on `dal-cleanup-2`. Interim guard at `dispatch_write.py:498` retained as belt-and-suspenders. See `docs/WRITE-TXN-ISOLATION-ROOTFIX.md`. | ~1 day | **shipped 2026-05-30** |
 | **F6** | Optional hex-format regex warning in `_validate_source_refs` | ~15 min | **shipped 2026-05-26** (commit `07ab3f1` Layer 1 validator) |
 | **F7** | Move `_SOURCE_REFS_SCHEMA` from `brain_mcp.py` to `contract.py` under new `JOIN_TABLE_FIELDS` category (parallel to STRUCTURAL / PROMOTED). Makes contract-sync test implicitly cover field registration. | ~45 min | open |
 
@@ -237,6 +237,11 @@ Eight questions that emerged from the synthesis — not blocking next session's 
 | **Schema v28 — keywords kill** — drop `nodes.keywords` column + rebuild `nodes_fts` without keywords + delete `_extract_keywords`/`enrich_keywords`. Auto-extractor produced near-duplicate tokenizer noise; porter stemming on title+content is cleaner | `8d41c8c` | 2026-05-24 |
 | **Encoder prompt s1e v19** — example cleanup (remove `auto_connect: true` from canonical remember_batch example; no functional change) | (DB-only registration) | 2026-05-24 |
 | **S2 community prompt v17** — same example cleanup + remove "`auto_connect: false` always" rule | (DB-only registration) | 2026-05-24 |
+| **absorb op primitive** — lossless merge (folds one node into another transfer-by-default, then archives the absorbed). See `docs/S2-ABSORB-OP-DESIGN.md`. Consolidation wiring (encoder emits `absorb`) still pending. | `d3a0fa1` | 2026-05-28 |
+| **S2 consolidation v6** — stopped locked-node churn | `714ee68` | 2026-05-28 |
+| **F3 root fix — write-path transaction discipline** — `BatchAwareConnection.in_batch` + `commit_unless_batched()` gate, `commit` kwarg removed from 6 GraphDAL writers, `brain._batch_mode` deleted. See `docs/WRITE-TXN-ISOLATION-ROOTFIX.md`. | (dal-cleanup-2) | 2026-05-30 |
+| **s1e v24 + s1_scout_facts v7 + s1_scout_quote v4 activated** in production | `d0fea6d`, `47f7018` | 2026-05-30 |
+| **Frozen Corpus eval platform** — two-stage harness (`build_corpus.py` → `sweep.py`), content-addressed, `--interaction-override` for DORMANT-version A/B | `18ac427`, `beb38ff`, `9243600` | 2026-05-30 |
 
 Phase A of episodic references is fully shipped: substrate live, identity stamped on every historical trace, embed worker auto-populating.
 Block 1 substrate cleanup also shipped: MCP trace API live, related_to pollution source closed, keywords column retired, 327-node encoder-quality scan documented in `docs/ENCODER-QUALITY-FINDINGS.md`.
@@ -466,7 +471,7 @@ Priority bands:
 
 ### P2.1 — Agentic Haiku-first recall (7-tool `fetch_batch`)
 
-- **Why:** Design finalized in `FRAME-DESIGN.md` §4. Replaces single-cosine candidate pull with Haiku planning the fetch per-turn. Variable cost, sample-then-deepen, frame-shaped output. The next major recall capability.
+- **Why:** Design finalized in `docs/archive/FRAME-DESIGN.md` §4. Replaces single-cosine candidate pull with Haiku planning the fetch per-turn. Variable cost, sample-then-deepen, frame-shaped output. The next major recall capability. (Note: `BRAIN_SURFACE_VARIANT=v5_agentic` is the live surface variant — that's a different tool surface than this 7-tool `fetch_batch`; don't conflate.)
 - **The 7 tools:** `search(query, mode, limit)`, `find_about(entity, limit)`, `find_open_loops(topic?, limit)`, `trace_lineage(node_id, direction, max_steps)`, `get_community(community_id, query?)`, `find_temporal(when, query?, limit)`, `get_full(node_ids)`. All wrapped in single `fetch_batch` for parallel-op single Haiku turn.
 - **Files:** new `servers/scales/s1/fetch_batch.py`, surface prompt v5, `servers/daemon_dispatch.py` (new commands), tool descriptions.
 - **Effort:** ~2 days.
@@ -570,6 +575,12 @@ First production cycle used `remember_batch` + `brain_batch` = 3 rounds when one
 - **P4.15** — Sibling-map case-sensitivity docstring (B+1.13) — 5 min
 - **P4.16** — Trace metadata bloat (B+1.17) — 30 min after a week of accumulation
 - **P4.17** — Rename `judge_output` → `surface_output` across the trace metadata contract — 1–2h. The S1 surface step was renamed from "judge" → "surface" in commit `620fb4f` (2026-05-03), and the user-facing/code path has been cleaned (commit `b126d98`, 2026-05-09 — `surface.py` no longer falls back to 'judge', orphan 'judge' interaction row deleted). What remains is the trace metadata field name still carrying the legacy "judge_output" — written by `dal.py:get_user_turns` (lines 687–729) into the `judge_output` key of trace dicts, read/asserted on by `tests/test_s1_data_assembly.py`, `tests/test_okd_cycle.py`, `tests/test_scout_muster.py`, `tests/test_trace_system.py`, plus the `pipeline_contract.py` legacy aliases (`format_candidate_for_judge`, `build_judge_prompt`, `format_judge_output` — lines 509–511). One commit: rename the field, drop the aliases, update tests. No data migration needed (it's a derived field assembled from `additionalContext` traces, not stored). Defer until there's another reason to touch dal.py to keep the diff focused.
+- **P4.18** — Dashboard Frame view (from archived FRAME-DESIGN.md §0 punch-list #5) — display the current Frame for any session as observability. Pure read-only; useful for debugging "why did this turn surface what it did." ~1h.
+- **P4.19** — Rename `haiku_id_outside_candidates` → `haiku_id_from_prior_context` + downgrade `_log_error` → debug log (from archived FRAME-DESIGN.md §12.1). Code-verified still firing at `surface.py:701` 2026-05-31. Investigation confirmed it's not a bug — Haiku correctly using multi-turn context, picks IDs from prior turns that resolve to real nodes. Error log is noise; downgrade so real new errors aren't hidden under it. ~20 min.
+- **P4.20** — `spread_seed_no_vectors` archived-node race (from archived FRAME-DESIGN.md §12.1 / Q12). Code-verified still firing at `surface_contract.py:962`. Haiku picks a node from prior-turn context that was archived since; vectors cascade-deleted on archive → spread crashes gracefully but loudly. Two options: (a) vector grace period (don't cascade-delete on archive immediately, keep ~24h), (b) validate Haiku picks against current archived state, classify as `haiku_id_now_archived`. Recommend both. ~1-2h.
+- **P4.21** — Agentic surface trace observability (from archived AGENTIC-SURFACE-CONTRACT.md §5, never shipped). Add 3 new `ref_type` values under `scale='s1'`, `event_type='K'` to `servers/trace_contract.py`: `tool_call` (per tool invocation — `{tool, args, result_count, latency_ms, round_idx}`), `tool_round` (per round boundary — `{round_idx, tools_called, total_tools, elapsed_ms}`), `surface_variant` (per surface call — `{variant, prompt_version}`). Wire emission in `_call_surface_agentic`. Without this, we have no per-turn record of which fetch tools Haiku invoked or how many rounds it ran — opaque agentic loop. ~2-3h.
+- **P4.22** — PostToolUseFailure → failure memory recall (from archived HOOK-BRAIN-INTEGRATION.md #1). When a tool fails, recall lessons about similar failures before Claude retries blindly. Brain data: `lesson` / `failure_mode` / `bug_lesson` nodes matching error context. Handler: command hook (daemon recall with error as query). What Claude sees: "this file failed before because X. The fix was Y." Brain has the answers; nobody asks today. ~1-2h.
+- **P4.23** — SubagentStart → brain context injection (from archived HOOK-BRAIN-INTEGRATION.md #2). Subagents (Explore, Plan, claude-code-guide, general-purpose) currently spawn brain-blind. They repeat mistakes the brain already corrected. Inject `engineering_context()` — conventions, constraints, mechanisms, locked rules — at SubagentStart. Handler: command hook, existing daemon endpoint, no new code. Every subagent we spawn today wastes tokens rediscovering things the brain knows. ~1h.
 
 ---
 
@@ -587,6 +598,11 @@ First production cycle used `remember_batch` + `brain_batch` = 3 rounds when one
 ### Stage 1C — explicitly deferred
 
 Keywords→KV migration. Audit confirmed 0 dual-state. Pick up only if natural.
+
+### Latency tuning (from archived FRAME-DESIGN.md §14, eval-gated)
+
+- **P5.1 — Lighter candidate format** (was §14.3). Reduce per-candidate token cost in surface prompt. Today each candidate is ~250-400 tokens (metadata, situation, edges). Strip what Haiku doesn't actually use for selection. Investigation: what does Haiku actually look at? Could test by ablating each field and checking selection quality. Expected gain: 30 candidates × 100 token savings = 3K tokens per call. Marginal latency, real cost reduction. ~half-day with eval.
+- **P5.2 — Reduce candidate count A/B** (was §14.4). Currently 30 candidates per surface call. A/B `max_candidates ∈ {15, 20, 25, 30, 35}` on the test corpus. Quality vs latency curve. ~1-2h eval.
 
 ### The "irresolvable" tensions
 

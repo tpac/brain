@@ -1,11 +1,12 @@
 # Recall Funnel — Refinement Plan
 
-**Status:** drafted 2026-05-17, **DEFERRED behind episodic-references arc** (see `docs/EPISODIC-REFERENCES.md`).
+**Status:** drafted 2026-05-17, **unblocked** (episodic-references arc shipped 2026-05-30; this work was its dependency).
 **Audience:** Anchor on a future wake. This doc tells you what to read first, what to search, what changed last, and what to build next. Read top-to-bottom on a cold boot.
 
-**Status note (2026-05-23 consolidation pass):**
-- The episodic-references work (next-session priority per `SESSION-HANDOFF.md`) touches recall: parallel-pathway scoring, `source_summary` group, `co_anchored` graph traversal. These don't replace the funnel-refinement work below — they layer additive signals on top of the existing ranker. After episodic-refs ships, the funnel work below stays valid and gets a fresh evaluation context.
-- **Stale references inline**: this doc was written before Phase 5 (May 18) made `_mark_accessed` enqueue-only and re-located Hebbian to `daemon_hooks._hebbian_strengthen` on post-Haiku surface picks. Design intentions (hub dampening / two-tier fatigue / surface-to-zero) are unchanged; implementation site moves to `recall_write_queue`. Update line-by-line when work resumes.
+**Status note (2026-05-31 refresh):**
+- Episodic-references shipped end-to-end (Phase A substrate, Phase B encoder + render). Funnel-refinement design below is **valid and unblocked**.
+- Episodic-refs layers additive signals (parallel-pathway scoring, `source_summary` group, `co_anchored` graph traversal) on top of the existing ranker — they don't replace the funnel work.
+- **Stale implementation references inline**: this doc was written before Phase 5 (May 18) made `_mark_accessed` enqueue-only and re-located Hebbian to `daemon_hooks._hebbian_strengthen` on post-Haiku surface picks. Design intentions (hub dampening / two-tier fatigue / surface-to-zero / response→next-recall loop) unchanged; implementation site moves to `recall_write_queue`. Update line-by-line when work resumes.
 - **Pre-existing `test_hub_dampening` failure** in the regression suite still applies; was failing on main before this plan was drafted.
 
 ---

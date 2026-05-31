@@ -201,7 +201,7 @@ Sections:
 Same Frame at boot and at recall-time — Anchor's prior is symmetric across the lifecycle. Type routing (which node types belong in which section) reads from `brain.aspects.<name>.node_types` — see the Aspects section above.
 
 Files: `servers/scales/s1/frame.py`
-Design: `docs/FRAME-DESIGN.md`, `docs/RECALL-OVERVIEW.md`
+Design: `docs/RECALL-OVERVIEW.md` (historical detail: `docs/archive/FRAME-DESIGN.md`)
 
 ## Scale 1: Turn
 

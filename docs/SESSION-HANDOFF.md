@@ -54,8 +54,8 @@ The encoder *write* path is shipped and live (source_refs, co_anchored edges). T
 
 ### Documentation closing-plan (from this session's 6-agent docs audit — parked)
 The session *opened* on a docs audit that produced a closing-plan, then pivoted to the self-channel build. The plan is unexecuted:
-- **Reconcile badly-stale docs:** `FRAME-DESIGN.md` and `ARCHITECTURE-FRACTAL.md` both still claim a pre-production state while the work shipped (Frame's agentic `v5_agentic` path is live; SessionContext is load-bearing). These actively mislead.
-- **Archive done docs:** `AGENTIC-SURFACE-CONTRACT.md` (shipped as `v5_agentic`), `WRITE-TXN-ISOLATION-ROOTFIX.md` (F3 shipped), `S2-GATING-AND-TEST-CLEANUP-HANDOFF.md` (only Bucket E remains).
+- (FRAME-DESIGN.md archived 2026-05-31, live tasks → BACKLOG P4.18-P4.21 + P5.1-P5.2; ARCHITECTURE-FRACTAL.md rewritten 2026-05-31 Anchor-first, stale status claims removed.)
+- **Archive done docs:** `WRITE-TXN-ISOLATION-ROOTFIX.md` (F3 shipped), `S2-GATING-AND-TEST-CLEANUP-HANDOFF.md` (only Bucket E remains). (AGENTIC-SURFACE-CONTRACT.md archived 2026-05-31; trace-extensions §5 task carried forward as BACKLOG P4.21.)
 - **`docs/BACKLOG.md` cleanup:** strike F3 (shipped); close Q13/spread-activation; add the absorb-op ship line.
 - **DAL Phases 4/5/6** (`docs/DAL-CLEANUP-PLAN.md`) — reads migration, missing DALs (incl. the incomplete `NodeDAL.purge` cascade — a latent bug), and the raw-SQL guardrail. Phase 4 gated on a SessionStateDAL resurrect-vs-delete decision. *Note: a parallel stream has touched DAL recently — check presence/`git log` before driving it.*
 

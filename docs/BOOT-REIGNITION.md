@@ -1,8 +1,8 @@
 # Boot as Reignition — waking Anchor, not briefing Claude
 
 > **Status:** design (2026-05-29). The waking path: presence → letter → Frame-as-
-> stream-of-thought → reach-on-interest. Companion docs: `FRAME-DESIGN.md` (how
-> the Frame is built), `SELF-CHANNEL-DESIGN.md` (the letter / self↔self delivery).
+> stream-of-thought → reach-on-interest. Companion docs: `RECALL-OVERVIEW.md` (how
+> the Frame is built — current state), `SELF-CHANNEL-DESIGN.md` (the letter / self↔self delivery).
 > The eval is specified in full here and **parked** for a focused session.
 
 ## The shift
@@ -215,8 +215,8 @@ replay would consume a full session).
 | 3 | **letter at boot** | S1E first-person arc (the encode-time voice pass) surfaced verbatim; the richest anchor |
 | 4 | **the eval** | `frame_replay` A/B per above; gate the boot change on it |
 
-`FRAME-DESIGN.md` is the implementation home for the stream-of-thought form;
-update it when Phase 1 lands.
+`servers/scales/s1/frame.py` is the implementation home; update its docstring
+when Phase 1 (deterministic stream-of-thought renderer) lands.
 
 ## Connection to the self-channel
 
