@@ -11,7 +11,22 @@ surfacing of the presence line at boot / hook fire is a separate, eval-gated
 step (docs/BOOT-REIGNITION.md) — build it on top of build_presence().
 """
 
+from datetime import datetime, timezone
+
 from servers.scales.self_channel import self_contract
+
+
+def _age_min(iso_ts):
+    """Minutes since `iso_ts` — wall-clock (presence is real-time, exempt from the
+    conversation_now rule, like present_streams). Empty/unparseable → a large age
+    (treated as lost)."""
+    try:
+        dt = datetime.fromisoformat(iso_ts)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - dt).total_seconds() / 60.0
+    except Exception:
+        return 1e9
 
 
 def _focus_line(brain, session_id, max_chars=100):
@@ -35,22 +50,32 @@ def build_presence(brain, my_session_id='', limit=None):
     `peek` drills into.
     """
     cap = limit or self_contract.PRESENCE_MAX_STREAMS
+    # Fetch out to the lost-grace window so a recently-gone stream is visible, not
+    # silently dropped at the live edge; headroom on the limit so lost entries
+    # don't crowd out the live cap.
+    window = self_contract.ROSTER_LIVE_WINDOW_MIN + self_contract.ROSTER_LOST_GRACE_MIN
     raw = brain.present_streams(
         exclude_session=my_session_id or '',
-        window_min=self_contract.ROSTER_LIVE_WINDOW_MIN,
-        limit=cap)
-    streams = []
+        window_min=window,
+        limit=cap + 5)
+    live, lost = [], []
     for r in raw:
         sid = r.get('session_id', '')
-        streams.append({
+        entry = {
             'session_id': sid,
             'short': sid[:8],
             'focus': _focus_line(brain, sid),
             'updated_at': r.get('updated_at', ''),
-        })
+            'state': self_contract.classify_liveness(_age_min(r.get('updated_at', ''))),
+        }
+        if entry['state'] == 'lost':
+            lost.append(entry)
+        elif len(live) < cap:
+            live.append(entry)
     line = self_contract.render_presence(
-        [(s['short'], s['focus']) for s in streams])
-    return {'streams': streams, 'line': line}
+        [(s['short'], s['focus'], s['state']) for s in live],
+        lost=[(s['short'], s['focus']) for s in lost])
+    return {'streams': live, 'lost': lost, 'line': line}
 
 
 def peek(brain, session_id):

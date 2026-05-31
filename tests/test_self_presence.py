@@ -85,6 +85,21 @@ class TestSelfPresence(BrainTestBase):
         out = presence.build_presence(self.brain, my_session_id='other')  # no limit → contract cap
         self.assertEqual(len(out['streams']), self_contract.PRESENCE_MAX_STREAMS)
 
+    def test_liveness_states_and_lost_surfacing(self):
+        """active/dormant/lost by recency; lost surfaced separately (named in the
+        line), kept out of the live roster, not silently dropped at the edge."""
+        self._save_stream('streamACTV', focus='working now')                                  # fresh → active
+        self._save_stream('streamDORM', focus='quiet', updated_at=iso_cutoff(minutes=15))      # → dormant
+        self._save_stream('streamLOST', focus='vanished', updated_at=iso_cutoff(minutes=45))   # → lost (≤60 grace)
+        out = presence.build_presence(self.brain, my_session_id='other', limit=10)
+        states = {s['session_id']: s['state'] for s in out['streams']}
+        self.assertEqual(states.get('streamACTV'), 'active')
+        self.assertEqual(states.get('streamDORM'), 'dormant')
+        lost_ids = {s['session_id'] for s in out['lost']}
+        self.assertIn('streamLOST', lost_ids)              # surfaced...
+        self.assertNotIn('streamLOST', states)             # ...but not in the live roster
+        self.assertIn('lost', out['line'])                 # and named in the line
+
 
 if __name__ == '__main__':
     unittest.main()

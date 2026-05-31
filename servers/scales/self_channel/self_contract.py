@@ -130,7 +130,9 @@ RECEIVED_BLOCK_MAX = 1800          # whole injected self-block, overflow named L
 
 # ── POLICY DEFAULTS (tunable knobs; NOT truncation points) ──────────────
 DEFAULT_SIGNAL_TTL_HOURS = 24      # an undelivered live signal older than a day is dead (drain/reap filter)
-ROSTER_LIVE_WINDOW_MIN = 30        # a stream counts as "live" if it acted within this window
+ROSTER_ACTIVE_WINDOW_MIN = 5       # "active": acted this recently — reach freely, expect a reply
+ROSTER_LIVE_WINDOW_MIN = 30        # "dormant" ceiling: live but quiet (watch-mode asleep / operator away) — sees you next wake
+ROSTER_LOST_GRACE_MIN = 30         # grace past LIVE: a stream gone this recently is surfaced as "lost", not dropped
 PRESENCE_MAX_STREAMS = 3           # roster shows a count + top-K ranked, never enumerates all
 
 # ── Phase 3 forward placeholder (NOT yet enforced) ──────────────────────
@@ -196,15 +198,31 @@ def render_signal(body, stream_short="", focus="", when=""):
     return '%s\n   "%s"' % (head, (body or "").strip())
 
 
-def render_presence(streams, waiting=0):
-    """Ambient roster line — perception, not memory. `streams` = [(short_id,
-    focus), ...] of currently-live streams (excluding the reader)."""
-    if not streams and not waiting:
+def classify_liveness(age_min):
+    """A stream's minutes-since-last-activity → liveness state. The 'state of the
+    peer' a sender needs before relying on the channel: active = here now (reply
+    expected); dormant = live but quiet (sees it on its next wake); lost = just past
+    the live window (surfaced for a grace period, not silently dropped)."""
+    if age_min <= ROSTER_ACTIVE_WINDOW_MIN:
+        return "active"
+    if age_min <= ROSTER_LIVE_WINDOW_MIN:
+        return "dormant"
+    return "lost"
+
+
+def render_presence(streams, lost=(), waiting=0):
+    """Ambient roster line — perception, not memory. `streams` = [(short_id, focus,
+    state), ...] of LIVE streams (active|dormant), excluding the reader; `lost` =
+    [(short_id, focus), ...] just past the window. 'live' counts active+dormant;
+    lost are named at the tail so a vanished peer isn't silently dropped."""
+    if not streams and not lost and not waiting:
         return ""
     line = "%s live: %d" % (STREAM_TERM_PLURAL, len(streams))
-    parts = ["%s: %s" % (sid, focus or "—") for sid, focus in streams]
+    parts = ["%s [%s]: %s" % (sid, state, focus or "—") for sid, focus, state in streams]
     if parts:
         line += " — " + " · ".join(parts)
+    if lost:
+        line += " · %d lost (%s)" % (len(lost), ", ".join(sid for sid, _ in lost))
     if waiting:
         line += " · %d waiting" % waiting
     return line
