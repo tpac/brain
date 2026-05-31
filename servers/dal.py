@@ -919,6 +919,31 @@ class TraceDAL:
 
         return {r[0] or '': r[1] for r in rows}
 
+    def latest_in_window(self, scale: str, ref_type: str,
+                         upper_iso: str, lower_iso: str) -> Optional[Dict[str, str]]:
+        """Most recent trace matching (scale, ref_type) with
+        lower_iso <= created_at <= upper_iso. Returns
+        {'session_id', 'created_at'} or None. Forensic/historic lookup.
+        """
+        row = self.conn.execute(
+            "SELECT session_id, created_at FROM trace_events "
+            "WHERE scale = ? AND ref_type = ? AND created_at <= ? AND created_at >= ? "
+            "ORDER BY created_at DESC LIMIT 1",
+            (scale, ref_type, upper_iso, lower_iso)).fetchone()
+        return {'session_id': row[0], 'created_at': row[1]} if row else None
+
+    def find_by_metadata_substring(self, scale: str, ref_type: str,
+                                   substring: str) -> Optional[Dict[str, str]]:
+        """First trace matching (scale, ref_type) whose metadata contains
+        `substring` (LIKE %substring%). Returns {'session_id', 'created_at'}
+        or None. Used to locate the trace that recorded a given node id.
+        """
+        row = self.conn.execute(
+            "SELECT session_id, created_at FROM trace_events "
+            "WHERE scale = ? AND ref_type = ? AND metadata LIKE ? LIMIT 1",
+            (scale, ref_type, '%' + substring + '%')).fetchone()
+        return {'session_id': row[0], 'created_at': row[1]} if row else None
+
     def get_session_turns(self, session_id: str, limit: int = 20,
                           around_timestamp: str = None,
                           before: int = None, after: int = None) -> List[Dict[str, Any]]:
@@ -2941,6 +2966,19 @@ class GraphDAL:
 
         # Recompute aggregate weight from remaining active relations
         self._update_aggregate_weight(edge_id)
+        commit_unless_batched(self.conn)
+
+    def rename_relation(self, edge_id: str, old_relation: str,
+                        new_relation: str, encoding_source: str) -> None:
+        """Rename a relation on an edge (S2 reclassify) — updates the matching
+        row's relation + encoding_source in place. No weight recompute: a
+        rename changes neither weights nor the active-relation count. Commit
+        gated on self.conn.in_batch (commit_unless_batched).
+        """
+        self.conn.execute(
+            "UPDATE edge_relations SET relation = ?, encoding_source = ? "
+            "WHERE edge_id = ? AND relation = ?",
+            (new_relation, encoding_source, edge_id, old_relation))
         commit_unless_batched(self.conn)
 
     def _update_aggregate_weight(self, edge_id):

@@ -158,27 +158,18 @@ def _find_encoding_session(brain, node_id, node_created_at):
     short_id = node_id[:8]
     try:
         # Direct match: S1E trace metadata contains this node ID
-        row = brain._trace_dal.conn.execute(
-            "SELECT session_id, created_at FROM trace_events "
-            "WHERE scale = 's1' AND ref_type = 'encoding_run' "
-            "AND metadata LIKE ? LIMIT 1",
-            ('%' + short_id + '%',)
-        ).fetchone()
-        if row and row[0]:
-            return row[0], row[1]
+        hit = brain._trace_dal.find_by_metadata_substring(
+            's1', 'encoding_run', short_id)
+        if hit and hit['session_id']:
+            return hit['session_id'], hit['created_at']
 
         # Fallback: nearest S1E trace before node creation, SAME DAY
         # (prevents matching traces from completely different sessions)
         node_date = node_created_at[:10]
-        row = brain._trace_dal.conn.execute(
-            "SELECT session_id, created_at FROM trace_events "
-            "WHERE scale = 's1' AND ref_type = 'encoding_run' "
-            "AND created_at <= ? AND created_at >= ? "
-            "ORDER BY created_at DESC LIMIT 1",
-            (node_created_at, node_date + 'T00:00:00')
-        ).fetchone()
-        if row and row[0]:
-            return row[0], row[1]
+        hit = brain._trace_dal.latest_in_window(
+            's1', 'encoding_run', node_created_at, node_date + 'T00:00:00')
+        if hit and hit['session_id']:
+            return hit['session_id'], hit['created_at']
 
     except Exception:
         pass
@@ -207,15 +198,10 @@ def _from_traces_by_timestamp(brain, timestamp, before, after):
     """Find the session active at a timestamp and get its conversation."""
     try:
         # Find the S0 trace closest to this timestamp
-        row = brain._trace_dal.conn.execute(
-            "SELECT session_id FROM trace_events "
-            "WHERE scale = 's0' AND ref_type = 'user_message' "
-            "AND created_at <= ? AND created_at >= ? "
-            "ORDER BY created_at DESC LIMIT 1",
-            (timestamp, timestamp[:10] + 'T00:00:00')
-        ).fetchone()
-        if row and row[0]:
-            return _from_traces_by_session(brain, row[0], timestamp, before, after)
+        hit = brain._trace_dal.latest_in_window(
+            's0', 'user_message', timestamp, timestamp[:10] + 'T00:00:00')
+        if hit and hit['session_id']:
+            return _from_traces_by_session(brain, hit['session_id'], timestamp, before, after)
     except Exception:
         pass
     return []

@@ -89,15 +89,11 @@ class RelationReclassifier(IntegrationUnit):
                 old_rel = batch[idx]['old_relation']
 
                 if new_rel and new_rel != old_rel and new_rel != 'related':
-                    self.brain.conn.execute(
-                        "UPDATE edge_relations SET relation = ?, encoding_source = ? "
-                        "WHERE edge_id = ? AND relation = ?",
-                        (new_rel, self.ENCODING_SOURCE, edge_id, old_rel))
+                    self.brain._graph.rename_relation(
+                        edge_id, old_rel, new_rel, self.ENCODING_SOURCE)
                     total_reclassified += 1
                 else:
                     total_kept += 1
-
-            self.brain.conn.commit()
             print('[s2-reclassify] batch %d/%d: %d reclassified' % (
                 batch_count, (len(candidates) + BATCH_SIZE - 1) // BATCH_SIZE,
                 sum(1 for r in results if r.get('relation', 'related') != 'related')),
