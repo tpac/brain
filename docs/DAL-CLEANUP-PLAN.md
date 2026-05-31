@@ -53,12 +53,37 @@
 > additive both sides). Worktree `/Users/tpac/brain-dal-cleanup` retained on branch
 > `dal-cleanup` — **`git merge --ff-only main` in it before resuming Phase 3b.**
 >
-> **Open for next session:** Phase 3b (TF-IDF→TfIdfDAL), 3c (node-writes/titles→NodeDAL),
-> then Phases 4–6. (Structural F3 #5 is done — see the box above.) NOTE: the
-> structural fix makes 3b/3c safer — once `remember` routes through
-> `TfIdfDAL.store_tf_vector` / `NodeDAL.update_field`, those writers already gate
-> on `conn.in_batch` (every dal.py commit was converted), so they're batch-atomic
-> for free; no per-caller `commit=` plumbing needed.
+> ## ▶ Next session — start here (handoff 2026-05-31)
+> **Done & on `main` (`081a634`):** Phases 0–3 + structural F3 fix (#5) + F3 review
+> remediation. Full suite 1374/7/4. **Resume at Phase 4** (see the Phase 4 section
+> below — line numbers re-audited 2026-05-31).
+>
+> **One decision is yours before Phase 4 work:** `SessionStateDAL` resurrect-vs-delete
+> (dead class, live table, raw SQL at `brain.py:701/759/789`). Pick first.
+>
+> **Audit gotchas found this session (don't trip on them):**
+> - `eval/decode_funnel.py` (cited in CLAUDE.md + this doc as THE recall benchmark)
+>   **was removed.** Use `eval/brain_recall_identity_eval.py` / `eval/surface_funnel.py`.
+>   (CLAUDE.md line fixed this session.)
+> - `fetch_tools.py` **no longer exists** — the Phase-5 `entity_dates` *reader* lived
+>   there; re-grep `FROM entity_dates` to find the current reader.
+> - `NodeDAL.purge` (dal.py:1537) is an **incomplete cascade** (misses `node_vectors`
+>   + `node_source_refs`) — the Phase-5 `delete_node_cascade` must cover all 5 tables.
+> - `_batch_tfidf_scores` (recall HOT PATH) was deferred from 3b → Phase 4; it has
+>   two semantic traps (see Phase 4 #6) and needs a recall eval before/after.
+> - The txn guardrail (`test_write_txn_discipline.py`) has two known coverage gaps →
+>   Phase 6 #2 (aliased + compound-statement commits; tag `brain.py:122`).
+>
+> **Parallel-stream note:** the `/Users/tpac/brain` main worktree carries another
+> stream's uncommitted **S2 absorb-op** WIP (`brain_remember.py` +127, `dispatch_write.py`,
+> `contract.py`, `consolidation_enrichment_prompt.py`, untracked `S2-ABSORB-OP-DESIGN.md`
+> / `s2_locked_*` / `test_absorb.py`). NOT part of this DAL work — leave it; commit Phase 4+
+> with **explicit paths** (`git commit -- <files>`), never `git add -A`.
+>
+> **Working model that paid off:** the structural F3 fix means every `dal.py` writer
+> now gates commits on `conn.in_batch` — so any NodeDAL/TfIdfDAL writer adopted in
+> Phase 4+ is batch-atomic for free (no `commit=` plumbing). And do a `/code-review`
+> on the connection/lock-touching segments — it caught a real pre-existing race this session.
 
 Living tracker for resuming the stalled DAL migration. Update the **Status** lines
 and the progress table as phases land. This doc is the single source of truth for
@@ -112,7 +137,7 @@ exists. Resume the migration → both disappear together.
 - **Incremental & stoppable.** Each phase ships independently, tests green, committed separately. We can stop after any phase and the tree is consistent.
 - **DAL-first.** No new raw SQL outside `dal*.py` / `schema.py`. Phase 6 adds a guardrail test.
 - **Loud by default.** No new silent `except`. De-silence as we touch.
-- **Don't break the recall hot path.** Any change to `brain_recall.py` / surface / pipeline → run `eval/decode_funnel.py` before/after.
+- **Don't break the recall hot path.** Any change to `brain_recall.py` / surface / pipeline → run the recall eval before/after. ⚠ `eval/decode_funnel.py` (cited here + in CLAUDE.md) **no longer exists** — current recall evals: `eval/brain_recall_identity_eval.py` (see `eval/README.md`), `eval/surface_funnel.py`, `eval/decoding_suite.py`. (NOTE: the recall *read* hot path is read-only at SQLite; only `recall_write_queue`'s off-path drain is a write path — a pure commit-gating change there needs no recall eval.)
 - **Backup before destructive DB ops.** This effort is mostly *code*, but any phase that touches data (none planned) → `cp brain.db brain.db.bak-{ts}` first.
 - **Test integrity.** If a test fails, STOP — report expected vs actual, don't weaken it.
 
@@ -219,7 +244,7 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 **Verify:** `./dev pytest tests/`; `eval/decode_funnel.py` (recall hot path touched).
 **Stop point:** zero ad-hoc construction except the documented bg_writer exception. Commit.
 
-### Phase 3 — Migrate writes (stop writing raw SQL)  ◐ (3a, 3b done)
+### Phase 3 — Migrate writes (stop writing raw SQL)  ☑ (3a, 3b, 3c done — on `main` via `061cb40`)
 **3a — counts ✅ (`cfc8f02`):** `brain._get_{node,edge,locked}_count`, `brain_recall` brain-size, `brain_assembly` total_locked, `daemon_server` status counts → held DALs (`count`/`count_locked`/`count_total`/`count_by_type` adopted). daemon locked count gains the documented non-archived semantics.
 **3b — TF-IDF ✅ (`dal-cleanup-2`):** `brain_remember._store_tfidf_vector` → `self._tfidf.store_tf_vector(node_id, tf)` (the verbatim-reimplemented dead class, now adopted); `_rebuild_tfidf_index` → `clear_all()` + per-node `store_tf_vector` wrapped in `conn.in_batch` (single commit preserved via save/restore + `_maybe_commit`); `brain.py` boot reindex check → `self._tfidf.get_total_docs()==0` + `self._nodes.count(archived=True)`. `_compute_tf`/`_tfidf_tokenize` stay (TF math, not DB). **Dead `_tfidf_score` (single-node, 0 callers) deleted.**
   - *Deferred to Phase 4 (reads):* `_batch_tfidf_scores` is a READ on the **recall hot path** (`brain_recall.py:884`) with subtle semantics (`total_docs = _get_node_count()` ≠ `get_total_docs()`; term-filtered node_vectors read with no exact DAL method). Migrating it needs a new `TfIdfDAL` read method + a `decode_funnel` before/after — belongs in the reads phase, not writes.
@@ -235,22 +260,39 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 **Stop point:** `brain_remember.py` raw-SQL count drops from 37 toward the bespoke-only floor. Commit.
 
 ### Phase 4 — Migrate reads (stop reading raw SQL)  ☐
-**Goal:** Adopt Category-B *read* methods + new read methods; fix the 2 N+1 loops.
-**Work:** community_decoder/temporal metadata-KV reads → `MetadataDAL`; collapse the 2 N+1 loops (community_decoder.py:847/959) to bulk; add `TraceDAL` methods for conversation.py's 3 raw `trace_events` queries; decide SessionStateDAL (resurrect+adopt brain.py session_state, or delete); add `GraphDAL.rename_relation` for reclassify.py:92.
-**Verify:** `./dev pytest tests/`; decode_funnel (community + recall touched).
-**Stop point:** conversation.py no longer reaches into `_trace_dal.conn`; N+1 gone. Commit.
+**Goal:** Adopt Category-B *read* methods + new read methods; fix the N+1 loops; resolve the SessionStateDAL decision.
+**Work (line numbers re-audited 2026-05-31):**
+1. **metadata-KV reads → `MetadataDAL`**: `community_decoder.py:71` (`SELECT value FROM node_metadata_kv WHERE node_id=? AND key=?`) and the per-node loop at `community_decoder.py:218-220`; `temporal_extraction.py:486` (`SELECT key,value FROM node_metadata_kv WHERE node_id=?`).
+2. **N+1 loops → bulk**: `community_decoder.py:218-220` fetches metadata per-node inside a `for nid` loop — collapse to a bulk `MetadataDAL.get_*_bulk`. (The other N+1 the original audit cited at :847/959 has shifted — re-grep `for .* in` + per-row `conn.execute` in community_decoder before fixing.)
+3. **conversation.py `trace_events` → new `TraceDAL` methods**: 3 raw queries reaching into `brain._trace_dal.conn` at `conversation.py:161-162, 173-174, 210-211` (session_id/created_at lookups). Add `TraceDAL` read methods; stop reaching into the DAL's own conn.
+4. **⚖ DECISION (Tom's call): `SessionStateDAL` resurrect-vs-delete.** Class is dead (0 instantiations); `session_state` table is live, accessed via raw SQL in `brain.py:701` (INSERT OR IGNORE), `759` & `789` (SELECT). Either resurrect `SessionStateDAL` + adopt these 3 sites, or delete the dead class and accept the raw SQL as a documented exception. **Decide before doing.**
+5. **`GraphDAL.rename_relation`** for `reclassify.py:93` (`UPDATE edge_relations SET relation=?, encoding_source=?`).
+6. **Deferred-from-3b (recall HOT PATH — needs benchmark):** `_batch_tfidf_scores` (`brain_remember.py`, called at `brain_recall.py:884`). Subtle: `total_docs = self._get_node_count()` (node count) ≠ `TfIdfDAL.get_total_docs()` (distinct-nodes-with-vectors) — do NOT swap; and its node_vectors read is term-filtered (`term IN (...)`), no exact DAL method exists → add one. **Run the recall eval before/after** (see note below — `decode_funnel.py` is gone).
+7. **Deferred-from-3b:** `brain_assembly.py:433` stale-context count (bespoke `nodes` filter: type+locked+archived+created_at) — add a narrow `NodeDAL` count method or leave documented.
+**Verify:** `./dev pytest tests/`; recall eval for #6 (`eval/brain_recall_identity_eval.py` / `eval/surface_funnel.py` — NOT `decode_funnel.py`, which no longer exists).
+**Stop point:** conversation.py no longer reaches into `_trace_dal.conn`; N+1 gone; SessionStateDAL decision resolved. Commit.
 
 ### Phase 5 — Missing DALs + structural extractions  ☐
 **Goal:** Close the no-DAL subsystems and the god-class misfit.
-**Work:** Build `EntityDatesDAL` (temporal_extraction write + fetch_tools read); extract `SourceRefDAL` from GraphDAL; add `Brain.delete_node_cascade` and route `purge`/archive through it.
+**Work (re-audited 2026-05-31):**
+1. **Build `EntityDatesDAL`** — write side: `temporal_extraction.py:331 write_entity_dates` (DELETE at :347, INSERT at :356/:370). **⚠ Read side moved:** the original plan cited `fetch_tools.py` for the `entity_dates` read — **`fetch_tools.py` no longer exists.** Re-locate the `recall_by_time` reader (grep `FROM entity_dates`) before building the DAL.
+2. **Extract `SourceRefDAL`** from GraphDAL — 4 methods that operate on `node_source_refs`, not edges: `add_source_refs` (dal.py:2902), `replace_source_refs` (:2936), `get_source_refs` (:2972), `get_nodes_referencing` (:2983).
+3. **`Brain.delete_node_cascade`** — centralize per-table deletes. **⚠ `NodeDAL.purge` (dal.py:1537) is an INCOMPLETE cascade** — it DELETEs `node_enrichments`/`node_metadata_kv`/`edges` but MISSES `node_vectors` and `node_source_refs` (orphan rows leak on purge). The cascade method must cover all 5 child tables; route `purge`/archive through it.
 **Verify:** `./dev pytest tests/`; temporal + recall-by-time paths.
-**Stop point:** `entity_dates` and source-refs fully DAL'd; one cascade-delete path. Commit.
+**Stop point:** `entity_dates` + source-refs fully DAL'd; one complete cascade-delete path. Commit.
 
 ### Phase 6 — Lock it (guardrail)  ☐
 **Goal:** Prevent regression; normalize remaining contracts.
-**Work:** Add a contract test that fails on new raw `.execute(` outside `dal*.py`/`schema.py`/allowlisted maintenance files; normalize neighbor-row key → `id` (B-KEY) with a contract assertion; sweep Category-C test-only methods (delete or document); fold in BACKLOG P4.17 (`judge_output`→`surface_output` in `dal.py:get_user_turns`) if the file is open.
-**Verify:** full suite; the new guardrail test fails on a planted violation.
+**Work:**
+1. **Raw-SQL guardrail**: contract test that fails on new raw `.execute(` (DML) outside `dal*.py`/`schema.py`/allowlisted maintenance files.
+2. **Tighten the txn-discipline guardrail** (`test_write_txn_discipline.py`, from the F3 review): `TestBrainSelfCommitsAreMarked` currently matches `startswith('self.conn.commit()')` — it MISSES (a) aliased commits like `instance.conn.commit()` at `brain.py:122` (benign teardown flush in `clear_instances`, but should be tagged `# commit-ok:`), and (b) compound-statement commits (`foo; self.conn.commit()`). Switch to a regex on the code-portion of each line matching `\.conn\.commit\(\)` (catches aliases; `logs_conn.commit()` is excluded by the leading-dot requirement) with comment/docstring stripping + the `# commit-ok:` allowlist. Tag `brain.py:122` while there.
+3. **Normalize neighbor-row key → `id`** (B-KEY) with a contract assertion.
+4. Sweep Category-C test-only methods (delete or document); fold in BACKLOG P4.17 (`judge_output`→`surface_output` in `dal.py:get_user_turns`) if the file is open.
+**Verify:** full suite; the new guardrail tests fail on a planted violation.
 **Stop point:** migration locked. Commit + archive this doc's predecessor reference.
+
+### Cosmetic / non-blocking (noticed, not scheduled)
+- `_get_node_title` (brain_connections) now returns `node_id` instead of `''` for an empty-title node (`get_title(...) or node_id` short-circuits). Labeling-only, arguably an improvement; titles are effectively never empty. Leave unless it bites.
 
 ---
 
@@ -262,10 +304,11 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 | 1 — F3 correctness | ☑ | fd9c313 (+0cd1c1d) | writers+callers batch-aware; xhigh review later found 3 MISSED writers (co_anchored×2, connect(), hebbian) → completed in 0cd1c1d; 9 batch tests |
 | 1b — F3 **structural** (#5) | ☑ | dal-cleanup-2 | conn-bound `in_batch` flag (`BatchAwareConnection`) + `commit_unless_batched`; `commit` kwarg + `_batch_mode` deleted; all 33 dal.py commits gated; guardrail `test_write_txn_discipline.py`. Kills the by-convention fragility |
 | 2 — Repository aggregate | ☑ | d13d671, c1f9ceb | held 5 DALs; ~57/68 sites converted; residual = bg-writer + daemon_hooks + conn-params |
-| 3 — Migrate writes | ◐ | cfc8f02, 0cd1c1d, dal-cleanup-2 | 3a counts ✅; 3b TF-IDF ✅ (store/rebuild→TfIdfDAL, dead _tfidf_score deleted, batch-scorer read→Phase 4); 3c node-writes/titles pending |
-| 4 — Migrate reads | ☐ | — | |
-| 5 — Missing DALs + extractions | ☐ | — | |
-| 6 — Lock it | ☐ | — | |
+| 3 — Migrate writes | ☑ | cfc8f02, 8aedaaa, 8b42e6d | 3a counts ✅; 3b TF-IDF→TfIdfDAL + dead _tfidf_score deleted ✅; 3c titles→get_title ✅ (risky multi-field UPDATEs deferred — see Phase 4/§Cosmetic). On `main` via `061cb40` |
+| (review) — F3 lock-discipline remediation | ☑ | 191bbc0, 81a4b61 | code-review of F3 found a pre-existing race: S2 maintenance's `set_config`/`save()` committed `self.conn` lock-free; both now hold write_lock. Guardrail widened to brain*.py |
+| 4 — Migrate reads | ☐ | — | metadata-KV→MetadataDAL; conversation.py trace_events→TraceDAL; **SessionStateDAL decision**; reclassify rename_relation; +deferred `_batch_tfidf_scores` (recall hot path, needs eval) |
+| 5 — Missing DALs + extractions | ☐ | — | EntityDatesDAL (⚠ fetch_tools.py gone — re-find reader); SourceRefDAL extract; delete_node_cascade (⚠ purge misses node_vectors+node_source_refs) |
+| 6 — Lock it | ☐ | — | raw-SQL guardrail; tighten txn guardrail (alias/compound commits + tag brain.py:122); normalize neighbor key |
 
 ## References
 - `docs/archive/stale/DAL-MIGRATION-PLAN.md` — original plan (Step 0 never finished; anticipated F3)

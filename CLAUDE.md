@@ -417,7 +417,7 @@ Tests organized by what they catch:
 ### Benchmark-First Rule
 
 Before changing sacred systems, benchmark FIRST:
-- Recall: `eval/decode_funnel.py` against `servers/brain_recall.py`
+- Recall: `eval/brain_recall_identity_eval.py` / `eval/surface_funnel.py` against `servers/brain_recall.py` (the old `eval/decode_funnel.py` was removed; see `eval/README.md`)
 - Encoding: `eval/s1_encode_eval.py` against `scales/s1/encode.py`
 - Frame / surface: `eval/frame_replay.py` capture/compare against an isolated brain copy
 - Longmem end-to-end (encode→recall→answer): the **Frozen Corpus** two-stage harness — `eval/longmem/build_corpus.py` encodes a content-addressed corpus once (slow), then `eval/longmem/sweep.py` runs recall over the frozen brains cheaply, many times. A/B a prompt or scout version with `build_corpus --interaction-override 's1e=24,s1_scout_facts=7'` (fetches DORMANT versions from the live daemon, applies them to isolated eval brains). The sweep scores every item and separates encode-coverage (`ENCODE_MISS` bucket) from a `recall-conditional` pass rate. Full reference: `docs/EVAL-PLATFORM.md`.
