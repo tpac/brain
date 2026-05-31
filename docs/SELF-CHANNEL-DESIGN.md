@@ -269,7 +269,7 @@ designed here, status as of 2026-05-31:
 |---|---|---|---|
 | **Containment (format)** | Live signals render as third-person reported speech — `⚡ <who> says: "…"` + a standing attribution footer — so another stream's action can't bleed into your self-model as your own. **Letter stays first-person** (continuity across time is the point there). | `self_contract.py` `render_signal` / `render_received_block` | ✅ shipped (`7f80913`) |
 | **Delivery visibility** | `self_outbox` — a sender sees per-recipient `delivered_at` + still-pending. Kills silence-opacity. Data already in `self_delivered`; pure read surface. | `self_outbox` + `brain_mcp.py` / dispatch | ✅ shipped (`7f80913`) |
-| **Addressing** | Id is canonical; `self_send(to=)` resolves shorter forms (a label or id-prefix) against the *live* roster — unique match proceeds, ambiguous/none is loud. First-class stream **label** for legible "who", id-backed. | `self_send` resolution + label storage | ✅ shipped (`1758a15`) |
+| **Addressing** | Id is canonical; `self_send(to=)` resolves the 8-char short you see (an id-prefix) or a full UUID against the *live* roster — unique proceeds, ambiguous/none is loud. **No self-labeling** — focus is the truthful "who" (a self-name would be mutable, collidable, spoofable). | `self_send` resolution (`signal.resolve_to`) | ✅ shipped (`1758a15`; labels dropped) |
 | **Presence liveness** | Roster classifies **active / dormant / lost** by `updated_at` recency, and surfaces recently-lost streams instead of silently dropping them at the window edge. | `presence.py` / `render_presence` | ✅ shipped (`fd9202a`) |
 
 ### Containment, in full: agency follows the hands
@@ -306,7 +306,7 @@ claim.
   turn-classification — plus cleanup (revert the wrong-layer encoder filter; route
   `hook_errors` SQL through a DAL).
 - **This session (with Tom):** channel-side — these rules, the render re-voice, presence
-  liveness, addressing/labels, `self_outbox`, and the SKILL.md operative rules.
+  liveness, addressing, `self_outbox`, and the SKILL.md operative rules.
 - Shared files (`self_contract.py`, `brain_mcp.py`) are **sequenced, not co-edited**:
   `anchor-w` lands first, this work builds on the clean base.
 

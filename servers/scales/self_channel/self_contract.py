@@ -74,17 +74,11 @@ def address_from_target(target):
 def is_session_id(s):
     """True if `s` is a full Claude Code session UUID (8-4-4-4-12 hex) — the
     canonical address form, honored directly even for a stream not in the live
-    roster this instant (it drains within TTL). Labels never match this shape."""
+    roster this instant (it drains within TTL). The 8-char short you see in a
+    message is a PREFIX of this, resolved against the live roster."""
     s = s or ''
     return (len(s) == 36 and s.count('-') == 4
             and all(c in '0123456789abcdef-' for c in s.lower()))
-
-
-def label_key(session_id):
-    """brain_meta key for a stream's self-chosen display label — the legible 'who'
-    in presence and message attribution. Mirrors the per-session
-    session_context_<sid> pattern; unset → callers fall back to the 8-char short id."""
-    return "self_label_" + (session_id or '')
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -206,8 +200,7 @@ def render_signal(body, stream_short="", focus="", when=""):
     without a visible grammatical error. (The boot letter stays first-person; see
     render_letter — continuity across time is the point there. This is for live,
     concurrent streams, where two agencies coexist in one moment and a verb is
-    about to get mis-owned.) `who` is the stream's label, falling back to its
-    short id."""
+    about to get mis-owned.) `who` is the sending stream's 8-char short id."""
     who = stream_short or "a live stream"
     tag = " · ".join(p for p in (focus, when) if p)
     head = "⚡ %s%s says:" % (who, (" [%s]" % tag) if tag else "")

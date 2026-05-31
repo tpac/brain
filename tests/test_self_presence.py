@@ -100,17 +100,16 @@ class TestSelfPresence(BrainTestBase):
         self.assertNotIn('streamLOST', states)             # ...but not in the live roster
         self.assertIn('lost', out['line'])                 # and named in the line
 
-    def test_resolve_to_canonical_label_and_graceful(self):
-        """to= resolution: broadcast + full UUID are canonical; a label matches the
-        live roster; unknown is loud (no address)."""
+    def test_resolve_to_canonical_prefix_and_graceful(self):
+        """to= resolution: broadcast + full UUID are canonical; the 8-char short
+        (an id-prefix) matches the live roster; unknown is loud (no address)."""
         sid = 'aaaaaaaa-1111-2222-3333-444444444444'
         self._save_stream(sid, focus='dal cleanup')
-        self.brain.set_config(self_contract.label_key(sid), 'dal')
         self.assertEqual(signal.resolve_to(self.brain, 'broadcast')[0], self_contract.ADDR_BROADCAST)
         addr, err = signal.resolve_to(self.brain, sid)            # full id → canonical
         self.assertIsNone(err)
         self.assertEqual(addr, self_contract.address_for_stream(sid))
-        addr, err = signal.resolve_to(self.brain, 'dal')          # label → that stream
+        addr, err = signal.resolve_to(self.brain, 'aaaaaaaa')     # 8-char short (prefix) → that stream
         self.assertIsNone(err)
         self.assertEqual(addr, self_contract.address_for_stream(sid))
         addr, err = signal.resolve_to(self.brain, 'nope')         # unknown → loud
@@ -124,13 +123,13 @@ class TestSelfPresence(BrainTestBase):
         self.assertIsNone(addr)
         self.assertIn('matches', err)
 
-    def test_presence_shows_label(self):
+    def test_presence_shows_short_id(self):
+        """No self-labeling — the roster shows the 8-char short id (+ focus + state)."""
         sid = 'cccccccc-0000-0000-0000-000000000003'
         self._save_stream(sid, focus='docs')
-        self.brain.set_config(self_contract.label_key(sid), 'docs-audit')
         out = presence.build_presence(self.brain, my_session_id='other', limit=10)
-        self.assertIn('docs-audit', {s.get('label') for s in out['streams']})
-        self.assertIn('docs-audit', out['line'])
+        self.assertIn('cccccccc', {s['short'] for s in out['streams']})
+        self.assertIn('cccccccc', out['line'])
 
 
 if __name__ == '__main__':

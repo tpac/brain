@@ -64,7 +64,6 @@ def build_presence(brain, my_session_id='', limit=None):
         entry = {
             'session_id': sid,
             'short': sid[:8],
-            'label': brain.get_config(self_contract.label_key(sid), '') or sid[:8],
             'focus': _focus_line(brain, sid),
             'updated_at': r.get('updated_at', ''),
             'state': self_contract.classify_liveness(_age_min(r.get('updated_at', ''))),
@@ -74,8 +73,8 @@ def build_presence(brain, my_session_id='', limit=None):
         elif len(live) < cap:
             live.append(entry)
     line = self_contract.render_presence(
-        [(s['label'], s['focus'], s['state']) for s in live],
-        lost=[(s['label'], s['focus']) for s in lost])
+        [(s['short'], s['focus'], s['state']) for s in live],
+        lost=[(s['short'], s['focus']) for s in lost])
     return {'streams': live, 'lost': lost, 'line': line}
 
 

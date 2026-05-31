@@ -43,15 +43,14 @@ def _handle_self_peek(brain, args, graph_changes):
 def _handle_self_send(brain, args, graph_changes):
     """Send a directed/broadcast self-message into the courier — the deliberate reach.
 
-    args.to           = target: label, id-prefix, full session id, or 'broadcast'.
+    args.to           = target: id-prefix, full session id, or 'broadcast'.
     args.body         = the message.
     args.from_session = caller's session id for attribution (falls back to session_id).
-    args.from_label   = optional display name to send as (persisted).
     args.intent/refs  = optional.
 
     `to` resolves gracefully (signal.resolve_to): canonical id / broadcast pass
-    through; a label or id-prefix matches the live roster; ambiguous or no match
-    is a LOUD error so silence is never mistaken for delivery.
+    through; the 8-char short (an id-prefix) matches the live roster; ambiguous or
+    no match is a LOUD error so silence is never mistaken for delivery.
     """
     address, error = signal.resolve_to(brain, args.get('to', '') or '')
     if error:
@@ -62,8 +61,7 @@ def _handle_self_send(brain, args, graph_changes):
         address=address,
         body=args.get('body', '') or '',
         intent=args.get('intent'),
-        refs=args.get('refs'),
-        from_label=args.get('from_label'))}
+        refs=args.get('refs'))}
 
 
 def _handle_self_inbox(brain, args, graph_changes):

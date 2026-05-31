@@ -127,15 +127,14 @@ class TestSelfSignal(BrainTestBase):
         """A stream that never sent anything has an empty outbox (no crash)."""
         self.assertEqual(signal.outbox(self.brain, from_session='Z')['messages'], [])
 
-    def test_from_label_persists_and_renders(self):
-        """from_label persists for the sender, and the recipient sees the label
-        (not the raw short id) in the drained message + its render."""
-        signal.send(self.brain, from_session='streamA', from_label='alpha',
+    def test_drain_attributes_by_short_id(self):
+        """No self-labeling — a delivered message is attributed by the sender's
+        8-char short id, in both 'from' and the render."""
+        signal.send(self.brain, from_session='AAAAAAAA',
                     address=self_contract.address_for_stream('streamB'), body='hi B')
-        self.assertEqual(self.brain.get_config(self_contract.label_key('streamA')), 'alpha')
         drained = signal.drain_inbox(self.brain, to_session='streamB')
-        self.assertEqual(drained[0]['from'], 'alpha')
-        self.assertIn('⚡ alpha says:', drained[0]['rendered'])
+        self.assertEqual(drained[0]['from'], 'AAAAAAAA')
+        self.assertIn('⚡ AAAAAAAA says:', drained[0]['rendered'])
 
     # ── Phase 2b: render + delivery-into-Observation ──
 
