@@ -129,6 +129,19 @@ async function _loadBoot() {
     document.getElementById('streams-count').textContent =
       renders.length + ' boot' + (renders.length === 1 ? '' : 's');
     const el = document.getElementById('feed-streams-boot');
+
+    // Boot captures are append-only and rare (one per SessionStart), but the
+    // streams poll fires every 5s. Without this guard every poll rebuilds
+    // innerHTML and snaps each expanded <details> shut. Skip the rebuild when
+    // the capture set is unchanged — mirrors the encoding feed's fingerprint
+    // short-circuit (live.js). A new boot changes the count or the newest
+    // row, so it still re-renders when it actually should.
+    const fingerprint = renders.length
+      ? renders.length + ':' + (renders[0].session_short || '') + ':' + (renders[0].created_at || '')
+      : '0';
+    if (el.dataset.fingerprint === fingerprint) return;
+    el.dataset.fingerprint = fingerprint;
+
     if (!renders.length) {
       el.innerHTML = '<div style="color:#888;text-align:center;padding:40px">' +
         'No boot captures yet. Each SessionStart records the exact text the ' +
