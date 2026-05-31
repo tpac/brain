@@ -468,7 +468,7 @@ def _handle_brain_batch(brain, args, graph_changes):
     # truth — see that constant). The dispatcher matches them via the if/elif
     # chain below; the final `else` is the invalid-op guard. Sonnet has been
     # observed inventing structural op names like `consolidate` / `keep` /
-    # `evolve` / `skip` / `absorb` / `reject` — these are prompt-level
+    # `evolve` / `skip` / `reject` — these are prompt-level
     # DECISIONS, not dispatch ops. They land in the "Unknown op" branch, get
     # logged loudly (brain_batch_invalid_op), and the S2 rejection_table now
     # detects them so a dropped op isn't mistaken for a clean SKIP.
@@ -620,7 +620,8 @@ def _handle_brain_batch(brain, args, graph_changes):
                         # model as the revise op — an agent writes the same shape.
                         _CONTROL = {'op', 'survivor_id', 'absorbed_id',
                                     'prune_edges', 'drop_fields', 'archived_by',
-                                    'encoding_source', 'reason'}
+                                    'encoding_source', 'reason',
+                                    'session_id', 'chain_id'}
                         field_updates = {k: v for k, v in op_spec.items()
                                          if k not in _CONTROL}
                         r = brain.absorb(

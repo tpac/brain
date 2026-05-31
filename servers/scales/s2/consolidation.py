@@ -114,7 +114,7 @@ class Consolidation(ConsolidationDecoder):
         post_edges = _snapshot_suppression_pairs()
         new_edges = post_edges - pre_edges
         # Nodes the encoder TRIED to act on with an invalid op (e.g. `op:
-        # absorb` instead of revise+archive — dispatch dropped it). A cluster
+        # consolidate` instead of a real op — dispatch dropped it). A cluster
         # touching one of these wrote no suppression edge NOT because the
         # encoder chose SKIP, but because its merge was thwarted. Treat it as a
         # failed attempt to retry — never stamp a fingerprint, which would

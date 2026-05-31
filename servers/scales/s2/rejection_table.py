@@ -156,8 +156,8 @@ def get_proposed_ids(proposal):
 def node_ids_touched_by_invalid_ops(action_details):
     """Node IDs the encoder targeted with an op OUTSIDE the closed vocabulary.
 
-    When the encoder emits a concept-verb as an op name (`absorb`, `reject`,
-    `keep`, `skip` — the conceptual decisions, not the 5 real ops), dispatch
+    When the encoder emits a concept-verb as an op name (`consolidate`, `reject`,
+    `keep`, `skip` — the conceptual decisions, not the real ops), dispatch
     drops the op and logs `brain_batch_invalid_op`. The encoder *tried* to act
     and was thwarted — that is an encoder FAILURE to retry, not a clean SKIP.
 

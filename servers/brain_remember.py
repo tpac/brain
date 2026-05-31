@@ -304,9 +304,12 @@ class BrainRememberMixin:
         constraint that makes "a locked node is always the survivor" structural.
         survivor must exist and be unarchived; survivor != absorbed.
 
-        Commit gating: composes DAL writers that self-gate on conn.in_batch
-        (commit_unless_batched) and ends with _maybe_commit() — so inside
-        brain_batch the whole merge is one atomic envelope; standalone it commits.
+        Atomicity: the merge is several writes, so it is all-or-nothing. In a
+        batch we nest a SAVEPOINT (a mid-merge failure rolls back ONLY our writes,
+        not the whole batch); standalone we flip conn.in_batch so the composed DAL
+        writers don't commit mid-merge, then commit once at the end — or roll back
+        on ANY failure (a raise, a failed override-revise, or a refused archive).
+        No partial merge ever commits.
         """
         if survivor_id == absorbed_id:
             return {'ok': False, 'error': 'survivor and absorbed are the same node'}
@@ -322,7 +325,7 @@ class BrainRememberMixin:
         if rows[survivor_id][3]:
             return {'ok': False, 'error': 'survivor is archived', 'node_id': survivor_id}
 
-        a_locked, a_critical, _a_archived, a_access = rows[absorbed_id][1:]
+        a_locked, a_critical, a_archived, a_access = rows[absorbed_id][1:]
         if a_locked or a_critical:
             flag = 'locked' if a_locked else 'critical'
             self._log_warning(
@@ -333,6 +336,9 @@ class BrainRememberMixin:
                 'be locked/critical)' % flag)
             return {'ok': False, 'error': 'Cannot absorb %s node' % flag,
                     'absorbed_id': absorbed_id}
+        if a_archived:
+            return {'ok': False, 'error': 'absorbed node is already archived',
+                    'absorbed_id': absorbed_id}
 
         # Caller field overrides — revise() shape: content / updates / kwargs.
         field_updates = dict(updates or {})
@@ -340,79 +346,120 @@ class BrainRememberMixin:
         if content is not None:
             field_updates['content'] = content
 
-        report = {'ok': True, 'survivor_id': survivor_id, 'absorbed_id': absorbed_id}
+        report = {'ok': True, 'survivor_id': survivor_id,
+                  'absorbed_id': absorbed_id, 'absorbed_archived': False}
 
-        # 1. source_refs — union onto survivor (self-gates commit on conn.in_batch)
-        absorbed_refs = self._graph.get_source_refs(absorbed_id)
-        report['source_refs_added'] = (
-            self._graph.add_source_refs(survivor_id, absorbed_refs)
-            if absorbed_refs else 0)
+        # ── Atomicity envelope (see docstring) ──
+        was_batch = self.conn.in_batch
+        if was_batch:
+            self.conn.execute('SAVEPOINT absorb_sp')
+        self.conn.in_batch = True   # composed DAL writers must NOT commit mid-merge
+        success = False
+        try:
+            # 1. source_refs — union onto survivor
+            absorbed_refs = self._graph.get_source_refs(absorbed_id)
+            report['source_refs_added'] = (
+                self._graph.add_source_refs(survivor_id, absorbed_refs)
+                if absorbed_refs else 0)
 
-        # 2. edges — re-point absorbed's external edges to survivor
-        prune = set(prune_edges or [])
-        conns = self._graph.get_connections_bulk([absorbed_id]).get(absorbed_id, [])
-        migrated = 0
-        for c in conns:
-            neighbor = c['id']
-            if neighbor == survivor_id:
-                continue  # drop the intra-pair edge — it dies with the absorbed node
-            outgoing = c.get('direction') == 'outgoing'
-            for rel in c.get('relations', []):
-                relation = rel.get('relation')
-                if not relation or relation in prune:
-                    continue
-                src, tgt = ((survivor_id, neighbor) if outgoing
-                            else (neighbor, survivor_id))
-                kw = {'encoding_source': archived_by}
-                desc = rel.get('description')
-                if desc:
-                    kw['description'] = desc
-                self._graph.add_relation(src, tgt, relation, **kw)
-                migrated += 1
-        report['edges_migrated'] = migrated
+            # 2. edges — re-point absorbed's external edges to survivor,
+            # preserving each relation's weight + description.
+            prune = set(prune_edges or [])
+            conns = self._graph.get_connections_bulk(
+                [absorbed_id]).get(absorbed_id, [])
+            migrated = 0
+            for c in conns:
+                neighbor = c['id']
+                if neighbor == survivor_id:
+                    continue  # intra-pair edge dies with the absorbed node
+                outgoing = c.get('direction') == 'outgoing'
+                for rel in c.get('relations', []):
+                    relation = rel.get('relation')
+                    if not relation or relation in prune:
+                        continue
+                    src, tgt = ((survivor_id, neighbor) if outgoing
+                                else (neighbor, survivor_id))
+                    kw = {'encoding_source': archived_by}
+                    if rel.get('description'):
+                        kw['description'] = rel['description']
+                    if rel.get('weight') is not None:
+                        kw['weight'] = rel['weight']
+                    self._graph.add_relation(src, tgt, relation, **kw)
+                    migrated += 1
+            report['edges_migrated'] = migrated
 
-        # 3. access_count — additive (usage history)
-        if a_access:
-            self.conn.execute(
-                'UPDATE nodes SET access_count = access_count + ? WHERE id = ?',
-                (a_access, survivor_id))
-        report['access_count_added'] = a_access or 0
+            # 3. access_count — additive (usage history)
+            if a_access:
+                self.conn.execute(
+                    'UPDATE nodes SET access_count = access_count + ? WHERE id = ?',
+                    (a_access, survivor_id))
+            report['access_count_added'] = a_access or 0
 
-        # 4. metadata KV — fill keys survivor LACKS (survivor wins; skip _sys_)
-        drop = set(drop_fields or [])
-        kv = self._meta_kv.get_all_bulk([survivor_id, absorbed_id])
-        s_kv, a_kv = kv.get(survivor_id, {}), kv.get(absorbed_id, {})
-        fill = {k: v for k, v in a_kv.items()
-                if not k.startswith('_sys_') and k not in drop
-                and k not in field_updates
-                and (v or '').strip() and not (s_kv.get(k) or '').strip()}
-        if fill:
-            self._meta_kv.set_many(survivor_id, fill)
-        report['fields_filled'] = sorted(fill.keys())
+            # 4 + 5. Fill KV the survivor LACKS from absorbed, then apply caller
+            # overrides — through ONE revise() call so embedding-bearing fields
+            # (situation, ...) get re-embedded and there is a single field-write
+            # path. Caller overrides win (field_updates last); _sys_ never moves.
+            drop = set(drop_fields or [])
+            kv = self._meta_kv.get_all_bulk([survivor_id, absorbed_id])
+            s_kv, a_kv = kv.get(survivor_id, {}), kv.get(absorbed_id, {})
+            fill = {k: v for k, v in a_kv.items()
+                    if not k.startswith('_sys_') and k not in drop
+                    and k not in field_updates
+                    and (v or '').strip() and not (s_kv.get(k) or '').strip()}
+            merged = {**fill, **field_updates}
+            rev_failed = False
+            if merged:
+                rev = self.revise(survivor_id, updates=merged,
+                                  reason=reason or 'absorb %s' % absorbed_id[:8])
+                report['fields_filled'] = sorted(fill.keys())
+                report['fields_revised'] = sorted(field_updates.keys())
+                if rev.get('warnings'):
+                    report['revise_warnings'] = rev['warnings']
+                if rev.get('error'):
+                    report['ok'] = False
+                    report['revise_error'] = rev['error']
+                    rev_failed = True
 
-        # 5. caller field overrides — content / updates / kwargs, the SAME shape
-        # as revise(). Applied AFTER the auto-transfers so explicit overrides win
-        # over KV-fill. revise() handles every mutable field + immutable guards
-        # + re-embed; we don't reimplement field handling.
-        if field_updates:
-            rev = self.revise(survivor_id, updates=field_updates,
-                              reason=reason or 'absorb %s' % absorbed_id[:8])
-            report['fields_revised'] = sorted(field_updates.keys())
-            if rev.get('warnings'):
-                report['revise_warnings'] = rev['warnings']
+            # 6. archive the absorbed node — SKIPPED if the override-revise failed,
+            # so a failed synthesis never destroys the source.
+            if not rev_failed:
+                arch = self.archive_node(
+                    absorbed_id, archived_by=archived_by,
+                    reason=reason or 'absorbed into %s' % survivor_id[:8],
+                    extra={'survivor_id': survivor_id})
+                report['absorbed_archived'] = arch.get('ok', False)
+                if arch.get('ok'):
+                    success = True
+                else:
+                    report['ok'] = False
+                    report['archive_error'] = arch.get('error')
+        except Exception:
+            self._absorb_unwind(was_batch)
+            raise
 
-        # 6. archive the absorbed node with survivor provenance
-        arch = self.archive_node(
-            absorbed_id, archived_by=archived_by,
-            reason=reason or 'absorbed into %s' % survivor_id[:8],
-            extra={'survivor_id': survivor_id})
-        report['absorbed_archived'] = arch.get('ok', False)
-        if not arch.get('ok'):
-            report['ok'] = False
-            report['archive_error'] = arch.get('error')
-
-        self._maybe_commit()
+        if success:
+            if was_batch:
+                self.conn.execute('RELEASE absorb_sp')
+            self.conn.in_batch = was_batch
+            self._maybe_commit()
+        else:
+            # guard/override/archive failure mid-merge — undo every transfer so
+            # no half-merge is ever committed.
+            self._absorb_unwind(was_batch)
         return report
+
+    def _absorb_unwind(self, was_batch: bool) -> None:
+        """Roll back an in-flight absorb. In a batch: roll the SAVEPOINT back
+        (the rest of the batch survives). Standalone: rollback the implicit txn.
+        Always restores conn.in_batch."""
+        try:
+            if was_batch:
+                self.conn.execute('ROLLBACK TO absorb_sp')
+                self.conn.execute('RELEASE absorb_sp')
+            else:
+                self.conn.rollback()
+        finally:
+            self.conn.in_batch = was_batch
 
     def _tfidf_tokenize(self, text: str) -> List[str]:
         """

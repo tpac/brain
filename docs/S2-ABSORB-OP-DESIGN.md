@@ -23,6 +23,12 @@ consolidation encoder** — that + the live merge is the next session.
 
 **Pointers:** eval harnesses `eval/s2_locked_probe.py` (real-instance A/B + reasoning) + `eval/s2_locked_eval.py` (fixture A/B on existing dimensions). Brain nodes: decision `cb1cf256`, lossy-audit `988de522`, milestone `7af599d9`.
 
+**Known issues — deferred from the 2026-05-31 code review, FIX DURING WIRING:**
+1. **Rejection-table SKIP mis-classification (fires the moment consolidation emits `op:absorb`).** `absorb` writes no `similar_to`/`consolidated_into` edge, so a *successful* merge looks like a SKIP to `consolidation.py`'s suppression detector → it stamps a rejection fingerprint → the cluster is suppressed. When wiring the prompt, either (a) have the encoder also emit a `similar_to`-free suppression signal, or (b) teach the SKIP detector that an archived-absorbed (via `_sys_archived_survivor_id`) is a successful merge, not a SKIP. **Must be handled or merges silently stop happening.**
+2. **Edge-direction fidelity (subtle, lower-frequency).** If the survivor already has an edge to the same neighbor in the *opposite* physical direction, `add_relation`→`get_edge_id` matches that pair and the migrated relation inherits the existing edge's direction (reversed). Also a bidirectional absorbed↔neighbor pair collapses to one `get_connections_bulk` entry. Needs a direction-aware migration (or an edge-model fix) — out of scope for the primitive, real for correctness.
+
+The 2026-05-31 follow-up commit already fixed: atomicity (SAVEPOINT/rollback envelope), re-embed of filled fields (route through `revise`), `revise` error handling, edge-weight preservation, the already-archived guard, and the `_CONTROL` session_id/chain_id leak.
+
 ---
 
 ## Why
