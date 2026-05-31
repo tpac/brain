@@ -36,6 +36,16 @@ class SessionContext:
     def __init__(self, session_id: str = '', stop_counter: int = 0):
         self.session_id = session_id or uuid.uuid4().hex
         self.stop_counter = stop_counter
+        # Turn classification (see trace_contract S0 TURN CLASSIFICATION):
+        # last_recall_stop = the stop_counter value at which a real UserPromptSubmit
+        # last ran hook_recall. A turn is "conversational" iff recall ran THIS stop
+        # (last_recall_stop == stop_counter); a /watch wakeup skips recall
+        # client-side, so its stop never updates this → it reads as a heartbeat.
+        # -1 = recall has never run for this session.
+        self.last_recall_stop: int = -1
+        # Transient (not persisted): set by post_response_common each turn so the
+        # Stop hook's Scribe gate only fires on conversational turns.
+        self.last_turn_conversational: bool = True
         self.fatigue: Dict[str, int] = {}  # {node_id: access_count} — resets between sessions
         self.edge_fatigue: Dict[str, int] = {}  # {target_node_id: surface_count} — edge rotation
         # Per-session node activity — the parallel-session replacement for
@@ -185,6 +195,7 @@ class SessionContext:
         now = iso_now()
         data = json.dumps({
             'stop_counter': self.stop_counter,
+            'last_recall_stop': self.last_recall_stop,
             'fatigue': self.fatigue,
             'edge_fatigue': self.edge_fatigue,
             'remember_count': self.remember_count,
@@ -217,6 +228,7 @@ class SessionContext:
                 session_id=session_id,
                 stop_counter=data.get('stop_counter', 0),
             )
+            ctx.last_recall_stop = int(data.get('last_recall_stop', -1))
             ctx.fatigue = {k: int(v) for k, v in data.get('fatigue', {}).items()}
             ctx.edge_fatigue = {k: int(v) for k, v in data.get('edge_fatigue', {}).items()}
             ctx.remember_count = int(data.get('remember_count', 0))

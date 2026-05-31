@@ -176,6 +176,13 @@ def hook_recall(brain, args, graph_changes):
     ctx = brain.get_or_create_session(args.get('session_id', ''))
     session_id = ctx.session_id
     _current_stop = str(ctx.stop_counter)
+    # Mark that a real UserPromptSubmit ran recall for THIS stop. The Stop hook
+    # reads this to classify the turn: recall ran → conversational. A /watch
+    # wakeup skips recall client-side (pre_response_recall.py: slash/bang/short),
+    # so its stop never reaches here → it reads as a heartbeat. The client has
+    # already filtered, so reaching hook_recall means a real prompt.
+    # See trace_contract S0 TURN CLASSIFICATION.
+    ctx.last_recall_stop = ctx.stop_counter
 
     # Write current stop counter to tmp file — PostToolUse reads this (cross-process)
     try:
@@ -529,43 +536,63 @@ def post_response_common(brain, session_id, user_message, assistant_response):
     ctx = brain.get_or_create_session(session_id)
     assistant_response = (assistant_response or "")[:_PL['assistant_response_store']]
 
+    # Turn classification (trace_contract S0 TURN CLASSIFICATION): a turn is
+    # conversational iff a real UserPromptSubmit ran hook_recall THIS stop (which
+    # sets last_recall_stop). A /watch wakeup skips recall client-side, so its
+    # stop never matches → heartbeat. Heartbeats are recorded for observability
+    # but never enter the conversation stream and never tick the Scribe counter.
+    # last_turn_conversational is read by the Stop hook's encoder gate below.
+    is_conversational = (ctx.last_recall_stop == ctx.stop_counter)
+    ctx.last_turn_conversational = is_conversational
+
     # S0 traces (using SessionContext for chain IDs)
     try:
-        recall_chain = ctx.s1r_chain()
-        brain._trace_dal.append(
-            chain_id=ctx.s0_chain(), scale='s0', event_type='K',
-            ref_type='user_message',
-            summary=user_message[:200] if user_message else '',
-            metadata={'content': user_message[:4000] if user_message else '',
-                      'recall_chain': recall_chain} if user_message else None,
-            session_id=session_id)
-        brain._trace_dal.append(
-            chain_id=ctx.s0_chain(), scale='s0', event_type='delta',
-            ref_type='assistant_message',
-            summary=assistant_response[:200] if assistant_response else '',
-            metadata={'content': assistant_response[:4000]} if assistant_response else None,
-            session_id=session_id)
+        if is_conversational:
+            recall_chain = ctx.s1r_chain()
+            brain._trace_dal.append(
+                chain_id=ctx.s0_chain(), scale='s0', event_type='K',
+                ref_type='user_message',
+                summary=user_message[:200] if user_message else '',
+                metadata={'content': user_message[:4000] if user_message else '',
+                          'recall_chain': recall_chain} if user_message else None,
+                session_id=session_id)
+            brain._trace_dal.append(
+                chain_id=ctx.s0_chain(), scale='s0', event_type='delta',
+                ref_type='assistant_message',
+                summary=assistant_response[:200] if assistant_response else '',
+                metadata={'content': assistant_response[:4000]} if assistant_response else None,
+                session_id=session_id)
+        else:
+            # Heartbeat: wakeup re-arm, no real prompt. One observability marker
+            # (off CONVERSATIONAL_REF_TYPES → never encoded). The peer message,
+            # if any, is recorded separately as a self_message on drain.
+            brain._trace_dal.append(
+                chain_id=ctx.s0_chain(), scale='s0', event_type='K',
+                ref_type='heartbeat',
+                summary=(assistant_response[:200] or 'wakeup re-arm'),
+                metadata=None, session_id=session_id)
     except Exception as e:
         brain._log_error('trace_s0', e, 'post_response_common')
 
-    # Hebbian strengthening — pass current stop_counter so it reads the
-    # surface file written by THIS turn's recall (counter hasn't been
-    # incremented yet — that happens below).
-    try:
-        _hebbian_strengthen(brain, session_id, ctx.stop_counter)
-    except Exception as e:
-        brain._log_error('hebbian_surface_selected', e, 'post_response_common')
+    # Hebbian strengthening reads THIS turn's surface file — a wakeup produces
+    # none, so it's only meaningful (and only run) on conversational turns.
+    if is_conversational:
+        try:
+            _hebbian_strengthen(brain, session_id, ctx.stop_counter)
+        except Exception as e:
+            brain._log_error('hebbian_surface_selected', e, 'post_response_common')
 
-    # Heartbeat — mutates ctx in memory; autosave loop persists
+    # Session activity bookkeeping (NOT the watch heartbeat above) — every turn.
     try:
         brain.record_message(ctx)
     except Exception as e:
         brain._log_error('record_message', e, 'post_response_common')
 
-    # Stop counter increment — in-memory; autosave persists every minute.
-    # If the daemon crashes mid-turn, at most ~60s of stop_counter / fatigue
-    # is lost; encoding gates are approximate so this is acceptable.
-    ctx.increment_stop()
+    # Stop counter advances ONLY on conversational turns — the Scribe gates on
+    # `stop_counter % 5`, so wakeups must not inflate it (else the encoder runs
+    # on watch churn). In-memory; autosave persists. See trace_contract.
+    if is_conversational:
+        ctx.increment_stop()
     return ctx
 
 
@@ -592,28 +619,34 @@ def hook_post_response_track(brain, args, graph_changes):
     # be held indefinitely and ALL future encoding cycles would silently skip.
     acquired_for_spawn = False
     try:
-        counter = ctx.stop_counter
-        position = counter % 5
-
-        if position == 0:
-            if not _encoding_lock.acquire(blocking=False):
-                encoding_status = "encoding skipped (previous still running)"
-                print("[brain-hooks] Encoding agent skipped — previous run still active", flush=True)
-            else:
-                acquired_for_spawn = True
-                from .scales.runner import run_in_background
-                from .scales.s1.encode import run_encoding
-                run_in_background(
-                    name='s1e', brain_db_path=brain.db_path,
-                    session_id=session_id, counter=counter,
-                    lock=_encoding_lock, run_fn=run_encoding,
-                    trace_scale='s1', trace_chain_fn=_s1e_chain_id)
-                # Thread.start() returned → ownership transferred. Thread's
-                # finally is now responsible for the release.
-                acquired_for_spawn = False
-                encoding_status = "encoding started (background)"
+        if not getattr(ctx, 'last_turn_conversational', True):
+            # Heartbeat (wakeup re-arm): stop_counter didn't advance, so the
+            # Scribe gate must NOT run — a static counter sitting at a multiple
+            # of 5 would otherwise re-fire the encoder on every wakeup.
+            encoding_status = "heartbeat — not a turn, encoder gate skipped"
         else:
-            encoding_status = "encoding %d/5" % position
+            counter = ctx.stop_counter
+            position = counter % 5
+
+            if position == 0:
+                if not _encoding_lock.acquire(blocking=False):
+                    encoding_status = "encoding skipped (previous still running)"
+                    print("[brain-hooks] Encoding agent skipped — previous run still active", flush=True)
+                else:
+                    acquired_for_spawn = True
+                    from .scales.runner import run_in_background
+                    from .scales.s1.encode import run_encoding
+                    run_in_background(
+                        name='s1e', brain_db_path=brain.db_path,
+                        session_id=session_id, counter=counter,
+                        lock=_encoding_lock, run_fn=run_encoding,
+                        trace_scale='s1', trace_chain_fn=_s1e_chain_id)
+                    # Thread.start() returned → ownership transferred. Thread's
+                    # finally is now responsible for the release.
+                    acquired_for_spawn = False
+                    encoding_status = "encoding started (background)"
+            else:
+                encoding_status = "encoding %d/5" % position
     except Exception as e:
         brain._log_error('encoding_agent_gate', e, 'Stop hook')
         encoding_status = "encoding error: %s" % str(e)[:50]
