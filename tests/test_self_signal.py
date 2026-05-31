@@ -127,6 +127,16 @@ class TestSelfSignal(BrainTestBase):
         """A stream that never sent anything has an empty outbox (no crash)."""
         self.assertEqual(signal.outbox(self.brain, from_session='Z')['messages'], [])
 
+    def test_from_label_persists_and_renders(self):
+        """from_label persists for the sender, and the recipient sees the label
+        (not the raw short id) in the drained message + its render."""
+        signal.send(self.brain, from_session='streamA', from_label='alpha',
+                    address=self_contract.address_for_stream('streamB'), body='hi B')
+        self.assertEqual(self.brain.get_config(self_contract.label_key('streamA')), 'alpha')
+        drained = signal.drain_inbox(self.brain, to_session='streamB')
+        self.assertEqual(drained[0]['from'], 'alpha')
+        self.assertIn('⚡ alpha says:', drained[0]['rendered'])
+
     # ── Phase 2b: render + delivery-into-Observation ──
 
     def test_render_received_block_composes(self):

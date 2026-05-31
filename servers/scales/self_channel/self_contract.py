@@ -71,6 +71,22 @@ def address_from_target(target):
     return ADDR_BROADCAST if target == 'broadcast' else address_for_stream(target)
 
 
+def is_session_id(s):
+    """True if `s` is a full Claude Code session UUID (8-4-4-4-12 hex) — the
+    canonical address form, honored directly even for a stream not in the live
+    roster this instant (it drains within TTL). Labels never match this shape."""
+    s = s or ''
+    return (len(s) == 36 and s.count('-') == 4
+            and all(c in '0123456789abcdef-' for c in s.lower()))
+
+
+def label_key(session_id):
+    """brain_meta key for a stream's self-chosen display label — the legible 'who'
+    in presence and message attribution. Mirrors the per-session
+    session_context_<sid> pattern; unset → callers fall back to the 8-char short id."""
+    return "self_label_" + (session_id or '')
+
+
 # ═══════════════════════════════════════════════════════════════
 # INTENT  —  a render hint, defaulted from the address
 # ═══════════════════════════════════════════════════════════════

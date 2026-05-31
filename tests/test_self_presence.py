@@ -9,7 +9,7 @@ import unittest
 from tests.brain_test_base import BrainTestBase
 from servers.clock import iso_cutoff
 from servers.session_context import SessionContext
-from servers.scales.self_channel import presence, self_contract
+from servers.scales.self_channel import presence, self_contract, signal
 
 
 class TestSelfPresence(BrainTestBase):
@@ -99,6 +99,38 @@ class TestSelfPresence(BrainTestBase):
         self.assertIn('streamLOST', lost_ids)              # surfaced...
         self.assertNotIn('streamLOST', states)             # ...but not in the live roster
         self.assertIn('lost', out['line'])                 # and named in the line
+
+    def test_resolve_to_canonical_label_and_graceful(self):
+        """to= resolution: broadcast + full UUID are canonical; a label matches the
+        live roster; unknown is loud (no address)."""
+        sid = 'aaaaaaaa-1111-2222-3333-444444444444'
+        self._save_stream(sid, focus='dal cleanup')
+        self.brain.set_config(self_contract.label_key(sid), 'dal')
+        self.assertEqual(signal.resolve_to(self.brain, 'broadcast')[0], self_contract.ADDR_BROADCAST)
+        addr, err = signal.resolve_to(self.brain, sid)            # full id → canonical
+        self.assertIsNone(err)
+        self.assertEqual(addr, self_contract.address_for_stream(sid))
+        addr, err = signal.resolve_to(self.brain, 'dal')          # label → that stream
+        self.assertIsNone(err)
+        self.assertEqual(addr, self_contract.address_for_stream(sid))
+        addr, err = signal.resolve_to(self.brain, 'nope')         # unknown → loud
+        self.assertIsNone(addr)
+        self.assertIn('no live stream', err)
+
+    def test_resolve_to_ambiguous_is_loud(self):
+        self._save_stream('bbbbbbbb-0000-0000-0000-000000000001', focus='x')
+        self._save_stream('bbbbbbbb-0000-0000-0000-000000000002', focus='y')
+        addr, err = signal.resolve_to(self.brain, 'bbbbbbbb')     # id-prefix → 2 matches
+        self.assertIsNone(addr)
+        self.assertIn('matches', err)
+
+    def test_presence_shows_label(self):
+        sid = 'cccccccc-0000-0000-0000-000000000003'
+        self._save_stream(sid, focus='docs')
+        self.brain.set_config(self_contract.label_key(sid), 'docs-audit')
+        out = presence.build_presence(self.brain, my_session_id='other', limit=10)
+        self.assertIn('docs-audit', {s.get('label') for s in out['streams']})
+        self.assertIn('docs-audit', out['line'])
 
 
 if __name__ == '__main__':

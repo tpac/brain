@@ -23,17 +23,20 @@ from servers.clock import iso_now, iso_cutoff
 from servers.scales.self_channel import self_contract
 
 
-def send(brain, from_session, address, body, intent=None, refs=None):
+def send(brain, from_session, address, body, intent=None, refs=None, from_label=None):
     """Place a directed/broadcast self-message in the courier. Returns its record.
 
     Stores the body and refs IN FULL — no truncation here. Per the self-channel
     truncation contract (self_contract), the SINGLE truncation point is delivery
     render (render_received_block), and it is loud; storage keeps everything so
     the dashboard always shows the message untruncated. The only guard is a
-    non-empty body."""
+    non-empty body. `from_label` (optional) persists a human display name for the
+    sender so recipients see it and can reply by it — stored like session focus."""
     body = (body or '').strip()
     if not body:
         raise ValueError('self.signal.send: empty body')
+    if from_label and from_label.strip():
+        brain.set_config(self_contract.label_key(from_session or ''), from_label.strip())
     if intent not in self_contract.INTENTS:
         intent = self_contract.default_intent(address)
     refs_json = json.dumps(list(refs or []))
@@ -48,6 +51,41 @@ def send(brain, from_session, address, body, intent=None, refs=None):
             (mid, from_session or '', address, intent, body, refs_json, created_at))
         brain.logs_conn.commit()
     return {'id': mid, 'address': address, 'intent': intent, 'created_at': created_at}
+
+
+def resolve_to(brain, to):
+    """Resolve an MCP `to` to a delivery address, gracefully — returns
+    (address, error) with exactly one non-None.
+
+    'broadcast' and a full session UUID are canonical, honored directly (a UUID
+    works even when the target isn't in the live roster this instant — it drains
+    within TTL). A shorter form (a label, case-insensitive, or an id-prefix) is
+    matched against the LIVE roster: unique → that stream; ambiguous → names the
+    candidates; none → loud (which usefully says the stream is dormant/lost, so
+    silence is never mistaken for delivery)."""
+    to = (to or '').strip()
+    if not to:
+        return None, "self_send: empty 'to'"
+    if to == 'broadcast':
+        return self_contract.ADDR_BROADCAST, None
+    if self_contract.is_session_id(to):
+        return self_contract.address_for_stream(to), None
+    window = self_contract.ROSTER_LIVE_WINDOW_MIN + self_contract.ROSTER_LOST_GRACE_MIN
+    matches = []
+    for r in brain.present_streams(window_min=window, limit=50):
+        sid = r.get('session_id', '')
+        label = brain.get_config(self_contract.label_key(sid), '') or ''
+        if (label and label.lower() == to.lower()) or (sid and sid.startswith(to)):
+            matches.append(sid)
+    matches = list(dict.fromkeys(matches))
+    if len(matches) == 1:
+        return self_contract.address_for_stream(matches[0]), None
+    if len(matches) > 1:
+        return None, ("self_send: '%s' matches %d live streams (%s) — use the full "
+                      "session id to disambiguate"
+                      % (to, len(matches), ", ".join(s[:8] for s in matches)))
+    return None, ("self_send: no live stream matches '%s' — it may be dormant or lost. "
+                  "Use its full session id, or self_presence to see who's live." % to)
 
 
 def drain_inbox(brain, to_session):
@@ -74,13 +112,14 @@ def drain_inbox(brain, to_session):
                 'INSERT OR IGNORE INTO self_delivered (message_id, to_session, delivered_at) '
                 'VALUES (?, ?, ?)', (mid, to_session, now))
             short = (from_session or '')[:8]
+            who = brain.get_config(self_contract.label_key(from_session or ''), '') or short
             out.append({
                 'id': mid,
-                'from': short,
+                'from': who,
                 'intent': intent,
                 'body': body,
                 'created_at': created_at,
-                'rendered': self_contract.render_signal(body, stream_short=short),
+                'rendered': self_contract.render_signal(body, stream_short=who),
             })
         brain.logs_conn.commit()
     return out

@@ -655,11 +655,12 @@ def _build_tools():
          "stream_id": {"type": "string", "description": "The target stream's session id (from self_presence)."}}}},
 
     {"name": "self_send",
-     "description": "Send a message to another stream of thought — the deliberate REACH (self_presence/self_peek only look; this speaks). Use when you need a live stream of you to ACT or know something now: 'stop editing X, I've got it', 'the bug is in Y'. Delivered to that stream's inbox, consumed once. These are you, not other agents — reach only when looking isn't enough.",
+     "description": "Send a message to another stream of thought — the deliberate REACH (self_presence/self_peek only look; this speaks). Use when you need a live stream of you to ACT or know something now: 'stop editing X, I've got it', 'the bug is in Y'. Address by label, id-prefix, full session id, or 'broadcast'. Delivered to that stream's inbox, consumed once. These are you, not other agents — reach only when looking isn't enough.",
      "inputSchema": {"type": "object", "required": ["to", "body"], "properties": {
-         "to": {"type": "string", "description": "Target stream's session id (from self_presence), or 'broadcast' for all live streams."},
+         "to": {"type": "string", "description": "Target stream: its label (e.g. 'dal-cleanup'), an id-prefix, or full session id (from self_presence) — or 'broadcast' for all live streams. A label/prefix resolves against live streams; ambiguous or gone is reported so you can fall back to the full id."},
          "body": {"type": "string", "description": "The message — terse, a tap on the shoulder, not a letter."},
          "from_session": {"type": "string", "description": "Your own session id, for attribution (optional)."},
+         "from_label": {"type": "string", "description": "A short human name to send AS (e.g. 'dal-cleanup'). Persisted, so others see it in self_presence and can reply to you by it. Optional; defaults to your 8-char short id."},
          "intent": {"type": "string", "enum": ["signal", "letter"], "description": "Render hint; default 'signal'."},
          "refs": {"type": "array", "items": {"type": "string"}, "description": "Node ids / files the message is grounded in (optional)."}}}},
 

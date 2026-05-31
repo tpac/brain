@@ -40,7 +40,12 @@ class TestSelfDispatchEnvelope(BrainTestBase):
         self.assertIn('found', r['result'])
 
     def test_send_handler_enveloped(self):
-        r = _handle_self_send(self.brain, {'to': 'B', 'body': 'hi B', 'from_session': 'A'}, [])
+        # Graceful resolution: a target must be a full session id, a live label/prefix,
+        # or 'broadcast' — a bare toy id no longer resolves (loud-on-dead-target is the
+        # point). A full session UUID is canonical and resolves directly.
+        r = _handle_self_send(
+            self.brain,
+            {'to': 'aaaaaaaa-1111-2222-3333-444444444444', 'body': 'hi B', 'from_session': 'A'}, [])
         _assert_envelope(self, r)
         self.assertIn('id', r['result'])
 
@@ -51,10 +56,11 @@ class TestSelfDispatchEnvelope(BrainTestBase):
 
     def test_send_then_inbox_roundtrip_through_dispatch(self):
         """End-to-end through the enveloped dispatch layer (not the inner fns)."""
+        target = 'aaaaaaaa-1111-2222-3333-444444444444'   # full session id → resolves canonically
         sent = _handle_self_send(
-            self.brain, {'to': 'B', 'body': 'ping B', 'from_session': 'A'}, [])
+            self.brain, {'to': target, 'body': 'ping B', 'from_session': 'A'}, [])
         _assert_envelope(self, sent)
-        drained = _handle_self_inbox(self.brain, {'session_id': 'B'}, [])
+        drained = _handle_self_inbox(self.brain, {'session_id': target}, [])
         _assert_envelope(self, drained)
         bodies = [m['body'] for m in drained['result']['messages']]
         self.assertIn('ping B', bodies)
