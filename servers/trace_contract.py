@@ -162,9 +162,11 @@ REF_TYPES = {
 #   heartbeat           /watch wakeup re-arm, no real input        no  (never)
 #                        (no prompt + empty inbox)
 #
-# "conversational" means BOTH: (a) the turn ticks the S1 Scribe's stop_counter
-# (daemon_hooks: counter % 5 gate), and (b) the encoder reads it via
-# get_session_turns. Non-conversational turns are still written to S0 (for
+# "conversational" means BOTH: (a) the turn advances the S1 Scribe's integration
+# CADENCE — ctx.conversational_count, which the Scribe gates on (`% 5`). This is
+# distinct from stop_counter, the per-stop SEQUENCE number that advances on EVERY
+# stop (incl. heartbeats) so chain IDs stay unique. And (b) the encoder reads it
+# via get_session_turns. Non-conversational turns are still written to S0 (for
 # observability) but never drive or feed encoding.
 #
 # anchor↔anchor encoding is a PLANNED capability, switched OFF today. The single

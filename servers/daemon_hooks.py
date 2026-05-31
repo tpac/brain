@@ -623,7 +623,10 @@ def hook_post_response_track(brain, args, graph_changes):
     # be held indefinitely and ALL future encoding cycles would silently skip.
     acquired_for_spawn = False
     try:
-        if not getattr(ctx, 'last_turn_conversational', True):
+        # Fail-safe default False: if the flag is somehow unset (restart, or
+        # post_response_common didn't run), treat the turn as NON-conversational
+        # so the Scribe is NOT fired on an unknown/heartbeat turn.
+        if not getattr(ctx, 'last_turn_conversational', False):
             # Heartbeat (wakeup re-arm): not a conversational turn, so it didn't
             # advance the integration cadence — skip the Scribe gate entirely.
             encoding_status = "heartbeat — not a turn, encoder gate skipped"
