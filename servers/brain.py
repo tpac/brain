@@ -1954,10 +1954,23 @@ class Brain(
         """
         Commit pending changes and optionally back up database.
 
+        Holds write_lock around the self.conn commit. save() is called
+        lock-free from the daemon's S2 idle-maintenance path (_run_idle_
+        maintenance) on a pool thread — the SAME pool that handles client
+        commands. Without the lock, its commit() can land mid-flight on a
+        concurrent client brain_batch (BEGIN IMMEDIATE + many writes on the
+        shared self.conn), committing the batch's PARTIAL transaction and
+        breaking its all-or-nothing atomicity. write_lock serializes save
+        against brain_batch; it's an RLock, so the primary autosave path
+        (daemon_server, which already holds write_lock before calling save)
+        re-acquires safely. logs_conn is a separate DB — no coordination with
+        the foreground write lock is needed.
+
         Args:
             backup: If True, create a backup copy
         """
-        self.conn.commit()  # commit-ok: explicit durability point (save/autosave)
+        with self.write_lock:
+            self.conn.commit()  # commit-ok: explicit durability point (save/autosave)
         try:
             self.logs_conn.commit()
         except Exception:

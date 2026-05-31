@@ -146,6 +146,31 @@ class TestSetConfigHoldsWriteLock(unittest.TestCase):
             "and is lost on rollback.")
 
 
+class TestSaveHoldsWriteLock(unittest.TestCase):
+    """Same class of bug as set_config above. Brain.save() commits the
+    foreground self.conn at an explicit durability point. The daemon's S2
+    idle-maintenance path (_run_idle_maintenance) calls save() lock-free on a
+    pool thread — the SAME pool that handles client commands. If a client
+    brain_batch is mid-flight under write_lock (BEGIN IMMEDIATE + many writes
+    on the shared self.conn), a lock-free save().commit() commits the batch's
+    PARTIAL transaction, breaking its all-or-nothing atomicity. save() MUST
+    hold write_lock around the commit so it serializes against brain_batch;
+    write_lock is an RLock, so the primary autosave path (daemon_server, which
+    already holds write_lock before calling save) re-acquires safely.
+    (Source contract — the behavioral race is timing-dependent to reproduce
+    deterministically; this locks the guard that prevents it.)"""
+
+    def test_save_acquires_write_lock(self):
+        from servers.brain import Brain
+        src = inspect.getsource(Brain.save)
+        self.assertIn(
+            'with self.write_lock', src,
+            "Brain.save must acquire write_lock around its self.conn.commit() — "
+            "the daemon's S2 maintenance path calls save() lock-free on a pool "
+            "thread, and without the lock its commit lands mid-flight on a "
+            "concurrent brain_batch and commits a partial transaction.")
+
+
 class TestGraphWritersHaveNoCommitKwarg(unittest.TestCase):
     """Signature contract: the batch-reachable GraphDAL writers expose no
     `commit` parameter. The old forgettable knob is gone — the writer reads
