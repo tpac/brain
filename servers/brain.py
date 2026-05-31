@@ -327,13 +327,14 @@ class Brain(
         Called after ensure_schema() to handle runtime initialization.
         """
         try:
-            cursor = self.conn.execute('SELECT COUNT(*) FROM node_vectors')
-            vector_count = cursor.fetchone()[0]
+            # node_vectors empty? get_total_docs (COUNT DISTINCT node_id) is 0
+            # iff the table is empty — equivalent to the old COUNT(*)==0 check.
+            index_empty = self._tfidf.get_total_docs() == 0
+            # count(archived=True) == COUNT(*) FROM nodes (all states), matching
+            # the prior check exactly.
+            node_count = self._nodes.count(archived=True)
 
-            cursor = self.conn.execute('SELECT COUNT(*) FROM nodes')
-            node_count = cursor.fetchone()[0]
-
-            if node_count > 0 and vector_count == 0:
+            if node_count > 0 and index_empty:
                 print('[brain] Building TF-IDF index for existing nodes...')
                 self._rebuild_tfidf_index()
                 print('[brain] TF-IDF index built.')

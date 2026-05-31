@@ -1,6 +1,6 @@
 # DAL Cleanup & Migration Plan
 
-**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phases 0–2 + 3a + F3-completion **merged to `main`** (merge `530d2f8`). **Structural F3 fix (#5) ✅ done** on worktree `dal-cleanup-2` (connection-bound batch flag — see below). Phase 3 in progress — 3a counts ✅; 3b TF-IDF + 3c node-writes/titles pending. Open: Phases 3b/3c/4/5/6.
+**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phases 0–2 + 3a + F3-completion **merged to `main`** (merge `530d2f8`). **Structural F3 fix (#5) ✅ done** on worktree `dal-cleanup-2` (connection-bound batch flag — see below). Phase 3 in progress — 3a counts ✅, 3b TF-IDF ✅ (`_store_tfidf_vector`/`_rebuild_tfidf_index`→`TfIdfDAL`, dead `_tfidf_score` deleted; batch scorer read deferred to Phase 4); 3c node-writes/titles pending. Open: Phases 3c/4/5/6.
 
 > **✅ Structural F3 fix (2026-05-30, branch `dal-cleanup-2`):** killed the
 > by-convention `commit=not _batch_mode` fragility. Batch state now lives on the
@@ -197,9 +197,11 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 **Verify:** `./dev pytest tests/`; `eval/decode_funnel.py` (recall hot path touched).
 **Stop point:** zero ad-hoc construction except the documented bg_writer exception. Commit.
 
-### Phase 3 — Migrate writes (stop writing raw SQL)  ◐ (3a done)
+### Phase 3 — Migrate writes (stop writing raw SQL)  ◐ (3a, 3b done)
 **3a — counts ✅ (`cfc8f02`):** `brain._get_{node,edge,locked}_count`, `brain_recall` brain-size, `brain_assembly` total_locked, `daemon_server` status counts → held DALs (`count`/`count_locked`/`count_total`/`count_by_type` adopted). daemon locked count gains the documented non-archived semantics.
-**3b — TF-IDF (pending):** route `brain_remember`'s inline `_store_tfidf_vector` / `_rebuild_tfidf_index` / `_tfidf_score` blocks onto `TfIdfDAL` (the verbatim-reimplemented dead class). Also `brain.py:323`/`brain_assembly:433` raw counts.
+**3b — TF-IDF ✅ (`dal-cleanup-2`):** `brain_remember._store_tfidf_vector` → `self._tfidf.store_tf_vector(node_id, tf)` (the verbatim-reimplemented dead class, now adopted); `_rebuild_tfidf_index` → `clear_all()` + per-node `store_tf_vector` wrapped in `conn.in_batch` (single commit preserved via save/restore + `_maybe_commit`); `brain.py` boot reindex check → `self._tfidf.get_total_docs()==0` + `self._nodes.count(archived=True)`. `_compute_tf`/`_tfidf_tokenize` stay (TF math, not DB). **Dead `_tfidf_score` (single-node, 0 callers) deleted.**
+  - *Deferred to Phase 4 (reads):* `_batch_tfidf_scores` is a READ on the **recall hot path** (`brain_recall.py:884`) with subtle semantics (`total_docs = _get_node_count()` ≠ `get_total_docs()`; term-filtered node_vectors read with no exact DAL method). Migrating it needs a new `TfIdfDAL` read method + a `decode_funnel` before/after — belongs in the reads phase, not writes.
+  - *Deferred to Phase 4:* `brain_assembly:433` stale-context count is a bespoke filtered `nodes` read (type+locked+archived+created_at), not a TF-IDF write.
 **3c — node writes + titles (pending):** raw `UPDATE nodes …` → `NodeDAL.update_field`/etc.; `SELECT title …` → `NodeDAL.get_title`.
 **Goal:** Adopt the Category-B *write* methods; remove the write violations.
 **Work:** Route `brain_remember.py` TF-IDF block → `TfIdfDAL`; node UPDATEs → `NodeDAL.update_field`/etc.; the 3 `brain._get_*_count` + daemon_server counts → `NodeDAL`/`GraphDAL` counts; node-title reads → `NodeDAL.get_title`.
@@ -234,7 +236,7 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 | 1 — F3 correctness | ☑ | fd9c313 (+0cd1c1d) | writers+callers batch-aware; xhigh review later found 3 MISSED writers (co_anchored×2, connect(), hebbian) → completed in 0cd1c1d; 9 batch tests |
 | 1b — F3 **structural** (#5) | ☑ | dal-cleanup-2 | conn-bound `in_batch` flag (`BatchAwareConnection`) + `commit_unless_batched`; `commit` kwarg + `_batch_mode` deleted; all 33 dal.py commits gated; guardrail `test_write_txn_discipline.py`. Kills the by-convention fragility |
 | 2 — Repository aggregate | ☑ | d13d671, c1f9ceb | held 5 DALs; ~57/68 sites converted; residual = bg-writer + daemon_hooks + conn-params |
-| 3 — Migrate writes | ◐ | cfc8f02, 0cd1c1d | 3a counts ✅; 3b TF-IDF + 3c node-writes/titles pending |
+| 3 — Migrate writes | ◐ | cfc8f02, 0cd1c1d, dal-cleanup-2 | 3a counts ✅; 3b TF-IDF ✅ (store/rebuild→TfIdfDAL, dead _tfidf_score deleted, batch-scorer read→Phase 4); 3c node-writes/titles pending |
 | 4 — Migrate reads | ☐ | — | |
 | 5 — Missing DALs + extractions | ☐ | — | |
 | 6 — Lock it | ☐ | — | |
