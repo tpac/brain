@@ -284,10 +284,10 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 **Verify:** `./dev pytest tests/`; temporal + recall-by-time paths.
 **Stop point:** `entity_dates` + source-refs fully DAL'd; one complete cascade-delete path. Commit.
 
-### Phase 6 — Lock it (guardrail)  ☐
+### Phase 6 — Lock it (guardrail)  ◐ (in progress)
 **Goal:** Prevent regression; normalize remaining contracts.
 **Work:**
-1. **Raw-SQL guardrail**: contract test that fails on new raw `.execute(` (DML) outside `dal*.py`/`schema.py`/allowlisted maintenance files.
+1. **✅ DONE — Raw-SQL guardrail** (`tests/test_raw_sql_guardrail.py`): a ratchet over per-file raw-DML counts in `servers/` (excl. `dal*`/`schema`). Baseline frozen at **40 sites / 11 files** (2026-05-31, categorized exception-vs-pending in `ALLOWED`); fails on any NEW raw INSERT/UPDATE/DELETE/REPLACE **and** when a migration drops a file below baseline (keeps the allowance honest). Carries a detector teeth-test so it can't go vacuous. Detection is literal-DML-after-`.execute(`; variable-assembled SQL is not caught (rare, different smell).
 2. **Tighten the txn-discipline guardrail** (`test_write_txn_discipline.py`, from the F3 review): `TestBrainSelfCommitsAreMarked` currently matches `startswith('self.conn.commit()')` — it MISSES (a) aliased commits like `instance.conn.commit()` at `brain.py:122` (benign teardown flush in `clear_instances`, but should be tagged `# commit-ok:`), and (b) compound-statement commits (`foo; self.conn.commit()`). Switch to a regex on the code-portion of each line matching `\.conn\.commit\(\)` (catches aliases; `logs_conn.commit()` is excluded by the leading-dot requirement) with comment/docstring stripping + the `# commit-ok:` allowlist. Tag `brain.py:122` while there.
 3. **Normalize neighbor-row key → `id`** (B-KEY) with a contract assertion.
 4. Sweep Category-C test-only methods (delete or document); fold in BACKLOG P4.17 (`judge_output`→`surface_output` in `dal.py:get_user_turns`) if the file is open.
