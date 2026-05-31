@@ -343,37 +343,11 @@ def write_entity_dates(
     Returns the number of REAL interval rows written (sentinel doesn't
     count). Idempotent.
     """
-    conn.execute(
-        'DELETE FROM entity_dates WHERE entity_kind = ? AND entity_id = ?',
-        (entity_kind, entity_id),
-    )
-    rows = [
-        (entity_kind, entity_id, s, e, src, raw)
-        for (s, e, src, raw) in intervals
-    ]
-    if not rows:
-        conn.execute(
-            '''INSERT INTO entity_dates
-               (entity_kind, entity_id, start_ts, end_ts, extraction_source,
-                raw_text)
-               VALUES (?, ?, 0, 0, ?, NULL)''',
-            (entity_kind, entity_id, _SENTINEL_SOURCE),
-        )
-        return 0
-    # Defensive cap. Pathological inputs (e.g., a content field listing 500
-    # dates) shouldn't be able to bloat the index. Keep first N — order
-    # reflects emission order in extract_node_intervals/extract_edge_intervals
-    # which is title → content → KV, so earlier-priority sources win.
-    if len(rows) > MAX_INTERVALS_PER_ENTITY:
-        rows = rows[:MAX_INTERVALS_PER_ENTITY]
-    conn.executemany(
-        '''INSERT OR REPLACE INTO entity_dates
-           (entity_kind, entity_id, start_ts, end_ts, extraction_source,
-            raw_text)
-           VALUES (?, ?, ?, ?, ?, ?)''',
-        rows,
-    )
-    return len(rows)
+    # SQL lives in EntityDatesDAL; construct with the handed conn to preserve
+    # the caller's connection routing (foreground vs conn_bg_writer) and
+    # caller-managed transaction lifecycle (the DAL.write does not commit).
+    from .dal import EntityDatesDAL
+    return EntityDatesDAL(conn).write(entity_kind, entity_id, intervals)
 
 
 # ── Edge-level extraction ───────────────────────────────────────────────

@@ -346,19 +346,8 @@ class BrainDaemon:
     def _enqueue_temporal_backfill_gaps(self):
         """Find entities without entity_dates rows and enqueue them."""
         from servers import embed_queue
-        node_ids = [r[0] for r in self.brain.conn.execute('''
-            SELECT n.id FROM nodes n
-            LEFT JOIN entity_dates e
-                   ON e.entity_id = n.id AND e.entity_kind = 'node'
-            WHERE n.archived = 0 AND e.entity_id IS NULL
-        ''').fetchall()]
-        edge_ids = [r[0] for r in self.brain.conn.execute('''
-            SELECT DISTINCT er.edge_id FROM edge_relations er
-            LEFT JOIN entity_dates e
-                   ON e.entity_id = er.edge_id AND e.entity_kind = 'edge'
-            WHERE (er.archived IS NULL OR er.archived = 0)
-              AND e.entity_id IS NULL
-        ''').fetchall()]
+        node_ids = self.brain._entity_dates.node_ids_without_dates()
+        edge_ids = self.brain._entity_dates.edge_ids_without_dates()
         for nid in node_ids:
             embed_queue.enqueue(nid)
         for eid in edge_ids:

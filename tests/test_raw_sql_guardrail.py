@@ -42,7 +42,7 @@ ALLOWED = {
     'recall_write_queue.py': 3,           # exception: bg-writer connection (off foreground), batched
     'scales/s2/rejection_table.py': 1,
     'scales/self_channel/signal.py': 4,   # exception: parallel-stream file (SelfChannelDAL out of this effort)
-    'temporal_extraction.py': 3,          # pending: Phase 5 EntityDatesDAL
+    # temporal_extraction.py: 0 — entity_dates writes migrated to EntityDatesDAL (Phase 5)
 }
 
 

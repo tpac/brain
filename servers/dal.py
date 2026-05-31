@@ -3373,4 +3373,90 @@ class VectorDAL:
         ).fetchone()[0]
 
 
+class EntityDatesDAL:
+    """Access layer for the `entity_dates` table — temporal intervals per
+    node/edge that power recall_by_time. One row per (entity_kind, entity_id,
+    interval); an empty interval set is recorded as a single sentinel row so the
+    backfill indexer treats the entity as processed.
+
+    The sentinel source string lives in temporal_extraction (its owner); it's
+    imported lazily here to avoid a module-load cycle.
+    """
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def write(self, entity_kind: str, entity_id: str,
+              intervals: List[tuple]) -> int:
+        """Replace all rows for (entity_kind, entity_id). Empty `intervals` →
+        one sentinel row (processed-no-dates). Returns the count of REAL
+        interval rows written (sentinel doesn't count). Idempotent.
+
+        Caller-managed transaction: like the function it replaces, this does
+        NOT commit — the backfill batch path (embed_queue drain) owns the
+        BEGIN/COMMIT on the connection passed at construction, and routes via
+        conn_bg_writer off the foreground slot. Constructing EntityDatesDAL(conn)
+        with the handed connection preserves that routing.
+        """
+        from .temporal_extraction import _SENTINEL_SOURCE, MAX_INTERVALS_PER_ENTITY
+        self.conn.execute(
+            'DELETE FROM entity_dates WHERE entity_kind = ? AND entity_id = ?',
+            (entity_kind, entity_id))
+        rows = [(entity_kind, entity_id, s, e, src, raw)
+                for (s, e, src, raw) in intervals]
+        if not rows:
+            self.conn.execute(
+                'INSERT INTO entity_dates (entity_kind, entity_id, start_ts, '
+                'end_ts, extraction_source, raw_text) VALUES (?, ?, 0, 0, ?, NULL)',
+                (entity_kind, entity_id, _SENTINEL_SOURCE))
+            return 0
+        if len(rows) > MAX_INTERVALS_PER_ENTITY:
+            rows = rows[:MAX_INTERVALS_PER_ENTITY]
+        self.conn.executemany(
+            'INSERT OR REPLACE INTO entity_dates (entity_kind, entity_id, '
+            'start_ts, end_ts, extraction_source, raw_text) VALUES (?, ?, ?, ?, ?, ?)',
+            rows)
+        return len(rows)
+
+    def node_entities_in_window(self, start_ts: int, end_ts: int) -> List[str]:
+        """Non-archived node ids whose date interval overlaps [start_ts, end_ts]
+        (sentinel rows excluded). The recall_by_time 'event' anchor, node side."""
+        from .temporal_extraction import _SENTINEL_SOURCE
+        rows = self.conn.execute(
+            "SELECT DISTINCT ed.entity_id FROM entity_dates ed "
+            "JOIN nodes n ON n.id = ed.entity_id "
+            "WHERE ed.entity_kind = 'node' AND ed.extraction_source != ? "
+            "AND ed.start_ts <= ? AND ed.end_ts >= ? AND n.archived = 0",
+            (_SENTINEL_SOURCE, end_ts, start_ts)).fetchall()
+        return [r[0] for r in rows]
+
+    def edge_entities_in_window(self, start_ts: int, end_ts: int) -> List[str]:
+        """Edge ids whose date interval overlaps [start_ts, end_ts] (sentinel
+        excluded). Archived-relation filtering happens downstream."""
+        from .temporal_extraction import _SENTINEL_SOURCE
+        rows = self.conn.execute(
+            "SELECT DISTINCT entity_id FROM entity_dates "
+            "WHERE entity_kind = 'edge' AND extraction_source != ? "
+            "AND start_ts <= ? AND end_ts >= ?",
+            (_SENTINEL_SOURCE, end_ts, start_ts)).fetchall()
+        return [r[0] for r in rows]
+
+    def node_ids_without_dates(self) -> List[str]:
+        """Non-archived node ids with no entity_dates rows yet — the cold-start
+        backfill work-list (a node is 'done' once it has rows incl. sentinel)."""
+        rows = self.conn.execute(
+            "SELECT n.id FROM nodes n "
+            "LEFT JOIN entity_dates e ON e.entity_id = n.id AND e.entity_kind = 'node' "
+            "WHERE n.archived = 0 AND e.entity_id IS NULL").fetchall()
+        return [r[0] for r in rows]
+
+    def edge_ids_without_dates(self) -> List[str]:
+        """Active edge ids with no entity_dates rows yet — cold-start work-list."""
+        rows = self.conn.execute(
+            "SELECT DISTINCT er.edge_id FROM edge_relations er "
+            "LEFT JOIN entity_dates e ON e.entity_id = er.edge_id AND e.entity_kind = 'edge' "
+            "WHERE (er.archived IS NULL OR er.archived = 0) AND e.entity_id IS NULL").fetchall()
+        return [r[0] for r in rows]
+
+
 # TelemetryDAL — REMOVED 2026-04-05 (brain_telemetry table dropped, never used)

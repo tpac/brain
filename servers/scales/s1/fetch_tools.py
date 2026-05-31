@@ -570,34 +570,13 @@ def recall_by_time(brain, start_when: str = '', end_when: str = '',
         time_edge_ids: set = set()
         conn = brain.conn
         if time_anchor == 'event':
-            from servers.temporal_extraction import _SENTINEL_SOURCE
-            # Nodes: filter archived via JOIN. Archived nodes' entity_dates
-            # rows are stale and must not surface. Sentinel rows (marking
-            # "processed, no dates") are filtered via extraction_source.
-            for r in conn.execute(
-                '''SELECT DISTINCT ed.entity_id
-                   FROM entity_dates ed
-                   JOIN nodes n ON n.id = ed.entity_id
-                   WHERE ed.entity_kind = 'node'
-                     AND ed.extraction_source != ?
-                     AND ed.start_ts <= ?
-                     AND ed.end_ts >= ?
-                     AND n.archived = 0''',
-                (_SENTINEL_SOURCE, end_ts, start_ts),
-            ):
-                time_node_ids.add(r[0])
-            # Edges: archived-relation filter applied downstream by
-            # _fetch_edges_with_endpoints (it joins active edge_relations
-            # only). Pulling all edge entity_ids here is cheap.
-            for r in conn.execute(
-                '''SELECT DISTINCT entity_id FROM entity_dates
-                   WHERE entity_kind = 'edge'
-                     AND extraction_source != ?
-                     AND start_ts <= ?
-                     AND end_ts >= ?''',
-                (_SENTINEL_SOURCE, end_ts, start_ts),
-            ):
-                time_edge_ids.add(r[0])
+            # entity_dates reads via EntityDatesDAL — sentinel + archived-node
+            # filtering live in the DAL. Edges' archived-relation filter is
+            # applied downstream by _fetch_edges_with_endpoints.
+            time_node_ids.update(
+                brain._entity_dates.node_entities_in_window(start_ts, end_ts))
+            time_edge_ids.update(
+                brain._entity_dates.edge_entities_in_window(start_ts, end_ts))
         elif time_anchor == 'created':
             # Point-in-time anchors use exclusive bounds (gt/lt), matching
             # the prior `recall_by_date` semantics via `filter_nodes`.
