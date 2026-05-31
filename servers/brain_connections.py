@@ -146,8 +146,7 @@ class BrainConnectionsMixin:
         graph_dal = self._graph
         # description omitted so add_relation's sentinel default kicks in
         # (preserves existing on update; defaults to '' on create).
-        result = graph_dal.add_relation(source_id, target_id, relation, weight=weight,
-                                        commit=not self._batch_mode)
+        result = graph_dal.add_relation(source_id, target_id, relation, weight=weight)
         self._maybe_embed_edge_relation(result.get('edge_id'), relation, result)
         return result
 
@@ -190,8 +189,7 @@ class BrainConnectionsMixin:
             kwargs['description'] = description
         if encoding_source is not None:
             kwargs['encoding_source'] = encoding_source
-        result = graph_dal.add_relation(source_id, target_id, relation,
-                                        commit=not self._batch_mode, **kwargs)
+        result = graph_dal.add_relation(source_id, target_id, relation, **kwargs)
         self._maybe_embed_edge_relation(result.get('edge_id'), relation, result)
         return result
 
@@ -200,12 +198,8 @@ class BrainConnectionsMixin:
     # was also removed).
 
     def _get_node_title(self, node_id: str) -> str:
-        """Get title of a node by ID."""
-        try:
-            row = self.conn.execute('SELECT title FROM nodes WHERE id = ?', (node_id,)).fetchone()
-            return row[0] if row else node_id
-        except:
-            return node_id
+        """Get title of a node by ID, falling back to the id if absent."""
+        return self._nodes.get_title(node_id) or node_id
 
     def _find_bridge_candidates(self, node_id: str, limit: int = 5) -> List[Dict[str, Any]]:
         """

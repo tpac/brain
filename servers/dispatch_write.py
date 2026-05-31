@@ -486,9 +486,10 @@ def _handle_brain_batch(brain, args, graph_changes):
     sibling_map = {}  # lowercased title → new node_id
     deferred_connects = []  # [(src_node_id, connect_to_spec)]
 
-    # Wrap the whole batch in ONE SQLite transaction. Sub-handlers call
-    # brain._maybe_commit() which becomes a no-op while _batch_mode=True;
-    # the outer BEGIN IMMEDIATE / COMMIT here owns the durability point.
+    # Wrap the whole batch in ONE SQLite transaction. Sub-handlers and DAL
+    # writers gate their commits on brain.conn.in_batch (commit_unless_batched);
+    # setting it True here makes every per-op commit a no-op so the outer
+    # BEGIN IMMEDIATE / COMMIT below owns the single durability point.
     # Pre-change every op committed individually, so a batch of N ops hit
     # the WAL writer slot N times — bad for parallel-session contention,
     # no rollback semantic if op #37 broke. Per-op exceptions are still
@@ -496,7 +497,7 @@ def _handle_brain_batch(brain, args, graph_changes):
     # that "best-effort" surface is preserved. Only when something
     # escapes the per-op handler entirely (a programmer bug, not a
     # caller-visible op failure) do we rollback the whole batch.
-    brain._batch_mode = True
+    brain.conn.in_batch = True
     transaction_started = False
     # brain_batch owns its own BEGIN IMMEDIATE / COMMIT envelope. If self.conn
     # is ALREADY mid-transaction here, an upstream op left a deferred auto-BEGIN
@@ -616,10 +617,10 @@ def _handle_brain_batch(brain, args, graph_changes):
                     else:
                         gdal = brain._graph
                         edge_id = gdal.get_edge_id(source_id, target_id)
+                        # remove_relation gates its own commit on conn.in_batch
+                        # (True here) → deferred to the batch's single COMMIT.
                         gdal.remove_relation(
-                            source_id, target_id, relation, archived_by=archived_by,
-                            commit=not brain._batch_mode)
-                        brain._maybe_commit()
+                            source_id, target_id, relation, archived_by=archived_by)
                         graph_changes.append("DISCONNECT: %s -[%s]-> %s" % (
                             source_id[:8], relation, target_id[:8]))
 
@@ -703,7 +704,7 @@ def _handle_brain_batch(brain, args, graph_changes):
         # it into {ok: False, error: ...}.
         raise
     finally:
-        brain._batch_mode = False
+        brain.conn.in_batch = False
 
     succeeded = sum(1 for r in results if r.get("ok"))
     return {"ok": True, "result": {

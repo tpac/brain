@@ -1,6 +1,40 @@
 # DAL Cleanup & Migration Plan
 
-**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phases 0–2 + 3a + F3-completion all **merged to `main`** (merge `530d2f8`). Phase 3 in progress — 3a counts ✅; 3b TF-IDF + 3c node-writes/titles pending. Open: structural F3 (#5), Phases 3b/3c/4/5/6.
+**Started:** 2026-05-30 · **Owner:** Anchor + Tom · **Status:** Phases 0–2 + 3a + F3-completion **merged to `main`** (merge `530d2f8`). **Structural F3 fix (#5) ✅ done** on worktree `dal-cleanup-2` (connection-bound batch flag — see below). Phase 3 in progress — 3a counts ✅, 3b TF-IDF ✅ (`_store_tfidf_vector`/`_rebuild_tfidf_index`→`TfIdfDAL`, dead `_tfidf_score` deleted; batch scorer read deferred to Phase 4); 3c node-writes/titles pending. Open: Phases 3c/4/5/6.
+
+> **✅ Structural F3 fix (2026-05-30, branch `dal-cleanup-2`):** killed the
+> by-convention `commit=not _batch_mode` fragility. Batch state now lives on the
+> **connection** (`BatchAwareConnection.in_batch`, `db_backends/sqlite.py`); a
+> single gate `commit_unless_batched(conn)` replaces every `self.conn.commit()`
+> in `dal.py` (33 sites) + `Brain._maybe_commit()`. The `commit` kwarg is removed
+> from the 6 GraphDAL writers and `brain._batch_mode` is deleted — one source of
+> truth, nothing to forget. Owners (`_handle_brain_batch`, `recall_write_queue
+> ._drain_once`) flip `conn.in_batch` in try/finally. Locked by
+> `tests/test_write_txn_discipline.py` (behavior + source + signature + wiring
+> contracts; verified they flag the pre-fix state). Full doc:
+> `docs/WRITE-TXN-ISOLATION-ROOTFIX.md` → "Root fix — shipped (Option A)".
+
+> **F3 code-review remediation (2026-05-30, `dal-cleanup-2`):** a high-effort
+> segmented `/code-review` of the F3 commit surfaced a **pre-existing**
+> concurrency gap (not an F3 regression): S2 maintenance calls `brain.set_config`
+> **lock-free** on a pool thread (gating timestamps, failure counters, journals),
+> concurrent with a client `brain_batch` holding `write_lock`+`in_batch=True` on
+> the shared `brain.conn`. With `commit_unless_batched` now on `BrainMetaDAL.set`,
+> the config INSERT folds into the batch txn and is lost on rollback. **Fixed:**
+> `brain.set_config` now acquires `write_lock` (RLock, reentrant-safe) — it
+> serializes against `brain_batch` (which resets `in_batch` before releasing the
+> lock), so a non-owner thread never observes `in_batch`. Also: `log_communication`'s
+> bare `self.conn.commit()` routed through `_maybe_commit()`; the guardrail widened
+> to scan `brain.py`+`brain_*.py` (legit explicit-durability commits tagged
+> `# commit-ok:`). **Also fixed (same race class, the spawned follow-up):**
+> `Brain.save()` was likewise called **lock-free** in `_run_idle_maintenance`
+> (daemon_server.py:831) with an unconditional `self.conn.commit()` that could
+> commit a concurrent client batch's partial state. `save()` now wraps that
+> commit in `self.write_lock` (RLock — the daemon autosave path that already
+> holds it re-acquires safely; `logs_conn` stays outside, separate DB). Per-write
+> lock granularity (matching `set_config` and the encoder dispatch at
+> `base.py:319`), NOT wrapping all of maintenance. Locked by
+> `TestSaveHoldsWriteLock`.
 
 > **Code-review fixes (`0cd1c1d`, 2026-05-30):** an xhigh review found Phase-1's
 > F3 fix was **incomplete** — 3 reachable GraphDAL writer calls still self-committed
@@ -19,8 +53,12 @@
 > additive both sides). Worktree `/Users/tpac/brain-dal-cleanup` retained on branch
 > `dal-cleanup` — **`git merge --ff-only main` in it before resuming Phase 3b.**
 >
-> **Open for next session:** structural F3 fix (#5 — kill the by-convention fragility),
-> Phase 3b (TF-IDF→TfIdfDAL), 3c (node-writes/titles→NodeDAL), then Phases 4–6.
+> **Open for next session:** Phase 3b (TF-IDF→TfIdfDAL), 3c (node-writes/titles→NodeDAL),
+> then Phases 4–6. (Structural F3 #5 is done — see the box above.) NOTE: the
+> structural fix makes 3b/3c safer — once `remember` routes through
+> `TfIdfDAL.store_tf_vector` / `NodeDAL.update_field`, those writers already gate
+> on `conn.in_batch` (every dal.py commit was converted), so they're batch-atomic
+> for free; no per-caller `commit=` plumbing needed.
 
 Living tracker for resuming the stalled DAL migration. Update the **Status** lines
 and the progress table as phases land. This doc is the single source of truth for
@@ -95,7 +133,7 @@ Two other sessions are working the same repo. Per `git status` they touch
 
 | ID | Bug | Location | Phase |
 |---|---|---|---|
-| B-F3 | GraphDAL writers self-commit → breaks `brain_batch` atomicity | dal.py `add_relation`/`remove_relation`/`delete_node_edges`/`decay_edges`/`add_source_refs`/`replace_source_refs`; brain_connections.py:195 | 1 |
+| B-F3 | GraphDAL writers self-commit → breaks `brain_batch` atomicity | dal.py `add_relation`/`remove_relation`/`delete_node_edges`/`decay_edges`/`add_source_refs`/`replace_source_refs`; brain_connections.py:195 | 1 (correctness) + **1b structural ✅** — `commit` gate moved to `conn.in_batch`; no kwarg to forget |
 | B-SIG | `CachedVectorDAL.find_missing` drops `require_kv_keys_any` → latent `TypeError` | dal_vector_cached.py:179 vs dal.py:3197 | 0 |
 | B-FTS | Two silent `except Exception` on a recall signal | Fts5DAL.search (dal.py:1710), delete (1730) | 0 |
 | B-LCK | `count_locked` omits `archived=0`; 3 callers want it (semantics fork) | dal.py:1375 vs brain.py:1083, daemon_server.py:671, brain_assembly.py:346 | 0 |
@@ -181,10 +219,16 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 **Verify:** `./dev pytest tests/`; `eval/decode_funnel.py` (recall hot path touched).
 **Stop point:** zero ad-hoc construction except the documented bg_writer exception. Commit.
 
-### Phase 3 — Migrate writes (stop writing raw SQL)  ◐ (3a done)
+### Phase 3 — Migrate writes (stop writing raw SQL)  ◐ (3a, 3b done)
 **3a — counts ✅ (`cfc8f02`):** `brain._get_{node,edge,locked}_count`, `brain_recall` brain-size, `brain_assembly` total_locked, `daemon_server` status counts → held DALs (`count`/`count_locked`/`count_total`/`count_by_type` adopted). daemon locked count gains the documented non-archived semantics.
-**3b — TF-IDF (pending):** route `brain_remember`'s inline `_store_tfidf_vector` / `_rebuild_tfidf_index` / `_tfidf_score` blocks onto `TfIdfDAL` (the verbatim-reimplemented dead class). Also `brain.py:323`/`brain_assembly:433` raw counts.
-**3c — node writes + titles (pending):** raw `UPDATE nodes …` → `NodeDAL.update_field`/etc.; `SELECT title …` → `NodeDAL.get_title`.
+**3b — TF-IDF ✅ (`dal-cleanup-2`):** `brain_remember._store_tfidf_vector` → `self._tfidf.store_tf_vector(node_id, tf)` (the verbatim-reimplemented dead class, now adopted); `_rebuild_tfidf_index` → `clear_all()` + per-node `store_tf_vector` wrapped in `conn.in_batch` (single commit preserved via save/restore + `_maybe_commit`); `brain.py` boot reindex check → `self._tfidf.get_total_docs()==0` + `self._nodes.count(archived=True)`. `_compute_tf`/`_tfidf_tokenize` stay (TF math, not DB). **Dead `_tfidf_score` (single-node, 0 callers) deleted.**
+  - *Deferred to Phase 4 (reads):* `_batch_tfidf_scores` is a READ on the **recall hot path** (`brain_recall.py:884`) with subtle semantics (`total_docs = _get_node_count()` ≠ `get_total_docs()`; term-filtered node_vectors read with no exact DAL method). Migrating it needs a new `TfIdfDAL` read method + a `decode_funnel` before/after — belongs in the reads phase, not writes.
+  - *Deferred to Phase 4:* `brain_assembly:433` stale-context count is a bespoke filtered `nodes` read (type+locked+archived+created_at), not a TF-IDF write.
+**3c — node titles ✅ / writes mostly deferred (`dal-cleanup-2`):** the genuinely-clean wins done — `SELECT title FROM nodes WHERE id=?` → `self._nodes.get_title()` at `brain_connections._get_node_title` and `brain_remember` mark_critical (both fetch a real title; full-id exact ≡ get_title's prefix match; the dead bare `except:` in `_get_node_title` dropped). **The raw `UPDATE nodes` sites are NOT clean drop-ins and are deferred (migrating them naively = behavior change for marginal purity):**
+  - `content_summary` backfill (brain_remember ~1270) deliberately omits the `updated_at` bump (it's a derived field; bumping pollutes recency-based recall) — `NodeDAL.update_field` always bumps. Leave raw.
+  - archive node-UPDATE (brain_remember ~167) reuses a single `ts` shared with the archive audit metadata for consistency — `update_field`'s fresh `_now()` would desync them. Leave raw (it lives inside `archive_node`'s larger flow).
+  - bg access-mark (recall_write_queue ~284) is a batched `executemany` multi-field UPDATE on `conn_bg_writer`. Specialized. Leave raw.
+  - **FORK (deferred per cost):** the `revise` generic setter (brain_remember ~980, dynamic multi-field `UPDATE nodes SET %s`) and the personal-annotation writes (~1801/1806, 3-4 fields) are MULTI-field — they'd need a new `NodeDAL.update_fields(node_id, {col: val})` method. Real DAL-first value (revise is the most-trafficked node write) but it's a behavior-sensitive core path; a new method + careful migration is its own scoped task, not a cheap drop-in.
 **Goal:** Adopt the Category-B *write* methods; remove the write violations.
 **Work:** Route `brain_remember.py` TF-IDF block → `TfIdfDAL`; node UPDATEs → `NodeDAL.update_field`/etc.; the 3 `brain._get_*_count` + daemon_server counts → `NodeDAL`/`GraphDAL` counts; node-title reads → `NodeDAL.get_title`.
 **Verify:** `./dev pytest tests/`; `eval/s1_encode_eval.py` (encode path touches remember); decode_funnel for counts on recall.
@@ -216,8 +260,9 @@ Legend: ☐ not started · ◐ in progress · ☑ done
 |---|---|---|---|
 | 0 — Safe cleanup + fixes | ☑ | 2026-05-30 | dead Category-A gone; B-FTS/SIG/LCK/NAME fixed; 0 new test fails |
 | 1 — F3 correctness | ☑ | fd9c313 (+0cd1c1d) | writers+callers batch-aware; xhigh review later found 3 MISSED writers (co_anchored×2, connect(), hebbian) → completed in 0cd1c1d; 9 batch tests |
+| 1b — F3 **structural** (#5) | ☑ | dal-cleanup-2 | conn-bound `in_batch` flag (`BatchAwareConnection`) + `commit_unless_batched`; `commit` kwarg + `_batch_mode` deleted; all 33 dal.py commits gated; guardrail `test_write_txn_discipline.py`. Kills the by-convention fragility |
 | 2 — Repository aggregate | ☑ | d13d671, c1f9ceb | held 5 DALs; ~57/68 sites converted; residual = bg-writer + daemon_hooks + conn-params |
-| 3 — Migrate writes | ◐ | cfc8f02, 0cd1c1d | 3a counts ✅; 3b TF-IDF + 3c node-writes/titles pending |
+| 3 — Migrate writes | ◐ | cfc8f02, 0cd1c1d, dal-cleanup-2 | 3a counts ✅; 3b TF-IDF ✅ (store/rebuild→TfIdfDAL, dead _tfidf_score deleted, batch-scorer read→Phase 4); 3c node-writes/titles pending |
 | 4 — Migrate reads | ☐ | — | |
 | 5 — Missing DALs + extractions | ☐ | — | |
 | 6 — Lock it | ☐ | — | |

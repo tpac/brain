@@ -5,11 +5,11 @@ Before the refactor each sub-op in brain_batch committed independently
 This test suite locks in the new contract:
 
 1. A batch fires brain.conn.commit() exactly once for the whole batch
-   (per-op _maybe_commit calls are no-ops while _batch_mode=True).
+   (per-op commits are no-ops while brain.conn.in_batch is True).
 2. A failure that escapes the per-op try/except (e.g., during deferred
    connect_to resolution) rolls back EVERY op in the batch.
-3. _batch_mode is always reset to False after the function returns, even
-   on exception.
+3. brain.conn.in_batch is always reset to False after the function returns,
+   even on exception.
 """
 
 import os
@@ -64,16 +64,16 @@ class TestBrainBatchTransaction(BrainTestBase):
                          "Expected one BEGIN IMMEDIATE, got %d" % begins)
 
     def test_batch_mode_resets_after_success(self):
-        """_batch_mode must end False even after a happy-path return."""
-        self.assertFalse(self.brain._batch_mode)
+        """conn.in_batch must end False even after a happy-path return."""
+        self.assertFalse(self.brain.conn.in_batch)
         self._batch([
             {"op": "remember", "type": "rule", "title": "x", "content": "y"},
         ])
-        self.assertFalse(self.brain._batch_mode)
+        self.assertFalse(self.brain.conn.in_batch)
 
     def test_batch_mode_resets_after_outer_exception(self):
-        """_batch_mode must end False even when an exception propagates."""
-        self.assertFalse(self.brain._batch_mode)
+        """conn.in_batch must end False even when an exception propagates."""
+        self.assertFalse(self.brain.conn.in_batch)
 
         with patch.object(self.brain, '_apply_connect_to',
                           side_effect=RuntimeError('boom')):
@@ -87,8 +87,8 @@ class TestBrainBatchTransaction(BrainTestBase):
                      "title": "tgt", "content": "target node"},
                 ])
 
-        self.assertFalse(self.brain._batch_mode,
-                         "_batch_mode leaked True after exception")
+        self.assertFalse(self.brain.conn.in_batch,
+                         "conn.in_batch leaked True after exception")
 
     def test_outer_exception_rolls_back_whole_batch(self):
         """If _apply_connect_to raises, NEITHER remember in the batch persists."""
@@ -141,7 +141,7 @@ class TestBrainBatchTransaction(BrainTestBase):
         self.assertEqual(r['result']['succeeded'], 1)
         self.assertFalse(self.brain.conn.in_transaction,
                          "connection should be clean after the batch")
-        self.assertFalse(self.brain._batch_mode, "_batch_mode must reset")
+        self.assertFalse(self.brain.conn.in_batch, "conn.in_batch must reset")
         persisted = self.brain.conn.execute(
             "SELECT 1 FROM nodes WHERE title = 'leaked-txn-recovery' AND archived = 0"
         ).fetchone()
@@ -208,7 +208,7 @@ class TestBrainBatchTransaction(BrainTestBase):
 
     def test_connect_op_single_commit(self):
         """`connect` routes through connect_typed -> add_relation, which must defer
-        its commit inside a batch (commit=not _batch_mode). One COMMIT total."""
+        its commit inside a batch (gated on conn.in_batch). One COMMIT total."""
         self.brain.remember(type='rule', title='f3-conn-A', content='a')
         self.brain.remember(type='rule', title='f3-conn-B', content='b')
         a, b = self._node_id('f3-conn-A'), self._node_id('f3-conn-B')

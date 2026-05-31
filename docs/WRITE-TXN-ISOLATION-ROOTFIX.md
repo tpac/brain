@@ -1,6 +1,7 @@
 # Write-path transaction discipline — root fix
 
-**Status:** interim guard SHIPPED; root fix DEFERRED to a future session.
+**Status:** ROOT FIX SHIPPED (Option A — connection-bound batch flag), 2026-05-30.
+Interim guard retained as belt-and-suspenders. See "Root fix — shipped" below.
 **Relates to:** BACKLOG.md reviewer follow-up **F3** (this doc is F3's root-cause
 analysis + reproduction + fix options).
 **Surfaced:** 2026-05-29, by inserting S2 into the Frozen Corpus eval build
@@ -70,7 +71,49 @@ first real (20-item) corpus build — the `brain_batch_stale_txn` log plus the
 surrounding stdout will name the op that ran immediately before, pinning the
 exact leaking GraphDAL method.
 
-## Root fix — two options for a future session
+## Root fix — shipped (Option A), 2026-05-30
+
+Chosen and shipped on branch `dal-cleanup-2` (DAL cleanup, structural F3 step).
+Batch state now lives on the **connection**, not on a brain flag or a per-call
+kwarg:
+
+- `db_backends/sqlite.py` defines `BatchAwareConnection(sqlite3.Connection)`
+  carrying `in_batch` (default False), plus the single gate
+  `commit_unless_batched(conn)` → commits iff `not conn.in_batch`. (A plain
+  connection has no `in_batch`; getattr defaults False → standalone commit, the
+  safe default.)
+- The Brain's three connections (`conn`, `conn_bg_writer`, `logs_conn`) are
+  created with `factory=BatchAwareConnection`.
+- **Every** `self.conn.commit()` in `dal.py` (33 sites, all DAL classes — not
+  just the 6 F3 writers) now routes through `commit_unless_batched(self.conn)`.
+  `Brain._maybe_commit()` does the same.
+- The `commit` kwarg is **removed** from the 6 GraphDAL writers — there is no
+  longer a knob to forget. Batch owners flip `conn.in_batch`:
+  `_handle_brain_batch` (foreground) and `recall_write_queue._drain_once`
+  (bg-writer), both in try/finally.
+- `brain._batch_mode` is **deleted** — collapsed into `conn.in_batch`, so the
+  old two-source-of-truth drift (brain flag + per-call kwarg) is gone.
+
+Why not `conn.in_transaction`: under SQLite deferred isolation it's True after
+ANY DML, so it can't distinguish "inside an explicit batch" from "mid standalone
+write" — a naive check there would never commit standalone writes (data loss).
+The subclass flag is the structural answer. (Option B — autocommit — was
+considered and deferred; see below. It needs a latency benchmark and has a
+bigger blast radius; Option A removes the user-visible failure with no urgency
+to take that on.)
+
+Locked by `tests/test_write_txn_discipline.py`: commit-helper behavior, a
+source contract (no bare `self.conn.commit()` in any `dal*.py`), a signature
+contract (the 6 writers expose no `commit` param), and a wiring contract (the
+three brain connections are BatchAwareConnection). Verified the source/sig
+contracts flag the pre-fix state (33 bare commits, 10 commit-kwargs at HEAD).
+
+The community-encoder loudness item below was already addressed in the live
+code (the `_encode` except logs via `_log_error`, and `_handle_brain_batch`
+logs `brain_batch_transaction_failed` before re-raising) — no further change
+needed.
+
+## Original analysis — two options (Option A shipped above)
 
 **Option A (recommended) — centralize write-path transaction discipline (this IS F3).**
 Audit GraphDAL write methods so none commit or `BEGIN` internally; all defer to

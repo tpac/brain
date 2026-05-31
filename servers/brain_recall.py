@@ -681,7 +681,7 @@ class BrainRecallMixin:
             with self.write_lock:
                 stored = vdal.store_batch(rows, model=model)
                 if stored:
-                    self.conn.commit()
+                    self.conn.commit()  # commit-ok: vector backfill under write_lock
             return stored
 
         # 1. Primary vectors — nodes missing _primary for the active model

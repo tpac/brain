@@ -31,6 +31,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from .schema import ensure_schema, ensure_logs_schema, migrate_logs_to_separate_db
 from .dal import LogsDAL, BrainMetaDAL
+from .db_backends.sqlite import commit_unless_batched
 from .clock import iso_cutoff, iso_now
 from .brain_recall import BrainRecallMixin
 from .brain_remember import BrainRememberMixin
@@ -140,14 +141,14 @@ class Brain(
         self.db_path = db_path
         self._skip_embedder = skip_embedder
 
-        # When True, write methods on this brain should call _maybe_commit()
-        # instead of self.conn.commit() directly — the surrounding caller
-        # (currently only _handle_brain_batch in daemon_dispatch) owns the
-        # transaction lifecycle and will commit/rollback the whole batch
-        # at once. Set under write_lock (which serializes brain_batch with
-        # all other writers), so a single attribute is sufficient — no
-        # need for thread-local state.
-        self._batch_mode = False
+        # Batch state lives on the CONNECTION (self.conn.in_batch), set by
+        # BatchAwareConnection below — not a brain-level flag. The batch
+        # owner (_handle_brain_batch) flips conn.in_batch for the duration
+        # of its BEGIN IMMEDIATE / COMMIT; DAL writers consult it via
+        # commit_unless_batched() and brain._maybe_commit() does the same.
+        # One source of truth on the resource it describes, so a writer
+        # can't break batch atomicity by forgetting a kwarg. (Replaces the
+        # old by-convention brain._batch_mode + per-call commit= kwarg.)
 
         # Serializes all writers to brain.db / brain_logs.db. The lock lives
         # on the brain (the resource it protects), not the daemon — this lets
@@ -165,7 +166,9 @@ class Brain(
         # set comes from db_backends.current — single source for every
         # connection in the daemon.
         from . import db_backends
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
+        self.conn = sqlite3.connect(
+            db_path, check_same_thread=False,
+            factory=db_backends.current.BatchAwareConnection)
         db_backends.current.apply_pragmas(self.conn)
 
         # Background-writer connection (2026-05-18). Owned exclusively by the
@@ -185,7 +188,9 @@ class Brain(
         # Open failure here is a hard boot crash — the daemon cannot serve
         # writes without this connection. sqlite3 raises OperationalError,
         # which propagates to daemon_server boot path and surfaces in daemon.log.
-        self.conn_bg_writer = sqlite3.connect(db_path, check_same_thread=False)
+        self.conn_bg_writer = sqlite3.connect(
+            db_path, check_same_thread=False,
+            factory=db_backends.current.BatchAwareConnection)
         db_backends.current.apply_pragmas(self.conn_bg_writer)
 
         # Daemon boot timestamp — used by run_maintenance_if_due to enforce
@@ -202,7 +207,9 @@ class Brain(
         # Open separate logs database (brain_logs.db)
         db_dir = os.path.dirname(db_path) or '.'
         self.logs_db_path = os.path.join(db_dir, 'brain_logs.db')
-        self.logs_conn = sqlite3.connect(self.logs_db_path, check_same_thread=False)
+        self.logs_conn = sqlite3.connect(
+            self.logs_db_path, check_same_thread=False,
+            factory=db_backends.current.BatchAwareConnection)
         db_backends.current.apply_pragmas(self.logs_conn)
         ensure_logs_schema(self.logs_conn)
 
@@ -320,13 +327,14 @@ class Brain(
         Called after ensure_schema() to handle runtime initialization.
         """
         try:
-            cursor = self.conn.execute('SELECT COUNT(*) FROM node_vectors')
-            vector_count = cursor.fetchone()[0]
+            # node_vectors empty? get_total_docs (COUNT DISTINCT node_id) is 0
+            # iff the table is empty — equivalent to the old COUNT(*)==0 check.
+            index_empty = self._tfidf.get_total_docs() == 0
+            # count(archived=True) == COUNT(*) FROM nodes (all states), matching
+            # the prior check exactly.
+            node_count = self._nodes.count(archived=True)
 
-            cursor = self.conn.execute('SELECT COUNT(*) FROM nodes')
-            node_count = cursor.fetchone()[0]
-
-            if node_count > 0 and vector_count == 0:
+            if node_count > 0 and index_empty:
                 print('[brain] Building TF-IDF index for existing nodes...')
                 self._rebuild_tfidf_index()
                 print('[brain] TF-IDF index built.')
@@ -1285,7 +1293,7 @@ class Brain(
                              'followed': host_followed, 'context': context}),
                  ts)
             )
-            self.conn.commit()
+            self._maybe_commit()  # gated commit (was bare self.conn.commit())
         except Exception:
             pass
 
@@ -1453,8 +1461,21 @@ class Brain(
         return {'updated': updated, 'takes_effect': 'next boot'}
 
     def set_config(self, key: str, value: Any) -> Dict[str, Any]:
-        """Set a config value in brain_meta via DAL. Persists across restarts."""
-        self._meta.set(key, str(value))
+        """Set a config value in brain_meta via DAL. Persists across restarts.
+
+        Holds write_lock. set_config is a foreground self.conn write, and S2
+        maintenance calls it lock-free on a pool thread (gating timestamps,
+        failure counters, journals). Without the lock those writes interleave
+        with a concurrent client brain_batch on the shared connection: the
+        INSERT joins the batch's open transaction and BrainMetaDAL.set's
+        commit_unless_batched then no-ops (in_batch=True), so the config write
+        is lost if the batch rolls back. The lock serializes set_config against
+        brain_batch (which resets in_batch before releasing the lock), so a
+        non-owner thread never observes in_batch. write_lock is an RLock, so a
+        caller already holding it (encoder dispatch, a batch) re-acquires safely.
+        """
+        with self.write_lock:
+            self._meta.set(key, str(value))
         return {'key': key, 'value': value, 'updated_at': self.now()}
 
     # ══════════════════════════════════════════════════════════════════
@@ -1920,23 +1941,36 @@ class Brain(
         writer slot — bad for parallel-session contention, and there was
         no rollback semantic if op #37 failed.
 
-        Now those methods call _maybe_commit() instead. When called from
-        a normal single-op path (_batch_mode=False) it commits as before.
-        When called from inside _handle_brain_batch (_batch_mode=True)
-        it's a no-op — the surrounding caller does one BEGIN IMMEDIATE
-        / COMMIT around all ops, with ROLLBACK on any failure.
+        Now those methods call _maybe_commit() instead. It defers to the
+        connection's batch state (self.conn.in_batch): a no-op inside
+        _handle_brain_batch (which owns one BEGIN IMMEDIATE / COMMIT with
+        ROLLBACK on failure), a real commit on the normal single-op path.
+        Same gate the DAL writers use — commit_unless_batched is the one
+        source of truth.
         """
-        if not self._batch_mode:
-            self.conn.commit()
+        commit_unless_batched(self.conn)
 
     def save(self, backup: bool = False):
         """
         Commit pending changes and optionally back up database.
 
+        Holds write_lock around the self.conn commit. save() is called
+        lock-free from the daemon's S2 idle-maintenance path (_run_idle_
+        maintenance) on a pool thread — the SAME pool that handles client
+        commands. Without the lock, its commit() can land mid-flight on a
+        concurrent client brain_batch (BEGIN IMMEDIATE + many writes on the
+        shared self.conn), committing the batch's PARTIAL transaction and
+        breaking its all-or-nothing atomicity. write_lock serializes save
+        against brain_batch; it's an RLock, so the primary autosave path
+        (daemon_server, which already holds write_lock before calling save)
+        re-acquires safely. logs_conn is a separate DB — no coordination with
+        the foreground write lock is needed.
+
         Args:
             backup: If True, create a backup copy
         """
-        self.conn.commit()
+        with self.write_lock:
+            self.conn.commit()  # commit-ok: explicit durability point (save/autosave)
         try:
             self.logs_conn.commit()
         except Exception:
@@ -1959,7 +1993,7 @@ class Brain(
         commit failures from close failures.
         """
         try:
-            self.conn.commit()
+            self.conn.commit()  # commit-ok: final commit on shutdown
         except Exception as e:
             self._log_error('brain_close_commit', e, 'primary conn final commit')
         try:

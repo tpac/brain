@@ -344,86 +344,15 @@ class BrainRememberMixin:
         """
         full_text = ' '.join(filter(None, [title, content]))
         tf = self._compute_tf(full_text)
+        # TfIdfDAL.store_tf_vector replaces the node's vectors and bumps doc_freq
+        # per term; it commits via commit_unless_batched (same batch gate
+        # _maybe_commit used), so this stays batch-atomic inside brain_batch.
+        self._tfidf.store_tf_vector(node_id, tf)
 
-        # Delete old vectors for this node
-        self.conn.execute('DELETE FROM node_vectors WHERE node_id = ?', (node_id,))
-
-        # Update document frequency counts
-        for term in tf.keys():
-            self.conn.execute(
-                'INSERT INTO doc_freq (term, count) VALUES (?, 1) ON CONFLICT(term) DO UPDATE SET count = count + 1',
-                (term,)
-            )
-
-        # Store TF values (TF-IDF computed at query time)
-        for term, tf_val in tf.items():
-            self.conn.execute(
-                'INSERT OR REPLACE INTO node_vectors (node_id, term, tf) VALUES (?, ?, ?)',
-                (node_id, term, tf_val)
-            )
-
-        self._maybe_commit()
-
-    def _tfidf_score(self, query_terms: List[str], node_id: str) -> float:
-        """
-        Compute TF-IDF cosine similarity between query and single node.
-
-        Args:
-            query_terms: Tokenized query
-            node_id: Node to score
-
-        Returns:
-            Cosine similarity (0-1)
-        """
-        if not query_terms:
-            return 0
-
-        total_docs = self._get_node_count()
-        if total_docs == 0:
-            return 0
-
-        # Build query vector
-        query_vec = {}
-        for term in query_terms:
-            query_vec[term] = query_vec.get(term, 0) + 1
-
-        # Normalize query vector
-        q_max = max(query_vec.values()) if query_vec else 1
-        for t in query_vec:
-            query_vec[t] /= q_max
-
-        # Get node's TF values for matching terms
-        placeholders = ','.join('?' * len(query_terms))
-        cursor = self.conn.execute(
-            f'SELECT term, tf FROM node_vectors WHERE node_id = ? AND term IN ({placeholders})',
-            [node_id] + query_terms
-        )
-        node_terms = {row[0]: row[1] for row in cursor.fetchall()}
-
-        if not node_terms:
-            return 0
-
-        # Compute cosine similarity with IDF weighting
-        dot_product = 0
-        query_norm = 0
-        doc_norm = 0
-
-        for term in set(list(query_vec.keys()) + list(node_terms.keys())):
-            # IDF = log(N / df)
-            cursor = self.conn.execute('SELECT count FROM doc_freq WHERE term = ?', (term,))
-            row = cursor.fetchone()
-            df = row[0] if row else 1
-            idf = math.log((total_docs + 1) / (df + 1)) + 1  # smoothed IDF
-
-            q_val = (query_vec.get(term, 0) or 0) * idf
-            d_val = (node_terms.get(term, 0) or 0) * idf
-
-            dot_product += q_val * d_val
-            query_norm += q_val * q_val
-            doc_norm += d_val * d_val
-
-        denom = math.sqrt(query_norm) * math.sqrt(doc_norm)
-        return dot_product / denom if denom > 0 else 0
+    # _tfidf_score (single-node cosine) removed 2026-05-30 (DAL cleanup Phase 3b)
+    # — 0 callers repo-wide (recall uses _batch_tfidf_scores). The live batch
+    # scorer below is a read on the recall hot path; its TfIdfDAL migration is
+    # deferred to Phase 4 (reads) with a decode_funnel before/after.
 
     def _batch_tfidf_scores(self, query_terms: List[str], node_ids: List[str]) -> Dict[str, float]:
         """
@@ -516,32 +445,24 @@ class BrainRememberMixin:
         column was dropped 2026-05-24 along with the broken
         auto-extractor).
         """
-        # Clear existing index
-        self.conn.execute('DELETE FROM node_vectors')
-        self.conn.execute('DELETE FROM doc_freq')
-
-        # Fetch all non-archived nodes
-        cursor = self.conn.execute('SELECT id, title, content FROM nodes WHERE archived = 0')
-        all_nodes = cursor.fetchall()
-
-        for node_id, title, content in all_nodes:
-            full_text = ' '.join(filter(None, [title, content]))
-            tf = self._compute_tf(full_text)
-
-            # Update doc_freq
-            for term in tf.keys():
-                self.conn.execute(
-                    'INSERT INTO doc_freq (term, count) VALUES (?, 1) ON CONFLICT(term) DO UPDATE SET count = count + 1',
-                    (term,)
-                )
-
-            # Store TF values
-            for term, tf_val in tf.items():
-                self.conn.execute(
-                    'INSERT OR REPLACE INTO node_vectors (node_id, term, tf) VALUES (?, ?, ?)',
-                    (node_id, term, tf_val)
-                )
-
+        # Route the index writes through TfIdfDAL (clear_all + per-node
+        # store_tf_vector). Each of those gates its commit on conn.in_batch;
+        # we own the envelope here, so flip in_batch for the duration to keep
+        # the whole rebuild a SINGLE commit (else N+1 commits — one per node).
+        # Save/restore makes it correct even if a caller ever nests this in a
+        # wider batch; _maybe_commit() then defers to that parent.
+        # (The node fetch stays raw — it's a `nodes` read, migrated in Phase 4.)
+        was_batch = self.conn.in_batch
+        self.conn.in_batch = True
+        try:
+            self._tfidf.clear_all()
+            cursor = self.conn.execute(
+                'SELECT id, title, content FROM nodes WHERE archived = 0')
+            for node_id, title, content in cursor.fetchall():
+                full_text = ' '.join(filter(None, [title, content]))
+                self._tfidf.store_tf_vector(node_id, self._compute_tf(full_text))
+        finally:
+            self.conn.in_batch = was_batch
         self._maybe_commit()
 
     def remember(self, type: str, title: str, content: Optional[str] = None,
@@ -732,8 +653,7 @@ class BrainRememberMixin:
         # dangling refs in a future pass).
         if source_refs:
             try:
-                self._graph.add_source_refs(
-                    node_id, source_refs, commit=not self._batch_mode)
+                self._graph.add_source_refs(node_id, source_refs)
             except Exception as e:
                 self._log_error(
                     'source_refs_persist', e,
@@ -761,7 +681,6 @@ class BrainRememberMixin:
                         node_id, sibling_id, 'co_anchored',
                         description='shared episodic anchor',
                         encoding_source='dispatch:co_anchored',
-                        commit=not self._batch_mode,  # F3: defer to the batch's COMMIT
                     )
             except Exception as e:
                 self._log_error(
@@ -1215,7 +1134,7 @@ class BrainRememberMixin:
         if new_source_refs is not _SR_ABSENT:
             try:
                 source_refs_replaced = self._graph.replace_source_refs(
-                    node_id, new_source_refs or [], commit=not self._batch_mode)
+                    node_id, new_source_refs or [])
                 fields_updated.append('source_refs')
                 deltas.append({
                     'field': 'source_refs',
@@ -1246,7 +1165,6 @@ class BrainRememberMixin:
                         node_id, sibling_id, 'co_anchored',
                         description='shared episodic anchor',
                         encoding_source='dispatch:co_anchored',
-                        commit=not self._batch_mode,  # F3: defer to the batch's COMMIT
                     )
             except Exception as e:
                 self._log_error(
@@ -1300,9 +1218,9 @@ class BrainRememberMixin:
         Returns:
             Dict with node_id, status='pending', reason
         """
-        # Verify node exists
-        row = self.conn.execute('SELECT title FROM nodes WHERE id = ?', (node_id,)).fetchone()
-        if not row:
+        # Verify node exists (title is reused in the pending entry below)
+        node_title = self._nodes.get_title(node_id)
+        if node_title is None:
             return {'error': f'Node {node_id} not found'}
 
         try:
@@ -1314,7 +1232,7 @@ class BrainRememberMixin:
             if node_id not in existing_ids:
                 pending.append({
                     'node_id': node_id,
-                    'title': row[0],
+                    'title': node_title,
                     'reason': reason,
                     'requested_at': self.now()
                 })
