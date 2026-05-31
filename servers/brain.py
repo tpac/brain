@@ -119,7 +119,7 @@ class Brain(
         with cls._lock:
             for path, instance in list(cls._instances.items()):
                 try:
-                    instance.conn.commit()
+                    instance.conn.commit()  # commit-ok: teardown flush before close (clear_instances)
                     instance.conn.close()
                 except Exception:
                     pass

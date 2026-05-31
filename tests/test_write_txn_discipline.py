@@ -104,26 +104,66 @@ class TestBrainSelfCommitsAreMarked(unittest.TestCase):
     Closes the blind spot the F3 code review found: the dal*.py-only scan above
     did not cover brain.py, where log_communication once self-committed and
     bypassed the gate. Markers make the few legitimate exceptions explicit and
-    auditable instead of invisible."""
+    auditable instead of invisible.
+
+    Detection uses `tokenize`, not a line prefix, so it catches the shapes the
+    old `startswith('self.conn.commit()')` missed — ALIASED commits
+    (`instance.conn.commit()`) and COMPOUND statements (`x; self.conn.commit()`)
+    — while string/comment prose mentioning the call is excluded for free
+    (tokenize categorizes those separately). `logs_conn.commit()` is excluded by
+    the leading-dot requirement (it's brain_logs.db, a separate connection)."""
+
+    @staticmethod
+    def _conn_commit_lines(path):
+        """Line numbers of real `<expr>.conn.commit(` calls, skipping strings
+        and comments. Matches the token run  `.` `conn` `.` `commit` `(`."""
+        import tokenize
+        SKIP = {tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT,
+                tokenize.COMMENT, tokenize.ENCODING}
+        with open(path, 'rb') as f:
+            toks = [t for t in tokenize.tokenize(f.readline) if t.type not in SKIP]
+        lines = []
+        for i in range(len(toks) - 4):
+            if [t.string for t in toks[i:i + 5]] == ['.', 'conn', '.', 'commit', '(']:
+                lines.append(toks[i + 1].start[0])
+        return lines
 
     def test_brain_self_conn_commits_are_marked(self):
         offenders = []
         paths = (glob.glob(os.path.join(_SERVERS_DIR, 'brain.py')) +
                  glob.glob(os.path.join(_SERVERS_DIR, 'brain_*.py')))
         for path in paths:
-            with open(path, encoding='utf-8') as f:
-                for lineno, line in enumerate(f, 1):
-                    # Only real statements (stripped line starts with the call),
-                    # not docstring/comment prose that happens to mention it.
-                    if line.strip().startswith('self.conn.commit()'):
-                        if 'commit-ok:' not in line:
-                            offenders.append('%s:%d' % (os.path.basename(path), lineno))
+            src_lines = open(path, encoding='utf-8').read().splitlines()
+            for ln in self._conn_commit_lines(path):
+                if 'commit-ok:' not in src_lines[ln - 1]:
+                    offenders.append('%s:%d' % (os.path.basename(path), ln))
         self.assertEqual(
             offenders, [],
-            "A self.conn.commit() in a brain mixin must either route through "
+            "A *.conn.commit() in a brain mixin must either route through "
             "self._maybe_commit() (gate on conn.in_batch) or be tagged "
             "`# commit-ok: <reason>` if it's a deliberate explicit-durability "
             "point. Untagged offenders: %s" % offenders)
+
+    def test_detector_catches_aliased_and_compound_skips_prose(self):
+        """Teeth: the tokenize detector must catch the shapes the old
+        startswith() missed (aliased + compound) and ignore string/comment prose
+        and logs_conn — otherwise the upgrade is theater."""
+        import tempfile
+        src = (
+            "x = 1\n"                                  # 1
+            "instance.conn.commit()\n"                 # 2  aliased — must catch
+            "foo(); self.conn.commit()\n"              # 3  compound — must catch
+            "self.logs_conn.commit()\n"                # 4  separate DB — must skip
+            "# a comment about self.conn.commit() here\n"  # 5  comment — skip
+            "s = 'self.conn.commit() in a string'\n"   # 6  string — skip
+        )
+        with tempfile.NamedTemporaryFile('w', suffix='.py', delete=False) as f:
+            f.write(src)
+            path = f.name
+        try:
+            self.assertEqual(self._conn_commit_lines(path), [2, 3])
+        finally:
+            os.unlink(path)
 
 
 class TestSetConfigHoldsWriteLock(unittest.TestCase):
