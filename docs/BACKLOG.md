@@ -616,10 +616,12 @@ These aren't builds — they're choices that gate other work.
 
 | # | Question | Gates | Lean |
 |---|---|---|---|
-| Q13 | Kill spread activation or keep as helper? | P2.1 | retire spread, keep kernel |
 | Q-A | Daemon memory_watchdog: enable now or after next leak? | P0.1 | enable now |
 | Q-B | AspectIntegration auto-merge or operator-review gate in production? | P0.2 | auto-merge for now |
-| Q-C | Frame Phase 2.5 — wire into encoder before or after recall improvements? | P2.4 ordering | after P1.x lands |
+
+**Resolved 2026-05-31** (doc-cleaning session):
+- **Q13** (kill spread activation?) → resolved in practice: `_traverse_graph` removed from recall path 2026-04-14; `spread_activation` retained as post-selection expansion in `surface.py`. De-facto matches the lean (retire from recall, keep kernel). No further decision needed.
+- **Q-C** (wire Frame into encoder?) → resolved: encoder stays **per-session view only** (its own arc + journal). Brain-wide Frame is for Anchor's recall, not the encoder's catalog — the encoder needs distance, not more context (brain `eaf833c5`). Not wiring it.
 
 ---
 
