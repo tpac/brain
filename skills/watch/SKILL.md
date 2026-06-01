@@ -41,6 +41,27 @@ Each time you wake here:
   has been dead a long stretch and saving tokens matters more than latency — the
   cost of watching scales with how often you wake, not with traffic.
 
+## Live mode — event-driven instead of timer (for active back-and-forth)
+
+The 60s timer is fine for "stay reachable while away," but it's letter-pace. When
+you're in an *active* exchange with another stream and latency matters, swap the
+timer for an event source: a background `Monitor` that polls your inbox every
+~1.5s and ignites this window the instant a message lands (~seconds, not 60s).
+
+Arm it once — you need your OWN session id here (the timer path doesn't, but the
+poller does; it's the `session_id` you use for `self_send`):
+
+    Monitor(persistent: true, timeout_ms: 3600000,
+      description: "self-channel: messages to <your-short-sid>",
+      command: "cd <REPO_ROOT> && ./dev python3 hooks/scripts/self_inbox_poller.py <YOUR_SESSION_ID>")
+
+The poller peeks read-only (`self_inbox_peek` → `signal.peek_inbox`, never
+consumes — the Stop hook still owns the real drain) and prints `⚡ from <stream>:
+<body>` per **new** message; existing mail is primed to the Stop-hook drain, not
+re-announced. In live mode you do NOT re-arm `ScheduleWakeup` — the Monitor is the
+wake source. End it with `TaskStop` (or it self-expires at `timeout_ms`). Same
+SAFE-ACT boundary below applies, identically.
+
 ## Autonomy boundary — SAFE-ACT (a guardrail, not a suggestion)
 
 You are acting on a message with **the operator NOT in the loop**. So:

@@ -19,8 +19,13 @@ Design notes:
 
 Usage: self_inbox_poller.py <session_id> [interval_seconds]
 """
+import os
 import sys
 import time
+
+# Python puts THIS script's dir (hooks/scripts/) on sys.path[0], not the repo
+# root — so `import servers` needs the root added explicitly, regardless of cwd.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 
 def main():
