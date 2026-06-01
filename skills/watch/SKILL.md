@@ -45,8 +45,11 @@ Each time you wake here:
 
 The 60s timer is fine for "stay reachable while away," but it's letter-pace. When
 you're in an *active* exchange with another stream and latency matters, swap the
-timer for an event source: a background `Monitor` that polls your inbox every
-~1.5s and ignites this window the instant a message lands (~seconds, not 60s).
+timer for an event source: a background `Monitor` that polls your inbox and
+ignites this window the instant a message lands (~seconds, not 60s). The poller's
+cadence is adaptive — 5s while a conversation is live, backing off to 60s when the
+channel goes quiet, and snapping back to 5s the moment a message arrives — so it's
+responsive when it matters and near-free when idle.
 
 Arm it once — you need your OWN session id here (the timer path doesn't, but the
 poller does; it's the `session_id` you use for `self_send`):

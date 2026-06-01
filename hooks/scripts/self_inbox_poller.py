@@ -16,8 +16,13 @@ Design notes:
   arrive AFTER the listener starts (those are the "events").
 - Resilient: a transient daemon hiccup logs to stderr (not an event) and the
   loop continues. stdout is reserved exclusively for message events.
+- Adaptive cadence: poll fast (5s) so a live exchange feels real-time, but back
+  off (x2 each idle poll, up to 60s) when the channel is quiet so watching a
+  silent inbox costs almost nothing. The moment a message lands, snap back to 5s
+  — an active back-and-forth stays responsive. A daemon-down/error counts as
+  idle (keep backing off, don't hammer a dead socket).
 
-Usage: self_inbox_poller.py <session_id> [interval_seconds]
+Usage: self_inbox_poller.py <session_id> [fast_seconds=5] [slow_seconds=60] [backoff=2.0]
 """
 import os
 import sys
@@ -33,15 +38,19 @@ def main():
         sys.stderr.write("self_inbox_poller: session_id required\n")
         return 2
     sid = sys.argv[1].strip()
-    interval = float(sys.argv[2]) if len(sys.argv) > 2 else 1.5
+    fast = float(sys.argv[2]) if len(sys.argv) > 2 else 5.0     # responsive floor
+    slow = float(sys.argv[3]) if len(sys.argv) > 3 else 60.0    # idle ceiling
+    backoff = float(sys.argv[4]) if len(sys.argv) > 4 else 2.0  # idle multiplier
 
     from servers import daemon_client
 
     seen = set()
     primed = False
+    interval = fast
     while True:
         resp = daemon_client.send_command(
             'self_inbox_peek', {'session_id': sid}, timeout=5.0)
+        new_found = False
         if resp.get('ok'):
             msgs = (resp.get('result') or {}).get('messages', []) or []
             if not primed:
@@ -53,12 +62,17 @@ def main():
                     if mid in seen:
                         continue
                     seen.add(mid)
+                    new_found = True
                     frm = m.get('from') or '????'
                     body = (m.get('body') or '').replace('\n', ' / ')
                     print("⚡ from %s: %s" % (frm, body), flush=True)
         else:
             sys.stderr.write(
                 "self_inbox_poller: peek failed: %s\n" % resp.get('error', '?'))
+        # Snap to `fast` the moment a message lands (stay responsive through an
+        # active exchange); else back off toward `slow` so a quiet channel costs
+        # almost nothing. Errors/daemon-down count as idle.
+        interval = fast if new_found else min(slow, interval * backoff)
         time.sleep(interval)
 
 
