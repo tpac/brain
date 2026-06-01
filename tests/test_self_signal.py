@@ -185,5 +185,52 @@ class TestSelfSignal(BrainTestBase):
         self.assertEqual(block, "")
 
 
+class TestPeekInbox(BrainTestBase):
+    """Read-only peek — the /watch-live arrival detector. Must NOT consume."""
+    needs_embedder = False
+
+    def test_peek_returns_pending_without_consuming(self):
+        signal.send(self.brain, from_session='A',
+                    address=self_contract.address_for_stream('B'), body='hi B')
+        # Peek twice — same message both times, never consumed.
+        self.assertEqual([m['body'] for m in signal.peek_inbox(self.brain, 'B')], ['hi B'])
+        self.assertEqual([m['body'] for m in signal.peek_inbox(self.brain, 'B')], ['hi B'])
+        # The real drain still delivers it — peek didn't mark it delivered.
+        self.assertEqual([m['body'] for m in signal.drain_inbox(self.brain, 'B')], ['hi B'])
+        # And after the drain consumes it, peek sees nothing.
+        self.assertEqual(signal.peek_inbox(self.brain, 'B'), [])
+
+    def test_peek_excludes_already_drained(self):
+        signal.send(self.brain, from_session='A',
+                    address=self_contract.address_for_stream('B'), body='once')
+        signal.drain_inbox(self.brain, 'B')                 # consumed
+        self.assertEqual(signal.peek_inbox(self.brain, 'B'), [])  # peek agrees it's gone
+
+    def test_peek_excludes_own_broadcast(self):
+        signal.send(self.brain, from_session='A',
+                    address=self_contract.ADDR_BROADCAST, body='to all')
+        self.assertEqual(signal.peek_inbox(self.brain, 'A'), [])   # sender doesn't see own
+        self.assertEqual([m['body'] for m in signal.peek_inbox(self.brain, 'B')], ['to all'])
+
+    def test_peek_excludes_expired(self):
+        signal.send(self.brain, from_session='A',
+                    address=self_contract.address_for_stream('B'), body='stale')
+        old = iso_cutoff(hours=self_contract.DEFAULT_SIGNAL_TTL_HOURS + 1)
+        with self.brain.write_lock:
+            self.brain.logs_conn.execute(
+                "UPDATE self_inflight SET created_at = ? WHERE address = ?",
+                (old, self_contract.address_for_stream('B')))
+            self.brain.logs_conn.commit()
+        self.assertEqual(signal.peek_inbox(self.brain, 'B'), [])
+
+    def test_peek_empty_for_silent_stream(self):
+        self.assertEqual(signal.peek_inbox(self.brain, 'NOBODY'), [])
+
+    def test_peek_attributes_by_short_id(self):
+        signal.send(self.brain, from_session='AAAAAAAA',
+                    address=self_contract.address_for_stream('B'), body='hi')
+        self.assertEqual(signal.peek_inbox(self.brain, 'B')[0]['from'], 'AAAAAAAA')
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -72,6 +72,15 @@ def _handle_self_inbox(brain, args, graph_changes):
     return {"ok": True, "result": {'messages': signal.drain_inbox(brain, to_session=args.get('session_id', '') or '')}}
 
 
+def _handle_self_inbox_peek(brain, args, graph_changes):
+    """Read-only inbox peek — pending self-messages WITHOUT consuming them.
+
+    Powers the /watch-live poller's arrival detection. The consume-once drain
+    stays in self_inbox (the Stop hook). args.session_id = the caller's session.
+    """
+    return {"ok": True, "result": {'messages': signal.peek_inbox(brain, to_session=args.get('session_id', '') or '')}}
+
+
 def _handle_self_outbox(brain, args, graph_changes):
     """Delivery status of the caller's SENT messages — who's drained each, and
     whether a directed target is still pending. Read-only (sender-side receipt).

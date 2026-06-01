@@ -41,7 +41,7 @@ from .dispatch_ops import (
 )
 from .dispatch_self import (
     _handle_self_presence, _handle_self_peek, _handle_self_send, _handle_self_inbox,
-    _handle_self_outbox)
+    _handle_self_inbox_peek, _handle_self_outbox)
 
 
 COMMAND_TABLE: Dict[str, CmdEntry] = {
@@ -71,6 +71,7 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "self_peek":                CmdEntry(_handle_self_peek,            is_write=False),
     "self_send":                CmdEntry(_handle_self_send,            is_write=False),
     "self_inbox":               CmdEntry(_handle_self_inbox,           is_write=False),
+    "self_inbox_peek":          CmdEntry(_handle_self_inbox_peek,      is_write=False),
     "self_outbox":              CmdEntry(_handle_self_outbox,          is_write=False),
 
     # ── Writes (exclusive lock) ──

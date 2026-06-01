@@ -120,6 +120,31 @@ def drain_inbox(brain, to_session):
     return out
 
 
+def peek_inbox(brain, to_session):
+    """Read-only twin of drain_inbox: return pending (undelivered, unexpired)
+    messages addressed to this stream WITHOUT consuming them.
+
+    Same filter as drain_inbox — directed + broadcast routes, TTL cutoff, not
+    your own broadcast, not already delivered — but NO self_delivered write and
+    NO write_lock. The /watch-live poller calls this every ~1.5s to detect
+    arrivals; the real consume-once drain still happens in drain_inbox at the
+    Stop hook. Keep this SELECT in lockstep with drain_inbox's."""
+    if not to_session:
+        return []
+    directed, broadcast = self_contract.routes_at_turn(to_session)
+    cutoff = iso_cutoff(hours=self_contract.DEFAULT_SIGNAL_TTL_HOURS)
+    rows = brain.logs_conn.execute(
+        'SELECT id, from_session, intent, body, created_at FROM self_inflight '
+        'WHERE address IN (?, ?) AND created_at > ? '
+        'AND from_session != ? '
+        'AND id NOT IN (SELECT message_id FROM self_delivered WHERE to_session = ?) '
+        'ORDER BY created_at',
+        (directed, broadcast, cutoff, to_session, to_session)).fetchall()
+    return [{'id': mid, 'from': (from_session or '')[:8], 'intent': intent,
+             'body': body, 'created_at': created_at}
+            for mid, from_session, intent, body, created_at in rows]
+
+
 def drain_and_render(brain, to_session):
     """Phase 2b delivery primitive — drain this stream's inbox and render the
     pending messages into one budgeted block. Returns (block, n_drained), or
