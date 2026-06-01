@@ -23,6 +23,23 @@ def _handle_trace_append(brain, args, graph_changes):
             raw_meta = json.loads(raw_meta)
         except (ValueError, TypeError):
             raw_meta = {"raw": raw_meta}
+    # Payload contract: ref_types with a declared metadata schema must carry
+    # the right shape. validate_trace_event() guards the (scale,event_type,
+    # ref_type) envelope; this guards the metadata PAYLOAD — the hole that let
+    # two divergent `encoding_run` shapes coexist undetected. Log loud and keep
+    # writing: a malformed trace is still worth more than a lost one.
+    from .trace_contract import validate_trace_metadata
+    ok_meta, meta_err = validate_trace_metadata(
+        args.get("event_type", ""), args.get("ref_type", ""), raw_meta)
+    if not ok_meta:
+        try:
+            brain._log_error(
+                'trace_metadata_invalid', meta_err,
+                'chain=%s scale=%s ref_type=%s' % (
+                    args.get("chain_id", ""), args.get("scale", ""),
+                    args.get("ref_type", "")))
+        except Exception:
+            pass
     try:
         event_id = brain._trace_dal.append(
             chain_id=args.get("chain_id", ""),
@@ -32,7 +49,8 @@ def _handle_trace_append(brain, args, graph_changes):
             ref_id=args.get("ref_id", ""),
             summary=args.get("summary", ""),
             metadata=raw_meta,
-            session_id=args.get("session_id", ""))
+            session_id=args.get("session_id", ""),
+            interaction_id=args.get("interaction_id"))
         return {"ok": True, "result": {"event_id": event_id}}
     except ValueError as e:
         return {"ok": False, "error": str(e)}

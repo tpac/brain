@@ -221,6 +221,29 @@ DELTA_METADATA_SHAPE = {
     'action_details':    list,    # per-action records (truncated if huge)
     'final_text':        str,     # raw agent text, first 2KB
     'errors':            list,    # first 5 errors
+    # Op-attributed node-id lists — the structured Δ that S2 reads (community
+    # detection, consolidation catalog-blindness). Derived from action_details,
+    # brain_batch-aware (an op's bucket comes from its `op`, not the tool name).
+    # Before unification these lived on a SECOND, legacy delta written by the
+    # scale runner that was blind to brain_batch — so revised/connected were
+    # always empty. They belong on the one unified delta now.
+    'created':           list,    # node ids created this run
+    'revised':           list,    # node ids revised this run
+    'connected':         list,    # node ids touched by connect ops (observability)
+    # Cost & provenance of producing this Δ (all int, default 0). elapsed_ms +
+    # token counts let you trend encoder latency/cost over time — and, paired
+    # with interaction_version, compare cost across prompt versions — straight
+    # from traces. truncated flags silent data loss (a max_tokens cut mid
+    # tool-call corrupts the write). interaction_version records WHICH K version
+    # produced this Δ (the FK `interaction_id` is stamped on the trace row
+    # itself; this mirror keeps it human-readable in the payload).
+    'elapsed_ms':            int,
+    'input_tokens':          int,
+    'output_tokens':         int,
+    'cache_read_tokens':     int,
+    'cache_creation_tokens': int,
+    'truncated':             int,
+    'interaction_version':   int,
 }
 
 DELTA_FINAL_TEXT_LIMIT = 2000
@@ -233,7 +256,12 @@ def build_delta_metadata(*,
                          rejection_skipped=0, journal_entry='',
                          action_details=None, read_calls=None,
                          final_text='',
-                         errors=None, **extras):
+                         errors=None,
+                         created=None, revised=None, connected=None,
+                         elapsed_ms=0, input_tokens=0, output_tokens=0,
+                         cache_read_tokens=0, cache_creation_tokens=0,
+                         truncated=0, interaction_version=0,
+                         **extras):
     """Build a unified delta trace metadata dict.
 
     All agentic encoders (S1E, S2 units) should call this to build the
@@ -245,8 +273,24 @@ def build_delta_metadata(*,
     etc.). Useful for observability — answering "what did the encoder ask
     for that the catalog didn't already give it?" without parsing logs.
 
+    created/revised/connected default to an aggregation over action_details
+    (each write action carries its own op-attributed split, stamped by the
+    runner where the rich per-op result is still available). Pass them
+    explicitly only to override. This is the structured Δ S2 reads.
+
     Returns a dict ready to pass as the metadata kwarg to a trace writer.
     """
+    ad = list(action_details or [])
+
+    def _agg(key, explicit):
+        if explicit is not None:
+            return list(explicit)
+        out = []
+        for a in ad:
+            if isinstance(a, dict):
+                out.extend(a.get(key) or [])
+        return out
+
     metadata = {
         'actions':           int(actions or 0),
         'write_actions':     int(write_actions or 0),
@@ -255,16 +299,63 @@ def build_delta_metadata(*,
         'outcomes':          dict(outcomes or {}),
         'rejection_skipped': int(rejection_skipped or 0),
         'journal_entry':     (journal_entry or '')[:DELTA_FINAL_TEXT_LIMIT],
-        'action_details':    list(action_details or []),
+        'action_details':    ad,
         'read_calls':        list(read_calls or []),
         'final_text':        (final_text or '')[:DELTA_FINAL_TEXT_LIMIT],
         'errors':            list(errors or [])[:DELTA_ERROR_LIST_LIMIT],
+        'created':           _agg('created', created),
+        'revised':           _agg('revised', revised),
+        'connected':         _agg('connected', connected),
+        'elapsed_ms':            int(elapsed_ms or 0),
+        'input_tokens':          int(input_tokens or 0),
+        'output_tokens':         int(output_tokens or 0),
+        'cache_read_tokens':     int(cache_read_tokens or 0),
+        'cache_creation_tokens': int(cache_creation_tokens or 0),
+        'truncated':             int(truncated or 0),
+        'interaction_version':   int(interaction_version or 0),
     }
     # Extras preserved for per-unit fields (can't collide with shared keys).
     for k, v in extras.items():
         if k not in metadata:
             metadata[k] = v
     return metadata
+
+
+# ── METADATA PAYLOAD VALIDATION (the chokepoint guard) ──
+# validate_trace_event() checks the (scale, event_type, ref_type) envelope.
+# It historically said nothing about the metadata PAYLOAD — which is exactly
+# how two writers emitted two different shapes for the same `encoding_run`
+# ref_type, undetected, for weeks. This closes that hole: a ref_type with a
+# declared schema must carry every required key with the right type.
+# Keyed by ref_type (the unit of shape divergence). Start with the one that
+# bit us; extend as other ref_types gain builders.
+METADATA_REQUIRED_BY_REF_TYPE = {
+    'encoding_run': DELTA_METADATA_SHAPE,
+}
+
+
+def validate_trace_metadata(event_type, ref_type, metadata):
+    """Validate a trace event's metadata payload against its ref_type schema.
+
+    Returns (ok, error_message). ref_types without a declared schema pass
+    (permissive by default — we only lock shapes that have a builder).
+    """
+    schema = METADATA_REQUIRED_BY_REF_TYPE.get(ref_type or '')
+    if not schema:
+        return True, ""
+    if not isinstance(metadata, dict):
+        return False, "metadata for ref_type '%s' must be a dict, got %s" % (
+            ref_type, type(metadata).__name__)
+    missing = [k for k in schema if k not in metadata]
+    if missing:
+        return False, "metadata for ref_type '%s' missing required keys: %s" % (
+            ref_type, missing)
+    bad = [k for k in schema
+           if not isinstance(metadata[k], schema[k])]
+    if bad:
+        return False, "metadata for ref_type '%s' wrong types on keys: %s" % (
+            ref_type, bad)
+    return True, ""
 
 
 # ── SELECTION METADATA SHAPE ──

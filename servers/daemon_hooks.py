@@ -519,12 +519,6 @@ def _hebbian_strengthen(brain, session_id, stop_counter):
                 pass  # last-resort safety; if even _log_error fails, swallow
 
 
-def _s1e_chain_id(session_id, counter):
-    """Generate S1 encode chain ID for delta trace."""
-    from .session_context import SessionContext
-    return SessionContext(session_id=session_id, stop_counter=counter).s1e_chain()
-
-
 def post_response_common(brain, session_id, user_message, assistant_response):
     """Shared post-response path: S0 traces, Hebbian strengthening, heartbeat,
     stop counter increment. Used by prod Stop hook and by the eval harness —
@@ -648,8 +642,7 @@ def hook_post_response_track(brain, args, graph_changes):
                     run_in_background(
                         name='s1e', brain_db_path=brain.db_path,
                         session_id=session_id, counter=counter,
-                        lock=_encoding_lock, run_fn=run_encoding,
-                        trace_scale='s1', trace_chain_fn=_s1e_chain_id)
+                        lock=_encoding_lock, run_fn=run_encoding)
                     # Thread.start() returned → ownership transferred. Thread's
                     # finally is now responsible for the release.
                     acquired_for_spawn = False

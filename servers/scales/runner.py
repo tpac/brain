@@ -15,7 +15,7 @@ in each scale's module (scales/s1/encode.py, scales/s2/encode.py, etc.).
 import time
 import threading
 
-from .dispatch import make_scale_dispatch, daemon_tcp_send
+from .dispatch import make_scale_dispatch
 
 
 # Hard upper bound on any single Anthropic SDK call (S1 surface, S1
@@ -31,9 +31,63 @@ from .dispatch import make_scale_dispatch, daemon_tcp_send
 ANTHROPIC_CLIENT_TIMEOUT = 600.0
 
 
+# Op → bucket for brain_batch's per-op results (each item carries its own `op`).
+_OP_BUCKET = {'remember': 'created', 'revise': 'revised', 'connect': 'connected',
+              'absorb': 'absorbed', 'archive': 'archived'}
+# Homogeneous tools — route every result id by the tool name.
+_TOOL_BUCKET = {'remember': 'created', 'remember_batch': 'created',
+                'revise': 'revised', 'revise_batch': 'revised',
+                'connect': 'connected', 'connect_batch': 'connected'}
+
+
+def _split_action_ids(tool, result):
+    """Attribute one write action's affected node ids to created/revised/
+    connected/absorbed/archived buckets.
+
+    `result` is the inner handler result dict. brain_batch carries per-op
+    results — route each by its own `op` (this is the brain_batch-awareness the
+    old legacy writer lacked). Homogeneous *_batch / single tools route by tool
+    name. Best-effort: created/revised carry node ids (consumed by S2 community
+    + consolidation); connected is observability.
+    """
+    out = {'created': [], 'revised': [], 'connected': [], 'absorbed': [], 'archived': []}
+    if not isinstance(result, dict):
+        return out
+
+    def _item_id(item):
+        if not isinstance(item, dict):
+            return None
+        if item.get('id'):
+            return item['id']
+        inner = item.get('result')
+        if isinstance(inner, dict) and inner.get('id'):
+            return inner['id']
+        return item.get('survivor_id') or item.get('node_id')
+
+    if tool == 'brain_batch':
+        for item in (result.get('results') or []):
+            if not isinstance(item, dict) or not item.get('ok', True):
+                continue
+            bucket = _OP_BUCKET.get(item.get('op'))
+            if bucket:
+                nid = _item_id(item)
+                if nid:
+                    out[bucket].append(nid)
+        return out
+
+    bucket = _TOOL_BUCKET.get(tool)
+    if bucket:
+        if result.get('id'):
+            out[bucket].append(result['id'])
+        for item in (result.get('results') or []):
+            nid = _item_id(item)
+            if nid:
+                out[bucket].append(nid)
+    return out
+
+
 def run_in_background(name, brain_db_path, session_id, counter, lock,
-                      run_fn, encoding_source='encoder:sonnet',
-                      trace_scale='s1', trace_chain_fn=None):
+                      run_fn, encoding_source='encoder:sonnet'):
     """Run a scale agent in a background thread.
 
     Args:
@@ -44,9 +98,12 @@ def run_in_background(name, brain_db_path, session_id, counter, lock,
         lock: threading.Lock for mutual exclusion (one agent at a time)
         run_fn: Scale's run function: run_fn(brain, dispatch_fn, counter, session_id) -> dict
         encoding_source: encoding_source value for new nodes
-        trace_scale: Scale for delta trace ('s1', 's2', etc.)
-        trace_chain_fn: Function(session_id, counter) -> chain_id for delta trace.
-                        If None, no delta trace is written (scale writes its own).
+
+    The delta trace is written by the scale's own run_fn via build_delta_metadata
+    (the unified shape). This wrapper does NOT write one — a previous version did,
+    producing a SECOND, brain_batch-blind `encoding_run` delta per cycle (revised/
+    connected always empty). That legacy writer was removed; the runner only owns
+    thread lifecycle now.
     """
     def _thread_fn():
         t0 = time.time()
@@ -66,55 +123,6 @@ def run_in_background(name, brain_db_path, session_id, counter, lock,
             elapsed_ms = int((time.time() - t0) * 1000)
             actions = result.get('actions', 0) if isinstance(result, dict) else 0
             print("[%s] DONE: %d actions in %dms" % (name, actions, elapsed_ms), flush=True)
-
-            # Write delta trace if chain function provided
-            if trace_chain_fn:
-                try:
-                    chain_id = trace_chain_fn(session_id, counter)
-                    action_lines = []
-                    for a in (result.get('action_details', []) if isinstance(result, dict) else []):
-                        action_lines.append('%s: %s' % (a.get('tool', ''), a.get('summary', '')))
-                    # Build structured metadata for S2 consumption
-                    created_ids = []
-                    revised_ids = []
-                    connected_pairs = []
-                    for a in (result.get('action_details', []) if isinstance(result, dict) else []):
-                        tool = a.get('tool', '')
-                        nids = a.get('node_ids', [])
-                        if tool in ('remember', 'remember_batch'):
-                            created_ids.extend(nids)
-                        elif tool in ('revise', 'revise_batch'):
-                            revised_ids.extend(nids)
-                        elif tool in ('connect', 'connect_batch'):
-                            connected_pairs.extend(nids)
-
-                    daemon_tcp_send('trace_append', {
-                        'chain_id': chain_id,
-                        'scale': trace_scale,
-                        'event_type': 'delta',
-                        'ref_type': 'encoding_run',
-                        'ref_id': str(counter),
-                        'summary': '%d actions in %dms:\n%s\n---\n%s' % (
-                            actions, elapsed_ms,
-                            '\n'.join(action_lines) if action_lines else '(no actions)',
-                            (result.get('final_text', '') or '')[:2000]),
-                        'metadata': {
-                            'created': created_ids,
-                            'revised': revised_ids,
-                            'connected': connected_pairs,
-                            'elapsed_ms': elapsed_ms,
-                        },
-                        'session_id': session_id,
-                    })
-                except Exception as e:
-                    print('[%s] TRACE ERROR (delta): %s' % (name, e), flush=True)
-                    if read_brain:
-                        try:
-                            read_brain._log_error(
-                                'scale_runner_trace_write', e,
-                                '%s delta trace write failed' % name)
-                        except Exception:
-                            pass
 
         except Exception as e:
             elapsed_ms = int((time.time() - t0) * 1000)
@@ -182,7 +190,7 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
 
     WRITE_TOOLS = {
         'remember', 'remember_batch', 'revise', 'revise_batch',
-        'connect', 'brain_batch',
+        'connect', 'connect_batch', 'brain_batch',
     }
 
     t0 = time.time()
@@ -328,6 +336,7 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             action_summary = tu.input.get("title", tu.input.get("query",
                 tu.input.get("node_id", "")))[:60]
             result_ids = []
+            split = {'created': [], 'revised': [], 'connected': []}
             if result.get("ok"):
                 r = result.get("result", {})
                 if isinstance(r, dict):
@@ -343,8 +352,19 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                     for item in r:
                         if isinstance(item, dict) and item.get("id"):
                             result_ids.append(item["id"])
+                # Op-attributed split — computed HERE while the rich per-op
+                # result is still in hand (action_details flattens to node_ids
+                # and loses op attribution). brain_batch routes by each op's
+                # `op`; homogeneous tools route by tool name. This is what
+                # build_delta_metadata aggregates and S2 reads.
+                s = _split_action_ids(tu.name, r if isinstance(r, dict) else {})
+                split = {'created': s['created'], 'revised': s['revised'],
+                         'connected': s['connected']}
             actions.append({"tool": tu.name, "summary": action_summary,
                             "node_ids": result_ids,
+                            "created": split['created'],
+                            "revised": split['revised'],
+                            "connected": split['connected'],
                             "input": tu.input})
             _log("  [%s] %s" % (tu.name, action_summary))
         return tool_results, tool_uses
@@ -409,6 +429,7 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         "read_calls": read_calls,
         "final_text": final_text[:2000] if final_text else '',
         "profile": profile,
+        "elapsed_ms": int((time.time() - t0) * 1000),
         "input_tokens": total_input_tokens,
         "output_tokens": total_output_tokens,
         "cache_creation_tokens": total_cache_creation,

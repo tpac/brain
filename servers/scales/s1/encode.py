@@ -231,13 +231,23 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             outcomes[tool] = outcomes.get(tool, 0) + 1
 
         enc_chain = 's1e-%s-%d' % (session_id[:8], counter)
+        # Which K version produced this Δ — the FK (interaction_id) is stamped
+        # on the trace row for joins; the version number rides in metadata for
+        # human-readable scanning. Lets higher scales A/B prompt versions from
+        # production traces (the whole point of interactions-as-K-store).
+        enc_iid = (enc_interaction or {}).get('id')
+        enc_ver = (enc_interaction or {}).get('version', 0)
         dispatch_fn('trace_append', {
             'chain_id': enc_chain, 'scale': 's1', 'event_type': 'delta',
             'ref_type': 'encoding_run',
-            'summary': '%d actions (%d writes) in %d rounds' % (
+            'interaction_id': enc_iid,
+            'summary': '%d actions (%d writes) in %d rounds, %dms, %d→%d tok' % (
                 result.get('actions', 0),
                 result.get('write_actions', 0),
-                result.get('rounds', 0)),
+                result.get('rounds', 0),
+                result.get('elapsed_ms', 0),
+                result.get('input_tokens', 0),
+                result.get('output_tokens', 0)),
             'metadata': build_delta_metadata(
                 actions=result.get('actions', 0),
                 write_actions=result.get('write_actions', 0),
@@ -248,6 +258,13 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
                 action_details=action_details,
                 read_calls=result.get('read_calls', []),
                 final_text=final_text,
+                elapsed_ms=result.get('elapsed_ms', 0),
+                input_tokens=result.get('input_tokens', 0),
+                output_tokens=result.get('output_tokens', 0),
+                cache_read_tokens=result.get('cache_read_tokens', 0),
+                cache_creation_tokens=result.get('cache_creation_tokens', 0),
+                truncated=len(result.get('truncations', []) or []),
+                interaction_version=enc_ver,
                 stop_counter=counter,
             ),
             'session_id': session_id,

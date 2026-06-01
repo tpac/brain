@@ -17,7 +17,9 @@ from servers.trace_contract import (
     SELECTION_CONTENT_LIMIT,
     build_delta_metadata,
     build_selection_metadata,
+    validate_trace_metadata,
 )
+from servers.scales.runner import _split_action_ids
 
 
 # ═════════════════════════════════════════════════════════════
@@ -79,6 +81,126 @@ class TestBuildDeltaMetadata:
         assert m['outcomes'] == {}
         assert m['action_details'] == []
         assert m['errors'] == []
+
+
+class TestSplitActionIds:
+    """The op-attributed split that replaced the legacy, brain_batch-blind
+    runner delta. created/revised feed S2; this is the regression guard for
+    the exact bug — brain_batch revises/connects must not vanish."""
+
+    def test_brain_batch_routes_by_op_not_tool(self):
+        # The legacy writer had no brain_batch branch, so these all vanished.
+        result = {'results': [
+            {'op': 'remember', 'ok': True, 'result': {'id': 'c0de0001'}},
+            {'op': 'revise',   'ok': True, 'result': {'id': 'c0de0002'}},
+            {'op': 'connect',  'ok': True, 'result': {'id': 'c0de0003'}},
+            {'op': 'absorb',   'ok': True, 'survivor_id': 'c0de0004'},
+            {'op': 'archive',  'ok': True, 'node_id': 'c0de0005'},
+        ]}
+        s = _split_action_ids('brain_batch', result)
+        assert s['created'] == ['c0de0001']
+        assert s['revised'] == ['c0de0002']
+        assert s['connected'] == ['c0de0003']
+        assert s['absorbed'] == ['c0de0004']
+        assert s['archived'] == ['c0de0005']
+
+    def test_brain_batch_skips_failed_ops(self):
+        result = {'results': [
+            {'op': 'remember', 'ok': True,  'result': {'id': 'aaaa0001'}},
+            {'op': 'revise',   'ok': False, 'error': 'boom'},
+        ]}
+        s = _split_action_ids('brain_batch', result)
+        assert s['created'] == ['aaaa0001']
+        assert s['revised'] == []
+
+    def test_homogeneous_tools_route_by_name(self):
+        rb = {'results': [{'id': 'n1'}, {'result': {'id': 'n2'}}]}
+        assert _split_action_ids('remember_batch', rb)['created'] == ['n1', 'n2']
+        assert _split_action_ids('revise_batch', rb)['revised'] == ['n1', 'n2']
+        assert _split_action_ids('connect_batch', rb)['connected'] == ['n1', 'n2']
+
+    def test_single_tool_top_level_id(self):
+        assert _split_action_ids('remember', {'id': 'solo1'})['created'] == ['solo1']
+
+    def test_non_dict_result_is_safe(self):
+        s = _split_action_ids('brain_batch', None)
+        assert s == {'created': [], 'revised': [], 'connected': [],
+                     'absorbed': [], 'archived': []}
+
+
+class TestDeltaSplitAggregation:
+    """build_delta_metadata aggregates the per-action split into the delta —
+    so the single unified delta carries what S2 reads."""
+
+    def test_aggregates_created_revised_connected_from_actions(self):
+        m = build_delta_metadata(action_details=[
+            {'tool': 'brain_batch', 'created': ['a'], 'revised': ['b'], 'connected': ['c']},
+            {'tool': 'remember_batch', 'created': ['d', 'e'], 'revised': [], 'connected': []},
+        ])
+        assert m['created'] == ['a', 'd', 'e']
+        assert m['revised'] == ['b']
+        assert m['connected'] == ['c']
+
+    def test_explicit_override_wins(self):
+        m = build_delta_metadata(action_details=[{'created': ['x']}], created=['override'])
+        assert m['created'] == ['override']
+
+    def test_empty_defaults(self):
+        m = build_delta_metadata()
+        assert m['created'] == [] and m['revised'] == [] and m['connected'] == []
+
+
+class TestDeltaCostProvenance:
+    """Tier A: cost/latency/version/truncation ride on the delta — trend
+    encoder cost over time and A/B prompt versions from production traces."""
+
+    def test_cost_fields_recorded(self):
+        m = build_delta_metadata(
+            elapsed_ms=4200, input_tokens=6000, output_tokens=900,
+            cache_read_tokens=28000, cache_creation_tokens=28000,
+            truncated=1, interaction_version=24)
+        assert m['elapsed_ms'] == 4200
+        assert m['input_tokens'] == 6000
+        assert m['output_tokens'] == 900
+        assert m['cache_read_tokens'] == 28000
+        assert m['cache_creation_tokens'] == 28000
+        assert m['truncated'] == 1
+        assert m['interaction_version'] == 24
+
+    def test_cost_fields_default_zero_and_int_typed(self):
+        m = build_delta_metadata()
+        for k in ('elapsed_ms', 'input_tokens', 'output_tokens',
+                  'cache_read_tokens', 'cache_creation_tokens',
+                  'truncated', 'interaction_version'):
+            assert m[k] == 0 and isinstance(m[k], int)
+
+    def test_cost_fields_are_required_by_schema(self):
+        # S2 encoders that don't yet pass cost data still validate, because
+        # the builder always emits the keys (default 0).
+        for k in ('elapsed_ms', 'truncated', 'interaction_version'):
+            assert k in DELTA_METADATA_SHAPE
+
+
+class TestValidateTraceMetadata:
+    """The payload contract guard at the chokepoint — the hole that let two
+    encoding_run shapes coexist undetected."""
+
+    def test_unified_shape_passes(self):
+        assert validate_trace_metadata('delta', 'encoding_run', build_delta_metadata())[0]
+
+    def test_legacy_runner_shape_is_rejected(self):
+        # The exact shape the deleted runner writer produced.
+        ok, err = validate_trace_metadata('delta', 'encoding_run', {
+            'created': [], 'revised': [], 'connected': [], 'elapsed_ms': 5})
+        assert not ok
+        assert 'missing required keys' in err
+
+    def test_non_dict_rejected(self):
+        ok, _ = validate_trace_metadata('delta', 'encoding_run', "not a dict")
+        assert not ok
+
+    def test_undeclared_ref_type_is_permissive(self):
+        assert validate_trace_metadata('delta', 'additionalContext', {})[0]
 
 
 class TestBuildSelectionMetadata:
