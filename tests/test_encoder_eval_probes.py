@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 from servers.brain import Brain
-from servers.dal import GraphDAL
+from servers.dal import SourceRefDAL
 from eval.encoder_eval.quality_probes import (
     ALL_PROBES,
     run_all_probes,
@@ -54,7 +54,7 @@ class EncoderEvalProbesTest(unittest.TestCase):
         self.created = []
 
     def tearDown(self):
-        gd = GraphDAL(self.brain.conn)
+        gd = SourceRefDAL(self.brain.conn)
         for nid in self.created:
             try:
                 gd.replace_source_refs(nid, [])
