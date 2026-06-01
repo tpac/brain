@@ -230,13 +230,15 @@ class Brain(
         # re-instantiating XDAL(self.conn) ad hoc. The bg-writer path
         # (recall_write_queue) constructs its own GraphDAL on conn_bg_writer —
         # the one documented exception.
-        from .dal import NodeDAL, GraphDAL, Fts5DAL, TfIdfDAL, EntityDatesDAL
+        from .dal import (NodeDAL, GraphDAL, Fts5DAL, TfIdfDAL, EntityDatesDAL,
+                          SourceRefDAL)
         from .dal_metadata import MetadataDAL
         self._nodes = NodeDAL(self.conn)
         self._graph = GraphDAL(self.conn)
         self._meta_kv = MetadataDAL(self.conn)
         self._fts = Fts5DAL(self.conn)
         self._tfidf = TfIdfDAL(self.conn)
+        self._source_refs = SourceRefDAL(self.conn)  # node_source_refs (not edges)
         # foreground-bound for readers (recall_by_time, cold-start gaps); the
         # backfill writer constructs EntityDatesDAL(conn_bg_writer) per its routing.
         self._entity_dates = EntityDatesDAL(self.conn)

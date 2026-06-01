@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from tests.brain_test_base import BrainTestBase
 from servers.db_backends.sqlite import BatchAwareConnection, commit_unless_batched
-from servers.dal import GraphDAL
+from servers.dal import GraphDAL, SourceRefDAL
 
 _SERVERS_DIR = os.path.join(os.path.dirname(__file__), '..', 'servers')
 
@@ -217,18 +217,21 @@ class TestGraphWritersHaveNoCommitKwarg(unittest.TestCase):
     conn.in_batch itself, so a caller can't pass the wrong value."""
 
     BATCH_REACHABLE_WRITERS = [
-        'add_relation', 'remove_relation', 'delete_node_edges',
-        'decay_edges', 'add_source_refs', 'replace_source_refs',
+        (GraphDAL, 'add_relation'), (GraphDAL, 'remove_relation'),
+        (GraphDAL, 'delete_node_edges'), (GraphDAL, 'decay_edges'),
+        # source_refs extracted to SourceRefDAL (Phase 5) — still batch-reachable
+        (SourceRefDAL, 'add_source_refs'), (SourceRefDAL, 'replace_source_refs'),
     ]
 
     def test_writers_have_no_commit_param(self):
-        for name in self.BATCH_REACHABLE_WRITERS:
-            method = getattr(GraphDAL, name)
+        for cls, name in self.BATCH_REACHABLE_WRITERS:
+            method = getattr(cls, name)
             params = inspect.signature(method).parameters
             self.assertNotIn(
                 'commit', params,
-                "GraphDAL.%s still takes a `commit` kwarg — the structural fix "
-                "removes it; the writer must gate on conn.in_batch instead." % name)
+                "%s.%s still takes a `commit` kwarg — the structural fix "
+                "removes it; the writer must gate on conn.in_batch instead."
+                % (cls.__name__, name))
 
 
 class TestBrainConnectionsAreBatchAware(BrainTestBase):

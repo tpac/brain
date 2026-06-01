@@ -36,7 +36,7 @@ _last_daemon_fingerprint = None  # Track daemon restarts
 # its input timeline (see servers/scales/s1/encode.py::_build_user_content)
 # and picks 1-3 load-bearing refs per node — sparse by design
 # (EPISODIC-REFERENCES.md decision 13). Persisted via
-# GraphDAL.add_source_refs into node_source_refs (Step 3); invalid refs
+# SourceRefDAL.add_source_refs into node_source_refs (Step 3); invalid refs
 # degrade gracefully at recall (S2Healer cleans dangling refs).
 _SOURCE_REFS_SCHEMA = {
     "type": "array",

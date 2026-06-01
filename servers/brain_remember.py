@@ -140,7 +140,7 @@ class BrainRememberMixin:
             self._tfidf.delete_for_node(node_id)       # node_vectors
             self._meta_kv.delete_all(node_id)          # node_metadata_kv
             self._graph.hard_delete_node_edges(node_id)  # edges + edge_relations
-            self._graph.delete_source_refs(node_id)    # node_source_refs
+            self._source_refs.delete_source_refs(node_id)    # node_source_refs
             self._nodes.delete(node_id)                # nodes
             if not prior:
                 self.conn.commit()  # commit-ok: single atomic node-delete cascade
@@ -390,9 +390,9 @@ class BrainRememberMixin:
         success = False
         try:
             # 1. source_refs — union onto survivor
-            absorbed_refs = self._graph.get_source_refs(absorbed_id)
+            absorbed_refs = self._source_refs.get_source_refs(absorbed_id)
             report['source_refs_added'] = (
-                self._graph.add_source_refs(survivor_id, absorbed_refs)
+                self._source_refs.add_source_refs(survivor_id, absorbed_refs)
                 if absorbed_refs else 0)
 
             # 2. edges — re-point absorbed's external edges to survivor,
@@ -717,7 +717,7 @@ class BrainRememberMixin:
                  connect_to: Optional[List[Any]] = None,
                  # v29 / Phase B: source_refs anchors the node to trace events.
                  # Sparse by design (1-3 refs typical). Each ref is an 8-char
-                 # hex trace_event.id. Persisted via GraphDAL.add_source_refs
+                 # hex trace_event.id. Persisted via SourceRefDAL.add_source_refs
                  # → node_source_refs join table. Legacy integer ids are
                  # coerced to canonical hex by the DAL.
                  source_refs: Optional[List[str]] = None,
@@ -865,7 +865,7 @@ class BrainRememberMixin:
         embedding_stored = False
 
         # v29 / Phase B: persist source_refs to node_source_refs join table.
-        # GraphDAL.add_source_refs coerces legacy int ids → 8-char hex,
+        # SourceRefDAL.add_source_refs coerces legacy int ids → 8-char hex,
         # uses INSERT OR IGNORE (first-write-wins, re-encode is safe),
         # preserves the encoder's write order via `position`. Empty/None
         # input is a no-op. Failures are logged but don't fail the write —
@@ -873,7 +873,7 @@ class BrainRememberMixin:
         # dangling refs in a future pass).
         if source_refs:
             try:
-                self._graph.add_source_refs(node_id, source_refs)
+                self._source_refs.add_source_refs(node_id, source_refs)
             except Exception as e:
                 self._log_error(
                     'source_refs_persist', e,
@@ -893,7 +893,7 @@ class BrainRememberMixin:
                 for tid in source_refs:
                     if not isinstance(tid, str):
                         continue
-                    for sibling_id in graph_dal.get_nodes_referencing(tid):
+                    for sibling_id in self._source_refs.get_nodes_referencing(tid):
                         if sibling_id != node_id:
                             siblings.add(sibling_id)
                 for sibling_id in siblings:
@@ -1353,7 +1353,7 @@ class BrainRememberMixin:
         source_refs_replaced = None  # None=untouched, int=count after replace
         if new_source_refs is not _SR_ABSENT:
             try:
-                source_refs_replaced = self._graph.replace_source_refs(
+                source_refs_replaced = self._source_refs.replace_source_refs(
                     node_id, new_source_refs or [])
                 fields_updated.append('source_refs')
                 deltas.append({
@@ -1377,7 +1377,7 @@ class BrainRememberMixin:
                 for tid in (new_source_refs or []):
                     if not isinstance(tid, str):
                         continue
-                    for sibling_id in graph_dal.get_nodes_referencing(tid):
+                    for sibling_id in self._source_refs.get_nodes_referencing(tid):
                         if sibling_id != node_id:
                             siblings.add(sibling_id)
                 for sibling_id in siblings:

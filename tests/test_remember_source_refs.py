@@ -2,7 +2,7 @@
 and brain.revise() write paths (v29 / Phase B Steps 2-4).
 
 These tests exercise the MCP-schema → dispatch validation → brain.remember
-kwarg → GraphDAL persistence path end-to-end via an isolated Brain
+kwarg → SourceRefDAL persistence path end-to-end via an isolated Brain
 instance. Pure-DAL tests live in test_episodic_refs_dal.py; this file
 locks the integration contract.
 """
@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 from servers.brain import Brain
-from servers.dal import GraphDAL
+from servers.dal import SourceRefDAL
 from servers.daemon_dispatch import (
     _validate_source_refs,
     _maybe_warn_source_refs_hex_format,
@@ -56,7 +56,7 @@ class RememberSourceRefsTest(unittest.TestCase):
         self.created_node_ids = []
 
     def tearDown(self):
-        gd = GraphDAL(self.brain.conn)
+        gd = SourceRefDAL(self.brain.conn)
         for nid in self.created_node_ids:
             try:
                 gd.replace_source_refs(nid, [])
@@ -81,17 +81,17 @@ class RememberSourceRefsTest(unittest.TestCase):
 
     def test_remember_persists_source_refs(self):
         nid, _ = self._create_node(source_refs=['a3f5e2b1', 'b8c9d0e1'])
-        gd = GraphDAL(self.brain.conn)
+        gd = SourceRefDAL(self.brain.conn)
         self.assertEqual(gd.get_source_refs(nid), ['a3f5e2b1', 'b8c9d0e1'])
 
     def test_remember_without_source_refs_leaves_table_empty(self):
         nid, _ = self._create_node()
-        gd = GraphDAL(self.brain.conn)
+        gd = SourceRefDAL(self.brain.conn)
         self.assertEqual(gd.get_source_refs(nid), [])
 
     def test_remember_empty_list_is_noop(self):
         nid, _ = self._create_node(source_refs=[])
-        gd = GraphDAL(self.brain.conn)
+        gd = SourceRefDAL(self.brain.conn)
         self.assertEqual(gd.get_source_refs(nid), [])
 
     def test_engram_cohort_via_shared_ref(self):
@@ -100,7 +100,7 @@ class RememberSourceRefsTest(unittest.TestCase):
         edge (Step 7)."""
         nid1, _ = self._create_node(title='node 1', source_refs=['a3f5e2b1'])
         nid2, _ = self._create_node(title='node 2', source_refs=['a3f5e2b1'])
-        gd = GraphDAL(self.brain.conn)
+        gd = SourceRefDAL(self.brain.conn)
         cohort = sorted(gd.get_nodes_referencing('a3f5e2b1'))
         self.assertEqual(cohort, sorted([nid1, nid2]))
 
@@ -109,7 +109,7 @@ class RememberSourceRefsTest(unittest.TestCase):
     def test_revise_with_source_refs_replaces_not_appends(self):
         """When source_refs IS in the revise payload → REPLACE entire list."""
         nid, _ = self._create_node(source_refs=['a3f5e2b1'])
-        gd = GraphDAL(self.brain.conn)
+        gd = SourceRefDAL(self.brain.conn)
         self.assertEqual(gd.get_source_refs(nid), ['a3f5e2b1'])
 
         result = self.brain.revise(nid, reason='swap anchor', source_refs=['b8c9d0e1'])
@@ -119,7 +119,7 @@ class RememberSourceRefsTest(unittest.TestCase):
     def test_revise_without_source_refs_preserves_existing(self):
         """When source_refs is ABSENT from the revise payload → preserve."""
         nid, _ = self._create_node(source_refs=['a3f5e2b1', 'b8c9d0e1'])
-        gd = GraphDAL(self.brain.conn)
+        gd = SourceRefDAL(self.brain.conn)
         self.brain.revise(nid, reason='content only',
                           content='new content (refs untouched)')
         self.assertEqual(gd.get_source_refs(nid), ['a3f5e2b1', 'b8c9d0e1'])
@@ -128,7 +128,7 @@ class RememberSourceRefsTest(unittest.TestCase):
         """Empty list is the explicit clear signal (per unified contract:
         present-field replaces, even with empty value)."""
         nid, _ = self._create_node(source_refs=['a3f5e2b1', 'b8c9d0e1'])
-        gd = GraphDAL(self.brain.conn)
+        gd = SourceRefDAL(self.brain.conn)
         result = self.brain.revise(nid, reason='clear refs', source_refs=[])
         self.assertIn('source_refs', result.get('fields_updated', []))
         self.assertEqual(gd.get_source_refs(nid), [])
@@ -139,7 +139,7 @@ class RememberSourceRefsTest(unittest.TestCase):
     def _has_co_anchored_edge(self, a: str, b: str) -> bool:
         """Check whether a co_anchored relation exists between a and b
         (direction-agnostic — physical edges are single-row per pair)."""
-        gd = GraphDAL(self.brain.conn)
+        gd = SourceRefDAL(self.brain.conn)
         # Try both directions; physical edges store one row per pair
         for (s, t) in [(a, b), (b, a)]:
             rows = self.brain.conn.execute(

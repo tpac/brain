@@ -27,7 +27,7 @@ class TestDeleteNodeCascade(BrainTestBase):
                              content='this one stays')
         nid = victim['id']
         b._meta_kv.set(nid, 'testkey', 'testval')
-        b._graph.add_source_refs(nid, ['aabbccdd', 'bbccddee'])
+        b._source_refs.add_source_refs(nid, ['aabbccdd', 'bbccddee'])
         b._graph.add_relation(nid, neighbor['id'], 'related')
         b.save()
 

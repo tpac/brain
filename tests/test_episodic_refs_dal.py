@@ -1,7 +1,7 @@
 """DAL methods for episodic references (v27 substrate; v29 trace_id hex).
 
   - TraceDAL: store_embeddings / get_embeddings / find_unembedded
-  - GraphDAL: add_source_refs / get_source_refs / get_nodes_referencing
+  - SourceRefDAL: add_source_refs / get_source_refs / get_nodes_referencing
 
 Pure-DAL tests: in-memory SQLite, no live Brain, no embedder.
 
@@ -18,7 +18,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from servers.dal import TraceDAL, GraphDAL
+from servers.dal import TraceDAL, SourceRefDAL
 from servers.schema import ensure_schema, ensure_logs_schema
 
 
@@ -261,7 +261,7 @@ class SourceRefsDALTest(unittest.TestCase):
     def setUp(self):
         self.conn = _open_in_memory()
         ensure_schema(self.conn)
-        self.dal = GraphDAL(self.conn)
+        self.dal = SourceRefDAL(self.conn)
         _seed_node(self.conn, 'node_a')
         _seed_node(self.conn, 'node_b')
 

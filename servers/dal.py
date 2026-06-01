@@ -2986,7 +2986,17 @@ class GraphDAL:
             'UPDATE edges SET weight = ? WHERE edge_id = ?',
             (new_weight, edge_id))
 
-    # --- Source refs (v27: episodic references) ---
+
+class SourceRefDAL:
+    """Access layer for `node_source_refs` — node→trace_event pointers (v29:
+    8-char hex) anchoring a node to the S0 moments it came from (episodic
+    references). Extracted from GraphDAL: source_refs are NOT edges — they're
+    the engram-cohort substrate (get_nodes_referencing). One row per
+    (node_id, trace_id, position). Writers gate on conn.in_batch like every
+    other DAL writer."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
 
     def add_source_refs(self, node_id: str, trace_ids: List[str]) -> int:
         """Append trace_event pointers to a node (v29: 8-char hex strings).

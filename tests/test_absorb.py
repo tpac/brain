@@ -29,7 +29,7 @@ class TestAbsorb(BrainTestBase):
         absorbed = self._node('absorbed', source_refs=['bbbbbbbb', 'cccccccc'])
         r = self.brain.absorb(survivor, absorbed)
         self.assertTrue(r['ok'], r)
-        refs = set(self.brain._graph.get_source_refs(survivor))
+        refs = set(self.brain._source_refs.get_source_refs(survivor))
         self.assertEqual(refs, {'aaaaaaaa', 'bbbbbbbb', 'cccccccc'})
 
     def test_external_edge_migrated_intra_dropped(self):
@@ -217,7 +217,7 @@ class TestAbsorb(BrainTestBase):
             with self.assertRaises(RuntimeError):
                 self.brain.absorb(survivor, absorbed)
         # source_refs NOT unioned, edge NOT migrated, absorbed NOT archived
-        self.assertEqual(set(self.brain._graph.get_source_refs(survivor)),
+        self.assertEqual(set(self.brain._source_refs.get_source_refs(survivor)),
                          {'aaaaaaaa'})
         conns = self.brain._graph.get_connections_bulk([survivor]).get(survivor, [])
         self.assertNotIn(neighbor, {c['id'] for c in conns})
@@ -272,7 +272,7 @@ class TestAbsorbEmbedding(BrainTestBase):
         # absorbed archived, refs unioned, KV filled — all in one atomic batch
         self.assertEqual(self.brain.conn.execute(
             "SELECT archived FROM nodes WHERE id = ?", (absorbed,)).fetchone()[0], 1)
-        self.assertEqual(set(self.brain._graph.get_source_refs(survivor)),
+        self.assertEqual(set(self.brain._source_refs.get_source_refs(survivor)),
                          {'aaaaaaaa', 'bbbbbbbb'})
         self.assertEqual(
             self.brain._meta_kv.get_all_bulk([survivor])[survivor].get('user_raw_quote'),
