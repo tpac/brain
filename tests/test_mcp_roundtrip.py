@@ -406,12 +406,14 @@ class TestMCPRoundTrip(BrainTestBase):
     # ── Self channel (presence — pull) ──
 
     def test_self_presence(self):
-        """self_presence returns a roster of live streams + a rendered line."""
-        from servers.session_context import SessionContext
-        ctx = SessionContext(session_id='roundtrip-stream-A')
-        ctx.message_count = 3
-        ctx.save(self.brain.logs_conn)
-        self.brain.set_config('session_context_roundtrip-stream-A', 'roundtrip focus A')
+        """self_presence returns a roster of live streams + a rendered line.
+
+        Liveness/focus come from real-turn S0 traces (present_streams reads
+        traces, not session_state), so seed a user_message trace for the stream."""
+        self.brain._trace_dal.append(
+            chain_id='s0-rtstrmA-0', scale='s0', event_type='K',
+            ref_type='user_message', summary='roundtrip focus A',
+            session_id='roundtrip-stream-A')
         result = self._dispatch("self_presence", {"session_id": "roundtrip-self", "limit": 5})
         self.assertIn("streams", result)
         self.assertIn("line", result)
@@ -428,22 +430,42 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertEqual(result["focus"], "peek focus line one\nline two")
 
     def test_self_send(self):
-        """self_send places a directed message in the courier."""
+        """self_send places a directed message in the courier. A full session
+        UUID is the canonical address — honored directly (resolve_to), no
+        live-roster lookup needed."""
+        recipient = "11111111-2222-3333-4444-555555555555"
         result = self._dispatch("self_send", {
-            "to": "roundtrip-recipient", "body": "tap on the shoulder",
+            "to": recipient, "body": "tap on the shoulder",
             "from_session": "roundtrip-sender"})
         self.assertIn("id", result)
-        self.assertEqual(result["address"], "self:roundtrip-recipient")
+        self.assertEqual(result["address"], "self:" + recipient)
 
     def test_self_inbox(self):
         """self_inbox drains messages addressed to the caller, consume-once."""
+        recipient = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
         self._dispatch("self_send", {
-            "to": "roundtrip-inbox-user", "body": "you have mail",
+            "to": recipient, "body": "you have mail",
             "from_session": "roundtrip-sender"})
-        result = self._dispatch("self_inbox", {"session_id": "roundtrip-inbox-user"})
+        result = self._dispatch("self_inbox", {"session_id": recipient})
         self.assertIn("you have mail", [m["body"] for m in result["messages"]])
-        again = self._dispatch("self_inbox", {"session_id": "roundtrip-inbox-user"})
+        again = self._dispatch("self_inbox", {"session_id": recipient})
         self.assertNotIn("you have mail", [m["body"] for m in again["messages"]])
+
+    def test_self_outbox(self):
+        """self_outbox returns delivery status of messages the caller SENT —
+        the sender-side receipt view (who drained, and whether a directed
+        target is still pending)."""
+        sender = "deadbeef-0000-1111-2222-333344445555"
+        recipient = "cafebabe-0000-1111-2222-333344445555"
+        self._dispatch("self_send", {
+            "to": recipient, "body": "did you get this?", "from_session": sender})
+        result = self._dispatch("self_outbox", {"from_session": sender})
+        self.assertIn("messages", result)
+        directed = [m for m in result["messages"] if m.get("target") == recipient[:8]]
+        self.assertTrue(directed, "outbox must show the directed message just sent")
+        # nobody has drained it yet → still pending (silence read correctly)
+        self.assertTrue(directed[0]["pending"])
+        self.assertEqual(directed[0]["delivered_to"], [])
 
     def test_all_mcp_tools_have_roundtrip_tests(self):
         """Every MCP tool should have a corresponding test above."""

@@ -29,12 +29,13 @@ def _age_min(iso_ts):
         return 1e9
 
 
-def _focus_line(brain, session_id, max_chars=100):
-    """One-line current focus for a stream — the first line of its session arc."""
-    arc = (brain.session_context_for(session_id) or '').strip()
-    if not arc:
+def _first_line(focus, max_chars=100):
+    """One-line roster focus — first line of the focus string present_streams
+    hands us (the stream's latest user_message summary). Pure render, no read."""
+    s = (focus or '').strip()
+    if not s:
         return ''
-    return arc.splitlines()[0].strip()[:max_chars].rstrip()
+    return s.splitlines()[0].strip()[:max_chars].rstrip()
 
 
 def build_presence(brain, my_session_id='', limit=None):
@@ -64,7 +65,7 @@ def build_presence(brain, my_session_id='', limit=None):
         entry = {
             'session_id': sid,
             'short': sid[:8],
-            'focus': _focus_line(brain, sid),
+            'focus': _first_line(r.get('focus', '')),
             'updated_at': r.get('updated_at', ''),
             'state': self_contract.classify_liveness(_age_min(r.get('updated_at', ''))),
         }

@@ -753,13 +753,23 @@ class Brain(
         so it's exempt from the conversation_now() rule like other bookkeeping
         reads. See docs/BOOT-REIGNITION.md (presence at scale).
 
-        Returns [{'session_id': str, 'updated_at': iso}], newest first.
+        Liveness is sourced from real-turn S0 traces (TraceDAL), NOT
+        session_state.updated_at — the latter is bumped by the autosave loop for
+        every cached session, so it falsely marks idle/stale sids "live" (and a
+        window relaunched under a new sid would linger forever). Traces only
+        record actual turns, so the signal is honest.
+
+        Returns [{'session_id': str, 'updated_at': iso, 'focus': str}], newest
+        first. `updated_at` is the last real-turn time; `focus` is that
+        session's latest user_message summary (raw — render layer trims it).
         """
         from .clock import iso_cutoff
         try:
-            return self._session_state.recently_updated(
-                '_session_context', iso_cutoff(minutes=window_min),
+            rows = self._trace_dal.active_sessions_by_turn(
+                iso_cutoff(minutes=window_min),
                 exclude_session=exclude_session, limit=limit)
+            return [{'session_id': r['session_id'], 'updated_at': r['last_turn'],
+                     'focus': r['focus']} for r in rows]
         except Exception as e:
             try:
                 self._log_error('present_streams_query', e,

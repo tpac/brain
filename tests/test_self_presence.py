@@ -8,26 +8,27 @@ import unittest
 
 from tests.brain_test_base import BrainTestBase
 from servers.clock import iso_cutoff
-from servers.session_context import SessionContext
 from servers.scales.self_channel import presence, self_contract, signal
 
 
 class TestSelfPresence(BrainTestBase):
     needs_embedder = False
 
-    def _save_stream(self, sid, focus='', message_count=3, updated_at=None):
-        """Persist a session_state row for `sid`, optionally backdated."""
-        ctx = SessionContext(session_id=sid)
-        ctx.message_count = message_count
-        ctx.save(self.brain.logs_conn)
+    def _save_stream(self, sid, focus='', updated_at=None):
+        """Seed a real-turn S0 trace (user_message) for `sid` — the presence
+        liveness + focus source (present_streams reads traces, not
+        session_state, so autosave can't fake liveness). `focus` becomes the
+        trace summary; `updated_at` backdates created_at to place the turn
+        earlier in the window."""
+        self.brain._trace_dal.append(
+            chain_id='s0-%s-0' % sid[:8], scale='s0', event_type='K',
+            ref_type='user_message', summary=focus, session_id=sid)
         if updated_at is not None:
             self.brain.logs_conn.execute(
-                "UPDATE session_state SET updated_at = ? "
-                "WHERE session_id = ? AND key = '_session_context'",
+                "UPDATE trace_events SET created_at = ? "
+                "WHERE session_id = ? AND ref_type = 'user_message'",
                 (updated_at, sid))
             self.brain.logs_conn.commit()
-        if focus:
-            self.brain.set_config('session_context_' + sid, focus)
 
     def test_present_streams_excludes_self_and_stale(self):
         self._save_stream('streamAAAA', focus='dashboard fix')
@@ -63,7 +64,9 @@ class TestSelfPresence(BrainTestBase):
         self.assertIn('streams of thought live: %d' % len(out['streams']), out['line'])
 
     def test_peek_returns_full_focus(self):
-        self._save_stream('streamAAAA', focus='line one\nline two')
+        # peek drills into the full session ARC (session_context_for), a
+        # separate source from the roster's trace-derived one-line focus.
+        self.brain.set_config('session_context_streamAAAA', 'line one\nline two')
 
         hit = presence.peek(self.brain, 'streamAAAA')
         self.assertTrue(hit['found'])
