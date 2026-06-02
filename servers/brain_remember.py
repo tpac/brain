@@ -685,6 +685,11 @@ class BrainRememberMixin:
                  change_impacts: Optional[List[Dict[str, str]]] = None,
                  source_attribution: Optional[str] = None,
                  scope: Optional[str] = None,
+                 # DEPRECATED (2026-05-31): co_accessed-on-remember was removed.
+                 # co_accessed is now created ONLY on recall (judge-selected
+                 # Hebbian co-activation), matching its post-Phase-5 meaning.
+                 # Retained as an inert no-op for caller compatibility (also
+                 # filtered via _CONTROL_FIELDS) — it no longer gates anything.
                  auto_connect: bool = True,
                  connect_to: Optional[List[Any]] = None,
                  # v29 / Phase B: source_refs anchors the node to trace events.
@@ -902,49 +907,16 @@ class BrainRememberMixin:
             # in its return shape; per-call logging via _log_error covers that.
             self._apply_connect_to(node_id, connect_to, sibling_map=None)
 
-        # v6→v7: Auto-connect to conversation context (Machine 1)
-        # Connect new node to top 3 most semantically similar recently-accessed nodes.
-        # Disabled via auto_connect=False when caller manages connections explicitly
-        # (e.g. S2 community nodes, batch imports).
-        if auto_connect:
-            try:
-                new_node_emb = None
-                if embedding_stored:
-                    _vdal = self._vec_dal
-                    _emb = _vdal.get_primary(node_id)
-                    if _emb:
-                        new_node_emb = _emb
-
-                recent = self.conn.execute('''
-                    SELECT n.id, ne.embedding FROM nodes n
-                    LEFT JOIN node_enrichments ne ON ne.node_id = n.id AND ne.vector_type = '_primary'
-                    WHERE n.id != ? AND n.archived = 0
-                      AND n.last_accessed > ?
-                      AND n.type NOT IN ('thought', 'intuition')
-                    ORDER BY n.last_accessed DESC LIMIT 10
-                ''', (node_id, iso_cutoff(hours=1))).fetchall()
-
-                if new_node_emb and recent:
-                    scored = []
-                    for (recent_id, recent_emb) in recent:
-                        if recent_emb:
-                            sim = embedder.cosine_similarity(new_node_emb, recent_emb)
-                            scored.append((recent_id, sim))
-                        else:
-                            scored.append((recent_id, 0.0))
-                    scored.sort(key=lambda x: x[1], reverse=True)
-                    for recent_id, sim in scored[:3]:
-                        if sim > 0.3:
-                            graph_dal = self._graph
-                            if not graph_dal.edge_exists(node_id, recent_id):
-                                self.connect(node_id, recent_id, 'co_accessed', max(0.2, sim * 0.5))
-                elif recent:
-                    for (recent_id, _) in recent[:3]:
-                        graph_dal = self._graph
-                        if not graph_dal.edge_exists(node_id, recent_id):
-                            self.connect(node_id, recent_id, 'co_accessed', 0.2)
-            except Exception as e:
-                self._log_error('auto_connect', e, 'auto-connecting node %s to recent context' % node_id[:12])
+        # co_accessed-on-remember REMOVED (2026-05-31). It connected a new node
+        # to recently-written nodes by temporal write-adjacency — pre-Phase-5
+        # noise (no judge selection) — and, as a side effect, MATERIALIZED each
+        # pair's physical edge with an arbitrary direction (source = the newer
+        # node). Because the model stores one physical direction per pair (v22),
+        # any later SEMANTIC edge drawn on that pair (depends_on, supersedes,
+        # corrects, ...) inherited that accidental direction via get_edge_id.
+        # co_accessed is now created ONLY on recall, from judge-selected surface
+        # picks (recall_write_queue Hebbian path), where it carries real
+        # co-activation signal. See correction node 2f344177.
 
         # v11: Emergent bridging at store-time
         bridges = []
