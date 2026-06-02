@@ -31,8 +31,19 @@ def _batch(*ops):
 
 class TestDetector:
     def test_invalid_op_node_id_collected(self):
-        ad = _batch({'op': 'absorb', 'node_id': 'aaaa1111', 'reason': 'merge'})
+        # `consolidate` is a concept-verb, NOT a valid brain_batch op — dispatch
+        # drops it. Its node id is collected so the cluster is retried, not
+        # stamped. (`absorb` used to live here; it is now a VALID op — see
+        # test_valid_absorb_op_not_collected.)
+        ad = _batch({'op': 'consolidate', 'node_id': 'aaaa1111', 'reason': 'merge'})
         assert node_ids_touched_by_invalid_ops(ad) == {'aaaa1111'}
+
+    def test_valid_absorb_op_not_collected(self):
+        # absorb shipped into VALID_BATCH_OPS — a successful absorb is a real
+        # merge, never a thwarted attempt, so the detector must NOT flag it.
+        ad = _batch({'op': 'absorb', 'survivor_id': 'aaaa1111',
+                     'absorbed_id': 'bbbb2222', 'reason': 'merge'})
+        assert node_ids_touched_by_invalid_ops(ad) == set()
 
     def test_valid_ops_return_empty(self):
         ad = _batch(
@@ -116,20 +127,23 @@ class TestDriftRejectIsRetriedNotSuppressed:
         assert node_ids_touched_by_invalid_ops(ad) == set()
 
 
-class TestConsolidationAbsorbRetried:
-    def test_absorb_member_detected_for_cluster_exclusion(self):
-        # A consolidation cluster whose member was hit by `op: absorb` must be
-        # detected so the orchestrator excludes it from SKIP-suppression
-        # (otherwise the merge is abandoned and the cluster suppressed forever).
-        ad = _batch({'op': 'absorb', 'node_id': '7463a2aa',
-                     'reason': 'absorb peer', 'content': '...'})
+class TestConsolidationAbsorbIsRealMerge:
+    def test_valid_absorb_cluster_not_pulled_into_retry(self):
+        # A consolidation cluster merged via the VALID `absorb` op is a real
+        # merge — the absorbed node gets archived. It must NOT land in the
+        # invalid-op retry path (that is only for concept-verbs dispatch drops).
+        # The orchestrator detects the successful merge via the archived member,
+        # not via this helper — see test_s2_consolidation.py.
+        ad = _batch({'op': 'absorb', 'survivor_id': '7463a2aa',
+                     'absorbed_id': 'c3571f66', 'content': 'merged'})
         members = ['7463a2aa', 'c3571f66']
-        assert set(members) & node_ids_touched_by_invalid_ops(ad) == {'7463a2aa'}
+        assert set(members) & node_ids_touched_by_invalid_ops(ad) == set()
 
 
 class TestContractSync:
-    def test_valid_batch_ops_is_the_closed_five(self):
+    def test_valid_batch_ops_is_the_closed_six(self):
         # brain_mcp's enum is built from this set and the dispatcher's if/elif
         # must match it. Lock the membership so a new op can't silently diverge.
+        # absorb (lossless merge) joined the closed set — see S2-ABSORB-OP-DESIGN.md.
         assert set(VALID_BATCH_OPS) == {
-            'remember', 'revise', 'connect', 'disconnect', 'archive'}
+            'remember', 'revise', 'connect', 'disconnect', 'archive', 'absorb'}

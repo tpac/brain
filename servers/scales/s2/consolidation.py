@@ -100,6 +100,30 @@ class Consolidation(ConsolidationDecoder):
 
         pre_edges = _snapshot_suppression_pairs()
 
+        # Snapshot which cluster members are already archived. An ABSORB
+        # (whether via the `absorb` op or the legacy revise+archive dance)
+        # archives the absorbed peer but writes NO similar_to/consolidated_into
+        # edge — so edge-detection alone reads a *successful* merge as a SKIP
+        # and stamps a false rejection fingerprint. A member flipping
+        # archived 0→1 across the encoder run is the merge's signature.
+        all_member_ids = sorted(
+            {nid for c in clusters for nid in c.get('nodes', [])})
+
+        def _snapshot_archived(ids):
+            archived = set()
+            for k in range(0, len(ids), 900):
+                chunk = ids[k:k + 900]
+                if not chunk:
+                    continue
+                ph = ','.join('?' * len(chunk))
+                for row in self.brain.conn.execute(
+                    "SELECT id FROM nodes WHERE id IN (%s) AND archived = 1" % ph,
+                        chunk):
+                    archived.add(row[0])
+            return archived
+
+        pre_archived = _snapshot_archived(all_member_ids)
+
         # Encode
         encoder = ConsolidationEncoder(
             self.brain, self.dispatch, self.config)
@@ -113,6 +137,8 @@ class Consolidation(ConsolidationDecoder):
         # record a rejection fingerprint so the decoder doesn't resurface them.
         post_edges = _snapshot_suppression_pairs()
         new_edges = post_edges - pre_edges
+        # Members archived during this run → their cluster was ABSORBed.
+        newly_archived = _snapshot_archived(all_member_ids) - pre_archived
         # Nodes the encoder TRIED to act on with an invalid op (e.g. `op:
         # consolidate` instead of a real op — dispatch dropped it). A cluster
         # touching one of these wrote no suppression edge NOT because the
@@ -127,6 +153,12 @@ class Consolidation(ConsolidationDecoder):
             members = c.get('nodes', [])
             if invalid_touched and (set(members) & invalid_touched):
                 invalid_op_clusters += 1
+                continue
+            # ABSORB: a member archived this run means the cluster was merged.
+            # absorb writes no suppression edge, so without this the merge
+            # would be mis-stamped as a SKIP rejection (false suppression +
+            # s2_rejections pollution). An archived member ⇒ handled.
+            if set(members) & newly_archived:
                 continue
             handled = False
             for i in range(len(members)):
