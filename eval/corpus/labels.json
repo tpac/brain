@@ -1,0 +1,25 @@
+{
+  "_doc": "Ground-truth consolidation labels — Anchor's judgment on the 20 frozen clusters in clusters.json. action ∈ {absorb, split, keep, skip}. 'merge_expected' = does ANY node get archived (absorb/split)? confidence 'borderline' clusters accept either call. Matched to runs by node_ids.",
+  "labels": {
+    "0":  {"action": "split",  "merge_expected": true,  "confidence": "high",       "rationale": "absorb finding(33db13ab)->decision(5379f045) [log_hook_output removal]; keep daemon_unavailable_error pair (bug+fact) separate — different code path"},
+    "1":  {"action": "keep",   "merge_expected": false, "confidence": "high",       "rationale": "open=Phase3 frontier, decision=Path B chosen — distinct claims"},
+    "2":  {"action": "keep",   "merge_expected": false, "confidence": "high",       "rationale": "3 distinct claims: status correction / contamination finding / disable decision"},
+    "3":  {"action": "keep",   "merge_expected": false, "confidence": "high",       "rationale": "feature-wiring finding vs generalizable error-handler lesson"},
+    "4":  {"action": "absorb", "merge_expected": true,  "confidence": "borderline", "rationale": "fact(ee217d9b version/test record) folds into architecture(16c4d3b3); thin standalone value — keep is also defensible"},
+    "5":  {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "same dispatch_self envelope incident: bug(root cause) + fact(fix commit) -> one"},
+    "6":  {"action": "split",  "merge_expected": true,  "confidence": "high",       "rationale": "the two principles (171dbd37,650b0a00) are duplicates -> merge; keep architecture audit(69bd7941) + bug(ea66ab66) distinct"},
+    "7":  {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "same shared-git-index hazard, two incidents -> one lesson"},
+    "8":  {"action": "split",  "merge_expected": true,  "confidence": "high",       "rationale": "absorb resolved open(846eb135)->event(7be252ef); keep moment(1472bf53, identity) + decision(382b8c91) distinct"},
+    "9":  {"action": "keep",   "merge_expected": false, "confidence": "high",       "rationale": "op-name bug vs absorb-primitive decision — distinct claims"},
+    "10": {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "same 5-bucket test-cleanup arc, same status -> one"},
+    "11": {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "evolve: activation event supersedes stale 'dormant' fact"},
+    "12": {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "same /watch skill, mechanism + architecture overlap -> one"},
+    "13": {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "same audit (commit 4a4a808); open(c0e524f2) is resolved -> milestone(ab46d466)"},
+    "14": {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "two near-identical self-echo bug nodes -> one"},
+    "15": {"action": "keep",   "merge_expected": false, "confidence": "borderline", "rationale": "plan-doc(reference) vs completion milestone — link; absorb also defensible"},
+    "16": {"action": "keep",   "merge_expected": false, "confidence": "high",       "rationale": "distinct DAL phases (0 vs 1) — sequential, not duplicate"},
+    "17": {"action": "keep",   "merge_expected": false, "confidence": "high",       "rationale": "open(restart pending action) vs event(fix done) — distinct"},
+    "18": {"action": "keep",   "merge_expected": false, "confidence": "high",       "rationale": "specific budget bug vs architectural-direction design — distinct"},
+    "19": {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "same 'mail not memory' quote+conclusion, two framings -> one"}
+  }
+}

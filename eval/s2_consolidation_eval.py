@@ -68,6 +68,70 @@ def run_encoder(brain, clusters):
     return result
 
 
+def _op_key(op):
+    """Canonical identity of a brain_batch op — for deduping the capture-only
+    re-emission artifact (see run_capture_variant)."""
+    return (op.get('op'), op.get('survivor_id'), op.get('absorbed_id'),
+            op.get('node_id'), op.get('source_id'), op.get('target_id'),
+            op.get('relation'))
+
+
+def run_capture_variant(brain, clusters, prompt_text):
+    """Run the consolidation encoder over `clusters` with `prompt_text` swapped
+    in for the s2_consolidation_enrichment interaction. CAPTURE-ONLY: brain_batch
+    ops are recorded, never applied (dry-run dispatch), so multiple prompt arms
+    see byte-identical input and we observe the DECISION, not the mutation.
+
+    Shared by the absorb-prompt probe (behavioral A/B) and the consolidation
+    contract eval (dimensions scoring) so both score the same captured decisions.
+
+    Returns {ops, rounds, final_text}. Ops are de-duplicated by canonical
+    identity: dry-run dispatch never changes state, so the encoder can re-emit
+    the same ops across rounds (it can't see that the first batch "took"). In
+    real dispatch the first batch archives the peer and round 2 can't re-absorb,
+    so this de-dup matches production intent.
+    """
+    from servers.daemon_dispatch import COMMAND_TABLE
+    from servers.scales.s2.consolidation_encoder import ConsolidationEncoder
+    from servers.scales.s2.consolidation_contract import CONSOLIDATION
+
+    captured = []
+
+    def dispatch(cmd, cmd_args):
+        if cmd == 'brain_batch':
+            captured.append(cmd_args)
+            ops = cmd_args.get('operations', []) if isinstance(cmd_args, dict) else []
+            return {'ok': True, 'result': {'dry_run': True, 'ops_seen': len(ops)}}
+        entry = COMMAND_TABLE.get(cmd)
+        if entry:
+            return entry.handler(brain, cmd_args, [])
+        return {'ok': True, 'result': {}}
+
+    orig = brain.get_interaction_prompt
+    brain.get_interaction_prompt = (
+        lambda name: prompt_text if name == 's2_consolidation_enrichment'
+        else orig(name))
+    try:
+        enc = ConsolidationEncoder(brain, dispatch_fn=dispatch, config=CONSOLIDATION)
+        enc._save_journal = lambda *a, **k: ''   # don't contaminate other arms
+        result = enc.run(clusters) or {}
+    finally:
+        brain.get_interaction_prompt = orig
+
+    ops, seen = [], set()
+    for cmd_args in captured:
+        for op in (cmd_args.get('operations', []) if isinstance(cmd_args, dict) else []):
+            if not isinstance(op, dict):
+                continue
+            k = _op_key(op)
+            if k in seen:
+                continue
+            seen.add(k)
+            ops.append(op)
+    return {'ops': ops, 'rounds': result.get('rounds', 0),
+            'final_text': result.get('final_text', '') or ''}
+
+
 def snapshot_nodes(conn, node_ids):
     """Capture node state before encoding for diff analysis."""
     snapshots = {}
