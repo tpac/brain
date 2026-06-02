@@ -353,7 +353,12 @@ def render_rich_node(node, config=None):
     # Header — individual parts are opt-out via cfg flags (defaults preserve
     # current behavior for callers that don't set them, e.g. Anchor's MCP queries).
     parts = ["id:%s" % nid[:8]]
-    if cfg.get('show_confidence', True):
+    # 2026-05-31: confidence display defaults OFF. The field is dormant — set
+    # from TYPE_CONFIDENCE at creation, never maintained, read by no ranking
+    # path. Showing it to Anchor/Haiku/encoders is false authority (a number
+    # nobody updates). Rooted out until it earns a justification; opt back in
+    # explicitly via show_confidence=True if a real consumer appears.
+    if cfg.get('show_confidence', False):
         conf = node.get('confidence')
         if conf:
             parts.append("conf:%.1f" % conf)

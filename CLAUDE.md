@@ -242,7 +242,6 @@ S2 operates when the operator is idle. It sees the full graph, not just one turn
 | **Consolidation** | Synthesizes convergent node clusters; archives or links similar pairs | shipped |
 | **Community** | Detects clusters via z-score pair scoring; Sonnet enriches into first-class community nodes | shipped |
 | **Healer** | Fills missing question/situation/reasoning fields on under-encoded nodes | shipped |
-| Confidence | Adjusts scores from recall traces (decay/growth) | not built |
 | Correction | Resolves correction chains, archives stale | not built |
 | Community Split | Re-clusters incoherent communities into focused children | not built |
 | Weaver | Discovers edges between orphan nodes | not built |

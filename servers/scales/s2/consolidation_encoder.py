@@ -351,8 +351,8 @@ class ConsolidationEncoder(IntegrationUnit):
                 lines.append('    --- %s ---' % nid[:8])
                 lines.append('      [%s] "%s"%s' % (
                     nd.get('type', '?'), nd.get('title', '?'), flag_str))
-                lines.append('      conf=%.2f  recalled=%dx  judged=%dx  src=%s  created=%s' % (
-                    nd.get('confidence', 0), recall_count, judge_count,
+                lines.append('      recalled=%dx  judged=%dx  src=%s  created=%s' % (
+                    recall_count, judge_count,
                     nd.get('encoding_source', '?')[:15],
                     nd.get('created_at', '?')[:10]))
 

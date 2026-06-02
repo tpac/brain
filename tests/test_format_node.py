@@ -43,12 +43,26 @@ class TestFormatNode(BrainTestBase):
         self.assertIsNotNone(out)
         self.assertIn('[decision]', out)
         self.assertIn('"Use Postgres"', out)
-        self.assertIn('conf:0.9', out)
+        # Confidence display rooted out 2026-05-31: show_confidence defaults
+        # off (the field is dormant — read by no ranking path). Default render
+        # must NOT show it. Same strictness, opposite contract.
+        self.assertNotIn('conf:', out)
         self.assertIn('locked', out)
         self.assertIn('We chose Postgres', out)
         # Keywords column dropped in schema v28; render block removed.
         # Asserting absence (same strictness, opposite contract).
         self.assertNotIn('Keywords:', out)
+
+    def test_confidence_renders_when_enabled(self):
+        """Confidence is hidden by default but still renders when a caller
+        explicitly opts in via show_confidence=True (the dormant field's
+        opt-in path stays covered after the 2026-05-31 default flip)."""
+        nid = self._make_node(
+            type='decision', title='Use Postgres', content='We chose Postgres.',
+            confidence=0.9)
+        node = self.brain.get_node(nid)
+        out = render_rich_node(node, {'show_confidence': True})
+        self.assertIn('conf:0.9', out)
 
     def test_nonexistent_node_returns_none(self):
         """Render returns None for an ID that doesn't exist."""

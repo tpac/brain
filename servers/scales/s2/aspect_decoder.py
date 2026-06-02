@@ -164,8 +164,8 @@ class AspectDecoder(IntegrationUnit):
         For edge_relations: 3 edges with that relation — source/target titles
             + edge description.
 
-        Examples are picked deterministically (highest confidence first)
-        for reproducibility across cycles.
+        Examples are picked deterministically (highest access_count /
+        edge weight first) for reproducibility across cycles.
         """
         n_examples = self.config['examples_per_candidate']
         proposals = []
@@ -195,24 +195,23 @@ class AspectDecoder(IntegrationUnit):
         the recall pipeline" → architecture/design type).
         """
         rows = self.brain.conn.execute("""
-            SELECT n.id, n.title, n.content, n.confidence, n.type,
+            SELECT n.id, n.title, n.content, n.type,
                    (SELECT value FROM node_metadata_kv
                     WHERE node_id = n.id AND key = 'situation' LIMIT 1)
             FROM nodes n
             WHERE n.archived = 0 AND n.type = ?
             ORDER BY n.access_count DESC, LENGTH(n.content) DESC
         """, (type_value,)).fetchall()
-        # Indices: 0=id, 1=title, 2=content, 3=confidence, 4=type, 5=situation
+        # Indices: 0=id, 1=title, 2=content, 3=type, 4=situation
         picked = self._pick_diverse(rows, n)
         return [
             {
                 'tier': tier,
                 'id': (r[0] or '')[:8],
-                'type': r[4] or '',
+                'type': r[3] or '',
                 'title': r[1] or '',
                 'content_snippet': (r[2] or '')[:400],
-                'situation': (r[5] or '')[:300],
-                'confidence': r[3],
+                'situation': (r[4] or '')[:300],
             }
             for tier, r in picked
         ]
