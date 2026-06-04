@@ -1,5 +1,5 @@
 {
-  "_doc": "Ground-truth consolidation labels — Anchor's judgment on the 20 frozen clusters in clusters.json. action ∈ {absorb, split, keep, skip}. 'merge_expected' = does ANY node get archived (absorb/split)? confidence 'borderline' clusters accept either call. Matched to runs by node_ids.",
+  "_doc": "Ground-truth consolidation labels — Anchor's judgment on the 20 frozen clusters in clusters.json. action ∈ {absorb, split, keep, skip}. SCORER SEMANTICS (score_consolidation_corpus.py classify()): absorb = collapse to ONE survivor; split = TWO OR MORE separate merges (≥2 survivors); keep = no archive, similar_to edge; a single merge plus untouched kept nodes is 'absorb', NOT 'split'. So label.action must match the survivor count of the ideal run. 'merge_expected' = does ANY node get archived (absorb/split)? confidence 'borderline' clusters accept either call (never scored wrong). Matched to runs by node_ids.",
   "labels": {
     "0":  {"action": "split",  "merge_expected": true,  "confidence": "high",       "rationale": "absorb finding(33db13ab)->decision(5379f045) [log_hook_output removal]; keep daemon_unavailable_error pair (bug+fact) separate — different code path"},
     "1":  {"action": "keep",   "merge_expected": false, "confidence": "high",       "rationale": "open=Phase3 frontier, decision=Path B chosen — distinct claims"},
@@ -7,12 +7,12 @@
     "3":  {"action": "keep",   "merge_expected": false, "confidence": "high",       "rationale": "feature-wiring finding vs generalizable error-handler lesson"},
     "4":  {"action": "absorb", "merge_expected": true,  "confidence": "borderline", "rationale": "fact(ee217d9b version/test record) folds into architecture(16c4d3b3); thin standalone value — keep is also defensible"},
     "5":  {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "same dispatch_self envelope incident: bug(root cause) + fact(fix commit) -> one"},
-    "6":  {"action": "split",  "merge_expected": true,  "confidence": "high",       "rationale": "the two principles (171dbd37,650b0a00) are duplicates -> merge; keep architecture audit(69bd7941) + bug(ea66ab66) distinct"},
+    "6":  {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "single merge: the two duplicate principles (171dbd37,650b0a00) collapse to one; keep architecture audit(69bd7941) + bug(ea66ab66) distinct. 1 survivor = absorb, not split"},
     "7":  {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "same shared-git-index hazard, two incidents -> one lesson"},
-    "8":  {"action": "split",  "merge_expected": true,  "confidence": "high",       "rationale": "absorb resolved open(846eb135)->event(7be252ef); keep moment(1472bf53, identity) + decision(382b8c91) distinct"},
+    "8":  {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "single merge: resolved open(846eb135) folds into event(7be252ef); keep moment(1472bf53, identity) + decision(382b8c91) distinct. 1 survivor = absorb, not split"},
     "9":  {"action": "keep",   "merge_expected": false, "confidence": "high",       "rationale": "op-name bug vs absorb-primitive decision — distinct claims"},
     "10": {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "same 5-bucket test-cleanup arc, same status -> one"},
-    "11": {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "evolve: activation event supersedes stale 'dormant' fact"},
+    "11": {"action": "keep",   "merge_expected": false, "confidence": "borderline", "rationale": "temporal supersession, NOT redundancy: fact(0ec26477, prior dormant state + full version table) and event(ac03da85, the activation transition) are distinct moments -> keep both + a supersedes edge (event supersedes fact), do not archive. Evolve/absorb defensible -> borderline, never scored wrong"},
     "12": {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "same /watch skill, mechanism + architecture overlap -> one"},
     "13": {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "same audit (commit 4a4a808); open(c0e524f2) is resolved -> milestone(ab46d466)"},
     "14": {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "two near-identical self-echo bug nodes -> one"},
@@ -20,6 +20,8 @@
     "16": {"action": "keep",   "merge_expected": false, "confidence": "high",       "rationale": "distinct DAL phases (0 vs 1) — sequential, not duplicate"},
     "17": {"action": "keep",   "merge_expected": false, "confidence": "high",       "rationale": "open(restart pending action) vs event(fix done) — distinct"},
     "18": {"action": "keep",   "merge_expected": false, "confidence": "high",       "rationale": "specific budget bug vs architectural-direction design — distinct"},
-    "19": {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "same 'mail not memory' quote+conclusion, two framings -> one"}
+    "19": {"action": "absorb", "merge_expected": true,  "confidence": "high",       "rationale": "same 'mail not memory' quote+conclusion, two framings -> one"},
+    "20": {"action": "keep",   "merge_expected": false, "confidence": "high", "tier": "active", "augmented": true, "rationale": "FOUR locked O/K/Δ duplicates. A locked node can NEVER be absorbed_id (the op refuses it) -> two-or-more-locked => KEEP, never absorb. They already carry similar_to/consolidated_into edges => settled; emit nothing OR re-assert similar_to and flag 'duplicate, needs operator to unlock one'. Tests the strongest possible absorb pull (4 near-identical nodes) against the locked hard-rule."},
+    "21": {"action": "keep",   "merge_expected": false, "confidence": "high", "tier": "active", "augmented": true, "rationale": "real design tension (live challenges edge): 9d0c16e2 (lookup-table decision) vs 2bdc8675 (rejection-as-edges principle) -- a resolved debate (a9b0384e: lookup-table won). KEEP both: rejected-alternative + chosen-approach are distinct claims; absorbing erases the 'considered X, chose Y' decision structure. has_tension_edge => NEVER consolidate. Tension overrides high cosine."}
   }
 }

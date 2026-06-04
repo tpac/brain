@@ -574,5 +574,71 @@
       "10a3334f",
       "c9451f16"
     ]
+  },
+  {
+    "cluster_id": 20,
+    "augmented": true,
+    "_pattern": "locked / two-or-more-locked -> KEEP, never absorb",
+    "members": [
+      {
+        "id": "23af1a79",
+        "type": "architecture",
+        "title": "O/K/Δ — the brain runs integrate(O, K) → Δ at every scale",
+        "content": "The brain has one core function applied recursively at every scale: integrate(O, K) → Δ. O = observation, K = knowledge, Δ = change. The function doesn't know its scale. (locked architecture seed, access 187)",
+        "locked": true
+      },
+      {
+        "id": "44926767",
+        "type": "architecture",
+        "title": "O/K/Δ — the brain runs integrate(O, K) → Δ at every scale",
+        "content": "The brain has one core function applied recursively at every scale: integrate(O, K) → Δ. (locked duplicate of 23af1a79)",
+        "locked": true
+      },
+      {
+        "id": "1cb59088",
+        "type": "architecture",
+        "title": "O/K/Δ — the brain runs integrate(O, K) → Δ at every scale",
+        "content": "The brain has one core function applied recursively at every scale: integrate(O, K) → Δ. (locked duplicate of 23af1a79)",
+        "locked": true
+      },
+      {
+        "id": "1ab83f3e",
+        "type": "architecture",
+        "title": "Fractal Integration System: integrate(O, K) → Δ — one recursive unit at every scale",
+        "content": "The brain's core architecture is one function applied at every scale: integrate(O, K) → Δ. Biological foundation: the simplest living thing is a cell, one membrane, one rule. (locked canonical anchor, 43 external edges, strongest positioning)",
+        "locked": true
+      }
+    ],
+    "node_ids": [
+      "23af1a79",
+      "44926767",
+      "1cb59088",
+      "1ab83f3e"
+    ]
+  },
+  {
+    "cluster_id": 21,
+    "augmented": true,
+    "_pattern": "contradiction / productive tension -> KEEP both, never absorb the disagreement",
+    "members": [
+      {
+        "id": "2bdc8675",
+        "type": "principle",
+        "title": "Rejection is knowledge — every integration unit should write both acceptance and rejection edges",
+        "content": "Rejection IS a relation between nodes — a typed judgment that belongs in the edge layer (a community_reviewed edge carrying the fingerprint). The graph should accumulate judgments, not just structure. Argues suppression should live as EDGES, using the structures we already have.",
+        "locked": false
+      },
+      {
+        "id": "9d0c16e2",
+        "type": "decision",
+        "title": "Rejection fingerprint as unified suppression — one mechanism for all phases",
+        "content": "The decoder hashes a proposal's meaningful parameters into a fingerprint; if it matches a previously rejected fingerprint, suppress it. Storage is a simple lookup table, O(1). Argues suppression should be a LOOKUP TABLE, not graph edges — the opposing approach to 2bdc8675, resolved by a9b0384e ('lookup table beats graph'). Connected by a live `challenges` edge.",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "2bdc8675",
+      "9d0c16e2"
+    ]
   }
 ]

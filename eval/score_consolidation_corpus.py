@@ -4,6 +4,13 @@
 No LLM grader — decisions are classified MECHANICALLY from the emitted ops and
 compared to Anchor's hand-judged labels. The only cost is running the encoder.
 
+Clusters are INJECTED by node_id: each labeled cluster is rebuilt via the decoder's
+own `_enrich_clusters` (+ computed cosines + `_pre_classify`), NOT matched against a
+live decode. This makes the corpus a FROZEN oracle — independent of decoder ranking
+and the scan's suppression filter — so augmented hard clusters (locked, contradiction)
+that the live scan would skip can still be scored, and a decoder-config change
+(e.g. expanding suppression_relations) can't silently drop clusters from scoring.
+
 Primary axis = MERGE confusion: a cluster either should-merge (absorb/split) or
 should-keep. We count:
   - under_merge  : should-merge, didn't  → leaves duplicates (the silent miss)
@@ -13,17 +20,26 @@ Plus exact-action accuracy (absorb/split/keep) and, on absorbs, lossless rate
 (content override + (id:) ref present). Borderline-labeled clusters never count
 as wrong.
 
+Tiers: each label carries tier ∈ {active, solved}; missing = active. By default only
+'active' clusters run — 'solved' = both arms already nailed it (no A/B signal), frozen
+to save cost. `--tier all` re-scores solved clusters as a regression check.
+
 Runs BOTH arms (production baseline + candidate) × N samples — the encoder is
-non-deterministic, so report the distribution.
+non-deterministic, so report the distribution. Emits a per-cluster × per-arm matrix
+and a both-arms-correct freeze list (the clusters that could move to tier:solved).
 
 Usage:
     ./dev python3 eval/score_consolidation_corpus.py --samples 3
+    ./dev python3 eval/score_consolidation_corpus.py --tier all --samples 3
+    ./dev python3 eval/score_consolidation_corpus.py --arm candidate --save eval/reports/corpus_score.json
 """
 import argparse
 import json
 import os
 import sys
 from collections import Counter
+
+import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -70,30 +86,96 @@ def ops_for(ops, cluster_ids):
     return out
 
 
+def _pair_cosines(brain, ids):
+    """Max pairwise content (_primary) and title cosine for a set of node ids.
+
+    Replicates the decoder's embedding-load so injected/augmented clusters get the
+    SAME cosines the decoder would compute. Returns (content_max, title_max)."""
+    if len(ids) < 2:
+        return 0.0, 0.0
+    ph = ','.join('?' * len(ids))
+
+    def load(vtype):
+        vecs = {}
+        for nid, emb in brain.conn.execute(
+                "SELECT node_id, embedding FROM node_enrichments "
+                "WHERE node_id IN (%s) AND vector_type = ? "
+                "AND embedding IS NOT NULL AND typeof(embedding) = 'blob'" % ph,
+                (*ids, vtype)).fetchall():
+            v = np.frombuffer(emb, dtype=np.float32)
+            n = np.linalg.norm(v)
+            if n > 0:
+                vecs[nid] = v / n
+        return vecs
+
+    def maxcos(vecs):
+        present = [i for i in ids if i in vecs]
+        m = 0.0
+        for i in range(len(present)):
+            for j in range(i + 1, len(present)):
+                m = max(m, float(vecs[present[i]] @ vecs[present[j]]))
+        return m
+
+    return maxcos(load('_primary')), maxcos(load('title'))
+
+
+def build_cluster(decoder, brain, meta):
+    """Rebuild a labeled corpus cluster as the enriched cluster dict the encoder
+    expects — by node_id, bypassing the live decode + scan suppression."""
+    ids = sorted(meta['node_ids'])
+    cc = meta.get('content_cosine')
+    tc = meta.get('title_cosine')
+    if cc is None or tc is None:
+        cc, tc = _pair_cosines(brain, ids)
+    cluster = {
+        'nodes': ids, 'size': len(ids),
+        'content_cosine_max': cc, 'content_cosine_avg': cc,
+        'title_cosine_max': tc, 'title_cosine_avg': tc,
+        'pair_scores': {},
+    }
+    decoder._enrich_clusters([cluster])      # mutates in place
+    cluster['pre_class'] = decoder._pre_classify(cluster)
+    return cluster
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--samples', type=int, default=1)
     ap.add_argument('--arm', choices=['both', 'candidate', 'baseline'], default='both')
+    ap.add_argument('--tier', choices=['active', 'solved', 'all'], default='active',
+                    help="which corpus tier to score (default: active)")
     ap.add_argument('--save')
     args = ap.parse_args()
 
     from tests.isolated_brain import IsolatedBrain
-    from eval.s2_consolidation_eval import run_decoder, run_capture_variant
+    from eval.s2_consolidation_eval import run_capture_variant
+    from servers.scales.s2.consolidation_decoder import ConsolidationDecoder
 
-    clusters_meta = json.load(open(CLUSTERS))
+    clusters_meta = {str(c['cluster_id']): c for c in json.load(open(CLUSTERS))}
     labels = json.load(open(LABELS))['labels']
-    # map sorted node_ids tuple -> (corpus cluster_id, label)
-    by_ids = {tuple(sorted(c['node_ids'])): (str(c['cluster_id']), c) for c in clusters_meta}
+
+    def in_scope(cid):
+        tier = labels[cid].get('tier', 'active')
+        return args.tier == 'all' or tier == args.tier
+
+    scoped = [cid for cid in labels if cid in clusters_meta and in_scope(cid)]
 
     with IsolatedBrain(cleanup=True) as env:
         brain = env.brain
         baseline_prompt = brain.get_interaction_prompt(INTERACTION)
         candidate_prompt = open(CANDIDATE).read().strip()
-        decode = run_decoder(brain)
-        # keep only clusters that are in our labeled corpus
-        live = [c for c in decode.get('clusters', [])
-                if tuple(sorted(c.get('nodes', []))) in by_ids]
-        print('Matched %d/%d labeled clusters in the live decode.' % (len(live), len(labels)))
+
+        decoder = ConsolidationDecoder(brain)
+        built = {}
+        for cid in scoped:
+            try:
+                built[cid] = build_cluster(decoder, brain, clusters_meta[cid])
+            except Exception as e:
+                print('  ⚠ skip cluster %s (%s): %r' % (
+                    cid, clusters_meta[cid].get('node_ids'), e))
+        cluster_list = list(built.values())
+        print('Built %d/%d scoped clusters (tier=%s) by injection.' % (
+            len(built), len(scoped), args.tier))
 
         arms = {'baseline': baseline_prompt, 'candidate': candidate_prompt}
         if args.arm != 'both':
@@ -101,40 +183,36 @@ def main():
 
         results = {}
         for arm, prompt in arms.items():
-            # accumulate per-corpus-cluster the actions seen across samples
-            seen = {cid: [] for cid in labels}
-            for s in range(args.samples):
-                var = run_capture_variant(brain, live, prompt)
-                for c in live:
-                    cid, _meta = by_ids[tuple(sorted(c.get('nodes', [])))]
-                    act, merged, loss = classify(ops_for(var['ops'], c.get('nodes', [])))
+            seen = {cid: [] for cid in built}
+            for _ in range(args.samples):
+                var = run_capture_variant(brain, cluster_list, prompt)
+                for cid, cl in built.items():
+                    act, merged, loss = classify(ops_for(var['ops'], cl['nodes']))
                     seen[cid].append({'action': act, 'merged': merged, 'loss': loss})
             results[arm] = seen
 
     # ── score ──
     def score_arm(seen):
-        # majority action per cluster across samples (mode); merge if majority merged
         rows = []
-        conf = Counter()  # under_merge / over_merge / correct / borderline_ok
-        action_hits = 0
-        action_total = 0
+        conf = Counter()
+        verdicts = {}
+        action_hits = action_total = 0
         lossless_good = lossless_total = 0
-        for cid, lab in labels.items():
+        for cid in built:
+            lab = labels[cid]
             samples = seen.get(cid, [])
             if not samples:
                 continue
             merged_frac = sum(1 for s in samples if s['merged']) / len(samples)
             merged_majority = merged_frac >= 0.5
-            # dominant action
             act = Counter(s['action'] for s in samples).most_common(1)[0][0]
             exp_action = lab['action']
             exp_merge = lab['merge_expected']
             borderline = lab.get('confidence') == 'borderline'
-            # lossless on absorbs
             for s in samples:
                 if s['loss']:
-                    lossless_good += s['loss'][0]; lossless_total += s['loss'][1]
-            # merge-axis verdict
+                    lossless_good += s['loss'][0]
+                    lossless_total += s['loss'][1]
             if borderline:
                 verdict = 'borderline_ok'
             elif exp_merge and not merged_majority:
@@ -144,30 +222,48 @@ def main():
             else:
                 verdict = 'correct'
             conf[verdict] += 1
-            # exact action accuracy (split vs absorb vs keep), borderline excluded
+            verdicts[cid] = verdict
             if not borderline:
                 action_total += 1
-                # treat split-expected satisfied by split; absorb by absorb; keep by keep/none
                 ok = (act == exp_action) or (exp_action == 'keep' and act in ('keep', 'none'))
                 if ok:
                     action_hits += 1
-            rows.append((cid, exp_action + ('*' if borderline else ''),
-                         act, '%.0f%%' % (merged_frac * 100), verdict))
-        return rows, conf, action_hits, action_total, (lossless_good, lossless_total)
+            aug = '*' if lab.get('augmented') else ''
+            rows.append({'cluster': cid + aug, 'pre_class': built[cid].get('pre_class', '?'),
+                         'expected': exp_action + ('?' if borderline else ''),
+                         'got': act, 'merged_pct': round(merged_frac * 100),
+                         'verdict': verdict})
+        return rows, conf, verdicts, action_hits, action_total, (lossless_good, lossless_total)
 
     out = {}
+    verdicts_by_arm = {}
     for arm, seen in results.items():
-        rows, conf, ah, at, loss = score_arm(seen)
+        rows, conf, verdicts, ah, at, loss = score_arm(seen)
+        verdicts_by_arm[arm] = verdicts
         out[arm] = {'conf': dict(conf), 'action_acc': '%d/%d' % (ah, at),
-                    'lossless': '%d/%d' % loss}
+                    'lossless': '%d/%d' % loss, 'per_cluster': rows}
         print('\n=== %s  (samples=%d) ===' % (arm.upper(), args.samples))
-        print('  %-4s %-10s %-8s %-7s %s' % ('clu', 'expected', 'got', 'merged', 'verdict'))
-        for cid, exp, act, mf, v in rows:
-            flag = '' if v in ('correct', 'borderline_ok') else '  <<'
-            print('  %-4s %-10s %-8s %-7s %s%s' % (cid, exp, act, mf, v, flag))
+        print('  %-5s %-18s %-10s %-7s %-7s %s' % (
+            'clu', 'pre_class', 'expected', 'got', 'merged', 'verdict'))
+        for r in rows:
+            flag = '' if r['verdict'] in ('correct', 'borderline_ok') else '  <<'
+            print('  %-5s %-18s %-10s %-7s %3d%%    %s%s' % (
+                r['cluster'], r['pre_class'], r['expected'], r['got'],
+                r['merged_pct'], r['verdict'], flag))
         print('  merge-axis: %s' % dict(conf))
         print('  exact-action acc (non-borderline): %d/%d   absorb-lossless: %d/%d' % (
             ah, at, loss[0], loss[1]))
+
+    # ── both-arms-correct freeze list (no A/B signal → candidates for tier:solved) ──
+    if len(verdicts_by_arm) == 2:
+        b, c = verdicts_by_arm['baseline'], verdicts_by_arm['candidate']
+        both_correct = sorted((cid for cid in b
+                               if b[cid] == 'correct' and c.get(cid) == 'correct'),
+                              key=int)
+        out['both_correct_freeze_candidates'] = both_correct
+        print('\n── FREEZE CANDIDATES (both arms correct, no A/B signal) ──')
+        print('  %s' % (both_correct or '(none)'))
+        print('  → move to tier:solved to skip in future runs (keep augmented/borderline active).')
 
     if args.save:
         os.makedirs(os.path.dirname(args.save), exist_ok=True)

@@ -1,10 +1,56 @@
 # S2 Consolidation × Absorb — Session Handoff
 
-**Branch:** `claude/zen-shamir-caf8a3` (worktree `zen-shamir-caf8a3`)
-**Status:** infra + fixes done and tested (uncommitted); the consolidation **prompt
-rewrite is a candidate, NOT registered/activated** — production still runs v6.
-**Next session:** decoder pre-classification (the merge-recall lever), ship decision,
-deferred items below.
+**Branch:** `claude/zen-shamir-caf8a3`
+**Status (2026-06-04):** `s2_consolidation_enrichment` **v7 ACTIVE** in the interaction
+table (absorb prompt + 3 lever examples) — live now. Decoder **lever A** (`_pre_classify`
+type-mismatch → `needs_judgment`) + `suppression_relations` += {`corrects`,`supersedes`}
+committed on this branch — **goes live on merge-to-main + daemon restart.** Eval-gated
+(K=3 corpus). Refining the residue below.
+
+---
+
+## 0. Lever A shipped — the matched pair (2026-06-04)
+
+The merge-recall ceiling was the **decoder**, not the prompt — confirmed by three
+independent runs and fixed. The fix is `_pre_classify`: a cross-type cluster
+(`type_mismatch`) no longer returns `likely_keep` (which flipped the encoder's burden of
+proof to "why override the keep?"); it returns `needs_judgment`, handing the call to the
+claim test the prompt examples equip it to run.
+
+**K=3 corpus, 22 clusters** (corrected oracle + injected locked/contradiction smart-work
+clusters):
+
+| Configuration | correct | UNDER | OVER | lossless |
+|---|---|---|---|---|
+| v6 production | 10 | 8 | 1 | — (archive-based) |
+| + examples only | 12 | 7 | 0 | 7/9 |
+| + lever A only, on v6 prompt | 11 | 2 | **6** ⚠ | 24/25 |
+| **+ examples + lever A (v7, SHIPPED)** | **15** | **3** | **1** | **38/44 (86%)** |
+
+**Findings:**
+1. **Matched pair.** Examples alone left recall stuck (UNDER 7); lever A alone tanked
+   precision (OVER 6); together → recall up (UNDER 8→3), precision held (OVER 1),
+   losslessness 86%.
+2. **CRITICAL ship-coupling.** Lever A on the bare v6 prompt over-merges (OVER 6 — it
+   absorbs genuine keeps 9/16/18). The decoder change must ship **with** the v7 prompt,
+   never alone. Safe deploy order: v7 active FIRST (done), then merge+restart brings the
+   decoder live — so the bad window (new decoder + old prompt) never opens.
+3. **Hard rules intact.** Locked cluster 20 (cc=1.0, `pre_class=likely_consolidate` — max
+   merge pressure) → KEEP; contradiction 21 → KEEP. Both correct in v7.
+4. **Residue (refining):** under-merge 7/12/13 now noisy 33% (boundary, not hard misses);
+   1 over-merge (cluster 2 — likely a too-strict keep label). Freeze list (both arms
+   correct, no A/B signal): 0,5,6,8,10,14,17,19,20,21.
+
+**New eval infra this round:** corpus relabels (6/8 split→absorb survivor-count fix;
+11 absorb→keep/borderline temporal supersession), 2 injected smart-work clusters (locked
+O/K/Δ quadruplet; contradiction tension pair `2bdc8675`↔`9d0c16e2`), scorer rewrite
+(`score_consolidation_corpus.py`: inject-by-id frozen oracle + per-cluster×per-arm matrix
++ `--tier active|solved|all` + auto freeze list). Reports: `corpus_score_k3_v3.json`
+(pre-lever-A), `corpus_score_k3_v4_preclass.json` (post).
+
+**Live vs pending:** LIVE = v7 interaction. PENDING merge+restart = `_pre_classify`,
+`suppression_relations`, and the earlier code (SKIP-detector, co_accessed-off-remember,
+absorb MCP desc).
 
 ---
 

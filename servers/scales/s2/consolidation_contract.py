@@ -122,8 +122,13 @@ CONSOLIDATION = {
     'encoding_lookback_hours': 168,     # 7 days of S1E traces
 
     # ── Suppression (decoder) ──
-    # Pairs with these edge relations are skipped (already reviewed)
-    'suppression_relations': {'similar_to', 'consolidated_into'},
+    # A pair is "reviewed" (skipped) if it carries any of these resolution edges.
+    # similar_to / consolidated_into = KEEP/SKIP/merge outcomes.
+    # corrects / supersedes = CONTRADICTION/SUPERSESSION outcomes — a keep that
+    # draws only a semantic resolution edge must still suppress, or the cold scan
+    # re-proposes it every cycle (churn). Aligns with s2_consolidation_eval.py,
+    # which already counts supersedes as a suppression edge.
+    'suppression_relations': {'similar_to', 'consolidated_into', 'corrects', 'supersedes'},
 
     # ── Pre-classification thresholds (decoder) ──
     'likely_consolidate_cosine': 0.90,  # Above this + structural signal = likely consolidate

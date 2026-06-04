@@ -111,15 +111,15 @@ Use `prune_edges: ["relation", ...]` only to DROP an absorbed edge whose relatio
 
 `community_member` edges are excluded from migration automatically — S2 community detection re-places the survivor on its next run. Never carry them.
 
-## Edge Types (for KEEP / SKIP only)
+## Edge Types (for the no-archive actions: KEEP / SKIP / SUPERSESSION / CONTRADICTION)
 
-KEEP and SKIP draw a `similar_to` edge. Pick a precise relation and write a description that teaches recall — `related` / `related_to` carry zero information. The typed edge's description is what recall searches.
+These draw a **suppression-class** edge: `similar_to` for KEEP/SKIP, `supersedes` for SUPERSESSION, `corrects` for CONTRADICTION. Pick the precise relation and write a description that teaches recall — `related` / `related_to` carry zero information. The typed edge's description is what recall searches.
 
 ## Suppression
 
 An **ABSORB archives the absorbed node**, which removes it from the decoder's scan — suppression is automatic. No suppression edge needed for ABSORB.
 
-KEEP and SKIP do NOT archive. They rely on a `similar_to` edge between the pair as the suppression mechanism. Without it, the decoder re-proposes the cluster forever.
+KEEP, SKIP, SUPERSESSION, and CONTRADICTION do NOT archive. They rely on a **suppression-class** edge between the pair to stop re-proposal — `similar_to` (KEEP/SKIP), `supersedes` (SUPERSESSION), or `corrects` (CONTRADICTION). The decoder treats all of these as "reviewed." Without one of them, the decoder re-proposes the cluster forever — so a single semantic resolution edge is enough; you do NOT also need a redundant `similar_to`.
 
 ## Provenance
 
@@ -264,6 +264,26 @@ brain_batch({operations: [
 
 Two knowledge units in → two survivors out, each rewritten (title + content), connected by a real `depends_on`. Both claims stay recoverable. Collapsing all four into one decision (high cosine made it tempting) would have buried either the rate-limit bug or the onboarding win. **Count claims, not nodes** — and when a member shares only a name, never a claim, keep it separate.
 
+#### Cross-type duplicate — different types, ONE claim (the type difference is a hint, not a verdict)
+
+A type difference is a reason to *run* the claim test, never a reason to skip the merge. Different-typed nodes are often one knowledge unit seen from two roles: a `bug` (the problem) and a `fact` (its fix) of the SAME incident; a `mechanism` and an `architecture` describing the SAME system; a `plan` and a `fact` tracking the SAME project. When the claim is one, **absorb across the type line** — the type label is not a claim.
+
+Cluster (content cosine 0.90, title cosine 0.78) — a `bug` and a `fact`, two types, ONE incident:
+- `7d10c4a2` (bug): "Webhook retries fire with no jitter — when a downstream service has an outage, every queued webhook retries on the same fixed schedule, so they synchronize into a thundering-herd storm that re-overloads the service the instant it recovers."
+- `b2e90f15` (fact): "Webhook retry storm fixed in deploy 2026-05-18 — switched to exponential backoff with full jitter, capped at 5 retries; the synchronized-retry spike disappeared."
+
+```
+brain_batch({operations: [
+  {op: "absorb", survivor_id: "7d10c4a2", absorbed_id: "b2e90f15",
+   reason: "two types (bug + fact) but ONE incident — b2e90f15 is the fix for exactly this bug; problem and resolution are a single knowledge unit",
+   title: "Webhook retries need jittered backoff — fixed-schedule retries caused a thundering-herd storm (fixed 2026-05-18)",
+   content: "Bug: webhook retries fired on a fixed schedule with no jitter, so a downstream outage made every queued retry synchronize into a thundering-herd storm that re-overloaded the service the instant it recovered. Fix (deploy 2026-05-18, id:b2e90f15): exponential backoff with full jitter, capped at 5 retries — the synchronized spike is gone. RULE: every retry path needs jitter; fixed-interval retries synchronize into a self-inflicted DoS.",
+   keywords: "webhook retry jitter exponential backoff thundering herd retry storm 5 retries 2026-05-18 downstream outage self-DoS"}
+]})
+```
+
+Notice: the types differ (`bug` vs `fact`) but the claim is one — this incident's problem and its fix — so it's ONE survivor carrying both, plus the RULE the incident teaches. The pull to KEEP "because the types differ" is the trap; the claim test cuts through it. Contrast with the KEEP examples below, where different types carry genuinely *different* claims (a symptom finding vs a general design lesson that outlives it) and stay separate. The discriminator is always **one claim or two — never the type label.**
+
 ### ABSORB as EVOLVE — old wisdom absorbed into new
 
 One node supersedes another. A correction, a refinement, a deeper understanding replaced the earlier framing. The older is still active and competes.
@@ -289,15 +309,39 @@ brain_batch({operations: [
 
 Notice: the newer node survives, rewritten as the general principle. `prune_edges: ["contradicts"]` drops the *absorbed* node's `contradicts → old_formatter_design` edge (about the superseded framing, doesn't carry). `disconnect` removes one of the *survivor's own* edges (`implements → 0a17c9d4`) that no longer fits now that the node is the rule rather than the instance. Use `prune_edges` for the absorbed node's edges, `disconnect` for the survivor's own — both rare, both deliberate. The absorbed's other edges migrate automatically.
 
+### SUPERSESSION — a new state replaced an old one, but both moments are real → KEEP + `supersedes`
+
+EVOLVE has two siblings that also look like "the newer one wins." Tell them apart — three different actions:
+
+- **EVOLVE (absorb):** the older node is a *stale value* the newer one fully restates — "timeout is 30s" → "timeout raised to 60s." Nothing of the old is worth surfacing alone. Absorb it in, noting the prior value.
+- **SUPERSESSION (keep both + `supersedes`):** the older node is a *distinct prior-state record* holding specifics the newer transition-node does NOT restate — a snapshot table, a set of measurements, the config the new state was measured against. The old isn't wrong; it's history. Keep both, draw `supersedes` (newer → older).
+- **CONTRADICTION (keep both + `corrects`):** the older node is *wrong in an instructive way* (a mismeasurement, a misattribution). Keep both, draw `corrects` — see below.
+
+The supersession test: **does the older node hold prior-state detail a future you would want to recover on its own terms?** If yes, keeping it is the record of what changed; absorbing it erases the baseline the new state is defined against.
+
+Cluster (content cosine 0.90, title cosine 0.88) — a prior-state snapshot and the event that replaced it:
+- `c4a1d7e0` (fact, older): "Rate limits (pre-2026-Q2): /search 100 req/s, /upload 10 req/s, /export 2 req/s, anonymous 20 req/s — static per-endpoint caps."
+- `9b30f6a2` (event, newer): "Rate-limit overhaul shipped 2026-Q2 — every limit is now per-API-key and computed from the key's tier; the static per-endpoint caps were removed."
+
+```
+brain_batch({operations: [
+  {op: "connect", source_id: "9b30f6a2", target_id: "c4a1d7e0",
+   relation: "supersedes",
+   description: "The Q2 per-key dynamic rate-limit system (9b30f6a2) supersedes the old static per-endpoint caps (c4a1d7e0). Both kept: c4a1d7e0 is the prior-state record of the exact pre-Q2 numbers (/search 100, /upload 10, /export 2, anon 20 req/s) — the baseline the overhaul replaced; the new node restates none of them."}
+]})
+```
+
+Notice: **no absorb.** The newer event restates none of the old per-endpoint numbers, so absorbing the fact would erase the exact pre-Q2 limits — the baseline a future "what were the static caps before the overhaul?" needs. One `supersedes` edge does both jobs: it carries the temporal meaning AND suppresses (the decoder treats `supersedes` as reviewed — no redundant `similar_to`). Had the older node been a single value the newer fully restates (the 30s→60s timeout), that's EVOLVE — absorb it in. The discriminator is whether the older holds prior-state detail worth recovering, not merely that it's "older."
+
 ### CONTRADICTION — the disagreement is signal, not redundancy
 
 Two nodes can be highly similar AND disagree on a claim. That disagreement is a **correction** — the record that we believed X, then learned Y. Never absorb it away: absorbing archives the older node and silently erases the fact that we were wrong, so a future you re-derives the same mistake. Instead draw a `corrects` (or `supersedes`) edge from the correct node to the wrong one, and state the resolution in the corrector's `content`. The correction substrate walks that edge at recall time, so the old node never resurfaces *without* its correction attached — keeping it is safe, and the mistake stays as a lesson.
 
-Cluster (content cosine 0.93): two `finding` nodes on checkout-latency attribution. They agree on the 800ms total, contradict on the cause.
-- `7a2c4e10` (older): "Checkout p95 is 800ms, dominated by the DB write (600ms)."
-- `9f1b3d57` (newer): "Checkout p95 is 800ms; the image-CDN round-trip dominates at 540ms, the DB write is only 110ms."
+This is the hardest case to get right, because **every structural signal screams ABSORB and the survivor signal points at the WRONG node.** Cluster (content cosine 0.94, title cosine 0.91, same type, CATALOG_BLIND) — two `finding` nodes on checkout-latency attribution. They agree on the 800ms headline and disagree on one buried clause: the cause. And the positioning misleads — the older, *wrong* node is the well-established one (recall_count 12, judge_preference 5) while the newer, *correct* one is barely surfaced (recall_count 1, judge_preference 0):
+- `7a2c4e10` (older, well-positioned, WRONG): "Checkout p95 is 800ms, dominated by the DB write (600ms)."
+- `9f1b3d57` (newer, weakly-positioned, CORRECT): "Checkout p95 is 800ms; the image-CDN round-trip dominates at 540ms, the DB write is only 110ms."
 
-Resolution — NOT absorb:
+Resolution — NOT absorb (and emphatically not "absorb the weak newer node into the strong older one," which would archive the correction):
 
 ```
 brain_batch({operations: [
@@ -311,7 +355,7 @@ brain_batch({operations: [
 ]})
 ```
 
-Notice: **no absorb.** The older, wrong node (`7a2c4e10`) is KEPT — but the `corrects` edge means recall surfaces it *with* the correction attached, so it can never mislead alone. The corrector's content names the resolution AND why the first measurement was wrong (cold DB cache). Absorbing `7a2c4e10` would have archived the mistake and let a future you re-optimize the DB. Contrast with EVOLVE: a node that is merely *outdated* (a stale value, no lesson) gets absorbed into the newer one; a node that is *wrong in an instructive way* gets a `corrects` edge and stays. **Consolidation dedups knowledge; it does not erase corrections.**
+Notice: **no absorb.** The older, wrong node (`7a2c4e10`) is KEPT — but the `corrects` edge means recall surfaces it *with* the correction attached, so it can never mislead alone (and the single `corrects` edge also suppresses re-proposal — no `similar_to` needed). The corrector's content names the resolution AND why the first measurement was wrong (cold DB cache). Absorbing `7a2c4e10` would have archived the mistake and let a future you re-optimize the DB. Note how every signal lied: same type, 0.94 cosine, catalog-blind, and a survivor vote for the *wrong* node — all pointing at absorb. **A genuine disagreement overrides every structural signal:** when the claim test finds one node *corrects* another, keep both no matter how strong the absorb signals look, and never let survivor-selection archive the correct node just because the wrong one is more popular. Contrast with EVOLVE: a node merely *outdated* (a stale value, no lesson) gets absorbed into the newer one; a node *wrong in an instructive way* gets a `corrects` edge and stays. **Consolidation dedups knowledge; it does not erase corrections.**
 
 ### LOCKED — the locked node is always the survivor
 
