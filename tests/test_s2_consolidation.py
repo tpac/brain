@@ -158,5 +158,76 @@ class TestConsolidationStampTiming(BrainTestBase):
         self.assertIsNone(self.brain.get_config(u.LAST_RUN_TS_KEY))  # NOT stamped
 
 
+class TestConsolidationAbsorbDetection(BrainTestBase):
+    """Orchestrator-level: a successful ABSORB archives the absorbed peer but
+    writes NO similar_to/consolidated_into edge. Edge-only detection would read
+    that as a SKIP and stamp a false rejection fingerprint. The archived-member
+    snapshot is the fix — an archived member ⇒ the cluster was merged ⇒ handled.
+    """
+
+    needs_embedder = False
+
+    def _unit(self):
+        from servers.scales.s2.consolidation import Consolidation
+        return Consolidation(self.brain)
+
+    def _rejection_count(self):
+        return self.brain.conn.execute(
+            "SELECT COUNT(*) FROM s2_rejections "
+            "WHERE integration_unit = 's2:consolidation'").fetchone()[0]
+
+    def _fake_decode(self, n1, n2, pre_class):
+        return {
+            'clusters': [{'nodes': [n1, n2],
+                          'node_details': {n1: {'updated_at': ''},
+                                           n2: {'updated_at': ''}},
+                          'pre_class': pre_class}],
+            'stats': {},
+            '_stamp': {'ts': 12345.0, 'threshold': '0.89'},
+        }
+
+    def test_archived_member_is_handled_not_rejected(self):
+        from servers.scales.s2 import consolidation as consol_mod
+        n1 = self.brain.remember(type='fact', title='survivor', content='c')['id']
+        n2 = self.brain.remember(type='fact', title='absorbed', content='c')['id']
+        u = self._unit()
+
+        def _encoder_absorbs(clusters):
+            # The absorb op archives the absorbed peer — simulate that effect.
+            self.brain.conn.execute(
+                "UPDATE nodes SET archived = 1 WHERE id = ?", (n2,))
+            self.brain.conn.commit()
+            return {'write_actions': 1, 'rounds': 2, 'actions': 1,
+                    'action_details': [{'tool': 'brain_batch', 'input': {
+                        'operations': [{'op': 'absorb', 'survivor_id': n1,
+                                        'absorbed_id': n2}]}}]}
+
+        with mock.patch.object(consol_mod.ConsolidationDecoder, 'run',
+                               return_value=self._fake_decode(n1, n2, 'likely_consolidate')), \
+             mock.patch.object(consol_mod.ConsolidationEncoder, 'run',
+                               side_effect=_encoder_absorbs):
+            result = u.run()
+
+        self.assertEqual(result.get('skipped_recorded'), 0)  # merge, not a SKIP
+        self.assertEqual(self._rejection_count(), 0)          # no false fingerprint
+        self.assertIsNotNone(self.brain.get_config(u.LAST_RUN_TS_KEY))  # cutoff advanced
+
+    def test_genuine_skip_still_recorded(self):
+        # Negative control: encoder archives nothing and writes no edge → a real
+        # SKIP → fingerprint stamped. Proves the detector didn't go blind.
+        from servers.scales.s2 import consolidation as consol_mod
+        n1 = self.brain.remember(type='fact', title='a', content='c')['id']
+        n2 = self.brain.remember(type='fact', title='b', content='c')['id']
+        u = self._unit()
+        with mock.patch.object(consol_mod.ConsolidationDecoder, 'run',
+                               return_value=self._fake_decode(n1, n2, 'needs_judgment')), \
+             mock.patch.object(consol_mod.ConsolidationEncoder, 'run',
+                               return_value={'write_actions': 0, 'rounds': 1,
+                                             'actions': 0, 'action_details': []}):
+            result = u.run()
+        self.assertEqual(result.get('skipped_recorded'), 1)   # real skip stamped
+        self.assertEqual(self._rejection_count(), 1)
+
+
 if __name__ == '__main__':
     unittest.main()

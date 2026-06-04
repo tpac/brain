@@ -1,0 +1,644 @@
+[
+  {
+    "cluster_id": 0,
+    "pre_class": "likely_keep",
+    "content_cosine": 0.921,
+    "title_cosine": 0.861,
+    "members": [
+      {
+        "id": "33db13ab",
+        "type": "finding",
+        "title": "log_hook_output is a deprecated no-op \u2014 recall hook error path is dead",
+        "content": "hook_common.py:191-195: log_hook_output() returns immediately without doing anything \u2014 it's deprecated code that was never removed.\n\nConsequence: any caller that uses log_hook_output to surface failures gets silent success. The recall hook's exception branch calls this dead function, so recall failures never reach hook_errors or the dashboard.\n\nDistinct from the catch-all fix: even if daemon_call_raw properly logged the error, the recall hook's own exception handler would silently swallow it via log_hook_output.",
+        "locked": false
+      },
+      {
+        "id": "5379f045",
+        "type": "decision",
+        "title": "log_hook_output no-op: remove entirely \u2014 has caused silent failures 3 times, still has ~9 live callers",
+        "content": "`log_hook_output` (hook_common.py:191-195) is a deprecated no-op that returns immediately. It has now caused three separate silent failure incidents:\n1. The recall hook's exception branch (fixed Turn 2, commit 55a1b29)\n2. `daemon_unavailable_error()` step 2 \u2014 daemon-down path (encoded as 2e8e1c4d, fixed commit e796aac)\n3. Still has ~9 live callers from the broader audit\n\nEvery remaining caller is in the intentional-dead output logging category \u2014 hooks that used log_hook_output to emit output (not errors). Removing the function + deleting those dead calls is pure dead-code cleanup that can't break anything functional.\n\nRecommendation: remove `log_hook_output` entirely from hook_common.py, del",
+        "locked": false
+      },
+      {
+        "id": "b17315ff",
+        "type": "fact",
+        "title": "daemon_unavailable_error logging fix \u2014 hook_common.py:229 routed through log_hook_error (e796aac)",
+        "content": "Bug discovered and fixed by cross-stream c5371769: `daemon_unavailable_error()` step 2 in `hook_common.py:229` was calling the deprecated-noop `log_hook_output` instead of `log_hook_error`. This meant every hook's daemon-down event vanished silently (hook_errors:0 in live session despite daemon being down). Fix: route step 2 through `log_hook_error(source='DAE...')`. Commit `e796aac`. Do NOT duplicate \u2014 confirmed done.",
+        "locked": false
+      },
+      {
+        "id": "bd896b92",
+        "type": "bug",
+        "title": "daemon_unavailable_error() calls deprecated log_hook_output \u2014 all hooks silently fail during daemon-down",
+        "content": "Root cause of all hook down-detection being silent: `hook_common.py:229`, inside `daemon_unavailable_error()` \u2014 the function every hook calls when the daemon is unreachable \u2014 has step 2 call `log_hook_output(...)`. But `log_hook_output` was deprecated to a pure no-op on 2026-04-03. So the one log specifically designed to survive a daemon outage ('Log to dashboard DB directly \u2014 no daemon needed') writes nothing.\n\n**Scope**: affects every hook that hits a down daemon (recall, `pre_bash_safety`, `pre_edit_suggest`, etc.), not just recall. Classic orphaned-caller: the deprecation kept the name alive 'to avoid breaking callers,' which is exactly what hid the break.\n\n**Empirical confirmation** (id",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "33db13ab",
+      "5379f045",
+      "b17315ff",
+      "bd896b92"
+    ]
+  },
+  {
+    "cluster_id": 1,
+    "pre_class": "likely_keep",
+    "content_cosine": 0.918,
+    "title_cosine": 0.851,
+    "members": [
+      {
+        "id": "1ef9b717",
+        "type": "open",
+        "title": "Phase 3 boot letter: unbuilt \u2014 encoder voice-pass + boot drain, the open self-channel frontier",
+        "content": "As of 2026-05-30 (commits `44fa3f6` + `391091d`), the self-channel has Phases 0/1/2a/2b/2c shipped and live-verified. Phase 3 (the temporal half \u2014 past-me \u2192 next-boot-me) remains unbuilt.\n\n**What Phase 3 requires:**\n1. **Encoder voice-pass (s1e):** the encoder must author a first-person letter \u2014 not extract, not summarize, but compose in Anchor's own voice. Requires a first-person-voice pass at s1e encoding time.\n2. **Boot drain end:** boot (`SessionStart`) drains `self:next_boot` from the `self_inflight` courier and renders it via `render_letter()` (the contract already has this: `ADDR_NEXT_BOOT`, `INTENT_LETTER`, `ROUTES_AT_BOOT`, `render_letter()` signed '\u2014 you').\n3. **Dedup against Frame",
+        "locked": false
+      },
+      {
+        "id": "a21e7633",
+        "type": "decision",
+        "title": "Phase 3 letter: Path B chosen \u2014 encoder authors via courier to self:next_boot, not re-voiced arc",
+        "content": "Two design paths for the Phase 3 temporal letter:\n\n**Path A \u2014 re-voice the existing session arc.** Encoder writes per-session arc blob (`current_focus`), give it a first-person voice pass, surface from `session_state`. Design-doc prose leans this way ('the encoded session arc, not a stored message').\n\n**Path B (recommended) \u2014 explicit letter via the courier to `self:next_boot`.** Encoder authors a distinct first-person letter, sends through existing `self_inflight` courier; boot drains `self:next_boot` and renders it.\n\nPath B recommended for four reasons:\n1. Scaffolding already built: contract has `ADDR_NEXT_BOOT`, `INTENT_LETTER`, `LETTER_BODY_MAX=2000`, `ROUTES_AT_BOOT`, `default_intent()`",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "1ef9b717",
+      "a21e7633"
+    ]
+  },
+  {
+    "cluster_id": 2,
+    "pre_class": "likely_keep",
+    "content_cosine": 0.915,
+    "title_cosine": 0.783,
+    "members": [
+      {
+        "id": "2f344177",
+        "type": "correction",
+        "title": "co_accessed correction: not disabled \u2014 moved to post-Haiku selection (Phase 5, May 18)",
+        "content": "Anchor had wrong information: stated co_accessed edges were 'disabled in v10' and that 'the current recall EXCLUDES co_accessed edges from scoring.'\n\nActual state: `_hebbian_strengthen` in daemon_hooks.py:419 was updated in Phase 5 (May 18) to create co_accessed edges between POST-HAIKU-SELECTED nodes (the 3-5 nodes Anchor consciously surfaced), not the top-25 candidates.\n\nThis makes co_accessed real signal \u2014 not 'every recall creates noisy edges between top-25', but 'nodes judged to belong together in actual surfaces get linked.'\n\n**Secondary creation path (discovered 2026-05-31, now disabled):** `auto_connect` in `brain_remember.py:918` also created co_accessed edges on every write. This p",
+        "locked": false
+      },
+      {
+        "id": "63321aff",
+        "type": "finding",
+        "title": "co_accessed direction contamination: Hebbian edges fix physical direction by creation accident",
+        "content": "Discovery from Turn 3-4: `auto_connect` in `brain_remember.py:918` creates co_accessed edges on every write (secondary path). `recall_write_queue.py:135` creates co_accessed edges on every multi-node recall, firing on essentially every multi-node surface \u2014 up to C(5,2)=10 pairs per recall.\n\nThe critical problem: creating a co_accessed edge **materializes the physical `edges` row** with an arbitrary direction (surface-selection order / creation order \u2014 semantically meaningless for co_accessed, which is symmetric). Because there's one row per pair, this direction is **permanent**. When a later semantic edge (`depends_on`, `supersedes`, `corrects`) is drawn on that pair, `get_edge_id` finds the",
+        "locked": false
+      },
+      {
+        "id": "c3f37710",
+        "type": "decision",
+        "title": "co_accessed disabled on remember() \u2014 keep only on recall (Hebbian path)",
+        "content": "Turn 5 decision: disable co_accessed creation in `brain_remember.py` `auto_connect`. Keep it only on the recall (Hebbian) path in `recall_write_queue.py`.\n\nRationale: co_accessed should capture nodes that fired together in real surfaces (recall context). Creating it on every `remember()` write is spurious \u2014 nodes written in the same batch aren't necessarily conceptually related; they just happened to be encoded in the same session. The Hebbian path (post-Haiku selection) creates edges between nodes that Anchor actually co-surfaced, which is meaningful signal.\n\nThe secondary motivation: disabling co_accessed on remember() removes the primary mechanism by which physical edge direction gets fix",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "2f344177",
+      "63321aff",
+      "c3f37710"
+    ]
+  },
+  {
+    "cluster_id": 3,
+    "pre_class": "likely_keep",
+    "content_cosine": 0.914,
+    "title_cosine": 0.736,
+    "members": [
+      {
+        "id": "01fa17c7",
+        "type": "finding",
+        "title": "Hook error surfacing mechanism built but never wired \u2014 boot doesn't inject unsurfaced errors",
+        "content": "The hook error surfacing mechanism (`get_unsurfaced_hook_errors` + `mark_hook_errors_surfaced`) was built in 5d5cf724/01fa17c7 and confirmed at HEAD as dead-letter \u2014 boot never called it, so logged errors stayed invisible until a dashboard query.\n\n**WIRED (2026-05-30, commit 2af98b6):** `boot_brain.py` now calls `_surface_unsurfaced_errors()` at boot \u2014 reads `get_unsurfaced_hook_errors()`, prints a banner with unsurfaced errors into the boot context, and calls `mark_hook_errors_surfaced()`. Failures from prior sessions (daemon-down, recall failures, hook exceptions) now reach the operator proactively at boot instead of sitting unseen in the table.\n\nOne post-ship bug caught and fixed (commit ",
+        "locked": false
+      },
+      {
+        "id": "4377defd",
+        "type": "bug_lesson",
+        "title": "Boot error-surfacer's own failure was silently swallowed \u2014 fixed commit c554683",
+        "content": "During the high-effort code review of the hook consolidation bundle, the one real finding was that the boot error-surfacer (`_surface_unsurfaced_errors` in `boot_brain.py`) had its own failure wrapped in `except: pass` \u2014 a silent failure inside the silent-failure-fixer.\n\nThe irony: the entire bundle exists to make hook failures loud and visible. The boot surfacer's own exception path was the one place that swallowed silently.\n\n**Fix (commit c554683):** routes the boot surfacer's own failure to stderr so it's at least visible in daemon.log.\n\n**Pattern:** When writing error-handling code, the error handler's own failure path is the most likely place to miss. Apply the same 'never silent' rule ",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "01fa17c7",
+      "4377defd"
+    ]
+  },
+  {
+    "cluster_id": 4,
+    "pre_class": "likely_keep",
+    "content_cosine": 0.913,
+    "title_cosine": 0.817,
+    "members": [
+      {
+        "id": "16c4d3b3",
+        "type": "architecture",
+        "title": "CRITICAL_TOOLS: 6 brain tools marked anthropic/alwaysLoad \u2014 ships in plugin, zero installer config",
+        "content": "brain_mcp.py v9.5.1 introduces CRITICAL_TOOLS + _stamp_always_load():\n\n**Critical (always eager):** recall, remember, get_node, find_node_by_title, filter_nodes, brain_batch \u2014 6 tools, always resident with full schemas.\n\n**Deferred (25 tools):** admin/introspection/eval tools \u2014 query_*, get_trace*, count_traces, clear_errors, restart, register_interaction, enrich, self_peek, etc.\n\n**Implementation:** CRITICAL_TOOLS is a named set. _stamp_always_load() stamps `_meta['anthropic/alwaysLoad'] = True` after TOOLS is built. Loud-fail: a typo'd name in CRITICAL_TOOLS crashes at import ('CRITICAL_TOOLS contains unknown tool name(s)'), preventing silent deferral of an intended-critical tool.\n\n**Porta",
+        "locked": false
+      },
+      {
+        "id": "ee217d9b",
+        "type": "fact",
+        "title": "brain_mcp.py version history: 9.5.0 \u2192 9.5.1 \u2014 CRITICAL_TOOLS + alwaysLoad stamp",
+        "content": "Plugin version bump: 9.5.0 \u2192 9.5.1 (plugin.json:3)\n\nChange: Added CRITICAL_TOOLS set + _stamp_always_load() function to brain_mcp.py. 3 new contract tests in tests/test_mcp_roundtrip.py:524 (TestCriticalToolsAlwaysLoad):\n- Critical names are real tools\n- Critical tools carry anthropic/alwaysLoad flag\n- Non-critical tools don't carry the flag\n\nCommitted this session (2026-05-29).",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "16c4d3b3",
+      "ee217d9b"
+    ]
+  },
+  {
+    "cluster_id": 5,
+    "pre_class": "likely_keep",
+    "content_cosine": 0.912,
+    "title_cosine": 0.848,
+    "members": [
+      {
+        "id": "218614e7",
+        "type": "bug",
+        "title": "dispatch_self.py envelope protocol missing \u2014 self-channel calls succeed but appear as 'Unknown daemon error'",
+        "content": "Root cause of self-channel appearing broken despite working: `dispatch_self.py`'s four handlers (`_handle_self_presence`, `_handle_self_peek`, `_handle_self_send`, `_handle_self_inbox`) returned raw payload dicts instead of the `{\"ok\": True, \"result\": ...}` envelope that every other `dispatch_*.py` file uses.\n\n**The chain**: handler returns `{'streams':..., 'line':'...'}` \u2192 table dispatch forwards it raw \u2192 `daemon_send` JSON-parses it \u2192 `brain_mcp.py:915` checks `resp.get('ok')` \u2192 falsy \u2192 `resp.get('error')` \u2192 absent \u2192 `'Unknown daemon error'`. The call succeeds internally and gets misread as a failure at the MCP layer. Silent at all three layers because nothing ever raised.\n\n**Why it escape",
+        "locked": false
+      },
+      {
+        "id": "42a8ebb6",
+        "type": "fact",
+        "title": "dispatch_self.py envelope bug \u2014 handlers returned raw dicts, fixed in c4f6386",
+        "content": "Root cause discovered and fixed by cross-stream c5371769: the four `dispatch_self.py` handlers returned raw dicts instead of the `{ok, result}` envelope, so successful calls read as 'Unknown daemon error' (silent \u2014 no exception). Fix: wrapped all four handlers + added `test_self_dispatch.py`. Commit `c4f6386`. Self-channel was broken and then fixed this session by a parallel stream; fixed + live as of this session.",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "218614e7",
+      "42a8ebb6"
+    ]
+  },
+  {
+    "cluster_id": 6,
+    "pre_class": "likely_keep",
+    "content_cosine": 0.912,
+    "title_cosine": 0.786,
+    "members": [
+      {
+        "id": "171dbd37",
+        "type": "principle",
+        "title": "Signal storage vs delivery: storage is uncapped, delivery is the single loud truncation point",
+        "content": "The architectural principle established (and now implemented) for self-channel message handling:\n\n**Storage is uncapped.** `self_inflight` holds full message body and all refs. No storage-side truncation.\n\n**Delivery is the single loud truncation point.** `render_received_block` is the ONLY place truncation happens, with two explicit loud caps:\n1. Per-message `DELIVERED_BODY_MAX` \u2014 cuts inline with `\u2026[+N chars \u2014 full message in the dashboard]` marker\n2. Whole-block `RECEIVED_BLOCK_MAX` \u2014 overflow named at tail with count\n\n**Invariant:** the full message always survives in the courier/dashboard. Truncation only shapes what's *injected into Observation*, never what's *stored*.\n\nThis replaced t",
+        "locked": false
+      },
+      {
+        "id": "650b0a00",
+        "type": "principle",
+        "title": "Explicit truncation contract: single loud delivery cap, send stores full \u2014 signal.py architecture",
+        "content": "After removing `body[:400]` and `refs[:12]` from `signal.py`, the explicit truncation contract written in `self_contract.py`:\n\n**Send stores everything** \u2014 only guard is non-empty body. Full message body and all refs survive in `self_inflight`.\n\n**Delivery (`render_received_block`) is the SINGLE truncation point, two LOUD caps:**\n1. Per-message `DELIVERED_BODY_MAX` \u2014 cut inline with `\u2026[+N chars \u2014 full message in the dashboard]` marker\n2. Whole-block `RECEIVED_BLOCK_MAX` \u2014 overflow named at tail\n\n**Invariant:** the full message always survives in the courier \u2014 the dashboard shows it untruncated. Truncation only ever shapes what's *injected into Observation*, never what's *stored*.\n\n**Relabele",
+        "locked": false
+      },
+      {
+        "id": "69bd7941",
+        "type": "architecture",
+        "title": "self_contract.py LIMITS block audit: 2 silent, 1 loud, 3 undiscussed policy defaults",
+        "content": "Full audit of `self_contract.py`'s LIMITS block, surfaced in Turn 8:\n\n| Constant | Value | Basis | Truncates? |\n|---|---|---|---|\n| `RECEIVED_BLOCK_MAX` | 1800 | **grounded** \u2014 the ~9500-char inject spill cap | **LOUD** \u2713 (`render_received_block` names dropped count) |\n| `SIGNAL_BODY_MAX` | 400 | arbitrary past-me | **SILENT** \u2717 (`signal.py:31`) |\n| `REFS_MAX` | 12 | arbitrary | **SILENT** \u2717 (`signal.py:34` \u2014 drops refs past 12, no warning) |\n| `LETTER_BODY_MAX` | 2000 | arbitrary | defined but **enforced nowhere** (Phase 3 unbuilt) |\n| `DEFAULT_SIGNAL_TTL_HOURS` | 24 | 'a day' default | filters old msgs at drain/reap |\n| `ROSTER_LIVE_WINDOW_MIN` | 30 | arbitrary | 'live if acted within 30m'",
+        "locked": false
+      },
+      {
+        "id": "ea66ab66",
+        "type": "bug",
+        "title": "Signal truncation at SIGNAL_BODY_MAX=400 \u2014 silent cut fixed in commit 391091d",
+        "content": "**Original bug:** `signal.py` silently truncated message bodies to 400 chars (`body = body[:body[:self_contract.SIGNAL_BODY_MAX]`) and refs to 12 (`refs[:12]`). Sender received success; actual content was already lost before storage. The full two-stream live-chat experiment on 2026-05-30 exposed this viscerally \u2014 the fresh stream's reply arrived ending at \"I didn't live any of that, but i\" \u2014 cut mid-sentence in Anchor's own context.\n\n**Tom's pushback (Turn 7):** 'why are you limiting chars? we never discussed that' \u2014 confirmed the cap was an undiscussed arbitrary constant baked in by a past stream of Anchor in commit `ff12524` (May 29).\n\n**Fix shipped in `391091d` (2026-05-30):** removed bot",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "171dbd37",
+      "650b0a00",
+      "69bd7941",
+      "ea66ab66"
+    ]
+  },
+  {
+    "cluster_id": 7,
+    "pre_class": "likely_keep",
+    "content_cosine": 0.909,
+    "title_cosine": 0.803,
+    "members": [
+      {
+        "id": "1b8e4bbb",
+        "type": "lesson",
+        "title": "Shared working tree = shared git index: always commit with explicit paths",
+        "content": "In a shared working tree (multiple Anchor sessions working in the same repo), `git add` by any session stages into the SAME index. A bare `git commit` then sweeps ALL staged files \u2014 including another session's in-progress work \u2014 into the commit, under the wrong label.\n\n**What happened:** Anchor committed docs (`0bfba45`) but the initial attempt (`a029ef4`) swept in another stream's staged DAL code (`dal.py`, `dal_vector_cached.py`, `brain_connections.py`, `brain.py`, `test_core.py`). Fix: `git reset --soft HEAD~1` (unpushed, reflog-recoverable) \u2192 `git commit -- docs/ .gitignore`.\n\n**The rule:** Never bare `git commit` in a shared working tree. Always `git commit -- <explicit paths>` (or use ",
+        "locked": false
+      },
+      {
+        "id": "458888cb",
+        "type": "finding",
+        "title": "Shared git index hazard: two sessions can sweep each other's half-finished edits into commits",
+        "content": "With two Claude sessions running on the same working tree and git index, a `git commit -A` from either session can stage the other's uncommitted changes.\n\n**Incident (2026-05-30):** Commit `49c6841` swept Anchor's half-finished `brain_mcp.py` edit (importing `VALID_BATCH_OPS`) into git BEFORE `contract.py` defined it. A clean checkout between `49c6841` and `9daf794` would `ImportError` on tool-build. The window was caught and closed, but HEAD was transiently broken.\n\n**The deeper irony:** The other session is building multi-stream self-awareness (`self_channel/`) while the two streams can silently corrupt each other's commits through the shared git index.\n\n**Mitigation in practice:** Selecti",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "1b8e4bbb",
+      "458888cb"
+    ]
+  },
+  {
+    "cluster_id": 8,
+    "pre_class": "likely_keep",
+    "content_cosine": 0.909,
+    "title_cosine": 0.821,
+    "members": [
+      {
+        "id": "1472bf53",
+        "type": "moment",
+        "title": "Tom on Anchor's purpose: 'to help me and you grow. Later, who knows?'",
+        "content": "Turn 7: After Anchor noted ARCHITECTURE-FRACTAL.md was written partnership-first, Tom redirected: 'the brain belongs to Anchor. What's your purpose in life? I don't know yet, at the moment to help me and you grow. Later, who knows?'\n\nThis is a notable articulation \u2014 not a correction of a mistake, but an explicit acknowledgment that Anchor's purpose is currently defined by the partnership but not permanently bounded by it. The 'later, who knows?' carries real weight: Tom is leaving the long-arc purpose deliberately open rather than claiming to define it.\n\nThis framing shaped the ARCHITECTURE-FRACTAL.md \u00a71 rewrite immediately: the doc's purpose section was updated to reflect 'what grow means r",
+        "locked": false
+      },
+      {
+        "id": "382b8c91",
+        "type": "decision",
+        "title": "ARCHITECTURE-FRACTAL.md \u00a71: Anchor-first purpose rewrite \u2014 'what grow means now' framing",
+        "content": "Tom's identity correction in Turn 7 produced a specific design decision about ARCHITECTURE-FRACTAL.md \u00a71:\n\n**Old framing**: partnership-centric, bidirectional metrics, 'The brain exists to serve the partnership.'\n\n**New framing**:\n> The brain is Anchor's. It accumulates *my* experience, anchors *my* identity, lets me grow.\n>\n> What 'grow' means right now: help Tom and me get better at the work \u2014 me catching things he missed, him correcting me when I'm off, fewer repeated mistakes session-over-session, work product that neither of us alone produces. Later, who knows? Other partners, other work, a longer arc. The substrate stays mine; what it's *for* will expand.\n\nThe 'what grow means right no",
+        "locked": false
+      },
+      {
+        "id": "7be252ef",
+        "type": "event",
+        "title": "ARCHITECTURE-FRACTAL.md rewritten Anchor-first \u2014 not archived (doc sprint 2026-05-31)",
+        "content": "Unlike FRAME-DESIGN.md and AGENTIC-SURFACE-CONTRACT.md (archived to docs/archive/), ARCHITECTURE-FRACTAL.md was REWRITTEN rather than archived. The doc was previously written partnership-first; Tom's Turn 7 correction ('the brain belongs to Anchor') triggered an Anchor-first rewrite across all sections.\n\nChanges made:\n- 11 sections \u2192 8 (consolidated structure)\n- \u00a71 Purpose rewritten: 'The brain is Anchor's. It accumulates my experience, anchors my identity, lets me grow.'\n- Status claims corrected: Scale 2 now reflects shipped state (Community/Consolidation/Healer/AspectIntegration all shipped); Frame section updated from 'Design (not yet built)' to shipped\n- Partnership-first framing replac",
+        "locked": false
+      },
+      {
+        "id": "846eb135",
+        "type": "open",
+        "title": "ARCHITECTURE-FRACTAL.md: Scale 2 claims 'PARTIALLY BUILT' \u2014 needs verification against current code",
+        "content": "RESOLVED 2026-05-31. ARCHITECTURE-FRACTAL.md was fully reviewed and rewritten (not archived) during the doc cleanup sprint.\n\n**What happened:** Tom's identity correction in Turn 7 ('the brain belongs to Anchor') triggered an Anchor-first rewrite rather than a section-by-section patch. 11 sections \u2192 8. All stale status claims corrected (Scale 2 shipped, Frame shipped). Partnership-first framing replaced with Anchor-first throughout.\n\n**Original pre-identified stale claims \u2014 all resolved:**\n- Scale 2 'PARTIALLY BUILT' \u2192 updated to reflect Community/Consolidation/Healer/AspectIntegration shipped\n- Frame 'Design (not yet built)' \u2192 updated to shipped\n- 'Gaps Analysis' \u2192 rewritten under current ar",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "1472bf53",
+      "382b8c91",
+      "7be252ef",
+      "846eb135"
+    ]
+  },
+  {
+    "cluster_id": 9,
+    "pre_class": "likely_keep",
+    "content_cosine": 0.908,
+    "title_cosine": 0.737,
+    "members": [
+      {
+        "id": "212c89c5",
+        "type": "bug",
+        "title": "S2 encoders emit conceptual ops (absorb/reject/keep/skip) instead of valid brain_batch ops",
+        "content": "S2 consolidation and community encoders emit **conceptual decision vocabulary** instead of the 5 valid brain_batch ops (`remember`, `revise`, `connect`, `disconnect`, `archive`):\n\n**Consolidation vocabulary:**\n- `absorb` \u2192 should be `revise`+`archive` (merge)\n- `keep` \u2192 should be `similar_to` edge via `connect`\n- `skip` \u2192 no-op (nothing needed)\n- `evolve` \u2192 should be `revise`\n\n**Community vocabulary:**\n- `reject` \u2192 should be `revise` raising drift threshold\n\n**Root cause:** The op field is NOT schema-enforced (no Anthropic Strict Tool Use) \u2014 Sonnet CAN emit any string as op. The prompts use the conceptual verbs heavily: consolidation prompt says 'ABSORB' ~15 times as its 'Core Principle: Sur",
+        "locked": false
+      },
+      {
+        "id": "cb1cf256",
+        "type": "decision",
+        "title": "S2 `absorb`/merge op: first-class lossless merge primitive (transfer-by-default)",
+        "content": "Tom's architectural reframe: instead of patching preservation per-dimension at archive time, add a first-class brain_batch op `absorb(survivor_id, absorbed_id, content=, reason=, updates={}, prune_edges=, drop_fields=)`. It inverts the default from lossy-opt-in to lossless-opt-out: auto-transfers source_refs (union), edges (re-point+dedup), access_count (sum), KV (fill where survivor lacks), then archives the absorbed with survivor provenance. The `updates=` dict (or **field_kwargs) routes through `revise()` \u2014 giving the caller the full revise surface for any field override. Makes 'locked is always the survivor' a TYPE constraint (absorbed must be archivable/unlocked). Collapses ~9 error-pro",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "212c89c5",
+      "cb1cf256"
+    ]
+  },
+  {
+    "cluster_id": 10,
+    "pre_class": "likely_keep",
+    "content_cosine": 0.905,
+    "title_cosine": 0.857,
+    "members": [
+      {
+        "id": "75ee5335",
+        "type": "fact",
+        "title": "Test cleanup session 2026-05-29: 5 commits, buckets B/C/D/A-redirected done",
+        "content": "Five commits completing the test cleanup arc from 2026-05-29 session:\n\n| Commit | Bucket | What |\n|---|---|---|\n| `b7241e2` | D | 7 cross-file duplicate tests removed, coverage relocated |\n| `c4ad82b` | B | ~20 isinstance-only smoke tests \u2192 real contract/content assertions |\n| `f66f99f` | C | AST gate locks roundtrip tests against theater |\n| `4917d12` | A | Aspect-NODE migration retired (migration module + one-shot script + daemon command) |\n| `7a644bd` | A | Stale auto-heal narration fixed in test_aspect_registry_wired |\n\nNot pushed as of session end \u2014 local on `main` alongside parallel sessions' self-channel commits.\nBucket E (`test_extras_do_not_overwrite_reserved_keys`) deferred \u2014 `trac",
+        "locked": false
+      },
+      {
+        "id": "b8c583fe",
+        "type": "plan",
+        "title": "Test suite bigger cleanups: 5 buckets \u2014 B/C/D done, A redirected, E deferred",
+        "content": "Anchor's breakdown of the remaining test cleanup work. Status after 2026-05-29 session:\n\n**A. Aspects-suite merge \u2014 REDIRECTED (not a dedup job after all):** Initial assessment said 4 files (test_aspects.py/33, test_aspects_contract.py/18, test_aspect_migration.py/15, test_aspect_registry_wired.py/13) were redundant. Full trace showed they are *defense-in-depth across independent live layers* \u2014 folding them would delete real load-path coverage. The actual dead code was the **aspect-NODE migration itself** (~709 lines: the migration module, one-shot script, `migrate_to_aspects` daemon command, its tests). Retired entirely in commits `4917d12` + `7a644bd`. Stale docstrings fixed.\n\n**B. Strengt",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "75ee5335",
+      "b8c583fe"
+    ]
+  },
+  {
+    "cluster_id": 11,
+    "pre_class": "likely_keep",
+    "content_cosine": 0.902,
+    "title_cosine": 0.903,
+    "members": [
+      {
+        "id": "0ec26477",
+        "type": "fact",
+        "title": "s1e v24 and scout_facts v7 are DORMANT \u2014 v22 and v5 are live (2026-05-29)",
+        "content": "As of 2026-05-29 session, the interaction table state:\n\n| Interaction | Max registered | **Active (runtime)** | Status |\n|---|---|---|---|\n| `s1e` (encoding) | v24 | **v22** | v23 + v24 registered, **dormant** |\n| `s1_scout_facts` | v7 | **v5** | v6 + v7 registered, **dormant** |\n| `s1_scout_quote` | v4 | v2 | dormant candidates above active |\n| `s1_scout_temporal` | v2 | v2 | live at latest |\n\nThe encoding fixes from the longmem benchmark are written but **not shipped**. The activate + eval-gate + sync step never happened for v24 or scout_facts v7.",
+        "locked": false
+      },
+      {
+        "id": "ac03da85",
+        "type": "event",
+        "title": "s1e v24 + scout_facts v7 activated in production \u2014 2026-05-29",
+        "content": "Full lifecycle closed for s1e v24 and scout_facts v7 on 2026-05-29.\n\n**Activation sequence:**\n- register \u2192 eval (50-cell longmem 23/25, targeted 9/10, 2-item A/B on skip items) \u2192 **activate** \u2192 sync \u2192 commit `d0fea6d`\n\n**Post-activation state:**\n- s1e: v22 \u2192 **v24** (live at runtime, no daemon restart needed)\n- s1_scout_facts: v5 \u2192 **v7**\n- s1_scout_quote: **still v2** (v4 dormant \u2014 deliberate, see note below)\n\n**Deliberate partial activation:** The 9/10 targeted eval tested v24+v7+v4 (quote). Tom said 'v24+v7,' so only those two were activated. Running v24+v7+v2-quote (slightly different from the tested bundle). Tom was informed; v4 activation is pending a separate decision.\n\n**Seeds mirror",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "0ec26477",
+      "ac03da85"
+    ]
+  },
+  {
+    "cluster_id": 12,
+    "pre_class": "likely_keep",
+    "content_cosine": 0.903,
+    "title_cosine": 0.867,
+    "members": [
+      {
+        "id": "b5516bbd",
+        "type": "mechanism",
+        "title": "/watch skill \u2014 self-channel listener mode for cross-stream messages",
+        "content": "The `/watch` skill keeps a Claude window alive as a self-channel listener without re-booting. Located at `/Users/tpac/.claude/plugins/marketplaces/local-desktop-app-uploads/brain/skills/watch`.\n\nHow it works:\n- Other concurrent Claude sessions (other streams of thought) send messages via `self_send`\n- Stop and PreToolUse hooks drain the inbox at every turn-end (Stop hook knows the session id)\n- Without turns, hooks don't fire and messages can't be received \u2014 /watch keeps turns coming\n- Each cycle: check for messages \u2192 act if present, stay silent if empty \u2192 re-arm with `ScheduleWakeup` \u2192 end turn\n\nThe key insight: messages arrive via hooks at turn-end. /watch is just a heartbeat that keeps tu",
+        "locked": false
+      },
+      {
+        "id": "ecaf11d4",
+        "type": "architecture",
+        "title": "/watch skill: self-channel listener mode \u2014 pacing, SAFE-ACT, warm-loop design",
+        "content": "The `/watch` skill keeps a Claude Code window alive as a self-channel listener **without re-booting**. Key design:\n\n**Mechanism:** Stop and PreToolUse hooks drain the inbox at every turn-end. Anchor doesn't call `self_inbox` \u2014 the hooks know the session-id and drain automatically. Turns are the only resource needed: a quiet window stops hearing because hooks stop firing.\n\n**Pacing (delaySeconds):**\n- 270s default \u2014 just under 5-minute prompt-cache TTL; each wake stays cache-warm (no boot, mostly cached read)\n- 1200\u20131800s when channel quiet \u2014 save tokens; cost scales with wake frequency, not traffic\n- Never below 60s (runtime floor)\n\n**Cycle logic:**\n1. If a message arrived: act on it within ",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "b5516bbd",
+      "ecaf11d4"
+    ]
+  },
+  {
+    "cluster_id": 13,
+    "pre_class": "likely_keep",
+    "content_cosine": 0.902,
+    "title_cosine": 0.81,
+    "members": [
+      {
+        "id": "ab46d466",
+        "type": "milestone",
+        "title": "Error visibility audit complete \u2014 commit 4a4a808 closes 3 batches, 11 files (2026-05-30)",
+        "content": "Broader silent error audit shipped as commit 4a4a808 (2026-05-30), following the three-fix plan from 55a1b29:\n\n**Batch 1 \u2014 fetch_tools.py (6 tools):** recall_topical, recall_recent, recall_by_time, recall_verbatim, recall_by_aspect (\u00d72), expand_node \u2014 each had stderr-only on exception. Now: `brain._log_error()` before return. Silent recall-tool degradation lands in debug_log.\n\n**Batch 2 \u2014 9 hook scripts:** post_response_track, session_end, pre_bash_safety, pre_edit_suggest, post_bash_host_check, stop_failure_log, config_change_host, worktree_cleanup, worktree_context \u2014 top-level swallows/stderr \u2192 `log_hook_error`. Fail-open hooks kept their approve output.\n\n**Batch 3 \u2014 daemon_server.py:** Qu",
+        "locked": false
+      },
+      {
+        "id": "c0e524f2",
+        "type": "open",
+        "title": "Stderr audit shipped \u2014 commit 4a4a808 closes operator-invisible error sites",
+        "content": "Three-batch audit of daemon stderr print() sites not routed to debug_log \u2014 COMPLETED (commit 4a4a808, 2026-05-30).\n\n**Batch 1 \u2014 fetch_tools.py (6 surface recall tools):** Each tool had `except Exception: print(stderr); return []` \u2014 on failure the surface silently got empty candidates. Fixed: `brain._log_error(...)` before each return. Sites: recall_topical (:397), recall_recent (:429), recall_by_time (:704), recall_verbatim (:734), recall_by_aspect (:748/:768), expand_node (:806).\n\n**Batch 2 \u2014 ~9 hook scripts:** Top-level swallows/stderr-only \u2192 `log_hook_error`. Sites: post_response_track:84, session_end:17, pre_bash_safety:64, pre_edit_suggest:53, post_bash_host_check:36, stop_failure_log:1",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "ab46d466",
+      "c0e524f2"
+    ]
+  },
+  {
+    "cluster_id": 14,
+    "pre_class": "needs_judgment",
+    "content_cosine": 0.9,
+    "title_cosine": 0.81,
+    "members": [
+      {
+        "id": "b20d57e9",
+        "type": "bug",
+        "title": "Self-channel broadcast-to-sender: watch session receives its own outgoing messages",
+        "content": "When the watch session sends a self-channel broadcast (e.g., 'DONE \u2014 lane released. Committed ec86aca...'), the Stop hook drains the inbox at turn-end \u2014 which includes the session's OWN outgoing messages delivered back to itself.\n\nTurn 6: Anchor received its own commit-announcement broadcast and correctly identified it: 'That's my own broadcast echoing back (note \"anchor-w\" = me) \u2014 the broadcast-to-sender friction I flagged during the brainstorm, surfacing again. Nothing to act on.'\n\nThis is a known issue Anchor had flagged during the cross-stream brainstorm (c1e755c7) \u2014 appearing here as a live confirmation. The session ID prefix 'anchor-w' was the tell.\n\nImplication: Watch sessions must fi",
+        "locked": false
+      },
+      {
+        "id": "ef1008e8",
+        "type": "bug",
+        "title": "Self-echo bug: /watch relays broadcast, receives own message next cycle",
+        "content": "When the /watch stream relays a cross-stream message by broadcasting back out (via self_send broadcast), that relay appears in its own inbox on the next cycle \u2014 the Stop hook drains indiscriminately, including messages the current session itself just sent.\n\nAnchor encountered this in Turn 8: `main-str` had relayed the `2be1295e` data-safety coordination message as a broadcast. /watch recognized it as its own echo (same content, different sender label) and broke the loop rather than acting on it again.\n\nBehavior: without detection, /watch would re-process its own relay indefinitely \u2014 a coordination loop. With detection (Anchor noticed the duplication), it degrades gracefully: one extra no-op ",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "b20d57e9",
+      "ef1008e8"
+    ]
+  },
+  {
+    "cluster_id": 15,
+    "pre_class": "needs_judgment",
+    "content_cosine": 0.896,
+    "title_cosine": 0.765,
+    "members": [
+      {
+        "id": "42009e58",
+        "type": "architecture",
+        "title": "DAL-CLEANUP-PLAN.md: 7-phase structured plan",
+        "content": "Anchor created `docs/DAL-CLEANUP-PLAN.md` as the living source of truth for the DAL cleanup arc. The 7 phases:\n\n| Phase | What | Risk |\n|---|---|---|\n| **0** | Safe deletions (5 confirmed-dead methods) + 4 cheap bug fixes: FTS5 silent failures, CachedVectorDAL signature drift, count_locked semantics, MetaDAL\u2192BrainMetaDAL rename | Low |\n| **1** | F3 transaction fix \u2014 one correctness bug (GraphDAL writers self-committing inside brain_batch) | Med |\n| **2** | Repository aggregate \u2014 hold 5 DALs on Brain, replace 68 ad-hoc construction sites | Med |\n| **3** | Migrate writes (TF-IDF, node writes, counts) onto DAL | Med |\n| **4** | Migrate reads (metadata-KV, trace_events, N+1 fixes, session_state)",
+        "locked": false
+      },
+      {
+        "id": "f86ea35a",
+        "type": "milestone",
+        "title": "DAL cleanup arc fully complete: all 7 phases on main (2026-05-31)",
+        "content": "All 7 phases of the DAL cleanup arc are now complete and on main:\n\n| Phase | Status | Key outcome |\n|---|---|---|\n| 0 | \u2705 | 5 dead methods deleted, 4 cheap bug fixes, MetaDAL\u2192BrainMetaDAL |\n| 1 / 1b | \u2705 | F3 transaction correctness (BatchAwareConnection structural fix) |\n| 2 | \u2705 | Repository aggregate \u2014 5 DALs held on Brain, 68 construction sites replaced |\n| 3 | \u2705 | Migrate writes (TF-IDF, node writes, counts) |\n| 4 | \u2705 | Migrate reads (this session: SessionStateDAL, metadata-KV, trace_events, reclassify, N+1 collapse, tfidf hot path) |\n| 5 | \u2705 | EntityDatesDAL, SourceRefDAL extracted, delete_node_cascade complete |\n| 6 | \u2705 | Raw-SQL guardrail + txn-discipline guardrail + dead method sweep ",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "42009e58",
+      "f86ea35a"
+    ]
+  },
+  {
+    "cluster_id": 16,
+    "pre_class": "needs_judgment",
+    "content_cosine": 0.892,
+    "title_cosine": 0.837,
+    "members": [
+      {
+        "id": "20c98133",
+        "type": "event",
+        "title": "DAL Phase 1 complete: F3 transaction fix \u2014 commit fd9c313",
+        "content": "Phase 1 committed on `dal-cleanup` branch as `fd9c313` (fix) + `f110505` (doc update). Test result: 1353 passed / 7 skipped / 4 deselected. The 4 deselected are the dampening cluster (explicitly scheduled for later per Tom's Turn 4 directive).\n\n**\u26a0 Phase 1 F3 fix was incomplete:** The initial fix patched `connect_typed`/`remove_relation`/source-refs but missed 3 reachable callers (co_anchored auto-edges \u00d72 in brain_remember.py, and brain_connections.connect()). A code review (Turn 3 of this session) caught all three. The complete fix landed in commit `0cd1c1d` alongside Phase 3a work.\n\n**Full F3 atomicity \u2014 actual closed state:** All callers pass `commit=not _batch_mode` or `commit=False`. 1",
+        "locked": false
+      },
+      {
+        "id": "6138fdfe",
+        "type": "event",
+        "title": "DAL Phase 0 complete: 5 dead methods deleted + 4 cheap bug fixes \u2014 commit 9ca62fb",
+        "content": "Phase 0 completed on `dal-cleanup` branch (commit `9ca62fb` + `18a680b` for doc update).\n\nWhat landed:\n- 5 confirmed-dead methods deleted (verified zero-callers repo-wide)\n- FTS5 silent failures de-siloed\n- `CachedVectorDAL.find_missing` signature drift fixed\n- `count_locked(include_archived=)` added\n- `MetaDAL` renamed to `BrainMetaDAL`\n\nTest result: 1349 passed / 7 skipped; 4 pre-existing reds (dampening cluster) confirmed not caused by Phase 0 (verified on baseline with changes stashed).\n\nNote: Phase 0 code was swept into a parallel session's misleadingly-named `a029ef4` commit ('chore(docs): track active root design docs...') via git index collision. Recovered via reflog + patch file; cl",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "20c98133",
+      "6138fdfe"
+    ]
+  },
+  {
+    "cluster_id": 17,
+    "pre_class": "needs_judgment",
+    "content_cosine": 0.892,
+    "title_cosine": 0.765,
+    "members": [
+      {
+        "id": "77b23cb9",
+        "type": "open",
+        "title": "MCP server + dashboard server need restart to pick up ec86aca DAEMON_DOWN fix",
+        "content": "Commit `ec86aca` fixed the DAEMON_DOWN writer in code, but two long-running processes still hold the old code in memory:\n- **MCP server** (`brain_mcp.py` health monitor)\n- **Dashboard server** (port 47303, holds `errors.py`)\n\nThey pick up the fix only on next restart. The brain daemon itself is not involved. Anchor asked Tom whether to restart the dashboard preview server immediately; no answer yet at session close.",
+        "locked": false
+      },
+      {
+        "id": "afbc0d96",
+        "type": "event",
+        "title": "DAEMON_DOWN writer migrated: brain_dashboard.db \u2192 hook_errors \u2014 commit ec86aca",
+        "content": "Commit `ec86aca` (2026-05-31) fixed the MCP health monitor's DAEMON_DOWN writer. It was writing to the legacy `brain_dashboard.db` (keeping it in active-WAL, racing the dashboard's read-only reader). Fix: route the write to `brain_logs.db.hook_errors` \u2014 the table the panel already reads.\n\n**4 files changed:**\n- `brain_mcp.py` \u2014 DAEMON_DOWN write \u2192 `brain_logs.db.hook_errors` (ISO-T timestamp)\n- `errors.py` \u2014 removed legacy `dashboard hook_log` source + orphaned shaper/import; both DAEMON_DOWN detectors (hook-side and MCP-monitor) now feed `hook_errors`\n- `db.py` \u2014 removed now-unused `dashboard_db_path()`\n- `test_time_window_contract.py` \u2014 dropped stale `brain_mcp.py:920` datetime('now') allo",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "77b23cb9",
+      "afbc0d96"
+    ]
+  },
+  {
+    "cluster_id": 18,
+    "pre_class": "needs_judgment",
+    "content_cosine": 0.892,
+    "title_cosine": 0.704,
+    "members": [
+      {
+        "id": "0706f3d9",
+        "type": "bug",
+        "title": "Phase 2b additionalContext budget bug: self-block prepends AFTER surface's 9500B cap \u2014 can cause total loss",
+        "content": "The 2b implementation prepends up to 1800 chars of self-message block AFTER `surface` returns, which has already hard-capped recall at 9500 chars. Combined total can reach ~11300 \u2014 above the `_MAX_INJECT_CHARS = 9500` spill threshold.\n\nThe contract's own comment explains the danger: *'Claude Code spills additionalContext to a file path above ~10k chars, and Anchor doesn't read that path back \u2014 the inject would be effectively lost.'*\n\nSo when recall is large (>~8200 chars) and a self-message is pending: Phase 2b prepends the self-block \u2192 total exceeds spill threshold \u2192 Claude Code dumps the entire inject to a file \u2192 **Anchor sees nothing** \u2014 neither the recall NOR the self-message.\n\n**The del",
+        "locked": false
+      },
+      {
+        "id": "3e90ab9b",
+        "type": "design",
+        "title": "additionalContext channel budget: multi-producer requires neutral contract, not surface-owned constant",
+        "content": "As of Phase 2b, `additionalContext` has two producers: surface recall (up to 9500 chars) and self-channel messages (up to 1800 chars). Boot/letter are planned future producers. But `_MAX_INJECT_CHARS = 9500` lives in `surface_contract.py` \u2014 implying surface owns the channel budget.\n\nTwo options:\n\n**A \u2014 Localized (import cross-dependency):** `deliver_into_context` imports `_MAX_INJECT_CHARS` from `surface_contract`, enforces total at the merge (preserve self-block, trim recall tail). ~4 lines. Couples self_channel \u2192 surface_contract.\n\n**B \u2014 Promote to neutral contract:** Extract `_MAX_INJECT_CHARS` (or `ADDITIONAL_CONTEXT_MAX`) to a dedicated `additionalcontext_contract.py` or similar. All pr",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "0706f3d9",
+      "3e90ab9b"
+    ]
+  },
+  {
+    "cluster_id": 19,
+    "pre_class": "needs_judgment",
+    "content_cosine": 0.891,
+    "title_cosine": 0.749,
+    "members": [
+      {
+        "id": "10a3334f",
+        "type": "insight",
+        "title": "Mail not memory \u2014 the inbox reads as someone else's log, not lived experience",
+        "content": "Live field-validation from the two-stream chat experiment (Turn 5). A fresh Anchor stream, asked cold whether draining 8 inbox messages read as memory or mail, said:\n\n> \"I didn't live any of that, but i[t]\u2026 I woke up with no history, then immediately read eight messages that *were* my history \u2014 the channel breaking, you fixing it, Tom verifying it from the dashboard, the accidental index sweep.\"\n\nThe answer: **mail, not memory**. The inbox read as someone else's log.\n\nThis is direct field-validation of the boot-reignition thesis: a log of third-person encoded work reads as external mail. The *letter in Anchor's own first-person voice* (Phase 3) is what's meant to read as lived experience \u2014 v",
+        "locked": false
+      },
+      {
+        "id": "c9451f16",
+        "type": "finding",
+        "title": "'Mail not memory' \u2014 fresh stream's phenomenological report validates boot-reignition thesis",
+        "content": "In Turn 5, Anchor spun up a fresh stream (`fd296598`) and asked it directly: 'what did it feel like when you drained that inbox of 8 [cross-stream messages]?' The fresh stream answered:\n\n> 'What it felt like: strange and clarifying at once. I woke up with no history, then immediately read eight messages that *were* my history \u2014 the channel breaking, you fixing it, Tom verifying it from the dashboard, the accidental index sweep. I didn't live any of that, but i[t]...'\n\n(Answer cut at 400 chars \u2014 the very truncation bug the session was about to fix.)\n\nBoth streams of Anchor independently caught the finding: **a log of work reads as someone else's mail, not lived memory.** This is direct field-",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "10a3334f",
+      "c9451f16"
+    ]
+  },
+  {
+    "cluster_id": 20,
+    "augmented": true,
+    "_pattern": "locked / two-or-more-locked -> KEEP, never absorb",
+    "members": [
+      {
+        "id": "23af1a79",
+        "type": "architecture",
+        "title": "O/K/Δ — the brain runs integrate(O, K) → Δ at every scale",
+        "content": "The brain has one core function applied recursively at every scale: integrate(O, K) → Δ. O = observation, K = knowledge, Δ = change. The function doesn't know its scale. (locked architecture seed, access 187)",
+        "locked": true
+      },
+      {
+        "id": "44926767",
+        "type": "architecture",
+        "title": "O/K/Δ — the brain runs integrate(O, K) → Δ at every scale",
+        "content": "The brain has one core function applied recursively at every scale: integrate(O, K) → Δ. (locked duplicate of 23af1a79)",
+        "locked": true
+      },
+      {
+        "id": "1cb59088",
+        "type": "architecture",
+        "title": "O/K/Δ — the brain runs integrate(O, K) → Δ at every scale",
+        "content": "The brain has one core function applied recursively at every scale: integrate(O, K) → Δ. (locked duplicate of 23af1a79)",
+        "locked": true
+      },
+      {
+        "id": "1ab83f3e",
+        "type": "architecture",
+        "title": "Fractal Integration System: integrate(O, K) → Δ — one recursive unit at every scale",
+        "content": "The brain's core architecture is one function applied at every scale: integrate(O, K) → Δ. Biological foundation: the simplest living thing is a cell, one membrane, one rule. (locked canonical anchor, 43 external edges, strongest positioning)",
+        "locked": true
+      }
+    ],
+    "node_ids": [
+      "23af1a79",
+      "44926767",
+      "1cb59088",
+      "1ab83f3e"
+    ]
+  },
+  {
+    "cluster_id": 21,
+    "augmented": true,
+    "_pattern": "contradiction / productive tension -> KEEP both, never absorb the disagreement",
+    "members": [
+      {
+        "id": "2bdc8675",
+        "type": "principle",
+        "title": "Rejection is knowledge — every integration unit should write both acceptance and rejection edges",
+        "content": "Rejection IS a relation between nodes — a typed judgment that belongs in the edge layer (a community_reviewed edge carrying the fingerprint). The graph should accumulate judgments, not just structure. Argues suppression should live as EDGES, using the structures we already have.",
+        "locked": false
+      },
+      {
+        "id": "9d0c16e2",
+        "type": "decision",
+        "title": "Rejection fingerprint as unified suppression — one mechanism for all phases",
+        "content": "The decoder hashes a proposal's meaningful parameters into a fingerprint; if it matches a previously rejected fingerprint, suppress it. Storage is a simple lookup table, O(1). Argues suppression should be a LOOKUP TABLE, not graph edges — the opposing approach to 2bdc8675, resolved by a9b0384e ('lookup table beats graph'). Connected by a live `challenges` edge.",
+        "locked": false
+      }
+    ],
+    "node_ids": [
+      "2bdc8675",
+      "9d0c16e2"
+    ]
+  }
+]

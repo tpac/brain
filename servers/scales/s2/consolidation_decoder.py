@@ -846,7 +846,9 @@ class ConsolidationDecoder(IntegrationUnit):
         - High title sim = likely same thing encoded twice (catalog blindness)
         - High content sim = same knowledge, possibly different framing
         - Both high = strongest consolidation signal
-        - Type mismatch = likely distinct perspectives (KEEP)
+        - Type mismatch = needs_judgment, NOT a blanket KEEP — cross-type can be
+          one claim (bug+fact = one incident, mechanism+architecture = one system)
+          or distinct perspectives; the encoder's claim test decides.
         """
         likely_cosine = self.config.get('likely_consolidate_cosine', 0.90)
         content_max = cluster['content_cosine_max']
@@ -857,21 +859,26 @@ class ConsolidationDecoder(IntegrationUnit):
         # data and reasons about them with full content context.
         # Pre-classifier uses them as soft signals for priority sorting only.
 
-        # Type mismatch between cluster members → likely distinct
+        # Type mismatch → route to needs_judgment (not a blanket KEEP). Pre-classifying
+        # cross-type clusters as likely_keep flipped the encoder's burden of proof
+        # ("why override the keep?") and was the dominant under-merge cause — corpus
+        # targets 5,6,7,8,12,13 were all type_mismatch + likely_keep. needs_judgment
+        # hands the call to the claim test, backed by the cross-type-duplicate example
+        # in the prompt. See docs/S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md §8.1.
         types = set()
         for nid in cluster['nodes']:
             t = cluster.get('node_details', {}).get(nid, {}).get('type', '')
             if t:
                 types.add(t)
         if len(types) > 1:
-            # Different types but high similarity → distinct perspectives
+            # Different types + high similarity → encoder runs the claim test
             type_mismatch = True
         else:
             type_mismatch = False
 
         # Both dimensions agree (high title + high content) → strong signal
         if title_max >= 0.95 and content_max >= 0.50:
-            return 'likely_keep' if type_mismatch else 'likely_consolidate'
+            return 'needs_judgment' if type_mismatch else 'likely_consolidate'
 
         # High title but content diverges significantly → same name, different knowledge
         # Could be evolution, naming collision, or shallow vs rich
@@ -880,14 +887,14 @@ class ConsolidationDecoder(IntegrationUnit):
 
         # Very high content similarity (regardless of title)
         if content_max >= 0.95:
-            return 'likely_keep' if type_mismatch else 'likely_consolidate'
+            return 'needs_judgment' if type_mismatch else 'likely_consolidate'
 
         # High similarity + structural signal
         if content_max >= likely_cosine or title_max >= likely_cosine:
             if (cluster['shared_edge_count'] > 0
                     or cluster['same_community']
                     or any(cluster['catalog_blind'].values())):
-                return 'likely_keep' if type_mismatch else 'likely_consolidate'
+                return 'needs_judgment' if type_mismatch else 'likely_consolidate'
 
         return 'needs_judgment'
 

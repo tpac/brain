@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 
 
 SONNET_MODEL = 'claude-sonnet-4-5'
+OPUS_MODEL = 'claude-opus-4-8'  # independent stronger scorer (avoids Sonnet-grades-Sonnet bias)
 DEFAULT_MAX_TOKENS = 2000
 
 
@@ -28,8 +29,13 @@ def load_env():
 
 def call_sonnet(system: str, user: str,
                  max_tokens: int = DEFAULT_MAX_TOKENS,
-                 model: str = SONNET_MODEL) -> Dict[str, Any]:
-    """One stateless Sonnet call. Returns dict with text + usage + elapsed."""
+                 model: str = SONNET_MODEL,
+                 temperature: float = None) -> Dict[str, Any]:
+    """One stateless Sonnet call. Returns dict with text + usage + elapsed.
+
+    Pass temperature=0 for an evaluator/grader so scoring noise doesn't add to
+    whatever variance the thing being scored already has.
+    """
     import anthropic
     client = anthropic.Anthropic()
     t0 = time.time()
@@ -38,6 +44,7 @@ def call_sonnet(system: str, user: str,
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
+        **({'temperature': temperature} if temperature is not None else {}),
     )
     elapsed_ms = int((time.time() - t0) * 1000)
     text = ''
