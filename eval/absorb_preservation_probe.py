@@ -72,8 +72,8 @@ def _non_sys_kv(brain, node_id):
 def snapshot_pre(brain, survivor_id, absorbed_id):
     """Capture full pre-merge state of both nodes. Call BEFORE absorb()."""
     return {
-        'survivor_refs': set(brain._graph.get_source_refs(survivor_id)),
-        'absorbed_refs': set(brain._graph.get_source_refs(absorbed_id)),
+        'survivor_refs': set(brain._source_refs.get_source_refs(survivor_id)),
+        'absorbed_refs': set(brain._source_refs.get_source_refs(absorbed_id)),
         'survivor_access': _access_count(brain, survivor_id),
         'absorbed_access': _access_count(brain, absorbed_id),
         'survivor_kv': _non_sys_kv(brain, survivor_id),
@@ -100,7 +100,7 @@ def audit(brain, survivor_id, absorbed_id, pre,
 
     # 1. source_refs — union, nothing lost.
     expected = pre['survivor_refs'] | pre['absorbed_refs']
-    after_refs = set(brain._graph.get_source_refs(survivor_id))
+    after_refs = set(brain._source_refs.get_source_refs(survivor_id))
     lost = expected - after_refs
     dims['source_refs'] = {
         'ok': not lost,
