@@ -20,6 +20,7 @@ import threading
 import traceback
 import atexit
 import fcntl
+import errno
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Dict, Any
 
@@ -31,6 +32,14 @@ from .daemon_config import (
     get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
 )
 from .daemon_dispatch import COMMAND_TABLE, check_unknown_keys
+
+
+class DuplicateDaemonError(Exception):
+    """The port is already served by a responsive brain daemon, so this process
+    is a duplicate. Signals the supervisor to exit cleanly (defer to the
+    incumbent) instead of restarting into the same bind collision — which would
+    turn a single duplicate into a perpetual Errno-48 crash storm (2026-06-05).
+    """
 
 
 class BrainDaemon:
@@ -96,47 +105,27 @@ class BrainDaemon:
         if os.path.isdir(cache_dir):
             shutil.rmtree(cache_dir, ignore_errors=True)
 
-        # Acquire exclusive lock (one daemon per user)
+        # Acquire exclusive lock (one daemon per user). flock IS the singleton
+        # primitive: the kernel auto-releases it when the holder dies, so a
+        # LOCK_NB failure ALWAYS means a live holder — there is no "stale flock".
+        # Do NOT unlink + recreate the lock on failure: that let the incumbent
+        # keep its lock on the old (unlinked) inode while a recreator acquired a
+        # SECOND lock on a fresh inode — defeating mutual exclusion and feeding
+        # the Errno-48 storm (2026-06-05). A lingering lock file is harmless:
+        # flock on the reused inode succeeds once the dead holder's lock is gone.
         lock_path = get_lock_path()
         self._lock_fd = open(lock_path, 'w')
         try:
             fcntl.flock(self._lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except (IOError, OSError):
-            # Lock held — check if the holder is actually alive
-            pid_path = get_pid_path()
-            stale = False
-            if os.path.exists(pid_path):
-                try:
-                    old_pid = int(open(pid_path).read().strip())
-                    os.kill(old_pid, 0)  # signal 0 = check if alive
-                    # Process exists — real duplicate
-                    self._lock_fd.close()
-                    self._log("Another daemon running (PID {}). Exiting duplicate.".format(old_pid))
-                    return
-                except (ProcessLookupError, ValueError):
-                    stale = True
-                    self._log("Stale PID file (PID {} dead). Cleaning up.".format(old_pid if 'old_pid' in dir() else '?'))
-                except PermissionError:
-                    # Process exists but we can't signal it — assume alive
-                    self._lock_fd.close()
-                    self._log("Another daemon running (PID {}, permission denied). Exiting.".format(old_pid))
-                    return
-
-            if stale or not os.path.exists(pid_path):
-                # Stale lock — clean up and retry
-                try:
-                    os.unlink(lock_path)
-                    os.unlink(pid_path)
-                except OSError:
-                    pass
-                self._lock_fd = open(lock_path, 'w')
-                try:
-                    fcntl.flock(self._lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    self._log("Acquired lock after cleaning stale files.")
-                except (IOError, OSError):
-                    self._lock_fd.close()
-                    self._log("Cannot acquire lock even after cleanup. Exiting.")
-                    return
+            self._lock_fd.close()
+            pid_hint = ""
+            try:
+                pid_hint = " (PID %s)" % open(get_pid_path()).read().strip()
+            except Exception:
+                pass
+            self._log("Another daemon holds the singleton lock%s. Exiting duplicate." % pid_hint)
+            return
 
         # Write PID, register cleanup, install signal handlers (once)
         with open(self.pid_path, 'w') as f:
@@ -155,6 +144,11 @@ class BrainDaemon:
             try:
                 self._run()
                 # _run() returns normally on clean shutdown (signal or idle timeout)
+                break
+            except DuplicateDaemonError as e:
+                # Another responsive daemon owns the port. Restarting would just
+                # hit the same bind collision — exit cleanly and defer to it.
+                self._log("DEFER: %s — exiting cleanly (no restart)." % e)
                 break
             except Exception as e:
                 self._restart_count += 1
@@ -180,6 +174,15 @@ class BrainDaemon:
         Raises on fatal errors so the supervisor can restart.
         Normal shutdown (signal/idle) returns cleanly.
         """
+        # Singleton pre-check, BEFORE loading the brain — if a responsive daemon
+        # already owns the port we're a duplicate, so defer without ever opening
+        # DB writer connections (two writers on one brain.db corrupts indexes).
+        # Cheap: a free port refuses the connection immediately.
+        from .daemon_client import is_daemon_responsive
+        if is_daemon_responsive(timeout=1.0):
+            raise DuplicateDaemonError(
+                "A responsive daemon already owns %s:%d." % self.daemon_addr)
+
         # Load brain if not loaded (first run or after crash that corrupted it)
         if not self.brain:
             self._load_brain()
@@ -276,6 +279,17 @@ class BrainDaemon:
                 return  # Success
             except OSError as e:
                 self._close_socket()
+                # If a healthy daemon already owns the port, we're a duplicate —
+                # defer (clean exit) rather than retry into a crash storm. Backstop
+                # for the race where an incumbent binds between the _run pre-check
+                # and here. (A non-responsive holder — TIME_WAIT or a hung corpse —
+                # falls through to the normal retry; recovery handles corpses.)
+                if e.errno == errno.EADDRINUSE:
+                    from .daemon_client import is_daemon_responsive
+                    if is_daemon_responsive(timeout=1.0):
+                        raise DuplicateDaemonError(
+                            "Port %d already served by a responsive daemon." %
+                            self.daemon_addr[1])
                 if attempt < self.SOCKET_BIND_RETRIES - 1:
                     self._log("BIND: Port %d busy (attempt %d/%d): %s" % (
                         self.daemon_addr[1], attempt + 1, self.SOCKET_BIND_RETRIES, e))

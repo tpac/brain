@@ -20,6 +20,7 @@ import os
 import sys
 import json
 import time
+import errno
 import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
@@ -238,14 +239,16 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
             popen.assert_not_called()
 
     def test_no_launchd_falls_back_to_direct_spawn(self):
-        # Daemon down AND launchd not managing it (kickstart rc!=0) → the only
-        # case a direct Popen is legitimate (no KeepAlive to race).
+        # Daemon down, nothing serving, AND launchd genuinely not managing it
+        # (kickstart fails AND _launchd_manages_daemon False) → the only case a
+        # direct Popen is legitimate (no KeepAlive to race).
         with patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "get_lock_path", return_value=self._lock), \
              patch.object(dc, "_can_connect",
                           side_effect=[{"ok": False}, {"ok": False}, {"ok": True}]), \
              patch.object(dc, "_code_changed", return_value=False), \
              patch.object(dc, "_launchd_kickstart", return_value=False) as ks, \
+             patch.object(dc, "_launchd_manages_daemon", return_value=False), \
              patch.object(dc, "_port_is_occupied", return_value=False), \
              patch.object(dc, "_debugger_friendly_python", return_value="/usr/bin/python3"), \
              patch.object(dc.subprocess, "Popen") as popen, \
@@ -254,6 +257,36 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
             ks.assert_called_once()
             popen.assert_called_once()
 
+    def test_responsive_stale_kickstart_unreachable_defers_not_spawn(self):
+        # Regression guard for the 2026-06-05 orphan storm. A worktree session
+        # runs stale code, so the running daemon looks stale; kickstart can't
+        # reach launchd from that context. We MUST defer to the responsive
+        # incumbent — never kill it and Popen a competitor (the rival orphaned,
+        # squatted the port, and crash-looped the real launchd daemon).
+        with patch.object(dc, "is_maintenance_mode", return_value=False), \
+             patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_can_connect", return_value={"ok": True}), \
+             patch.object(dc, "_code_changed", return_value=True), \
+             patch.object(dc, "_launchd_kickstart", return_value=False), \
+             patch.object(dc, "_kill_daemon") as kill, \
+             patch.object(dc.subprocess, "Popen") as popen:
+            self.assertTrue(dc.ensure_daemon(self._db))
+            kill.assert_not_called()
+            popen.assert_not_called()
+
+    def test_down_but_launchd_managed_kickstart_failed_defers_to_keepalive(self):
+        # Daemon down, kickstart failed (transient), but launchd DOES manage the
+        # service → don't race a manual spawn; let KeepAlive bring it up.
+        with patch.object(dc, "is_maintenance_mode", return_value=False), \
+             patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_can_connect", return_value={"ok": False}), \
+             patch.object(dc, "_code_changed", return_value=False), \
+             patch.object(dc, "_launchd_kickstart", return_value=False), \
+             patch.object(dc, "_launchd_manages_daemon", return_value=True), \
+             patch.object(dc.subprocess, "Popen") as popen:
+            self.assertFalse(dc.ensure_daemon(self._db))
+            popen.assert_not_called()
+
     def test_maintenance_mode_skips_everything(self):
         with patch.object(dc, "is_maintenance_mode", return_value=True), \
              patch.object(dc, "_launchd_kickstart") as ks, \
@@ -261,6 +294,51 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
             self.assertFalse(dc.ensure_daemon(self._db))
             ks.assert_not_called()
             popen.assert_not_called()
+
+
+class TestDuplicateDaemonDefers(unittest.TestCase):
+    """A duplicate (port already served by a responsive daemon) must raise
+    DuplicateDaemonError so the supervisor exits cleanly instead of crash-
+    looping on bind. Backstop for the Errno-48 storm (2026-06-05) — closes the
+    class regardless of HOW a second daemon was spawned."""
+
+    def _daemon(self):
+        from servers.daemon_server import BrainDaemon
+        return BrainDaemon("/tmp/nonexistent-brain-test.db")
+
+    def test_run_precheck_defers_when_responsive(self):
+        from servers import daemon_server as ds
+        d = self._daemon()
+        # Responsive incumbent → defer BEFORE loading the brain (no DB writers).
+        with patch("servers.daemon_client.is_daemon_responsive", return_value=True), \
+             patch.object(d, "_load_brain") as load:
+            with self.assertRaises(ds.DuplicateDaemonError):
+                d._run()
+            load.assert_not_called()
+
+    def test_bind_socket_defers_on_eaddrinuse_when_responsive(self):
+        from servers import daemon_server as ds
+        d = self._daemon()
+        fake_sock = MagicMock()
+        fake_sock.bind.side_effect = OSError(errno.EADDRINUSE, "in use")
+        with patch.object(ds.socket, "socket", return_value=fake_sock), \
+             patch("servers.daemon_client.is_daemon_responsive", return_value=True):
+            with self.assertRaises(ds.DuplicateDaemonError):
+                d._bind_socket()
+
+    def test_bind_socket_retries_when_holder_unresponsive(self):
+        # A non-responsive holder (TIME_WAIT / hung corpse) is NOT a duplicate —
+        # normal retry, then raise OSError for recovery to handle.
+        from servers import daemon_server as ds
+        d = self._daemon()
+        d.SOCKET_BIND_RETRIES = 2
+        fake_sock = MagicMock()
+        fake_sock.bind.side_effect = OSError(errno.EADDRINUSE, "in use")
+        with patch.object(ds.socket, "socket", return_value=fake_sock), \
+             patch("servers.daemon_client.is_daemon_responsive", return_value=False), \
+             patch.object(ds.time, "sleep"):
+            with self.assertRaises(OSError):
+                d._bind_socket()
 
 
 if __name__ == "__main__":

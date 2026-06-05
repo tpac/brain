@@ -212,6 +212,32 @@ def ensure_daemon(db_path: str) -> bool:
             sys.stderr.write("[brain-daemon] Daemon not ready within 15s after kickstart\n")
             return False
 
+        # kickstart did not succeed. Decide carefully whether a direct spawn is
+        # safe — spawning a rival when one already exists IS the Errno-48 orphan
+        # storm (2026-06-05).
+        #
+        # (a) A daemon is already responsive. We only reach here because it runs
+        #     stale code (a healthy current-code daemon returned at the re-check
+        #     above), so kickstart failing means THIS context couldn't reach
+        #     launchd — not that the daemon is unmanaged. Defer to the incumbent;
+        #     never kill it and spawn a competitor.
+        if resp.get("ok"):
+            sys.stderr.write(
+                "[brain-daemon] launchd kickstart unavailable but a daemon is "
+                "already responsive — deferring (NOT spawning a competitor; it "
+                "may run stale code until launchd cycles it).\n")
+            return True
+
+        # (b) Nothing is serving. Spawn directly ONLY if launchd genuinely is
+        #     not managing the daemon (fresh install). If launchd DOES manage it
+        #     but kickstart failed transiently, let KeepAlive bring it up rather
+        #     than racing a manual spawn.
+        if _launchd_manages_daemon():
+            sys.stderr.write(
+                "[brain-daemon] launchd manages the daemon but kickstart failed "
+                "and nothing is serving — leaving it to KeepAlive.\n")
+            return False
+
         # No launchd managing the daemon (fresh install / not bootstrapped).
         # No KeepAlive to race here, so spawn directly — still under the lock.
         sys.stderr.write("[brain-daemon] launchd not managing daemon — spawning directly\n")
@@ -377,6 +403,26 @@ def _launchd_kickstart() -> bool:
     label = "gui/{}/{}".format(os.getuid(), LAUNCHD_LABEL)
     try:
         result = subprocess.run(["launchctl", "kickstart", "-k", label],
+                                timeout=10, capture_output=True)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def _launchd_manages_daemon() -> bool:
+    """True iff launchd has the daemon's LaunchAgent loaded in this user's GUI
+    domain.
+
+    This is DISTINCT from `_launchd_kickstart()` succeeding. kickstart can
+    return nonzero for transient or contextual reasons — a boot context that
+    can't address `gui/<uid>`, a timeout — even while launchd IS managing the
+    daemon. Conflating "kickstart failed" with "launchd absent" is what let a
+    competing direct-spawn orphan be created and squat the port (Errno-48
+    storm, 2026-06-05). Gate the no-launchd fallback on THIS, not on kickstart's
+    return code."""
+    label = "gui/{}/{}".format(os.getuid(), LAUNCHD_LABEL)
+    try:
+        result = subprocess.run(["launchctl", "print", label],
                                 timeout=10, capture_output=True)
         return result.returncode == 0
     except Exception:
