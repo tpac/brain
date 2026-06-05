@@ -40,20 +40,27 @@ class TestBuildDeltaMetadata:
         assert m['errors'] == []
         assert m['journal_entry'] == ''
 
-    def test_truncation_final_text(self):
+    def test_truncation_final_text_is_loud(self):
         long = 'x' * (DELTA_FINAL_TEXT_LIMIT + 500)
         m = build_delta_metadata(final_text=long)
-        assert len(m['final_text']) == DELTA_FINAL_TEXT_LIMIT
+        # Loud: head kept, dropped count named — never a silent slice.
+        assert m['final_text'].startswith('x' * 100)
+        assert '+500 chars truncated' in m['final_text']
+        assert len(m['final_text']) <= DELTA_FINAL_TEXT_LIMIT + 40  # bounded
 
-    def test_truncation_journal_entry(self):
+    def test_truncation_journal_entry_is_loud(self):
         long = 'y' * (DELTA_FINAL_TEXT_LIMIT + 500)
         m = build_delta_metadata(journal_entry=long)
-        assert len(m['journal_entry']) == DELTA_FINAL_TEXT_LIMIT
+        assert '+500 chars truncated' in m['journal_entry']
+        assert len(m['journal_entry']) <= DELTA_FINAL_TEXT_LIMIT + 40
 
-    def test_error_list_truncated(self):
+    def test_error_list_truncated_is_loud(self):
         errs = ['e%d' % i for i in range(20)]
         m = build_delta_metadata(errors=errs)
-        assert len(m['errors']) == DELTA_ERROR_LIST_LIMIT
+        # First 5 real errors kept + 1 loud marker naming the 15 dropped.
+        assert m['errors'][:DELTA_ERROR_LIST_LIMIT] == ['e0', 'e1', 'e2', 'e3', 'e4']
+        assert len(m['errors']) == DELTA_ERROR_LIST_LIMIT + 1
+        assert '+15 more truncated' in m['errors'][-1]
 
     def test_extras_preserved(self):
         m = build_delta_metadata(clusters_processed=5, batches=3)
