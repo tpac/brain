@@ -103,6 +103,30 @@ def resolve_to(brain, to):
                   "Use its full session id, or self_presence to see who's live." % to)
 
 
+# The pending-inbox SELECT — the SINGLE source for drain (consume-once) and peek
+# (read-only). A row is pending for `to_session` when it's addressed to it
+# (directed or broadcast), unexpired, not its own broadcast, and not already
+# delivered. drain wraps this in write_lock + a self_delivered stamp; peek just
+# reads. One query means the two can't drift (they used to carry a "keep in
+# lockstep" note — this removes the hazard).
+_PENDING_INBOX_SQL = (
+    'SELECT id, from_session, intent, body, created_at FROM self_inflight '
+    'WHERE address IN (?, ?) AND expires_at > ? '
+    'AND from_session != ? '                       # not your own broadcast
+    'AND id NOT IN (SELECT message_id FROM self_delivered WHERE to_session = ?) '
+    'ORDER BY created_at')
+
+
+def _pending_rows(conn, to_session, now):
+    """Pending-inbox rows for `to_session` at time `now`, oldest first
+    (id, from_session, intent, body, created_at). Read-only; the single query
+    shared by drain_inbox and peek_inbox."""
+    directed, broadcast = self_contract.routes_at_turn(to_session)
+    return conn.execute(
+        _PENDING_INBOX_SQL,
+        (directed, broadcast, now, to_session, to_session)).fetchall()
+
+
 def drain_inbox(brain, to_session):
     """Consume-once: deliver undelivered, unexpired messages addressed to this
     stream (directed self:<id> + self:broadcast). Returns rendered messages,
@@ -110,17 +134,10 @@ def drain_inbox(brain, to_session):
     the self_delivered PK)."""
     if not to_session:
         return []
-    directed, broadcast = self_contract.routes_at_turn(to_session)
     now = iso_now()
     out = []
     with brain.write_lock:
-        rows = brain.logs_conn.execute(
-            'SELECT id, from_session, intent, body, created_at FROM self_inflight '
-            'WHERE address IN (?, ?) AND expires_at > ? '
-            'AND from_session != ? '                     # don't hear your own broadcast
-            'AND id NOT IN (SELECT message_id FROM self_delivered WHERE to_session = ?) '
-            'ORDER BY created_at',
-            (directed, broadcast, now, to_session, to_session)).fetchall()
+        rows = _pending_rows(brain.logs_conn, to_session, now)
         for mid, from_session, intent, body, created_at in rows:
             brain.logs_conn.execute(
                 'INSERT OR IGNORE INTO self_delivered (message_id, to_session, delivered_at) '
@@ -142,22 +159,15 @@ def peek_inbox(brain, to_session):
     """Read-only twin of drain_inbox: return pending (undelivered, unexpired)
     messages addressed to this stream WITHOUT consuming them.
 
-    Same filter as drain_inbox — directed + broadcast routes, TTL cutoff, not
-    your own broadcast, not already delivered — but NO self_delivered write and
-    NO write_lock. The /watch-live poller calls this every ~1.5s to detect
-    arrivals; the real consume-once drain still happens in drain_inbox at the
-    Stop hook. Keep this SELECT in lockstep with drain_inbox's."""
+    Shares the pending-inbox query with drain_inbox (_pending_rows) — same
+    filter (directed + broadcast routes, unexpired, not your own broadcast, not
+    already delivered) — but NO self_delivered write and NO write_lock. The
+    /watch-live poller calls this every ~1.5s to detect arrivals; the real
+    consume-once drain still happens in drain_inbox at the Stop hook."""
     if not to_session:
         return []
-    directed, broadcast = self_contract.routes_at_turn(to_session)
     now = iso_now()
-    rows = brain.logs_conn.execute(
-        'SELECT id, from_session, intent, body, created_at FROM self_inflight '
-        'WHERE address IN (?, ?) AND expires_at > ? '
-        'AND from_session != ? '
-        'AND id NOT IN (SELECT message_id FROM self_delivered WHERE to_session = ?) '
-        'ORDER BY created_at',
-        (directed, broadcast, now, to_session, to_session)).fetchall()
+    rows = _pending_rows(brain.logs_conn, to_session, now)
     return [{'id': mid, 'from': (from_session or '')[:8], 'intent': intent,
              'body': body, 'created_at': created_at}
             for mid, from_session, intent, body, created_at in rows]
