@@ -202,6 +202,28 @@ class TestValidateTraceMetadata:
     def test_undeclared_ref_type_is_permissive(self):
         assert validate_trace_metadata('delta', 'additionalContext', {})[0]
 
+    def test_s2_delta_ref_types_validate_real_payload(self):
+        # CR6: all four S2 delta ref_types share the unified shape — a real
+        # build_delta_metadata payload passes for each, like encoding_run.
+        for rt in ('consolidated', 'community_enriched', 'healer_generated',
+                   'aspect_classified'):
+            ok, err = validate_trace_metadata('delta', rt, build_delta_metadata())
+            assert ok, f"{rt}: {err}"
+
+    def test_bare_marker_passes(self):
+        # CR6: the early-out/error markers ('No clusters to process') write
+        # metadata=None — a no-op marker must NOT be flagged (help, don't cry wolf).
+        for rt in ('consolidated', 'community_enriched', 'healer_generated',
+                   'aspect_classified', 'encoding_run'):
+            assert validate_trace_metadata('delta', rt, None)[0], rt
+
+    def test_malformed_s2_delta_rejected(self):
+        # CR6: a PRESENT but partial payload on an S2 delta is still caught.
+        ok, err = validate_trace_metadata('delta', 'consolidated', {
+            'created': [], 'revised': [], 'elapsed_ms': 5})
+        assert not ok
+        assert 'missing required keys' in err
+
 
 class TestBuildSelectionMetadata:
     def test_defaults(self):
@@ -233,6 +255,7 @@ ENCODERS_USING_DELTA_BUILDER = [
     'servers/scales/s2/community_encoder.py',
     'servers/scales/s2/consolidation_encoder.py',
     'servers/scales/s2/healer_encoder.py',
+    'servers/scales/s2/aspect_encoder.py',
     'servers/scales/s1/encode.py',
 ]
 
