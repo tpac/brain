@@ -174,5 +174,94 @@ class TestHookDelegation(unittest.TestCase):
         self.assertFalse(hasattr(self.hc, "force_restart_daemon"))
 
 
+class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
+    """ensure_daemon must route every (re)start through launchd (kickstart),
+    serialized under the singleton lock — never Popen alongside KeepAlive.
+
+    Regression guard for the Errno-48 storm (2026-06-04): N concurrent boots
+    each saw stale code and independently killed + respawned while launchd's
+    KeepAlive also respawned, so several processes raced to bind the port.
+    """
+
+    def setUp(self):
+        self._dir = tempfile.mkdtemp(prefix="brain-ensure-test-")
+        self._db = os.path.join(self._dir, "brain.db")
+        self._lock = os.path.join(self._dir, "daemon.lock")
+
+    def tearDown(self):
+        for p in (self._lock, os.path.join(self._dir, "daemon.log"), self._db):
+            if os.path.exists(p):
+                os.remove(p)
+        try:
+            os.rmdir(self._dir)
+        except OSError:
+            pass
+
+    def test_healthy_current_code_is_noop(self):
+        # Responsive + same code → return True without touching the lifecycle.
+        with patch.object(dc, "is_maintenance_mode", return_value=False), \
+             patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_can_connect", return_value={"ok": True}), \
+             patch.object(dc, "_code_changed", return_value=False), \
+             patch.object(dc, "_launchd_kickstart") as ks, \
+             patch.object(dc.subprocess, "Popen") as popen:
+            self.assertTrue(dc.ensure_daemon(self._db))
+            ks.assert_not_called()
+            popen.assert_not_called()
+
+    def test_stale_code_kickstarts_once_never_popen(self):
+        # Responsive but stale → exactly one launchd kickstart, never a Popen.
+        # _code_changed: fast-path(stale) → under-lock recheck(stale) → ready.
+        with patch.object(dc, "is_maintenance_mode", return_value=False), \
+             patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_can_connect", return_value={"ok": True}), \
+             patch.object(dc, "_code_changed", side_effect=[True, True, False]), \
+             patch.object(dc, "_launchd_kickstart", return_value=True) as ks, \
+             patch.object(dc.subprocess, "Popen") as popen, \
+             patch.object(dc.time, "sleep"):
+            self.assertTrue(dc.ensure_daemon(self._db))
+            ks.assert_called_once()
+            popen.assert_not_called()
+
+    def test_concurrent_winner_already_restarted_skips_kickstart(self):
+        # The anti-storm guarantee: fast-path sees stale and falls through to
+        # the lock, but by the time we hold it another caller already restarted
+        # to current code → we re-check and do NOTHING (no second kickstart).
+        with patch.object(dc, "is_maintenance_mode", return_value=False), \
+             patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_can_connect", return_value={"ok": True}), \
+             patch.object(dc, "_code_changed", side_effect=[True, False]), \
+             patch.object(dc, "_launchd_kickstart") as ks, \
+             patch.object(dc.subprocess, "Popen") as popen:
+            self.assertTrue(dc.ensure_daemon(self._db))
+            ks.assert_not_called()
+            popen.assert_not_called()
+
+    def test_no_launchd_falls_back_to_direct_spawn(self):
+        # Daemon down AND launchd not managing it (kickstart rc!=0) → the only
+        # case a direct Popen is legitimate (no KeepAlive to race).
+        with patch.object(dc, "is_maintenance_mode", return_value=False), \
+             patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_can_connect",
+                          side_effect=[{"ok": False}, {"ok": False}, {"ok": True}]), \
+             patch.object(dc, "_code_changed", return_value=False), \
+             patch.object(dc, "_launchd_kickstart", return_value=False) as ks, \
+             patch.object(dc, "_port_is_occupied", return_value=False), \
+             patch.object(dc, "_debugger_friendly_python", return_value="/usr/bin/python3"), \
+             patch.object(dc.subprocess, "Popen") as popen, \
+             patch.object(dc.time, "sleep"):
+            self.assertTrue(dc.ensure_daemon(self._db))
+            ks.assert_called_once()
+            popen.assert_called_once()
+
+    def test_maintenance_mode_skips_everything(self):
+        with patch.object(dc, "is_maintenance_mode", return_value=True), \
+             patch.object(dc, "_launchd_kickstart") as ks, \
+             patch.object(dc.subprocess, "Popen") as popen:
+            self.assertFalse(dc.ensure_daemon(self._db))
+            ks.assert_not_called()
+            popen.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

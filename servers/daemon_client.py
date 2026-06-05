@@ -143,14 +143,32 @@ def is_daemon_responsive(timeout: float = 2.0) -> bool:
     return _can_connect(timeout=timeout).get("ok", False)
 
 
-def ensure_daemon(db_path: str) -> bool:
-    """Start the daemon if not running. Returns True if daemon is ready.
+def _code_changed(resp: dict) -> bool:
+    """True if the responding daemon runs different code than this checkout
+    (so it needs a restart to pick up changes). Conservative — returns False
+    when either fingerprint is unknown, so an indeterminate signal never
+    triggers a restart."""
+    daemon_fp = resp.get("result", {}).get("code_fingerprint", "")
+    current_fp = _code_fingerprint()
+    return bool(current_fp != "unknown" and daemon_fp and daemon_fp != current_fp)
 
-    Uses fcntl.flock for singleton guarantee:
-    - First caller acquires exclusive lock, starts daemon, releases lock.
-    - All concurrent callers block on the lock.
-    - When lock releases, they wake up and find daemon already running.
-    - No races, no duplicate daemons.
+
+def ensure_daemon(db_path: str) -> bool:
+    """Ensure the daemon is running AND on current code. Returns True if ready.
+
+    launchd owns the daemon lifecycle (com.brain.daemon: KeepAlive, RunAtLoad).
+    This function only PINGS and, when a (re)start is needed, routes it through
+    launchd via `launchctl kickstart -k` (_launchd_kickstart). It never kills +
+    Popens its own process alongside launchd.
+
+    Doing both was the Errno-48 storm of 2026-06-04: N sessions booted at once,
+    each saw stale code, and each independently killed + respawned while
+    launchd's KeepAlive ALSO respawned — several processes raced to bind the
+    port. Now every (re)start decision is serialized under the fcntl singleton
+    lock and re-checked after acquiring it, so N concurrent callers (re)start at
+    most once. Direct Popen survives ONLY as the no-launchd fallback (a fresh
+    install where the LaunchAgent isn't bootstrapped) — there's no KeepAlive to
+    race there.
 
     Maintenance mode: if the maintenance lock file exists, skip startup.
     Used during DB operations (VACUUM, schema changes, bulk deletes).
@@ -159,31 +177,13 @@ def ensure_daemon(db_path: str) -> bool:
         sys.stderr.write("[brain-daemon] Maintenance mode active — skipping startup\n")
         return False
 
-    # Fast path: already running and responsive?
+    # Fast path: running, responsive, and on current code → nothing to do.
     resp = _can_connect()
-    if resp.get("ok"):
-        # Check if code changed — needs graceful restart
-        daemon_fp = resp.get("result", {}).get("code_fingerprint", "")
-        current_fp = _code_fingerprint()
-        if current_fp != "unknown" and daemon_fp and daemon_fp != current_fp:
-            sys.stderr.write(
-                "[brain-daemon] Code changed ({} → {}) — requesting graceful restart\n"
-                .format(daemon_fp[:12], current_fp[:12]))
-            restart_resp = send_command("restart", timeout=5.0)
-            if restart_resp.get("ok"):
-                sys.stderr.write("[brain-daemon] Restart command sent, waiting...\n")
-                # Wait for daemon to come back (embedder reload ~4-6s)
-                for _ in range(16):
-                    time.sleep(0.5)
-                    if _can_connect().get("ok"):
-                        return True
-            sys.stderr.write("[brain-daemon] Graceful restart failed, will kill + respawn\n")
-            _kill_daemon()
-            time.sleep(1)
-        else:
-            return True
+    if resp.get("ok") and not _code_changed(resp):
+        return True
+    # Otherwise (down, or up-but-stale) fall through to the locked (re)start.
 
-    # Slow path: need to start daemon. Acquire exclusive lock.
+    # Serialize the (re)start through the singleton lock.
     lock_path = get_lock_path()
     lock_fd = None
     try:
@@ -192,23 +192,35 @@ def ensure_daemon(db_path: str) -> bool:
         fcntl.flock(lock_fd, fcntl.LOCK_EX)  # Blocks until acquired
         sys.stderr.write("[brain-daemon] Lock acquired.\n")
 
-        # Re-check after acquiring lock — another caller may have started it
+        # Re-check under the lock — a caller we blocked behind may have already
+        # brought up a healthy, current-code daemon while we waited.
         resp = _can_connect()
-        if resp.get("ok"):
-            sys.stderr.write("[brain-daemon] Daemon already started by another caller.\n")
+        if resp.get("ok") and not _code_changed(resp):
+            sys.stderr.write("[brain-daemon] Daemon already healthy (handled by another caller).\n")
             return True
 
-        # Kill zombie if port occupied but not responding
+        # Route the (re)start through launchd. `kickstart -k` kills any running
+        # instance (covers healthy-but-stale AND hung-corpse) and respawns it in
+        # one launchd-serialized call — no competing-spawn race with KeepAlive.
+        if _launchd_kickstart():
+            for i in range(30):  # 15s max — a fresh boot reloads the embedder (~4-6s)
+                time.sleep(0.5)
+                resp = _can_connect()
+                if resp.get("ok") and not _code_changed(resp):
+                    sys.stderr.write("[brain-daemon] Daemon ready via launchd (took %.1fs)\n" % ((i + 1) * 0.5))
+                    return True
+            sys.stderr.write("[brain-daemon] Daemon not ready within 15s after kickstart\n")
+            return False
+
+        # No launchd managing the daemon (fresh install / not bootstrapped).
+        # No KeepAlive to race here, so spawn directly — still under the lock.
+        sys.stderr.write("[brain-daemon] launchd not managing daemon — spawning directly\n")
         if _port_is_occupied():
             sys.stderr.write("[brain-daemon] Port occupied but unresponsive — killing zombie\n")
             _kill_daemon()
             time.sleep(1)
-
-        # Spawn daemon
-        sys.stderr.write("[brain-daemon] Spawning daemon...\n")
         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         log_path = os.path.join(os.path.dirname(db_path), "daemon.log")
-
         with open(log_path, 'a') as log_fd_file, open(os.devnull, 'r') as devnull:
             daemon_python = _debugger_friendly_python()
             subprocess.Popen(
@@ -232,15 +244,11 @@ def ensure_daemon(db_path: str) -> bool:
                     "PYTORCH_ENABLE_MPS_FALLBACK": "0",
                 },
             )
-
-        # Wait for it to respond
         for i in range(20):  # 10 seconds max
             time.sleep(0.5)
-            resp = _can_connect()
-            if resp.get("ok"):
+            if _can_connect().get("ok"):
                 sys.stderr.write("[brain-daemon] Daemon ready (took %.1fs)\n" % ((i + 1) * 0.5))
                 return True
-
         sys.stderr.write("[brain-daemon] Daemon failed to start within 10s\n")
         return False
 
@@ -356,20 +364,31 @@ def _write_recovery_state(last_attempt: float, attempts: int):
         pass
 
 
-def _relaunch_daemon(db_path: Optional[str]):
-    """Kill the hung daemon and bring a fresh one up.
+def _launchd_kickstart() -> bool:
+    """Ask launchd to (re)start the daemon. `kickstart -k` kills any running
+    instance and respawns it in one launchd-serialized call. Returns True iff
+    launchd accepted it (rc 0); False means launchd isn't managing the daemon
+    (fresh install / not bootstrapped) and the caller must spawn it itself.
 
-    launchd is the canonical owner: `kickstart -k` kills + respawns in one
-    launchd-serialized call (no competing-daemon race). If launchd isn't
-    managing it (kickstart fails), fall back to kill + Popen spawn."""
+    The SOLE restart primitive — every (re)start (boot-path code-change in
+    ensure_daemon, hung-corpse recovery in _relaunch_daemon) routes through
+    launchd so concurrent callers + KeepAlive can't race competing spawns.
+    That race was the Errno-48 storm of 2026-06-04."""
     label = "gui/{}/{}".format(os.getuid(), LAUNCHD_LABEL)
     try:
         result = subprocess.run(["launchctl", "kickstart", "-k", label],
                                 timeout=10, capture_output=True)
-        if result.returncode == 0:
-            return
+        return result.returncode == 0
     except Exception:
-        pass
+        return False
+
+
+def _relaunch_daemon(db_path: Optional[str]):
+    """Bring a fresh daemon up. launchd is the canonical owner (kickstart -k);
+    if launchd isn't managing it (kickstart fails), fall back to kill + Popen
+    spawn via ensure_daemon."""
+    if _launchd_kickstart():
+        return
     # No launchd (or kickstart failed) — own the kill + respawn.
     _kill_daemon()
     if not db_path:
