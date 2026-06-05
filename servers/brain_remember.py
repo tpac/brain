@@ -865,9 +865,18 @@ class BrainRememberMixin:
         try:
             from . import embed_queue
             embed_queue.enqueue(node_id)
+            embedding_queued = True
         except Exception as e:
             self._log_error('embed_enqueue_remember', e, 'enqueue %s' % node_id[:12])
-        embedding_stored = False
+            embedding_queued = False
+
+        # Recall-on-create is gated OFF since embedding moved to the async
+        # embed_queue worker: the old gate keyed on synchronous embedding
+        # (`embedding_stored`), which no longer happens inline. The recall below
+        # uses query text (not the new node's vector) so it COULD run — re-enable
+        # only if the per-write recall latency is acceptable. Kept off to preserve
+        # behavior after the async-embedding change. (flagged 2026-06-04)
+        recall_on_create_enabled = False
 
         # v29 / Phase B: persist source_refs to node_source_refs join table.
         # SourceRefDAL.add_source_refs coerces legacy int ids → 8-char hex,
@@ -998,7 +1007,7 @@ class BrainRememberMixin:
         related_nodes = []
         try:
             from .pipeline_contract import ENCODING_AGENT
-            if embedding_stored:
+            if recall_on_create_enabled:
                 recall_result = self.recall(query='%s %s' % (title, (content or '')[:ENCODING_AGENT['recall_on_create_query_limit']]), limit=ENCODING_AGENT['recall_on_create_limit'] + 1, source='internal')
                 for r in recall_result.get('results', []):
                     if r.get('id') != node_id:
@@ -1019,7 +1028,7 @@ class BrainRememberMixin:
             'id': node_id,
             'type': type,
             'title': title,
-            'embedding_stored': embedding_stored,
+            'embedding_queued': embedding_queued,
             'enrichment_prompt': enrichment_prompt,
             'related_nodes': related_nodes,
         }
