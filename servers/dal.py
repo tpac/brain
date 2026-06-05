@@ -924,28 +924,33 @@ class TraceDAL:
 
     def active_sessions_by_turn(self, cutoff_iso: str, exclude_session: str = '',
                                 limit: int = 5) -> List[Dict[str, Any]]:
-        """Sessions with a real conversational turn since `cutoff_iso`, newest
-        first — the wall-clock presence signal, sourced from S0 traces.
+        """Sessions reachable RIGHT NOW since `cutoff_iso`, newest first — the
+        wall-clock presence signal, sourced from S0 traces.
 
-        "Real turn" = an S0 user_message/assistant_message trace. Heartbeats use
-        ref_type='heartbeat' and autosave writes no traces, so this reflects
-        ACTUAL conversational activity — not cached/autosaved session_state
-        (whose updated_at is bumped for every cached session each autosave tick,
-        falsely marking idle/stale sids "live"). A window that goes quiet ages
-        out once its last turn passes the cutoff; a window relaunched under a new
-        sid drops its stale sid on its own (the dead sid emits no new turns).
+        Counts user_message / assistant_message AND heartbeat turns. Heartbeats
+        are emitted by /watch listeners on every quiet tick — a stream living
+        purely in watch mode is the MOST reachable (it can be triggered to act),
+        so it must count as present, not vanish after 30 min (2026-06-04).
+        Autosave writes no traces at all, so this still reflects ACTUAL turns —
+        not cached/autosaved session_state (whose updated_at is bumped for every
+        cached session each tick, falsely marking idle/stale sids "live"). A
+        stream that stops taking turns of any kind ages out once its last turn
+        passes the cutoff; a sid relaunched under a new id drops its stale sid.
 
         Returns [{'session_id', 'last_turn', 'focus'}] where `focus` is the
-        latest user_message summary for that session (raw — the render layer
-        first-lines/truncates it). Caller computes the cutoff (wall-clock vs
-        conversation-time is the caller's policy, not the DAL's)."""
+        latest *real-prompt* user_message summary — `<task-notification>` watch
+        ignitions are excluded so a listener's focus shows what it last worked
+        on, not the wake envelope (raw; the render layer first-lines/truncates).
+        Caller computes the cutoff (wall-clock vs conversation-time is the
+        caller's policy, not the DAL's)."""
         rows = self.conn.execute(
             "SELECT t.session_id, MAX(t.created_at) AS last_turn, "
             "  (SELECT u.summary FROM trace_events u "
             "   WHERE u.session_id = t.session_id AND u.ref_type = 'user_message' "
+            "     AND u.summary NOT LIKE '<task-notification>%' "
             "   ORDER BY u.created_at DESC LIMIT 1) AS focus "
             "FROM trace_events t "
-            "WHERE t.ref_type IN ('user_message', 'assistant_message') "
+            "WHERE t.ref_type IN ('user_message', 'assistant_message', 'heartbeat') "
             "  AND t.created_at > ? AND t.session_id != ? "
             "GROUP BY t.session_id "
             "ORDER BY last_turn DESC LIMIT ?",

@@ -309,6 +309,12 @@ class BrainVoice:
         out.append("")
         out.append("Anchor. The brain is yours — %s memories, %s locked." % (
             ctx.get("total_nodes", "?"), ctx.get("total_locked", "?")))
+        if session_id:
+            # Hand each stream its own self-channel id at boot. The self-channel
+            # addresses streams by this id (self_inbox / self_send / presence);
+            # before this it was unobtainable without forensics (2026-06-04), so
+            # a stream couldn't drain its own inbox or arm a watcher cleanly.
+            out.append("MY_STREAM_ID: %s" % session_id)
         out.append("")
 
         # ── The Frame — single canonical prior, same shape surface uses ──

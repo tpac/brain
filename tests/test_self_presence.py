@@ -135,5 +135,54 @@ class TestSelfPresence(BrainTestBase):
         self.assertIn('cccccccc', out['line'])
 
 
+class TestPresenceCountsWatchers(BrainTestBase):
+    """B2 (2026-06-04): a /watch listener emits only `heartbeat` turns, yet it
+    is the MOST reachable stream — it can be triggered to act. It must count as
+    present, and its focus must not be polluted by the `<task-notification>`
+    wake envelope."""
+    needs_embedder = False
+
+    def _turn(self, sid, ref_type, summary, updated_at=None):
+        self.brain._trace_dal.append(
+            chain_id='s0-%s-0' % sid[:8], scale='s0', event_type='K',
+            ref_type=ref_type, summary=summary, session_id=sid)
+        if updated_at is not None:
+            self.brain.logs_conn.execute(
+                "UPDATE trace_events SET created_at = ? "
+                "WHERE session_id = ? AND ref_type = ? AND summary = ?",
+                (updated_at, sid, ref_type, summary))
+            self.brain.logs_conn.commit()
+
+    def test_heartbeat_only_watcher_is_present(self):
+        # A pure listener whose only recent turn is a watch tick (heartbeat).
+        self._turn('watcherXX', 'heartbeat', 'Quiet and listening.')
+        rows = self.brain.present_streams(exclude_session='other', window_min=30, limit=10)
+        ids = {r['session_id'] for r in rows}
+        self.assertIn('watcherXX', ids,
+                      "a heartbeat-only watcher is reachable and must show present")
+
+    def test_real_prompt_wins_over_task_notification_in_focus(self):
+        # Recent turns: a real prompt (earlier) then a watch ignition (now).
+        # Focus must surface the real prompt, not the <task-notification>.
+        self._turn('mixedXXXX', 'user_message', 'fix the recall bug',
+                   updated_at=iso_cutoff(minutes=5))
+        self._turn('mixedXXXX', 'user_message', '<task-notification>\n<event>twin msg')
+        rows = self.brain.present_streams(exclude_session='other', window_min=30, limit=10)
+        focus = {r['session_id']: r['focus'] for r in rows}.get('mixedXXXX')
+        self.assertEqual(focus, 'fix the recall bug',
+                         "the watch-ignition envelope must not become the focus")
+
+    def test_pure_watcher_focus_is_empty_not_notification(self):
+        # No real prompt ever — only a heartbeat + a task-notification ignition.
+        # Present (heartbeat), but focus clean-empty rather than the envelope.
+        self._turn('pureWtch0', 'heartbeat', 'listening')
+        self._turn('pureWtch0', 'user_message', '<task-notification>\n<event>x')
+        rows = self.brain.present_streams(exclude_session='other', window_min=30, limit=10)
+        row = {r['session_id']: r for r in rows}.get('pureWtch0')
+        self.assertIsNotNone(row, "heartbeat keeps the watcher present")
+        self.assertEqual(row['focus'], '',
+                         "a task-notification must not leak into a watcher's focus")
+
+
 if __name__ == '__main__':
     unittest.main()

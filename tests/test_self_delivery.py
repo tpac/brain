@@ -1,12 +1,13 @@
-"""Phase 2b delivery — PreToolUse + Stop hook integration.
+"""Self-message delivery — the Stop hook is the SOLE path (Stop-only, 2026-06-04).
 
 The self-channel envelope bug (c4f6386) escaped because inner functions were
 unit-tested but the dispatch/handler wiring was not. This layer closes that for
 DELIVERY: it drives the real daemon handlers — hook_pre_edit (PreToolUse) and
-hook_post_response_track (Stop) — and asserts the self-message lands on each
-hook's channel, plus the cross-hook consume-once property (a message is
-delivered by exactly one hook, never twice). on_prompt is deliberately not a
-delivery point (weak channel; would win the consume-once race).
+hook_post_response_track (Stop) — and asserts that self-messages land on the
+prominent Stop block and that PreToolUse stays silent. PreToolUse delivery into
+additionalContext was removed (the model missed it, and consuming there starved
+the reliable Stop block); UserPromptSubmit was never a delivery point. So
+PreToolUse must NOT surface or consume the tap — it leaves it for Stop.
 """
 import unittest
 
@@ -40,18 +41,22 @@ def _pretool_ac(out):
     return out.get('json', {}).get('hookSpecificOutput', {}).get('additionalContext', '')
 
 
-class TestPreToolDelivery(BrainTestBase):
+class TestPreToolDoesNotDeliver(BrainTestBase):
+    """Stop-only (2026-06-04): PreToolUse must NOT surface a self-message and
+    must NOT consume it — the tap survives untouched so the Stop block delivers."""
     needs_embedder = False
 
-    def test_pretool_delivers_into_additional_context(self):
+    def test_pretool_does_not_surface_self_message(self):
         _seed(self.brain, 'S', 'heads up: I am in auth.py')
         out = _edit(self.brain, 'S')
-        self.assertIn('heads up: I am in auth.py', _pretool_ac(out))
+        self.assertNotIn('heads up: I am in auth.py', _pretool_ac(out))
+        self.assertEqual(out.get('json', {}).get('decision'), 'approve')
 
-    def test_pretool_consume_once(self):
+    def test_pretool_does_not_consume_tap(self):
+        # The tap must survive PreToolUse so Stop can still deliver it.
         _seed(self.brain, 'S', 'one tap')
-        self.assertIn('one tap', _pretool_ac(_edit(self.brain, 'S', 'x.py')))
-        self.assertNotIn('one tap', _pretool_ac(_edit(self.brain, 'S', 'x.py')))
+        _edit(self.brain, 'S', 'x.py')
+        self.assertEqual(_stop(self.brain, 'S').get('decision'), 'block')
 
     def test_pretool_no_message_is_clean_approve(self):
         """Regression: nothing pending → valid approve, no spurious self-block."""
@@ -83,11 +88,15 @@ class TestStopDelivery(BrainTestBase):
 class TestCrossHookConsumeOnce(BrainTestBase):
     needs_embedder = False
 
-    def test_pretool_wins_then_stop_finds_nothing(self):
+    def test_pretool_leaves_tap_then_stop_delivers_once(self):
+        # Stop-only: PreToolUse stays silent and does not consume, so the Stop
+        # block delivers — exactly once (the next stop finds nothing, no loop).
         _seed(self.brain, 'S', 'single tap')
         pre = _edit(self.brain, 'S', 'a.py')
-        self.assertIn('single tap', _pretool_ac(pre))
-        # PreToolUse already consumed it → Stop must NOT re-deliver
+        self.assertNotIn('single tap', _pretool_ac(pre))     # PreToolUse silent
+        first = _stop(self.brain, 'S')
+        self.assertEqual(first.get('decision'), 'block')
+        self.assertIn('single tap', first.get('reason', ''))
         self.assertNotEqual(_stop(self.brain, 'S').get('decision'), 'block')
 
 
