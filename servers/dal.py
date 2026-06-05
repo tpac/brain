@@ -559,6 +559,17 @@ class TraceDAL:
             meta.setdefault('agent_identity', self._agent_identity)
         return meta
 
+    def _warn_metadata_invalid(self, ref_type, error):
+        """Loud-by-default at the trace-write chokepoint: a ref_type with a
+        declared payload schema carried a malformed metadata dict. NEVER blocks
+        the write (a malformed trace beats a lost one) — logs to stderr →
+        daemon.log, the same channel as _maybe_warn_identity_unset (TraceDAL has
+        no Brain reference). Fires per occurrence — each malformed trace is a
+        distinct signal."""
+        import sys as _sys
+        print('[trace_dal] trace metadata invalid (ref_type=%s): %s — wrote anyway'
+              % (ref_type, error), file=_sys.stderr, flush=True)
+
     def append(self, chain_id: str, scale: str, event_type: str,
                ref_type: str = '', ref_id: str = '', summary: str = '',
                metadata: Optional[Dict] = None, session_id: str = '',
@@ -569,10 +580,17 @@ class TraceDAL:
         identity tokens (set_identity) are stamped into metadata via
         setdefault — explicit per-event values win.
         """
-        from .trace_contract import validate_trace_event
+        from .trace_contract import validate_trace_event, validate_trace_metadata
         ok, error = validate_trace_event(scale, event_type, ref_type)
         if not ok:
             raise ValueError("Trace contract violation: %s" % error)
+        # Payload shape — loud, never block. This is the SINGLE chokepoint every
+        # writer passes (inline S1/S2 + the dispatched command), so the guard
+        # actually fires in production: the command-boundary check missed every
+        # in-process delta write (S2 units + S1 Scribe run with dispatch=None).
+        meta_ok, meta_err = validate_trace_metadata(event_type, ref_type, metadata)
+        if not meta_ok:
+            self._warn_metadata_invalid(ref_type, meta_err)
 
         self._maybe_warn_identity_unset(scale, ref_type)
         metadata = self._stamp_identity(metadata)
@@ -595,13 +613,17 @@ class TraceDAL:
         Each event dict uses the same keys as append(). Identity stamping
         applies per-event via the same setdefault semantics as append().
         """
-        from .trace_contract import validate_trace_event
+        from .trace_contract import validate_trace_event, validate_trace_metadata
         now = iso_now()
         ids = []
         for ev in events:
             ok, error = validate_trace_event(ev['scale'], ev['event_type'], ev.get('ref_type', ''))
             if not ok:
                 raise ValueError("Trace contract violation: %s" % error)
+            meta_ok, meta_err = validate_trace_metadata(
+                ev['event_type'], ev.get('ref_type', ''), ev.get('metadata'))
+            if not meta_ok:
+                self._warn_metadata_invalid(ev.get('ref_type', ''), meta_err)
             self._maybe_warn_identity_unset(ev['scale'], ev.get('ref_type', ''))
             metadata = self._stamp_identity(ev.get('metadata'))
             meta_json = json.dumps(metadata) if metadata else None
@@ -938,23 +960,34 @@ class TraceDAL:
         passes the cutoff; a sid relaunched under a new id drops its stale sid.
 
         Returns [{'session_id', 'last_turn', 'focus'}] where `focus` is the
-        latest *real-prompt* user_message summary — `<task-notification>` watch
-        ignitions are excluded so a listener's focus shows what it last worked
-        on, not the wake envelope (raw; the render layer first-lines/truncates).
-        Caller computes the cutoff (wall-clock vs conversation-time is the
-        caller's policy, not the DAL's)."""
+        latest CONVERSATIONAL turn — user_message OR assistant_message, per
+        trace_contract.CONVERSATIONAL_REF_TYPES (not user-only): a watcher's
+        last real work is often its own last reply. Turns whose summary starts
+        with the wake-envelope marker (a `<task-notification>` ignition) are
+        skipped so the focus shows work, not the wake envelope. Both the
+        conversational set and the marker come from the contract — no filters
+        reproduced here. (Raw; the render layer first-lines/truncates.) Caller
+        computes the cutoff (wall-clock vs conversation-time is the caller's
+        policy, not the DAL's)."""
+        from .trace_contract import CONVERSATIONAL_REF_TYPES, WAKE_ENVELOPE_MARKER
+        conv_ph = ','.join('?' * len(CONVERSATIONAL_REF_TYPES))
+        # Presence (liveness) also counts heartbeats — a watch listener living
+        # purely on heartbeats is the most reachable stream (B2, 2026-06-04).
+        live_types = CONVERSATIONAL_REF_TYPES + ('heartbeat',)
+        live_ph = ','.join('?' * len(live_types))
         rows = self.conn.execute(
             "SELECT t.session_id, MAX(t.created_at) AS last_turn, "
             "  (SELECT u.summary FROM trace_events u "
-            "   WHERE u.session_id = t.session_id AND u.ref_type = 'user_message' "
-            "     AND u.summary NOT LIKE '<task-notification>%' "
+            "   WHERE u.session_id = t.session_id AND u.ref_type IN (%s) "
+            "     AND u.summary NOT LIKE ? "
             "   ORDER BY u.created_at DESC LIMIT 1) AS focus "
             "FROM trace_events t "
-            "WHERE t.ref_type IN ('user_message', 'assistant_message', 'heartbeat') "
+            "WHERE t.ref_type IN (%s) "
             "  AND t.created_at > ? AND t.session_id != ? "
             "GROUP BY t.session_id "
-            "ORDER BY last_turn DESC LIMIT ?",
-            (cutoff_iso, exclude_session or '', limit)).fetchall()
+            "ORDER BY last_turn DESC LIMIT ?" % (conv_ph, live_ph),
+            (*CONVERSATIONAL_REF_TYPES, WAKE_ENVELOPE_MARKER + '%',
+             *live_types, cutoff_iso, exclude_session or '', limit)).fetchall()
         return [{'session_id': r[0], 'last_turn': r[1], 'focus': r[2] or ''}
                 for r in rows]
 

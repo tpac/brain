@@ -47,11 +47,11 @@ class TestSelfSignal(BrainTestBase):
     def test_expired_not_delivered_then_reaped(self):
         signal.send(self.brain, from_session='A',
                     address=self_contract.address_for_stream('B'), body='stale')
-        old = iso_cutoff(hours=self_contract.DEFAULT_SIGNAL_TTL_HOURS + 1)
+        past = iso_cutoff(hours=1)   # expires_at in the past → already expired
         with self.brain.write_lock:
             self.brain.logs_conn.execute(
-                "UPDATE self_inflight SET created_at = ? WHERE address = ?",
-                (old, self_contract.address_for_stream('B')))
+                "UPDATE self_inflight SET expires_at = ? WHERE address = ?",
+                (past, self_contract.address_for_stream('B')))
             self.brain.logs_conn.commit()
         self.assertEqual(signal.drain_inbox(self.brain, 'B'), [])   # expired → not delivered
         self.assertEqual(signal.reap_expired(self.brain), 1)         # dead-letter swept
@@ -67,9 +67,9 @@ class TestSelfSignal(BrainTestBase):
         signal.send(self.brain, from_session='A',
                     address=self_contract.ADDR_BROADCAST, body='ephemeral')
         signal.drain_inbox(self.brain, 'B')  # B consumes → a self_delivered row now exists
-        old = iso_cutoff(hours=self_contract.DEFAULT_SIGNAL_TTL_HOURS + 1)
+        past = iso_cutoff(hours=1)
         with self.brain.write_lock:
-            self.brain.logs_conn.execute("UPDATE self_inflight SET created_at = ?", (old,))
+            self.brain.logs_conn.execute("UPDATE self_inflight SET expires_at = ?", (past,))
             self.brain.logs_conn.commit()
         signal.reap_expired(self.brain)
         inflight = self.brain.logs_conn.execute("SELECT COUNT(*) FROM self_inflight").fetchone()[0]
@@ -215,11 +215,11 @@ class TestPeekInbox(BrainTestBase):
     def test_peek_excludes_expired(self):
         signal.send(self.brain, from_session='A',
                     address=self_contract.address_for_stream('B'), body='stale')
-        old = iso_cutoff(hours=self_contract.DEFAULT_SIGNAL_TTL_HOURS + 1)
+        past = iso_cutoff(hours=1)
         with self.brain.write_lock:
             self.brain.logs_conn.execute(
-                "UPDATE self_inflight SET created_at = ? WHERE address = ?",
-                (old, self_contract.address_for_stream('B')))
+                "UPDATE self_inflight SET expires_at = ? WHERE address = ?",
+                (past, self_contract.address_for_stream('B')))
             self.brain.logs_conn.commit()
         self.assertEqual(signal.peek_inbox(self.brain, 'B'), [])
 
@@ -230,6 +230,72 @@ class TestPeekInbox(BrainTestBase):
         signal.send(self.brain, from_session='AAAAAAAA',
                     address=self_contract.address_for_stream('B'), body='hi')
         self.assertEqual(signal.peek_inbox(self.brain, 'B')[0]['from'], 'AAAAAAAA')
+
+
+class TestTTLByCategory(BrainTestBase):
+    """Per-message TTL resolved by address: broadcast ephemeral, directed waits
+    a day; config-tunable per category."""
+    needs_embedder = False
+
+    def test_broadcast_gets_shorter_ttl_than_directed(self):
+        b = signal.send(self.brain, from_session='X',
+                        address=self_contract.ADDR_BROADCAST, body='who is live')
+        d = signal.send(self.brain, from_session='X',
+                        address=self_contract.address_for_stream('S'), body='for S')
+        self.assertIn('expires_at', b)
+        self.assertLess(b['expires_at'], d['expires_at'])  # broadcast expires sooner
+
+    def test_unexpired_directed_still_delivers(self):
+        signal.send(self.brain, from_session='X',
+                    address=self_contract.address_for_stream('S'), body='fresh')
+        self.assertEqual([m['body'] for m in signal.drain_inbox(self.brain, 'S')],
+                         ['fresh'])
+
+    def test_config_override_can_kill_broadcast_immediately(self):
+        # 0h broadcast TTL → expires_at == send-time → any later drain excludes it.
+        self.brain.set_config('self_channel.broadcast_ttl_hours', 0)
+        signal.send(self.brain, from_session='X',
+                    address=self_contract.ADDR_BROADCAST, body='instant-dead')
+        self.assertEqual(signal.drain_inbox(self.brain, 'anyone'), [])
+
+    def test_config_override_broadcast_does_not_touch_directed(self):
+        # Shrinking broadcast TTL must not affect the directed default.
+        self.brain.set_config('self_channel.broadcast_ttl_hours', 0)
+        signal.send(self.brain, from_session='X',
+                    address=self_contract.address_for_stream('S'), body='still here')
+        self.assertEqual([m['body'] for m in signal.drain_inbox(self.brain, 'S')],
+                         ['still here'])
+
+
+class TestLegacyNullExpires(BrainTestBase):
+    """A pre-expires_at courier row (the column added to the one existing DB →
+    expires_at NULL) is treated as dead: never delivered, and reaped on the next
+    sweep. No backfill — the brain was never released, so there's no in-flight
+    state worth preserving across the column add, and send() stamps expires_at
+    on every new message."""
+    needs_embedder = False
+
+    def _insert_legacy(self, mid='m1', to='B', body='legacy'):
+        from servers.clock import iso_now
+        with self.brain.write_lock:
+            self.brain.logs_conn.execute(
+                "INSERT INTO self_inflight "
+                "(id, from_session, address, intent, body, refs, created_at, expires_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+                (mid, 'A', self_contract.address_for_stream(to), 'signal', body, '', iso_now()))
+            self.brain.logs_conn.commit()
+
+    def test_null_expires_not_delivered(self):
+        self._insert_legacy()
+        self.assertEqual(signal.drain_inbox(self.brain, 'B'), [])
+        self.assertEqual(signal.peek_inbox(self.brain, 'B'), [])
+
+    def test_null_expires_reaped_as_dead(self):
+        self._insert_legacy()
+        self.assertEqual(signal.reap_expired(self.brain), 1)
+        remaining = self.brain.logs_conn.execute(
+            "SELECT COUNT(*) FROM self_inflight").fetchone()[0]
+        self.assertEqual(remaining, 0)
 
 
 if __name__ == '__main__':

@@ -166,6 +166,32 @@ def iso_cutoff(hours: float = 0, minutes: float = 0,
     return dt.astimezone(_dt.timezone.utc).isoformat()
 
 
+def iso_after(hours: float = 0, minutes: float = 0,
+              days: float = 0, *,
+              at: Optional[_dt.datetime] = None) -> str:
+    """Forward-offset sibling of ``iso_cutoff`` — an ISO UTC timestamp ``N``
+    units AFTER the anchor, for a future deadline written to a column and later
+    compared with a plain ``WHERE col > ?`` bound to ``iso_now()``::
+
+        expires_at = iso_after(hours=1)        # 1h from now, UTC ISO
+
+    Same format contract as ``iso_now``/``iso_cutoff`` — ``'…T…+00:00'``,
+    lex-comparable, never SQLite's space-separated ``datetime('now', '+N
+    hours')``. Wall-clock by default (real-elapsed deadlines / system
+    bookkeeping). Pass ``at=conversation_now(...)`` only if a deadline must
+    anchor to conversation time during S1/S2 replay — rarely.
+
+    Args:
+        hours, minutes, days: added to the anchor time.
+        at: optional anchor (datetime). Defaults to wall-clock UTC.
+    Returns:
+        ISO-8601 string in UTC, ``'YYYY-MM-DDTHH:MM:SS.ffffff+00:00'``.
+    """
+    base = at if at is not None else _dt.datetime.now(_dt.timezone.utc)
+    dt = base + _dt.timedelta(hours=hours, minutes=minutes, days=days)
+    return dt.astimezone(_dt.timezone.utc).isoformat()
+
+
 def conversation_now(messages: Optional[Iterable[Any]] = None,
                       session_started_at: Optional[Any] = None,
                       brain=None,

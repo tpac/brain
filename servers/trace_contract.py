@@ -186,6 +186,13 @@ CONVERSATIONAL_REF_TYPES = tuple(
     rt for rt, conv in S0_CONVERSATIONAL_INCOMING.items() if conv
 ) + ("assistant_message",)
 
+# A wakeup ignite (e.g. a background-task notification) arrives as turn CONTENT,
+# not a distinct ref_type: it runs recall, so it's recorded as a `user_message`
+# (conversational) even though it's an ENVELOPE, not work. Presence focus skips
+# any conversational turn whose summary starts with this marker. One constant so
+# the skip is defined ONCE, not reproduced as a scattered SQL literal.
+WAKE_ENVELOPE_MARKER = "<task-notification>"
+
 
 # ── CHAIN ID CONVENTIONS ──
 # chain_id groups related O/K/Δ/outcome events.
@@ -250,6 +257,26 @@ DELTA_FINAL_TEXT_LIMIT = 2000
 DELTA_ERROR_LIST_LIMIT = 5
 
 
+def _cap_text_loud(s, limit):
+    """Truncate text to `limit` chars LOUDLY — append a marker naming the dropped
+    count, never a silent slice (Tom's truncation contract). The dropped tail is
+    genuinely lost here (final_text/journal_entry keep only the head, with no full
+    copy elsewhere), so the marker is the only record that it happened."""
+    s = s or ''
+    if len(s) <= limit:
+        return s
+    return s[:limit].rstrip() + " …[+%d chars truncated]" % (len(s) - limit)
+
+
+def _cap_list_loud(items, limit):
+    """Keep the first `limit` items LOUDLY — append a marker element naming how
+    many were dropped, vs a silent slice. Stays a list (shape-valid)."""
+    items = list(items or [])
+    if len(items) <= limit:
+        return items
+    return items[:limit] + ["…[+%d more truncated]" % (len(items) - limit)]
+
+
 def build_delta_metadata(*,
                          actions=0, write_actions=0, rounds=0,
                          inputs_processed=0, outcomes=None,
@@ -298,11 +325,11 @@ def build_delta_metadata(*,
         'inputs_processed':  int(inputs_processed or 0),
         'outcomes':          dict(outcomes or {}),
         'rejection_skipped': int(rejection_skipped or 0),
-        'journal_entry':     (journal_entry or '')[:DELTA_FINAL_TEXT_LIMIT],
+        'journal_entry':     _cap_text_loud(journal_entry, DELTA_FINAL_TEXT_LIMIT),
         'action_details':    ad,
         'read_calls':        list(read_calls or []),
-        'final_text':        (final_text or '')[:DELTA_FINAL_TEXT_LIMIT],
-        'errors':            list(errors or [])[:DELTA_ERROR_LIST_LIMIT],
+        'final_text':        _cap_text_loud(final_text, DELTA_FINAL_TEXT_LIMIT),
+        'errors':            _cap_list_loud(errors, DELTA_ERROR_LIST_LIMIT),
         'created':           _agg('created', created),
         'revised':           _agg('revised', revised),
         'connected':         _agg('connected', connected),
@@ -327,24 +354,40 @@ def build_delta_metadata(*,
 # how two writers emitted two different shapes for the same `encoding_run`
 # ref_type, undetected, for weeks. This closes that hole: a ref_type with a
 # declared schema must carry every required key with the right type.
-# Keyed by ref_type (the unit of shape divergence). Start with the one that
-# bit us; extend as other ref_types gain builders.
+# Keyed by ref_type (the unit of shape divergence). Covers every delta built by
+# build_delta_metadata — the S1 Scribe plus the four S2 units — so a malformed
+# payload on any of them is caught, not just encoding_run. (reclassify's
+# `community_assignments` is excluded: it only ever writes a bare summary marker,
+# with no build_delta_metadata payload to shape-check.)
 METADATA_REQUIRED_BY_REF_TYPE = {
-    'encoding_run': DELTA_METADATA_SHAPE,
+    'encoding_run':       DELTA_METADATA_SHAPE,  # S1 Scribe
+    'consolidated':       DELTA_METADATA_SHAPE,  # S2 consolidation
+    'community_enriched': DELTA_METADATA_SHAPE,  # S2 community
+    'healer_generated':   DELTA_METADATA_SHAPE,  # S2 healer
+    'aspect_classified':  DELTA_METADATA_SHAPE,  # S2 aspect integration
 }
 
 
 def validate_trace_metadata(event_type, ref_type, metadata):
     """Validate a trace event's metadata payload against its ref_type schema.
 
-    Returns (ok, error_message). ref_types without a declared schema pass
-    (permissive by default — we only lock shapes that have a builder).
+    Returns (ok, error_message). Two ways to pass:
+      • ref_types without a declared schema (permissive — we only lock shapes
+        that have a builder);
+      • a bare marker with NO metadata (None) — the delta ref_types double as
+        early-out/error markers (`self.trace('delta','consolidated','No clusters
+        to process')`), which legitimately carry no payload.
+    A PRESENT payload, though, must match the schema. The contract HELPS (catches
+    a malformed delta dict) without BLOCKING a no-op marker or dropping anything —
+    the caller logs loud and writes the full payload regardless.
     """
     schema = METADATA_REQUIRED_BY_REF_TYPE.get(ref_type or '')
     if not schema:
         return True, ""
+    if metadata is None:
+        return True, ""   # bare marker — no payload to shape-check
     if not isinstance(metadata, dict):
-        return False, "metadata for ref_type '%s' must be a dict, got %s" % (
+        return False, "metadata for ref_type '%s' must be a dict or None, got %s" % (
             ref_type, type(metadata).__name__)
     missing = [k for k in schema if k not in metadata]
     if missing:

@@ -156,6 +156,32 @@ class TestTraceDAL:
         with pytest.raises(ValueError, match="Unknown event_type"):
             self.dal.append(chain_id='test', scale='s0', event_type='tool_call')
 
+    def test_append_metadata_guard_fires_loud_but_writes(self, capsys):
+        """CR6 real-path: a malformed delta payload on a schema'd ref_type is
+        caught at the DAL chokepoint (where inline S1/S2 writes actually go) —
+        logged loud to stderr, NEVER blocked. The command-boundary check missed
+        every in-process delta write; this is the guard that actually fires."""
+        tid = self.dal.append(
+            chain_id='cr6-dal-1', scale='s1', event_type='delta',
+            ref_type='encoding_run', metadata={'created': []})  # missing keys
+        assert tid                                   # non-blocking
+        assert len(self.dal.get_chain('cr6-dal-1')) == 1   # written anyway
+        err = capsys.readouterr().err
+        assert 'trace metadata invalid' in err and 'encoding_run' in err  # loud
+
+    def test_append_valid_delta_no_warning(self, capsys):
+        from servers.trace_contract import build_delta_metadata
+        self.dal.append(chain_id='cr6-dal-2', scale='s1', event_type='delta',
+                        ref_type='encoding_run', metadata=build_delta_metadata())
+        assert 'trace metadata invalid' not in capsys.readouterr().err
+
+    def test_append_bare_marker_no_warning(self, capsys):
+        # A delta ref_type doubling as a bare early-out marker (metadata=None)
+        # must not warn — only a present payload is shape-checked.
+        self.dal.append(chain_id='cr6-dal-3', scale='s1', event_type='delta',
+                        ref_type='encoding_run', metadata=None, summary='no-op')
+        assert 'trace metadata invalid' not in capsys.readouterr().err
+
     def test_append_writes_and_reads(self):
         """Write an event, read it back via get_chain."""
         self.dal.append(

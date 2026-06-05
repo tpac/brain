@@ -12,15 +12,27 @@ a recipient drains its inbox on demand. Phase 2b wires auto-delivery into
 Observation at a hook (traced as the s0 `self_message` marker).
 
 Writes go through `brain.write_lock` around `brain.logs_conn` — the canonical
-shared-logs-writer pattern (see brain.discard_session_context). TTL is enforced
-by created_at + DEFAULT_SIGNAL_TTL_HOURS at drain/reap, using the clock contract
-(iso_now to write, iso_cutoff to filter).
+shared-logs-writer pattern (see brain.discard_session_context). TTL is
+per-message: send() resolves it by ADDRESS (broadcast vs directed, config-
+tunable) and stamps `expires_at` via the clock contract (iso_now/iso_after);
+readers filter `expires_at > now` and the reaper deletes `expires_at <= now`.
 """
 import json
 import uuid
 
-from servers.clock import iso_now, iso_cutoff
+from servers.clock import iso_now, iso_after
 from servers.scales.self_channel import self_contract
+
+
+def _resolve_ttl_hours(brain, address):
+    """Per-message TTL in hours by address, with runtime config override.
+    Defaults are documented in self_contract (BROADCAST/DIRECTED_TTL_HOURS);
+    operators tune via brain.get_config('self_channel.{kind}_ttl_hours'). Coerced
+    to float so a string-valued config ('2') is honored."""
+    kind = self_contract.ttl_kind_for(address)
+    default = (self_contract.BROADCAST_TTL_HOURS if kind == 'broadcast'
+               else self_contract.DIRECTED_TTL_HOURS)
+    return float(brain.get_config('self_channel.%s_ttl_hours' % kind, default))
 
 
 def send(brain, from_session, address, body, intent=None, refs=None):
@@ -39,15 +51,22 @@ def send(brain, from_session, address, body, intent=None, refs=None):
     refs_json = json.dumps(list(refs or []))
     mid = uuid.uuid4().hex[:12]
     created_at = iso_now()
+    # Per-message TTL: resolved by address (broadcast ephemeral, directed waits)
+    # and stamped as a future expires_at. Readers filter on it; nothing
+    # recomputes a cutoff. The sub-ms skew vs created_at is irrelevant (TTL is
+    # hours) and nothing compares the two columns.
+    expires_at = iso_after(hours=_resolve_ttl_hours(brain, address))
     # Serialize the shared logs_conn write (mirrors brain.discard_session_context).
     with brain.write_lock:
         brain.logs_conn.execute(
             'INSERT INTO self_inflight '
-            '(id, from_session, address, intent, body, refs, created_at) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?)',
-            (mid, from_session or '', address, intent, body, refs_json, created_at))
+            '(id, from_session, address, intent, body, refs, created_at, expires_at) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            (mid, from_session or '', address, intent, body, refs_json,
+             created_at, expires_at))
         brain.logs_conn.commit()
-    return {'id': mid, 'address': address, 'intent': intent, 'created_at': created_at}
+    return {'id': mid, 'address': address, 'intent': intent,
+            'created_at': created_at, 'expires_at': expires_at}
 
 
 def resolve_to(brain, to):
@@ -84,6 +103,30 @@ def resolve_to(brain, to):
                   "Use its full session id, or self_presence to see who's live." % to)
 
 
+# The pending-inbox SELECT — the SINGLE source for drain (consume-once) and peek
+# (read-only). A row is pending for `to_session` when it's addressed to it
+# (directed or broadcast), unexpired, not its own broadcast, and not already
+# delivered. drain wraps this in write_lock + a self_delivered stamp; peek just
+# reads. One query means the two can't drift (they used to carry a "keep in
+# lockstep" note — this removes the hazard).
+_PENDING_INBOX_SQL = (
+    'SELECT id, from_session, intent, body, created_at FROM self_inflight '
+    'WHERE address IN (?, ?) AND expires_at > ? '
+    'AND from_session != ? '                       # not your own broadcast
+    'AND id NOT IN (SELECT message_id FROM self_delivered WHERE to_session = ?) '
+    'ORDER BY created_at')
+
+
+def _pending_rows(conn, to_session, now):
+    """Pending-inbox rows for `to_session` at time `now`, oldest first
+    (id, from_session, intent, body, created_at). Read-only; the single query
+    shared by drain_inbox and peek_inbox."""
+    directed, broadcast = self_contract.routes_at_turn(to_session)
+    return conn.execute(
+        _PENDING_INBOX_SQL,
+        (directed, broadcast, now, to_session, to_session)).fetchall()
+
+
 def drain_inbox(brain, to_session):
     """Consume-once: deliver undelivered, unexpired messages addressed to this
     stream (directed self:<id> + self:broadcast). Returns rendered messages,
@@ -91,18 +134,10 @@ def drain_inbox(brain, to_session):
     the self_delivered PK)."""
     if not to_session:
         return []
-    directed, broadcast = self_contract.routes_at_turn(to_session)
-    cutoff = iso_cutoff(hours=self_contract.DEFAULT_SIGNAL_TTL_HOURS)
+    now = iso_now()
     out = []
     with brain.write_lock:
-        rows = brain.logs_conn.execute(
-            'SELECT id, from_session, intent, body, created_at FROM self_inflight '
-            'WHERE address IN (?, ?) AND created_at > ? '
-            'AND from_session != ? '                     # don't hear your own broadcast
-            'AND id NOT IN (SELECT message_id FROM self_delivered WHERE to_session = ?) '
-            'ORDER BY created_at',
-            (directed, broadcast, cutoff, to_session, to_session)).fetchall()
-        now = iso_now()
+        rows = _pending_rows(brain.logs_conn, to_session, now)
         for mid, from_session, intent, body, created_at in rows:
             brain.logs_conn.execute(
                 'INSERT OR IGNORE INTO self_delivered (message_id, to_session, delivered_at) '
@@ -124,22 +159,15 @@ def peek_inbox(brain, to_session):
     """Read-only twin of drain_inbox: return pending (undelivered, unexpired)
     messages addressed to this stream WITHOUT consuming them.
 
-    Same filter as drain_inbox — directed + broadcast routes, TTL cutoff, not
-    your own broadcast, not already delivered — but NO self_delivered write and
-    NO write_lock. The /watch-live poller calls this every ~1.5s to detect
-    arrivals; the real consume-once drain still happens in drain_inbox at the
-    Stop hook. Keep this SELECT in lockstep with drain_inbox's."""
+    Shares the pending-inbox query with drain_inbox (_pending_rows) — same
+    filter (directed + broadcast routes, unexpired, not your own broadcast, not
+    already delivered) — but NO self_delivered write and NO write_lock. The
+    /watch-live poller calls this every ~1.5s to detect arrivals; the real
+    consume-once drain still happens in drain_inbox at the Stop hook."""
     if not to_session:
         return []
-    directed, broadcast = self_contract.routes_at_turn(to_session)
-    cutoff = iso_cutoff(hours=self_contract.DEFAULT_SIGNAL_TTL_HOURS)
-    rows = brain.logs_conn.execute(
-        'SELECT id, from_session, intent, body, created_at FROM self_inflight '
-        'WHERE address IN (?, ?) AND created_at > ? '
-        'AND from_session != ? '
-        'AND id NOT IN (SELECT message_id FROM self_delivered WHERE to_session = ?) '
-        'ORDER BY created_at',
-        (directed, broadcast, cutoff, to_session, to_session)).fetchall()
+    now = iso_now()
+    rows = _pending_rows(brain.logs_conn, to_session, now)
     return [{'id': mid, 'from': (from_session or '')[:8], 'intent': intent,
              'body': body, 'created_at': created_at}
             for mid, from_session, intent, body, created_at in rows]
@@ -166,10 +194,13 @@ def reap_expired(brain):
     """Delete messages past their TTL (the dead-letter sweep) + orphan delivery
     rows. Returns count reaped. Wired into the daemon's idle-maintenance tick
     (daemon_server._run_idle_maintenance); safe to call anytime."""
-    cutoff = iso_cutoff(hours=self_contract.DEFAULT_SIGNAL_TTL_HOURS)
+    now = iso_now()
     with brain.write_lock:
+        # expires_at <= now → dead. IS NULL → a pre-expires_at legacy row (column
+        # added to the existing courier); send() always stamps it, so a NULL can
+        # only be legacy — treat as dead and sweep it.
         cur = brain.logs_conn.execute(
-            'DELETE FROM self_inflight WHERE created_at <= ?', (cutoff,))
+            'DELETE FROM self_inflight WHERE expires_at <= ? OR expires_at IS NULL', (now,))
         reaped = cur.rowcount or 0
         brain.logs_conn.execute(
             'DELETE FROM self_delivered '
@@ -191,12 +222,12 @@ def outbox(brain, from_session, limit=20):
     drained so far."""
     if not from_session:
         return {'messages': []}
-    cutoff = iso_cutoff(hours=self_contract.DEFAULT_SIGNAL_TTL_HOURS)
+    now = iso_now()
     rows = brain.logs_conn.execute(
         'SELECT id, address, intent, body, created_at FROM self_inflight '
-        'WHERE from_session = ? AND created_at > ? '
+        'WHERE from_session = ? AND expires_at > ? '
         'ORDER BY created_at DESC LIMIT ?',
-        (from_session, cutoff, limit)).fetchall()
+        (from_session, now, limit)).fetchall()
     out = []
     for mid, address, intent, body, created_at in rows:
         delivered = brain.logs_conn.execute(

@@ -1382,7 +1382,10 @@ LOG_TABLES = {
     # Self channel — directed-signal courier (Phase 2a). One stream sends a
     # message addressed to another live stream (self:<sid>) or self:broadcast;
     # the recipient consumes it once via self_delivered. Pull-based in 2a.
-    # TTL enforced by created_at + DEFAULT_SIGNAL_TTL_HOURS at drain/reap.
+    # Per-message expires_at (resolved by address at send) enforces TTL — readers
+    # filter expires_at > now; reap deletes expires_at <= now OR IS NULL. Nullable
+    # so the ALTER ADD on the one existing courier succeeds; send() always sets
+    # it, so a NULL expiry only ever means a pre-column legacy row — reaped as dead.
     'self_inflight': {
         'create': """CREATE TABLE IF NOT EXISTS self_inflight (
             id TEXT PRIMARY KEY,
@@ -1391,7 +1394,8 @@ LOG_TABLES = {
             intent TEXT NOT NULL DEFAULT 'signal',
             body TEXT NOT NULL,
             refs TEXT DEFAULT '',
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            expires_at TEXT
         )""",
     },
     # One row per (message, recipient) — broadcast fans out, each recipient
@@ -1449,9 +1453,11 @@ LOG_INDEXES = [
     'CREATE INDEX IF NOT EXISTS idx_trace_scope_created ON trace_events(scale, ref_type, created_at)',
     # v9.2: session_state
     'CREATE INDEX IF NOT EXISTS idx_session_state_session ON session_state(session_id)',
-    # self channel — inbox drain filters by address; reap filters by created_at
+    # self channel — drain/peek filter by address + expires_at; reap by expires_at;
+    # outbox orders by created_at
     'CREATE INDEX IF NOT EXISTS idx_self_inflight_address ON self_inflight(address)',
     'CREATE INDEX IF NOT EXISTS idx_self_inflight_created ON self_inflight(created_at)',
+    'CREATE INDEX IF NOT EXISTS idx_self_inflight_expires ON self_inflight(expires_at)',
     'CREATE INDEX IF NOT EXISTS idx_self_delivered_to ON self_delivered(to_session)',
     # boot_renders — dashboard reads latest-per-session and newest-first
     'CREATE INDEX IF NOT EXISTS idx_boot_renders_session ON boot_renders(session_id)',
@@ -1477,6 +1483,11 @@ def ensure_logs_schema(conn):
         conn.execute(spec['create'])
 
     _add_column_if_missing(conn, 'trace_events', 'interaction_id', 'INTEGER')
+
+    # Per-message self-channel TTL: add expires_at to the one existing courier
+    # (the brain was never released — no fleet of DBs to migrate). send() stamps
+    # it on every new message; any legacy NULL row is swept by reap as dead.
+    _add_column_if_missing(conn, 'self_inflight', 'expires_at', 'TEXT')
 
     # Initial population for interaction_active — one-time migration.
     # For brains created before the active-version split, populate the pointer

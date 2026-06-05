@@ -100,10 +100,11 @@ def default_intent(address):
 # Holds a directed/broadcast live self-message from send until the recipient
 # pulls it into Observation, then it is consumed. The next_boot letter does NOT
 # live here — it is the encoded session arc, surfaced at boot.
-# created_at + DEFAULT_SIGNAL_TTL_HOURS enforces expiry at drain/reap — no
-# per-message expires_at in 2a (add one only if per-message TTL is ever needed).
-INFLIGHT_FIELDS = ("id", "from_session", "address", "intent", "body", "refs",
-                   "created_at")
+# Per-message expires_at (resolved by ADDRESS at send — see
+# signal._resolve_ttl_hours) enforces expiry: readers filter `expires_at > now`,
+# the reaper deletes `expires_at <= now`. Stamped via iso_after so it shares
+# iso_now's UTC-ISO format and stays lex-comparable. The authoritative column
+# list is the schema.py DDL (a field tuple here was unused — removed 2026-06-05).
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -139,11 +140,36 @@ DELIVERED_BODY_MAX = 1000          # per-message body, capped LOUDLY at delivery
 RECEIVED_BLOCK_MAX = 1800          # whole injected self-block, overflow named LOUDLY
 
 # ── POLICY DEFAULTS (tunable knobs; NOT truncation points) ──────────────
-DEFAULT_SIGNAL_TTL_HOURS = 24      # an undelivered live signal older than a day is dead (drain/reap filter)
+# TTL is per-message, resolved at send() by ADDRESS and stamped as expires_at
+# (signal.send → signal._resolve_ttl_hours). Defaults below are documented
+# here; runtime overrides via brain.get_config('self_channel.{kind}_ttl_hours').
+#   • broadcast — "who's live right NOW"; dies within the hour (≈ the
+#     ROSTER_LIVE_WINDOW_MIN + grace presence window). A stream booting later
+#     must NOT inherit a stale broadcast — the short TTL is that guard.
+#   • directed  — waits for ONE specific stream to come back; a day = "you'll
+#     see it when you next work today".
+# No `letter` category: the next_boot letter is the encoded arc surfaced at
+# boot, NOT a stored self_inflight row (see header), so nothing letter-shaped
+# is in the courier; intent='letter' to a live address is still a
+# directed/broadcast message and takes that address's TTL.
+# Time is WALL-CLOCK (iso_now/iso_after) — TTL measures REAL elapsed hours, and
+# cross-stream sends aren't on the eval-replay path; self_channel is
+# deliberately outside the conversation-time dirs the clock contract enforces.
+BROADCAST_TTL_HOURS = 1            # undelivered broadcast older than this is dead
+DIRECTED_TTL_HOURS = 24            # a directed message waits up to a day for its recipient
 ROSTER_ACTIVE_WINDOW_MIN = 5       # "active": acted this recently — reach freely, expect a reply
 ROSTER_LIVE_WINDOW_MIN = 30        # "dormant" ceiling: live but quiet (watch-mode asleep / operator away) — sees you next wake
 ROSTER_LOST_GRACE_MIN = 30         # grace past LIVE: a stream gone this recently is surfaced as "lost", not dropped
 PRESENCE_MAX_STREAMS = 3           # roster shows a count + top-K ranked, never enumerates all
+
+
+def ttl_kind_for(address):
+    """TTL category by delivery address: 'broadcast' (ephemeral live-
+    coordination) vs 'directed' (waits for one recipient). The only two
+    categories — the next_boot letter isn't a stored courier row, so it has no
+    TTL here; intent is only a render hint, never a TTL axis."""
+    return 'broadcast' if address == ADDR_BROADCAST else 'directed'
+
 
 # ── Phase 3 forward placeholder (NOT yet enforced) ──────────────────────
 # The boot-letter budget — designed when Phase 3 (the first-person letter)

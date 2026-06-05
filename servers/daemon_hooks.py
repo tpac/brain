@@ -519,6 +519,20 @@ def _hebbian_strengthen(brain, session_id, stop_counter):
                 pass  # last-resort safety; if even _log_error fails, swallow
 
 
+def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None):
+    """Append one S0 turn-trace, binding the per-turn invariants in ONE place:
+    chain (ctx.s0_chain()), scale ('s0'), and the session (ctx.session_id). The
+    four S0 turn events — user_message, assistant_message, heartbeat,
+    self_message — differ only in event_type / ref_type / summary / metadata;
+    everything else is turn-fixed. Routing them all through here keeps
+    session_id from being dropped — the self_message append once omitted it,
+    leaving cross-stream deliveries unattributable to the recipient session."""
+    brain._trace_dal.append(
+        chain_id=ctx.s0_chain(), scale='s0', session_id=ctx.session_id,
+        event_type=event_type, ref_type=ref_type, summary=summary,
+        metadata=metadata)
+
+
 def post_response_common(brain, session_id, user_message, assistant_response):
     """Shared post-response path: S0 traces, Hebbian strengthening, heartbeat,
     stop counter increment. Used by prod Stop hook and by the eval harness —
@@ -543,28 +557,22 @@ def post_response_common(brain, session_id, user_message, assistant_response):
     try:
         if is_conversational:
             recall_chain = ctx.s1r_chain()
-            brain._trace_dal.append(
-                chain_id=ctx.s0_chain(), scale='s0', event_type='K',
-                ref_type='user_message',
+            _s0_trace(
+                brain, ctx, event_type='K', ref_type='user_message',
                 summary=user_message[:200] if user_message else '',
                 metadata={'content': user_message[:4000] if user_message else '',
-                          'recall_chain': recall_chain} if user_message else None,
-                session_id=session_id)
-            brain._trace_dal.append(
-                chain_id=ctx.s0_chain(), scale='s0', event_type='delta',
-                ref_type='assistant_message',
+                          'recall_chain': recall_chain} if user_message else None)
+            _s0_trace(
+                brain, ctx, event_type='delta', ref_type='assistant_message',
                 summary=assistant_response[:200] if assistant_response else '',
-                metadata={'content': assistant_response[:4000]} if assistant_response else None,
-                session_id=session_id)
+                metadata={'content': assistant_response[:4000]} if assistant_response else None)
         else:
             # Heartbeat: wakeup re-arm, no real prompt. One observability marker
             # (off CONVERSATIONAL_REF_TYPES → never encoded). The peer message,
             # if any, is recorded separately as a self_message on drain.
-            brain._trace_dal.append(
-                chain_id=ctx.s0_chain(), scale='s0', event_type='K',
-                ref_type='heartbeat',
-                summary=(assistant_response[:200] or 'wakeup re-arm'),
-                metadata=None, session_id=session_id)
+            _s0_trace(
+                brain, ctx, event_type='K', ref_type='heartbeat',
+                summary=(assistant_response[:200] or 'wakeup re-arm'))
     except Exception as e:
         brain._log_error('trace_s0', e, 'post_response_common')
 
@@ -687,9 +695,8 @@ def hook_post_response_track(brain, args, graph_changes):
             from servers.scales.self_channel import signal as _self_signal
             _block, _n = _self_signal.drain_and_render(brain, session_id)
             if _n:
-                brain._trace_dal.append(
-                    chain_id=ctx.s0_chain(), scale='s0', event_type='K',
-                    ref_type='self_message',
+                _s0_trace(
+                    brain, ctx, event_type='K', ref_type='self_message',
                     summary='delivered %d self-message(s) via Stop block' % _n)
                 brain.save()
                 return {"output": "(stored + %s)" % encoding_status,

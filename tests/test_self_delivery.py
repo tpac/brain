@@ -84,6 +84,20 @@ class TestStopDelivery(BrainTestBase):
         """Regression: nothing pending → no block, normal output."""
         self.assertNotEqual(_stop(self.brain, 'FRESH').get('decision'), 'block')
 
+    def test_stop_trace_attributes_to_recipient_session(self):
+        """Regression (2026-06-05): the self_message delivery trace must carry
+        the recipient session_id. It was written empty while its three sibling
+        S0 appends passed it, so a session-scoped (dashboard) query couldn't see
+        the delivery. All four S0 turn-traces now bind session_id via _s0_trace —
+        a session-scoped query must return the delivery."""
+        _seed(self.brain, 'S', 'attributed tap')
+        self.assertEqual(_stop(self.brain, 'S').get('decision'), 'block')
+        events = self.brain.query_traces(session_id='S').get('events', [])
+        self_msgs = [e for e in events if e.get('ref_type') == 'self_message']
+        self.assertTrue(
+            self_msgs,
+            "self_message delivery trace not attributed to recipient session 'S'")
+
 
 class TestCrossHookConsumeOnce(BrainTestBase):
     needs_embedder = False
