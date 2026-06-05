@@ -37,26 +37,22 @@
 
 **Next-session priority order**:
 
-1. ~~v24 + scout v7 + quote v4 eval-decision~~ — **✅ RESOLVED 2026-05-30: ACTIVATED.** s1e v24 + s1_scout_facts v7 + s1_scout_quote v4 live in production (`d0fea6d`, `47f7018`; seeds synced). Eval basis: 9/10 targeted + 23/25 50-cell + a 2-item encode A/B (`build_corpus --interaction-override`) showing facts-scout v7 0→6 candidates + v24 encoding nodes v22 dropped. Residual, out of scope by design: the encoder filters low-stake / rejected-suggestion exchanges even when they hold a future question's answer (`ceb54acb`) — a stake-judgment design call, not a v24/v7 gap.
+1. **Render expansion at SURFACE_FORMAT** (~0.5-1 day, pending). The recall-side joint reactivation read shape — when a source-anchored node surfaces, expand its source_refs inline. Designed in `docs/EPISODIC-REFERENCES.md §8`; not built. Depends on enough v22-encoded nodes in production to measure the surface impact (start accumulating now). **[Verified 2026-05-30: the code path is entirely unbuilt — zero `source_ref` handling in `surface_contract.py` render code. This is ground-up implementation, NOT "almost done, waiting for data." The v24 accumulation only gates *measuring* impact after the code exists.]**
 
-2. **Render expansion at SURFACE_FORMAT** (~0.5-1 day, pending). The recall-side joint reactivation read shape — when a source-anchored node surfaces, expand its source_refs inline. Designed in `docs/EPISODIC-REFERENCES.md §8`; not built. Depends on enough v22-encoded nodes in production to measure the surface impact (start accumulating now). **[Verified 2026-05-30: the code path is entirely unbuilt — zero `source_ref` handling in `surface_contract.py` render code. This is ground-up implementation, NOT "almost done, waiting for data." The v24 accumulation only gates *measuring* impact after the code exists.]**
+2. **source_summary parallel-pathway recall scoring** (~0.5 day, pending). `docs/EPISODIC-REFERENCES.md §9.5` + decision 22. Add `source_summary` cohort to recall scoring as `max(legacy_weighted_sum, source_summary_score)`. Backwards compat by design.
 
-3. **source_summary parallel-pathway recall scoring** (~0.5 day, pending). `docs/EPISODIC-REFERENCES.md §9.5` + decision 22. Add `source_summary` cohort to recall scoring as `max(legacy_weighted_sum, source_summary_score)`. Backwards compat by design.
+3. **S2Healer source_refs cleanup** (`docs/EPISODIC-REFERENCES.md §10.6`, pending). Periodic scan for invalid trace_ids; archive orphan `co_anchored` edges when no shared trace remains.
 
-4. **S2Healer source_refs cleanup** (`docs/EPISODIC-REFERENCES.md §10.6`, pending). Periodic scan for invalid trace_ids; archive orphan `co_anchored` edges when no shared trace remains.
+4. **Path A ground-truth authoring** (~1.75h Tom-time, pending). 7 conversation templates scaffolded at `eval/ground_truth/` covering 5 strata (2 identity-bearing + 2 partnership voice + 1 technical correction + 1 methodology + 1 temporal). Each file has fillable YAML for ideal-node authoring. Once filled: targeted eval against ground truth (structural delta) joins the longmem oracle path (recall delta).
 
-5. **Path A ground-truth authoring** (~1.75h Tom-time, pending). 7 conversation templates scaffolded at `eval/ground_truth/` covering 5 strata (2 identity-bearing + 2 partnership voice + 1 technical correction + 1 methodology + 1 temporal). Each file has fillable YAML for ideal-node authoring. Once filled: targeted eval against ground truth (structural delta) joins the longmem oracle path (recall delta).
+5. **Phase B+ quote_fidelity substring validation** (~0.5 day, deferred) — bigger fix than the identical-strings check that shipped commit `d3f6307`. Requires threading conversation context to `brain_remember.remember()` so `user_raw_quote` can be substring-matched against user_messages window and `anchor_raw_quote` against agent_messages window.
 
-6. **Phase B+ quote_fidelity substring validation** (~0.5 day, deferred) — bigger fix than the identical-strings check that shipped commit `d3f6307`. Requires threading conversation context to `brain_remember.remember()` so `user_raw_quote` can be substring-matched against user_messages window and `anchor_raw_quote` against agent_messages window.
-
-7. **S2Healer stale-node extension** (~30min) — aspect-resolved detection for status-as-fact / plan-as-executed nodes.
+6. **S2Healer stale-node extension** (~30min) — aspect-resolved detection for status-as-fact / plan-as-executed nodes.
 
 ### Reviewer follow-ups (deferred from 2026-05-25 Phase B review)
 
 | ID | What | Effort | Status |
 |---|---|---|---|
-| **F3** | GraphDAL methods manage transactions inconsistently inside/around brain_batch. Root fix Option A (connection-bound `BatchAwareConnection.in_batch` flag + `commit_unless_batched()` gate; `commit` kwarg removed from 6 writers; `brain._batch_mode` deleted; locked by `tests/test_write_txn_discipline.py`) shipped 2026-05-30 on `dal-cleanup-2`. Interim guard at `dispatch_write.py:498` retained as belt-and-suspenders. See `docs/WRITE-TXN-ISOLATION-ROOTFIX.md`. | ~1 day | **shipped 2026-05-30** |
-| **F6** | Optional hex-format regex warning in `_validate_source_refs` | ~15 min | **shipped 2026-05-26** (commit `07ab3f1` Layer 1 validator) |
 | **F7** | Move `_SOURCE_REFS_SCHEMA` from `brain_mcp.py` to `contract.py` under new `JOIN_TABLE_FIELDS` category (parallel to STRUCTURAL / PROMOTED). Makes contract-sync test implicitly cover field registration. | ~45 min | open |
 
 ### v24 experimentation thread (active)
@@ -553,11 +549,6 @@ Priority bands:
 ---
 
 ## P4 — Operational backlog (was PHASE-B+1)
-
-### 🟠 HIGH
-
-#### ~~P4.1 — Encoding lock can hang forever (was B+1.2)~~ → **SHIPPED** (verified 2026-06-05)
-~~`daemon_hooks.py:456` acquires module-level `_encoding_lock` for the encoder background thread. If thread crashes before releasing, lock held forever; ALL subsequent encoding silently skips. Wrap acquire+spawn in try/finally. **20 min.**~~ Code-verified done: [daemon_hooks.py:635-672](../servers/daemon_hooks.py) acquires under an `acquired_for_spawn` flag and releases in a `finally` recovery block when ownership wasn't handed to the background thread, logging `encoding_lock_leak_recovered`. The thread's own `finally` releases on the normal path. (Line ref in the old item was stale — now ~635.)
 
 ### 🟡 MEDIUM
 

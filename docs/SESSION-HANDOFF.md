@@ -8,7 +8,7 @@
 
 ## ⚠️ READ THIS FIRST
 
-**This session (2026-06-05, on `claude/tender-margulis-ada39f`, not pushed):** doc reconciliation (struck already-shipped backlog items; dampening-cluster bug → P1.6) + four self-channel message fixes root-caused from a cross-stream investigation (a ~19h-old broadcast handshake reached a fresh, unrelated stream) — delivery-trace `session_id` attribution (`_s0_trace`), per-message TTL by address (broadcast 1h / directed 24h, config-tunable), drain/peek dedup (CR5), presence focus = latest conversational turn (CR3). `SELF-CHANNEL-DESIGN.md` synced. Detail: `docs/BACKLOG.md` 2026-06-05 capture.
+**Recently shipped (2026-06-05, pushed):** self-channel message fixes — delivery-trace `session_id` attribution, per-message TTL by address (broadcast 1h / directed 24h, config-tunable), drain/peek dedup, presence focus = latest conversational turn, S2 delta payload validation + loud truncation. Detail: `docs/BACKLOG.md` 2026-06-05 capture.
 
 Two arcs landed after the prior handoff was written, both on `main` (not pushed). The prior handoff predated them and listed the second as its top *open* thread — it's done:
 
@@ -46,8 +46,10 @@ The `absorb` wiring shipped (above). Deferred remainders in that doc: the **live
 ### DAL Cleanup Phases 4/5/6 (`docs/DAL-CLEANUP-PLAN.md`)
 Reads migration, missing DALs (incl. the incomplete `NodeDAL.purge` cascade — **a latent bug**), and the raw-SQL guardrail. Phase 4 gated on a SessionStateDAL resurrect-vs-delete decision. ⚠ a parallel stream has touched DAL — check presence / `git log` before driving.
 
-### Smaller 2026-06-04 cleanups (all itemized in BACKLOG)
-**A2** (watch-wake contract, above), **CR4** (`scale='s0'` predicate on `active_sessions_by_turn`), **CR5** (dedup byte-identical `peek_inbox`/`drain_inbox` SELECT), **CR6** (extend `validate_trace_metadata` to the 4 S2 delta ref_types), **B4** (CCD↔brain namespace bridge), **R1** (revise MCP-description rewrite — eval-gated), **presence read-lag** (F2b — boot-transient half).
+### Smaller cleanups (itemized in BACKLOG)
+**A2** (watch-wake contract, above), **CR4** (`scale='s0'` predicate on `active_sessions_by_turn`), **R1** (revise MCP-description rewrite — eval-gated), **presence read-lag** (F2b — boot-transient half).
+
+*B4 (CCD↔brain namespace bridge) — closed 2026-06-05: CCD and brain use independent session-id spaces with no robust shared key; comms stay in the brain id space, so there's no bridge to build. Optional per-session cwd/branch ergonomics parked.*
 
 ### Known recall bug — dampening cluster (BACKLOG P1.6)
 Synaptic-fatigue (per-session anti-repeat) + hub-dampening are broken post spread-activation migration. Four RED tests reproduce it (`test_fatigue_*`, `test_hub_dampening`), parked with the recall work since 2026-05-29. Detail in `docs/S2-GATING-AND-TEST-CLEANUP-HANDOFF.md` → "Parked work". Natural bundle with the recall-arc above.
@@ -66,7 +68,7 @@ Synaptic-fatigue (per-session anti-repeat) + hub-dampening are broken post sprea
 ## Priority docs
 1. This handoff
 2. `docs/EPISODIC-REFERENCES.md` — recall-side work + §13.6 gate (the standout open arc)
-3. `docs/BACKLOG.md` — broad open-item registry. **Append-only by policy** — verify any "open" item against code before picking it up; several were stale as of 2026-06-05 (P4.1, CR1, absorb-wiring all already shipped).
+3. `docs/BACKLOG.md` — broad open-item registry. Verify any "open" item against code before picking it up — the dated session captures are history and aren't always pruned when an item ships.
 4. `docs/SELF-CHANNEL-DESIGN.md` — self-channel phases 3/4
 5. `docs/S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md` — absorb live-merge remainders
 6. `docs/DAL-CLEANUP-PLAN.md` — DAL Phases 4/5/6
