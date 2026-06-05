@@ -1102,7 +1102,9 @@ function _applyLayout(mode, graphPct) {
     b.classList.toggle('active', b.dataset.layout === mode);
   });
 
-  bus.publish('live:layout', { mode, graphPct: pct });
+  // No bus event needed for the graph to resize — it observes its own
+  // container via a ResizeObserver (see graph.js init), which catches this
+  // grid-template change along with window resizes and divider drags.
 }
 
 function _restoreLayout() {

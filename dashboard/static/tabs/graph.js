@@ -601,10 +601,21 @@ export function resize() {
 // ── Lifecycle ─────────────────────────────────────────────────────────
 
 export function init() {
-  bus.subscribe('live:layout', () => {
-    requestAnimationFrame(resize);
-  });
   bus.subscribe('recall:event', _onRecallEvent);
+
+  // Keep the canvas matched to its container. ForceGraph3D does NOT observe
+  // its host element, so without this the canvas keeps whatever size it had
+  // at mount — widening the window left a narrow canvas in a wide pane.
+  // A ResizeObserver catches every container size change from one place
+  // (window resize, divider drag, layout-mode switch); resize() no-ops when
+  // the graph isn't mounted. Deferred via rAF so the observed box has
+  // settled before we read it and to avoid ResizeObserver feedback loops.
+  // Replaces the old `live:layout` bus handler, which only covered the
+  // divider/layout-mode subset and missed plain window resizes.
+  const host = document.getElementById('graph-3d');
+  if (host && 'ResizeObserver' in window) {
+    new ResizeObserver(() => requestAnimationFrame(resize)).observe(host);
+  }
 }
 
 export function activate() {
