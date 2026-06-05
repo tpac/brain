@@ -144,6 +144,19 @@ canvas { width: 100%; height: 100%; }
 .live-split.graph-last  .live-divider      { order: 1; }
 .live-split.graph-last  .live-pane--graph  { order: 2; }
 
+/* ── Graph hidden state ──────────────────────────────────────────────
+ * Default-off below GRAPH_AUTOLOAD_MIN_WIDTH (live.js). When the dashboard
+ * is embedded in a narrow pane (e.g. viewed inside Claude) the WebGL graph
+ * is never mounted, so its continuous 60fps render loop can't compete with
+ * the host for the GPU. Graph pane + divider collapse; the activity stream
+ * takes the full width. Toggle via the toolbar button (choice persists). */
+.live-split.graph-hidden .live-pane--graph,
+.live-split.graph-hidden .live-divider { display: none; }
+.live-split.graph-hidden {
+  grid-template-columns: 1fr !important;
+  grid-template-rows: 1fr !important;
+}
+
 /* ── Layout picker (4 orientation buttons) ──────────────────────────
  * Lives in .live-toolbar — a thin strip above .live-split. Was previously
  * position:absolute over the split, which overlapped the stream pane's
@@ -182,6 +195,24 @@ canvas { width: 100%; height: 100%; }
 }
 .live-layout-btn:hover { background: var(--bg-raised); color: var(--text-heading); }
 .live-layout-btn.active { background: var(--bg-raised); color: var(--accent-blue); }
+
+/* Graph show/hide toggle — wider than the glyph pickers (carries a text
+ * label) so it reads as the explicit "is the GPU-heavy graph mounted?"
+ * control. `.active` = graph currently mounted. */
+.live-graph-toggle {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-base);
+  color: var(--text-muted);
+  font-size: 11px;
+  height: 22px;
+  padding: 0 8px;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  line-height: 1;
+  font-family: inherit;
+}
+.live-graph-toggle:hover { background: var(--bg-raised); color: var(--text-heading); }
+.live-graph-toggle.active { color: var(--accent-blue); }
 
 /* ── Top stats bar ──────────────────────────────────────────────────── */
 

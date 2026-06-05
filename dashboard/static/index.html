@@ -63,6 +63,10 @@
       <button class="live-layout-btn" data-layout="graph-top"    title="Graph on top"      onclick="setLiveLayout('graph-top')">&#11154;</button>
       <button class="live-layout-btn" data-layout="graph-bottom" title="Graph on bottom"   onclick="setLiveLayout('graph-bottom')">&#11155;</button>
     </div>
+    <!-- Graph show/hide. Default state is width-driven (see live.js):
+         narrow/embedded views keep the WebGL graph torn down so its render
+         loop never spins. Label + state set by _applyGraphVisibility(). -->
+    <button class="live-graph-toggle" id="graph-toggle-btn" onclick="toggleGraph()" title="Show/hide 3D graph">Graph</button>
   </div>
   <div class="live-split" id="live-split">
     <div class="live-pane live-pane--graph">

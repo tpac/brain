@@ -1058,6 +1058,17 @@ const LAYOUTS = {
 let _layoutMode = LAYOUT_DEFAULT_MODE;
 let _graphPct = LAYOUT_DEFAULT_PCT;
 
+// Graph visibility — orthogonal to the 4 layout orientations. The default
+// is width-driven: below GRAPH_AUTOLOAD_MIN_WIDTH the dashboard is almost
+// certainly in a narrow/embedded pane (e.g. viewed inside Claude), where
+// the WebGL graph's continuous 60fps render loop competes with the host
+// for the GPU and makes the UI sluggish — so we don't mount it at all.
+// A wide browser window loads it as before. Once the operator toggles
+// explicitly, that persisted choice wins over the width default.
+const GRAPH_VISIBLE_KEY = 'dashboard.graphVisible';
+const GRAPH_AUTOLOAD_MIN_WIDTH = 1000;
+let _graphVisible = true;
+
 function _applyLayout(mode, graphPct) {
   const split = document.getElementById('live-split');
   if (!split) return;
@@ -1111,6 +1122,50 @@ function _persistLayout() {
     localStorage.setItem(LAYOUT_MODE_KEY, _layoutMode);
     localStorage.setItem(LAYOUT_PCT_KEY, String(_graphPct));
   } catch (e) { /* blocked storage → silently skip */ }
+}
+
+// ── Graph visibility ──────────────────────────────────────────────────
+
+// Resolve the initial visibility: an explicit persisted choice wins;
+// otherwise default by viewport width (narrow → off).
+function _restoreGraphVisibility() {
+  let visible;
+  try {
+    const saved = localStorage.getItem(GRAPH_VISIBLE_KEY);
+    if (saved === '1') visible = true;
+    else if (saved === '0') visible = false;
+  } catch (e) { /* localStorage blocked → fall through to width default */ }
+  if (visible === undefined) visible = window.innerWidth >= GRAPH_AUTOLOAD_MIN_WIDTH;
+  _graphVisible = visible;
+  _applyGraphVisibility();
+}
+
+// Reflect _graphVisible in the DOM: collapse/expand the split + sync the
+// toolbar button. Does NOT mount/destroy the graph — callers do that, so
+// this stays a pure view-sync (safe to call before the graph module is
+// ready).
+function _applyGraphVisibility() {
+  const split = document.getElementById('live-split');
+  if (split) split.classList.toggle('graph-hidden', !_graphVisible);
+  const btn = document.getElementById('graph-toggle-btn');
+  if (btn) {
+    btn.classList.toggle('active', _graphVisible);
+    btn.textContent = _graphVisible ? 'Hide graph' : 'Show graph';
+    btn.title = _graphVisible
+      ? 'Hide the 3D graph — frees the GPU render loop'
+      : 'Show the 3D graph';
+  }
+}
+
+// Toolbar toggle. Flips visibility, persists the explicit choice, then
+// mounts or fully tears down the WebGL graph so a hidden graph costs zero
+// GPU (teardown, not pause).
+export function toggleGraph() {
+  _graphVisible = !_graphVisible;
+  try { localStorage.setItem(GRAPH_VISIBLE_KEY, _graphVisible ? '1' : '0'); } catch (e) { /* blocked */ }
+  _applyGraphVisibility();
+  if (_graphVisible) graph.activate();   // mounts + sizes (300ms internal defer)
+  else graph.destroy();                  // releases context + render loop
 }
 
 // Public — called by the picker buttons via window.setLiveLayout.
@@ -1169,6 +1224,7 @@ export function init() {
   feed.innerHTML = '<div class="hook-placeholder" class="feed-empty">Waiting for brain activity...</div>';
 
   _restoreLayout();
+  _restoreGraphVisibility();
   _setupDivider();
 
   // Renderer subscribes here once. The graph module subscribes to the
@@ -1257,7 +1313,11 @@ export function init() {
 export function activate() {
   // Live owns the graph now — drive its activate() so the 3D scene mounts
   // (first time) or resizes (subsequent). Polls auto-activate via activeWhen.
-  try { graph.activate(); } catch (e) { console.error('[live] graph activate failed:', e); }
+  // Skip entirely when the graph is hidden (narrow/embedded view) so the
+  // WebGL loop never spins; toggleGraph() mounts it on demand.
+  if (_graphVisible) {
+    try { graph.activate(); } catch (e) { console.error('[live] graph activate failed:', e); }
+  }
 }
 
 export function deactivate() {

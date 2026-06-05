@@ -626,3 +626,12 @@ export function deactivate() {
   // 3D scene keeps animating in the background — cheap; re-activating
   // a paused scene introduces a visible re-warmup.
 }
+
+// Public teardown — frees the WebGL context, VRAM, and the render loop
+// entirely (not paused — gone). Used by Live's graph-visibility toggle so
+// a hidden graph costs zero GPU. Re-showing routes back through activate()
+// → loadGraph3D(), which refetches since graph3dData is nulled here.
+export function destroy() {
+  _destroyGraph();
+  graph3dData = null;
+}

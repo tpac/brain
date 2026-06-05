@@ -147,6 +147,7 @@ window.switchTab             = switchTab;
 window.toggleOverflowMenu    = toggleOverflowMenu;
 window.switchFeed            = live.switchFeed;
 window.setLiveLayout         = live.setLiveLayout;
+window.toggleGraph           = live.toggleGraph;
 window.onSessionFilterChange = live.onSessionFilterChange;
 window.pinRecallToGraph      = live.pinRecallToGraph;
 window.filterByScale         = live.filterByScale;
