@@ -142,9 +142,9 @@ class TestPresenceCountsWatchers(BrainTestBase):
     wake envelope."""
     needs_embedder = False
 
-    def _turn(self, sid, ref_type, summary, updated_at=None):
+    def _turn(self, sid, ref_type, summary, updated_at=None, event_type='K'):
         self.brain._trace_dal.append(
-            chain_id='s0-%s-0' % sid[:8], scale='s0', event_type='K',
+            chain_id='s0-%s-0' % sid[:8], scale='s0', event_type=event_type,
             ref_type=ref_type, summary=summary, session_id=sid)
         if updated_at is not None:
             self.brain.logs_conn.execute(
@@ -182,6 +182,19 @@ class TestPresenceCountsWatchers(BrainTestBase):
         self.assertIsNotNone(row, "heartbeat keeps the watcher present")
         self.assertEqual(row['focus'], '',
                          "a task-notification must not leak into a watcher's focus")
+
+    def test_assistant_message_can_be_focus(self):
+        # Tom (2026-06-05): focus is the latest CONVERSATIONAL turn — user OR
+        # assistant — so a watcher's own last reply can be the focus. Here the
+        # assistant turn is newer than the last user prompt, so it wins.
+        self._turn('asstFocus', 'user_message', 'old user prompt',
+                   updated_at=iso_cutoff(minutes=5))
+        self._turn('asstFocus', 'assistant_message', 'shipped the TTL fix',
+                   event_type='delta')   # assistant_message is an (s0, delta) trace
+        rows = self.brain.present_streams(exclude_session='other', window_min=30, limit=10)
+        focus = {r['session_id']: r['focus'] for r in rows}.get('asstFocus')
+        self.assertEqual(focus, 'shipped the TTL fix',
+                         "latest conversational turn wins, even when it's the assistant")
 
 
 if __name__ == '__main__':

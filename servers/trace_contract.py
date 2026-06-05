@@ -186,6 +186,13 @@ CONVERSATIONAL_REF_TYPES = tuple(
     rt for rt, conv in S0_CONVERSATIONAL_INCOMING.items() if conv
 ) + ("assistant_message",)
 
+# A wakeup ignite (e.g. a background-task notification) arrives as turn CONTENT,
+# not a distinct ref_type: it runs recall, so it's recorded as a `user_message`
+# (conversational) even though it's an ENVELOPE, not work. Presence focus skips
+# any conversational turn whose summary starts with this marker. One constant so
+# the skip is defined ONCE, not reproduced as a scattered SQL literal.
+WAKE_ENVELOPE_MARKER = "<task-notification>"
+
 
 # ── CHAIN ID CONVENTIONS ──
 # chain_id groups related O/K/Δ/outcome events.
