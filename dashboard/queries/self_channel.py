@@ -27,12 +27,14 @@ from ..query import safe_query
 def query_messages(conn, hours: int = 48, limit: int = 200):
     """The courier log: every in-flight self-message + its delivery fan-out.
 
-    self_inflight holds un-reaped messages (TTL ≈ 24h, so this naturally shows
-    recent traffic; older messages are reaped by the daemon's idle sweep and
-    survive only as s0 `self_message` traces). Newest first."""
+    self_inflight holds un-reaped messages. TTL is now per-message (broadcast ~1h
+    / directed ~24h, by address) enforced via `expires_at`; the daemon's idle reap
+    deletes expired rows (they survive only as s0 `self_message` traces), so this
+    is effectively the live courier. `expires_at` shows each message's death time.
+    Newest first."""
     cutoff = utc_cutoff(hours=hours)
     rows = conn.execute(
-        "SELECT id, from_session, address, intent, body, refs, created_at "
+        "SELECT id, from_session, address, intent, body, refs, created_at, expires_at "
         "FROM self_inflight WHERE created_at > ? ORDER BY created_at DESC LIMIT ?",
         (cutoff, limit)).fetchall()
 
@@ -62,6 +64,7 @@ def query_messages(conn, hours: int = 48, limit: int = 200):
             "body": r[4] or '',
             "refs": refs,
             "created_at": r[6],
+            "expires_at": r[7],
             "delivered": delivered.get(mid, []),
         })
     return out

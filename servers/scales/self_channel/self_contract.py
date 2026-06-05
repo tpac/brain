@@ -103,9 +103,8 @@ def default_intent(address):
 # Per-message expires_at (resolved by ADDRESS at send — see
 # signal._resolve_ttl_hours) enforces expiry: readers filter `expires_at > now`,
 # the reaper deletes `expires_at <= now`. Stamped via iso_after so it shares
-# iso_now's UTC-ISO format and stays lex-comparable.
-INFLIGHT_FIELDS = ("id", "from_session", "address", "intent", "body", "refs",
-                   "created_at", "expires_at")
+# iso_now's UTC-ISO format and stays lex-comparable. The authoritative column
+# list is the schema.py DDL (a field tuple here was unused — removed 2026-06-05).
 
 
 # ═══════════════════════════════════════════════════════════════
