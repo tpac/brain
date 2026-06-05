@@ -2,11 +2,13 @@
 
 **Living current-state doc.** When a new session meaningfully updates it, copy the prior version to `docs/archive/session-handoffs/SESSION-HANDOFF-{date}.md` first, then prune to current.
 
-**Last refreshed:** 2026-06-05 (doc-reconciliation pass — verified backlog/handoff claims against code; several "open" items were already shipped and are corrected below). Prior version (self-channel rules-of-engagement substrate, 2026-05-31) archived to `docs/archive/session-handoffs/SESSION-HANDOFF-2026-05-31-self-channel.md`.
+**Last refreshed:** 2026-06-05 (doc reconciliation + self-channel message fixes — delivery-trace `session_id` attribution, per-message TTL by address, drain/peek dedup [CR5], presence-focus fix [CR3]; backlog/handoff verified against code). Prior version (self-channel rules-of-engagement substrate, 2026-05-31) archived to `docs/archive/session-handoffs/SESSION-HANDOFF-2026-05-31-self-channel.md`.
 
 ---
 
 ## ⚠️ READ THIS FIRST
+
+**This session (2026-06-05, on `claude/tender-margulis-ada39f`, not pushed):** doc reconciliation (struck already-shipped backlog items; dampening-cluster bug → P1.6) + four self-channel message fixes root-caused from a cross-stream investigation (a ~19h-old broadcast handshake reached a fresh, unrelated stream) — delivery-trace `session_id` attribution (`_s0_trace`), per-message TTL by address (broadcast 1h / directed 24h, config-tunable), drain/peek dedup (CR5), presence focus = latest conversational turn (CR3). `SELF-CHANNEL-DESIGN.md` synced. Detail: `docs/BACKLOG.md` 2026-06-05 capture.
 
 Two arcs landed after the prior handoff was written, both on `main` (not pushed). The prior handoff predated them and listed the second as its top *open* thread — it's done:
 

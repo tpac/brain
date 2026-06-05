@@ -12,7 +12,7 @@ Shipped + reviewed (Sonnet + Opus) + silent-error-audited + full suite green:
 - **Phase 0** — S0 `self_message` correspondent marker + `self_contract`
 - **Phase 1** — presence: `self_presence` (roster) + `self_peek` — commit `ff12524`
 - **Phase 2a** — directed signal courier: `self_send` / `self_inbox`, consume-once, broadcast fan-out, TTL/reap — commit `31a2632`
-- **Phase 2b** — delivery-into-Observation, **live-verified 2026-05-30**: a sent signal auto-drains into the recipient's Observation at its next **PreToolUse(Edit/Write)** (via `hookSpecificOutput.additionalContext`) or **Stop** (via `decision:block`), consume-once. Commits `0c2dc5a` (first cut, on_prompt) → `aa366f7` (pulled the wrong channel) → `0de7b9c` (PreToolUse + Stop — the channels that actually surface).
+- **Phase 2b** — delivery-into-Observation, **live-verified 2026-05-30**: a sent signal auto-drains into the recipient's Observation, consume-once. History: `0c2dc5a` (first cut, on_prompt) → `aa366f7` (pulled the wrong channel) → `0de7b9c` (PreToolUse + Stop). **Now Stop-only — C1 (2026-06-04, `364269f`)** removed the PreToolUse `additionalContext` leg (the model consistently missed it); **Stop `decision:block` is the sole path.**
 
 **Channel lesson (learned the hard way — see "Connect to hooks"):** the first 2b cut delivered at on_prompt (`pre_response_recall.py`), but on_prompt (a) overflowed the inject spill cap (`_MAX_INJECT_CHARS`) — prepending past it makes Claude Code spill the whole inject to a file Anchor never reads — and (b) is the weakest channel anyway. Removed. Then: PreToolUse **approve + `reason` does NOT reach the model** (silent on allow); `hookSpecificOutput.additionalContext` **does**. `HOOKS.md` was stale on both. Verified live: a seeded signal surfaced in a `Write`'s feedback.
 
@@ -82,18 +82,21 @@ surfaces to Claude*, not just which event fires):
 | **Stop `decision:block` + `reason`** | **yes** (forces the turn to continue) |
 | PostToolUse `additionalContext` | yes (next to tool result) |
 
-Delivery is split by **salience + consume-once**, NOT by message type (one pool;
-whichever hook fires first wins):
+Delivery is **Stop-only** (C1, 2026-06-04): one pool, consume-once, surfaced at
+the single channel that reliably reaches the model.
 
-- **PreToolUse(Edit/Write) → `hook_pre_edit`** — drain the inbox and emit the
-  rendered block as `hookSpecificOutput.additionalContext` (the channel that
-  surfaces on allow). The high-salience "interrupt before you act" landing; it's
-  a pure drain (no Haiku/recall) so edits don't slow. **Primary** delivery point.
-  *Bash is NOT a delivery point* — `pre_bash_safety` regex-pre-screens and only
-  calls the daemon on destructive commands.
-- **Stop → `hook_post_response_track`** — if a tap is still pending (no tool
-  fired this turn), return `decision:block` with the block as `reason`. The
-  **backstop** for prose-only turns. Consume-once → blocks at most once per batch.
+- **Stop → `hook_post_response_track`** — drain the inbox and, if a tap is
+  pending, return `decision:block` with the rendered block as `reason`. A pure
+  drain (no Haiku/recall). Consume-once → blocks at most once per batch (the
+  next stop finds nothing and allows). **The SOLE delivery path.** Each delivery
+  writes the s0 `self_message` marker carrying the recipient `session_id`, so
+  the dashboard can attribute it (2026-06-05; all four S0 turn-traces now bind
+  session_id via one `_s0_trace` helper).
+- **PreToolUse(Edit/Write) — removed (C1, 2026-06-04).** It emitted the block as
+  `hookSpecificOutput.additionalContext`, which the model consistently *missed*
+  (the tap went into context it didn't act on) and which also starved the
+  reliable Stop block. Bash was never a delivery point — `pre_bash_safety`
+  regex-pre-screens and only calls the daemon on destructive commands.
 - **on_prompt (`pre_response_recall.py`) — removed.** It overflowed the inject
   spill cap and is the weakest channel; with consume-once it would also steal
   signals from the high-salience hooks. Reserved for low-urgency *passive* use
@@ -147,8 +150,12 @@ CREATE TABLE self_inflight (
     intent       TEXT NOT NULL,   -- letter | signal (render hint)
     body         TEXT NOT NULL,
     refs         TEXT,            -- JSON: node ids / files (anti-drift tether)
-    created_at   TEXT NOT NULL    -- TTL = created_at + DEFAULT_SIGNAL_TTL_HOURS,
-);                                --   enforced at drain/reap (no per-message expires_at)
+    created_at   TEXT NOT NULL,
+    expires_at   TEXT             -- per-message TTL by address (broadcast 1h /
+                                  --   directed 24h, config-tunable via
+                                  --   self_channel.{kind}_ttl_hours); drain/peek/
+                                  --   reap filter on it. NULL = pre-column legacy.
+);
 CREATE TABLE self_delivered (    -- consume-once + broadcast fan-out
     message_id   TEXT NOT NULL,
     to_session   TEXT NOT NULL,
@@ -317,7 +324,7 @@ claim.
 | **0 Marker + contract** | `self_message` on S0; self_contract (naming, address, render, limits) | ✅ shipped |
 | **1 Presence** | `present_streams` roster + `peek` (`session_context_for`); MCP `self_presence`/`self_peek` | ✅ shipped — `ff12524` |
 | **2a Directed signal** | `self_inflight`/`self_delivered` courier; send/drain/reap; MCP `self_send`/`self_inbox` | ✅ shipped — `31a2632` |
-| **2b Delivery-into-Observation** | auto-drain at **PreToolUse(Edit/Write)** (`hookSpecificOutput.additionalContext`) + **Stop** (`decision:block`), consume-once; on_prompt removed (spill + weak); Bash excluded (safety pre-screen skips the daemon) | ✅ shipped + live-verified — `0de7b9c` |
+| **2b Delivery-into-Observation** | auto-drain at **Stop** (`decision:block`), consume-once — **Stop-only since C1 (`364269f`)**; PreToolUse `additionalContext` leg removed (model missed it + starved Stop); on_prompt removed (spill + weak); Bash excluded (safety pre-screen skips the daemon) | ✅ shipped + live-verified — `0de7b9c`, `364269f` |
 | **3 Letter** | S1E first-person arc (deferred voice pass) + boot smart-surface | pending |
 | **4 Remember self-turns** | mark correspondent on self-originated S0 turns so they encode/recall like operator turns; **also: trace the send side, render `refs` as a light recall** | pending |
 
