@@ -1,11 +1,13 @@
 # S2 Consolidation — Locked Nodes Are Absorbers, Not Absorbed
 
-**Status:** ✅ Prompt v6 SHIPPED + active (2026-05-31, commit `714ee68`) — the
-behavioral fix below (≥2 locked → KEEP, no churn-revise, contradiction → escalate,
-merge-candidate alert in the edge description) is live. The deeper "actually merge
-the dupes" path is the new **`absorb`** op (shipped as a primitive, not yet wired
-into the consolidation encoder) — see `docs/S2-ABSORB-OP-DESIGN.md`. Consolidation
-is sacred → prompt changes remain **eval-gated**.
+**Status:** ✅ Locked rules SHIPPED — now in **v7** (2026-06-04, merged `1277a57`),
+which uses the `absorb` op, so the "actually merge the dupes" path is now WIRED (not
+just a primitive). The locked behavioral rules below (≥2 locked → KEEP, no churn-revise,
+contradiction → escalate, locked is always the survivor never absorbed) are live AND
+eval-tested: corpus cluster 20 — four locked O/K/Δ duplicates, `pre_class=likely_consolidate`,
+cosine 1.0 (maximum merge pressure) → KEEP, correct in v7. See
+`docs/S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md` §0. Consolidation is sacred → prompt
+changes remain **eval-gated**.
 
 ---
 

@@ -1,11 +1,23 @@
 # S2 `absorb` — a first-class lossless merge primitive
 
-**Status:** ✅ PRIMITIVE SHIPPED (2026-05-31). `brain.absorb()` + the `absorb`
-brain_batch op are built, tested (16 tests), committed to main (`d3a0fa1`). The
-DAL cleanup it was blocked on has landed (`061cb40`). **NOT yet wired into the
-consolidation encoder** — that + the live merge is the next session.
+**Status:** ✅ SHIPPED + WIRED (2026-06-04). The `brain.absorb()` primitive (16 tests)
+AND the consolidation encoder now use it: `s2_consolidation_enrichment` **v7 active**
++ decoder **lever A** (`_pre_classify` cross-type → `needs_judgment`) +
+`suppression_relations` += {`corrects`, `supersedes`}, merged to main (`1277a57`).
+K=3 ground-truth corpus: correct 10→15, under-merge 8→3, over-merge 1, lossless 86%.
+Full result + the matched-pair finding (prompt + decoder must ship together):
+`docs/S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md` §0.
+**Deferred:** the live real-pair merge (`96d2fdf8`/`426ae3cd`, needs operator unlock),
+Track 1b (locked-refusal log→warning + alert), edge-direction fidelity (Known issue #2).
+Lever A goes live in the running daemon on next **restart**.
 
 ---
+
+> **✅ 2026-06-04 — the "NEXT SESSION" plan below is largely DONE.** Item 1 (wire
+> consolidation → v7) and item 2 (preservation gate: `eval/absorb_preservation_probe.py`
+> + `tests/test_absorb_preservation.py`) shipped; Known issue #1 (rejection-table SKIP
+> mis-classification) is FIXED (commit `351bec6`). Remaining: item 3 (live merge), item 4
+> (Track 1b), Known issue #2 (edge-direction). Section retained as the design record.
 
 ## ⚠️ NEXT SESSION — START HERE
 

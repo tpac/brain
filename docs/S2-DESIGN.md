@@ -44,6 +44,8 @@ These units observe the graph itself — what S1 produced.
 | **Δ** | Merged nodes, archived redundants, updated edges |
 | **Autonomy** | LLM judgment → signal queue → Tom reviews |
 
+**Implemented (2026-06-04):** the encoder emits the `absorb` op (transfer-by-default — source_refs / edges / access / KV carry automatically); the decoder's `_pre_classify` routes cross-type clusters to `needs_judgment` (not a blanket keep) so the claim test decides. See `S2-ABSORB-OP-DESIGN.md` + `S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md` §0.
+
 **Impact:** Directly improves recall quality. Duplicate nodes split the recall signal — a query that should find one strong node instead finds three weak copies. The 37 flagged duplicates (21 compaction boundary + 16 session handoff) are proof this is needed.
 
 **Example:** S1E encodes "hook timeout should be 5s" three sessions in a row because each S1E run can't see it already exists in the catalog window. S2 sees all three, merges into one, archives the redundant two.
