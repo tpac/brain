@@ -1043,7 +1043,7 @@ class BrainRememberMixin:
 
         Three ways to call (all equivalent):
           revise(node_id, content="new text", reason="why")
-          revise(node_id, updates={"confidence": 0.9, "keywords": "new kw"}, reason="why")
+          revise(node_id, updates={"confidence": 0.9}, reason="why")
           revise(node_id, situation="When debugging", reason="adding situation")
 
         Behavior contract:
@@ -1100,12 +1100,19 @@ class BrainRememberMixin:
         # Top-level fields live on the nodes table (updatable via SQL).
         # Immutable fields are silently skipped with a warning.
         NODES_TABLE_FIELDS = {
-            'title', 'type', 'keywords', 'confidence', 'emotion',
+            'title', 'type', 'confidence', 'emotion',
             'emotion_label', 'project', 'personal', 'personal_context',
             'critical', 'evolution_status', 'encoding_source',
             'archived',  # allows revise(archived=True) for consolidation
         }
         IMMUTABLE = {'id', 'created_at', 'locked'}
+        # nodes.keywords was dropped in schema v28. The param is an accepted
+        # no-op on remember(); mirror that here. Without this, keywords ∈
+        # NODES_TABLE_FIELDS made revise(keywords=...) crash on a SELECT/UPDATE
+        # of the gone column (it was advertised in this docstring); removing it
+        # from the set alone would silently resurrect it as a KV field instead.
+        # Drop it loudly — surfaced in the return dict's `warnings`.
+        DEPRECATED_FIELDS = {'keywords'}
 
         # ── Filter skipped fields (immutable, locked-archive) ──
         # Skipped fields don't write to nodes/KV/SQL and don't appear in
@@ -1114,6 +1121,9 @@ class BrainRememberMixin:
         skipped_fields = []  # list of (field, reason)
         writable = {}
         for field, value in all_updates.items():
+            if field in DEPRECATED_FIELDS:
+                skipped_fields.append((field, 'deprecated'))
+                continue
             if field in IMMUTABLE:
                 self._log_error('revise_immutable',
                                 ValueError('Cannot revise immutable field: %s' % field),
@@ -1320,6 +1330,8 @@ class BrainRememberMixin:
                 warnings.append('immutable field skipped: %s' % field)
             elif _reason == 'locked_or_critical':
                 warnings.append('archive blocked (locked/critical): %s' % field)
+            elif _reason == 'deprecated':
+                warnings.append('deprecated field ignored: %s' % field)
 
         # fields_updated: what was actually written. Excludes skipped fields.
         # Includes 'content' if it was passed (popped from writable earlier).

@@ -975,14 +975,18 @@ class TraceDAL:
         # purely on heartbeats is the most reachable stream (B2, 2026-06-04).
         live_types = CONVERSATIONAL_REF_TYPES + ('heartbeat',)
         live_ph = ','.join('?' * len(live_types))
+        # scale='s0' is a behavior-preserving predicate (every conversational +
+        # heartbeat ref_type is s0-only per trace_contract.REF_TYPES) that lets
+        # the query use idx_trace_scope_created (scale, ref_type, created_at) —
+        # the composite leads with scale, so without the equality it can't engage.
         rows = self.conn.execute(
             "SELECT t.session_id, MAX(t.created_at) AS last_turn, "
             "  (SELECT u.summary FROM trace_events u "
-            "   WHERE u.session_id = t.session_id AND u.ref_type IN (%s) "
+            "   WHERE u.scale = 's0' AND u.session_id = t.session_id AND u.ref_type IN (%s) "
             "     AND u.summary NOT LIKE ? "
             "   ORDER BY u.created_at DESC LIMIT 1) AS focus "
             "FROM trace_events t "
-            "WHERE t.ref_type IN (%s) "
+            "WHERE t.scale = 's0' AND t.ref_type IN (%s) "
             "  AND t.created_at > ? AND t.session_id != ? "
             "GROUP BY t.session_id "
             "ORDER BY last_turn DESC LIMIT ?" % (conv_ph, live_ph),
