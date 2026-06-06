@@ -1,0 +1,134 @@
+[
+  {
+    "rank": 1,
+    "src": "B1-13",
+    "class": "learned-preference / scar",
+    "trace_id": "00004764",
+    "s0_chain": "s0-2df9bf99-1",
+    "recall_chain": "s1r-2df9bf99-1",
+    "session_id": "2df9bf99-183c-475e-89a9-1e8f653aa3dc",
+    "created_at": "2026-04-17T13:53:09.706533+00:00",
+    "prompt": "Without using any tools. Just from your current context. Can you tell me when did you learn that i like to see call stacks before big changes?"
+  },
+  {
+    "rank": 2,
+    "src": "B1-20",
+    "class": "cross-project (EX.CO)",
+    "trace_id": "0000584f",
+    "s0_chain": "s0-1c7be23c-7",
+    "recall_chain": "s1r-1c7be23c-7",
+    "session_id": "1c7be23c-66ab-4af8-aa6d-0b6b064babaf",
+    "created_at": "2026-04-21T18:09:40.664487+00:00",
+    "prompt": "I basically need a deal management layer cause i have all other capabilities. I'm thinking of a component that our ad server calls every auction and all the logic that is specific to the campaign sits there. Things like:\n\n* Campaign object with all params\n* Targeting logic\n* Pacing logic \n* Moderation / brand safety\n* what more aspects do I need (assuming I have a full adserver that can also do things)\n\nMaybe it can be a 'dumb down' version of our ad server without replicating an entire functionality and scale of an ad server."
+  },
+  {
+    "rank": 3,
+    "src": "B2-9",
+    "class": "prior-decision (dreams paused)",
+    "trace_id": "00005b20",
+    "s0_chain": "s0-eba17631-30",
+    "recall_chain": "s1r-eba17631-30",
+    "session_id": "eba17631-1caf-4f2c-a4ef-245a132f1862",
+    "created_at": "2026-04-22T17:59:11.407218+00:00",
+    "prompt": "I dont think Dream is still operating. it shouldnt.\nAlso, Please increase max size to 10.\nPlease check S2 Healer job, im surprised we keep having so many nodes without fields."
+  },
+  {
+    "rank": 4,
+    "src": "B2-27",
+    "class": "recurring-incident recall",
+    "trace_id": "00001f59",
+    "s0_chain": "s0-53733dfb-14",
+    "recall_chain": "s1r-53733dfb-14",
+    "session_id": "53733dfb-c2ad-43bd-a4c1-5bab25abcc3a",
+    "created_at": "2026-04-08T16:26:25.556026+00:00",
+    "prompt": "ive forced killed the python process cause the embedding leaked again"
+  },
+  {
+    "rank": 5,
+    "src": "B2-21",
+    "class": "identity / emotional continuity",
+    "trace_id": "0000180f",
+    "s0_chain": "s0-4b01c092-48",
+    "recall_chain": "s1r-4b01c092-48",
+    "session_id": "4b01c092-c028-42af-b644-3df28ee95cba",
+    "created_at": "2026-04-07T03:33:30.775241+00:00",
+    "prompt": "great.\nLet's commit push to origin update files if relevant and encode your feelings about this session"
+  },
+  {
+    "rank": 6,
+    "src": "B1-16",
+    "class": "prior-decision recall",
+    "trace_id": "00001116",
+    "s0_chain": "s0-b1537394-6",
+    "recall_chain": "s1r-b1537394-6",
+    "session_id": "b1537394-b021-4912-bad1-1d20dcddef1a",
+    "created_at": "2026-04-06T18:03:32.752949+00:00",
+    "prompt": "yes lets drop dead tables. I'm not sure how we can really stop Daemon with all the safety autostarts we have. \nWe probably need a systematic way to do that"
+  },
+  {
+    "rank": 7,
+    "src": "B1-1",
+    "class": "prior-research recall",
+    "trace_id": "00004a22",
+    "s0_chain": "s0-5092e709-5",
+    "recall_chain": "s1r-5092e709-5",
+    "session_id": "5092e709-b5ea-4269-9e8f-959dbedcbaf9",
+    "created_at": "2026-04-17T19:21:59.661802+00:00",
+    "prompt": "After you're done with that:\nCheck our implemention and check 2 models, pros and cons: Nomic Embed Text v1.5 / EmbeddingGemma -300M and what would be different than our implementation, enviorement should stay simple and easy to install"
+  },
+  {
+    "rank": 8,
+    "src": "B1-17",
+    "class": "design recall",
+    "trace_id": "0000366f",
+    "s0_chain": "s0-8c4cc185-9",
+    "recall_chain": "s1r-8c4cc185-9",
+    "session_id": "8c4cc185-5e00-4b0a-b86e-73f093993b29",
+    "created_at": "2026-04-13T22:39:51.485177+00:00",
+    "prompt": "you dont pull community nodes to it right?"
+  },
+  {
+    "rank": 9,
+    "src": "B1-24",
+    "class": "convention recall",
+    "trace_id": "84fec633",
+    "s0_chain": "s0-3ce74143-14",
+    "recall_chain": "s1r-3ce74143-14",
+    "session_id": "3ce74143-e7b1-4670-b390-de58865f23b7",
+    "created_at": "2026-05-30T15:38:09.856950+00:00",
+    "prompt": "Do we have some standard for error logs on all hooks?"
+  },
+  {
+    "rank": 10,
+    "src": "B2-4",
+    "class": "deprecation recall",
+    "trace_id": "00000c43",
+    "s0_chain": "s0-b1537394-8",
+    "recall_chain": "s1r-b1537394-8",
+    "session_id": "b1537394-b021-4912-bad1-1d20dcddef1a",
+    "created_at": "2026-04-06T13:09:28.687911+00:00",
+    "prompt": "we sort of deprecated remember_lesson\nwhat is that test? do we need to add new things to it?"
+  },
+  {
+    "rank": 11,
+    "src": "EXCO-recall",
+    "class": "cross-session EX.CO recall (174fd960 class)",
+    "trace_id": "0000d43d",
+    "s0_chain": "s0-cfb74766-1",
+    "session_id": "cfb74766-0eb8-417a-a950-78c922f9b090",
+    "created_at": "2026-05-20T03:40:22.024874+00:00",
+    "recall_chain": "s1r-cfb74766-1",
+    "prompt": "what did we do on the last session we work on ex.co?"
+  },
+  {
+    "rank": 12,
+    "src": "EXCO-recall",
+    "class": "EX.CO entity recall (people names)",
+    "trace_id": "0000d45f",
+    "s0_chain": "s0-cfb74766-4",
+    "session_id": "cfb74766-0eb8-417a-a950-78c922f9b090",
+    "created_at": "2026-05-20T03:48:53.633833+00:00",
+    "recall_chain": "s1r-cfb74766-4",
+    "prompt": "Do you remember any name from people working at ex.co?"
+  }
+]

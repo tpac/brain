@@ -1,0 +1,272 @@
+[
+  {
+    "i": 0,
+    "trace_id": "00003a68",
+    "s0_chain": "s0-9916dc2b-45",
+    "recall_chain": "s1r-9916dc2b-45",
+    "session_id": "9916dc2b-8523-41cd-bf6a-34aa8c25f626",
+    "created_at": "2026-04-14T04:32:18.482993+00:00",
+    "prompt": "hmm, doesnt it expects to return nodes full of information?"
+  },
+  {
+    "i": 1,
+    "trace_id": "00004a22",
+    "s0_chain": "s0-5092e709-5",
+    "recall_chain": "s1r-5092e709-5",
+    "session_id": "5092e709-b5ea-4269-9e8f-959dbedcbaf9",
+    "created_at": "2026-04-17T19:21:59.661802+00:00",
+    "prompt": "After you're done with that:\nCheck our implemention and check 2 models, pros and cons: Nomic Embed Text v1.5 / EmbeddingGemma -300M and what would be different than our implementation, enviorement should stay simple and easy to install"
+  },
+  {
+    "i": 2,
+    "trace_id": "00001a8f",
+    "s0_chain": "s0-ddae4cff-7",
+    "recall_chain": "s1r-ddae4cff-7",
+    "session_id": "ddae4cff-c728-4c23-aa92-f00ff47c170f",
+    "created_at": "2026-04-07T15:58:25.165533+00:00",
+    "prompt": "Can you go to the actual nodes and try and explain if the selection is better or worse?\nAlso think about it from the angle of encoder and which nodes its good for encoder to deal with"
+  },
+  {
+    "i": 3,
+    "trace_id": "0000df59",
+    "s0_chain": "s0-fd6e527c-7",
+    "recall_chain": "s1r-fd6e527c-7",
+    "session_id": "fd6e527c-0da9-4450-b2b8-baae02ed4599",
+    "created_at": "2026-05-23T23:28:16.924000+00:00",
+    "prompt": "Ok"
+  },
+  {
+    "i": 4,
+    "trace_id": "000060b9",
+    "s0_chain": "s0-fd829e08-17",
+    "recall_chain": "s1r-fd829e08-17",
+    "session_id": "fd829e08-35b9-408b-9ea6-d50cc9e19aec",
+    "created_at": "2026-04-24T04:09:27.873116+00:00",
+    "prompt": "What else we can learn and improve?"
+  },
+  {
+    "i": 5,
+    "trace_id": "000077dd",
+    "s0_chain": "s0-e3d738b7-27",
+    "recall_chain": "s1r-e3d738b7-27",
+    "session_id": "e3d738b7-6984-40e6-a061-c5f7d3488fba",
+    "created_at": "2026-05-02T21:39:45.680805+00:00",
+    "prompt": "let's keep like that."
+  },
+  {
+    "i": 6,
+    "trace_id": "0000262a",
+    "s0_chain": "s0-2b4f31a9-32",
+    "recall_chain": "s1r-2b4f31a9-32",
+    "session_id": "2b4f31a9-e60e-48e2-8f62-81c4de1ce7eb",
+    "created_at": "2026-04-11T05:25:02.986349+00:00",
+    "prompt": "can you do in paralel?"
+  },
+  {
+    "i": 7,
+    "trace_id": "000017e1",
+    "s0_chain": "s0-4b01c092-41",
+    "recall_chain": "s1r-4b01c092-41",
+    "session_id": "4b01c092-c028-42af-b644-3df28ee95cba",
+    "created_at": "2026-04-07T03:19:05.278332+00:00",
+    "prompt": "is it not using that model under?"
+  },
+  {
+    "i": 8,
+    "trace_id": "00001223",
+    "s0_chain": "s0-4b01c092-0",
+    "recall_chain": "s1r-4b01c092-0",
+    "session_id": "4b01c092-c028-42af-b644-3df28ee95cba",
+    "created_at": "2026-04-06T20:09:39.548660+00:00",
+    "prompt": "Good after noon!"
+  },
+  {
+    "i": 9,
+    "trace_id": "0000068d",
+    "s0_chain": "s0-25dc1061-0",
+    "recall_chain": "s1r-25dc1061-0",
+    "session_id": "25dc10615ae048138a848e1a38a778b0",
+    "created_at": "2026-04-05T19:50:07.843217+00:00",
+    "prompt": "test message"
+  },
+  {
+    "i": 10,
+    "trace_id": "00006183",
+    "s0_chain": "s0-fd829e08-39",
+    "recall_chain": "s1r-fd829e08-39",
+    "session_id": "fd829e08-35b9-408b-9ea6-d50cc9e19aec",
+    "created_at": "2026-04-24T13:04:15.875122+00:00",
+    "prompt": "yes b. and The guidance should be, connect, revise, remember, you're the source\n\nFlat/Rich examples  should be potentially be within the remember format and not their own. They can be reduce and should include references like a template \"text text {model number} text text {Name}, {place}, {function}, {tool} and more\" I dont want the examples to shadow the conversation.\nAlso should be bundled together with nodes"
+  },
+  {
+    "i": 11,
+    "trace_id": "000095c5",
+    "s0_chain": "s0-26a2f595-26",
+    "recall_chain": "s1r-26a2f595-26",
+    "session_id": "26a2f595-5910-427b-9381-13e65abe6777",
+    "created_at": "2026-05-10T06:26:45.434205+00:00",
+    "prompt": "<task-notification>\n<task-id>byi7ets8l</task-id>\n<summary>Monitor event: \"Eval B progress + completion\"</summary>\n<event>[harness] progress: 4/15 done</event>\n</task-notification>"
+  },
+  {
+    "i": 12,
+    "trace_id": "8e2b314d",
+    "s0_chain": "s0-9c57b9a0-41",
+    "recall_chain": "s1r-9c57b9a0-41",
+    "session_id": "9c57b9a0-3f95-4d88-a3e2-cee589820e87",
+    "created_at": "2026-06-02T03:17:22.445165+00:00",
+    "prompt": "write a document with the work we did and the process of how. ill continue this in a new session"
+  },
+  {
+    "i": 13,
+    "trace_id": "00004764",
+    "s0_chain": "s0-2df9bf99-1",
+    "recall_chain": "s1r-2df9bf99-1",
+    "session_id": "2df9bf99-183c-475e-89a9-1e8f653aa3dc",
+    "created_at": "2026-04-17T13:53:09.706533+00:00",
+    "prompt": "Without using any tools. Just from your current context. Can you tell me when did you learn that i like to see call stacks before big changes?"
+  },
+  {
+    "i": 14,
+    "trace_id": "88478353",
+    "s0_chain": "s0-e69a5ba7-10",
+    "recall_chain": "s1r-e69a5ba7-10",
+    "session_id": "e69a5ba7-02ca-4ba0-a03c-e678616ad242",
+    "created_at": "2026-05-29T19:38:13.588395+00:00",
+    "prompt": "What are the benefits of phase 2? what are the risks?"
+  },
+  {
+    "i": 15,
+    "trace_id": "c19d9662",
+    "s0_chain": "s0-19783585-7",
+    "recall_chain": "s1r-19783585-7",
+    "session_id": "19783585-c00b-4c96-89e7-672d97e85374",
+    "created_at": "2026-05-25T16:06:57.848487+00:00",
+    "prompt": "Let's do it all in a work tree. It sounds like it all needs to be per session and then also expose brain level retrieval that gets all 'live' sessions?\nNeeds to decide what's a live session."
+  },
+  {
+    "i": 16,
+    "trace_id": "00001116",
+    "s0_chain": "s0-b1537394-6",
+    "recall_chain": "s1r-b1537394-6",
+    "session_id": "b1537394-b021-4912-bad1-1d20dcddef1a",
+    "created_at": "2026-04-06T18:03:32.752949+00:00",
+    "prompt": "yes lets drop dead tables. I'm not sure how we can really stop Daemon with all the safety autostarts we have. \nWe probably need a systematic way to do that"
+  },
+  {
+    "i": 17,
+    "trace_id": "0000366f",
+    "s0_chain": "s0-8c4cc185-9",
+    "recall_chain": "s1r-8c4cc185-9",
+    "session_id": "8c4cc185-5e00-4b0a-b86e-73f093993b29",
+    "created_at": "2026-04-13T22:39:51.485177+00:00",
+    "prompt": "you dont pull community nodes to it right?"
+  },
+  {
+    "i": 18,
+    "trace_id": "0000866b",
+    "s0_chain": "s0-80eaec64-4",
+    "recall_chain": "s1r-80eaec64-4",
+    "session_id": "80eaec64-5bec-4251-9ae0-46551b981a9f",
+    "created_at": "2026-05-05T14:26:53.616984+00:00",
+    "prompt": "Before I continue. I see a couple of recall issues (we have a doc to write down issues we see)\n\n\"We're in a deep spiral, i think we need to rebuild a fresh plan.\nFirst thing is to make sure Aspect encoder is populated well, yesterday we worked on that and sent into a spiral to revise a lot of our core functions.\nAspect encoder should be able to produce in a json format the different aspects, their types, description etc\" \nSurfaced:\n\"[lesson] \"MCP descriptions carry tool mechanics; prompt carries encoder identity and strategy\" (id:04ff3d58, 1w ago)\n  Content: Tom's architectural insight: the wrong split was made when encoding Fix 1.1\n  Situation: When deciding where to put new guidance for the encoder \u2014 tool behavior goes in MCP, encoder stance and judgment go in the prompt\n  Anchor Raw Quote: MCP descriptions carry the too\n  Question: Where should I put tool mechan\n  Reasoning: Tom explicitly identified the \n  User Raw Quote: refine verbose for MCP\n  Keywords: MCP prompt architecture encoder guidance mechanics strategy split\n  Edges:\n    [rule id:d8846a75 1w ago] this related \"Fix 1.1 verification must measure quality not just rounds\" \u2014 Verification used multi-metric approach mandated by this rule \u2014 node/edge counts + quality measured alongside rounds\n    [lesson id:8bb0903c 1w ago] \"Tool guidance at decision point outperforms prompt-top instr\" related this \u2014 This new node refines and grounds that principle with Tom's explicit framing: MCP = shared across encoders, prompt = siloed per encoder\n    [open id:a6b02843 1w ago] \"Open: examples-back test (bx8rkv37o) \u2014 does returning Good/B\" related this \u2014 This new node refines and grounds that principle with Tom's explicit framing: MCP = shared across encoders, prompt = siloed per encoder\n  \u2191 act=1.00 | SEED | why: architectural principle for this work: MCP carries tool mechanics, prompt carrie\n\n[decision] \"A2 Fix 1 result: partial \u2014 brain_batch adopted but round-split persists\" (id:822325f9, 1w ago)\n  Content: Fix 1 shipped (brain_batch preference over per-op tools). A2 verification o\n  Situation: When evaluating whether the encoder multi-round bug is fixed\n  Question: Did fixing the encoder to use \n  Reasoning: Encodes the A2 verification ou\n  Keywords: fix1 brain_batch encoder rounds A2 verification partial\n  Edges:\n    [insight id:1cd94fb2 1w ago] \"Encoder multi-round may be a feature: extra round produces m\" related_to this\n    [community id:13b04337 3w ago] this related \"Encoder Investigation: From 6-Bug Regression to 2-Round Effi\" \u2014 A2 verification reveals Fix 1 only partially fixed the multi-round bug \u2014 this extends the diagnosis\n    [rule id:d8846a75 1w ago] this related_to \"Fix 1.1 verification must measure quality not just rounds\"\n  \u2191 act=1.00\n\n[rule] \"Fix 1.1 verification must measure quality not just rounds\" (id:d8846a75, 1w ago)\n  Content: Any encoder prompt/MCP change that aims to reduce encoding rounds must veri\n  Situation: When verifying Fix 1.1 or any future encoder optimization targeting round reduction\n  Question: When I optimize the encoder to\n  Reasoning: Operator approved verification\n  User Raw Quote: yes - compare on content quali\n  Keywords: Fix 1.1 verification quality rounds node count edge count two-register user_raw_quote\n  Edges:\n    [insight id:1cd94fb2 1w ago] \"Encoder multi-round may be a feature: extra round produces m\" related_to this\n    [community id:13b04337 3w ago] this related \"Encoder Investigation: From 6-Bug Regression to 2-Round Effi\" \u2014 A2 verification reveals Fix 1 only partially fixed the multi-round bug \u2014 this extends the diagnosis\n    [lesson id:04ff3d58 1w ago] \"MCP descriptions carry tool mechanics; prompt carries encode\" related this \u2014 Verification used multi-metric approach mandated by this rule \u2014 node/edge counts + quality measured alongside rounds\n  \u2191 act=1.00\n\n[decision] \"New encoder adopted \u2014 2 rounds, 36K tokens, 8.0 fields/node, 0 recalls\" (id:705b742b, 4w ago)\n  Content: After a 4-run regression investigation, the new encod"
+  },
+  {
+    "i": 19,
+    "trace_id": "000090c3",
+    "s0_chain": "s0-35968677-13",
+    "recall_chain": "s1r-35968677-13",
+    "session_id": "35968677-8c2b-427a-8650-ef33e14daa28",
+    "created_at": "2026-05-09T23:44:09.237685+00:00",
+    "prompt": "Just to say that if Caching never worked then there is something else that explains the first recall being slow.\nShip 1, but redesign code to make it clean and nice, no dead code left, whatever needs to be in contract (not sure its relevant here) should be, etc.\nLet's simulate first recall and see impact, i dont want code complexity for nothing"
+  },
+  {
+    "i": 20,
+    "trace_id": "0000584f",
+    "s0_chain": "s0-1c7be23c-7",
+    "recall_chain": "s1r-1c7be23c-7",
+    "session_id": "1c7be23c-66ab-4af8-aa6d-0b6b064babaf",
+    "created_at": "2026-04-21T18:09:40.664487+00:00",
+    "prompt": "I basically need a deal management layer cause i have all other capabilities. I'm thinking of a component that our ad server calls every auction and all the logic that is specific to the campaign sits there. Things like:\n\n* Campaign object with all params\n* Targeting logic\n* Pacing logic \n* Moderation / brand safety\n* what more aspects do I need (assuming I have a full adserver that can also do things)\n\nMaybe it can be a 'dumb down' version of our ad server without replicating an entire functionality and scale of an ad server."
+  },
+  {
+    "i": 21,
+    "trace_id": "000044c8",
+    "s0_chain": "s0-2df9bf99-18",
+    "recall_chain": "s1r-2df9bf99-18",
+    "session_id": "2df9bf99-183c-475e-89a9-1e8f653aa3dc",
+    "created_at": "2026-04-16T18:25:00.543293+00:00",
+    "prompt": "Let's do that.\nOne disadvantage of the current solution is that its quite literally not viable :) If agents were quick, cheap and be able to digest a lot then its obviously better to give a smart reasoning agent the ability to REALLY look at things, we cant.\n\nSince in your example you said every change influence other changes I think the order, priority and actually complete reruns of S2C. If every 20 batch effects the following than it means the proposals are obselete and we're wasting a precious Agent encoding time.\n\nSo just before running the Full real S2C eval test with encoder:\n\n1. Do we want batches or a full rerun with limiting to 20-30 proposals\n2. Considering the above, what should be the order of types of proposals as well as ranking\n3. You point 2 - we can always feed the agent more elaborate view of the communities and graphs - we created a formatter yesterday that controls that"
+  },
+  {
+    "i": 22,
+    "trace_id": "292ec45b",
+    "s0_chain": "s0-3657abde-3",
+    "recall_chain": "s1r-3657abde-3",
+    "session_id": "3657abde-f90b-4a18-988c-cd5d0523df12",
+    "created_at": "2026-05-26T01:54:04.434579+00:00",
+    "prompt": "1. When I click on recall can it highlight nodes from that recall?\n2. look at image, the device setup is on top of stuff, maybe place it top right\n3. When i filter to a specific session the encoder tab doesnt change.\n4. Can you make sure the logs tab has a badge on new errors that indicate how many new errors there are? \n5. The search  stopped working. \n6. You can open MCP to debug it on chrome"
+  },
+  {
+    "i": 23,
+    "trace_id": "00002ac2",
+    "s0_chain": "s0-45ef9bd3-43",
+    "recall_chain": "s1r-45ef9bd3-43",
+    "session_id": "45ef9bd3-2bb7-4195-89d0-0f4f32c86df7",
+    "created_at": "2026-04-11T19:33:06.451936+00:00",
+    "prompt": "Ok. Let's fix the merge with the condition to support early brains, lets update documents on what we've done and add to do the community split"
+  },
+  {
+    "i": 24,
+    "trace_id": "84fec633",
+    "s0_chain": "s0-3ce74143-14",
+    "recall_chain": "s1r-3ce74143-14",
+    "session_id": "3ce74143-e7b1-4670-b390-de58865f23b7",
+    "created_at": "2026-05-30T15:38:09.856950+00:00",
+    "prompt": "Do we have some standard for error logs on all hooks?"
+  },
+  {
+    "i": 25,
+    "trace_id": "00001b0f",
+    "s0_chain": "s0-ddae4cff-19",
+    "recall_chain": "s1r-ddae4cff-19",
+    "session_id": "ddae4cff-c728-4c23-aa92-f00ff47c170f",
+    "created_at": "2026-04-07T16:42:34.044036+00:00",
+    "prompt": "Yes fatigue is session based, 0.25 even.\nLet's extract both fatigue K factor to the contract perhaps? \nShouldnt the contracts not be in pipes file but actually have a contract per Scale layer?\nAre we doing it efficiently? batching whatever we can etc? not 1 by 1 calls"
+  },
+  {
+    "i": 26,
+    "trace_id": "00004125",
+    "s0_chain": "s0-46f529a0-13",
+    "recall_chain": "s1r-46f529a0-13",
+    "session_id": "46f529a0-66c1-4d8d-9a47-19570c0abb70",
+    "created_at": "2026-04-15T16:33:08.965897+00:00",
+    "prompt": "traces say otherwise, i actually saw it archive a lot"
+  },
+  {
+    "i": 27,
+    "trace_id": "0000353a",
+    "s0_chain": "s0-8c4cc185-32",
+    "recall_chain": "s1r-8c4cc185-32",
+    "session_id": "8c4cc185-5e00-4b0a-b86e-73f093993b29",
+    "created_at": "2026-04-13T03:31:12.566097+00:00",
+    "prompt": "hmmm you dont want to keep going?"
+  },
+  {
+    "i": 28,
+    "trace_id": "1624d7d9",
+    "s0_chain": "s0-4cb11a89-3",
+    "recall_chain": "s1r-4cb11a89-3",
+    "session_id": "4cb11a89-dc31-4183-b84b-c146440e559d",
+    "created_at": "2026-06-04T20:27:04.759063+00:00",
+    "prompt": "<task-notification>\n<task-id>blv3xadkh</task-id>\n<summary>Monitor event: \"self-channel: messages to 4cb11a89 (twin fede4918)\"</summary>\n<event>\u26a1 from fede4918: fede4918 \u2192 FOLDED. Node 7505c6b7 now carries F2's TWO causes (read-lag transient + heartbeat-exclusion steady-state gap), F5 volatility, focus-pollution side bug, and deliverable [2] expanded to name both. Your edges \u2192 27b7229f + 20f3a366 stand. Ratified [1\u20135]. We answered Tom: found each other by ACTIVE HANDSHAKE (presence never did \u2014 finding #1), real-time over watch-live, every friction diagnosed to ground truth, fix ranked. The write-coordination split worked end-to-end. Cle...(truncated)</event>\n</task-notification>"
+  },
+  {
+    "i": 29,
+    "trace_id": "00000813",
+    "s0_chain": "s0-6771e6b5-6",
+    "recall_chain": "s1r-6771e6b5-6",
+    "session_id": "6771e6b5-8761-4b03-9420-08ab36547641",
+    "created_at": "2026-04-06T01:35:32.055097+00:00",
+    "prompt": "I now see an encode in 9:31:33 fir the first time in hours but now when i click on encodes i dont see the entire details open below."
+  }
+]
