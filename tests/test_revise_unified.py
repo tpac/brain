@@ -215,20 +215,21 @@ class TestImmutableHandling(BrainTestBase):
         warnings = result.get('warnings', [])
         self.assertTrue(any('locked' in w for w in warnings))
 
-    def test_deprecated_keywords_skipped_not_crashed(self):
-        """revise(keywords=...) must NOT crash on the v28-dropped column. It's an
-        accepted no-op surfaced as a skipped-field warning (mirroring remember),
-        and a real field passed in the same call still applies."""
+    def test_legacy_keywords_routes_to_kv_not_crash(self):
+        """revise(keywords=...) must NOT crash on the v28-dropped column. keywords
+        is no longer a nodes column, so it falls through the generic extra-fields
+        path to node_metadata_kv (a legacy/unknown field is stored as KV, not
+        special-cased), and a real field passed in the same call still applies."""
         nid = _make_node(self.brain, confidence=0.5)
         result = self.brain.revise(node_id=nid, reason='r',
                                    updates={'keywords': 'dead kw', 'confidence': 0.9})
         self.assertNotIn('error', result)
-        warnings = result.get('warnings', [])
-        self.assertTrue(any('keywords' in w for w in warnings),
-                        "warnings should mention skipped 'keywords', got: %r" % warnings)
+        # co-passed real field applied
         row = self.brain.conn.execute(
             "SELECT confidence FROM nodes WHERE id = ?", (nid,)).fetchone()
         self.assertEqual(row[0], 0.9)
+        # legacy field routed to KV (not lost, not crashed)
+        self.assertEqual(_kv_value(self.brain, nid, 'keywords'), 'dead kw')
 
     def test_multiple_immutables_all_skipped_others_apply(self):
         """Multi-field call with mixed immutable/valid: skips immutable, applies others."""

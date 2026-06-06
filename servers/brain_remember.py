@@ -1099,24 +1099,20 @@ class BrainRememberMixin:
             'archived',  # allows revise(archived=True) for consolidation
         }
         IMMUTABLE = {'id', 'created_at', 'locked'}
-        # nodes.keywords was dropped in schema v28. The param is an accepted
-        # no-op on remember(); mirror that here. Without this, keywords ∈
-        # NODES_TABLE_FIELDS made revise(keywords=...) crash on a SELECT/UPDATE
-        # of the gone column (it was advertised in this docstring); removing it
-        # from the set alone would silently resurrect it as a KV field instead.
-        # Drop it loudly — surfaced in the return dict's `warnings`.
-        DEPRECATED_FIELDS = {'keywords'}
 
         # ── Filter skipped fields (immutable, locked-archive) ──
         # Skipped fields don't write to nodes/KV/SQL and don't appear in
         # deltas. They surface in the return dict's `warnings` list so
         # callers can detect partial-success without parsing logs.
+        # Any field that is neither a nodes column nor immutable falls through
+        # to node_metadata_kv as an extra field (the generic extra-fields path,
+        # same as remember()). A legacy/unknown field (e.g. the v28-dropped
+        # `keywords`) is therefore stored as KV, not skipped — no longer a crash
+        # (keywords is out of NODES_TABLE_FIELDS, so no SELECT/UPDATE of the gone
+        # column) and intentionally not special-cased.
         skipped_fields = []  # list of (field, reason)
         writable = {}
         for field, value in all_updates.items():
-            if field in DEPRECATED_FIELDS:
-                skipped_fields.append((field, 'deprecated'))
-                continue
             if field in IMMUTABLE:
                 self._log_error('revise_immutable',
                                 ValueError('Cannot revise immutable field: %s' % field),
@@ -1323,8 +1319,6 @@ class BrainRememberMixin:
                 warnings.append('immutable field skipped: %s' % field)
             elif _reason == 'locked_or_critical':
                 warnings.append('archive blocked (locked/critical): %s' % field)
-            elif _reason == 'deprecated':
-                warnings.append('deprecated field ignored: %s' % field)
 
         # fields_updated: what was actually written. Excludes skipped fields.
         # Includes 'content' if it was passed (popped from writable earlier).
