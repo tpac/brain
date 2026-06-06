@@ -71,6 +71,10 @@ class BrainDaemon:
         # Brain.__init__. Daemon acquires it via _locked_exec / autosave.
         self._pool = ThreadPoolExecutor(max_workers=THREAD_POOL_SIZE)
         self._restart_count = 0
+        # Only the instance that actually binds the port writes the PID file —
+        # so a duplicate that defers (DuplicateDaemonError) never claims it, and
+        # _cleanup never unlinks the incumbent's PID file out from under it.
+        self._wrote_pid = False
 
     # Hook dispatch table: hook_name → (is_write, marks_dirty)
     #   is_write     — True takes _write_lock; False runs concurrently
@@ -127,9 +131,10 @@ class BrainDaemon:
             self._log("Another daemon holds the singleton lock%s. Exiting duplicate." % pid_hint)
             return
 
-        # Write PID, register cleanup, install signal handlers (once)
-        with open(self.pid_path, 'w') as f:
-            f.write(str(os.getpid()))
+        # Register cleanup + signal handlers (once). The PID file is NOT written
+        # here — it's claimed only after _bind_socket() succeeds (see _run), so a
+        # duplicate that defers before binding never overwrites or (via _cleanup)
+        # unlinks the incumbent's PID file.
         signal.signal(signal.SIGTERM, self._handle_signal)
         signal.signal(signal.SIGINT, self._handle_signal)
         signal.signal(signal.SIGHUP, self._handle_signal)
@@ -189,6 +194,13 @@ class BrainDaemon:
 
         # Bind socket with retry (handles TIME_WAIT after crash)
         self._bind_socket()
+
+        # We own the port now — claim the PID file. Done here (not in start())
+        # so a duplicate that deferred before binding never wrote it, and
+        # _cleanup only unlinks a PID file this process actually wrote.
+        with open(self.pid_path, 'w') as f:
+            f.write(str(os.getpid()))
+        self._wrote_pid = True
 
         self.running = True
         self._restart_count = 0  # Reset on successful start
@@ -891,17 +903,21 @@ class BrainDaemon:
         except Exception as e:
             self._log_shutdown_error('queue_shutdown', e)
         self._close_socket()
-        for path in [self.pid_path, get_status_path()]:
-            try:
-                if os.path.exists(path):
-                    os.unlink(path)
-            except Exception as _ue:
-                # Stale PID/status files cause "Another daemon running"
-                # errors on next boot. Silent failure here hides that
-                # class of bug. Stderr is the right channel (we may
-                # not have a brain handle at this point in shutdown).
-                print('[brain-daemon] failed to remove %s: %s' %
-                      (path, _ue), file=sys.stderr)
+        # Only the instance that became the serving daemon (wrote the PID after
+        # binding) owns these files. A duplicate that deferred before binding
+        # must NOT unlink the incumbent's PID/status out from under it.
+        if getattr(self, '_wrote_pid', False):
+            for path in [self.pid_path, get_status_path()]:
+                try:
+                    if os.path.exists(path):
+                        os.unlink(path)
+                except Exception as _ue:
+                    # Stale PID/status files cause "Another daemon running"
+                    # errors on next boot. Silent failure here hides that
+                    # class of bug. Stderr is the right channel (we may
+                    # not have a brain handle at this point in shutdown).
+                    print('[brain-daemon] failed to remove %s: %s' %
+                          (path, _ue), file=sys.stderr)
         try:
             # Idempotent: _cleanup runs more than once (explicit _shutdown +
             # atexit). A closed file object is still truthy, so the bare

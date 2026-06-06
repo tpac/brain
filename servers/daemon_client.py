@@ -149,7 +149,11 @@ def _code_changed(resp: dict) -> bool:
     when either fingerprint is unknown, so an indeterminate signal never
     triggers a restart."""
     daemon_fp = resp.get("result", {}).get("code_fingerprint", "")
-    current_fp = _code_fingerprint()
+    # Use the import-time constant, not a fresh _code_fingerprint() — this
+    # process is short-lived (hook/CLI) so its code can't change underneath it,
+    # and recomputing now re-reads every servers/**/*.py on each call (several
+    # MB) where ensure_daemon calls this 2-3× per invocation.
+    current_fp = _CODE_FINGERPRINT
     return bool(current_fp != "unknown" and daemon_fp and daemon_fp != current_fp)
 
 
@@ -216,11 +220,15 @@ def ensure_daemon(db_path: str) -> bool:
         # safe — spawning a rival when one already exists IS the Errno-48 orphan
         # storm (2026-06-05).
         #
-        # (a) A daemon is already responsive. We only reach here because it runs
-        #     stale code (a healthy current-code daemon returned at the re-check
-        #     above), so kickstart failing means THIS context couldn't reach
-        #     launchd — not that the daemon is unmanaged. Defer to the incumbent;
-        #     never kill it and spawn a competitor.
+        # (a) A daemon is still responsive RIGHT NOW. Re-ping here — the `resp`
+        #     from the pre-kickstart re-check is stale: `kickstart -k` SIGKILLs
+        #     the incumbent before respawning, so a kickstart that failed/timed
+        #     out AFTER the kill leaves the port free. Only defer to an incumbent
+        #     that is actually still up (deferring on the stale snapshot would
+        #     report "ready" with nothing serving). If it IS still up, kickstart
+        #     failing means THIS context couldn't reach launchd, not that the
+        #     daemon is unmanaged — defer, never spawn a competitor.
+        resp = _can_connect()
         if resp.get("ok"):
             sys.stderr.write(
                 "[brain-daemon] launchd kickstart unavailable but a daemon is "

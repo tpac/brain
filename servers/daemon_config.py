@@ -79,13 +79,17 @@ def get_agent_name() -> str:
 # ─── Code Fingerprinting ───
 
 def _fingerprint_dir(path: str) -> str:
-    """Content hash (md5: name+bytes) of top-level *.py in `path`. Testable."""
+    """Recursive content hash (md5) of every *.py under `path`, keyed by
+    RELATIVE path + NUL-separated bytes. Recursive so changes in subpackages
+    (scales/, db_backends/, ...) are detected; content-based + path-relative so
+    identical code matches across checkouts; pure/path-parameterized for tests."""
     h = hashlib.md5()
-    for f in sorted(os.listdir(path)):
-        if f.endswith('.py'):
-            h.update(f.encode())
-            with open(os.path.join(path, f), 'rb') as fh:
-                h.update(fh.read())
+    for root, dirs, files in os.walk(path):
+        dirs[:] = sorted(d for d in dirs if d != '__pycache__')
+        for f in sorted(g for g in files if g.endswith('.py')):
+            rel = os.path.relpath(os.path.join(root, f), path).encode()
+            with open(os.path.join(root, f), 'rb') as fh:
+                h.update(rel + b'\0' + fh.read() + b'\0')
     return h.hexdigest()[:16]
 
 

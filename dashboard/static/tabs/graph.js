@@ -49,6 +49,12 @@ import { loadNodeDetail } from '/static/lib/node_detail.js';
 
 let graph3d = null;
 let graph3dData = null;
+// activate() defers loadGraph3D() by 300ms; destroy() must cancel that pending
+// timer AND invalidate any in-flight load so a hide (or refresh) during the
+// window can't mount a WebGL graph into a now-hidden pane. _loadGen is bumped
+// on every teardown; a load that started under an older generation aborts.
+let _activateTimer = null;
+let _loadGen = 0;
 
 // ── Search state ──────────────────────────────────────────────────────
 
@@ -353,8 +359,7 @@ export function onGraphRefresh() {
   _pinnedEventId = null;
   _renderPinIndicator();
   bus.publish('graph:pinned', { eventId: null });
-  graph3dData = null;
-  _destroyGraph();
+  destroy();        // teardown + null data + invalidate any in-flight load
   loadGraph3D();
 }
 
@@ -473,6 +478,10 @@ function _wireContextLossHandlers() {
 }
 
 export async function loadGraph3D() {
+  // Capture the load generation: if destroy() runs while api.graph3d() is in
+  // flight (e.g. the user hides the graph mid-fetch), the mount below must
+  // abort rather than build a WebGL context into a now-hidden pane.
+  const gen = _loadGen;
   // Pre-flight: bail with a clean error if the browser can't render at all.
   // Avoids the noisy THREE.WebGLRenderer console stack trace and gives the
   // operator actionable Chrome-specific hints instead of a generic catch.
@@ -492,6 +501,9 @@ export async function loadGraph3D() {
   }
   try {
     graph3dData = await api.graph3d();
+    // A teardown (hide / refresh) happened during the fetch — abort the mount
+    // so we don't spin up a WebGL context the user no longer wants to see.
+    if (gen !== _loadGen) return;
     if (!graph3dData.nodes || !graph3dData.nodes.length) {
       _renderGraphError('No graph data returned',
         'The /api/graph3d endpoint returned an empty payload. Check daemon health on the Logs tab.');
@@ -620,8 +632,11 @@ export function init() {
 
 export function activate() {
   // 300ms delay matches the legacy behavior: tab-content display:block
-  // hasn't laid out yet by the time switchTab returns.
-  setTimeout(() => {
+  // hasn't laid out yet by the time switchTab returns. The handle is stored so
+  // destroy() (a hide within the window) can cancel the pending mount.
+  if (_activateTimer) clearTimeout(_activateTimer);
+  _activateTimer = setTimeout(() => {
+    _activateTimer = null;
     if (!graph3dData) loadGraph3D();
     else resize();
     // Pre-load the latest recall so the spotlight is immediately
@@ -643,6 +658,11 @@ export function deactivate() {
 // a hidden graph costs zero GPU. Re-showing routes back through activate()
 // → loadGraph3D(), which refetches since graph3dData is nulled here.
 export function destroy() {
+  // Cancel a pending activate() mount and invalidate any in-flight loadGraph3D
+  // fetch, so a hide during the 300ms defer or mid-fetch can't mount a graph
+  // into the now-hidden pane (would re-introduce the GPU cost the toggle kills).
+  if (_activateTimer) { clearTimeout(_activateTimer); _activateTimer = null; }
+  _loadGen++;
   _destroyGraph();
   graph3dData = null;
 }

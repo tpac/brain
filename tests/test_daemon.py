@@ -356,17 +356,20 @@ class TestDaemonModuleStructure(unittest.TestCase):
             self.assertIsNotNone(sym, f"Split daemon modules missing symbol: {sym_name}")
 
     def test_daemon_config_is_small(self):
-        """daemon_config.py should stay under 150 lines.
+        """daemon_config.py should stay under 160 lines.
         # ADJUSTED: 100→120 — added BRAIN_DEV_MODE + is_dev_mode() helper with
         #   plugin-repackaging caution docstring (2026-05-19).
         # ADJUSTED: 120→150 — added LAUNCHD_LABEL + get_recovery_state_path()
         #   for the consolidated hung-daemon recovery path (2026-05-28).
+        # ADJUSTED: 150→160 — recursive content-based fingerprint (os.walk over
+        #   servers/**/*.py) replaces the top-level mtime hash, so subpackage
+        #   (scales/, ...) edits are detected (2026-06-06).
         """
         config_path = os.path.join(PROJECT_ROOT, 'servers', 'daemon_config.py')
         with open(config_path) as f:
             lines = len(f.readlines())
-        self.assertLess(lines, 150,
-                        f"daemon_config.py is {lines} lines — should be <150")
+        self.assertLess(lines, 160,
+                        f"daemon_config.py is {lines} lines — should be <160")
 
     def test_daemon_dispatch_is_readable(self):
         """daemon_dispatch.py should stay under 1120 lines."""
@@ -385,12 +388,15 @@ class TestDaemonModuleStructure(unittest.TestCase):
         # ADJUSTED: 790→950 approved by Tom 2026-05-28 — one cohesive daemon class
         #   (supervisor loop, signal handling, suspend detector, request handling);
         #   modest overage, splitting a single class isn't worth the seams.
+        # ADJUSTED: 950→970 approved by Tom 2026-06-06 — PID file claimed only
+        #   after a successful bind (+_wrote_pid guard in _cleanup) so a
+        #   deferring duplicate can't unlink the incumbent's PID file.
         """
         path = os.path.join(PROJECT_ROOT, 'servers', 'daemon_server.py')
         with open(path) as f:
             lines = len(f.readlines())
-        self.assertLess(lines, 950,
-                        f"daemon_server.py is {lines} lines — should be <950")
+        self.assertLess(lines, 970,
+                        f"daemon_server.py is {lines} lines — should be <970")
 
     def test_no_circular_imports(self):
         """Importing daemon modules in any order should not cause circular imports."""
@@ -424,8 +430,15 @@ class TestDaemonModuleStructure(unittest.TestCase):
                              "mtime-only change must NOT change the fingerprint")
             with open(p, "w") as f:        # content change
                 f.write("x = 2\n")
-            self.assertNotEqual(_fingerprint_dir(d), fp1,
+            fp2 = _fingerprint_dir(d)
+            self.assertNotEqual(fp2, fp1,
                                 "content change MUST change the fingerprint")
+            # recursion: a .py added in a SUBPACKAGE must change the fingerprint
+            os.makedirs(os.path.join(d, "sub"))
+            with open(os.path.join(d, "sub", "s.py"), "w") as f:
+                f.write("y = 1\n")
+            self.assertNotEqual(_fingerprint_dir(d), fp2,
+                                "subpackage .py change MUST change the fingerprint")
         finally:
             shutil.rmtree(d, ignore_errors=True)
 

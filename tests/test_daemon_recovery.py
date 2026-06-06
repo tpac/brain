@@ -241,11 +241,12 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
     def test_no_launchd_falls_back_to_direct_spawn(self):
         # Daemon down, nothing serving, AND launchd genuinely not managing it
         # (kickstart fails AND _launchd_manages_daemon False) → the only case a
-        # direct Popen is legitimate (no KeepAlive to race).
+        # direct Popen is legitimate (no KeepAlive to race). _can_connect calls:
+        # fast-path, under-lock recheck, post-kickstart re-ping, post-spawn ready.
         with patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "get_lock_path", return_value=self._lock), \
              patch.object(dc, "_can_connect",
-                          side_effect=[{"ok": False}, {"ok": False}, {"ok": True}]), \
+                          side_effect=[{"ok": False}, {"ok": False}, {"ok": False}, {"ok": True}]), \
              patch.object(dc, "_code_changed", return_value=False), \
              patch.object(dc, "_launchd_kickstart", return_value=False) as ks, \
              patch.object(dc, "_launchd_manages_daemon", return_value=False), \
@@ -256,6 +257,27 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
             self.assertTrue(dc.ensure_daemon(self._db))
             ks.assert_called_once()
             popen.assert_called_once()
+
+    def test_kickstart_killed_incumbent_then_failed_does_not_false_defer(self):
+        # `kickstart -k` SIGKILLs the incumbent before respawning. If it then
+        # returns nonzero/timed-out, the port is FREE — but the pre-kickstart
+        # ping said {ok:True}. The defer branch must RE-PING (now {ok:False}) and
+        # NOT defer on the stale snapshot (which would report "ready" with
+        # nothing serving). _can_connect: fast(ok), under-lock(ok), re-ping(DOWN),
+        # post-spawn(ok).
+        with patch.object(dc, "is_maintenance_mode", return_value=False), \
+             patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_can_connect",
+                          side_effect=[{"ok": True}, {"ok": True}, {"ok": False}, {"ok": True}]), \
+             patch.object(dc, "_code_changed", return_value=True), \
+             patch.object(dc, "_launchd_kickstart", return_value=False), \
+             patch.object(dc, "_launchd_manages_daemon", return_value=False), \
+             patch.object(dc, "_port_is_occupied", return_value=False), \
+             patch.object(dc, "_debugger_friendly_python", return_value="/usr/bin/python3"), \
+             patch.object(dc.subprocess, "Popen") as popen, \
+             patch.object(dc.time, "sleep"):
+            self.assertTrue(dc.ensure_daemon(self._db))
+            popen.assert_called_once()   # spawned — did NOT false-defer on stale resp
 
     def test_responsive_stale_kickstart_unreachable_defers_not_spawn(self):
         # Regression guard for the 2026-06-05 orphan storm. A worktree session
