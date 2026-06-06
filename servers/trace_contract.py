@@ -7,6 +7,8 @@ All trace readers can rely on these guarantees.
 Architecture: docs/ARCHITECTURE-FRACTAL.md
 """
 
+from servers.loud_truncation import cap_text_loud, cap_list_loud
+
 
 # ── SCALES ──
 # The fractal hierarchy. Each scale observes the one below.
@@ -257,26 +259,6 @@ DELTA_FINAL_TEXT_LIMIT = 2000
 DELTA_ERROR_LIST_LIMIT = 5
 
 
-def _cap_text_loud(s, limit):
-    """Truncate text to `limit` chars LOUDLY — append a marker naming the dropped
-    count, never a silent slice (Tom's truncation contract). The dropped tail is
-    genuinely lost here (final_text/journal_entry keep only the head, with no full
-    copy elsewhere), so the marker is the only record that it happened."""
-    s = s or ''
-    if len(s) <= limit:
-        return s
-    return s[:limit].rstrip() + " …[+%d chars truncated]" % (len(s) - limit)
-
-
-def _cap_list_loud(items, limit):
-    """Keep the first `limit` items LOUDLY — append a marker element naming how
-    many were dropped, vs a silent slice. Stays a list (shape-valid)."""
-    items = list(items or [])
-    if len(items) <= limit:
-        return items
-    return items[:limit] + ["…[+%d more truncated]" % (len(items) - limit)]
-
-
 def build_delta_metadata(*,
                          actions=0, write_actions=0, rounds=0,
                          inputs_processed=0, outcomes=None,
@@ -325,11 +307,11 @@ def build_delta_metadata(*,
         'inputs_processed':  int(inputs_processed or 0),
         'outcomes':          dict(outcomes or {}),
         'rejection_skipped': int(rejection_skipped or 0),
-        'journal_entry':     _cap_text_loud(journal_entry, DELTA_FINAL_TEXT_LIMIT),
+        'journal_entry':     cap_text_loud(journal_entry, DELTA_FINAL_TEXT_LIMIT),
         'action_details':    ad,
         'read_calls':        list(read_calls or []),
-        'final_text':        _cap_text_loud(final_text, DELTA_FINAL_TEXT_LIMIT),
-        'errors':            _cap_list_loud(errors, DELTA_ERROR_LIST_LIMIT),
+        'final_text':        cap_text_loud(final_text, DELTA_FINAL_TEXT_LIMIT),
+        'errors':            cap_list_loud(errors, DELTA_ERROR_LIST_LIMIT),
         'created':           _agg('created', created),
         'revised':           _agg('revised', revised),
         'connected':         _agg('connected', connected),

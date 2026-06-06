@@ -4,8 +4,9 @@
 self-channel per-message-TTL + trace-contract work + its follow-up fixes.
 **Effort:** extra-high (`/code-review` xhigh) — 9 finder angles (6 subagents) →
 self-verification of every substantive claim against code → gap sweep.
-**Outcome:** 4 findings fixed + deployed (commit `694de91`, on `main`); 6 left
-open (real but defensible/latent/pre-existing) — listed below for next session.
+**Outcome:** 6 findings fixed (4 in commit `694de91`; #8 + #9 in a 2026-06-06
+follow-up); 4 left open (real but defensible/latent/pre-existing) — listed below
+for next session.
 
 The diff is fundamentally sound: the high-risk mechanics all verified **correct**
 (see "Verified correct" — don't re-investigate them).
@@ -38,6 +39,26 @@ The diff is fundamentally sound: the high-risk mechanics all verified **correct*
   *conversational* turn (user OR assistant per `CONVERSATIONAL_REF_TYPES`), not
   user_message-only (CR3 changed the behavior).
 
+### Follow-up (2026-06-06) — the two "no silent failures" findings
+
+- **#8 — `_add_column_if_missing` swallowed ALL exceptions.** (`schema.py`) The
+  bare `except Exception: pass` hid genuine ALTER failures (locked DB, disk
+  full), not just the expected duplicate-column case — a column that failed to
+  add would break a feature at runtime with no trace. Now: `except
+  sqlite3.OperationalError`, branch on `'duplicate column'` (the idempotent
+  re-run signal stays silent — it isn't a failure), any other OperationalError
+  prints LOUD to stderr→daemon.log, boot continues (matches every migration
+  block in the file). Non-OperationalError exceptions propagate — a bad
+  `col_type` is a dev-time bug that should fail loud.
+- **#9 — duplicated loud-truncation helpers.** `_cap_text_loud` /
+  `_cap_list_loud` (`trace_contract.py`) and the inlined body-cap in
+  `_render_one` (`self_contract.py`) were two implementations of one "never a
+  silent slice" contract (node 8178593a) that could drift. Extracted both
+  primitives to a new `servers/loud_truncation.py` that neither domain owns
+  (imports nothing from `servers` — no cycle); the differing markers are now a
+  param. Marker output is byte-identical, so the marker-pinning tests
+  (`test_trace_delta_shape`, `test_self_signal`) pass unchanged.
+
 ---
 
 ## Open — carryover for next session (ranked)
@@ -63,18 +84,6 @@ None are blocking; all shipped code is correct as-is. Pick up by value.
   unchanged for `None` input (cleanest — don't stamp identity onto a no-op
   marker); do NOT move validation after stamping (that would false-positive on
   bare markers).
-- **#8 (low) — `_add_column_if_missing` swallows ALL exceptions.**
-  (`schema.py`) Bare `except Exception: pass` silences a genuine ALTER failure
-  (locked DB / disk full), not just the duplicate-column case — leaving
-  `self_inflight` without `expires_at` while `send()`/readers assume it exists,
-  so the channel breaks at runtime instead of failing loud at migration. **Fix:**
-  narrow the except, or log loud when the failure isn't "column exists".
-- **#9 (low, cleanup) — duplicated loud-truncation helpers.**
-  `_cap_text_loud`/`_cap_list_loud` (`trace_contract.py`) re-implement the same
-  "head + named-drop marker" pattern as `_render_one`/`render_received_block`
-  (`self_contract.py`), with different marker text. Two parallel implementations
-  of one "never a silent slice" contract that can drift. **Fix:** extract one
-  shared loud-truncation helper.
 - **#10 (low) — reap is idle-gated.** `reap_expired` only runs inside the idle
   S2-maintenance window. With the new **1h** broadcast TTL, a continuously-active
   (never-idle) operator leaves expired + legacy-NULL rows un-reaped far past TTL

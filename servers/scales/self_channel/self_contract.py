@@ -29,6 +29,7 @@ Design: docs/SELF-CHANNEL-DESIGN.md · taxonomy: docs/LATERAL-SCALES.md
 """
 
 from servers.trace_contract import REF_TYPES as _REF_TYPES
+from servers.loud_truncation import cap_text_loud
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -269,11 +270,9 @@ def _render_one(m):
     from the raw body — not a pre-baked string — so the cap actually applies; the
     full body always remains in the courier. Letters render reflective; anything
     else as a signal tap."""
-    body = m.get("body", "") or ""
-    if len(body) > DELIVERED_BODY_MAX:
-        dropped = len(body) - DELIVERED_BODY_MAX
-        body = (body[:DELIVERED_BODY_MAX].rstrip()
-                + " …[+%d chars — full message in the dashboard Streams tab]" % dropped)
+    body = cap_text_loud(
+        m.get("body", "") or "", DELIVERED_BODY_MAX,
+        marker="…[+%d chars — full message in the dashboard Streams tab]")
     if m.get("intent") == INTENT_LETTER:
         return render_letter(body)
     return render_signal(body, stream_short=m.get("from", ""))

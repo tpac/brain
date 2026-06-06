@@ -1515,11 +1515,21 @@ def ensure_logs_schema(conn):
 
 def _add_column_if_missing(conn, table: str, column: str, col_type: str):
     """Add a column to an existing table if it doesn't exist.
-    SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we catch the error."""
+
+    SQLite has no IF NOT EXISTS for ALTER TABLE, so the duplicate-column error is
+    the expected idempotent-rerun signal — swallowed silently (it isn't a
+    failure). Any OTHER OperationalError (locked DB, disk full) is a real
+    migration failure and is logged LOUDLY (stderr→daemon.log) rather than
+    hidden, so a column that silently failed to add can't break a feature at
+    runtime with no trace. Boot continues regardless — matching every migration
+    block in this file. Non-OperationalError exceptions (e.g. a bad col_type)
+    propagate: those are dev-time bugs that should fail loud."""
     try:
         conn.execute('ALTER TABLE %s ADD COLUMN %s %s' % (table, column, col_type))
-    except Exception:
-        pass  # Column already exists — expected for tables created with latest schema
+    except sqlite3.OperationalError as e:
+        if 'duplicate column' not in str(e).lower():
+            print('[brain] schema: ALTER TABLE %s ADD COLUMN %s %s failed: %s'
+                  % (table, column, col_type, e))
 
 
 def migrate_logs_to_separate_db(main_conn, logs_conn):
