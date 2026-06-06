@@ -62,7 +62,7 @@ def _debugger_friendly_python() -> str:
     return sys.executable
 
 from .daemon_config import (
-    _code_fingerprint, _CODE_FINGERPRINT, LAUNCHD_LABEL,
+    _code_fingerprint, _CODE_FINGERPRINT, _IS_WORKTREE, LAUNCHD_LABEL,
     get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
     get_recovery_state_path, is_maintenance_mode,
 )
@@ -144,10 +144,18 @@ def is_daemon_responsive(timeout: float = 2.0) -> bool:
 
 
 def _code_changed(resp: dict) -> bool:
-    """True if the responding daemon runs different code than this checkout
-    (so it needs a restart to pick up changes). Conservative — returns False
+    """True if the responding daemon runs different code than this checkout AND
+    restarting it would actually pick that code up. Conservative — returns False
     when either fingerprint is unknown, so an indeterminate signal never
-    triggers a restart."""
+    triggers a restart.
+
+    Worktree exception: a linked git worktree NEVER reports code-changed. The
+    daemon is a singleton launched from the primary checkout, so kickstarting it
+    reboots that checkout — never the worktree's code. Letting a worktree force
+    restarts produced a churn loop that can't converge (2026-06-06). Worktree
+    edits are picked up by merging to the primary checkout, not by restart."""
+    if _IS_WORKTREE:
+        return False
     daemon_fp = resp.get("result", {}).get("code_fingerprint", "")
     # Use the import-time constant, not a fresh _code_fingerprint() — this
     # process is short-lived (hook/CLI) so its code can't change underneath it,

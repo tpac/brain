@@ -106,6 +106,20 @@ def _code_fingerprint() -> str:
 _CODE_FINGERPRINT = _code_fingerprint()
 
 
+def _is_worktree_checkout(repo_root: str) -> bool:
+    """True if `repo_root` is a *linked* git worktree — its `.git` is a FILE
+    (a `gitdir:` pointer) rather than a DIRECTORY (primary checkout) or absent
+    (tarball install → False). Pure/path-parameterized for tests. Gates daemon
+    staleness restarts; the why lives in `daemon_client._code_changed`."""
+    return os.path.isfile(os.path.join(repo_root, ".git"))
+
+
+# Is THIS checkout a linked worktree? If so, _code_changed suppresses staleness
+# restarts — a worktree can't be the singleton daemon's launch source (2026-06-06).
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_IS_WORKTREE = _is_worktree_checkout(_REPO_ROOT)
+
+
 # ─── Path Helpers ───
 
 def get_daemon_addr():

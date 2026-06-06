@@ -356,7 +356,7 @@ class TestDaemonModuleStructure(unittest.TestCase):
             self.assertIsNotNone(sym, f"Split daemon modules missing symbol: {sym_name}")
 
     def test_daemon_config_is_small(self):
-        """daemon_config.py should stay under 160 lines.
+        """daemon_config.py should stay under 175 lines.
         # ADJUSTED: 100→120 — added BRAIN_DEV_MODE + is_dev_mode() helper with
         #   plugin-repackaging caution docstring (2026-05-19).
         # ADJUSTED: 120→150 — added LAUNCHD_LABEL + get_recovery_state_path()
@@ -364,12 +364,15 @@ class TestDaemonModuleStructure(unittest.TestCase):
         # ADJUSTED: 150→160 — recursive content-based fingerprint (os.walk over
         #   servers/**/*.py) replaces the top-level mtime hash, so subpackage
         #   (scales/, ...) edits are detected (2026-06-06).
+        # ADJUSTED: 160→175 — added _is_worktree_checkout() + _IS_WORKTREE so a
+        #   worktree session never triggers a daemon staleness-restart (the
+        #   non-convergent churn fix, 2026-06-06).
         """
         config_path = os.path.join(PROJECT_ROOT, 'servers', 'daemon_config.py')
         with open(config_path) as f:
             lines = len(f.readlines())
-        self.assertLess(lines, 160,
-                        f"daemon_config.py is {lines} lines — should be <160")
+        self.assertLess(lines, 175,
+                        f"daemon_config.py is {lines} lines — should be <175")
 
     def test_daemon_dispatch_is_readable(self):
         """daemon_dispatch.py should stay under 1120 lines."""
@@ -441,6 +444,48 @@ class TestDaemonModuleStructure(unittest.TestCase):
                                 "subpackage .py change MUST change the fingerprint")
         finally:
             shutil.rmtree(d, ignore_errors=True)
+
+    def test_worktree_checkout_detection(self):
+        """A linked worktree has `.git` as a FILE (gitdir: pointer); the primary
+        checkout has `.git` as a DIRECTORY; a tarball install has neither. This
+        is the signal that suppresses staleness restarts for worktree sessions
+        (2026-06-06 churn fix)."""
+        import tempfile, shutil
+        from servers.daemon_config import _is_worktree_checkout
+        d = tempfile.mkdtemp(prefix="brain-wt-test-")
+        try:
+            os.makedirs(os.path.join(d, ".git"))            # primary checkout
+            self.assertFalse(_is_worktree_checkout(d),
+                             "primary checkout (.git dir) is NOT a worktree")
+            shutil.rmtree(os.path.join(d, ".git"))
+            with open(os.path.join(d, ".git"), "w") as f:    # linked worktree
+                f.write("gitdir: /repo/.git/worktrees/wt\n")
+            self.assertTrue(_is_worktree_checkout(d),
+                            "linked worktree (.git file) IS a worktree")
+            os.remove(os.path.join(d, ".git"))               # tarball install
+            self.assertFalse(_is_worktree_checkout(d),
+                             "missing .git → not a worktree (safe default)")
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_code_changed_suppressed_in_worktree(self):
+        """_code_changed must return False whenever this checkout is a worktree,
+        regardless of a fingerprint mismatch — restarting the shared daemon
+        can't converge to worktree code, so it would only churn (2026-06-06).
+        On the primary checkout, a real mismatch still reports code-changed."""
+        import servers.daemon_client as dc
+        resp = {"result": {"code_fingerprint": "DIFFERENT_FROM_CURRENT_FP"}}
+        orig = dc._IS_WORKTREE
+        try:
+            dc._IS_WORKTREE = True
+            self.assertFalse(dc._code_changed(resp),
+                             "worktree caller must never report code-changed")
+            dc._IS_WORKTREE = False
+            if dc._CODE_FINGERPRINT != "unknown":
+                self.assertTrue(dc._code_changed(resp),
+                                "primary checkout with fp mismatch IS code-changed")
+        finally:
+            dc._IS_WORKTREE = orig
 
 
 # ══════════════════════════════════════════════════════════════════════════
