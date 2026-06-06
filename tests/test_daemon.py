@@ -406,6 +406,29 @@ class TestDaemonModuleStructure(unittest.TestCase):
         self.assertNotEqual(fp1, "unknown")
         self.assertEqual(len(fp1), 16)  # MD5 hex truncated to 16
 
+    def test_fingerprint_is_content_based_not_mtime(self):
+        """The churn fix: fingerprint must be STABLE across mtime-only changes
+        and SENSITIVE to content changes — so a worktree looks 'stale' to the
+        daemon only when its code actually differs, not just because checkout
+        gave its files fresh mtimes (the 2026-06-05 restart-churn root cause)."""
+        import tempfile, shutil
+        from servers.daemon_config import _fingerprint_dir
+        d = tempfile.mkdtemp(prefix="brain-fp-test-")
+        try:
+            p = os.path.join(d, "a.py")
+            with open(p, "w") as f:
+                f.write("x = 1\n")
+            fp1 = _fingerprint_dir(d)
+            os.utime(p, (10**9, 10**9))   # mtime-only change
+            self.assertEqual(_fingerprint_dir(d), fp1,
+                             "mtime-only change must NOT change the fingerprint")
+            with open(p, "w") as f:        # content change
+                f.write("x = 2\n")
+            self.assertNotEqual(_fingerprint_dir(d), fp1,
+                                "content change MUST change the fingerprint")
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
 
 # ══════════════════════════════════════════════════════════════════════════
 # TEST 6: CLI

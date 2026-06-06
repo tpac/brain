@@ -78,16 +78,22 @@ def get_agent_name() -> str:
 
 # ─── Code Fingerprinting ───
 
+def _fingerprint_dir(path: str) -> str:
+    """Content hash (md5: name+bytes) of top-level *.py in `path`. Testable."""
+    h = hashlib.md5()
+    for f in sorted(os.listdir(path)):
+        if f.endswith('.py'):
+            h.update(f.encode())
+            with open(os.path.join(path, f), 'rb') as fh:
+                h.update(fh.read())
+    return h.hexdigest()[:16]
+
+
 def _code_fingerprint() -> str:
-    """Return a deterministic fingerprint of the server code files.
-    Changes when any .py file in servers/ is modified."""
+    """Fingerprint of server code by file CONTENT not mtime — mtime hashing made
+    every worktree look "stale" with identical code → restart churn (2026-06-05)."""
     try:
-        servers_dir = os.path.dirname(os.path.abspath(__file__))
-        mtimes = []
-        for f in sorted(os.listdir(servers_dir)):
-            if f.endswith('.py'):
-                mtimes.append("{}:{}".format(f, os.path.getmtime(os.path.join(servers_dir, f))))
-        return hashlib.md5("|".join(mtimes).encode()).hexdigest()[:16]
+        return _fingerprint_dir(os.path.dirname(os.path.abspath(__file__)))
     except Exception:
         return "unknown"
 
