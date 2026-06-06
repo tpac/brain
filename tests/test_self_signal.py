@@ -266,6 +266,17 @@ class TestTTLByCategory(BrainTestBase):
         self.assertEqual([m['body'] for m in signal.drain_inbox(self.brain, 'S')],
                          ['still here'])
 
+    def test_nonnumeric_ttl_config_falls_back_not_crash(self):
+        # A typo'd / non-numeric TTL config must NOT crash send() (get_config
+        # returns the raw string when its numeric auto-parse fails) — _resolve_ttl_hours
+        # falls back to the documented default and the message is still delivered.
+        self.brain.set_config('self_channel.broadcast_ttl_hours', 'not-a-number')
+        b = signal.send(self.brain, from_session='X',
+                        address=self_contract.ADDR_BROADCAST, body='resilient')
+        self.assertTrue(b['expires_at'])   # stamped via the default TTL, no crash
+        self.assertEqual([m['body'] for m in signal.drain_inbox(self.brain, 'anyone')],
+                         ['resilient'])
+
 
 class TestLegacyNullExpires(BrainTestBase):
     """A pre-expires_at courier row (the column added to the one existing DB →

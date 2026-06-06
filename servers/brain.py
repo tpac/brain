@@ -761,7 +761,9 @@ class Brain(
 
         Returns [{'session_id': str, 'updated_at': iso, 'focus': str}], newest
         first. `updated_at` is the last real-turn time; `focus` is that
-        session's latest user_message summary (raw — render layer trims it).
+        session's latest conversational turn — user_message OR assistant_message
+        per trace_contract.CONVERSATIONAL_REF_TYPES, excluding the wake-envelope
+        marker (raw — render layer trims it).
         """
         from .clock import iso_cutoff
         try:

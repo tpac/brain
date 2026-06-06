@@ -427,7 +427,10 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         "write_actions": len(write_actions),
         "action_details": write_actions,
         "read_calls": read_calls,
-        "final_text": final_text[:2000] if final_text else '',
+        # Full text — build_delta_metadata caps the TRACE loudly, and
+        # _save_journal / _save_session_context self-cap. Pre-truncating here
+        # made the trace's loud-truncation marker dead (silent drop upstream).
+        "final_text": final_text or '',
         "profile": profile,
         "elapsed_ms": int((time.time() - t0) * 1000),
         "input_tokens": total_input_tokens,

@@ -23,23 +23,12 @@ def _handle_trace_append(brain, args, graph_changes):
             raw_meta = json.loads(raw_meta)
         except (ValueError, TypeError):
             raw_meta = {"raw": raw_meta}
-    # Payload contract: ref_types with a declared metadata schema must carry
-    # the right shape. validate_trace_event() guards the (scale,event_type,
-    # ref_type) envelope; this guards the metadata PAYLOAD — the hole that let
-    # two divergent `encoding_run` shapes coexist undetected. Log loud and keep
-    # writing: a malformed trace is still worth more than a lost one.
-    from .trace_contract import validate_trace_metadata
-    ok_meta, meta_err = validate_trace_metadata(
-        args.get("event_type", ""), args.get("ref_type", ""), raw_meta)
-    if not ok_meta:
-        try:
-            brain._log_error(
-                'trace_metadata_invalid', meta_err,
-                'chain=%s scale=%s ref_type=%s' % (
-                    args.get("chain_id", ""), args.get("scale", ""),
-                    args.get("ref_type", "")))
-        except Exception:
-            pass
+    # Payload-shape validation lives at the single chokepoint every writer passes
+    # — TraceDAL.append/append_batch (loud, never blocking). It used to ALSO run
+    # here, which double-validated dispatched traces and split logging across two
+    # sinks (errors table here, stderr in the DAL). One point now; the DAL warns
+    # to stderr (it can't write the errors table mid-append without risking the
+    # brain_batch commit). The json-decode below still normalizes wire metadata.
     try:
         event_id = brain._trace_dal.append(
             chain_id=args.get("chain_id", ""),

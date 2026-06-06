@@ -27,12 +27,21 @@ from servers.scales.self_channel import self_contract
 def _resolve_ttl_hours(brain, address):
     """Per-message TTL in hours by address, with runtime config override.
     Defaults are documented in self_contract (BROADCAST/DIRECTED_TTL_HOURS);
-    operators tune via brain.get_config('self_channel.{kind}_ttl_hours'). Coerced
-    to float so a string-valued config ('2') is honored."""
+    operators tune via brain.get_config('self_channel.{kind}_ttl_hours')."""
     kind = self_contract.ttl_kind_for(address)
     default = (self_contract.BROADCAST_TTL_HOURS if kind == 'broadcast'
                else self_contract.DIRECTED_TTL_HOURS)
-    return float(brain.get_config('self_channel.%s_ttl_hours' % kind, default))
+    raw = brain.get_config('self_channel.%s_ttl_hours' % kind, default)
+    try:
+        return float(raw)
+    except (ValueError, TypeError):
+        # get_config returns the raw string when its numeric auto-parse fails (a
+        # typo'd config value). Don't let one bad key crash every send — fall
+        # back to the documented default, loudly.
+        brain._log_error('self_ttl_config_invalid', ValueError(
+            'self_channel.%s_ttl_hours=%r is not numeric; using default %s'
+            % (kind, raw, default)), 'self-channel TTL resolution')
+        return float(default)
 
 
 def send(brain, from_session, address, body, intent=None, refs=None):
