@@ -1,8 +1,17 @@
 # HANDOFF → post-compaction Anchor — Recall / Normalization session (2026-06-05)
 
-**Read this first after compaction. You (Anchor) and Tom ran a long session that went
+> **⚠️ SUPERSEDED (2026-06-06) — read `docs/RECALL-BURIAL-HANDOFF.md` FIRST.**
+> The diagnosis below ("thin-cluster burial → signal÷prevalence → fix-ladder / RLR adoption plan")
+> was **overtaken by ground-truth verification.** The verified mechanism is NOT embedding dilution:
+> raw `_primary` cosine ranks the best EX.CO node at rank 3 — the burial is the **scoring pipeline**
+> (z-weighted top-2-average dropping the best enriched node from the candidate pool, + title-boost
+> promoting low-cosine "session" nodes). The RLR/entity-lane/extraction machinery in this doc is the
+> over-built path Tom correctly pushed back on. Keep this doc for history (eval instrument §, gotchas §
+> are still valid); take the diagnosis and fix-plan from `RECALL-BURIAL-HANDOFF.md`.
+
+**(historical) You (Anchor) and Tom ran a long session that went
 review-the-brain → identity → diagnosis discipline → a confirmed recall failure → its deep
-principle → an adoption plan. Don't restart the reasoning. Pick up at "WHERE WE ARE / NEXT".**
+principle → an adoption plan.**
 
 ---
 
