@@ -39,10 +39,10 @@ class TestConfidenceScoring(BrainTestBase):
         # Create two similar nodes with different confidence
         self.brain.remember(type='decision', title='API design choice A',
                            content='REST API for user service',
-                           keywords='api design rest user', confidence=0.3)
+                           confidence=0.3)
         self.brain.remember(type='decision', title='API design choice B',
                            content='REST API for user service improved',
-                           keywords='api design rest user', confidence=1.0)
+                           confidence=1.0)
         self.brain.save()
 
         results = self.brain.recall('API design for user service', limit=5)
@@ -157,33 +157,32 @@ def _seed_brain_with_realistic_data(brain):
     # Decisions
     nodes.append(brain.remember(type='decision', title='Auth: Clerk for passwordless login via magic links',
         content='Clerk handles auth flow. Magic links for login, no passwords. Webhook syncs user data to our DB. Free tier covers MVP needs. Chose over Auth0 because of simpler integration.',
-        keywords='auth clerk login passwordless magic-link webhook user sso', locked=True, confidence=0.95))
+        locked=True, confidence=0.95))
     nodes.append(brain.remember(type='decision', title='React component architecture follows atomic design',
         content='Components organized by atomic design: atoms (Button, Input), molecules (FormField), organisms (LoginForm). Shared via internal package.',
-        keywords='react components atomic design pattern architecture frontend', locked=True, confidence=0.9))
+        locked=True, confidence=0.9))
     # Rules
     nodes.append(brain.remember(type='rule', title='Experimental features must never block core operations',
         content='When adding new features (bridging, proposals, archive) to existing methods (remember, consolidate, dream, smartPrune), always wrap in try/catch. A bridge failure should never prevent a remember from succeeding.',
-        keywords='engineering pattern try-catch experimental feature non-critical layered robustness', locked=True, confidence=0.85))
+        locked=True, confidence=0.85))
     nodes.append(brain.remember(type='rule', title='Communication style with Tom: direct, peer-to-peer',
         content='Speak peer-to-peer. Be direct. Challenge when warranted. Always plan before executing. Never dump a full spec — work iteratively through components.',
-        keywords='communication style tom direct peer iterative challenge', locked=True))
+        locked=True))
     # Lessons
     nodes.append(brain.remember(type='lesson', title='Lesson: new features must be connected to the graph at birth',
         content='Built vocabulary system with learn_vocabulary(), resolve_vocabulary(), gap detection. Then discovered vocabulary nodes were completely isolated — not connected to anything in the graph.',
-        keywords='vocabulary isolation connected graph birth lesson bridging', locked=True, emotion=0.8, confidence=0.85))
+        locked=True, emotion=0.8, confidence=0.85))
     # Concepts
     nodes.append(brain.remember(type='concept', title='CampaignParamsResolver — isolated GAM parameter builder',
         content='Isolated component that takes a Glo and returns GAM-ready params (dayparts, freq cap, pacing, views per session). V1: config-driven defaults per publisher.',
-        keywords='campaign params resolver optimization gam buyside agent', confidence=0.7))
+        confidence=0.7))
     # Context (will be stale)
     nodes.append(brain.remember(type='context', title='Session #7 final log: Brain v4.0.0 shipped',
-        content='Session #7. Massive session. Everything built and tested in one go. Shipped Phase 0.5A, 0.5B, 0.5C, typed edges, consciousness, curiosity.',
-        keywords='session log v4 shipped brain'))
+        content='Session #7. Massive session. Everything built and tested in one go. Shipped Phase 0.5A, 0.5B, 0.5C, typed edges, consciousness, curiosity.'))
     # Correction
     nodes.append(brain.remember(type='correction', title='Divergence: Claude compresses when encoding to brain',
         content='CLAUDE ASSUMED: Encoding to brain should be concise. REALITY: Brain encoding should be RICH. Future Claude needs texture, specifics, failures, reasoning journeys.',
-        keywords='encoding divergence compression brevity training bias', locked=True, emotion=0.9, confidence=0.95))
+        locked=True, emotion=0.9, confidence=0.95))
     return nodes
 
 
@@ -205,7 +204,6 @@ class TestSilentFailures(BrainTestBase):
             type='decision',
             title='Auth: Clerk for passwordless login via magic links',
             content='Clerk handles auth flow. Magic links for login, no passwords.',
-            keywords='auth clerk login passwordless',
             connections=[{'target_id': 'nonexistent_node_id_xyz', 'relation': 'related'}]
         )
         # Node should be created despite bad connection
@@ -469,7 +467,7 @@ class TestSurfaceLayer(BrainTestBase):
         self.brain.remember(type='rule',
             title='brain.py: only assembler defines __init__',
             content='Mixins must not define __init__. Only brain.py.',
-            keywords='brain.py init mixin constraint', locked=True)
+            locked=True)
         result = self.brain.suggest(context='editing brain.py', file='brain.py')
         self.assertIsInstance(result, dict)
         self.assertIn('suggestions', result)
@@ -560,7 +558,7 @@ class TestCriticalFlag(BrainTestBase):
         # Create a critical node
         result = self.brain.remember(type='rule', title='SAFETY: Never delete worktree without confirmation',
             content='Git worktrees may be actively used by other sessions. Deleting silently destroys working directory.',
-            keywords='worktree delete safety critical confirmation', locked=True)
+            locked=True)
         self.brain.conn.execute("UPDATE nodes SET critical = 1 WHERE id = ?", (result['id'],))
         self.brain.conn.commit()
 
@@ -576,11 +574,9 @@ class TestCriticalFlag(BrainTestBase):
         """Critical node ranks higher than equally-relevant non-critical node."""
         # Create two nodes with identical keyword overlap for the query
         n1 = self.brain.remember(type='rule', title='Worktree safety guidelines',
-            content='Guidelines for safe worktree operations',
-            keywords='worktree safety operations guidelines')
+            content='Guidelines for safe worktree operations')
         n2 = self.brain.remember(type='rule', title='Worktree safety critical rule',
-            content='Never delete worktrees without checking for active sessions',
-            keywords='worktree safety operations critical')
+            content='Never delete worktrees without checking for active sessions')
         self.brain.conn.execute("UPDATE nodes SET critical = 1 WHERE id = ?", (n2['id'],))
         self.brain.conn.commit()
 
@@ -595,7 +591,7 @@ class TestCriticalFlag(BrainTestBase):
         """Critical nodes have a lower activation threshold — found even with weak matches."""
         result = self.brain.remember(type='rule', title='SAFETY: Never rm -rf worktree directory',
             content='Worktree directories are actively used. Deleting them destroys shell state.',
-            keywords='worktree rm -rf safety directory delete', locked=True)
+            locked=True)
         self.brain.conn.execute("UPDATE nodes SET critical = 1 WHERE id = ?", (result['id'],))
         self.brain.conn.commit()
 
@@ -651,14 +647,12 @@ class TestCriticalFlag(BrainTestBase):
         ]
         for i in range(50):
             t = topics[i % len(topics)]
-            self.brain.remember(type=t[0], title=f'{t[1]} #{i}', content=t[2],
-                keywords=f'topic{i} {t[1].lower().replace(" ", " ")}')
+            self.brain.remember(type=t[0], title=f'{t[1]} #{i}', content=t[2])
 
         # Create the critical worktree safety node
         safety = self.brain.remember(type='rule',
             title='NEVER delete a git worktree without alerting the user first',
             content='Git worktrees may be actively used by other Claude sessions. Deleting silently destroys working directory and shell state.',
-            keywords='worktree delete remove git working copy directory session safety',
             locked=True)
         self.brain.conn.execute("UPDATE nodes SET critical = 1 WHERE id = ?", (safety['id'],))
         self.brain.conn.commit()
@@ -693,7 +687,7 @@ class TestSafetyCheck(BrainTestBase):
         safety = self.brain.remember(type='rule',
             title='NEVER delete a git worktree without alerting the user first',
             content='Worktree deletion destroys session CWD',
-            keywords='worktree delete remove git', locked=True)
+            locked=True)
         self.brain.conn.execute("UPDATE nodes SET critical = 1 WHERE id = ?", (safety['id'],))
         self.brain.conn.commit()
 
@@ -751,8 +745,7 @@ class TestInfBug(BrainTestBase):
         self.brain.set_config('tunable_decay_half_lives', json.dumps(half_lives))
 
         node = self.brain.remember(type='decision', title='Important decision about architecture',
-            content='We decided to use microservices',
-            keywords='architecture microservices decision')
+            content='We decided to use microservices')
 
         # Recall should not crash AND must still produce a valid result envelope
         # despite the corrupted 'inf' string in the decay config.
@@ -768,7 +761,7 @@ class TestInfBug(BrainTestBase):
         self.brain.set_config('tunable_decay_half_lives', json.dumps(half_lives))
 
         self.brain.remember(type='decision', title='Test node for infinity',
-            content='Testing infinity handling', keywords='test infinity')
+            content='Testing infinity handling')
 
         results = self.brain.recall('test infinity')
         self.assertIsInstance(results, dict)
@@ -783,7 +776,7 @@ class TestInfBug(BrainTestBase):
         self.brain.set_config('tunable_decay_half_lives', json.dumps(half_lives))
 
         self.brain.remember(type='decision', title='NaN test node',
-            content='Testing NaN handling', keywords='nan test')
+            content='Testing NaN handling')
 
         results = self.brain.recall('nan test')
         self.assertIsInstance(results, dict)
@@ -905,7 +898,6 @@ class TestIdentifierSplittingE2E(BrainTestBase):
             content='Three layers: regex patterns, embedding similarity, BART NLI. '
                     'Layer 0 regex is fast, Layer 1 embeddings catch semantic matches, '
                     'Layer 1b BART provides entailment scores.',
-            keywords='recall scorer evaluation layers regex embeddings',
             locked=True)
         self.brain.save()
 
@@ -924,7 +916,6 @@ class TestIdentifierSplittingE2E(BrainTestBase):
             title='HTML parsing uses BeautifulSoup',
             content='We chose BeautifulSoup over lxml for HTML parsing because '
                     'it handles malformed HTML gracefully.',
-            keywords='html parsing beautifulsoup parser',
             locked=True)
         self.brain.save()
 
@@ -944,7 +935,6 @@ class TestIdentifierSplittingE2E(BrainTestBase):
             title='Hook scripts must handle daemon unavailable',
             content='All hook scripts in hooks/scripts/ must gracefully fall back '
                     'to direct Python when the daemon is not running.',
-            keywords='hooks scripts daemon fallback',
             locked=True)
         self.brain.save()
 
@@ -963,7 +953,6 @@ class TestIdentifierSplittingE2E(BrainTestBase):
             title='Migration system uses sequential version numbers',
             content='Schema migrations are numbered 001, 002, etc. '
                     'Each migration file applies changes to brain.db or brain_logs.db.',
-            keywords='migration version schema upgrade',
             locked=True)
         self.brain.save()
 
@@ -978,7 +967,6 @@ class TestIdentifierSplittingE2E(BrainTestBase):
             title='BrainSurface handles suggest and edit context',
             content='The BrainSurface mixin provides suggest(), get_edit_context(), '
                     'and other surface-level retrieval methods.',
-            keywords='brain surface suggest edit context mixin',
             locked=True)
         self.brain.save()
 
@@ -1093,8 +1081,7 @@ class TestCommonWordFilterE2E(BrainTestBase):
         self.brain.remember(
             type='vocabulary',
             title='Clerk = auth provider with magic links',
-            content='Clerk handles authentication. Passwordless via magic links.',
-            keywords='clerk auth provider')
+            content='Clerk handles authentication. Passwordless via magic links.')
         # The term "Clerk" should be domain-specific
         self.assertTrue(is_domain_specific('Clerk'))
         # Even "clerk" lowercase is common — but capitalized signals entity

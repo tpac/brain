@@ -686,7 +686,7 @@ class BrainRememberMixin:
         self._maybe_commit()
 
     def remember(self, type: str, title: str, content: Optional[str] = None,
-                 keywords: Optional[str] = None, locked: bool = False,
+                 locked: bool = False,
                  connections: Optional[List[Dict[str, Any]]] = None,
                  emotion: float = 0, emotion_label: str = 'neutral',
                  emotion_source: str = 'auto', project: Optional[str] = None,
@@ -761,13 +761,6 @@ class BrainRememberMixin:
         # TYPE_CONFIDENCE from brain_constants defines how reliable each type tends to be
         if confidence == 1.0:  # default = unset by caller
             confidence = TYPE_CONFIDENCE.get(type, 0.70)
-
-        # 2026-05-24: auto-keyword extraction removed. The `keywords` param
-        # is retained on the signature for back-compat (callers passing it
-        # explicitly aren't broken) but the value is now ignored — FTS5
-        # indexes title + content directly via porter unicode61 stemming,
-        # and TF-IDF builds its text from title + content. The keywords
-        # column on `nodes` is scheduled for removal in schema v28.
 
         # v4: Fixed personal nodes are always locked — their whole point is permanence
         if personal == 'fixed':

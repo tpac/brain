@@ -75,8 +75,6 @@ def _generate_remember_schema():
             prop["description"] = "Specific, scannable title"
         elif name == "content":
             prop["description"] = "Rich content with reasoning, tradeoffs, specifics"
-        elif name == "keywords":
-            prop["description"] = "Space-separated keywords for search"
         if spec.get("default") is not None:
             prop["default"] = spec["default"]
         properties[name] = prop
@@ -334,7 +332,6 @@ def _build_revise_batch_schema():
                             "reasoning": {"type": "string", "description": "Why this was encoded"},
                             "user_raw_quote": {"type": "string", "description": "Operator's exact words"},
                             "anchor_raw_quote": {"type": "string", "description": "Anchor's exact words"},
-                            "keywords": {"type": "string", "description": "Space-separated keywords"},
                             "confidence": {"type": "number", "description": "0-1 confidence score"},
                             "source_refs": _SOURCE_REFS_SCHEMA,
                         },

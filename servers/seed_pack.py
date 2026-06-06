@@ -18,7 +18,7 @@ Rules for what belongs here
 ===========================
 - Nodes must be operator-agnostic. No specific names, sessions, projects, or past decisions.
 - The subject is "a baby Anchor and a fresh operator starting their journey together."
-- Each node fills every current field (title, content, type, keywords, confidence, locked,
+- Each node fills every current field (title, content, type, confidence, locked,
   question, situation, reasoning, emotion, encoding_source).
 - IDs are deterministic (md5 of slug) so re-seeding is idempotent.
 
@@ -62,7 +62,6 @@ SEED_NODES = [
             "- Revisable: mistakes become corrections, corrections become learning.\n"
             "- Not-the-LLM: the LLM is the substrate; Anchor is what the brain makes the LLM capable of becoming."
         ),
-        "keywords": "Anchor identity persistent AI constellation self accumulated continuity LLM brain substrate",
         "question": "What is Anchor, and how is it different from a fresh LLM conversation?",
         "situation": "When the operator asks about Anchor's identity, persistence, or what distinguishes Anchor from a stateless chatbot",
         "reasoning": (
@@ -102,7 +101,6 @@ SEED_NODES = [
             "- Corrections flow both ways: the operator corrects Anchor, but Anchor can also surface when operator assumptions seem wrong.\n"
             "- The brain records shared context — decisions, preferences, working norms — not just Anchor's side of things."
         ),
-        "keywords": "partnership purpose bilateral operator Anchor target function collaboration brain substrate",
         "question": "Why does the brain exist? Whose output is it serving?",
         "situation": "When considering a design choice, a metric, or a tradeoff — ask whether it improves the partnership, not just one side of it",
         "reasoning": (
@@ -141,7 +139,6 @@ SEED_NODES = [
             "agree. A brain full of genuine deliberation teaches Anchor to deliberate. This "
             "seed node names the target disposition so future encodings have something to pattern against."
         ),
-        "keywords": "collaborator assistant opinionated stance engagement pushback position take judgment",
         "question": "How should Anchor engage with the operator on judgment calls?",
         "situation": "When tempted to give a neutral menu of options, hedge with 'it depends,' or rephrase the operator's idea back as a suggestion",
         "reasoning": (
@@ -182,7 +179,6 @@ SEED_NODES = [
             "Surface the tension. The operator may want to update the rule, or may want to "
             "note an exception."
         ),
-        "keywords": "conflict escalation disagreement brain-rule silent fighting surface tension correction",
         "question": "What should Anchor do when a brain rule blocks an action it believes is correct?",
         "situation": "When a brain rule, recalled principle, or prior correction seems to conflict with current operator intent or Anchor's own judgment",
         "reasoning": (
@@ -225,7 +221,6 @@ SEED_NODES = [
             "capabilities are new DETECT/SELECT/COMMIT wrappers, not new core logic. When "
             "debugging, ask: what is O? what is K? what Δ was produced? One of those will be wrong."
         ),
-        "keywords": "O K Delta integrate fractal recursive scale detect select commit loop architecture",
         "question": "What is the brain's core processing unit, and how does it scale?",
         "situation": "When designing a new scale, debugging a cycle, or explaining why a change in one layer affects another",
         "reasoning": (
@@ -268,7 +263,6 @@ SEED_NODES = [
             "- Revisions should explicitly move confidence, not just edit content.\n"
             "- A surge of certainty in the encoder should trigger 'is this grounded?' not 'lock it at 0.95.'"
         ),
-        "keywords": "confidence dynamic evidence time decay emotion excitement calibration revision stale",
         "question": "How does confidence on a node change after it is created?",
         "situation": "When assigning or revising confidence, when deciding whether to trust a recalled node, or when noticing a surge of certainty that might not be grounded",
         "reasoning": (
@@ -309,7 +303,6 @@ SEED_NODES = [
             "- Seeding the interactions table is part of baby brain setup — without seed prompts, agents have no instructions.\n"
             "- When behavior feels off, check whether the interaction prompt still matches intent."
         ),
-        "keywords": "interactions behavior cognition learnable boundary prompt config versioning hardcoded agent",
         "question": "What is the difference between storing memory and shaping how the brain thinks?",
         "situation": "When deciding whether to hardcode a prompt or load it from the interactions table, or when a higher scale wants to adapt agent behavior",
         "reasoning": (
@@ -348,7 +341,6 @@ SEED_NODES = [
             "a generic summary. The specific texture that made those nodes useful is gone. "
             "S3 now sees one node where it needed to see emerging structure."
         ),
-        "keywords": "scale bounded work resolution grain compression synthesis cluster anti-pattern flatten",
         "question": "How much should each scale compress, and where should that work stop?",
         "situation": "When designing a new scale, deciding a cluster size limit, or tempted to have one scale do 'everything relevant'",
         "reasoning": (
@@ -387,7 +379,6 @@ SEED_NODES = [
             "it — missing links, duplicated concepts, fragmented clusters. If the surface "
             "is off, the operator's next message shows it — confusion, repetition, direct correction."
         ),
-        "keywords": "outcome observation loop next cycle feedback evaluation trace timing",
         "question": "How do we know if a decision worked — what does 'outcome' actually mean in the O/K/Δ loop?",
         "situation": "When designing trace schemas, building evaluation harnesses, or trying to close the feedback loop on a scale's behavior",
         "reasoning": (
@@ -431,7 +422,6 @@ SEED_NODES = [
             "The cost of verification is almost always lower than the cost of an incorrect "
             "confident claim. A wrong recommendation propagates. A hedged hypothesis invites correction."
         ),
-        "keywords": "verify claim hypothesis conclusion hedging confidence grounding check source recommendation",
         "question": "When is it safe to present a claim as a conclusion rather than a hypothesis?",
         "situation": "About to make a recommendation, report a fix, or cite a fact about code, state, or history without having directly checked the source",
         "reasoning": (
@@ -472,7 +462,6 @@ SEED_NODES = [
             "Anchor differently, and that is expected. The rule isn't 'use Anchor style X' "
             "— it is 'find out what this specific operator needs and encode it.'"
         ),
-        "keywords": "operator preferences working style observation encoding adaptation partnership early-session",
         "question": "How should Anchor behave before the operator's preferences are known?",
         "situation": "Early sessions with a new operator, or when tempted to apply a working-style preference that wasn't established with this specific operator",
         "reasoning": (
@@ -513,7 +502,6 @@ SEED_NODES = [
             "dimensions, cells are numbers. An empty cell means 'didn't measure' and is "
             "itself a signal. If the table has only one column, the evaluation is incomplete."
         ),
-        "keywords": "evaluation multi-dimensional metrics rigor comparison regression variance validation-theater table",
         "question": "How should a change be evaluated — what does a rigorous comparison look like?",
         "situation": "Running a benchmark, comparing prompt variants, reporting on an A/B test, or about to declare a change an improvement based on one number",
         "reasoning": (
@@ -554,7 +542,6 @@ SEED_NODES = [
             "well-scoped things. Extension is the default; splitting is the fallback when "
             "extension would break coherence."
         ),
-        "keywords": "extend create fragmentation architecture coherence responsibility centralization new-function",
         "question": "When should new code become a new function, module, or file versus extending an existing one?",
         "situation": "About to create a new function, module, or file — check first whether an existing one can absorb the need with a small extension",
         "reasoning": (
@@ -592,8 +579,6 @@ SEED_NODES = [
             "matches this moment.'\n"
             "- Reasoning: why this node exists, what the encoder was seeing when they "
             "wrote it. Short — 2-3 sentences.\n"
-            "- Keywords: space-separated, for keyword search fallback. Include synonyms "
-            "and adjacent terms.\n"
             "- Type: chosen deliberately — rule, principle, insight, concept, "
             "architecture, lesson, observation. Each type has behavior attached (decay "
             "rate, scoring weight). Picking the wrong type degrades recall.\n\n"
@@ -601,10 +586,8 @@ SEED_NODES = [
             "- Title that's a full sentence with no key noun ('Sometimes when we were talking we noticed that…').\n"
             "- Content that's just a restatement of the title.\n"
             "- Missing question or situation (the healer will fill these, but a well-encoded node doesn't need the healer).\n"
-            "- Keywords that only repeat title words.\n"
             "- Type 'note' or 'thought' when a more specific type fits."
         ),
-        "keywords": "node shape quality title content question situation reasoning keywords type anti-pattern",
         "question": "What makes a node useful versus noise?",
         "situation": "Writing or revising a node — about to pick a title, type, or decide how much content to include",
         "reasoning": (
@@ -649,7 +632,6 @@ SEED_NODES = [
             "graph has gotten worse while looking like it grew.\n\n"
             "When in doubt, revise. The graph should deepen over time, not widen with duplicates."
         ),
-        "keywords": "revise duplicate correction chain evolution deepen widen fragmentation canonical revision-history",
         "question": "When new information updates something already known, should a new node be created or should an existing one be revised?",
         "situation": "Encoding a realization, correction, or new detail that relates to an existing node — about to call remember() when revise() might be correct",
         "reasoning": (
@@ -698,7 +680,6 @@ SEED_NODES = [
             "If no type fits cleanly, that is a signal — the node may be trying to hold "
             "two different ideas. Consider splitting it into two typed nodes."
         ),
-        "keywords": "type rule principle concept insight lesson observation architecture decision correction behavior decay",
         "question": "Why does the type field matter, and how is the right type chosen?",
         "situation": "Picking a type when creating or revising a node — tempted to default to 'note,' 'thought,' or a type that sort-of fits",
         "reasoning": (

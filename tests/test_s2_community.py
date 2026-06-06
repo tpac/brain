@@ -92,7 +92,6 @@ class TestCommunityDecoder(BrainTestBase):
                 type='decision',
                 title='%s node %d' % (prefix, i),
                 content='Content about %s topic %d' % (prefix, i),
-                keywords='%s testing' % prefix,
             )
             ids.append(result['id'])
 

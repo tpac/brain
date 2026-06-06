@@ -72,9 +72,9 @@ class TestBrainMethodsExist(unittest.TestCase):
                           f"Brain missing core method: {method}")
 
     def test_remember_has_required_params(self):
-        """remember() must accept type, title, content, keywords, locked."""
+        """remember() must accept type, title, content, locked."""
         params = self.methods['remember']['params']
-        for p in ['type', 'title', 'content', 'keywords', 'locked']:
+        for p in ['type', 'title', 'content', 'locked']:
             self.assertIn(p, params, f"remember() missing param: {p}")
 
     def test_connect_has_required_params(self):

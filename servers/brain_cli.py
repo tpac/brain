@@ -68,8 +68,6 @@ def cmd_remember(args):
         "title": args.title,
         "content": args.content,
     }
-    if args.keywords:
-        params["keywords"] = " ".join(args.keywords)
     if args.confidence is not None:
         params["confidence"] = args.confidence
     if args.locked:
@@ -175,7 +173,6 @@ def main():
     p.add_argument("--type", default="context", help="Node type")
     p.add_argument("--title", required=True)
     p.add_argument("--content", required=True)
-    p.add_argument("--keywords", nargs="*")
     p.add_argument("--confidence", type=float)
     p.add_argument("--locked", action="store_true")
     p.add_argument("--project")

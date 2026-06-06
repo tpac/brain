@@ -277,20 +277,34 @@ Scale the 50-node probe (`/tmp/encoder-scan/probe_quote_fidelity.py`) to 200 nod
 ### Empty-description `related/related_to` archive sweep
 Pre-2026-05-24 auto_connect accumulated empty-description `related_to` edges. Reclassify can't fix these (no description to read). One-off archive script — `archive_dangling_edges` pattern. ~30min after Reclassify verified.
 
-### keywords API surface cleanup (low priority, non-breaking)
-After schema v28 dropped the column, the MCP/CLI/seed_pack surfaces still advertise a `keywords` parameter (silently ignored by remember()). Clean in a follow-up pass: drop from MCP schemas, CLI flags, seed_pack node dicts. ~30min total.
-> **2026-06-06 update:** investigating this surfaced a real latent bug —
-> `keywords` was still in `revise()`'s `NODES_TABLE_FIELDS`, so `revise(keywords=...)`
-> (advertised in revise's own docstring) **crashed** on a `SELECT`/`UPDATE` of the
-> dropped column. **Fixed** (`brain_remember.py`): `keywords` is now an accepted
-> no-op on revise too (mirrors remember), surfaced as a `deprecated field ignored`
-> warning; docstring example corrected; regression test added
-> (`test_deprecated_keywords_skipped_not_crashed`). The remaining advertise-cleanup
-> (MCP remember schema + seed_pack node dicts) is real but **contract-/test-coupled**
-> — the `keywords` param on `remember()` is load-bearing for ~30 `test_core.py` calls
-> + the contract-sync test, so removing it from the signature/schema is a bigger,
-> careful job, deliberately not bundled here. (The `store_enrichments` keywords arg
-> is a *separate, live* enrichment-vector path — do not remove it.)
+### keywords API surface cleanup ✅ DONE (2026-06-06)
+After schema v28 dropped the column, the MCP/CLI/seed_pack surfaces still advertised a `keywords` parameter (silently ignored by remember()). **Fully removed** — keywords no longer appears on any node-writing surface.
+> **2026-06-06:** the trigger was a latent bug — `keywords` was still in
+> `revise()`'s `NODES_TABLE_FIELDS`, so `revise(keywords=...)` (advertised in
+> revise's own docstring) **crashed** on a `SELECT`/`UPDATE` of the dropped column.
+> The full purge, done after Tom flagged that a dead param has no business on the
+> pillar (and definitely not kept alive to satisfy a stale test):
+> - `remember()` signature — `keywords` param removed.
+> - MCP — dead `elif name == "keywords"` branch removed from `_generate_remember_schema`;
+>   `keywords` removed from the revise_batch schema. Verified: no node-writing tool
+>   (remember / remember_batch / brain_batch / revise / revise_batch) advertises it.
+> - CLI — `--keywords` flag removed from the `remember` subcommand (enrich's stays — live).
+> - `revise()` — `keywords` now a loud deprecated no-op (`DEPRECATED_FIELDS`), not a crash.
+> - Tests — stripped `keywords=` from ~28 `test_core.py` calls + the `test_s2_community`
+>   remember call; updated the stale `test_remember_has_required_params` (it pinned
+>   `keywords` to the signature — the exact stale test that shouldn't dictate dead API).
+> - `seed_pack` — removed 16 dead `"keywords"` node-dict entries + the node-craft seed
+>   content that taught a `keywords` field.
+>
+> **NOT removed (correctly):** the `store_enrichments`/enrich/healer **keywords
+> enrichment vector** (Q/A/B/**K**) — a separate, live recall path.
+>
+> **Follow-ups surfaced (separate, out of scope):** (1) the s1e **encoder prompt**
+> still shows `keywords:` in examples — cosmetic now (the tool schema rejects it, so
+> the encoder can't emit it), but DB-authoritative + eval-gated to fix cleanly.
+> (2) `brain_recall.py` keyword-recall still reads the now-always-empty
+> `node['keywords']` — dead-ish scoring branch on the recall hot path; its own
+> investigation.
 
 ### brain_dashboard.db write removal
 The daemon-down INSERT into hook_log uses `datetime('now')` — marked `# sql-datetime-ok` as mid-deprecation. Per existing brain memory: `brain_dashboard.db deprecation: stop writing from log_hook_output()`. Full removal when the dashboard's deprecation actually lands.
