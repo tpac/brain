@@ -1,6 +1,6 @@
 """S2 Healer — Contract and Configuration.
 
-Generates missing findability fields (question, anchor, bridge, keywords) for
+Generates missing findability fields (question, situation, reasoning) for
 nodes that lack them. Uses Haiku with S0/S1 trace context for high-quality
 generation.
 
@@ -18,10 +18,14 @@ HEALER = {
     # Batch sizing
     'max_nodes_per_call': 10,        # Nodes per Haiku call
     'max_nodes_per_run': 50,         # Total nodes per S2 run (graduated: increase over time)
-    'min_edges_for_healing': 0,      # 0 = heal even orphans (question + keywords don't need neighbors)
+    'min_edges_for_healing': 0,      # 0 = heal even orphans (question/situation/reasoning don't need neighbors)
 
-    # Field types to generate
-    'fields_required': ['question', 'anchor', 'bridge', 'keywords'],
+    # Field types to generate. Mirror of what the decoder flags (needs_question/
+    # needs_situation/needs_reasoning) and the encoder writes (_store_fields) —
+    # keep in sync. (Was stale ['question','anchor','bridge','keywords'] — listed
+    # Q/A/B/K enrichment vectors the healer never actually writes, and the
+    # `keywords` slot referenced the column dropped in schema v28.)
+    'fields_required': ['question', 'situation', 'reasoning'],
 
     # What triggers staleness (node needs re-healing)
     'staleness_triggers': ['revise', 'connect'],
