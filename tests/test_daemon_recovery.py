@@ -65,7 +65,7 @@ class TestRecoverDaemon(unittest.TestCase):
     def test_responsive_is_noop(self):
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=False), \
-             patch.object(dc, "is_daemon_responsive", return_value=True), \
+             patch.object(dc, "_await_responsive", return_value={"ok": True}), \
              patch.object(dc, "_relaunch_daemon") as relaunch:
             self.assertTrue(dc.recover_daemon())
             relaunch.assert_not_called()
@@ -74,7 +74,7 @@ class TestRecoverDaemon(unittest.TestCase):
         self._seed(time.time(), 3)
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=False), \
-             patch.object(dc, "is_daemon_responsive", return_value=True), \
+             patch.object(dc, "_await_responsive", return_value={"ok": True}), \
              patch.object(dc, "_relaunch_daemon"):
             dc.recover_daemon()
         self.assertEqual(self._read()["attempts"], 0)
@@ -82,7 +82,7 @@ class TestRecoverDaemon(unittest.TestCase):
     def test_maintenance_mode_skips(self):
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=True), \
-             patch.object(dc, "is_daemon_responsive", return_value=False), \
+             patch.object(dc, "_await_responsive", return_value={"ok": False}), \
              patch.object(dc, "_relaunch_daemon") as relaunch:
             self.assertFalse(dc.recover_daemon())
             relaunch.assert_not_called()
@@ -90,7 +90,7 @@ class TestRecoverDaemon(unittest.TestCase):
     def test_down_and_clean_triggers_restart(self):
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=False), \
-             patch.object(dc, "is_daemon_responsive", return_value=False), \
+             patch.object(dc, "_await_responsive", return_value={"ok": False}), \
              patch.object(dc, "_relaunch_daemon") as relaunch:
             self.assertFalse(dc.recover_daemon())
             relaunch.assert_called_once()
@@ -100,7 +100,7 @@ class TestRecoverDaemon(unittest.TestCase):
         self._seed(time.time(), 1)  # restart issued just now
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=False), \
-             patch.object(dc, "is_daemon_responsive", return_value=False), \
+             patch.object(dc, "_await_responsive", return_value={"ok": False}), \
              patch.object(dc, "_relaunch_daemon") as relaunch:
             self.assertFalse(dc.recover_daemon())
             relaunch.assert_not_called()
@@ -110,7 +110,7 @@ class TestRecoverDaemon(unittest.TestCase):
         self._seed(time.time() - dc._RECOVERY_COOLDOWN_S - 1, dc._RECOVERY_MAX_ATTEMPTS)
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=False), \
-             patch.object(dc, "is_daemon_responsive", return_value=False), \
+             patch.object(dc, "_await_responsive", return_value={"ok": False}), \
              patch.object(dc, "_relaunch_daemon") as relaunch:
             self.assertFalse(dc.recover_daemon())
             relaunch.assert_not_called()
@@ -120,7 +120,7 @@ class TestRecoverDaemon(unittest.TestCase):
         self._seed(time.time() - dc._RECOVERY_WINDOW_S - 1, dc._RECOVERY_MAX_ATTEMPTS)
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=False), \
-             patch.object(dc, "is_daemon_responsive", return_value=False), \
+             patch.object(dc, "_await_responsive", return_value={"ok": False}), \
              patch.object(dc, "_relaunch_daemon") as relaunch:
             self.assertFalse(dc.recover_daemon())
             relaunch.assert_called_once()
@@ -202,6 +202,7 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
         # Responsive + same code → return True without touching the lifecycle.
         with patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_is_daemon_source", return_value=True), \
              patch.object(dc, "_can_connect", return_value={"ok": True}), \
              patch.object(dc, "_code_changed", return_value=False), \
              patch.object(dc, "_launchd_kickstart") as ks, \
@@ -215,6 +216,7 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
         # _code_changed: fast-path(stale) → under-lock recheck(stale) → ready.
         with patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_is_daemon_source", return_value=True), \
              patch.object(dc, "_can_connect", return_value={"ok": True}), \
              patch.object(dc, "_code_changed", side_effect=[True, True, False]), \
              patch.object(dc, "_launchd_kickstart", return_value=True) as ks, \
@@ -230,6 +232,7 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
         # to current code → we re-check and do NOTHING (no second kickstart).
         with patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_is_daemon_source", return_value=True), \
              patch.object(dc, "_can_connect", return_value={"ok": True}), \
              patch.object(dc, "_code_changed", side_effect=[True, False]), \
              patch.object(dc, "_launchd_kickstart") as ks, \
@@ -245,8 +248,10 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
         # fast-path, under-lock recheck, post-kickstart re-ping, post-spawn ready.
         with patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_is_daemon_source", return_value=True), \
              patch.object(dc, "_can_connect",
                           side_effect=[{"ok": False}, {"ok": False}, {"ok": False}, {"ok": True}]), \
+             patch.object(dc, "_await_responsive", return_value={"ok": False}), \
              patch.object(dc, "_code_changed", return_value=False), \
              patch.object(dc, "_launchd_kickstart", return_value=False) as ks, \
              patch.object(dc, "_launchd_manages_daemon", return_value=False), \
@@ -267,6 +272,7 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
         # post-spawn(ok).
         with patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_is_daemon_source", return_value=True), \
              patch.object(dc, "_can_connect",
                           side_effect=[{"ok": True}, {"ok": True}, {"ok": False}, {"ok": True}]), \
              patch.object(dc, "_code_changed", return_value=True), \
@@ -287,6 +293,7 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
         # squatted the port, and crash-looped the real launchd daemon).
         with patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_is_daemon_source", return_value=True), \
              patch.object(dc, "_can_connect", return_value={"ok": True}), \
              patch.object(dc, "_code_changed", return_value=True), \
              patch.object(dc, "_launchd_kickstart", return_value=False), \
@@ -301,7 +308,9 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
         # service → don't race a manual spawn; let KeepAlive bring it up.
         with patch.object(dc, "is_maintenance_mode", return_value=False), \
              patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_is_daemon_source", return_value=True), \
              patch.object(dc, "_can_connect", return_value={"ok": False}), \
+             patch.object(dc, "_await_responsive", return_value={"ok": False}), \
              patch.object(dc, "_code_changed", return_value=False), \
              patch.object(dc, "_launchd_kickstart", return_value=False), \
              patch.object(dc, "_launchd_manages_daemon", return_value=True), \
@@ -315,6 +324,51 @@ class TestEnsureDaemonRoutesThroughLaunchd(unittest.TestCase):
              patch.object(dc.subprocess, "Popen") as popen:
             self.assertFalse(dc.ensure_daemon(self._db))
             ks.assert_not_called()
+            popen.assert_not_called()
+
+    def test_worktree_client_up_is_noop(self):
+        # A non-source checkout (worktree) is a PURE CLIENT: daemon up → return
+        # True without ever touching kickstart/spawn, whatever the code version.
+        # It's still Anchor (shared brain.db) — just not the daemon's lifecycle owner.
+        with patch.object(dc, "is_maintenance_mode", return_value=False), \
+             patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_is_daemon_source", return_value=False), \
+             patch.object(dc, "_can_connect", return_value={"ok": True}), \
+             patch.object(dc, "_launchd_kickstart") as ks, \
+             patch.object(dc.subprocess, "Popen") as popen:
+            self.assertTrue(dc.ensure_daemon(self._db))
+            ks.assert_not_called()
+            popen.assert_not_called()
+
+    def test_worktree_client_down_waits_never_kickstarts(self):
+        # A worktree never (re)starts the shared daemon — launchd KeepAlive owns
+        # recovery (a worktree restart can't converge its code, it only churns).
+        # Down → wait out the relaunch grace, return whether it came up; the grace
+        # here recovers it → True, with NO kickstart and NO spawn.
+        with patch.object(dc, "is_maintenance_mode", return_value=False), \
+             patch.object(dc, "_is_daemon_source", return_value=False), \
+             patch.object(dc, "_can_connect", return_value={"ok": False}), \
+             patch.object(dc, "_await_responsive", return_value={"ok": True}), \
+             patch.object(dc, "_launchd_kickstart") as ks, \
+             patch.object(dc.subprocess, "Popen") as popen:
+            self.assertTrue(dc.ensure_daemon(self._db))
+            ks.assert_not_called()
+            popen.assert_not_called()
+
+    def test_owner_slow_daemon_recovers_within_grace_not_kickstarted(self):
+        # THE core fix. The source checkout sees a non-responsive 2s ping, but the
+        # daemon is only slow / mid-relaunch. The grace probe catches it coming
+        # back → NO kickstart (the false-down that started the restart storm).
+        with patch.object(dc, "is_maintenance_mode", return_value=False), \
+             patch.object(dc, "get_lock_path", return_value=self._lock), \
+             patch.object(dc, "_is_daemon_source", return_value=True), \
+             patch.object(dc, "_can_connect", return_value={"ok": False}), \
+             patch.object(dc, "_await_responsive", return_value={"ok": True}), \
+             patch.object(dc, "_code_changed", return_value=False), \
+             patch.object(dc, "_launchd_kickstart") as ks, \
+             patch.object(dc.subprocess, "Popen") as popen:
+            self.assertTrue(dc.ensure_daemon(self._db))
+            ks.assert_not_called()   # slow ≠ dead → not restarted
             popen.assert_not_called()
 
 
@@ -361,6 +415,70 @@ class TestDuplicateDaemonDefers(unittest.TestCase):
              patch.object(ds.time, "sleep"):
             with self.assertRaises(OSError):
                 d._bind_socket()
+
+
+class TestShutdownDrainOrder(unittest.TestCase):
+    """_shutdown must drain the worker pool AND settle the bg-writer/queues
+    BEFORE saving + closing the brain — otherwise an in-flight hook or a mid-drain
+    touches a closed connection ('Cannot operate on a closed database', the
+    2026-06-06 boot failure, where close() ran before the pool/bg-writer drained).
+    Regression guard for the drain ORDER."""
+
+    def test_drains_pool_and_bg_writer_before_close(self):
+        from servers import daemon_server as ds
+        d = ds.BrainDaemon.__new__(ds.BrainDaemon)   # skip __init__ — no real brain/socket
+        order = []
+        d.brain = MagicMock()
+        d.brain.save.side_effect = lambda: order.append("save")
+        d.brain.close.side_effect = lambda: order.append("close")
+        d._pool = MagicMock()
+        d._pool.shutdown.side_effect = lambda **k: order.append("pool")
+        d._log = lambda *a, **k: None
+        d._log_shutdown_error = lambda *a, **k: None
+        d._cleanup = lambda: order.append("cleanup")          # signals queue shutdown
+        with patch("servers.embed_queue.join_worker",
+                   side_effect=lambda **k: order.append("join")), \
+             patch("_thread.start_new_thread"):                # don't arm the os._exit backstop
+            d._shutdown()
+        # Pool drained, queues signalled, bg-writer joined, brain saved — ALL
+        # before the connections close.
+        self.assertEqual(order, ["pool", "cleanup", "join", "save", "close"])
+
+
+class TestEmbedQueueShutdown(unittest.TestCase):
+    """request_shutdown() must wake the drain worker out of its interval wait
+    immediately (an Event, not a passive flag), so daemon shutdown doesn't block
+    for a full EMBED_DRAIN_INTERVAL and brain.close() can't race a mid-drain."""
+
+    def setUp(self):
+        import servers.embed_queue as eq
+        self.eq = eq
+        self._reset()
+
+    def tearDown(self):
+        self._reset()
+
+    def _reset(self):
+        eq = self.eq
+        from servers import recall_write_queue as rwq
+        with eq._lock:
+            eq._worker_started = False
+            eq._shutdown_requested = False
+        eq._shutdown_event.clear()
+        eq._worker_thread = None
+        with rwq._lock:
+            rwq._shutdown_requested = False
+
+    def test_request_shutdown_wakes_worker_promptly(self):
+        eq = self.eq
+        # Long interval — only the Event (not the timeout) can make it exit fast.
+        with patch.object(eq, "EMBED_DRAIN_INTERVAL", 30):
+            eq.start(MagicMock())
+            self.assertTrue(eq._worker_thread.is_alive())
+            eq.request_shutdown()                 # sets flag + Event → wakes the 30s wait now
+            eq.join_worker(timeout=2.0)
+            self.assertFalse(eq._worker_thread.is_alive(),
+                             "worker must exit on the Event, not wait the full 30s interval")
 
 
 if __name__ == "__main__":

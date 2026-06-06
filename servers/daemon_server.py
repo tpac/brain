@@ -866,9 +866,41 @@ class BrainDaemon:
             pass
 
     def _shutdown(self):
-        """Clean shutdown — save brain, close sockets, release all resources.
-        Forces exit after 5s if workers are stuck (e.g. embedder CPU loop)."""
+        """Clean shutdown. Order matters: stop accepting work, drain everything
+        that holds a DB connection, THEN save + close — so no in-flight worker or
+        bg-writer drain ever touches a closed connection (the 'Cannot operate on
+        a closed database' boot failure of 2026-06-06, where close() ran before
+        the pool + bg-writer were drained). A 5s force-exit backstop bounds the
+        whole sequence if any drain wedges."""
         self._log("Shutting down...")
+
+        # Backstop FIRST — even if a drain below wedges, shutdown still ends in 5s.
+        import _thread
+        def _force_exit():
+            time.sleep(5)
+            self._log("Workers stuck — forcing exit")
+            os._exit(0)
+        _thread.start_new_thread(_force_exit, ())
+
+        # 1. Drain the worker pool: in-flight commands (e.g. hook_recall) finish
+        #    against still-open connections instead of committing onto a closed one.
+        try:
+            self._pool.shutdown(wait=True, cancel_futures=False)
+        except TypeError:
+            self._pool.shutdown(wait=True)
+
+        # 2. Stop + settle the bg-writer and its queues BEFORE closing. _cleanup
+        #    signals request_shutdown (which wakes the drain worker immediately);
+        #    join_worker waits for its in-flight drain to finish and the thread to
+        #    exit, so conn_bg_writer is idle when we close it.
+        self._cleanup()
+        try:
+            from servers import embed_queue
+            embed_queue.join_worker(timeout=3.0)
+        except Exception as e:
+            self._log_shutdown_error('bg_writer_join', e)
+
+        # 3. Nothing holds a live connection now — save + close.
         try:
             if self.brain:
                 self.brain.save()
@@ -876,18 +908,6 @@ class BrainDaemon:
                 self.brain = None
         except Exception as e:
             self._log("Save error during shutdown: {}".format(e))
-        self._cleanup()
-        # Give workers 5s to finish, then force exit
-        import _thread
-        def _force_exit():
-            time.sleep(5)
-            self._log("Workers stuck — forcing exit")
-            os._exit(0)
-        _thread.start_new_thread(_force_exit, ())
-        try:
-            self._pool.shutdown(wait=True, cancel_futures=False)
-        except TypeError:
-            self._pool.shutdown(wait=True)
 
     def _cleanup(self):
         """Close server socket, observer channel, remove PID and lock files.

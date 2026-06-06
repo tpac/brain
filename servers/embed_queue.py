@@ -60,6 +60,8 @@ _lock = threading.Lock()
 _drain_busy = threading.Lock()  # non-blocking; used for skip-tick semantics
 _worker_started = False
 _shutdown_requested = False
+_shutdown_event = threading.Event()    # set by request_shutdown() → wakes the worker out of its interval wait at once
+_worker_thread: Optional[threading.Thread] = None
 _stats = {
     'nodes_enqueued_total': 0,
     'edges_enqueued_total': 0,
@@ -114,26 +116,41 @@ def get_stats() -> dict:
 
 def start(brain) -> None:
     """Start the single drain worker. Idempotent — safe to call multiple times."""
-    global _worker_started
+    global _worker_started, _worker_thread
     with _lock:
         if _worker_started:
             return
         _worker_started = True
     t = threading.Thread(target=_worker_loop, args=(brain,),
                          name='embed-queue-drain', daemon=True)
+    _worker_thread = t
     t.start()
 
 
 def request_shutdown() -> None:
-    """Signal the worker to exit cleanly at the next interval check."""
+    """Signal the worker to exit cleanly AND wake it out of its interval wait
+    immediately, so daemon shutdown isn't blocked for up to EMBED_DRAIN_INTERVAL
+    (and brain.close() can't race an in-flight drain)."""
     global _shutdown_requested
     with _lock:
         _shutdown_requested = True
+    _shutdown_event.set()
 
 
 def _is_shutdown_requested() -> bool:
     with _lock:
         return _shutdown_requested
+
+
+def join_worker(timeout: float = 3.0) -> None:
+    """Block until the drain worker has exited (or `timeout` elapses). Called from
+    daemon shutdown AFTER request_shutdown() so the worker settles OFF
+    brain.conn_bg_writer — its in-flight drain finishes and the thread exits —
+    before brain.close() runs. Without it, close() races a mid-drain →
+    'Cannot operate on a closed database' + a dropped batch (2026-06-06)."""
+    t = _worker_thread
+    if t is not None and t.is_alive():
+        t.join(timeout)
 
 
 def _worker_loop(brain) -> None:
@@ -162,7 +179,10 @@ def _worker_loop(brain) -> None:
 
     while True:
         try:
-            time.sleep(EMBED_DRAIN_INTERVAL)
+            # Interruptible wait — request_shutdown() sets _shutdown_event to wake
+            # us at once, so shutdown isn't blocked for a full interval and
+            # brain.close() won't race an in-flight drain.
+            _shutdown_event.wait(EMBED_DRAIN_INTERVAL)
 
             if _is_shutdown_requested() or recall_write_queue.is_shutdown_requested():
                 break

@@ -143,30 +143,60 @@ def is_daemon_responsive(timeout: float = 2.0) -> bool:
     return _can_connect(timeout=timeout).get("ok", False)
 
 
-def _code_changed(resp: dict) -> bool:
-    """True if a restart is warranted: the daemon runs different code than this
-    checkout AND this checkout is the daemon's launch source, so a kickstart
-    (which reboots the daemon from its OWN source, never from here) would
-    actually converge. Conservative — an unknown fingerprint never restarts.
+# Liveness-grace budget for the two restart-decision paths (ensure_daemon and
+# recover_daemon). A bare 2s ping cannot tell "slow / relaunching" from "dead":
+# a recall runs 10-17s, and a launchd relaunch is gated by ThrottleInterval
+# (10s — see com.brain.daemon.plist) + an embedder reload (~4-6s). Both budgets
+# must clear that window, or a busy/recovering daemon gets mistaken for a corpse
+# and (re)started — which SIGKILLs it, resets the throttle, and corrupts any
+# in-flight hook (the closed-DB boot failure of 2026-06-06).
+_GRACE_TRIES = 40       # ×0.5s ≈ 20s — confirm-down / wait out a relaunch
+_KICKSTART_TRIES = 50   # ×0.5s ≈ 25s — wait for our own kickstart to come back
 
-    Exact signal: the daemon's reported `source_dir`. A checkout that isn't that
-    source — a linked worktree, a second clone — can never converge a restart, so
-    it never reports changed (the non-convergent churn of 2026-06-06). Daemons
-    predating `source_dir` fall back to the linked-worktree heuristic."""
-    result = resp.get("result", {})
-    daemon_src = result.get("source_dir", "")
+
+def _await_responsive(tries: int) -> dict:
+    """Poll the daemon until it answers a ping or `tries` elapse (0.5s each).
+    Returns the last ping response ({} if never responsive). The robust liveness
+    gate both restart paths use instead of a bare ping — see _GRACE_TRIES."""
+    resp = _can_connect()
+    for _ in range(max(0, tries)):
+        if resp.get("ok"):
+            return resp
+        time.sleep(0.5)
+        resp = _can_connect()
+    return resp
+
+
+def _is_daemon_source(resp: dict) -> bool:
+    """Whether THIS checkout is the daemon's launch source — the only checkout
+    that may manage its lifecycle.
+
+    NOT an identity statement. The brain (the one shared brain.db) is the same
+    for every checkout, so every session is Anchor. This is purely machinery:
+    the daemon's CODE is launchd-pinned to its source dir, so only the source
+    checkout can converge a (re)start. A linked worktree / 2nd clone is a pure
+    client — restarting from there can't change the daemon's code, it only churns.
+
+    Signal: the daemon's reported `source_dir` vs this checkout's REPO_ROOT. A
+    daemon too old to report it falls back to the linked-worktree heuristic."""
+    daemon_src = resp.get("result", {}).get("source_dir", "")
     if daemon_src:
-        if os.path.realpath(daemon_src) != os.path.realpath(REPO_ROOT):
-            return False                    # not this daemon's source → a restart can't converge
-    elif _IS_WORKTREE:
-        return False                        # fallback: daemon too old to report source_dir
-    daemon_fp = result.get("code_fingerprint", "")
-    # Use the import-time constant, not a fresh _code_fingerprint() — this
-    # process is short-lived (hook/CLI) so its code can't change underneath it,
-    # and recomputing now re-reads every servers/**/*.py on each call (several
-    # MB) where ensure_daemon calls this 2-3× per invocation.
-    current_fp = _CODE_FINGERPRINT
-    return bool(current_fp != "unknown" and daemon_fp and daemon_fp != current_fp)
+        return os.path.realpath(daemon_src) == os.path.realpath(REPO_ROOT)
+    return not _IS_WORKTREE
+
+
+def _code_changed(resp: dict) -> bool:
+    """True iff a restart is warranted: this checkout is the daemon's source AND
+    the daemon runs a different code fingerprint. Conservative — an unknown
+    fingerprint never restarts, and a non-source checkout is never "changed"
+    (it can't converge a restart — the non-convergent churn of 2026-06-06)."""
+    if not _is_daemon_source(resp):
+        return False
+    daemon_fp = resp.get("result", {}).get("code_fingerprint", "")
+    # Import-time constant, not a fresh _code_fingerprint(): this process is
+    # short-lived (hook/CLI) so its code can't change underneath it, and
+    # recomputing re-reads every servers/**/*.py (several MB) on each call.
+    return bool(_CODE_FINGERPRINT != "unknown" and daemon_fp and daemon_fp != _CODE_FINGERPRINT)
 
 
 def ensure_daemon(db_path: str) -> bool:
@@ -193,8 +223,21 @@ def ensure_daemon(db_path: str) -> bool:
         sys.stderr.write("[brain-daemon] Maintenance mode active — skipping startup\n")
         return False
 
-    # Fast path: running, responsive, and on current code → nothing to do.
     resp = _can_connect()
+
+    # A non-source checkout (linked worktree / 2nd clone) is a PURE CLIENT of the
+    # shared daemon. Identity is shared — the one brain.db makes every checkout
+    # Anchor — but the daemon's CODE is launchd-pinned to its source, so a
+    # (re)start from here can't converge to this checkout's code; it would only
+    # churn and SIGKILL in-flight work. So a non-source checkout never restarts:
+    # up → done; down → wait out launchd's relaunch (KeepAlive owns recovery).
+    if not _is_daemon_source(resp):
+        if resp.get("ok"):
+            return True
+        return _await_responsive(_GRACE_TRIES).get("ok", False)
+
+    # ── Source checkout: owns lifecycle (kickstart converges; stale code reloads). ──
+    # Fast path: running, responsive, and on current code → nothing to do.
     if resp.get("ok") and not _code_changed(resp):
         return True
     # Otherwise (down, or up-but-stale) fall through to the locked (re)start.
@@ -209,23 +252,28 @@ def ensure_daemon(db_path: str) -> bool:
         sys.stderr.write("[brain-daemon] Lock acquired.\n")
 
         # Re-check under the lock — a caller we blocked behind may have already
-        # brought up a healthy, current-code daemon while we waited.
+        # brought up a healthy, current-code daemon while we waited. A bare 2s
+        # ping can't tell a slow recall / a launchd relaunch (throttle + reload)
+        # from death, so wait it out before forcing a (re)start.
         resp = _can_connect()
+        if not resp.get("ok"):
+            resp = _await_responsive(_GRACE_TRIES)
         if resp.get("ok") and not _code_changed(resp):
-            sys.stderr.write("[brain-daemon] Daemon already healthy (handled by another caller).\n")
+            sys.stderr.write("[brain-daemon] Daemon healthy (handled by another caller / recovered).\n")
             return True
 
         # Route the (re)start through launchd. `kickstart -k` kills any running
         # instance (covers healthy-but-stale AND hung-corpse) and respawns it in
         # one launchd-serialized call — no competing-spawn race with KeepAlive.
         if _launchd_kickstart():
-            for i in range(30):  # 15s max — a fresh boot reloads the embedder (~4-6s)
-                time.sleep(0.5)
-                resp = _can_connect()
-                if resp.get("ok") and not _code_changed(resp):
-                    sys.stderr.write("[brain-daemon] Daemon ready via launchd (took %.1fs)\n" % ((i + 1) * 0.5))
-                    return True
-            sys.stderr.write("[brain-daemon] Daemon not ready within 15s after kickstart\n")
+            # Wait past ThrottleInterval (10s) + embedder reload — a tighter
+            # window gives up while the daemon is still coming back and would
+            # re-kickstart it, resetting the throttle (the self-sustaining storm).
+            resp = _await_responsive(_KICKSTART_TRIES)
+            if resp.get("ok") and not _code_changed(resp):
+                sys.stderr.write("[brain-daemon] Daemon ready via launchd.\n")
+                return True
+            sys.stderr.write("[brain-daemon] Daemon not ready after kickstart grace\n")
             return False
 
         # kickstart did not succeed. Decide carefully whether a direct spawn is
@@ -478,7 +526,10 @@ def recover_daemon(db_path: Optional[str] = None) -> bool:
     if is_maintenance_mode():
         return False
 
-    if is_daemon_responsive():
+    # Confirm down with grace, not a bare ping — a slow recall / a launchd
+    # relaunch (throttle + reload) is not a hung corpse, and relaunching a
+    # live-but-busy daemon is the same false-down that churned boot (2026-06-06).
+    if _await_responsive(_GRACE_TRIES).get("ok", False):
         if _read_recovery_state().get("attempts"):
             _write_recovery_state(0.0, 0)  # healthy again — reset the streak
         return True
