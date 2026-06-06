@@ -468,24 +468,36 @@ class TestDaemonModuleStructure(unittest.TestCase):
         finally:
             shutil.rmtree(d, ignore_errors=True)
 
-    def test_code_changed_suppressed_in_worktree(self):
-        """_code_changed must return False whenever this checkout is a worktree,
-        regardless of a fingerprint mismatch — restarting the shared daemon
-        can't converge to worktree code, so it would only churn (2026-06-06).
-        On the primary checkout, a real mismatch still reports code-changed."""
+    def test_code_changed_warranted_only_for_daemon_source(self):
+        """_code_changed gates on the daemon's reported source_dir: a restart only
+        converges if THIS checkout is the daemon's launch source, so a different
+        checkout (worktree, second clone) never reports changed even on a
+        fingerprint mismatch. Daemons that omit source_dir fall back to the
+        linked-worktree heuristic. (2026-06-06 non-convergent churn fix.)"""
         import servers.daemon_client as dc
-        resp = {"result": {"code_fingerprint": "DIFFERENT_FROM_CURRENT_FP"}}
-        orig = dc._IS_WORKTREE
-        try:
-            dc._IS_WORKTREE = True
-            self.assertFalse(dc._code_changed(resp),
-                             "worktree caller must never report code-changed")
-            dc._IS_WORKTREE = False
-            if dc._CODE_FINGERPRINT != "unknown":
-                self.assertTrue(dc._code_changed(resp),
-                                "primary checkout with fp mismatch IS code-changed")
-        finally:
-            dc._IS_WORKTREE = orig
+        from unittest import mock
+
+        with mock.patch.object(dc, "REPO_ROOT", "/repo/main"), \
+             mock.patch.object(dc, "_CODE_FINGERPRINT", "FP_A"):
+            # different source_dir → never restart, even with a fingerprint mismatch
+            self.assertFalse(dc._code_changed(
+                {"result": {"source_dir": "/repo/.wt/feat", "code_fingerprint": "FP_B"}}),
+                "a checkout that isn't the daemon's source must never report changed")
+            # same source_dir + mismatch → restart warranted
+            self.assertTrue(dc._code_changed(
+                {"result": {"source_dir": "/repo/main", "code_fingerprint": "FP_B"}}),
+                "the daemon's own source running changed code IS code-changed")
+            # same source_dir + matching fingerprint → no restart
+            self.assertFalse(dc._code_changed(
+                {"result": {"source_dir": "/repo/main", "code_fingerprint": "FP_A"}}),
+                "same source and same fingerprint is not code-changed")
+            # fallback (daemon omits source_dir): the worktree heuristic decides
+            with mock.patch.object(dc, "_IS_WORKTREE", True):
+                self.assertFalse(dc._code_changed({"result": {"code_fingerprint": "FP_B"}}),
+                                 "old daemon + worktree caller falls back to suppression")
+            with mock.patch.object(dc, "_IS_WORKTREE", False):
+                self.assertTrue(dc._code_changed({"result": {"code_fingerprint": "FP_B"}}),
+                                "old daemon + primary checkout + mismatch IS code-changed")
 
 
 # ══════════════════════════════════════════════════════════════════════════

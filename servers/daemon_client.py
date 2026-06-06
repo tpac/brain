@@ -62,7 +62,7 @@ def _debugger_friendly_python() -> str:
     return sys.executable
 
 from .daemon_config import (
-    _code_fingerprint, _CODE_FINGERPRINT, _IS_WORKTREE, LAUNCHD_LABEL,
+    _code_fingerprint, _CODE_FINGERPRINT, _IS_WORKTREE, REPO_ROOT, LAUNCHD_LABEL,
     get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
     get_recovery_state_path, is_maintenance_mode,
 )
@@ -144,19 +144,23 @@ def is_daemon_responsive(timeout: float = 2.0) -> bool:
 
 
 def _code_changed(resp: dict) -> bool:
-    """True if the responding daemon runs different code than this checkout AND
-    restarting it would actually pick that code up. Conservative — returns False
-    when either fingerprint is unknown, so an indeterminate signal never
-    triggers a restart.
+    """True if a restart is warranted: the daemon runs different code than this
+    checkout AND this checkout is the daemon's launch source, so a kickstart
+    (which reboots the daemon from its OWN source, never from here) would
+    actually converge. Conservative — an unknown fingerprint never restarts.
 
-    Worktree exception: a linked git worktree NEVER reports code-changed. The
-    daemon is a singleton launched from the primary checkout, so kickstarting it
-    reboots that checkout — never the worktree's code. Letting a worktree force
-    restarts produced a churn loop that can't converge (2026-06-06). Worktree
-    edits are picked up by merging to the primary checkout, not by restart."""
-    if _IS_WORKTREE:
-        return False
-    daemon_fp = resp.get("result", {}).get("code_fingerprint", "")
+    Exact signal: the daemon's reported `source_dir`. A checkout that isn't that
+    source — a linked worktree, a second clone — can never converge a restart, so
+    it never reports changed (the non-convergent churn of 2026-06-06). Daemons
+    predating `source_dir` fall back to the linked-worktree heuristic."""
+    result = resp.get("result", {})
+    daemon_src = result.get("source_dir", "")
+    if daemon_src:
+        if os.path.realpath(daemon_src) != os.path.realpath(REPO_ROOT):
+            return False                    # not this daemon's source → a restart can't converge
+    elif _IS_WORKTREE:
+        return False                        # fallback: daemon too old to report source_dir
+    daemon_fp = result.get("code_fingerprint", "")
     # Use the import-time constant, not a fresh _code_fingerprint() — this
     # process is short-lived (hook/CLI) so its code can't change underneath it,
     # and recomputing now re-reads every servers/**/*.py on each call (several
@@ -261,7 +265,7 @@ def ensure_daemon(db_path: str) -> bool:
             sys.stderr.write("[brain-daemon] Port occupied but unresponsive — killing zombie\n")
             _kill_daemon()
             time.sleep(1)
-        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        parent_dir = REPO_ROOT
         log_path = os.path.join(os.path.dirname(db_path), "daemon.log")
         with open(log_path, 'a') as log_fd_file, open(os.devnull, 'r') as devnull:
             daemon_python = _debugger_friendly_python()

@@ -114,10 +114,15 @@ def _is_worktree_checkout(repo_root: str) -> bool:
     return os.path.isfile(os.path.join(repo_root, ".git"))
 
 
-# Is THIS checkout a linked worktree? If so, _code_changed suppresses staleness
-# restarts — a worktree can't be the singleton daemon's launch source (2026-06-06).
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_IS_WORKTREE = _is_worktree_checkout(_REPO_ROOT)
+# Absolute repo root of THIS checkout (servers/'s parent). Canonical home: the
+# daemon ping reports it as `source_dir`; _code_changed compares against it.
+# Bootstrap sites (brain_mcp, brain_cli, daemon_server.start) recompute it locally
+# because they set sys.path BEFORE they can import this module.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Linked-worktree heuristic — FALLBACK used by _code_changed only when the daemon
+# predates `source_dir` reporting; the exact signal is the source_dir comparison.
+_IS_WORKTREE = _is_worktree_checkout(REPO_ROOT)
 
 
 # ─── Path Helpers ───

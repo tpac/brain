@@ -7,13 +7,14 @@ ping, health, save, session, config, plus maintenance one-offs
 import json
 import os
 
-from .daemon_config import _CODE_FINGERPRINT
+from .daemon_config import _CODE_FINGERPRINT, REPO_ROOT
 
 
 def _handle_ping(brain, args, graph_changes):
     import threading as _t
     result = {"status": "alive", "pid": os.getpid(),
               "code_fingerprint": _CODE_FINGERPRINT,
+              "source_dir": REPO_ROOT,
               "threads": _t.active_count()}
     if args.get("thread_detail"):
         result["thread_list"] = [
