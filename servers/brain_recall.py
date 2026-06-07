@@ -1034,6 +1034,47 @@ class BrainRecallMixin:
 
         return result
 
+    def _trace_chain_candidates(self, query_vec, exclude_ids):
+        """Episodic dual-store rescue lane (flag: BRAIN_TRACE_CHAIN). Two-hop cosine:
+        query -> top-T s0 DIALOGUE traces -> each trace's STORED vector -> top-N nodes.
+        Returns {node_id: combined tcos*ncos} for the top TRACE_CHAIN_RESERVE nodes NOT already
+        found by embedding/keyword/fts5 (exclude_ids). The trace de-dilutes a buried query: it is
+        specific, un-pooled conversation text, so it pulls EX.CO nodes the diluted query cosine missed.
+
+        Design: docs/RECALL-DUAL-STORE-DESIGN.md §3.3 form 1 (the semantic chain — the burial FIX).
+        Hygiene (§4): s0 user/assistant only; tool_result dropped (the 82% recall-echo poison).
+        Cost note (§8): ~1 trace-vector scan + T node-vector scans per call. Flag-gated; the lane is
+        OFF by default so this never touches the live hot path until eval-gated activation.
+        """
+        from .brain_constants import TRACE_CHAIN_T, TRACE_CHAIN_N, TRACE_CHAIN_RESERVE
+        try:
+            trows = self.logs_conn.execute(
+                """SELECT te.vector, ev.ref_type, ev.scale
+                   FROM trace_embeddings te LEFT JOIN trace_events ev ON ev.id = te.trace_id"""
+            ).fetchall()
+            tr = [(embedder.cosine_similarity(query_vec, r[0]), r[0]) for r in trows
+                  if r[0] and r[2] == 's0' and r[1] in ('user_message', 'assistant_message')]
+            if not tr:
+                return {}
+            tr.sort(key=lambda x: -x[0])
+            model = embedder.stats.get('model_name') or None
+            node_rows = self._vec_dal.get_all_vectors(vector_types=['_primary'], model=model)
+            node_vecs = [(nr['node_id'], nr['embedding']) for nr in node_rows if nr['embedding']]
+            best = {}   # node_id -> max combined tcos*ncos (strongest puller wins)
+            for tcos, tvec in tr[:TRACE_CHAIN_T]:
+                nn = sorted(((embedder.cosine_similarity(tvec, b), nid) for nid, b in node_vecs),
+                            key=lambda x: -x[0])[:TRACE_CHAIN_N]
+                for ncos, nid in nn:
+                    if nid in exclude_ids:
+                        continue
+                    comb = tcos * ncos
+                    if nid not in best or comb > best[nid]:
+                        best[nid] = comb
+            return dict(sorted(best.items(), key=lambda x: -x[1])[:TRACE_CHAIN_RESERVE])
+        except Exception as e:
+            self._log_error('recall_trace_chain', e, 'trace-chain lane')
+            return {}
+
     def recall(self, query: str, filter: Optional[Dict[str, Any]] = None,
                limit: int = 20, offset: int = 0,
                include_archived: bool = False,
@@ -1627,6 +1668,16 @@ class BrainRecallMixin:
         except Exception as e:
             self._log_error('recall_fts5', e, 'FTS5 candidate search')
 
+        # STEP 4.6: Trace-chain lane (episodic dual-store rescue) — flag-gated, additive, default OFF.
+        # docs/RECALL-DUAL-STORE-DESIGN.md §3.3 form 1. Off -> trace_chain_scores empty -> zero impact.
+        # exclude_ids = fts5_only only (its own reserved lane). We deliberately do NOT exclude
+        # embedding/keyword hits: the buried EX.CO nodes ARE in embedding_scores (scored but below the
+        # cut) — rescuing them from below the cut is the whole point. Dedup vs the main TOP is at merge.
+        import os as _os_tc
+        trace_chain_scores = {}
+        if _os_tc.environ.get('BRAIN_TRACE_CHAIN', '') == '1':
+            trace_chain_scores = self._trace_chain_candidates(query_vec, exclude_ids=fts5_only_ids)
+
         # STEP 5: Build unified candidate set (all nodes seen by any path)
         all_candidate_ids = set(embedding_scores.keys()) | set(keyword_scores.keys()) | fts5_only_ids
 
@@ -1740,7 +1791,28 @@ class BrainRecallMixin:
 
         # Sort by blended score descending
         scored_results.sort(key=lambda x: -x['blended_score'])
-        scored_results = scored_results[:limit]
+        if trace_chain_scores:
+            # Reserved tail (§4): rescue trace-chain nodes that did NOT make the main top. Additive —
+            # never reorders the main top. A buried node (scored low here, below the cut) is PROMOTED
+            # via its trace-chain combined score; one already in the main top is left alone (dedup).
+            # Fresh candidate dicts so the rescue survives the [:limit] cut (the bug the fts5 lane hits,
+            # finding 703a9402 — here the reserved slots are guaranteed before truncation).
+            from .brain_constants import TRACE_CHAIN_RESERVE
+            _k = TRACE_CHAIN_RESERVE
+            _main_top = scored_results[:max(0, limit - _k)]
+            _have = {r['node_id'] for r in _main_top}
+            _rescues = []
+            for _nid, _comb in sorted(trace_chain_scores.items(), key=lambda x: -x[1]):
+                if _nid in _have:
+                    continue
+                _rescues.append({'node_id': _nid, 'blended_score': _comb, '_source': 'trace_chain',
+                                 'embedding_similarity': None, 'keyword_score': None,
+                                 '_context_mismatch': False})
+                if len(_rescues) >= _k:
+                    break
+            scored_results = _main_top + _rescues
+        else:
+            scored_results = scored_results[:limit]
 
         # STEP 6.5: Graph traversal MOVED to Layer 3 (post-surface).
         # Previously: traversed from top-5 cosine results (often hubs).
@@ -1760,7 +1832,7 @@ class BrainRecallMixin:
         # v9: FTS5-only candidates bypass the relevance floor — they go straight to surfacer.
         scored_results = [
             sr for sr in scored_results
-            if sr['_source'] == 'fts5_only'  # FTS5-only: always pass to surfacer
+            if sr['_source'] in ('fts5_only', 'trace_chain')  # reserved lanes: always pass to surfacer
             or sr['blended_score'] >= (
                 RELEVANCE_FLOOR_ENRICHED
                 if enrichment_hits.get(sr['node_id'], 'primary') != 'primary'
@@ -1908,6 +1980,7 @@ class BrainRecallMixin:
                     'embedding_only': sum(1 for r in final_results if r.get('_discovery') == 'embedding_only'),
                     'keyword_only_fallback': sum(1 for r in final_results if r.get('_discovery') == 'keyword_only_fallback'),
                     'fts5_only': sum(1 for r in final_results if r.get('_discovery') == 'fts5_only'),
+                    'trace_chain': sum(1 for r in final_results if r.get('_discovery') == 'trace_chain'),
                     'both': sum(1 for r in final_results if r.get('_discovery') == 'both'),
                     'graph_d1': sum(1 for r in final_results if r.get('_discovery') == 'graph_d1'),
                     'graph_d2': sum(1 for r in final_results if r.get('_discovery') == 'graph_d2'),
