@@ -44,7 +44,7 @@ def _resolve_ttl_hours(brain, address):
         return float(default)
 
 
-def send(brain, from_session, address, body, intent=None, refs=None):
+def send(brain, from_session, address, body, refs=None):
     """Place a directed/broadcast self-message in the courier. Returns its record.
 
     Stores the body and refs IN FULL — no truncation here. Per the self-channel
@@ -55,8 +55,6 @@ def send(brain, from_session, address, body, intent=None, refs=None):
     body = (body or '').strip()
     if not body:
         raise ValueError('self.signal.send: empty body')
-    if intent not in self_contract.INTENTS:
-        intent = self_contract.default_intent(address)
     refs_json = json.dumps(list(refs or []))
     mid = uuid.uuid4().hex[:12]
     created_at = iso_now()
@@ -69,13 +67,24 @@ def send(brain, from_session, address, body, intent=None, refs=None):
     with brain.write_lock:
         brain.logs_conn.execute(
             'INSERT INTO self_inflight '
-            '(id, from_session, address, intent, body, refs, created_at, expires_at) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            (mid, from_session or '', address, intent, body, refs_json,
+            '(id, from_session, address, body, refs, created_at, expires_at) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?)',
+            (mid, from_session or '', address, body, refs_json,
              created_at, expires_at))
         brain.logs_conn.commit()
-    return {'id': mid, 'address': address, 'intent': intent,
+    return {'id': mid, 'address': address,
             'created_at': created_at, 'expires_at': expires_at}
+
+
+def _recent_sender_ids(brain):
+    """Distinct senders of still-unexpired courier messages — the pool that lets
+    you reply-by-short to a stream that messaged you even after it drops off the
+    live roster (its from_session is still in the courier). Read-only."""
+    rows = brain.logs_conn.execute(
+        'SELECT DISTINCT from_session FROM self_inflight '
+        'WHERE expires_at > ? AND from_session != ?',
+        (iso_now(), '')).fetchall()
+    return [r[0] for r in rows]
 
 
 def resolve_to(brain, to):
@@ -96,12 +105,14 @@ def resolve_to(brain, to):
     if self_contract.is_session_id(to):
         return self_contract.address_for_stream(to), None
     window = self_contract.ROSTER_LIVE_WINDOW_MIN + self_contract.ROSTER_LOST_GRACE_MIN
-    matches = []
-    for r in brain.present_streams(window_min=window, limit=50):
-        sid = r.get('session_id', '')
-        if sid and sid.startswith(to):
-            matches.append(sid)
-    matches = list(dict.fromkeys(matches))
+    # Candidate pool for short-id resolution: live roster ∪ recent courier
+    # senders. The roster alone misses a stream that's gone dormant since
+    # messaging you — but its from_session is still in the courier, so you can
+    # always reply-by-short to someone who reached you. (Full UUID handled above.)
+    candidates = [r.get('session_id', '')
+                  for r in brain.present_streams(window_min=window, limit=50)]
+    candidates += _recent_sender_ids(brain)
+    matches = list(dict.fromkeys(s for s in candidates if s and s.startswith(to)))
     if len(matches) == 1:
         return self_contract.address_for_stream(matches[0]), None
     if len(matches) > 1:
@@ -119,7 +130,7 @@ def resolve_to(brain, to):
 # reads. One query means the two can't drift (they used to carry a "keep in
 # lockstep" note — this removes the hazard).
 _PENDING_INBOX_SQL = (
-    'SELECT id, from_session, intent, body, created_at FROM self_inflight '
+    'SELECT id, from_session, body, created_at FROM self_inflight '
     'WHERE address IN (?, ?) AND expires_at > ? '
     'AND from_session != ? '                       # not your own broadcast
     'AND id NOT IN (SELECT message_id FROM self_delivered WHERE to_session = ?) '
@@ -128,12 +139,24 @@ _PENDING_INBOX_SQL = (
 
 def _pending_rows(conn, to_session, now):
     """Pending-inbox rows for `to_session` at time `now`, oldest first
-    (id, from_session, intent, body, created_at). Read-only; the single query
+    (id, from_session, body, created_at). Read-only; the single query
     shared by drain_inbox and peek_inbox."""
     directed, broadcast = self_contract.routes_at_turn(to_session)
     return conn.execute(
         _PENDING_INBOX_SQL,
         (directed, broadcast, now, to_session, to_session)).fetchall()
+
+
+def _has_prior_delivery(conn, to_session, from_session):
+    """True if `to_session` has ALREADY drained a message from `from_session`
+    (any time). Drives first-contact enrichment: the first message from a stream
+    carries its peek as intro, the rest stay lean. Read-only."""
+    if not from_session:
+        return False
+    return conn.execute(
+        'SELECT 1 FROM self_delivered d JOIN self_inflight i ON d.message_id = i.id '
+        'WHERE d.to_session = ? AND i.from_session = ? LIMIT 1',
+        (to_session, from_session)).fetchone() is not None
 
 
 def drain_inbox(brain, to_session):
@@ -147,7 +170,12 @@ def drain_inbox(brain, to_session):
     out = []
     with brain.write_lock:
         rows = _pending_rows(brain.logs_conn, to_session, now)
-        for mid, from_session, intent, body, created_at in rows:
+        for mid, from_session, body, created_at in rows:
+            # First contact = no PRIOR delivered message from this sender to me.
+            # Checked BEFORE the insert below; within a multi-message batch the
+            # same-transaction insert makes the 2nd+ from one sender non-first.
+            first_contact = not _has_prior_delivery(
+                brain.logs_conn, to_session, from_session)
             brain.logs_conn.execute(
                 'INSERT OR IGNORE INTO self_delivered (message_id, to_session, delivered_at) '
                 'VALUES (?, ?, ?)', (mid, to_session, now))
@@ -155,9 +183,10 @@ def drain_inbox(brain, to_session):
             out.append({
                 'id': mid,
                 'from': short,
-                'intent': intent,
+                'from_full': from_session or '',
                 'body': body,
                 'created_at': created_at,
+                'first_contact': first_contact,
                 'rendered': self_contract.render_signal(body, stream_short=short),
             })
         brain.logs_conn.commit()
@@ -177,9 +206,19 @@ def peek_inbox(brain, to_session):
         return []
     now = iso_now()
     rows = _pending_rows(brain.logs_conn, to_session, now)
-    return [{'id': mid, 'from': (from_session or '')[:8], 'intent': intent,
+    return [{'id': mid, 'from': (from_session or '')[:8],
              'body': body, 'created_at': created_at}
-            for mid, from_session, intent, body, created_at in rows]
+            for mid, from_session, body, created_at in rows]
+
+
+def pending_count(brain, to_session):
+    """How many messages wait in `to_session`'s inbox (undelivered, unexpired,
+    addressed to it). Shares the pending-inbox filter with drain/peek via
+    _pending_rows (no SQL duplicated). Read-only — for peek's reachability hint
+    ('is my message joining a backlog?')."""
+    if not to_session:
+        return 0
+    return len(_pending_rows(brain.logs_conn, to_session, iso_now()))
 
 
 def drain_and_render(brain, to_session):
@@ -196,6 +235,15 @@ def drain_and_render(brain, to_session):
     pending = drain_inbox(brain, to_session)
     if not pending:
         return "", 0
+    # First contact from a stream → attach its peek so the intro carries context
+    # (who, since when, what they're working on). Lazy import: presence imports
+    # signal at module load, so importing presence here (call time, not load time)
+    # keeps the enrichment in the delivery layer without a top-level import cycle.
+    if any(m.get('first_contact') for m in pending):
+        from servers.scales.self_channel import presence
+        for m in pending:
+            if m.get('first_contact') and m.get('from_full'):
+                m['sender_peek'] = presence.peek(brain, m['from_full'])
     return self_contract.render_received_block(pending), len(pending)
 
 
@@ -233,19 +281,18 @@ def outbox(brain, from_session, limit=20):
         return {'messages': []}
     now = iso_now()
     rows = brain.logs_conn.execute(
-        'SELECT id, address, intent, body, created_at FROM self_inflight '
+        'SELECT id, address, body, created_at FROM self_inflight '
         'WHERE from_session = ? AND expires_at > ? '
         'ORDER BY created_at DESC LIMIT ?',
         (from_session, now, limit)).fetchall()
     out = []
-    for mid, address, intent, body, created_at in rows:
+    for mid, address, body, created_at in rows:
         delivered = brain.logs_conn.execute(
             'SELECT to_session, delivered_at FROM self_delivered '
             'WHERE message_id = ? ORDER BY delivered_at', (mid,)).fetchall()
         rec = {
             'id': mid,
             'address': address,
-            'intent': intent,
             'created_at': created_at,
             'preview': (body or '')[:120] + (' …' if len(body or '') > 120 else ''),
             'delivered_to': [{'to': (ts or '')[:8], 'at': at} for ts, at in delivered],

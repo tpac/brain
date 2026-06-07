@@ -1391,7 +1391,6 @@ LOG_TABLES = {
             id TEXT PRIMARY KEY,
             from_session TEXT NOT NULL,
             address TEXT NOT NULL,
-            intent TEXT NOT NULL DEFAULT 'signal',
             body TEXT NOT NULL,
             refs TEXT DEFAULT '',
             created_at TEXT NOT NULL,

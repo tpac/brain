@@ -301,6 +301,10 @@ class BrainVoice:
         # ── Gather data ──
         ctx = brain.context_boot(user=user, project=project, task="session start")
         brain.reset_session_activity(session_id=session_id)
+        # Boot-stamp liveness so this fresh stream shows up in presence
+        # immediately — before its first turn — closing the rendezvous gap where
+        # two just-booted streams can't see each other (2026-06-06).
+        brain.stamp_boot_liveness(session_id)
 
         health = brain.health_check(session_id="session_boot", auto_fix=True)
 

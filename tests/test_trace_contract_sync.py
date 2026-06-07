@@ -18,6 +18,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Files that contain trace writes (production code only, not tests)
 TRACE_WRITER_FILES = [
     'servers/daemon_hooks.py',
+    'servers/brain.py',            # stamp_boot_liveness writes a boot heartbeat (s0/K/heartbeat)
     'servers/brain_remember.py',   # archive_node writes a delta trace
     'servers/scales/s1/encode.py',
     'servers/scales/s1/surface.py',

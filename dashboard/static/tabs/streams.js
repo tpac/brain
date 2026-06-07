@@ -85,9 +85,7 @@ async function _loadMessages() {
 }
 
 function _renderMessage(m) {
-  // letter = reflective (blue), signal = imperative (amber).
-  const isLetter = m.intent === 'letter';
-  const accent = isLetter ? '#7eb8ff' : '#ffaa33';
+  const accent = '#7eb8ff';
   const target = m.address === 'self:broadcast'
     ? 'broadcast'
     : (m.address || '').replace(/^self:/, '').substring(0, 8) || '—';
@@ -111,7 +109,6 @@ function _renderMessage(m) {
         '<span style="color:' + accent + ';font-weight:bold">⚡ ' + escapeHtml(m.from || '?') + '</span>' +
         '<span style="color:#555;margin:0 5px">→</span>' +
         '<span style="color:#bbb">' + escapeHtml(target) + '</span>' +
-        '<span style="background:#1a1a2a;color:' + accent + ';font-size:9px;padding:1px 5px;border-radius:3px;margin-left:8px">' + escapeHtml(m.intent || 'signal') + '</span>' +
       '</div>' +
       '<span style="color:#555;font-size:10px;white-space:nowrap" title="' + escapeHtml(m.created_at || '') + '">' + relativeTime(m.created_at) + '</span>' +
     '</div>' +

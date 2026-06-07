@@ -34,7 +34,7 @@ def query_messages(conn, hours: int = 48, limit: int = 200):
     Newest first."""
     cutoff = utc_cutoff(hours=hours)
     rows = conn.execute(
-        "SELECT id, from_session, address, intent, body, refs, created_at, expires_at "
+        "SELECT id, from_session, address, body, refs, created_at, expires_at "
         "FROM self_inflight WHERE created_at > ? ORDER BY created_at DESC LIMIT ?",
         (cutoff, limit)).fetchall()
 
@@ -52,7 +52,7 @@ def query_messages(conn, hours: int = 48, limit: int = 200):
     for r in rows:
         mid = r[0]
         try:
-            refs = json.loads(r[5]) if r[5] else []
+            refs = json.loads(r[4]) if r[4] else []
         except (ValueError, TypeError):
             refs = []
         out.append({
@@ -60,11 +60,10 @@ def query_messages(conn, hours: int = 48, limit: int = 200):
             "from": (r[1] or '')[:8],
             "from_full": r[1] or '',
             "address": r[2] or '',
-            "intent": r[3] or 'signal',
-            "body": r[4] or '',
+            "body": r[3] or '',
             "refs": refs,
-            "created_at": r[6],
-            "expires_at": r[7],
+            "created_at": r[5],
+            "expires_at": r[6],
             "delivered": delivered.get(mid, []),
         })
     return out

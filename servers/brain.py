@@ -780,6 +780,48 @@ class Brain(
                 pass
             return []
 
+    def session_activity(self, session_id: str, msg_limit: int = 2) -> dict:
+        """Per-session activity snapshot for self_peek — first/last turn and the
+        last conversational messages, from real S0 traces (TraceDAL). Mirrors
+        present_streams (wall-clock, presence-adjacent, read-only). Returns {} on
+        error so a peek degrades gracefully rather than raising."""
+        if not session_id:
+            return {}
+        try:
+            return self._trace_dal.session_activity(session_id, msg_limit=msg_limit)
+        except Exception as e:
+            try:
+                self._log_error('session_activity_query', e,
+                                'session=%s' % (session_id or '')[:8])
+            except Exception:
+                pass
+            return {}
+
+    def stamp_boot_liveness(self, session_id: str) -> None:
+        """Write ONE S0 heartbeat trace at boot so a freshly-booted stream is
+        visible in presence IMMEDIATELY — before it takes its first turn.
+
+        present_streams reads real-turn S0 traces, so without a boot trace a
+        stream is invisible until its first hook_recall/Stop — which is exactly
+        why two just-booted streams can't find each other at boot (the
+        rendezvous gap, 2026-06-06). 'heartbeat' is already counted by
+        active_sessions_by_turn, so the read side is unchanged. Loud on failure,
+        never blocks boot."""
+        if not session_id:
+            return
+        try:
+            ctx = self.get_or_create_session(session_id)
+            self._trace_dal.append(
+                chain_id=ctx.s0_chain(), scale='s0', event_type='K',
+                ref_type='heartbeat', session_id=session_id,
+                summary='boot — stream online')
+        except Exception as e:
+            try:
+                self._log_error('stamp_boot_liveness', e,
+                                'session=%s' % (session_id or '')[:8])
+            except Exception:
+                pass
+
     def live_sessions(self, limit: int = 5, min_messages: int = 5) -> list:
         """Return the most-recently-updated session_ids with at least
         `min_messages` messages on their SessionContext.
