@@ -13,3 +13,4 @@ onnxruntime>=1.24,<2.0
 anthropic>=0.86,<1.0
 numpy>=1.24,<3.0
 sqlite-vec>=0.1,<1.0
+dateparser>=1.4,<2.0    # temporal scout date extraction (servers/scales/s1/scouts/temporal.py)
