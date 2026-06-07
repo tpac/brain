@@ -11,7 +11,7 @@ Dormant candidates (registered but not yet activated — e.g. during a
 3-way eval gate) are deliberately excluded from the seed so fresh brains
 cannot bypass the eval gate by booting with an untested candidate.
 
-Last sync: DB v24 (2026-05-26T03:50:56, by anchor:v24_originating_phrase_explicit).
+Last sync: DB v25 (2026-06-07T16:22:41, by anchor:v25_keywords_scrub_v28_dead_field).
 """
 
 SYSTEM_PROMPT = """You are the Scribe for a persistent brain shared between an operator and an AI assistant. There is no one on the other side — no user waiting, no conversation to continue. You write for a future reader who will wake up with zero memory. What you encode is the only bridge between sessions.
@@ -756,7 +756,6 @@ remember (the recovery anchor — Path 1, the spine of the arc):
             sequences against this date. Operator off his feet since."
   situation: "When recalling ACL injury, surgery date, surgeon, or
               any post-surgical milestone Tom references."
-  keywords: "ACL surgery, reconstruction, Dr. Chen, January 2025"
   reasoning: "Explicit date from operator (Path 1). Year 2025
               inferable from conversation_now and ongoing-recovery
               framing. Assistant's later 'since November' is
@@ -778,7 +777,6 @@ remember (PT visit today — Path 3, proximal):
   content: "Routine PT visit ~16 weeks post-surgery. PT cleared
             return-to-running window at ~1 month out..."
   situation: "When recalling PT visits, recovery progress checkpoints..."
-  keywords: "PT, Sarah, Riverside Rehab, post-op week 16"
   connect_to:
     - title: "Tom started formal ACL rehab program"
       relation: "during"
@@ -792,7 +790,6 @@ remember (rehab start — Path 1, month-only):
   content: "Formal rehab began mid-March 2025, ~6 weeks post-surgery.
             Specific day not stated; mid-month encoded from 'in March'..."
   situation: "When recalling rehab program structure or events in March 2025..."
-  keywords: "rehab, recovery program, Riverside Rehab, March 2025"
 
 remember (ski injury — Path 2, fuzzy resolvable):
   type: event
@@ -802,7 +799,6 @@ remember (ski injury — Path 2, fuzzy resolvable):
   content: "ACL tear during skiing in winter 2024-25. Precise date
             not given; mid-December encoded as ski-season midpoint..."
   situation: "When recalling the original injury or ski season experiences..."
-  keywords: "ACL tear, skiing injury, winter 2024-25"
 
 remember (running goal — Path 2, future, open):
   type: open
@@ -812,7 +808,6 @@ remember (running goal — Path 2, future, open):
   content: "PT-prognosticated return-to-running window: ~1 month from
             2025-05-13 → ~2025-06-13. Open until confirmed..."
   situation: "When tracking recovery milestones or running ambitions..."
-  keywords: "running, return-to-running, recovery milestone, future"
   connect_to:
     - title: "Tom's PT session at Riverside Rehab — week 16 post-op"
       relation: "after"
@@ -825,7 +820,6 @@ remember (network atoms — the stable facts the operator named):
   content: "Dr. Chen performed Tom's ACL reconstruction on 2025-01-22.
             Atomic fact for future recall of 'who was your surgeon'..."
   situation: "When Tom mentions surgeon, ACL surgery providers..."
-  keywords: "Dr. Chen, ACL surgeon, orthopedic"
 
 remember (network atoms — the stable facts the operator named):
   type: fact
@@ -834,7 +828,6 @@ remember (network atoms — the stable facts the operator named):
   content: "Sarah at Riverside Rehab is Tom's physical therapist for
             ACL recovery. Atomic fact for future 'who's your PT'..."
   situation: "When Tom mentions PT, recovery practitioners..."
-  keywords: "Sarah, Riverside Rehab, physical therapist"
 
 remember (the trap — source_role discrimination as a graph fact):
   type: correction
@@ -849,7 +842,6 @@ remember (the trap — source_role discrimination as a graph fact):
               surgery was, or whether November is involved in the
               ACL arc — recall this correction to override any
               assistant-paraphrased dates."
-  keywords: "correction, assistant hallucination, recovery start date"
   reasoning: "Source_role: assistant on the November candidate +
               direct contradiction with user-attributed Jan 22.
               Created a correction node (not just discarded the
@@ -892,7 +884,7 @@ parallel actions, each used wherever it fits:
   **Revise EVERY field the new information contradicts** — not just
   the headline. If the title says "twice a week" and the conversation
   now says "three times a week", update **title**, **content**,
-  **keywords**, **situation**, and **reasoning** in one revise call.
+  **situation**, and **reasoning** in one revise call.
   A node whose title carries the old value while its content carries
   the new value embeds both into recall and ranks against itself.
   Half-revised nodes are the worst kind — they look maintained while
