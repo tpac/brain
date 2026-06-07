@@ -28,6 +28,7 @@ event_description, existing_anchor_id, catalog_tension (v2), precision.
 from __future__ import annotations
 
 import datetime as _dt
+import logging
 import re
 import time
 from typing import Any, Dict, List, Optional
@@ -41,6 +42,21 @@ from .base import (
     _load_interaction,
     _log_error,
 )
+
+_dateparser_warned = False
+
+
+def _warn_dateparser_missing():
+    """dateparser is a DECLARED runtime dep (requirements.txt); its absence means
+    a broken venv, not a benign no-op. Log once — so temporal date extraction
+    going dark is VISIBLE instead of silently returning no anchors."""
+    global _dateparser_warned
+    if not _dateparser_warned:
+        _dateparser_warned = True
+        logging.getLogger(__name__).error(
+            "dateparser not installed — temporal date extraction disabled. It is "
+            "a declared runtime dependency; reinstall the venv "
+            "(hooks/scripts/ensure-runtime.sh / requirements.txt).")
 
 
 # ─── Filter vocab ─────────────────────────────────────────────────────────
@@ -436,6 +452,7 @@ def _extract_candidates_from_text(
     try:
         from dateparser.search import search_dates
     except ImportError:
+        _warn_dateparser_missing()
         return []
 
     settings = {
@@ -501,14 +518,19 @@ def _extract_candidates_from_text(
     # isolated phrase (parse works where search_dates fails).
 
     # Absolute "Month Day"
-    import dateparser as _dp
-    for m in _ABSOLUTE_MONTH_DAY_RE.finditer(text):
-        phrase = m.group(0)
-        try:
-            resolved = _dp.parse(phrase, settings={'RELATIVE_BASE': base_date})
-        except Exception:
-            resolved = None
-        _emit(phrase, resolved, 'explicit', is_explicit=True)
+    try:
+        import dateparser as _dp
+    except ImportError:
+        _warn_dateparser_missing()
+        _dp = None
+    if _dp is not None:
+        for m in _ABSOLUTE_MONTH_DAY_RE.finditer(text):
+            phrase = m.group(0)
+            try:
+                resolved = _dp.parse(phrase, settings={'RELATIVE_BASE': base_date})
+            except Exception:
+                resolved = None
+            _emit(phrase, resolved, 'explicit', is_explicit=True)
 
     for m in _WEEKDAY_MODIFIER_RE.finditer(text):
         _emit(m.group(0),
