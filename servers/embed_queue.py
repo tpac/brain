@@ -93,10 +93,11 @@ def enqueue(node_id: str) -> None:
 
 
 def enqueue_edge(edge_id: str) -> None:
-    """Mark an edge as needing date extraction. Cheap — set.add under lock.
-
-    Edges only need date scanning (no embedding work today). Called from
-    edge-write paths (GraphDAL.add_relation, edge revision).
+    """Mark an edge as needing async processing — date extraction AND embedding
+    re-computation. Cheap (set.add under lock). Called from edge-write paths
+    (GraphDAL.add_relation / rename_relation), which NULL the stale embedding
+    first; the worker drains via backfill_entity_dates + the brain-layer
+    Brain.backfill_edge_embeddings (the central re-embed for new/stale rows).
     """
     if not edge_id:
         return
@@ -578,10 +579,17 @@ def _drain_once(brain) -> None:
             try:
                 total_edge_vectors += brain.backfill_edge_embeddings(edge_batch)
             except Exception as e:
+                # Re-enqueue so a transient failure doesn't permanently drop the
+                # batch — the rows stay NULL (recall live-fallback) until a later
+                # drain retries. Unlike the temporal phase's loss-semantic, a
+                # missing edge embedding is a silent perf regression, not a no-op.
+                for _eid in edge_batch:
+                    enqueue_edge(_eid)
                 try:
                     brain._log_error(
                         'bg_writer_drain_edge_embed', e,
-                        'edge embedding batch dropped: edges=%d' % len(edge_batch))
+                        'edge embedding batch re-enqueued after error: edges=%d'
+                        % len(edge_batch))
                 except Exception as le:
                     print('[embed_queue] edge embedding error: %s '
                           '(log failed: %s)' % (e, le), file=sys.stderr)
@@ -604,7 +612,9 @@ def _drain_once(brain) -> None:
         _stats['drains_total'] += 1
         _stats['nodes_processed_total'] += total_nodes
         _stats['edges_processed_total'] += total_edges
-        _stats['vectors_written_total'] += total_vectors + total_edge_vectors
+        _stats['vectors_written_total'] += total_vectors
+        _stats['edge_vectors_written_total'] = (
+            _stats.get('edge_vectors_written_total', 0) + total_edge_vectors)
         _stats['temporal_intervals_written_total'] += total_intervals
         _stats['last_drain_at'] = t0
         _stats['last_drain_took_ms'] = elapsed_ms

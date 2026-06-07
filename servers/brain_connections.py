@@ -45,44 +45,69 @@ class BrainConnectionsMixin:
             return 0
         from .dal import DEFAULT_EXCLUDED_RELATIONS
         from . import embedder as _embedder
+        if not _embedder.is_ready():
+            # Embedder still loading (e.g. at boot before warmup). Don't drop
+            # these — re-enqueue so a later drain embeds them. Rows stay NULL
+            # meanwhile and recall falls back to live compose, so this is a perf
+            # safety net, not data loss.
+            from . import embed_queue
+            for e in ids:
+                embed_queue.enqueue_edge(e)
+            return 0
+        model = _embedder.stats.get('model_name') or ''
+        excl = sorted(DEFAULT_EXCLUDED_RELATIONS)
         ph = ','.join('?' * len(ids))
+        excl_ph = ','.join('?' * len(excl))
+        # Re-embed rows that are unembedded OR embedded by a DIFFERENT model
+        # (a model swap makes the stored blob unreadable — the read path filters
+        # embedding_model = active — so stale-model rows must re-embed; matches
+        # node find_missing semantics). Exclude co_accessed/emergent_bridge in
+        # SQL — they're never read by recall, so embedding them is pure waste.
         rows = self.conn.execute(
             'SELECT edge_id, relation, description FROM edge_relations '
-            'WHERE edge_id IN (%s) AND archived = 0 AND embedding IS NULL' % ph,
-            ids).fetchall()
+            'WHERE edge_id IN (%s) AND archived = 0 '
+            'AND relation NOT IN (%s) '
+            'AND (embedding IS NULL OR embedding_model IS NOT ?)'
+            % (ph, excl_ph),
+            [*ids, *excl, model]).fetchall()
         if not rows:
             return 0
-        model = (_embedder.stats.get('model_name') or '') if hasattr(
-            _embedder, 'stats') else ''
         # Compute OUTSIDE the write lock — fastembed is CPU-heavy. 'document'
         # kind matches the prefix used at recall time (_desc_vecs_batched);
-        # a mismatched prefix would break the read path's cosine score.
-        pending = []  # (edge_id, relation, blob)
+        # a mismatched prefix would break the read path's cosine score. Keep the
+        # description each blob was computed from for the concurrency guard below.
+        pending = []  # (edge_id, relation, description, blob)
         for edge_id, relation, description in rows:
-            if relation in DEFAULT_EXCLUDED_RELATIONS:
-                continue  # co_accessed / emergent_bridge are never read by recall
             text = self.aspects.compose_edge_text(relation, description or '')
             if not text:
                 continue
             try:
                 blobs = _embedder.embed_batch([text], kind='document')
                 if blobs and blobs[0]:
-                    pending.append((edge_id, relation, blobs[0]))
+                    pending.append((edge_id, relation, description, blobs[0]))
             except Exception as e:
                 self._log_error('edge_embedding_backfill', e,
                                 '%s/%s' % (str(edge_id)[:12], relation))
         if not pending:
             return 0
-        # Write under write_lock (fast) — mirrors backfill_vectors' self-locking
-        # so the worker doesn't block other writers for the whole compute.
+        # Write under write_lock (fast) — mirrors backfill_vectors' self-locking.
+        # Optimistic guard: only write if the description STILL matches what we
+        # embedded (`description IS ?`). A concurrent connect/revise that changed
+        # the description has already NULLed + re-enqueued the row; without this
+        # guard we'd clobber that fresh-NULL row with the stale blob, and the
+        # next drain's filter would no longer see it as needing re-embed —
+        # permanently stale geometry. On a description change we match 0 rows and
+        # leave the row for the next drain to embed against the new text.
+        written = 0
         with self.write_lock:
-            for edge_id, relation, blob in pending:
-                self.conn.execute(
+            for edge_id, relation, description, blob in pending:
+                cur = self.conn.execute(
                     'UPDATE edge_relations SET embedding = ?, embedding_model = ? '
-                    'WHERE edge_id = ? AND relation = ?',
-                    (blob, model, edge_id, relation))
+                    'WHERE edge_id = ? AND relation = ? AND description IS ?',
+                    (blob, model, edge_id, relation, description))
+                written += max(cur.rowcount, 0) if cur.rowcount is not None else 0
             self._maybe_commit()
-        return len(pending)
+        return written
 
     def connect(self, source_id: str, target_id: str, relation: str = 'related', weight: float = 0.5):
         """Add a relation between two nodes (idempotent upsert).

@@ -62,7 +62,6 @@ def main():
     args = parser.parse_args()
 
     brain = _open_brain()
-    from servers import embedder
 
     # Count NULL rows
     n_null = brain.conn.execute(
@@ -77,87 +76,42 @@ def main():
         print('Nothing to do.')
         return
 
-    # Pull rows needing backfill
-    sql = ('SELECT edge_id, relation, COALESCE(description, "") '
-           'FROM edge_relations WHERE embedding IS NULL AND archived = 0')
+    # Distinct edges needing backfill. The compose→embed→write is DELEGATED to
+    # Brain.backfill_edge_embeddings — the single source of truth (it owns the
+    # excluded-relation filter, stale-model re-embed, embedder-not-ready guard,
+    # and the concurrency-safe description-guarded write). This script is just
+    # the bulk driver: gather ids, chunk, report. Keeping the logic here would
+    # drift from the runtime path (the bug this dedup closes).
+    sql = ('SELECT DISTINCT edge_id FROM edge_relations '
+           'WHERE embedding IS NULL AND archived = 0')
     if args.limit:
         sql += f' LIMIT {int(args.limit)}'
-    rows = brain.conn.execute(sql).fetchall()
-    print(f'Loaded {len(rows)} rows to embed')
+    edge_ids = [r[0] for r in brain.conn.execute(sql).fetchall()]
+    print(f'Loaded {len(edge_ids)} edges to backfill')
 
-    # Compose texts
-    texts = []
-    for edge_id, relation, description in rows:
-        text = brain.aspects.compose_edge_text(relation, description)
-        texts.append(text)
-    nonempty = sum(1 for t in texts if t)
-    print(f'Composed {nonempty} non-empty enriched texts '
-          f'({len(rows) - nonempty} were empty — skipped)')
+    if args.dry_run:
+        print('  [DRY RUN — Brain.backfill_edge_embeddings IS the write path; '
+              'nothing written]')
+        return
 
-    # Embed in batches
-    model_name = embedder.stats.get('model_name') or ''
     t_start = time.monotonic()
+    chunk_size = max(args.batch_size, 1)
     n_done = 0
-    batch_size = args.batch_size
-    transaction_size = 500
-    pending_updates = []
-
-    for batch_start in range(0, len(rows), batch_size):
-        batch = rows[batch_start:batch_start + batch_size]
-        batch_texts = texts[batch_start:batch_start + batch_size]
-
-        # Skip empty texts but keep alignment with rows
-        nonempty_pairs = [(i, t) for i, t in enumerate(batch_texts) if t]
-        if nonempty_pairs:
-            indices, only_texts = zip(*nonempty_pairs)
-            blobs = embedder.embed_batch(list(only_texts), kind='document')
-        else:
-            indices, blobs = (), ()
-
-        # Build UPDATE list, keeping indices straight
-        for i, blob in zip(indices, blobs):
-            edge_id, relation, _desc = batch[i]
-            if blob:
-                pending_updates.append((blob, model_name, edge_id, relation))
-
-        n_done += len(batch)
+    for i in range(0, len(edge_ids), chunk_size):
+        chunk = edge_ids[i:i + chunk_size]
+        n_done += brain.backfill_edge_embeddings(chunk)
+        seen = min(i + chunk_size, len(edge_ids))
         elapsed = time.monotonic() - t_start
         rate = n_done / elapsed if elapsed > 0 else 0
-        remaining = (len(rows) - n_done) / rate if rate > 0 else 0
-        print(f'  {n_done}/{len(rows)} embedded  '
-              f'({rate:.0f}/s, ~{remaining:.0f}s remaining)')
-
-        # Flush in transactions of 500
-        while len(pending_updates) >= transaction_size:
-            chunk = pending_updates[:transaction_size]
-            pending_updates = pending_updates[transaction_size:]
-            if not args.dry_run:
-                with brain.write_lock:
-                    brain.conn.executemany(
-                        'UPDATE edge_relations '
-                        'SET embedding = ?, embedding_model = ? '
-                        'WHERE edge_id = ? AND relation = ?', chunk)
-                    brain.conn.commit()
-
-    # Flush remainder
-    if pending_updates and not args.dry_run:
-        with brain.write_lock:
-            brain.conn.executemany(
-                'UPDATE edge_relations '
-                'SET embedding = ?, embedding_model = ? '
-                'WHERE edge_id = ? AND relation = ?', pending_updates)
-            brain.conn.commit()
+        print(f'  {seen}/{len(edge_ids)} edges  '
+              f'({n_done} relations embedded, {rate:.0f}/s)')
 
     elapsed = time.monotonic() - t_start
-    print(f'\nDone. Embedded {n_done} rows in {elapsed:.1f}s '
-          f'({n_done/elapsed:.0f}/s)')
-    if args.dry_run:
-        print('  [DRY RUN — no rows were written]')
-    else:
-        n_remaining = brain.conn.execute(
-            'SELECT COUNT(*) FROM edge_relations '
-            'WHERE embedding IS NULL AND archived = 0').fetchone()[0]
-        print(f'  Remaining NULL rows: {n_remaining}')
+    print(f'\nDone. Embedded {n_done} relations in {elapsed:.1f}s')
+    n_remaining = brain.conn.execute(
+        'SELECT COUNT(*) FROM edge_relations '
+        'WHERE embedding IS NULL AND archived = 0').fetchone()[0]
+    print(f'  Remaining NULL rows: {n_remaining}')
 
 
 if __name__ == '__main__':

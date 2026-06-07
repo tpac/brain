@@ -185,6 +185,76 @@ class TestEdgeEmbedding(BrainTestBase):
         self.assertNotEqual(blob_v1, blob_v2,
                             'revived edge with new description → new vector')
 
+    def test_concurrent_desc_change_during_compute_does_not_clobber(self):
+        """Write is description-guarded: if a concurrent revise changes the
+        description during the compute window, the worker must NOT write its now-
+        stale blob (clobbering the fresh-NULL row, which would then never
+        re-embed). Simulate the race by mutating the row inside embed_batch,
+        which runs between backfill's SELECT and its guarded UPDATE."""
+        from servers import embedder
+        a, b = self._create_pair()
+        self.brain.connect_typed(a, b, relation='extends', description='A')
+        eid = self._edge_id(a, b)
+        orig = embedder.embed_batch
+
+        def racing_embed(texts, **kw):
+            # Foreground revise lands mid-compute: change desc + re-NULL.
+            self.brain.conn.execute(
+                "UPDATE edge_relations SET description = 'B', embedding = NULL "
+                "WHERE edge_id = ? AND relation = 'extends'", (eid,))
+            self.brain.conn.commit()
+            return orig(texts, **kw)
+
+        embedder.embed_batch = racing_embed
+        try:
+            self.brain.backfill_edge_embeddings([eid])
+        finally:
+            embedder.embed_batch = orig
+        self.assertIsNone(self._read_embedding(a, b, 'extends')[0],
+                          'description-guard must reject the stale-desc write')
+        # A clean re-drain embeds the current description.
+        self.brain.backfill_edge_embeddings([eid])
+        self.assertIsNotNone(self._read_embedding(a, b, 'extends')[0],
+                             'next drain embeds the changed description')
+
+    def test_stale_model_rows_are_reembedded(self):
+        """A model swap leaves rows whose embedding_model the read path can't use
+        (it filters embedding_model = active). backfill must re-embed them —
+        treat stale-model as missing — not skip because embedding is non-NULL."""
+        a, b = self._create_pair()
+        self.brain.connect_typed(a, b, relation='extends', description='A')
+        self._backfill(a, b)
+        eid = self._edge_id(a, b)
+        _, model1 = self._read_embedding(a, b, 'extends')
+        self.assertTrue(model1)
+        self.brain.conn.execute(
+            "UPDATE edge_relations SET embedding_model = 'OLD-MODEL' "
+            "WHERE edge_id = ? AND relation = 'extends'", (eid,))
+        self.brain.conn.commit()
+        n = self.brain.backfill_edge_embeddings([eid])
+        self.assertGreaterEqual(n, 1, 'stale-model row must be re-embedded')
+        _, model2 = self._read_embedding(a, b, 'extends')
+        self.assertEqual(model2, model1, 'embedding_model refreshed to current')
+
+    def test_embedder_not_ready_reenqueues_not_drops(self):
+        """If the embedder isn't ready (e.g. boot), backfill re-enqueues the
+        edges instead of dropping them — rows stay NULL (live-fallback) until a
+        later drain embeds them."""
+        from servers import embedder, embed_queue
+        a, b = self._create_pair()
+        self.brain.connect_typed(a, b, relation='extends', description='A')
+        eid = self._edge_id(a, b)
+        embed_queue._edge_queue.discard(eid)
+        orig_ready = embedder.is_ready
+        embedder.is_ready = lambda: False
+        try:
+            n = self.brain.backfill_edge_embeddings([eid])
+        finally:
+            embedder.is_ready = orig_ready
+        self.assertEqual(n, 0, 'no embeds while embedder not ready')
+        self.assertIn(eid, embed_queue._edge_queue, 're-enqueued, not dropped')
+        embed_queue._edge_queue.discard(eid)
+
 
 if __name__ == '__main__':
     unittest.main()
