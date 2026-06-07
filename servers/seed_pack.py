@@ -769,7 +769,7 @@ SEED_EDGES = [
      "weight": 0.8},
 
     {"source": "good_node_shape", "target": "revise_not_duplicate",
-     "relation": "related",
+     "relation": "complements",
      "description": "Good node shape and revise-first both shape what the encoder produces — together they prevent stubs and duplicates",
      "weight": 0.7},
 
@@ -780,12 +780,12 @@ SEED_EDGES = [
 
     # Cross-constellation bridges
     {"source": "interactions_behavior", "target": "confidence_alive",
-     "relation": "related",
+     "relation": "complements",
      "description": "Both express that the brain is dynamic — interactions evolve behavior, confidence evolves memory",
      "weight": 0.5},
 
     {"source": "escalate_conflict", "target": "verify_before_claiming",
-     "relation": "related",
+     "relation": "complements",
      "description": "Both require stopping before acting — escalate when rule conflicts, verify when claim unchecked",
      "weight": 0.5},
 ]
