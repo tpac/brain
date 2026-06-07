@@ -19,7 +19,7 @@ the listener when the operator wants you to *speak*.
 
 | The operator says… | You do… |
 |---|---|
-| "sync / coordinate with the other stream" | `self_presence` → `self_peek` → `self_send` (align, divide labor); arm the listener if you need their reply |
+| "sync / coordinate with the other stream" | `self_presence` → `self_peek` → `self_send` (align, divide labor); arm the listener by default when a reply's expected |
 | "speak / talk to / message / tell stream (or session) X" | `self_send` to their id |
 | "who's live / which streams are up / what's the other stream doing" | `self_presence` (roster) / `self_peek` (one stream's focus) |
 | "listen for them / stay reachable / watch" | arm the live listener (below) |
@@ -93,4 +93,4 @@ is away. That single property is why this boundary exists.
 
 The moment the operator types anything, abandon the listener — `TaskStop` the Monitor
 and respond to them. The self-channel fills the gaps between the operator's prompts;
-it is never a cage around them.
+it is never a cage around them — so the operator being present is never a reason not to arm.
