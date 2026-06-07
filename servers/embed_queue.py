@@ -490,6 +490,7 @@ def _drain_once(brain) -> None:
     total_nodes = 0
     total_edges = 0
     total_vectors = 0
+    total_edge_vectors = 0
     total_intervals = 0
     batches = 0
 
@@ -567,6 +568,24 @@ def _drain_once(brain) -> None:
                 print('[embed_queue] temporal extraction error: %s '
                       '(log failed: %s)' % (e, le), file=sys.stderr)
 
+        # ─── Edge embedding phase ──────────────────────────────────
+        # Re-embed edges whose embedding was invalidated (NULLed) by a
+        # relation/description change. backfill_edge_embeddings self-locks
+        # around its writes (compute runs outside the lock) and is idempotent
+        # (skips rows already embedded). Same async mechanism that embeds nodes
+        # and traces — write paths only invalidate; this is where the work lands.
+        if edge_batch:
+            try:
+                total_edge_vectors += brain.backfill_edge_embeddings(edge_batch)
+            except Exception as e:
+                try:
+                    brain._log_error(
+                        'bg_writer_drain_edge_embed', e,
+                        'edge embedding batch dropped: edges=%d' % len(edge_batch))
+                except Exception as le:
+                    print('[embed_queue] edge embedding error: %s '
+                          '(log failed: %s)' % (e, le), file=sys.stderr)
+
         total_nodes += len(node_batch)
         total_edges += len(edge_batch)
         batches += 1
@@ -585,14 +604,15 @@ def _drain_once(brain) -> None:
         _stats['drains_total'] += 1
         _stats['nodes_processed_total'] += total_nodes
         _stats['edges_processed_total'] += total_edges
-        _stats['vectors_written_total'] += total_vectors
+        _stats['vectors_written_total'] += total_vectors + total_edge_vectors
         _stats['temporal_intervals_written_total'] += total_intervals
         _stats['last_drain_at'] = t0
         _stats['last_drain_took_ms'] = elapsed_ms
         _stats['last_drain_size'] = total_nodes + total_edges
-    if batches > 1 or total_intervals > 0:
+    if batches > 1 or total_intervals > 0 or total_edge_vectors > 0:
         print('[embed_queue] drained %d entities in %d batches (%dms): '
-              'nodes=%d edges=%d vectors=%d intervals=%d'
+              'nodes=%d edges=%d vectors=%d edge_vectors=%d intervals=%d'
               % (total_nodes + total_edges, batches, elapsed_ms,
-                 total_nodes, total_edges, total_vectors, total_intervals),
+                 total_nodes, total_edges, total_vectors, total_edge_vectors,
+                 total_intervals),
               flush=True)

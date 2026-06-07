@@ -304,13 +304,14 @@ class Brain(
         # background scale runs in runner.py) still validate — _load is a
         # cheap JSON read.
         #
-        # MUST come before seed_baby_brain — seed creates 16 edges via
-        # connect_typed, which hits _maybe_embed_edge_relation
-        # (BrainConnectionsMixin), which dereferences brain.aspects to
-        # compose edge text for the embedding. Pre-fix, AspectRegistry
-        # was initialized AFTER seed_pack, so seed edges silently failed
-        # to embed (caught in try/except, logged as
-        # 'edge_embedding_write: AttributeError').
+        # AspectRegistry must be ready before any edge embedding runs: the
+        # embed_queue worker (Brain.backfill_edge_embeddings) dereferences
+        # brain.aspects to compose edge text. It's initialized here at __init__,
+        # before the worker starts and before seed_baby_brain enqueues its 16
+        # edges, so async edge embedding always has aspects available. (Edge
+        # embedding moved async 2026-06 — seed's connect_typed no longer embeds
+        # inline, so the old 'seed edges silently fail to embed' ordering hazard
+        # is gone; keeping this init position is harmless + defensive.)
         try:
             from .aspects import AspectRegistry
             self.aspects = AspectRegistry(self)

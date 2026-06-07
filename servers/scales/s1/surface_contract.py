@@ -776,13 +776,13 @@ def _build_edge_coeffs(brain, brain_conn, activated_nodes, query_vec,
     hops don't recompute cosine.
 
     Implementation note (schema v26+): edges have stored embeddings on
-    `edge_relations.embedding` (computed at write time by
-    `BrainConnectionsMixin._maybe_embed_edge_relation`). For each edge
-    we look up the stored blob by `edge_id` and skip fastembed entirely.
-    Edges whose row predates v26 (or whose write failed to populate the
-    blob) fall through to the legacy on-demand embed path; recall stays
-    correct, just pays the per-edge fastembed cost like before. Run
-    `scripts/backfill_edge_embeddings.py` to populate NULLs in bulk.
+    `edge_relations.embedding`, computed ASYNC by the embed_queue worker
+    (`Brain.backfill_edge_embeddings`) — write paths only invalidate (NULL the
+    blob) + enqueue_edge. For each edge we look up the stored blob by `edge_id`
+    and skip fastembed entirely. Edges still NULL (pre-v26, or written since the
+    last worker drain) fall through to the legacy on-demand embed path; recall
+    stays correct, just pays the per-edge fastembed cost. The worker repopulates
+    NULLs on its next drain.
 
     Enriched-text composition delegates to
     `brain.aspects.compose_edge_text(relation, description)` — single
@@ -853,9 +853,9 @@ def _build_edge_coeffs(brain, brain_conn, activated_nodes, query_vec,
             edges_out.append((source_id, target_id, cached, r))
             continue
 
-        # Stored embedding (schema v26+): skip fastembed entirely.
-        # `_maybe_embed_edge_relation` populates this on every write that
-        # affects (relation, description) — see brain_connections.py.
+        # Stored embedding (schema v26+): skip fastembed entirely. Populated
+        # ASYNC by the embed_queue worker (Brain.backfill_edge_embeddings) after
+        # a write invalidates+enqueues — see brain_connections.py.
         eid = r.get('edge_id')
         rel = r.get('relation') or ''
         blob = stored_embeddings.get((eid, rel)) if eid and rel else None

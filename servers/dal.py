@@ -2667,8 +2667,8 @@ class GraphDAL:
             # are never read by spread/select_edges (every read filters
             # archived=0), so the blob is dead weight in the table. If
             # the relation is later revived via add_relation Branch 3,
-            # _maybe_embed_edge_relation re-embeds because revive sets
-            # created=True. Symmetric with nodes; storage isn't burned
+            # created=True fires enqueue_edge and the embed_queue worker
+            # re-embeds async. Symmetric with nodes; storage isn't burned
             # on history that no one queries.
             cur = self.conn.execute(
                 'UPDATE edge_relations '
@@ -2940,12 +2940,20 @@ class GraphDAL:
             'UPDATE edges SET last_strengthened = ? WHERE edge_id = ?', (ts, edge_id))
         commit_unless_batched(self.conn)
 
-        # Enqueue for temporal extraction if description or relation text
-        # changed — embed_queue.enqueue_edge() is a cheap set.add. Lazy
-        # import to avoid module-load circular dependency.
-        if result['created'] or any(
-            d.get('field') == 'description' for d in result['deltas']
-        ):
+        # Enqueue for temporal extraction AND async edge re-embedding when the
+        # description (part of compose_edge_text) changed. enqueue_edge() is a
+        # cheap set.add; the embed_queue worker runs backfill_entity_dates +
+        # backfill_edge_embeddings. Lazy import avoids a module-load cycle.
+        _desc_changed = any(d.get('field') == 'description' for d in result['deltas'])
+        if result['created'] or _desc_changed:
+            # Invalidate the stored embedding so the worker re-embeds. New rows
+            # are already NULL; only an existing row whose description changed
+            # needs explicit NULLing.
+            if _desc_changed and not result['created']:
+                self.conn.execute(
+                    'UPDATE edge_relations SET embedding = NULL, embedding_model = NULL '
+                    'WHERE edge_id = ? AND relation = ?', (edge_id, relation))
+                commit_unless_batched(self.conn)
             try:
                 from . import embed_queue
                 embed_queue.enqueue_edge(edge_id)
@@ -3065,16 +3073,29 @@ class GraphDAL:
 
     def rename_relation(self, edge_id: str, old_relation: str,
                         new_relation: str, encoding_source: str) -> None:
-        """Rename a relation on an edge (S2 reclassify) — updates the matching
-        row's relation + encoding_source in place. No weight recompute: a
-        rename changes neither weights nor the active-relation count. Commit
-        gated on self.conn.in_batch (commit_unless_batched).
+        """Rename a relation on an edge in place — updates the matching row's
+        relation + encoding_source. No weight recompute: a rename changes neither
+        weights nor the active-relation count. Commit gated on self.conn.in_batch.
+
+        The relation string is part of compose_edge_text, so the stored embedding
+        is now stale — NULL it here (storage-only invalidation, DAL-appropriate)
+        and enqueue the edge for async re-embed by the embed_queue worker. Callers
+        (reclassify, revise_edge) stay embedding-ignorant; the worker owns the
+        actual re-embed via Brain.backfill_edge_embeddings.
         """
         self.conn.execute(
-            "UPDATE edge_relations SET relation = ?, encoding_source = ? "
+            "UPDATE edge_relations SET relation = ?, encoding_source = ?, "
+            "embedding = NULL, embedding_model = NULL "
             "WHERE edge_id = ? AND relation = ?",
             (new_relation, encoding_source, edge_id, old_relation))
         commit_unless_batched(self.conn)
+        try:
+            from . import embed_queue
+            embed_queue.enqueue_edge(edge_id)
+        except Exception as _eq_err:
+            import sys as _sys
+            print('[GraphDAL.rename_relation] enqueue_edge failed: %s' % _eq_err,
+                  file=_sys.stderr)
 
     def _update_aggregate_weight(self, edge_id):
         """Set edges.weight to max weight across ACTIVE relation rows.

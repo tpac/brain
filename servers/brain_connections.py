@@ -21,109 +21,68 @@ from .brain_constants import (
 class BrainConnectionsMixin:
     """Connections methods for Brain."""
 
-    def _maybe_embed_edge_relation(self, edge_id: str, relation: str,
-                                    add_result: dict) -> None:
-        """Compute + store the edge's enriched-text embedding when a write
-        actually changed the (relation, description, family meaning) tuple.
+    def backfill_edge_embeddings(self, edge_ids) -> int:
+        """Re-embed edge relations whose stored embedding is NULL — the async,
+        centralized counterpart of the old synchronous per-write embed.
 
-        Stored on `edge_relations.embedding` (schema v26+). Read by
-        `_build_edge_coeffs` and `select_edges` instead of running fastembed
-        at recall time. The 'edges have stored embeddings like nodes'
-        symmetry — see docs/aspects.py compose_edge_text.
+        Edge writes only INVALIDATE: GraphDAL.add_relation / rename_relation NULL
+        the embedding and enqueue_edge. This pass — driven by the embed_queue
+        worker, the SAME mechanism that embeds nodes and traces — recomputes off
+        the write hot path. Idempotent: skips rows already embedded. Nothing
+        outside the brain layer ever touches embedding (S2 units just mutate the
+        graph and stay embedding-ignorant).
 
-        Skipped when:
-          - The write was a no-op (no fields changed) — existing embedding
-            is still valid.
-          - The 'description' field wasn't part of the deltas — only changes
-            that affect `compose_edge_text(relation, description)` invalidate
-            the stored embedding.
-          - Embedding fails (logged; row keeps NULL or stale; spread falls
-            back to live compose for that edge).
+        Stored on edge_relations.embedding (v26+), read by select_edges /
+        _build_edge_coeffs; recall falls back to live compose_edge_text for any
+        row still NULL, so the brief pre-drain window is harmless. Returns the
+        number of relations embedded.
 
-        Concurrency: assumes the caller holds `brain.write_lock` (the
-        daemon dispatch wrapper acquires it for the whole `fn()`, so
-        connect_typed → add_relation → this method all serialize on
-        the same lock). Two concurrent revisions are fully ordered;
-        last writer wins, embedding always matches the description it
-        was computed from. A reader running concurrently sees snapshot
-        consistency (WAL) — there's a brief window between
-        add_relation's commit (description=new) and the embedding
-        UPDATE+commit landing where the reader observes `description=new`
-        with `embedding=embed(old)`. That's transient and harmless: the
-        cosine score is slightly off for one recall, self-heals next call.
-
-        Durability: explicit commit at the end. Without it, the embedding
-        UPDATE stayed uncommitted until the next writer's
-        `add_relation.commit()` or the autosave loop — meaning the LAST
-        embedding in a brain_batch (or any single connect_typed call
-        that wasn't followed by another writer) had a gap where a daemon
-        crash would lose the embedding. add_relation already commits its
-        own writes; this method now matches that contract.
-
-        Layer note: lives in BrainConnectionsMixin (not GraphDAL) because
-        the embedding work needs `brain.aspects` (for family meaning) and
-        the embedder — neither belongs in DAL. GraphDAL stays storage-only.
+        Layer note: lives here (not GraphDAL) because the compute needs
+        brain.aspects (family meaning) + the embedder. GraphDAL stays storage-only.
         """
-        # Skip relations that are never read by surface_spread or
-        # select_edges (DEFAULT_EXCLUDED_RELATIONS = {co_accessed,
-        # emergent_bridge}). Hebbian fires on every recall; embedding
-        # those edges is pure wasted work.
+        ids = [e for e in (edge_ids or []) if e]
+        if not ids:
+            return 0
         from .dal import DEFAULT_EXCLUDED_RELATIONS
-        if relation in DEFAULT_EXCLUDED_RELATIONS:
-            return
-        # Skip if write was a no-op
-        if not (add_result.get('created') or add_result.get('updated') or
-                add_result.get('revived_from_archive')):
-            return
-        # Skip if description wasn't part of the change set (and this is an
-        # update, not a fresh insert). New rows always need embedding.
-        if add_result.get('updated') and not add_result.get('created'):
-            text_changed = any(
-                d.get('field') in ('description', 'relation')
-                for d in add_result.get('deltas') or [])
-            if not text_changed:
-                return
-
-        try:
-            row = self.conn.execute(
-                'SELECT description FROM edge_relations '
-                'WHERE edge_id = ? AND relation = ?',
-                (edge_id, relation)).fetchone()
-            if row is None:
-                return
-            description = row[0] or ''
-            text = self.aspects.compose_edge_text(relation, description)
+        from . import embedder as _embedder
+        ph = ','.join('?' * len(ids))
+        rows = self.conn.execute(
+            'SELECT edge_id, relation, description FROM edge_relations '
+            'WHERE edge_id IN (%s) AND archived = 0 AND embedding IS NULL' % ph,
+            ids).fetchall()
+        if not rows:
+            return 0
+        model = (_embedder.stats.get('model_name') or '') if hasattr(
+            _embedder, 'stats') else ''
+        # Compute OUTSIDE the write lock — fastembed is CPU-heavy. 'document'
+        # kind matches the prefix used at recall time (_desc_vecs_batched);
+        # a mismatched prefix would break the read path's cosine score.
+        pending = []  # (edge_id, relation, blob)
+        for edge_id, relation, description in rows:
+            if relation in DEFAULT_EXCLUDED_RELATIONS:
+                continue  # co_accessed / emergent_bridge are never read by recall
+            text = self.aspects.compose_edge_text(relation, description or '')
             if not text:
-                return
-            from . import embedder as _embedder
-            # 'document' kind matches the prefix used at recall time
-            # (`_desc_vecs_batched` calls `embed_batch(kind='document')`).
-            # Mismatched prefixes produce different vectors for the same
-            # text — would break the read path's cosine score.
-            blobs = _embedder.embed_batch([text], kind='document')
-            blob = blobs[0] if blobs else None
-            if not blob:
-                return
-            model = (_embedder.stats.get('model_name') or '') if hasattr(
-                _embedder, 'stats') else ''
-            self.conn.execute(
-                'UPDATE edge_relations SET embedding = ?, embedding_model = ? '
-                'WHERE edge_id = ? AND relation = ?',
-                (blob, model, edge_id, relation))
-            # Explicit commit so the embedding write is durable on its own
-            # — the caller holds brain.write_lock, so this is a fast WAL
-            # commit without contention. add_relation commits the
-            # description; this commits the embedding. Symmetric with
-            # node_enrichments writes which commit per node.
+                continue
+            try:
+                blobs = _embedder.embed_batch([text], kind='document')
+                if blobs and blobs[0]:
+                    pending.append((edge_id, relation, blobs[0]))
+            except Exception as e:
+                self._log_error('edge_embedding_backfill', e,
+                                '%s/%s' % (str(edge_id)[:12], relation))
+        if not pending:
+            return 0
+        # Write under write_lock (fast) — mirrors backfill_vectors' self-locking
+        # so the worker doesn't block other writers for the whole compute.
+        with self.write_lock:
+            for edge_id, relation, blob in pending:
+                self.conn.execute(
+                    'UPDATE edge_relations SET embedding = ?, embedding_model = ? '
+                    'WHERE edge_id = ? AND relation = ?',
+                    (blob, model, edge_id, relation))
             self._maybe_commit()
-        except Exception as e:
-            # Embedding failure must NOT fail the connect — the row exists,
-            # spread will fall through to the on-demand embed path. Log
-            # loudly so a systemic embed failure is visible.
-            self._log_error(
-                'edge_embedding_write', e,
-                'compute+store edge embedding for %s/%s' %
-                (edge_id[:12] if edge_id else '?', relation))
+        return len(pending)
 
     def connect(self, source_id: str, target_id: str, relation: str = 'related', weight: float = 0.5):
         """Add a relation between two nodes (idempotent upsert).
@@ -147,7 +106,8 @@ class BrainConnectionsMixin:
         # description omitted so add_relation's sentinel default kicks in
         # (preserves existing on update; defaults to '' on create).
         result = graph_dal.add_relation(source_id, target_id, relation, weight=weight)
-        self._maybe_embed_edge_relation(result.get('edge_id'), relation, result)
+        # Embedding is async: add_relation invalidates + enqueues; the embed_queue
+        # worker re-embeds via backfill_edge_embeddings. No sync embed here.
         return result
 
     def connect_typed(self, source_id: str, target_id: str, relation: str = 'related',
@@ -190,7 +150,7 @@ class BrainConnectionsMixin:
         if encoding_source is not None:
             kwargs['encoding_source'] = encoding_source
         result = graph_dal.add_relation(source_id, target_id, relation, **kwargs)
-        self._maybe_embed_edge_relation(result.get('edge_id'), relation, result)
+        # Embedding is async (add_relation invalidates + enqueues; worker re-embeds).
         return result
 
     def revise_edge(self, source_id, target_id, relation,
@@ -202,10 +162,11 @@ class BrainConnectionsMixin:
 
           - new_relation: rename the relation via GraphDAL.rename_relation (in
             place — keeps the same row, its weight, and created_at; no
-            delete+recreate). The relation string is part of compose_edge_text,
-            so the edge embedding is refreshed below — a bare rename would
-            otherwise leave a stale embedding.
-          - description / weight: field-preserving update via add_relation.
+            delete+recreate). rename_relation NULLs the stale embedding +
+            enqueues the edge; the embed_queue worker re-embeds async (this
+            method does no embedding work — embedding is a brain-layer concern).
+          - description / weight: field-preserving update via add_relation
+            (which likewise invalidates + enqueues on a description change).
 
         Loud (ok=False) on a missing edge / missing relation / rename collision,
         rather than a silent no-op. Returns {ok, edge_id, relation, deltas}.
@@ -253,14 +214,9 @@ class BrainConnectionsMixin:
             res = gdal.add_relation(source_id, target_id, final_relation, **kwargs)
             deltas.extend(res.get('deltas') or [])
 
-        # Refresh the edge embedding when the embedded (relation, description)
-        # tuple changed. rename_relation does NOT re-embed on its own, so without
-        # this a rename leaves edge_relations.embedding computed from the OLD
-        # relation string. The gate fires on a 'relation' OR 'description' delta.
-        if any(d.get('field') in ('relation', 'description') for d in deltas):
-            self._maybe_embed_edge_relation(
-                edge_id, final_relation, {'updated': True, 'deltas': deltas})
-
+        # Embedding is handled async: rename_relation and add_relation both NULL
+        # the stored embedding + enqueue_edge, and the embed_queue worker
+        # re-embeds via backfill_edge_embeddings. revise_edge does no embed work.
         return {'ok': True, 'edge_id': edge_id, 'relation': final_relation,
                 'deltas': deltas}
 
