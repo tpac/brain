@@ -17,8 +17,8 @@ Concurrent sessions of one identity are STREAMS OF THOUGHT — never "siblings" 
 "instances" (those imply separate beings). `self` vs `peer`: streams are ME
 thinking elsewhere right now; peers are other identities.
 
-This file owns: the address namespace (delivery routing), the render-by-intent
-formats (how an arriving self-message surfaces), the S0 correspondent marker,
+This file owns: the address namespace (delivery routing), the delivery render
+format (how an arriving self-message surfaces), the S0 correspondent marker,
 and limits. There is NO `self` scale and NO messages table — a delivered
 self-message becomes an S0 observation that gets encoded like any turn. The only
 durable storage is a minimal in-flight queue for directed/broadcast live
@@ -82,17 +82,9 @@ def is_session_id(s):
             and all(c in '0123456789abcdef-' for c in s.lower()))
 
 
-# ═══════════════════════════════════════════════════════════════
-# INTENT  —  a render hint, defaulted from the address
-# ═══════════════════════════════════════════════════════════════
-INTENT_LETTER = "letter"   # reflective — the next_boot handoff (the encoded arc)
-INTENT_SIGNAL = "signal"   # imperative — a tap to a live stream
-INTENTS = (INTENT_LETTER, INTENT_SIGNAL)
-
-
-def default_intent(address):
-    """next_boot reads as a letter (reflective); live/broadcast as a signal (a tap)."""
-    return INTENT_LETTER if address == ADDR_NEXT_BOOT else INTENT_SIGNAL
+# A self-message has no `intent` — it is just a message (removed 2026-06-06).
+# Delivery renders every message identically (quoted, attributed); see the
+# RECEIVED-MESSAGE RENDER section below.
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -139,6 +131,7 @@ def default_intent(address):
 # (removed 2026-05-30), exactly the anti-pattern this contract forbids.
 DELIVERED_BODY_MAX = 1000          # per-message body, capped LOUDLY at delivery render
 RECEIVED_BLOCK_MAX = 1800          # whole injected self-block, overflow named LOUDLY
+PEEK_MSG_MAX = 300                 # per-message cap on a peek's recent_msgs (a glance, not a transcript)
 
 # ── POLICY DEFAULTS (tunable knobs; NOT truncation points) ──────────────
 # TTL is per-message, resolved at send() by ADDRESS and stamped as expires_at
@@ -149,10 +142,9 @@ RECEIVED_BLOCK_MAX = 1800          # whole injected self-block, overflow named L
 #     must NOT inherit a stale broadcast — the short TTL is that guard.
 #   • directed  — waits for ONE specific stream to come back; a day = "you'll
 #     see it when you next work today".
-# No `letter` category: the next_boot letter is the encoded arc surfaced at
-# boot, NOT a stored self_inflight row (see header), so nothing letter-shaped
-# is in the courier; intent='letter' to a live address is still a
-# directed/broadcast message and takes that address's TTL.
+# TTL is by address only — a self-message has no `intent` (removed 2026-06-06).
+# The next_boot letter is the encoded arc surfaced at boot, NOT a stored
+# self_inflight row (see header), so nothing letter-shaped is in the courier.
 # Time is WALL-CLOCK (iso_now/iso_after) — TTL measures REAL elapsed hours, and
 # cross-stream sends aren't on the eval-replay path; self_channel is
 # deliberately outside the conversation-time dirs the clock contract enforces.
@@ -168,7 +160,7 @@ def ttl_kind_for(address):
     """TTL category by delivery address: 'broadcast' (ephemeral live-
     coordination) vs 'directed' (waits for one recipient). The only two
     categories — the next_boot letter isn't a stored courier row, so it has no
-    TTL here; intent is only a render hint, never a TTL axis."""
+    TTL here. (A self-message has no `intent` axis — removed 2026-06-06.)"""
     return 'broadcast' if address == ADDR_BROADCAST else 'directed'
 
 
@@ -204,33 +196,28 @@ if REF_SELF_MESSAGE not in _REF_TYPES.get(("s0", "K"), ()):
 # ═══════════════════════════════════════════════════════════════
 # RECEIVED-MESSAGE RENDER  —  how an incoming self-message surfaces to Anchor
 # ═══════════════════════════════════════════════════════════════
-# Design principle: RENDER BY INTENT. The format encodes the response expected
-# of the reader (the same idea as SURFACE_*_FORMAT encoding how to read a node):
-#   • letter   → reflective. Absorb it; it shaped who you are now. Voiced prose.
-#   • signal   → imperative. Act or decide. Terse, attributed to the live stream.
-#   • presence → ambient. Just know they're there. One line, makes no demand.
-# Callers pass `when` (a relative-time string) and a stream's `focus` — the
-# contract FORMATS; it does not reach into clock / session state.
-
-def render_letter(body, when=""):
-    """Temporal letter at boot — the encoded arc, surfaced in my own voice, set
-    apart from the Frame (the Frame is the third-person prior; this is me)."""
-    head = "## From your last stream of thought%s" % ((" — %s" % when) if when else "")
-    return "%s\n%s\n— you" % (head, (body or "").strip())
-
+# A delivered message is ALWAYS from another stream (a concurrent self), so it is
+# ALWAYS rendered as quoted, attributed reported speech — `other stream (id:X)
+# says: "…"` — never first-person. That re-voicing is the containment barrier: you
+# can't absorb another stream's claim as your own without a visible grammatical
+# error. (This used to branch on `intent`: letter→first-person prose via
+# render_letter. That mis-attributed a concurrent stream as past-you — a bug —
+# removed 2026-06-06; `intent` no longer affects render.) Callers pass `when` (a
+# relative-time string) and a stream's `focus`; the contract FORMATS, never
+# reaching into clock / session state.
 
 def render_signal(body, stream_short="", focus="", when=""):
     """Live signal arriving in O — a tap from ANOTHER stream, rendered as REPORTED
     speech: `who` is a grammatical subject and the body is QUOTED as their claim,
     never your own first-person assertion. That re-voicing is the containment
     barrier — you cannot absorb '<who> says: "I did X"' as something YOU did
-    without a visible grammatical error. (The boot letter stays first-person; see
-    render_letter — continuity across time is the point there. This is for live,
-    concurrent streams, where two agencies coexist in one moment and a verb is
-    about to get mis-owned.) `who` is the sending stream's 8-char short id."""
-    who = stream_short or "a live stream"
+    without a visible grammatical error. EVERY delivered cross-stream message is
+    rendered this way — a concurrent stream is never your past self, so it's always
+    quoted and attributed, never first-person. `who` is the sending stream's 8-char
+    short id, shown as `other stream (id:<short>)`."""
+    who = ("other stream (id:%s)" % stream_short) if stream_short else "another stream"
     tag = " · ".join(p for p in (focus, when) if p)
-    head = "⚡ %s%s says:" % (who, (" [%s]" % tag) if tag else "")
+    head = "%s%s says:" % (who, (" [%s]" % tag) if tag else "")
     return '%s\n   "%s"' % (head, (body or "").strip())
 
 
@@ -264,18 +251,56 @@ def render_presence(streams, lost=(), waiting=0):
     return line
 
 
+def _short_ts(iso):
+    """ISO timestamp → compact 'MM-DD HH:MM' for the first-contact intro line."""
+    if not iso:
+        return ""
+    try:
+        d, t = iso.split("T")
+        return "%s %s" % (d[5:], t[:5])
+    except Exception:
+        return iso[:16]
+
+
+def _render_first_contact(m):
+    """First-ever message from a stream this session → a one-block intro built
+    from its peek (who, since when, last-active + liveness, what it's working on)
+    plus the short reply target. Subsequent messages skip this — context once,
+    then lean. `sender_peek` is attached by drain_and_render; absent → just the
+    reply hint."""
+    short = m.get("from", "")
+    pk = m.get("sender_peek") or {}
+    when_bits = []
+    if pk.get("session_started_at"):
+        when_bits.append("started %s" % _short_ts(pk["session_started_at"]))
+    if pk.get("last_active_at"):
+        when_bits.append("last active %s (%s)" % (
+            _short_ts(pk["last_active_at"]), pk.get("liveness") or "?"))
+    line = " · ".join(when_bits) or "new stream"
+    out = '\n   ⓘ first contact · %s · reply: self_send to="%s"' % (line, short)
+    focus = (pk.get("focus") or "").strip()
+    focus_line = focus.splitlines()[0] if focus else ""
+    if not focus_line:
+        msgs = pk.get("recent_msgs") or []
+        focus_line = (msgs[0].get("text") if msgs else "") or ""
+    if focus_line:
+        out += "\n     working on: %s" % focus_line[:PEEK_MSG_MAX]
+    return out
+
+
 def _render_one(m):
     """Render ONE drained message for injection, capping its body LOUDLY at
     DELIVERED_BODY_MAX (the per-message half of the truncation contract). Renders
     from the raw body — not a pre-baked string — so the cap actually applies; the
-    full body always remains in the courier. Letters render reflective; anything
-    else as a signal tap."""
+    full body always remains in the courier. Every message renders as quoted,
+    attributed reported speech (see render_signal)."""
     body = cap_text_loud(
         m.get("body", "") or "", DELIVERED_BODY_MAX,
         marker="…[+%d chars — full message in the dashboard Streams tab]")
-    if m.get("intent") == INTENT_LETTER:
-        return render_letter(body)
-    return render_signal(body, stream_short=m.get("from", ""))
+    rendered = render_signal(body, stream_short=m.get("from", ""))
+    if m.get("first_contact"):
+        rendered += _render_first_contact(m)
+    return rendered
 
 
 def render_received_block(messages, cap=RECEIVED_BLOCK_MAX):

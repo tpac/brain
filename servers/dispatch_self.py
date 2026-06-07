@@ -46,7 +46,7 @@ def _handle_self_send(brain, args, graph_changes):
     args.to           = target: id-prefix, full session id, or 'broadcast'.
     args.body         = the message.
     args.from_session = caller's session id for attribution (falls back to session_id).
-    args.intent/refs  = optional.
+    args.refs         = optional.
 
     `to` resolves gracefully (signal.resolve_to): canonical id / broadcast pass
     through; the 8-char short (an id-prefix) matches the live roster; ambiguous or
@@ -60,7 +60,6 @@ def _handle_self_send(brain, args, graph_changes):
         from_session=args.get('from_session', '') or args.get('session_id', '') or '',
         address=address,
         body=args.get('body', '') or '',
-        intent=args.get('intent'),
         refs=args.get('refs'))}
 
 

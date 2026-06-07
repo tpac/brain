@@ -233,8 +233,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
             "body": message,
             "from_session": body.get("from_session") or "operator-dashboard",
         }
-        if body.get("intent"):
-            args["intent"] = body["intent"]
         result = daemon_send("self_send", args)
         if result is None:
             return self._json(502, {"ok": False, "error": "daemon returned no result"})

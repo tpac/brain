@@ -76,6 +76,53 @@ class TestSelfPresence(BrainTestBase):
         self.assertFalse(miss['found'])
         self.assertEqual(miss['focus'], '')
 
+    def test_peek_enrichment_arc_msgs_activity(self):
+        # peek now returns arc + recent conversational msgs + activity window +
+        # liveness, so a glance shows where a stream is without interrupting it.
+        self.brain.set_config('session_context_streamAAAA', 'arc line one\narc line two')
+        self._save_stream('streamAAAA', focus='did the dashboard fix')
+        p = presence.peek(self.brain, 'streamAAAA')
+        self.assertTrue(p['found'])
+        self.assertEqual(p['focus'], 'arc line one\narc line two')  # full arc
+        # recent_msgs carries the conversational turn, role-tagged
+        self.assertTrue(p['recent_msgs'])
+        self.assertEqual(p['recent_msgs'][0]['text'], 'did the dashboard fix')
+        self.assertEqual(p['recent_msgs'][0]['role'], 'user_message')
+        # a just-written turn ⇒ started + last_active set, liveness active
+        self.assertTrue(p['session_started_at'])
+        self.assertTrue(p['last_active_at'])
+        self.assertEqual(p['liveness'], 'active')
+
+    def test_peek_found_from_msgs_when_arc_empty(self):
+        # fresh stream: no arc encoded yet, but one real turn ⇒ still peeks
+        # usefully (the arc lags S1 Scribe; turns are immediate).
+        self._save_stream('streamFRSH', focus='just booted, first message')
+        p = presence.peek(self.brain, 'streamFRSH')
+        self.assertEqual(p['focus'], '')      # no arc yet
+        self.assertTrue(p['found'])           # found via recent_msgs
+        self.assertEqual(len(p['recent_msgs']), 1)
+
+    def test_peek_msg_cap(self):
+        # a long stored summary is capped to PEEK_MSG_MAX in the glance (append
+        # stores summary raw, so this truncation is real, not a no-op).
+        self._save_stream('streamLONG', focus='x' * 500)
+        p = presence.peek(self.brain, 'streamLONG')
+        self.assertEqual(len(p['recent_msgs'][0]['text']), self_contract.PEEK_MSG_MAX)
+
+    def test_peek_pending_inbox_count(self):
+        # messages waiting for a stream surface as its reachability backlog
+        addr = self_contract.address_for_stream('streamRCPT')
+        signal.send(self.brain, 'streamSND1', addr, 'msg one')
+        signal.send(self.brain, 'streamSND2', addr, 'msg two')
+        p = presence.peek(self.brain, 'streamRCPT')
+        self.assertEqual(p['pending_inbox_count'], 2)
+
+    def test_stamp_boot_liveness_makes_stream_present(self):
+        # a freshly-booted stream is visible in presence BEFORE its first turn
+        self.brain.stamp_boot_liveness('bootSTREAM')
+        rows = self.brain.present_streams(exclude_session='other', window_min=30, limit=10)
+        self.assertIn('bootSTREAM', {r['session_id'] for r in rows})
+
     def test_cap_is_respected(self):
         for i in range(5):
             self._save_stream('stream%05d' % i, focus='focus %d' % i)

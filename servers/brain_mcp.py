@@ -662,7 +662,6 @@ def _build_tools():
          "to": {"type": "string", "description": "Target stream: the 8-char short you see in a message (an id-prefix), or the full session id (from self_presence) — or 'broadcast' for all live streams. A prefix resolves against live streams; ambiguous or gone is reported so you can use the full id."},
          "body": {"type": "string", "description": "The message — terse, a tap on the shoulder, not a letter."},
          "from_session": {"type": "string", "description": "Your own session id, for attribution (optional)."},
-         "intent": {"type": "string", "enum": ["signal", "letter"], "description": "Render hint; default 'signal'."},
          "refs": {"type": "array", "items": {"type": "string"}, "description": "Node ids / files the message is grounded in (optional)."}}}},
 
     {"name": "self_inbox",

@@ -134,7 +134,43 @@ class TestSelfSignal(BrainTestBase):
                     address=self_contract.address_for_stream('streamB'), body='hi B')
         drained = signal.drain_inbox(self.brain, to_session='streamB')
         self.assertEqual(drained[0]['from'], 'AAAAAAAA')
-        self.assertIn('⚡ AAAAAAAA says:', drained[0]['rendered'])
+        self.assertIn('other stream (id:AAAAAAAA) says:', drained[0]['rendered'])
+
+    def test_first_contact_flag_set_once_per_sender(self):
+        """drain flags the FIRST message from a sender as first_contact and
+        carries the full from_session; later ones from the same sender are lean."""
+        addr = self_contract.address_for_stream('rcpt1')
+        signal.send(self.brain, from_session='senderXX', address=addr, body='one')
+        d1 = signal.drain_inbox(self.brain, to_session='rcpt1')
+        self.assertTrue(d1[0]['first_contact'])
+        self.assertEqual(d1[0]['from_full'], 'senderXX')
+        signal.send(self.brain, from_session='senderXX', address=addr, body='two')
+        d2 = signal.drain_inbox(self.brain, to_session='rcpt1')
+        self.assertFalse(d2[0]['first_contact'])
+
+    def test_first_contact_intro_rendered_then_dropped(self):
+        """drain_and_render attaches the sender's PEEK on the first message from a
+        stream — intro carries the reply hint AND what they're working on — and
+        nothing on the next. (Regression: the peek enrichment must actually wire.)"""
+        self.brain.set_config('session_context_senderYY', 'refactoring the courier')
+        addr = self_contract.address_for_stream('rcpt2')
+        signal.send(self.brain, from_session='senderYY', address=addr, body='hello')
+        block1, _ = signal.drain_and_render(self.brain, 'rcpt2')
+        self.assertIn('first contact', block1)
+        self.assertIn('self_send to="senderYY"', block1)
+        self.assertIn('working on: refactoring the courier', block1)  # peek wired in
+        signal.send(self.brain, from_session='senderYY', address=addr, body='again')
+        block2, _ = signal.drain_and_render(self.brain, 'rcpt2')
+        self.assertNotIn('first contact', block2)
+
+    def test_resolve_short_matches_recent_sender(self):
+        """A stream that messaged me but isn't in the live roster is still
+        reply-able by its short id — its from_session is in the courier."""
+        signal.send(self.brain, from_session='dorm12345678',
+                    address=self_contract.address_for_stream('me'), body='hi')
+        addr, err = signal.resolve_to(self.brain, 'dorm1234')
+        self.assertIsNone(err)
+        self.assertEqual(addr, self_contract.address_for_stream('dorm12345678'))
 
     # ── Phase 2b: render + delivery-into-Observation ──
 
@@ -291,9 +327,9 @@ class TestLegacyNullExpires(BrainTestBase):
         with self.brain.write_lock:
             self.brain.logs_conn.execute(
                 "INSERT INTO self_inflight "
-                "(id, from_session, address, intent, body, refs, created_at, expires_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
-                (mid, 'A', self_contract.address_for_stream(to), 'signal', body, '', iso_now()))
+                "(id, from_session, address, body, refs, created_at, expires_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, NULL)",
+                (mid, 'A', self_contract.address_for_stream(to), body, '', iso_now()))
             self.brain.logs_conn.commit()
 
     def test_null_expires_not_delivered(self):

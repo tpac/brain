@@ -995,6 +995,46 @@ class TraceDAL:
         return [{'session_id': r[0], 'last_turn': r[1], 'focus': r[2] or ''}
                 for r in rows]
 
+    def session_activity(self, session_id: str, msg_limit: int = 2) -> Dict[str, Any]:
+        """Activity snapshot for ONE session — self_peek's enrichment data.
+
+        Returns {'started_at', 'last_active_at', 'recent_msgs'} from this
+        session's S0 traces:
+          started_at     — first conversational turn (MIN), tenure
+          last_active_at — most recent turn of ANY live kind incl. heartbeats
+                           (MAX), for liveness; a watch listener's quiet ticks
+                           ARE activity (same rule as active_sessions_by_turn)
+          recent_msgs    — last `msg_limit` conversational turns, newest first,
+                           [{'ts','ref_type','text'}], wake-envelope turns
+                           skipped so a peek shows work not ignition (raw; the
+                           render layer truncates). Read-only.
+        """
+        from .trace_contract import CONVERSATIONAL_REF_TYPES, WAKE_ENVELOPE_MARKER
+        conv_ph = ','.join('?' * len(CONVERSATIONAL_REF_TYPES))
+        live_types = CONVERSATIONAL_REF_TYPES + ('heartbeat',)
+        live_ph = ','.join('?' * len(live_types))
+        agg = self.conn.execute(
+            "SELECT "
+            "  (SELECT MIN(created_at) FROM trace_events "
+            "     WHERE scale='s0' AND session_id=? AND ref_type IN (%s)), "
+            "  (SELECT MAX(created_at) FROM trace_events "
+            "     WHERE scale='s0' AND session_id=? AND ref_type IN (%s))"
+            % (conv_ph, live_ph),
+            (session_id, *CONVERSATIONAL_REF_TYPES,
+             session_id, *live_types)).fetchone()
+        started_at = (agg[0] or '') if agg else ''
+        last_active_at = (agg[1] or '') if agg else ''
+        rows = self.conn.execute(
+            "SELECT created_at, ref_type, summary FROM trace_events "
+            "WHERE scale='s0' AND session_id=? AND ref_type IN (%s) "
+            "  AND summary NOT LIKE ? "
+            "ORDER BY created_at DESC LIMIT ?" % conv_ph,
+            (session_id, *CONVERSATIONAL_REF_TYPES,
+             WAKE_ENVELOPE_MARKER + '%', msg_limit)).fetchall()
+        recent = [{'ts': r[0], 'ref_type': r[1], 'text': r[2] or ''} for r in rows]
+        return {'started_at': started_at, 'last_active_at': last_active_at,
+                'recent_msgs': recent}
+
     def find_by_metadata_substring(self, scale: str, ref_type: str,
                                    substring: str) -> Optional[Dict[str, str]]:
         """First trace matching (scale, ref_type) whose metadata contains

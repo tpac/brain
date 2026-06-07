@@ -13,7 +13,7 @@ step (docs/BOOT-REIGNITION.md) — build it on top of build_presence().
 
 from datetime import datetime, timezone
 
-from servers.scales.self_channel import self_contract
+from servers.scales.self_channel import self_contract, signal
 
 
 def _age_min(iso_ts):
@@ -79,14 +79,40 @@ def build_presence(brain, my_session_id='', limit=None):
     return {'streams': live, 'lost': lost, 'line': line}
 
 
-def peek(brain, session_id):
-    """Look into one stream of thought — its full current focus (the session arc).
+def _empty_peek(session_id=''):
+    return {'session_id': session_id, 'short': session_id[:8] if session_id else '',
+            'focus': '', 'recent_msgs': [], 'session_started_at': '',
+            'last_active_at': '', 'liveness': 'lost', 'pending_inbox_count': 0,
+            'found': False}
 
-    The interest-driven pull: 'where is that stream right now?' — read-only, no
-    interruption. Returns the full arc (not the one-line roster summary).
-    """
+
+def peek(brain, session_id, msg_limit=2):
+    """Look into one stream of thought — where it is right now, without
+    interrupting it. The interest-driven pull; read-only.
+
+    Returns its arc (focus), the last `msg_limit` conversational messages
+    (each capped at PEEK_MSG_MAX), when it started, when it was last active +
+    its liveness state, and how many messages wait in its OWN inbox. `found` is
+    true once it has an arc OR any real turn — so a fresh stream with a single
+    message still peeks usefully (the arc lags; turns don't). On the empty/
+    error path every key is still present (degrades, never half-shaped)."""
     if not session_id:
-        return {'session_id': '', 'short': '', 'focus': '', 'found': False}
+        return _empty_peek()
     arc = (brain.session_context_for(session_id) or '').strip()
-    return {'session_id': session_id, 'short': session_id[:8],
-            'focus': arc, 'found': bool(arc)}
+    act = brain.session_activity(session_id, msg_limit=msg_limit) or {}
+    recent = [{'ts': m.get('ts', ''), 'role': m.get('ref_type', ''),
+               'text': (m.get('text', '') or '')[:self_contract.PEEK_MSG_MAX]}
+              for m in act.get('recent_msgs', [])]
+    last_active = act.get('last_active_at', '') or ''
+    liveness = (self_contract.classify_liveness(_age_min(last_active))
+                if last_active else 'lost')
+    return {
+        'session_id': session_id, 'short': session_id[:8],
+        'focus': arc,
+        'recent_msgs': recent,
+        'session_started_at': act.get('started_at', '') or '',
+        'last_active_at': last_active,
+        'liveness': liveness,
+        'pending_inbox_count': signal.pending_count(brain, session_id),
+        'found': bool(arc or recent),
+    }
