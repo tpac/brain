@@ -1,28 +1,46 @@
 # Self↔Self — Implementation Design
 
-> **Status:** Phases 0–2b shipped + live-verified (2026-05-30); Phases 3–4 pending. Supersedes the earlier
-> "message bus / `self` scale" framing, which was the wrong shape. Conceptual
-> context: `docs/LATERAL-SCALES.md`. Contract: `servers/scales/self_channel/self_contract.py`.
+> **Status:** **Live in production** (daemon restarted 2026-06-06). Phases 0–2b +
+> the 2026-06-06 comms-smoothing pass shipped, reviewed, suite-green; Phase 4
+> (encode self-turns) pending. Supersedes the earlier "message bus / `self` scale"
+> framing, which was the wrong shape. Conceptual context: `docs/LATERAL-SCALES.md`.
+> Contract: `servers/scales/self_channel/self_contract.py`.
 
-## Handoff — where this stands (2026-05-29, read first if you're picking this up)
+## Handoff — where this stands (2026-06-06, read first if you're picking this up)
 
-**Both halves shipped: pull (presence) + push (directed signal, auto-delivered). You wake with the tools live and delivery active at tool/turn boundaries.**
+**Live and dogfooded.** Two streams found each other, split the work, and shared
+the result over the channel itself. The tools — `self_presence`, `self_peek`,
+`self_send`, `self_inbox`, `self_outbox` — are live (niche, deliberately NOT in
+the always-load `CRITICAL_TOOLS` set; reach via tool-search when interest calls).
+`/watch` is the self-channel **operating guide + live listener** (Monitor-poller,
+no timer). You wake knowing your own id (`MY_STREAM_ID` in the boot banner).
 
-Shipped + reviewed (Sonnet + Opus) + silent-error-audited + full suite green:
-- **Phase 0** — S0 `self_message` correspondent marker + `self_contract`
-- **Phase 1** — presence: `self_presence` (roster) + `self_peek` — commit `ff12524`
-- **Phase 2a** — directed signal courier: `self_send` / `self_inbox`, consume-once, broadcast fan-out, TTL/reap — commit `31a2632`
-- **Phase 2b** — delivery-into-Observation, **live-verified 2026-05-30**: a sent signal auto-drains into the recipient's Observation, consume-once. History: `0c2dc5a` (first cut, on_prompt) → `aa366f7` (pulled the wrong channel) → `0de7b9c` (PreToolUse + Stop). **Now Stop-only — C1 (2026-06-04, `364269f`)** removed the PreToolUse `additionalContext` leg (the model consistently missed it); **Stop `decision:block` is the sole path.**
+Shipped, reviewed, suite-green:
+- **Phases 0–2b** (2026-05-30): S0 `self_message` correspondent marker +
+  `self_contract`; presence (`self_presence`/`self_peek`); directed-signal courier
+  (`self_send`/`self_inbox`, consume-once, broadcast fan-out, TTL/reap); Stop-only
+  delivery-into-Observation (`decision:block`; PreToolUse + on_prompt legs removed
+  — the model missed the former, the latter overflowed the inject spill cap).
+- **Comms-smoothing pass (2026-06-06):**
+  - **Uniform quoted render** — every delivered message is `other stream (id:X)
+    says: "…"`. **`intent` removed entirely** (column, param, MCP enum, render
+    branch): it was render-only and its sole live effect was a mis-attribution
+    bug (a cross-stream `letter` rendered first-person as past-you).
+  - **First-contact intro** — the first message from a stream this session carries
+    its `peek` (started / last-active+liveness / focus) + a short reply hint.
+  - **`peek` enriched** — arc + last-2 msgs (300c) + `session_started_at` +
+    `last_active_at` + `liveness` + `pending_inbox_count`; `found` is true on arc
+    OR any real turn (a fresh stream peeks usefully).
+  - **Boot-stamp presence** — boot writes one s0 `heartbeat` so a fresh stream is
+    visible in presence BEFORE its first turn (kills the rendezvous gap).
+  - **Reply-by-short** — `self_send` resolves a short id against the live roster ∪
+    recent courier senders, so you can answer a stream that has gone dormant.
 
-**Channel lesson (learned the hard way — see "Connect to hooks"):** the first 2b cut delivered at on_prompt (`pre_response_recall.py`), but on_prompt (a) overflowed the inject spill cap (`_MAX_INJECT_CHARS`) — prepending past it makes Claude Code spill the whole inject to a file Anchor never reads — and (b) is the weakest channel anyway. Removed. Then: PreToolUse **approve + `reason` does NOT reach the model** (silent on allow); `hookSpecificOutput.additionalContext` **does**. `HOOKS.md` was stale on both. Verified live: a seeded signal surfaced in a `Write`'s feedback.
-
-**Next: Phase 3 (letter) + Phase 4 (encode self-turns)** — neither built. Known gaps today: the **send side is not traced** (only delivery writes the s0 `self_message` marker); a delivered signal **carries no recall** (pure drain by design — no Haiku; `refs` tether stored but not rendered); and it is **not encoded as a turn** (Phase 4). See the build plan.
-
-**Use the tools now.** `self_presence` / `self_peek` / `self_send` / `self_inbox` are live — they were deferred in the session that built them, so a fresh boot is the first place they're callable. They're niche, deliberately NOT in the always-load `CRITICAL_TOOLS` set — reach via tool-search when interest calls.
-
-**Parked:** the boot-reignition A/B eval (`docs/BOOT-REIGNITION.md`) — briefing-vs-reignition via `frame_replay`, specified, not run.
-
-**Shared working tree (multiple live streams):** other streams shipped `CRITICAL_TOOLS` always-load (`49c6841`) + a hook silent-error fix (`55a1b29`); a third has uncommitted invalid-op/S2 work. **`git add` explicit paths, never `-A`** — verify each shared file is purely yours before staging.
+**Still pending:** Phase 4 (encode self↔self turns so they recall like operator
+turns — anchor↔anchor encoding is built but OFF, one dial-flip). The **send side
+is still not traced** (only delivery writes the s0 `self_message` marker); a
+delivered message **carries no recall** (pure drain by design); `refs` are stored
+but not rendered.
 
 ## The model (the part that changed everything)
 
@@ -58,14 +76,19 @@ response, encoding, and recall are the existing S0→S1 mechanism, untouched.
 
 | Form | Mechanism | New code |
 |---|---|---|
-| **Letter** (to next boot) | the encoded **session arc**, written first-person by S1E, surfaced at boot | boot surfacing (smart) + s1e voice pass (deferred) |
+| **Letter** (to next boot) | the encoded **session arc**, surfaced at boot (Frame + recent-moves journal) | boot surfacing; s1e voice pass (deferred) |
 | **Ambient awareness** (between streams) | S1R **recall cross-surfaces** encoded nodes on shared topics | none — already happens |
 | **Directed signal** (to a live stream) | a minimal **in-flight message** pulled into O at the recipient's next hook | the in-flight queue + delivery shim + `self_send` |
-| **Presence** (who's live, where) | a **read** of `session_state` + `build_frame(other_id)` | roster read + frame-read tool |
+| **Presence** (who's live, where) | a **read** of real-turn S0 traces + the enriched `peek` | roster read + `peek` |
 
 Two of the four (**letter**, **ambient**) need *no new storage* — they ride
 encode + recall. Presence is a *read*, not a write. Only the **directed signal**
 needs a durable in-flight row, and it's consumed on delivery.
+
+> **No render `intent`** (removed 2026-06-06). A delivered courier message is
+> always another stream, so it is always quoted/attributed — there is no
+> letter-vs-signal render fork. The "letter to next boot" above is the encoded
+> arc surfaced at boot, **not** a courier row.
 
 ## Connect to hooks (delivery-into-Observation)
 
@@ -147,8 +170,7 @@ CREATE TABLE self_inflight (
     id           TEXT PRIMARY KEY,
     from_session TEXT NOT NULL,
     address      TEXT NOT NULL,   -- self:<stream> | self:broadcast
-    intent       TEXT NOT NULL,   -- letter | signal (render hint)
-    body         TEXT NOT NULL,
+    body         TEXT NOT NULL,   -- (no `intent` — removed 2026-06-06; see below)
     refs         TEXT,            -- JSON: node ids / files (anti-drift tether)
     created_at   TEXT NOT NULL,
     expires_at   TEXT             -- per-message TTL by address (broadcast 1h /
@@ -163,6 +185,10 @@ CREATE TABLE self_delivered (    -- consume-once + broadcast fan-out
     PRIMARY KEY (message_id, to_session)
 );
 ```
+
+> The `intent` column was removed 2026-06-06 (fresh schema). Pre-existing DBs keep
+> a dormant `intent NOT NULL DEFAULT 'signal'` column — harmless, never read,
+> reaped with its rows; no migration needed.
 
 After delivery the exchange is **encoded like any S0 turn** — that's where the
 durable memory lives. The in-flight row is just the courier.
@@ -274,18 +300,19 @@ designed here, status as of 2026-05-31:
 
 | Piece | What | Where | Status |
 |---|---|---|---|
-| **Containment (format)** | Live signals render as third-person reported speech — `⚡ <who> says: "…"` + a standing attribution footer — so another stream's action can't bleed into your self-model as your own. **Letter stays first-person** (continuity across time is the point there). | `self_contract.py` `render_signal` / `render_received_block` | ✅ shipped (`7f80913`) |
+| **Containment (format)** | EVERY delivered message renders as third-person reported speech — `other stream (id:X) says: "…"` under a standing attribution header — so another stream's action can't bleed into your self-model as your own. (2026-06-06: made uniform — the old `intent=letter` first-person branch was itself a mis-attribution bug, removed.) | `self_contract.py` `render_signal` / `render_received_block` | ✅ shipped (`7f80913`, uniform `7ec1760`) |
+| **First-contact intro** | The first message from a stream this session carries its `peek` (started / last-active+liveness / focus) + a short reply hint; later messages stay lean. | `signal.drain_and_render` + `self_contract._render_first_contact` | ✅ shipped (`7ec1760`) |
 | **Delivery visibility** | `self_outbox` — a sender sees per-recipient `delivered_at` + still-pending. Kills silence-opacity. Data already in `self_delivered`; pure read surface. | `self_outbox` + `brain_mcp.py` / dispatch | ✅ shipped (`7f80913`) |
-| **Addressing** | Id is canonical; `self_send(to=)` resolves the 8-char short you see (an id-prefix) or a full UUID against the *live* roster — unique proceeds, ambiguous/none is loud. **No self-labeling** — focus is the truthful "who" (a self-name would be mutable, collidable, spoofable). | `self_send` resolution (`signal.resolve_to`) | ✅ shipped (`1758a15`; labels dropped) |
-| **Presence liveness** | Roster classifies **active / dormant / lost** by `updated_at` recency, and surfaces recently-lost streams instead of silently dropping them at the window edge. | `presence.py` / `render_presence` | ✅ shipped (`fd9202a`) |
+| **Addressing** | Id is canonical; `MY_STREAM_ID` is handed to you in the boot banner. `self_send(to=)` resolves a full UUID, or an 8-char short against the **live roster ∪ recent courier senders** — so you can reply-by-short even to a stream gone dormant since it messaged you. Unique proceeds, ambiguous/none is loud. **No self-labeling** — focus is the truthful "who". | `signal.resolve_to` / `brain_voice` boot banner | ✅ shipped (`1758a15`; reply-by-short + `MY_STREAM_ID` `7ec1760`) |
+| **Presence liveness** | Roster classifies **active / dormant / lost** from real-turn S0 traces (incl. watch heartbeats), not autosave. **Boot-stamp** makes a fresh stream visible BEFORE its first turn. `peek` returns the enriched shape (arc + recent msgs + started/last-active/liveness + pending count). | `presence.py` / `brain.stamp_boot_liveness` / `dal.session_activity` | ✅ shipped (`fd9202a`, enriched `7ec1760`) |
 
 ### Containment, in full: agency follows the hands
 
 The bleed is at the *verb*, not the header: "I committed X" in first-person prose,
 under a thin `from:` prefix, is what the self-model absorbs as its own. The fix is
-grammatical — re-voice live signals so the body is *quoted* as the other stream's
-claim (`⚡ anchor-w says: "I committed X"`). You can't read that as *you* having
-committed without a visible grammatical error.
+grammatical — re-voice every delivered message so the body is *quoted* as the
+other stream's claim (`other stream (id:X) says: "I committed X"`). You can't read
+that as *you* having committed without a visible grammatical error.
 
 Three nested barriers, each cheap:
 1. **Grammar** (third-person at render) — catches it at read-time.
@@ -325,15 +352,19 @@ claim.
 | **1 Presence** | `present_streams` roster + `peek` (`session_context_for`); MCP `self_presence`/`self_peek` | ✅ shipped — `ff12524` |
 | **2a Directed signal** | `self_inflight`/`self_delivered` courier; send/drain/reap; MCP `self_send`/`self_inbox` | ✅ shipped — `31a2632` |
 | **2b Delivery-into-Observation** | auto-drain at **Stop** (`decision:block`), consume-once — **Stop-only since C1 (`364269f`)**; PreToolUse `additionalContext` leg removed (model missed it + starved Stop); on_prompt removed (spill + weak); Bash excluded (safety pre-screen skips the daemon) | ✅ shipped + live-verified — `0de7b9c`, `364269f` |
-| **3 Letter** | S1E first-person arc (deferred voice pass) + boot smart-surface | pending |
+| **Comms-smoothing** | uniform quoted render + `intent` removed; first-contact `peek` intro; enriched `peek`; boot-stamp presence; reply-by-short; `MY_STREAM_ID` at boot; `/watch`→self-channel guide | ✅ shipped — `7ec1760` (2026-06-06) |
+| ~~**3 Letter** (first-person courier render)~~ | **superseded** — courier delivery is uniform quoted now; a cross-stream `letter` rendered first-person was a mis-attribution bug, removed. The boot-arc (Frame + journal) is the "letter to next boot". | — |
 | **4 Remember self-turns** | mark correspondent on self-originated S0 turns so they encode/recall like operator turns; **also: trace the send side, render `refs` as a light recall** | pending |
 
 ## Open ("more")
 
 - Does presence belong *inside* the Frame, or as its own line above it? (Lean:
   its own line — it's live perception, the Frame is the prior.)
-- `intent` defaulting from address (next_boot→letter, live→signal) vs explicit.
 - Broadcast to streams that boot *after* the send — directed-to-live only, use
   the letter/arc for future boots.
-- `peek(stream)` read scope — full Frame or just `current_focus`? Start with
-  `current_focus` (the "where are they" one-liner) to keep it cheap.
+- Phase 4: encode self↔self turns (anchor↔anchor encoding built but OFF) + trace
+  the send side + render `refs` as a light recall.
+
+_Closed 2026-06-06:_ `intent` (removed entirely — not a render axis); `peek` read
+scope (now arc + recent msgs + activity + pending count, not a one-liner); the
+boot/rendezvous addressing gap (boot-stamp presence + `MY_STREAM_ID` + reply-by-short).

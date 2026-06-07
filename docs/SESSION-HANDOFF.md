@@ -37,7 +37,7 @@ Highest-value loose end: cost sunk, value uncollected. This is the arc to pick u
 There is **no `cache_control` anywhere** in the surface path (neither v4 nor `v5_agentic`) — the CLAUDE.md "cached system block" claim was never wired. Steady-state `surface_haiku` is 8–10s (a 2-round agentic loop, not a single call); watch-mode self-messages pay full agentic recall because `<task-notification>` dodges the `pre_response_recall` skip-gate. Levers: **A1** add `cache_control` (Haiku-4.5 min cacheable prefix = 4096 tokens — measure the instructions-vs-candidates split first; reliable win is caching round-1's prefix for round 2); **A2** watch-wake recall contract + cousin-community breadcrumb (Tom's design); **A3** kill the agentic-loop network roundtrip. Eval-gated on recall quality.
 
 ### Self-channel remaining phases (`docs/SELF-CHANNEL-DESIGN.md`)
-- **Phase 3 — boot letter.** First-person session arc surfaced at wake. `render_letter` exists; boot smart-surface not built. Parked behind the boot-reignition eval (`docs/BOOT-REIGNITION.md`).
+- **Phase 3 — boot letter. Superseded 2026-06-06:** every delivered message now renders uniformly quoted and `render_letter` was removed (a first-person cross-stream render was a mis-attribution bug). The "letter to next boot" survives only as the encoded arc surfaced at boot (Frame + journal); boot smart-surface still parked behind the boot-reignition eval (`docs/BOOT-REIGNITION.md`).
 - **Phase 4 — encode self-turns.** `self_message: False` at `trace_contract.py:177` (verified unflipped 2026-06-05). Flip to `True` so anchor↔anchor turns encode/recall like operator turns. One dial when wanted.
 
 ### S2 consolidation → live merge (`docs/S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md`)

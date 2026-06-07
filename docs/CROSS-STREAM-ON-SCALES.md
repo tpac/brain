@@ -112,16 +112,16 @@ These didn't ship in Groups 1+2 but share enough surface with cross-stream work 
 - **Why deferred separately:** these want benchmark-first eval (Frozen Corpus harness — `eval/longmem/sweep.py`), and execution conflicts with cross-stream changes (both touch surface). Sequence: **cross-stream first**, then Haiku-cost eval against the new shape.
 
 ### F2 — presence read-lag (boot transient half)
-The 2026-06-04 fix handled heartbeat-exclusion (CR2). The read-lag half remains — `active_sessions_by_turn` trails committed writes, worst at boot. Likely tied to WAL checkpoint cadence; verify before changing.
+The 2026-06-04 fix handled heartbeat-exclusion (CR2). **Boot-stamp presence (2026-06-06) handles the "no trace at boot yet" half** — a fresh stream writes one s0 `heartbeat` at boot, so it's visible before its first turn. The residual read-lag (a just-committed trace trailing the read, likely WAL checkpoint cadence) remains; verify before changing.
 
 ### B4 — namespace bridge
-CCD `list_sessions` id (`local_<uuid>`) ≠ brain self-channel id. Lowest priority — moot once B1 (self-id at boot) is in everyone's flow. Surface the brain id where the CCD id appears (dashboard, status line) for completeness.
+CCD `list_sessions` id (`local_<uuid>`) ≠ brain self-channel id. Lowest priority. **B1 (self-id at boot — `MY_STREAM_ID`) shipped + live (2026-06-06)**, so a stream knows its own brain id; this is now just surfacing the brain id where the CCD id appears (dashboard, status line) for completeness.
 
-### CR4 — `scale='s0'` predicate
-`active_sessions_by_turn` doesn't pin `scale='s0'`; the composite trace index `(scale, ref_type, created_at)` is unused without it. Natural to fold in next time that query is touched.
+### CR4 — `scale='s0'` predicate ✅ DONE (2026-06-04)
+`active_sessions_by_turn` now pins `scale='s0'`, so the composite trace index `(scale, ref_type, created_at)` engages.
 
-### CR5 — peek/drain SELECT dedup
-`peek_inbox` and `drain_inbox` have byte-identical SELECT clauses. Extract into a shared `_pending_inbox_rows` helper. Pure cleanup.
+### CR5 — peek/drain SELECT dedup ✅ DONE (2026-06-05)
+`peek_inbox` and `drain_inbox` now share `_pending_rows` + `_PENDING_INBOX_SQL` (a single source for both, plus `pending_count`).
 
 ---
 
