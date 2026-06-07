@@ -78,10 +78,10 @@ class BrainConnectionsMixin:
         # Skip if description wasn't part of the change set (and this is an
         # update, not a fresh insert). New rows always need embedding.
         if add_result.get('updated') and not add_result.get('created'):
-            desc_changed = any(
-                d.get('field') == 'description'
+            text_changed = any(
+                d.get('field') in ('description', 'relation')
                 for d in add_result.get('deltas') or [])
-            if not desc_changed:
+            if not text_changed:
                 return
 
         try:
@@ -192,6 +192,66 @@ class BrainConnectionsMixin:
         result = graph_dal.add_relation(source_id, target_id, relation, **kwargs)
         self._maybe_embed_edge_relation(result.get('edge_id'), relation, result)
         return result
+
+    def revise_edge(self, source_id, target_id, relation,
+                    new_relation=None, description=None, weight=None,
+                    encoding_source=None, reason=''):
+        """Revise an existing edge relation IN PLACE. Mirrors revise()'s contract:
+        identify the edge-relation row by (source_id, target_id, relation), then
+        update only the fields you pass — omit a field to preserve it.
+
+          - new_relation: rename the relation via GraphDAL.rename_relation (in
+            place — keeps the same row, its weight, and created_at; no
+            delete+recreate). The relation string is part of compose_edge_text,
+            so the edge embedding is refreshed below — a bare rename would
+            otherwise leave a stale embedding.
+          - description / weight: field-preserving update via add_relation.
+
+        Loud (ok=False) on a missing edge / missing relation / rename collision,
+        rather than a silent no-op. Returns {ok, edge_id, relation, deltas}.
+        """
+        gdal = self._graph
+        edge_id = gdal.get_edge_id(source_id, target_id)
+        if not edge_id:
+            return {'ok': False, 'error': 'no edge between %s and %s' % (
+                str(source_id)[:8], str(target_id)[:8])}
+        active = {r['relation'] for r in gdal.get_relations(edge_id)}
+        if relation not in active:
+            return {'ok': False, 'error': 'edge has no active relation %r (has: %s)' % (
+                relation, sorted(active))}
+
+        deltas = []
+        src = encoding_source or 'anchor'
+        final_relation = relation
+        if new_relation and new_relation != relation:
+            if new_relation in active:
+                return {'ok': False, 'error': 'edge already has active relation %r '
+                        '— rename would collide' % new_relation}
+            gdal.rename_relation(edge_id, relation, new_relation, src)
+            deltas.append({'field': 'relation', 'old': relation, 'new': new_relation})
+            final_relation = new_relation
+
+        if description is not None or weight is not None:
+            kwargs = {}
+            if description is not None:
+                kwargs['description'] = description
+            if weight is not None:
+                kwargs['weight'] = weight
+            if encoding_source is not None:
+                kwargs['encoding_source'] = encoding_source
+            res = gdal.add_relation(source_id, target_id, final_relation, **kwargs)
+            deltas.extend(res.get('deltas') or [])
+
+        # Refresh the edge embedding when the embedded (relation, description)
+        # tuple changed. rename_relation does NOT re-embed on its own, so without
+        # this a rename leaves edge_relations.embedding computed from the OLD
+        # relation string. The gate fires on a 'relation' OR 'description' delta.
+        if any(d.get('field') in ('relation', 'description') for d in deltas):
+            self._maybe_embed_edge_relation(
+                edge_id, final_relation, {'updated': True, 'deltas': deltas})
+
+        return {'ok': True, 'edge_id': edge_id, 'relation': final_relation,
+                'deltas': deltas}
 
     # _random_walk removed 2026-05-30 (DAL cleanup Phase 0) — dead (0 callers);
     # the random-walk neighbor path is retired (GraphDAL.get_random_walk_neighbors

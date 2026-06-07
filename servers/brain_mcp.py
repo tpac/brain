@@ -468,6 +468,30 @@ def _build_tools():
                              "description": "Provenance tag (e.g. 'anchor', 'encoder:sonnet')."},
          "chain_id": {"type": "string", "description": "Trace chain id for cross-event correlation (optional)."},
          "session_id": {"type": "string", "description": "Session id for activity tracking (optional)."}}}},
+    {"name": "revise_edge",
+     "description": (
+         "Revise an existing edge's relation IN PLACE. Identify the edge by "
+         "(source_id, target_id, relation); change only what you pass, omit a "
+         "field to preserve it (mirrors revise() for nodes). `new_relation` "
+         "renames the relation — in place, keeping the same edge, its weight, "
+         "and history; NOT a delete+recreate. `description`/`weight` update "
+         "those fields. Loud (error) if the edge or that relation doesn't "
+         "exist, or if new_relation already exists on the edge. Use this to "
+         "reclassify a generic relation (e.g. 'related' -> a meaningful verb) "
+         "without losing the edge."),
+     "inputSchema": {"type": "object",
+         "required": ["source_id", "target_id", "relation"],
+         "properties": {
+             "source_id": {"type": "string", "description": "Edge source node id (the actor)."},
+             "target_id": {"type": "string", "description": "Edge target node id."},
+             "relation": {"type": "string", "description": "Current relation to revise (identifies the edge-relation row)."},
+             "new_relation": {"type": "string", "description": "Rename the relation to this (optional)."},
+             "description": {"type": "string", "description": "New 'why' for the edge — embedded for recall (optional)."},
+             "weight": {"type": "number", "description": "New edge weight 0.0-1.0 (optional)."},
+             "encoding_source": {"type": "string", "description": "Provenance tag (optional)."},
+             "reason": {"type": "string", "description": "Why this revision (trace, optional)."},
+             "chain_id": {"type": "string", "description": "Trace chain id (optional)."},
+             "session_id": {"type": "string", "description": "Session id (optional)."}}}},
     {"name": "connect_batch",
      "description": ("Create or update multiple edges in one call. Same idempotent-upsert + "
                      "field-preservation contract as `connect` — specified fields update on "

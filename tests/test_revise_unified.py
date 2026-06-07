@@ -703,5 +703,62 @@ class TestEdgeCases(BrainTestBase):
                              "until migration script runs")
 
 
+class TestReviseEdge(BrainTestBase):
+    """revise_edge: in-place edge-relation revise (rename + desc/weight)."""
+    needs_embedder = False
+
+    def _relations(self, src, tgt):
+        eid = self.brain._graph.get_edge_id(src, tgt)
+        return {r['relation']: r for r in self.brain._graph.get_relations(eid)}
+
+    def test_rename_relation_in_place_preserves_desc_and_weight(self):
+        """new_relation renames in place — description + weight carry over, the
+        old relation is gone from the active set (not a delete+recreate)."""
+        a = _make_node(self.brain, title='A')
+        b = _make_node(self.brain, title='B')
+        self.brain.connect_typed(a, b, relation='related',
+                                 description='both about X', weight=0.7)
+        res = self.brain.revise_edge(a, b, relation='related', new_relation='complements')
+        self.assertTrue(res['ok'], res)
+        rels = self._relations(a, b)
+        self.assertIn('complements', rels)
+        self.assertNotIn('related', rels)               # renamed, not duplicated
+        self.assertEqual(rels['complements']['description'], 'both about X')  # preserved
+        self.assertEqual(rels['complements']['weight'], 0.7)                  # preserved
+
+    def test_update_description_without_rename(self):
+        a = _make_node(self.brain, title='A')
+        b = _make_node(self.brain, title='B')
+        self.brain.connect_typed(a, b, relation='grounds', description='old', weight=0.5)
+        res = self.brain.revise_edge(a, b, relation='grounds', description='new why')
+        self.assertTrue(res['ok'], res)
+        self.assertEqual(self._relations(a, b)['grounds']['description'], 'new why')
+
+    def test_loud_on_missing_edge(self):
+        a = _make_node(self.brain, title='A')
+        b = _make_node(self.brain, title='B')
+        res = self.brain.revise_edge(a, b, relation='related', new_relation='x')
+        self.assertFalse(res['ok'])
+        self.assertIn('no edge', res['error'])
+
+    def test_loud_on_missing_relation(self):
+        a = _make_node(self.brain, title='A')
+        b = _make_node(self.brain, title='B')
+        self.brain.connect_typed(a, b, relation='grounds', description='d', weight=0.5)
+        res = self.brain.revise_edge(a, b, relation='related', new_relation='x')
+        self.assertFalse(res['ok'])
+        self.assertIn('no active relation', res['error'])
+
+    def test_rename_collision_is_loud(self):
+        """Renaming to a relation the edge already has is rejected, not merged."""
+        a = _make_node(self.brain, title='A')
+        b = _make_node(self.brain, title='B')
+        self.brain.connect_typed(a, b, relation='related', description='d1', weight=0.5)
+        self.brain.connect_typed(a, b, relation='grounds', description='d2', weight=0.6)
+        res = self.brain.revise_edge(a, b, relation='related', new_relation='grounds')
+        self.assertFalse(res['ok'])
+        self.assertIn('collide', res['error'])
+
+
 if __name__ == '__main__':
     unittest.main()

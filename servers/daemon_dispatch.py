@@ -15,7 +15,8 @@ from typing import Dict
 from .dispatch_common import CmdEntry, check_unknown_keys, _resolve_id, _pop_session_ctx
 from .dispatch_write import (
     _handle_remember, _handle_remember_batch, _handle_revise, _handle_revise_batch,
-    _handle_brain_batch, _handle_connect, _handle_connect_batch, _handle_enrich,
+    _handle_brain_batch, _handle_connect, _handle_connect_batch, _handle_revise_edge,
+    _handle_enrich,
     _validate_source_refs, _maybe_warn_source_refs_hex_format,
     _maybe_warn_source_refs_sparseness,
 )
@@ -112,6 +113,11 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "connect_batch":         CmdEntry(_handle_connect_batch,       is_write=True, marks_dirty=True,
                                       accepts=frozenset({"connections", "encoding_source",
                                                          "chain_id", "session_id", "reason"})),
+    "revise_edge":           CmdEntry(_handle_revise_edge,         is_write=True, marks_dirty=True,
+                                      accepts=frozenset({"source_id", "target_id", "relation",
+                                                         "new_relation", "description", "weight",
+                                                         "encoding_source", "chain_id", "session_id",
+                                                         "reason"})),
     "brain_batch":           CmdEntry(_handle_brain_batch,         is_write=True, marks_dirty=True,
                                       accepts=frozenset({"operations", "encoding_source",
                                                          "chain_id", "session_id", "reason"})),

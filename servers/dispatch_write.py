@@ -787,6 +787,43 @@ def _handle_connect(brain, args, graph_changes):
     return {"ok": True, "result": {"connected": True}}
 
 
+def _handle_revise_edge(brain, args, graph_changes):
+    """Revise an existing edge relation in place — rename and/or update
+    description/weight. Identify by (source_id, target_id, relation); omitted
+    fields preserve (mirrors revise()). Routes the rename to the in-place
+    GraphDAL.rename_relation primitive, not a connect+disconnect pair."""
+    source_id = _resolve_id(brain, args.get("source_id", ""))
+    target_id = _resolve_id(brain, args.get("target_id", ""))
+    relation = args.get("relation")
+    if not (source_id and target_id and relation):
+        return {"ok": False, "error": "source_id, target_id, relation are required"}
+
+    result = brain.revise_edge(
+        source_id=source_id, target_id=target_id, relation=relation,
+        new_relation=args.get("new_relation"),
+        description=args.get("description"),
+        weight=args.get("weight"),
+        encoding_source=args.get("encoding_source"),
+        reason=args.get("reason", ""))
+    if not result.get("ok"):
+        return result
+
+    if result.get("deltas"):
+        _emit_edge_revise_trace(
+            brain, result["edge_id"], result["relation"],
+            args.get("reason", ""), args.get("encoding_source") or "",
+            result.get("deltas", []),
+            chain_id_override=args.get("chain_id", ""),
+            session_id=args.get("session_id", ""))
+
+    graph_changes.append(
+        "REVISE_EDGE: %s -[%s]-> %s" % (
+            str(args.get("source_id", "?"))[:8],
+            result["relation"],
+            str(args.get("target_id", "?"))[:8]))
+    return {"ok": True, "result": result}
+
+
 def _handle_connect_batch(brain, args, graph_changes):
     """Create multiple edges in one call."""
     connections = args.get("connections", [])
