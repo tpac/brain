@@ -122,15 +122,19 @@ def is_session_id(s):
 #                                      Truncation only ever shapes what is
 #                                      INJECTED into Observation, never storage.
 #
-# Why a delivery cap exists at all (and a send cap does not): additionalContext
-# spills to a file Anchor can't read back past ~9500 chars
-# (surface_contract._MAX_INJECT_CHARS = 9500), and the self-block shares that
-# budget with the Frame + recall. So the cap is a real downstream delivery
-# constraint — NOT a stylistic limit on how much I'm allowed to say. There is
+# Why a delivery cap exists at all (and a send cap does not): self-messages deliver
+# via the PreToolUse tool `reason` + the Stop `decision:block` reason
+# (signal.drain_and_render) — NOT additionalContext. So the cap is a readability
+# guard: keep an INJECTED self-block to coordination-message size in those hook
+# channels; storage stays FULL in the courier (self_inflight) / dashboard —
+# truncation only ever shapes the injected slice, never what's stored. (An earlier
+# Phase-2b build rode additionalContext and the cap tracked its ~9500-char
+# _MAX_INJECT_CHARS budget shared with Frame + recall; delivery was moved off that
+# channel — see 0706f3d9 — so that budget rationale no longer applies.) There is
 # deliberately no SIGNAL_BODY_MAX / REFS_MAX: those were arbitrary silent slices
 # (removed 2026-05-30), exactly the anti-pattern this contract forbids.
-DELIVERED_BODY_MAX = 1000          # per-message body, capped LOUDLY at delivery render
-RECEIVED_BLOCK_MAX = 1800          # whole injected self-block, overflow named LOUDLY
+DELIVERED_BODY_MAX = 3000          # per-message body, capped LOUDLY at delivery render
+RECEIVED_BLOCK_MAX = 4000          # whole injected self-block, overflow named LOUDLY
 PEEK_MSG_MAX = 300                 # per-message cap on a peek's recent_msgs (a glance, not a transcript)
 
 # ── POLICY DEFAULTS (tunable knobs; NOT truncation points) ──────────────
