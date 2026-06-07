@@ -47,6 +47,10 @@ class BrainDaemon:
 
     MAX_SUPERVISOR_RESTARTS = 5      # Max restarts before giving up
     SUPERVISOR_RESTART_COOLDOWN = 2   # Seconds between restart attempts
+    SHUTDOWN_BACKSTOP_S = 15          # Force-exit if teardown wedges. > a typical
+                                      # in-flight recall (so it finishes on open
+                                      # conns), < launchd's ~20s SIGTERM→SIGKILL
+                                      # window (so we exit on our own terms).
     SOCKET_BIND_RETRIES = 10          # Retries for port binding after crash
     SOCKET_BIND_RETRY_DELAY = 1.0     # Seconds between bind retries
 
@@ -537,6 +541,18 @@ class BrainDaemon:
                 def _do_restart():
                     time.sleep(0.5)  # Let response reach client
                     self._log("Executing restart...")
+                    self._arm_force_exit_backstop()
+                    # Stop the bg-writer CLEANLY so its in-flight drain commits
+                    # instead of being torn off mid-transaction by os._exit. We do
+                    # NOT drain the worker pool here — that would delay releasing
+                    # the lock/port past the replacement daemon's startup and break
+                    # the handoff; in-flight pool commands roll back safely on exit.
+                    self._signal_drain_shutdown()
+                    try:
+                        from servers import embed_queue
+                        embed_queue.join_worker(timeout=3.0)
+                    except Exception as e:
+                        self._log_shutdown_error('restart_bg_writer_join', e)
                     try:
                         if self.brain:
                             self.brain.save()
@@ -865,49 +881,74 @@ class BrainDaemon:
         except Exception:
             pass
 
-    def _shutdown(self):
-        """Clean shutdown. Order matters: stop accepting work, drain everything
-        that holds a DB connection, THEN save + close — so no in-flight worker or
-        bg-writer drain ever touches a closed connection (the 'Cannot operate on
-        a closed database' boot failure of 2026-06-06, where close() ran before
-        the pool + bg-writer were drained). A 5s force-exit backstop bounds the
-        whole sequence if any drain wedges."""
-        self._log("Shutting down...")
-
-        # Backstop FIRST — even if a drain below wedges, shutdown still ends in 5s.
+    def _arm_force_exit_backstop(self):
+        """Last-resort guard: if a drain wedges (e.g. an embedder CPU spin), force
+        the process to exit so teardown always terminates. SHUTDOWN_BACKSTOP_S is
+        sized to let a normal in-flight command finish first, yet stay under
+        launchd's SIGTERM→SIGKILL window so we exit on our own terms."""
         import _thread
         def _force_exit():
-            time.sleep(5)
-            self._log("Workers stuck — forcing exit")
+            time.sleep(self.SHUTDOWN_BACKSTOP_S)
+            self._log("Teardown wedged — forcing exit after %ds" % self.SHUTDOWN_BACKSTOP_S)
             os._exit(0)
         _thread.start_new_thread(_force_exit, ())
 
-        # 1. Drain the worker pool: in-flight commands (e.g. hook_recall) finish
-        #    against still-open connections instead of committing onto a closed one.
+    def _signal_drain_shutdown(self):
+        """Signal the single bg-writer drain worker to stop (it drains BOTH the
+        embed and recall-write queues, so one signal covers both). Wakes it out
+        of its interval wait so it exits at the next check. Idempotent (the Event
+        is the single signal). Loud on failure."""
         try:
-            self._pool.shutdown(wait=True, cancel_futures=False)
-        except TypeError:
-            self._pool.shutdown(wait=True)
+            from servers import embed_queue
+            embed_queue.request_shutdown()
+        except Exception as e:
+            self._log_shutdown_error('queue_shutdown', e)
 
-        # 2. Stop + settle the bg-writer and its queues BEFORE closing. _cleanup
-        #    signals request_shutdown (which wakes the drain worker immediately);
-        #    join_worker waits for its in-flight drain to finish and the thread to
-        #    exit, so conn_bg_writer is idle when we close it.
-        self._cleanup()
+    def _teardown_brain(self):
+        """The single ordered teardown: drain everything holding a DB connection,
+        save+close, release the singleton lock/PID LAST. Never raises — every step
+        is guarded and logged. Order is load-bearing:
+          1. signal queues    → wakes the bg-writer so join_worker can return
+          2. drain pool       → in-flight commands finish on OPEN connections
+          3. join bg-writer   → its in-flight drain settles off conn_bg_writer
+          4. save + close     → no live consumer touches the connections now
+          5. release lock/PID → LAST: a racer's ensure_daemon blocks on this lock
+             before spawning, so it can't open a 2nd writer on brain.db while our
+             connections were still open (two writers corrupt the indexes).
+        This is the fix for the 'Cannot operate on a closed database' boot failure
+        of 2026-06-06, where close() ran before the pool + bg-writer were drained."""
+        self._signal_drain_shutdown()
+        # Drain the pool. Catch EVERYTHING (not only the cancel_futures TypeError)
+        # so a pool-drain error can never skip the save+close below.
+        try:
+            try:
+                self._pool.shutdown(wait=True, cancel_futures=False)
+            except TypeError:                       # Python <3.9 has no cancel_futures
+                self._pool.shutdown(wait=True)
+        except Exception as e:
+            self._log_shutdown_error('pool_drain', e)
         try:
             from servers import embed_queue
             embed_queue.join_worker(timeout=3.0)
         except Exception as e:
             self._log_shutdown_error('bg_writer_join', e)
-
-        # 3. Nothing holds a live connection now — save + close.
         try:
             if self.brain:
                 self.brain.save()
                 self.brain.close()
                 self.brain = None
         except Exception as e:
-            self._log("Save error during shutdown: {}".format(e))
+            self._log_shutdown_error('brain_save_close', e)
+        # Resources LAST — see step 5. _cleanup re-signals the queues (idempotent)
+        # and releases the socket, PID file, and the singleton fcntl lock.
+        self._cleanup()
+
+    def _shutdown(self):
+        """Clean shutdown: arm the force-exit backstop, then run the shared
+        drain-then-close teardown (see _teardown_brain for the ordering)."""
+        self._log("Shutting down...")
+        self._arm_force_exit_backstop()
+        self._teardown_brain()
 
     def _cleanup(self):
         """Close server socket, observer channel, remove PID and lock files.
@@ -916,12 +957,7 @@ class BrainDaemon:
         force-killed on process exit anyway, but signaling lets a partial
         drain finish without crash-rollback).
         Idempotent — safe to call multiple times (signal + atexit + explicit)."""
-        try:
-            from servers import embed_queue, recall_write_queue
-            embed_queue.request_shutdown()
-            recall_write_queue.request_shutdown()
-        except Exception as e:
-            self._log_shutdown_error('queue_shutdown', e)
+        self._signal_drain_shutdown()
         self._close_socket()
         # Only the instance that became the serving daemon (wrote the PID after
         # binding) owns these files. A duplicate that deferred before binding

@@ -143,27 +143,32 @@ def is_daemon_responsive(timeout: float = 2.0) -> bool:
     return _can_connect(timeout=timeout).get("ok", False)
 
 
-# Liveness-grace budget for the two restart-decision paths (ensure_daemon and
-# recover_daemon). A bare 2s ping cannot tell "slow / relaunching" from "dead":
-# a recall runs 10-17s, and a launchd relaunch is gated by ThrottleInterval
-# (10s — see com.brain.daemon.plist) + an embedder reload (~4-6s). Both budgets
-# must clear that window, or a busy/recovering daemon gets mistaken for a corpse
-# and (re)started — which SIGKILLs it, resets the throttle, and corrupts any
-# in-flight hook (the closed-DB boot failure of 2026-06-06).
-_GRACE_TRIES = 40       # ×0.5s ≈ 20s — confirm-down / wait out a relaunch
-_KICKSTART_TRIES = 50   # ×0.5s ≈ 25s — wait for our own kickstart to come back
+# Liveness-grace budgets (WALL-CLOCK seconds) for the daemon (re)start decision.
+# A bare 2s ping cannot tell "slow / relaunching" from "dead": a recall runs
+# 10-17s, and a launchd relaunch is gated by ThrottleInterval (10s — see
+# com.brain.daemon.plist) + an embedder reload (~4-6s). The budget must clear
+# that window, or a busy/recovering daemon is mistaken for a corpse and
+# (re)started — SIGKILLing it, resetting the throttle, corrupting an in-flight
+# hook (the closed-DB boot failure of 2026-06-06). Bounded by WALL-CLOCK, not a
+# ping count: a hung corpse whose socket blocks the full ping timeout each probe
+# must not blow the budget (a count of 40 × 2s pings would be ~100s, not ~20s).
+_GRACE_DEADLINE_S = 20.0       # confirm-down / wait out a relaunch
+_KICKSTART_DEADLINE_S = 25.0   # wait for our own kickstart to come back
 
 
-def _await_responsive(tries: int) -> dict:
-    """Poll the daemon until it answers a ping or `tries` elapse (0.5s each).
-    Returns the last ping response ({} if never responsive). The robust liveness
-    gate both restart paths use instead of a bare ping — see _GRACE_TRIES."""
-    resp = _can_connect()
-    for _ in range(max(0, tries)):
-        if resp.get("ok"):
-            return resp
+def _await_responsive(deadline_s: float, ping_timeout: float = 2.0) -> dict:
+    """Poll the daemon until it answers a ping or `deadline_s` of WALL-CLOCK time
+    elapses; returns the last ping response ({} if never responsive).
+
+    Bounded by real time, not a ping count — a hung corpse whose socket blocks
+    the full ping_timeout per probe can't exceed deadline_s + one ping. The
+    robust liveness gate the boot (re)start decision uses instead of a bare ping.
+    NOT used on the recovery hot path (recover_daemon stays a single fast ping)."""
+    deadline = time.monotonic() + max(0.0, deadline_s)
+    resp = _can_connect(timeout=ping_timeout)
+    while not resp.get("ok") and time.monotonic() < deadline:
         time.sleep(0.5)
-        resp = _can_connect()
+        resp = _can_connect(timeout=ping_timeout)
     return resp
 
 
@@ -177,8 +182,13 @@ def _is_daemon_source(resp: dict) -> bool:
     checkout can converge a (re)start. A linked worktree / 2nd clone is a pure
     client — restarting from there can't change the daemon's code, it only churns.
 
-    Signal: the daemon's reported `source_dir` vs this checkout's REPO_ROOT. A
-    daemon too old to report it falls back to the linked-worktree heuristic."""
+    Signal: the daemon's reported `source_dir` vs this checkout's REPO_ROOT. When
+    the daemon is DOWN (no source_dir to compare) we fall back to the
+    linked-worktree heuristic: a linked worktree is never the source, but a
+    second full *clone* (its .git is a directory, not a file) is indistinguishable
+    from the source here and is treated AS source — acceptable because a kickstart
+    from a clone still converges via launchd's pinned source, and the manual kill
+    path (_relaunch_daemon) re-checks before ever killing the shared daemon."""
     daemon_src = resp.get("result", {}).get("source_dir", "")
     if daemon_src:
         return os.path.realpath(daemon_src) == os.path.realpath(REPO_ROOT)
@@ -234,7 +244,7 @@ def ensure_daemon(db_path: str) -> bool:
     if not _is_daemon_source(resp):
         if resp.get("ok"):
             return True
-        return _await_responsive(_GRACE_TRIES).get("ok", False)
+        return _await_responsive(_GRACE_DEADLINE_S).get("ok", False)
 
     # ── Source checkout: owns lifecycle (kickstart converges; stale code reloads). ──
     # Fast path: running, responsive, and on current code → nothing to do.
@@ -257,7 +267,7 @@ def ensure_daemon(db_path: str) -> bool:
         # from death, so wait it out before forcing a (re)start.
         resp = _can_connect()
         if not resp.get("ok"):
-            resp = _await_responsive(_GRACE_TRIES)
+            resp = _await_responsive(_GRACE_DEADLINE_S)
         if resp.get("ok") and not _code_changed(resp):
             sys.stderr.write("[brain-daemon] Daemon healthy (handled by another caller / recovered).\n")
             return True
@@ -269,11 +279,14 @@ def ensure_daemon(db_path: str) -> bool:
             # Wait past ThrottleInterval (10s) + embedder reload — a tighter
             # window gives up while the daemon is still coming back and would
             # re-kickstart it, resetting the throttle (the self-sustaining storm).
-            resp = _await_responsive(_KICKSTART_TRIES)
+            t0 = time.monotonic()
+            resp = _await_responsive(_KICKSTART_DEADLINE_S)
             if resp.get("ok") and not _code_changed(resp):
-                sys.stderr.write("[brain-daemon] Daemon ready via launchd.\n")
+                sys.stderr.write("[brain-daemon] Daemon ready via launchd (took %.1fs)\n"
+                                 % (time.monotonic() - t0))
                 return True
-            sys.stderr.write("[brain-daemon] Daemon not ready after kickstart grace\n")
+            sys.stderr.write("[brain-daemon] Daemon not ready within %.0fs after kickstart\n"
+                             % _KICKSTART_DEADLINE_S)
             return False
 
         # kickstart did not succeed. Decide carefully whether a direct spawn is
@@ -503,7 +516,16 @@ def _relaunch_daemon(db_path: Optional[str]):
     spawn via ensure_daemon."""
     if _launchd_kickstart():
         return
-    # No launchd (or kickstart failed) — own the kill + respawn.
+    # kickstart failed (launchd unreachable / not managing). A manual kill+respawn
+    # only converges from the daemon's SOURCE checkout: a linked worktree / 2nd
+    # clone would SIGKILL the shared daemon and then refuse to spawn (pure client,
+    # can't converge its own code), leaving nothing serving. Defer loudly instead.
+    if not _is_daemon_source(_can_connect()):
+        sys.stderr.write("[brain-daemon] kickstart unavailable and this checkout is not the "
+                         "daemon's source — deferring kill+respawn to launchd/source "
+                         "(NOT killing the shared daemon).\n")
+        return
+    # No launchd (or kickstart failed) and we ARE the source — own the kill + respawn.
     _kill_daemon()
     if not db_path:
         db_dir = os.environ.get("BRAIN_DB_DIR",
@@ -526,10 +548,13 @@ def recover_daemon(db_path: Optional[str] = None) -> bool:
     if is_maintenance_mode():
         return False
 
-    # Confirm down with grace, not a bare ping — a slow recall / a launchd
-    # relaunch (throttle + reload) is not a hung corpse, and relaunching a
-    # live-but-busy daemon is the same false-down that churned boot (2026-06-06).
-    if _await_responsive(_GRACE_TRIES).get("ok", False):
+    # Fast single-ping confirm — recover_daemon runs on synchronous hook paths
+    # (recall/Stop/Edit, host timeouts 5-21s) and the MCP monitor, so it must NOT
+    # pay the multi-second grace ensure_daemon uses; the cooldown + circuit
+    # breaker below are what prevent restart storms. A transient blip is absorbed
+    # by the cooldown; a genuine corpse is force-restarted (and re-confirmed by
+    # the next caller's ping, not by blocking this one).
+    if is_daemon_responsive():
         if _read_recovery_state().get("attempts"):
             _write_recovery_state(0.0, 0)  # healthy again — reset the streak
         return True

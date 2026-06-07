@@ -59,8 +59,7 @@ _edge_queue: Set[str] = set()      # edge ids needing date recomputation
 _lock = threading.Lock()
 _drain_busy = threading.Lock()  # non-blocking; used for skip-tick semantics
 _worker_started = False
-_shutdown_requested = False
-_shutdown_event = threading.Event()    # set by request_shutdown() → wakes the worker out of its interval wait at once
+_shutdown_event = threading.Event()    # the SINGLE shutdown signal: set() stops the worker and wakes it out of its interval wait at once
 _worker_thread: Optional[threading.Thread] = None
 _stats = {
     'nodes_enqueued_total': 0,
@@ -121,6 +120,12 @@ def start(brain) -> None:
         if _worker_started:
             return
         _worker_started = True
+    if _shutdown_event.is_set():
+        # A prior lifecycle latched the shutdown signal. Clear it, or the fresh
+        # worker would exit on its first wait() and silently never drain.
+        sys.stderr.write("[embed_queue] start: clearing a latched shutdown signal "
+                         "from a prior lifecycle so the new worker drains.\n")
+        _shutdown_event.clear()
     t = threading.Thread(target=_worker_loop, args=(brain,),
                          name='embed-queue-drain', daemon=True)
     _worker_thread = t
@@ -128,18 +133,16 @@ def start(brain) -> None:
 
 
 def request_shutdown() -> None:
-    """Signal the worker to exit cleanly AND wake it out of its interval wait
-    immediately, so daemon shutdown isn't blocked for up to EMBED_DRAIN_INTERVAL
-    (and brain.close() can't race an in-flight drain)."""
-    global _shutdown_requested
-    with _lock:
-        _shutdown_requested = True
+    """Stop the single bg-writer drain worker. It drains BOTH embed_queue and
+    recall_write_queue, so this is the ONE shutdown signal for both. Sets an
+    Event (atomic, lock-free, one source of truth) that wakes the worker out of
+    its interval wait immediately — so daemon shutdown isn't blocked for up to
+    EMBED_DRAIN_INTERVAL and brain.close() can't race an in-flight drain."""
     _shutdown_event.set()
 
 
 def _is_shutdown_requested() -> bool:
-    with _lock:
-        return _shutdown_requested
+    return _shutdown_event.is_set()
 
 
 def join_worker(timeout: float = 3.0) -> None:
@@ -170,9 +173,9 @@ def _worker_loop(brain) -> None:
     Any unexpected exception is logged (origin `embed_worker_loop`)
     and the loop continues after a brief backoff.
 
-    Shutdown: when `request_shutdown()` is called (either on
-    `embed_queue` or on `recall_write_queue`), the loop exits at the
-    next interval check.
+    Shutdown: request_shutdown() sets the Event, waking this loop out of its
+    interval wait so it exits at the next check. ONE worker, ONE shutdown signal
+    — it drains both queues, so both stop together.
     """
     # Import here so module-load order doesn't matter.
     from servers import recall_write_queue
@@ -184,7 +187,7 @@ def _worker_loop(brain) -> None:
             # brain.close() won't race an in-flight drain.
             _shutdown_event.wait(EMBED_DRAIN_INTERVAL)
 
-            if _is_shutdown_requested() or recall_write_queue.is_shutdown_requested():
+            if _is_shutdown_requested():     # the single bg-writer shutdown signal
                 break
 
             # Liveness self-check — if pending work exists and last drain

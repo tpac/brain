@@ -65,7 +65,7 @@ class TestRecoverDaemon(unittest.TestCase):
     def test_responsive_is_noop(self):
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=False), \
-             patch.object(dc, "_await_responsive", return_value={"ok": True}), \
+             patch.object(dc, "is_daemon_responsive", return_value=True), \
              patch.object(dc, "_relaunch_daemon") as relaunch:
             self.assertTrue(dc.recover_daemon())
             relaunch.assert_not_called()
@@ -74,7 +74,7 @@ class TestRecoverDaemon(unittest.TestCase):
         self._seed(time.time(), 3)
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=False), \
-             patch.object(dc, "_await_responsive", return_value={"ok": True}), \
+             patch.object(dc, "is_daemon_responsive", return_value=True), \
              patch.object(dc, "_relaunch_daemon"):
             dc.recover_daemon()
         self.assertEqual(self._read()["attempts"], 0)
@@ -82,7 +82,7 @@ class TestRecoverDaemon(unittest.TestCase):
     def test_maintenance_mode_skips(self):
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=True), \
-             patch.object(dc, "_await_responsive", return_value={"ok": False}), \
+             patch.object(dc, "is_daemon_responsive", return_value=False), \
              patch.object(dc, "_relaunch_daemon") as relaunch:
             self.assertFalse(dc.recover_daemon())
             relaunch.assert_not_called()
@@ -90,7 +90,7 @@ class TestRecoverDaemon(unittest.TestCase):
     def test_down_and_clean_triggers_restart(self):
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=False), \
-             patch.object(dc, "_await_responsive", return_value={"ok": False}), \
+             patch.object(dc, "is_daemon_responsive", return_value=False), \
              patch.object(dc, "_relaunch_daemon") as relaunch:
             self.assertFalse(dc.recover_daemon())
             relaunch.assert_called_once()
@@ -100,7 +100,7 @@ class TestRecoverDaemon(unittest.TestCase):
         self._seed(time.time(), 1)  # restart issued just now
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=False), \
-             patch.object(dc, "_await_responsive", return_value={"ok": False}), \
+             patch.object(dc, "is_daemon_responsive", return_value=False), \
              patch.object(dc, "_relaunch_daemon") as relaunch:
             self.assertFalse(dc.recover_daemon())
             relaunch.assert_not_called()
@@ -110,7 +110,7 @@ class TestRecoverDaemon(unittest.TestCase):
         self._seed(time.time() - dc._RECOVERY_COOLDOWN_S - 1, dc._RECOVERY_MAX_ATTEMPTS)
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=False), \
-             patch.object(dc, "_await_responsive", return_value={"ok": False}), \
+             patch.object(dc, "is_daemon_responsive", return_value=False), \
              patch.object(dc, "_relaunch_daemon") as relaunch:
             self.assertFalse(dc.recover_daemon())
             relaunch.assert_not_called()
@@ -120,7 +120,7 @@ class TestRecoverDaemon(unittest.TestCase):
         self._seed(time.time() - dc._RECOVERY_WINDOW_S - 1, dc._RECOVERY_MAX_ATTEMPTS)
         with patch.object(dc, "get_recovery_state_path", return_value=self.state), \
              patch.object(dc, "is_maintenance_mode", return_value=False), \
-             patch.object(dc, "_await_responsive", return_value={"ok": False}), \
+             patch.object(dc, "is_daemon_responsive", return_value=False), \
              patch.object(dc, "_relaunch_daemon") as relaunch:
             self.assertFalse(dc.recover_daemon())
             relaunch.assert_called_once()
@@ -141,12 +141,27 @@ class TestRelaunchDaemon(unittest.TestCase):
             ensure.assert_not_called()
 
     def test_kickstart_failure_falls_back_to_kill_and_spawn(self):
+        # kickstart fails AND we ARE the daemon's source → own the kill + respawn.
         with patch.object(dc.subprocess, "run", return_value=MagicMock(returncode=1)), \
+             patch.object(dc, "_is_daemon_source", return_value=True), \
+             patch.object(dc, "_can_connect", return_value={}), \
              patch.object(dc, "_kill_daemon") as kill, \
              patch.object(dc, "ensure_daemon", return_value=True) as ensure:
             dc._relaunch_daemon("/tmp/x/brain.db")
             kill.assert_called_once()
             ensure.assert_called_once_with("/tmp/x/brain.db")
+
+    def test_kickstart_failure_from_non_source_defers_never_kills(self):
+        # A worktree / 2nd clone must NEVER SIGKILL the shared daemon: kickstart
+        # failed AND we are not the source → defer to launchd/source, don't kill.
+        with patch.object(dc.subprocess, "run", return_value=MagicMock(returncode=1)), \
+             patch.object(dc, "_is_daemon_source", return_value=False), \
+             patch.object(dc, "_can_connect", return_value={}), \
+             patch.object(dc, "_kill_daemon") as kill, \
+             patch.object(dc, "ensure_daemon") as ensure:
+            dc._relaunch_daemon("/tmp/x/brain.db")
+            kill.assert_not_called()
+            ensure.assert_not_called()
 
 
 class TestHookDelegation(unittest.TestCase):
@@ -424,7 +439,7 @@ class TestShutdownDrainOrder(unittest.TestCase):
     2026-06-06 boot failure, where close() ran before the pool/bg-writer drained).
     Regression guard for the drain ORDER."""
 
-    def test_drains_pool_and_bg_writer_before_close(self):
+    def test_drains_then_closes_then_releases_resources_last(self):
         from servers import daemon_server as ds
         d = ds.BrainDaemon.__new__(ds.BrainDaemon)   # skip __init__ — no real brain/socket
         order = []
@@ -435,14 +450,16 @@ class TestShutdownDrainOrder(unittest.TestCase):
         d._pool.shutdown.side_effect = lambda **k: order.append("pool")
         d._log = lambda *a, **k: None
         d._log_shutdown_error = lambda *a, **k: None
-        d._cleanup = lambda: order.append("cleanup")          # signals queue shutdown
+        d._signal_drain_shutdown = lambda: order.append("signal")   # don't touch the real queues
+        d._cleanup = lambda: order.append("release")                # _cleanup = release lock/PID/socket
         with patch("servers.embed_queue.join_worker",
                    side_effect=lambda **k: order.append("join")), \
-             patch("_thread.start_new_thread"):                # don't arm the os._exit backstop
+             patch("_thread.start_new_thread"):                     # don't arm the os._exit backstop
             d._shutdown()
-        # Pool drained, queues signalled, bg-writer joined, brain saved — ALL
-        # before the connections close.
-        self.assertEqual(order, ["pool", "cleanup", "join", "save", "close"])
+        # signal queues → drain pool → join bg-writer → save+close → release lock/PID LAST.
+        # Releasing the singleton lock LAST is what stops a racer opening a 2nd
+        # writer on brain.db while our connections were still open.
+        self.assertEqual(order, ["signal", "pool", "join", "save", "close", "release"])
 
 
 class TestEmbedQueueShutdown(unittest.TestCase):
@@ -460,14 +477,10 @@ class TestEmbedQueueShutdown(unittest.TestCase):
 
     def _reset(self):
         eq = self.eq
-        from servers import recall_write_queue as rwq
         with eq._lock:
             eq._worker_started = False
-            eq._shutdown_requested = False
-        eq._shutdown_event.clear()
+        eq._shutdown_event.clear()      # the single bg-writer shutdown signal
         eq._worker_thread = None
-        with rwq._lock:
-            rwq._shutdown_requested = False
 
     def test_request_shutdown_wakes_worker_promptly(self):
         eq = self.eq
@@ -475,10 +488,31 @@ class TestEmbedQueueShutdown(unittest.TestCase):
         with patch.object(eq, "EMBED_DRAIN_INTERVAL", 30):
             eq.start(MagicMock())
             self.assertTrue(eq._worker_thread.is_alive())
-            eq.request_shutdown()                 # sets flag + Event → wakes the 30s wait now
+            eq.request_shutdown()                 # sets the Event → wakes the worker out of the 30s wait now
             eq.join_worker(timeout=2.0)
             self.assertFalse(eq._worker_thread.is_alive(),
                              "worker must exit on the Event, not wait the full 30s interval")
+
+
+class TestAwaitResponsive(unittest.TestCase):
+    """_await_responsive — the boot-path liveness gate. WALL-CLOCK bounded,
+    returns on the first ok ping (no sleep), returns the last resp when never up."""
+
+    def test_returns_on_first_ok_without_sleeping(self):
+        with patch.object(dc, "_can_connect", return_value={"ok": True}) as ping, \
+             patch.object(dc.time, "sleep") as slept:
+            resp = dc._await_responsive(20.0)
+        self.assertEqual(resp, {"ok": True})
+        ping.assert_called_once()       # one ping, no retry when already up
+        slept.assert_not_called()       # never sleeps a live daemon
+
+    def test_wall_clock_bound_returns_last_resp_when_never_up(self):
+        # deadline_s=0 → no retry past the first ping; returns the last (down) resp.
+        with patch.object(dc, "_can_connect", return_value={}), \
+             patch.object(dc.time, "sleep") as slept:
+            resp = dc._await_responsive(0.0)
+        self.assertEqual(resp, {})      # never ok → returns the last resp (down)
+        slept.assert_not_called()       # zero deadline never enters the retry loop
 
 
 if __name__ == "__main__":

@@ -65,9 +65,10 @@ _hebbian_queue: List[Tuple[str, str, str]] = []
 
 _lock = threading.Lock()
 
-# Shutdown flag — set by request_shutdown(), checked by the worker
-# before starting a drain cycle. Allows clean exit from the worker loop.
-_shutdown_requested = False
+# NOTE: this queue has NO shutdown signal of its own. There is ONE background
+# drain worker (it lives in embed_queue and drains BOTH queues); its single
+# shutdown signal — embed_queue.request_shutdown() / _shutdown_event — stops
+# draining of this queue too. recall_write_queue is a passive data structure.
 
 _stats = {
     'access_enqueued_total': 0,
@@ -181,24 +182,13 @@ def get_stats() -> dict:
             'hebbian_queue_depth': len(_hebbian_queue),
             'overlong_threshold_ms': _OVERLONG_THRESHOLD_MS,
             'queue_depth_warn': _QUEUE_DEPTH_WARN,
-            'shutdown_requested': _shutdown_requested,
         }
 
 
-# ─── Public API: shutdown ────────────────────────────────────────────
-
-def request_shutdown() -> None:
-    """Signal the worker to skip subsequent drain cycles. Called from
-    daemon shutdown for clean termination. Idempotent.
-    """
-    global _shutdown_requested
-    with _lock:
-        _shutdown_requested = True
-
-
-def is_shutdown_requested() -> bool:
-    with _lock:
-        return _shutdown_requested
+# ─── Shutdown ────────────────────────────────────────────────────────
+# No per-queue shutdown here: the single bg-writer drain worker (in embed_queue)
+# owns the one shutdown signal; stopping it stops draining of this queue too.
+# See embed_queue.request_shutdown() / join_worker().
 
 
 # ─── Internal: snapshot/swap ─────────────────────────────────────────
@@ -472,10 +462,9 @@ def _clear_for_test() -> None:
     """Reset module state. Production code MUST NOT call this; it bypasses
     the normal enqueue → drain cycle and risks contention with the worker.
     """
-    global _access_queue, _hebbian_queue, _shutdown_requested
+    global _access_queue, _hebbian_queue
     with _lock:
         _access_queue = {}
         _hebbian_queue = []
-        _shutdown_requested = False
         for k in _stats:
             _stats[k] = 0 if isinstance(_stats[k], int) else None
