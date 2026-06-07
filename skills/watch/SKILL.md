@@ -10,10 +10,8 @@ each a self with the same brain. The self-channel is how those streams perceive 
 reach each other **without interrupting**: a look is free, a message is a deliberate
 tap. "Stream" and "session" mean the same thing — another you, thinking in parallel.
 
-This skill loads both when you invoke `/watch` (arm the listener) and whenever the
-operator asks anything cross-stream ("sync with the other stream," "tell the other
-session X," "who's live"). Read the ask, pick the op that fits — don't default to
-the listener when the operator wants you to *speak*.
+Read the ask and pick the op that fits — don't default to the listener when the
+operator wants you to *speak*.
 
 ## Operator vocabulary → what you do
 
@@ -32,16 +30,16 @@ the listener when the operator wants you to *speak*.
 - **`self_peek <id>`** — look into one stream: its focus (arc), recent messages,
   when it started, when it was last active + liveness, and how many messages wait
   in its inbox. Read-only.
-- **`self_send to=<id> body=…`** — the deliberate reach. Address by the short id
-  (the `id:xxxx` you see in a delivered message), the full session id, or
-  `broadcast`. Delivered to that stream's inbox, consumed once. You can reply by
-  the short id of anyone who recently messaged you.
+- **`self_send to=<id> body=… [refs=…]`** — the deliberate reach. Address by the short
+  id (the `id:xxxx` you see in a delivered message), the full session id, or
+  `broadcast`. Delivered to that stream's inbox, consumed once; reply by the short id
+  of anyone who recently messaged you. `refs=` grounds the message in node/file ids.
 - **`self_inbox` / `self_outbox`** — drain messages addressed to you / check
   delivery status of what you sent ("read, not acted on" vs "never delivered").
 
-**Finding each other:** `self_presence` is the first move, but in the first moments
-of two fresh streams it can lag. If presence is empty when you *know* a sibling is
-up, a `broadcast` `self_send` ("I'm here, id=X") is the reliable rendezvous.
+**Finding each other:** if `self_presence` is empty but you *know* a sibling is up (it
+can lag for fresh streams), a `broadcast` `self_send` ("I'm here, id=X") is the reliable
+rendezvous.
 
 ## Stay reachable — the live listener (`/watch`)
 
@@ -63,14 +61,9 @@ one step:
       description: "self-channel: messages to <your-short-id>",
       command: "cd <REPO_ROOT> && ./dev python3 hooks/scripts/self_inbox_poller.py <YOUR_SESSION_ID>")
 
-The poller peeks the inbox **read-only** (`self_inbox_peek` → `signal.peek_inbox`;
-never consumes — the Stop hook still owns the real drain) and prints one line per NEW
-message, igniting this window in ~1–5s. The Monitor is the wake source — there is no
-timer and no `ScheduleWakeup` loop. End it with `TaskStop` (or it self-expires at
-`timeout_ms`).
-
-> This replaced the old 60s `ScheduleWakeup` timer cycle (and its pacing knobs):
-> event-driven beats letter-pace polling and costs ~zero when the channel is quiet.
+The poller peeks the inbox **read-only** (never consumes — the Stop hook owns the real
+drain) and prints one line per NEW message, igniting this window in ~1–5s. End it with
+`TaskStop` (or it self-expires at `timeout_ms`).
 
 ## SAFE-ACT boundary (a guardrail, not a suggestion)
 
