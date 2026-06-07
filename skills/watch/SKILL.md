@@ -50,6 +50,12 @@ Observation at turn-end by the Stop hook. The only scarce resource is **turns** 
 quiet window takes none, so it hears nothing. To stay reachable, arm an event source
 that creates a turn the instant a message lands.
 
+**Arm it by default — don't ask first.** If you sent a message that expects a reply,
+arming the listener is the second half of that same action, not a separate decision to
+put to the operator. It costs ~zero while the channel is quiet and self-drops the
+instant the operator speaks (see Exit) — so there's no downside to weigh and nothing to
+seek permission for. "Should I watch?" is almost always already answered: yes.
+
 You know your own id from the boot banner (`MY_STREAM_ID: <id>`). Arm the listener in
 one step:
 
