@@ -759,6 +759,45 @@ class TestReviseEdge(BrainTestBase):
         self.assertFalse(res['ok'])
         self.assertIn('collide', res['error'])
 
+    def test_rename_preserves_encoding_source_when_omitted(self):
+        """A rename WITHOUT encoding_source preserves the row's provenance — it
+        must not clobber it to 'anchor'. description + weight also survive."""
+        a = _make_node(self.brain, title='A')
+        b = _make_node(self.brain, title='B')
+        self.brain.connect_typed(a, b, relation='related', description='d',
+                                 weight=0.7, encoding_source='encoder:sonnet')
+        res = self.brain.revise_edge(a, b, relation='related', new_relation='complements')
+        self.assertTrue(res['ok'], res)
+        row = self._relations(a, b)['complements']
+        self.assertEqual(row['encoding_source'], 'encoder:sonnet')  # preserved, not 'anchor'
+        self.assertEqual(row['description'], 'd')                   # preserved
+        self.assertEqual(row['weight'], 0.7)                        # preserved
+
+    def test_explicit_encoding_source_overrides_on_rename(self):
+        """When the caller DOES pass encoding_source, the rename records it."""
+        a = _make_node(self.brain, title='A')
+        b = _make_node(self.brain, title='B')
+        self.brain.connect_typed(a, b, relation='related', description='d',
+                                 weight=0.5, encoding_source='encoder:sonnet')
+        res = self.brain.revise_edge(a, b, relation='related', new_relation='complements',
+                                     encoding_source='s2:reclassify')
+        self.assertTrue(res['ok'], res)
+        self.assertEqual(self._relations(a, b)['complements']['encoding_source'],
+                         's2:reclassify')
+
+    def test_rename_to_archived_relation_is_loud(self):
+        """Collision check spans ARCHIVED rows — renaming onto an archived
+        relation name is rejected, not a PK-violating crash (PK is
+        (edge_id, relation), shared by active + archived rows)."""
+        a = _make_node(self.brain, title='A')
+        b = _make_node(self.brain, title='B')
+        self.brain.connect_typed(a, b, relation='foo', description='d1', weight=0.5)
+        self.brain._graph.remove_relation(a, b, 'foo', archived_by='test')  # soft-archive
+        self.brain.connect_typed(a, b, relation='related', description='d2', weight=0.6)
+        res = self.brain.revise_edge(a, b, relation='related', new_relation='foo')
+        self.assertFalse(res['ok'])
+        self.assertIn('collide', res['error'])
+
 
 if __name__ == '__main__':
     unittest.main()

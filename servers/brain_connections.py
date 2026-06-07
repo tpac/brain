@@ -215,19 +215,30 @@ class BrainConnectionsMixin:
         if not edge_id:
             return {'ok': False, 'error': 'no edge between %s and %s' % (
                 str(source_id)[:8], str(target_id)[:8])}
-        active = {r['relation'] for r in gdal.get_relations(edge_id)}
+        active = {r['relation']: r for r in gdal.get_relations(edge_id)}
         if relation not in active:
             return {'ok': False, 'error': 'edge has no active relation %r (has: %s)' % (
                 relation, sorted(active))}
 
         deltas = []
-        src = encoding_source or 'anchor'
         final_relation = relation
         if new_relation and new_relation != relation:
-            if new_relation in active:
-                return {'ok': False, 'error': 'edge already has active relation %r '
-                        '— rename would collide' % new_relation}
-            gdal.rename_relation(edge_id, relation, new_relation, src)
+            # Collision must consider ARCHIVED rows too: the (edge_id, relation)
+            # primary key spans active + archived, so renaming onto an archived
+            # relation name would violate the PK (uncaught IntegrityError).
+            all_relations = {r['relation']
+                             for r in gdal.get_relations(edge_id, include_archived=True)}
+            if new_relation in all_relations:
+                return {'ok': False, 'error': 'edge already has relation %r (active or '
+                        'archived) — rename would collide on the (edge_id, relation) '
+                        'primary key' % new_relation}
+            # rename_relation ALWAYS writes encoding_source. Preserve the row's
+            # existing provenance when the caller didn't pass one — defaulting to
+            # 'anchor' would silently clobber a field the caller never asked to
+            # change (e.g. an 's2:reclassify' edge becoming 'anchor' on rename).
+            rename_src = (encoding_source if encoding_source is not None
+                          else active[relation].get('encoding_source') or '')
+            gdal.rename_relation(edge_id, relation, new_relation, rename_src)
             deltas.append({'field': 'relation', 'old': relation, 'new': new_relation})
             final_relation = new_relation
 
