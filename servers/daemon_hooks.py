@@ -184,6 +184,19 @@ def hook_recall(brain, args, graph_changes):
     # See trace_contract S0 TURN CLASSIFICATION.
     ctx.last_recall_stop = ctx.stop_counter
 
+    # Write the user_message S0 trace NOW, at prompt-arrival — not at Stop. This
+    # is what lets presence/peek surface a stream's current prompt mid-turn
+    # (rendezvous identity), instead of only its last completed turn. The
+    # assistant half is still written at Stop (post_response_common); both use
+    # ctx.s0_chain() with the same stop_counter, so they stay paired. Reaching
+    # hook_recall means a real prompt (client filters watch-wakes), so this is
+    # exactly the conversational set — heartbeat turns never get here.
+    _s0_trace(
+        brain, ctx, event_type='K', ref_type='user_message',
+        summary=user_message[:200] if user_message else '',
+        metadata={'content': user_message[:4000],
+                  'recall_chain': ctx.s1r_chain()} if user_message else None)
+
     # Write current stop counter to tmp file — PostToolUse reads this (cross-process)
     try:
         with open('/tmp/brain-%s-current-stop.txt' % session_id, 'w') as _f:
@@ -556,12 +569,12 @@ def post_response_common(brain, session_id, user_message, assistant_response):
     # S0 traces (using SessionContext for chain IDs)
     try:
         if is_conversational:
-            recall_chain = ctx.s1r_chain()
-            _s0_trace(
-                brain, ctx, event_type='K', ref_type='user_message',
-                summary=user_message[:200] if user_message else '',
-                metadata={'content': user_message[:4000] if user_message else '',
-                          'recall_chain': recall_chain} if user_message else None)
+            # user_message is written at UserPromptSubmit (hook_recall), when the
+            # prompt ARRIVES — so presence/peek can surface a stream's current
+            # prompt mid-turn (rendezvous identity) instead of only after the turn
+            # completes. Only the assistant half is written here, at Stop. Same
+            # chain_id: stop_counter is unchanged between hook_recall and this Stop
+            # (incremented below), so the pair stays grouped.
             _s0_trace(
                 brain, ctx, event_type='delta', ref_type='assistant_message',
                 summary=assistant_response[:200] if assistant_response else '',

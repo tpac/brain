@@ -22,13 +22,20 @@ from servers.scales.self_channel import presence, signal
 def _handle_self_presence(brain, args, graph_changes):
     """Roster of streams of thought awake right now + the rendered presence line.
 
-    args.session_id = the caller's session (excluded from its own roster).
-    args.limit      = optional cap (default PRESENCE_MAX_STREAMS).
+    args.session_id     = the caller's session (excluded from its own roster).
+    args.limit          = optional cap (default PRESENCE_MAX_STREAMS).
+    args.rich           = include per-stream detail (default True for this op —
+                          interactive callers want to know WHO each stream is).
+    args.active_streams = only reachable streams (default True).
+    args.sort_by        = 'recency' (default) | 'length'.
     """
     return {"ok": True, "result": presence.build_presence(
         brain,
         my_session_id=args.get('session_id', '') or '',
-        limit=args.get('limit'))}
+        limit=args.get('limit'),
+        rich=args.get('rich', True),
+        active_streams=args.get('active_streams', True),
+        sort_by=args.get('sort_by', 'recency'))}
 
 
 def _handle_self_peek(brain, args, graph_changes):

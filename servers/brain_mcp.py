@@ -670,10 +670,13 @@ def _build_tools():
 
     # ── Self channel — presence (pull, read-only) ──
     {"name": "self_presence",
-     "description": "Presence roster — the other streams of thought (your own concurrent sessions) awake RIGHT NOW, each with a one-line current focus. Pull this when you want to know which other streams of you are working and on what, without interrupting them. These are not other agents — they are you, thinking in parallel. Read-only.",
+     "description": "Presence roster — the other streams of thought (your own concurrent sessions) awake RIGHT NOW. By default rich: each stream carries its arc, recent messages, turn count, and started-at, so you can tell WHO each stream is in one call (no per-stream peek needed). These are not other agents — they are you, thinking in parallel. Read-only.",
      "inputSchema": {"type": "object", "properties": {
          "session_id": {"type": "string", "description": "Your own session id, to exclude yourself from the roster (optional). Omit to see every live stream."},
-         "limit": {"type": "integer", "description": "Max streams to return (default 3 — ranked by recency, capped; never enumerate all of them).", "default": 3}}}},
+         "limit": {"type": "integer", "description": "Max streams to return (default 10 — ranked, capped; never enumerate all of them).", "default": 10},
+         "rich": {"type": "boolean", "description": "Include per-stream detail (arc, recent messages, turn count, started-at) so you can identify each stream, not just see it exists. Default true.", "default": True},
+         "active_streams": {"type": "boolean", "description": "Show only ACTIVE (reachable, not-lost) streams. Default true; set false to also include recently-lost streams in a grace window.", "default": True},
+         "sort_by": {"type": "string", "enum": ["recency", "length"], "description": "Order: 'recency' (default — most recent conversational turn first) or 'length' (most turns first).", "default": "recency"}}}},
 
     {"name": "self_peek",
      "description": "Look into one stream of thought — its full current focus (the session arc), to see where that stream of you is right now. The interest-driven pull: read-only, no interruption, you don't bug them. Get a stream_id from self_presence first.",

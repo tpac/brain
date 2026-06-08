@@ -945,7 +945,8 @@ class TraceDAL:
         return {'session_id': row[0], 'created_at': row[1]} if row else None
 
     def active_sessions_by_turn(self, cutoff_iso: str, exclude_session: str = '',
-                                limit: int = 5) -> List[Dict[str, Any]]:
+                                limit: int = 5,
+                                sort_by: str = 'recency') -> List[Dict[str, Any]]:
         """Sessions reachable RIGHT NOW since `cutoff_iso`, newest first — the
         wall-clock presence signal, sourced from S0 traces.
 
@@ -979,20 +980,39 @@ class TraceDAL:
         # heartbeat ref_type is s0-only per trace_contract.REF_TYPES) that lets
         # the query use idx_trace_scope_created (scale, ref_type, created_at) —
         # the composite leads with scale, so without the equality it can't engage.
+        # Sort key whitelist (never interpolate raw sort_by into SQL):
+        #  recency (default) — most recent CONVERSATIONAL turn first, so a fresh
+        #    boot (heartbeat only, conv_recency NULL → sorts last in DESC) can't
+        #    crowd out a substantial stream. Membership still counts heartbeats
+        #    (live_types below) so watch listeners / fresh boots stay VISIBLE,
+        #    just ranked below real work.
+        #  length — by number of conversational turns (user_message count).
+        order = ("turn_count DESC, conv_recency DESC"
+                 if sort_by == 'length'
+                 else "conv_recency DESC, last_turn DESC")
         rows = self.conn.execute(
             "SELECT t.session_id, MAX(t.created_at) AS last_turn, "
             "  (SELECT u.summary FROM trace_events u "
             "   WHERE u.scale = 's0' AND u.session_id = t.session_id AND u.ref_type IN (%s) "
             "     AND u.summary NOT LIKE ? "
-            "   ORDER BY u.created_at DESC LIMIT 1) AS focus "
+            "   ORDER BY u.created_at DESC LIMIT 1) AS focus, "
+            "  (SELECT MAX(c.created_at) FROM trace_events c "
+            "   WHERE c.scale = 's0' AND c.session_id = t.session_id AND c.ref_type IN (%s) "
+            "     AND c.summary NOT LIKE ?) AS conv_recency, "
+            "  (SELECT COUNT(*) FROM trace_events c2 "
+            "   WHERE c2.scale = 's0' AND c2.session_id = t.session_id "
+            "     AND c2.ref_type = 'user_message' AND c2.summary NOT LIKE ?) AS turn_count "
             "FROM trace_events t "
             "WHERE t.scale = 's0' AND t.ref_type IN (%s) "
             "  AND t.created_at > ? AND t.session_id != ? "
             "GROUP BY t.session_id "
-            "ORDER BY last_turn DESC LIMIT ?" % (conv_ph, live_ph),
+            "ORDER BY %s LIMIT ?" % (conv_ph, conv_ph, live_ph, order),
             (*CONVERSATIONAL_REF_TYPES, WAKE_ENVELOPE_MARKER + '%',
+             *CONVERSATIONAL_REF_TYPES, WAKE_ENVELOPE_MARKER + '%',
+             WAKE_ENVELOPE_MARKER + '%',
              *live_types, cutoff_iso, exclude_session or '', limit)).fetchall()
-        return [{'session_id': r[0], 'last_turn': r[1], 'focus': r[2] or ''}
+        return [{'session_id': r[0], 'last_turn': r[1], 'focus': r[2] or '',
+                 'conv_recency': r[3] or '', 'turn_count': r[4] or 0}
                 for r in rows]
 
     def session_activity(self, session_id: str, msg_limit: int = 2) -> Dict[str, Any]:
@@ -1018,12 +1038,15 @@ class TraceDAL:
             "  (SELECT MIN(created_at) FROM trace_events "
             "     WHERE scale='s0' AND session_id=? AND ref_type IN (%s)), "
             "  (SELECT MAX(created_at) FROM trace_events "
-            "     WHERE scale='s0' AND session_id=? AND ref_type IN (%s))"
+            "     WHERE scale='s0' AND session_id=? AND ref_type IN (%s)), "
+            "  (SELECT COUNT(*) FROM trace_events "
+            "     WHERE scale='s0' AND session_id=? AND ref_type='user_message')"
             % (conv_ph, live_ph),
             (session_id, *CONVERSATIONAL_REF_TYPES,
-             session_id, *live_types)).fetchone()
+             session_id, *live_types, session_id)).fetchone()
         started_at = (agg[0] or '') if agg else ''
         last_active_at = (agg[1] or '') if agg else ''
+        turn_count = (agg[2] or 0) if agg else 0
         rows = self.conn.execute(
             "SELECT created_at, ref_type, summary FROM trace_events "
             "WHERE scale='s0' AND session_id=? AND ref_type IN (%s) "
@@ -1033,7 +1056,7 @@ class TraceDAL:
              WAKE_ENVELOPE_MARKER + '%', msg_limit)).fetchall()
         recent = [{'ts': r[0], 'ref_type': r[1], 'text': r[2] or ''} for r in rows]
         return {'started_at': started_at, 'last_active_at': last_active_at,
-                'recent_msgs': recent}
+                'turn_count': turn_count, 'recent_msgs': recent}
 
     def find_by_metadata_substring(self, scale: str, ref_type: str,
                                    substring: str) -> Optional[Dict[str, str]]:

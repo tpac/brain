@@ -136,19 +136,28 @@ class TestSelfPresence(BrainTestBase):
         self.assertEqual(len(out['streams']), self_contract.PRESENCE_MAX_STREAMS)
 
     def test_liveness_states_and_lost_surfacing(self):
-        """active/dormant/lost by recency; lost surfaced separately (named in the
-        line), kept out of the live roster, not silently dropped at the edge."""
+        """active/dormant/lost by recency. Default active_streams=True keeps the
+        live set (active+dormant) and filters lost; active_streams=False surfaces
+        lost separately (named in the line), not silently dropped at the edge."""
         self._save_stream('streamACTV', focus='working now')                                  # fresh → active
         self._save_stream('streamDORM', focus='quiet', updated_at=iso_cutoff(minutes=15))      # → dormant
         self._save_stream('streamLOST', focus='vanished', updated_at=iso_cutoff(minutes=45))   # → lost (≤60 grace)
+
+        # Default (active_streams=True): live set only; lost filtered out.
         out = presence.build_presence(self.brain, my_session_id='other', limit=10)
         states = {s['session_id']: s['state'] for s in out['streams']}
         self.assertEqual(states.get('streamACTV'), 'active')
-        self.assertEqual(states.get('streamDORM'), 'dormant')
-        lost_ids = {s['session_id'] for s in out['lost']}
-        self.assertIn('streamLOST', lost_ids)              # surfaced...
-        self.assertNotIn('streamLOST', states)             # ...but not in the live roster
-        self.assertIn('lost', out['line'])                 # and named in the line
+        self.assertEqual(states.get('streamDORM'), 'dormant')   # dormant is live, still shown
+        self.assertNotIn('streamLOST', states)                  # lost never in the live roster
+        self.assertEqual(out['lost'], [])                       # ...and filtered by default
+
+        # active_streams=False: lost surfaced in the grace window, not dropped.
+        out2 = presence.build_presence(self.brain, my_session_id='other', limit=10,
+                                       active_streams=False)
+        lost_ids = {s['session_id'] for s in out2['lost']}
+        self.assertIn('streamLOST', lost_ids)                   # surfaced when asked...
+        self.assertNotIn('streamLOST', {s['session_id'] for s in out2['streams']})  # ...not in live
+        self.assertIn('lost', out2['line'])                     # and named in the line
 
     def test_resolve_to_canonical_prefix_and_graceful(self):
         """to= resolution: broadcast + full UUID are canonical; the 8-char short

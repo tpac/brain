@@ -38,17 +38,28 @@ def _first_line(focus, max_chars=100):
     return s.splitlines()[0].strip()[:max_chars].rstrip()
 
 
-def build_presence(brain, my_session_id='', limit=None):
-    """Roster of streams of thought awake now, each with a one-line focus.
+def build_presence(brain, my_session_id='', limit=None, rich=False,
+                   active_streams=True, sort_by='recency'):
+    """Roster of streams of thought awake now — who they are, not just that
+    they exist.
 
-    Bounded by `limit` (default: PRESENCE_MAX_STREAMS) and the wall-clock window
-    — ranked by recency, never enumerated (imagine 20 streams). Returns:
+    Bounded by `limit` (default: PRESENCE_MAX_STREAMS) and the wall-clock window.
+    Params:
+      rich           — when True, each entry also carries peek-level detail
+                       (arc, recent_msgs, session_started_at, pending_inbox_count)
+                       so you can tell WHO a stream is in one call, no N peeks.
+                       `focus` (last conversational msg) and `arc` (encoder's
+                       session arc) are DISTINCT fields — same source confusion
+                       that bit discovery, kept separate here.
+      active_streams — True (default): only active (reachable, not-lost) streams;
+                       False also surfaces recently-lost ones in a grace window.
+      sort_by        — 'recency' (default, most recent conversational turn) or
+                       'length' (number of turns). Boot heartbeats no longer
+                       dominate: a 0-turn fresh stream sorts last under recency.
 
-        {'streams': [{'session_id','short','focus','updated_at'}, ...],
-         'line': <rendered presence line>}
-
-    `line` is what a future boot/hook surfaces; the structured list is what
-    `peek` drills into.
+    Returns {'streams': [...], 'lost': [...], 'line': <rendered presence line>}.
+    `line` is the one-line ambient form; the structured list is what `peek`
+    drills into (and what `rich` pre-expands).
     """
     cap = limit or self_contract.PRESENCE_MAX_STREAMS
     # Fetch out to the lost-grace window so a recently-gone stream is visible, not
@@ -58,20 +69,34 @@ def build_presence(brain, my_session_id='', limit=None):
     raw = brain.present_streams(
         exclude_session=my_session_id or '',
         window_min=window,
-        limit=cap + 5)
+        limit=cap + 5,
+        sort_by=sort_by)
     live, lost = [], []
     for r in raw:
         sid = r.get('session_id', '')
+        state = self_contract.classify_liveness(_age_min(r.get('updated_at', '')))
         entry = {
             'session_id': sid,
             'short': sid[:8],
             'focus': _first_line(r.get('focus', '')),
             'updated_at': r.get('updated_at', ''),
-            'state': self_contract.classify_liveness(_age_min(r.get('updated_at', ''))),
+            'turn_count': r.get('turn_count', 0),
+            'state': state,
         }
-        if entry['state'] == 'lost':
-            lost.append(entry)
-        elif len(live) < cap:
+        # 'active'/'dormant'/'lost' is classify_liveness's existing definition —
+        # active_streams=True keeps the live set (active+dormant), excluding lost;
+        # active_streams=False also surfaces lost in the grace window.
+        if state == 'lost':
+            if not active_streams and len(lost) < cap:
+                lost.append(entry)
+            continue
+        if len(live) < cap:
+            if rich:
+                pk = peek(brain, sid)
+                entry['arc'] = pk.get('focus', '')
+                entry['recent_msgs'] = pk.get('recent_msgs', [])
+                entry['session_started_at'] = pk.get('session_started_at', '')
+                entry['pending_inbox_count'] = pk.get('pending_inbox_count', 0)
             live.append(entry)
     line = self_contract.render_presence(
         [(s['short'], s['focus'], s['state']) for s in live],
@@ -110,6 +135,7 @@ def peek(brain, session_id, msg_limit=2):
         'session_id': session_id, 'short': session_id[:8],
         'focus': arc,
         'recent_msgs': recent,
+        'turn_count': act.get('turn_count', 0),
         'session_started_at': act.get('started_at', '') or '',
         'last_active_at': last_active,
         'liveness': liveness,
