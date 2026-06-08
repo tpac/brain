@@ -162,6 +162,15 @@ class Brain(
         from .tracked_lock import TrackedRLock
         self.write_lock = TrackedRLock()
 
+        # Non-blocking guard for the Anthropic connection warm (warm_up at boot
+        # + the idle keepalive loop). With try-acquire(blocking=False) it makes
+        # warm_anthropic_connection idempotent under concurrency: if a warm is
+        # already in flight, a second caller skips rather than piling a
+        # redundant models.retrieve on top. (httpx.Client is itself thread-safe,
+        # so a warm racing a real recall is harmless — this only stops two
+        # *warms* overlapping.)
+        self._anthropic_warm_lock = threading.Lock()
+
         # Open SQLite connection with WAL mode for concurrency. Pragma
         # set comes from db_backends.current — single source for every
         # connection in the daemon.
@@ -1948,15 +1957,17 @@ class Brain(
             from .scales.dispatch import load_env
             load_env()
             import anthropic
-            from .scales.s1.surface_contract import SURFACE_MODEL
             self.anthropic_client = anthropic.Anthropic()
             timings['anthropic_client_ms'] = int(
                 (_time.monotonic() - t) * 1000)
 
-            # Free warmup: warms TLS handshake + httpx connection pool +
-            # DNS to api.anthropic.com. Doesn't bill.
+            # Free warmup: warms TLS handshake + httpx connection pool + DNS to
+            # api.anthropic.com. Doesn't bill. Same call the idle keepalive loop
+            # makes — one shared primitive (warm_anthropic_connection, which
+            # raises on failure); this except is its boot policy: null the
+            # client so surface.py falls back to building its own.
             t = _time.monotonic()
-            self.anthropic_client.models.retrieve(SURFACE_MODEL)
+            self.warm_anthropic_connection()
             timings['anthropic_models_retrieve_ms'] = int(
                 (_time.monotonic() - t) * 1000)
             # No Haiku route ping. The ping was here briefly (2026-05-09)
@@ -1979,6 +1990,52 @@ class Brain(
 
         timings['total_ms'] = int((_time.monotonic() - t0) * 1000)
         return timings
+
+    def warm_anthropic_connection(self) -> bool:
+        """Warm the Anthropic httpx connection (TLS + DNS) — the single free,
+        no-bill `models.retrieve` primitive shared by warm_up() at boot and the
+        daemon keepalive loop on idle.
+
+        Why it matters: the S1 surface Haiku call reuses self.anthropic_client's
+        connection pool across the daemon's worker threads. After the daemon
+        sits idle, that pool's keep-alive sockets expire — the server FINs idle
+        connections (the same stale-socket shape the host-suspend detector
+        guards against in daemon_server._autosave_loop) — and the next recall
+        pays a fresh TLS+DNS handshake. Phase-timer data shows this as inflated
+        surface_haiku after idle: median ~6s warm vs ~10s after >60m idle, while
+        local DB/embedder phases stay flat (so it's the connection, not compute).
+
+        Why models.retrieve and not a `messages.create` ping: the ping was tried
+        and removed 2026-05-09 — it aimed to cut the ~5s baseline inference,
+        which a ping can't do. models.retrieve warms TLS+pool+DNS without an
+        inference and doesn't bill, which is exactly the idle (connection
+        cold-start) penalty, not the inference.
+
+        Concurrency: a non-blocking lock makes this idempotent — if a warm is
+        already in flight, a second caller returns False instead of double-
+        warming. httpx.Client is itself thread-safe, so a warm racing a live
+        recall is harmless; the lock only prevents two *warms* at once.
+
+        Returns True if warmed, False if there's no client yet or a warm is
+        already running. RAISES on API/SDK error — it deliberately does NOT
+        swallow, because the two callers apply different failure policies:
+        warm_up() nulls the client so surface.py falls back to building its own;
+        the keepalive loop logs and retries. Each wraps this in its own
+        try/except.
+        """
+        client = getattr(self, 'anthropic_client', None)
+        if client is None:
+            return False
+        # Skip if a warm is already running (boot warmup overlapping a keepalive
+        # tick, or two ticks racing) — non-blocking so the caller never waits.
+        if not self._anthropic_warm_lock.acquire(blocking=False):
+            return False
+        try:
+            from .scales.s1.surface_contract import SURFACE_MODEL
+            client.models.retrieve(SURFACE_MODEL)
+            return True
+        finally:
+            self._anthropic_warm_lock.release()
 
     def _maybe_commit(self):
         """Commit self.conn unless we're inside a brain_batch transaction.
