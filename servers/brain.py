@@ -1941,31 +1941,17 @@ class Brain(
         # 3. Anthropic SDK + Haiku connection.
         try:
             t = _time.monotonic()
-            # Eager import + lifetime client. httpx.Client (under the hood)
-            # is documented thread-safe; one instance shared across the
-            # daemon's ThreadPoolExecutor workers reuses the connection
-            # pool instead of every recall thread building its own.
-            #
-            # load_env() resolves ANTHROPIC_API_KEY from the four
-            # supported sources (runtime cache, legacy in-repo .env, real
-            # shell env). The daemon is launched by launchd with no shell,
-            # so without this call os.environ has no API key and the
-            # client construction would itself succeed but fail on first
-            # use with "Could not resolve authentication method." Other
-            # callers (encoder, S2 units) follow the same import-and-call
-            # pattern — see scales/s1/encode.py and scales/s2/base.py.
-            from .scales.dispatch import load_env
-            load_env()
-            import anthropic
-            self.anthropic_client = anthropic.Anthropic()
+            # Build + cache the shared client. _ensure_anthropic_client is the
+            # single construction site (load_env + Anthropic()); httpx.Client is
+            # thread-safe, so one instance is shared across the daemon's worker
+            # threads instead of each recall building its own.
+            self._ensure_anthropic_client()
             timings['anthropic_client_ms'] = int(
                 (_time.monotonic() - t) * 1000)
 
             # Free warmup: warms TLS handshake + httpx connection pool + DNS to
             # api.anthropic.com. Doesn't bill. Same call the idle keepalive loop
-            # makes — one shared primitive (warm_anthropic_connection, which
-            # raises on failure); this except is its boot policy: null the
-            # client so surface.py falls back to building its own.
+            # makes — one shared primitive (warm_anthropic_connection).
             t = _time.monotonic()
             self.warm_anthropic_connection()
             timings['anthropic_models_retrieve_ms'] = int(
@@ -1976,9 +1962,9 @@ class Brain(
             # buying real latency. models.retrieve() warms TLS + pool +
             # DNS, which is the only first-call-only work that matters.
         except Exception as e:
-            # SDK warmup failure must not crash the daemon — surface.py's
-            # graceful-fallback path will construct a fresh client on first
-            # call and pay the cold-start tax. Same as pre-warmup behavior.
+            # SDK warmup failure must not crash the daemon. The client is left
+            # unset; the next surface recall or keepalive tick rebuilds it via
+            # _ensure_anthropic_client (self-heal) — no restart needed.
             self._log_error(
                 'warmup_anthropic', e, 'Anthropic SDK warmup failed')
             timings['anthropic_error'] = str(e)
@@ -1990,6 +1976,37 @@ class Brain(
 
         timings['total_ms'] = int((_time.monotonic() - t0) * 1000)
         return timings
+
+    def _ensure_anthropic_client(self):
+        """Return the shared Anthropic client, building it if absent.
+
+        The single construction site for the daemon's shared client. Three
+        callers route through here so it's built once and cached on the brain:
+        warm_up() (boot), warm_anthropic_connection() (keepalive self-heal after
+        a boot failure), and surface.py (which no longer keeps a per-call
+        throwaway fallback). Idempotent.
+
+        load_env() resolves ANTHROPIC_API_KEY from the supported sources — the
+        daemon is launched by launchd with no shell env, so without it the
+        client constructs fine but fails on first use with "Could not resolve
+        authentication method."
+
+        Thread-safety: last-writer-wins on the assignment is fine — two racing
+        constructions yield equivalent clients and the loser is GC'd
+        (httpx.Client is cheap). Construction is lazy (no network), so this
+        rarely raises; auth/network errors surface on the first real API call,
+        where callers already handle them.
+        """
+        client = getattr(self, 'anthropic_client', None)
+        if client is not None:
+            return client
+        from .scales.dispatch import load_env
+        from .scales.runner import ANTHROPIC_CLIENT_TIMEOUT
+        load_env()
+        import anthropic
+        self.anthropic_client = anthropic.Anthropic(
+            timeout=ANTHROPIC_CLIENT_TIMEOUT)
+        return self.anthropic_client
 
     def warm_anthropic_connection(self) -> bool:
         """Warm the Anthropic httpx connection (TLS + DNS) — the single free,
@@ -2011,21 +2028,22 @@ class Brain(
         inference and doesn't bill, which is exactly the idle (connection
         cold-start) penalty, not the inference.
 
-        Concurrency: a non-blocking lock makes this idempotent — if a warm is
-        already in flight, a second caller returns False instead of double-
+        Self-heal: builds the client via _ensure_anthropic_client if it's unset
+        (e.g. a boot-warmup failure left it None), so a transient boot failure
+        recovers on a later keepalive tick — no daemon restart.
+
+        Concurrency: a non-blocking lock makes the warm idempotent — if a warm
+        is already in flight, a second caller returns False instead of double-
         warming. httpx.Client is itself thread-safe, so a warm racing a live
         recall is harmless; the lock only prevents two *warms* at once.
 
-        Returns True if warmed, False if there's no client yet or a warm is
-        already running. RAISES on API/SDK error — it deliberately does NOT
-        swallow, because the two callers apply different failure policies:
-        warm_up() nulls the client so surface.py falls back to building its own;
-        the keepalive loop logs and retries. Each wraps this in its own
-        try/except.
+        Returns True if warmed, False if a warm is already in flight. RAISES on
+        client-construction or API/SDK error — it deliberately does NOT swallow,
+        because the two callers apply different failure policies: warm_up() nulls
+        the client (the next call rebuilds it); the keepalive loop logs and
+        retries. Each wraps this in its own try/except.
         """
-        client = getattr(self, 'anthropic_client', None)
-        if client is None:
-            return False
+        client = self._ensure_anthropic_client()
         # Skip if a warm is already running (boot warmup overlapping a keepalive
         # tick, or two ticks racing) — non-blocking so the caller never waits.
         if not self._anthropic_warm_lock.acquire(blocking=False):

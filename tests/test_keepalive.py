@@ -1,17 +1,19 @@
-"""Anthropic-connection keepalive: gating logic + the warm primitive.
+"""Anthropic-connection keepalive: gating, warm primitive, and the tick.
 
 The keepalive re-warms the surface Haiku connection during idle so the first
 recall after a quiet period doesn't pay a cold-TLS tax (idle inflates
 surface_haiku ~6s->~10s). Units under test:
 
   - BrainDaemon._keepalive_due       — pure gating decision (no clock, no I/O)
-  - Brain.warm_anthropic_connection  — the free models.retrieve warm, which
-                                        RAISES on error (callers own the policy)
-                                        and is idempotent under concurrency
-                                        (non-blocking lock: never two at once)
+  - BrainDaemon._keepalive_tick      — one loop decision (gating + backoff)
+  - Brain.warm_anthropic_connection  — the free models.retrieve warm. Builds the
+                                        client if absent (self-heal), raises on
+                                        error (callers own the policy), and is
+                                        idempotent under concurrency (non-blocking
+                                        lock: never two warms at once).
 
-Both are exercised without a real Brain/daemon (no DB, socket, or embedder) by
-calling the static / duck-typed methods directly.
+Exercised without a real Brain/daemon (no DB, socket, or embedder) by calling
+the static / duck-typed methods directly.
 """
 import threading
 
@@ -52,22 +54,45 @@ class _StubClient:
 
 
 class _StubBrain:
-    """Duck-typed stand-in: only the attributes warm_anthropic_connection touches."""
+    """Duck-typed stand-in: only the attributes warm_anthropic_connection touches.
+
+    `_ensure_anthropic_client` returns the preset client (no construction) — the
+    real construction path is covered separately by the self-heal test below."""
     def __init__(self, client):
         self.anthropic_client = client
         self._anthropic_warm_lock = threading.Lock()
+
+    def _ensure_anthropic_client(self):
+        return self.anthropic_client
 
 
 def test_warm_calls_models_retrieve_once():
     client = _StubClient()
     brain = _StubBrain(client)
     assert Brain.warm_anthropic_connection(brain) is True
-    assert len(client.models.calls) == 1  # one free retrieve, no messages.create
+    assert client.models.calls == ['claude-haiku-4-5']  # one free retrieve, right model
 
 
-def test_warm_no_client_is_noop():
-    brain = _StubBrain(None)
-    assert Brain.warm_anthropic_connection(brain) is False
+def test_warm_self_heals_missing_client():
+    """If the client was never built (boot-warmup failure left it None), warm
+    builds it via _ensure_anthropic_client rather than no-op'ing."""
+    built = []
+
+    class _HealBrain:
+        def __init__(self):
+            self.anthropic_client = None
+            self._anthropic_warm_lock = threading.Lock()
+
+        def _ensure_anthropic_client(self):
+            if self.anthropic_client is None:
+                self.anthropic_client = _StubClient()
+                built.append(1)
+            return self.anthropic_client
+
+    b = _HealBrain()
+    assert Brain.warm_anthropic_connection(b) is True
+    assert built == [1]                      # constructed the missing client
+    assert b.anthropic_client.models.calls   # then warmed it
 
 
 def test_warm_raises_on_api_error():
@@ -87,8 +112,8 @@ def test_warm_raises_on_api_error():
 
 
 def test_warm_releases_lock_after_error():
-    """A raised error must still release the lock (finally) so the next tick
-    can warm again rather than skipping forever."""
+    """A raised error must still release the lock (finally) so the next tick can
+    warm again rather than skipping forever."""
     import pytest
 
     class _Boom:
@@ -163,8 +188,8 @@ def test_tick_warms_when_idle_and_advances_last_ping():
 
 
 def test_tick_backs_off_after_raising_warm():
-    """#1 regression guard: a raising warm must STILL advance last_ping, so the
-    next tick within the interval does not re-fire every cadence."""
+    """A raising warm must STILL advance last_ping, so the next tick within the
+    interval does not re-fire every cadence."""
     def boom():
         raise RuntimeError("api down")
 
@@ -187,8 +212,8 @@ def test_tick_disabled_does_not_warm():
 
 
 def test_tick_bad_interval_falls_back_to_default_not_disabled():
-    """#2 regression guard: a non-numeric interval must not raise or disable
-    the loop — it falls back to the 300s default and still warms when idle."""
+    """A non-numeric interval must not raise or disable the loop — it falls back
+    to the 300s default and still warms when idle."""
     brain = _StubDaemonBrain(interval="5min")
     d = _StubDaemon(brain, last_user_activity=0.0)
     new_lp = d.tick(now=1000.0, last_ping=0.0)

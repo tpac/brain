@@ -107,11 +107,10 @@ def _call_surface(brain, candidates_data, user_message,
     # Variant gate — env var picks the path. v4 is the production default.
     variant = os.environ.get('BRAIN_SURFACE_VARIANT', 'v4').strip().lower()
 
-    client = getattr(brain, 'anthropic_client', None)
-    if client is None:
-        import anthropic
-        from ..runner import ANTHROPIC_CLIENT_TIMEOUT
-        client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
+    # Shared client, built-and-cached once on the brain. No per-call throwaway
+    # fallback: Brain._ensure_anthropic_client is the single construction site
+    # and self-heals if a boot-warmup failure left the client unset.
+    client = brain._ensure_anthropic_client()
 
     if variant == 'v5_agentic':
         # Agentic path: Haiku has tools, can extend the candidate pool
