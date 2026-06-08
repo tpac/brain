@@ -237,5 +237,70 @@ class TestMultiMembershipShape(unittest.TestCase):
                 self.assertIsNotNone(resolved, 'by_edge_relation(%s) returned None' % r)
 
 
+class TestLineageFamiliesContract(unittest.TestCase):
+    """surface_contract.LINEAGE_FAMILIES must be current aspect names.
+
+    Spread activation resolves these names against brain.aspects at runtime
+    (relations_in). A name that isn't an aspect silently matches nothing — the
+    2026-06-08 bug, where 5 of 8 hardcoded family names were dead so
+    dependency_flow + multi-membership lineage stopped riding along. This locks
+    the names to aspects_v1.json so the drift cannot recur unnoticed.
+    """
+
+    def setUp(self):
+        self.seed = _load_seed()
+
+    def test_all_lineage_families_are_current_aspects(self):
+        from servers.scales.s1.surface_contract import LINEAGE_FAMILIES
+        stale = set(LINEAGE_FAMILIES) - set(self.seed.keys())
+        self.assertEqual(
+            stale, set(),
+            "LINEAGE_FAMILIES contains names that are not aspects in "
+            "aspects_v1.json: %s" % stale)
+
+    def test_lineage_families_nonempty(self):
+        from servers.scales.s1.surface_contract import LINEAGE_FAMILIES
+        self.assertTrue(LINEAGE_FAMILIES, "LINEAGE_FAMILIES must not be empty")
+
+    def test_lineage_families_carry_edge_relations(self):
+        # A lineage family with no edge_relations contributes nothing to the
+        # ride-along union — almost certainly a stale or wrong name.
+        from servers.scales.s1.surface_contract import LINEAGE_FAMILIES
+        for name in LINEAGE_FAMILIES:
+            self.assertTrue(
+                self.seed.get(name, {}).get('edge_relations'),
+                "lineage family %r has no edge_relations in aspects_v1.json" % name)
+
+
+class TestNoiseExclusivityContract(unittest.TestCase):
+    """noise ∩ {every other aspect} must be ∅ — for both relations and node_types.
+
+    `noise` is the "no semantic claim" bucket; anything in it must NOT also carry
+    a semantic claim via another aspect, or "not in noise" exclusion filters would
+    drop real knowledge. AspectRegistry._validate logs this loudly at load; this
+    locks it statically so a bad edit (or a misclassification merged into the
+    seed) fails in CI instead of silently corrupting exclusion downstream.
+    """
+
+    def setUp(self):
+        self.seed = _load_seed()
+
+    def test_noise_does_not_overlap_any_semantic_aspect(self):
+        noise = self.seed.get('noise', {})
+        noise_e = set(noise.get('edge_relations', []))
+        noise_n = set(noise.get('node_types', []))
+        for name, spec in self.seed.items():
+            if name == 'noise':
+                continue
+            edge_overlap = noise_e & set(spec.get('edge_relations', []))
+            node_overlap = noise_n & set(spec.get('node_types', []))
+            self.assertEqual(
+                edge_overlap, set(),
+                "noise shares edge_relations with %s: %s" % (name, sorted(edge_overlap)))
+            self.assertEqual(
+                node_overlap, set(),
+                "noise shares node_types with %s: %s" % (name, sorted(node_overlap)))
+
+
 if __name__ == '__main__':
     unittest.main()
