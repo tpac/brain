@@ -270,6 +270,16 @@ class BrainDaemon:
             target=self._run_warmup, daemon=True, name="warmup")
         warmup_thread.start()
 
+        # Connection keepalive — re-warm the Anthropic httpx pool during idle
+        # so the first recall after a quiet period doesn't pay a cold-TLS tax
+        # (idle inflates surface_haiku ~6s->~10s; see
+        # Brain.warm_anthropic_connection). Always-on thread; the work is both
+        # config-gated and idle-gated inside the loop, so flipping
+        # surface_keepalive.enabled off makes every tick a no-op — no restart.
+        keepalive_thread = threading.Thread(
+            target=self._keepalive_loop, daemon=True, name="keepalive")
+        keepalive_thread.start()
+
         self._serve()
 
     def _run_warmup(self):
@@ -281,6 +291,89 @@ class BrainDaemon:
             # Warmup failure must never affect the daemon. Falling through
             # to the recall hot path's lazy guards is acceptable degradation.
             self._log("Warmup failed: %s" % e)
+
+    # Connection keepalive ---------------------------------------------------
+    # Config (brain config table, hot-read each tick so edits take effect live
+    # without a daemon restart):
+    #   surface_keepalive.enabled           bool  default True
+    #   surface_keepalive.interval_seconds  int   default 300 (5 min)
+
+    @staticmethod
+    def _keepalive_due(idle_s: float, since_last_ping_s: float,
+                       interval_s: float) -> bool:
+        """Whether to re-warm the Anthropic connection this tick.
+
+        Fire only when the daemon has been idle a full interval AND we haven't
+        already warmed within the last interval. Active sessions keep the pool
+        hot via real recalls, so nothing fires while prompts are flowing; once
+        idle, it re-warms once per interval to hold the connection open. Pure
+        function — no clock, no I/O — so the gating stays unit-testable.
+        """
+        return idle_s >= interval_s and since_last_ping_s >= interval_s
+
+    def _keepalive_loop(self):
+        """Keep the Anthropic connection warm during idle (see _keepalive_due
+        and Brain.warm_anthropic_connection).
+
+        Gated on last_user_activity (the UserPromptSubmit clock) — NOT
+        last_activity — so a keepalive tick never resets the clock S2 idle
+        maintenance gates on, and so quiet stretches between prompts (Anchor
+        working, or the operator away) correctly count as idle and re-warm.
+
+        Scope: this warms `brain.anthropic_client`, the client the S1 surface
+        step reuses. The encoder / S2 units / scouts each build their own
+        anthropic.Anthropic() per use and are NOT covered here — by design,
+        since the recall timeout this addresses is a surface-path problem.
+        """
+        CHECK_CADENCE_S = 30.0    # how often to re-check idle; cheap, bounded
+        last_ping = time.time()   # avoid double-warming right after boot warmup
+        while self.running:
+            time.sleep(CHECK_CADENCE_S)
+            if not self.running or not self.brain:
+                continue
+            last_ping = self._keepalive_tick(time.time(), last_ping)
+
+    def _keepalive_tick(self, now: float, last_ping: float) -> float:
+        """One keepalive decision, factored out of _keepalive_loop so the
+        gating and backoff are unit-testable without driving the thread.
+        Returns the (possibly advanced) last_ping.
+
+        Config (hot-read each tick): surface_keepalive.enabled (bool, default
+        True), surface_keepalive.interval_seconds (int, default 300). A
+        non-numeric interval falls back to the default rather than disabling
+        the loop.
+        """
+        try:
+            if not self.brain.get_config('surface_keepalive.enabled', True):
+                return last_ping
+            interval = self.brain.get_config(
+                'surface_keepalive.interval_seconds', 300)
+            try:
+                interval = float(interval)
+            except (TypeError, ValueError):
+                # Bad config value -> fall back to the default; never let a
+                # typo silently disable the keepalive.
+                interval = 300.0
+            if interval <= 0:
+                return last_ping
+            if self._keepalive_due(now - self.last_user_activity,
+                                   now - last_ping, interval):
+                # Advance last_ping BEFORE warming so a raised API error still
+                # backs off to one attempt per interval (not one per tick).
+                # warm_anthropic_connection raises on API error and returns
+                # False if there's no client yet or a warm is already in
+                # flight — all three outcomes back off the same way.
+                last_ping = now
+                self.brain.warm_anthropic_connection()
+            return last_ping
+        except Exception as e:
+            # A keepalive tick must never crash the daemon.
+            try:
+                self.brain._log_error(
+                    'keepalive_tick', e, 'keepalive tick failed')
+            except Exception:
+                pass
+            return last_ping
 
     def _bind_socket(self):
         """Bind TCP socket with retry for TIME_WAIT recovery."""
