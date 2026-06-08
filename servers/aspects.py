@@ -230,23 +230,47 @@ class AspectRegistry:
         self._dirty = False
 
     def _validate(self) -> None:
-        """Check REQUIRED_ASPECTS are present. Log loudly if any are missing.
+        """Check structural invariants on the loaded aspects; log loudly on any break.
 
-        With JSON-source loading, "auto-heal" is no longer meaningful —
-        the JSON file IS the spec. Missing required aspects in the JSON
-        is a deployment error (or local edit mistake) that should surface
-        clearly, not silently self-repair.
+        With JSON-source loading, "auto-heal" is no longer meaningful — the JSON
+        file IS the spec. An invariant break is a deployment / local-edit mistake
+        that must surface clearly, not silently self-repair.
         """
+        # (1) Required-aspect presence — config/deployment issue → warning.
         missing = [n for n in REQUIRED_ASPECTS if n not in self._aspects]
-        if not missing:
-            return
-        try:
-            self._brain._log_warning(
-                'aspect_contract',
-                'Required aspects missing from aspects_v1.json — registry will not be self-consistent',
-                'missing=%s' % missing)
-        except Exception:
-            pass  # never let logging block validation
+        if missing:
+            try:
+                self._brain._log_warning(
+                    'aspect_contract',
+                    'Required aspects missing from aspects_v1.json — registry will not be self-consistent',
+                    'missing=%s' % missing)
+            except Exception:
+                pass  # never let logging block validation
+
+        # (2) Noise-exclusivity invariant — data-integrity break → error.
+        # `noise` is the "no semantic claim" bucket. A string that lives in noise
+        # AND a semantic aspect would make "not in noise" exclusion drop real
+        # knowledge. The encoder strips this at write time
+        # (aspect_encoder._validate_classifications), but a hand-edit, a
+        # migration, or a direct member-list write could reintroduce it — so
+        # surface it loudly here, on every load, regardless of source.
+        noise = self._aspects.get('noise')
+        if noise is not None:
+            noise_e, noise_n = set(noise.edge_relations), set(noise.node_types)
+            for name, aspect in self._aspects.items():
+                if name == 'noise':
+                    continue
+                edge_overlap = noise_e & set(aspect.edge_relations)
+                node_overlap = noise_n & set(aspect.node_types)
+                if edge_overlap or node_overlap:
+                    try:
+                        self._brain._log_error(
+                            'aspect_contract',
+                            Exception('noise overlaps a semantic aspect — exclusion invariant broken'),
+                            'aspect=%s edge_overlap=%s node_overlap=%s' % (
+                                name, sorted(edge_overlap), sorted(node_overlap)))
+                    except Exception:
+                        pass  # never let logging block validation
 
     def invalidate(self) -> None:
         """Mark cache stale. Next access reloads from aspects_v1.json.

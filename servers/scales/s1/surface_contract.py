@@ -934,22 +934,19 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
         blended = query_vec
     norm_q = float(np.linalg.norm(blended))
 
-    # ── Load aspect map (aspect meaning composes into edge enriched text) ──
-    # AspectRegistry replaced the old s2_edge_families interaction lookup
-    # (Step 7 of unified-aspects). Same data, single source of truth.
-    rel_to_family = {}
-    meaning_by_family = {}
+    # ── Lineage relations (union across the structural-lineage aspects) ──
+    # Read from brain.aspects (single source of truth). Consulted only under
+    # the 'lineage' recall variant (_LINEAGE_PASS, below): these edges bypass
+    # the per-hop median gate. relations_in() returns the UNION, so a verb in
+    # several aspects rides along if ANY of them is a lineage aspect.
+    lineage_relations = frozenset()
     try:
-        for name, aspect in brain.aspects.all().items():
-            if aspect.meaning:
-                meaning_by_family[name] = aspect.meaning
-            for r in aspect.edge_relations:
-                rel_to_family[r] = name
+        lineage_relations = frozenset(brain.aspects.relations_in(LINEAGE_FAMILIES))
     except Exception as _e:
-        # Aspect data is optional but loading failure is worth noticing —
-        # if registry exists and we fail to read it, family_boost dies silently.
+        # Optional, but a registry read-failure is worth surfacing — without
+        # it lineage ride-along silently degrades to "nothing rides".
         brain._log_error('spread_aspect_config', _e,
-                         'loading brain.aspects in spread_activation')
+                         'loading lineage relations in spread_activation')
 
     # ── Step 0: seeds' own activations (per-field cosines vs query) ──
     all_touched_ids = list(seed_ids)
@@ -1061,8 +1058,7 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
             if coeff < threshold:
                 if _LINEAGE_PASS:
                     relation = (_edge.get('relation') or '').strip()
-                    family = rel_to_family.get(relation, '')
-                    if family not in LINEAGE_FAMILIES:
+                    if relation not in lineage_relations:
                         continue
                     # Else fall through — lineage edge bypasses the gate
                 else:
@@ -1156,24 +1152,37 @@ def spread_activation(seed_ids, query_vec, brain, prior_vecs=None):
 # ═══════════════════════════════════════════════════════════════
 
 # Aspect names whose semantic role is structural-lineage rather than
-# topical-similarity. These edges ride along even with weak enriched-text
-# cosine, because their meaning is carried by the relation type itself,
-# not by the description embedding.
+# topical-similarity. Edges in these aspects ride along even with weak
+# enriched-text cosine, because the relation type itself carries the
+# meaning, not the description embedding.
 #
-# The classification mirrors what the brain already has in
-# brain.aspects (AspectRegistry); if the taxonomy evolves via
-# AspectIntegration, this allowlist may need updating. Kept narrow on
-# purpose — broader is "everything rides," which is the current
-# spread's behavior we're trying to bound.
+# These MUST be current aspect names from aspects_v1.json (brain.aspects).
+# Relations are resolved from the registry at runtime via
+# brain.aspects.relations_in(LINEAGE_FAMILIES) — a UNION, so a verb that
+# belongs to several aspects (e.g. `revises` ∈ correction_improvement AND
+# temporal_sequence) rides as lineage as long as ANY of its aspects is
+# listed here. New verbs AspectIntegration adds to these aspects inherit
+# the behavior automatically.
+#
+# These four cover every structural-lineage intent the earlier draft
+# listed: corrections (correction_improvement); extension / refinement /
+# evolution (extension_refinement); composition + versioning / supersedes
+# (hierarchical_structure); dependency / prerequisite (dependency_flow).
+# Kept narrow on purpose — temporal_sequence is excluded so generic
+# ordering (before/after/during) doesn't turn this into "everything rides."
+#
+# Fixed 2026-06-08: the earlier draft hardcoded 5 family names that no
+# longer exist as aspects (evolution_and_change, version_and_replacement,
+# composition_and_structure, dependency_and_prerequisite,
+# refinement_and_correction), so dependency_flow and the evolves/supersedes
+# lineage silently stopped riding along. The drift-proof end state is a
+# first-class structural flag on the aspect itself — see the parked
+# "query-conditional aspect weighting in spread activation" idea.
 LINEAGE_FAMILIES = frozenset({
-    'correction_improvement',          # corrects, corrected_by — anti-staleness
-    'extension_refinement',            # extends, refines, evolves
-    'evolution_and_change',            # evolves_from, evolved_into
-    'version_and_replacement',         # supersedes, replaces
-    'composition_and_structure',       # part_of, contains, consolidated_into
-    'dependency_and_prerequisite',     # depends_on, requires
-    'hierarchical_structure',          # supersedes, contains, includes
-    'refinement_and_correction',       # refines, corrects, corrected_by
+    'correction_improvement',
+    'extension_refinement',
+    'hierarchical_structure',
+    'dependency_flow',
 })
 
 # Per-hop z-gate strictness. k controls how many σ above hop mean an edge
@@ -1214,14 +1223,18 @@ def spread_activation_cluster(seed_ids, query_vec, brain, prior_vecs=None):
     norm_q = float(np.linalg.norm(blended))
 
     # Aspect map — single source of truth via brain.aspects.
+    # rel_to_family (single-valued, last-writer-wins) labels each edge with a
+    # family for convergence tagging. lineage_relations is the UNION of
+    # relations across the structural-lineage aspects — used for the
+    # lineage/semantic split so a multi-aspect verb (e.g. `revises`) still
+    # rides as lineage even when its single family label is non-lineage.
     rel_to_family = {}
-    meaning_by_family = {}
+    lineage_relations = frozenset()
     try:
         for name, aspect in brain.aspects.all().items():
-            if aspect.meaning:
-                meaning_by_family[name] = aspect.meaning
             for r in aspect.edge_relations:
                 rel_to_family[r] = name
+        lineage_relations = frozenset(brain.aspects.relations_in(LINEAGE_FAMILIES))
     except Exception as _e:
         brain._log_error('cluster_spread_aspect_config', _e,
                          'loading brain.aspects in spread_activation_cluster')
@@ -1267,7 +1280,7 @@ def spread_activation_cluster(seed_ids, query_vec, brain, prior_vecs=None):
         for src, tgt, coeff, edge in edges:
             relation = (edge.get('relation') or '').strip()
             family = rel_to_family.get(relation, '')
-            if family in LINEAGE_FAMILIES:
+            if relation in lineage_relations:
                 lineage.append((src, tgt, coeff, edge, family))
             else:
                 semantic.append((src, tgt, coeff, edge, family))
@@ -1294,7 +1307,7 @@ def spread_activation_cluster(seed_ids, query_vec, brain, prior_vecs=None):
         # this floor transmits AT the floor — the family carries the
         # meaning. With no semantic edges, lineage transmits at its own
         # coeff or a nominal small value, whichever is greater.
-        all_coeffs = [c for _, _, c, _, _ in edges]
+        all_coeffs = [e[2] for e in edges]
         floor = float(np.percentile(all_coeffs, 25)) if all_coeffs else 0.0
         transmitting_lin = [
             (s, t, max(c, floor), e, f)

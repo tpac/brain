@@ -288,6 +288,23 @@ class AspectEncoder(IntegrationUnit):
                         value, category, dropped, valid_for_cat))
                 aspects_list = valid_for_cat
 
+            # Noise-exclusivity boundary. `noise` means "no semantic claim"
+            # (graph mechanics + bookkeeping artifacts). If the encoder also
+            # routed this string to a real aspect, that semantic claim refutes
+            # noise — keep the meaning, strip noise. Preserves the invariant
+            # noise ∩ {any other aspect} = ∅, which is what lets exclusion
+            # filters trust "not in noise" == "is real knowledge". Mirrors the
+            # category-mismatch filter above: drop the bad member, keep the
+            # survivors, log loud.
+            if 'noise' in aspects_list and len(aspects_list) > 1:
+                kept = [a for a in aspects_list if a != 'noise']
+                self.brain._log_error(
+                    self.NAME,
+                    Exception('noise + semantic aspect — stripped noise'),
+                    'value="%s" category=%s aspects=%s kept=%s' % (
+                        value, category, aspects_list, kept))
+                aspects_list = kept
+
             if (category, value) in seen:
                 rejected.append({'classification': c, 'reason': 'duplicate classification of (%s, %s)' % (category, value)})
                 continue
