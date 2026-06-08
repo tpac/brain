@@ -741,7 +741,8 @@ class Brain(
         return n
 
     def present_streams(self, exclude_session: str = '',
-                        window_min: float = 30, limit: int = 5) -> list:
+                        window_min: float = 30, limit: int = 5,
+                        sort_by: str = 'recency') -> list:
         """Streams of thought awake RIGHT NOW — the self-channel presence roster.
 
         Distinct from `live_sessions()`: that one is "recent meaningful work"
@@ -770,9 +771,10 @@ class Brain(
         try:
             rows = self._trace_dal.active_sessions_by_turn(
                 iso_cutoff(minutes=window_min),
-                exclude_session=exclude_session, limit=limit)
+                exclude_session=exclude_session, limit=limit, sort_by=sort_by)
             return [{'session_id': r['session_id'], 'updated_at': r['last_turn'],
-                     'focus': r['focus']} for r in rows]
+                     'focus': r['focus'], 'turn_count': r.get('turn_count', 0)}
+                    for r in rows]
         except Exception as e:
             try:
                 self._log_error('present_streams_query', e,

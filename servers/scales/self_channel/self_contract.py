@@ -157,7 +157,7 @@ DIRECTED_TTL_HOURS = 24            # a directed message waits up to a day for it
 ROSTER_ACTIVE_WINDOW_MIN = 5       # "active": acted this recently — reach freely, expect a reply
 ROSTER_LIVE_WINDOW_MIN = 30        # "dormant" ceiling: live but quiet (watch-mode asleep / operator away) — sees you next wake
 ROSTER_LOST_GRACE_MIN = 30         # grace past LIVE: a stream gone this recently is surfaced as "lost", not dropped
-PRESENCE_MAX_STREAMS = 3           # roster shows a count + top-K ranked, never enumerates all
+PRESENCE_MAX_STREAMS = 10           # roster shows a count + top-K ranked, never enumerates all
 
 
 def ttl_kind_for(address):

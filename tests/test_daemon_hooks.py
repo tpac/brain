@@ -50,6 +50,20 @@ class TestHookRecallOutput(BrainTestBase):
         result = self._call_recall("xyzzy gibberish")
         self.assertEqual(result["json"], {"decision": "approve"})
 
+    def test_hook_recall_writes_user_message_trace(self):
+        """hook_recall writes the user_message S0 trace at prompt-arrival. The
+        write moved here from post_response_common (it precedes recall, so it
+        holds even on the empty/early-return path) so presence/peek can surface a
+        stream's current prompt mid-turn instead of only after the turn completes."""
+        sid = 'test-recall-usermsg'
+        hook_recall(self.brain, {"prompt": "operator prompt here",
+                                 "session_id": sid}, [])
+        rows = self.brain.logs_conn.execute(
+            "SELECT summary FROM trace_events WHERE scale='s0' "
+            "AND session_id=? AND ref_type='user_message'", (sid,)).fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertIn("operator prompt here", rows[0][0])
+
     @patch('servers.daemon_hooks._run_surface', side_effect=_mock_run_surface)
     def test_hook_recall_returns_additional_context(self, mock_surface):
         """When results exist and surface selects, returns {'json': {'additionalContext': str}}."""
@@ -116,7 +130,13 @@ class TestTurnClassification(BrainTestBase):
             "ORDER BY created_at", (session_id,)).fetchall()
         return [r[0] for r in rows]
 
-    def test_conversational_turn_advances_both_counters_and_writes_user_message(self):
+    def test_conversational_turn_advances_both_counters_and_writes_assistant_message(self):
+        # post_response_common writes the ASSISTANT half at Stop; the user_message
+        # half is now written upstream by hook_recall at prompt-arrival (see
+        # TestHookRecallOutput.test_hook_recall_writes_user_message_trace). This
+        # test exercises post_response_common in isolation, so only the assistant
+        # trace appears here — both share the same chain_id (stop_counter is
+        # unchanged between hook_recall and this Stop), so the pair stays grouped.
         sid = 'test-turn-conv'
         ctx = self.brain.get_or_create_session(sid)
         seq_before, cad_before = ctx.stop_counter, ctx.conversational_count
@@ -126,7 +146,6 @@ class TestTurnClassification(BrainTestBase):
         self.assertEqual(ctx.conversational_count, cad_before + 1)   # cadence advances
         self.assertTrue(ctx.last_turn_conversational)
         refs = self._s0_refs(sid)
-        self.assertIn('user_message', refs)
         self.assertIn('assistant_message', refs)
         self.assertNotIn('heartbeat', refs)
 
