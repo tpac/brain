@@ -87,6 +87,18 @@ class TestSessionContextPersistence:
         loaded = SessionContext.load(self.brain.logs_conn, 'nonexistent')
         assert loaded is None
 
+    def test_load_corrupt_blob_raises_typed_signal(self):
+        # A corrupt session_state blob is SIGNALED (SessionContextCorrupt), not
+        # silently None — the brain-holding caller catches it and logs via the
+        # canonical _log_error. Absent rows still return None (test above).
+        from servers.session_context import SessionContext, SessionContextCorrupt
+        from servers.dal import SessionStateDAL
+        SessionStateDAL(self.brain.logs_conn).set('corrupt-sess', '_session_context', 'not json{')
+        with pytest.raises(SessionContextCorrupt):
+            SessionContext.load(self.brain.logs_conn, 'corrupt-sess')
+        # the brain caller catches the signal and degrades gracefully (no crash)
+        assert self.brain.session_env_for('corrupt-sess') == {'cwd': '', 'branch': ''}
+
     def test_save_updates_existing(self):
         from servers.session_context import SessionContext
         ctx = SessionContext(session_id='update-test', stop_counter=5)
@@ -97,6 +109,28 @@ class TestSessionContextPersistence:
 
         loaded = SessionContext.load(self.brain.logs_conn, 'update-test')
         assert loaded.stop_counter == 15
+
+    def test_save_and_load_cwd_branch(self):
+        # cwd/branch are session identity (fed from the boot hook) — they must
+        # round-trip through the JSON blob like the other fields.
+        from servers.session_context import SessionContext
+        ctx = SessionContext(session_id='env-test')
+        ctx.cwd = '/work/tree/x'
+        ctx.branch = 'claude/x'
+        ctx.save(self.brain.logs_conn)
+        loaded = SessionContext.load(self.brain.logs_conn, 'env-test')
+        assert loaded.cwd == '/work/tree/x'
+        assert loaded.branch == 'claude/x'
+
+    def test_reset_session_activity_stamps_cwd(self):
+        # boot feeds cwd → reset stamps cwd + derived branch. Post-3a there is a
+        # SINGLE authoritative reset per boot (render_boot_v2 no longer resets),
+        # so no preserve dance — a fresh reset with cwd is the whole story.
+        from servers.session_context import SessionContext
+        self.brain.reset_session_activity(session_id='env-sess', cwd='/work/tree/y')
+        after = SessionContext.load(self.brain.logs_conn, 'env-sess')
+        assert after.cwd == '/work/tree/y'          # stamped from the boot feed
+        assert after.branch                          # derived (real branch or 'unknown')
 
     def test_multiple_sessions_isolated(self):
         """Two sessions don't interfere with each other."""

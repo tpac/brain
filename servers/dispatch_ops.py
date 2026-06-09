@@ -100,7 +100,9 @@ def _handle_record_message(brain, args, graph_changes):
 
 def _handle_reset_session(brain, args, graph_changes):
     sid = args.get("session_id", "")
-    brain.reset_session_activity(session_id=sid)
+    # cwd is fed from the boot hook (Claude side); the daemon never introspects
+    # it. reset_session_activity stamps it as session identity + derives branch.
+    brain.reset_session_activity(session_id=sid, cwd=args.get("cwd", ""))
     return {"ok": True, "result": {"status": "reset", "session_id": sid}}
 
 
