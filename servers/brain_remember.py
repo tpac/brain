@@ -932,10 +932,13 @@ class BrainRememberMixin:
         # from a batch), there are no siblings — only catalog fallback applies.
         # Inside remember_batch / brain_batch, connect_to is popped from the
         # spec BEFORE this call and processed AFTER all siblings are created.
+        connect_to_result = None
         if connect_to:
-            # remember() (single-node path) doesn't track connect_to failures
-            # in its return shape; per-call logging via _log_error covers that.
-            self._apply_connect_to(node_id, connect_to, sibling_map=None)
+            # Capture the outcome so the caller sees what linked and why an
+            # edge didn't — connect_to is fail-soft, but no longer silent to
+            # the caller (it used to surface only on the dashboard).
+            connect_to_result = self._apply_connect_to(
+                node_id, connect_to, sibling_map=None)
 
         # co_accessed-on-remember REMOVED (2026-05-31). It connected a new node
         # to recently-written nodes by temporal write-adjacency — pre-Phase-5
@@ -1017,7 +1020,7 @@ class BrainRememberMixin:
         except Exception as e:
             self._log_error('remember_recall_on_create', e, 'recall-on-create for %s' % node_id[:8])
 
-        return {
+        result = {
             'id': node_id,
             'type': type,
             'title': title,
@@ -1025,6 +1028,13 @@ class BrainRememberMixin:
             'enrichment_prompt': enrichment_prompt,
             'related_nodes': related_nodes,
         }
+        # connect_to_result is present ONLY when connect_to was passed — keeps
+        # the response clean for the common no-edge case. `related_nodes`
+        # (similar existing nodes) and `connect_to_result` (edges you asked to
+        # create) are DIFFERENT things — don't read one as the other.
+        if connect_to_result is not None:
+            result['connect_to_result'] = connect_to_result
+        return result
 
     # ═══════════════════════════════════════════════════════════════
     # v8: revise() — Encoding IS updating existing knowledge
@@ -1588,7 +1598,7 @@ class BrainRememberMixin:
     # ═══════════════════════════════════════════════════════════════
 
     def _resolve_connect_to_entry(self, entry, sibling_map=None, exclude_self=None):
-        """Resolve a connect_to entry to (target_id, relation_pairs).
+        """Resolve a connect_to entry to (target_id, relation_pairs, reason).
 
         sibling_map: {lowercased_title: node_id} for nodes created in the
                      same batch. Sibling matching is CASE-INSENSITIVE —
@@ -1603,9 +1613,10 @@ class BrainRememberMixin:
         exclude_self: source node_id; resolution to this id is treated as a
                       self-reference and rejected.
 
-        Returns (target_id, [(relation, description), ...]) or (None, []) on
-        any failure. All failures log loudly via _log_error so the dashboard
-        sees them — no silent skips.
+        Returns (target_id, [(relation, description), ...], None) on success,
+        or (None, [], reason) on any failure — `reason` is a short caller-facing
+        string so the failure can surface in the write response, not just the
+        dashboard. All failures also log loudly via _log_error — no silent skips.
         """
         # Parse entry shape (string or dict)
         if isinstance(entry, str):
@@ -1614,11 +1625,22 @@ class BrainRememberMixin:
         elif isinstance(entry, dict):
             title_query = entry.get('title', '')
             if not title_query:
+                reason = "connect_to entry missing 'title' field"
                 self._log_error(
-                    'connect_to_invalid',
-                    ValueError("connect_to entry missing 'title' field"),
+                    'connect_to_invalid', ValueError(reason),
                     'entry=%s' % str(entry)[:200])
-                return None, []
+                return None, [], reason
+            if not isinstance(title_query, str):
+                # A non-empty non-string title (int, list, ...) clears the
+                # falsy guard above but would crash the .strip()/.lower()/regex
+                # calls downstream — that AttributeError escapes _apply_connect_to
+                # and rolls back the whole batch. Reject loudly instead.
+                reason = ("connect_to entry 'title' must be a string, got %s"
+                          % type(title_query).__name__)
+                self._log_error(
+                    'connect_to_invalid', TypeError(reason),
+                    'entry=%s' % str(entry)[:200])
+                return None, [], reason
             if isinstance(entry.get('relations'), list):
                 relation_pairs = []
                 for r in entry['relations']:
@@ -1628,22 +1650,22 @@ class BrainRememberMixin:
                     desc = r.get('why', r.get('description', ''))
                     relation_pairs.append((rel, desc))
                 if not relation_pairs:
+                    reason = "connect_to relations array is empty or malformed"
                     self._log_error(
-                        'connect_to_invalid',
-                        ValueError("connect_to relations array is empty or malformed"),
+                        'connect_to_invalid', ValueError(reason),
                         'entry=%s' % str(entry)[:200])
-                    return None, []
+                    return None, [], reason
             else:
                 rel = entry.get('relation', 'related')
                 desc = entry.get('why', entry.get('description', ''))
                 relation_pairs = [(rel, desc)]
         else:
+            reason = ("connect_to entry must be str or dict, got %s"
+                      % type(entry).__name__)
             self._log_error(
-                'connect_to_invalid',
-                TypeError("connect_to entry must be str or dict, got %s"
-                          % type(entry).__name__),
+                'connect_to_invalid', TypeError(reason),
                 'entry=%s' % str(entry)[:200])
-            return None, []
+            return None, [], reason
 
         target_id = None
 
@@ -1689,28 +1711,31 @@ class BrainRememberMixin:
                 if match:
                     target_id = match.get('id')
             except Exception as e:
+                reason = "title lookup failed: %s" % str(e)[:120]
                 self._log_error(
                     'connect_to_failed', e,
                     'find_node_by_title for %r' % title_query[:80])
-                return None, []
+                return None, [], reason
 
         # Self-reference guard
         if target_id and exclude_self and target_id == exclude_self:
+            reason = "connect_to would create self-edge"
             self._log_error(
-                'connect_to_self',
-                ValueError("connect_to would create self-edge"),
+                'connect_to_self', ValueError(reason),
                 'node=%s title=%s' % (exclude_self[:8], title_query[:80]))
-            return None, []
+            return None, [], reason
 
         # Unresolved — neither sibling nor catalog matched
         if not target_id:
+            reason = ("title %r resolved to no node (fuzzy match < 0.75; "
+                      "pass an exact title or an 8+ char node id)" % title_query[:80])
             self._log_error(
                 'connect_to_unresolved',
                 ValueError("connect_to title resolved to nothing"),
                 'title=%s' % title_query[:80])
-            return None, []
+            return None, [], reason
 
-        return target_id, relation_pairs
+        return target_id, relation_pairs, None
 
     def _apply_connect_to(self, src_id, connect_to_spec, sibling_map=None):
         """Resolve and create edges for each connect_to entry from src_id.
@@ -1719,45 +1744,72 @@ class BrainRememberMixin:
         All failures log loudly; the function never raises and never blocks
         the surrounding write path.
 
-        Returns (edges_created, failures) — failures is the count of
-        connect_to entries that failed (resolve returned None OR the
-        connect_typed call raised). The encoder uses this so a cycle
-        with N requested connect_to and 0 connect_to_edges has a visible
-        reason ("connect_to_failures=N") in the batch result.
-        """
-        if not connect_to_spec:
-            return 0, 0
-        if not isinstance(connect_to_spec, list):
-            self._log_error(
-                'connect_to_invalid',
-                TypeError("connect_to must be a list, got %s"
-                          % type(connect_to_spec).__name__),
-                'src=%s' % src_id[:8])
-            return 0, 0
+        Returns a dict:
+            {'created': [{'target_id', 'relation'}, ...],
+             'failed':  [{'title', 'reason'}, ...]}
+        Every failure carries a caller-facing `reason` so the write response
+        can show WHY an edge didn't form — not just a count, and not only on
+        the dashboard. Callers derive counts via len(). The encoder still gets
+        its "tried N, failed M" signal from these lengths.
 
-        created = 0
-        failures = 0
+        Input flexibility: a JSON-string that parses to a list is accepted
+        (callers sometimes stringify the array) — the coercion is visible via
+        a `failed` entry only when the string does NOT parse to a list.
+        """
+        created = []
+        failed = []
+        if not connect_to_spec:
+            return {'created': created, 'failed': failed}
+
+        # Lenient coercion: accept a JSON-stringified list. Postel's law —
+        # absorb the common "I stringified the array" slip, but surface it if
+        # the string isn't actually a list.
+        if isinstance(connect_to_spec, str):
+            try:
+                import json as _json
+                parsed = _json.loads(connect_to_spec)
+            except Exception:
+                parsed = None
+            if isinstance(parsed, list):
+                connect_to_spec = parsed
+            else:
+                reason = ("connect_to must be a list (or a JSON string that "
+                          "parses to one); got an unparseable str")
+                self._log_error('connect_to_invalid', TypeError(reason),
+                                'src=%s' % src_id[:8])
+                failed.append({'title': str(connect_to_spec)[:80], 'reason': reason})
+                return {'created': created, 'failed': failed}
+
+        if not isinstance(connect_to_spec, list):
+            reason = ("connect_to must be a list, got %s"
+                      % type(connect_to_spec).__name__)
+            self._log_error('connect_to_invalid', TypeError(reason),
+                            'src=%s' % src_id[:8])
+            failed.append({'title': str(connect_to_spec)[:80], 'reason': reason})
+            return {'created': created, 'failed': failed}
+
         for entry in connect_to_spec:
-            target_id, relation_pairs = self._resolve_connect_to_entry(
+            title_query = entry.get('title', entry) if isinstance(entry, dict) else entry
+            target_id, relation_pairs, reason = self._resolve_connect_to_entry(
                 entry, sibling_map=sibling_map, exclude_self=src_id)
             if target_id is None:
-                # Resolution failed — _resolve_connect_to_entry already
-                # logged via _log_error. Count it so the batch result can
-                # surface "tried N, failed M" instead of just "0 created".
-                failures += 1
+                # Resolution failed — already logged via _log_error. Surface
+                # the reason so the caller can self-correct in the moment.
+                failed.append({'title': str(title_query)[:80], 'reason': reason})
                 continue
             for rel, desc in relation_pairs:
                 try:
                     self.connect_typed(src_id, target_id, relation=rel,
                                        weight=0.6, description=desc)
-                    created += 1
+                    created.append({'target_id': target_id, 'relation': rel})
                 except Exception as e:
-                    failures += 1
+                    reason = "connect_typed failed: %s" % str(e)[:120]
+                    failed.append({'title': str(title_query)[:80], 'reason': reason})
                     self._log_error(
                         'connect_to_failed', e,
                         'src=%s target=%s rel=%s' % (
                             src_id[:8], target_id[:8], rel))
-        return created, failures
+        return {'created': created, 'failed': failed}
 
     def remember_batch(self, nodes: List[Dict],
                         connect_to: Optional[List[str]] = None,
@@ -1818,12 +1870,11 @@ class BrainRememberMixin:
                     deferred_connects.append((result['id'], ct_spec))
 
         # Pass 2: resolve per-node connect_to with full sibling_map populated.
-        connect_to_failures = 0
+        connect_to_failed = []  # [{title, reason}] across all nodes
         for src_id, ct_spec in deferred_connects:
-            edges, fails = self._apply_connect_to(
-                src_id, ct_spec, sibling_map=sibling_map)
-            connections_created += edges
-            connect_to_failures += fails
+            r = self._apply_connect_to(src_id, ct_spec, sibling_map=sibling_map)
+            connections_created += len(r['created'])
+            connect_to_failed.extend(r['failed'])
 
         # Fuzzy-match connect_to titles
         if connect_to:
@@ -1872,7 +1923,8 @@ class BrainRememberMixin:
             'nodes_created': len(created_ids),
             'results': results,
             'connections_created': connections_created,
-            'connect_to_failures': connect_to_failures,
+            'connect_to_failures': len(connect_to_failed),
+            'connect_to_failed': connect_to_failed,
         }
 
     def revise_batch(self, revisions: List[Dict]) -> Dict[str, Any]:

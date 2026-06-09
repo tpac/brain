@@ -510,5 +510,9 @@ def generate_field_summary():
     lines.append("")
     lines.append("RETURNS: remember() and remember_batch() return related_nodes — "
                  "the top 5 most similar existing nodes with full content. "
-                 "Use these to connect() immediately without a separate recall round.")
+                 "Use these to connect() immediately without a separate recall round. "
+                 "related_nodes is NOT the outcome of connect_to — when you pass "
+                 "connect_to, the response carries a separate connect_to_result "
+                 "{created:[...], failed:[{title, reason}]} reporting which edges "
+                 "formed and why any didn't.")
     return "\n".join(lines)
