@@ -13,6 +13,10 @@
 HOOK_STDIN=$(cat)
 BRAIN_HOOK_SESSION_ID=$(echo "$HOOK_STDIN" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('session_id',''))" 2>/dev/null)
 export BRAIN_HOOK_SESSION_ID
+# cwd from hook input — fed to the daemon as session identity (the daemon never
+# introspects the Claude env itself). See SessionContext.cwd / session_env_for.
+BRAIN_HOOK_CWD=$(echo "$HOOK_STDIN" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('cwd',''))" 2>/dev/null)
+export BRAIN_HOOK_CWD
 
 # ── Resolve ANTHROPIC_API_KEY from canonical config location ──
 # Single source: ${XDG_CONFIG_HOME:-$HOME/.config}/brain/env (mode 600,

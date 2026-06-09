@@ -602,6 +602,48 @@ class Brain(
             return ''
         return self.get_config('session_context_' + session_id, '') or ''
 
+    def detect_git_branch(self, cwd: str) -> str:
+        """Current git branch for a worktree path. Environment-NEUTRAL — the
+        daemon is fed `cwd` from the boot hook and runs git on it; it does not
+        assume a Claude context. Single source for branch detection (boot
+        session-env stamp + the WorktreeCreate hook). 'unknown' on any failure."""
+        if not cwd:
+            return 'unknown'
+        try:
+            import subprocess
+            r = subprocess.run(
+                ["git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True, text=True, timeout=5)
+            if r.returncode == 0:
+                return r.stdout.strip() or 'unknown'
+        except Exception as e:
+            try:
+                self._log_error('git_branch_detect', e, 'detect_git_branch')
+            except Exception:
+                pass
+        return 'unknown'
+
+    def session_env_for(self, session_id: str) -> dict:
+        """Per-session env (cwd, branch) for a stream — fed in at boot from the
+        Claude side, surfaced in peek so streams identify where each other work.
+        Reads the live cached SessionContext if present, else the persisted row.
+        Empty strings when unknown. Mirrors session_context_for's per-session
+        pattern (no global key — parallel sessions don't clobber)."""
+        if not session_id:
+            return {'cwd': '', 'branch': ''}
+        ctx = self._session_contexts.get(session_id)
+        if ctx is None:
+            from .session_context import SessionContext, SessionContextCorrupt
+            try:
+                ctx = SessionContext.load(self.logs_conn, session_id)
+            except SessionContextCorrupt as e:
+                self._log_error('session_context_load', e,
+                                'session_env_for session=%s' % (session_id or '')[:8])
+                ctx = None
+        if ctx is None:
+            return {'cwd': '', 'branch': ''}
+        return {'cwd': ctx.cwd, 'branch': ctx.branch}
+
     def get_recent_encoding_journal(self, session_id: str, max_chars: int = 1500) -> str:
         """Read the most recent portion of the encoder's per-session journal.
 
@@ -716,7 +758,13 @@ class Brain(
             self._session_state.ensure_default(session_id, '_session_context', default_data)
             # Row is guaranteed to exist now — load reads our default or a
             # racing thread's already-modified state.
-            ctx = SessionContext.load(self.logs_conn, session_id)
+            from .session_context import SessionContextCorrupt
+            try:
+                ctx = SessionContext.load(self.logs_conn, session_id)
+            except SessionContextCorrupt as e:
+                self._log_error('session_context_load', e,
+                                'get_or_create_session session=%s' % (session_id or '')[:8])
+                ctx = None
             if ctx is None:
                 ctx = SessionContext(session_id=session_id)
             self._session_contexts[session_id] = ctx
@@ -950,7 +998,7 @@ class Brain(
             self._cached_session_id = self.get_config('session_id', '') or ''
         return self._cached_session_id or 'no_session'
 
-    def reset_session_activity(self, session_id: str = ''):
+    def reset_session_activity(self, session_id: str = '', cwd: str = ''):
         """Reset session counters. Session_id comes from hook args, not generated.
 
         Activity counters (remember_count, message_count, edit_check_count,
@@ -970,6 +1018,13 @@ class Brain(
         from .session_context import SessionContext
         ctx = SessionContext(session_id=sid)
         ctx.boot_time = self.now()
+        # cwd/branch are session IDENTITY (where this stream works), fed in from
+        # the boot hook. Boot resets the session exactly once now (render_boot_v2
+        # no longer resets), so a fresh ctx stamped with cwd is the whole story —
+        # no double-reset, no preserve dance. Surfaced via session_env_for / peek.
+        if cwd:
+            ctx.cwd = cwd
+            ctx.branch = self.detect_git_branch(cwd)
         # Serialize the brain_meta (brain.db) + session_state (logs_conn)
         # writes under write_lock — same shared-connection race as
         # get_or_create_session when this runs outside the dispatch write

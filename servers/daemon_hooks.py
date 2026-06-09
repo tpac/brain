@@ -16,7 +16,6 @@ for hooks that need structured JSON output (recall, pre-edit, pre-bash, pre-comp
 import json
 import os
 import re
-import subprocess
 import threading
 import time
 from datetime import datetime
@@ -1214,21 +1213,15 @@ def hook_worktree_context(brain, args, graph_changes):
     worktree_name = args.get("name", "unknown")
     cwd = args.get("cwd", "")
 
-    # Detect git branch from cwd
-    branch = "unknown"
-    try:
-        result = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode == 0:
-            branch = result.stdout.strip()
-    except Exception as e:
-        brain._log_error('git_branch_detect', e, 'hook_worktree_context')
+    # Detect git branch from cwd — single source (also used by the per-session
+    # boot env stamp); env-neutral, 'unknown' on any failure.
+    branch = brain.detect_git_branch(cwd)
 
+    # current_worktree is still read (hook_worktree_cleanup). current_branch /
+    # current_cwd were write-only dead config — no reader anywhere — so they're
+    # dropped; per-session cwd/branch (SessionContext, surfaced in peek) is the
+    # live source now.
     brain.set_config("current_worktree", worktree_name)
-    brain.set_config("current_branch", branch)
-    brain.set_config("current_cwd", cwd)
 
     try:
         brain.scan_host_environment()
@@ -1253,8 +1246,6 @@ def hook_worktree_cleanup(brain, args, graph_changes):
     """WorktreeRemove — clears worktree context from brain config."""
     old_worktree = brain.get_config("current_worktree", "")
     brain.set_config("current_worktree", "")
-    brain.set_config("current_branch", "")
-    brain.set_config("current_cwd", "")
     if old_worktree:
         graph_changes.append("WORKTREE: removed %s" % old_worktree)
     brain.save()

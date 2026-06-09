@@ -95,6 +95,8 @@ def build_presence(brain, my_session_id='', limit=None, rich=False,
                 pk = peek(brain, sid)
                 entry['arc'] = pk.get('focus', '')
                 entry['recent_msgs'] = pk.get('recent_msgs', [])
+                entry['cwd'] = pk.get('cwd', '')
+                entry['branch'] = pk.get('branch', '')
                 entry['session_started_at'] = pk.get('session_started_at', '')
                 entry['pending_inbox_count'] = pk.get('pending_inbox_count', 0)
             live.append(entry)
@@ -105,8 +107,12 @@ def build_presence(brain, my_session_id='', limit=None, rich=False,
 
 
 def _empty_peek(session_id=''):
+    # MUST carry every key the full peek() return does (degrades, never
+    # half-shaped) — including turn_count/cwd/branch — so bracket-access
+    # consumers never KeyError. test_peek_empty_path_has_all_keys locks this.
     return {'session_id': session_id, 'short': session_id[:8] if session_id else '',
-            'focus': '', 'recent_msgs': [], 'session_started_at': '',
+            'focus': '', 'recent_msgs': [], 'turn_count': 0,
+            'cwd': '', 'branch': '', 'session_started_at': '',
             'last_active_at': '', 'liveness': 'lost', 'pending_inbox_count': 0,
             'found': False}
 
@@ -125,6 +131,7 @@ def peek(brain, session_id, msg_limit=2):
         return _empty_peek()
     arc = (brain.session_context_for(session_id) or '').strip()
     act = brain.session_activity(session_id, msg_limit=msg_limit) or {}
+    env = brain.session_env_for(session_id)
     recent = [{'ts': m.get('ts', ''), 'role': m.get('ref_type', ''),
                'text': (m.get('text', '') or '')[:self_contract.PEEK_MSG_MAX]}
               for m in act.get('recent_msgs', [])]
@@ -136,6 +143,8 @@ def peek(brain, session_id, msg_limit=2):
         'focus': arc,
         'recent_msgs': recent,
         'turn_count': act.get('turn_count', 0),
+        'cwd': env.get('cwd', ''),
+        'branch': env.get('branch', ''),
         'session_started_at': act.get('started_at', '') or '',
         'last_active_at': last_active,
         'liveness': liveness,

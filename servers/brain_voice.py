@@ -300,7 +300,10 @@ class BrainVoice:
 
         # ── Gather data ──
         ctx = brain.context_boot(user=user, project=project, task="session start")
-        brain.reset_session_activity(session_id=session_id)
+        # render does NOT reset the session — rendering is read-only. The session
+        # is reset once by the caller (boot_brain's reset_session(cwd), or
+        # _boot_via_direct's explicit reset); resetting here too made boot a
+        # double-reset that forced the cwd-preserve band-aid (removed 2026-06-08).
         # Boot-stamp liveness so this fresh stream shows up in presence
         # immediately — before its first turn — closing the rendezvous gap where
         # two just-booted streams can't see each other (2026-06-06).

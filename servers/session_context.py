@@ -28,6 +28,14 @@ from typing import Dict
 from datetime import datetime, timezone
 
 
+class SessionContextCorrupt(Exception):
+    """Raised by SessionContext.load when a session_state row EXISTS but its blob
+    won't parse (corrupt) — as opposed to absent, which returns None. The
+    brain-holding caller catches this and logs via the canonical
+    brain._log_error; SessionContext stays a pure data carrier (no brain ref, no
+    DAL reach, no logging of its own)."""
+
+
 class SessionContext:
     """Per-session state that flows with every brain call."""
 
@@ -68,6 +76,12 @@ class SessionContext:
         self.edit_check_count: int = 0
         self.last_encode_at_message: int = 0
         self.boot_time: str = ''  # ISO timestamp; empty means not booted yet
+        # Session env — the Claude-side facts (working dir + git branch) FED IN
+        # from the boot hook; the daemon never introspects Claude to learn them.
+        # Per-session identity (not activity), surfaced in peek so streams can
+        # tell where each other is working. Stable for the session's life.
+        self.cwd: str = ''
+        self.branch: str = ''
         # Segment / conversation-shift state. Were brain_meta keys
         # (`segment_*_{session_id}`); moved here 2026-05-17 because those
         # writes on the hook_recall hot path were saturating brain.db
@@ -207,6 +221,8 @@ class SessionContext:
             'edit_check_count': self.edit_check_count,
             'last_encode_at_message': self.last_encode_at_message,
             'boot_time': self.boot_time,
+            'cwd': self.cwd,
+            'branch': self.branch,
             'segment_id': self.segment_id,
             'segment_embeddings': self.segment_embeddings,
             'segment_node_ids': self.segment_node_ids,
@@ -239,6 +255,8 @@ class SessionContext:
             ctx.edit_check_count = int(data.get('edit_check_count', 0))
             ctx.last_encode_at_message = int(data.get('last_encode_at_message', 0))
             ctx.boot_time = data.get('boot_time', '') or ''
+            ctx.cwd = data.get('cwd', '') or ''
+            ctx.branch = data.get('branch', '') or ''
             ctx.segment_id = int(data.get('segment_id', 0))
             ctx.segment_embeddings = list(data.get('segment_embeddings', []) or [])
             ctx.segment_node_ids = list(data.get('segment_node_ids', []) or [])
@@ -255,5 +273,10 @@ class SessionContext:
                         'last_accessed': str(rec.get('last_accessed', '') or ''),
                     }
             return ctx
-        except (json.JSONDecodeError, TypeError):
-            return None
+        except (json.JSONDecodeError, TypeError) as e:
+            # The row EXISTED but won't parse — corrupt, not absent. Signal it so
+            # the brain-holding caller logs via the canonical brain._log_error.
+            # (Pure data carrier: no brain ref, no DAL reach, no logging here.)
+            raise SessionContextCorrupt(
+                'corrupt session_state blob for %s: %s' % ((session_id or '')[:8], e)
+            ) from e

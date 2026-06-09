@@ -93,6 +93,34 @@ class TestSelfPresence(BrainTestBase):
         self.assertTrue(p['last_active_at'])
         self.assertEqual(p['liveness'], 'active')
 
+    def test_peek_returns_session_env_cwd_branch(self):
+        # cwd/branch live on the session object (fed from the boot hook) and are
+        # surfaced in peek so streams can tell where each other is working.
+        from servers.session_context import SessionContext
+        ctx = SessionContext(session_id='streamENV0')
+        ctx.cwd = '/Users/tom/brain/.claude/worktrees/foo'
+        ctx.branch = 'claude/foo-123'
+        ctx.save(self.brain.logs_conn)
+        p = presence.peek(self.brain, 'streamENV0')
+        self.assertEqual(p['cwd'], '/Users/tom/brain/.claude/worktrees/foo')
+        self.assertEqual(p['branch'], 'claude/foo-123')
+        # absent ⇒ empty strings, never missing keys (degrades, never half-shaped)
+        miss = presence.peek(self.brain, 'no-such-stream')
+        self.assertEqual(miss['cwd'], '')
+        self.assertEqual(miss['branch'], '')
+
+    def test_peek_empty_path_has_all_keys(self):
+        # Contract: peek's empty/error path (no stream_id → _empty_peek) must
+        # carry EVERY key the full path does — cwd/branch/turn_count included —
+        # so bracket-access consumers never KeyError. Guards the regression
+        # where new fields are added to peek() but not _empty_peek().
+        self._save_stream('streamFULL', focus='real turn')
+        full = presence.peek(self.brain, 'streamFULL')
+        empty = presence.peek(self.brain, '')          # → _empty_peek
+        self.assertEqual(set(empty.keys()), set(full.keys()))
+        for k in ('cwd', 'branch', 'turn_count'):
+            self.assertIn(k, empty)
+
     def test_peek_found_from_msgs_when_arc_empty(self):
         # fresh stream: no arc encoded yet, but one real turn ⇒ still peeks
         # usefully (the arc lags S1 Scribe; turns are immediate).

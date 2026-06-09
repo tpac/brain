@@ -12,6 +12,9 @@ db_dir = os.environ.get("BRAIN_DB_DIR", "")
 
 # Session ID from hook input — extracted by boot-brain.sh, passed as env var
 _hook_session_id = os.environ.get("BRAIN_HOOK_SESSION_ID", "")
+# cwd from hook input — fed to the daemon as session identity (cwd/branch live
+# on the session object, surfaced in peek). Daemon never introspects it itself.
+_hook_cwd = os.environ.get("BRAIN_HOOK_CWD", "")
 
 
 def _boot_via_daemon():
@@ -30,8 +33,12 @@ def _boot_via_daemon():
         print("[BRAIN] (session resumed — brain already loaded)", file=sys.stderr)
         return True
 
-    # Reset session activity with Claude's session_id (not a random UUID)
-    daemon_call("reset_session", {"session_id": _hook_session_id} if _hook_session_id else {})
+    # Reset session activity with Claude's session_id (not a random UUID).
+    # Feed cwd so the daemon can stamp session identity (cwd + derived branch).
+    reset_args = {"session_id": _hook_session_id} if _hook_session_id else {}
+    if _hook_cwd:
+        reset_args["cwd"] = _hook_cwd
+    daemon_call("reset_session", reset_args)
 
     # Get debug mode
     debug = daemon_call("get_config", {"key": "debug_enabled", "default": "0"})
@@ -107,7 +114,9 @@ def _boot_via_direct():
         return
 
     try:
-        brain.reset_session_activity()
+        # Match the daemon path: feed Claude's session_id + cwd so the fallback
+        # boot stamps the same session identity (cwd/branch) the daemon would.
+        brain.reset_session_activity(session_id=_hook_session_id, cwd=_hook_cwd)
         user = os.environ.get("BRAIN_USER", "User")
         project = os.environ.get("BRAIN_PROJECT", "default")
         rendered = brain.format_boot_context(user=user, project=project, db_dir=db_dir)
