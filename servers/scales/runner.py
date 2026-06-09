@@ -87,7 +87,7 @@ def _split_action_ids(tool, result):
 
 
 def run_in_background(name, brain_db_path, session_id, counter, lock,
-                      run_fn, encoding_source='encoder:sonnet'):
+                      run_fn, encoding_source='encoder:sonnet', on_complete=None):
     """Run a scale agent in a background thread.
 
     Args:
@@ -98,6 +98,14 @@ def run_in_background(name, brain_db_path, session_id, counter, lock,
         lock: threading.Lock for mutual exclusion (one agent at a time)
         run_fn: Scale's run function: run_fn(brain, dispatch_fn, counter, session_id) -> dict
         encoding_source: encoding_source value for new nodes
+        on_complete: optional callback(write_actions: int) invoked AFTER a
+            successful run, in this background thread. The run executes against
+            a throwaway read_brain (writes go via TCP), so a caller that needs
+            to record on ITS OWN brain (e.g. S1E counting encode runs toward the
+            S2 gate on brain.activity) passes a closure over that brain here —
+            same process, so the closure is valid across the thread. Receives
+            write_actions so the caller can gate on "actually wrote material".
+            Never called if run_fn raised.
 
     The delta trace is written by the scale's own run_fn via build_delta_metadata
     (the unified shape). This wrapper does NOT write one — a previous version did,
@@ -123,6 +131,24 @@ def run_in_background(name, brain_db_path, session_id, counter, lock,
             elapsed_ms = int((time.time() - t0) * 1000)
             actions = result.get('actions', 0) if isinstance(result, dict) else 0
             print("[%s] DONE: %d actions in %dms" % (name, actions, elapsed_ms), flush=True)
+
+            # Completion hook — runs on the CALLER's brain (closure), not the
+            # throwaway read_brain. Gated on write_actions so it reflects real
+            # written material. Guarded so a callback error never crashes the
+            # thread or masks the run.
+            if on_complete is not None:
+                try:
+                    write_actions = (result.get('write_actions', 0)
+                                     if isinstance(result, dict) else 0)
+                    on_complete(write_actions)
+                except Exception as _oce:
+                    if read_brain:
+                        try:
+                            read_brain._log_error(
+                                'scale_runner_on_complete', _oce,
+                                '%s on_complete callback failed' % name)
+                        except Exception:
+                            pass
 
         except Exception as e:
             elapsed_ms = int((time.time() - t0) * 1000)

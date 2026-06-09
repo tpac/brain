@@ -659,10 +659,22 @@ def hook_post_response_track(brain, args, graph_changes):
                     acquired_for_spawn = True
                     from .scales.runner import run_in_background
                     from .scales.s1.encode import run_encoding
+                    # Count the encode toward the S2 activity gate on COMPLETION
+                    # (not dispatch) and only when it actually wrote material —
+                    # S2 is meaningful only post-encoding, and a dispatched-then-
+                    # failed/empty run produces nothing to consolidate. The
+                    # callback closes over THIS brain (the daemon's, which the
+                    # gate reads) — the encoder thread runs on a separate
+                    # read_brain, so it can't record there. Same process, so the
+                    # closure is valid across the thread.
+                    def _count_encode(write_actions, _b=brain):
+                        if write_actions > 0:
+                            _b.activity.record_encode_run()
                     run_in_background(
                         name='s1e', brain_db_path=brain.db_path,
                         session_id=session_id, counter=counter,
-                        lock=_encoding_lock, run_fn=run_encoding)
+                        lock=_encoding_lock, run_fn=run_encoding,
+                        on_complete=_count_encode)
                     # Thread.start() returned → ownership transferred. Thread's
                     # finally is now responsible for the release.
                     acquired_for_spawn = False

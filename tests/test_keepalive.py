@@ -148,11 +148,14 @@ def test_warm_skips_when_already_in_flight():
 class _StubDaemonBrain:
     """Minimal brain for tick tests: get_config + warm + _log_error."""
     def __init__(self, *, enabled=True, interval=300, warm=None):
+        from servers.activity_state import ActivityState
         self._cfg = {'surface_keepalive.enabled': enabled,
                      'surface_keepalive.interval_seconds': interval}
         self.warm_calls = 0
         self._warm = warm  # optional callable to simulate a raising warm
         self.logged = []
+        # Keepalive reads the user-activity clock from brain.activity now.
+        self.activity = ActivityState()
 
     def get_config(self, key, default):
         return self._cfg.get(key, default)
@@ -173,7 +176,8 @@ class _StubDaemon:
 
     def __init__(self, brain, last_user_activity=0.0):
         self.brain = brain
-        self.last_user_activity = last_user_activity
+        # Keepalive reads brain.activity.last_user_activity (single source).
+        self.brain.activity.last_user_activity = last_user_activity
 
     def tick(self, now, last_ping):
         return BrainDaemon._keepalive_tick(self, now, last_ping)

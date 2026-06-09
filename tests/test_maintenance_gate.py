@@ -24,6 +24,7 @@ from tests.brain_test_base import BrainTestBase
 from servers.brain_constants import (
     MAINTENANCE_IDLE_THRESHOLD_SECONDS,
     MAINTENANCE_MIN_INTERVAL_SECONDS,
+    MAINTENANCE_MIN_ENCODE_RUNS,
     MAINTENANCE_FORCE_FIRE_SECONDS,
     MAINTENANCE_BOOT_GRACE_SECONDS,
 )
@@ -35,8 +36,14 @@ class MaintenanceGateTests(BrainTestBase):
     def _set_last_run(self, ts: float):
         self.brain._maintenance_set_last_run_ts(ts)
 
-    def _call(self, idle_seconds: float, since_last_run: float):
-        """Invoke gate with controlled idle + since_last_run.
+    def _call(self, idle_seconds: float, since_last_run: float,
+              encode_runs: int = None):
+        """Invoke gate with controlled idle + since_last_run via brain.activity.
+
+        encode_runs defaults to MAINTENANCE_MIN_ENCODE_RUNS so the idle/interval
+        tests aren't incidentally blocked by the activity gate — they set it
+        high enough to pass and exercise the gate they care about. Tests that
+        target the activity gate pass an explicit value.
 
         Patches run_s2 so a real fire returns a sentinel (no actual S2 work).
         """
@@ -47,10 +54,12 @@ class MaintenanceGateTests(BrainTestBase):
         # the gate short-circuits before the idle/interval logic under test.
         self.brain._boot_time = now - MAINTENANCE_BOOT_GRACE_SECONDS - 60
         self._set_last_run(now - since_last_run)
-        last_activity = now - idle_seconds
+        self.brain.activity.last_user_activity = now - idle_seconds
+        self.brain.activity.encode_runs_since_maintenance = (
+            MAINTENANCE_MIN_ENCODE_RUNS if encode_runs is None else encode_runs)
         with patch('servers.scales.s2.coordinator.run_s2',
                    return_value={'fired': True}):
-            return self.brain.run_maintenance_if_due(last_activity, now=now)
+            return self.brain.run_maintenance_if_due(now=now)
 
     # ── min_interval is absolute ──────────────────────────────────────
 
@@ -121,12 +130,56 @@ class MaintenanceGateTests(BrainTestBase):
         now = 1_000_000.0
         self.brain._boot_time = now - MAINTENANCE_BOOT_GRACE_SECONDS - 60
         self._set_last_run(now - MAINTENANCE_MIN_INTERVAL_SECONDS - 60)
+        self.brain.activity.last_user_activity = 0.0
+        self.brain.activity.encode_runs_since_maintenance = MAINTENANCE_MIN_ENCODE_RUNS
         with patch('servers.scales.s2.coordinator.run_s2',
                    return_value={'fired': True}):
-            result = self.brain.run_maintenance_if_due(0.0, now=now)
+            result = self.brain.run_maintenance_if_due(now=now)
         self.assertIsNotNone(result,
             "past boot-grace, a daemon with no user activity (0.0) is treated "
             "as infinitely idle and fires")
+
+
+    # ── encode-runs activity gate (≥N Scribe runs since last run) ─────
+
+    def test_insufficient_encode_runs_blocks(self):
+        # Idle + interval both satisfied, but only 1 encoder run since last S2.
+        result = self._call(
+            idle_seconds=MAINTENANCE_IDLE_THRESHOLD_SECONDS + 1,
+            since_last_run=MAINTENANCE_MIN_INTERVAL_SECONDS + 1,
+            encode_runs=MAINTENANCE_MIN_ENCODE_RUNS - 1,
+        )
+        self.assertIsNone(result,
+            "too few encoder runs since last run must block the fire")
+
+    def test_sufficient_encode_runs_fires(self):
+        result = self._call(
+            idle_seconds=MAINTENANCE_IDLE_THRESHOLD_SECONDS + 1,
+            since_last_run=MAINTENANCE_MIN_INTERVAL_SECONDS + 1,
+            encode_runs=MAINTENANCE_MIN_ENCODE_RUNS,
+        )
+        self.assertIsNotNone(result, "enough encoder runs + idle + interval fires")
+
+    def test_force_fire_overrides_encode_runs(self):
+        # 24h stale with zero encoder runs — the safety valve still fires.
+        result = self._call(
+            idle_seconds=10,
+            since_last_run=MAINTENANCE_FORCE_FIRE_SECONDS + 60,
+            encode_runs=0,
+        )
+        self.assertIsNotNone(result,
+            "force-fire must override the encode-runs gate for stale S2")
+
+    def test_fire_consumes_encode_runs(self):
+        # When S2 fires, it consumes exactly the encode runs it gated on, so
+        # the counter resets toward the next cycle.
+        self._call(
+            idle_seconds=MAINTENANCE_IDLE_THRESHOLD_SECONDS + 1,
+            since_last_run=MAINTENANCE_MIN_INTERVAL_SECONDS + 1,
+            encode_runs=MAINTENANCE_MIN_ENCODE_RUNS,
+        )
+        self.assertEqual(self.brain.activity.encode_runs_since_maintenance, 0,
+            "a fire must consume the encode runs it gated on")
 
 
 if __name__ == '__main__':
