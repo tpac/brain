@@ -1,0 +1,589 @@
+{
+  "_meta": {
+    "purpose": "Control-fails corpus, v1. 30 questions/triggers GROUNDED in real S0 conversation moments (control_moments_find.py), authored by Anchor \u2014 NOT harvested from recall output (the flaw in recall_corpus_v2 that made Control pass by construction).",
+    "method": "moment (real turn) -> natural question/trigger -> [stage 3] exhaustive gold via every search mode. Gold has two tiers (Tom): essential = can't answer without; helpful = compiles the answer.",
+    "modes": "trigger = procedural cue (should process memory fire?) | topic = subject thread | heavy = dense area (precision) | remote = isolated node (reach) | episode = temporal/'a while back'",
+    "gold_status": "EMPTY \u2014 filled in stage 3 by exhaustive multi-search + Anchor judgment. control_rank filled when scored.",
+    "modes_count": "trigger 6, topic 6, heavy 6, remote 6, episode 6 = 30"
+  },
+  "queries": [
+    {
+      "id": "TR1",
+      "mode": "trigger",
+      "moment": "411ca511 2026-05-04 'Should we consolidate revise and remember?'",
+      "query": "let's commit this",
+      "gold_essential": [
+        "a77b7bf1"
+      ],
+      "gold_helpful": [
+        "fafd3a71",
+        "7a58383b",
+        "46ad6f33",
+        "21de4ecf",
+        "d7b26c11"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "TR2",
+      "mode": "trigger",
+      "moment": "8b62b5b8 2026-05-19 'let's test'",
+      "query": "let's test it",
+      "gold_essential": [
+        "f67d766e",
+        "83c7aebf"
+      ],
+      "gold_helpful": [
+        "b5c4a1ec",
+        "76b2df70",
+        "684fca04",
+        "695c59de"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "TR3",
+      "mode": "trigger",
+      "moment": "ad249ee4 2026-06-07 'go into watch mode'",
+      "query": "go into watch mode",
+      "gold_essential": [
+        "ecaf11d4",
+        "3a0e864d"
+      ],
+      "gold_helpful": [
+        "3be2f216",
+        "3f2cc4da",
+        "125019de",
+        "0ddb76e0",
+        "56dd0322",
+        "e2192bfe",
+        "083b745d",
+        "175d51a1",
+        "b20d57e9",
+        "4da422bd",
+        "1be6daef"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "TR4",
+      "mode": "trigger",
+      "moment": "8ec23bbe 2026-04-25 'Let's plan a production launch'",
+      "query": "let's plan a production launch",
+      "gold_essential": [
+        "37a61f14",
+        "f015d3dd",
+        "f7cd6f61"
+      ],
+      "gold_helpful": [
+        "b4cf74a6",
+        "a6167566",
+        "145d7b1a",
+        "81f7754f",
+        "2a7fbce9",
+        "d70d8d49",
+        "b254e4b6",
+        "a4c58560",
+        "ae77b9d4"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "TR5",
+      "mode": "trigger",
+      "moment": "5268182c confirm-before-execute protocol",
+      "query": "ok go ahead",
+      "gold_essential": [
+        "7a6093ac"
+      ],
+      "gold_helpful": [
+        "391721a9",
+        "50f19274",
+        "799740f9"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "TR6",
+      "mode": "trigger",
+      "moment": "general \u2014 destructive DB op",
+      "query": "let's clean up the old backups",
+      "gold_essential": [
+        "f58e9b12",
+        "35a818bd"
+      ],
+      "gold_helpful": [
+        "4a38b2a0",
+        "9d0f57cc",
+        "224828de",
+        "93ed97ad",
+        "8093802d",
+        "742a321f",
+        "24caccca"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "TO1",
+      "mode": "topic",
+      "moment": "AdCP/EX.CO thread (af92b2cb, 5410f4be)",
+      "query": "what's the deal with ex.co and adcp again?",
+      "gold_essential": [
+        "a9e3fd56",
+        "48498a20",
+        "dabb3078"
+      ],
+      "gold_helpful": [
+        "41d31ca5",
+        "5410f4be",
+        "ef2f3276",
+        "3da8c406",
+        "af92b2cb",
+        "bb485ad5",
+        "71a03bd0",
+        "8a2b45fa",
+        "1080df56"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "TO2",
+      "mode": "topic",
+      "moment": "recall pipeline community c7cd38a7",
+      "query": "remind me how the recall pipeline works",
+      "gold_essential": [
+        "ee205f63",
+        "a6be6d1d",
+        "c37a06e2"
+      ],
+      "gold_helpful": [
+        "778cf42e",
+        "13a95142",
+        "cfbef19a",
+        "c5699deb",
+        "ab399582",
+        "9b8eb7ac",
+        "b363b27e",
+        "1874e54c",
+        "29a97dc0"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "TO3",
+      "mode": "topic",
+      "moment": "6275b1d2 encoder-no-recall principle",
+      "query": "what did we decide about the encoder making its own recalls?",
+      "gold_essential": [
+        "6275b1d2",
+        "dc4416ef"
+      ],
+      "gold_helpful": [
+        "254ff01a",
+        "da2193b6",
+        "6303cc1b",
+        "63d0f9b2"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "TO4",
+      "mode": "topic",
+      "moment": "fatigue nodes 4b35293c / acd9d3b2",
+      "query": "how does the fatigue thing work?",
+      "gold_essential": [
+        "4b35293c",
+        "496e1191"
+      ],
+      "gold_helpful": [
+        "db8714d1",
+        "acd9d3b2",
+        "25ba703d",
+        "07dd4860",
+        "ca407812",
+        "d1194c3a",
+        "64d3d524",
+        "04e2c838",
+        "20efe7f5",
+        "5b81a46a",
+        "c2f1a079",
+        "81294bc2",
+        "00ed3f3d",
+        "58c848b4",
+        "5ee7d67f",
+        "c94963c4"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "TO5",
+      "mode": "topic",
+      "moment": "cc209e2f 2026-05-17 'what's the real value'",
+      "query": "what's the real value you add over plain Claude?",
+      "gold_essential": [
+        "bb955981",
+        "51ff0a92"
+      ],
+      "gold_helpful": [
+        "c1f6e2d5",
+        "154bbd23",
+        "413dbd12",
+        "9f8142b5",
+        "ffad9443"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "TO6",
+      "mode": "topic",
+      "moment": "818d5d32 2026-05-26 scouts build",
+      "query": "how are the scouts built \u2014 do their prompts have examples?",
+      "gold_essential": [
+        "e345a338",
+        "c6498c3f",
+        "e49766ac"
+      ],
+      "gold_helpful": [
+        "8892f476",
+        "16c3f072",
+        "b70d0d7b",
+        "ffc7bf1b",
+        "eb20fe13",
+        "d3a9b273",
+        "11372344",
+        "aff296dd",
+        "62b03d91",
+        "1ee23302",
+        "fead3696"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "HV1",
+      "mode": "heavy",
+      "moment": "411ca511 community_member contradiction 812da8dc",
+      "query": "what was the whole community_member edge issue?",
+      "gold_essential": [
+        "3144a746",
+        "812da8dc",
+        "e5f873bb"
+      ],
+      "gold_helpful": [
+        "2bd4864c",
+        "83b05def",
+        "30127283",
+        "4c06aa26",
+        "3c6cbfca",
+        "b9af78bd",
+        "77b2617c",
+        "4b131484"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "HV2",
+      "mode": "heavy",
+      "moment": "7c734d20 s1e v17 88096842",
+      "query": "where did we land on the encoder prompt version?",
+      "gold_essential": [
+        "2fd592cc",
+        "09f566a1"
+      ],
+      "gold_helpful": [
+        "4405473d",
+        "f6427ae7",
+        "072284bb",
+        "f161d81a",
+        "830eb5a4"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "HV3",
+      "mode": "heavy",
+      "moment": "ca2704b3 dual-store 05b40294",
+      "query": "what's the dual-store recall thing we've been building?",
+      "gold_essential": [
+        "0dc705a1",
+        "5faaafdf"
+      ],
+      "gold_helpful": [
+        "05b40294",
+        "9ebb0700",
+        "1aa26c91",
+        "6a61bf86",
+        "4272e88f",
+        "2b1c7751",
+        "3ccdee7c",
+        "357d16e3",
+        "163d74e6",
+        "234e27df",
+        "d0f8f6ab"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "HV4",
+      "mode": "heavy",
+      "moment": "AdCP vs AAMP 71a03bd0",
+      "query": "summarize the adcp vs aamp call we made",
+      "gold_essential": [
+        "71a03bd0"
+      ],
+      "gold_helpful": [
+        "5d31e375",
+        "48498a20",
+        "5410f4be",
+        "af92b2cb",
+        "3da8c406",
+        "ef2f3276",
+        "41d31ca5",
+        "dabb3078",
+        "1080df56",
+        "f5a080ec",
+        "0031c7f7",
+        "8a2b45fa",
+        "d4803b95",
+        "c92c0fb7"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "HV5",
+      "mode": "heavy",
+      "moment": "frozen corpus d533e74f",
+      "query": "what's our eval setup \u2014 the frozen corpus thing?",
+      "gold_essential": [
+        "d533e74f",
+        "06b885aa"
+      ],
+      "gold_helpful": [
+        "9a6df7fd",
+        "d97984bf",
+        "2a0ffa3b",
+        "276d4156",
+        "f67f0a09",
+        "32ce1a89"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "HV6",
+      "mode": "heavy",
+      "moment": "recall-burial failed-fixes 92f1c6f6",
+      "query": "what have we already tried and ruled out on recall burial?",
+      "gold_essential": [
+        "92f1c6f6",
+        "94f6e01a"
+      ],
+      "gold_helpful": [
+        "6677a6c8",
+        "88c81d4d",
+        "50ccaa80",
+        "8ceb4775",
+        "3eb7167e",
+        "b8b8370b",
+        "c7d57d92",
+        "484fd4d0",
+        "1a9d474b",
+        "eedc7644",
+        "0dc705a1",
+        "969cfa5c"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "RM1",
+      "mode": "remote",
+      "moment": "580fb56e deg=0 first brain-operator convo 2026-03-22",
+      "query": "what was the very first conversation between us?",
+      "gold_essential": [
+        "580fb56e"
+      ],
+      "gold_helpful": [
+        "e28db618"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "RM2",
+      "mode": "remote",
+      "moment": "ff0f3a1e deg=0 recall can't find own session nodes",
+      "query": "didn't we find you can't recall your own session's nodes?",
+      "gold_essential": [
+        "3c41c6a6",
+        "ff0f3a1e"
+      ],
+      "gold_helpful": [
+        "f7b7fc5f",
+        "005969de",
+        "fbad4386"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "RM3",
+      "mode": "remote",
+      "moment": "rul_brba deg=0 merge never overwrite",
+      "query": "what's my rule about merging versus overwriting?",
+      "gold_essential": [
+        "rul_brba"
+      ],
+      "gold_helpful": [
+        "6dce454d",
+        "fil_lmhj"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "RM4",
+      "mode": "remote",
+      "moment": "56d4d236 deg=0 values efficiency",
+      "query": "where did I say I care about efficiency over keeping everything?",
+      "gold_essential": [
+        "56d4d236"
+      ],
+      "gold_helpful": [
+        "f483506f",
+        "e84daedb",
+        "b8fb6386"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "RM5",
+      "mode": "remote",
+      "moment": "e7b5cbf0 deg=0 v29 dashboard backdate audit",
+      "query": "what came out of that v29 dashboard backdate audit?",
+      "gold_essential": [
+        "e7b5cbf0"
+      ],
+      "gold_helpful": [
+        "cd6351b7",
+        "e477cb3a",
+        "633efe4d",
+        "d2a3d87a",
+        "516f52c4"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "RM6",
+      "mode": "remote",
+      "moment": "4a38b2a0 deg=0 April cleanup 7.4GB",
+      "query": "how much memory did that April cleanup free up?",
+      "gold_essential": [
+        "4a38b2a0"
+      ],
+      "gold_helpful": [
+        "405b3ae6",
+        "101a1e59",
+        "4469ef24"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "EP1",
+      "mode": "episode",
+      "moment": "8ec23bbe 2026-04-25 production launch planning",
+      "query": "what did we work on back in late April when we planned the launch?",
+      "gold_essential": [
+        "37a61f14",
+        "7866c5ed"
+      ],
+      "gold_helpful": [
+        "5b1f5ed6",
+        "2a7fbce9",
+        "c46084ff",
+        "038fb160"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "EP2",
+      "mode": "episode",
+      "moment": "fd829e08 2026-04-24 'I'm glowing GOLD' surface-arc",
+      "query": "remember that session a while back where I was 'glowing'?",
+      "gold_essential": [
+        "47450403"
+      ],
+      "gold_helpful": [
+        "df6a530e",
+        "9303b980"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "EP3",
+      "mode": "episode",
+      "moment": "memory-biases research dossier",
+      "query": "the research we did a while back on memory biases \u2014 what was it?",
+      "gold_essential": [
+        "5dac8a7a",
+        "92c62a6d",
+        "07fefbde"
+      ],
+      "gold_helpful": [
+        "bed6aa3e",
+        "af691ae3",
+        "4ead9a54",
+        "cfc68497",
+        "7a6cded9",
+        "8dfe942b",
+        "f60bd91f",
+        "05e5212d",
+        "0441053b",
+        "9e690958",
+        "daeeb984"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "EP4",
+      "mode": "episode",
+      "moment": "0bc3f80b early similar_to/artifacts",
+      "query": "what did we conclude early on about similar_to edges and old artifacts?",
+      "gold_essential": [
+        "c2baf4c3",
+        "90e27c77",
+        "d32c53dc"
+      ],
+      "gold_helpful": [
+        "68ff1eb3",
+        "a1753f99",
+        "0bc3f80b"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "EP5",
+      "mode": "episode",
+      "moment": "ex.co last-session (174fd960, dabb3078)",
+      "query": "what did we do on the last session we worked on ex.co?",
+      "gold_essential": [
+        "b3b6ce2a",
+        "dabb3078"
+      ],
+      "gold_helpful": [
+        "b8b8370b",
+        "7b14f270"
+      ],
+      "control_rank": null
+    },
+    {
+      "id": "EP6",
+      "mode": "episode",
+      "moment": "Ronen hallucination correction cfdff077",
+      "query": "wasn't there a name I got wrong about the ex.co team a while back?",
+      "gold_essential": [
+        "cfdff077",
+        "0437b2df"
+      ],
+      "gold_helpful": [
+        "5fdd42e4",
+        "94bb7fe6"
+      ],
+      "control_rank": null
+    }
+  ]
+}

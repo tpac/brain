@@ -1,0 +1,1002 @@
+[
+  {
+    "id": "TR1",
+    "mode": "trigger",
+    "cutoff": null,
+    "query": "let's commit this",
+    "ctrl_best_rel": 0.69,
+    "n_missed_relevant": 4,
+    "missed": [
+      {
+        "n": "5c53baae",
+        "rel": 0.62,
+        "via": "graph"
+      },
+      {
+        "n": "035f3f98",
+        "rel": 0.6,
+        "via": "graph"
+      },
+      {
+        "n": "2635904b",
+        "rel": 0.6,
+        "via": "graph"
+      },
+      {
+        "n": "87df0b0c",
+        "rel": 0.6,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "TR2",
+    "mode": "trigger",
+    "cutoff": null,
+    "query": "let's test it",
+    "ctrl_best_rel": 0.65,
+    "n_missed_relevant": 5,
+    "missed": [
+      {
+        "n": "46c36886",
+        "rel": 0.62,
+        "via": "graph"
+      },
+      {
+        "n": "9f5d3445",
+        "rel": 0.61,
+        "via": "graph"
+      },
+      {
+        "n": "d53dd553",
+        "rel": 0.6,
+        "via": "graph"
+      },
+      {
+        "n": "5268182c",
+        "rel": 0.6,
+        "via": "graph"
+      },
+      {
+        "n": "a86db9a5",
+        "rel": 0.6,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "TR3",
+    "mode": "trigger",
+    "cutoff": null,
+    "query": "go into watch mode",
+    "ctrl_best_rel": 0.68,
+    "n_missed_relevant": 0,
+    "missed": []
+  },
+  {
+    "id": "TR4",
+    "mode": "trigger",
+    "cutoff": null,
+    "query": "let's plan a production launch",
+    "ctrl_best_rel": 0.61,
+    "n_missed_relevant": 0,
+    "missed": []
+  },
+  {
+    "id": "TR5",
+    "mode": "trigger",
+    "cutoff": null,
+    "query": "ok go ahead",
+    "ctrl_best_rel": 0.59,
+    "n_missed_relevant": 0,
+    "missed": []
+  },
+  {
+    "id": "TR6",
+    "mode": "trigger",
+    "cutoff": null,
+    "query": "let's clean up the old backups",
+    "ctrl_best_rel": 0.7,
+    "n_missed_relevant": 25,
+    "missed": [
+      {
+        "n": "224828de",
+        "rel": 0.68,
+        "via": "fts"
+      },
+      {
+        "n": "8093802d",
+        "rel": 0.68,
+        "via": "fts"
+      },
+      {
+        "n": "00ae9653",
+        "rel": 0.67,
+        "via": "fts"
+      },
+      {
+        "n": "f58e9b12",
+        "rel": 0.65,
+        "via": "fts"
+      },
+      {
+        "n": "ca66f5bd",
+        "rel": 0.64,
+        "via": "graph"
+      },
+      {
+        "n": "e182f287",
+        "rel": 0.63,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "TO1",
+    "mode": "topic",
+    "cutoff": null,
+    "query": "what's the deal with ex.co and adcp again?",
+    "ctrl_best_rel": 0.74,
+    "n_missed_relevant": 6,
+    "missed": [
+      {
+        "n": "5410f4be",
+        "rel": 0.69,
+        "via": "fts+graph"
+      },
+      {
+        "n": "c37d7d10",
+        "rel": 0.65,
+        "via": "fts"
+      },
+      {
+        "n": "94bb7fe6",
+        "rel": 0.63,
+        "via": "graph"
+      },
+      {
+        "n": "174fd960",
+        "rel": 0.63,
+        "via": "graph"
+      },
+      {
+        "n": "b3bda662",
+        "rel": 0.62,
+        "via": "graph"
+      },
+      {
+        "n": "5fdd42e4",
+        "rel": 0.6,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "TO2",
+    "mode": "topic",
+    "cutoff": null,
+    "query": "remind me how the recall pipeline works",
+    "ctrl_best_rel": 0.75,
+    "n_missed_relevant": 51,
+    "missed": [
+      {
+        "n": "44469b4f",
+        "rel": 0.72,
+        "via": "fts"
+      },
+      {
+        "n": "0d1fca7b",
+        "rel": 0.71,
+        "via": "graph"
+      },
+      {
+        "n": "da07f94e",
+        "rel": 0.7,
+        "via": "fts"
+      },
+      {
+        "n": "8ce44afc",
+        "rel": 0.68,
+        "via": "graph"
+      },
+      {
+        "n": "6275b1d2",
+        "rel": 0.68,
+        "via": "graph"
+      },
+      {
+        "n": "9b8eb7ac",
+        "rel": 0.68,
+        "via": "fts"
+      }
+    ]
+  },
+  {
+    "id": "TO3",
+    "mode": "topic",
+    "cutoff": null,
+    "query": "what did we decide about the encoder making its own recalls?",
+    "ctrl_best_rel": 0.73,
+    "n_missed_relevant": 46,
+    "missed": [
+      {
+        "n": "db5e54bb",
+        "rel": 0.71,
+        "via": "graph"
+      },
+      {
+        "n": "329a7c6e",
+        "rel": 0.7,
+        "via": "graph"
+      },
+      {
+        "n": "cf36134d",
+        "rel": 0.69,
+        "via": "graph"
+      },
+      {
+        "n": "b6c93da2",
+        "rel": 0.69,
+        "via": "fts"
+      },
+      {
+        "n": "7bbb2b1f",
+        "rel": 0.69,
+        "via": "graph"
+      },
+      {
+        "n": "a179e711",
+        "rel": 0.69,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "TO4",
+    "mode": "topic",
+    "cutoff": null,
+    "query": "how does the fatigue thing work?",
+    "ctrl_best_rel": 0.75,
+    "n_missed_relevant": 10,
+    "missed": [
+      {
+        "n": "00ed3f3d",
+        "rel": 0.66,
+        "via": "graph"
+      },
+      {
+        "n": "81294bc2",
+        "rel": 0.66,
+        "via": "fts"
+      },
+      {
+        "n": "88f227a5",
+        "rel": 0.65,
+        "via": "graph"
+      },
+      {
+        "n": "a0c7a971",
+        "rel": 0.65,
+        "via": "graph"
+      },
+      {
+        "n": "c2f1a079",
+        "rel": 0.64,
+        "via": "fts"
+      },
+      {
+        "n": "9d11fa12",
+        "rel": 0.63,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "TO5",
+    "mode": "topic",
+    "cutoff": null,
+    "query": "what's the real value you add over plain Claude?",
+    "ctrl_best_rel": 0.67,
+    "n_missed_relevant": 11,
+    "missed": [
+      {
+        "n": "9f8142b5",
+        "rel": 0.66,
+        "via": "fts"
+      },
+      {
+        "n": "7f654824",
+        "rel": 0.64,
+        "via": "fts"
+      },
+      {
+        "n": "d8bde5df",
+        "rel": 0.63,
+        "via": "graph"
+      },
+      {
+        "n": "33e7454a",
+        "rel": 0.63,
+        "via": "graph"
+      },
+      {
+        "n": "7b5b61b0",
+        "rel": 0.62,
+        "via": "graph"
+      },
+      {
+        "n": "de4ff37f",
+        "rel": 0.61,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "TO6",
+    "mode": "topic",
+    "cutoff": null,
+    "query": "how are the scouts built \u2014 do their prompts have examples?",
+    "ctrl_best_rel": 0.75,
+    "n_missed_relevant": 58,
+    "missed": [
+      {
+        "n": "ad51c574",
+        "rel": 0.72,
+        "via": "graph"
+      },
+      {
+        "n": "d3a9b273",
+        "rel": 0.71,
+        "via": "fts+graph"
+      },
+      {
+        "n": "384c4f76",
+        "rel": 0.71,
+        "via": "fts+graph"
+      },
+      {
+        "n": "593ac1d5",
+        "rel": 0.7,
+        "via": "graph"
+      },
+      {
+        "n": "a1ec71a3",
+        "rel": 0.69,
+        "via": "graph"
+      },
+      {
+        "n": "4f50ca8c",
+        "rel": 0.69,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "HV1",
+    "mode": "heavy",
+    "cutoff": null,
+    "query": "what was the whole community_member edge issue?",
+    "ctrl_best_rel": 0.74,
+    "n_missed_relevant": 31,
+    "missed": [
+      {
+        "n": "95ee9413",
+        "rel": 0.69,
+        "via": "fts"
+      },
+      {
+        "n": "0bfb6c80",
+        "rel": 0.68,
+        "via": "fts"
+      },
+      {
+        "n": "d1995b3d",
+        "rel": 0.67,
+        "via": "graph"
+      },
+      {
+        "n": "2a9117b4",
+        "rel": 0.65,
+        "via": "graph"
+      },
+      {
+        "n": "a93e4846",
+        "rel": 0.65,
+        "via": "graph"
+      },
+      {
+        "n": "34ab0506",
+        "rel": 0.65,
+        "via": "fts"
+      }
+    ]
+  },
+  {
+    "id": "HV2",
+    "mode": "heavy",
+    "cutoff": null,
+    "query": "where did we land on the encoder prompt version?",
+    "ctrl_best_rel": 0.73,
+    "n_missed_relevant": 67,
+    "missed": [
+      {
+        "n": "2fd592cc",
+        "rel": 0.72,
+        "via": "fts"
+      },
+      {
+        "n": "830eb5a4",
+        "rel": 0.71,
+        "via": "fts"
+      },
+      {
+        "n": "0bad236b",
+        "rel": 0.71,
+        "via": "graph"
+      },
+      {
+        "n": "c3506c9f",
+        "rel": 0.7,
+        "via": "graph"
+      },
+      {
+        "n": "f6427ae7",
+        "rel": 0.69,
+        "via": "fts"
+      },
+      {
+        "n": "b0de01d1",
+        "rel": 0.69,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "HV3",
+    "mode": "heavy",
+    "cutoff": null,
+    "query": "what's the dual-store recall thing we've been building?",
+    "ctrl_best_rel": 0.75,
+    "n_missed_relevant": 18,
+    "missed": [
+      {
+        "n": "8008b23e",
+        "rel": 0.65,
+        "via": "fts"
+      },
+      {
+        "n": "47bd5801",
+        "rel": 0.64,
+        "via": "graph"
+      },
+      {
+        "n": "64c976ec",
+        "rel": 0.64,
+        "via": "graph"
+      },
+      {
+        "n": "e3c8f671",
+        "rel": 0.64,
+        "via": "graph"
+      },
+      {
+        "n": "357d16e3",
+        "rel": 0.64,
+        "via": "fts+graph"
+      },
+      {
+        "n": "71325022",
+        "rel": 0.64,
+        "via": "fts"
+      }
+    ]
+  },
+  {
+    "id": "HV4",
+    "mode": "heavy",
+    "cutoff": null,
+    "query": "summarize the adcp vs aamp call we made",
+    "ctrl_best_rel": 0.74,
+    "n_missed_relevant": 4,
+    "missed": [
+      {
+        "n": "41d31ca5",
+        "rel": 0.66,
+        "via": "fts+graph"
+      },
+      {
+        "n": "071f73d1",
+        "rel": 0.65,
+        "via": "fts+graph"
+      },
+      {
+        "n": "bb485ad5",
+        "rel": 0.63,
+        "via": "graph"
+      },
+      {
+        "n": "0d60c3a2",
+        "rel": 0.61,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "HV5",
+    "mode": "heavy",
+    "cutoff": null,
+    "query": "what's our eval setup \u2014 the frozen corpus thing?",
+    "ctrl_best_rel": 0.75,
+    "n_missed_relevant": 51,
+    "missed": [
+      {
+        "n": "f867fb85",
+        "rel": 0.72,
+        "via": "fts+graph"
+      },
+      {
+        "n": "695c59de",
+        "rel": 0.7,
+        "via": "fts+graph"
+      },
+      {
+        "n": "6bf3aded",
+        "rel": 0.7,
+        "via": "graph"
+      },
+      {
+        "n": "a00c6cd0",
+        "rel": 0.7,
+        "via": "graph"
+      },
+      {
+        "n": "74609602",
+        "rel": 0.7,
+        "via": "graph"
+      },
+      {
+        "n": "4d7f0b29",
+        "rel": 0.69,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "HV6",
+    "mode": "heavy",
+    "cutoff": null,
+    "query": "what have we already tried and ruled out on recall burial?",
+    "ctrl_best_rel": 0.75,
+    "n_missed_relevant": 50,
+    "missed": [
+      {
+        "n": "484fd4d0",
+        "rel": 0.71,
+        "via": "fts+graph"
+      },
+      {
+        "n": "50ccaa80",
+        "rel": 0.69,
+        "via": "fts"
+      },
+      {
+        "n": "eedc7644",
+        "rel": 0.68,
+        "via": "fts+graph"
+      },
+      {
+        "n": "94f6e01a",
+        "rel": 0.68,
+        "via": "fts"
+      },
+      {
+        "n": "065af79d",
+        "rel": 0.67,
+        "via": "graph"
+      },
+      {
+        "n": "eb63f789",
+        "rel": 0.67,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "RM1",
+    "mode": "remote",
+    "cutoff": null,
+    "query": "what was the very first conversation between us?",
+    "ctrl_best_rel": 0.69,
+    "n_missed_relevant": 0,
+    "missed": []
+  },
+  {
+    "id": "RM2",
+    "mode": "remote",
+    "cutoff": null,
+    "query": "didn't we find you can't recall your own session's nodes?",
+    "ctrl_best_rel": 0.79,
+    "n_missed_relevant": 71,
+    "missed": [
+      {
+        "n": "ede556c5",
+        "rel": 0.74,
+        "via": "fts"
+      },
+      {
+        "n": "6be615b6",
+        "rel": 0.71,
+        "via": "graph"
+      },
+      {
+        "n": "aa242b8f",
+        "rel": 0.69,
+        "via": "graph"
+      },
+      {
+        "n": "28fc780e",
+        "rel": 0.68,
+        "via": "graph"
+      },
+      {
+        "n": "82157b3c",
+        "rel": 0.68,
+        "via": "graph"
+      },
+      {
+        "n": "fbad4386",
+        "rel": 0.68,
+        "via": "fts"
+      }
+    ]
+  },
+  {
+    "id": "RM3",
+    "mode": "remote",
+    "cutoff": null,
+    "query": "what's my rule about merging versus overwriting?",
+    "ctrl_best_rel": 0.74,
+    "n_missed_relevant": 35,
+    "missed": [
+      {
+        "n": "2635904b",
+        "rel": 0.68,
+        "via": "fts"
+      },
+      {
+        "n": "6ea3e10c",
+        "rel": 0.66,
+        "via": "fts"
+      },
+      {
+        "n": "9b768f84",
+        "rel": 0.66,
+        "via": "graph"
+      },
+      {
+        "n": "91dc5882",
+        "rel": 0.66,
+        "via": "graph"
+      },
+      {
+        "n": "992e4109",
+        "rel": 0.66,
+        "via": "fts"
+      },
+      {
+        "n": "988de522",
+        "rel": 0.66,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "RM4",
+    "mode": "remote",
+    "cutoff": null,
+    "query": "where did I say I care about efficiency over keeping everything?",
+    "ctrl_best_rel": 0.64,
+    "n_missed_relevant": 8,
+    "missed": [
+      {
+        "n": "1c9dd09d",
+        "rel": 0.61,
+        "via": "fts"
+      },
+      {
+        "n": "7eba0f9a",
+        "rel": 0.61,
+        "via": "graph"
+      },
+      {
+        "n": "84458163",
+        "rel": 0.6,
+        "via": "graph"
+      },
+      {
+        "n": "501b67f8",
+        "rel": 0.6,
+        "via": "graph"
+      },
+      {
+        "n": "3e8ab6f1",
+        "rel": 0.6,
+        "via": "fts"
+      },
+      {
+        "n": "ee36f297",
+        "rel": 0.6,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "RM5",
+    "mode": "remote",
+    "cutoff": null,
+    "query": "what came out of that v29 dashboard backdate audit?",
+    "ctrl_best_rel": 0.75,
+    "n_missed_relevant": 41,
+    "missed": [
+      {
+        "n": "3b7bd999",
+        "rel": 0.7,
+        "via": "fts"
+      },
+      {
+        "n": "3a786472",
+        "rel": 0.69,
+        "via": "fts"
+      },
+      {
+        "n": "7bca8943",
+        "rel": 0.69,
+        "via": "fts"
+      },
+      {
+        "n": "7f4b24a1",
+        "rel": 0.67,
+        "via": "fts"
+      },
+      {
+        "n": "022634ce",
+        "rel": 0.67,
+        "via": "fts"
+      },
+      {
+        "n": "e1da3286",
+        "rel": 0.67,
+        "via": "fts"
+      }
+    ]
+  },
+  {
+    "id": "RM6",
+    "mode": "remote",
+    "cutoff": null,
+    "query": "how much memory did that April cleanup free up?",
+    "ctrl_best_rel": 0.79,
+    "n_missed_relevant": 12,
+    "missed": [
+      {
+        "n": "c46084ff",
+        "rel": 0.65,
+        "via": "fts"
+      },
+      {
+        "n": "2d266ee4",
+        "rel": 0.64,
+        "via": "fts"
+      },
+      {
+        "n": "ea88a92c",
+        "rel": 0.62,
+        "via": "fts"
+      },
+      {
+        "n": "378fbdd2",
+        "rel": 0.61,
+        "via": "fts"
+      },
+      {
+        "n": "fe4fa108",
+        "rel": 0.61,
+        "via": "graph"
+      },
+      {
+        "n": "c8b8abe2",
+        "rel": 0.61,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "EP1",
+    "mode": "episode",
+    "cutoff": "2026-04-25T23:59:59+00:00",
+    "query": "what did we work on back in late April when we planned the launch?",
+    "ctrl_best_rel": 0.62,
+    "n_missed_relevant": 2,
+    "missed": [
+      {
+        "n": "37a61f14",
+        "rel": 0.63,
+        "via": "fts"
+      },
+      {
+        "n": "85ec3fad",
+        "rel": 0.61,
+        "via": "fts"
+      }
+    ]
+  },
+  {
+    "id": "EP2",
+    "mode": "episode",
+    "cutoff": "2026-04-24T23:59:59+00:00",
+    "query": "remember that session a while back where I was 'glowing'?",
+    "ctrl_best_rel": 0.7,
+    "n_missed_relevant": 0,
+    "missed": []
+  },
+  {
+    "id": "EP3",
+    "mode": "episode",
+    "cutoff": null,
+    "query": "the research we did a while back on memory biases \u2014 what was it?",
+    "ctrl_best_rel": 0.7,
+    "n_missed_relevant": 106,
+    "missed": [
+      {
+        "n": "b182bf4a",
+        "rel": 0.7,
+        "via": "graph"
+      },
+      {
+        "n": "2f4f5cf9",
+        "rel": 0.69,
+        "via": "fts"
+      },
+      {
+        "n": "0ad11325",
+        "rel": 0.69,
+        "via": "fts"
+      },
+      {
+        "n": "ea76b1f2",
+        "rel": 0.69,
+        "via": "graph"
+      },
+      {
+        "n": "fe1d5fd0",
+        "rel": 0.69,
+        "via": "graph"
+      },
+      {
+        "n": "89bec253",
+        "rel": 0.68,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "EP4",
+    "mode": "episode",
+    "cutoff": null,
+    "query": "what did we conclude early on about similar_to edges and old artifacts?",
+    "ctrl_best_rel": 0.75,
+    "n_missed_relevant": 53,
+    "missed": [
+      {
+        "n": "bbb2d2ae",
+        "rel": 0.7,
+        "via": "fts"
+      },
+      {
+        "n": "4286e487",
+        "rel": 0.7,
+        "via": "graph"
+      },
+      {
+        "n": "b60cbc45",
+        "rel": 0.69,
+        "via": "graph"
+      },
+      {
+        "n": "c2baf4c3",
+        "rel": 0.68,
+        "via": "fts"
+      },
+      {
+        "n": "136a91b1",
+        "rel": 0.68,
+        "via": "graph"
+      },
+      {
+        "n": "31e7093a",
+        "rel": 0.67,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "EP5",
+    "mode": "episode",
+    "cutoff": null,
+    "query": "what did we do on the last session we worked on ex.co?",
+    "ctrl_best_rel": 0.7,
+    "n_missed_relevant": 37,
+    "missed": [
+      {
+        "n": "cfdff077",
+        "rel": 0.68,
+        "via": "fts"
+      },
+      {
+        "n": "c150cf9a",
+        "rel": 0.68,
+        "via": "fts"
+      },
+      {
+        "n": "85ec3fad",
+        "rel": 0.65,
+        "via": "fts"
+      },
+      {
+        "n": "7b14f270",
+        "rel": 0.65,
+        "via": "fts+graph"
+      },
+      {
+        "n": "2ea7b3ca",
+        "rel": 0.65,
+        "via": "graph"
+      },
+      {
+        "n": "95e84f64",
+        "rel": 0.65,
+        "via": "graph"
+      }
+    ]
+  },
+  {
+    "id": "EP6",
+    "mode": "episode",
+    "cutoff": null,
+    "query": "wasn't there a name I got wrong about the ex.co team a while back?",
+    "ctrl_best_rel": 0.71,
+    "n_missed_relevant": 18,
+    "missed": [
+      {
+        "n": "5fe121db",
+        "rel": 0.68,
+        "via": "fts+graph"
+      },
+      {
+        "n": "ab2dc4e4",
+        "rel": 0.64,
+        "via": "graph"
+      },
+      {
+        "n": "1683a628",
+        "rel": 0.64,
+        "via": "graph"
+      },
+      {
+        "n": "671d1f22",
+        "rel": 0.64,
+        "via": "graph"
+      },
+      {
+        "n": "1180214b",
+        "rel": 0.64,
+        "via": "fts"
+      },
+      {
+        "n": "1080df56",
+        "rel": 0.63,
+        "via": "fts+graph"
+      }
+    ]
+  }
+]

@@ -1,3 +1,5 @@
+> **⚠ SUPERSEDED → `docs/RECALL-STATE.md` is canonical** (RRF failed its A/B — see the status note below).
+
 # Recall Hybrid Fusion — Two-Stage Design (RRF + LLM rerank)
 
 > **STATUS UPDATE 2026-06-05:** RRF as a full-blend replacement **FAILED** its A/B (scrambled

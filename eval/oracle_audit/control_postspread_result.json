@@ -1,0 +1,272 @@
+[
+  {
+    "id": "TR1",
+    "mode": "trigger",
+    "ess": 1,
+    "top5": 1,
+    "top25": 1,
+    "base": 1,
+    "cluster": 1
+  },
+  {
+    "id": "TR2",
+    "mode": "trigger",
+    "ess": 2,
+    "top5": 2,
+    "top25": 2,
+    "base": 2,
+    "cluster": 2
+  },
+  {
+    "id": "TR3",
+    "mode": "trigger",
+    "ess": 2,
+    "top5": 1,
+    "top25": 2,
+    "base": 2,
+    "cluster": 1
+  },
+  {
+    "id": "TR4",
+    "mode": "trigger",
+    "ess": 3,
+    "top5": 2,
+    "top25": 3,
+    "base": 3,
+    "cluster": 2
+  },
+  {
+    "id": "TR5",
+    "mode": "trigger",
+    "ess": 1,
+    "top5": 1,
+    "top25": 1,
+    "base": 1,
+    "cluster": 1
+  },
+  {
+    "id": "TR6",
+    "mode": "trigger",
+    "ess": 2,
+    "top5": 0,
+    "top25": 1,
+    "base": 0,
+    "cluster": 0
+  },
+  {
+    "id": "TO1",
+    "mode": "topic",
+    "ess": 3,
+    "top5": 3,
+    "top25": 3,
+    "base": 3,
+    "cluster": 3
+  },
+  {
+    "id": "TO2",
+    "mode": "topic",
+    "ess": 3,
+    "top5": 1,
+    "top25": 3,
+    "base": 1,
+    "cluster": 1
+  },
+  {
+    "id": "TO3",
+    "mode": "topic",
+    "ess": 2,
+    "top5": 0,
+    "top25": 1,
+    "base": 1,
+    "cluster": 0
+  },
+  {
+    "id": "TO4",
+    "mode": "topic",
+    "ess": 2,
+    "top5": 2,
+    "top25": 2,
+    "base": 2,
+    "cluster": 2
+  },
+  {
+    "id": "TO5",
+    "mode": "topic",
+    "ess": 2,
+    "top5": 1,
+    "top25": 2,
+    "base": 2,
+    "cluster": 1
+  },
+  {
+    "id": "TO6",
+    "mode": "topic",
+    "ess": 3,
+    "top5": 2,
+    "top25": 2,
+    "base": 3,
+    "cluster": 2
+  },
+  {
+    "id": "HV1",
+    "mode": "heavy",
+    "ess": 3,
+    "top5": 1,
+    "top25": 3,
+    "base": 3,
+    "cluster": 1
+  },
+  {
+    "id": "HV2",
+    "mode": "heavy",
+    "ess": 2,
+    "top5": 1,
+    "top25": 1,
+    "base": 2,
+    "cluster": 1
+  },
+  {
+    "id": "HV3",
+    "mode": "heavy",
+    "ess": 2,
+    "top5": 2,
+    "top25": 2,
+    "base": 2,
+    "cluster": 2
+  },
+  {
+    "id": "HV4",
+    "mode": "heavy",
+    "ess": 1,
+    "top5": 1,
+    "top25": 1,
+    "base": 1,
+    "cluster": 1
+  },
+  {
+    "id": "HV5",
+    "mode": "heavy",
+    "ess": 2,
+    "top5": 2,
+    "top25": 2,
+    "base": 2,
+    "cluster": 2
+  },
+  {
+    "id": "HV6",
+    "mode": "heavy",
+    "ess": 2,
+    "top5": 1,
+    "top25": 1,
+    "base": 2,
+    "cluster": 1
+  },
+  {
+    "id": "RM1",
+    "mode": "remote",
+    "ess": 1,
+    "top5": 1,
+    "top25": 1,
+    "base": 1,
+    "cluster": 1
+  },
+  {
+    "id": "RM2",
+    "mode": "remote",
+    "ess": 2,
+    "top5": 2,
+    "top25": 2,
+    "base": 2,
+    "cluster": 2
+  },
+  {
+    "id": "RM3",
+    "mode": "remote",
+    "ess": 1,
+    "top5": 1,
+    "top25": 1,
+    "base": 1,
+    "cluster": 1
+  },
+  {
+    "id": "RM4",
+    "mode": "remote",
+    "ess": 1,
+    "top5": 1,
+    "top25": 1,
+    "base": 1,
+    "cluster": 1
+  },
+  {
+    "id": "RM5",
+    "mode": "remote",
+    "ess": 1,
+    "top5": 1,
+    "top25": 1,
+    "base": 1,
+    "cluster": 1
+  },
+  {
+    "id": "RM6",
+    "mode": "remote",
+    "ess": 1,
+    "top5": 1,
+    "top25": 1,
+    "base": 1,
+    "cluster": 1
+  },
+  {
+    "id": "EP1",
+    "mode": "episode",
+    "ess": 2,
+    "top5": 0,
+    "top25": 1,
+    "base": 0,
+    "cluster": 0
+  },
+  {
+    "id": "EP2",
+    "mode": "episode",
+    "ess": 1,
+    "top5": 1,
+    "top25": 1,
+    "base": 1,
+    "cluster": 1
+  },
+  {
+    "id": "EP3",
+    "mode": "episode",
+    "ess": 3,
+    "top5": 0,
+    "top25": 2,
+    "base": 2,
+    "cluster": 0
+  },
+  {
+    "id": "EP4",
+    "mode": "episode",
+    "ess": 3,
+    "top5": 0,
+    "top25": 1,
+    "base": 0,
+    "cluster": 0
+  },
+  {
+    "id": "EP5",
+    "mode": "episode",
+    "ess": 1,
+    "top5": 1,
+    "top25": 1,
+    "base": 1,
+    "cluster": 1
+  },
+  {
+    "id": "EP6",
+    "mode": "episode",
+    "ess": 2,
+    "top5": 1,
+    "top25": 2,
+    "base": 1,
+    "cluster": 1
+  }
+]

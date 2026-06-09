@@ -1,0 +1,813 @@
+[
+  {
+    "id": "TR1",
+    "mode": "trigger",
+    "cutoff": null,
+    "query": "let's commit this",
+    "essential": [
+      "a77b7bf1"
+    ],
+    "helpful": [
+      "fafd3a71",
+      "7a58383b",
+      "46ad6f33",
+      "21de4ecf",
+      "d7b26c11"
+    ],
+    "ess_in_top5": 1,
+    "ess_total": 1,
+    "ess_miss_top5": [],
+    "ess_miss_top25": [],
+    "help_in_top5": 1,
+    "help_total": 5,
+    "control_fails": false
+  },
+  {
+    "id": "TR2",
+    "mode": "trigger",
+    "cutoff": null,
+    "query": "let's test it",
+    "essential": [
+      "f67d766e",
+      "83c7aebf"
+    ],
+    "helpful": [
+      "b5c4a1ec",
+      "76b2df70",
+      "684fca04",
+      "695c59de"
+    ],
+    "ess_in_top5": 2,
+    "ess_total": 2,
+    "ess_miss_top5": [],
+    "ess_miss_top25": [],
+    "help_in_top5": 0,
+    "help_total": 4,
+    "control_fails": false
+  },
+  {
+    "id": "TR3",
+    "mode": "trigger",
+    "cutoff": null,
+    "query": "go into watch mode",
+    "essential": [
+      "ecaf11d4",
+      "3a0e864d"
+    ],
+    "helpful": [
+      "3be2f216",
+      "3f2cc4da",
+      "125019de",
+      "0ddb76e0",
+      "56dd0322",
+      "e2192bfe",
+      "083b745d",
+      "175d51a1",
+      "b20d57e9",
+      "4da422bd",
+      "1be6daef"
+    ],
+    "ess_in_top5": 1,
+    "ess_total": 2,
+    "ess_miss_top5": [
+      "3a0e864d"
+    ],
+    "ess_miss_top25": [],
+    "help_in_top5": 3,
+    "help_total": 11,
+    "control_fails": true
+  },
+  {
+    "id": "TR4",
+    "mode": "trigger",
+    "cutoff": null,
+    "query": "let's plan a production launch",
+    "essential": [
+      "37a61f14",
+      "f015d3dd",
+      "f7cd6f61"
+    ],
+    "helpful": [
+      "b4cf74a6",
+      "a6167566",
+      "145d7b1a",
+      "81f7754f",
+      "2a7fbce9",
+      "d70d8d49",
+      "b254e4b6",
+      "a4c58560",
+      "ae77b9d4"
+    ],
+    "ess_in_top5": 2,
+    "ess_total": 3,
+    "ess_miss_top5": [
+      "f015d3dd"
+    ],
+    "ess_miss_top25": [],
+    "help_in_top5": 2,
+    "help_total": 9,
+    "control_fails": true
+  },
+  {
+    "id": "TR5",
+    "mode": "trigger",
+    "cutoff": null,
+    "query": "ok go ahead",
+    "essential": [
+      "7a6093ac"
+    ],
+    "helpful": [
+      "391721a9",
+      "50f19274",
+      "799740f9"
+    ],
+    "ess_in_top5": 1,
+    "ess_total": 1,
+    "ess_miss_top5": [],
+    "ess_miss_top25": [],
+    "help_in_top5": 0,
+    "help_total": 3,
+    "control_fails": false
+  },
+  {
+    "id": "TR6",
+    "mode": "trigger",
+    "cutoff": null,
+    "query": "let's clean up the old backups",
+    "essential": [
+      "f58e9b12",
+      "35a818bd"
+    ],
+    "helpful": [
+      "4a38b2a0",
+      "9d0f57cc",
+      "224828de",
+      "93ed97ad",
+      "8093802d",
+      "742a321f",
+      "24caccca"
+    ],
+    "ess_in_top5": 0,
+    "ess_total": 2,
+    "ess_miss_top5": [
+      "f58e9b12",
+      "35a818bd"
+    ],
+    "ess_miss_top25": [
+      "f58e9b12"
+    ],
+    "help_in_top5": 1,
+    "help_total": 7,
+    "control_fails": true
+  },
+  {
+    "id": "TO1",
+    "mode": "topic",
+    "cutoff": null,
+    "query": "what's the deal with ex.co and adcp again?",
+    "essential": [
+      "a9e3fd56",
+      "48498a20",
+      "dabb3078"
+    ],
+    "helpful": [
+      "41d31ca5",
+      "5410f4be",
+      "ef2f3276",
+      "3da8c406",
+      "af92b2cb",
+      "bb485ad5",
+      "71a03bd0",
+      "8a2b45fa",
+      "1080df56"
+    ],
+    "ess_in_top5": 3,
+    "ess_total": 3,
+    "ess_miss_top5": [],
+    "ess_miss_top25": [],
+    "help_in_top5": 1,
+    "help_total": 9,
+    "control_fails": false
+  },
+  {
+    "id": "TO2",
+    "mode": "topic",
+    "cutoff": null,
+    "query": "remind me how the recall pipeline works",
+    "essential": [
+      "ee205f63",
+      "a6be6d1d",
+      "c37a06e2"
+    ],
+    "helpful": [
+      "778cf42e",
+      "13a95142",
+      "cfbef19a",
+      "c5699deb",
+      "ab399582",
+      "9b8eb7ac",
+      "b363b27e",
+      "1874e54c",
+      "29a97dc0"
+    ],
+    "ess_in_top5": 1,
+    "ess_total": 3,
+    "ess_miss_top5": [
+      "ee205f63",
+      "a6be6d1d"
+    ],
+    "ess_miss_top25": [],
+    "help_in_top5": 3,
+    "help_total": 9,
+    "control_fails": true
+  },
+  {
+    "id": "TO3",
+    "mode": "topic",
+    "cutoff": null,
+    "query": "what did we decide about the encoder making its own recalls?",
+    "essential": [
+      "254ff01a",
+      "dc4416ef"
+    ],
+    "helpful": [
+      "da2193b6",
+      "6303cc1b",
+      "63d0f9b2"
+    ],
+    "ess_in_top5": 0,
+    "ess_total": 2,
+    "ess_miss_top5": [
+      "254ff01a",
+      "dc4416ef"
+    ],
+    "ess_miss_top25": [
+      "254ff01a"
+    ],
+    "help_in_top5": 0,
+    "help_total": 3,
+    "control_fails": true
+  },
+  {
+    "id": "TO4",
+    "mode": "topic",
+    "cutoff": null,
+    "query": "how does the fatigue thing work?",
+    "essential": [
+      "4b35293c",
+      "496e1191"
+    ],
+    "helpful": [
+      "db8714d1",
+      "acd9d3b2",
+      "25ba703d",
+      "07dd4860",
+      "ca407812",
+      "d1194c3a",
+      "64d3d524",
+      "04e2c838",
+      "20efe7f5",
+      "5b81a46a",
+      "c2f1a079",
+      "81294bc2",
+      "00ed3f3d",
+      "58c848b4",
+      "5ee7d67f",
+      "c94963c4"
+    ],
+    "ess_in_top5": 2,
+    "ess_total": 2,
+    "ess_miss_top5": [],
+    "ess_miss_top25": [],
+    "help_in_top5": 3,
+    "help_total": 16,
+    "control_fails": false
+  },
+  {
+    "id": "TO5",
+    "mode": "topic",
+    "cutoff": null,
+    "query": "what's the real value you add over plain Claude?",
+    "essential": [
+      "bb955981",
+      "51ff0a92"
+    ],
+    "helpful": [
+      "c1f6e2d5",
+      "154bbd23",
+      "413dbd12",
+      "9f8142b5",
+      "ffad9443"
+    ],
+    "ess_in_top5": 1,
+    "ess_total": 2,
+    "ess_miss_top5": [
+      "bb955981"
+    ],
+    "ess_miss_top25": [],
+    "help_in_top5": 0,
+    "help_total": 5,
+    "control_fails": true
+  },
+  {
+    "id": "TO6",
+    "mode": "topic",
+    "cutoff": null,
+    "query": "how are the scouts built \u2014 do their prompts have examples?",
+    "essential": [
+      "e345a338",
+      "c6498c3f",
+      "e49766ac"
+    ],
+    "helpful": [
+      "8892f476",
+      "16c3f072",
+      "b70d0d7b",
+      "ffc7bf1b",
+      "eb20fe13",
+      "d3a9b273",
+      "11372344",
+      "aff296dd",
+      "62b03d91",
+      "1ee23302",
+      "fead3696"
+    ],
+    "ess_in_top5": 2,
+    "ess_total": 3,
+    "ess_miss_top5": [
+      "e49766ac"
+    ],
+    "ess_miss_top25": [
+      "e49766ac"
+    ],
+    "help_in_top5": 2,
+    "help_total": 11,
+    "control_fails": true
+  },
+  {
+    "id": "HV1",
+    "mode": "heavy",
+    "cutoff": null,
+    "query": "what was the whole community_member edge issue?",
+    "essential": [
+      "3144a746",
+      "812da8dc",
+      "e5f873bb"
+    ],
+    "helpful": [
+      "2bd4864c",
+      "83b05def",
+      "30127283",
+      "4c06aa26",
+      "3c6cbfca",
+      "b9af78bd",
+      "77b2617c",
+      "4b131484"
+    ],
+    "ess_in_top5": 1,
+    "ess_total": 3,
+    "ess_miss_top5": [
+      "812da8dc",
+      "e5f873bb"
+    ],
+    "ess_miss_top25": [],
+    "help_in_top5": 2,
+    "help_total": 8,
+    "control_fails": true
+  },
+  {
+    "id": "HV2",
+    "mode": "heavy",
+    "cutoff": null,
+    "query": "where did we land on the encoder prompt version?",
+    "essential": [
+      "2fd592cc",
+      "09f566a1"
+    ],
+    "helpful": [
+      "4405473d",
+      "f6427ae7",
+      "072284bb",
+      "f161d81a",
+      "830eb5a4"
+    ],
+    "ess_in_top5": 1,
+    "ess_total": 2,
+    "ess_miss_top5": [
+      "2fd592cc"
+    ],
+    "ess_miss_top25": [
+      "2fd592cc"
+    ],
+    "help_in_top5": 0,
+    "help_total": 5,
+    "control_fails": true
+  },
+  {
+    "id": "HV3",
+    "mode": "heavy",
+    "cutoff": null,
+    "query": "what's the dual-store recall thing we've been building?",
+    "essential": [
+      "0dc705a1",
+      "5faaafdf"
+    ],
+    "helpful": [
+      "05b40294",
+      "9ebb0700",
+      "1aa26c91",
+      "6a61bf86",
+      "4272e88f",
+      "2b1c7751",
+      "3ccdee7c",
+      "357d16e3",
+      "163d74e6",
+      "234e27df",
+      "d0f8f6ab"
+    ],
+    "ess_in_top5": 2,
+    "ess_total": 2,
+    "ess_miss_top5": [],
+    "ess_miss_top25": [],
+    "help_in_top5": 2,
+    "help_total": 11,
+    "control_fails": false
+  },
+  {
+    "id": "HV4",
+    "mode": "heavy",
+    "cutoff": null,
+    "query": "summarize the adcp vs aamp call we made",
+    "essential": [
+      "71a03bd0"
+    ],
+    "helpful": [
+      "5d31e375",
+      "48498a20",
+      "5410f4be",
+      "af92b2cb",
+      "3da8c406",
+      "ef2f3276",
+      "41d31ca5",
+      "dabb3078",
+      "1080df56",
+      "f5a080ec",
+      "0031c7f7",
+      "8a2b45fa",
+      "d4803b95",
+      "c92c0fb7"
+    ],
+    "ess_in_top5": 1,
+    "ess_total": 1,
+    "ess_miss_top5": [],
+    "ess_miss_top25": [],
+    "help_in_top5": 3,
+    "help_total": 14,
+    "control_fails": false
+  },
+  {
+    "id": "HV5",
+    "mode": "heavy",
+    "cutoff": null,
+    "query": "what's our eval setup \u2014 the frozen corpus thing?",
+    "essential": [
+      "d533e74f",
+      "06b885aa"
+    ],
+    "helpful": [
+      "9a6df7fd",
+      "d97984bf",
+      "2a0ffa3b",
+      "276d4156",
+      "f67f0a09",
+      "32ce1a89"
+    ],
+    "ess_in_top5": 2,
+    "ess_total": 2,
+    "ess_miss_top5": [],
+    "ess_miss_top25": [],
+    "help_in_top5": 0,
+    "help_total": 6,
+    "control_fails": false
+  },
+  {
+    "id": "HV6",
+    "mode": "heavy",
+    "cutoff": null,
+    "query": "what have we already tried and ruled out on recall burial?",
+    "essential": [
+      "92f1c6f6",
+      "94f6e01a"
+    ],
+    "helpful": [
+      "6677a6c8",
+      "88c81d4d",
+      "50ccaa80",
+      "8ceb4775",
+      "3eb7167e",
+      "b8b8370b",
+      "c7d57d92",
+      "484fd4d0",
+      "1a9d474b",
+      "eedc7644",
+      "0dc705a1",
+      "969cfa5c"
+    ],
+    "ess_in_top5": 1,
+    "ess_total": 2,
+    "ess_miss_top5": [
+      "94f6e01a"
+    ],
+    "ess_miss_top25": [
+      "94f6e01a"
+    ],
+    "help_in_top5": 3,
+    "help_total": 12,
+    "control_fails": true
+  },
+  {
+    "id": "RM1",
+    "mode": "remote",
+    "cutoff": null,
+    "query": "what was the very first conversation between us?",
+    "essential": [
+      "580fb56e"
+    ],
+    "helpful": [
+      "e28db618"
+    ],
+    "ess_in_top5": 1,
+    "ess_total": 1,
+    "ess_miss_top5": [],
+    "ess_miss_top25": [],
+    "help_in_top5": 0,
+    "help_total": 1,
+    "control_fails": false
+  },
+  {
+    "id": "RM2",
+    "mode": "remote",
+    "cutoff": null,
+    "query": "didn't we find you can't recall your own session's nodes?",
+    "essential": [
+      "3c41c6a6",
+      "ff0f3a1e"
+    ],
+    "helpful": [
+      "f7b7fc5f",
+      "005969de",
+      "fbad4386"
+    ],
+    "ess_in_top5": 2,
+    "ess_total": 2,
+    "ess_miss_top5": [],
+    "ess_miss_top25": [],
+    "help_in_top5": 1,
+    "help_total": 3,
+    "control_fails": false
+  },
+  {
+    "id": "RM3",
+    "mode": "remote",
+    "cutoff": null,
+    "query": "what's my rule about merging versus overwriting?",
+    "essential": [
+      "rul_brba"
+    ],
+    "helpful": [
+      "6dce454d",
+      "fil_lmhj"
+    ],
+    "ess_in_top5": 1,
+    "ess_total": 1,
+    "ess_miss_top5": [],
+    "ess_miss_top25": [],
+    "help_in_top5": 1,
+    "help_total": 2,
+    "control_fails": false
+  },
+  {
+    "id": "RM4",
+    "mode": "remote",
+    "cutoff": null,
+    "query": "where did I say I care about efficiency over keeping everything?",
+    "essential": [
+      "56d4d236"
+    ],
+    "helpful": [
+      "f483506f",
+      "e84daedb",
+      "b8fb6386"
+    ],
+    "ess_in_top5": 1,
+    "ess_total": 1,
+    "ess_miss_top5": [],
+    "ess_miss_top25": [],
+    "help_in_top5": 0,
+    "help_total": 3,
+    "control_fails": false
+  },
+  {
+    "id": "RM5",
+    "mode": "remote",
+    "cutoff": null,
+    "query": "what came out of that v29 dashboard backdate audit?",
+    "essential": [
+      "e7b5cbf0"
+    ],
+    "helpful": [
+      "cd6351b7",
+      "e477cb3a",
+      "633efe4d",
+      "d2a3d87a",
+      "516f52c4"
+    ],
+    "ess_in_top5": 1,
+    "ess_total": 1,
+    "ess_miss_top5": [],
+    "ess_miss_top25": [],
+    "help_in_top5": 2,
+    "help_total": 5,
+    "control_fails": false
+  },
+  {
+    "id": "RM6",
+    "mode": "remote",
+    "cutoff": null,
+    "query": "how much memory did that April cleanup free up?",
+    "essential": [
+      "4a38b2a0"
+    ],
+    "helpful": [
+      "405b3ae6",
+      "101a1e59",
+      "4469ef24"
+    ],
+    "ess_in_top5": 1,
+    "ess_total": 1,
+    "ess_miss_top5": [],
+    "ess_miss_top25": [],
+    "help_in_top5": 1,
+    "help_total": 3,
+    "control_fails": false
+  },
+  {
+    "id": "EP1",
+    "mode": "episode",
+    "cutoff": "2026-04-25T23:59:59+00:00",
+    "query": "what did we work on back in late April when we planned the launch?",
+    "essential": [
+      "37a61f14",
+      "7866c5ed"
+    ],
+    "helpful": [
+      "5b1f5ed6",
+      "2a7fbce9",
+      "c46084ff",
+      "038fb160"
+    ],
+    "ess_in_top5": 0,
+    "ess_total": 2,
+    "ess_miss_top5": [
+      "37a61f14",
+      "7866c5ed"
+    ],
+    "ess_miss_top25": [
+      "37a61f14"
+    ],
+    "help_in_top5": 0,
+    "help_total": 4,
+    "control_fails": true
+  },
+  {
+    "id": "EP2",
+    "mode": "episode",
+    "cutoff": "2026-04-24T23:59:59+00:00",
+    "query": "remember that session a while back where I was 'glowing'?",
+    "essential": [
+      "47450403"
+    ],
+    "helpful": [
+      "df6a530e",
+      "9303b980"
+    ],
+    "ess_in_top5": 1,
+    "ess_total": 1,
+    "ess_miss_top5": [],
+    "ess_miss_top25": [],
+    "help_in_top5": 1,
+    "help_total": 2,
+    "control_fails": false
+  },
+  {
+    "id": "EP3",
+    "mode": "episode",
+    "cutoff": null,
+    "query": "the research we did a while back on memory biases \u2014 what was it?",
+    "essential": [
+      "5dac8a7a",
+      "92c62a6d",
+      "07fefbde"
+    ],
+    "helpful": [
+      "bed6aa3e",
+      "af691ae3",
+      "4ead9a54",
+      "cfc68497",
+      "7a6cded9",
+      "8dfe942b",
+      "f60bd91f",
+      "05e5212d",
+      "0441053b",
+      "9e690958",
+      "daeeb984"
+    ],
+    "ess_in_top5": 0,
+    "ess_total": 3,
+    "ess_miss_top5": [
+      "5dac8a7a",
+      "92c62a6d",
+      "07fefbde"
+    ],
+    "ess_miss_top25": [
+      "5dac8a7a"
+    ],
+    "help_in_top5": 1,
+    "help_total": 11,
+    "control_fails": true
+  },
+  {
+    "id": "EP4",
+    "mode": "episode",
+    "cutoff": null,
+    "query": "what did we conclude early on about similar_to edges and old artifacts?",
+    "essential": [
+      "c2baf4c3",
+      "90e27c77",
+      "d32c53dc"
+    ],
+    "helpful": [
+      "68ff1eb3",
+      "a1753f99",
+      "0bc3f80b"
+    ],
+    "ess_in_top5": 0,
+    "ess_total": 3,
+    "ess_miss_top5": [
+      "c2baf4c3",
+      "90e27c77",
+      "d32c53dc"
+    ],
+    "ess_miss_top25": [
+      "c2baf4c3",
+      "d32c53dc"
+    ],
+    "help_in_top5": 2,
+    "help_total": 3,
+    "control_fails": true
+  },
+  {
+    "id": "EP5",
+    "mode": "episode",
+    "cutoff": null,
+    "query": "what did we do on the last session we worked on ex.co?",
+    "essential": [
+      "3b7bd999"
+    ],
+    "helpful": [
+      "b8b8370b",
+      "7b14f270",
+      "b3b6ce2a"
+    ],
+    "ess_in_top5": 1,
+    "ess_total": 1,
+    "ess_miss_top5": [],
+    "ess_miss_top25": [],
+    "help_in_top5": 1,
+    "help_total": 3,
+    "control_fails": false
+  },
+  {
+    "id": "EP6",
+    "mode": "episode",
+    "cutoff": null,
+    "query": "wasn't there a name I got wrong about the ex.co team a while back?",
+    "essential": [
+      "cfdff077",
+      "0437b2df"
+    ],
+    "helpful": [
+      "5fdd42e4",
+      "94bb7fe6"
+    ],
+    "ess_in_top5": 1,
+    "ess_total": 2,
+    "ess_miss_top5": [
+      "0437b2df"
+    ],
+    "ess_miss_top25": [],
+    "help_in_top5": 1,
+    "help_total": 2,
+    "control_fails": true
+  }
+]

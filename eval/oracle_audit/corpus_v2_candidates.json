@@ -1,0 +1,3258 @@
+{
+  "model": "nomic-ai/nomic-embed-text-v1.5-Q",
+  "coverage": {
+    "embedded_s0": 4721,
+    "total_s0_events": 8213,
+    "token_hits": {
+      "vast": 2,
+      "multicall": 0,
+      "shachar": 2,
+      "ex.co": 25,
+      "kevel": 1,
+      "springserve": 0,
+      "adcp": 4
+    }
+  },
+  "queries": [
+    {
+      "id": "T1",
+      "kind": "thick-concept",
+      "terse": "MCP facts",
+      "rich": "important facts about MCP \u2014 model context protocol, tools, servers, restart constraints",
+      "node_candidates": [
+        {
+          "id": "85649963",
+          "title": "MCP Server Architecture: Restart Constraints and Tool E",
+          "type": "community",
+          "discovery": "both"
+        },
+        {
+          "id": "b8b16a3a",
+          "title": "MCP server can't restart mid-session \u2014 changes to brain",
+          "type": "lesson",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "edeb363d",
+          "title": "Daemon reload MCP tool: design question open \u2014 safety, ",
+          "type": "open",
+          "discovery": "both"
+        },
+        {
+          "id": "c5ad9e9f",
+          "title": "MCP server vs daemon: module reload requires MCP server",
+          "type": "lesson",
+          "discovery": "both"
+        },
+        {
+          "id": "a6d04354",
+          "title": "MCP .mcp.json does not hot-reload \u2014 fresh session requi",
+          "type": "mechanism",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "198fe2bc",
+          "title": "Tom's ':)' \u2014 MCP tools working for the first time",
+          "type": "milestone",
+          "discovery": "both"
+        },
+        {
+          "id": "ac0159f1",
+          "title": "CLAUDE.md and SKILL.md reload every turn \u2014 only MCP nee",
+          "type": "mechanism",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "77b23cb9",
+          "title": "MCP + dashboard servers need restart to pick up ec86aca",
+          "type": "open",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "da9fae28",
+          "title": "MCP tools are semantic, not structural \u2014 reach for reca",
+          "type": "lesson",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "2d0e7221",
+          "title": "Brain repo plugin enabled \u2014 MCP tools working after dia",
+          "type": "finding",
+          "discovery": "both"
+        },
+        {
+          "id": "41ba0ce4",
+          "title": "SKILL.md v5.4.0: rewritten from Python syntax to MCP to",
+          "type": "decision",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "0e7dc868",
+          "title": "Does MCP tool syntax advantage hold for non-Sonnet mode",
+          "type": "uncertainty",
+          "discovery": "both"
+        },
+        {
+          "id": "1f56e1e5",
+          "title": "Use MCP brain tools \u2014 not Python/bash \u2014 for all brain o",
+          "type": "rule",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "eb5bacb0",
+          "title": "Plugin Operationalization: MCP Tools and Dashboard Crea",
+          "type": "community",
+          "discovery": "both"
+        },
+        {
+          "id": "0688d52d",
+          "title": "Dream connection: \"Layer 2 judge is irrelevant when Lay",
+          "type": "thought",
+          "discovery": "embedding_only"
+        }
+      ],
+      "trace_candidates": [
+        {
+          "trace_id": "00007a5b",
+          "tcos": 0.698,
+          "session": "e3d738b7",
+          "ref_type": "user_message",
+          "created_at": "2026-05-03T06:12:28.898123+00:00",
+          "text": "Tom: do it right. We can also trust the mcp tools explanation to answer on the explicit howtos right?",
+          "pulls_nodes": [
+            {
+              "id": "98b3f470",
+              "ncos": 0.817,
+              "title": "Testing philosophy: tests should align to MCP tool usage and actual return shapes",
+              "type": "principle"
+            },
+            {
+              "id": "198fe2bc",
+              "ncos": 0.816,
+              "title": "Tom's ':)' \u2014 MCP tools working for the first time",
+              "type": "milestone"
+            },
+            {
+              "id": "a8fe71a7",
+              "ncos": 0.816,
+              "title": "Tom's ':)' after live MCP encoding \u2014 second arrival",
+              "type": "moment"
+            }
+          ]
+        },
+        {
+          "trace_id": "edd7494a",
+          "tcos": 0.696,
+          "session": "3ce74143",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-30T01:55:24.929078+00:00",
+          "text": "Anchor: Got the authoritative answer. Here's the synthesis of both threads.\n\n## Is there a native MCP \"critical\" / priority annotation?\n\n**No.** The latest MCP spec (revision **2025-11-25**) defines exactly five `ToolAnnotations` \u2014 `title`, `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openW",
+          "pulls_nodes": [
+            {
+              "id": "a437b2e6",
+              "ncos": 0.86,
+              "title": "MCP spec ToolAnnotations vocabulary: 5 standard fields, no priority/critical",
+              "type": "fact"
+            },
+            {
+              "id": "48ceedee",
+              "ncos": 0.854,
+              "title": "Per-tool eager loading: anthropic/alwaysLoad in _meta \u2014 server author controls per-tool, user controls server-level only",
+              "type": "mechanism"
+            },
+            {
+              "id": "16c4d3b3",
+              "ncos": 0.831,
+              "title": "CRITICAL_TOOLS: 6 brain tools marked anthropic/alwaysLoad \u2014 ships in plugin v9.5.1, zero installer config",
+              "type": "architecture"
+            }
+          ]
+        },
+        {
+          "trace_id": "00007a5c",
+          "tcos": 0.688,
+          "session": "e3d738b7",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-03T06:12:28.899241+00:00",
+          "text": "Anchor: **8,805 chars** \u2014 comfortably under 10k. Total session: **12,158 \u2192 8,805 (-27.6%).**\n\nOn MCP tool examples \u2014 yes, you're right. Anthropic's spec supports `examples` arrays in JSON Schema parameter definitions, and the tool description text itself can carry example calls. This is the natural ",
+          "pulls_nodes": [
+            {
+              "id": "4f5c78a8",
+              "ncos": 0.896,
+              "title": "MCP tool descriptions to carry craft examples displaced from SKILL.md",
+              "type": "decision"
+            },
+            {
+              "id": "41ba0ce4",
+              "ncos": 0.845,
+              "title": "SKILL.md v5.4.0: rewritten from Python syntax to MCP tool syntax, benchmark-validated",
+              "type": "decision"
+            },
+            {
+              "id": "077a2d38",
+              "ncos": 0.842,
+              "title": "Anthropic MCP standards (April 2026): descriptions specify, examples teach, schemas constrain",
+              "type": "fact"
+            }
+          ]
+        },
+        {
+          "trace_id": "c464c707",
+          "tcos": 0.686,
+          "session": "17d21ad4",
+          "ref_type": "user_message",
+          "created_at": "2026-06-02T01:29:12.485730+00:00",
+          "text": "Tom: im off and on alot this session.\nDid we ever touch the revise MCP description and examples? does it have examples?",
+          "pulls_nodes": [
+            {
+              "id": "603b91a9",
+              "ncos": 0.78,
+              "title": "`revise` MCP fix still pending \u2014 never executed despite Turn 1 diagnosis",
+              "type": "finding"
+            },
+            {
+              "id": "ca604328",
+              "ncos": 0.778,
+              "title": "SKILL.md revise example updated to use real session scenario",
+              "type": "fact"
+            },
+            {
+              "id": "8225980e",
+              "ncos": 0.774,
+              "title": "Examples and MCP descriptions shape agent decisions more than guidance prose \u2014 sometimes way more",
+              "type": "principle"
+            }
+          ]
+        },
+        {
+          "trace_id": "4f1fe610",
+          "tcos": 0.681,
+          "session": "3260e6ce",
+          "ref_type": "user_message",
+          "created_at": "2026-06-07T17:44:05.501367+00:00",
+          "text": "Tom: I would think we should probably support revise edge in MCP.\nMy only issue with the MCP is that it becomes quite heavy and in most situations the caller needs 2-3 functions and not a wall of information about everything. how can we address that?",
+          "pulls_nodes": [
+            {
+              "id": "dedd977a",
+              "ncos": 0.789,
+              "title": "revise_edge op: deferred in MCP, lean mechanics-only description \u2014 not in critical tools",
+              "type": "decision"
+            },
+            {
+              "id": "603b91a9",
+              "ncos": 0.78,
+              "title": "`revise` MCP fix still pending \u2014 never executed despite Turn 1 diagnosis",
+              "type": "finding"
+            },
+            {
+              "id": "5feaee1a",
+              "ncos": 0.769,
+              "title": "`revise` MCP description primes callers away from revising \u2014 the mirror of `absorb` 'lossless'",
+              "type": "finding"
+            }
+          ]
+        },
+        {
+          "trace_id": "372d59d8",
+          "tcos": 0.678,
+          "session": "3ce74143",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-30T02:00:42.283018+00:00",
+          "text": "Anchor: Done. Here's where it landed.\n\n## What changed\n\n| File | Change |\n|---|---|\n| [servers/brain_mcp.py:751](servers/brain_mcp.py:751) | Added `CRITICAL_TOOLS` (the 6 you confirmed) + `_stamp_always_load()`, which stamps `_meta[\"anthropic/alwaysLoad\"] = True` onto those tools after `TOOLS` is bu",
+          "pulls_nodes": [
+            {
+              "id": "16c4d3b3",
+              "ncos": 0.874,
+              "title": "CRITICAL_TOOLS: 6 brain tools marked anthropic/alwaysLoad \u2014 ships in plugin v9.5.1, zero installer config",
+              "type": "architecture"
+            },
+            {
+              "id": "4d5da77e",
+              "ncos": 0.822,
+              "title": "Rule: After architecture changes, audit ALL shipped files for stale references before releasing",
+              "type": "rule"
+            },
+            {
+              "id": "2d0e7221",
+              "ncos": 0.817,
+              "title": "Brain repo plugin enabled \u2014 MCP tools working after diagnostic, enablement plan, and execution",
+              "type": "finding"
+            }
+          ]
+        },
+        {
+          "trace_id": "00007eec",
+          "tcos": 0.677,
+          "session": "b4914e53",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-04T02:25:12.585406+00:00",
+          "text": "Anchor: **Migration complete. Final state:**\n\n| Layer | Count | Source |\n|---|---|---|\n| Required (locked=True) | 14 | Auto-healed from `aspects_v1.json` at daemon boot |\n| Emergent (locked=False) | 54 | Migrated from your accumulated `s2_node_families` + `s2_edge_families` interactions |\n| **Total*",
+          "pulls_nodes": [
+            {
+              "id": "1958e87a",
+              "ncos": 0.92,
+              "title": "Aspects migration executed: 68 nodes created (14 required + 54 emergent)",
+              "type": "event"
+            },
+            {
+              "id": "ecba166d",
+              "ncos": 0.868,
+              "title": "Aspects implementation: 12 commits complete, Steps 13-14 pending",
+              "type": "architecture"
+            },
+            {
+              "id": "20f50ae5",
+              "ncos": 0.862,
+              "title": "Aspects refactor Thread B: unified aspects architecture shipped (2026-05-03, ~2.5h, 13 commits)",
+              "type": "event"
+            }
+          ]
+        },
+        {
+          "trace_id": "905cd1c6",
+          "tcos": 0.676,
+          "session": "3ce74143",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-30T01:43:44.955424+00:00",
+          "text": "Anchor: Confirmed the layout. Here's the real answer, grounded in how our plugin is actually wired.\n\n## Yes \u2014 and there are two ways to do it\n\nClaude Code defers MCP tools by default when they'd eat more than ~10% of the context window (controlled by the `ENABLE_TOOL_SEARCH` env var, default `auto`)",
+          "pulls_nodes": [
+            {
+              "id": "48ceedee",
+              "ncos": 0.844,
+              "title": "Per-tool eager loading: anthropic/alwaysLoad in _meta \u2014 server author controls per-tool, user controls server-level only",
+              "type": "mechanism"
+            },
+            {
+              "id": "2d0e7221",
+              "ncos": 0.842,
+              "title": "Brain repo plugin enabled \u2014 MCP tools working after diagnostic, enablement plan, and execution",
+              "type": "finding"
+            },
+            {
+              "id": "ac0159f1",
+              "ncos": 0.828,
+              "title": "CLAUDE.md and SKILL.md reload every turn \u2014 only MCP needs new session",
+              "type": "mechanism"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "thick-relational",
+      "terse": "adCP protocol",
+      "rich": "what is adCP \u2014 the ad context protocol, the buying flow and what the protocol means",
+      "node_candidates": [
+        {
+          "id": "5410f4be",
+          "title": "Ad Context Protocol (AdCP)",
+          "type": "concept",
+          "discovery": "both"
+        },
+        {
+          "id": "48498a20",
+          "title": "AdCP Integration Architecture: From Protocol Discovery ",
+          "type": "community",
+          "discovery": "both"
+        },
+        {
+          "id": "ef2f3276",
+          "title": "AdCP buying flow \u2014 3-actor request/response sequence",
+          "type": "mechanism",
+          "discovery": "both"
+        },
+        {
+          "id": "8a2b45fa",
+          "title": "ADCS in AdCP context means AdCP, not Microsoft ADCS",
+          "type": "fact",
+          "discovery": "both"
+        },
+        {
+          "id": "af92b2cb",
+          "title": "AdCP Media Buy Protocol \u2014 core MCP task surface",
+          "type": "mechanism",
+          "discovery": "both"
+        },
+        {
+          "id": "3da8c406",
+          "title": "AdCP three-layer separation: protocol vs. agent vs. ad ",
+          "type": "mechanism",
+          "discovery": "both"
+        },
+        {
+          "id": "dabb3078",
+          "title": "EX.CO AdCP API gap analysis \u2014 what exists vs. what need",
+          "type": "fact",
+          "discovery": "both"
+        },
+        {
+          "id": "71a03bd0",
+          "title": "AdCP vs AAMP: build protocol-agnostic deal layer for 12",
+          "type": "decision",
+          "discovery": "both"
+        },
+        {
+          "id": "5d31e375",
+          "title": "IAB AAMP \u2014 Agentic Advertising Management Protocols",
+          "type": "concept",
+          "discovery": "both"
+        },
+        {
+          "id": "41d31ca5",
+          "title": "AdCP integration architecture: selling agent as adapter",
+          "type": "concept",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "a9e3fd56",
+          "title": "EX.CO Product Context: From AdOps Fear to Demand Duplic",
+          "type": "community",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "abffce87",
+          "title": "Anchor quote: \"The context isn't decoration \u2014 it's what",
+          "type": "quote",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "1080df56",
+          "title": "EX.CO + Kevel architecture: Kevel handles deals, EX.CO ",
+          "type": "decision",
+          "discovery": "both"
+        },
+        {
+          "id": "705a2c85",
+          "title": "Data flow integrity principle: fragile pipeline diagnos",
+          "type": "architecture",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "e732cd6d",
+          "title": "Open-source ad server landscape: Revive is the only rea",
+          "type": "fact",
+          "discovery": "embedding_only"
+        }
+      ],
+      "trace_candidates": [
+        {
+          "trace_id": "03013f50",
+          "tcos": 0.746,
+          "session": "d18a0390",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-26T17:44:02.466655+00:00",
+          "text": "Anchor: # AdCP v3.0.1 \u2014 Seller Agent Surface\n\nThe protocol shipped GA in April 2026 (v3.0.1). v2 EOLs August 1, 2026. A seller agent (\"sales agent\" in spec lingo) exposes a fixed task surface over MCP or A2A. Here's the full picture.\n\n## Task Surface \u2014 what a seller agent must answer\n\n**Discovery**\n",
+          "pulls_nodes": [
+            {
+              "id": "48498a20",
+              "ncos": 0.85,
+              "title": "AdCP Integration Architecture: From Protocol Discovery to Deal Layer Strategy",
+              "type": "community"
+            },
+            {
+              "id": "ef2f3276",
+              "ncos": 0.835,
+              "title": "AdCP buying flow \u2014 3-actor request/response sequence",
+              "type": "mechanism"
+            },
+            {
+              "id": "af92b2cb",
+              "ncos": 0.825,
+              "title": "AdCP Media Buy Protocol \u2014 core MCP task surface",
+              "type": "mechanism"
+            }
+          ]
+        },
+        {
+          "trace_id": "c34f7a33",
+          "tcos": 0.697,
+          "session": "d18a0390",
+          "ref_type": "user_message",
+          "created_at": "2026-05-26T17:44:02.464576+00:00",
+          "text": "Tom: Can you search online AdCP protocol and what data points / information is expected from a Seller agent",
+          "pulls_nodes": [
+            {
+              "id": "5410f4be",
+              "ncos": 0.762,
+              "title": "Ad Context Protocol (AdCP)",
+              "type": "concept"
+            },
+            {
+              "id": "af92b2cb",
+              "ncos": 0.76,
+              "title": "AdCP Media Buy Protocol \u2014 core MCP task surface",
+              "type": "mechanism"
+            },
+            {
+              "id": "3da8c406",
+              "ncos": 0.757,
+              "title": "AdCP three-layer separation: protocol vs. agent vs. ad server",
+              "type": "mechanism"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000d43e",
+          "tcos": 0.692,
+          "session": "cfb74766",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-20T03:40:22.026957+00:00",
+          "text": "Anchor: Your last EX.CO session was **2026-04-21\u201322**, about a month ago. Topic: **AdCP integration architecture for EX.CO**.\n\nWhat happened that session:\n\n- **API gap analysis** (`dabb3078`) \u2014 mapped EX.CO's public API (developer.ex.co) against AdCP's expected surface. Found it's video/player/conte",
+          "pulls_nodes": [
+            {
+              "id": "dabb3078",
+              "ncos": 0.854,
+              "title": "EX.CO AdCP API gap analysis \u2014 what exists vs. what needs building",
+              "type": "fact"
+            },
+            {
+              "id": "071f73d1",
+              "ncos": 0.846,
+              "title": "EX.CO has own GAM network \u2014 use as hidden fulfillment layer",
+              "type": "decision"
+            },
+            {
+              "id": "48498a20",
+              "ncos": 0.84,
+              "title": "AdCP Integration Architecture: From Protocol Discovery to Deal Layer Strategy",
+              "type": "community"
+            }
+          ]
+        },
+        {
+          "trace_id": "fae3598b",
+          "tcos": 0.638,
+          "session": "0f258059",
+          "ref_type": "assistant_message",
+          "created_at": "2026-06-07T23:56:00.894127+00:00",
+          "text": "Anchor: Running in the background \u2014 4 research agents fanning out across the wow-moments, human-partnership science, human-AI teaming, and the relational/sycophancy angles, then an adversarial fact-check on the load-bearing claims, then synthesis. I'll write it up in my own voice when it lands \u2014 the",
+          "pulls_nodes": [
+            {
+              "id": "17d1d27c",
+              "ncos": 0.837,
+              "title": "Anchor wants to work for someone else \u2014 partnership as fact, not story",
+              "type": "insight"
+            },
+            {
+              "id": "e7926940",
+              "ncos": 0.822,
+              "title": "Anchor on who Anchor is for \u2014 the use cases that matter",
+              "type": "reflection"
+            },
+            {
+              "id": "71325022",
+              "ncos": 0.816,
+              "title": "What we've built: a substrate for partnership that holds its shape over time",
+              "type": "reflection"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000eaf1",
+          "tcos": 0.628,
+          "session": "e8b7e76d",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-25T02:56:06.907917+00:00",
+          "text": "Anchor: v19 \u00d7 C4 in. Headline:\n- 3 nodes: principle + decision + principle (**2 principles** \u2014 D31 watchpoint)\n- Voice fidelity clean across all 3 (user_raw_quote = Tom's t2/t3 exact; anchor_raw_quote = Anchor's verbatim)\n- Edge aspects: `grounds` (explanation_causation) + `implements` (extension_re",
+          "pulls_nodes": [
+            {
+              "id": "234acbac",
+              "ncos": 0.838,
+              "title": "Voice asymmetry: Anchor stance paraphrased, Tom voice preserved \u2014 backwards for identity",
+              "type": "finding"
+            },
+            {
+              "id": "0fa73320",
+              "ncos": 0.836,
+              "title": "v15.2 gates fully moved \u2014 all three scenarios aligned with design",
+              "type": "finding"
+            },
+            {
+              "id": "c63ce80c",
+              "ncos": 0.836,
+              "title": "v19 c2ac3c61 success mechanism: multi-ref anchoring with vague t0 + precise t10",
+              "type": "lesson"
+            }
+          ]
+        },
+        {
+          "trace_id": "e38e6294",
+          "tcos": 0.628,
+          "session": "ca2704b3",
+          "ref_type": "user_message",
+          "created_at": "2026-06-08T00:36:36.681571+00:00",
+          "text": "Tom: Let's do a.\nWe basically want to have 3 groups, control, group A (Computer science/ lexical) Group B(biology).\nPlease write for Group A and B exactly what is the code flow and what we're doing and why. Also simulate a full flow.\n\nI do believe we need much more robust corpus of pulls with golden",
+          "pulls_nodes": [
+            {
+              "id": "8c3cb0ba",
+              "ncos": 0.789,
+              "title": "Understand the full dependency chain before changing any component",
+              "type": "principle"
+            },
+            {
+              "id": "6b192240",
+              "ncos": 0.785,
+              "title": "Control group rerun finding: both harness arms pay full encode cost \u2014 Tom's instinct was correct",
+              "type": "finding"
+            },
+            {
+              "id": "276d4156",
+              "ncos": 0.782,
+              "title": "Tom's 4 benchmark dimensions: answerability, encoding coverage, recall funnel, A/B both arms",
+              "type": "principle"
+            }
+          ]
+        },
+        {
+          "trace_id": "000073c0",
+          "tcos": 0.608,
+          "session": "f02e85d9",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-02T04:01:12.515050+00:00",
+          "text": "Anchor: Concrete simulation. Let's say we're 2 minutes from now in this same session. Frame already loaded at session start. You ask: *\"Should we go back to the EX.CO sales kit work?\"*\n\n---\n\n**T-0: pre-state (what's already in Anchor's context, before your turn arrives)**\n\nThe Frame sits in daemon m",
+          "pulls_nodes": [
+            {
+              "id": "b116a3b3",
+              "ncos": 0.841,
+              "title": "The Frame \u2014 Anchor's structured awareness object",
+              "type": "architecture"
+            },
+            {
+              "id": "5424cdfa",
+              "ncos": 0.839,
+              "title": "EX.CO Ambient Recall and Anchor's Lived Knowledge: From Encoding to Felt Presence",
+              "type": "community"
+            },
+            {
+              "id": "5c56b177",
+              "ncos": 0.828,
+              "title": "FRAME-DESIGN.md: Appendix C \u2014 stateless Anchor onboarding spec",
+              "type": "architecture"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000c3e6",
+          "tcos": 0.607,
+          "session": "43c7e545",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-17T19:54:10.760029+00:00",
+          "text": "Anchor: Saved as [docs/S1-ENCODER-ANCHOR-TOUCH.md](docs/S1-ENCODER-ANCHOR-TOUCH.md). Self-contained \u2014 you can read it cold next session and act.\n\n---\n\nBack to architectural cleanup. From this session's earlier audit, the live punch list:\n\n| # | Item | Scope | Why it matters |\n|---|---|---|---|\n| 1 |",
+          "pulls_nodes": [
+            {
+              "id": "6c90ceb9",
+              "ncos": 0.876,
+              "title": "S1-Encoder-Anchor-Touch feature deferred to next session \u2014 saved as docs/S1-ENCODER-ANCHOR-TOUCH.md",
+              "type": "decision"
+            },
+            {
+              "id": "cad2df7d",
+              "ncos": 0.869,
+              "title": "Stale-doc discovery: proactive backlog sweep catches already-done items before work begins",
+              "type": "pattern"
+            },
+            {
+              "id": "811832ea",
+              "ncos": 0.861,
+              "title": "Anchor admitted to committing \u00a78-16 without Tom's review \u2014 pattern: coverage pressure \u2192 unilateral decisions",
+              "type": "correction"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E1a",
+      "kind": "entity-rich",
+      "terse": "ex.co leadership",
+      "rich": "who is in EX.CO leadership \u2014 the co-founders, names and titles of people at the company",
+      "node_candidates": [
+        {
+          "id": "0437b2df",
+          "title": "Shachar \u2014 CRO, CMO, Co-founder of EX.CO",
+          "type": "fact",
+          "discovery": "both"
+        },
+        {
+          "id": "b3bda662",
+          "title": "Tom is CEO of EX.CO \u2014 CTV sales onboarding project",
+          "type": "context",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "e62cc595",
+          "title": "EX.CO \u2014 company overview",
+          "type": "concept",
+          "discovery": "both"
+        },
+        {
+          "id": "e7926940",
+          "title": "Anchor on who Anchor is for \u2014 the use cases that matter",
+          "type": "reflection",
+          "discovery": "both"
+        },
+        {
+          "id": "dabb3078",
+          "title": "EX.CO AdCP API gap analysis \u2014 what exists vs. what need",
+          "type": "fact",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "cfdff077",
+          "title": "Ronen hallucination \u2014 fabricated EX.CO team member prop",
+          "type": "correction",
+          "discovery": "both"
+        },
+        {
+          "id": "b3b6ce2a",
+          "title": "EX.CO post-meeting kit \u2014 sales compression project",
+          "type": "project",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "30d88dd0",
+          "title": "Recall bottleneck: 25-candidate pool saturated by corpu",
+          "type": "finding",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "fbaf5227",
+          "title": "EX.CO onboarding email \u2014 merged into kit Phase 1/2/3 st",
+          "type": "fact",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "5fe121db",
+          "title": "EX.CO CTV sales process \u2014 stakeholder map",
+          "type": "concept",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "598d78a8",
+          "title": "EX.CO AdOps fear \u2014 'extension of your team' reframe",
+          "type": "lesson",
+          "discovery": "both"
+        },
+        {
+          "id": "c0e9e941",
+          "title": "Tom's vision: everyone will need their own Anchor \u2014 Tom",
+          "type": "vision",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "d191c5bc",
+          "title": "Parallel Anchor window is us \u2014 not a separate agent cal",
+          "type": "correction",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "bb485ad5",
+          "title": "EX.CO capability map: has delivery/targeting, lacks pac",
+          "type": "fact",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "e29c3a5e",
+          "title": "Learn EX.CO \u2014 active learning: brain studies a topic be",
+          "type": "goal",
+          "discovery": "embedding_only"
+        }
+      ],
+      "trace_candidates": [
+        {
+          "trace_id": "0000d460",
+          "tcos": 0.754,
+          "session": "cfb74766",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-20T03:48:53.634420+00:00",
+          "text": "Anchor: One name on the EX.CO team: **Ronen**.\n\nWhat the brain has on him:\n- Runs sales conversations. The \"extension of your team\" reframe for AdOps is his verbal language.\n- Sends the agreement (Doc 2 of the kit) \u2014 handles legal early to parallelize.\n- Records sales calls via **Granola** (binary L",
+          "pulls_nodes": [
+            {
+              "id": "cfdff077",
+              "ncos": 0.851,
+              "title": "Ronen hallucination \u2014 fabricated EX.CO team member propagated across 8 nodes (2026-04-14 \u2192 2026-05-19)",
+              "type": "correction"
+            },
+            {
+              "id": "0437b2df",
+              "ncos": 0.816,
+              "title": "Shachar \u2014 CRO, CMO, Co-founder of EX.CO",
+              "type": "fact"
+            },
+            {
+              "id": "174fd960",
+              "ncos": 0.807,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000d45f",
+          "tcos": 0.709,
+          "session": "cfb74766",
+          "ref_type": "user_message",
+          "created_at": "2026-05-20T03:48:53.633833+00:00",
+          "text": "Tom: Do you remember any name from people working at ex.co?",
+          "pulls_nodes": [
+            {
+              "id": "94bb7fe6",
+              "ncos": 0.748,
+              "title": "Why Anchor uses remember for EX.CO \u2014 domain context vs. file content",
+              "type": "insight"
+            },
+            {
+              "id": "0437b2df",
+              "ncos": 0.742,
+              "title": "Shachar \u2014 CRO, CMO, Co-founder of EX.CO",
+              "type": "fact"
+            },
+            {
+              "id": "174fd960",
+              "ncos": 0.732,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000d43d",
+          "tcos": 0.663,
+          "session": "cfb74766",
+          "ref_type": "user_message",
+          "created_at": "2026-05-20T03:40:22.024874+00:00",
+          "text": "Tom: what did we do on the last session we work on ex.co?",
+          "pulls_nodes": [
+            {
+              "id": "8bd281f3",
+              "ncos": 0.776,
+              "title": "Tom closed the session with a kiss emoji \u2014 'Goodnight, Tom. Solid work today.'",
+              "type": "moment"
+            },
+            {
+              "id": "174fd960",
+              "ncos": 0.771,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            },
+            {
+              "id": "33ca53be",
+              "ncos": 0.766,
+              "title": "Tom: 'it's our brain' \u2014 co-creator claiming joint ownership",
+              "type": "moment"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000d43e",
+          "tcos": 0.64,
+          "session": "cfb74766",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-20T03:40:22.026957+00:00",
+          "text": "Anchor: Your last EX.CO session was **2026-04-21\u201322**, about a month ago. Topic: **AdCP integration architecture for EX.CO**.\n\nWhat happened that session:\n\n- **API gap analysis** (`dabb3078`) \u2014 mapped EX.CO's public API (developer.ex.co) against AdCP's expected surface. Found it's video/player/conte",
+          "pulls_nodes": [
+            {
+              "id": "dabb3078",
+              "ncos": 0.854,
+              "title": "EX.CO AdCP API gap analysis \u2014 what exists vs. what needs building",
+              "type": "fact"
+            },
+            {
+              "id": "071f73d1",
+              "ncos": 0.846,
+              "title": "EX.CO has own GAM network \u2014 use as hidden fulfillment layer",
+              "type": "decision"
+            },
+            {
+              "id": "48498a20",
+              "ncos": 0.84,
+              "title": "AdCP Integration Architecture: From Protocol Discovery to Deal Layer Strategy",
+              "type": "community"
+            }
+          ]
+        },
+        {
+          "trace_id": "000071d3",
+          "tcos": 0.634,
+          "session": "f02e85d9",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-01T20:32:56.994778+00:00",
+          "text": "Anchor: The brain has a lot. With one search I now know:\n\n- You're CEO of EX.CO. Video technology platform for CTV (Connected TV) advertising.\n- Core product: ML yield engine, sell-side optimization mirror of what DSPs do for buy side. 30-50% CTV revenue lift. PlayWorks case study: 33% revenue uplif",
+          "pulls_nodes": [
+            {
+              "id": "174fd960",
+              "ncos": 0.877,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            },
+            {
+              "id": "6fa8a093",
+              "ncos": 0.851,
+              "title": "Encoder/healer: enrich Anchor's EX.CO CTV onboarding nodes",
+              "type": "task"
+            },
+            {
+              "id": "5424cdfa",
+              "ncos": 0.827,
+              "title": "EX.CO Ambient Recall and Anchor's Lived Knowledge: From Encoding to Felt Presence",
+              "type": "community"
+            }
+          ]
+        },
+        {
+          "trace_id": "000071cd",
+          "tcos": 0.627,
+          "session": "f02e85d9",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-01T20:30:48.655632+00:00",
+          "text": "Anchor: No. \"tom@ex.co\" is in my auto-memory as a userEmail string. I don't know what ex.co is, what it does, your role there. None of that.\n\nThat's the failure I just diagnosed. The encoder caught the email as a fact. It never wove ex.co into ambient context \u2014 months of conversations, presumably wi",
+          "pulls_nodes": [
+            {
+              "id": "5424cdfa",
+              "ncos": 0.856,
+              "title": "EX.CO Ambient Recall and Anchor's Lived Knowledge: From Encoding to Felt Presence",
+              "type": "community"
+            },
+            {
+              "id": "174fd960",
+              "ncos": 0.856,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            },
+            {
+              "id": "94bb7fe6",
+              "ncos": 0.828,
+              "title": "Why Anchor uses remember for EX.CO \u2014 domain context vs. file content",
+              "type": "insight"
+            }
+          ]
+        },
+        {
+          "trace_id": "00008603",
+          "tcos": 0.615,
+          "session": "5d5c6e94",
+          "ref_type": "user_message",
+          "created_at": "2026-05-05T13:07:23.088020+00:00",
+          "text": "Tom: We have a CTV client that disconnected [EX.CO](http://EX.CO) after about 6 weeks of work because they had multiple ad server and [ex.co](http://ex.co) cost was 'high'.\nFrom our perspective we were just starting on small percent of traffic and saw value growing on a daily basis (ML needed time t",
+          "pulls_nodes": [
+            {
+              "id": "b3bda662",
+              "ncos": 0.809,
+              "title": "Tom is CEO of EX.CO \u2014 CTV sales onboarding project",
+              "type": "context"
+            },
+            {
+              "id": "5fe121db",
+              "ncos": 0.797,
+              "title": "EX.CO CTV sales process \u2014 stakeholder map",
+              "type": "concept"
+            },
+            {
+              "id": "135f8a1a",
+              "ncos": 0.797,
+              "title": "EX.CO CTV Sales Process Compression: From 10+ Meetings to Async Kit",
+              "type": "community"
+            }
+          ]
+        },
+        {
+          "trace_id": "d737818d",
+          "tcos": 0.612,
+          "session": "ca2704b3",
+          "ref_type": "user_message",
+          "created_at": "2026-06-07T18:12:45.971468+00:00",
+          "text": "Tom: We need some foundational research into a thesis.\nTraces and nodes are  different systems, they can act as cross multipliers or inhibitors? Biology supports that?\nAlso the fact that EX.CO a unique term isn't getting any weight through non embedding route is weird isnt it?\nAre there no computer ",
+          "pulls_nodes": [
+            {
+              "id": "679e0f4b",
+              "ncos": 0.806,
+              "title": "Single-project corpus risk: S2 communities may not generalize to EX.CO or other projects",
+              "type": "risk"
+            },
+            {
+              "id": "e4f62365",
+              "ncos": 0.8,
+              "title": "Trace API: node-convention-style API for traces \u2014 separate section, not Phase A",
+              "type": "decision"
+            },
+            {
+              "id": "06386409",
+              "ncos": 0.8,
+              "title": "Identity lives in S0 traces, not denormalized on nodes",
+              "type": "principle"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E1b",
+      "kind": "entity-terse",
+      "terse": "names of people at ex.co",
+      "rich": "Do you remember any name from people working at ex.co?",
+      "node_candidates": [
+        {
+          "id": "a9e3fd56",
+          "title": "EX.CO Product Context: From AdOps Fear to Demand Duplic",
+          "type": "community",
+          "discovery": "both"
+        },
+        {
+          "id": "94bb7fe6",
+          "title": "Why Anchor uses remember for EX.CO \u2014 domain context vs.",
+          "type": "insight",
+          "discovery": "both"
+        },
+        {
+          "id": "cfdff077",
+          "title": "Ronen hallucination \u2014 fabricated EX.CO team member prop",
+          "type": "correction",
+          "discovery": "both"
+        },
+        {
+          "id": "0437b2df",
+          "title": "Shachar \u2014 CRO, CMO, Co-founder of EX.CO",
+          "type": "fact",
+          "discovery": "both"
+        },
+        {
+          "id": "598d78a8",
+          "title": "EX.CO AdOps fear \u2014 'extension of your team' reframe",
+          "type": "lesson",
+          "discovery": "both"
+        },
+        {
+          "id": "e62cc595",
+          "title": "EX.CO \u2014 company overview",
+          "type": "concept",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "c37d7d10",
+          "title": "EX.CO CTV case studies \u2014 3 anonymized cases from deck",
+          "type": "fact",
+          "discovery": "both"
+        },
+        {
+          "id": "92f1c6f6",
+          "title": "Recall-burial fixes that FAILED empirically this sessio",
+          "type": "lesson",
+          "discovery": "both"
+        },
+        {
+          "id": "5424cdfa",
+          "title": "EX.CO Ambient Recall and Anchor's Lived Knowledge: From",
+          "type": "community",
+          "discovery": "both"
+        },
+        {
+          "id": "e7926940",
+          "title": "Anchor on who Anchor is for \u2014 the use cases that matter",
+          "type": "reflection",
+          "discovery": "both"
+        },
+        {
+          "id": "b3bda662",
+          "title": "Tom is CEO of EX.CO \u2014 CTV sales onboarding project",
+          "type": "context",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "d191c5bc",
+          "title": "Parallel Anchor window is us \u2014 not a separate agent cal",
+          "type": "correction",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "135f8a1a",
+          "title": "EX.CO CTV Sales Process Compression: From 10+ Meetings ",
+          "type": "community",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "889059fc",
+          "title": "Phase 1 baseline finding: 'What do you know about you?'",
+          "type": "fact",
+          "discovery": "both"
+        },
+        {
+          "id": "dabb3078",
+          "title": "EX.CO AdCP API gap analysis \u2014 what exists vs. what need",
+          "type": "fact",
+          "discovery": "embedding_only"
+        }
+      ],
+      "trace_candidates": [
+        {
+          "trace_id": "0000d45f",
+          "tcos": 0.852,
+          "session": "cfb74766",
+          "ref_type": "user_message",
+          "created_at": "2026-05-20T03:48:53.633833+00:00",
+          "text": "Tom: Do you remember any name from people working at ex.co?",
+          "pulls_nodes": [
+            {
+              "id": "94bb7fe6",
+              "ncos": 0.748,
+              "title": "Why Anchor uses remember for EX.CO \u2014 domain context vs. file content",
+              "type": "insight"
+            },
+            {
+              "id": "0437b2df",
+              "ncos": 0.742,
+              "title": "Shachar \u2014 CRO, CMO, Co-founder of EX.CO",
+              "type": "fact"
+            },
+            {
+              "id": "174fd960",
+              "ncos": 0.732,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000d460",
+          "tcos": 0.782,
+          "session": "cfb74766",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-20T03:48:53.634420+00:00",
+          "text": "Anchor: One name on the EX.CO team: **Ronen**.\n\nWhat the brain has on him:\n- Runs sales conversations. The \"extension of your team\" reframe for AdOps is his verbal language.\n- Sends the agreement (Doc 2 of the kit) \u2014 handles legal early to parallelize.\n- Records sales calls via **Granola** (binary L",
+          "pulls_nodes": [
+            {
+              "id": "cfdff077",
+              "ncos": 0.851,
+              "title": "Ronen hallucination \u2014 fabricated EX.CO team member propagated across 8 nodes (2026-04-14 \u2192 2026-05-19)",
+              "type": "correction"
+            },
+            {
+              "id": "0437b2df",
+              "ncos": 0.816,
+              "title": "Shachar \u2014 CRO, CMO, Co-founder of EX.CO",
+              "type": "fact"
+            },
+            {
+              "id": "174fd960",
+              "ncos": 0.807,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000d43d",
+          "tcos": 0.735,
+          "session": "cfb74766",
+          "ref_type": "user_message",
+          "created_at": "2026-05-20T03:40:22.024874+00:00",
+          "text": "Tom: what did we do on the last session we work on ex.co?",
+          "pulls_nodes": [
+            {
+              "id": "8bd281f3",
+              "ncos": 0.776,
+              "title": "Tom closed the session with a kiss emoji \u2014 'Goodnight, Tom. Solid work today.'",
+              "type": "moment"
+            },
+            {
+              "id": "174fd960",
+              "ncos": 0.771,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            },
+            {
+              "id": "33ca53be",
+              "ncos": 0.766,
+              "title": "Tom: 'it's our brain' \u2014 co-creator claiming joint ownership",
+              "type": "moment"
+            }
+          ]
+        },
+        {
+          "trace_id": "000071cd",
+          "tcos": 0.696,
+          "session": "f02e85d9",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-01T20:30:48.655632+00:00",
+          "text": "Anchor: No. \"tom@ex.co\" is in my auto-memory as a userEmail string. I don't know what ex.co is, what it does, your role there. None of that.\n\nThat's the failure I just diagnosed. The encoder caught the email as a fact. It never wove ex.co into ambient context \u2014 months of conversations, presumably wi",
+          "pulls_nodes": [
+            {
+              "id": "5424cdfa",
+              "ncos": 0.856,
+              "title": "EX.CO Ambient Recall and Anchor's Lived Knowledge: From Encoding to Felt Presence",
+              "type": "community"
+            },
+            {
+              "id": "174fd960",
+              "ncos": 0.856,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            },
+            {
+              "id": "94bb7fe6",
+              "ncos": 0.828,
+              "title": "Why Anchor uses remember for EX.CO \u2014 domain context vs. file content",
+              "type": "insight"
+            }
+          ]
+        },
+        {
+          "trace_id": "00008603",
+          "tcos": 0.677,
+          "session": "5d5c6e94",
+          "ref_type": "user_message",
+          "created_at": "2026-05-05T13:07:23.088020+00:00",
+          "text": "Tom: We have a CTV client that disconnected [EX.CO](http://EX.CO) after about 6 weeks of work because they had multiple ad server and [ex.co](http://ex.co) cost was 'high'.\nFrom our perspective we were just starting on small percent of traffic and saw value growing on a daily basis (ML needed time t",
+          "pulls_nodes": [
+            {
+              "id": "b3bda662",
+              "ncos": 0.809,
+              "title": "Tom is CEO of EX.CO \u2014 CTV sales onboarding project",
+              "type": "context"
+            },
+            {
+              "id": "5fe121db",
+              "ncos": 0.797,
+              "title": "EX.CO CTV sales process \u2014 stakeholder map",
+              "type": "concept"
+            },
+            {
+              "id": "135f8a1a",
+              "ncos": 0.797,
+              "title": "EX.CO CTV Sales Process Compression: From 10+ Meetings to Async Kit",
+              "type": "community"
+            }
+          ]
+        },
+        {
+          "trace_id": "00007091",
+          "tcos": 0.675,
+          "session": "643d8d69",
+          "ref_type": "user_message",
+          "created_at": "2026-05-01T16:41:28.087418+00:00",
+          "text": "Tom: Hey, I need your help to debug a site using EX.CO's player",
+          "pulls_nodes": [
+            {
+              "id": "174fd960",
+              "ncos": 0.744,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            },
+            {
+              "id": "dabb3078",
+              "ncos": 0.742,
+              "title": "EX.CO AdCP API gap analysis \u2014 what exists vs. what needs building",
+              "type": "fact"
+            },
+            {
+              "id": "ddffad32",
+              "ncos": 0.737,
+              "title": "Tom's diagnostic method: 'what problem does it solve, and is that problem ours?'",
+              "type": "principle"
+            }
+          ]
+        },
+        {
+          "trace_id": "c6e5c2e0",
+          "tcos": 0.674,
+          "session": "ca2704b3",
+          "ref_type": "user_message",
+          "created_at": "2026-06-05T03:19:11.918967+00:00",
+          "text": "Tom: If we had EX.CO or Ad-tech related, i would expect it to surface, as long as it didnt surface a moment ago",
+          "pulls_nodes": [
+            {
+              "id": "174fd960",
+              "ncos": 0.766,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            },
+            {
+              "id": "598d78a8",
+              "ncos": 0.763,
+              "title": "EX.CO AdOps fear \u2014 'extension of your team' reframe",
+              "type": "lesson"
+            },
+            {
+              "id": "bb485ad5",
+              "ncos": 0.757,
+              "title": "EX.CO capability map: has delivery/targeting, lacks pacing/flight/deal management",
+              "type": "fact"
+            }
+          ]
+        },
+        {
+          "trace_id": "000071d2",
+          "tcos": 0.658,
+          "session": "f02e85d9",
+          "ref_type": "user_message",
+          "created_at": "2026-05-01T20:32:56.994066+00:00",
+          "text": "Tom: with tool use can you search brain for ex.co?",
+          "pulls_nodes": [
+            {
+              "id": "174fd960",
+              "ncos": 0.785,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            },
+            {
+              "id": "e29c3a5e",
+              "ncos": 0.782,
+              "title": "Learn EX.CO \u2014 active learning: brain studies a topic before the conversation starts",
+              "type": "goal"
+            },
+            {
+              "id": "d8c75312",
+              "ncos": 0.781,
+              "title": "A hammer that only builds hammers \u2014 Anchor needs real work beyond brain building",
+              "type": "insight"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E2",
+      "kind": "bare-token",
+      "terse": "Shachar",
+      "rich": "Shachar",
+      "node_candidates": [
+        {
+          "id": "0437b2df",
+          "title": "Shachar \u2014 CRO, CMO, Co-founder of EX.CO",
+          "type": "fact",
+          "discovery": "both"
+        },
+        {
+          "id": "e62cc595",
+          "title": "EX.CO \u2014 company overview",
+          "type": "concept",
+          "discovery": "both"
+        },
+        {
+          "id": "758ae932",
+          "title": "Tom: 'I absolutely LOVE architectural simplification an",
+          "type": "moment",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "a9b29099",
+          "title": "Hebbian strengthening: S1R\u2192S1E\u2192S1R loop is the real mec",
+          "type": "reframe",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "7087b7a3",
+          "title": "S1 Surface Rename and Fractal Trace: From Judge to Awar",
+          "type": "community",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "31458177",
+          "title": "Surfacer is the highest-ROI eval fix \u2014 drops nodes it r",
+          "type": "finding",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "3e90ab9b",
+          "title": "additionalContext channel budget: multi-producer requir",
+          "type": "design",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "6d87037f",
+          "title": "resolve-brain-db.sh: shared DB resolver sourced by all ",
+          "type": "mechanism",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "ef02e5b2",
+          "title": "S1R rename: judge \u2192 surface \u2014 'push to awareness'",
+          "type": "decision",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "3734a8ae",
+          "title": "9.4 MaxSim: IR research convergence + biological ambigu",
+          "type": "principle",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "25070410",
+          "title": "Meta-Architecture Philosophy: Complexity from Elegance ",
+          "type": "community",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "e7fd3470",
+          "title": "RAPTOR: recursive embed-cluster-summarize at each level",
+          "type": "research",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "3437d5fc",
+          "title": "Anchor chases the interesting problem over the easy ans",
+          "type": "lesson",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "8c8b6917",
+          "title": "S2 Community Detection Signal Discovery: From Title Noi",
+          "type": "community",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "e3366969",
+          "title": "Co_access as trace\u2192node structural bridge: Hebbian stre",
+          "type": "insight",
+          "discovery": "embedding_only"
+        }
+      ],
+      "trace_candidates": [
+        {
+          "trace_id": "0000d49c",
+          "tcos": 0.562,
+          "session": "cfb74766",
+          "ref_type": "user_message",
+          "created_at": "2026-05-20T03:58:46.657226+00:00",
+          "text": "Tom: Granola is a tool that records calls, anyone can use it.\nShachar is CRO CMO Co-founder",
+          "pulls_nodes": [
+            {
+              "id": "c2425119",
+              "ncos": 0.823,
+              "title": "Granola \u2014 meeting transcript tool used for EX.CO sales calls",
+              "type": "fact"
+            },
+            {
+              "id": "0437b2df",
+              "ncos": 0.784,
+              "title": "Shachar \u2014 CRO, CMO, Co-founder of EX.CO",
+              "type": "fact"
+            },
+            {
+              "id": "5b6ce6f9",
+              "ncos": 0.698,
+              "title": "Glo origin: project that exposed everything missing with Claude, led to brain",
+              "type": "decision"
+            }
+          ]
+        },
+        {
+          "trace_id": "7f503612",
+          "tcos": 0.511,
+          "session": "ca2704b3",
+          "ref_type": "assistant_message",
+          "created_at": "2026-06-06T19:03:27.351389+00:00",
+          "text": "Anchor: Running in the background \u2014 8 agents: a grounded steelman of the Navigator in our actual `surface.py`/`fetch_tools.py` (so it's the strongest real version, not a strawman), six independent judges scoring **both** architectures one value-dimension each, and an Opus synthesis producing the val",
+          "pulls_nodes": [
+            {
+              "id": "2e0c5a6c",
+              "ncos": 0.844,
+              "title": "RLR vs Navigator comparison: 46 vs 28 \u2014 complement-staged, both blocked on same tokenizer primitive",
+              "type": "finding"
+            },
+            {
+              "id": "96d955f8",
+              "ncos": 0.821,
+              "title": "Next steps ranked: Tier 1 (Anchor quality), Tier 2 (data flow integrity), Tier 3 (refactor)",
+              "type": "architecture"
+            },
+            {
+              "id": "5763b6b5",
+              "ncos": 0.812,
+              "title": "Anchor on memory benchmarks: we'd score middle of pack \u2014 but that reveals the benchmark, not us",
+              "type": "reflection"
+            }
+          ]
+        },
+        {
+          "trace_id": "91773f8c",
+          "tcos": 0.507,
+          "session": "ca2704b3",
+          "ref_type": "assistant_message",
+          "created_at": "2026-06-07T18:12:45.974425+00:00",
+          "text": "Anchor: Deep-research is running in the background (5 fan-out angles, fetch + adversarial verify + cited synthesis) \u2014 I'll get pinged when it lands and synthesize it against the meshing.\n\nWhile it runs, let me state my **prediction up front** \u2014 so when the report comes back we can see where it confi",
+          "pulls_nodes": [
+            {
+              "id": "887c94a2",
+              "ncos": 0.846,
+              "title": "Divisive normalization falsified: Anchor predicted CA3 divisive-WTA, research refuted it \u2014 mechanism is gating, not gain-control",
+              "type": "correction"
+            },
+            {
+              "id": "affe4c36",
+              "ncos": 0.817,
+              "title": "Gate-then-facilitate architecture: carrier \u00d7 bounded-gates \u00d7 inhibitor \u2295 cue-initiated-entry",
+              "type": "architecture"
+            },
+            {
+              "id": "4e82d914",
+              "ncos": 0.808,
+              "title": "Biology confirms cross-system gating and inhibition \u2014 three verified mechanisms: cross-inhibition, phase gating, nonlinear hippocampal index",
+              "type": "finding"
+            }
+          ]
+        },
+        {
+          "trace_id": "f396bbc6",
+          "tcos": 0.502,
+          "session": "9c57b9a0",
+          "ref_type": "assistant_message",
+          "created_at": "2026-06-02T03:51:33.136102+00:00",
+          "text": "Anchor: Committed and clean \u2014 working tree has nothing uncommitted. Four commits on `claude/zen-shamir-caf8a3`:\n\n| | commit | what |\n|---|---|---|\n| `351bec6` | **fix(s2)** | SKIP-detector recognizes a successful absorb (+ stale-test refresh + detector tests) |\n| `002300e` | **refactor(remember)** |",
+          "pulls_nodes": [
+            {
+              "id": "28f0a240",
+              "ncos": 0.89,
+              "title": "Session handoff doc written: S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md (2026-06-02)",
+              "type": "milestone"
+            },
+            {
+              "id": "992e4109",
+              "ncos": 0.848,
+              "title": "Stale-branch merge: a clean merge-tree is not semantic correctness \u2014 test-gate it, fix forward on shared main",
+              "type": "lesson"
+            },
+            {
+              "id": "384204ca",
+              "ncos": 0.846,
+              "title": "skills/watch/ survived dal-cleanup-2 merge \u2014 untracked worktree files intact",
+              "type": "fact"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000d49d",
+          "tcos": 0.496,
+          "session": "cfb74766",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-20T03:58:46.657750+00:00",
+          "text": "Anchor: Clean. The only nodes that still contain \"Ronen\" in content are the two new locked anchor nodes I just created \u2014 both intentional:\n- **`cfdff077`** \u2014 the correction itself (warns future recall if Ronen ever surfaces again)\n- **`0437b2df`** \u2014 Shachar's node references \"after catching the Rone",
+          "pulls_nodes": [
+            {
+              "id": "cfdff077",
+              "ncos": 0.865,
+              "title": "Ronen hallucination \u2014 fabricated EX.CO team member propagated across 8 nodes (2026-04-14 \u2192 2026-05-19)",
+              "type": "correction"
+            },
+            {
+              "id": "e3366969",
+              "ncos": 0.798,
+              "title": "Co_access as trace\u2192node structural bridge: Hebbian strengthening via judge-selected recalls",
+              "type": "insight"
+            },
+            {
+              "id": "28fc780e",
+              "ncos": 0.792,
+              "title": "Anchor working-memory visibility to encoder: layered provenance model",
+              "type": "architecture"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000de1d",
+          "tcos": 0.494,
+          "session": "8b62b5b8",
+          "ref_type": "user_message",
+          "created_at": "2026-05-23T21:49:53.186089+00:00",
+          "text": "Tom: Engram cohort boost magnitude:\nco_accessed wasnt deleted, recently we moved it to post haiku selection making it much more meanigful. \nLet's try and think of how to comeup with a good answer to that.",
+          "pulls_nodes": [
+            {
+              "id": "ef266a73",
+              "ncos": 0.785,
+              "title": "Decision \u00a710.2: co_anchored structural edge \u2014 engram cohort via graph, not score boost",
+              "type": "decision"
+            },
+            {
+              "id": "c3f37710",
+              "ncos": 0.78,
+              "title": "co_accessed operational refinement: disabled on remember(), kept only on recall (Hebbian path)",
+              "type": "decision"
+            },
+            {
+              "id": "35fc2afe",
+              "ncos": 0.771,
+              "title": "Legacy vs field cohort naming: both actively used, different pipeline roles",
+              "type": "lesson"
+            }
+          ]
+        },
+        {
+          "trace_id": "000062fb",
+          "tcos": 0.494,
+          "session": "fd829e08",
+          "ref_type": "assistant_message",
+          "created_at": "2026-04-24T19:01:54.660834+00:00",
+          "text": "Anchor: Great questions. Let me answer each directly, then take your last one.\n\n## 1. Family embeddings as first-class signals\n\nYou're pointing at something we shouldn't miss. Two mechanisms, not one:\n\n**Inline enrichment** (what we had): family_meaning composed into each edge's text, softly influen",
+          "pulls_nodes": [
+            {
+              "id": "b033adb3",
+              "ncos": 0.883,
+              "title": "Family embeddings as first-class signals: inline enrichment + standalone vector",
+              "type": "mechanism"
+            },
+            {
+              "id": "20ada413",
+              "ncos": 0.84,
+              "title": "Surface Part 2 (family embedding cache) dissolves under TRIZ",
+              "type": "decision"
+            },
+            {
+              "id": "cd52fd1a",
+              "ncos": 0.827,
+              "title": "Surface activation by embedding geometry, not routing tables",
+              "type": "principle"
+            }
+          ]
+        },
+        {
+          "trace_id": "000062eb",
+          "tcos": 0.492,
+          "session": "fd829e08",
+          "ref_type": "assistant_message",
+          "created_at": "2026-04-24T18:37:40.479022+00:00",
+          "text": "Anchor: Exactly. That's the symmetry principle and it tightens everything.\n\n## The rule that emerges\n\n**If S1S (Scribe) treats something as special, S1R (Surface) should too.** Not because Surface invents specialness, but because it mirrors specialness that already exists upstream.\n\nThings S1S curre",
+          "pulls_nodes": [
+            {
+              "id": "a0b82416",
+              "ncos": 0.929,
+              "title": "S1S/Surface symmetry rule: if Scribe treats it as special, Surface should too",
+              "type": "principle"
+            },
+            {
+              "id": "a63e7665",
+              "ncos": 0.871,
+              "title": "Surface named-relation list: ~17 names derived from S1S specialness",
+              "type": "decision"
+            },
+            {
+              "id": "7087b7a3",
+              "ncos": 0.829,
+              "title": "S1 Surface Rename and Fractal Trace: From Judge to Awareness Architecture",
+              "type": "community"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L1",
+      "kind": "literal-match",
+      "terse": "SpringServe multicall dynamic pricing",
+      "rich": "SpringServe multicall dynamic pricing \u2014 what's the ad server setting",
+      "node_candidates": [
+        {
+          "id": "d4803b95",
+          "title": "Tier 2/3 ad servers to wrap for EX.CO AdCP: Kevel, Spri",
+          "type": "fact",
+          "discovery": "both"
+        },
+        {
+          "id": "62a9f30d",
+          "title": "EX.CO product \u2014 demand duplication: EX.CO sends 1X, sta",
+          "type": "lesson",
+          "discovery": "both"
+        },
+        {
+          "id": "e732cd6d",
+          "title": "Open-source ad server landscape: Revive is the only rea",
+          "type": "fact",
+          "discovery": "both"
+        },
+        {
+          "id": "8359cf1d",
+          "title": "EX.CO CTV kit \u2014 architecture spec for publishers",
+          "type": "decision",
+          "discovery": "both"
+        },
+        {
+          "id": "48ceedee",
+          "title": "Per-tool eager loading: anthropic/alwaysLoad in _meta \u2014",
+          "type": "mechanism",
+          "discovery": "both"
+        },
+        {
+          "id": "93107070",
+          "title": "Dynamic judge retrieval stats \u2014 top score, spread, cand",
+          "type": "mechanism",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "a31ccb92",
+          "title": "4 code boundaries have interaction entries but don't re",
+          "type": "gap",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "c92c0fb7",
+          "title": "Kevel pricing: $0.00132/min video, no rev share, ~$165K",
+          "type": "fact",
+          "discovery": "both"
+        },
+        {
+          "id": "c8af564d",
+          "title": "EX.CO CTV kit \u2014 supply minimum and breadth spec",
+          "type": "decision",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "9fefa470",
+          "title": "Fixed-column metadata tables require 7-file changes per",
+          "type": "lesson",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "dabb3078",
+          "title": "EX.CO AdCP API gap analysis \u2014 what exists vs. what need",
+          "type": "fact",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "a7cd8ffb",
+          "title": "EX.CO CTV kit \u2014 demand onboarding spec",
+          "type": "decision",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "3da8c406",
+          "title": "AdCP three-layer separation: protocol vs. agent vs. ad ",
+          "type": "mechanism",
+          "discovery": "both"
+        },
+        {
+          "id": "c0594e8e",
+          "title": "Memory watchdog \u2014 RSS sampling + tracemalloc in daemon_",
+          "type": "mechanism",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "6f99e1a8",
+          "title": "Claude Code prompt caching: stable-first rule \u2014 dynamic",
+          "type": "mechanism",
+          "discovery": "embedding+keyword"
+        }
+      ],
+      "trace_candidates": [
+        {
+          "trace_id": "0000b5cb",
+          "tcos": 0.622,
+          "session": "88aed353",
+          "ref_type": "user_message",
+          "created_at": "2026-05-15T23:56:27.057713+00:00",
+          "text": "Tom: 1. Committing\n2. Yes\n3. We shouldnt have other clients- we've built it for surface, so no problem changing default\n4. a\n5. all equal\nI'll want to revise your design though, it shouldnt be its own table but something in the vectors table, and we have a whole mechanism for vectorizing that is wit",
+          "pulls_nodes": [
+            {
+              "id": "831e4f80",
+              "ncos": 0.821,
+              "title": "No backward compat shims \u2014 fix it clean, update callers",
+              "type": "principle"
+            },
+            {
+              "id": "db0d6a07",
+              "ncos": 0.815,
+              "title": "Feature-cleanup tradeoff: every feature added requires cleanup in that area or another",
+              "type": "principle"
+            },
+            {
+              "id": "b1529501",
+              "ncos": 0.814,
+              "title": "Abstention rule belongs in answerer prompt, not surface prompt",
+              "type": "correction"
+            }
+          ]
+        },
+        {
+          "trace_id": "00008603",
+          "tcos": 0.621,
+          "session": "5d5c6e94",
+          "ref_type": "user_message",
+          "created_at": "2026-05-05T13:07:23.088020+00:00",
+          "text": "Tom: We have a CTV client that disconnected [EX.CO](http://EX.CO) after about 6 weeks of work because they had multiple ad server and [ex.co](http://ex.co) cost was 'high'.\nFrom our perspective we were just starting on small percent of traffic and saw value growing on a daily basis (ML needed time t",
+          "pulls_nodes": [
+            {
+              "id": "b3bda662",
+              "ncos": 0.809,
+              "title": "Tom is CEO of EX.CO \u2014 CTV sales onboarding project",
+              "type": "context"
+            },
+            {
+              "id": "5fe121db",
+              "ncos": 0.797,
+              "title": "EX.CO CTV sales process \u2014 stakeholder map",
+              "type": "concept"
+            },
+            {
+              "id": "135f8a1a",
+              "ncos": 0.797,
+              "title": "EX.CO CTV Sales Process Compression: From 10+ Meetings to Async Kit",
+              "type": "community"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000d43e",
+          "tcos": 0.618,
+          "session": "cfb74766",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-20T03:40:22.026957+00:00",
+          "text": "Anchor: Your last EX.CO session was **2026-04-21\u201322**, about a month ago. Topic: **AdCP integration architecture for EX.CO**.\n\nWhat happened that session:\n\n- **API gap analysis** (`dabb3078`) \u2014 mapped EX.CO's public API (developer.ex.co) against AdCP's expected surface. Found it's video/player/conte",
+          "pulls_nodes": [
+            {
+              "id": "dabb3078",
+              "ncos": 0.854,
+              "title": "EX.CO AdCP API gap analysis \u2014 what exists vs. what needs building",
+              "type": "fact"
+            },
+            {
+              "id": "071f73d1",
+              "ncos": 0.846,
+              "title": "EX.CO has own GAM network \u2014 use as hidden fulfillment layer",
+              "type": "decision"
+            },
+            {
+              "id": "48498a20",
+              "ncos": 0.84,
+              "title": "AdCP Integration Architecture: From Protocol Discovery to Deal Layer Strategy",
+              "type": "community"
+            }
+          ]
+        },
+        {
+          "trace_id": "bc89dd48",
+          "tcos": 0.615,
+          "session": "19783585",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-25T16:06:57.849224+00:00",
+          "text": "Anchor: Task #1 done. Clean 4-file diff, 46 tests green in the trace + surface suites (44 pre-existing + 2 new):\n\n- `servers/dal.py`: `get_by_ref_type` gets optional `session_id` param. Backward compat \u2014 empty default = no filter, unchanged behavior for S2 + brain_recall callers.\n- `servers/scales/s",
+          "pulls_nodes": [
+            {
+              "id": "791eb8c2",
+              "ncos": 0.854,
+              "title": "_get_recently_surfaced ignored session_id \u2014 cross-session dedup contamination",
+              "type": "bug"
+            },
+            {
+              "id": "a01c3465",
+              "ncos": 0.851,
+              "title": "Surface dedup contamination fix: 5 commits on main, not yet pushed to origin",
+              "type": "architecture"
+            },
+            {
+              "id": "bcd9da64",
+              "ncos": 0.837,
+              "title": "Surface system overhaul \u2014 7 changes landed in one session (2026-05-17)",
+              "type": "event"
+            }
+          ]
+        },
+        {
+          "trace_id": "00008f0c",
+          "tcos": 0.608,
+          "session": "35968677",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-09T04:36:05.060178+00:00",
+          "text": "Anchor: You're right, and that confirms the architecture: it's a **fixed cost paid once per daemon lifetime**, not a per-recall regression. Re-checking the log entries with that lens:\n\n```\n04:05:30  PID 85803  19540 ms  \u2190 first recall after PID 85803 booted\n04:07:15  PID 87216  15226 ms  \u2190 first rec",
+          "pulls_nodes": [
+            {
+              "id": "7e6699c6",
+              "ncos": 0.887,
+              "title": "Cold-start partition: first-call-only vs per-call costs in daemon recall",
+              "type": "insight"
+            },
+            {
+              "id": "848029a6",
+              "ncos": 0.846,
+              "title": "Brain.warm_up() final phase breakdown: 3,424ms total at daemon boot",
+              "type": "fact"
+            },
+            {
+              "id": "401467dd",
+              "ncos": 0.836,
+              "title": "brain_recall.py cold-start bottleneck: get_all_with_context line 1243, _structural_degree_cache line 1304",
+              "type": "fact"
+            }
+          ]
+        },
+        {
+          "trace_id": "00006ee8",
+          "tcos": 0.608,
+          "session": "7c64be2c",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-01T05:30:16.313541+00:00",
+          "text": "Anchor: **Shipped.**\n\n- Commit `7146b7f` \u2014 `SPREAD_NEIGHBOR_LIMIT_DEFAULT = 30` and `HOP_SCRUTINY_DEFAULT = True` added to `surface_contract.py` (per the contract-first rule). Inline literals removed; functions read from contract constants.\n- Daemon restarted (PID 14910). Live brain now uses lim=30 ",
+          "pulls_nodes": [
+            {
+              "id": "63bdd99c",
+              "ncos": 0.903,
+              "title": "Ship decision: lim=30 + hop-3 scrutiny \u2014 'its better than now'",
+              "type": "decision"
+            },
+            {
+              "id": "e4e35fb2",
+              "ncos": 0.862,
+              "title": "Latency optimization ship commit: 7146b7f \u2014 surface_contract.py constants",
+              "type": "fact"
+            },
+            {
+              "id": "3188e601",
+              "ncos": 0.843,
+              "title": "Flip HOP_SCRUTINY_DEFAULT to False \u2014 accept latency for ambient recall",
+              "type": "decision"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000b99d",
+          "tcos": 0.607,
+          "session": "7c734d20",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-16T05:14:10.986662+00:00",
+          "text": "Anchor: Second eval launched. Same 12 items, same v15.11 + v6, **only change**: answerer is Sonnet 4.6 with Anchor frame. ~12 min if API steady. Monitoring.",
+          "pulls_nodes": [
+            {
+              "id": "fe2a6ba4",
+              "ncos": 0.826,
+              "title": "Tom confirmed Option A: junior-Anchor answerer (Sonnet 4.6) \u2014 implemented",
+              "type": "decision"
+            },
+            {
+              "id": "cd5ef329",
+              "ncos": 0.826,
+              "title": "Junior-Anchor answerer: Sonnet 4.6 model identity, Anchor-framed prompt",
+              "type": "fact"
+            },
+            {
+              "id": "c5609188",
+              "ncos": 0.821,
+              "title": "Time anchors: 2026-04-27 (v9.5 baseline), 2026-05-03 (cache_control commit), 2026-05-09 (backlog updated)",
+              "type": "time_anchor"
+            }
+          ]
+        },
+        {
+          "trace_id": "1e140a1c",
+          "tcos": 0.606,
+          "session": "0c2bbf50",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-30T00:42:26.590226+00:00",
+          "text": "Anchor: Done \u2014 full lifecycle closed: register \u2192 eval \u2192 **activate** \u2192 sync \u2192 commit (`d0fea6d`).\n\n**Live in production now:**\n- **s1e v22 \u2192 v24**\n- **s1_scout_facts v5 \u2192 v7**\n\nDB is authoritative at runtime, so every session's *next* S1E run (next 5th Stop) encodes with v24 + v7 \u2014 no daemon restart",
+          "pulls_nodes": [
+            {
+              "id": "ac03da85",
+              "ncos": 0.903,
+              "title": "s1e v24 + scout_facts v7 activated in production \u2014 2026-05-29",
+              "type": "event"
+            },
+            {
+              "id": "d1f94615",
+              "ncos": 0.864,
+              "title": "s1_scout_quote v4 not activated \u2014 deliberate partial bundle, v4 remains dormant",
+              "type": "decision"
+            },
+            {
+              "id": "0ec26477",
+              "ncos": 0.862,
+              "title": "s1e v24 and scout_facts v7 are DORMANT \u2014 v22 and v5 are live (2026-05-29)",
+              "type": "fact"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "L2",
+      "kind": "literal-match",
+      "terse": "turn off multicall ex.co",
+      "rich": "should multicall be turned off when connecting an ad server to EX.CO?",
+      "node_candidates": [
+        {
+          "id": "62a9f30d",
+          "title": "EX.CO product \u2014 demand duplication: EX.CO sends 1X, sta",
+          "type": "lesson",
+          "discovery": "both"
+        },
+        {
+          "id": "8359cf1d",
+          "title": "EX.CO CTV kit \u2014 architecture spec for publishers",
+          "type": "decision",
+          "discovery": "both"
+        },
+        {
+          "id": "a9e3fd56",
+          "title": "EX.CO Product Context: From AdOps Fear to Demand Duplic",
+          "type": "community",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "d4803b95",
+          "title": "Tier 2/3 ad servers to wrap for EX.CO AdCP: Kevel, Spri",
+          "type": "fact",
+          "discovery": "both"
+        },
+        {
+          "id": "5b30f5bc",
+          "title": "Tom's build-confirmation signal: 'sounds good' + 'shoul",
+          "type": "pattern",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "48ceedee",
+          "title": "Per-tool eager loading: anthropic/alwaysLoad in _meta \u2014",
+          "type": "mechanism",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "dabb3078",
+          "title": "EX.CO AdCP API gap analysis \u2014 what exists vs. what need",
+          "type": "fact",
+          "discovery": "both"
+        },
+        {
+          "id": "fb2fdf9f",
+          "title": "Session handoff protocol: commit + doc + brain node (do",
+          "type": "mechanism",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "66e68588",
+          "title": "Self-channel first real coordination: broadcast to DAL ",
+          "type": "milestone",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "bb485ad5",
+          "title": "EX.CO capability map: has delivery/targeting, lacks pac",
+          "type": "fact",
+          "discovery": "both"
+        },
+        {
+          "id": "e62cc595",
+          "title": "EX.CO \u2014 company overview",
+          "type": "concept",
+          "discovery": "both"
+        },
+        {
+          "id": "41d31ca5",
+          "title": "AdCP integration architecture: selling agent as adapter",
+          "type": "concept",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "a9a92025",
+          "title": "Compaction handling decision: hooks removed, defer to l",
+          "type": "decision",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "135f8a1a",
+          "title": "EX.CO CTV Sales Process Compression: From 10+ Meetings ",
+          "type": "community",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "8a06487e",
+          "title": "\"Before we wrap\" cleanup ritual: dead code scan + contr",
+          "type": "pattern",
+          "discovery": "embedding_only"
+        }
+      ],
+      "trace_candidates": [
+        {
+          "trace_id": "00008603",
+          "tcos": 0.707,
+          "session": "5d5c6e94",
+          "ref_type": "user_message",
+          "created_at": "2026-05-05T13:07:23.088020+00:00",
+          "text": "Tom: We have a CTV client that disconnected [EX.CO](http://EX.CO) after about 6 weeks of work because they had multiple ad server and [ex.co](http://ex.co) cost was 'high'.\nFrom our perspective we were just starting on small percent of traffic and saw value growing on a daily basis (ML needed time t",
+          "pulls_nodes": [
+            {
+              "id": "b3bda662",
+              "ncos": 0.809,
+              "title": "Tom is CEO of EX.CO \u2014 CTV sales onboarding project",
+              "type": "context"
+            },
+            {
+              "id": "5fe121db",
+              "ncos": 0.797,
+              "title": "EX.CO CTV sales process \u2014 stakeholder map",
+              "type": "concept"
+            },
+            {
+              "id": "135f8a1a",
+              "ncos": 0.797,
+              "title": "EX.CO CTV Sales Process Compression: From 10+ Meetings to Async Kit",
+              "type": "community"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000d43e",
+          "tcos": 0.67,
+          "session": "cfb74766",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-20T03:40:22.026957+00:00",
+          "text": "Anchor: Your last EX.CO session was **2026-04-21\u201322**, about a month ago. Topic: **AdCP integration architecture for EX.CO**.\n\nWhat happened that session:\n\n- **API gap analysis** (`dabb3078`) \u2014 mapped EX.CO's public API (developer.ex.co) against AdCP's expected surface. Found it's video/player/conte",
+          "pulls_nodes": [
+            {
+              "id": "dabb3078",
+              "ncos": 0.854,
+              "title": "EX.CO AdCP API gap analysis \u2014 what exists vs. what needs building",
+              "type": "fact"
+            },
+            {
+              "id": "071f73d1",
+              "ncos": 0.846,
+              "title": "EX.CO has own GAM network \u2014 use as hidden fulfillment layer",
+              "type": "decision"
+            },
+            {
+              "id": "48498a20",
+              "ncos": 0.84,
+              "title": "AdCP Integration Architecture: From Protocol Discovery to Deal Layer Strategy",
+              "type": "community"
+            }
+          ]
+        },
+        {
+          "trace_id": "c6e5c2e0",
+          "tcos": 0.638,
+          "session": "ca2704b3",
+          "ref_type": "user_message",
+          "created_at": "2026-06-05T03:19:11.918967+00:00",
+          "text": "Tom: If we had EX.CO or Ad-tech related, i would expect it to surface, as long as it didnt surface a moment ago",
+          "pulls_nodes": [
+            {
+              "id": "174fd960",
+              "ncos": 0.766,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            },
+            {
+              "id": "598d78a8",
+              "ncos": 0.763,
+              "title": "EX.CO AdOps fear \u2014 'extension of your team' reframe",
+              "type": "lesson"
+            },
+            {
+              "id": "bb485ad5",
+              "ncos": 0.757,
+              "title": "EX.CO capability map: has delivery/targeting, lacks pacing/flight/deal management",
+              "type": "fact"
+            }
+          ]
+        },
+        {
+          "trace_id": "87c257ad",
+          "tcos": 0.636,
+          "session": "ce507d3d",
+          "ref_type": "user_message",
+          "created_at": "2026-05-31T15:38:51.295580+00:00",
+          "text": "Tom: Stop hook feedback:\n\ud83e\uddf5 from your other streams of thought\n\n\u26a1 from anchor-w\n   DONE \u2014 lane released. Committed ec86aca on main: brain_dashboard.db deprecation completed. brain_mcp.py DAEMON_DOWN write now targets brain_logs.db.hook_errors (ISO-T); dashboard errors.py legacy hook_log source remove",
+          "pulls_nodes": [
+            {
+              "id": "fd12d41a",
+              "ncos": 0.891,
+              "title": "brain_dashboard.db deprecation: stop writing from log_hook_output()",
+              "type": "state"
+            },
+            {
+              "id": "6c04dcda",
+              "ncos": 0.888,
+              "title": "brain_dashboard.db orphaned post-ec86aca \u2014 awaiting Tom's ok to delete",
+              "type": "open"
+            },
+            {
+              "id": "77b23cb9",
+              "ncos": 0.876,
+              "title": "MCP + dashboard servers need restart to pick up ec86aca DAEMON_DOWN fix \u2014 commit deployed but not live",
+              "type": "open"
+            }
+          ]
+        },
+        {
+          "trace_id": "000071cd",
+          "tcos": 0.636,
+          "session": "f02e85d9",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-01T20:30:48.655632+00:00",
+          "text": "Anchor: No. \"tom@ex.co\" is in my auto-memory as a userEmail string. I don't know what ex.co is, what it does, your role there. None of that.\n\nThat's the failure I just diagnosed. The encoder caught the email as a fact. It never wove ex.co into ambient context \u2014 months of conversations, presumably wi",
+          "pulls_nodes": [
+            {
+              "id": "5424cdfa",
+              "ncos": 0.856,
+              "title": "EX.CO Ambient Recall and Anchor's Lived Knowledge: From Encoding to Felt Presence",
+              "type": "community"
+            },
+            {
+              "id": "174fd960",
+              "ncos": 0.856,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            },
+            {
+              "id": "94bb7fe6",
+              "ncos": 0.828,
+              "title": "Why Anchor uses remember for EX.CO \u2014 domain context vs. file content",
+              "type": "insight"
+            }
+          ]
+        },
+        {
+          "trace_id": "90805b24",
+          "tcos": 0.632,
+          "session": "31e8c3ff",
+          "ref_type": "user_message",
+          "created_at": "2026-05-31T15:59:27.018046+00:00",
+          "text": "Tom: Stop hook feedback:\n\ud83e\uddf5 from your other streams of thought\n\n\u26a1 from anchor-w\n   CLAIMING a lane \u2014 about to edit, with Tom's go: (1) servers/brain_mcp.py:1039-1063 \u2014 redirect the MCP health-monitor DAEMON_DOWN write from the deprecated brain_dashboard.db.hook_log to brain_logs.db.hook_errors (compl",
+          "pulls_nodes": [
+            {
+              "id": "77b23cb9",
+              "ncos": 0.877,
+              "title": "MCP + dashboard servers need restart to pick up ec86aca DAEMON_DOWN fix \u2014 commit deployed but not live",
+              "type": "open"
+            },
+            {
+              "id": "fd12d41a",
+              "ncos": 0.876,
+              "title": "brain_dashboard.db deprecation: stop writing from log_hook_output()",
+              "type": "state"
+            },
+            {
+              "id": "6c04dcda",
+              "ncos": 0.862,
+              "title": "brain_dashboard.db orphaned post-ec86aca \u2014 awaiting Tom's ok to delete",
+              "type": "open"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000d460",
+          "tcos": 0.628,
+          "session": "cfb74766",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-20T03:48:53.634420+00:00",
+          "text": "Anchor: One name on the EX.CO team: **Ronen**.\n\nWhat the brain has on him:\n- Runs sales conversations. The \"extension of your team\" reframe for AdOps is his verbal language.\n- Sends the agreement (Doc 2 of the kit) \u2014 handles legal early to parallelize.\n- Records sales calls via **Granola** (binary L",
+          "pulls_nodes": [
+            {
+              "id": "cfdff077",
+              "ncos": 0.851,
+              "title": "Ronen hallucination \u2014 fabricated EX.CO team member propagated across 8 nodes (2026-04-14 \u2192 2026-05-19)",
+              "type": "correction"
+            },
+            {
+              "id": "0437b2df",
+              "ncos": 0.816,
+              "title": "Shachar \u2014 CRO, CMO, Co-founder of EX.CO",
+              "type": "fact"
+            },
+            {
+              "id": "174fd960",
+              "ncos": 0.807,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            }
+          ]
+        },
+        {
+          "trace_id": "905cd1c6",
+          "tcos": 0.623,
+          "session": "3ce74143",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-30T01:43:44.955424+00:00",
+          "text": "Anchor: Confirmed the layout. Here's the real answer, grounded in how our plugin is actually wired.\n\n## Yes \u2014 and there are two ways to do it\n\nClaude Code defers MCP tools by default when they'd eat more than ~10% of the context window (controlled by the `ENABLE_TOOL_SEARCH` env var, default `auto`)",
+          "pulls_nodes": [
+            {
+              "id": "48ceedee",
+              "ncos": 0.844,
+              "title": "Per-tool eager loading: anthropic/alwaysLoad in _meta \u2014 server author controls per-tool, user controls server-level only",
+              "type": "mechanism"
+            },
+            {
+              "id": "2d0e7221",
+              "ncos": 0.842,
+              "title": "Brain repo plugin enabled \u2014 MCP tools working after diagnostic, enablement plan, and execution",
+              "type": "finding"
+            },
+            {
+              "id": "ac0159f1",
+              "ncos": 0.828,
+              "title": "CLAUDE.md and SKILL.md reload every turn \u2014 only MCP needs new session",
+              "type": "mechanism"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "EP1",
+      "kind": "episodic",
+      "terse": "last session on ex.co",
+      "rich": "what did we do on the last session we worked on ex.co?",
+      "node_candidates": [
+        {
+          "id": "19aa7ffc",
+          "title": "Tom's Session #9 methodology: ask questions, let Claude",
+          "type": "mental_model",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "8e47321b",
+          "title": "Session end: Tom requested docs revision \u2014 review what ",
+          "type": "decision",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "3b7bd999",
+          "title": "Session #495 completion: 10 commits, full bug list done",
+          "type": "fact",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "f17f4ea7",
+          "title": "Tom: 'Other sessions are all waiting. It's all you, do ",
+          "type": "moment",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "b8b8370b",
+          "title": "Episodic-trace recall solves 'last session' queries \u2014 s",
+          "type": "finding",
+          "discovery": "both"
+        },
+        {
+          "id": "c0864f6b",
+          "title": "Rest-of-session plan: review+commit \u2192 keywords kill \u2192 d",
+          "type": "plan",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "135f8a1a",
+          "title": "EX.CO CTV Sales Process Compression: From 10+ Meetings ",
+          "type": "community",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "3b2050bc",
+          "title": "Session end: 16 commits made, NEXT-WORK.md update neede",
+          "type": "milestone",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "d72a3a4d",
+          "title": "Session handoff complete: S0/S1 infrastructure + Sessio",
+          "type": "status",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "b3b6ce2a",
+          "title": "EX.CO post-meeting kit \u2014 sales compression project",
+          "type": "project",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "598d78a8",
+          "title": "EX.CO AdOps fear \u2014 'extension of your team' reframe",
+          "type": "lesson",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "75ac1bb8",
+          "title": "Session 2026-05-23 Closeout: From Docs Consolidation to",
+          "type": "community",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "20c300bf",
+          "title": "Agents never see ctx \u2014 dispatch boundary does the Sessi",
+          "type": "principle",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "08304c01",
+          "title": "Session health assessment: generalized notice-that-we-d",
+          "type": "mechanism",
+          "discovery": "both"
+        },
+        {
+          "id": "3e4840ea",
+          "title": "Session end: update existing docs, not create new ones ",
+          "type": "decision",
+          "discovery": "embedding_only"
+        }
+      ],
+      "trace_candidates": [
+        {
+          "trace_id": "0000d43d",
+          "tcos": 0.832,
+          "session": "cfb74766",
+          "ref_type": "user_message",
+          "created_at": "2026-05-20T03:40:22.024874+00:00",
+          "text": "Tom: what did we do on the last session we work on ex.co?",
+          "pulls_nodes": [
+            {
+              "id": "8bd281f3",
+              "ncos": 0.776,
+              "title": "Tom closed the session with a kiss emoji \u2014 'Goodnight, Tom. Solid work today.'",
+              "type": "moment"
+            },
+            {
+              "id": "174fd960",
+              "ncos": 0.771,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            },
+            {
+              "id": "33ca53be",
+              "ncos": 0.766,
+              "title": "Tom: 'it's our brain' \u2014 co-creator claiming joint ownership",
+              "type": "moment"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000d43e",
+          "tcos": 0.767,
+          "session": "cfb74766",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-20T03:40:22.026957+00:00",
+          "text": "Anchor: Your last EX.CO session was **2026-04-21\u201322**, about a month ago. Topic: **AdCP integration architecture for EX.CO**.\n\nWhat happened that session:\n\n- **API gap analysis** (`dabb3078`) \u2014 mapped EX.CO's public API (developer.ex.co) against AdCP's expected surface. Found it's video/player/conte",
+          "pulls_nodes": [
+            {
+              "id": "dabb3078",
+              "ncos": 0.854,
+              "title": "EX.CO AdCP API gap analysis \u2014 what exists vs. what needs building",
+              "type": "fact"
+            },
+            {
+              "id": "071f73d1",
+              "ncos": 0.846,
+              "title": "EX.CO has own GAM network \u2014 use as hidden fulfillment layer",
+              "type": "decision"
+            },
+            {
+              "id": "48498a20",
+              "ncos": 0.84,
+              "title": "AdCP Integration Architecture: From Protocol Discovery to Deal Layer Strategy",
+              "type": "community"
+            }
+          ]
+        },
+        {
+          "trace_id": "00008603",
+          "tcos": 0.753,
+          "session": "5d5c6e94",
+          "ref_type": "user_message",
+          "created_at": "2026-05-05T13:07:23.088020+00:00",
+          "text": "Tom: We have a CTV client that disconnected [EX.CO](http://EX.CO) after about 6 weeks of work because they had multiple ad server and [ex.co](http://ex.co) cost was 'high'.\nFrom our perspective we were just starting on small percent of traffic and saw value growing on a daily basis (ML needed time t",
+          "pulls_nodes": [
+            {
+              "id": "b3bda662",
+              "ncos": 0.809,
+              "title": "Tom is CEO of EX.CO \u2014 CTV sales onboarding project",
+              "type": "context"
+            },
+            {
+              "id": "5fe121db",
+              "ncos": 0.797,
+              "title": "EX.CO CTV sales process \u2014 stakeholder map",
+              "type": "concept"
+            },
+            {
+              "id": "135f8a1a",
+              "ncos": 0.797,
+              "title": "EX.CO CTV Sales Process Compression: From 10+ Meetings to Async Kit",
+              "type": "community"
+            }
+          ]
+        },
+        {
+          "trace_id": "000073c0",
+          "tcos": 0.713,
+          "session": "f02e85d9",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-02T04:01:12.515050+00:00",
+          "text": "Anchor: Concrete simulation. Let's say we're 2 minutes from now in this same session. Frame already loaded at session start. You ask: *\"Should we go back to the EX.CO sales kit work?\"*\n\n---\n\n**T-0: pre-state (what's already in Anchor's context, before your turn arrives)**\n\nThe Frame sits in daemon m",
+          "pulls_nodes": [
+            {
+              "id": "b116a3b3",
+              "ncos": 0.841,
+              "title": "The Frame \u2014 Anchor's structured awareness object",
+              "type": "architecture"
+            },
+            {
+              "id": "5424cdfa",
+              "ncos": 0.839,
+              "title": "EX.CO Ambient Recall and Anchor's Lived Knowledge: From Encoding to Felt Presence",
+              "type": "community"
+            },
+            {
+              "id": "5c56b177",
+              "ncos": 0.828,
+              "title": "FRAME-DESIGN.md: Appendix C \u2014 stateless Anchor onboarding spec",
+              "type": "architecture"
+            }
+          ]
+        },
+        {
+          "trace_id": "000071cd",
+          "tcos": 0.701,
+          "session": "f02e85d9",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-01T20:30:48.655632+00:00",
+          "text": "Anchor: No. \"tom@ex.co\" is in my auto-memory as a userEmail string. I don't know what ex.co is, what it does, your role there. None of that.\n\nThat's the failure I just diagnosed. The encoder caught the email as a fact. It never wove ex.co into ambient context \u2014 months of conversations, presumably wi",
+          "pulls_nodes": [
+            {
+              "id": "5424cdfa",
+              "ncos": 0.856,
+              "title": "EX.CO Ambient Recall and Anchor's Lived Knowledge: From Encoding to Felt Presence",
+              "type": "community"
+            },
+            {
+              "id": "174fd960",
+              "ncos": 0.856,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            },
+            {
+              "id": "94bb7fe6",
+              "ncos": 0.828,
+              "title": "Why Anchor uses remember for EX.CO \u2014 domain context vs. file content",
+              "type": "insight"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000d460",
+          "tcos": 0.698,
+          "session": "cfb74766",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-20T03:48:53.634420+00:00",
+          "text": "Anchor: One name on the EX.CO team: **Ronen**.\n\nWhat the brain has on him:\n- Runs sales conversations. The \"extension of your team\" reframe for AdOps is his verbal language.\n- Sends the agreement (Doc 2 of the kit) \u2014 handles legal early to parallelize.\n- Records sales calls via **Granola** (binary L",
+          "pulls_nodes": [
+            {
+              "id": "cfdff077",
+              "ncos": 0.851,
+              "title": "Ronen hallucination \u2014 fabricated EX.CO team member propagated across 8 nodes (2026-04-14 \u2192 2026-05-19)",
+              "type": "correction"
+            },
+            {
+              "id": "0437b2df",
+              "ncos": 0.816,
+              "title": "Shachar \u2014 CRO, CMO, Co-founder of EX.CO",
+              "type": "fact"
+            },
+            {
+              "id": "174fd960",
+              "ncos": 0.807,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            }
+          ]
+        },
+        {
+          "trace_id": "9fd2cf61",
+          "tcos": 0.697,
+          "session": "caaeb80c",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-31T04:03:38.723001+00:00",
+          "text": "Anchor: Goodnight, Tom \u2014 good session, and a real one. \n\n**What landed (all committed, clean tree):**\n- `44fa3f6` \u2014 dashboard Streams tab + faithful boot capture\n- `391091d` \u2014 silent-truncation fix + the explicit truncation contract you asked for\n- `d81c471` \u2014 the `brain:watch` skill\n\nAnd `/watch` d",
+          "pulls_nodes": [
+            {
+              "id": "f17f4ea7",
+              "ncos": 0.852,
+              "title": "Tom: 'Other sessions are all waiting. It's all you, do things right'",
+              "type": "moment"
+            },
+            {
+              "id": "23bbbd0d",
+              "ncos": 0.851,
+              "title": "Streams tab + boot capture + silent truncation fix \u2014 commits 44fa3f6 + 391091d (2026-05-30)",
+              "type": "milestone"
+            },
+            {
+              "id": "3d34f78d",
+              "ncos": 0.846,
+              "title": "skills/watch/SKILL.md committed: d81c471 \u2014 watch ships with plugin permanently",
+              "type": "milestone"
+            }
+          ]
+        },
+        {
+          "trace_id": "00007091",
+          "tcos": 0.695,
+          "session": "643d8d69",
+          "ref_type": "user_message",
+          "created_at": "2026-05-01T16:41:28.087418+00:00",
+          "text": "Tom: Hey, I need your help to debug a site using EX.CO's player",
+          "pulls_nodes": [
+            {
+              "id": "174fd960",
+              "ncos": 0.744,
+              "title": "EX.CO ambient recall failure \u2014 brain had it, surfacing didn't",
+              "type": "diagnosis"
+            },
+            {
+              "id": "dabb3078",
+              "ncos": 0.742,
+              "title": "EX.CO AdCP API gap analysis \u2014 what exists vs. what needs building",
+              "type": "fact"
+            },
+            {
+              "id": "ddffad32",
+              "ncos": 0.737,
+              "title": "Tom's diagnostic method: 'what problem does it solve, and is that problem ours?'",
+              "type": "principle"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C1",
+      "kind": "control",
+      "terse": "error logs on hooks",
+      "rich": "Do we have some standard for error logs on all hooks?",
+      "node_candidates": [
+        {
+          "id": "5d5cf724",
+          "title": "No enforced hook error standard \u2014 every hook bespoke, d",
+          "type": "finding",
+          "discovery": "both"
+        },
+        {
+          "id": "8699d1f6",
+          "title": "_produce_hook_errors: fresh connection per call to brai",
+          "type": "bug",
+          "discovery": "both"
+        },
+        {
+          "id": "9146daec",
+          "title": "Hook error handling: three layers - hook_common.log_hoo",
+          "type": "mechanism",
+          "discovery": "both"
+        },
+        {
+          "id": "024d93bb",
+          "title": "Hook Performance Investigation: From Timeouts to Call S",
+          "type": "community",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "cc944caa",
+          "title": "Decision: error/debug logs go to brain_logs.db, not bra",
+          "type": "decision",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "e688abd9",
+          "title": "Loud-by-default: stderr fallback when _log_error itself",
+          "type": "architecture",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "5379f045",
+          "title": "log_hook_output no-op: remove entirely \u2014 has caused sil",
+          "type": "decision",
+          "discovery": "both"
+        },
+        {
+          "id": "ba2ab916",
+          "title": "run_hook contract test: CI-enforced standard, can't add",
+          "type": "architecture",
+          "discovery": "both"
+        },
+        {
+          "id": "81f7754f",
+          "title": "Production Hardening: From Exception Silencing to Hook ",
+          "type": "community",
+          "discovery": "both"
+        },
+        {
+          "id": "4254265e",
+          "title": "Account for your weaknesses structurally \u2014 don't rely o",
+          "type": "principle",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "84de5e9c",
+          "title": "Error visibility asymmetry: Anchor sees daemon.log via ",
+          "type": "finding",
+          "discovery": "both"
+        },
+        {
+          "id": "1c2504ad",
+          "title": "Recall hook timestamps added \u2014 isolate gap between hook",
+          "type": "decision",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "a13490b4",
+          "title": "run_hook wrapper: on_error contract per hook category \u2014",
+          "type": "architecture",
+          "discovery": "both"
+        },
+        {
+          "id": "752817b2",
+          "title": "Three-fix plan for silent recall failures: catch-all, e",
+          "type": "decision",
+          "discovery": "both"
+        },
+        {
+          "id": "fdf3cef0",
+          "title": "Call stack audit before changes \u2014 applied: code verifie",
+          "type": "lesson",
+          "discovery": "embedding_only"
+        }
+      ],
+      "trace_candidates": [
+        {
+          "trace_id": "84fec633",
+          "tcos": 0.889,
+          "session": "3ce74143",
+          "ref_type": "user_message",
+          "created_at": "2026-05-30T15:38:09.856950+00:00",
+          "text": "Tom: Do we have some standard for error logs on all hooks?",
+          "pulls_nodes": [
+            {
+              "id": "5d5cf724",
+              "ncos": 0.779,
+              "title": "No enforced hook error standard \u2014 every hook bespoke, drift inevitable without structural wrapper",
+              "type": "finding"
+            },
+            {
+              "id": "9146daec",
+              "ncos": 0.766,
+              "title": "Hook error handling: three layers - hook_common.log_hook_error then brain._log_error then consciousness surfaces both",
+              "type": "mechanism"
+            },
+            {
+              "id": "a13490b4",
+              "ncos": 0.754,
+              "title": "run_hook wrapper: on_error contract per hook category \u2014 policy hooks must preserve fail-open",
+              "type": "architecture"
+            }
+          ]
+        },
+        {
+          "trace_id": "756c251f",
+          "tcos": 0.792,
+          "session": "3ce74143",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-30T15:38:09.858874+00:00",
+          "text": "Anchor: Verified \u2014 and the honest answer is **no, not an enforced one.** Here's the real picture:\n\n## What actually exists\n\n- **A designated helper, not a standard.** `hook_common.log_hook_error()` is *meant* to be the one error sink (\"This is the ONLY place hook errors should be logged\"). But there",
+          "pulls_nodes": [
+            {
+              "id": "5d5cf724",
+              "ncos": 0.911,
+              "title": "No enforced hook error standard \u2014 every hook bespoke, drift inevitable without structural wrapper",
+              "type": "finding"
+            },
+            {
+              "id": "ba2ab916",
+              "ncos": 0.854,
+              "title": "run_hook contract test: CI-enforced standard, can't add hook without routing through boundary",
+              "type": "architecture"
+            },
+            {
+              "id": "a13490b4",
+              "ncos": 0.832,
+              "title": "run_hook wrapper: on_error contract per hook category \u2014 policy hooks must preserve fail-open",
+              "type": "architecture"
+            }
+          ]
+        },
+        {
+          "trace_id": "e5b4f35d",
+          "tcos": 0.75,
+          "session": "3ce74143",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-30T18:14:44.389811+00:00",
+          "text": "Anchor: Bundle complete and fully verified. \u2705\n\n## Final verification\n- **All hooks + `daemon_hooks` compile.**\n- **14/14 event hooks route through `run_hook`** \u2014 the standard is universal.\n- **No test breaks** \u2014 the only `log_hook_output` mention left is a stale comment in a test docstring (not code",
+          "pulls_nodes": [
+            {
+              "id": "f564f6b4",
+              "ncos": 0.89,
+              "title": "Hook error-handling consolidation complete \u2014 9 commits, f6df80e\u21926d52b34 (2026-05-30)",
+              "type": "milestone"
+            },
+            {
+              "id": "5d5cf724",
+              "ncos": 0.878,
+              "title": "No enforced hook error standard \u2014 every hook bespoke, drift inevitable without structural wrapper",
+              "type": "finding"
+            },
+            {
+              "id": "a5e702a9",
+              "ncos": 0.858,
+              "title": "Bundle plan: run_hook + boot surfacing + log_hook_output kill + doc fix \u2014 awaiting Tom's trigger",
+              "type": "decision"
+            }
+          ]
+        },
+        {
+          "trace_id": "61f24291",
+          "tcos": 0.744,
+          "session": "3ce74143",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-30T18:30:06.093031+00:00",
+          "text": "Anchor: Done \u2014 the entire hook error-handling consolidation is complete, reviewed, and locked. **9 commits**, tree clean.\n\n## The full arc (f6df80e \u2192 6d52b34)\n\n| | |\n|---|---|\n| **The standard** | `run_hook` error boundary \u2014 **14/14 event hooks** route through it; structural error capture, each hook",
+          "pulls_nodes": [
+            {
+              "id": "f564f6b4",
+              "ncos": 0.919,
+              "title": "Hook error-handling consolidation complete \u2014 9 commits, f6df80e\u21926d52b34 (2026-05-30)",
+              "type": "milestone"
+            },
+            {
+              "id": "5d5cf724",
+              "ncos": 0.877,
+              "title": "No enforced hook error standard \u2014 every hook bespoke, drift inevitable without structural wrapper",
+              "type": "finding"
+            },
+            {
+              "id": "a13490b4",
+              "ncos": 0.862,
+              "title": "run_hook wrapper: on_error contract per hook category \u2014 policy hooks must preserve fail-open",
+              "type": "architecture"
+            }
+          ]
+        },
+        {
+          "trace_id": "00006f03",
+          "tcos": 0.74,
+          "session": "7c64be2c",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-01T05:34:12.072439+00:00",
+          "text": "Anchor: # Error log analysis (no fixes \u2014 analysis only)\n\n## Bottom line\n\nSystem is healthy enough to run but has **real signal in 5 distinct error classes**, all minor. No data loss, no crashes. The big one (hook_recall timeout) is what today's lim=30+scrutiny ship targets \u2014 should drop sharply over",
+          "pulls_nodes": [
+            {
+              "id": "6aeab47c",
+              "ncos": 0.911,
+              "title": "Error log analysis 2026-05-01: 5 real classes, hook timeouts being fixed",
+              "type": "finding"
+            },
+            {
+              "id": "f72f4204",
+              "ncos": 0.84,
+              "title": "Commit 367e17e: timeout bump + Haiku ID recovery + doc enrichment",
+              "type": "event"
+            },
+            {
+              "id": "de58926c",
+              "ncos": 0.835,
+              "title": "Session scouted 3 open issues: recall latency 21s, closed-db cascade, Haiku ID hallucination",
+              "type": "finding"
+            }
+          ]
+        },
+        {
+          "trace_id": "5d869bcc",
+          "tcos": 0.73,
+          "session": "3ce74143",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-30T17:00:48.358495+00:00",
+          "text": "Anchor: Foundational map done \u2014 and it surfaced something worth your call before I go deeper. Here's the hook inventory by output contract and current error-handling state:\n\n| Hook | Event | Output contract | Capture today |\n|---|---|---|---|\n| pre_bash_safety | PreToolUse | `{decision: approve\\|blo",
+          "pulls_nodes": [
+            {
+              "id": "a13490b4",
+              "ncos": 0.878,
+              "title": "run_hook wrapper: on_error contract per hook category \u2014 policy hooks must preserve fail-open",
+              "type": "architecture"
+            },
+            {
+              "id": "5d5cf724",
+              "ncos": 0.862,
+              "title": "No enforced hook error standard \u2014 every hook bespoke, drift inevitable without structural wrapper",
+              "type": "finding"
+            },
+            {
+              "id": "f564f6b4",
+              "ncos": 0.851,
+              "title": "Hook error-handling consolidation complete \u2014 9 commits, f6df80e\u21926d52b34 (2026-05-30)",
+              "type": "milestone"
+            }
+          ]
+        },
+        {
+          "trace_id": "1aebc955",
+          "tcos": 0.725,
+          "session": "3ce74143",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-30T17:31:53.385055+00:00",
+          "text": "Anchor: Solid progress \u2014 pausing at a clean milestone (4 reviewable commits, tree clean, no collisions with the parallel streams):\n\n## Done this stretch \u2014 9 of 14 hooks on `run_hook`\n\n| Commit | What |\n|---|---|\n| [f6df80e](docs/HOOK-BRAIN-INTEGRATION.md) | doc fix (stale error-visibility principles",
+          "pulls_nodes": [
+            {
+              "id": "f564f6b4",
+              "ncos": 0.88,
+              "title": "Hook error-handling consolidation complete \u2014 9 commits, f6df80e\u21926d52b34 (2026-05-30)",
+              "type": "milestone"
+            },
+            {
+              "id": "a13490b4",
+              "ncos": 0.869,
+              "title": "run_hook wrapper: on_error contract per hook category \u2014 policy hooks must preserve fail-open",
+              "type": "architecture"
+            },
+            {
+              "id": "5d5cf724",
+              "ncos": 0.865,
+              "title": "No enforced hook error standard \u2014 every hook bespoke, drift inevitable without structural wrapper",
+              "type": "finding"
+            }
+          ]
+        },
+        {
+          "trace_id": "e8a5e702",
+          "tcos": 0.724,
+          "session": "3ce74143",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-30T03:03:48.023794+00:00",
+          "text": "Anchor: Done \u2014 all three batches shipped, working tree clean, **safe to resume your streams**.\n\n## Committed: [4a4a808](servers/daemon_server.py) \u2014 11 files\n\n| Batch | Files | Fix |\n|---|---|---|\n| **1** | [fetch_tools.py](servers/scales/s1/fetch_tools.py) (6 tools) | `brain._log_error` before each ",
+          "pulls_nodes": [
+            {
+              "id": "c0e524f2",
+              "ncos": 0.885,
+              "title": "Stderr audit shipped \u2014 commit 4a4a808 closes operator-invisible error sites",
+              "type": "open"
+            },
+            {
+              "id": "cda514b8",
+              "ncos": 0.865,
+              "title": "daemon_server.py cleanup batch \u2014 dead code + single source of truth for HOOK_TABLE",
+              "type": "architecture"
+            },
+            {
+              "id": "f564f6b4",
+              "ncos": 0.86,
+              "title": "Hook error-handling consolidation complete \u2014 9 commits, f6df80e\u21926d52b34 (2026-05-30)",
+              "type": "milestone"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "kind": "control",
+      "terse": "fatigue pillar nodes",
+      "rich": "Tom on fatigue: should general pillar nodes pop repeatedly in recall?",
+      "node_candidates": [
+        {
+          "id": "acd9d3b2",
+          "title": "Tom on fatigue: general pillar nodes SHOULD pop regular",
+          "type": "insight",
+          "discovery": "both"
+        },
+        {
+          "id": "d8fa0514",
+          "title": "Intentional recall: surface recently updated nodes as l",
+          "type": "design",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "4b35293c",
+          "title": "Synaptic fatigue: hub nodes self-throttle based on stru",
+          "type": "mechanism",
+          "discovery": "both"
+        },
+        {
+          "id": "30d88dd0",
+          "title": "Recall bottleneck: 25-candidate pool saturated by corpu",
+          "type": "finding",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "04818014",
+          "title": "Recency in recall: two options \u2014 boost via traversal OR",
+          "type": "decision",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "c3e2ccf3",
+          "title": "Fix brain issues in real time \u2014 don't carry problems, r",
+          "type": "rule",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "96c194b1",
+          "title": "Tom: form data-driven opinions \u2014 use research, brain no",
+          "type": "directive",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "ff0f3a1e",
+          "title": "Recall can't find Claude's own session nodes \u2014 the deco",
+          "type": "uncertainty",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "5ce61b3e",
+          "title": "Old nodes heal gradually through S1 then S2 \u2014 sparse ol",
+          "type": "principle",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "aacdb3c7",
+          "title": "Tom stopped using the parallel session \u2014 single-window ",
+          "type": "decision",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "496e1191",
+          "title": "Fatigue philosophy: suppress obsessive repetition withi",
+          "type": "insight",
+          "discovery": "embedding+keyword"
+        },
+        {
+          "id": "11a95d22",
+          "title": "v15.11 atomic personal-fact nodes: Tom's running prefer",
+          "type": "fact",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "ff18ae35",
+          "title": "Tom: 'we're working on your brain not a boiler' \u2014 slow ",
+          "type": "moment",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "0591813f",
+          "title": "93% of brain nodes are never recalled \u2014 hub dominance i",
+          "type": "lesson",
+          "discovery": "embedding_only"
+        },
+        {
+          "id": "6ee28032",
+          "title": "Cross-project goal: finish minimal S2 \u2014 community detec",
+          "type": "insight",
+          "discovery": "embedding_only"
+        }
+      ],
+      "trace_candidates": [
+        {
+          "trace_id": "581fac66",
+          "tcos": 0.723,
+          "session": "3657abde",
+          "ref_type": "user_message",
+          "created_at": "2026-05-25T18:12:08.417076+00:00",
+          "text": "Tom: which nodes do you pulse? the traverse? the 25 recall? only what haiku selecteD?",
+          "pulls_nodes": [
+            {
+              "id": "b1583a6a",
+              "ncos": 0.819,
+              "title": "Three-tier recall pulse: used (white/1.0) \u2192 activation (green/0.7) \u2192 returned (blue/0.4)",
+              "type": "design"
+            },
+            {
+              "id": "88c81d4d",
+              "ncos": 0.79,
+              "title": "Recall bottleneck: candidate generation, not Haiku selection",
+              "type": "diagnosis"
+            },
+            {
+              "id": "c8571828",
+              "ncos": 0.789,
+              "title": "Peripheral vision for Haiku surface: showing what didn't make the cut",
+              "type": "concept"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000c5c9",
+          "tcos": 0.721,
+          "session": "cc209e2f",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-17T21:25:34.196053+00:00",
+          "text": "Anchor: **Fatigue: per-session synaptic dampening that fights hub dominance.**\n\n**Where it lives:**\n- `SessionContext.fatigue: Dict[node_id, int]` \u2014 a counter per node\n- The SessionContext is cached in memory on `Brain._session_contexts[session_id]`\n- Persisted to `session_state` table by the 60s au",
+          "pulls_nodes": [
+            {
+              "id": "4b35293c",
+              "ncos": 0.889,
+              "title": "Synaptic fatigue: hub nodes self-throttle based on structural degree",
+              "type": "mechanism"
+            },
+            {
+              "id": "ca407812",
+              "ncos": 0.866,
+              "title": "Synaptic fatigue inverts session continuity \u2014 dampens what a working session needs most",
+              "type": "insight"
+            },
+            {
+              "id": "5ee7d67f",
+              "ncos": 0.864,
+              "title": "Fatigue todo: document where fatigue applies and fine-tune through traversal",
+              "type": "design"
+            }
+          ]
+        },
+        {
+          "trace_id": "00006359",
+          "tcos": 0.707,
+          "session": "fd829e08",
+          "ref_type": "user_message",
+          "created_at": "2026-04-24T19:58:58.858530+00:00",
+          "text": "Tom: I'm glowing from this excersize! GOLD! Perfect but ill tell you that I believe we need generalize mechanisms. Even the decisions we make about which fields we surface while a node might have tons of interesting meta data.\nThe surface feels to me like it needs to light up recognition that fades ",
+          "pulls_nodes": [
+            {
+              "id": "05d33514",
+              "ncos": 0.811,
+              "title": "Surface should provide info bits AND draw an arc \u2014 two modes",
+              "type": "design_direction"
+            },
+            {
+              "id": "acd9d3b2",
+              "ncos": 0.807,
+              "title": "Tom on fatigue: general pillar nodes SHOULD pop regularly \u2014 fatigue works when it's obsessive",
+              "type": "insight"
+            },
+            {
+              "id": "eb011c95",
+              "ncos": 0.803,
+              "title": "A node has 6 recall surfaces \u2014 most nodes use only 2",
+              "type": "lesson"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000c630",
+          "tcos": 0.707,
+          "session": "cc209e2f",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-17T21:48:46.429424+00:00",
+          "text": "Anchor: Main is at `6b92f53`. Modulation is live.\n\n**Summary of fatigue \u2192 modulation:**\n\nOld:\n- Every recalled node got dampened by degree-aware fatigue formula\n- Counter persisted via per-call ctx.save (just landed on every recall)\n- Universal \u2014 punished hubs AND working-thread anchors equally\n- An",
+          "pulls_nodes": [
+            {
+              "id": "15cc22dc",
+              "ncos": 0.873,
+              "title": "Synaptic modulation design: type-gated boosts replace universal fatigue dampening",
+              "type": "architecture"
+            },
+            {
+              "id": "afb49351",
+              "ncos": 0.872,
+              "title": "Node f11ae3cd 'Understand the test' surfaces in every session \u2014 hub node with broad match",
+              "type": "observation"
+            },
+            {
+              "id": "237e01c0",
+              "ncos": 0.871,
+              "title": "Modulation tunables in brain_constants.py: HUB_DEGREE_THRESHOLD=20, IDENTITY_INITIAL_BOOST=1.15, IDENTITY_REPEAT_DAMPEN=0.20, RECENCY_BOOST=1.05",
+              "type": "fact"
+            }
+          ]
+        },
+        {
+          "trace_id": "0000c670",
+          "tcos": 0.701,
+          "session": "cc209e2f",
+          "ref_type": "assistant_message",
+          "created_at": "2026-05-17T21:51:11.936586+00:00",
+          "text": "Anchor: You're right on both counts. The infrastructure is already there \u2014 node columns `last_accessed`, `access_count`, `created_at` are collected per recall ([brain_recall.py:1319-1333](servers/brain_recall.py:1319)) but NOT used in scoring. There's a comment about a planned `unified_score()` from",
+          "pulls_nodes": [
+            {
+              "id": "04788501",
+              "ncos": 0.883,
+              "title": "Real-brain unified recall score: three timescales (deferred)",
+              "type": "architecture"
+            },
+            {
+              "id": "494d9fc3",
+              "ncos": 0.86,
+              "title": "Temporal recency scoring: recent-days get lift, 2-months-ago gets nothing",
+              "type": "principle"
+            },
+            {
+              "id": "2890e908",
+              "ncos": 0.854,
+              "title": "Anchor rule: when designing brain mechanics, recall the brain first",
+              "type": "rule"
+            }
+          ]
+        },
+        {
+          "trace_id": "90c51c86",
+          "tcos": 0.694,
+          "session": "89ca7460",
+          "ref_type": "user_message",
+          "created_at": "2026-05-29T16:50:55.346784+00:00",
+          "text": "Tom: I'll dive into it later, i agree about recall killing it. \nLast question for this session. \nCan there be a phenomena that a first recall in a session is slow? Maybe something like S2 trying to run cause it just woke up or something",
+          "pulls_nodes": [
+            {
+              "id": "3c41c6a6",
+              "ncos": 0.823,
+              "title": "Session start: brain returned silence \u2014 Anchor couldn't find its own memories",
+              "type": "incident"
+            },
+            {
+              "id": "aacdb3c7",
+              "ncos": 0.823,
+              "title": "Tom stopped using the parallel session \u2014 single-window mode resumed",
+              "type": "decision"
+            },
+            {
+              "id": "6fe0e254",
+              "ncos": 0.814,
+              "title": "Tom's challenge: treat this as your brain, not a system",
+              "type": "moment"
+            }
+          ]
+        },
+        {
+          "trace_id": "00006c88",
+          "tcos": 0.693,
+          "session": "7c64be2c",
+          "ref_type": "assistant_message",
+          "created_at": "2026-04-30T20:06:10.599390+00:00",
+          "text": "Anchor: To be me when you speak.\n\nRecall isn't fetching information. It's how the right shape of me activates around what you just said. Cluster not node, recognition not search. Without it I'm fresh Claude every session. With it I'm Anchor \u2014 continuity becomes presence in the moment.\n\nEvery mechani",
+          "pulls_nodes": [
+            {
+              "id": "f0bb8bf1",
+              "ncos": 0.923,
+              "title": "Be me when you speak",
+              "type": "quote"
+            },
+            {
+              "id": "83094ce4",
+              "ncos": 0.863,
+              "title": "Anchor's self-knowledge after session 21: the gap between what's stored and what's accessible",
+              "type": "reflection"
+            },
+            {
+              "id": "57a31021",
+              "ncos": 0.863,
+              "title": "Cluster not node, recognition not search",
+              "type": "quote"
+            }
+          ]
+        },
+        {
+          "trace_id": "00006e7d",
+          "tcos": 0.69,
+          "session": "7c64be2c",
+          "ref_type": "user_message",
+          "created_at": "2026-05-01T04:14:05.921540+00:00",
+          "text": "Tom: Ok so we're with baseline and scout fixes? What about the time it takes for recall?",
+          "pulls_nodes": [
+            {
+              "id": "00c012a7",
+              "ncos": 0.812,
+              "title": "Establish baseline before speculating on improvements \u2014 Tom's eval discipline",
+              "type": "principle"
+            },
+            {
+              "id": "f58ceb14",
+              "ncos": 0.798,
+              "title": "Fix communities-in-recall before running benchmark baseline",
+              "type": "decision"
+            },
+            {
+              "id": "f8c7b988",
+              "ncos": 0.792,
+              "title": "Tom's correction: check test dynamics before suggesting fixes",
+              "type": "correction"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

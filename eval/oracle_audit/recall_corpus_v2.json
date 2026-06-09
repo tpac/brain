@@ -1,0 +1,122 @@
+{
+  "_meta": {
+    "purpose": "Dual-gold recall eval corpus: NODE-gold (semantic lane) + TRACE-gold (episodic/trace-chain lane), per query. Built 2026-06-07 to eval the three-arm design (Control / A=CS-lexical / B=biology) across query SHAPES, not just EX.CO.",
+    "answer": "the actual fact the query is asking for. THE PASS CRITERION (Tom 2026-06-08): an arm passes an item if this answer is RECOVERABLE FROM THE SELECTED NODE SET (Haiku-judged) — whether the answer is carried by a node OR surfaced via a trace. Outcome-level, not ID-match.",
+    "node_gold_primary": "where the answer lives — should be in top-5 (a retrieval hint, not the pass gate).",
+    "node_gold_extended": "the rest of the relevant family — should be in top-25 (soft).",
+    "trace_gold_status": "real-anchor = clean knowledge-forming episode exists & is embedded | echo-only = real episode un-embedded (43% gap); only the prior-asking-the-question echo remains -> trace-gold UNTRUSTWORTHY until backfill | none-no-episode = entity absent from embedded traces -> trace lane SHOULD contribute nothing (lexical's job).",
+    "trace_gold": "echo-EXCLUDED trace_ids of genuine anchors. [] where status != real-anchor. Finalized by the echo-detector judge pass over corpus_v2_candidates.json.",
+    "carried_by": "which lane SHOULD win this query (the hypothesis the eval tests).",
+    "discriminates": "high = Control buries it (the lane being tested earns its place here) | low = Control already handles it (anchor / regression guard).",
+    "coverage_finding": "4721/8213 s0 dialogue traces embedded (43% un-embedded). springserve=0, multicall=0, shachar=2, ex.co=25, adcp=4 hits in embedded trace text. EX.CO April work sessions are in the un-embedded gap -> episodic ex.co trace-gold is echo-only until backfill.",
+    "echo_replay_sessions": ["cfb74766", "ca2704b3", "f02e85d9", "3ce74143"],
+    "echo_caveat": "These sessions ASKED the corpus queries; their traces score highest on query->trace cosine but are replays, not anchors. The trace-chain's #11 win is inflated by replay. Exclude these when scoring the trace lane, or backfill the un-embedded April episodes.",
+    "open_judgment_calls": {
+      "E1b_E2_ronen_correction_gold": "cfdff077 (Ronen-hallucination correction) marked node-gold for ex.co-people queries: surfacing the disconfirmation IS the correction substrate working. DEFAULT yes; flip if you want answer-only gold.",
+      "L1_gold_tightness": "L1 gold = {8359cf1d, 62a9f30d} (tight, more discriminating) vs +d4803b95 (looser). DEFAULT tight.",
+      "thick_gold_def": "T1/T2 primary = the definition node specifically in top-5 (caught a real gap: 5410f4be missed the flow-phrased query) vs any-3-of-cluster. DEFAULT definition-node-in-top-5."
+    }
+  },
+  "queries": [
+    {
+      "id": "T1", "kind": "thick-concept", "discriminates": "low", "carried_by": "dense",
+      "query_terse": "MCP facts",
+      "query_rich": "important facts about MCP — model context protocol, tools, servers, restart constraints",
+      "answer": "MCP = Model Context Protocol. Four parts must align (daemon, TCP, MCP server, boot hook); MCP server code changes need a full session restart — no hot-reload.",
+      "node_gold_primary": ["8ce5a8c1", "85649963"],
+      "node_gold_extended": ["a6d04354", "568ccade", "48ceedee", "edeb363d", "3a112f6a"],
+      "trace_gold_status": "real-anchor", "trace_gold": [], "trace_gold_sessions": ["e3d738b7", "3ce74143"],
+      "notes": "Dense handles thick concept well; anchor/regression guard. Note: query conflates two MCP senses (brain MCP server vs MCP-as-AdCP-transport)."
+    },
+    {
+      "id": "T2", "kind": "thick-relational", "discriminates": "low", "carried_by": "dense",
+      "query_terse": "adCP protocol",
+      "query_rich": "what is adCP — the ad context protocol, the buying flow and what the protocol means",
+      "answer": "AdCP (Ad Context Protocol) = open standard for AI agents to transact advertising. Buying flow = 3 actors: buyer agent -> selling agent (adapter) -> ad-server backend, across discovery/inventory/deal/delivery/creative phases.",
+      "node_gold_primary": ["5410f4be", "ef2f3276"],
+      "node_gold_extended": ["3da8c406", "af92b2cb", "41d31ca5", "71a03bd0", "48498a20", "5d31e375", "8a2b45fa"],
+      "trace_gold_status": "real-anchor", "trace_gold": [], "trace_gold_sessions": ["d18a0390"],
+      "notes": "Cleanest real-anchor trace-gold: the 2026-05-26 AdCP research session (d18a0390) pulls 48498a20/ef2f3276/af92b2cb. Gap caught: 5410f4be (the DEFINITION) did not surface for the flow-phrased query."
+    },
+    {
+      "id": "E1a", "kind": "entity-rich", "discriminates": "low", "carried_by": "dense",
+      "query_terse": "ex.co leadership",
+      "query_rich": "who is in EX.CO leadership — the co-founders, names and titles of people at the company",
+      "answer": "EX.CO leadership: Tom Pachys (CEO) and Shachar (CRO/CMO, Co-founder).",
+      "node_gold_primary": ["0437b2df", "e62cc595"],
+      "node_gold_extended": ["cfdff077", "b3bda662"],
+      "trace_gold_status": "echo-only", "trace_gold": [], "trace_gold_sessions": ["cfb74766"],
+      "notes": "Rich phrasing -> dense ranks Shachar (0437b2df) #1. Pair with E1b (terse) to show phrasing-sensitivity."
+    },
+    {
+      "id": "E1b", "kind": "entity-terse", "discriminates": "high", "carried_by": "lexical+dense",
+      "query_terse": "names of people at ex.co",
+      "query_rich": "Do you remember any name from people working at ex.co?",
+      "answer": "Shachar (CRO/CMO/Co-founder). Note: 'Ronen' is a known hallucination, not a real person.",
+      "node_gold_primary": ["0437b2df", "e62cc595", "cfdff077"],
+      "node_gold_extended": ["b3bda662", "94bb7fe6"],
+      "trace_gold_status": "echo-only", "trace_gold": [], "trace_gold_sessions": ["cfb74766"],
+      "notes": "Terse/oblique entity query — the original #12 that buries. Same need as E1a, different phrasing. cfdff077 (Ronen correction) is the disconfirmation that SHOULD fire."
+    },
+    {
+      "id": "E2", "kind": "bare-token", "discriminates": "medium", "carried_by": "lexical",
+      "query_terse": "Shachar",
+      "query_rich": "Shachar",
+      "answer": "Shachar is CRO/CMO/Co-founder of EX.CO.",
+      "node_gold_primary": ["0437b2df"],
+      "node_gold_extended": ["e62cc595", "cfdff077"],
+      "trace_gold_status": "echo-only", "trace_gold": [], "trace_gold_sessions": ["cfb74766"],
+      "notes": "Bare 1-token entity. Dense ranks gold #1 but TAIL IS NOISE (758ae932, a9b29099, 31458177 ... unrelated). Tests tail noise-suppression (B's RIF) more than rank-1 rescue. shachar=2 embedded trace hits -> trace lane near-blind."
+    },
+    {
+      "id": "L1", "kind": "literal-match", "discriminates": "high", "carried_by": "lexical",
+      "query_terse": "SpringServe multicall dynamic pricing",
+      "query_rich": "SpringServe multicall dynamic pricing — what's the ad server setting",
+      "answer": "SpringServe: turn off multicall, enable dynamic pricing.",
+      "node_gold_primary": ["8359cf1d", "62a9f30d"],
+      "node_gold_extended": ["d4803b95"],
+      "trace_gold_status": "none-no-episode", "trace_gold": [], "trace_gold_sessions": [],
+      "notes": "THE lexical case. 8359cf1d literally says 'SpringServe: Turn off multicall, enable dynamic pricing' yet dense buries it (~rank 12). springserve/multicall = 0 embedded traces -> trace lane STRUCTURALLY contributes nothing -> proves lexical is the lane. Also: 8359cf1d is the node the trace-chain blind-reserve EVICTS (Step 3) -> lexical/trace are complementary."
+    },
+    {
+      "id": "L2", "kind": "literal-match", "discriminates": "high", "carried_by": "lexical",
+      "query_terse": "turn off multicall ex.co",
+      "query_rich": "should multicall be turned off when connecting an ad server to EX.CO?",
+      "answer": "Yes — turn SpringServe's multicall OFF when connecting to EX.CO (EX.CO sends demand 1X; standard ad servers duplicate 4-8X).",
+      "node_gold_primary": ["62a9f30d", "8359cf1d"],
+      "node_gold_extended": ["dabb3078"],
+      "trace_gold_status": "none-no-episode", "trace_gold": [], "trace_gold_sessions": [],
+      "notes": "Compound literal (multicall + ex.co). Tests tokenchars on BOTH 'multicall' and 'ex.co' in one query."
+    },
+    {
+      "id": "EP1", "kind": "episodic", "discriminates": "high", "carried_by": "trace-chain",
+      "query_terse": "last session on ex.co",
+      "query_rich": "what did we do on the last session we worked on ex.co?",
+      "answer": "The most recent EX.CO work session (2026-04) covered the AdCP API gap analysis and the CTV sales 'Launch Kit' — what EX.CO's API has vs. what it must build for AdCP.",
+      "node_gold_primary": ["174fd960"],
+      "node_gold_extended": ["dabb3078", "071f73d1", "e62cc595", "b3bda662"],
+      "trace_gold_status": "echo-only", "trace_gold": [], "trace_gold_sessions": ["cfb74766"],
+      "notes": "THE eval-echo case. Trace-chain 'rescues' 174fd960 only because cfb74766 (which asked AND answered #11) is embedded. Real April ex.co episodes un-embedded. Number is real (mechanism works) but magnitude is replay-confounded -> needs echo-exclusion or backfill for a CLEAN read."
+    },
+    {
+      "id": "C1", "kind": "control", "discriminates": "low", "carried_by": "dense",
+      "query_terse": "error logs on hooks",
+      "query_rich": "Do we have some standard for error logs on all hooks?",
+      "answer": "Yes — there is a hook error-logging standard (centralized hook error handling; the 5 real error classes work landed 2026-05-30).",
+      "node_gold_primary": ["5d5cf724", "9146daec"],
+      "node_gold_extended": ["ba2ab916", "8699d1f6", "5379f045"],
+      "trace_gold_status": "real-anchor", "trace_gold": [], "trace_gold_sessions": ["3ce74143", "7c64be2c"],
+      "notes": "MUST-NOT-MOVE control. 3ce74143 has BOTH the question (echo) and the work-turns (real anchor) — echo-detector must split them. Top-5 = current baseline."
+    },
+    {
+      "id": "C2", "kind": "control", "discriminates": "low", "carried_by": "dense",
+      "query_terse": "fatigue pillar nodes",
+      "query_rich": "Tom on fatigue: should general pillar nodes pop repeatedly in recall?",
+      "answer": "Yes — general pillar nodes SHOULD pop repeatedly (Tom's fatigue principle); fatigue dampens within-session repetition, not pillar recurrence.",
+      "node_gold_primary": ["acd9d3b2", "4b35293c"],
+      "node_gold_extended": ["30d88dd0", "5ee7d67f"],
+      "trace_gold_status": "real-anchor", "trace_gold": [], "trace_gold_sessions": ["cc209e2f", "fd829e08", "3657abde"],
+      "notes": "MUST-NOT-MOVE control. Real fatigue-design episodes embedded (cc209e2f, fd829e08)."
+    }
+  ]
+}
