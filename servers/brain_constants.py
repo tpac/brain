@@ -456,8 +456,18 @@ K: [5 comma-separated keywords borrowed from neighbors that also describe this n
 # a no-op fire."
 MAINTENANCE_IDLE_THRESHOLD_SECONDS = 3 * 60   # 3 min idle → more chances
                                               # to fire during active work
-MAINTENANCE_MIN_INTERVAL_SECONDS = 15 * 60    # 15 min between runs
-                                              # (steady state caps ~96/day)
+MAINTENANCE_MIN_INTERVAL_SECONDS = 60 * 60    # 1 hour between runs — throttled
+                                              # to reduce S2-vs-S1 contention
+                                              # (S2 cycles run minutes and share
+                                              # the org rate limit with surface)
+# In addition to the time gate, require at least this many S1 Encoder (Scribe)
+# runs since the last S2 run. S2's material is encoded nodes — a recall (S1
+# Surface) reads the graph and creates nothing to consolidate, and surfaces
+# fire across many parallel streams. So cadence ties to ENCODING, not recalls:
+# no new encoded nodes → nothing for S2 to do → don't fire. The Scribe runs
+# every 5th conversational turn, so 2 runs ≈ 10 turns of new material. The
+# FORCE_FIRE valve below still overrides this for multi-day stalls.
+MAINTENANCE_MIN_ENCODE_RUNS = 2
 # Safety valve: if maintenance hasn't fired in this long, force-fire on the
 # next poll regardless of idle. Catches multi-day stalls (observed 2.5d gaps
 # between 04-28 and 04-30 when the idle gate never opened).
