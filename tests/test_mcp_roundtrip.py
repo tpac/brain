@@ -149,6 +149,40 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertIn("edges_created", result)
         self.assertEqual(result["edges_created"], 2)
 
+    def test_revise_edge(self):
+        """revise_edge renames a relation + updates its description in place,
+        identified by (source_id, target_id, relation). Create a node pair +
+        edge, revise it through the dispatch path, assert the rename and the
+        new description persisted on the edge_relations row."""
+        n1 = self._dispatch("remember", {"type": "concept", "title": "RE A", "content": "First node"})
+        n2 = self._dispatch("remember", {"type": "concept", "title": "RE B", "content": "Second node"})
+        self._dispatch("connect", {
+            "source_id": n1["id"], "target_id": n2["id"],
+            "relation": "related_to", "weight": 0.5, "description": "original"
+        })
+        result = self._dispatch("revise_edge", {
+            "source_id": n1["id"], "target_id": n2["id"], "relation": "related_to",
+            "new_relation": "depends_on", "description": "revised description",
+            "reason": "test"
+        })
+        self.assertTrue(result.get("ok") or result.get("edge_id"))
+        self.assertEqual(result["relation"], "depends_on")
+        # The new relation persisted; the old one is no longer active.
+        edge_id = self.brain.conn.execute(
+            "SELECT edge_id FROM edges WHERE (source_id = ? AND target_id = ?) OR (source_id = ? AND target_id = ?)",
+            (n1["id"], n2["id"], n2["id"], n1["id"])).fetchone()[0]
+        rel = self.brain.conn.execute(
+            "SELECT description FROM edge_relations "
+            "WHERE edge_id = ? AND relation = 'depends_on' AND archived_at IS NULL",
+            (edge_id,)).fetchone()
+        self.assertIsNotNone(rel, "renamed relation 'depends_on' should be active after revise_edge")
+        self.assertEqual(rel[0], "revised description")
+        stale = self.brain.conn.execute(
+            "SELECT 1 FROM edge_relations "
+            "WHERE edge_id = ? AND relation = 'related_to' AND archived_at IS NULL",
+            (edge_id,)).fetchone()
+        self.assertIsNone(stale, "old relation 'related_to' should no longer be active")
+
     def test_brain_batch(self):
         """brain_batch runs mixed operations in one call."""
         result = self._dispatch("brain_batch", {
