@@ -36,6 +36,7 @@ from .brain_constants import (
     PRUNE_THRESHOLD,
     RELEVANCE_FLOOR_ENRICHED,
     RELEVANCE_FLOOR_PRIMARY,
+    _TITLE_BOOST_STOPWORDS,
     TRAVERSE_DAMPEN,
     TRAVERSE_LIMITS,
     TRAVERSE_SEMANTIC_BONUS,
@@ -1570,6 +1571,8 @@ class BrainRecallMixin:
                     node_vector_scores[e_node_id].append((weight * e_sim, e_type))
 
                 # Z-weighted top2-avg: for each node, sort weighted scores, avg top 2
+                # (A/B'd vs max/maxbonus 2026-06-09: gold-neutral on the control
+                # corpus — burial lives in the STEP 6 title boost, not here.)
                 for nid, scores in node_vector_scores.items():
                     if len(scores) < 1:
                         continue
@@ -1682,6 +1685,59 @@ class BrainRecallMixin:
         all_candidate_ids = set(embedding_scores.keys()) | set(keyword_scores.keys()) | fts5_only_ids
 
         # STEP 6: Score each candidate — embeddings primary, keywords fallback
+        #
+        # BRAIN_TITLE_BOOST A/B knob (2026-06-09, see eval/oracle_audit/ab_boost_decomp.py):
+        #   'add' — production: boost = (matched/|terms|) × TITLE_MATCH_BOOST, raw
+        #           whitespace terms (punctuation kept), substring containment.
+        #           Verified failure mode on episodic queries: flood terms ('on'
+        #           hits 98/100 titles, 'session' 82/100) lift low-cosine nodes
+        #           +0.18 while the discriminative term ('ex.co?') matches nothing
+        #           — buried gold dabb3078 at rank 92 with rank-12 cosine.
+        #   'off' — no title boost (null arm).
+        #   'idf' — punctuation-stripped terms, each weighted by rarity across
+        #           node titles (log idf); flood terms ≈ 0, rare terms dominate.
+        #   'idf2' — idf + three calibration fixes from the TO1/TO4/TO6 decomp
+        #           (ab_topic_decomp.py): real tokenization (keeps 'ex.co',
+        #           'spread_activation'; kills the em-dash df=2303 pseudo-term),
+        #           stopword floor (df-over-titles misprices conversational
+        #           words — 'does' df=58 looked as rare as 'fatigue' df=41),
+        #           and word-boundary matching ('do' no longer hits 'docs').
+        # Default flipped add → idf2 (2026-06-09) after: control-corpus A/B
+        # (fails 15→13, top5 59→67%, top25 81→88%), held-out recall_corpus_v2
+        # (zero regressions, terse+rich), 43/43 recall+contract tests green.
+        import os as _os_tb
+        _title_boost_mode = _os_tb.environ.get('BRAIN_TITLE_BOOST', 'idf2').strip().lower()
+        _title_idf = None
+        _idf_total = 1.0
+        _title_tok = None
+        if _title_boost_mode == 'idf' and _query_terms_set:
+            import string as _string
+            _clean_terms = {t.strip(_string.punctuation) for t in _query_terms_set}
+            _clean_terms.discard('')
+            _titles_l = [t.lower() for t in node_titles.values() if t]
+            _n_titles = max(len(_titles_l), 1)
+            _title_idf = {}
+            for _t in _clean_terms:
+                _df = sum(1 for _ti in _titles_l if _t in _ti)
+                _title_idf[_t] = math.log((_n_titles + 1) / (_df + 1))
+            _idf_total = sum(_title_idf.values()) or 1.0
+        elif _title_boost_mode == 'idf2' and query:
+            import re as _re_tb
+            # Dots/underscores join identifiers (ex.co, spread_activation, v15.2);
+            # hyphens join prose words ("Scouts-in-examples") and must SPLIT, or
+            # compound title words match none of their parts.
+            _tok = _re_tb.compile(r"[a-z0-9]+(?:[._][a-z0-9]+)*")
+            _q_tokens = {t for t in _tok.findall(query.lower())
+                         if len(t) >= 2 and t not in _TITLE_BOOST_STOPWORDS}
+            if _q_tokens:
+                _title_tok = {nid: frozenset(_tok.findall(t.lower()))
+                              for nid, t in node_titles.items() if t}
+                _n_titles = max(len(_title_tok), 1)
+                _title_idf = {}
+                for _t in _q_tokens:
+                    _df = sum(1 for _ts in _title_tok.values() if _t in _ts)
+                    _title_idf[_t] = math.log((_n_titles + 1) / (_df + 1))
+                _idf_total = sum(_title_idf.values()) or 1.0
         scored_results = []
         for nid in all_candidate_ids:
             emb_score = embedding_scores.get(nid, 0)
@@ -1723,13 +1779,25 @@ class BrainRecallMixin:
 
             # v8.8: Title-match boost — proportional to query/title word overlap.
             # If query terms appear in the node's title, strong relevance signal.
+            # Gated by BRAIN_TITLE_BOOST (see knob comment at STEP 6 head).
             from .brain_constants import TITLE_MATCH_BOOST
             title = node_titles.get(nid, '').lower()
-            if title and _query_terms_set:
-                matched = sum(1 for t in _query_terms_set if t in title)
-                title_fraction = matched / len(_query_terms_set)
-                if title_fraction > 0:
-                    blended += title_fraction * TITLE_MATCH_BOOST
+            if title and _query_terms_set and _title_boost_mode != 'off':
+                if _title_tok is not None:  # 'idf2' — word-boundary token match
+                    _ts = _title_tok.get(nid)
+                    if _ts:
+                        matched_idf = sum(w for t, w in _title_idf.items() if t in _ts)
+                        if matched_idf > 0:
+                            blended += (matched_idf / _idf_total) * TITLE_MATCH_BOOST
+                elif _title_idf is not None:  # 'idf' — substring match
+                    matched_idf = sum(w for t, w in _title_idf.items() if t in title)
+                    if matched_idf > 0:
+                        blended += (matched_idf / _idf_total) * TITLE_MATCH_BOOST
+                else:  # 'add' — production
+                    matched = sum(1 for t in _query_terms_set if t in title)
+                    title_fraction = matched / len(_query_terms_set)
+                    if title_fraction > 0:
+                        blended += title_fraction * TITLE_MATCH_BOOST
 
             # v5.2: Critical node boost — safety-important nodes always surface
             is_critical = node_critical.get(nid, 0) if 'node_critical' in dir() else 0
