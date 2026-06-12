@@ -95,14 +95,16 @@ class TestDateParser:
 # ─── Tool definitions are well-formed ────────────────────────────────────
 
 class TestToolDefinitions:
-    def test_five_tools_defined(self):
-        # recall_by_aspect was removed from Haiku's tool set 2026-06-08
-        # (query-blind, redundant with Frame). The function still exists and
-        # is tested below; it is just no longer offered to Haiku.
+    def test_four_tools_defined(self):
+        # recall_by_aspect removed from Haiku's tool set 2026-06-08
+        # (query-blind, redundant with Frame). expand_node removed 2026-06-12
+        # (production audit: 13/13 zero-result calls over 4 days — 100% no-op
+        # that still triggered the second Haiku round). Both functions still
+        # exist and are tested below; they're just no longer offered to Haiku.
         names = {t['name'] for t in TOOL_DEFINITIONS}
         assert names == {
             'recall_topical', 'recall_recent', 'recall_by_time',
-            'recall_verbatim', 'expand_node',
+            'recall_verbatim',
         }
 
     def test_each_tool_has_input_schema(self):

@@ -61,7 +61,6 @@ You may call these to extend the 25 candidates. Each tool name carries intent.
 - recall_recent(window, k) — chronological. Use for continuation queries ("what did we do", "last session", "this morning"). window: natural language ("last 10 hours", "yesterday").
 - recall_by_time(start_when, end_when, time_anchor, query, k) — time-bounded recall, optionally with semantic query. `time_anchor` defaults to "event" (filters by when something HAPPENED, not when the node was encoded). Use for date-anchored queries: "in March 2024", "Q1 2023", "before May 2024". Dates in the operator's question are entity-selectors (which X?), not strict filters — if the tool returns empty, fall back to the 25 cosine candidates and pick the best matches anyway. Ranks: query+time first, query-only second, time-only third.
 - recall_verbatim(phrase, k) — FTS5 lexical exact. Use when EXACT wording matters ("what did X say"). Bypasses semantic similarity.
-- expand_node(node_ref, hops) — neighborhood. Use when you have ONE good seed and want its graph neighbors.
 
 # Parallel tool use — load-bearing
 

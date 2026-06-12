@@ -155,28 +155,12 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
             "required": ["phrase"],
         },
     },
-    {
-        "name": "expand_node",
-        "description": (
-            "Constellation expansion from a known node. Use when you already have ONE "
-            "good candidate and want its graph neighborhood — the things connected to "
-            "it. Returns nodes within `hops` distance. Good for 'tell me more about X'."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "node_ref": {
-                    "type": "string",
-                    "description": (
-                        "Node identifier — either 8+ character node_id OR a fuzzy "
-                        "title match (tool will resolve to the best match)."
-                    ),
-                },
-                "hops": {"type": "integer", "description": "Traversal depth (default 1)", "default": 1},
-            },
-            "required": ["node_ref"],
-        },
-    },
+    # expand_node REMOVED from Haiku's tool set 2026-06-12 (same surgical
+    # pattern as the recall_by_aspect cut): production audit over 4 days
+    # (eval/oracle_audit/ab_tool_use_audit.py) showed 13 calls → 13 zero-result
+    # returns — a 100% no-op that still triggered the second Haiku round every
+    # time. The expand_node FUNCTION below stays callable (and tested) for
+    # re-introduction once the underlying graph-walk is fixed.
 ]
 
 
