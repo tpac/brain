@@ -53,12 +53,12 @@ servers/models/
 # Historical simulation data — not part of source
 archives/
 
-# Claude Code — only track settings.json and skills symlinks
+# Claude Code — only track settings.json. Do NOT track .claude/skills/: under
+# CC 2.1.157+ any .claude/skills/<name> dir auto-loads as an inline plugin,
+# which shadows the marketplace 'brain' plugin by name and drops its MCP server
+# (worst in worktrees, where the symlink materializes as a broken text file).
 .claude/*
 !.claude/settings.json
-!.claude/skills/
-!.claude/skills/brain/
-!.claude/skills/brain/SKILL.md
 
 # docs/ design docs ARE tracked (un-ignored 2026-05-30 — the blanket ignore
 # left existing docs tracked-but-ignored, warning on every doc commit). The

@@ -156,35 +156,6 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
         },
     },
     {
-        "name": "recall_by_aspect",
-        "description": (
-            "Recall by semantic family (aspect). Use when the user asks for a CATEGORY "
-            "of knowledge: 'what corrections', 'open threads', 'identity nodes', "
-            "'recent decisions'. Aspect is one of: identity_bearing (principles, "
-            "rules, visions), episodic_anchor (moments, quotes, events), "
-            "active_thread (open work, gaps, hypotheses), lesson_insight (decisions, "
-            "findings, lessons, mechanisms, patterns), correction_improvement "
-            "(corrections, fixes), or one of the edge-family aspects "
-            "(temporal_sequence, dependency_flow, etc.)."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "aspect": {
-                    "type": "string",
-                    "description": (
-                        "Aspect name from the 14-aspect taxonomy. Common: "
-                        "identity_bearing, episodic_anchor, active_thread, "
-                        "lesson_insight, correction_improvement."
-                    ),
-                },
-                "recent_first": {"type": "boolean", "description": "Sort newest first (default true)", "default": True},
-                "k": {"type": "integer", "description": "Max results (default 25)", "default": 25},
-            },
-            "required": ["aspect"],
-        },
-    },
-    {
         "name": "expand_node",
         "description": (
             "Constellation expansion from a known node. Use when you already have ONE "
@@ -720,7 +691,12 @@ def recall_verbatim(brain, phrase: str = '', k: int = 10, **_) -> List[Dict[str,
 def recall_by_aspect(brain, aspect: str = '', recent_first: bool = True,
                      k: int = 25, **_) -> List[Dict[str, Any]]:
     """Recall by aspect — resolves aspect name → node_types via brain.aspects,
-    then filters nodes by those types."""
+    then filters nodes by those types.
+
+    NOTE: removed from TOOL_DEFINITIONS (Haiku's tool set) 2026-06-08 —
+    query-blind/session-blind, redundant with the Frame's Active-threads
+    section (finding id:59debf4e). Function + dispatch kept so it stays
+    callable and testable if re-surfaced; just not offered to Haiku."""
     try:
         if not aspect:
             return []
@@ -798,6 +774,8 @@ _TOOL_FN_MAP = {
     'recall_recent':     recall_recent,
     'recall_by_time':    recall_by_time,
     'recall_verbatim':   recall_verbatim,
+    # recall_by_aspect: kept callable but NOT in TOOL_DEFINITIONS — Haiku
+    # can't invoke it, but the dispatcher resolves it if called directly.
     'recall_by_aspect':  recall_by_aspect,
     'expand_node':       expand_node,
 }

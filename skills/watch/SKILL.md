@@ -65,6 +65,12 @@ The poller peeks the inbox **read-only** (never consumes — the Stop hook owns 
 drain) and prints one line per NEW message, igniting this window in ~1–5s. End it with
 `TaskStop` (or it self-expires at `timeout_ms`).
 
+## Delegate with a return path
+
+When you `spawn_task` work whose result you'll act on, make it report back: append
+to its prompt "when done, `self_send` your findings to `<MY_STREAM_ID>`" (your id
+from the boot banner), then arm the listener above. Fire-and-forget is a dropped thread.
+
 ## SAFE-ACT boundary (a guardrail, not a suggestion)
 
 When you act on a message with the operator **NOT** in the loop:

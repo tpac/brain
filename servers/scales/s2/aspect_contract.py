@@ -16,7 +16,7 @@ import os
 
 ASPECT = {
     # LLM config
-    'model': 'claude-sonnet-4-5-20250929',  # Sonnet for classification quality
+    'model': 'claude-sonnet-4-6',  # Sonnet for classification quality
     'max_tokens': 8192,
 
     # Batch sizing — chosen for clean per-item attention without losing

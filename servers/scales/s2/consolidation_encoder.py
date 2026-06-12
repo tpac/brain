@@ -108,9 +108,9 @@ class ConsolidationEncoder(IntegrationUnit):
             's2_consolidation_enrichment')
         config = self._get_interaction_config('s2_consolidation_enrichment') or {}
         model = config.get('model', self.config.get(
-            'model', 'claude-sonnet-4-20250514'))
+            'model', 'claude-sonnet-4-6'))
         max_tokens = config.get('max_tokens', self.config.get(
-            'max_tokens', 16384))
+            'max_tokens', 32768))
 
         if not system_prompt:
             print('[s2-consolidation] WARNING: no enrichment prompt', flush=True)

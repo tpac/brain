@@ -134,7 +134,7 @@ CONSOLIDATION = {
     'likely_consolidate_cosine': 0.90,  # Above this + structural signal = likely consolidate
 
     # ── Encoder ──
-    'model': 'claude-sonnet-4-20250514',
+    'model': 'claude-sonnet-4-6',
     'max_tokens': 32768,
     'max_proposals_per_call': 10,       # Clusters per Sonnet call
     'max_rounds': 2,                    # Tool-use rounds per call — read then write, done

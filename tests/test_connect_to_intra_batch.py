@@ -212,6 +212,36 @@ class TestRememberBatchIntraBatch(BrainTestBase):
         errors = _recent_errors(self.brain, 'connect_to_invalid')
         self.assertGreaterEqual(len(errors), 1, "malformed entry must log loudly")
 
+    def test_non_string_title_returns_failed_not_raises(self):
+        """A non-string `title` (e.g. an int) must NOT crash _apply_connect_to.
+
+        Regression: `entry.get('title', '')` cleared the falsy guard for a
+        non-empty non-string (int like 12345678, or a list), then the
+        downstream .strip()/.lower()/regex calls raised AttributeError. That
+        exception escaped _apply_connect_to — violating its "never raises"
+        contract — and rolled back the entire brain_batch. The entry must
+        instead surface as a {'created': [], 'failed': [...]} result.
+        """
+        src = self.brain.remember(type='fact', title='Non-string-title source',
+                                  content='Source for the non-string title test.')
+        # 12345678 is also 8 digits — would match the hex-id regex AS A STRING,
+        # so the type guard must fire before the regex/.strip() ever runs.
+        result = self.brain._apply_connect_to(src['id'], [
+            {'title': 12345678, 'relation': 'extends', 'why': 'int title — invalid'},
+        ])
+        self.assertEqual(result['created'], [])
+        self.assertEqual(len(result['failed']), 1)
+        self.assertIn('must be a string', result['failed'][0]['reason'])
+        # A list title is also non-string — same path, no crash.
+        result2 = self.brain._apply_connect_to(src['id'], [
+            {'title': ['not', 'a', 'string'], 'relation': 'extends', 'why': 'list title'},
+        ])
+        self.assertEqual(result2['created'], [])
+        self.assertEqual(len(result2['failed']), 1)
+        # Loud-by-default: dashboard sees the malformed entry
+        errors = _recent_errors(self.brain, 'connect_to_invalid')
+        self.assertGreaterEqual(len(errors), 1, "non-string title must log loudly")
+
     def test_relations_array_format(self):
         """Per-node connect_to with `relations: [...]` produces multiple typed edges."""
         result = self.brain.remember_batch(nodes=[

@@ -210,6 +210,12 @@ class Brain(
         import time as _time
         self._boot_time = _time.time()
 
+        # Daemon-wide activity signals that gate background work (S2
+        # maintenance + keepalive). Single source of truth; mutated by the
+        # daemon/hooks, read by run_maintenance_if_due. Global, not per-session.
+        from .activity_state import ActivityState
+        self.activity = ActivityState()
+
         # Create schema if needed
         ensure_schema(self.conn, db_path=db_path)
 
@@ -1612,12 +1618,21 @@ class Brain(
     def _maintenance_set_last_run_ts(self, ts: float) -> None:
         self.set_config('s2_last_run_ts', str(ts))
 
-    def run_maintenance_if_due(self, last_activity_ts: float,
-                               now: Optional[float] = None) -> Optional[Dict[str, Any]]:
-        """Run S2 maintenance iff idle and min-interval conditions are met.
+    def run_maintenance_if_due(self, now: Optional[float] = None
+                               ) -> Optional[Dict[str, Any]]:
+        """Run S2 maintenance iff idle, min-interval, and activity conditions are met.
+
+        Reads the gating signals from `self.activity` (ActivityState) — the
+        single source of truth the daemon/hooks keep updated:
+          - last_user_activity → idle gate (operator not typing)
+          - encode_runs_since_maintenance → activity gate (new encoded material)
+
+        S2's material is encoded nodes, so the activity gate counts S1 Encoder
+        (Scribe) runs, NOT surfaces/recalls — a recall reads the graph and
+        creates nothing for S2 to consolidate. The FORCE_FIRE valve overrides
+        both normal-trigger gates so a stale graph still gets maintenance.
 
         Args:
-            last_activity_ts: Epoch seconds of last request the daemon saw.
             now: Epoch seconds (default: time.time()). Injectable for tests.
 
         Returns: S2 coordinator results dict when a run fired, None when
@@ -1629,46 +1644,51 @@ class Brain(
         from .brain_constants import (
             MAINTENANCE_IDLE_THRESHOLD_SECONDS,
             MAINTENANCE_MIN_INTERVAL_SECONDS,
+            MAINTENANCE_MIN_ENCODE_RUNS,
             MAINTENANCE_FORCE_FIRE_SECONDS,
             MAINTENANCE_BOOT_GRACE_SECONDS,
         )
         now = now if now is not None else _time.time()
 
         # Boot grace gate (2026-05-08): never fire maintenance for the first
-        # N seconds after daemon start. Without this, the previous logic
-        # below (idle == inf when last_activity_ts is 0.0) made maintenance
-        # fire on the very first daemon poll, blocking the first user
-        # recall behind a long consolidation cycle.
+        # N seconds after daemon start, so the first user recall isn't blocked
+        # behind a long consolidation cycle.
         boot_age = now - getattr(self, '_boot_time', now)
         if boot_age < MAINTENANCE_BOOT_GRACE_SECONDS:
             return None
 
-        # last_activity_ts == 0.0 means "daemon just booted, no user
-        # prompts yet" — treat as infinitely idle so S2 can fire
-        # immediately (subject to min_interval). Logging idle_seconds = inf
-        # is clearer than "1777647345s" (epoch literal).
-        if last_activity_ts is None or last_activity_ts == 0.0:
+        last_user_activity = self.activity.last_user_activity
+        encode_runs = self.activity.encode_runs_since_maintenance
+
+        # last_user_activity == 0.0 means "daemon just booted, no user prompts
+        # yet" — treat as infinitely idle so S2 can fire (subject to the gates).
+        if not last_user_activity:
             idle_seconds = float('inf')
         else:
-            idle_seconds = now - last_activity_ts
+            idle_seconds = now - last_user_activity
         last_run_ts = self._maintenance_last_run_ts()
         since_last_run = now - last_run_ts if last_run_ts else float('inf')
 
         # Min-interval gate is absolute — never fire more often than this.
         if since_last_run < MAINTENANCE_MIN_INTERVAL_SECONDS:
             return None
-        # Idle gate is the normal trigger, BUT a stale-S2 safety valve
-        # overrides it: if maintenance hasn't fired in FORCE_FIRE_SECONDS
-        # the graph is going stale regardless of whether the user is at
-        # the keyboard, so we fire anyway.
-        if (idle_seconds < MAINTENANCE_IDLE_THRESHOLD_SECONDS and
-                since_last_run < MAINTENANCE_FORCE_FIRE_SECONDS):
-            return None
+        # Normal-trigger gates: idle (operator not typing) AND enough new
+        # encoded material (Scribe runs) since the last run. A stale-S2 safety
+        # valve overrides BOTH: if maintenance hasn't fired in
+        # FORCE_FIRE_SECONDS the graph is going stale regardless, so fire.
+        if since_last_run < MAINTENANCE_FORCE_FIRE_SECONDS:
+            if idle_seconds < MAINTENANCE_IDLE_THRESHOLD_SECONDS:
+                return None
+            if encode_runs < MAINTENANCE_MIN_ENCODE_RUNS:
+                return None
 
         # Mark the run BEFORE executing so concurrent callers (via second
         # poll) see the same timestamp and skip. The daemon's coarse
         # _s2_running lock is belt-and-suspenders.
         self._maintenance_set_last_run_ts(now)
+        # Consume exactly the encode runs we gated on — runs that complete
+        # during the (multi-minute) S2 cycle accrue toward the next one.
+        self.activity.consume_encode_runs(encode_runs)
 
         from servers.scales.s2.coordinator import run_s2
         results = run_s2(self)

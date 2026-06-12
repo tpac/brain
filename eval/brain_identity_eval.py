@@ -254,7 +254,7 @@ MODES = {
 }
 
 
-def run_identity_eval(model="claude-sonnet-4-20250514", scenarios=None, runs=3, verbose=True, max_workers=8):
+def run_identity_eval(model="claude-sonnet-4-6", scenarios=None, runs=3, verbose=True, max_workers=8):
     """Run the brain identity evaluation."""
     client = anthropic.Anthropic()
 
@@ -309,7 +309,7 @@ def run_identity_eval(model="claude-sonnet-4-20250514", scenarios=None, runs=3, 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Brain Identity Evaluation")
-    parser.add_argument("--model", default="claude-sonnet-4-20250514")
+    parser.add_argument("--model", default="claude-sonnet-4-6")
     parser.add_argument("--scenarios", nargs="+",
                         choices=list(SCENARIOS.keys()) + ["all"],
                         default=["bug_fix", "operator_correction", "decision_with_tradeoffs"])

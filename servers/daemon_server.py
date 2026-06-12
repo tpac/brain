@@ -63,12 +63,11 @@ class BrainDaemon:
         self.server_socket = None
         self.running = False
         self.last_activity = time.time()
-        # Distinct from last_activity: only updated by hook_recall
-        # (UserPromptSubmit). Drives S2 maintenance gating — Claude editing
-        # files between prompts shouldn't reset the "user is active" clock.
-        # Init to 0 so a freshly-restarted daemon can fire S2 immediately
-        # (subject to the persisted s2_last_run_ts min_interval).
-        self.last_user_activity = 0.0
+        # The S2/keepalive gating signals (last_user_activity + encode-runs
+        # counter) live on brain.activity (ActivityState) — single source of
+        # truth, mutated here via record_* and read by run_maintenance_if_due.
+        # self.last_activity (any IPC) stays here: it's a lifecycle concern
+        # (idle-timeout shutdown), distinct from the user-activity gate.
         self.dirty = False
         self.graph_changes = []  # In-memory graph mutation log
         # Write serialization lives on the brain (brain.write_lock) — see
@@ -356,7 +355,7 @@ class BrainDaemon:
                 interval = 300.0
             if interval <= 0:
                 return last_ping
-            if self._keepalive_due(now - self.last_user_activity,
+            if self._keepalive_due(now - self.brain.activity.last_user_activity,
                                    now - last_ping, interval):
                 # Advance last_ping BEFORE warming so a raised API error still
                 # backs off to one attempt per interval (not one per tick).
@@ -573,7 +572,7 @@ class BrainDaemon:
             # Tool-use hooks, internal IPC, pings are noise from S2's
             # perspective. See run_maintenance_if_due in brain.py.
             if cmd == "hook_recall":
-                self.last_user_activity = time.time()
+                self.brain.activity.record_user_activity()
 
             # Direct dispatch — no watchdog thread.
             # The old pattern spawned a thread per request and joined with 20s timeout.
@@ -932,7 +931,9 @@ class BrainDaemon:
         brain.run_maintenance_if_due() persists via brain_meta instead.
         """
         try:
-            result = self.brain.run_maintenance_if_due(self.last_user_activity)
+            # Gate reads brain.activity (last_user_activity + encode-runs) and
+            # consumes the encode runs on fire — single source of truth.
+            result = self.brain.run_maintenance_if_due()
             if result is None:
                 return  # not due — quiet no-op
             self._log("Maintenance ran (idle %.0fs): %s" % (

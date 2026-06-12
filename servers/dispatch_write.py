@@ -701,16 +701,15 @@ def _handle_brain_batch(brain, args, graph_changes):
         # the batch result so a cycle with N requested connect_to and 0 edges
         # has a visible "connect_to_failures=N" reason.
         connect_to_edges = 0
-        connect_to_failures = 0
+        connect_to_failed = []  # [{title, reason}]
         for src_id, ct_spec in deferred_connects:
-            edges, fails = brain._apply_connect_to(
-                src_id, ct_spec, sibling_map=sibling_map)
-            connect_to_edges += edges
-            connect_to_failures += fails
+            r = brain._apply_connect_to(src_id, ct_spec, sibling_map=sibling_map)
+            connect_to_edges += len(r['created'])
+            connect_to_failed.extend(r['failed'])
         if connect_to_edges:
             graph_changes.append("CONNECT_TO: %d edges" % connect_to_edges)
-        if connect_to_failures:
-            graph_changes.append("CONNECT_TO_FAILURES: %d" % connect_to_failures)
+        if connect_to_failed:
+            graph_changes.append("CONNECT_TO_FAILURES: %d" % len(connect_to_failed))
 
         # One commit for the whole batch — all per-op writes land here.
         brain.conn.commit()
@@ -749,7 +748,8 @@ def _handle_brain_batch(brain, args, graph_changes):
         "succeeded": succeeded,
         "failed": len(operations) - succeeded,
         "connect_to_edges": connect_to_edges,
-        "connect_to_failures": connect_to_failures,
+        "connect_to_failures": len(connect_to_failed),
+        "connect_to_failed": connect_to_failed,
         "results": results,
     }}
 
@@ -834,17 +834,43 @@ def _handle_connect_batch(brain, args, graph_changes):
     session_id = args.get('session_id', '')
     top_encoding_source = args.get('encoding_source', '')
 
+    # Known per-connection keys — used to build a "did you mean" hint when a
+    # caller sends an aliased key (e.g. from_id/to_id) instead of the canonical
+    # source_id/target_id. We keep ONE canonical name (no aliasing) but make the
+    # error self-correcting.
+    KNOWN_CONN_KEYS = {"source_id", "target_id", "relation", "weight",
+                       "description", "encoding_source", "reason"}
+
     created = 0
-    failures = 0
+    failure_details = []  # [{source_id, target_id, relation, reason}]
     for c in connections:
+        relation = c.get("relation", "related_to")
+        src_raw = c.get("source_id", "")
+        tgt_raw = c.get("target_id", "")
+        # Self-correcting guard: if an endpoint is missing AND the caller sent
+        # keys we don't recognize, the reason names them and suggests the fix.
+        if not src_raw or not tgt_raw:
+            unknown = [k for k in c if k not in KNOWN_CONN_KEYS]
+            hint = ""
+            if unknown:
+                hint = (" — unrecognized key(s) %s; edges use 'source_id' and "
+                        "'target_id'" % unknown)
+            failure_details.append({
+                "source_id": str(src_raw)[:8], "target_id": str(tgt_raw)[:8],
+                "relation": relation,
+                "reason": "missing source_id or target_id%s" % hint})
+            brain._log_error(
+                'connect_batch_missing_endpoint',
+                ValueError("missing source_id/target_id%s" % hint),
+                'keys=%s' % sorted(c.keys()))
+            continue
         try:
             # Stage 1B: pass description/encoding_source through only when
             # specified (None → preserve existing on update).
-            relation = c.get("relation", "related_to")
             encoding_source = c.get("encoding_source") or top_encoding_source or None
             result = brain.connect_typed(
-                source_id=_resolve_id(brain, c.get("source_id", "")),
-                target_id=_resolve_id(brain, c.get("target_id", "")),
+                source_id=_resolve_id(brain, src_raw),
+                target_id=_resolve_id(brain, tgt_raw),
                 relation=relation,
                 weight=c.get("weight", 0.5),
                 description=c.get("description"),
@@ -863,18 +889,22 @@ def _handle_connect_batch(brain, args, graph_changes):
                     session_id=session_id,
                 )
         except Exception as e:
-            # No silent drops: a failed edge in a batch must surface, not vanish.
-            failures += 1
+            # No silent drops: a failed edge in a batch must surface, not vanish
+            # — and now with its REASON in the response, not just the dashboard.
+            failure_details.append({
+                "source_id": str(src_raw)[:8], "target_id": str(tgt_raw)[:8],
+                "relation": relation, "reason": str(e)[:160]})
             brain._log_error(
                 'connect_batch_edge_failed', e,
-                '%s -[%s]-> %s' % (
-                    str(c.get('source_id', '?'))[:8],
-                    c.get('relation', 'related_to'),
-                    str(c.get('target_id', '?'))[:8]))
+                '%s -[%s]-> %s' % (str(src_raw)[:8], relation, str(tgt_raw)[:8]))
     graph_changes.append("CONNECT_BATCH: %d edges" % created)
-    if failures:
-        graph_changes.append("CONNECT_BATCH_FAILURES: %d" % failures)
-    return {"ok": True, "result": {"edges_created": created, "failures": failures}}
+    if failure_details:
+        graph_changes.append("CONNECT_BATCH_FAILURES: %d" % len(failure_details))
+    return {"ok": True, "result": {
+        "edges_created": created,
+        "failures": len(failure_details),
+        "failure_details": failure_details,
+    }}
 
 
 def _handle_enrich(brain, args, graph_changes):

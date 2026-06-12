@@ -313,7 +313,7 @@ def _run_combo(client, model, mode_key, mode_fn, scenario_key, scenario, run_idx
         })
 
 
-def run_eval(model="claude-sonnet-4-20250514", scenarios=None, runs=5, verbose=True, max_workers=8):
+def run_eval(model="claude-sonnet-4-6", scenarios=None, runs=5, verbose=True, max_workers=8):
     """Run the full recall identity evaluation."""
     client = anthropic.Anthropic()
 
@@ -411,7 +411,7 @@ def print_recall_summary(results):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Brain Recall Identity Evaluation")
-    parser.add_argument("--model", default="claude-sonnet-4-20250514")
+    parser.add_argument("--model", default="claude-sonnet-4-6")
     parser.add_argument("--scenarios", nargs="+",
                         choices=list(SCENARIOS.keys()) + ["all"],
                         default=["all"])

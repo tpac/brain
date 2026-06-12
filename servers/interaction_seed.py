@@ -61,7 +61,6 @@ You may call these to extend the 25 candidates. Each tool name carries intent.
 - recall_recent(window, k) — chronological. Use for continuation queries ("what did we do", "last session", "this morning"). window: natural language ("last 10 hours", "yesterday").
 - recall_by_time(start_when, end_when, time_anchor, query, k) — time-bounded recall, optionally with semantic query. `time_anchor` defaults to "event" (filters by when something HAPPENED, not when the node was encoded). Use for date-anchored queries: "in March 2024", "Q1 2023", "before May 2024". Dates in the operator's question are entity-selectors (which X?), not strict filters — if the tool returns empty, fall back to the 25 cosine candidates and pick the best matches anyway. Ranks: query+time first, query-only second, time-only third.
 - recall_verbatim(phrase, k) — FTS5 lexical exact. Use when EXACT wording matters ("what did X say"). Bypasses semantic similarity.
-- recall_by_aspect(aspect, recent_first, k) — semantic family scoped. Aspects: identity_bearing, episodic_anchor, active_thread, lesson_insight, correction_improvement.
 - expand_node(node_ref, hops) — neighborhood. Use when you have ONE good seed and want its graph neighbors.
 
 # Parallel tool use — load-bearing
@@ -69,13 +68,13 @@ You may call these to extend the 25 candidates. Each tool name carries intent.
 If you need multiple tools, call them ALL in one assistant message. The API supports multiple tool_use blocks per response. Do not iterate "first call A, then call B, then call C" across rounds — that wastes turns.
 
 Right shape:
-  Round 1 (tools): recall_topical(...) AND recall_verbatim(...) AND recall_by_aspect(...) — all parallel
+  Round 1 (tools): recall_topical(...) AND recall_verbatim(...) AND recall_recent(...) — all parallel
   Round 2: select 3-5 from combined pool
 
 Wrong shape (wastes 3 rounds):
   Round 1: recall_topical(...)
   Round 2: recall_verbatim(...)
-  Round 3: recall_by_aspect(...)
+  Round 3: recall_recent(...)
 
 If a tool returns 0 results, the original 25 candidates are still your fallback. NEVER select 0 just because a tool came back empty. The 25 are always there.
 
@@ -199,7 +198,7 @@ Example 4 — verbatim query, recall_verbatim.
 Example 5 — multi-tool parallel.
   Operator: "Show me corrections and recent decisions on the v15 work."
   Cosine is topic-mixed.
-  Round 1: TWO tools in parallel — recall_by_aspect(aspect="correction_improvement", recent_first=true, k=8) AND recall_topical(query="v15 encoder decisions", k=10)
+  Round 1: TWO tools in parallel — recall_topical(query="v15 encoder corrections and fixes", k=10) AND recall_recent(window="last 2 weeks", k=15)
   Round 2 selection: pick 3-5 across the augmented pool.
 
 Example 6 — pure confirmation, the one select-0 case.
@@ -257,7 +256,7 @@ S2_COMMUNITY_ENRICHMENT_CONFIG_V1 = {
 }
 
 S2_CONSOLIDATION_ENRICHMENT_CONFIG_V1 = {
-    "model": "claude-sonnet-4-20250514", "max_tokens": 16384,
+    "model": "claude-sonnet-4-6", "max_tokens": 32768,
 }
 
 S2_HEALER_CONFIG_V1 = {
@@ -265,7 +264,7 @@ S2_HEALER_CONFIG_V1 = {
 }
 
 S2_ASPECTS_CONFIG_V1 = {
-    "model": "claude-sonnet-4-5-20250929", "max_tokens": 8192,
+    "model": "claude-sonnet-4-6", "max_tokens": 8192,
 }
 
 # ── S1 Scout configs ──────────────────────────────────────────────────
