@@ -397,6 +397,10 @@ class BrainRememberMixin:
 
             # 2. edges — re-point absorbed's external edges to survivor,
             # preserving each relation's weight + description.
+            # community_member never migrates: placement is the community
+            # unit's judged decision, not a merge side effect (see
+            # ABSORB_EXCLUDED_RELATIONS in dal.py).
+            from .dal import ABSORB_EXCLUDED_RELATIONS
             prune = set(prune_edges or [])
             conns = self._graph.get_connections_bulk(
                 [absorbed_id]).get(absorbed_id, [])
@@ -408,7 +412,8 @@ class BrainRememberMixin:
                 outgoing = c.get('direction') == 'outgoing'
                 for rel in c.get('relations', []):
                     relation = rel.get('relation')
-                    if not relation or relation in prune:
+                    if (not relation or relation in prune
+                            or relation in ABSORB_EXCLUDED_RELATIONS):
                         continue
                     src, tgt = ((survivor_id, neighbor) if outgoing
                                 else (neighbor, survivor_id))

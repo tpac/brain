@@ -1,0 +1,183 @@
+{
+  "name": "brain_batch",
+  "description": "Execute multiple brain operations in one call. **Default tool for MIXED operations** (any combination of remember + revise + connect + archive) \u2014 packs them into ONE LLM round instead of N. For pure single-type batches use `remember_batch` / `revise_batch` / `connect_batch`; the moment you have a mix, switch to brain_batch. Six valid op values: 'remember' creates a new node \u2014 supports a per-op `connect_to: [{title, relation, why}]` for typed edges. Targets resolve in two scopes: SIBLINGS (other `remember` ops in this same batch) and CATALOG (existing nodes by title). Order-agnostic \u2014 sibling A can reference sibling B even if A appears first in the operations array; resolution runs after all siblings are created. NEW wins on title collision (a sibling whose title matches a catalog node resolves to the sibling, not the catalog \u2014 if you actually meant the catalog node, `revise` it instead of duplicate-title `remember`). For one pair carrying multiple distinct relationships, use `relations: [{relation, why}, ...]` in place of `relation`+`why`; 'revise' updates an existing node \u2014 requires `node_id` and `reason` (the audit note for the revision, recorded in trace events, NOT stored on the node; do not confuse it with the node FIELD `reasoning`, which a revise op updates like any other field); 'connect' creates OR updates an edge between two EXISTING catalog nodes \u2014 both ids must already exist in the brain. Idempotent upsert: specified fields update existing rows, unspecified preserve. Does NOT auto-strengthen weight on repeat. NEVER use `connect` for an edge involving a new node (its id doesn't exist until this round finishes \u2014 forces a wasted second round); use `connect_to` inside the `remember` op instead. Don't double-emit: an edge already in `connect_to` must NOT also appear as a separate `connect` op for the same pair; 'disconnect' removes an edge relation; 'archive' soft-archives a node; 'absorb' merges one node into another \u2014 fold `absorbed_id` INTO `survivor_id`: source_refs, edges, access_count, and metadata transfer automatically and the absorbed is archived. BUT it is content-DESTRUCTIVE: the survivor KEEPS ITS OWN content \u2014 the absorbed node's content is NOT merged and is lost unless you pass a `content` override that folds it in (with an `(id:)` ref). It is lossless ONLY when the survivor already states the absorbed node's claim, or you write the merged content. Shape the survivor with revise-shape field overrides (`content`, or title/confidence/situation). The absorbed must be archivable (locked/critical refused); the survivor MAY be locked \u2014 you absorb INTO the canonical node. This IS the real merge \u2014 use it instead of inventing a 'consolidate'/'merge' op. Operations run sequentially. Do NOT invent structural op names like 'consolidate'/'evolve'/'keep'/'skip' \u2014 a node merge is the `absorb` op; the rest are semantic decisions expressed through which real op you emit. **Relation names are NOT op names.** `similar_to`, `corrects`, `supersedes`, `reframes`, `extends`, `grounds`, etc. are values for the `relation` field on a `connect` op, never op types themselves. To say 'A is similar to B', emit `{op:'connect', source_id:'A', target_id:'B', relation:'similar_to', description:'...'}` \u2014 not `{op:'similar_to', ...}` (this fails brain_batch_invalid_op and the edge is dropped). Every edge `why` must be specific (\u226530 chars, names the insight between the two nodes); empty/generic `why` ('related', 'connected', 'example of') pollutes the activation kernel and fails to match queries about the relationship \u2014 see the `connect_to.why` description for BAD/GOOD examples.",
+  "inputSchema": {
+    "type": "object",
+    "required": [
+      "operations"
+    ],
+    "properties": {
+      "operations": {
+        "type": "array",
+        "description": "Array of operations. Each object has an 'op' field (one of the valid op values) plus the fields that op needs. `remember` ops accept an optional `connect_to` array for sibling+catalog edges.",
+        "items": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "const": "remember"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Node type"
+                },
+                "title": {
+                  "type": "string",
+                  "description": "Specific, scannable title"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Rich content"
+                },
+                "connect_to": {
+                  "type": "array",
+                  "description": "Typed edges to siblings/catalog \u2014 see tool description"
+                }
+              },
+              "required": [
+                "op",
+                "type",
+                "title",
+                "content"
+              ],
+              "description": "Create a node. Accepts all remember() fields (situation, reasoning, quotes, ...)."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "const": "revise"
+                },
+                "node_id": {
+                  "type": "string",
+                  "description": "Node to revise"
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "Audit note for this revision \u2014 recorded in trace events, NOT stored on the node. Distinct from the node FIELD `reasoning`, which a revise op updates like any other field."
+                }
+              },
+              "required": [
+                "op",
+                "node_id",
+                "reason"
+              ],
+              "description": "Update node fields. Any other key is a field update (content, situation, reasoning, ...)."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "const": "connect"
+                },
+                "source_id": {
+                  "type": "string",
+                  "description": "Actor node id (must already exist)"
+                },
+                "target_id": {
+                  "type": "string",
+                  "description": "Acted-upon node id (must already exist)"
+                },
+                "relation": {
+                  "type": "string",
+                  "description": "Open-text verb"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "What the edge MEANS (>=30 chars)"
+                },
+                "weight": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "op",
+                "source_id",
+                "target_id"
+              ],
+              "description": "Create/update an edge between two EXISTING catalog nodes."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "const": "disconnect"
+                },
+                "source_id": {
+                  "type": "string",
+                  "description": "Edge source id"
+                },
+                "target_id": {
+                  "type": "string",
+                  "description": "Edge target id"
+                },
+                "relation": {
+                  "type": "string",
+                  "description": "Relation to archive"
+                }
+              },
+              "required": [
+                "op",
+                "source_id",
+                "target_id",
+                "relation"
+              ],
+              "description": "Soft-archive one relation on an edge; other relations on the same edge survive."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "const": "archive"
+                },
+                "node_id": {
+                  "type": "string",
+                  "description": "Node to soft-archive"
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "Why (audit note)"
+                }
+              },
+              "required": [
+                "op",
+                "node_id"
+              ],
+              "description": "Soft-archive a node."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "const": "absorb"
+                },
+                "survivor_id": {
+                  "type": "string",
+                  "description": "Node that remains (may be locked)"
+                },
+                "absorbed_id": {
+                  "type": "string",
+                  "description": "Node folded in + archived (must be archivable)"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Merged content override \u2014 REQUIRED for losslessness unless survivor already states the absorbed claim"
+                }
+              },
+              "required": [
+                "op",
+                "survivor_id",
+                "absorbed_id"
+              ],
+              "description": "Lossless merge: fold absorbed INTO survivor. Accepts revise-shape field overrides (content, title, confidence, situation)."
+            }
+          ]
+        }
+      }
+    }
+  },
+  "_meta": {
+    "anthropic/alwaysLoad": true
+  }
+}

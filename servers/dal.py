@@ -206,6 +206,21 @@ class LogsDAL:
                 "DELETE FROM node_vectors WHERE node_id NOT IN (SELECT id FROM nodes)")
             stats['orphaned_vectors'] = cur.rowcount
 
+            # edge_relations FIRST, scoped to exactly the edges this pass is
+            # about to delete. Deleting edges alone strands their relation
+            # rows as permanent orphans — invisible to every JOIN-based read
+            # but polluting counts and blocking recovery (2026-06-12 audit:
+            # 17,982 stranded rows, 84% of active relations, accumulated by
+            # this one-sided delete). Scoped IN (...) — NOT a blanket
+            # "NOT IN (SELECT edge_id FROM edges)" — so pre-existing orphans
+            # stay untouched for the trace-based recovery effort.
+            cur = graph_conn.execute(
+                "DELETE FROM edge_relations WHERE edge_id IN ("
+                "SELECT edge_id FROM edges "
+                "WHERE source_id NOT IN (SELECT id FROM nodes) "
+                "OR target_id NOT IN (SELECT id FROM nodes))")
+            stats['orphaned_edge_relations'] = cur.rowcount
+
             cur = graph_conn.execute(
                 "DELETE FROM edges WHERE source_id NOT IN (SELECT id FROM nodes) "
                 "OR target_id NOT IN (SELECT id FROM nodes)")
@@ -213,7 +228,7 @@ class LogsDAL:
 
             cur = graph_conn.execute(
                 "DELETE FROM node_enrichments WHERE node_id NOT IN (SELECT id FROM nodes)")
-            stats['orphaned_vectors'] = cur.rowcount
+            stats['orphaned_enrichments'] = cur.rowcount
 
             # node_metadata orphan cleanup removed 2026-04-13 — table dropped.
 
@@ -2004,8 +2019,19 @@ EDGE_ROW_SHAPE = {
 # by callers that want knowledge edges only. Override per-call when you
 # need co_accessed (fatigue) or emergent_bridge (auto-links).
 # community_member is NOT in this default — it's real thematic context,
-# just not migrated by consolidation.
+# just not migrated by consolidation (see ABSORB_EXCLUDED_RELATIONS).
 DEFAULT_EXCLUDED_RELATIONS = frozenset(['co_accessed', 'emergent_bridge'])
+
+# Relations absorb() must NOT migrate to the survivor. Community placement
+# is the community unit's judged decision (affinity gate ≥0.25 + encoder
+# accept/reject + drift detection re-evaluation) — a merge inheriting the
+# absorbed node's membership would bypass all three. The absorbed node is
+# archived, so its membership edge dies with it (dangling-edge restorer);
+# the survivor gets (re-)placed through the normal community cycle, scored
+# on the semantic edges the absorb just enriched. Audit 2026-06-12: the
+# consolidation prompt + the comment above stated this exclusion as fact
+# while the code migrated everything — this constant makes it true.
+ABSORB_EXCLUDED_RELATIONS = frozenset(['community_member'])
 
 # When `include_archived=False` is the default, every edge-reading method
 # filters `archived = 0` in its WHERE clause. v25 added the column;
@@ -2396,9 +2422,12 @@ class GraphDAL:
 
         Returns count of edge_relations rows newly archived.
         """
-        # archived_at uses unix-ms (consistent with brain_remember.archive_node)
-        import time as _time
-        ts_ms = int(_time.time() * 1000)
+        # archived_at is ISO-T via clock.iso_now() — the same format
+        # brain_remember.archive_node and every other edge_relations
+        # writer uses. (Unified 2026-06-12: this method was the lone
+        # unix-ms writer into the TEXT column, which broke lexicographic
+        # time reads and rendered as 1970 epoch dates.)
+        ts = _now()
         cur = self.conn.execute("""
             UPDATE edge_relations
                SET archived = 1,
@@ -2413,7 +2442,7 @@ class GraphDAL:
                  WHERE er.archived = 0
                    AND (n_src.archived = 1 OR n_tgt.archived = 1)
                )
-        """, (ts_ms, archived_by))
+        """, (ts, archived_by))
         return cur.rowcount
 
     def has_edge_between(self, source_ids, target_ids,

@@ -123,73 +123,11 @@ def _generate_remember_schema():
     }
 
 
-_CONNECT_TO_ITEM_SCHEMA = {
-    "type": "object",
-    "required": ["title"],
-    "properties": {
-        "title": {
-            "type": "string",
-            "description": (
-                "Target node title. Resolution prefers same-batch siblings over catalog "
-                "matches (NEW wins on title collision — if you mean an existing catalog "
-                "node, use `revise` on its id, not duplicate-title `remember`). "
-                "Order-agnostic: a node can connect_to a sibling declared LATER in the "
-                "same batch. Unresolved titles are logged to debug_log and skipped — "
-                "they never fail the batch."
-            ),
-        },
-        "relation": {
-            "type": "string",
-            "description": (
-                "Edge relation, open text. Embedded for graph-walk semantics. "
-                "Vocabulary: refines, challenges, grounds, abstracts, triggers, "
-                "reframes, resolves, opens, strengthens, weakens, corrects, enables, "
-                "produces, contextualizes, synthesizes, implements, depends_on, "
-                "validates, supersedes, configures. Plus load-bearing inventions used "
-                "in this brain: anchored_to, community_member, during. "
-                "Temporal sequence: before/after, meets/met_by, during. Invent freely "
-                "when a pair needs a relation that fits better — a specific invented "
-                "type beats a generic listed one. NEVER `related`, `related_to`, or "
-                "empty — they fail to match any query about the relationship and "
-                "pollute the activation kernel with junk edges."
-            ),
-        },
-        "why": {
-            "type": "string",
-            "description": (
-                "What the edge MEANS — the insight that lives between the two nodes, "
-                "not a summary of either. Embedded for query matching. Target ≥30 "
-                "chars; under 20 is dead weight. If you can't write something "
-                "specific, drop the edge.\n\n"
-                "BAD: \"\" — invisible.\n"
-                "BAD: \"example of the principle\" — generic gloss; no insight about "
-                "WHICH example or WHY this one.\n"
-                "GOOD: \"the assumption treated concurrent access as a thread-safety "
-                "question; the correction reframes it as wal-index contention — "
-                "different failure mode, different fix\" — explains the conceptual "
-                "shift, not the values.\n"
-                "GOOD: \"the {specific_choice} was the turn where {principle} first "
-                "became conscious — the instance where the pattern named itself\" — "
-                "says why THIS instance mattered for the principle."
-            ),
-        },
-        "relations": {
-            "type": "array",
-            "description": (
-                "Alternative to relation+why when the same pair carries multiple "
-                "distinct relationships. Each item is {relation, why}."
-            ),
-            "items": {
-                "type": "object",
-                "required": ["relation", "why"],
-                "properties": {
-                    "relation": {"type": "string"},
-                    "why": {"type": "string"},
-                },
-            },
-        },
-    },
-}
+# CONNECT_TO_ITEM_SCHEMA moved to contract.py (2026-06-12 code review #1):
+# brain_batch's remember branch (BATCH_OP_SPECS) needs the same item shape,
+# and contract.py cannot import brain_mcp. Single source, aliased here for
+# the existing remember_batch references.
+from servers.contract import CONNECT_TO_ITEM_SCHEMA as _CONNECT_TO_ITEM_SCHEMA
 
 
 def _generate_remember_batch_schema():
@@ -257,6 +195,78 @@ def _generate_remember_batch_schema():
     }
 
 
+def _build_brain_batch_op_items():
+    """Discriminated union over brain_batch ops — one oneOf branch per op.
+
+    Derives entirely from contract.BATCH_OP_SPECS (required lists, property
+    fragments, branch descriptions) so the schema, the dispatcher pre-check,
+    and the S2 invalid-op detector cannot drift. Branch order = dict order =
+    the probe-validated artifact (eval/mcp_variants/v2_oneof_trimmed.json).
+    additionalProperties stays open on every branch — remember/revise/absorb
+    accept open-ended node fields by design.
+    """
+    from servers.contract import BATCH_OP_SPECS
+    branches = []
+    for op, spec in BATCH_OP_SPECS.items():
+        props = {"op": {"const": op}}
+        props.update(spec["properties"])
+        branches.append({
+            "type": "object",
+            "properties": props,
+            "required": ["op"] + spec["required"],
+            "description": spec["description"],
+        })
+    return {"oneOf": branches}
+
+
+# brain_batch description — V2, probe-validated 2026-06-12 (80/80 across 8
+# failure dimensions at 10 repeats; eval/mcp_variants/probe_v2_oneof_trimmed.*).
+# Mechanics (op names, per-op required fields) live in the oneOf schema; this
+# prose carries only what structure can't: routing, resolution policy,
+# cross-op rules, and semantic consequences. Don't re-accrete mechanics here —
+# extend BATCH_OP_SPECS instead, and re-run eval/mcp_batch_probe.py after
+# any change to either half.
+_BRAIN_BATCH_DESCRIPTION = (
+    "Execute multiple brain operations in one call — the default tool for "
+    "MIXED batches (remember + revise + connect + archive in any "
+    "combination), packed into ONE LLM round. For a pure single-type batch "
+    "use `remember_batch` / `revise_batch` / `connect_batch`; the moment you "
+    "mix, use brain_batch. Operations run sequentially in one transaction. "
+    "Per-op required fields and meanings are declared in the schema — emit "
+    "only the six declared ops: semantic decisions like "
+    "'consolidate'/'keep'/'skip' are expressed through which real op you "
+    "emit, and relation verbs (`similar_to`, `corrects`, `supersedes`, ...) "
+    "are values for `connect`'s relation field, never op names.\n\n"
+    "remember + edges: `connect_to` targets resolve in two scopes — SIBLINGS "
+    "(other remember ops in this same batch, order-agnostic; resolution runs "
+    "after all siblings are created) and CATALOG (existing nodes by title). "
+    "NEW wins on title collision: a sibling whose title matches a catalog "
+    "node resolves to the sibling — if you actually meant the catalog node, "
+    "`revise` it instead of duplicate-title remember. NEVER use a `connect` "
+    "op for an edge involving a new node (its id doesn't exist until this "
+    "round finishes) — that is what connect_to is for. Don't double-emit: an "
+    "edge already in connect_to must NOT also appear as a separate connect "
+    "op for the same pair. For one pair carrying multiple distinct "
+    "relationships, use `relations: [{relation, why}, ...]` in place of "
+    "`relation`+`why`.\n\n"
+    "connect: both ids must already exist in the brain. Idempotent upsert — "
+    "specified fields update existing rows, unspecified preserve; weight "
+    "does NOT auto-strengthen on repeat.\n\n"
+    "absorb IS the real merge — it folds `absorbed_id` INTO `survivor_id`: "
+    "edges, source_refs, access_count, and metadata transfer automatically "
+    "and the absorbed is archived. BUT the survivor KEEPS ITS OWN content — "
+    "the absorbed node's content is lost unless you pass a `content` "
+    "override that folds it in (with an `(id:)` ref). Lossless ONLY when the "
+    "survivor already states the absorbed claim, or you write the merged "
+    "content. The absorbed must be archivable (locked/critical refused); the "
+    "survivor MAY be locked — you absorb INTO the canonical node.\n\n"
+    "Every edge `why`/`description` must be specific (>=30 chars, naming the "
+    "insight between the two nodes) — generic 'related'/'connected'/'example "
+    "of' pollutes the activation kernel and never matches queries about the "
+    "relationship."
+)
+
+
 def _generate_revise_schema():
     """Generate the 'revise' MCP tool schema from the contract."""
     from servers.contract import get_writable_fields
@@ -265,7 +275,11 @@ def _generate_revise_schema():
 
     properties = {
         "node_id": {"type": "string", "description": "Full node ID to revise"},
-        "reason": {"type": "string", "description": "Why this revision"},
+        "reason": {"type": "string", "description": (
+            "Why this revision — audit note recorded in the trace event, "
+            "NOT stored on the node. Required. Distinct from the node FIELD "
+            "`reasoning` (why the node was encoded); to update that field, "
+            "pass `reasoning` as well.")},
     }
     for name, spec in get_writable_fields().items():
         prop = {"type": TYPE_MAP.get(spec.get("type", "str"), "string")}
@@ -326,10 +340,17 @@ def _build_revise_batch_schema():
                         "required": ["node_id", "reason"],
                         "properties": {
                             "node_id": {"type": "string", "description": "Node ID to revise"},
-                            "reason": {"type": "string", "description": "Why this revision"},
+                            "reason": {"type": "string", "description": (
+                                "Why this revision — audit note recorded in "
+                                "the trace event, NOT stored on the node. "
+                                "Required. Distinct from the node FIELD "
+                                "`reasoning`.")},
                             "content": {"type": "string", "description": "New content (replaces old, history saved)"},
                             "situation": {"type": "string", "description": "When is this relevant (gets own embedding)"},
-                            "reasoning": {"type": "string", "description": "Why this was encoded"},
+                            "reasoning": {"type": "string", "description": (
+                                "Why this was encoded — node field, stored on "
+                                "the node (distinct from `reason`, the audit "
+                                "note for this revision)")},
                             "user_raw_quote": {"type": "string", "description": "Operator's exact words"},
                             "anchor_raw_quote": {"type": "string", "description": "Anchor's exact words"},
                             "confidence": {"type": "number", "description": "0-1 confidence score"},
@@ -515,80 +536,15 @@ def _build_tools():
          "session_id": {"type": "string", "description": "Session id for activity tracking (optional)."},
          "reason": {"type": "string", "description": "Optional batch-level reason recorded in trace events."}}}},
     {"name": "brain_batch",
-     "description": ("Execute multiple brain operations in one call. **Default tool for "
-                     "MIXED operations** (any combination of remember + revise + connect + "
-                     "archive) — packs them into ONE LLM round instead of N. For pure "
-                     "single-type batches use `remember_batch` / `revise_batch` / "
-                     "`connect_batch`; the moment you have a mix, switch to brain_batch. "
-                     "Six valid op values: "
-                     "'remember' creates a new node — supports a per-op `connect_to: "
-                     "[{title, relation, why}]` for typed edges. Targets resolve in two "
-                     "scopes: SIBLINGS (other `remember` ops in this same batch) and "
-                     "CATALOG (existing nodes by title). Order-agnostic — sibling A can "
-                     "reference sibling B even if A appears first in the operations array; "
-                     "resolution runs after all siblings are created. NEW wins on title "
-                     "collision (a sibling whose title matches a catalog node resolves to "
-                     "the sibling, not the catalog — if you actually meant the catalog "
-                     "node, `revise` it instead of duplicate-title `remember`). For one "
-                     "pair carrying multiple distinct relationships, use `relations: "
-                     "[{relation, why}, ...]` in place of `relation`+`why`; "
-                     "'revise' updates an existing node; "
-                     "'connect' creates OR updates an edge between two EXISTING catalog "
-                     "nodes — both ids must already exist in the brain. Idempotent upsert: "
-                     "specified fields update existing rows, unspecified preserve. Does NOT "
-                     "auto-strengthen weight on repeat. NEVER use `connect` for an edge "
-                     "involving a new node (its id doesn't exist until this round finishes — "
-                     "forces a wasted second round); use `connect_to` inside the `remember` "
-                     "op instead. Don't double-emit: an edge already in `connect_to` must "
-                     "NOT also appear as a separate `connect` op for the same pair; "
-                     "'disconnect' removes an edge relation; "
-                     "'archive' soft-archives a node; "
-                     "'absorb' merges one node into another — fold "
-                     "`absorbed_id` INTO `survivor_id`: source_refs, edges, "
-                     "access_count, and metadata transfer automatically and the "
-                     "absorbed is archived. BUT it is content-DESTRUCTIVE: the "
-                     "survivor KEEPS ITS OWN content — the absorbed node's content "
-                     "is NOT merged and is lost unless you pass a `content` "
-                     "override that folds it in (with an `(id:)` ref). It is "
-                     "lossless ONLY when the survivor already states the absorbed "
-                     "node's claim, or you write the merged content. Shape the "
-                     "survivor with revise-shape field overrides (`content`, or "
-                     "title/confidence/situation). The absorbed must be archivable "
-                     "(locked/critical refused); the survivor MAY be locked — you "
-                     "absorb INTO the canonical node. This IS the real merge — "
-                     "use it instead of inventing a 'consolidate'/'merge' op. "
-                     "Operations run sequentially. Do NOT invent structural "
-                     "op names like 'consolidate'/'evolve'/'keep'/'skip' — "
-                     "a node merge is the `absorb` op; the rest are semantic "
-                     "decisions expressed through which real op you emit. "
-                     "**Relation names are NOT "
-                     "op names.** `similar_to`, `corrects`, `supersedes`, "
-                     "`reframes`, `extends`, `grounds`, etc. are values for "
-                     "the `relation` field on a `connect` op, never op types "
-                     "themselves. To say 'A is similar to B', emit "
-                     "`{op:'connect', source_id:'A', target_id:'B', "
-                     "relation:'similar_to', description:'...'}` — not "
-                     "`{op:'similar_to', ...}` (this fails brain_batch_invalid_op "
-                     "and the edge is dropped). "
-                     "Every edge `why` must be specific (≥30 chars, names the insight "
-                     "between the two nodes); empty/generic `why` ('related', 'connected', "
-                     "'example of') pollutes the activation kernel and fails to match "
-                     "queries about the relationship — see the `connect_to.why` "
-                     "description for BAD/GOOD examples."),
+     "description": _BRAIN_BATCH_DESCRIPTION,
      "inputSchema": {"type": "object", "required": ["operations"], "properties": {
          "operations": {
              "type": "array",
              "description": ("Array of operations. Each object has an 'op' "
-                             "field (one of the valid op values) plus the "
-                             "fields that op needs. `remember` ops accept an "
-                             "optional `connect_to` array for sibling+catalog edges."),
-             "items": {
-                 "type": "object", "required": ["op"], "properties": {
-                     "op": {
-                         "type": "string",
-                         "enum": sorted(VALID_BATCH_OPS),
-                         "description": ("The operation to execute. "
-                                         "Must be one of the valid op values.")}}}}}}},
+                             "field plus that op's fields — per-op required "
+                             "fields and shapes are declared in the items "
+                             "schema (one branch per op)."),
+             "items": _build_brain_batch_op_items()}}}},
     _generate_revise_schema(),
     _build_revise_batch_schema(),
     {"name": "enrich",

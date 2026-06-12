@@ -48,6 +48,33 @@ class TestAbsorb(BrainTestBase):
         self.assertIn((neighbor, 'depends_on'), pairs)       # external migrated
         self.assertNotIn((absorbed, 'similar_to'), pairs)    # intra-pair gone
 
+    def test_community_member_not_migrated(self):
+        """community_member never migrates to the survivor — placement is
+        the community unit's judged decision (affinity gate + encoder
+        accept/reject + drift detection), not a merge side effect. Semantic
+        edges in the same absorb still migrate, and edges_migrated counts
+        only them. See ABSORB_EXCLUDED_RELATIONS in dal.py (audit 2026-06-12:
+        the consolidation prompt stated this exclusion while the code
+        migrated everything)."""
+        survivor = self._node('survivor')
+        absorbed = self._node('absorbed')
+        neighbor = self._node('neighbor')
+        community = self.brain.remember(
+            type='community', title='Test community', content='cluster',
+            encoding_source='s2:community_detection')['id']
+        self.brain._graph.add_relation(community, absorbed, 'community_member',
+                                       weight=0.3)
+        self.brain._graph.add_relation(absorbed, neighbor, 'depends_on',
+                                       description='semantic — should migrate')
+        r = self.brain.absorb(survivor, absorbed)
+        self.assertTrue(r['ok'], r)
+        conns = self.brain._graph.get_connections_bulk([survivor]).get(survivor, [])
+        pairs = {(c['id'], rel['relation'])
+                 for c in conns for rel in c['relations']}
+        self.assertNotIn((community, 'community_member'), pairs)
+        self.assertIn((neighbor, 'depends_on'), pairs)
+        self.assertEqual(r['edges_migrated'], 1)
+
     def test_access_count_summed(self):
         survivor = self._node('survivor')
         absorbed = self._node('absorbed')

@@ -102,6 +102,30 @@ def _maybe_warn_source_refs_sparseness(brain, refs, location: str):
             pass  # logging failure must never block the write
 
 
+def _missing_reason_error(spec, prefix=''):
+    """Build the missing-`reason` error for revise, disambiguating `reasoning`.
+
+    `reason` (audit note, recorded in the node_revised trace event, never
+    stored on the node) and `reasoning` (a PROMOTED node field — "why this
+    was encoded", stored in node_metadata_kv) are near-identical names for
+    different concepts, and agents confuse them (observed 2026-06-12: a
+    revise op carrying `reasoning` where `reason` was meant). A blind alias
+    would be wrong — `reasoning` is a legitimate field update on revise —
+    so when it's present the error names both and tells the caller how to
+    self-correct.
+    """
+    base = (prefix + "reason is required — the audit note explaining why "
+            "this revision (recorded in the trace event, NOT stored on "
+            "the node)")
+    if spec.get('reasoning'):
+        return (base + ". You passed `reasoning`, which is a node FIELD "
+                "(why the node was encoded — updates node metadata), not "
+                "the audit note. If you meant the audit note, rename it to "
+                "`reason`; if you meant to update the node's reasoning "
+                "field, keep `reasoning` and add `reason`.")
+    return base
+
+
 def _infer_scale_and_chain(brain, encoding_source, chain_id_override):
     """Shared by the revise trace emitters.
 
@@ -259,11 +283,24 @@ def _handle_remember(brain, args, graph_changes):
         if not ok:
             return {"ok": False, "error": err}
 
+    # Mirror of revise's reason/reasoning trap: `reason` is revise's audit
+    # param and a remember control field — _store_node_metadata drops it
+    # silently. An agent passing it here almost always meant the node field
+    # `reasoning`. Semantics unchanged (still dropped); surface the drop.
+    reason_warning = None
+    if args.get('reason') and not args.get('reasoning'):
+        reason_warning = (
+            "`reason` is not a node field and was dropped — it is the audit "
+            "note for revise ops. Did you mean `reasoning` (why this was "
+            "encoded — stored on the node)?")
+
     # Pass ALL fields through to remember() — contract fields go to nodes table,
     # promoted fields to metadata, everything else to node_metadata_kv as extra_fields.
     # Don't filter — remember() handles routing via **extra_fields kwargs.
     remember_args = {k: v for k, v in args.items() if v is not None}
     result = brain.remember(**remember_args, ctx=ctx)
+    if reason_warning and isinstance(result, dict):
+        result.setdefault('warnings', []).append(reason_warning)
     # ctx is cached on Brain; remember's record_remember mutation persists
     # via the autosave loop (no per-call save).
     node_id = result.get("id", "?")[:8] if isinstance(result, dict) else "?"
@@ -290,8 +327,14 @@ def _handle_remember_batch(brain, args, graph_changes):
     top_encoding_source = args.get("encoding_source")
 
     cleaned_nodes = []
+    reason_warnings = []  # reason/reasoning confusion — see _handle_remember
     for i, spec in enumerate(nodes):
         spec.pop('session_id', None)  # defensive: not a node field
+        if spec.get('reason') and not spec.get('reasoning'):
+            reason_warnings.append(
+                "nodes[%d]: `reason` is not a node field and was dropped — "
+                "it is the audit note for revise ops. Did you mean "
+                "`reasoning` (why this was encoded — stored on the node)?" % i)
         # v29 / Phase B Step 4 — per-node source_refs validation
         refs = spec.get('source_refs')
         ok, err = _validate_source_refs(refs, 'remember_batch.nodes[%d]' % i)
@@ -322,6 +365,8 @@ def _handle_remember_batch(brain, args, graph_changes):
         connect_to=args.get("connect_to"),
         ctx=ctx)
     # ctx mutations persist via autosave (no per-call save).
+    if reason_warnings and isinstance(result, dict):
+        result.setdefault('warnings', []).extend(reason_warnings)
     graph_changes.append("REMEMBER_BATCH: %d nodes" % result.get("nodes_created", 0))
     return {"ok": True, "result": result}
 
@@ -335,7 +380,7 @@ def _handle_revise(brain, args, graph_changes):
     if not node_id:
         return {"ok": False, "error": "node_id is required"}
     if not reason:
-        return {"ok": False, "error": "reason is required"}
+        return {"ok": False, "error": _missing_reason_error(args)}
 
     # Reserve known dispatch keys so they don't get treated as field updates.
     DISPATCH_KEYS = {"node_id", "reason", "encoding_source", "chain_id", "session_id"}
@@ -404,7 +449,8 @@ def _handle_revise_batch(brain, args, graph_changes):
         if not spec.get("node_id"):
             return {"ok": False, "error": "revisions[%d]: node_id required" % i}
         if not spec.get("reason"):
-            return {"ok": False, "error": "revisions[%d]: reason required" % i}
+            return {"ok": False,
+                    "error": _missing_reason_error(spec, "revisions[%d]: " % i)}
         # v29 / Phase B Step 4 — per-revision source_refs validation
         refs = spec.get('source_refs')
         ok, err = _validate_source_refs(refs, 'revise_batch.revisions[%d]' % i)
@@ -535,6 +581,37 @@ def _handle_brain_batch(brain, args, graph_changes):
                                 "error": "operation must be a dict, got %s" % type(op_spec).__name__})
                 continue
             op = op_spec.get("op", "")
+
+            # Per-op required-field pre-check, derived from the SAME contract
+            # the MCP oneOf schema is built from (contract.BATCH_OP_SPECS) —
+            # schema signal at generation time, this check at dispatch time,
+            # one source. Unknown op names fall through to the invalid-op
+            # guard below. revise keeps its rich reason/reasoning
+            # disambiguation (_missing_reason_error) instead of the generic
+            # message.
+            from .contract import BATCH_OP_SPECS
+            _op_contract = BATCH_OP_SPECS.get(op)
+            if _op_contract:
+                missing = [f for f in _op_contract["required"]
+                           if not op_spec.get(f)]
+                if missing:
+                    if op == "revise" and "reason" in missing:
+                        # Keep the reason/reasoning disambiguation whenever
+                        # reason is among the missing fields — not only when
+                        # it's the sole one (review 2026-06-12 #2).
+                        err = _missing_reason_error(op_spec)
+                        others = [f for f in missing if f != "reason"]
+                        if others:
+                            err += " Also missing: %s." % ", ".join(others)
+                    else:
+                        err = ("%s op missing required field(s): %s — "
+                               "per-op required fields are declared in the "
+                               "brain_batch schema, one branch per op"
+                               % (op, ", ".join(missing)))
+                    results.append({"op": op, "index": i, "ok": False,
+                                    "error": err})
+                    continue
+
             try:
                 if op == "remember":
                     # Pop per-op connect_to BEFORE handler so it's not processed
