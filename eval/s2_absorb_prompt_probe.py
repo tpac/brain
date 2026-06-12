@@ -126,7 +126,7 @@ def run_critique(candidate_text):
 
     client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
     resp = client.messages.create(
-        model='claude-sonnet-4-20250514', max_tokens=2048,
+        model='claude-sonnet-4-6', max_tokens=2048,
         messages=[{'role': 'user', 'content': review}])
     return ''.join(b.text for b in resp.content if getattr(b, 'type', '') == 'text')
 

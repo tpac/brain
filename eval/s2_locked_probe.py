@@ -254,7 +254,7 @@ def run_reasoning_probe(brain):
         load_env()
     client = anthropic.Anthropic(timeout=ANTHROPIC_CLIENT_TIMEOUT)
     resp = client.messages.create(
-        model='claude-sonnet-4-20250514', max_tokens=1024,
+        model='claude-sonnet-4-6', max_tokens=1024,
         messages=[{'role': 'user', 'content': REASONING_PROMPT}])
     return ''.join(b.text for b in resp.content if getattr(b, 'type', '') == 'text')
 

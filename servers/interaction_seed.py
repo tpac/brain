@@ -256,7 +256,7 @@ S2_COMMUNITY_ENRICHMENT_CONFIG_V1 = {
 }
 
 S2_CONSOLIDATION_ENRICHMENT_CONFIG_V1 = {
-    "model": "claude-sonnet-4-20250514", "max_tokens": 16384,
+    "model": "claude-sonnet-4-6", "max_tokens": 32768,
 }
 
 S2_HEALER_CONFIG_V1 = {
@@ -264,7 +264,7 @@ S2_HEALER_CONFIG_V1 = {
 }
 
 S2_ASPECTS_CONFIG_V1 = {
-    "model": "claude-sonnet-4-5-20250929", "max_tokens": 8192,
+    "model": "claude-sonnet-4-6", "max_tokens": 8192,
 }
 
 # ── S1 Scout configs ──────────────────────────────────────────────────

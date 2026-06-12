@@ -2086,7 +2086,7 @@ def _run_combo(client, model, variant_key, variant_name, variant_content, scenar
         return (variant_key, scenario_key, run_idx, {"encoding_richness": 0, "total_encodes": 0, "error": str(e)})
 
 
-def run_eval(model="claude-sonnet-4-20250514", scenarios=None, variants=None, verbose=True, runs_per_combo=1, max_workers=8):
+def run_eval(model="claude-sonnet-4-6", scenarios=None, variants=None, verbose=True, runs_per_combo=1, max_workers=8):
     """Run the full evaluation with parallel execution."""
     client = anthropic.Anthropic()
 
@@ -2209,7 +2209,7 @@ def save_results(results, path=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="SKILL.md Evaluation Framework")
-    parser.add_argument("--model", default="claude-sonnet-4-20250514", help="Model to test with")
+    parser.add_argument("--model", default="claude-sonnet-4-6", help="Model to test with")
     parser.add_argument("--scenarios", nargs="+", choices=list(SCENARIOS.keys()) + ["all"], default=["all"])
     parser.add_argument("--variants", nargs="+", choices=list(VARIANTS.keys()) + ["all"], default=["all"])
     parser.add_argument("--runs", type=int, default=1, help="Runs per variant×scenario (for variance)")
