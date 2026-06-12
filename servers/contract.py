@@ -51,47 +51,34 @@ CONNECT_TO_ITEM_SCHEMA = {
         "title": {
             "type": "string",
             "description": (
-                "Target node title. Resolution prefers same-batch siblings over catalog "
-                "matches (NEW wins on title collision — if you mean an existing catalog "
-                "node, use `revise` on its id, not duplicate-title `remember`). "
-                "Order-agnostic: a node can connect_to a sibling declared LATER in the "
-                "same batch. Unresolved titles are logged to debug_log and skipped — "
-                "they never fail the batch."
+                "Target node title. Siblings (same batch, any declaration order) "
+                "resolve before catalog matches; NEW wins on title collision — to "
+                "update an existing catalog node use `revise` on its id, not a "
+                "duplicate-title remember. Unresolved titles are logged and "
+                "skipped, never failing the batch."
             ),
         },
         "relation": {
             "type": "string",
             "description": (
-                "Edge relation, open text. Embedded for graph-walk semantics. "
-                "Vocabulary: refines, challenges, grounds, abstracts, triggers, "
-                "reframes, resolves, opens, strengthens, weakens, corrects, enables, "
-                "produces, contextualizes, synthesizes, implements, depends_on, "
-                "validates, supersedes, configures. Plus load-bearing inventions used "
-                "in this brain: anchored_to, community_member, during. "
-                "Temporal sequence: before/after, meets/met_by, during. Invent freely "
-                "when a pair needs a relation that fits better — a specific invented "
-                "type beats a generic listed one. NEVER `related`, `related_to`, or "
-                "empty — they fail to match any query about the relationship and "
-                "pollute the activation kernel with junk edges."
+                "Edge relation, open text — e.g. refines, grounds, corrects, "
+                "depends_on, supersedes, triggers, implements, anchored_to, "
+                "during. Invent a specific verb when none fits better. NEVER "
+                "`related`/`related_to`/empty — generic relations pollute the "
+                "activation kernel and match no query."
             ),
         },
         "why": {
             "type": "string",
             "description": (
-                "What the edge MEANS — the insight that lives between the two nodes, "
-                "not a summary of either. Embedded for query matching. Target ≥30 "
-                "chars; under 20 is dead weight. If you can't write something "
-                "specific, drop the edge.\n\n"
-                "BAD: \"\" — invisible.\n"
-                "BAD: \"example of the principle\" — generic gloss; no insight about "
-                "WHICH example or WHY this one.\n"
-                "GOOD: \"the assumption treated concurrent access as a thread-safety "
-                "question; the correction reframes it as wal-index contention — "
-                "different failure mode, different fix\" — explains the conceptual "
-                "shift, not the values.\n"
-                "GOOD: \"the {specific_choice} was the turn where {principle} first "
-                "became conscious — the instance where the pattern named itself\" — "
-                "says why THIS instance mattered for the principle."
+                "What the edge MEANS — the insight living between the two nodes, "
+                "not a summary of either. Embedded for query matching; >=30 "
+                "chars, or drop the edge.\n"
+                "BAD: \"example of the principle\" — generic gloss, no insight "
+                "about which example or why.\n"
+                "GOOD: \"the assumption treated concurrent access as a "
+                "thread-safety question; the correction reframes it as wal-index "
+                "contention — different failure mode, different fix\"."
             ),
         },
         "relations": {

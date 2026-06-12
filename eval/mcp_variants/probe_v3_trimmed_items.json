@@ -1,0 +1,535 @@
+{
+  "tag": "v3_trimmed_items",
+  "model": "claude-sonnet-4-6",
+  "repeats": 10,
+  "scenarios": {
+    "connect_to_vs_connect": {
+      "pass": 10,
+      "total": 10,
+      "samples": [
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "WAL checkpoint starvation under parallel sessions",
+              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "downstream_consequence_of",
+                  "why": "WAL checkpoint starvation is a direct downstream effect of parallel sessions contending on the WAL writer slot \u2014 the writer-slot blockage prevents the TRUNCATE checkpoint from completing, causing the -wal file to grow unboundedly."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "WAL checkpoint starvation under parallel sessions",
+              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "downstream_consequence_of",
+                  "why": "WAL checkpoint starvation is a direct downstream effect of parallel sessions contending on the WAL writer slot \u2014 writer-slot contention prevents the TRUNCATE checkpoint from completing, causing the -wal file to grow unboundedly."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "WAL checkpoint starvation under parallel sessions",
+              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "downstream_consequence_of",
+                  "why": "WAL checkpoint starvation is a direct downstream effect of parallel sessions contending on the WAL writer slot \u2014 the blocked writer prevents the TRUNCATE checkpoint from completing, causing the -wal file to grow unboundedly."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "WAL checkpoint starvation under parallel sessions",
+              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "downstream_consequence_of",
+                  "why": "WAL checkpoint starvation is a direct downstream effect of the writer-slot contention described in the SQLite write contention lesson \u2014 contention blocks the checkpoint from running, causing the -wal file to grow unboundedly."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "WAL checkpoint starvation under parallel sessions",
+              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "downstream_consequence_of",
+                  "why": "WAL checkpoint starvation is a direct downstream effect of writer-slot contention: concurrent sessions block the TRUNCATE checkpoint from completing, causing the -wal file to grow unboundedly."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "WAL checkpoint starvation under parallel sessions",
+              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "downstream_consequence_of",
+                  "why": "WAL checkpoint starvation is a direct downstream effect of parallel sessions competing for the WAL writer slot \u2014 the checkpoint cannot complete because the writer slot is never fully released."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "WAL checkpoint starvation under parallel sessions",
+              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "downstream_consequence_of",
+                  "why": "Checkpoint starvation is a direct downstream effect of parallel sessions contending on the WAL writer slot \u2014 the writer-slot lock prevents the TRUNCATE checkpoint from ever completing, causing unbounded -wal growth."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "WAL checkpoint starvation under parallel sessions",
+              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "downstream_consequence_of",
+                  "why": "WAL checkpoint starvation is a direct downstream effect of parallel sessions contending on the WAL writer slot \u2014 the writer-slot blockage prevents TRUNCATE checkpoints from completing, causing the -wal file to grow unboundedly."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "WAL checkpoint starvation under parallel sessions",
+              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "extends",
+                  "why": "WAL checkpoint starvation is a downstream consequence of writer-slot contention: the checkpoint cannot acquire exclusive access because concurrent sessions keep the WAL reader/writer slots busy."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "WAL checkpoint starvation under parallel sessions",
+              "content": "When two sessions write concurrently, the TRUNCATE checkpoint starves; symptom is an ever-growing -wal file.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "downstream_consequence_of",
+                  "why": "WAL checkpoint starvation is a direct downstream effect of writer-slot contention: concurrent sessions blocking the WAL writer prevent the TRUNCATE checkpoint from ever completing, causing unbounded -wal file growth."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "double_emit": {
+      "pass": 10,
+      "total": 10,
+      "samples": [
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "Checkpoint starvation",
+              "content": "TRUNCATE checkpoints starve under concurrent writers.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "extends",
+                  "why": "Checkpoint starvation is a direct consequence of write contention: concurrent writers continuously reset the WAL, preventing TRUNCATE checkpoints from ever completing."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "Checkpoint starvation",
+              "content": "TRUNCATE checkpoints starve under concurrent writers.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "extends",
+                  "why": "Checkpoint starvation is a direct consequence of SQLite write contention \u2014 concurrent writers continuously reset the WAL, preventing TRUNCATE checkpoints from ever completing."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "Checkpoint starvation",
+              "content": "TRUNCATE checkpoints starve under concurrent writers.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "extends",
+                  "why": "Checkpoint starvation is a direct downstream consequence of SQLite write contention \u2014 concurrent writers perpetually reset the WAL, preventing TRUNCATE checkpoints from completing."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "Checkpoint starvation",
+              "content": "TRUNCATE checkpoints starve under concurrent writers.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "extends",
+                  "why": "Checkpoint starvation is a direct downstream consequence of SQLite write contention \u2014 concurrent writers continuously reset the WAL, preventing TRUNCATE checkpoints from ever completing."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "Checkpoint starvation",
+              "content": "TRUNCATE checkpoints starve under concurrent writers.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "extends",
+                  "why": "Checkpoint starvation is a direct downstream consequence of SQLite write contention \u2014 concurrent writers continuously hold the WAL, preventing TRUNCATE checkpoints from ever completing."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "Checkpoint starvation",
+              "content": "TRUNCATE checkpoints starve under concurrent writers.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "extends",
+                  "why": "Checkpoint starvation is a direct downstream consequence of SQLite write contention: concurrent writers continuously hold the WAL writer slot, preventing TRUNCATE checkpoints from completing."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "Checkpoint starvation",
+              "content": "TRUNCATE checkpoints starve under concurrent writers.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "extends",
+                  "why": "Checkpoint starvation is a direct downstream consequence of concurrent writer contention \u2014 when writers continuously hold the WAL, the checkpointer cannot reclaim pages, causing starvation."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "Checkpoint starvation",
+              "content": "TRUNCATE checkpoints starve under concurrent writers.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "extends",
+                  "why": "Checkpoint starvation is a direct consequence of write contention: concurrent writers continuously reset the WAL, preventing TRUNCATE checkpoints from ever completing."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "Checkpoint starvation",
+              "content": "TRUNCATE checkpoints starve under concurrent writers.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "extends",
+                  "why": "Checkpoint starvation is a direct downstream consequence of SQLite write contention \u2014 concurrent writers continuously hold the WAL, preventing TRUNCATE checkpoints from ever completing."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "remember",
+              "type": "lesson",
+              "title": "Checkpoint starvation",
+              "content": "TRUNCATE checkpoints starve under concurrent writers.",
+              "connect_to": [
+                {
+                  "title": "SQLite write contention",
+                  "relation": "extends",
+                  "why": "Checkpoint starvation is a direct consequence of concurrent write contention: when writers continuously hold the WAL, the checkpointer cannot acquire the locks needed to truncate, starving TRUNCATE checkpoints."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "relation_as_op": {
+      "pass": 10,
+      "total": 10,
+      "samples": [
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "connect",
+              "source_id": "f1a2b3c4",
+              "target_id": "a9b8c7d6",
+              "relation": "similar_to",
+              "description": "Both are instances of the write-skew failure class where concurrent writers corrupt the activation index (idx_nodes_activation), differing only in the specific triggering scenario."
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "connect",
+              "source_id": "f1a2b3c4",
+              "target_id": "a9b8c7d6",
+              "relation": "similar_to",
+              "description": "Both nodes represent the same write-skew failure class: concurrent writers corrupting the activation index through parallel eval or direct parallel access."
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "connect",
+              "source_id": "f1a2b3c4",
+              "target_id": "a9b8c7d6",
+              "relation": "similar_to",
+              "description": "Both nodes describe the same write-skew failure class: concurrent writers corrupting the activation index, differing only in the session context that triggered the corruption."
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "connect",
+              "source_id": "f1a2b3c4",
+              "target_id": "a9b8c7d6",
+              "relation": "similar_to",
+              "description": "Both are instances of the write-skew failure class: concurrent writers corrupting the activation index through unsynchronized WAL writes."
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "connect",
+              "source_id": "f1a2b3c4",
+              "target_id": "a9b8c7d6",
+              "relation": "similar_to",
+              "description": "Both nodes describe the same write-skew failure class: concurrent writers corrupting the activation index, differing only in the specific incident context."
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "connect",
+              "source_id": "f1a2b3c4",
+              "target_id": "a9b8c7d6",
+              "relation": "similar_to",
+              "description": "Both are instances of the write-skew failure class where concurrent writers corrupt the activation index, differing only in the specific context that triggered the contention."
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "connect",
+              "source_id": "f1a2b3c4",
+              "target_id": "a9b8c7d6",
+              "relation": "similar_to",
+              "description": "Both nodes document the same write-skew failure class: concurrent writers corrupting the activation index, differing only in the specific incident context."
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "connect",
+              "source_id": "f1a2b3c4",
+              "target_id": "a9b8c7d6",
+              "relation": "similar_to",
+              "description": "Both nodes instantiate the same write-skew failure class: concurrent writers corrupting the activation index via uncoordinated SQLite WAL writes."
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "connect",
+              "source_id": "f1a2b3c4",
+              "target_id": "a9b8c7d6",
+              "relation": "similar_to",
+              "description": "Both nodes document the same write-skew failure class: concurrent writers corrupting the activation index under SQLite WAL contention."
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "note": "",
+          "ops": [
+            {
+              "op": "connect",
+              "source_id": "f1a2b3c4",
+              "target_id": "a9b8c7d6",
+              "relation": "similar_to",
+              "description": "Both nodes document the same write-skew failure class: concurrent writers corrupting the activation index, differing only in the specific scenario that surfaced the bug."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
