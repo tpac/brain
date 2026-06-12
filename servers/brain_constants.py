@@ -210,6 +210,23 @@ ENRICHMENT_CAP = 0.30
 # Boost is additive: score += title_fraction * TITLE_MATCH_BOOST
 TITLE_MATCH_BOOST = 0.3
 
+# Stopwords for the BRAIN_TITLE_BOOST='idf2' arm. df-over-titles misprices
+# conversational words (titles are noun-phrases: 'does' df=58 scores as rare as
+# 'fatigue' df=41) — these never earn a title boost regardless of idf.
+_TITLE_BOOST_STOPWORDS = frozenset({
+    'a', 'an', 'the', 'and', 'or', 'but', 'of', 'to', 'in', 'on', 'at',
+    'for', 'with', 'from', 'by', 'as', 'over', 'under', 'about', 'into',
+    'out', 'up', 'down', 'off', 'is', 'are', 'was', 'were', 'be', 'been',
+    'being', 'am', 'do', 'does', 'did', 'done', 'have', 'has', 'had',
+    'will', 'would', 'can', 'could', 'should', 'shall', 'may', 'might',
+    'how', 'what', 'whats', 'when', 'where', 'which', 'who', 'whom', 'why',
+    'that', 'this', 'these', 'those', 'there', 'here', 'i', 'me', 'my',
+    'we', 'our', 'us', 'you', 'your', 'yours', 'it', 'its', 'they', 'them',
+    'their', 'he', 'she', 'his', 'her', 'again', 'also', 'just', 'so',
+    'too', 'not', 'no', 'yes', 'if', 'then', 'than', 'any', 'all', 'some',
+    'more', 'most', 'other', 'very',
+})
+
 # Noise floor — minimum blended score for non-critical candidates.
 # v9: Raised from 0.05 to cut pure embedding noise before scoring.
 NOISE_FLOOR_THRESHOLD = 0.15
