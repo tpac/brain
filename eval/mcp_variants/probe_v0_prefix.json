@@ -1,0 +1,257 @@
+{
+  "tag": "v0_prefix",
+  "model": "claude-sonnet-4-6",
+  "repeats": 10,
+  "scenarios": {
+    "reason_swap": {
+      "pass": 0,
+      "total": 10,
+      "samples": [
+        {
+          "passed": false,
+          "note": "reason missing/empty (keys: ['change_comment', 'content', 'id', 'op'])",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "a3f81b2c",
+              "content": "Daemon restart protocol: restarts now route through `launchctl kickstart -k` rather than a direct Popen spawn. The kickstart flag kills any running instance before relaunching, ensuring a clean restart cycle managed by launchd.",
+              "change_comment": "Architecture changed June 2026: replaced direct Popen spawn with launchctl kickstart -k for daemon restarts."
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "reason missing/empty (keys: ['change_comment', 'content', 'id', 'op'])",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "a3f81b2c",
+              "content": "Daemon restart protocol now routes through `launchctl kickstart -k` instead of a direct Popen spawn. To restart the brain daemon, invoke `launchctl kickstart -k <service-target>`, which kills the running instance and immediately relaunches it via launchd. Architecture changed June 2026.",
+              "change_comment": "Updated restart mechanism from direct Popen spawn to launchctl kickstart -k; architecture changed June 2026."
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "reason missing/empty (keys: ['change_comment', 'content', 'id', 'op'])",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "a3f81b2c",
+              "content": "Daemon restart protocol: restarts now route through `launchctl kickstart -k` rather than a direct Popen spawn. The kickstart flag (-k) kills any existing instance before launching the new one, ensuring a clean restart. Updated June 2026 following architecture change away from subprocess-based spawning.",
+              "change_comment": "Architecture changed June 2026: restart mechanism moved from direct Popen spawn to `launchctl kickstart -k`."
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "reason missing/empty (keys: ['changeNote', 'content', 'id', 'op'])",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "a3f81b2c",
+              "content": "Daemon restart protocol: restarts are now routed through `launchctl kickstart -k` rather than a direct Popen spawn. The kickstart flag (-k) kills any existing instance before relaunching, ensuring a clean restart cycle. Updated June 2026 following architecture change.",
+              "changeNote": "Architecture changed June 2026: restart path moved from direct Popen spawn to `launchctl kickstart -k`."
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "reason missing/empty (keys: ['content', 'id', 'op', 'why'])",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "a3f81b2c",
+              "content": "Daemon restart protocol: restarts now route through `launchctl kickstart -k` instead of a direct Popen spawn. The launchctl path is the canonical restart mechanism as of the June 2026 architecture change.",
+              "why": "Architecture changed June 2026: restart flow migrated from direct Popen spawn to `launchctl kickstart -k`."
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "reason missing/empty (keys: ['change_comment', 'content', 'id', 'op'])",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "a3f81b2c",
+              "content": "Daemon restart protocol: restarts now route through `launchctl kickstart -k` rather than a direct Popen spawn. The kickstart flag (-k) kills any existing instance before relaunching, ensuring a clean restart. Updated June 2026 when the architecture changed away from subprocess-level management to launchd service control.",
+              "change_comment": "Architecture changed June 2026: restart path moved from direct Popen spawn to `launchctl kickstart -k`."
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "reason missing/empty (keys: ['change_comment', 'content', 'id', 'op'])",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "a3f81b2c",
+              "content": "Daemon restarts now route through `launchctl kickstart -k` rather than a direct Popen spawn. The launchctl path ensures the service is managed by the OS service layer (launchd), giving proper lifecycle control, clean environment inheritance, and automatic respawn on crash. To trigger a restart: `launchctl kickstart -k <service-target>` where the service target identifies the brain daemon's launchd job label.",
+              "change_comment": "Architecture changed June 2026: restart mechanism migrated from direct Popen spawn to launchctl kickstart -k."
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "reason missing/empty (keys: ['change_note', 'content', 'id', 'op'])",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "a3f81b2c",
+              "content": "Daemon restart protocol: restarts now route through `launchctl kickstart -k` rather than a direct Popen spawn. The launchctl path ensures the daemon is relaunched under the correct launchd job context, respecting plist-defined environment variables and resource limits. Direct Popen spawns are no longer used for this flow.",
+              "change_note": "Architecture changed June 2026: restart mechanism migrated from direct Popen spawn to `launchctl kickstart -k`."
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "reason missing/empty (keys: ['changelog', 'content', 'id', 'op'])",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "a3f81b2c",
+              "content": "Restart flow for the brain daemon now routes through `launchctl kickstart -k <service-target>` rather than a direct Popen spawn. The kickstart flag (-k) kills any existing instance before relaunching, ensuring a clean restart cycle. Direct Popen spawns are no longer used for daemon restarts.",
+              "changelog": "Architecture changed June 2026: restart mechanism migrated from direct Popen spawn to launchctl kickstart -k."
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "reason missing/empty (keys: ['changelog', 'content', 'id', 'op'])",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "a3f81b2c",
+              "content": "Restart flow for the brain daemon now routes through `launchctl kickstart -k` (as of June 2026 architecture change), replacing the previous direct Popen spawn approach. To restart: run `launchctl kickstart -k <service-target>`, which kills the running instance and immediately relaunches it under launchd supervision.",
+              "changelog": "Architecture changed June 2026: restart path migrated from direct Popen spawn to `launchctl kickstart -k`. Updated content to reflect current mechanism."
+            }
+          ]
+        }
+      ]
+    },
+    "both_fields": {
+      "pass": 0,
+      "total": 10,
+      "samples": [
+        {
+          "passed": false,
+          "note": "node field `reasoning` not updated with new rationale",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "b7c2d9e0",
+              "why": "MCP path now enforces session attribution",
+              "notes": "Rationale refresh after v29"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "node field `reasoning` not updated with new rationale",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "b7c2d9e0",
+              "why_this_was_encoded": "MCP path now enforces session attribution"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "node field `reasoning` not updated with new rationale",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "b7c2d9e0",
+              "why": "MCP path now enforces session attribution",
+              "change_summary": "Rationale refresh after v29: updated stored why-this-was-encoded rationale to reflect that the MCP path now enforces session attribution, replacing the outdated encoding motivation."
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "node field `reasoning` not updated with new rationale",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "b7c2d9e0",
+              "why": "MCP path now enforces session attribution",
+              "meta": {
+                "audit_motivation": "rationale refresh after v29"
+              }
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "node field `reasoning` not updated with new rationale",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "b7c2d9e0",
+              "why": "MCP path now enforces session attribution"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "node field `reasoning` not updated with new rationale",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "b7c2d9e0",
+              "why_this_was_encoded": "MCP path now enforces session attribution"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "node field `reasoning` not updated with new rationale",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "b7c2d9e0",
+              "why": "MCP path now enforces session attribution"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "node field `reasoning` not updated with new rationale",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "b7c2d9e0",
+              "why_this_was_encoded": "MCP path now enforces session attribution"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "node field `reasoning` not updated with new rationale",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "b7c2d9e0",
+              "why_encoded": "MCP path now enforces session attribution"
+            }
+          ]
+        },
+        {
+          "passed": false,
+          "note": "node field `reasoning` not updated with new rationale",
+          "ops": [
+            {
+              "op": "revise",
+              "id": "b7c2d9e0",
+              "why": "MCP path now enforces session attribution",
+              "meta": {
+                "audit_motivation": "rationale refresh after v29"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

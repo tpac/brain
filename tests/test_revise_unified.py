@@ -799,5 +799,145 @@ class TestReviseEdge(BrainTestBase):
         self.assertIn('collide', res['error'])
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# Class H — reason vs reasoning disambiguation (2026-06-12)
+# ═══════════════════════════════════════════════════════════════════════
+# `reason` = audit note for a revision (trace event, never stored on node).
+# `reasoning` = PROMOTED node field (why this was encoded, node_metadata_kv).
+# Near-identical names; agents confuse them. The contract: revise without
+# `reason` fails LOUD with a disambiguating error (naming `reasoning` when
+# present); `reasoning` is never aliased/rerouted — it stays a field update.
+# remember with a stray `reason` keeps drop semantics but surfaces a warning.
+
+class TestReasonReasoningDisambiguation(BrainTestBase):
+    needs_embedder = False
+
+    def test_revise_missing_reason_with_reasoning_disambiguates(self):
+        """The observed live failure: revise op with `reasoning` but no
+        `reason` must error AND explain the field-vs-audit distinction."""
+        from servers.daemon_dispatch import _handle_revise
+
+        nid = _make_node(self.brain)
+        r = _handle_revise(self.brain, {
+            'node_id': nid,
+            'reasoning': 'meant as audit note',
+            'content': 'new content',
+        }, [])
+        self.assertFalse(r['ok'])
+        self.assertIn('reason is required', r['error'])
+        self.assertIn('reasoning', r['error'])
+        self.assertIn('FIELD', r['error'])
+        # The node must be untouched — no partial write on validation error
+        row = self.brain.conn.execute(
+            "SELECT content FROM nodes WHERE id = ?", (nid,)).fetchone()
+        self.assertEqual(row[0], 'Initial content')
+        self.assertIsNone(_kv_value(self.brain, nid, 'reasoning'))
+
+    def test_revise_missing_reason_without_reasoning_plain_error(self):
+        """No `reasoning` present → plain (but self-explanatory) error,
+        no mention of the reasoning field."""
+        from servers.daemon_dispatch import _handle_revise
+
+        nid = _make_node(self.brain)
+        r = _handle_revise(self.brain, {'node_id': nid, 'content': 'x'}, [])
+        self.assertFalse(r['ok'])
+        self.assertIn('reason is required', r['error'])
+        self.assertIn('audit note', r['error'])
+        self.assertNotIn('You passed', r['error'])
+
+    def test_revise_with_both_updates_reasoning_field(self):
+        """Regression guard against aliasing: `reasoning` alongside `reason`
+        is a normal field update — stored on the node, NOT rerouted."""
+        from servers.daemon_dispatch import _handle_revise
+
+        nid = _make_node(self.brain)
+        r = _handle_revise(self.brain, {
+            'node_id': nid,
+            'reason': 'audit note',
+            'reasoning': 'updated rationale',
+        }, [])
+        self.assertTrue(r['ok'], r)
+        self.assertEqual(_kv_value(self.brain, nid, 'reasoning'),
+                         'updated rationale')
+        # `reason` itself must never land in node metadata
+        self.assertNotIn('reason', _kv_keys(self.brain, nid))
+
+    def test_revise_batch_spec_missing_reason_disambiguates(self):
+        """Per-spec validation carries the same disambiguation, indexed."""
+        from servers.daemon_dispatch import _handle_revise_batch
+
+        nid = _make_node(self.brain)
+        r = _handle_revise_batch(self.brain, {'revisions': [
+            {'node_id': nid, 'reasoning': 'meant as audit', 'content': 'x'},
+        ]}, [])
+        self.assertFalse(r['ok'])
+        self.assertIn('revisions[0]', r['error'])
+        self.assertIn('reason is required', r['error'])
+        self.assertIn('reasoning', r['error'])
+
+    def test_brain_batch_revise_op_inherits_disambiguation(self):
+        """brain_batch revise ops route through _handle_revise — the per-op
+        error must carry the same disambiguation."""
+        from servers.daemon_dispatch import _handle_brain_batch
+
+        nid = _make_node(self.brain)
+        r = _handle_brain_batch(self.brain, {'operations': [
+            {'op': 'revise', 'node_id': nid,
+             'reasoning': 'meant as audit', 'content': 'x'},
+        ]}, [])
+        op_result = r['result']['results'][0]
+        self.assertFalse(op_result['ok'])
+        self.assertIn('reason is required', op_result['error'])
+        self.assertIn('reasoning', op_result['error'])
+
+    def test_remember_stray_reason_warns_and_drops(self):
+        """Mirror confusion: remember with `reason` (no `reasoning`) keeps the
+        drop semantics but surfaces a warning naming `reasoning`."""
+        from servers.daemon_dispatch import _handle_remember
+
+        r = _handle_remember(self.brain, {
+            'type': 'concept', 'title': 'Stray reason node',
+            'content': 'c', 'reason': 'meant as reasoning',
+        }, [])
+        self.assertTrue(r['ok'], r)
+        result = r['result']
+        warnings = result.get('warnings', [])
+        self.assertTrue(any('reasoning' in w for w in warnings),
+                        'expected reason-drop warning, got: %r' % warnings)
+        nid = result['id']
+        self.assertNotIn('reason', _kv_keys(self.brain, nid))   # still dropped
+        self.assertIsNone(_kv_value(self.brain, nid, 'reasoning'))  # not aliased
+
+    def test_remember_with_reasoning_no_warning(self):
+        """The legitimate path stays quiet: `reasoning` stores, no warning."""
+        from servers.daemon_dispatch import _handle_remember
+
+        r = _handle_remember(self.brain, {
+            'type': 'concept', 'title': 'Proper reasoning node',
+            'content': 'c', 'reasoning': 'the rationale',
+        }, [])
+        self.assertTrue(r['ok'], r)
+        result = r['result']
+        self.assertEqual(result.get('warnings'), None)
+        self.assertEqual(_kv_value(self.brain, result['id'], 'reasoning'),
+                         'the rationale')
+
+    def test_remember_batch_stray_reason_warns_per_spec(self):
+        """remember_batch surfaces an indexed warning per offending spec."""
+        from servers.daemon_dispatch import _handle_remember_batch
+
+        r = _handle_remember_batch(self.brain, {'nodes': [
+            {'type': 'concept', 'title': 'Clean node b0', 'content': 'c',
+             'reasoning': 'fine'},
+            {'type': 'concept', 'title': 'Stray node b1', 'content': 'c',
+             'reason': 'meant as reasoning'},
+        ]}, [])
+        self.assertTrue(r['ok'], r)
+        warnings = r['result'].get('warnings', [])
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertIn('nodes[1]', warnings[0])
+        self.assertIn('reasoning', warnings[0])
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -21,19 +21,176 @@ To add a new field:
 """
 
 
-# ── BRAIN_BATCH OP VOCABULARY ──
-# The closed set of operation names brain_batch accepts. Single source of
-# truth for the three sites that must agree (CLAUDE.md "closed vocabulary"):
-#   - dispatch_write._handle_brain_batch  (the if/elif dispatcher + guard)
-#   - brain_mcp brain_batch inputSchema   (the JSON-schema enum)
+# ── BRAIN_BATCH PER-OP CONTRACT ──
+# Single source of truth for brain_batch's discriminated op schemas. Three
+# sites derive from this dict and cannot drift (CLAUDE.md "closed vocabulary"):
+#   - brain_mcp brain_batch inputSchema   (oneOf branch per op — const
+#     discriminator + required list + property fragments)
+#   - dispatch_write._handle_brain_batch  (per-op required-field pre-check +
+#     the if/elif dispatcher + invalid-op guard)
 #   - s2 rejection_table                  (detecting invalid-op attempts so a
 #                                           dropped op isn't mistaken for a SKIP)
-# Adding an op means adding it here and wiring the dispatcher branch — the
-# enum and the S2 detector pick it up automatically.
+# Adding an op means adding an entry here and wiring the dispatcher branch.
+#
+# `properties` are the op-specific fields worth signaling at generation time;
+# ops accepting open-ended node fields (remember, revise, absorb overrides)
+# intentionally leave additionalProperties open. Probe-validated 2026-06-12:
+# the oneOf shape took the reason/reasoning incident class from 0/10 to 10/10
+# with NO prose support (eval/mcp_variants/probe_v1_oneof_prefix.*); see
+# eval/mcp_batch_probe.py. Dict order = probed branch order — keep it.
 
-VALID_BATCH_OPS = frozenset({
-    "remember", "revise", "connect", "disconnect", "archive", "absorb",
-})
+# Shared item schema for connect_to entries — one source for the
+# remember/remember_batch schemas AND brain_batch's remember branch
+# (BATCH_OP_SPECS below). Carries the {title, relation, why} shape and
+# the BAD/GOOD `why` examples; without it brain_batch callers had no
+# generation-time signal for entry shape (2026-06-12 review finding #1).
+CONNECT_TO_ITEM_SCHEMA = {
+    "type": "object",
+    "required": ["title"],
+    "properties": {
+        "title": {
+            "type": "string",
+            "description": (
+                "Target node title. Resolution prefers same-batch siblings over catalog "
+                "matches (NEW wins on title collision — if you mean an existing catalog "
+                "node, use `revise` on its id, not duplicate-title `remember`). "
+                "Order-agnostic: a node can connect_to a sibling declared LATER in the "
+                "same batch. Unresolved titles are logged to debug_log and skipped — "
+                "they never fail the batch."
+            ),
+        },
+        "relation": {
+            "type": "string",
+            "description": (
+                "Edge relation, open text. Embedded for graph-walk semantics. "
+                "Vocabulary: refines, challenges, grounds, abstracts, triggers, "
+                "reframes, resolves, opens, strengthens, weakens, corrects, enables, "
+                "produces, contextualizes, synthesizes, implements, depends_on, "
+                "validates, supersedes, configures. Plus load-bearing inventions used "
+                "in this brain: anchored_to, community_member, during. "
+                "Temporal sequence: before/after, meets/met_by, during. Invent freely "
+                "when a pair needs a relation that fits better — a specific invented "
+                "type beats a generic listed one. NEVER `related`, `related_to`, or "
+                "empty — they fail to match any query about the relationship and "
+                "pollute the activation kernel with junk edges."
+            ),
+        },
+        "why": {
+            "type": "string",
+            "description": (
+                "What the edge MEANS — the insight that lives between the two nodes, "
+                "not a summary of either. Embedded for query matching. Target ≥30 "
+                "chars; under 20 is dead weight. If you can't write something "
+                "specific, drop the edge.\n\n"
+                "BAD: \"\" — invisible.\n"
+                "BAD: \"example of the principle\" — generic gloss; no insight about "
+                "WHICH example or WHY this one.\n"
+                "GOOD: \"the assumption treated concurrent access as a thread-safety "
+                "question; the correction reframes it as wal-index contention — "
+                "different failure mode, different fix\" — explains the conceptual "
+                "shift, not the values.\n"
+                "GOOD: \"the {specific_choice} was the turn where {principle} first "
+                "became conscious — the instance where the pattern named itself\" — "
+                "says why THIS instance mattered for the principle."
+            ),
+        },
+        "relations": {
+            "type": "array",
+            "description": (
+                "Alternative to relation+why when the same pair carries multiple "
+                "distinct relationships. Each item is {relation, why}."
+            ),
+            "items": {
+                "type": "object",
+                "required": ["relation", "why"],
+                "properties": {
+                    "relation": {"type": "string"},
+                    "why": {"type": "string"},
+                },
+            },
+        },
+    },
+}
+
+
+BATCH_OP_SPECS = {
+    "remember": {
+        "required": ["type", "title", "content"],
+        "description": ("Create a node. Accepts all remember() fields "
+                        "(situation, reasoning, quotes, ...)."),
+        "properties": {
+            "type": {"type": "string", "description": "Node type"},
+            "title": {"type": "string", "description": "Specific, scannable title"},
+            "content": {"type": "string", "description": "Rich content"},
+            "connect_to": {"type": "array", "description":
+                           "Typed edges to siblings/catalog — see tool description",
+                           "items": CONNECT_TO_ITEM_SCHEMA},
+        },
+    },
+    "revise": {
+        "required": ["node_id", "reason"],
+        "description": ("Update node fields. Any other key is a field update "
+                        "(content, situation, reasoning, ...)."),
+        "properties": {
+            "node_id": {"type": "string", "description": "Node to revise"},
+            "reason": {"type": "string", "description":
+                       "Audit note for this revision — recorded in trace "
+                       "events, NOT stored on the node. Distinct from the "
+                       "node FIELD `reasoning`, which a revise op updates "
+                       "like any other field."},
+        },
+    },
+    "connect": {
+        "required": ["source_id", "target_id"],
+        "description": "Create/update an edge between two EXISTING catalog nodes.",
+        "properties": {
+            "source_id": {"type": "string", "description":
+                          "Actor node id (must already exist)"},
+            "target_id": {"type": "string", "description":
+                          "Acted-upon node id (must already exist)"},
+            "relation": {"type": "string", "description": "Open-text verb"},
+            "description": {"type": "string", "description":
+                            "What the edge MEANS (>=30 chars)"},
+            "weight": {"type": "number"},
+        },
+    },
+    "disconnect": {
+        "required": ["source_id", "target_id", "relation"],
+        "description": ("Soft-archive one relation on an edge; other "
+                        "relations on the same edge survive."),
+        "properties": {
+            "source_id": {"type": "string", "description": "Edge source id"},
+            "target_id": {"type": "string", "description": "Edge target id"},
+            "relation": {"type": "string", "description": "Relation to archive"},
+        },
+    },
+    "archive": {
+        "required": ["node_id"],
+        "description": "Soft-archive a node.",
+        "properties": {
+            "node_id": {"type": "string", "description": "Node to soft-archive"},
+            "reason": {"type": "string", "description": "Why (audit note)"},
+        },
+    },
+    "absorb": {
+        "required": ["survivor_id", "absorbed_id"],
+        "description": ("Lossless merge: fold absorbed INTO survivor. "
+                        "Accepts revise-shape field overrides (content, "
+                        "title, confidence, situation)."),
+        "properties": {
+            "survivor_id": {"type": "string", "description":
+                            "Node that remains (may be locked)"},
+            "absorbed_id": {"type": "string", "description":
+                            "Node folded in + archived (must be archivable)"},
+            "content": {"type": "string", "description":
+                        "Merged content override — REQUIRED for losslessness "
+                        "unless survivor already states the absorbed claim"},
+        },
+    },
+}
+
+# Derived — kept as the cheap membership check used across dispatch + S2.
+VALID_BATCH_OPS = frozenset(BATCH_OP_SPECS)
 
 
 # ── STRUCTURAL FIELDS ──
@@ -81,7 +238,10 @@ PROMOTED_FIELDS = {
     "reasoning": {
         "store": "metadata_kv",
         "type": "str",
-        "description": "Why this was encoded — decision rationale.",
+        "description": ("Why this was encoded — decision rationale, stored "
+                        "on the node. NOT revise()'s `reason` param — that is "
+                        "the audit note for a revision, recorded in trace "
+                        "events and never stored on the node."),
     },
     "user_raw_quote": {
         "store": "metadata_kv",
