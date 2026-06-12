@@ -1598,6 +1598,23 @@ class NodeDAL:
         ).fetchone()
         return row is not None
 
+    def archived_subset(self, node_ids) -> set:
+        """Return the subset of `node_ids` that are archived.
+
+        Single source for liveness checks (surface selection gate,
+        Hebbian drain gate). Exact-id match — no prefix resolution;
+        unknown ids are simply absent from the result. Empty input
+        returns an empty set (no `IN ()` SQL).
+        """
+        ids = [nid for nid in node_ids if nid]
+        if not ids:
+            return set()
+        ph = ','.join('?' * len(ids))
+        rows = self.conn.execute(
+            'SELECT id FROM nodes WHERE id IN (%s) AND archived = 1' % ph,
+            ids).fetchall()
+        return {r[0] for r in rows}
+
     def count(self, archived: bool = False) -> int:
         """Count nodes, optionally excluding archived."""
         if archived:

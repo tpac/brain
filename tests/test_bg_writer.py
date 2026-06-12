@@ -309,6 +309,59 @@ class TestHebbianDrainProducesEdges(BrainTestBase):
                          'last_strengthened on edges row not updated')
 
 
+class TestHebbianLivenessGate(BrainTestBase):
+    """2026-06-12 — pairs touching an archived node must not mint or
+    strengthen co_accessed edges. Observed in production: a node absorbed
+    by S2 consolidation kept being surfaced from session history; each
+    surface enqueued Hebbian pairs that created LIVE edges to the
+    archived node, making the dead node more reachable each turn."""
+
+    needs_embedder = False
+
+    def setUp(self):
+        super().setUp()
+        recall_write_queue._clear_for_test()
+
+    def test_pair_with_archived_endpoint_is_skipped(self):
+        r1 = self.brain.remember(type='test', title='heb_arch_1',
+                                 content='c1', auto_connect=False,
+                                 encoding_source='anchor:test')
+        r2 = self.brain.remember(type='test', title='heb_arch_2',
+                                 content='c2', auto_connect=False,
+                                 encoding_source='anchor:test')
+        r3 = self.brain.remember(type='test', title='heb_arch_3',
+                                 content='c3', auto_connect=False,
+                                 encoding_source='anchor:test')
+        arch = self.brain.archive_node(r2['id'], archived_by='anchor:test',
+                                       reason='liveness gate test')
+        self.assertTrue(arch.get('ok'))
+
+        # One live pair + two pairs touching the archived node.
+        recall_write_queue.enqueue_hebbian_pairs(
+            [(r1['id'], r3['id']),
+             (r1['id'], r2['id']),
+             (r2['id'], r3['id'])],
+            '2026-06-12T18:00:00')
+        recall_write_queue.drain_once(self.brain)
+
+        rows = self.brain.conn.execute(
+            "SELECT e.source_id, e.target_id FROM edge_relations er "
+            "JOIN edges e ON e.edge_id = er.edge_id "
+            "WHERE er.relation = 'co_accessed' AND er.archived = 0").fetchall()
+        touched = {nid for row in rows for nid in row}
+        self.assertNotIn(r2['id'], touched,
+                         'live co_accessed edge minted to archived node')
+        self.assertIn(r1['id'], touched, 'live pair was wrongly skipped')
+        self.assertIn(r3['id'], touched, 'live pair was wrongly skipped')
+
+        stats = recall_write_queue.get_stats()
+        self.assertEqual(stats['hebbian_pairs_skipped_archived'], 2)
+        # drained counts only the pairs actually processed — skipped pairs
+        # must not be double-counted as drained.
+        self.assertEqual(stats['hebbian_pairs_drained_total'], 1)
+        self.assertEqual(stats['errors_total'], 0)
+
+
 class TestDrainAtomicityMidBatch(BrainTestBase):
     """Phase 5+8 — verify the drain transaction is truly atomic.
 

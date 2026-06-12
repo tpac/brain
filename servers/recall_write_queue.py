@@ -81,6 +81,7 @@ _stats = {
     'last_begin_wait_ms': 0,          # time spent in BEGIN IMMEDIATE (WAL slot wait)
     'access_drained_total': 0,
     'hebbian_pairs_drained_total': 0,
+    'hebbian_pairs_skipped_archived': 0,  # pairs dropped by the liveness gate
     'errors_total': 0,                # exceptions during drain (caught + logged)
     'rollbacks_total': 0,             # transactions that hit ROLLBACK
     'overlong_drains_total': 0,       # drains that took > _OVERLONG_THRESHOLD_MS
@@ -283,9 +284,13 @@ def drain_once(brain) -> None:
                 _stats['access_drained_total'] += len(access_snap)
 
         if hebbian_snap:
-            _apply_hebbian_pairs(brain, conn, hebbian_snap)
+            # _apply_hebbian_pairs returns the count it actually processed
+            # (its liveness gate may skip archived-touching pairs, which
+            # are counted in hebbian_pairs_skipped_archived instead — no
+            # double-count).
+            processed = _apply_hebbian_pairs(brain, conn, hebbian_snap)
             with _lock:
-                _stats['hebbian_pairs_drained_total'] += len(hebbian_snap)
+                _stats['hebbian_pairs_drained_total'] += processed
 
         conn.commit()
 
@@ -391,13 +396,34 @@ def _apply_hebbian_pairs(brain, conn,
     Per-pair exceptions are caught + logged but don't abort the batch.
     The outer transaction's success/failure is independent of any
     single pair. If a pair raises, it's lost (matches loss semantic).
+
+    Returns the number of pairs actually processed (after the liveness
+    gate) — the caller's hebbian_pairs_drained_total uses it so skipped
+    pairs aren't double-counted as drained.
     """
     from .brain_constants import LEARNING_RATE, MAX_WEIGHT, EDGE_TYPES
-    from .dal import GraphDAL
+    from .dal import GraphDAL, NodeDAL
 
     co_default_weight = EDGE_TYPES['co_accessed']['defaultWeight']
     delta = LEARNING_RATE * 0.5  # matches strengthen_relation's bump magnitude
     gdal = GraphDAL(conn)
+
+    # Liveness gate — never create/strengthen co_accessed edges touching an
+    # archived node. The surface selection gate keeps archived picks out of
+    # the enqueue path, but archive can land between enqueue and drain (S2
+    # absorb mid-window), and the edge this would mint is live while its
+    # node is dead — recall spread then walks INTO the archived node
+    # (2026-06-12: 4 live co_accessed edges to absorbed node 90664c51).
+    # Mirrors the access-drain's `archived = 0` no-op above.
+    ids = {nid for a, b, _ts in hebbian_snap for nid in (a, b)}
+    archived = NodeDAL(conn).archived_subset(ids)
+    if archived:
+        live_snap = [(a, b, ts) for a, b, ts in hebbian_snap
+                     if a not in archived and b not in archived]
+        with _lock:
+            _stats['hebbian_pairs_skipped_archived'] += (
+                len(hebbian_snap) - len(live_snap))
+        hebbian_snap = live_snap
 
     for a, b, ts in hebbian_snap:
         try:
@@ -454,6 +480,8 @@ def _apply_hebbian_pairs(brain, conn,
                       '%s,%s: %s' % (a[:8], b[:8], e), file=sys.stderr)
             with _lock:
                 _stats['errors_total'] += 1
+
+    return len(hebbian_snap)
 
 
 # ─── Test-only helpers ───────────────────────────────────────────────
