@@ -409,5 +409,51 @@ class T10_BackwardCompat(BrainTestBase):
         self.assertEqual(rels[0]['encoding_source'], 'encoder:sonnet')
 
 
+class T5_DanglingArchiveTimestampFormat(BrainTestBase):
+    """2026-06-12 — archive_dangling_edges must stamp archived_at in the
+    brain's ISO-T format (clock.iso_now), like every other edge_relations
+    writer. It was the lone unix-ms writer into the TEXT column, which
+    broke lexicographic time reads and rendered as 1970 epoch dates."""
+
+    needs_embedder = False
+
+    def test_archived_at_is_iso(self):
+        from servers.dal import GraphDAL
+
+        a = self.brain.remember(type='test', title='dangle_a', content='c',
+                                auto_connect=False,
+                                encoding_source='anchor:test')
+        b = self.brain.remember(type='test', title='dangle_b', content='c',
+                                auto_connect=False,
+                                encoding_source='anchor:test')
+        dal = GraphDAL(self.brain.conn)
+        dal.add_relation(a['id'], b['id'], 'relates_to',
+                         encoding_source='anchor:test')
+
+        # Simulate the leak the restorer exists for: node archived without
+        # its edges (bypassing archive_node's own edge sweep).
+        self.brain.conn.execute(
+            'UPDATE nodes SET archived = 1 WHERE id = ?', (b['id'],))
+
+        n = dal.archive_dangling_edges('anchor:test')
+        self.assertGreaterEqual(n, 1, 'restorer archived nothing')
+
+        row = self.brain.conn.execute(
+            "SELECT er.archived, er.archived_at FROM edge_relations er "
+            "JOIN edges e ON e.edge_id = er.edge_id "
+            "WHERE e.source_id = ? AND e.target_id = ? "
+            "  AND er.relation = 'relates_to'",
+            (a['id'], b['id'])).fetchone()
+        self.assertIsNotNone(row)
+        archived, archived_at = row
+        self.assertEqual(archived, 1)
+        # ISO-T, not unix-ms: starts with a year and carries the T separator.
+        self.assertIsInstance(archived_at, str)
+        self.assertTrue(archived_at.startswith('20'),
+                        'archived_at not ISO: %r' % archived_at)
+        self.assertIn('T', archived_at,
+                      'archived_at missing ISO T separator: %r' % archived_at)
+
+
 if __name__ == '__main__':
     unittest.main()

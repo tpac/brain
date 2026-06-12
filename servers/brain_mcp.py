@@ -324,7 +324,17 @@ def _generate_revise_schema():
 
 
 def _build_revise_batch_schema():
-    """Generate the 'revise_batch' MCP tool schema."""
+    """Generate the 'revise_batch' tool schema — array of revise() objects.
+
+    Per-item properties derive from the generated `revise` schema (the same
+    pattern remember_batch uses with remember) so the field list can never
+    drift from the contract — the old hand-written 7-field subset did
+    (2026-06-12 review follow-up). source_refs is added explicitly: it's a
+    join-table field, not a contract column, so revise's generator doesn't
+    emit it.
+    """
+    item_properties = dict(_generate_revise_schema()["inputSchema"]["properties"])
+    item_properties["source_refs"] = _SOURCE_REFS_SCHEMA
     return {
         "name": "revise_batch",
         "description": "Revise multiple brain nodes in one call. Same per-field replace contract as `revise()` — specified fields are REPLACED, unspecified fields are PRESERVED. Immutable fields ({id, created_at, locked}) skipped with warning. Each row emits its own trace event for revision history (queryable via `query_traces` with ref_type='node_revised'). Use this instead of multiple `revise` calls.",
@@ -334,28 +344,11 @@ def _build_revise_batch_schema():
             "properties": {
                 "revisions": {
                     "type": "array",
-                    "description": "List of revisions. Each must have node_id and reason, plus any fields to update.",
+                    "description": "List of revisions. Each must have node_id and reason, plus any fields to update — same field semantics as `revise`.",
                     "items": {
                         "type": "object",
                         "required": ["node_id", "reason"],
-                        "properties": {
-                            "node_id": {"type": "string", "description": "Node ID to revise"},
-                            "reason": {"type": "string", "description": (
-                                "Why this revision — audit note recorded in "
-                                "the trace event, NOT stored on the node. "
-                                "Required. Distinct from the node FIELD "
-                                "`reasoning`.")},
-                            "content": {"type": "string", "description": "New content (replaces old, history saved)"},
-                            "situation": {"type": "string", "description": "When is this relevant (gets own embedding)"},
-                            "reasoning": {"type": "string", "description": (
-                                "Why this was encoded — node field, stored on "
-                                "the node (distinct from `reason`, the audit "
-                                "note for this revision)")},
-                            "user_raw_quote": {"type": "string", "description": "Operator's exact words"},
-                            "anchor_raw_quote": {"type": "string", "description": "Anchor's exact words"},
-                            "confidence": {"type": "number", "description": "0-1 confidence score"},
-                            "source_refs": _SOURCE_REFS_SCHEMA,
-                        },
+                        "properties": item_properties,
                     },
                 },
             },

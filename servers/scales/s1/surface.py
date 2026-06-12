@@ -595,6 +595,63 @@ def _write_surface_result_file(recall_ref, surface_prompt, output, brain):
         brain._log_error('surface_result_write', e, 'writing surface result file')
 
 
+def _drop_archived_selected(brain, selected_why, selected_mode,
+                            selected_short_ids):
+    """Drop archived nodes from Haiku's resolved selection, in place.
+
+    Mutates selected_why / selected_mode (full-id keyed) and
+    selected_short_ids (8-char set), and logs a warning per event.
+    The surfaced-ids file is written by the caller AFTER this gate —
+    single write site, only the filtered set ever lands on disk.
+
+    Returns the list of dropped full ids (for tests / callers).
+    """
+    if not selected_why:
+        return []
+    try:
+        archived = brain._nodes.archived_subset(list(selected_why))
+    except Exception as e:
+        brain._log_error(
+            'surface_liveness_gate', e,
+            'archived check failed — selection passes unfiltered '
+            '(hebbian drain gate backstops)')
+        return []
+    dead = sorted(nid for nid in selected_why if nid in archived)
+    if not dead:
+        return []
+    for nid in dead:
+        selected_why.pop(nid, None)
+        selected_mode.pop(nid, None)
+    selected_short_ids -= {nid[:8] for nid in dead}
+    brain._log_warning(
+        'surface_selected_archived',
+        'Haiku selected archived node(s) %s — dropped before seeding'
+        % ','.join(nid[:8] for nid in dead),
+        'liveness gate in run_surface; the id came from session history '
+        '(conversation / recently-surfaced block), not the candidate menu')
+    return dead
+
+
+def _write_surface_selected_file(brain, session_id, stop_counter, short_ids):
+    """Single write site for the per-turn surfaced-ids file.
+
+    Hebbian + Stop hook read it. Path is scoped to session_id +
+    stop_counter so consecutive turns don't overwrite each other's
+    surface output before the Stop hook reads it (the counter
+    increments AFTER post_response_common). Called once per
+    run_surface, after the liveness gate, so only the filtered
+    selection ever lands on disk.
+    """
+    try:
+        surface_path = "/tmp/brain-%s-%d-surface-selected.json" % (
+            session_id, stop_counter)
+        with open(surface_path, 'w') as f:
+            json.dump({"selected_ids": list(short_ids)}, f)
+    except Exception as e:
+        brain._log_error('surface_selected_write', e,
+                         'writing surface-selected file')
+
+
 def run_surface(brain, ctx, candidates_data, user_message,
                 recent_messages, result, enriched, results, recall_ref,
                 session_id, graph_changes, query_vec=None, prior_vecs=None,
@@ -628,19 +685,9 @@ def run_surface(brain, ctx, candidates_data, user_message,
     selected = surfaced.get("selected", [])
     selected_short_ids = {s.get("id", "")[:8] for s in selected}
 
-    # Write surfaced IDs for Hebbian + Stop hook. Path is scoped to
-    # session_id + stop_counter so consecutive turns don't overwrite each
-    # other's surface output before the Stop hook reads it. Hebbian on the
-    # same turn reads the same path (counter hasn't incremented yet at
-    # Stop time — increment happens AFTER post_response_common).
-    try:
-        surface_path = "/tmp/brain-%s-%d-surface-selected.json" % (session_id, ctx.stop_counter)
-        with open(surface_path, 'w') as f:
-            json.dump({"selected_ids": list(selected_short_ids)}, f)
-    except Exception as e:
-        brain._log_error('surface_selected_write', e, 'writing surface-selected file')
-
     if not selected:
+        _write_surface_selected_file(brain, session_id, ctx.stop_counter,
+                                     selected_short_ids)
         try:
             _write_traces(brain, ctx, candidates_data, set(), [], [],
                           None, enriched, results,
@@ -732,6 +779,24 @@ def run_surface(brain, ctx, candidates_data, user_message,
             'ids=%s why_samples=%r' % (
                 ','.join(hallucinated_ids[:5]),
                 [s.get('why', '')[:80] for s in selected if s.get('id', '')[:8] in hallucinated_ids][:3]))
+
+    # Liveness gate — Haiku's prompt carries node ids in historical text
+    # (conversation, recently-surfaced block) that read-time archived
+    # filters can't reach, so a node archived mid-session (S2 absorb) can
+    # come back as a selection: the outside-candidates path above resolves
+    # it to a real-but-archived node and admits it. Its vectors are gone
+    # (deleted at archive), so seeding it yields zero activation, and every
+    # acceptance re-writes the id into the surface_selected trace that the
+    # recently-surfaced block is built from — a self-perpetuating loop
+    # (2026-06-12: node 90664c51, 4 selections over 2.5h). Enforce
+    # liveness structurally — code beats prompt compliance.
+    _drop_archived_selected(brain, selected_why, selected_mode,
+                            selected_short_ids)
+
+    # Surfaced-ids file (Hebbian + Stop hook input) — written once,
+    # after the gate, so only the filtered selection lands on disk.
+    _write_surface_selected_file(brain, session_id, ctx.stop_counter,
+                                 selected_short_ids)
 
     _mark('surface_id_resolve')
 

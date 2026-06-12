@@ -185,7 +185,7 @@ client.messages.create(
 
 **Key constraint:** apply `output_config` on EVERY round of an agentic loop, not just the final one. Round 1 can return text (when Haiku skips tools), and that text path is unprotected without schema enforcement. `tools` and `output_config` coexist on the same API call — Haiku can tool-use OR finalize-with-JSON, never drift to prose.
 
-Sonnet call sites (S2 reclassify, S2 base, S1 Scribe encoder) use tool-use shape rather than `output_config` — `brain_batch`'s nested schema would need `oneOf` per op-type before Strict Tool Use fits.
+Sonnet call sites (S2 reclassify, S2 base, S1 Scribe encoder) use tool-use shape rather than `output_config`. The old blocker is gone: `brain_batch`'s nested schema IS a `oneOf` discriminated union per op-type as of 2026-06-12 (derived from `contract.BATCH_OP_SPECS`), so enabling Strict Tool Use on those call sites is unblocked — verify Anthropic's current strict-mode JSON Schema keyword subset (`oneOf` vs `anyOf`, `const`) against live docs before flipping it on.
 
 ## Frame — the structured prior
 
@@ -270,7 +270,7 @@ Three files, same pattern as the shipped units. Subclass `IntegrationUnit` in `s
 
 Register in `coordinator.py` units list. Trace chain: `s2-{YYYYMMDD}-{unit_name}`. Contract file defines config + data shapes.
 
-**brain_batch op vocabulary is closed**: `remember`, `revise`, `connect`, `disconnect`, `archive`, `absorb` (absorb = lossless merge — folds one node into another transfer-by-default, then archives the absorbed; see `docs/S2-ABSORB-OP-DESIGN.md`). Enforced by JSON schema enum; invalid op names log as `brain_batch_invalid_op`. The closed set lives in `VALID_BATCH_OPS` in `servers/contract.py` — the `brain_mcp` schema enum AND the S2 rejection-table invalid-op detector both derive from it. Adding a new op means updating that frozenset and adding the dispatcher branch in `dispatch_write._handle_brain_batch`.
+**brain_batch op vocabulary is closed**: `remember`, `revise`, `connect`, `disconnect`, `archive`, `absorb` (absorb = lossless merge — folds one node into another transfer-by-default, then archives the absorbed; see `docs/S2-ABSORB-OP-DESIGN.md`). The single source is `BATCH_OP_SPECS` in `servers/contract.py` (per-op required fields + property fragments + branch descriptions; `VALID_BATCH_OPS` derives from it). Three consumers stay in sync by construction: the `brain_mcp` oneOf discriminated schema (`_build_brain_batch_op_items` — one branch per op, `const` discriminator), the dispatcher's per-op required pre-check in `dispatch_write._handle_brain_batch`, and the S2 rejection-table invalid-op detector. Invalid op names log as `brain_batch_invalid_op`. Adding an op means adding a `BATCH_OP_SPECS` entry and wiring the dispatcher branch; `tests/test_brain_batch_op_contract.py` pins the derivations. Any brain_batch schema/description change must re-run `eval/mcp_batch_probe.py` (behavioral dimensions) + `eval/mcp_schema_gate.py` (IsolatedBrain production-faithful gate) before daemon restart — probe-certified 2026-06-12.
 
 ## Shared Infrastructure
 

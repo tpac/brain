@@ -294,3 +294,74 @@ class TestDecodeTransitions(BrainTestBase):
         self.assertIn(n_b['id'], b_ids, "Session B's surface missing from B's exclusion list")
         self.assertNotIn(n_a['id'], b_ids,
                          "Session A's surface LEAKED into Session B's exclusion list")
+
+
+class TestSelectionLivenessGate(BrainTestBase):
+    """2026-06-12 — archived nodes must be dropped from Haiku's resolved
+    selection before they become spread seeds. Production incident: node
+    90664c51 was absorbed by S2 consolidation mid-session; Haiku kept
+    re-selecting its id from session history (conversation text +
+    recently-surfaced block). Each acceptance seeded a vector-less node
+    (spread_seed_no_vectors) and re-wrote the dead id into the
+    surface_selected trace — a self-perpetuating loop."""
+
+    needs_embedder = False
+
+    def test_archived_selection_dropped_live_kept(self):
+        from servers.scales.s1.surface import _drop_archived_selected
+
+        live = self.brain.remember(type='test', title='gate_live',
+                                   content='c', auto_connect=False,
+                                   encoding_source='anchor:test')
+        dead = self.brain.remember(type='test', title='gate_dead',
+                                   content='c', auto_connect=False,
+                                   encoding_source='anchor:test')
+        arch = self.brain.archive_node(dead['id'], archived_by='anchor:test',
+                                       reason='liveness gate test')
+        self.assertTrue(arch.get('ok'))
+
+        selected_why = {live['id']: 'relevant', dead['id']: 'stale'}
+        selected_mode = {live['id']: 'arc', dead['id']: 'arc'}
+        selected_short_ids = {live['id'][:8], dead['id'][:8]}
+
+        dropped = _drop_archived_selected(
+            self.brain, selected_why, selected_mode, selected_short_ids)
+
+        self.assertEqual(dropped, [dead['id']])
+        self.assertNotIn(dead['id'], selected_why)
+        self.assertNotIn(dead['id'], selected_mode)
+        self.assertNotIn(dead['id'][:8], selected_short_ids)
+        self.assertIn(live['id'], selected_why)
+        self.assertIn(live['id'][:8], selected_short_ids)
+
+    def test_all_live_selection_untouched(self):
+        from servers.scales.s1.surface import _drop_archived_selected
+
+        a = self.brain.remember(type='test', title='gate_a', content='c',
+                                auto_connect=False,
+                                encoding_source='anchor:test')
+        selected_why = {a['id']: 'relevant'}
+        selected_mode = {a['id']: 'arc'}
+        selected_short_ids = {a['id'][:8]}
+
+        dropped = _drop_archived_selected(
+            self.brain, selected_why, selected_mode, selected_short_ids)
+
+        self.assertEqual(dropped, [])
+        self.assertIn(a['id'], selected_why)
+
+    def test_surface_selected_file_write(self):
+        # Single write site: the file lands post-gate with whatever the
+        # caller passes — filtered ids only, by construction of run_surface.
+        from servers.scales.s1.surface import _write_surface_selected_file
+
+        path = "/tmp/brain-test-liveness-file-7-surface-selected.json"
+        try:
+            _write_surface_selected_file(
+                self.brain, 'test-liveness-file', 7, {'aaaa1111', 'bbbb2222'})
+            with open(path) as f:
+                on_disk = set(json.load(f)["selected_ids"])
+            self.assertEqual(on_disk, {'aaaa1111', 'bbbb2222'})
+        finally:
+            if os.path.exists(path):
+                os.remove(path)

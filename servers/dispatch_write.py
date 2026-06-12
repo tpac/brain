@@ -506,6 +506,8 @@ def _handle_brain_batch(brain, args, graph_changes):
     Args:
         operations: list of {op: "remember"|"revise"|"connect", ...fields}
     """
+    from .contract import BATCH_OP_SPECS
+
     operations = args.get("operations", [])
     if not operations:
         return {"ok": False, "error": "operations array is required"}
@@ -585,11 +587,12 @@ def _handle_brain_batch(brain, args, graph_changes):
             # Per-op required-field pre-check, derived from the SAME contract
             # the MCP oneOf schema is built from (contract.BATCH_OP_SPECS) —
             # schema signal at generation time, this check at dispatch time,
-            # one source. Unknown op names fall through to the invalid-op
-            # guard below. revise keeps its rich reason/reasoning
-            # disambiguation (_missing_reason_error) instead of the generic
-            # message.
-            from .contract import BATCH_OP_SPECS
+            # one source. This is the ONLY missing-field gate for batch ops
+            # (the old in-branch guards were removed as unreachable;
+            # tests/test_brain_batch_op_contract.py pins enforcement per
+            # field). Unknown op names fall through to the invalid-op guard
+            # below. revise keeps its rich reason/reasoning disambiguation
+            # (_missing_reason_error) instead of the generic message.
             _op_contract = BATCH_OP_SPECS.get(op)
             if _op_contract:
                 missing = [f for f in _op_contract["required"]
@@ -656,25 +659,23 @@ def _handle_brain_batch(brain, args, graph_changes):
                     results.append({"op": "connect", "index": i, **r})
 
                 elif op == "archive":
+                    # node_id presence guaranteed by the BATCH_OP_SPECS
+                    # pre-check above.
                     node_id = op_spec.get("node_id")
-                    if not node_id:
-                        results.append({"op": "archive", "index": i, "ok": False,
-                                        "error": "node_id is required"})
-                    else:
-                        # Unified archive path — handles guards, edges, vectors, audit.
-                        # Fallback chain mirrors disconnect: op-level encoding_source
-                        # → op-level archived_by → top-level encoding_source →
-                        # 'unknown'. Lets top-level brain_batch tagging cascade to
-                        # archive audit without per-op injection.
-                        archived_by = op_spec.get('encoding_source') or \
-                            op_spec.get('archived_by') or \
-                            top_encoding_source or 'unknown'
-                        reason = op_spec.get('reason', '')
-                        r = brain.archive_node(
-                            node_id, archived_by=archived_by, reason=reason)
-                        if r.get('ok'):
-                            graph_changes.append("ARCHIVE: %s" % node_id[:8])
-                        results.append({"op": "archive", "index": i, **r})
+                    # Unified archive path — handles guards, edges, vectors, audit.
+                    # Fallback chain mirrors disconnect: op-level encoding_source
+                    # → op-level archived_by → top-level encoding_source →
+                    # 'unknown'. Lets top-level brain_batch tagging cascade to
+                    # archive audit without per-op injection.
+                    archived_by = op_spec.get('encoding_source') or \
+                        op_spec.get('archived_by') or \
+                        top_encoding_source or 'unknown'
+                    reason = op_spec.get('reason', '')
+                    r = brain.archive_node(
+                        node_id, archived_by=archived_by, reason=reason)
+                    if r.get('ok'):
+                        graph_changes.append("ARCHIVE: %s" % node_id[:8])
+                    results.append({"op": "archive", "index": i, **r})
 
                 elif op == "absorb":
                     # Lossless merge: fold absorbed INTO survivor, then archive
@@ -682,36 +683,33 @@ def _handle_brain_batch(brain, args, graph_changes):
                     # access_count, KV) so a merge can't silently drop info the
                     # imperative revise+connect+archive path did (node 988de522).
                     # survivor may be locked; absorbed must not be.
+                    # id presence guaranteed by the BATCH_OP_SPECS pre-check.
                     survivor_id = op_spec.get("survivor_id")
                     absorbed_id = op_spec.get("absorbed_id")
-                    if not (survivor_id and absorbed_id):
-                        results.append({"op": "absorb", "index": i, "ok": False,
-                                        "error": "survivor_id and absorbed_id are required"})
-                    else:
-                        archived_by = op_spec.get('encoding_source') or \
-                            op_spec.get('archived_by') or \
-                            top_encoding_source or 'unknown'
-                        # Revise-op style: every non-control key is a survivor
-                        # field override (content, title, confidence, situation,
-                        # ...), forwarded to absorb()'s updates. Same mental
-                        # model as the revise op — an agent writes the same shape.
-                        _CONTROL = {'op', 'survivor_id', 'absorbed_id',
-                                    'prune_edges', 'drop_fields', 'archived_by',
-                                    'encoding_source', 'reason',
-                                    'session_id', 'chain_id'}
-                        field_updates = {k: v for k, v in op_spec.items()
-                                         if k not in _CONTROL}
-                        r = brain.absorb(
-                            survivor_id, absorbed_id,
-                            updates=field_updates or None,
-                            archived_by=archived_by,
-                            reason=op_spec.get('reason', ''),
-                            prune_edges=op_spec.get('prune_edges'),
-                            drop_fields=op_spec.get('drop_fields'))
-                        if r.get('ok'):
-                            graph_changes.append("ABSORB: %s <- %s" % (
-                                survivor_id[:8], absorbed_id[:8]))
-                        results.append({"op": "absorb", "index": i, **r})
+                    archived_by = op_spec.get('encoding_source') or \
+                        op_spec.get('archived_by') or \
+                        top_encoding_source or 'unknown'
+                    # Revise-op style: every non-control key is a survivor
+                    # field override (content, title, confidence, situation,
+                    # ...), forwarded to absorb()'s updates. Same mental
+                    # model as the revise op — an agent writes the same shape.
+                    _CONTROL = {'op', 'survivor_id', 'absorbed_id',
+                                'prune_edges', 'drop_fields', 'archived_by',
+                                'encoding_source', 'reason',
+                                'session_id', 'chain_id'}
+                    field_updates = {k: v for k, v in op_spec.items()
+                                     if k not in _CONTROL}
+                    r = brain.absorb(
+                        survivor_id, absorbed_id,
+                        updates=field_updates or None,
+                        archived_by=archived_by,
+                        reason=op_spec.get('reason', ''),
+                        prune_edges=op_spec.get('prune_edges'),
+                        drop_fields=op_spec.get('drop_fields'))
+                    if r.get('ok'):
+                        graph_changes.append("ABSORB: %s <- %s" % (
+                            survivor_id[:8], absorbed_id[:8]))
+                    results.append({"op": "absorb", "index": i, **r})
 
                 elif op == "disconnect":
                     # Soft-archive a specific relation on an edge. Other relations
@@ -719,39 +717,36 @@ def _handle_brain_batch(brain, args, graph_changes):
                     # forensics/recovery; reads filter via JOIN.
                     # Lets ABSORB encoders prune survivor edges that don't fit
                     # the new framing after revise.
+                    # field presence guaranteed by the BATCH_OP_SPECS pre-check.
                     source_id = op_spec.get("source_id")
                     target_id = op_spec.get("target_id")
                     relation = op_spec.get("relation")
                     archived_by = op_spec.get('encoding_source') or \
                         op_spec.get('archived_by') or \
                         top_encoding_source or 'unknown'
-                    if not (source_id and target_id and relation):
-                        results.append({"op": "disconnect", "index": i, "ok": False,
-                                        "error": "source_id, target_id, relation are required"})
-                    else:
-                        gdal = brain._graph
-                        edge_id = gdal.get_edge_id(source_id, target_id)
-                        # remove_relation gates its own commit on conn.in_batch
-                        # (True here) → deferred to the batch's single COMMIT.
-                        gdal.remove_relation(
-                            source_id, target_id, relation, archived_by=archived_by)
-                        graph_changes.append("DISCONNECT: %s -[%s]-> %s" % (
-                            source_id[:8], relation, target_id[:8]))
+                    gdal = brain._graph
+                    edge_id = gdal.get_edge_id(source_id, target_id)
+                    # remove_relation gates its own commit on conn.in_batch
+                    # (True here) → deferred to the batch's single COMMIT.
+                    gdal.remove_relation(
+                        source_id, target_id, relation, archived_by=archived_by)
+                    graph_changes.append("DISCONNECT: %s -[%s]-> %s" % (
+                        source_id[:8], relation, target_id[:8]))
 
-                        # Emit edge_relation_revised trace event capturing the
-                        # archived flag flip. Mirrors connect upsert trace shape.
-                        if edge_id:
-                            _emit_edge_revise_trace(
-                                brain, edge_id, relation,
-                                op_spec.get('reason', '') or args.get('reason', ''),
-                                archived_by,
-                                deltas=[{'field': 'archived',
-                                         'old': 0, 'new': 1}],
-                                chain_id_override=args.get('chain_id', ''),
-                                session_id=args.get('session_id', ''),
-                            )
+                    # Emit edge_relation_revised trace event capturing the
+                    # archived flag flip. Mirrors connect upsert trace shape.
+                    if edge_id:
+                        _emit_edge_revise_trace(
+                            brain, edge_id, relation,
+                            op_spec.get('reason', '') or args.get('reason', ''),
+                            archived_by,
+                            deltas=[{'field': 'archived',
+                                     'old': 0, 'new': 1}],
+                            chain_id_override=args.get('chain_id', ''),
+                            session_id=args.get('session_id', ''),
+                        )
 
-                        results.append({"op": "disconnect", "index": i, "ok": True})
+                    results.append({"op": "disconnect", "index": i, "ok": True})
 
                 else:
                     # Invalid op name — log loudly. Sonnet sometimes invents
