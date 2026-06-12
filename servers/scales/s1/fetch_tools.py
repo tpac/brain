@@ -46,7 +46,13 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "The semantic query — what to find similar to."},
-                "k": {"type": "integer", "description": "Max results (default 25)", "default": 25},
+                # k lowered 25 → 8 (2026-06-12, operator call): at k=25 each
+                # topical call could flood the 25 cosine candidates 1:1 —
+                # volume + last-position = tool results overshadowing the
+                # original pool (finding dfb4691e). Precision over recall:
+                # the 25 already cover the broad query; topical exists for
+                # the specific gap. Hard cap enforced in the function.
+                "k": {"type": "integer", "description": "Max results (default 8, max 10)", "default": 8},
             },
             "required": ["query"],
         },
@@ -334,11 +340,17 @@ def _to_candidate(node: Dict[str, Any], score: float, source_tool: str) -> Dict[
 
 # ─── The six tools ───────────────────────────────────────────────────────
 
-def recall_topical(brain, query: str, k: int = 25, **_) -> List[Dict[str, Any]]:
+def recall_topical(brain, query: str, k: int = 8, **_) -> List[Dict[str, Any]]:
     """Topical semantic recall — wraps brain.recall(). The current cosine + FTS5
-    path. Default fallback when no other tool's intent fires."""
+    path. Default fallback when no other tool's intent fires.
+
+    k default 8, hard-capped at 10 (2026-06-12): tool results join the
+    selection pool LAST (position bias) — at k=25 they flooded the original
+    cosine candidates. Archived nodes never returned (brain.recall filters
+    archived in all three lanes — verified at SQL level)."""
     try:
-        results = brain.recall(query=query, limit=int(k))
+        k = min(int(k), 10)
+        results = brain.recall(query=query, limit=k)
         if isinstance(results, dict):
             results = results.get('results') or results.get('items') or []
         out = []
