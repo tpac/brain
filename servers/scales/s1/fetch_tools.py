@@ -424,6 +424,18 @@ def _fetch_edges_with_endpoints(brain, edge_ids: List[str]) -> List[Dict[str, An
     except Exception:
         nodes_map = {}
 
+    # Endpoint liveness (2026-06-12, bc34734d handoff): get_node is a point
+    # lookup and correctly returns archived nodes — but endpoints flow to
+    # Haiku as candidates, so archived endpoints are dropped HERE at the
+    # source. Loud, never stat-only.
+    _dead_endpoints = brain._nodes.archived_subset(endpoint_ids)
+    if _dead_endpoints:
+        brain._log_error(
+            'fetch_by_time_archived_endpoint',
+            RuntimeError('%d archived endpoint nodes reached '
+                         '_fetch_edges_with_endpoints' % len(_dead_endpoints)),
+            'dropped at source; sample=%s' % sorted(_dead_endpoints)[:5])
+
     seen_endpoint_ids: set = set()
     for edge_id, source_id, target_id, relation, description in rows:
         # Synthetic edge candidate.
@@ -445,7 +457,7 @@ def _fetch_edges_with_endpoints(brain, edge_ids: List[str]) -> List[Dict[str, An
         # Source / target as context candidates (one per endpoint, dedup'd).
         for endpoint_id, role in [(source_id, 'edge_source'),
                                     (target_id, 'edge_target')]:
-            if endpoint_id in seen_endpoint_ids:
+            if endpoint_id in seen_endpoint_ids or endpoint_id in _dead_endpoints:
                 continue
             seen_endpoint_ids.add(endpoint_id)
             node = nodes_map.get(endpoint_id)
@@ -564,6 +576,24 @@ def recall_by_time(brain, start_when: str = '', end_when: str = '',
                                  'trace scan for discussed anchor failed')
         else:
             return []  # unknown anchor
+
+        # Liveness gate at the SOURCE (2026-06-12, bc34734d handoff —
+        # spread_seed_no_vectors incident class): archived ids must never
+        # enter the candidate flow. Fixed here per operator directive, not
+        # by a pre-Haiku filter layer. 'created'/'updated' SQL already
+        # filters archived; 'event' (entity_dates) and 'discussed' (trace
+        # refs pointing at since-absorbed nodes) can carry archived ids.
+        # One gate covers every anchor. Loud, never stat-only.
+        if time_node_ids:
+            _dead = brain._nodes.archived_subset(time_node_ids)
+            if _dead:
+                brain._log_error(
+                    'fetch_by_time_archived_leak',
+                    RuntimeError('%d archived node ids reached recall_by_time '
+                                 'candidate set (anchor=%s)'
+                                 % (len(_dead), time_anchor)),
+                    'dropped at source; sample=%s' % sorted(_dead)[:5])
+                time_node_ids -= _dead
 
         # 3. Semantic matches (if query). Over-fetch so tiers can fill.
         semantic_results: List[Dict[str, Any]] = []
@@ -801,6 +831,30 @@ def execute_tool(brain, tool_name: str, tool_input: Dict[str, Any],
                     for k, v in rich_map[rid].items():
                         if k not in r:
                             r[k] = v
+        # Tripwire — NOT a filter layer. Every producer is responsible for
+        # never emitting archived ids (gated at source in each tool). If one
+        # ever slips through, that is a producer BUG: log as an error EVERY
+        # time and drop it rather than feed Haiku a dead node (the
+        # spread_seed_no_vectors incident class). This should never fire in
+        # healthy operation — any entry in the errors table here means a
+        # producer regressed.
+        try:
+            _dead = brain._nodes.archived_subset(
+                [r.get('id') for r in results if isinstance(r, dict)])
+        except Exception:
+            _dead = set()
+        if _dead:
+            try:
+                brain._log_error(
+                    'fetch_tool_archived_tripwire',
+                    RuntimeError('tool %s emitted %d archived node ids — '
+                                 'producer bug, fix the tool not this '
+                                 'tripwire' % (tool_name, len(_dead))),
+                    'dropped; sample=%s' % sorted(_dead)[:5])
+            except Exception:
+                pass
+            results = [r for r in results
+                       if not (isinstance(r, dict) and r.get('id') in _dead)]
 
     return {'results': results or [], 'latency_ms': int((time.time() - t0) * 1000)}
 

@@ -175,6 +175,38 @@ class TestRecallByTimeDiscussed:
                                  end_when='February 2001', time_anchor='discussed')
         assert isinstance(results, list)
 
+    def test_discussed_anchor_drops_archived_loudly(self, env):
+        # Source liveness gate (2026-06-12): a trace can point at a node
+        # that S2 absorbed/archived since — the gate must drop it before
+        # it reaches Haiku, and must log loudly (never stat-only).
+        import json as _json
+        b = env.brain
+        row = b.conn.execute(
+            "SELECT id FROM nodes WHERE COALESCE(archived,0)=1 LIMIT 1").fetchone()
+        if not row:  # fixture copy has no archived nodes — archive one
+            nid = b.conn.execute("SELECT id FROM nodes LIMIT 1").fetchone()[0]
+            b.conn.execute("UPDATE nodes SET archived=1 WHERE id=?", (nid,))
+            b.conn.commit()
+            archived_id = nid
+        else:
+            archived_id = row[0]
+        b.logs_conn.execute(
+            "INSERT INTO trace_events (id, chain_id, scale, event_type, ref_type, ref_id, summary, session_id, created_at) "
+            "VALUES ('te5tdead', 's1r-test-2', 's1', 'K', 'surface_selected', ?, 'test', 'test-sess', "
+            "'2008-03-15T12:00:00+00:00')",
+            (_json.dumps([archived_id]),))
+        b.logs_conn.commit()
+        results = recall_by_time(b, start_when='March 2008',
+                                 end_when='April 2008', time_anchor='discussed')
+        ids = {r.get('id') for r in results}
+        assert archived_id not in ids, "archived node leaked through discussed anchor"
+        err = b.logs_conn.execute(
+            "SELECT COUNT(*) FROM debug_log "
+            "WHERE source LIKE '%fetch_by_time_archived_leak%' "
+            "OR event_type LIKE '%fetch_by_time_archived_leak%'"
+        ).fetchone()[0]
+        assert err >= 1, "archived drop must be logged loudly, not silent"
+
 
 class TestRecallByTime:
     def test_open_ended_start_returns_results(self, env):
