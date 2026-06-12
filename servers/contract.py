@@ -458,7 +458,20 @@ def render_rich_node(node, config=None):
     # ("Always used together: 'Tom correction: don't mak..." vs full).
     edge_limit = cfg.get('edge_limit', 5)
     connections = node.get('connections', [])[:edge_limit]
-    if connections:
+    if connections and cfg.get('edge_style') == 'oneline':
+        # Selection-grade edge render: direction + relation + target title only.
+        # No description, no id, no timestamps — those are injection payload
+        # (the full style below). One line per edge, top relation only.
+        lines.append('  Edges:')
+        for e in connections:
+            title = e.get('title', '')[:80]
+            rels = e.get('relations') or []
+            rel = (rels[0].get('relation') if rels else e.get('relation', '')) or 'related'
+            if e.get('direction') == 'incoming':
+                lines.append('    "%s" %s this' % (title, rel))
+            else:
+                lines.append('    this %s "%s"' % (rel, title))
+    elif connections:
         lines.append('  Edges:')
         for e in connections:
             target_id = e.get('id', '?')[:8]

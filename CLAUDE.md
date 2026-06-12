@@ -305,7 +305,7 @@ Chain IDs from SessionContext: `ctx.s0_chain()`, `ctx.s1r_chain()`, `ctx.s1e_cha
 What each boundary expects and produces. If recall changes its output shape, the surfacer breaks. Contracts prevent silent drift.
 
 - `contract.py` — field definitions, `format_node()`, `render_rich_node()`. Single source of truth for what a node IS. `render_rich_node(config)` is the single formatter — HAIKU_FORMAT, SURFACE_FORMAT, ENCODER_FORMAT control verbosity.
-- `pipeline_contract.py` — `get_rich_node()` (single ID or batch), `traverse()`, z-weighted scoring groups. What flows between pipeline stages.
+- `pipeline_contract.py` — `traverse()`, z-weighted scoring groups, legacy aliases. What flows between pipeline stages. (The rich-node pull is `brain.get_node(id_or_ids)` — single id or batch; batch returns `{id: node}`.)
 - Scale contracts: `s1/surface_contract.py`, `s1/encode_contract.py`.
 
 Run `test_contract_sync.py` after modifying ANY brain API layer. The contract flows to: remember() signature → MCP schema → dispatch → encoding agent tools → SKILL.md docs.

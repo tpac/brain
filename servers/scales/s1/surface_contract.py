@@ -256,8 +256,20 @@ def format_candidate_for_surface(c, index):
     fields (score, discovery) that aren't in the node itself.
 
     Candidates must be in get_rich_node() shape (with _metadata, _corrections, connections).
+
+    Render format: BRAIN_HAIKU_RENDER env ∈ {'lean' (default), 'full'} picks
+    HAIKU_FORMAT_LEAN vs HAIKU_FORMAT. Default flipped full→lean 2026-06-12
+    after the ablation (ab_render_ablation.py): gold-neutral at −41% tokens,
+    pick-divergence (J=0.64) at the same-prompt noise floor (full-vs-full
+    J=0.72). Covers cosine candidates AND tool results (fetch_tools renders
+    through this same function).
     """
+    import os as _os_hr
     from servers.contract import render_rich_node
+
+    fmt = HAIKU_FORMAT \
+        if _os_hr.environ.get('BRAIN_HAIKU_RENDER', 'lean').strip().lower() == 'full' \
+        else HAIKU_FORMAT_LEAN
 
     # Recall-specific header (score + discovery — not part of the node)
     score_parts = []
@@ -276,7 +288,7 @@ def format_candidate_for_surface(c, index):
     if score_parts:
         header += " (%s)" % ", ".join(score_parts)
 
-    return header + "\n" + render_rich_node(c, HAIKU_FORMAT)
+    return header + "\n" + render_rich_node(c, fmt)
 
 
 def _dedup_candidates(candidates):
@@ -555,6 +567,41 @@ HAIKU_FORMAT = {
     # selection signal. Haiku already sees title + content + edges; the
     # keyword line would just add noise to the 25-candidate prompt.
     'show_keywords': False,
+}
+
+# Selection-grade lean render (Area 2, 2026-06-12). The selector's job is
+# "pick 3-5 relevant ids", not "read the node" — injection still renders
+# the SELECTED nodes at full richness, so no information leaves the
+# pipeline; it's relocated to the stage that uses it. Recon numbers
+# (eval/oracle_audit/ab_render_recon.py, 150 candidates): full render
+# 385 tok/cand — edges-with-descriptions 29%, content 23%, situation 10%,
+# reasoning 10%, question 6%, corrections 6%, quotes 5%. Lean keeps every
+# SELECTION signal in cheapest sufficient form (~60% cut):
+#   • situation kept whole — it IS the selection question ("when relevant")
+#   • content kept at 300 (operator call, 2026-06-12)
+#   • encoding_source kept in header (future: guide Haiku to prefer
+#     src:anchor manual encodings)
+#   • edges → oneline (direction + relation + title; descriptions are
+#     injection payload). Edge CHOICE stays query-aware via select_edges.
+#   • corrections → lean flag (the "superseded" signal, not the payload)
+#   • dropped: reasoning, question, quotes, keywords — encoder/recall
+#     scaffolding and voice; zero hypothesized selection value (the
+#     inject path already drops question/keywords for the same reason).
+# DEFAULT since 2026-06-12 (ablation-cleared: gold-neutral, −41% tokens,
+# divergence at the same-prompt noise floor — ab_render_ablation.py).
+# BRAIN_HAIKU_RENDER=full reverts to the heavy render.
+# Open follow-on: lean_noedge scored equal-or-better at −53% — edge lines
+# carry no measurable selection signal TODAY, but the cut is deferred until
+# the aspect-aligned edge-choice experiment decides whether edges can earn
+# their place in selection (operator's aspect-traversal thread).
+HAIKU_FORMAT_LEAN = {
+    'content_limit': 300, 'edge_limit': 3, 'metadata_limit': 120,
+    'time_format': 'relative',
+    'correction_render': 'lean',
+    'edge_style': 'oneline',
+    'show_keywords': False,
+    'extra_skip_keys': ('question', 'reasoning', 'user_raw_quote',
+                        'anchor_raw_quote', 'keywords'),
 }
 
 

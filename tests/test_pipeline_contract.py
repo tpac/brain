@@ -107,16 +107,36 @@ class TestFormatCandidateForSurface(unittest.TestCase):
         self.assertIn('Test rule', result)
         self.assertIn('abc12345', result)
 
-    def test_metadata_included_when_present(self):
-        """Metadata fields are read from `_metadata` (get_rich_node shape)
-        as of the contract refactor. The old top-level keys are not honored."""
+    def test_metadata_lean_default_vs_full(self):
+        """Selection render contract (2026-06-12, Area 2 lean default):
+        the lean render keeps situation (the selection signal) and
+        deliberately SKIPS encoder/recall scaffolding — reasoning,
+        question, voice quotes. BRAIN_HAIKU_RENDER=full restores the
+        heavy render with all metadata. Ablation: ab_render_ablation.py
+        (gold-neutral at −41% tokens; divergence at the same-prompt
+        noise floor)."""
+        import os
         c = {'id': 'abc12345', 'type': 'rule', 'title': 'Test',
              'content': 'Content',
              'situation': 'When debugging',  # situation is top-level for ergonomics
-             '_metadata': {'reasoning': 'Important because...'}}
+             '_metadata': {'reasoning': 'Important because...',
+                           'question': 'Why does this matter?',
+                           'user_raw_quote': 'verbatim operator words'}}
+        # Lean (default): situation in, scaffolding out
         result = format_candidate_for_surface(c, 1)
         self.assertIn('Situation:', result)
-        self.assertIn('reasoning:', result.lower())
+        self.assertNotIn('reasoning:', result.lower())
+        self.assertNotIn('question:', result.lower())
+        self.assertNotIn('verbatim operator words', result)
+        # Full (explicit env): all metadata restored
+        os.environ['BRAIN_HAIKU_RENDER'] = 'full'
+        try:
+            result_full = format_candidate_for_surface(c, 1)
+            self.assertIn('Situation:', result_full)
+            self.assertIn('reasoning:', result_full.lower())
+            self.assertIn('verbatim operator words', result_full)
+        finally:
+            os.environ.pop('BRAIN_HAIKU_RENDER', None)
 
     def test_metadata_omitted_when_empty(self):
         c = {'id': 'abc12345', 'type': 'rule', 'title': 'Test',

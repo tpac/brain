@@ -488,9 +488,8 @@ from .scales.s1.surface_contract import (  # noqa: E402, F401
     build_surface_prompt,
     enrich_candidate_metadata,
 )
-JUDGE = SURFACE  # legacy alias
-format_candidate_for_judge = format_candidate_for_surface
-build_judge_prompt = build_surface_prompt
+JUDGE = SURFACE  # legacy alias (consumer: eval/judge_eval.py)
+build_judge_prompt = build_surface_prompt  # legacy alias (consumer: eval/judge_eval.py)
 
 from .scales.s1.encode_contract import (  # noqa: E402, F401
     ENCODING_AGENT,
