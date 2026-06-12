@@ -57,40 +57,20 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
             "required": ["query"],
         },
     },
-    {
-        "name": "recall_recent",
-        "description": (
-            "Chronological session-aware recall. Use when the user signals continuation "
-            "or time-recency: 'what did we do', 'last session', 'this morning', 'pick "
-            "up from yesterday', 'recent work'. Returns nodes touched/created recently "
-            "in chronological order, not topical similarity."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "window": {
-                    "type": "string",
-                    "description": (
-                        "Natural-language window. Examples: 'last 10 hours', 'last 3 "
-                        "turns', 'today', 'yesterday', 'since last session', 'last 24h'. "
-                        "Tool parses to timestamps — you do NOT need to compute dates."
-                    ),
-                },
-                "k": {"type": "integer", "description": "Max results (default 25)", "default": 25},
-            },
-            "required": ["window"],
-        },
-    },
+    # recall_recent DELETED 2026-06-12 (operator call): updated_at anchor +
+    # buggy window parse + no topic param meant it could not deliver its intent
+    # ("the thing we talked about 3 weeks ago"). Replaced by recall_by_time
+    # with time_anchor='discussed' (trace-time) — see that anchor branch.
     {
         "name": "recall_by_time",
         "description": (
-            "Time-bounded recall, optionally combined with a semantic query. "
-            "Use when the user asks about a specific time window — 'what did we "
-            "do in March 2023', 'Q1 2024 launch work', 'before May 2024'. "
-            "Distinct from recall_recent (which is rolling from now). "
-            "Distinct from recall_by_date (REMOVED) — this version filters on "
-            "extracted EVENT time (when something happened) by default, not "
-            "when the node was encoded.\n\n"
+            "THE time tool — any time-anchored ask, rolling or absolute: "
+            "'what did we do in March 2023', 'Q1 2024 launch work', "
+            "'yesterday', 'last week', 'the thing we talked about 3 weeks "
+            "ago'. Optionally combined with a semantic query.\n\n"
+            "Pick the anchor by what the time refers to: when events "
+            "HAPPENED (event), when we TALKED about it (discussed), or when "
+            "it was encoded/revised (created/updated).\n\n"
             "Ranking tiers when both `query` and time are given:\n"
             "  1. Entities matching BOTH query and time range (top)\n"
             "  2. Entities matching just the query (no time match)\n"
@@ -119,14 +99,18 @@ TOOL_DEFINITIONS: List[Dict[str, Any]] = [
                 },
                 "time_anchor": {
                     "type": "string",
-                    "enum": ["event", "created", "updated"],
+                    "enum": ["event", "created", "updated", "discussed"],
                     "default": "event",
                     "description": (
                         "Which date to filter on:\n"
-                        "  event   — extracted event time (default; matches "
-                        "what the user usually means)\n"
-                        "  created — when the node/edge was first encoded\n"
-                        "  updated — when last revised / strengthened"
+                        "  event     — extracted event time (default; when "
+                        "the content's events happened)\n"
+                        "  discussed — when the CONVERSATION touched it "
+                        "(trace time). Use for 'we talked about / worked on "
+                        "X <time> ago' — finds re-discussed old nodes that "
+                        "created/updated miss\n"
+                        "  created   — when the node/edge was first encoded\n"
+                        "  updated   — when last revised / strengthened"
                     ),
                 },
                 "query": {
@@ -366,39 +350,6 @@ def recall_topical(brain, query: str, k: int = 8, **_) -> List[Dict[str, Any]]:
         return []
 
 
-def recall_recent(brain, session_id: str = '', window: str = 'last 10 hours',
-                  k: int = 25, **_) -> List[Dict[str, Any]]:
-    """Chronological session-aware recall. Returns nodes touched recently —
-    by trace events in this session and/or created in the time window."""
-    try:
-        since, until = _parse_window(window)
-        since_iso = since.isoformat()
-        until_iso = until.isoformat()
-        # Strategy: filter_nodes by updated_at in the window, sort recent first.
-        # Filter on 'updated_at' to catch revised nodes too, not just created.
-        # filter_nodes exposes gt/lt (exclusive); for window queries the
-        # exclusive vs inclusive distinction at second-level boundaries is
-        # noise. Use gt/lt with the parsed window endpoints.
-        rows = brain.filter_nodes(field='updated_at', gt=since_iso, lt=until_iso,
-                                   sort_by='updated_at', sort_order='desc',
-                                   limit=int(k), rich=True)
-        nodes = rows.get('nodes') if isinstance(rows, dict) else rows
-        if not nodes:
-            return []
-        out = []
-        for i, n in enumerate(nodes):
-            # Recency-score: 1.0 newest, decays linearly to 0.5 across window
-            score = 1.0 - (0.5 * i / max(1, len(nodes)))
-            cand = _to_candidate(n, score, 'recall_recent')
-            if cand:
-                out.append(cand)
-        return out[:int(k)]
-    except Exception as e:
-        brain._log_error('fetch_recall_recent', e, 'surface fetch tool failed; returned no candidates')
-        print('[fetch_tools] recall_recent failed: %s' % e, file=sys.stderr)
-        return []
-
-
 def _parse_when_to_ts(when: str, default_to_end: bool = False) -> Optional[int]:
     """Convert a natural-language time expression to Unix seconds.
 
@@ -583,6 +534,34 @@ def recall_by_time(brain, start_when: str = '', end_when: str = '',
                 (start_iso, end_iso),
             ):
                 time_edge_ids.add(r[0])
+        elif time_anchor == 'discussed':
+            # Trace-time anchor (2026-06-12, replaces recall_recent): nodes
+            # the CONVERSATION actually touched in the window — surface
+            # selections (s1r K events) carry the surfaced node ids. 'The
+            # thing we talked about 3 weeks ago' is a trace property:
+            # created/updated miss re-discussions of old nodes, and
+            # updated_at is bumped by encoder/S2 churn (the recall_recent
+            # bug class). Read-only scan of the daemon's own logs handle.
+            from datetime import datetime as _dt, timezone as _tz
+            start_iso = _dt.fromtimestamp(start_ts, tz=_tz.utc).isoformat()
+            end_iso = _dt.fromtimestamp(end_ts, tz=_tz.utc).isoformat()
+            import json as _json
+            try:
+                for r in brain.logs_conn.execute(
+                    "SELECT ref_id FROM trace_events "
+                    "WHERE scale='s1' AND event_type='K' "
+                    "AND ref_type='surface_selected' "
+                    "AND created_at > ? AND created_at < ?",
+                    (start_iso, end_iso),
+                ):
+                    try:
+                        for nid in _json.loads(r[0] or '[]'):
+                            time_node_ids.add(nid)
+                    except Exception:
+                        continue
+            except Exception as e:
+                brain._log_error('fetch_by_time_discussed', e,
+                                 'trace scan for discussed anchor failed')
         else:
             return []  # unknown anchor
 
@@ -767,7 +746,6 @@ def expand_node(brain, node_ref: str = '', hops: int = 1, **_) -> List[Dict[str,
 
 _TOOL_FN_MAP = {
     'recall_topical':    recall_topical,
-    'recall_recent':     recall_recent,
     'recall_by_time':    recall_by_time,
     'recall_verbatim':   recall_verbatim,
     # recall_by_aspect: kept callable but NOT in TOOL_DEFINITIONS — Haiku
@@ -792,9 +770,6 @@ def execute_tool(brain, tool_name: str, tool_input: Dict[str, Any],
                 'error': 'unknown_tool: %s' % tool_name}
     t0 = time.time()
     kwargs = dict(tool_input or {})
-    # Inject session_id for recall_recent (only tool that needs it)
-    if tool_name == 'recall_recent':
-        kwargs.setdefault('session_id', session_id)
     try:
         results = fn(brain, **kwargs)
     except Exception as e:
@@ -864,6 +839,6 @@ __all__ = [
     'TOOL_DEFINITIONS',
     'execute_tool',
     'format_tool_result_for_haiku',
-    'recall_topical', 'recall_recent', 'recall_by_time',
+    'recall_topical', 'recall_by_time',
     'recall_verbatim', 'recall_by_aspect', 'expand_node',
 ]

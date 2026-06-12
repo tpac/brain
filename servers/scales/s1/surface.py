@@ -179,6 +179,15 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
     # Track existing IDs to dedupe tool-fetched candidates against cosine pool
     existing_ids = {c.get('id') for c in candidates_data if isinstance(c, dict)}
 
+    # Admission-floor reference: median score of the ORIGINAL cosine pool,
+    # snapshotted before any tool results join (recall_topical results are
+    # score-comparable and must beat this to be admitted — see the floor
+    # at the execute_tool site below).
+    import statistics as _stats
+    _pool_scores = [c.get('score') or 0 for c in candidates_data
+                    if isinstance(c, dict) and (c.get('score') or 0) > 0]
+    _pool_median = _stats.median(_pool_scores) if _pool_scores else 0.0
+
     messages = [{"role": "user", "content": user_content}]
     tool_trace = []
     raw_final = ''
@@ -256,6 +265,19 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                 # Execute the tool
                 exec_result = execute_tool(brain, tool_name, tool_input,
                                             session_id=session_id)
+                # Admission floor (2026-06-12): recall_topical scores come
+                # from the same recall pipeline as the cosine pool, so they
+                # are directly comparable — a fetched node scoring below the
+                # original pool's median doesn't beat what's already here.
+                # Filter exec_result IN PLACE so the rendered tool output and
+                # the candidate pool agree (Haiku must never see an id it
+                # can't select). Other tools keep synthetic scores — no floor.
+                _dropped_below_floor = 0
+                if tool_name == 'recall_topical' and _pool_median > 0:
+                    _kept = [c for c in (exec_result.get('results') or [])
+                             if (c.get('score') or 0) >= _pool_median]
+                    _dropped_below_floor = len(exec_result.get('results') or []) - len(_kept)
+                    exec_result['results'] = _kept
                 # Append fetched results to candidates_data (dedupe)
                 for cand in exec_result.get('results') or []:
                     cid = cand.get('id') if isinstance(cand, dict) else None
@@ -267,6 +289,7 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                     'tool': tool_name,
                     'args': tool_input,
                     'result_count': len(exec_result.get('results') or []),
+                    'dropped_below_floor': _dropped_below_floor,
                     'latency_ms': exec_result.get('latency_ms', 0),
                     'error': exec_result.get('error'),
                 })

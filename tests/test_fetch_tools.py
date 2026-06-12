@@ -17,7 +17,6 @@ from servers.scales.s1.fetch_tools import (
     _parse_window,
     _parse_date_expr,
     recall_topical,
-    recall_recent,
     recall_by_time,
     recall_verbatim,
     recall_by_aspect,
@@ -95,7 +94,7 @@ class TestDateParser:
 # ─── Tool definitions are well-formed ────────────────────────────────────
 
 class TestToolDefinitions:
-    def test_four_tools_defined(self):
+    def test_three_tools_defined(self):
         # recall_by_aspect removed from Haiku's tool set 2026-06-08
         # (query-blind, redundant with Frame). expand_node removed 2026-06-12
         # (production audit: 13/13 zero-result calls over 4 days — 100% no-op
@@ -103,7 +102,7 @@ class TestToolDefinitions:
         # exist and are tested below; they're just no longer offered to Haiku.
         names = {t['name'] for t in TOOL_DEFINITIONS}
         assert names == {
-            'recall_topical', 'recall_recent', 'recall_by_time',
+            'recall_topical', 'recall_by_time',
             'recall_verbatim',
         }
 
@@ -147,21 +146,34 @@ class TestRecallTopical:
             assert r['source_tool'] == 'recall_topical'
 
 
-class TestRecallRecent:
-    def test_last_10h_returns_recent(self, env):
-        results = recall_recent(env.brain, window='last 10 hours', k=10)
-        assert isinstance(results, list)
-        for r in results:
-            assert r['source_tool'] == 'recall_recent'
+class TestRecallByTimeDiscussed:
+    # recall_recent was DELETED 2026-06-12 — its use case ('the thing we
+    # talked about 3 weeks ago') moved to recall_by_time(time_anchor=
+    # 'discussed'), which reads surface-selection traces (s1r K events).
+    def test_discussed_anchor_finds_traced_node(self, env):
+        import json as _json
+        b = env.brain
+        rows = b.conn.execute("SELECT id FROM nodes LIMIT 1").fetchall()
+        assert rows, "fixture brain has no nodes"
+        node_id = rows[0][0]
+        # Far-past window so ONLY this synthetic trace matches — a rolling
+        # window ('yesterday') competes with real production traces in the
+        # copied logs db and the limit cut can drop the test node.
+        b.logs_conn.execute(
+            "INSERT INTO trace_events (id, chain_id, scale, event_type, ref_type, ref_id, summary, session_id, created_at) "
+            "VALUES ('te5td15c', 's1r-test-1', 's1', 'K', 'surface_selected', ?, 'test', 'test-sess', "
+            "'2009-01-15T12:00:00+00:00')",
+            (_json.dumps([node_id]),))
+        b.logs_conn.commit()
+        results = recall_by_time(b, start_when='January 2009',
+                                 end_when='February 2009', time_anchor='discussed')
+        ids = {r.get('id') for r in results}
+        assert node_id in ids, "discussed anchor should surface the traced node"
 
-    def test_unknown_window_falls_back(self, env):
-        # 'blah' falls back to last 24h (the parse itself is locked by
-        # TestWindowParser.test_unknown_falls_back_to_24h). Here we assert the
-        # tool still produces well-tagged candidates off that fallback window.
-        results = recall_recent(env.brain, window='blah random', k=5)
+    def test_discussed_anchor_empty_window_no_crash(self, env):
+        results = recall_by_time(env.brain, start_when='January 2001',
+                                 end_when='February 2001', time_anchor='discussed')
         assert isinstance(results, list)
-        for r in results:
-            assert r['source_tool'] == 'recall_recent'
 
 
 class TestRecallByTime:
@@ -237,10 +249,10 @@ class TestExecuteDispatch:
         assert 'error' in result
         assert 'unknown_tool' in result['error']
 
-    def test_session_id_injected_for_recall_recent(self, env):
-        # Should not raise even without session_id parameter
-        result = execute_tool(env.brain, 'recall_recent',
-                              {'window': 'last 10 hours', 'k': 3},
+    def test_by_time_dispatch_without_session(self, env):
+        # recall_recent (and its session_id special-case) deleted 2026-06-12.
+        result = execute_tool(env.brain, 'recall_by_time',
+                              {'start_when': 'yesterday', 'time_anchor': 'discussed'},
                               session_id='test-session')
         assert 'results' in result
 
