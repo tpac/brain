@@ -424,6 +424,21 @@ def _apply_hebbian_pairs(brain, conn,
             _stats['hebbian_pairs_skipped_archived'] += (
                 len(hebbian_snap) - len(live_snap))
         hebbian_snap = live_snap
+        # Loud, not stat-only (operator mandate): an archived node in a
+        # Hebbian pair means something upstream picked a dead node — the
+        # surface gate should have caught it, so reaching here is a leak
+        # signal worth investigating, not routine noise.
+        try:
+            brain._log_error(
+                'hebbian_archived_endpoint',
+                RuntimeError('hebbian pair(s) touched archived node(s) %s '
+                             '— skipped' % ','.join(
+                                 sorted(n[:8] for n in archived))),
+                'drain-time liveness gate; upstream picker admitted an '
+                'archived id (surface gate is the expected catch point)')
+        except Exception:
+            print('[recall_write_queue] archived-endpoint log failed',
+                  file=sys.stderr)
 
     for a, b, ts in hebbian_snap:
         try:

@@ -600,9 +600,11 @@ def _drop_archived_selected(brain, selected_why, selected_mode,
     """Drop archived nodes from Haiku's resolved selection, in place.
 
     Mutates selected_why / selected_mode (full-id keyed) and
-    selected_short_ids (8-char set), and logs a warning per event.
-    The surfaced-ids file is written by the caller AFTER this gate —
-    single write site, only the filtered set ever lands on disk.
+    selected_short_ids (8-char set), and logs an ERROR per event —
+    operator mandate: an archived node being picked anywhere must be
+    loud, never stat-only. The surfaced-ids file is written by the
+    caller AFTER this gate — single write site, only the filtered set
+    ever lands on disk.
 
     Returns the list of dropped full ids (for tests / callers).
     """
@@ -623,10 +625,10 @@ def _drop_archived_selected(brain, selected_why, selected_mode,
         selected_why.pop(nid, None)
         selected_mode.pop(nid, None)
     selected_short_ids -= {nid[:8] for nid in dead}
-    brain._log_warning(
+    brain._log_error(
         'surface_selected_archived',
-        'Haiku selected archived node(s) %s — dropped before seeding'
-        % ','.join(nid[:8] for nid in dead),
+        RuntimeError('Haiku selected archived node(s) %s — dropped before '
+                     'seeding' % ','.join(nid[:8] for nid in dead)),
         'liveness gate in run_surface; the id came from session history '
         '(conversation / recently-surfaced block), not the candidate menu')
     return dead
@@ -642,10 +644,9 @@ def _write_surface_selected_file(brain, session_id, stop_counter, short_ids):
     run_surface, after the liveness gate, so only the filtered
     selection ever lands on disk.
     """
+    from servers.scales.s1.surface_contract import surface_selected_path
     try:
-        surface_path = "/tmp/brain-%s-%d-surface-selected.json" % (
-            session_id, stop_counter)
-        with open(surface_path, 'w') as f:
+        with open(surface_selected_path(session_id, stop_counter), 'w') as f:
             json.dump({"selected_ids": list(short_ids)}, f)
     except Exception as e:
         brain._log_error('surface_selected_write', e,
