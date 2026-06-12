@@ -148,8 +148,11 @@ class TestDecodeTransitions(BrainTestBase):
 
         session_id = 'test-hebbian-session'
 
-        # Write surface-selected file (what _hebbian_strengthen reads)
-        surface_path = '/tmp/brain-%s-surface-selected.json' % session_id
+        # Write surface-selected file (what _hebbian_strengthen reads).
+        # Path via the contract helper — this test once hardcoded the old
+        # counter-less format and silently tested nothing (file_missing).
+        from servers.scales.s1.surface_contract import surface_selected_path
+        surface_path = surface_selected_path(session_id, 1)
         try:
             with open(surface_path, 'w') as f:
                 json.dump({'selected_ids': [n1['id'][:8], n2['id'][:8]]}, f)
@@ -173,6 +176,12 @@ class TestDecodeTransitions(BrainTestBase):
 
             # _hebbian_strengthen now takes stop_counter for trace correlation.
             _hebbian_strengthen(self.brain, session_id, stop_counter=1)
+
+            # Phase 5 (2026-05-18) made Hebbian async: _hebbian_strengthen
+            # only enqueues; the bg worker's drain does the edge SQL. Drain
+            # synchronously so the assertions below see the edges.
+            from servers import recall_write_queue
+            recall_write_queue.drain_once(self.brain)
 
             # _hebbian_strengthen creates co_accessed edges between surface-selected nodes
             # Check that a co_accessed edge exists between n1 and n2
@@ -354,8 +363,9 @@ class TestSelectionLivenessGate(BrainTestBase):
         # Single write site: the file lands post-gate with whatever the
         # caller passes — filtered ids only, by construction of run_surface.
         from servers.scales.s1.surface import _write_surface_selected_file
+        from servers.scales.s1.surface_contract import surface_selected_path
 
-        path = "/tmp/brain-test-liveness-file-7-surface-selected.json"
+        path = surface_selected_path('test-liveness-file', 7)
         try:
             _write_surface_selected_file(
                 self.brain, 'test-liveness-file', 7, {'aaaa1111', 'bbbb2222'})

@@ -470,11 +470,11 @@ def _hebbian_strengthen(brain, session_id, stop_counter):
     """
     from itertools import combinations
     from . import recall_write_queue
+    from servers.scales.s1.surface_contract import surface_selected_path
 
     outcome = {'file_missing': 0, 'few_ids': 0, 'unresolved': 0,
                'pairs_enqueued': 0}
-    surface_path = '/tmp/brain-%s-%d-surface-selected.json' % (
-        session_id, stop_counter)
+    surface_path = surface_selected_path(session_id, stop_counter)
     try:
         if not os.path.exists(surface_path):
             outcome['file_missing'] = 1

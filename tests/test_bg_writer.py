@@ -497,8 +497,8 @@ class TestHebbianAtSurfaceLayer(BrainTestBase):
         short_ids = [nid[:8] for nid in ids]
         session_id = 'hebbian_test_session'
         stop_counter = 0
-        path = '/tmp/brain-%s-%d-surface-selected.json' % (
-            session_id, stop_counter)
+        from servers.scales.s1.surface_contract import surface_selected_path
+        path = surface_selected_path(session_id, stop_counter)
         try:
             with open(path, 'w') as f:
                 json.dump({'selected_ids': short_ids}, f)

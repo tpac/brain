@@ -154,6 +154,19 @@ CANDIDATES_FILE = {
     'max_edges_described': 3,   # top edges with descriptions per candidate
 }
 
+
+def surface_selected_path(session_id, stop_counter):
+    """Canonical path of the per-turn surfaced-ids file.
+
+    Writer: surface.py (once per run_surface, post liveness gate).
+    Reader: daemon_hooks._hebbian_strengthen (Stop hook).
+    Single source of truth — a writer/reader format drift here is a
+    proven bug class (a test once wrote the counter-less format and
+    Hebbian silently read nothing: file_missing on every Stop).
+    """
+    return '/tmp/brain-%s-%d-surface-selected.json' % (
+        session_id, stop_counter)
+
 # The model used by the S1 surface step. Single source of truth — read by:
 #   - surface.py:_call_surface (the actual selection call)
 #   - brain.py:warm_up (the boot-time ping that pre-pays SDK + TLS + Haiku
