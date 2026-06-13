@@ -185,12 +185,30 @@ loud belongs on the contract violation, not the routine redirect.
 
 ---
 
-## 8. Implementation phases (pending greenlight — NOT built)
+## 8. Implementation phases
 
-1. **Edge + writers.** Add `absorbed_into` to `correction_improvement` in
-   `aspects_v1.json`. `absorb` op writes it (stop dropping that intra-edge);
+**Status 2026-06-13:** Phase 3 primitive LANDED (resolve_live merged to main,
+`20c2951`, read-only, 13 tests). Phase 2 backfill EXECUTED for the clean set
+(216 `absorbed_into` edges written via the daemon, verified, 0 failures —
+`eval/oracle_audit/backfill_absorbed_into.py`; brain.db backed up first).
+The edges are LAID BUT INERT: `absorbed_into` is not yet in the
+`correction_improvement` aspect (so `correction_enrich` doesn't walk them) and
+`resolve_live` still reads the metadata pointer, not the edge — so there is NO
+behavior change yet, and no leak (spread's `get_connections_bulk` defaults
+`include_neighbor_archived=False`, so the archived endpoints don't surface).
+Remaining: the live-wiring (Phase 1) + the deferred-set backfill + migration.
+
+1. **Edge + writers (live-wiring).** Add `absorbed_into` to
+   `correction_improvement` in `aspects_v1.json` (this is what makes the 216
+   backfilled edges live — `correction_enrich` starts surfacing them; restart
+   to take effect). `absorb` op writes the edge (stop dropping that intra-edge);
    consolidation archive path writes it. Single helper so both routes agree.
-2. **Backfill + census.** Empirical breakdown — `resolve_live` run over all 340
+   Fold in `bc34734d`'s voice fix here (merge-append distinctive quotes).
+2. **Backfill — remaining + census.** DONE: 216 clean 1-hop archived→live.
+   TODO: ~23 multi-hop chains (survivor itself archived → run the
+   resolve_live-based pass to terminal) and the **94 live-with-stale-stamp**
+   clean (pending `ae6e7d8d`'s revert-artifact-vs-stamping-bug verdict; if a
+   bug, fix the stamp-on-revert clear, don't just one-time-clean). Empirical breakdown — `resolve_live` run over all 340
    `_sys_archived_survivor_id` nodes (stream `ae6e7d8d`, 2026-06-13):
    - **225** archived → live survivor → backfill these into `absorbed_into` edges.
    - **94 LIVE nodes carrying a stale stamp** — reverted-archive artifacts from
