@@ -1615,6 +1615,114 @@ class NodeDAL:
             ids).fetchall()
         return {r[0] for r in rows}
 
+    # --- Survivor-pointer resolution (read-only) ---
+
+    # Metadata key recording where an archived node's content survived to.
+    # Today this is the ONLY survivor source: absorb/consolidation stamps it
+    # on the absorbed node before archiving. A future `absorbed_into` graph
+    # edge would be a SECOND source — fold it into `_survivor_pointer` below
+    # (read the edge, prefer/merge with the kv value) without touching
+    # `resolve_live`'s walk.
+    _SURVIVOR_META_KEY = '_sys_archived_survivor_id'
+
+    def _live_status(self, node_id: str) -> Optional[str]:
+        """Liveness of a single node: 'live', 'archived', or None if missing.
+
+        Single source for the resolve_live walk's per-hop liveness probe —
+        one column, exact-id match.
+        """
+        row = self.conn.execute(
+            'SELECT archived FROM nodes WHERE id = ?', (node_id,)).fetchone()
+        if row is None:
+            return None
+        return 'archived' if row[0] == 1 else 'live'
+
+    def _survivor_pointer(self, node_id: str) -> Optional[str]:
+        """The forward survivor pointer for an archived node, or None.
+
+        SEAM: reads `_sys_archived_survivor_id` from node_metadata_kv (same
+        DB, NodeDAL's own connection — the JOIN pattern brain_recall already
+        uses). When the `absorbed_into` edge lands, union its target in HERE —
+        resolve_live's walk doesn't change.
+        """
+        row = self.conn.execute(
+            'SELECT value FROM node_metadata_kv WHERE node_id = ? AND key = ?',
+            (node_id, self._SURVIVOR_META_KEY)).fetchone()
+        return row[0] if row and row[0] else None
+
+    def resolve_live(self, ids, *, on_orphan: str = 'drop',
+                     max_hops: int = 8) -> Dict[str, Any]:
+        """Resolve a set of node ids to their live survivors. READ-ONLY.
+
+        For each input id: a LIVE node passes through unchanged; an ARCHIVED
+        node is followed forward along its survivor pointer (see
+        `_survivor_pointer`) until a live terminal, an orphan (missing node or
+        no pointer), a cycle, or `max_hops` redirects. Many inputs collapsing
+        to one survivor are deduped, first-seen order preserved.
+
+        Returns ids, not hydrated nodes — callers hydrate via get_node():
+            {
+              'live':       [live ids, deduped, order-preserved],
+              'redirected': {input_id: survivor_id},   # only redirected inputs
+              'orphans':    [input ids with no live terminal],
+            }
+
+        `on_orphan='drop'` (default) returns `orphans: []`; `'mark'` returns
+        the orphan input ids in `orphans`. Either way orphans never appear in
+        `live`.
+        """
+        inputs = [i for i in (ids or []) if i]
+        live_out: List[str] = []
+        seen_live = set()
+        redirected: Dict[str, str] = {}
+        orphans: List[str] = []
+
+        for input_id in inputs:
+            terminal, was_redirected = self._walk_to_live(input_id, max_hops)
+            if terminal is None:
+                orphans.append(input_id)
+                continue
+            if was_redirected:
+                redirected[input_id] = terminal
+            if terminal not in seen_live:
+                seen_live.add(terminal)
+                live_out.append(terminal)
+
+        return {
+            'live': live_out,
+            'redirected': redirected,
+            'orphans': orphans if on_orphan == 'mark' else [],
+        }
+
+    def _walk_to_live(self, start: str, max_hops: int):
+        """Follow survivor pointers from `start` to a live terminal.
+
+        Returns (terminal_live_id | None, was_redirected). None terminal means
+        orphan: missing node, archived-with-no-pointer, a cycle, or the hop
+        budget exhausted before reaching a live node.
+        """
+        visited = set()
+        current = start
+        was_redirected = False
+        hops = 0
+        while True:
+            if current in visited:
+                return None, was_redirected      # cycle guard
+            visited.add(current)
+            status = self._live_status(current)
+            if status is None:
+                return None, was_redirected      # missing node → orphan
+            if status == 'live':
+                return current, was_redirected    # live terminal
+            if hops >= max_hops:
+                return None, was_redirected      # hop budget exhausted
+            survivor = self._survivor_pointer(current)
+            if not survivor:
+                return None, was_redirected      # archived, no pointer → orphan
+            was_redirected = True
+            current = survivor
+            hops += 1
+
     def count(self, archived: bool = False) -> int:
         """Count nodes, optionally excluding archived."""
         if archived:
