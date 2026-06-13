@@ -375,3 +375,63 @@ class TestSelectionLivenessGate(BrainTestBase):
         finally:
             if os.path.exists(path):
                 os.remove(path)
+
+    def test_run_surface_drops_archived_end_to_end(self):
+        """Wiring test: an archived node Haiku selects must not reach the
+        surfaced-ids file when it goes through the REAL run_surface path.
+
+        The other gate tests call _drop_archived_selected directly — they'd
+        still pass if the gate call were deleted from run_surface. This one
+        drives run_surface with a canned Haiku selection (live + archived)
+        and asserts the archived id never lands in the file Hebbian reads,
+        so a wiring regression (gate removed / called in the wrong place /
+        file written before the gate) fails loudly. query_vec=None skips
+        spread expansion, so no embedder is needed."""
+        from servers.scales.s1 import surface as surface_mod
+        from servers.scales.s1.surface_contract import surface_selected_path
+
+        live = self.brain.remember(type='test', title='wire_live', content='c',
+                                   auto_connect=False,
+                                   encoding_source='anchor:test')
+        dead = self.brain.remember(type='test', title='wire_dead', content='c',
+                                   auto_connect=False,
+                                   encoding_source='anchor:test')
+        self.assertTrue(self.brain.archive_node(
+            dead['id'], archived_by='anchor:test',
+            reason='wiring test').get('ok'))
+
+        session_id = 'test-run-surface-wiring'
+        ctx = self.brain.get_or_create_session(session_id)
+        candidates_data = [
+            {'id': live['id'], 'title': 'wire_live', 'type': 'test', 'score': 0.9},
+            {'id': dead['id'], 'title': 'wire_dead', 'type': 'test', 'score': 0.9},
+        ]
+
+        # Canned Haiku selection: both the live node and the archived one.
+        def _fake_call_surface(brain, cands, user_message, recent_messages,
+                               sid, result, frame=''):
+            return ({'selected': [
+                {'id': live['id'][:8], 'why': 'relevant'},
+                {'id': dead['id'][:8], 'why': 'stale'},
+            ]}, 'prompt', 100, None)
+
+        orig = surface_mod._call_surface
+        surface_mod._call_surface = _fake_call_surface
+        path = surface_selected_path(session_id, ctx.stop_counter)
+        try:
+            surface_mod.run_surface(
+                self.brain, ctx, candidates_data, 'user msg', [], {},
+                'enriched query', [], 'test-recall-ref', session_id, None,
+                query_vec=None)
+            with open(path) as f:
+                on_disk = set(json.load(f)['selected_ids'])
+            self.assertIn(live['id'][:8], on_disk,
+                          'live node missing from surfaced-ids file')
+            self.assertNotIn(
+                dead['id'][:8], on_disk,
+                'archived node reached the surfaced-ids file — '
+                'liveness gate is not wired into run_surface')
+        finally:
+            surface_mod._call_surface = orig
+            if os.path.exists(path):
+                os.remove(path)
