@@ -229,11 +229,38 @@ class BrainRememberMixin:
             for i in range(0, len(edge_ids), 500):
                 chunk = edge_ids[i:i + 500]
                 ph = ','.join('?' * len(chunk))
+                # absorbed_into is the survivor-redirect link (written below on
+                # merge-archive). It MUST outlive the node — when a survivor is
+                # itself later absorbed (chain A→B→C), re-archiving the A→B edge
+                # here would break edge-level chain traversal. Exempt it.
                 cur = self.conn.execute(
                     'UPDATE edge_relations SET archived = 1, archived_at = ?, archived_by = ? '
-                    'WHERE edge_id IN (%s) AND archived = 0' % ph,
+                    "WHERE edge_id IN (%s) AND archived = 0 "
+                    "AND relation != 'absorbed_into'" % ph,
                     [ts, archived_by] + chunk)
                 edges_deleted += cur.rowcount
+
+        # 3b. Survivor-redirect edge. When this archive is a MERGE (caller
+        # passed a survivor via extra={'survivor_id': ...} — the absorb op and
+        # any consolidation merge both route here), record absorbed→survivor as
+        # a first-class `absorbed_into` edge (correction_improvement aspect, so
+        # correction_enrich walks it for free). This is the traversable link
+        # resolve_live follows; it is written AFTER the soft-archive above
+        # (which exempts absorbed_into) so it lands and stays archived=0.
+        # `_sys_archived_survivor_id` is still written (step 2 audit) as the
+        # backfill source + resolve_live's current read path. Single source:
+        # one helper, both routes agree.
+        survivor_id = (extra or {}).get('survivor_id')
+        if survivor_id and survivor_id != full_id:
+            try:
+                self._graph.add_relation(
+                    full_id, survivor_id, 'absorbed_into',
+                    description=reason or 'absorbed into %s' % survivor_id[:8],
+                    encoding_source=archived_by)
+            except Exception as _e:
+                self._log_error('archive_absorbed_into_edge', _e,
+                                'absorbed_into %s -> %s' % (
+                                    full_id[:8], str(survivor_id)[:8]))
 
         # 4. Delete vectors from node_enrichments
         vectors_deleted = self.conn.execute(
@@ -443,11 +470,28 @@ class BrainRememberMixin:
                     if not k.startswith('_sys_') and k not in drop
                     and k not in field_updates
                     and (v or '').strip() and not (s_kv.get(k) or '').strip()}
-            merged = {**fill, **field_updates}
+            # Voice fields are the exception to survivor-wins-drop. A distinctive
+            # operator/Anchor quote on the absorbed node is meaning paraphrase
+            # can't recover; dropping it because the survivor already has a
+            # (different) quote is real signal loss. When BOTH carry a quote and
+            # they're genuinely distinct, merge-append instead of dropping the
+            # absorbed one. (survivor-lacks is already covered by `fill`; caller
+            # override via field_updates and `drop` still win below.)
+            voice = {}
+            for vf in ('user_raw_quote', 'anchor_raw_quote'):
+                if vf in drop or vf in field_updates:
+                    continue
+                s_val = (s_kv.get(vf) or '').strip()
+                a_val = (a_kv.get(vf) or '').strip()
+                if (s_val and a_val and a_val != s_val
+                        and a_val not in s_val and s_val not in a_val):
+                    voice[vf] = '%s\n\n%s' % (s_val, a_val)
+            merged = {**fill, **voice, **field_updates}
             rev_failed = False
             if merged:
                 rev = self.revise(survivor_id, updates=merged,
                                   reason=reason or 'absorb %s' % absorbed_id[:8])
+                report['voice_merged'] = sorted(voice.keys())
                 report['fields_filled'] = sorted(fill.keys())
                 report['fields_revised'] = sorted(field_updates.keys())
                 if rev.get('warnings'):

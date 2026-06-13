@@ -221,7 +221,8 @@
       "fixes",
       "redefines",
       "rejected_for",
-      "overrides"
+      "overrides",
+      "absorbed_into"
     ],
     "meaning": "Knowledge or edges that explicitly UPDATE / AMEND / FIX prior knowledge \u2014 there's a target being corrected. Node types that ARE corrections; edges where one node fixes, supersedes-semantically, or improves another. NOT: extensions that elaborate without amending (extension_refinement). Test: does this REPLACE or FIX something that was wrong? If yes \u2192 correction. If it just BUILDS ON without amending \u2192 extension.",
     "dimension": "semantic",

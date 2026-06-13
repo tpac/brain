@@ -99,6 +99,59 @@ class TestAbsorb(BrainTestBase):
         self.assertEqual(kv.get('user_raw_quote'), 'the peer quote')  # filled
         self.assertEqual(kv.get('situation'), 'survivor situation')   # survivor wins
 
+    def test_distinct_voice_quotes_merge_appended(self):
+        """Voice exception: when survivor AND absorbed both carry a distinct
+        quote, the absorbed quote is APPENDED, not dropped (it's meaning
+        paraphrase can't recover). Non-voice fields stay survivor-wins."""
+        survivor = self._node('survivor', user_raw_quote='survivor said this',
+                              situation='survivor situation')
+        absorbed = self._node('absorbed', user_raw_quote='absorbed said that',
+                              anchor_raw_quote='anchor reflected here',
+                              situation='absorbed situation')
+        r = self.brain.absorb(survivor, absorbed)
+        self.assertTrue(r['ok'], r)
+        kv = self.brain._meta_kv.get_all_bulk([survivor])[survivor]
+        # both present + distinct → appended
+        self.assertEqual(kv.get('user_raw_quote'),
+                         'survivor said this\n\nabsorbed said that')
+        # survivor lacked anchor_raw_quote → filled (not appended)
+        self.assertEqual(kv.get('anchor_raw_quote'), 'anchor reflected here')
+        # non-voice field unchanged: survivor still wins
+        self.assertEqual(kv.get('situation'), 'survivor situation')
+        self.assertEqual(r.get('voice_merged'), ['user_raw_quote'])
+
+    def test_duplicate_voice_quote_not_appended(self):
+        survivor = self._node('survivor', user_raw_quote='same words')
+        absorbed = self._node('absorbed', user_raw_quote='same words')
+        r = self.brain.absorb(survivor, absorbed)
+        self.assertTrue(r['ok'], r)
+        kv = self.brain._meta_kv.get_all_bulk([survivor])[survivor]
+        self.assertEqual(kv.get('user_raw_quote'), 'same words')  # no dup
+
+    def test_substring_voice_quote_not_appended(self):
+        survivor = self._node('survivor', user_raw_quote='the full long quote here')
+        absorbed = self._node('absorbed', user_raw_quote='long quote')  # substring
+        r = self.brain.absorb(survivor, absorbed)
+        self.assertTrue(r['ok'], r)
+        kv = self.brain._meta_kv.get_all_bulk([survivor])[survivor]
+        self.assertEqual(kv.get('user_raw_quote'), 'the full long quote here')
+
+    def test_voice_caller_override_beats_append(self):
+        survivor = self._node('survivor', user_raw_quote='survivor quote')
+        absorbed = self._node('absorbed', user_raw_quote='absorbed quote')
+        r = self.brain.absorb(survivor, absorbed, user_raw_quote='explicit override')
+        self.assertTrue(r['ok'], r)
+        kv = self.brain._meta_kv.get_all_bulk([survivor])[survivor]
+        self.assertEqual(kv.get('user_raw_quote'), 'explicit override')
+
+    def test_voice_drop_respected(self):
+        survivor = self._node('survivor', user_raw_quote='survivor quote')
+        absorbed = self._node('absorbed', user_raw_quote='absorbed quote')
+        r = self.brain.absorb(survivor, absorbed, drop_fields=['user_raw_quote'])
+        self.assertTrue(r['ok'], r)
+        kv = self.brain._meta_kv.get_all_bulk([survivor])[survivor]
+        self.assertEqual(kv.get('user_raw_quote'), 'survivor quote')  # not appended
+
     def test_content_override_replaces(self):
         survivor = self._node('survivor', content='old survivor content')
         absorbed = self._node('absorbed')
