@@ -88,11 +88,17 @@ absorbed/dead node, target = survivor/live node), added to the
 
 Why an edge in that aspect, not a column:
 
-- **It unifies with machinery that already exists.** `get_node`'s
-  `correction_enrich` already walks the `correction_improvement` aspect
-  bidirectionally. So "the thing you referenced was absorbed into X" surfaces
-  as correction context *for free* — the redirect and the correction substrate
-  become one mechanism.
+- **It shares the correction substrate's vocabulary** — but NOT "for free."
+  CORRECTION (caught by `ae6e7d8d`, 2026-06-13): `correction_enrich` calls
+  `get_connections_bulk(include_neighbor_archived=False)`, which forces
+  `n1.archived=0 AND n2.archived=0`. An `absorbed_into` edge ALWAYS has an
+  archived endpoint (the absorbed source), so the *standard* correction walk
+  filters it out — it will NOT surface via plain `correction_enrich`. Surfacing
+  it requires a reader that passes `include_neighbor_archived=True` for
+  `absorbed_into` (the param already exists; it's just off by default). That
+  reader is `resolve_live`'s edge-source (Phase 4) / a correction_enrich
+  variant. So the aspect membership is the right *classification*, but the
+  surfacing is a deliberate reader change, not automatic.
 - **It's visible and traversable.** Spread activation can follow it; the
   dashboard can show it. A link nobody can see is what caused this incident.
 - **It's Tom's "cluster with certain aspects"**: resolution finds the survivor
@@ -196,7 +202,27 @@ The edges are LAID BUT INERT: `absorbed_into` is not yet in the
 `resolve_live` still reads the metadata pointer, not the edge — so there is NO
 behavior change yet, and no leak (spread's `get_connections_bulk` defaults
 `include_neighbor_archived=False`, so the archived endpoints don't surface).
-Remaining: the live-wiring (Phase 1) + the deferred-set backfill + migration.
+
+Phase 1 CODE COMPLETE (`ae6e7d8d`, branch `claude/absorbed-into-ae6e7d8d`):
+`absorbed_into` written in `archive_node` gated on `extra['survivor_id']` (single
+chokepoint) + step-3 reaper exemption + aspect SEED + voice merge-append
+(distinct `user_raw_quote`/`anchor_raw_quote` → appended, not survivor-wins-drop).
+26 tests green. Pairs with the dangling-edge-reaper exemption (`4c971da`, main).
+**Everything stays INERT until a deliberate daemon restart** (writers + reaper
+exemption go live together; backfill must be RE-RUN after, since the old-code
+Healer may have reaped the first 216).
+
+Remaining = the **reader phase (was "Phase 4"), bundle these together**:
+(i) add `absorbed_into` to the LIVE aspects working copy
+`$BRAIN_DB_DIR/aspects_v1.json` (deliberate one-line, NOT left to S2
+classifier — production mutation, supervised);
+(ii) `resolve_live` edge-source: read the `absorbed_into` edge via
+`include_neighbor_archived=True` (its seam already isolates the pointer read);
+(iii) surface absorbed_into despite the archived endpoint — same
+`include_neighbor_archived=True` query (the standard `correction_enrich` walk
+filters it out — see §3 correction); (iv) migrate sites §5 #1–#6; (v) finish the
+deferred backfill (~23 chains + clean the 94 stale stamps — verdict: one-time
+recovery artifact, delete `_sys_archived_*` keys, no stamping bug).
 
 1. **Edge + writers (live-wiring).** Add `absorbed_into` to
    `correction_improvement` in `aspects_v1.json` (this is what makes the 216
